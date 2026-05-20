@@ -9,6 +9,7 @@ interface AppShellProps {
   children: ReactNode;
   isAuthConfigured: boolean;
   isAuthLoading: boolean;
+  isAuthenticated: boolean;
   title: string;
   subtitle: string;
   onLogout: () => Promise<void>;
@@ -21,9 +22,12 @@ export function AppShell({
   children,
   isAuthConfigured,
   isAuthLoading,
+  isAuthenticated,
   onLogout,
   onNavigate,
 }: AppShellProps) {
+  const isLocked = !isAuthenticated;
+
   return (
     <div className="min-h-screen bg-[#f5eedf] text-[#171411]">
       <div className="sticky top-0 z-30 border-b-4 border-black bg-[#f5eedf]">
@@ -35,11 +39,16 @@ export function AppShell({
           >
             Open-Game-Launcher
           </button>
-          <Sidebar activePage={activePage} onNavigate={onNavigate} />
+          <Sidebar
+            activePage={activePage}
+            isDisabled={isLocked}
+            onNavigate={onNavigate}
+          />
           <div className="flex min-w-0 items-center justify-end gap-2 sm:gap-3 lg:ml-auto">
             <label className="hidden h-10 w-[280px] items-center gap-3 border-2 border-black bg-[#efe6d4] px-3 shadow-[3px_3px_0_#171411] xl:flex">
               <Search className="h-5 w-5 shrink-0" />
               <input
+                disabled={isLocked}
                 className="neo-copy min-w-0 flex-1 bg-transparent text-xs font-bold uppercase text-[#171411] outline-none placeholder:text-[#171411]"
                 placeholder="Datenbank durchsuchen ..."
                 type="search"
@@ -47,7 +56,8 @@ export function AppShell({
             </label>
             <button
               aria-label="Settings"
-              className="flex h-10 w-10 items-center justify-center border-2 border-black bg-[#efe6d4] shadow-[2px_2px_0_#171411]"
+              className="flex h-10 w-10 items-center justify-center border-2 border-black bg-[#efe6d4] shadow-[2px_2px_0_#171411] disabled:cursor-not-allowed disabled:opacity-45"
+              disabled={isLocked}
               type="button"
               onClick={() => onNavigate("settings")}
             >
@@ -55,7 +65,8 @@ export function AppShell({
             </button>
             <button
               aria-label="Notifications"
-              className="relative flex h-10 w-10 items-center justify-center border-2 border-black bg-[#efe6d4] shadow-[2px_2px_0_#171411]"
+              className="relative flex h-10 w-10 items-center justify-center border-2 border-black bg-[#efe6d4] shadow-[2px_2px_0_#171411] disabled:cursor-not-allowed disabled:opacity-45"
+              disabled={isLocked}
               type="button"
             >
               <span className="absolute -right-1 -top-1 h-3 w-3 rounded-full border border-black bg-[#c20b2f]" />

@@ -33,13 +33,7 @@ const pageMeta: Record<PageKey, { title: string; subtitle: string }> = {
   },
 };
 
-const protectedPages = new Set<PageKey>(["library", "downloads", "community"]);
-
-function renderPage(page: PageKey, canAccessProtectedPages: boolean) {
-  if (protectedPages.has(page) && !canAccessProtectedPages) {
-    return <AuthPage />;
-  }
-
+function renderPage(page: PageKey) {
   switch (page) {
     case "store":
       return <StorePage />;
@@ -59,7 +53,7 @@ export default function App() {
   const [activePage, setActivePage] = useState<PageKey>("library");
   const { isConfigured, isLoading, signOut, user } = useAuth();
   const meta = pageMeta[activePage];
-  const canAccessProtectedPages = Boolean(user);
+  const isAuthenticated = Boolean(user);
 
   return (
     <AppShell
@@ -67,6 +61,7 @@ export default function App() {
       authEmail={user?.email ?? null}
       isAuthConfigured={isConfigured}
       isAuthLoading={isLoading}
+      isAuthenticated={isAuthenticated}
       subtitle={meta.subtitle}
       title={meta.title}
       onLogout={signOut}
@@ -77,7 +72,7 @@ export default function App() {
           Session wird geladen...
         </div>
       ) : isConfigured ? (
-        renderPage(activePage, canAccessProtectedPages)
+        isAuthenticated ? renderPage(activePage) : <AuthPage />
       ) : (
         <section className="border-4 border-black bg-[#f5eedf] p-6 shadow-[4px_4px_0_#171411]">
           <h1 className="text-3xl font-black uppercase text-[#171411]">
