@@ -3,21 +3,21 @@ import type { DownloadItem, Game, StoreGame } from "./types";
 export const libraryGames: Game[] = [
   {
     id: "starfall-outpost",
-    title: "Starfall Outpost",
+    title: "Neo-Tokyo Drift",
     description:
-      "A tactical sci-fi survival game about rebuilding a remote orbital colony.",
+      "Zuletzt gespielt: Heute. Neues Content-Pack...",
     version: "1.8.2",
     status: "installed",
     platform: "windows",
     installPath: "C:/Games/OpenGameLauncher/Starfall Outpost",
-    lastPlayed: "Yesterday",
+    lastPlayed: "Heute",
     playtimeMinutes: 3480,
   },
   {
     id: "iron-vale",
-    title: "Iron Vale",
+    title: "Steel Battalion X",
     description:
-      "A dark fantasy action RPG with precise combat and deep crafting systems.",
+      "52 Stunden gespielt",
     version: "0.9.4",
     status: "update_available",
     platform: "windows",
@@ -27,19 +27,19 @@ export const libraryGames: Game[] = [
   },
   {
     id: "neon-rally",
-    title: "Neon Rally",
+    title: "Netrunner: Phantom",
     description:
-      "High-speed arcade racing through rain-soaked city circuits and desert highways.",
+      "Noch nie gespielt",
     version: "2.1.0",
-    status: "not_installed",
+    status: "update_available",
     platform: "linux",
     playtimeMinutes: 0,
   },
   {
     id: "embers-and-engines",
-    title: "Embers & Engines",
+    title: "Akira's Revenge",
     description:
-      "Build modular machines, automate production, and defend your settlement.",
+      "Wird heruntergeladen",
     version: "1.2.7",
     status: "installed",
     platform: "linux",
@@ -52,31 +52,28 @@ export const libraryGames: Game[] = [
 export const storeGames: StoreGame[] = [
   {
     id: "deep-signal",
-    title: "Deep Signal",
-    description:
-      "Investigate a cold ocean moon in a tense narrative exploration game.",
-    price: 24.99,
+    title: "Wasteland Drifter",
+    description: "Racing / Arcade",
+    price: 19.99,
     platform: ["windows", "linux"],
-    tagLine: "New release",
+    tagLine: "Racing / Arcade",
   },
   {
     id: "redline-tactics",
-    title: "Redline Tactics",
-    description:
-      "Squad-based cyberpunk tactics with synchronized turns and destructible cover.",
-    price: 0,
-    isFree: true,
+    title: "System Crash",
+    description: "Puzzle / Hacking",
+    price: 9.99,
+    isFree: false,
     platform: ["windows"],
-    tagLine: "Free weekend",
+    tagLine: "Puzzle / Hacking",
   },
   {
     id: "haven-forge",
-    title: "Haven Forge",
-    description:
-      "A relaxed co-op crafting game about running a workshop at the edge of the wilds.",
-    price: 14.99,
+    title: "Blood Tide",
+    description: "Action / RPG",
+    price: 29.99,
     platform: ["windows", "linux", "macos"],
-    tagLine: "Coming soon",
+    tagLine: "Action / RPG",
   },
 ];
 
@@ -84,7 +81,7 @@ export const downloads: DownloadItem[] = [
   {
     id: "download-iron-vale",
     gameId: "iron-vale",
-    title: "Iron Vale Update 0.9.5",
+    title: "Steel Battalion X // Update 0.9.5",
     progress: 68,
     speed: "18.4 MB/s",
     status: "downloading",
@@ -92,7 +89,7 @@ export const downloads: DownloadItem[] = [
   {
     id: "download-neon-rally",
     gameId: "neon-rally",
-    title: "Neon Rally Base Game",
+    title: "Netrunner: Phantom // Basisdaten",
     progress: 31,
     speed: "Paused",
     status: "paused",
@@ -100,7 +97,7 @@ export const downloads: DownloadItem[] = [
   {
     id: "download-starfall-dlc",
     gameId: "starfall-outpost",
-    title: "Starfall Outpost: Frontier Pack",
+    title: "Neo-Tokyo Drift // Neon District Pack",
     progress: 100,
     speed: "Complete",
     status: "completed",

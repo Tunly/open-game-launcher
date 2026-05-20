@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { Bell, Search, Settings, User } from "lucide-react";
 
 import { Sidebar, type PageKey } from "./Sidebar";
 
@@ -10,41 +11,60 @@ interface AppShellProps {
   onNavigate: (page: PageKey) => void;
 }
 
-export function AppShell({
-  activePage,
-  children,
-  title,
-  subtitle,
-  onNavigate,
-}: AppShellProps) {
+export function AppShell({ activePage, children, onNavigate }: AppShellProps) {
   return (
-    <div className="min-h-screen bg-launcher-bg text-slate-100 md:flex">
-      <Sidebar activePage={activePage} onNavigate={onNavigate} />
-      <main className="min-w-0 flex-1 md:pl-72">
-        <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-          <header className="mb-6 flex flex-col justify-between gap-4 border-b border-white/10 pb-6 lg:flex-row lg:items-end">
-            <div>
-              <p className="text-sm font-semibold uppercase text-sky-200">
-                Open Game Launcher
-              </p>
-              <h1 className="mt-2 text-3xl font-bold text-white">{title}</h1>
-              <p className="mt-2 max-w-2xl text-sm text-slate-400">
-                {subtitle}
-              </p>
-            </div>
-            <div className="flex items-center gap-3 rounded-lg border border-white/10 bg-white/[0.04] px-4 py-3">
-              <span className="h-2.5 w-2.5 rounded-full bg-emerald-400" />
-              <div>
-                <p className="text-xs font-semibold uppercase text-slate-500">
-                  Runtime
-                </p>
-                <p className="text-sm font-semibold text-white">Tauri 2</p>
-              </div>
-            </div>
-          </header>
-          {children}
+    <div className="min-h-screen bg-[#f5eedf] text-[#171411]">
+      <header className="sticky top-0 z-30 flex h-20 items-center justify-between gap-4 border-b-4 border-black bg-[#f5eedf] px-6">
+        <button
+          className="neo-title shrink-0 text-4xl leading-none text-[#c20b2f] sm:text-5xl"
+          type="button"
+          onClick={() => onNavigate("library")}
+        >
+          Neo-Launcher
+        </button>
+        <div className="flex min-w-0 items-center gap-3">
+          <label className="hidden h-10 w-[315px] items-center gap-3 border-2 border-black bg-[#efe6d4] px-3 shadow-[3px_3px_0_#171411] sm:flex">
+              <Search className="h-5 w-5 shrink-0" />
+              <input
+                className="neo-copy min-w-0 flex-1 bg-transparent text-xs font-bold uppercase text-[#171411] outline-none placeholder:text-[#171411]"
+                placeholder="Datenbank durchsuchen ..."
+                type="search"
+              />
+          </label>
+          <button
+            aria-label="Settings"
+            className="flex h-10 w-10 items-center justify-center border-2 border-black bg-[#efe6d4] shadow-[2px_2px_0_#171411]"
+            type="button"
+            onClick={() => onNavigate("settings")}
+          >
+            <Settings className="h-5 w-5" />
+          </button>
+          <button
+            aria-label="Notifications"
+            className="relative flex h-10 w-10 items-center justify-center border-2 border-black bg-[#efe6d4] shadow-[2px_2px_0_#171411]"
+            type="button"
+          >
+            <span className="absolute -right-1 -top-1 h-3 w-3 rounded-full border border-black bg-[#c20b2f]" />
+            <Bell className="h-5 w-5" />
+          </button>
+          <button
+            aria-label="Profile"
+            className="flex h-10 w-10 items-center justify-center border-2 border-black bg-[#171411] text-[#f5eedf] shadow-[2px_2px_0_#171411]"
+            type="button"
+          >
+            <User className="h-6 w-6" />
+          </button>
         </div>
-      </main>
+      </header>
+
+      <div className="md:flex">
+        <Sidebar activePage={activePage} onNavigate={onNavigate} />
+        <main className="neo-dots min-w-0 flex-1 border-l-4 border-black md:ml-64">
+          <div className="w-full max-w-[1100px] px-5 py-6 sm:px-7">
+          {children}
+          </div>
+        </main>
+      </div>
     </div>
   );
 }

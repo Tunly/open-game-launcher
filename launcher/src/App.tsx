@@ -2,6 +2,7 @@ import { useState } from "react";
 
 import { AppShell } from "./components/layout/AppShell";
 import type { PageKey } from "./components/layout/Sidebar";
+import { CommunityPage } from "./pages/CommunityPage";
 import { DownloadsPage } from "./pages/DownloadsPage";
 import { LibraryPage } from "./pages/LibraryPage";
 import { SettingsPage } from "./pages/SettingsPage";
@@ -20,6 +21,10 @@ const pageMeta: Record<PageKey, { title: string; subtitle: string }> = {
     title: "Downloads",
     subtitle: "Track game installs and updates while they move through the queue.",
   },
+  community: {
+    title: "Community",
+    subtitle: "Player activity, squads, and live launcher network updates.",
+  },
   settings: {
     title: "Settings",
     subtitle: "Manage install locations, launcher behavior, and runtime details.",
@@ -32,6 +37,8 @@ function renderPage(page: PageKey) {
       return <StorePage />;
     case "downloads":
       return <DownloadsPage />;
+    case "community":
+      return <CommunityPage />;
     case "settings":
       return <SettingsPage />;
     case "library":

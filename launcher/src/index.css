@@ -3,12 +3,12 @@
 @tailwind utilities;
 
 :root {
-  color-scheme: dark;
+  color-scheme: light;
   font-family:
-    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
-    sans-serif;
-  background: #090b10;
-  color: #f8fafc;
+    "Arial Narrow", "Roboto Condensed", Impact, system-ui, -apple-system,
+    BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: #f5eedf;
+  color: #171411;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -29,8 +29,10 @@ body {
   margin: 0;
   min-width: 320px;
   background:
-    linear-gradient(180deg, rgba(56, 189, 248, 0.08), transparent 360px),
-    #090b10;
+    linear-gradient(90deg, rgba(0, 0, 0, 0.035) 1px, transparent 1px),
+    linear-gradient(180deg, rgba(0, 0, 0, 0.025) 1px, transparent 1px),
+    #f5eedf;
+  background-size: 34px 34px;
 }
 
 button,
@@ -40,7 +42,7 @@ input {
 
 button:focus-visible,
 a:focus-visible {
-  outline: 2px solid #38bdf8;
+  outline: 2px solid #c20b2f;
   outline-offset: 2px;
 }
 
@@ -50,14 +52,91 @@ a:focus-visible {
 }
 
 ::-webkit-scrollbar-track {
-  background: #0d1017;
+  background: #eee4d2;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #2f3746;
-  border-radius: 999px;
+  background: #171411;
+  border-radius: 0;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #3f4858;
+  background: #087d6d;
+}
+
+.neo-title {
+  font-family: Impact, Haettenschweiler, "Arial Narrow", sans-serif;
+  font-style: italic;
+  letter-spacing: -0.04em;
+  text-transform: uppercase;
+}
+
+.neo-copy {
+  font-family: "Courier New", ui-monospace, monospace;
+  letter-spacing: 0.08em;
+}
+
+.neo-dots {
+  background:
+    radial-gradient(circle, rgba(23, 20, 17, 0.065) 1px, transparent 1px),
+    #fbf8ef;
+  background-size: 8px 8px;
+}
+
+.hero-art {
+  background:
+    linear-gradient(90deg, rgba(0, 0, 0, 0.8), rgba(0, 0, 0, 0.38) 56%, rgba(0, 0, 0, 0.72)),
+    radial-gradient(circle at 35% 7%, rgba(255, 255, 255, 0.65), transparent 5%),
+    linear-gradient(132deg, transparent 0 18%, rgba(255, 255, 255, 0.18) 18% 20%, transparent 20% 100%),
+    repeating-linear-gradient(112deg, #242424 0 13px, #0e0e0e 13px 27px, #333 27px 29px);
+}
+
+.card-art-drift {
+  background:
+    radial-gradient(circle at 86% 28%, #f6f2e8 0 14%, transparent 15%),
+    radial-gradient(circle at 80% 30%, #f6f2e8 0 11%, transparent 12%),
+    linear-gradient(16deg, transparent 0 42%, rgba(23, 20, 17, 0.24) 43% 45%, transparent 46%),
+    repeating-linear-gradient(172deg, transparent 0 16px, rgba(23, 20, 17, 0.14) 17px 18px),
+    linear-gradient(180deg, #d9d7d0, #f4f0e7);
+}
+
+.card-art-crash {
+  background:
+    radial-gradient(ellipse at 50% 74%, rgba(8, 125, 109, 0.74), transparent 44%),
+    repeating-linear-gradient(7deg, transparent 0 18px, rgba(8, 125, 109, 0.7) 19px 20px),
+    repeating-linear-gradient(-7deg, transparent 0 18px, rgba(8, 125, 109, 0.65) 19px 20px),
+    linear-gradient(#040604 0 64%, #062922);
+}
+
+.card-art-blood {
+  background:
+    radial-gradient(circle at 77% 8%, #ff9baa 0 15%, transparent 16%),
+    linear-gradient(120deg, transparent 0 26%, rgba(23, 20, 17, 0.7) 27% 30%, transparent 31%),
+    repeating-linear-gradient(90deg, rgba(23, 20, 17, 0.24) 0 9px, transparent 10px 25px),
+    linear-gradient(180deg, #e92846, #a60724);
+}
+
+.library-art-tokyo {
+  background:
+    radial-gradient(circle at 62% 58%, #48ffe1 0 5%, transparent 6%),
+    linear-gradient(100deg, transparent 0 40%, rgba(9, 111, 100, 0.88) 41% 48%, transparent 49%),
+    repeating-linear-gradient(90deg, rgba(196, 11, 47, 0.28) 0 5px, transparent 6px 26px),
+    linear-gradient(180deg, #103c3d, #160f1e 56%, #c20b2f);
+}
+
+.library-art-mech {
+  background:
+    radial-gradient(circle at 50% 44%, rgba(255, 250, 240, 0.75), transparent 22%),
+    linear-gradient(115deg, transparent 0 30%, rgba(23, 20, 17, 0.24) 31% 33%, transparent 34%),
+    repeating-linear-gradient(28deg, rgba(23, 20, 17, 0.18) 0 4px, transparent 5px 18px),
+    linear-gradient(180deg, #b4b1a5, #2f312e);
+  filter: grayscale(0.85);
+}
+
+.library-art-phantom {
+  background:
+    radial-gradient(ellipse at 52% 55%, rgba(12, 12, 12, 0.95) 0 12%, transparent 13%),
+    repeating-linear-gradient(0deg, rgba(245, 238, 223, 0.13) 0 2px, transparent 3px 18px),
+    repeating-linear-gradient(90deg, rgba(245, 238, 223, 0.13) 0 2px, transparent 3px 22px),
+    linear-gradient(180deg, #1d2022, #050506);
 }

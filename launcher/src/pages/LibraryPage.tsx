@@ -1,7 +1,7 @@
+import { SlidersHorizontal } from "lucide-react";
 import { useState } from "react";
 
 import { GameCard } from "../components/launcher/GameCard";
-import { Badge } from "../components/ui/Badge";
 import { libraryGames } from "../lib/mock-data";
 import { launchGame, startDownload, verifyGameFiles } from "../lib/launcher";
 import type { Game } from "../lib/types";
@@ -53,33 +53,52 @@ export function LibraryPage() {
   }
 
   return (
-    <section className="space-y-6">
-      <div className="flex flex-wrap gap-3">
-        <Badge variant="success">
-          {libraryGames.filter((game) => game.status === "installed").length}{" "}
-          installed
-        </Badge>
-        <Badge variant="warning">
-          {
-            libraryGames.filter((game) => game.status === "update_available")
-              .length
-          }{" "}
-          updates
-        </Badge>
-        <Badge variant="muted">{libraryGames.length} owned</Badge>
+    <section>
+      <div className="mb-10 border-b-4 border-black pb-4">
+        <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <span className="neo-copy inline-flex border-2 border-black bg-[#c20b2f] px-3 py-1 text-xs font-bold uppercase text-[#fffaf0] shadow-[3px_3px_0_#171411]">
+              Netzwerk verbunden
+            </span>
+            <h1 className="neo-title mt-2 max-w-[440px] text-7xl leading-[0.82] text-[#171411] sm:text-8xl">
+              Meine Bibliothek
+            </h1>
+            <p className="neo-copy mt-3 text-xs font-bold uppercase text-[#55504a]">
+              42 installierte Spiele // 12 Updates verfugbar
+            </p>
+          </div>
+
+          <div className="neo-copy flex gap-3 text-xs font-bold uppercase">
+            <button
+              className="flex h-10 items-center gap-3 border-2 border-black bg-[#f5eedf] px-5 shadow-[2px_2px_0_#171411]"
+              type="button"
+            >
+              <SlidersHorizontal className="h-4 w-4" />
+              Filtern
+            </button>
+            <button
+              className="flex h-10 items-center gap-3 border-2 border-black bg-[#f5eedf] px-5 shadow-[2px_2px_0_#171411]"
+              type="button"
+            >
+              <SlidersHorizontal className="h-4 w-4" />
+              Sortieren
+            </button>
+          </div>
+        </div>
       </div>
 
       {statusMessage ? (
-        <div className="rounded-lg border border-sky-300/20 bg-sky-400/10 px-4 py-3 text-sm text-sky-100">
+        <div className="neo-copy mb-5 border-2 border-black bg-[#efe6d4] px-4 py-3 text-xs font-bold uppercase text-[#171411] shadow-[3px_3px_0_#171411]">
           {statusMessage}
         </div>
       ) : null}
 
-      <div className="grid gap-5 lg:grid-cols-2 xl:grid-cols-3">
-        {libraryGames.map((game) => (
+      <div className="grid auto-rows-[170px] gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        {libraryGames.map((game, index) => (
           <GameCard
             key={game.id}
             game={game}
+            index={index}
             isBusy={busyGameId === game.id}
             isVerifying={verifyingGameId === game.id}
             onPrimaryAction={handlePrimaryAction}
