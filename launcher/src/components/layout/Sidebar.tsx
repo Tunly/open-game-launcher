@@ -1,7 +1,6 @@
 import {
   Download,
   PlaySquare,
-  Settings,
   ShoppingBag,
   Users,
   type LucideIcon,
@@ -32,13 +31,12 @@ const navItems: NavItem[] = [
   { key: "library", label: "Library", icon: PlaySquare },
   { key: "community", label: "Community", icon: Users },
   { key: "downloads", label: "Downloads", icon: Download },
-  { key: "settings", label: "Settings", icon: Settings },
 ];
 
 export function Sidebar({ activePage, onNavigate }: SidebarProps) {
   return (
-    <aside className="sticky top-20 z-20 border-b-4 border-black bg-[#f5eedf] px-4 py-4 md:fixed md:bottom-0 md:left-0 md:top-20 md:flex md:w-64 md:flex-col md:border-b-0 md:px-6 md:py-5">
-      <nav className="flex gap-3 overflow-x-auto pb-1 md:block md:space-y-4 md:overflow-visible md:pb-0">
+    <nav className="min-w-0 flex-1">
+      <div className="flex gap-2 overflow-x-auto pb-1">
         {navItems.map((item) => {
           const Icon = item.icon;
           const isActive = item.key && activePage === item.key;
@@ -48,7 +46,7 @@ export function Sidebar({ activePage, onNavigate }: SidebarProps) {
               key={item.label}
               aria-current={isActive ? "page" : undefined}
               className={cn(
-                "neo-copy flex h-12 shrink-0 items-center gap-3 border-2 px-4 text-xs font-bold uppercase transition md:w-full",
+                "neo-copy flex h-10 shrink-0 items-center gap-2 border-2 px-3 text-[11px] font-bold uppercase transition xl:px-4",
                 isActive
                   ? "border-black bg-[#087d6d] text-white shadow-[4px_4px_0_#171411]"
                   : "border-transparent bg-transparent text-[#171411] hover:border-black hover:bg-[#efe6d4]",
@@ -62,11 +60,7 @@ export function Sidebar({ activePage, onNavigate }: SidebarProps) {
             </button>
           );
         })}
-      </nav>
-
-      <div className="mt-auto hidden md:block">
-        <div className="h-0.5 bg-[#171411]" />
       </div>
-    </aside>
+    </nav>
   );
 }
