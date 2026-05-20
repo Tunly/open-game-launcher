@@ -104,11 +104,11 @@ export function SettingsPage() {
     <section>
       <div className="mb-8 border-b-4 border-black pb-4">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-          <div>
+          <div className="min-w-0">
             <span className="neo-copy inline-flex border-2 border-black bg-[#171411] px-3 py-1 text-xs font-bold uppercase text-white shadow-[3px_3px_0_#171411]">
               System Konfiguration
             </span>
-            <h1 className="neo-title mt-2 max-w-[560px] text-7xl leading-[0.82] text-[#171411] sm:text-8xl">
+            <h1 className="neo-title mt-2 max-w-[680px] text-[clamp(3.5rem,15vw,6rem)] leading-[0.82] text-[#171411]">
               Settings Panel
             </h1>
             <p className="neo-copy mt-3 text-xs font-bold uppercase text-[#55504a]">
@@ -117,7 +117,7 @@ export function SettingsPage() {
           </div>
 
           <button
-            className="neo-copy flex h-10 w-fit items-center gap-3 border-2 border-black bg-[#f5eedf] px-5 text-xs font-bold uppercase shadow-[2px_2px_0_#171411]"
+            className="neo-copy flex h-10 w-full items-center justify-center gap-3 border-2 border-black bg-[#f5eedf] px-5 text-xs font-bold uppercase shadow-[2px_2px_0_#171411] sm:w-fit"
             type="button"
             onClick={handleReloadPath}
           >

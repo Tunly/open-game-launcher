@@ -17,9 +17,9 @@ export function StorePage() {
 
   return (
     <section className="space-y-7">
-      <div className="hero-art relative min-h-[500px] overflow-hidden border-4 border-black shadow-[6px_6px_0_#171411] sm:min-h-[340px]">
+      <div className="hero-art relative min-h-[420px] overflow-hidden border-4 border-black shadow-[5px_5px_0_#171411] sm:min-h-[340px] sm:shadow-[6px_6px_0_#171411]">
         <div className="absolute inset-x-0 top-0 h-24 bg-black/35" />
-        <div className="relative m-6 flex min-h-[365px] items-center border-l-4 border-[#c20b2f] bg-black/62 p-8 sm:min-h-[280px] sm:p-9">
+        <div className="relative m-4 flex min-h-[330px] items-center border-l-4 border-[#c20b2f] bg-black/62 p-5 sm:m-6 sm:min-h-[280px] sm:p-9">
           <div className="max-w-[590px]">
             <div className="neo-copy flex flex-wrap gap-2 text-[11px] font-bold uppercase">
               <span className="border-2 border-[#c20b2f] px-3 py-1 text-[#c20b2f]">
@@ -29,17 +29,17 @@ export function StorePage() {
                 Action
               </span>
             </div>
-            <h1 className="neo-title mt-4 text-6xl leading-none text-[#fffaf0] sm:text-7xl">
+            <h1 className="neo-title mt-4 text-[clamp(3.25rem,16vw,4.5rem)] leading-none text-[#fffaf0]">
               Neo-Strike
             </h1>
-            <p className="mt-4 max-w-[560px] text-lg leading-7 text-[#fffaf0]">
+            <p className="mt-4 max-w-[560px] text-base leading-7 text-[#fffaf0] sm:text-lg">
               Der ultimative Cyber-Brawler. Kampfe dich durch die Neon-
               Schluchten von Neo-Berlin. Uberlebe die Nacht. Vernichte das
               System.
             </p>
-            <div className="mt-8 flex flex-wrap items-center gap-5">
+            <div className="mt-8 grid gap-3 sm:flex sm:flex-wrap sm:items-center sm:gap-5">
               <button
-                className="neo-copy flex h-12 items-center gap-3 border-2 border-black bg-[#c20b2f] px-7 text-xs font-bold uppercase text-[#fffaf0] shadow-[4px_4px_0_#171411]"
+                className="neo-copy flex h-12 items-center justify-center gap-3 border-2 border-black bg-[#c20b2f] px-5 text-xs font-bold uppercase text-[#fffaf0] shadow-[4px_4px_0_#171411] sm:px-7"
                 type="button"
               >
                 <Play className="h-4 w-4 fill-current" />
@@ -58,7 +58,7 @@ export function StorePage() {
 
       <div>
         <div className="mb-6 flex items-end justify-between border-b-4 border-black pb-2">
-          <h2 className="neo-title bg-black px-4 pb-1 text-5xl leading-none text-[#fffaf0]">
+          <h2 className="neo-title bg-black px-4 pb-1 text-[clamp(2.6rem,12vw,3rem)] leading-none text-[#fffaf0]">
             Trending Now
           </h2>
           <div className="neo-copy hidden gap-2 text-[11px] font-bold uppercase sm:flex">
@@ -74,7 +74,7 @@ export function StorePage() {
           </div>
         </div>
 
-        <div className="grid gap-6 lg:grid-cols-3">
+        <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
           {storeGames.map((game) => (
             <StoreGameCard
               key={game.id}

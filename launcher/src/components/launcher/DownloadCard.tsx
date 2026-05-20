@@ -35,8 +35,10 @@ export function DownloadCard({
 
   return (
     <article className="grid overflow-hidden border-4 border-black bg-[#f5eedf] shadow-[4px_4px_0_#171411] lg:grid-cols-[96px_1fr_210px]">
-      <div className="flex min-h-24 items-center justify-center border-b-4 border-black bg-[#171411] text-[#f5eedf] lg:border-b-0 lg:border-r-4">
-        <span className="neo-title text-5xl leading-none">{queueNumber}</span>
+      <div className="flex min-h-16 items-center justify-center border-b-4 border-black bg-[#171411] text-[#f5eedf] lg:min-h-24 lg:border-b-0 lg:border-r-4">
+        <span className="neo-title text-4xl leading-none lg:text-5xl">
+          {queueNumber}
+        </span>
       </div>
 
       <div className="p-5">
@@ -45,7 +47,7 @@ export function DownloadCard({
             <p className="neo-copy text-[10px] font-bold uppercase text-[#55504a]">
               Paket-ID: {item.gameId}
             </p>
-            <h2 className="mt-1 text-3xl font-black uppercase leading-none text-[#171411]">
+            <h2 className="mt-1 text-[clamp(1.5rem,8vw,1.875rem)] font-black uppercase leading-none text-[#171411]">
               {item.title}
             </h2>
           </div>
@@ -56,7 +58,7 @@ export function DownloadCard({
           </span>
         </div>
 
-        <div className="mt-5 flex items-center justify-between gap-4">
+        <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
           <p className="neo-copy text-xs font-bold uppercase text-[#55504a]">
             {item.progress}% komplett
           </p>

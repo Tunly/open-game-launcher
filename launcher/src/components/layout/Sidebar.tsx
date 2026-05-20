@@ -35,8 +35,8 @@ const navItems: NavItem[] = [
 
 export function Sidebar({ activePage, onNavigate }: SidebarProps) {
   return (
-    <nav className="min-w-0 flex-1">
-      <div className="flex gap-2 overflow-x-auto pb-1">
+    <nav className="col-span-2 -mx-1 min-w-0 overflow-hidden lg:col-span-1 lg:mx-0 lg:flex-1">
+      <div className="flex gap-2 overflow-x-auto px-1 pb-1">
         {navItems.map((item) => {
           const Icon = item.icon;
           const isActive = item.key && activePage === item.key;
@@ -56,7 +56,7 @@ export function Sidebar({ activePage, onNavigate }: SidebarProps) {
               onClick={() => item.key && onNavigate(item.key)}
             >
               <Icon className="h-5 w-5" />
-              {item.label}
+              <span className="hidden xs:inline xl:inline">{item.label}</span>
             </button>
           );
         })}

@@ -32,7 +32,7 @@ export function StoreGameCard({
 }: StoreGameCardProps) {
   return (
     <article className="overflow-hidden border-4 border-black bg-[#f5eedf] shadow-[5px_5px_0_#171411]">
-      <div className={`${artClassById[game.id] ?? "card-art-drift"} relative h-48 border-b-4 border-black`}>
+      <div className={`${artClassById[game.id] ?? "card-art-drift"} relative h-40 border-b-4 border-black sm:h-48`}>
         {game.id === "deep-signal" ? (
           <div className="absolute bottom-8 left-12 h-16 w-36 -skew-x-12 rounded-[45%] border-4 border-[#171411] bg-[#ece8de] shadow-[26px_20px_0_rgba(23,20,17,0.16)]">
             <div className="absolute -bottom-4 left-4 h-8 w-8 rounded-full border-4 border-[#171411] bg-[#f5eedf]" />
@@ -46,7 +46,7 @@ export function StoreGameCard({
       </div>
 
       <div className="p-4">
-        <h3 className="text-2xl font-black uppercase leading-none text-[#171411]">
+        <h3 className="text-[clamp(1.35rem,7vw,1.5rem)] font-black uppercase leading-none text-[#171411]">
           {game.title}
         </h3>
         <p className="neo-copy mt-2 text-xs font-bold uppercase text-[#171411]">

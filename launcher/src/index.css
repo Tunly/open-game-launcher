@@ -73,7 +73,13 @@ a:focus-visible {
 
 .neo-copy {
   font-family: "Courier New", ui-monospace, monospace;
-  letter-spacing: 0.08em;
+  letter-spacing: 0;
+}
+
+@media (min-width: 420px) {
+  .xs\:inline {
+    display: inline;
+  }
 }
 
 .neo-dots {

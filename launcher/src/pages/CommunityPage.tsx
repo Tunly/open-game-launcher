@@ -45,11 +45,11 @@ export function CommunityPage() {
     <section>
       <div className="mb-8 border-b-4 border-black pb-4">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-          <div>
+          <div className="min-w-0">
             <span className="neo-copy inline-flex border-2 border-black bg-[#c20b2f] px-3 py-1 text-xs font-bold uppercase text-white shadow-[3px_3px_0_#171411]">
               Netzwerk online
             </span>
-            <h1 className="neo-title mt-2 max-w-[560px] text-7xl leading-[0.82] text-[#171411] sm:text-8xl">
+            <h1 className="neo-title mt-2 max-w-[680px] text-[clamp(3.5rem,15vw,6rem)] leading-[0.82] text-[#171411]">
               Community Hub
             </h1>
             <p className="neo-copy mt-3 text-xs font-bold uppercase text-[#55504a]">
@@ -58,7 +58,7 @@ export function CommunityPage() {
           </div>
 
           <button
-            className="neo-copy flex h-10 w-fit items-center gap-3 border-2 border-black bg-[#f5eedf] px-5 text-xs font-bold uppercase shadow-[2px_2px_0_#171411]"
+            className="neo-copy flex h-10 w-full items-center justify-center gap-3 border-2 border-black bg-[#f5eedf] px-5 text-xs font-bold uppercase shadow-[2px_2px_0_#171411] sm:w-fit"
             type="button"
           >
             <MessageSquare className="h-4 w-4" />
@@ -119,7 +119,7 @@ export function CommunityPage() {
                     >
                       {item.channel}
                     </span>
-                    <h3 className="mt-3 text-2xl font-black uppercase leading-tight text-[#171411]">
+                    <h3 className="mt-3 text-[clamp(1.35rem,7vw,1.5rem)] font-black uppercase leading-tight text-[#171411]">
                       {item.headline}
                     </h3>
                     <p className="neo-copy mt-2 text-[10px] font-bold uppercase text-[#55504a]">
@@ -142,10 +142,10 @@ export function CommunityPage() {
               {leaderboard.map(([rank, name, score]) => (
                 <div
                   key={name}
-                  className="grid grid-cols-[42px_1fr_auto] items-center gap-3 border-2 border-[#f5eedf] p-3"
+                  className="grid grid-cols-[36px_minmax(0,1fr)_auto] items-center gap-3 border-2 border-[#f5eedf] p-3 sm:grid-cols-[42px_1fr_auto]"
                 >
                   <span className="neo-title text-3xl leading-none">{rank}</span>
-                  <span className="font-black uppercase">{name}</span>
+                  <span className="truncate font-black uppercase">{name}</span>
                   <span className="neo-copy text-xs font-bold">{score}</span>
                 </div>
               ))}

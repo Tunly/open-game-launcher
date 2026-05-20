@@ -45,20 +45,20 @@ export function GameCard({
     return (
       <article className="relative overflow-hidden border-4 border-black bg-[#f5eedf] shadow-[4px_4px_0_#171411] sm:col-span-2 sm:row-span-2 lg:col-span-2">
         <div className="absolute right-5 top-[-12px] z-10 h-7 w-12 rotate-3 border-2 border-black bg-[#ded8ca]" />
-        <div className="grid h-full sm:grid-cols-[1.05fr_1fr]">
-          <div className="library-art-tokyo relative min-h-72 border-b-4 border-black sm:border-b-0 sm:border-r-4">
+        <div className="grid min-h-full sm:grid-cols-[1.05fr_1fr]">
+          <div className="library-art-tokyo relative min-h-44 border-b-4 border-black sm:min-h-72 sm:border-b-0 sm:border-r-4">
             <span className="neo-copy absolute left-3 top-3 border-2 border-black bg-[#c20b2f] px-3 py-1 text-xs font-bold uppercase text-white">
               Update
             </span>
             <div className="absolute bottom-16 left-14 h-28 w-40 -skew-x-12 rounded-[45%] border-4 border-[#171411] bg-[#087d6d] shadow-[18px_20px_0_rgba(0,0,0,0.35)]" />
           </div>
-          <div className="flex flex-col p-6">
-            <h2 className="text-3xl font-black uppercase leading-none text-[#171411]">
+          <div className="flex flex-col p-4 sm:p-6">
+            <h2 className="text-[clamp(1.65rem,9vw,2rem)] font-black uppercase leading-none text-[#171411]">
               Neo-Tokyo
               <br />
               Drift
             </h2>
-            <div className="neo-copy mt-4 flex gap-2 text-[10px] font-bold uppercase">
+            <div className="neo-copy mt-4 flex flex-wrap gap-2 text-[10px] font-bold uppercase">
               <span className="border border-black bg-[#58d8c8] px-3 py-2">Racing</span>
               <span className="border border-black px-3 py-2">Cyberpunk</span>
             </div>
@@ -126,7 +126,7 @@ export function GameCard({
         ) : null}
       </div>
       <div className="p-4">
-        <h2 className="text-2xl font-black uppercase leading-tight text-[#171411]">
+        <h2 className="text-[clamp(1.35rem,7vw,1.5rem)] font-black uppercase leading-tight text-[#171411]">
           {game.title}
         </h2>
         <p className="neo-copy mt-2 text-[10px] font-bold uppercase text-[#55504a]">
