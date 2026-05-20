@@ -29,8 +29,8 @@ export function AppShell({
   const isLocked = !isAuthenticated;
 
   return (
-    <div className="min-h-screen bg-[#f5eedf] text-[#171411]">
-      <div className="sticky top-0 z-30 border-b-4 border-black bg-[#f5eedf]">
+    <div className="flex min-h-screen flex-col bg-[#f5eedf] text-[#171411]">
+      <div className="sticky top-0 z-30 shrink-0 border-b-4 border-black bg-[#f5eedf]">
         <header className="grid min-h-20 grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-3 sm:px-6 lg:flex lg:flex-wrap lg:gap-4 lg:py-4">
           <button
             className="neo-title min-w-0 truncate text-left text-[clamp(1.75rem,7vw,2.65rem)] leading-none text-[#c20b2f] lg:shrink-0"
@@ -98,7 +98,7 @@ export function AppShell({
         </header>
       </div>
 
-      <main className="neo-dots min-w-0">
+      <main className="neo-dots min-w-0 flex-1">
         <div className="mx-auto w-full max-w-[1180px] px-4 py-5 sm:px-6 sm:py-6 lg:px-7">
           {children}
         </div>
