@@ -1,19 +1,16 @@
-import {
-  Download,
-  PlaySquare,
-  ShoppingBag,
-  Users,
-  type LucideIcon,
-} from "lucide-react";
+import { Download, PlaySquare, ShoppingBag, Users, type LucideIcon } from "lucide-react";
 
 import { cn } from "../../lib/utils";
 
 export type PageKey =
+  | "home"
   | "library"
   | "store"
   | "community"
   | "downloads"
-  | "settings";
+  | "settings"
+  | "profile"
+  | "friends";
 
 interface NavItem {
   key?: PageKey;
@@ -40,7 +37,7 @@ export function Sidebar({
   onNavigate,
 }: SidebarProps) {
   return (
-    <nav className="col-span-2 -mx-1 min-w-0 overflow-hidden lg:col-span-1 lg:mx-0 lg:flex-1">
+    <nav className="min-w-0 overflow-hidden">
       <div className="flex gap-2 overflow-x-auto px-1 pb-1">
         {navItems.map((item) => {
           const Icon = item.icon;
@@ -53,8 +50,8 @@ export function Sidebar({
               className={cn(
                 "neo-copy flex h-10 shrink-0 items-center gap-2 border-2 px-3 text-[11px] font-bold uppercase transition disabled:cursor-not-allowed disabled:opacity-45 xl:px-4",
                 isActive
-                  ? "border-black bg-[#087d6d] text-white shadow-[4px_4px_0_#171411]"
-                  : "border-transparent bg-transparent text-[#171411] hover:border-black hover:bg-[#efe6d4]",
+                  ? "border-black bg-[#007166] text-white shadow-[4px_4px_0_#1f1c0f]"
+                  : "border-transparent bg-transparent text-current hover:border-black hover:bg-[#f6edd8]",
               )}
               disabled={isDisabled || !item.key}
               type="button"

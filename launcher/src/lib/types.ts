@@ -63,3 +63,5 @@ export interface StartDownloadResponse {
   status: "started";
   message: string;
 }
+
+export type * from "./types/profile";
