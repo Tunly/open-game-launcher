@@ -24,10 +24,6 @@ export function ProfileHeader({
             <h1 className="neo-title truncate text-[clamp(2.4rem,6vw,5.2rem)] leading-none text-[#171411]">
               {profile.displayName ?? profile.username}
             </h1>
-            <p className="mt-3 max-w-2xl text-sm font-semibold leading-6 text-[#5b403f]">
-              {profile.bio ??
-                "This player has not written a bio yet. Their gaming room is waiting for a first story."}
-            </p>
             <div className="mt-4">
               <ProfileBadgeList badges={data.badges} />
             </div>
