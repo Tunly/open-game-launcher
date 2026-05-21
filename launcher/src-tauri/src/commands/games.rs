@@ -398,12 +398,13 @@ fn scan_ubisoft_games() -> Vec<InstalledGame> {
         .map(|game| game.title.to_lowercase())
         .collect::<HashSet<_>>();
 
-    for path in read_ubisoft_registry_install_dirs() {
-        if !path.is_dir() || is_ignored_game_directory(&path) {
+    for install in read_ubisoft_registry_installs() {
+        if !install.install_dir.is_dir() || is_ignored_game_directory(&install.install_dir) {
             continue;
         }
 
-        let Some(title) = path
+        let Some(title) = install
+            .install_dir
             .file_name()
             .and_then(|name| name.to_str())
             .map(str::trim)
@@ -412,7 +413,10 @@ fn scan_ubisoft_games() -> Vec<InstalledGame> {
             continue;
         };
 
+        let launcher_assets = find_ubisoft_launcher_assets(&install.install_id);
+
         if !seen_titles.insert(title.to_lowercase()) {
+            apply_ubisoft_launcher_assets(&mut games, title, launcher_assets);
             continue;
         }
 
@@ -420,11 +424,17 @@ fn scan_ubisoft_games() -> Vec<InstalledGame> {
             &format!("ubisoft-{title}"),
             title.to_string(),
             "Ubisoft Connect".to_string(),
-            Some(path_to_string(path.clone())),
-            find_local_banner_asset(&path),
+            Some(path_to_string(install.install_dir.clone())),
+            launcher_assets
+                .cover_url
+                .or_else(|| find_local_banner_asset(&install.install_dir)),
         );
-        game.logo_url = find_local_logo_asset(&path);
-        game.icon_url = find_local_icon_asset(&path);
+        game.logo_url = launcher_assets
+            .logo_url
+            .or_else(|| find_local_logo_asset(&install.install_dir));
+        game.icon_url = launcher_assets
+            .icon_url
+            .or_else(|| find_local_icon_asset(&install.install_dir));
 
         games.push(game);
     }
@@ -432,13 +442,174 @@ fn scan_ubisoft_games() -> Vec<InstalledGame> {
     games
 }
 
+fn apply_ubisoft_launcher_assets(
+    games: &mut [InstalledGame],
+    title: &str,
+    assets: UbisoftLauncherAssets,
+) {
+    let Some(game) = games
+        .iter_mut()
+        .find(|game| game.title.eq_ignore_ascii_case(title))
+    else {
+        return;
+    };
+
+    if game.cover_url.is_none() {
+        game.cover_url = assets.cover_url;
+    }
+
+    if game.logo_url.is_none() {
+        game.logo_url = assets.logo_url;
+    }
+
+    if game.icon_url.is_none() {
+        game.icon_url = assets.icon_url;
+    }
+}
+
 fn scan_xbox_games() -> Vec<InstalledGame> {
-    let candidates = local_drive_roots()
+    let mut roots = Vec::new();
+
+    for xbox_root in local_drive_roots()
         .into_iter()
         .map(|drive| drive.join("XboxGames"))
-        .collect::<Vec<_>>();
+        .filter(|path| path.is_dir())
+    {
+        roots.extend(read_xbox_games_root_dirs(&xbox_root));
+        collect_xbox_config_roots(&xbox_root, 0, &mut roots);
+    }
 
-    collect_directory_games_with_title_resolver(candidates, "xbox", "Xbox", xbox_game_title)
+    roots.extend(read_windows_app_game_roots());
+
+    collect_xbox_games_from_roots(roots)
+}
+
+fn collect_xbox_games_from_roots(roots: Vec<PathBuf>) -> Vec<InstalledGame> {
+    let mut games = Vec::new();
+    let mut seen_paths = HashSet::new();
+    let mut seen_titles = HashSet::new();
+
+    for root in roots {
+        if !root.is_dir() || is_ignored_game_directory(&root) {
+            continue;
+        }
+
+        let canonical_key = root.canonicalize().unwrap_or_else(|_| root.clone());
+        if !seen_paths.insert(canonical_key) {
+            continue;
+        }
+
+        let title = xbox_game_title(&root).or_else(|| {
+            (!is_windows_apps_path(&root)).then(|| {
+                root.file_name()
+                    .and_then(|name| name.to_str())
+                    .map(clean_xbox_package_title)
+            })?
+        });
+
+        let Some(title) = title.filter(|title| is_valid_game_title(title)) else {
+            continue;
+        };
+
+        if title.is_empty() || !seen_titles.insert(title.to_lowercase()) {
+            continue;
+        }
+
+        let mut game = installed_game(
+            &format!("xbox-{title}"),
+            title,
+            "Xbox".to_string(),
+            Some(path_to_string(root.clone())),
+            find_local_banner_asset(&root),
+        );
+        game.logo_url = find_local_logo_asset(&root);
+        game.icon_url = find_local_icon_asset(&root)
+            .or_else(|| game.logo_url.clone())
+            .or_else(|| game.cover_url.clone());
+
+        games.push(game);
+    }
+
+    games
+}
+
+fn read_xbox_games_root_dirs(xbox_root: &Path) -> Vec<PathBuf> {
+    let Ok(entries) = fs::read_dir(xbox_root) else {
+        return Vec::new();
+    };
+
+    entries
+        .flatten()
+        .map(|entry| entry.path())
+        .filter(|path| path.is_dir() && !is_ignored_game_directory(path))
+        .collect()
+}
+
+fn collect_xbox_config_roots(path: &Path, depth: usize, roots: &mut Vec<PathBuf>) {
+    if depth > 5 {
+        return;
+    }
+
+    let config_path = path.join("MicrosoftGame.config");
+    if config_path.is_file() {
+        roots.push(path.to_path_buf());
+        return;
+    }
+
+    let Ok(entries) = fs::read_dir(path) else {
+        return;
+    };
+
+    for entry in entries.flatten() {
+        let child = entry.path();
+        if !child.is_dir() || is_ignored_game_directory(&child) {
+            continue;
+        }
+
+        collect_xbox_config_roots(&child, depth + 1, roots);
+    }
+}
+
+fn read_windows_app_game_roots() -> Vec<PathBuf> {
+    if !cfg!(target_os = "windows") {
+        return Vec::new();
+    }
+
+    Command::new("powershell")
+        .args([
+            "-NoProfile",
+            "-Command",
+            "Get-AppxPackage | ForEach-Object { $_.InstallLocation }",
+        ])
+        .output()
+        .ok()
+        .filter(|output| output.status.success())
+        .map(|output| {
+            String::from_utf8_lossy(&output.stdout)
+                .lines()
+                .map(str::trim)
+                .filter(|line| !line.is_empty())
+                .map(PathBuf::from)
+                .filter(|path| is_windows_app_game_root(path))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn is_windows_app_game_root(path: &Path) -> bool {
+    if !path.is_dir() {
+        return false;
+    }
+
+    path.join("MicrosoftGame.config").is_file()
+        || path
+            .join("AppxManifest.xml")
+            .is_file()
+            .then(|| fs::read_to_string(path.join("AppxManifest.xml")).ok())
+            .flatten()
+            .is_some_and(|contents| {
+                contents.contains("Microsoft.XboxGameCallableUI") || contents.contains("XboxLive")
+            })
 }
 
 fn collect_directory_games(
@@ -499,18 +670,80 @@ fn xbox_game_title(path: &Path) -> Option<String> {
     let config_paths = [
         path.join("MicrosoftGame.config"),
         path.join("Content").join("MicrosoftGame.config"),
+        path.join("AppxManifest.xml"),
     ];
 
     config_paths
         .into_iter()
         .filter_map(|config_path| fs::read_to_string(config_path).ok())
         .filter_map(|contents| {
-            find_xml_attribute(&contents, "ShellVisuals", "DefaultDisplayName")
+            find_xml_attribute(&contents, "ShellVisuals", "DisplayName")
+                .or_else(|| find_xml_attribute(&contents, "ShellVisuals", "DefaultDisplayName"))
+                .or_else(|| find_xml_attribute(&contents, "uap:VisualElements", "DisplayName"))
+                .or_else(|| find_xml_attribute(&contents, "VisualElements", "DisplayName"))
                 .or_else(|| find_xml_attribute(&contents, "Game", "Name"))
                 .or_else(|| find_xml_attribute(&contents, "Identity", "Name"))
         })
-        .map(|title| title.trim().to_string())
-        .find(|title| !title.is_empty() && !title.starts_with("ms-resource:"))
+        .filter(|title| !is_unresolved_resource_title(title))
+        .map(|title| clean_xbox_package_title(&title))
+        .find(|title| is_valid_game_title(title))
+}
+
+fn is_valid_game_title(title: &str) -> bool {
+    let normalized = title.trim().to_lowercase();
+    let compact = normalized
+        .chars()
+        .filter(|character| character.is_ascii_alphanumeric())
+        .collect::<String>();
+
+    !normalized.is_empty()
+        && !is_unresolved_resource_title(&normalized)
+        && normalized != "displayname"
+        && normalized != "pkgdisplayname"
+        && !matches!(
+            compact.as_str(),
+            "gamingservices"
+                | "xboxgamecallableui"
+                | "xboxgamingoverlay"
+                | "xboxidentityprovider"
+                | "xboxspeechtotextoverlay"
+                | "xboxtcui"
+        )
+}
+
+fn is_unresolved_resource_title(title: &str) -> bool {
+    let normalized = title.trim().to_lowercase().replace(' ', "-");
+
+    normalized.starts_with("ms-resource:")
+        || normalized.starts_with("ms-resource-")
+        || normalized.contains("ms-resource:displayname")
+        || normalized.contains("ms-resource:pkgdisplayname")
+}
+
+fn is_windows_apps_path(path: &Path) -> bool {
+    path.components().any(|component| {
+        component
+            .as_os_str()
+            .to_str()
+            .is_some_and(|value| value.eq_ignore_ascii_case("WindowsApps"))
+    })
+}
+
+fn clean_xbox_package_title(value: &str) -> String {
+    let package_name = value
+        .split('_')
+        .next()
+        .unwrap_or(value)
+        .rsplit('.')
+        .next()
+        .unwrap_or(value)
+        .trim();
+
+    package_name
+        .replace('-', " ")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 fn find_local_banner_asset(path: &Path) -> Option<String> {
@@ -526,11 +759,13 @@ fn find_local_banner_asset(path: &Path) -> Option<String> {
 
         let base_path = config_path.parent().unwrap_or(path);
         for attribute in [
+            "SplashScreenImage",
             "Wide310x150Logo",
+            "HeroImage",
+            "BackgroundImage",
             "StoreLogo",
             "Logo",
             "Square150x150Logo",
-            "SplashScreenImage",
         ] {
             if let Some(asset_path) = find_xml_attribute(&contents, "ShellVisuals", attribute)
                 .and_then(|asset| resolve_local_asset(base_path, &asset))
@@ -543,10 +778,18 @@ fn find_local_banner_asset(path: &Path) -> Option<String> {
     find_named_image_asset(
         path,
         &[
+            "library_hero",
+            "libraryhero",
+            "hero",
             "header",
             "banner",
+            "landscape",
+            "splash",
+            "background",
             "capsule",
+            "capsule_616x353",
             "cover",
+            "poster",
             "wide310x150logo",
             "storelogo",
             "logo",
@@ -643,34 +886,42 @@ fn resolve_local_asset(base_path: &Path, asset: &str) -> Option<PathBuf> {
 }
 
 fn find_named_image_asset(path: &Path, name_needles: &[&str]) -> Option<String> {
-    let mut directories = vec![path.to_path_buf()];
-    for child in ["assets", "Assets", "Content", "content"] {
-        directories.push(path.join(child));
+    let mut roots = vec![path.to_path_buf()];
+    for child in [
+        "assets",
+        "Assets",
+        "Content",
+        "content",
+        "images",
+        "Images",
+        "Resources",
+        "resources",
+    ] {
+        roots.push(path.join(child));
     }
 
-    for directory in directories {
-        let Ok(entries) = fs::read_dir(directory) else {
-            continue;
-        };
+    let mut candidates = Vec::new();
+    let mut scanned_entries = 0usize;
 
-        if let Some(asset) = entries.flatten().map(|entry| entry.path()).find(|path| {
-            path.is_file()
-                && is_supported_image(path)
-                && path
-                    .file_stem()
-                    .and_then(|name| name.to_str())
-                    .is_some_and(|name| {
-                        let normalized = name.to_lowercase();
-                        name_needles
-                            .iter()
-                            .any(|needle| normalized.contains(needle))
-                    })
-        }) {
-            return Some(path_to_string(asset));
+    for root in roots {
+        collect_named_image_assets(
+            &root,
+            name_needles,
+            0,
+            3,
+            &mut scanned_entries,
+            &mut candidates,
+        );
+
+        if scanned_entries > 900 {
+            break;
         }
     }
 
-    None
+    candidates
+        .into_iter()
+        .max_by_key(|candidate| candidate.score)
+        .map(|candidate| path_to_string(candidate.path))
 }
 
 fn is_supported_image(path: &Path) -> bool {
@@ -679,8 +930,86 @@ fn is_supported_image(path: &Path) -> bool {
             .and_then(|extension| extension.to_str())
             .map(str::to_lowercase)
             .as_deref(),
-        Some("jpg" | "jpeg" | "png" | "webp")
+        Some("ico" | "jpg" | "jpeg" | "png" | "webp")
     )
+}
+
+struct LocalImageCandidate {
+    path: PathBuf,
+    score: i32,
+}
+
+fn collect_named_image_assets(
+    directory: &Path,
+    name_needles: &[&str],
+    depth: usize,
+    max_depth: usize,
+    scanned_entries: &mut usize,
+    candidates: &mut Vec<LocalImageCandidate>,
+) {
+    if depth > max_depth || *scanned_entries > 900 {
+        return;
+    }
+
+    let Ok(entries) = fs::read_dir(directory) else {
+        return;
+    };
+
+    for entry in entries.flatten() {
+        *scanned_entries += 1;
+        if *scanned_entries > 900 {
+            return;
+        }
+
+        let path = entry.path();
+        if path.is_dir() {
+            let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+                continue;
+            };
+            let normalized = name.to_lowercase();
+            if matches!(
+                normalized.as_str(),
+                "binaries" | "bin" | "data" | "engine" | "plugins" | "redist" | "support"
+            ) {
+                continue;
+            }
+            collect_named_image_assets(
+                &path,
+                name_needles,
+                depth + 1,
+                max_depth,
+                scanned_entries,
+                candidates,
+            );
+            continue;
+        }
+
+        if !path.is_file() || !is_supported_image(&path) {
+            continue;
+        }
+
+        let Some(stem) = path.file_stem().and_then(|name| name.to_str()) else {
+            continue;
+        };
+        let normalized = stem.to_lowercase();
+        let Some((needle_index, needle)) = name_needles
+            .iter()
+            .enumerate()
+            .find(|(_, needle)| normalized.contains(**needle))
+        else {
+            continue;
+        };
+
+        let mut score = ((name_needles.len() - needle_index) as i32) * 100;
+        if normalized == *needle {
+            score += 60;
+        } else if normalized.starts_with(*needle) {
+            score += 35;
+        }
+        score -= (depth as i32) * 8;
+
+        candidates.push(LocalImageCandidate { path, score });
+    }
 }
 
 fn find_xml_attribute(contents: &str, element: &str, attribute: &str) -> Option<String> {
@@ -705,7 +1034,14 @@ fn is_ignored_game_directory(path: &Path) -> bool {
         || normalized.starts_with('.')
         || matches!(
             normalized.as_str(),
-            "content" | "modifiablewindowsapps" | "msixvc" | "program files" | "windowsapps"
+            "content"
+                | "gamesave"
+                | "modifiablewindowsapps"
+                | "msixvc"
+                | "pgs"
+                | "program files"
+                | "wgs"
+                | "windowsapps"
         )
 }
 
@@ -720,7 +1056,18 @@ fn local_drive_roots() -> Vec<PathBuf> {
         .collect()
 }
 
-fn read_ubisoft_registry_install_dirs() -> Vec<PathBuf> {
+struct UbisoftRegistryInstall {
+    install_id: String,
+    install_dir: PathBuf,
+}
+
+struct UbisoftLauncherAssets {
+    cover_url: Option<String>,
+    logo_url: Option<String>,
+    icon_url: Option<String>,
+}
+
+fn read_ubisoft_registry_installs() -> Vec<UbisoftRegistryInstall> {
     if !cfg!(target_os = "windows") {
         return Vec::new();
     }
@@ -735,14 +1082,37 @@ fn read_ubisoft_registry_install_dirs() -> Vec<PathBuf> {
     .flat_map(|output| {
         String::from_utf8_lossy(&output.stdout)
             .into_owned()
-            .lines()
+            .split("\r\n\r\n")
             .map(str::to_string)
             .collect::<Vec<_>>()
     })
-    .filter_map(|line| registry_string_value(&line, "InstallDir"))
-    .map(PathBuf::from)
-    .filter(|path| path.exists())
+    .filter_map(|section| {
+        let install_id = ubisoft_install_id_from_registry_section(&section)?;
+        let install_dir = section
+            .lines()
+            .filter_map(|line| registry_string_value(line, "InstallDir"))
+            .map(PathBuf::from)
+            .find(|path| path.exists())?;
+
+        Some(UbisoftRegistryInstall {
+            install_id,
+            install_dir,
+        })
+    })
     .collect()
+}
+
+fn ubisoft_install_id_from_registry_section(section: &str) -> Option<String> {
+    let header = section
+        .lines()
+        .map(str::trim)
+        .find(|line| line.starts_with("HKEY_"))?;
+    header
+        .rsplit('\\')
+        .next()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
 }
 
 fn registry_string_value(line: &str, value_name: &str) -> Option<String> {
@@ -755,6 +1125,164 @@ fn registry_string_value(line: &str, value_name: &str) -> Option<String> {
     } else {
         Some(value.to_string())
     }
+}
+
+fn find_ubisoft_launcher_assets(install_id: &str) -> UbisoftLauncherAssets {
+    let Some(config_segment) = read_ubisoft_launcher_config_segment(install_id) else {
+        return UbisoftLauncherAssets {
+            cover_url: None,
+            logo_url: None,
+            icon_url: None,
+        };
+    };
+
+    let cover_url = find_ubisoft_config_asset(
+        &config_segment,
+        &[
+            "splash_image",
+            "background_image",
+            "thumb_image",
+            "dialog_image",
+        ],
+    );
+    let logo_url = find_ubisoft_config_asset(&config_segment, &["logo_image"]);
+    let icon_url = find_ubisoft_config_asset(&config_segment, &["icon_image"])
+        .or_else(|| logo_url.clone())
+        .or_else(|| cover_url.clone());
+
+    UbisoftLauncherAssets {
+        cover_url,
+        logo_url,
+        icon_url,
+    }
+}
+
+fn read_ubisoft_launcher_config_segment(install_id: &str) -> Option<String> {
+    let contents = read_ubisoft_launcher_configurations()?;
+    let needle = format!("Installs\\{install_id}\\InstallDir");
+    let install_index = contents.find(&needle)?;
+    let segment_start = contents[..install_index].rfind("version: 2.0").unwrap_or(0);
+    let segment_end = contents[install_index..]
+        .find("version: 2.0")
+        .map(|index| install_index + index)
+        .unwrap_or(contents.len());
+
+    contents
+        .get(segment_start..segment_end)
+        .map(ToOwned::to_owned)
+}
+
+fn read_ubisoft_launcher_configurations() -> Option<String> {
+    ubisoft_launcher_config_paths()
+        .into_iter()
+        .filter_map(|path| fs::read(path).ok())
+        .map(|contents| String::from_utf8_lossy(&contents).into_owned())
+        .find(|contents| contents.contains("Installs\\"))
+}
+
+fn ubisoft_launcher_config_paths() -> Vec<PathBuf> {
+    let mut paths = Vec::new();
+
+    if let Some(local_app_data) = env_path("LOCALAPPDATA") {
+        paths.push(
+            local_app_data
+                .join("Ubisoft Game Launcher")
+                .join("cache")
+                .join("configuration")
+                .join("configurations"),
+        );
+    }
+
+    paths.push(
+        PathBuf::from(r"C:\ProgramData")
+            .join("Ubisoft")
+            .join("Ubisoft Game Launcher")
+            .join("cache")
+            .join("configuration")
+            .join("configurations"),
+    );
+
+    paths
+}
+
+fn find_ubisoft_config_asset(config_segment: &str, keys: &[&str]) -> Option<String> {
+    keys.iter()
+        .filter_map(|key| find_yaml_like_value(&config_segment, key))
+        .filter_map(|file_name| find_ubisoft_cached_asset(&file_name))
+        .next()
+}
+
+fn find_yaml_like_value(contents: &str, key: &str) -> Option<String> {
+    let needle = format!("{key}:");
+    contents.lines().find_map(|line| {
+        let trimmed = line.trim();
+        let value = trimmed
+            .strip_prefix(&needle)?
+            .trim()
+            .trim_matches('\'')
+            .trim_matches('"');
+
+        if value.is_empty()
+            || value.starts_with('l') && value[1..].chars().all(|c| c.is_ascii_digit())
+        {
+            None
+        } else {
+            Some(value.to_string())
+        }
+    })
+}
+
+fn find_ubisoft_cached_asset(file_name: &str) -> Option<String> {
+    let normalized = file_name.trim().replace('/', "\\");
+    if normalized.is_empty() {
+        return None;
+    }
+
+    for root in ubisoft_cached_asset_roots() {
+        let direct_path = root.join(&normalized);
+        if direct_path.exists() && direct_path.is_file() {
+            return Some(path_to_string(direct_path));
+        }
+
+        let file_stem = Path::new(&normalized)
+            .file_stem()
+            .and_then(|stem| stem.to_str())?;
+        let Ok(entries) = fs::read_dir(&root) else {
+            continue;
+        };
+
+        if let Some(path) = entries.flatten().map(|entry| entry.path()).find(|path| {
+            path.is_file()
+                && is_supported_image(path)
+                && path
+                    .file_stem()
+                    .and_then(|stem| stem.to_str())
+                    .is_some_and(|stem| stem.eq_ignore_ascii_case(file_stem))
+        }) {
+            return Some(path_to_string(path));
+        }
+    }
+
+    None
+}
+
+fn ubisoft_cached_asset_roots() -> Vec<PathBuf> {
+    let mut roots = vec![PathBuf::from(r"C:\ProgramData")
+        .join("Ubisoft")
+        .join("Ubisoft Game Launcher")
+        .join("cache")
+        .join("assets")];
+
+    if let Some(local_app_data) = env_path("LOCALAPPDATA") {
+        roots.push(
+            local_app_data
+                .join("Ubisoft Game Launcher")
+                .join("cache")
+                .join("assets"),
+        );
+    }
+
+    roots
 }
 
 fn find_steam_dir() -> Option<PathBuf> {
@@ -882,7 +1410,8 @@ fn parse_steam_activity_from_vdf(contents: &str, out: &mut HashMap<String, Steam
 
     while index < lines.len() {
         let trimmed = lines[index].trim();
-        let Some(app_id) = quoted_key(trimmed).filter(|key| key.chars().all(|c| c.is_ascii_digit()))
+        let Some(app_id) =
+            quoted_key(trimmed).filter(|key| key.chars().all(|c| c.is_ascii_digit()))
         else {
             index += 1;
             continue;

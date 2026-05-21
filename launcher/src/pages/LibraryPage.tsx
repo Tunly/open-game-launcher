@@ -7,10 +7,13 @@ import {
   Gamepad2,
   Grid2X2,
   Heart,
+  Laptop,
+  Monitor,
   Play,
   Search,
   Settings,
   SlidersHorizontal,
+  TerminalSquare,
   Trash2,
   Sparkles,
   X,
@@ -315,21 +318,6 @@ function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
 }
 
-function getGameIcon(title: string) {
-  const words = title
-    .split(/\s+/)
-    .map((word) => word.trim())
-    .filter(Boolean);
-
-  if (words.length >= 2) {
-    return `${words[0][0]}${words[1][0]}`.toUpperCase();
-  }
-
-  return title.slice(0, 2).toUpperCase();
-}
-
-
-
 function getGameLogoCandidates(game: Game) {
   return [game.logoUrl, ...(game.logoUrls ?? [])].filter(
     (logoUrl, index, logoUrls): logoUrl is string =>
@@ -338,7 +326,13 @@ function getGameLogoCandidates(game: Game) {
 }
 
 function getGameIconCandidates(game: Game) {
-  return [game.iconUrl, ...(game.iconUrls ?? [])].filter(
+  return [
+    game.iconUrl,
+    ...(game.iconUrls ?? []),
+    game.logoUrl,
+    ...(game.logoUrls ?? []),
+    game.coverUrl,
+  ].filter(
     (iconUrl, index, iconUrls): iconUrl is string =>
       Boolean(iconUrl) && iconUrls.indexOf(iconUrl) === index,
   );
@@ -395,11 +389,32 @@ function formatPlayTime(playtimeMinutes?: number) {
 }
 
 
-function getPlatformIcon(platform: string) {
-  if (platform === "windows") return "🪟";
-  if (platform === "macos") return "🍎";
-  if (platform === "linux") return "🐧";
-  return "";
+function getGameSource(game: Game) {
+  const id = game.id.toLowerCase();
+  const description = game.description.toLowerCase();
+
+  if (id.startsWith("epic-") || description.includes("epic")) return "epic";
+  if (id.startsWith("gog-") || description.includes("gog")) return "gog";
+  if (id.startsWith("ubisoft-") || description.includes("ubisoft")) return "ubisoft";
+  if (id.startsWith("xbox-") || description.includes("xbox")) return "xbox";
+  if (id.startsWith("steam-") || description.includes("steam")) return "steam";
+
+  return game.platform;
+}
+
+function getFallbackBannerClass(game: Game) {
+  if (game.coverUrl) {
+    return "";
+  }
+
+  return `library-source-art library-source-art-${getGameSource(game)}`;
+}
+
+function PlatformIcon({ platform, className = "h-4 w-4" }: { platform: string; className?: string }) {
+  if (platform === "windows") return <Monitor className={className} />;
+  if (platform === "macos") return <Laptop className={className} />;
+  if (platform === "linux") return <TerminalSquare className={className} />;
+  return <Gamepad2 className={className} />;
 }
 
 function LibraryRow({
@@ -451,7 +466,7 @@ function LibraryRow({
             }
           />
         ) : (
-          getGameIcon(game.title)
+          <PlatformIcon platform={game.platform} className="h-3.5 w-3.5" />
         )}
       </span>
       <span className="min-w-0 flex-1">
@@ -964,25 +979,7 @@ export function LibraryPage() {
               </button>
             </div>
 
-            {/* Quick Platform Filters */}
-            <div className="flex gap-1 px-2 pt-2">
-              {(["all", "windows", "macos", "linux"] as const).map((plat) => (
-                <button
-                  key={plat}
-                  onClick={() => {
-                    setActivePlatformFilter(plat);
-                    setSelectedCollectionName(null);
-                  }}
-                  className={`flex-1 border-2 border-black py-1 px-0.5 text-[9px] font-black uppercase transition ${
-                    activePlatformFilter === plat
-                      ? "bg-[#139a82] text-white shadow-[1px_1px_0_#000]"
-                      : "bg-[#ded3c1] text-[#171411] hover:bg-[#d5c7b1]"
-                  }`}
-                >
-                  {plat === "all" ? "All" : plat === "windows" ? "Win" : plat === "macos" ? "Mac" : "Linux"}
-                </button>
-              ))}
-            </div>
+
 
             {/* Search Input Row */}
             <div className="space-y-2 p-2">
@@ -1472,21 +1469,35 @@ export function LibraryPage() {
             GAME DETAILS MAIN CONTENT
             ==================================================== */}
         <main className="min-w-0 overflow-hidden">
-          {enrichedSelectedGame ? (
+          {isDiscoveringGames ? (
+            <section className="grid min-h-[calc(100vh-124px)] place-items-center border-b-4 border-black bg-[#efe3cf] px-4 text-center" style={{ fontFamily: '"Arial Narrow", Impact, sans-serif' }}>
+              <div className="max-w-[560px] border-4 border-black bg-[#fbf4e7] p-8 shadow-[8px_8px_0_#171411]">
+                <Settings className="h-16 w-16 animate-[spin_4s_linear_infinite] text-[#169b83] mx-auto mb-4 border-4 border-black p-2 bg-[#efe3cf]" />
+                <h2 className="neo-title text-3xl mb-2 uppercase text-[#171411]">SCANNING LIBRARY</h2>
+                <div className="neo-dots h-1.5 w-12 bg-black mx-auto mb-4" />
+                <p className="neo-copy text-[14px] font-black uppercase text-[#6c675e]">
+                  Searching for local Steam, Epic, and GOG installations...
+                </p>
+              </div>
+            </section>
+          ) : enrichedSelectedGame ? (
             <>
               {(() => {
                 const logoCandidates = getGameLogoCandidates(enrichedSelectedGame);
                 const logoCandidateIndex = logoCandidateIndexes[enrichedSelectedGame.id] ?? 0;
                 const logoSrc = getGameAssetUrl(logoCandidates[logoCandidateIndex]);
+                const hasUbisoftBanner =
+                  getGameSource(enrichedSelectedGame) === "ubisoft" &&
+                  Boolean(enrichedSelectedGame.coverUrl);
                 const shouldShowTextFallback =
-                  !logoSrc || !loadedLogoUrls.has(logoSrc);
+                  !hasUbisoftBanner && (!logoSrc || !loadedLogoUrls.has(logoSrc));
                 const logoPositionClass = getLogoPositionClass(enrichedSelectedGame);
                 const logoPlacementStyle = getLogoPlacementStyle(enrichedSelectedGame);
 
                 return (
                   <section className="border-b-4 border-black bg-[#171411]">
                     <div
-                      className="steam-game-banner-hero relative overflow-hidden bg-[#0f141b]"
+                      className={`steam-game-banner-hero relative overflow-hidden bg-[#0f141b] ${getFallbackBannerClass(enrichedSelectedGame)}`}
                       style={getGameBannerStyle(enrichedSelectedGame.coverUrl)}
                     >
                       <div className="absolute inset-0 bg-[radial-gradient(circle,rgba(255,255,255,0.025)_1px,transparent_1px)] bg-[length:9px_9px]" />
@@ -1706,7 +1717,7 @@ export function LibraryPage() {
                         </div>
                         <div className="flex gap-3 p-3">
                           <div
-                            className="h-12 w-12 shrink-0 border-2 border-black bg-[#171411] bg-cover bg-center"
+                            className={`h-12 w-12 shrink-0 border-2 border-black bg-[#171411] bg-cover bg-center ${getFallbackBannerClass(enrichedSelectedGame)}`}
                             style={getGameBannerStyle(enrichedSelectedGame.coverUrl)}
                           />
                           <p className="min-w-0 text-[13px] font-bold leading-5">
@@ -1757,7 +1768,7 @@ export function LibraryPage() {
                             className="font-black capitalize hover:text-[#139a82] hover:underline flex items-center gap-1 cursor-pointer select-none"
                             title={`Filter nach ${enrichedSelectedGame.platform}`}
                           >
-                            <span>{getPlatformIcon(enrichedSelectedGame.platform)}</span>
+                            <PlatformIcon platform={enrichedSelectedGame.platform} className="h-3.5 w-3.5" />
                             <span className="underline decoration-dotted">{enrichedSelectedGame.platform}</span>
                           </button>
                         </div>
@@ -1834,7 +1845,7 @@ export function LibraryPage() {
                           {[0, 1].map((friend) => (
                             <div
                               key={friend}
-                              className="h-9 w-9 border-2 border-black bg-[#171411] bg-cover bg-center"
+                              className={`h-9 w-9 border-2 border-black bg-[#171411] bg-cover bg-center ${getFallbackBannerClass(enrichedSelectedGame)}`}
                               style={getGameBannerStyle(enrichedSelectedGame.coverUrl)}
                             />
                           ))}

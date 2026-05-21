@@ -1,4 +1,10 @@
-import { Download, PlaySquare, ShoppingBag, Users, type LucideIcon } from "lucide-react";
+import {
+  Gamepad2,
+  HardDriveDownload,
+  MessageSquareMore,
+  Store,
+  type LucideIcon,
+} from "lucide-react";
 
 import { cn } from "../../lib/utils";
 
@@ -25,10 +31,10 @@ interface SidebarProps {
 }
 
 const navItems: NavItem[] = [
-  { key: "store", label: "Store", icon: ShoppingBag },
-  { key: "library", label: "Library", icon: PlaySquare },
-  { key: "community", label: "Community", icon: Users },
-  { key: "downloads", label: "Downloads", icon: Download },
+  { key: "store", label: "Store", icon: Store },
+  { key: "library", label: "Library", icon: Gamepad2 },
+  { key: "community", label: "Community", icon: MessageSquareMore },
+  { key: "downloads", label: "Downloads", icon: HardDriveDownload },
 ];
 
 export function Sidebar({
