@@ -17,10 +17,10 @@ export function ProfileHeader({
   return (
     <section className="relative overflow-hidden border-4 border-black bg-[#fff9ed] shadow-[9px_9px_0_#1f1c0f]">
       <ProfileBanner profile={profile} theme={theme} />
-      <div className="relative z-10 -mt-20 grid gap-6 p-5 lg:grid-cols-[1fr_320px] lg:p-8">
-        <div className="flex min-w-0 flex-col gap-5 sm:flex-row">
+      <div className="relative z-10 -mt-20 p-5 lg:p-8">
+        <div className="grid gap-6 border-4 border-black bg-[#fff9ed] p-4 shadow-[6px_6px_0_#1f1c0f] lg:grid-cols-[auto_minmax(0,1fr)_300px] lg:items-center">
           <ProfileAvatar profile={profile} />
-          <div className="min-w-0 border-4 border-black bg-[#fff9ed] p-4 shadow-[5px_5px_0_#1f1c0f] sm:mt-20">
+          <div className="min-w-0">
             <p className="neo-copy inline-block border-2 border-black bg-[#007166] px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-white">
               @{profile.username}
             </p>
@@ -38,9 +38,11 @@ export function ProfileHeader({
               <ProfileActions isOwnProfile={isOwnProfile} />
             </div>
           </div>
-        </div>
-        <div className="pt-0 lg:pt-20">
-          <ProfileLevelBar level={profile.profileLevel} xp={profile.profileXp} />
+          <ProfileLevelBar
+            isEmbedded
+            level={profile.profileLevel}
+            xp={profile.profileXp}
+          />
         </div>
       </div>
     </section>

@@ -1,7 +1,9 @@
 export function ProfileLevelBar({
+  isEmbedded = false,
   level,
   xp,
 }: {
+  isEmbedded?: boolean;
   level: number;
   xp: number;
 }) {
@@ -9,7 +11,13 @@ export function ProfileLevelBar({
   const progress = Math.min(100, Math.round((xp / nextLevelXp) * 100));
 
   return (
-    <div className="border-4 border-black bg-[#fff9ed] p-4 shadow-[5px_5px_0_#1f1c0f]">
+    <div
+      className={
+        isEmbedded
+          ? "border-[3px] border-black bg-[#f6edd8] p-4"
+          : "border-4 border-black bg-[#fff9ed] p-4 shadow-[5px_5px_0_#1f1c0f]"
+      }
+    >
       <div className="flex items-center justify-between gap-4">
         <div>
           <p className="neo-copy inline-block border-2 border-black bg-[#b7102a] px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-white">
