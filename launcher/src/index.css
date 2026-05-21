@@ -163,6 +163,70 @@ a:focus-visible {
     linear-gradient(180deg, #1d2022, #050506);
 }
 
+.library-source-art {
+  position: relative;
+  background-size: cover;
+  background-position: center;
+}
+
+.library-source-art::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle, rgba(255, 249, 237, 0.16) 1px, transparent 1px),
+    linear-gradient(105deg, rgba(255, 249, 237, 0.2) 0 18%, transparent 19% 100%);
+  background-size: 8px 8px, 100% 100%;
+  mix-blend-mode: screen;
+  pointer-events: none;
+}
+
+.library-source-art-steam {
+  background:
+    radial-gradient(circle at 78% 25%, rgba(140, 245, 228, 0.72) 0 10%, transparent 11%),
+    repeating-linear-gradient(94deg, rgba(140, 245, 228, 0.25) 0 4px, transparent 5px 26px),
+    linear-gradient(135deg, #171411 0 34%, #087d6d 35% 62%, #b7102a 63% 100%);
+}
+
+.library-source-art-epic {
+  background:
+    radial-gradient(circle at 76% 32%, rgba(255, 249, 237, 0.78) 0 12%, transparent 13%),
+    linear-gradient(116deg, transparent 0 38%, rgba(23, 20, 17, 0.6) 39% 44%, transparent 45%),
+    repeating-linear-gradient(0deg, rgba(23, 20, 17, 0.28) 0 3px, transparent 4px 18px),
+    linear-gradient(180deg, #b7102a, #171411 72%);
+}
+
+.library-source-art-gog {
+  background:
+    radial-gradient(ellipse at 70% 38%, rgba(140, 245, 228, 0.72), transparent 25%),
+    repeating-linear-gradient(28deg, rgba(23, 20, 17, 0.22) 0 4px, transparent 5px 20px),
+    linear-gradient(180deg, #f5eedf 0 22%, #007166 23% 66%, #171411 67% 100%);
+}
+
+.library-source-art-ubisoft {
+  background:
+    radial-gradient(circle at 60% 48%, rgba(255, 249, 237, 0.72) 0 9%, transparent 10%),
+    repeating-radial-gradient(circle at 60% 48%, rgba(23, 20, 17, 0.38) 0 3px, transparent 4px 18px),
+    linear-gradient(126deg, #171411, #087d6d 46%, #f5eedf 47% 100%);
+}
+
+.library-source-art-xbox {
+  background:
+    radial-gradient(circle at 76% 28%, rgba(255, 249, 237, 0.72) 0 11%, transparent 12%),
+    linear-gradient(45deg, transparent 0 42%, rgba(23, 20, 17, 0.58) 43% 48%, transparent 49%),
+    repeating-linear-gradient(90deg, rgba(140, 245, 228, 0.34) 0 6px, transparent 7px 24px),
+    linear-gradient(180deg, #007166, #171411 76%);
+}
+
+.library-source-art-windows,
+.library-source-art-linux,
+.library-source-art-macos {
+  background:
+    radial-gradient(circle at 72% 36%, rgba(140, 245, 228, 0.7) 0 10%, transparent 11%),
+    repeating-linear-gradient(112deg, rgba(23, 20, 17, 0.24) 0 5px, transparent 6px 20px),
+    linear-gradient(180deg, #f5eedf, #087d6d 54%, #171411);
+}
+
 .library-steam-shell {
   font-family: "Arial Narrow", Impact, sans-serif;
 }
