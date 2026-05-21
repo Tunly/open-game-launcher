@@ -15,9 +15,9 @@ export function ProfileHeader({
   const { profile, theme } = data;
 
   return (
-    <section className="overflow-hidden border-4 border-black bg-[#fff9ed] shadow-[9px_9px_0_#1f1c0f]">
+    <section className="relative overflow-hidden border-4 border-black bg-[#fff9ed] shadow-[9px_9px_0_#1f1c0f]">
       <ProfileBanner profile={profile} theme={theme} />
-      <div className="-mt-20 grid gap-6 p-5 lg:grid-cols-[1fr_320px] lg:p-8">
+      <div className="relative z-10 -mt-20 grid gap-6 p-5 lg:grid-cols-[1fr_320px] lg:p-8">
         <div className="flex min-w-0 flex-col gap-5 sm:flex-row">
           <ProfileAvatar profile={profile} />
           <div className="min-w-0 border-4 border-black bg-[#fff9ed] p-4 shadow-[5px_5px_0_#1f1c0f] sm:mt-20">

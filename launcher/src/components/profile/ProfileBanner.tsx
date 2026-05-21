@@ -15,10 +15,10 @@ export function ProfileBanner({
 
   return (
     <div
-      className="relative min-h-72 overflow-hidden border-b-4 border-black bg-cover bg-center"
+      className="relative z-0 min-h-72 overflow-hidden border-b-4 border-black bg-cover bg-center"
       style={{ background }}
     >
-      <div className="absolute left-4 top-4 flex flex-wrap gap-2">
+      <div className="absolute left-4 top-4 z-10 flex flex-wrap gap-2">
         {["Player Card", "OG Network", "Public Profile"].map((label) => (
           <span
             key={label}
@@ -28,7 +28,7 @@ export function ProfileBanner({
           </span>
         ))}
       </div>
-      <div className="absolute bottom-0 left-0 right-0 h-8 border-t-4 border-black bg-[repeating-linear-gradient(90deg,#171411_0_12px,#fff9ed_12px_24px)]" />
+      <div className="absolute bottom-0 left-0 right-0 z-0 h-8 border-t-4 border-black bg-[repeating-linear-gradient(90deg,#171411_0_12px,#fff9ed_12px_24px)]" />
     </div>
   );
 }
