@@ -20,6 +20,7 @@ interface AppShellProps {
   authAvatarUrl: string | null;
   authDisplayName: string | null;
   authEmail: string | null;
+  authUsername: string | null;
   authProfilePath: string | null;
   children: ReactNode;
   isAuthConfigured: boolean;
@@ -81,6 +82,7 @@ export function AppShell({
   authAvatarUrl,
   authDisplayName,
   authEmail,
+  authUsername,
   authProfilePath,
   children,
   isAuthConfigured,
@@ -100,6 +102,8 @@ export function AppShell({
   const profileMenuRef = useRef<HTMLDivElement | null>(null);
   const accountLabel = authDisplayName ?? authEmail ?? "Account";
   const avatarInitials = getInitials(accountLabel);
+  const profileMenuLabel = authUsername ?? accountLabel;
+  const profileMenuInitials = getInitials(profileMenuLabel);
   const unreadNotificationCount = notificationItems.filter(
     (item) => item.isUnread && !readNotificationIds.has(item.id),
   ).length;
@@ -237,10 +241,10 @@ export function AppShell({
                   <ProfileMenu
                     accountLabel={accountLabel}
                     authAvatarUrl={authAvatarUrl}
-                    authEmail={authEmail}
                     authProfilePath={authProfilePath}
-                    avatarInitials={avatarInitials}
+                    avatarInitials={profileMenuInitials}
                     isAuthProfileLoading={isAuthProfileLoading}
+                    usernameLabel={profileMenuLabel}
                     onClose={() => setIsProfileMenuOpen(false)}
                     onLogout={() => void handleLogout()}
                     onNavigate={onNavigate}
@@ -437,10 +441,10 @@ function NotificationIcon({ type }: { type: NotificationItem["type"] }) {
 function ProfileMenu({
   accountLabel,
   authAvatarUrl,
-  authEmail,
   authProfilePath,
   avatarInitials,
   isAuthProfileLoading,
+  usernameLabel,
   onClose,
   onLogout,
   onNavigate,
@@ -448,10 +452,10 @@ function ProfileMenu({
 }: {
   accountLabel: string;
   authAvatarUrl: string | null;
-  authEmail: string;
   authProfilePath: string | null;
   avatarInitials: string;
   isAuthProfileLoading: boolean;
+  usernameLabel: string;
   onClose: () => void;
   onLogout: () => void;
   onNavigate: (page: PageKey) => void;
@@ -471,10 +475,7 @@ function ProfileMenu({
         />
         <div className="min-w-0">
           <p className="neo-copy truncate text-[11px] font-black uppercase text-[#1f1c0f]">
-            {accountLabel}
-          </p>
-          <p className="neo-copy truncate text-[10px] font-bold uppercase text-[#5b403f]">
-            {authEmail}
+            {usernameLabel}
           </p>
         </div>
       </div>

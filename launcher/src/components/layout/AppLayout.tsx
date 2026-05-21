@@ -81,6 +81,7 @@ export function AppLayout() {
       authAvatarUrl={avatarUrl}
       authDisplayName={displayName}
       authEmail={user?.email ?? null}
+      authUsername={profileUsername ?? metadataUsername}
       authProfilePath={
         profileUsername ? `/u/${encodeURIComponent(profileUsername)}` : null
       }
