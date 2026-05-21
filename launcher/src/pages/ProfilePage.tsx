@@ -1,6 +1,6 @@
 import { AlertTriangle, ExternalLink, Loader2, Lock } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
-import { Link, useParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
 
 import { ProfileComments } from "../components/profile/ProfileComments";
 import { ProfileHeader } from "../components/profile/ProfileHeader";
@@ -181,14 +181,6 @@ export function ProfilePage() {
                   </p>
                 )}
               </ProfileSidePanel>
-              {isOwnProfile ? (
-                <Link
-                  className="neo-copy block border-[3px] border-black bg-[#b7102a] px-4 py-3 text-center text-[11px] font-black uppercase tracking-[0.12em] text-white shadow-[4px_4px_0_#1f1c0f] transition hover:-translate-y-0.5 hover:bg-[#007166]"
-                  to="/settings/profile"
-                >
-                  Profil bearbeiten
-                </Link>
-              ) : null}
             </aside>
           </div>
 

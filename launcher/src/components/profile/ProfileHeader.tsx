@@ -1,5 +1,5 @@
 import type { ProfilePageData } from "../../lib/types/profile";
-import { ProfileActions } from "./ProfileActions";
+import { EditProfileButton, ProfileActions } from "./ProfileActions";
 import { ProfileAvatar } from "./ProfileAvatar";
 import { ProfileBadgeList } from "./ProfileBadgeList";
 import { ProfileBanner } from "./ProfileBanner";
@@ -34,15 +34,20 @@ export function ProfileHeader({
             <div className="mt-4">
               <ProfileBadgeList badges={data.badges} />
             </div>
-            <div className="mt-5">
-              <ProfileActions isOwnProfile={isOwnProfile} />
-            </div>
+            {!isOwnProfile ? (
+              <div className="mt-5">
+                <ProfileActions />
+              </div>
+            ) : null}
           </div>
-          <ProfileLevelBar
-            isEmbedded
-            level={profile.profileLevel}
-            xp={profile.profileXp}
-          />
+          <div className="space-y-4">
+            <ProfileLevelBar
+              isEmbedded
+              level={profile.profileLevel}
+              xp={profile.profileXp}
+            />
+            {isOwnProfile ? <EditProfileButton className="w-full" /> : null}
+          </div>
         </div>
       </div>
     </section>
