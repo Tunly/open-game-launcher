@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 
 import { Sidebar, type PageKey } from "./Sidebar";
+import { DesktopTitleBar } from "./DesktopTitleBar";
 
 interface AppShellProps {
   activePage: PageKey;
@@ -176,7 +177,8 @@ export function AppShell({
   return (
     <div className="flex min-h-screen min-w-0 bg-[#fff9ed] text-[#1f1c0f]">
       <div className="min-w-0 flex-1">
-        <header className="sticky top-0 z-30 flex min-h-20 w-full max-w-full flex-wrap items-center gap-x-3 gap-y-2 overflow-hidden border-b-[7px] border-black bg-[#fff9ed] px-3 py-3 sm:px-4 lg:px-5">
+        <DesktopTitleBar />
+        <header className="app-main-header sticky top-0 z-30 flex min-h-20 w-full max-w-full flex-wrap items-center gap-x-3 gap-y-2 overflow-visible border-b-[7px] border-black bg-[#fff9ed] px-3 py-3 sm:px-4 lg:px-5">
           <button
             className="neo-title max-w-[min(50vw,250px)] shrink truncate text-left text-[clamp(1.75rem,3.2vw,2.75rem)] leading-none text-[#b7102a] xl:max-w-none xl:text-[clamp(2rem,3vw,3rem)]"
             type="button"

@@ -92,6 +92,10 @@ a:focus-visible {
   background-size: 8px 8px;
 }
 
+.tauri-runtime .app-main-header {
+  top: 2.25rem;
+}
+
 .steam-game-banner {
   aspect-ratio: 460 / 215;
   min-height: 0;
