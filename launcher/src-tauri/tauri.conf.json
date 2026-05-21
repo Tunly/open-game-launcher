@@ -18,8 +18,10 @@
         "height": 820,
         "minWidth": 960,
         "minHeight": 640,
+        "center": true,
         "resizable": true,
-        "fullscreen": false
+        "fullscreen": false,
+        "visible": false
       }
     ],
     "security": {

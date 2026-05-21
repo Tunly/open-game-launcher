@@ -149,6 +149,24 @@ export function AppShell({
     };
   }, [isNotificationMenuOpen, isProfileMenuOpen]);
 
+  useEffect(() => {
+    function resetHorizontalScroll() {
+      document.documentElement.scrollLeft = 0;
+      document.body.scrollLeft = 0;
+
+      if (window.scrollX !== 0) {
+        window.scrollTo({ left: 0, top: window.scrollY });
+      }
+    }
+
+    resetHorizontalScroll();
+    window.addEventListener("resize", resetHorizontalScroll);
+
+    return () => {
+      window.removeEventListener("resize", resetHorizontalScroll);
+    };
+  }, [activePage]);
+
   async function handleLogout() {
     setIsProfileMenuOpen(false);
     await onLogout();
@@ -156,22 +174,22 @@ export function AppShell({
   }
 
   return (
-    <div className="flex min-h-screen bg-[#fff9ed] text-[#1f1c0f]">
+    <div className="flex min-h-screen min-w-0 bg-[#fff9ed] text-[#1f1c0f]">
       <div className="min-w-0 flex-1">
-        <header className="sticky top-0 z-30 flex min-h-20 flex-wrap items-center gap-4 border-b-[7px] border-black bg-[#fff9ed] px-4 py-3 sm:px-6">
+        <header className="sticky top-0 z-30 flex min-h-20 w-full max-w-full flex-wrap items-center gap-x-3 gap-y-2 overflow-hidden border-b-[7px] border-black bg-[#fff9ed] px-3 py-3 sm:px-4 lg:px-5">
           <button
-            className="neo-title shrink-0 text-left text-[clamp(2rem,4vw,3rem)] leading-none text-[#b7102a]"
+            className="neo-title max-w-[min(50vw,250px)] shrink truncate text-left text-[clamp(1.75rem,3.2vw,2.75rem)] leading-none text-[#b7102a] xl:max-w-none xl:text-[clamp(2rem,3vw,3rem)]"
             type="button"
             onClick={() => onNavigate("store")}
           >
             OG-Launcher
           </button>
 
-          <div className="min-w-0 flex-1">
+          <div className="order-3 min-w-0 flex-1 basis-full sm:order-none sm:basis-auto">
             <Sidebar activePage={activePage} onNavigate={onNavigate} />
           </div>
 
-          <div className="ml-auto flex items-center gap-3">
+          <div className="ml-auto flex shrink-0 items-center gap-2 sm:gap-3">
             <div ref={notificationMenuRef} className="relative">
               <TopIconButton
                 label="Benachrichtigungen"
