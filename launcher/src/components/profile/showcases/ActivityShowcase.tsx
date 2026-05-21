@@ -1,20 +1,23 @@
 import type { UserActivity } from "../../../lib/types/profile";
+import { EmptyShowcaseText, ShowcasePanel } from "./ShowcasePanel";
 
 export function ActivityShowcase({ activity }: { activity: UserActivity[] }) {
   return (
-    <div className="border border-white/10 bg-white/[0.05] p-5">
-      <h3 className="text-lg font-bold text-white">Activity</h3>
+    <ShowcasePanel kicker="Feed" title="Activity">
       <div className="mt-4 space-y-3">
         {activity.length > 0 ? (
           activity.map((item) => (
-            <div key={item.id} className="border-l-2 border-sky-400 pl-3 text-sm text-slate-300">
+            <div
+              key={item.id}
+              className="neo-copy border-l-[6px] border-[#007166] bg-[#f6edd8] px-3 py-2 text-[12px] font-black uppercase text-[#171411]"
+            >
               {item.type.replace(/_/g, " ")}
             </div>
           ))
         ) : (
-          <p className="text-sm text-slate-400">No public activity yet.</p>
+          <EmptyShowcaseText>No public activity yet.</EmptyShowcaseText>
         )}
       </div>
-    </div>
+    </ShowcasePanel>
   );
 }

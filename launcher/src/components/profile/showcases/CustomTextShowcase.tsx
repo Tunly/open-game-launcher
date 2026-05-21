@@ -1,4 +1,5 @@
 import type { ProfileShowcase } from "../../../lib/types/profile";
+import { ShowcasePanel } from "./ShowcasePanel";
 
 export function CustomTextShowcase({ showcase }: { showcase: ProfileShowcase }) {
   const text =
@@ -7,9 +8,8 @@ export function CustomTextShowcase({ showcase }: { showcase: ProfileShowcase }) 
       : "Custom showcase text has not been set.";
 
   return (
-    <div className="border border-white/10 bg-white/[0.05] p-5">
-      <h3 className="text-lg font-bold text-white">{showcase.title ?? "Custom"}</h3>
-      <p className="mt-3 text-sm leading-6 text-slate-300">{text}</p>
-    </div>
+    <ShowcasePanel title={showcase.title ?? "Custom"}>
+      <p className="text-sm font-semibold leading-6 text-[#5b403f]">{text}</p>
+    </ShowcasePanel>
   );
 }

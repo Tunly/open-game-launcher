@@ -20,9 +20,11 @@ interface AppShellProps {
   authAvatarUrl: string | null;
   authDisplayName: string | null;
   authEmail: string | null;
+  authProfilePath: string | null;
   children: ReactNode;
   isAuthConfigured: boolean;
   isAuthLoading: boolean;
+  isAuthProfileLoading: boolean;
   isAuthenticated: boolean;
   title: string;
   subtitle: string;
@@ -79,9 +81,11 @@ export function AppShell({
   authAvatarUrl,
   authDisplayName,
   authEmail,
+  authProfilePath,
   children,
   isAuthConfigured,
   isAuthLoading,
+  isAuthProfileLoading,
   isAuthenticated,
   onLogout,
   onNavigate,
@@ -234,10 +238,13 @@ export function AppShell({
                     accountLabel={accountLabel}
                     authAvatarUrl={authAvatarUrl}
                     authEmail={authEmail}
+                    authProfilePath={authProfilePath}
                     avatarInitials={avatarInitials}
+                    isAuthProfileLoading={isAuthProfileLoading}
                     onClose={() => setIsProfileMenuOpen(false)}
                     onLogout={() => void handleLogout()}
                     onNavigate={onNavigate}
+                    onRoute={onRoute}
                   />
                 ) : null}
               </div>
@@ -431,18 +438,24 @@ function ProfileMenu({
   accountLabel,
   authAvatarUrl,
   authEmail,
+  authProfilePath,
   avatarInitials,
+  isAuthProfileLoading,
   onClose,
   onLogout,
   onNavigate,
+  onRoute,
 }: {
   accountLabel: string;
   authAvatarUrl: string | null;
   authEmail: string;
+  authProfilePath: string | null;
   avatarInitials: string;
+  isAuthProfileLoading: boolean;
   onClose: () => void;
   onLogout: () => void;
   onNavigate: (page: PageKey) => void;
+  onRoute?: (path: string) => void;
 }) {
   return (
     <div
@@ -467,11 +480,14 @@ function ProfileMenu({
       </div>
       <div className="space-y-2">
         <ProfileMenuItem
+          disabled={isAuthProfileLoading || !authProfilePath}
           icon={<UserCircle className="h-5 w-5" />}
-          label="Profil anzeigen"
+          label={isAuthProfileLoading ? "Profil laden" : "Profil anzeigen"}
           onClick={() => {
             onClose();
-            onNavigate("profile");
+            if (authProfilePath) {
+              onRoute?.(authProfilePath);
+            }
           }}
         />
         <ProfileMenuItem
@@ -543,11 +559,13 @@ function Avatar({
 }
 
 function ProfileMenuItem({
+  disabled = false,
   icon,
   label,
   onClick,
   tone = "default",
 }: {
+  disabled?: boolean;
   icon: ReactNode;
   label: string;
   onClick: () => void;
@@ -559,7 +577,8 @@ function ProfileMenuItem({
         tone === "danger"
           ? "bg-[#b7102a] text-white"
           : "bg-[#f6edd8] text-[#1f1c0f]"
-      }`}
+      } disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0`}
+      disabled={disabled}
       role="menuitem"
       type="button"
       onClick={onClick}

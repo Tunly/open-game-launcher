@@ -5,6 +5,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::system::get_system_info,
             commands::system::get_default_install_dir,
+            commands::system::get_hardware_info,
             commands::games::list_installed_games,
             commands::games::launch_game,
             commands::games::verify_game_files,

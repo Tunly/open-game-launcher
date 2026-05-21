@@ -1,23 +1,28 @@
 import type { LibraryPreviewItem } from "../../../lib/types/profile";
+import { EmptyShowcaseText, ShowcasePanel } from "./ShowcasePanel";
 
 export function FavoriteGamesShowcase({ games }: { games: LibraryPreviewItem[] }) {
   return (
-    <div className="border border-white/10 bg-white/[0.05] p-5">
-      <h3 className="text-lg font-bold text-white">Favorite Games</h3>
+    <ShowcasePanel kicker="Library" title="Favorite Games">
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
         {games.length > 0 ? (
           games.map((game) => (
-            <div key={game.id} className="border border-white/10 bg-black/20 p-3">
-              <p className="font-bold text-white">{game.title}</p>
-              <p className="mt-1 text-xs text-slate-400">
+            <div
+              key={game.id}
+              className="border-[3px] border-black bg-[#f6edd8] p-3 shadow-[3px_3px_0_#1f1c0f]"
+            >
+              <p className="neo-title text-2xl leading-none text-[#171411]">
+                {game.title}
+              </p>
+              <p className="neo-copy mt-2 text-[11px] font-black uppercase text-[#5b403f]">
                 {Math.floor(game.playtimeMinutes / 60)}h played
               </p>
             </div>
           ))
         ) : (
-          <p className="text-sm text-slate-400">No public library games yet.</p>
+          <EmptyShowcaseText>No public library games yet.</EmptyShowcaseText>
         )}
       </div>
-    </div>
+    </ShowcasePanel>
   );
 }

@@ -9,14 +9,26 @@ export function ProfileBanner({
 }) {
   const background =
     profile.bannerUrl !== null
-      ? `linear-gradient(90deg, rgba(0,0,0,.78), rgba(0,0,0,.2)), url(${profile.bannerUrl})`
+      ? `linear-gradient(90deg, rgba(23,20,17,.76), rgba(23,20,17,.12)), url(${profile.bannerUrl})`
       : theme?.backgroundValue ??
-        "radial-gradient(circle at 20% 20%, rgba(56,189,248,.22), transparent 30%), linear-gradient(135deg,#111827,#020617)";
+        "radial-gradient(circle at 78% 24%, #8cf5e4 0 8%, transparent 9%), linear-gradient(115deg, transparent 0 34%, rgba(23,20,17,.24) 35% 37%, transparent 38%), repeating-linear-gradient(90deg, rgba(183,16,42,.32) 0 8px, transparent 9px 34px), linear-gradient(135deg, #f6edd8 0%, #087d6d 48%, #171411 49%, #c20b2f 100%)";
 
   return (
     <div
-      className="min-h-72 border border-white/10 bg-cover bg-center"
+      className="relative min-h-72 overflow-hidden border-b-4 border-black bg-cover bg-center"
       style={{ background }}
-    />
+    >
+      <div className="absolute left-4 top-4 flex flex-wrap gap-2">
+        {["Player Card", "OG Network", "Public Profile"].map((label) => (
+          <span
+            key={label}
+            className="neo-copy border-2 border-black bg-[#fff9ed] px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-[#171411] shadow-[2px_2px_0_#1f1c0f]"
+          >
+            {label}
+          </span>
+        ))}
+      </div>
+      <div className="absolute bottom-0 left-0 right-0 h-8 border-t-4 border-black bg-[repeating-linear-gradient(90deg,#171411_0_12px,#fff9ed_12px_24px)]" />
+    </div>
   );
 }

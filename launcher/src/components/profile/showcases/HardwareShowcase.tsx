@@ -1,4 +1,5 @@
 import type { UserHardware } from "../../../lib/types/profile";
+import { EmptyShowcaseText, ShowcasePanel } from "./ShowcasePanel";
 
 export function HardwareShowcase({ hardware }: { hardware: UserHardware | null }) {
   const entries = hardware
@@ -13,20 +14,21 @@ export function HardwareShowcase({ hardware }: { hardware: UserHardware | null }
     : [];
 
   return (
-    <div className="border border-white/10 bg-white/[0.05] p-5">
-      <h3 className="text-lg font-bold text-white">Hardware Setup</h3>
+    <ShowcasePanel kicker="Setup" title="Hardware">
       <div className="mt-4 grid gap-2 sm:grid-cols-2">
         {entries.length > 0 ? (
           entries.map(([label, value]) => (
-            <div key={label} className="border border-white/10 bg-black/20 p-3">
-              <p className="text-xs uppercase text-slate-500">{label}</p>
-              <p className="mt-1 text-sm font-bold text-white">{value}</p>
+            <div key={label} className="border-[3px] border-black bg-[#f6edd8] p-3">
+              <p className="neo-copy text-[10px] font-black uppercase tracking-[0.12em] text-[#b7102a]">
+                {label}
+              </p>
+              <p className="mt-1 text-sm font-black text-[#171411]">{value}</p>
             </div>
           ))
         ) : (
-          <p className="text-sm text-slate-400">No hardware setup shared.</p>
+          <EmptyShowcaseText>No hardware setup shared.</EmptyShowcaseText>
         )}
       </div>
-    </div>
+    </ShowcasePanel>
   );
 }

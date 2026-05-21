@@ -63,6 +63,18 @@ export interface SystemInfo {
   appVersion: string;
 }
 
+export interface HardwareInfo {
+  cpu: string | null;
+  gpu: string | null;
+  ram: string | null;
+  monitor: string | null;
+  keyboard: string | null;
+  mouse: string | null;
+  headset: string | null;
+  controller: string | null;
+  source: "native" | "browser";
+}
+
 export interface LaunchGameResponse {
   gameId: string;
   success: boolean;

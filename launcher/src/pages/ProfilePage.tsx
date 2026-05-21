@@ -74,8 +74,8 @@ export function ProfilePage() {
   if (state.status === "loading") {
     return (
       <ProfileShell>
-        <div className="flex min-h-[420px] items-center justify-center border border-white/10 bg-white/[0.04]">
-          <Loader2 className="h-8 w-8 animate-spin text-sky-300" />
+        <div className="flex min-h-[420px] items-center justify-center border-4 border-black bg-[#fff9ed] shadow-[7px_7px_0_#1f1c0f]">
+          <Loader2 className="h-9 w-9 animate-spin text-[#b7102a]" />
         </div>
       </ProfileShell>
     );
@@ -86,7 +86,7 @@ export function ProfilePage() {
       <ProfileShell>
         <EmptyPanel
           icon={<AlertTriangle className="h-8 w-8" />}
-          title="Profile could not be loaded"
+          title="Profile Load Error"
           body={state.error}
         />
       </ProfileShell>
@@ -98,7 +98,7 @@ export function ProfilePage() {
       <ProfileShell>
         <EmptyPanel
           icon={<Lock className="h-8 w-8" />}
-          title="Profile not found or private"
+          title="Profile Offline"
           body="Supabase RLS may hide private profiles from viewers who are not allowed to see them."
         />
       </ProfileShell>
@@ -114,7 +114,7 @@ export function ProfilePage() {
   return (
     <ProfileShell>
       {state.isMock ? (
-        <div className="mb-4 border border-amber-300/30 bg-amber-300/10 p-4 text-sm text-amber-100">
+        <div className="neo-copy mb-4 border-[3px] border-black bg-[#f6edd8] p-4 text-[11px] font-black uppercase tracking-[0.08em] text-[#5b403f] shadow-[4px_4px_0_#1f1c0f]">
           Supabase env vars are missing, so this route is showing MVP fallback
           profile data.
         </div>
@@ -124,14 +124,14 @@ export function ProfilePage() {
         <PrivateProfileState data={state.data} />
       ) : (
         <div className="space-y-5">
-          <ProfileHeader data={state.data} />
+          <ProfileHeader data={state.data} isOwnProfile={isOwnProfile} />
 
           <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
             <ProfileShowcaseGrid data={state.data} />
             <aside className="space-y-4">
               <ProfileSidePanel title="Online Status">
-                <div className="inline-flex items-center gap-2 border border-emerald-300/20 bg-emerald-300/10 px-3 py-2 text-sm font-bold text-emerald-100">
-                  <span className="h-2 w-2 rounded-full bg-emerald-300" />
+                <div className="neo-copy inline-flex items-center gap-2 border-[3px] border-black bg-[#f6edd8] px-3 py-2 text-[11px] font-black uppercase tracking-[0.1em] text-[#171411] shadow-[3px_3px_0_#1f1c0f]">
+                  <span className="h-3 w-3 border-2 border-black bg-[#007166]" />
                   Visible by privacy rules
                 </div>
               </ProfileSidePanel>
@@ -165,7 +165,7 @@ export function ProfilePage() {
                     {state.data.socialLinks.map((link) => (
                       <a
                         key={link.id}
-                        className="flex items-center justify-between gap-3 border border-white/10 bg-black/20 px-3 py-2 text-sm font-semibold text-slate-200 hover:border-sky-300/40"
+                        className="neo-copy flex items-center justify-between gap-3 border-[3px] border-black bg-[#f6edd8] px-3 py-2 text-[11px] font-black uppercase tracking-[0.08em] text-[#171411] shadow-[3px_3px_0_#1f1c0f] transition hover:-translate-y-0.5 hover:bg-[#8cf5e4]"
                         href={link.url}
                         rel="noreferrer"
                         target="_blank"
@@ -176,17 +176,17 @@ export function ProfilePage() {
                     ))}
                   </div>
                 ) : (
-                  <p className="text-sm text-slate-400">
+                  <p className="neo-copy border-2 border-dashed border-black bg-[#f6edd8] p-3 text-[12px] font-bold uppercase leading-5 text-[#655f58]">
                     No public social links yet.
                   </p>
                 )}
               </ProfileSidePanel>
               {isOwnProfile ? (
                 <Link
-                  className="block bg-sky-400 px-4 py-3 text-center text-sm font-black text-slate-950 hover:bg-sky-300"
+                  className="neo-copy block border-[3px] border-black bg-[#b7102a] px-4 py-3 text-center text-[11px] font-black uppercase tracking-[0.12em] text-white shadow-[4px_4px_0_#1f1c0f] transition hover:-translate-y-0.5 hover:bg-[#007166]"
                   to="/settings/profile"
                 >
-                  Edit Profile
+                  Profil bearbeiten
                 </Link>
               ) : null}
             </aside>
@@ -196,7 +196,7 @@ export function ProfilePage() {
             <ProfileComments comments={state.data.comments} />
           ) : (
             <ProfileSidePanel title="Guestbook">
-              <p className="text-sm text-slate-400">
+              <p className="neo-copy border-2 border-dashed border-black bg-[#f6edd8] p-3 text-[12px] font-bold uppercase leading-5 text-[#655f58]">
                 Comments are private for this profile.
               </p>
             </ProfileSidePanel>
@@ -209,7 +209,7 @@ export function ProfilePage() {
 
 function ProfileShell({ children }: { children: ReactNode }) {
   return (
-    <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+    <div className="mx-auto w-full max-w-[1220px] px-4 py-7 sm:px-6 lg:px-8">
       {children}
     </div>
   );
@@ -225,13 +225,15 @@ function EmptyPanel({
   title: string;
 }) {
   return (
-    <div className="grid min-h-[420px] place-items-center border border-white/10 bg-white/[0.04] p-8 text-center">
+    <div className="grid min-h-[420px] place-items-center border-4 border-black bg-[#fff9ed] p-8 text-center shadow-[7px_7px_0_#1f1c0f]">
       <div className="max-w-md">
-        <div className="mx-auto flex h-16 w-16 items-center justify-center border border-white/10 bg-white/[0.06] text-sky-200">
+        <div className="mx-auto flex h-16 w-16 items-center justify-center border-[3px] border-black bg-[#b7102a] text-white shadow-[4px_4px_0_#1f1c0f]">
           {icon}
         </div>
-        <h1 className="mt-5 text-3xl font-black text-white">{title}</h1>
-        <p className="mt-3 text-sm leading-6 text-slate-400">{body}</p>
+        <h1 className="neo-title mt-5 text-5xl leading-none text-[#171411]">
+          {title}
+        </h1>
+        <p className="mt-3 text-sm font-semibold leading-6 text-[#5b403f]">{body}</p>
       </div>
     </div>
   );
@@ -239,21 +241,23 @@ function EmptyPanel({
 
 function PrivateProfileState({ data }: { data: ProfilePageData }) {
   return (
-    <div className="overflow-hidden border border-white/10 bg-[#111827]">
-      <div className="min-h-52 bg-gradient-to-br from-slate-900 via-slate-800 to-black" />
+    <div className="overflow-hidden border-4 border-black bg-[#fff9ed] shadow-[7px_7px_0_#1f1c0f]">
+      <div className="min-h-52 border-b-4 border-black bg-[repeating-linear-gradient(112deg,#171411_0_12px,#2f2b25_12px_24px,#007166_24px_27px)]" />
       <div className="-mt-12 p-6">
         <div className="flex items-end gap-4">
-          <div className="flex h-24 w-24 items-center justify-center border border-white/20 bg-teal-400 text-2xl font-black text-slate-950">
+          <div className="neo-title flex h-24 w-24 items-center justify-center border-4 border-black bg-[#007166] text-3xl text-white shadow-[5px_5px_0_#1f1c0f]">
             {data.profile.username.slice(0, 2).toUpperCase()}
           </div>
           <div>
-            <p className="text-sm font-bold uppercase text-sky-200">
+            <p className="neo-copy inline-block border-2 border-black bg-[#f6edd8] px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-[#171411]">
               @{data.profile.username}
             </p>
-            <h1 className="text-4xl font-black text-white">Private Profile</h1>
+            <h1 className="neo-title mt-2 text-5xl leading-none text-[#171411]">
+              Private Profile
+            </h1>
           </div>
         </div>
-        <p className="mt-5 max-w-xl text-sm leading-6 text-slate-400">
+        <p className="mt-5 max-w-xl text-sm font-semibold leading-6 text-[#5b403f]">
           This player keeps their room private. Library, activity, achievements,
           and comments are hidden by profile visibility rules.
         </p>
@@ -270,8 +274,10 @@ function ProfileSidePanel({
   title: string;
 }) {
   return (
-    <section className="border border-white/10 bg-white/[0.05] p-5">
-      <h2 className="text-lg font-bold text-white">{title}</h2>
+    <section className="border-4 border-black bg-[#fff9ed] p-5 shadow-[5px_5px_0_#1f1c0f]">
+      <h2 className="neo-title border-b-[3px] border-black pb-3 text-3xl leading-none text-[#171411]">
+        {title}
+      </h2>
       <div className="mt-4">{children}</div>
     </section>
   );
@@ -280,8 +286,8 @@ function ProfileSidePanel({
 function FeaturedText({ body, title }: { body: string; title: string }) {
   return (
     <div>
-      <p className="font-bold text-white">{title}</p>
-      <p className="mt-2 text-sm leading-6 text-slate-400">{body}</p>
+      <p className="neo-title text-2xl leading-none text-[#171411]">{title}</p>
+      <p className="mt-2 text-sm font-semibold leading-6 text-[#5b403f]">{body}</p>
     </div>
   );
 }

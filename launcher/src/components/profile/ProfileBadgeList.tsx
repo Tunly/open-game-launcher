@@ -30,10 +30,14 @@ export function ProfileBadgeList({ badges }: { badges: UserBadge[] }) {
 
   return (
     <div className="flex flex-wrap gap-2">
-      {visibleBadges.map((badge) => (
+      {visibleBadges.map((badge, index) => (
         <span
           key={badge.id}
-          className="border border-sky-300/20 bg-sky-400/10 px-3 py-2 text-xs font-bold uppercase text-sky-100"
+          className={`neo-copy border-2 border-black px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] shadow-[2px_2px_0_#1f1c0f] ${
+            index % 2 === 0
+              ? "bg-[#b7102a] text-white"
+              : "bg-[#f6edd8] text-[#171411]"
+          }`}
           title={badge.description ?? badge.name}
         >
           {badge.name}

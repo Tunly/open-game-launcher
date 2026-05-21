@@ -1,6 +1,8 @@
+import { useEffect, useMemo, useState } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 
 import { useCurrentUser } from "../../hooks/useCurrentUser";
+import { getMyProfile } from "../../lib/supabase/profile";
 import { AppShell } from "./AppShell";
 import type { PageKey } from "./Sidebar";
 import { getPathForPage } from "./navigation";
@@ -21,6 +23,14 @@ export function AppLayout() {
   const navigate = useNavigate();
   const { isConfigured, isLoading, signOut, user } = useCurrentUser();
   const metadata = user?.user_metadata as Record<string, unknown> | undefined;
+  const metadataUsername = useMemo(() => {
+    const rawUsername = metadata?.username ?? metadata?.user_name;
+    return typeof rawUsername === "string" && rawUsername.trim()
+      ? rawUsername.trim()
+      : null;
+  }, [metadata]);
+  const [profileUsername, setProfileUsername] = useState<string | null>(null);
+  const [isProfileUsernameLoading, setIsProfileUsernameLoading] = useState(false);
   const displayName =
     typeof metadata?.display_name === "string"
       ? metadata.display_name
@@ -31,8 +41,39 @@ export function AppLayout() {
     typeof metadata?.avatar_url === "string"
       ? metadata.avatar_url
       : typeof metadata?.picture === "string"
-        ? metadata.picture
-        : null;
+      ? metadata.picture
+      : null;
+
+  useEffect(() => {
+    let isMounted = true;
+
+    setProfileUsername(null);
+
+    if (!isConfigured || !user) {
+      setIsProfileUsernameLoading(false);
+      return;
+    }
+
+    setIsProfileUsernameLoading(true);
+
+    void getMyProfile()
+      .then((profile) => {
+        if (!isMounted) return;
+        setProfileUsername(profile.username);
+      })
+      .catch(() => {
+        if (!isMounted) return;
+        setProfileUsername(metadataUsername);
+      })
+      .finally(() => {
+        if (!isMounted) return;
+        setIsProfileUsernameLoading(false);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [isConfigured, metadataUsername, user]);
 
   return (
     <AppShell
@@ -40,8 +81,12 @@ export function AppLayout() {
       authAvatarUrl={avatarUrl}
       authDisplayName={displayName}
       authEmail={user?.email ?? null}
+      authProfilePath={
+        profileUsername ? `/u/${encodeURIComponent(profileUsername)}` : null
+      }
       isAuthConfigured={isConfigured}
       isAuthLoading={isLoading}
+      isAuthProfileLoading={isProfileUsernameLoading}
       isAuthenticated={Boolean(user)}
       subtitle=""
       title=""

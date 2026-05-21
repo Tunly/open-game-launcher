@@ -1,4 +1,4 @@
-import { Loader2, Plus, Save, Trash2, Upload } from "lucide-react";
+import { Cpu, Loader2, Plus, Save, Trash2, Upload } from "lucide-react";
 import {
   useEffect,
   useState,
@@ -11,6 +11,7 @@ import {
 import { Link } from "react-router-dom";
 
 import { useCurrentUser } from "../hooks/useCurrentUser";
+import { detectHardwareInfo } from "../lib/launcher";
 import {
   getMyProfile,
   getProfileThemes,
@@ -70,6 +71,19 @@ const emptyForm: ProfileFormState = {
   controller: "",
 };
 
+const hardwareFields = [
+  "cpu",
+  "gpu",
+  "ram",
+  "monitor",
+  "keyboard",
+  "mouse",
+  "headset",
+  "controller",
+] as const;
+
+type HardwareField = (typeof hardwareFields)[number];
+
 export function EditProfilePage() {
   const { isConfigured, isLoading: isAuthLoading, user } = useCurrentUser();
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -79,6 +93,7 @@ export function EditProfilePage() {
   const [socialLinks, setSocialLinks] = useState<EditableSocialLink[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const [isDetectingHardware, setIsDetectingHardware] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -220,6 +235,40 @@ export function EditProfilePage() {
     }
   }
 
+  async function handleDetectHardware() {
+    setIsDetectingHardware(true);
+    setMessage(null);
+    setErrorMessage(null);
+
+    try {
+      const detectedHardware = await detectHardwareInfo();
+      const detectedFields: Partial<Record<HardwareField, string>> = {};
+
+      hardwareFields.forEach((field) => {
+        const value = detectedHardware[field];
+        if (typeof value === "string" && value.trim()) {
+          detectedFields[field] = value.trim();
+        }
+      });
+
+      setForm((current) => ({ ...current, ...detectedFields }));
+
+      const filledLabels = Object.keys(detectedFields)
+        .map((field) => field.toUpperCase())
+        .join(", ");
+
+      setMessage(
+        filledLabels
+          ? `Hardware erkannt (${detectedHardware.source}): ${filledLabels}. Speichern, um die Werte im Profil zu ubernehmen.`
+          : "Keine Hardwaredaten erkannt. Im Web-Preview sind nur Browser-Schatzwerte verfugbar.",
+      );
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setIsDetectingHardware(false);
+    }
+  }
+
   if (isAuthLoading || isLoading) {
     return <PageFrame title="Edit Profile"><LoadingPanel /></PageFrame>;
   }
@@ -309,8 +358,26 @@ export function EditProfilePage() {
           </Panel>
 
           <Panel label="Setup" title="Hardware Rig">
+            <div className="mb-4 flex flex-col gap-3 border-[3px] border-black bg-[#f6edd8] p-3 shadow-[3px_3px_0_#171411] md:flex-row md:items-center md:justify-between">
+              <p className="neo-copy text-[11px] font-black uppercase leading-5 tracking-[0.08em] text-[#5b403f]">
+                Desktop erkennt CPU, GPU, RAM, Monitor und Eingabegeraete. Web-Preview nutzt Browser-Schatzwerte.
+              </p>
+              <button
+                className="neo-copy inline-flex h-11 shrink-0 items-center justify-center gap-2 border-2 border-black bg-[#007166] px-3 text-[11px] font-black uppercase tracking-[0.12em] text-white shadow-[3px_3px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#b7102a] disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={isDetectingHardware || isSaving}
+                type="button"
+                onClick={() => void handleDetectHardware()}
+              >
+                {isDetectingHardware ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Cpu className="h-4 w-4" />
+                )}
+                Hardware erkennen
+              </button>
+            </div>
             <div className="grid gap-4 sm:grid-cols-2">
-              {(["cpu", "gpu", "ram", "monitor", "keyboard", "mouse", "headset", "controller"] as const).map((field) => (
+              {hardwareFields.map((field) => (
                 <TextInput key={field} label={field.toUpperCase()} value={form[field]} onChange={(value) => updateField(field, value)} />
               ))}
             </div>

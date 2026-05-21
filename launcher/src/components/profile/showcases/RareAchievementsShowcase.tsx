@@ -1,4 +1,5 @@
 import type { AchievementPreviewItem } from "../../../lib/types/profile";
+import { EmptyShowcaseText, ShowcasePanel } from "./ShowcasePanel";
 
 export function RareAchievementsShowcase({
   achievements,
@@ -6,23 +7,29 @@ export function RareAchievementsShowcase({
   achievements: AchievementPreviewItem[];
 }) {
   return (
-    <div className="border border-white/10 bg-white/[0.05] p-5">
-      <h3 className="text-lg font-bold text-white">Rare Achievements</h3>
+    <ShowcasePanel kicker="Trophy Case" title="Rare Achievements">
       <div className="mt-4 space-y-3">
         {achievements.length > 0 ? (
           achievements.map((achievement) => (
-            <div key={achievement.id} className="flex gap-3 border border-white/10 bg-black/20 p-3">
-              <div className="h-10 w-10 bg-amber-400/20" />
+            <div
+              key={achievement.id}
+              className="flex gap-3 border-[3px] border-black bg-[#f6edd8] p-3 shadow-[3px_3px_0_#1f1c0f]"
+            >
+              <div className="h-12 w-12 shrink-0 border-[3px] border-black bg-[#b7102a]" />
               <div>
-                <p className="font-bold text-white">{achievement.name}</p>
-                <p className="text-xs uppercase text-amber-200">{achievement.rarity}</p>
+                <p className="neo-title text-2xl leading-none text-[#171411]">
+                  {achievement.name}
+                </p>
+                <p className="neo-copy mt-1 text-[10px] font-black uppercase tracking-[0.12em] text-[#b7102a]">
+                  {achievement.rarity}
+                </p>
               </div>
             </div>
           ))
         ) : (
-          <p className="text-sm text-slate-400">No public achievements yet.</p>
+          <EmptyShowcaseText>No public achievements yet.</EmptyShowcaseText>
         )}
       </div>
-    </div>
+    </ShowcasePanel>
   );
 }

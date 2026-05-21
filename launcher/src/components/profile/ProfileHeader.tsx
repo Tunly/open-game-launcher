@@ -5,23 +5,29 @@ import { ProfileBadgeList } from "./ProfileBadgeList";
 import { ProfileBanner } from "./ProfileBanner";
 import { ProfileLevelBar } from "./ProfileLevelBar";
 
-export function ProfileHeader({ data }: { data: ProfilePageData }) {
+export function ProfileHeader({
+  data,
+  isOwnProfile = false,
+}: {
+  data: ProfilePageData;
+  isOwnProfile?: boolean;
+}) {
   const { profile, theme } = data;
 
   return (
-    <section className="overflow-hidden border border-white/10 bg-[#111827] shadow-2xl">
+    <section className="overflow-hidden border-4 border-black bg-[#fff9ed] shadow-[9px_9px_0_#1f1c0f]">
       <ProfileBanner profile={profile} theme={theme} />
-      <div className="-mt-16 grid gap-6 p-5 lg:grid-cols-[1fr_320px] lg:p-8">
+      <div className="-mt-20 grid gap-6 p-5 lg:grid-cols-[1fr_320px] lg:p-8">
         <div className="flex min-w-0 flex-col gap-5 sm:flex-row">
           <ProfileAvatar profile={profile} />
-          <div className="min-w-0 pt-12 sm:pt-16">
-            <p className="text-sm font-bold uppercase text-sky-200">
+          <div className="min-w-0 border-4 border-black bg-[#fff9ed] p-4 shadow-[5px_5px_0_#1f1c0f] sm:mt-20">
+            <p className="neo-copy inline-block border-2 border-black bg-[#007166] px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-white">
               @{profile.username}
             </p>
-            <h1 className="mt-1 truncate text-4xl font-black text-white sm:text-6xl">
+            <h1 className="neo-title mt-2 truncate text-[clamp(2.4rem,6vw,5.2rem)] leading-none text-[#171411]">
               {profile.displayName ?? profile.username}
             </h1>
-            <p className="mt-3 max-w-2xl text-sm leading-6 text-slate-300">
+            <p className="mt-3 max-w-2xl text-sm font-semibold leading-6 text-[#5b403f]">
               {profile.bio ??
                 "This player has not written a bio yet. Their gaming room is waiting for a first story."}
             </p>
@@ -29,11 +35,11 @@ export function ProfileHeader({ data }: { data: ProfilePageData }) {
               <ProfileBadgeList badges={data.badges} />
             </div>
             <div className="mt-5">
-              <ProfileActions />
+              <ProfileActions isOwnProfile={isOwnProfile} />
             </div>
           </div>
         </div>
-        <div className="pt-0 lg:pt-16">
+        <div className="pt-0 lg:pt-20">
           <ProfileLevelBar level={profile.profileLevel} xp={profile.profileXp} />
         </div>
       </div>
