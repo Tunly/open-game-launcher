@@ -1,5 +1,6 @@
 import { CloudDownload, Play, RotateCw } from "lucide-react";
 
+import { getGameBannerStyle } from "../../lib/assets";
 import type { Game } from "../../lib/types";
 
 interface GameCardProps {
@@ -46,7 +47,10 @@ export function GameCard({
       <article className="relative overflow-hidden border-4 border-black bg-[#f5eedf] shadow-[4px_4px_0_#171411] sm:col-span-2 sm:row-span-2 lg:col-span-2">
         <div className="absolute right-5 top-[-12px] z-10 h-7 w-12 rotate-3 border-2 border-black bg-[#ded8ca]" />
         <div className="grid min-h-full sm:grid-cols-[1.05fr_1fr]">
-          <div className="library-art-tokyo relative min-h-44 border-b-4 border-black sm:min-h-72 sm:border-b-0 sm:border-r-4">
+          <div
+            className="library-art-tokyo steam-game-banner relative border-b-4 border-black sm:border-b-0 sm:border-r-4"
+            style={getGameBannerStyle(game.coverUrl)}
+          >
             <span className="neo-copy absolute left-3 top-3 border-2 border-black bg-[#c20b2f] px-3 py-1 text-xs font-bold uppercase text-white">
               Update
             </span>
@@ -84,7 +88,10 @@ export function GameCard({
   if (game.status === "not_installed") {
     return (
       <article className="overflow-hidden border-4 border-black bg-[#f5eedf] shadow-[4px_4px_0_#171411] sm:row-span-2">
-        <div className="flex h-[56%] flex-col items-center justify-center border-b-4 border-black bg-[#f5eedf]">
+        <div
+          className="steam-game-banner flex flex-col items-center justify-center border-b-4 border-black bg-[#f5eedf]"
+          style={getGameBannerStyle(game.coverUrl)}
+        >
           <CloudDownload className="h-9 w-9 text-[#55504a]" />
           <p className="neo-copy mt-6 text-[10px] font-bold uppercase text-[#55504a]">
             Installation... 45%
@@ -115,7 +122,10 @@ export function GameCard({
 
   return (
     <article className="overflow-hidden border-4 border-black bg-[#f5eedf] shadow-[4px_4px_0_#171411] sm:row-span-2">
-      <div className={`${artClassById[game.id] ?? "library-art-mech"} relative h-[54%] border-b-4 border-black`}>
+      <div
+        className={`${artClassById[game.id] ?? "library-art-mech"} steam-game-banner relative border-b-4 border-black`}
+        style={getGameBannerStyle(game.coverUrl)}
+      >
         {game.status === "update_available" ? (
           <span className="neo-copy absolute right-3 top-[60%] border-2 border-black bg-[#087d6d] px-3 py-3 text-[10px] font-bold uppercase text-white">
             Neu

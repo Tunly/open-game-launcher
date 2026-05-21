@@ -2,6 +2,7 @@ import { invoke } from "@tauri-apps/api/core";
 
 import type {
   LaunchGameResponse,
+  Game,
   StartDownloadResponse,
   SystemInfo,
   VerifyGameFilesResult,
@@ -37,6 +38,10 @@ export function getSystemInfo(): Promise<SystemInfo> {
 
 export function getDefaultInstallDir(): Promise<string> {
   return invokeCommand<string>("get_default_install_dir");
+}
+
+export function listInstalledGames(): Promise<Game[]> {
+  return invokeCommand<Game[]>("list_installed_games");
 }
 
 export function launchGame(gameId: string): Promise<LaunchGameResponse> {

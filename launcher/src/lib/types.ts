@@ -1,5 +1,10 @@
 export type GameStatus = "installed" | "not_installed" | "update_available";
 export type Platform = "windows" | "linux" | "macos";
+export type LogoPosition =
+  | "bottomLeft"
+  | "upperCenter"
+  | "centerCenter"
+  | "bottomCenter";
 export type DownloadStatus =
   | "downloading"
   | "paused"
@@ -12,11 +17,25 @@ export interface Game {
   description: string;
   version: string;
   coverUrl?: string;
+  iconUrl?: string;
+  iconUrls?: string[];
+  logoUrl?: string;
+  logoUrls?: string[];
+  logoPosition?: LogoPosition;
+  logoWidthPercent?: number;
+  logoHeightPercent?: number;
   status: GameStatus;
   platform: Platform;
   installPath?: string;
   lastPlayed?: string;
   playtimeMinutes?: number;
+  sizeGb?: number;
+  players?: string[];
+  features?: string[];
+  genres?: string[];
+  productCategory?: string; // e.g. "game", "software", "video", "dlc", "soundtrack", "demo", "beta"
+  steamDeckCompatibility?: "verified" | "playable" | "unsupported" | "unknown";
+  protonCompatible?: boolean;
 }
 
 export interface StoreGame {

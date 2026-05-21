@@ -89,6 +89,19 @@ a:focus-visible {
   background-size: 8px 8px;
 }
 
+.steam-game-banner {
+  aspect-ratio: 460 / 215;
+  min-height: 0;
+  width: 100%;
+}
+
+.steam-game-banner-hero {
+  aspect-ratio: 1920 / 620;
+  height: auto;
+  min-height: 220px;
+  width: 100%;
+}
+
 .hero-art {
   background:
     linear-gradient(90deg, rgba(0, 0, 0, 0.8), rgba(0, 0, 0, 0.38) 56%, rgba(0, 0, 0, 0.72)),
@@ -145,4 +158,122 @@ a:focus-visible {
     repeating-linear-gradient(0deg, rgba(245, 238, 223, 0.13) 0 2px, transparent 3px 18px),
     repeating-linear-gradient(90deg, rgba(245, 238, 223, 0.13) 0 2px, transparent 3px 22px),
     linear-gradient(180deg, #1d2022, #050506);
+}
+
+.library-steam-shell {
+  font-family: "Arial Narrow", Impact, sans-serif;
+}
+
+.cuphead-character,
+.cuphead-cup {
+  position: relative;
+  filter: drop-shadow(2px 2px 0 rgba(23, 20, 17, 0.55));
+}
+
+.cuphead-dice {
+  width: 140px;
+  height: 210px;
+}
+
+.cuphead-dice::before {
+  content: "";
+  position: absolute;
+  left: 34px;
+  top: 18px;
+  width: 80px;
+  height: 80px;
+  border: 4px solid #171411;
+  border-radius: 16px;
+  background:
+    radial-gradient(circle at 26% 30%, #171411 0 5px, transparent 6px),
+    radial-gradient(circle at 72% 30%, #171411 0 5px, transparent 6px),
+    radial-gradient(circle at 50% 60%, #171411 0 6px, transparent 7px),
+    #fffaf0;
+  transform: rotate(8deg);
+}
+
+.cuphead-dice::after {
+  content: "";
+  position: absolute;
+  left: 7px;
+  bottom: 0;
+  width: 126px;
+  height: 145px;
+  border: 4px solid #171411;
+  border-radius: 48% 48% 18px 18px;
+  background:
+    linear-gradient(90deg, transparent 0 42%, #fffaf0 43% 57%, transparent 58%),
+    #e2bd22;
+}
+
+.cuphead-devil {
+  width: 205px;
+  height: 245px;
+}
+
+.cuphead-devil::before {
+  content: "";
+  position: absolute;
+  left: 35px;
+  top: 40px;
+  width: 120px;
+  height: 105px;
+  border: 5px solid #171411;
+  border-radius: 46% 46% 38% 38%;
+  background:
+    radial-gradient(ellipse at 35% 50%, #fffaf0 0 16px, transparent 17px),
+    radial-gradient(ellipse at 66% 50%, #fffaf0 0 16px, transparent 17px),
+    radial-gradient(ellipse at 35% 55%, #171411 0 8px, transparent 9px),
+    radial-gradient(ellipse at 66% 55%, #171411 0 8px, transparent 9px),
+    #171411;
+}
+
+.cuphead-devil::after {
+  content: "";
+  position: absolute;
+  left: 10px;
+  bottom: 8px;
+  width: 180px;
+  height: 115px;
+  border: 5px solid #171411;
+  border-radius: 48% 48% 35% 35%;
+  background:
+    linear-gradient(110deg, transparent 0 44%, #e8c843 45% 56%, transparent 57%),
+    #171411;
+}
+
+.cuphead-cup {
+  width: 72px;
+  height: 88px;
+}
+
+.cuphead-cup::before {
+  content: "";
+  position: absolute;
+  left: 12px;
+  top: 0;
+  width: 42px;
+  height: 34px;
+  border: 4px solid #171411;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle at 35% 54%, #171411 0 3px, transparent 4px),
+    radial-gradient(circle at 66% 54%, #171411 0 3px, transparent 4px),
+    #fffaf0;
+}
+
+.cuphead-cup::after {
+  content: "";
+  position: absolute;
+  left: 15px;
+  bottom: 0;
+  width: 38px;
+  height: 55px;
+  border: 4px solid #171411;
+  border-radius: 0 0 18px 18px;
+  background: #d93728;
+}
+
+.cup-two::after {
+  background: #4aa5c8;
 }

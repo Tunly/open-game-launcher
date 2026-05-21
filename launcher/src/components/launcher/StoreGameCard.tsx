@@ -32,7 +32,7 @@ export function StoreGameCard({
 }: StoreGameCardProps) {
   return (
     <article className="overflow-hidden border-4 border-black bg-[#f5eedf] shadow-[5px_5px_0_#171411]">
-      <div className={`${artClassById[game.id] ?? "card-art-drift"} relative h-40 border-b-4 border-black sm:h-48`}>
+      <div className={`${artClassById[game.id] ?? "card-art-drift"} steam-game-banner relative border-b-4 border-black`}>
         {game.id === "deep-signal" ? (
           <div className="absolute bottom-8 left-12 h-16 w-36 -skew-x-12 rounded-[45%] border-4 border-[#171411] bg-[#ece8de] shadow-[26px_20px_0_rgba(23,20,17,0.16)]">
             <div className="absolute -bottom-4 left-4 h-8 w-8 rounded-full border-4 border-[#171411] bg-[#f5eedf]" />

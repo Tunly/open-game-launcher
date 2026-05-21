@@ -254,7 +254,13 @@ export function AppShell({
         </header>
 
         <main className="neo-dots min-h-[calc(100vh-80px)] min-w-0">
-          <div className="mx-auto w-full max-w-[1220px] px-6 py-7">
+          <div
+            className={
+              activePage === "library"
+                ? "w-full px-0 py-0"
+                : "mx-auto w-full max-w-[1220px] px-6 py-7"
+            }
+          >
             {children}
           </div>
         </main>
