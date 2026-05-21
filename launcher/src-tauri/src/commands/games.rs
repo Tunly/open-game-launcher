@@ -1,12 +1,17 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
     env, fs,
     path::{Path, PathBuf},
-    process::Command,
+    process::{Child, Command},
+    thread,
+    time::{Instant, SystemTime, UNIX_EPOCH},
 };
+use tauri::Emitter;
 
-#[derive(Debug, Serialize, Clone)]
+const GAME_LIBRARY_CACHE_VERSION: u32 = 1;
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct InstalledGame {
     id: String,
@@ -28,7 +33,7 @@ pub struct InstalledGame {
     status: GameStatus,
     platform: Platform,
     install_path: Option<String>,
-    #[serde(skip_serializing)]
+    #[serde(skip_serializing_if = "Option::is_none")]
     launch_uri: Option<String>,
     #[serde(rename = "lastPlayed", skip_serializing_if = "Option::is_none")]
     last_played_at: Option<String>,
@@ -36,13 +41,13 @@ pub struct InstalledGame {
     playtime_minutes: Option<u32>,
 }
 
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "snake_case")]
 pub enum GameStatus {
     Installed,
 }
 
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "snake_case")]
 pub enum Platform {
     Windows,
@@ -50,7 +55,7 @@ pub enum Platform {
     Macos,
 }
 
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub enum LogoPosition {
     BottomLeft,
@@ -59,7 +64,7 @@ pub enum LogoPosition {
     BottomCenter,
 }
 
-#[derive(Debug, Serialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 struct LogoLayout {
     position: LogoPosition,
@@ -86,6 +91,14 @@ pub struct VerifyGameFilesResponse {
     status: VerificationStatus,
 }
 
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct GameActivityUpdate {
+    game_id: String,
+    last_played: Option<String>,
+    playtime_minutes: Option<u32>,
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum VerificationStatus {
@@ -93,8 +106,101 @@ pub enum VerificationStatus {
     RepairRequired,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AddManualGameRequest {
+    title: String,
+    install_path: String,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct InstalledGamesCache {
+    version: u32,
+    games: Vec<InstalledGame>,
+}
+
 #[tauri::command]
 pub fn list_installed_games() -> Result<Vec<InstalledGame>, String> {
+    if let Some(games) = read_installed_games_cache() {
+        return Ok(games);
+    }
+
+    refresh_installed_games()
+}
+
+#[tauri::command]
+pub fn refresh_installed_games() -> Result<Vec<InstalledGame>, String> {
+    let mut games = BTreeMap::<String, InstalledGame>::new();
+    let cached_games = read_installed_games_cache().unwrap_or_default();
+    let cached_activity = cached_games
+        .iter()
+        .map(|game| (game.id.clone(), game.clone()))
+        .collect::<HashMap<_, _>>();
+
+    for game in cached_games.into_iter().filter(is_manual_game) {
+        games.insert(game.id.clone(), game);
+    }
+
+    for mut game in scan_installed_games() {
+        if let Some(cached_game) = cached_activity.get(&game.id) {
+            merge_cached_game_activity(&mut game, cached_game);
+        }
+
+        games.insert(game.id.clone(), game);
+    }
+
+    let games = games.into_values().collect::<Vec<_>>();
+    write_installed_games_cache(&games);
+
+    Ok(games)
+}
+
+#[tauri::command]
+pub fn add_manual_game(input: AddManualGameRequest) -> Result<InstalledGame, String> {
+    let title = input.title.trim();
+    if title.is_empty() {
+        return Err("Titel darf nicht leer sein.".to_string());
+    }
+
+    let install_path = input.install_path.trim();
+    if install_path.is_empty() {
+        return Err("Installationspfad darf nicht leer sein.".to_string());
+    }
+
+    let path = PathBuf::from(install_path);
+    if !path.exists() {
+        return Err(format!("Pfad wurde nicht gefunden: {install_path}"));
+    }
+
+    let asset_root = if path.is_dir() {
+        path.as_path()
+    } else {
+        path.parent().unwrap_or(path.as_path())
+    };
+    let mut game = installed_game(
+        &format!("manual-{title}-{install_path}"),
+        title.to_string(),
+        "Manual".to_string(),
+        Some(path.to_string_lossy().to_string()),
+        find_local_banner_asset(asset_root),
+    );
+    game.icon_url = find_local_icon_asset(asset_root);
+    game.logo_url = find_local_logo_asset(asset_root);
+
+    let mut games = BTreeMap::<String, InstalledGame>::new();
+    for cached_game in read_installed_games_cache().unwrap_or_default() {
+        games.insert(cached_game.id.clone(), cached_game);
+    }
+    games.insert(game.id.clone(), game.clone());
+
+    let games = games.into_values().collect::<Vec<_>>();
+    write_installed_games_cache(&games);
+
+    Ok(game)
+}
+
+fn scan_installed_games() -> Vec<InstalledGame> {
     let mut games = BTreeMap::<String, InstalledGame>::new();
 
     for game in scan_steam_games() {
@@ -117,11 +223,34 @@ pub fn list_installed_games() -> Result<Vec<InstalledGame>, String> {
         games.entry(game.id.clone()).or_insert(game);
     }
 
-    Ok(games.into_values().collect())
+    games.into_values().collect()
+}
+
+fn is_manual_game(game: &InstalledGame) -> bool {
+    game.id.starts_with("manual-")
+}
+
+fn merge_cached_game_activity(game: &mut InstalledGame, cached_game: &InstalledGame) {
+    match (&game.last_played_at, &cached_game.last_played_at) {
+        (Some(current), Some(cached)) if cached > current => {
+            game.last_played_at = Some(cached.clone());
+        }
+        (None, Some(cached)) => {
+            game.last_played_at = Some(cached.clone());
+        }
+        _ => {}
+    }
+
+    if let Some(cached_minutes) = cached_game.playtime_minutes {
+        game.playtime_minutes = Some(
+            game.playtime_minutes
+                .map_or(cached_minutes, |minutes| minutes.max(cached_minutes)),
+        );
+    }
 }
 
 #[tauri::command]
-pub fn launch_game(game_id: String) -> Result<LaunchGameResponse, String> {
+pub fn launch_game(app: tauri::AppHandle, game_id: String) -> Result<LaunchGameResponse, String> {
     let game_id = normalize_game_id(game_id)?;
     println!("[open-game-launcher] launch_game requested for {game_id}");
     let game = list_installed_games()?
@@ -129,7 +258,13 @@ pub fn launch_game(game_id: String) -> Result<LaunchGameResponse, String> {
         .find(|game| game.id == game_id)
         .ok_or_else(|| format!("Game '{game_id}' wurde nicht gefunden."))?;
 
-    launch_installed_game(&game)?;
+    let child = launch_installed_game(&game)?;
+    if let Some(update) = record_game_launch_started(&game.id) {
+        emit_game_activity_update(&app, &update);
+    }
+    if let Some(child) = child {
+        record_game_play_session_when_finished(app, game.id.clone(), child);
+    }
 
     Ok(LaunchGameResponse {
         game_id,
@@ -254,11 +389,49 @@ fn scan_steam_games() -> Vec<InstalledGame> {
     games
 }
 
+fn read_installed_games_cache() -> Option<Vec<InstalledGame>> {
+    let cache_path = installed_games_cache_path()?;
+    let contents = fs::read_to_string(cache_path).ok()?;
+    let cache = serde_json::from_str::<InstalledGamesCache>(&contents).ok()?;
+
+    (cache.version == GAME_LIBRARY_CACHE_VERSION).then_some(cache.games)
+}
+
+fn write_installed_games_cache(games: &[InstalledGame]) {
+    let Some(cache_path) = installed_games_cache_path() else {
+        return;
+    };
+
+    if let Some(parent) = cache_path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+
+    let cache = InstalledGamesCache {
+        version: GAME_LIBRARY_CACHE_VERSION,
+        games: games.to_vec(),
+    };
+
+    if let Ok(contents) = serde_json::to_string_pretty(&cache) {
+        let _ = fs::write(cache_path, contents);
+    }
+}
+
+fn installed_games_cache_path() -> Option<PathBuf> {
+    dirs::data_local_dir()
+        .or_else(dirs::data_dir)
+        .map(|data_dir| {
+            data_dir
+                .join("open-game-launcher")
+                .join("installed-games.json")
+        })
+}
+
 fn scan_epic_games() -> Vec<InstalledGame> {
     let manifest_dir = PathBuf::from(r"C:\ProgramData\Epic\EpicGamesLauncher\Data\Manifests");
     let Ok(entries) = fs::read_dir(manifest_dir) else {
         return Vec::new();
     };
+    let catalog_cache = read_epic_catalog_cache();
 
     entries
         .flatten()
@@ -282,12 +455,33 @@ fn scan_epic_games() -> Vec<InstalledGame> {
                 .map(str::trim)
                 .filter(|location| !location.is_empty())
                 .map(ToOwned::to_owned);
-            let cover_url = install_path
-                .as_ref()
-                .and_then(|path| find_local_banner_asset(&PathBuf::from(path)));
-            let logo_url = install_path
-                .as_ref()
-                .and_then(|path| find_local_logo_asset(&PathBuf::from(path)));
+            let install_root = install_path.as_ref().map(PathBuf::from);
+            let epic_assets = find_epic_launcher_assets(&value, &title, &catalog_cache);
+            let cover_url = epic_assets.cover_url.or_else(|| {
+                install_root
+                    .as_ref()
+                    .and_then(|path| find_local_banner_asset(path))
+            });
+            let logo_url = epic_assets.logo_url.or_else(|| {
+                install_root
+                    .as_ref()
+                    .and_then(|path| find_local_logo_asset(path))
+            });
+            let icon_url = epic_assets.icon_url.or_else(|| {
+                install_root
+                    .as_ref()
+                    .and_then(|path| find_local_icon_asset(path))
+            });
+
+            let cover_url = cover_url.or_else(|| {
+                value
+                    .get("VaultThumbnailUrl")
+                    .and_then(|url| url.as_str())
+                    .map(str::trim)
+                    .filter(|url| !url.is_empty())
+                    .map(ToOwned::to_owned)
+            });
+            let icon_url = icon_url.or_else(|| cover_url.clone());
 
             let mut game = installed_game(
                 &format!("epic-{title}"),
@@ -297,13 +491,292 @@ fn scan_epic_games() -> Vec<InstalledGame> {
                 cover_url,
             );
             game.logo_url = logo_url;
-            game.icon_url = install_path
+            game.icon_url = icon_url;
+            if let Some(timestamp) = install_root
                 .as_ref()
-                .and_then(|path| find_local_icon_asset(&PathBuf::from(path)));
+                .and_then(|path| get_dir_last_modified(path))
+            {
+                game.last_played_at = Some(unix_timestamp_to_iso(timestamp));
+            }
 
             Some(game)
         })
         .collect()
+}
+
+#[derive(Default)]
+struct EpicLauncherAssets {
+    cover_url: Option<String>,
+    logo_url: Option<String>,
+    icon_url: Option<String>,
+}
+
+#[derive(Clone)]
+struct EpicImageCandidate {
+    url: String,
+    image_type: String,
+    width: Option<u64>,
+    height: Option<u64>,
+}
+
+fn find_epic_launcher_assets(
+    manifest: &serde_json::Value,
+    title: &str,
+    catalog_cache: &[serde_json::Value],
+) -> EpicLauncherAssets {
+    let mut images = Vec::new();
+    collect_epic_image_candidates(manifest, &mut images);
+
+    let identifiers = epic_manifest_identifiers(manifest);
+    for item in catalog_cache
+        .iter()
+        .filter(|item| epic_catalog_item_matches(item, title, &identifiers))
+    {
+        collect_epic_image_candidates(item, &mut images);
+    }
+
+    EpicLauncherAssets {
+        cover_url: select_epic_image(&images, EpicImagePurpose::Cover),
+        logo_url: select_epic_image(&images, EpicImagePurpose::Logo),
+        icon_url: select_epic_image(&images, EpicImagePurpose::Icon),
+    }
+}
+
+fn read_epic_catalog_cache() -> Vec<serde_json::Value> {
+    let cache_path =
+        PathBuf::from(r"C:\ProgramData\Epic\EpicGamesLauncher\Data\Catalog\catcache.bin");
+    let Ok(contents) = fs::read_to_string(cache_path) else {
+        return Vec::new();
+    };
+
+    let decoded =
+        if contents.trim_start().starts_with('[') || contents.trim_start().starts_with('{') {
+            contents
+        } else {
+            let Some(bytes) = decode_base64(contents.trim()) else {
+                return Vec::new();
+            };
+            String::from_utf8_lossy(&bytes).into_owned()
+        };
+
+    match serde_json::from_str::<serde_json::Value>(&decoded) {
+        Ok(serde_json::Value::Array(items)) => items,
+        Ok(value) => vec![value],
+        Err(_) => Vec::new(),
+    }
+}
+
+fn epic_manifest_identifiers(manifest: &serde_json::Value) -> HashSet<String> {
+    [
+        "CatalogItemId",
+        "MainGameCatalogItemId",
+        "AppName",
+        "MainGameAppName",
+        "InstallationGuid",
+        "MandatoryAppFolderName",
+    ]
+    .into_iter()
+    .filter_map(|key| manifest.get(key).and_then(|value| value.as_str()))
+    .map(normalize_epic_match_value)
+    .filter(|value| !value.is_empty())
+    .collect()
+}
+
+fn epic_catalog_item_matches(
+    item: &serde_json::Value,
+    title: &str,
+    identifiers: &HashSet<String>,
+) -> bool {
+    let normalized_title = normalize_epic_match_value(title);
+    if item
+        .get("title")
+        .and_then(|value| value.as_str())
+        .map(normalize_epic_match_value)
+        .is_some_and(|value| value == normalized_title)
+    {
+        return true;
+    }
+
+    ["id", "namespace", "entitlementName"]
+        .into_iter()
+        .filter_map(|key| item.get(key).and_then(|value| value.as_str()))
+        .map(normalize_epic_match_value)
+        .any(|value| identifiers.contains(&value))
+}
+
+fn collect_epic_image_candidates(value: &serde_json::Value, images: &mut Vec<EpicImageCandidate>) {
+    match value {
+        serde_json::Value::Array(items) => {
+            for item in items {
+                collect_epic_image_candidates(item, images);
+            }
+        }
+        serde_json::Value::Object(object) => {
+            if let Some(url) = object
+                .get("url")
+                .or_else(|| object.get("URL"))
+                .and_then(|value| value.as_str())
+                .map(str::trim)
+                .filter(|url| url.starts_with("http"))
+            {
+                let image_type = object
+                    .get("type")
+                    .or_else(|| object.get("Type"))
+                    .and_then(|value| value.as_str())
+                    .unwrap_or_default()
+                    .to_string();
+                let width = object.get("width").and_then(|value| value.as_u64());
+                let height = object.get("height").and_then(|value| value.as_u64());
+
+                if is_epic_image_candidate(&image_type, width, height) {
+                    push_unique_epic_image(
+                        images,
+                        EpicImageCandidate {
+                            url: url.to_string(),
+                            image_type,
+                            width,
+                            height,
+                        },
+                    );
+                }
+            }
+
+            for item in object.values() {
+                collect_epic_image_candidates(item, images);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn is_epic_image_candidate(image_type: &str, width: Option<u64>, height: Option<u64>) -> bool {
+    let normalized = image_type.to_lowercase();
+    width.zip(height).is_some()
+        || normalized.contains("image")
+        || normalized.contains("logo")
+        || normalized.contains("icon")
+        || normalized.contains("thumbnail")
+        || normalized.contains("box")
+}
+
+fn push_unique_epic_image(images: &mut Vec<EpicImageCandidate>, candidate: EpicImageCandidate) {
+    if !images.iter().any(|image| image.url == candidate.url) {
+        images.push(candidate);
+    }
+}
+
+enum EpicImagePurpose {
+    Cover,
+    Logo,
+    Icon,
+}
+
+fn select_epic_image(images: &[EpicImageCandidate], purpose: EpicImagePurpose) -> Option<String> {
+    images
+        .iter()
+        .max_by_key(|image| epic_image_score(image, &purpose))
+        .filter(|image| epic_image_score(image, &purpose) > 0)
+        .map(|image| image.url.clone())
+}
+
+fn epic_image_score(image: &EpicImageCandidate, purpose: &EpicImagePurpose) -> i32 {
+    let image_type = image.image_type.to_lowercase();
+    let is_wide = image
+        .width
+        .zip(image.height)
+        .is_some_and(|(width, height)| width >= height);
+    let is_squareish = image
+        .width
+        .zip(image.height)
+        .is_some_and(|(width, height)| {
+            let smaller = width.min(height).max(1);
+            let larger = width.max(height);
+            larger <= smaller * 2
+        });
+
+    match purpose {
+        EpicImagePurpose::Cover => {
+            let mut score = if is_wide { 40 } else { 5 };
+            if image_type.contains("dieselgamebox") && !image_type.contains("tall") {
+                score += 90;
+            }
+            if image_type.contains("wide")
+                || image_type.contains("hero")
+                || image_type.contains("featured")
+                || image_type.contains("background")
+            {
+                score += 75;
+            }
+            if image_type.contains("tall") || image_type.contains("portrait") {
+                score -= 60;
+            }
+            score
+        }
+        EpicImagePurpose::Logo => {
+            let mut score = 0;
+            if image_type.contains("logo") || image_type.contains("title") {
+                score += 100;
+            }
+            if image_type.contains("wide") {
+                score += 15;
+            }
+            score
+        }
+        EpicImagePurpose::Icon => {
+            let mut score = if is_squareish { 25 } else { 5 };
+            if image_type.contains("thumbnail")
+                || image_type.contains("icon")
+                || image_type.contains("small")
+            {
+                score += 85;
+            }
+            if image_type.contains("tall") || image_type.contains("dieselgameboxtall") {
+                score += 35;
+            }
+            score
+        }
+    }
+}
+
+fn normalize_epic_match_value(value: &str) -> String {
+    value
+        .trim()
+        .to_lowercase()
+        .chars()
+        .filter(|character| character.is_ascii_alphanumeric())
+        .collect()
+}
+
+fn decode_base64(input: &str) -> Option<Vec<u8>> {
+    let mut output = Vec::new();
+    let mut buffer = 0u32;
+    let mut bits = 0u8;
+
+    for byte in input.bytes().filter(|byte| !byte.is_ascii_whitespace()) {
+        if byte == b'=' {
+            break;
+        }
+
+        let value = match byte {
+            b'A'..=b'Z' => byte - b'A',
+            b'a'..=b'z' => byte - b'a' + 26,
+            b'0'..=b'9' => byte - b'0' + 52,
+            b'+' => 62,
+            b'/' => 63,
+            _ => return None,
+        } as u32;
+
+        buffer = (buffer << 6) | value;
+        bits += 6;
+
+        while bits >= 8 {
+            bits -= 8;
+            output.push((buffer >> bits) as u8);
+            buffer &= (1 << bits) - 1;
+        }
+    }
+
+    Some(output)
 }
 
 fn scan_gog_games() -> Vec<InstalledGame> {
@@ -435,6 +908,9 @@ fn scan_ubisoft_games() -> Vec<InstalledGame> {
         game.icon_url = launcher_assets
             .icon_url
             .or_else(|| find_local_icon_asset(&install.install_dir));
+        if let Some(timestamp) = get_dir_last_modified(&install.install_dir) {
+            game.last_played_at = Some(unix_timestamp_to_iso(timestamp));
+        }
 
         games.push(game);
     }
@@ -526,6 +1002,9 @@ fn collect_xbox_games_from_roots(roots: Vec<PathBuf>) -> Vec<InstalledGame> {
         game.icon_url = find_local_icon_asset(&root)
             .or_else(|| game.logo_url.clone())
             .or_else(|| game.cover_url.clone());
+        if let Some(timestamp) = get_dir_last_modified(&root) {
+            game.last_played_at = Some(unix_timestamp_to_iso(timestamp));
+        }
 
         games.push(game);
     }
@@ -658,6 +1137,9 @@ fn collect_directory_games_with_title_resolver(
             );
             game.logo_url = find_local_logo_asset(&path);
             game.icon_url = find_local_icon_asset(&path);
+            if let Some(timestamp) = get_dir_last_modified(&path) {
+                game.last_played_at = Some(unix_timestamp_to_iso(timestamp));
+            }
 
             games.push(game);
         }
@@ -1498,10 +1980,15 @@ fn next_non_empty_line(lines: &[&str], start: usize) -> Option<usize> {
 fn get_dir_last_modified(path: &Path) -> Option<u64> {
     let metadata = fs::metadata(path).ok()?;
     let modified = metadata.modified().ok()?;
-    modified
-        .duration_since(std::time::UNIX_EPOCH)
-        .ok()
-        .map(|d| d.as_secs())
+    system_time_to_unix_timestamp(modified)
+}
+
+fn current_unix_timestamp() -> u64 {
+    system_time_to_unix_timestamp(SystemTime::now()).unwrap_or_default()
+}
+
+fn system_time_to_unix_timestamp(time: SystemTime) -> Option<u64> {
+    time.duration_since(UNIX_EPOCH).ok().map(|d| d.as_secs())
 }
 
 fn steam_app_id_from_manifest_name(file_name: &str) -> Option<String> {
@@ -1925,10 +2412,10 @@ fn installed_game(
     }
 }
 
-fn launch_installed_game(game: &InstalledGame) -> Result<(), String> {
+fn launch_installed_game(game: &InstalledGame) -> Result<Option<Child>, String> {
     if let Some(uri) = &game.launch_uri {
         open_uri(uri).map_err(|error| format!("Konnte {} nicht starten: {error}", game.title))?;
-        return Ok(());
+        return Ok(None);
     }
 
     let Some(install_path) = game.install_path.as_ref().map(PathBuf::from) else {
@@ -1942,7 +2429,7 @@ fn launch_installed_game(game: &InstalledGame) -> Result<(), String> {
     Command::new(&executable)
         .current_dir(working_dir)
         .spawn()
-        .map(|_| ())
+        .map(Some)
         .map_err(|error| error.to_string())
 }
 
@@ -1961,7 +2448,76 @@ fn open_uri(uri: &str) -> std::io::Result<()> {
     Ok(())
 }
 
+fn record_game_launch_started(game_id: &str) -> Option<GameActivityUpdate> {
+    update_cached_game_activity(game_id, Some(current_unix_timestamp()), None)
+}
+
+fn record_game_play_session_when_finished(
+    app: tauri::AppHandle,
+    game_id: String,
+    mut child: Child,
+) {
+    thread::spawn(move || {
+        let started_at = Instant::now();
+        if child.wait().is_err() {
+            return;
+        }
+
+        let elapsed_seconds = started_at.elapsed().as_secs();
+        let played_minutes = ((elapsed_seconds + 59) / 60).max(1).min(u32::MAX as u64) as u32;
+        if let Some(update) = update_cached_game_activity(
+            &game_id,
+            Some(current_unix_timestamp()),
+            Some(played_minutes),
+        ) {
+            emit_game_activity_update(&app, &update);
+        }
+    });
+}
+
+fn update_cached_game_activity(
+    game_id: &str,
+    last_played: Option<u64>,
+    add_playtime_minutes: Option<u32>,
+) -> Option<GameActivityUpdate> {
+    let mut games = read_installed_games_cache().unwrap_or_default();
+    let Some(game) = games.iter_mut().find(|game| game.id == game_id) else {
+        return None;
+    };
+
+    if let Some(timestamp) = last_played {
+        game.last_played_at = Some(unix_timestamp_to_iso(timestamp));
+    }
+
+    if let Some(minutes) = add_playtime_minutes {
+        let current = game.playtime_minutes.unwrap_or_default();
+        game.playtime_minutes = Some(current.saturating_add(minutes));
+    }
+
+    let update = GameActivityUpdate {
+        game_id: game_id.to_string(),
+        last_played: game.last_played_at.clone(),
+        playtime_minutes: game.playtime_minutes,
+    };
+
+    write_installed_games_cache(&games);
+    Some(update)
+}
+
+fn emit_game_activity_update(app: &tauri::AppHandle, update: &GameActivityUpdate) {
+    let _ = app.emit("game_activity_updated", update);
+}
+
 fn find_launch_executable(install_path: &Path, title: &str) -> Option<PathBuf> {
+    if install_path.is_file()
+        && install_path
+            .extension()
+            .and_then(|extension| extension.to_str())
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("exe"))
+    {
+        return Some(install_path.to_path_buf());
+    }
+
     let title_score = normalize_executable_name(title);
     let mut candidates = Vec::new();
     collect_executable_candidates(install_path, 0, &mut candidates);

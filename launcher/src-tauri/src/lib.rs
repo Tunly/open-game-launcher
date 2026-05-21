@@ -4,6 +4,7 @@ use tauri::{Manager, PhysicalPosition, WebviewWindow, WindowEvent};
 
 pub fn run() {
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             if let Some(window) = app.get_webview_window("main") {
                 keep_window_on_visible_monitor(&window);
@@ -18,7 +19,9 @@ pub fn run() {
             commands::system::get_system_info,
             commands::system::get_default_install_dir,
             commands::system::get_hardware_info,
+            commands::games::add_manual_game,
             commands::games::list_installed_games,
+            commands::games::refresh_installed_games,
             commands::games::launch_game,
             commands::games::verify_game_files,
             commands::downloads::start_download,
@@ -46,7 +49,10 @@ fn keep_window_on_visible_monitor(window: &WebviewWindow) {
         return;
     }
 
-    let Ok(Some(monitor)) = window.current_monitor().or_else(|_| window.primary_monitor()) else {
+    let Ok(Some(monitor)) = window
+        .current_monitor()
+        .or_else(|_| window.primary_monitor())
+    else {
         let _ = window.center();
         return;
     };

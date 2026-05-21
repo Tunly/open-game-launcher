@@ -4,12 +4,14 @@ import {
   CircleHelp,
   Clock3,
   Cloud,
+  FileSearch,
   Gamepad2,
   Grid2X2,
   Heart,
   Laptop,
   Monitor,
   Play,
+  RefreshCw,
   Search,
   Settings,
   SlidersHorizontal,
@@ -18,12 +20,22 @@ import {
   Sparkles,
   X,
 } from "lucide-react";
+import { open } from "@tauri-apps/plugin-dialog";
+import { listen } from "@tauri-apps/api/event";
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 
 import { getGameAssetUrl, getGameBannerStyle } from "../lib/assets";
-import { launchGame, listInstalledGames, startDownload } from "../lib/launcher";
+import { addManualGame, launchGame, listInstalledGames, refreshInstalledGames, startDownload } from "../lib/launcher";
 import type { Game } from "../lib/types";
+
+const STARTUP_LIBRARY_RESCAN_KEY = "launcher_startup_library_rescan_done";
+
+type GameActivityUpdate = {
+  gameId: string;
+  lastPlayed?: string | null;
+  playtimeMinutes?: number | null;
+};
 
 // ----------------------------------------------------
 // FALLBACK MOCK GAMES FOR WEB/BROWSER DEMONSTRATION
@@ -318,6 +330,11 @@ function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
 }
 
+function executableTitleFromPath(path: string) {
+  const fileName = path.split(/[\\/]/).pop() ?? path;
+  return fileName.replace(/\.exe$/i, "").replace(/[_-]+/g, " ").trim() || fileName;
+}
+
 function getGameLogoCandidates(game: Game) {
   return [game.logoUrl, ...(game.logoUrls ?? [])].filter(
     (logoUrl, index, logoUrls): logoUrl is string =>
@@ -521,6 +538,11 @@ export function LibraryPage() {
   );
   const [searchQuery, setSearchQuery] = useState("");
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [isAddGameOpen, setIsAddGameOpen] = useState(false);
+  const [addGameTitle, setAddGameTitle] = useState("");
+  const [addGamePath, setAddGamePath] = useState("");
+  const [addGameError, setAddGameError] = useState<string | null>(null);
+  const [isAddingGame, setIsAddingGame] = useState(false);
 
   // ----------------------------------------------------
   // FILTER STATES
@@ -815,47 +837,110 @@ export function LibraryPage() {
     parsedSearchText,
   ]);
 
-  // Loading Scanning Games
+  async function loadInstalledGames(
+    forceRefresh = false,
+    shouldApplyResult: () => boolean = () => true,
+    showLoading = true,
+  ) {
+    if (showLoading) {
+      setIsDiscoveringGames(true);
+      setDiscoveryMessage(null);
+    }
+
+    try {
+      const games = forceRefresh
+        ? await refreshInstalledGames()
+        : await listInstalledGames();
+
+      if (!shouldApplyResult()) {
+        return;
+      }
+
+      setInstalledGames(games);
+      setDiscoveryMessage(
+        games.length > 0
+          ? null
+          : "Keine installierten Steam-, Epic- oder GOG-Spiele gefunden. Demo-Modus geladen.",
+      );
+    } catch {
+      if (!shouldApplyResult()) {
+        return;
+      }
+
+      setInstalledGames([]);
+      setDiscoveryMessage(
+        forceRefresh
+          ? "Rescan nicht verfugbar. Zeige Mock-Bibliothek."
+          : "Gespeicherte Bibliothek nicht verfugbar. Zeige Mock-Bibliothek.",
+      );
+    } finally {
+      if (showLoading && shouldApplyResult()) {
+        setIsDiscoveringGames(false);
+      }
+    }
+  }
+
+  function shouldRunStartupLibraryRescan() {
+    try {
+      if (sessionStorage.getItem(STARTUP_LIBRARY_RESCAN_KEY) === "true") {
+        return false;
+      }
+
+      sessionStorage.setItem(STARTUP_LIBRARY_RESCAN_KEY, "true");
+      return true;
+    } catch {
+      return true;
+    }
+  }
+
+  // Load cached games first, then rescan once per app session for new installs.
   useEffect(() => {
     let isMounted = true;
 
-    async function loadInstalledGames() {
-      setIsDiscoveringGames(true);
-      setDiscoveryMessage(null);
+    async function loadLibrary() {
+      await loadInstalledGames(false, () => isMounted);
 
-      try {
-        const games = await listInstalledGames();
-
-        if (!isMounted) {
-          return;
-        }
-
-        setInstalledGames(games);
-        setDiscoveryMessage(
-          games.length > 0
-            ? null
-            : "Keine installierten Steam-, Epic- oder GOG-Spiele gefunden. Demo-Modus geladen.",
-        );
-      } catch {
-        if (!isMounted) {
-          return;
-        }
-
-        setInstalledGames([]);
-        setDiscoveryMessage(
-          "Scan nicht verfugbar. Zeige Mock-Bibliothek.",
-        );
-      } finally {
-        if (isMounted) {
-          setIsDiscoveringGames(false);
-        }
+      if (isMounted && shouldRunStartupLibraryRescan()) {
+        await loadInstalledGames(true, () => isMounted, false);
       }
     }
 
-    void loadInstalledGames();
+    void loadLibrary();
 
     return () => {
       isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const unlistenPromise = listen<GameActivityUpdate>(
+      "game_activity_updated",
+      (event) => {
+        if (!isMounted) {
+          return;
+        }
+
+        const update = event.payload;
+        const applyUpdate = (game: Game): Game =>
+          game.id === update.gameId
+            ? {
+                ...game,
+                lastPlayed: update.lastPlayed ?? game.lastPlayed,
+                lastPlayedAt: update.lastPlayed ?? game.lastPlayedAt,
+                playtimeMinutes: update.playtimeMinutes ?? game.playtimeMinutes,
+              }
+            : game;
+
+        setInstalledGames((current) => current.map(applyUpdate));
+        setSelectedGame((current) => (current ? applyUpdate(current) : current));
+      },
+    );
+
+    return () => {
+      isMounted = false;
+      void unlistenPromise.then((unlisten) => unlisten());
     };
   }, []);
 
@@ -929,6 +1014,63 @@ export function LibraryPage() {
       setStatusMessage(response.message);
     } catch (error) {
       setStatusMessage(getErrorMessage(error));
+    }
+  }
+
+  async function handleAddManualGame() {
+    const title = addGameTitle.trim();
+    const installPath = addGamePath.trim();
+
+    if (!title || !installPath) {
+      setAddGameError("Titel und EXE werden benotigt.");
+      return;
+    }
+
+    setIsAddingGame(true);
+    setAddGameError(null);
+    setStatusMessage(null);
+
+    try {
+      const game = await addManualGame({ title, installPath });
+      setInstalledGames((current) => {
+        const withoutDuplicate = current.filter((item) => item.id !== game.id);
+        return [...withoutDuplicate, game];
+      });
+      setSelectedGame(game);
+      setAddGameTitle("");
+      setAddGamePath("");
+      setAddGameError(null);
+      setIsAddGameOpen(false);
+      setStatusMessage(`${game.title} wurde zur Bibliothek hinzugefugt.`);
+    } catch (error) {
+      setAddGameError(getErrorMessage(error));
+    } finally {
+      setIsAddingGame(false);
+    }
+  }
+
+  async function handleSelectGameExecutable() {
+    setAddGameError(null);
+
+    try {
+      const selectedPath = await open({
+        title: "Select game executable",
+        multiple: false,
+        directory: false,
+        filters: [{ name: "Windows executable", extensions: ["exe"] }],
+      });
+
+      if (typeof selectedPath !== "string") {
+        return;
+      }
+
+      setAddGamePath(selectedPath);
+
+      if (!addGameTitle.trim()) {
+        setAddGameTitle(executableTitleFromPath(selectedPath));
+      }
+    } catch (error) {
+      setAddGameError(getErrorMessage(error));
     }
   }
 
@@ -1066,10 +1208,21 @@ export function LibraryPage() {
 
               {/* LIST TITLE */}
               <div className="px-2 pb-1 pt-2 text-[13px] font-black uppercase flex items-center justify-between">
-                <span>
+                <span className="min-w-0 truncate">
                   - Installed ({filteredGames.length}
                   {normalizedSearchQuery || activePlatformFilter !== "all" || Object.values(advancedFilters).some(v => Array.isArray(v) ? v.length > 0 : v !== "") ? ` / ${installedGames.length || fallbackMockGames.length}` : ""})
                 </span>
+                <div className="flex shrink-0 items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => void loadInstalledGames(true)}
+                  disabled={isDiscoveringGames}
+                  className="grid h-7 w-7 place-items-center border-2 border-black bg-[#f4ead8] text-[#171411] transition hover:bg-[#8cf5e4] disabled:cursor-not-allowed disabled:opacity-60"
+                  aria-label="Bibliothek neu scannen"
+                  title="Bibliothek neu scannen"
+                >
+                  <RefreshCw className={`h-3.5 w-3.5 ${isDiscoveringGames ? "animate-spin" : ""}`} />
+                </button>
                 {(searchQuery || activePlatformFilter !== "all" || Object.values(advancedFilters).some(v => Array.isArray(v) ? v.length > 0 : v !== "")) && (
                   <button
                     onClick={clearActiveCollection}
@@ -1078,12 +1231,13 @@ export function LibraryPage() {
                     Reset All
                   </button>
                 )}
+                </div>
               </div>
 
               {/* RENDER LIST ROWS */}
               {isDiscoveringGames ? (
                 <p className="neo-copy px-3 py-2 text-[11px] font-bold uppercase text-[#55504a]">
-                  Lokale Spiele werden gesucht...
+                  Bibliothek wird geladen...
                 </p>
               ) : filteredGames.length > 0 ? (
                 filteredGames.map((game) => (
@@ -1472,11 +1626,11 @@ export function LibraryPage() {
           {isDiscoveringGames ? (
             <section className="grid min-h-[calc(100vh-124px)] place-items-center border-b-4 border-black bg-[#efe3cf] px-4 text-center" style={{ fontFamily: '"Arial Narrow", Impact, sans-serif' }}>
               <div className="max-w-[560px] border-4 border-black bg-[#fbf4e7] p-8 shadow-[8px_8px_0_#171411]">
-                <Settings className="h-16 w-16 animate-[spin_4s_linear_infinite] text-[#169b83] mx-auto mb-4 border-4 border-black p-2 bg-[#efe3cf]" />
-                <h2 className="neo-title text-3xl mb-2 uppercase text-[#171411]">SCANNING LIBRARY</h2>
+                <Settings className="mx-auto mb-4 h-10 w-10 animate-[spin_4s_linear_infinite] text-[#087d6d]" />
+                <h2 className="neo-title text-3xl mb-2 uppercase text-[#171411]">LOADING LIBRARY</h2>
                 <div className="neo-dots h-1.5 w-12 bg-black mx-auto mb-4" />
                 <p className="neo-copy text-[14px] font-black uppercase text-[#6c675e]">
-                  Searching for local Steam, Epic, and GOG installations...
+                  Reading saved games. Use rescan when installs change.
                 </p>
               </div>
             </section>
@@ -1486,11 +1640,15 @@ export function LibraryPage() {
                 const logoCandidates = getGameLogoCandidates(enrichedSelectedGame);
                 const logoCandidateIndex = logoCandidateIndexes[enrichedSelectedGame.id] ?? 0;
                 const logoSrc = getGameAssetUrl(logoCandidates[logoCandidateIndex]);
+                const gameSource = getGameSource(enrichedSelectedGame);
                 const hasUbisoftBanner =
-                  getGameSource(enrichedSelectedGame) === "ubisoft" &&
-                  Boolean(enrichedSelectedGame.coverUrl);
+                  gameSource === "ubisoft" && Boolean(enrichedSelectedGame.coverUrl);
+                const hasEpicBanner =
+                  gameSource === "epic" && Boolean(enrichedSelectedGame.coverUrl);
                 const shouldShowTextFallback =
-                  !hasUbisoftBanner && (!logoSrc || !loadedLogoUrls.has(logoSrc));
+                  !hasUbisoftBanner &&
+                  !hasEpicBanner &&
+                  (!logoSrc || !loadedLogoUrls.has(logoSrc));
                 const logoPositionClass = getLogoPositionClass(enrichedSelectedGame);
                 const logoPlacementStyle = getLogoPlacementStyle(enrichedSelectedGame);
 
@@ -1498,7 +1656,9 @@ export function LibraryPage() {
                   <section className="border-b-4 border-black bg-[#171411]">
                     <div
                       className={`steam-game-banner-hero relative overflow-hidden bg-[#0f141b] ${getFallbackBannerClass(enrichedSelectedGame)}`}
-                      style={getGameBannerStyle(enrichedSelectedGame.coverUrl)}
+                      style={getGameBannerStyle(enrichedSelectedGame.coverUrl, {
+                        backgroundPosition: gameSource === "epic" ? "center 24%" : undefined,
+                      })}
                     >
                       <div className="absolute inset-0 bg-[radial-gradient(circle,rgba(255,255,255,0.025)_1px,transparent_1px)] bg-[length:9px_9px]" />
                       {shouldShowTextFallback ? (
@@ -1868,11 +2028,11 @@ export function LibraryPage() {
                 </h1>
                 <p className="neo-copy mt-4 text-[13px] font-bold uppercase leading-6 text-[#55504a]">
                   {isDiscoveringGames
-                    ? "Lokale Spiele werden gesucht..."
+                    ? "Bibliothek wird geladen..."
                     : discoveryMessage}
                 </p>
                 <p className="neo-copy mt-3 text-[11px] font-bold uppercase leading-5 text-[#55504a]">
-                  Der Scan sucht aktuell nach Steam-, Epic-Games- und GOG-Installationen auf diesem PC.
+                  Rescan sucht nach Steam-, Epic-Games-, GOG-, Ubisoft- und Xbox-Installationen auf diesem PC.
                 </p>
               </div>
             </section>
@@ -1880,8 +2040,103 @@ export function LibraryPage() {
         </main>
       </div>
 
+      {isAddGameOpen ? (
+        <div className="fixed inset-0 z-[80] grid place-items-center bg-black/45 px-4">
+          <form
+            className="w-full max-w-[520px] border-4 border-black bg-[#fbf4e7] shadow-[8px_8px_0_#171411]"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void handleAddManualGame();
+            }}
+          >
+            <div className="flex items-center justify-between border-b-4 border-black bg-[#b7102a] px-4 py-3 text-white">
+              <h2 className="neo-title text-2xl uppercase leading-none">Add a Game</h2>
+              <button
+                type="button"
+                className="grid h-8 w-8 place-items-center border-2 border-black bg-[#fbf4e7] text-[#171411] shadow-[2px_2px_0_#171411]"
+                onClick={() => setIsAddGameOpen(false)}
+                aria-label="Close add game"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4 p-4">
+              <label className="block">
+                <span className="neo-copy block text-[11px] font-black uppercase text-[#55504a]">
+                  Game title
+                </span>
+                <input
+                  className="mt-1 h-11 w-full border-4 border-black bg-[#fffaf0] px-3 text-[14px] font-black uppercase outline-none shadow-[3px_3px_0_#171411]"
+                  value={addGameTitle}
+                  onChange={(event) => {
+                    setAddGameError(null);
+                    setAddGameTitle(event.target.value);
+                  }}
+                  placeholder="Example: Hollow Knight"
+                  autoFocus
+                />
+              </label>
+
+              <label className="block">
+                <span className="neo-copy block text-[11px] font-black uppercase text-[#55504a]">
+                  Executable
+                </span>
+                <div className="mt-1 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
+                  <input
+                    className="h-11 min-w-0 border-4 border-black bg-[#fffaf0] px-3 text-[13px] font-bold outline-none shadow-[3px_3px_0_#171411]"
+                    value={addGamePath}
+                    readOnly
+                    placeholder="No EXE selected"
+                  />
+                  <button
+                    type="button"
+                    className="flex h-11 items-center justify-center gap-2 border-4 border-black bg-[#e8c843] px-4 text-[12px] font-black uppercase shadow-[3px_3px_0_#171411]"
+                    onClick={() => void handleSelectGameExecutable()}
+                  >
+                    <FileSearch className="h-4 w-4" />
+                    Select EXE
+                  </button>
+                </div>
+              </label>
+
+              {addGameError ? (
+                <p className="neo-copy border-2 border-black bg-[#f5d6d9] px-3 py-2 text-[11px] font-black uppercase text-[#77101f]">
+                  {addGameError}
+                </p>
+              ) : null}
+
+              <div className="flex flex-wrap justify-end gap-2 border-t-2 border-black pt-3">
+                <button
+                  type="button"
+                  className="border-2 border-black bg-[#efe3cf] px-4 py-2 text-[12px] font-black uppercase"
+                  onClick={() => setIsAddGameOpen(false)}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={isAddingGame}
+                  className="border-2 border-black bg-[#169b83] px-4 py-2 text-[12px] font-black uppercase text-white shadow-[3px_3px_0_#171411] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {isAddingGame ? "Adding..." : "Save Game"}
+                </button>
+              </div>
+            </div>
+          </form>
+        </div>
+      ) : null}
+
       <footer className="flex h-10 items-center justify-between border-t-4 border-black bg-[#f4ead8] px-4 text-[14px] font-black">
-        <button type="button">+ Add a Game</button>
+        <button
+          type="button"
+          onClick={() => {
+            setAddGameError(null);
+            setIsAddGameOpen(true);
+          }}
+        >
+          + Add a Game
+        </button>
         <span className="hidden sm:inline">Downloads - 2 of 2 items Complete</span>
         <button type="button">Friends & Chat +</button>
       </footer>
