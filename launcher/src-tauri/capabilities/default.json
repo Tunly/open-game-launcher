@@ -3,5 +3,5 @@
   "identifier": "default",
   "description": "Default desktop capability for the main launcher window.",
   "windows": ["main"],
-  "permissions": ["core:default"]
+  "permissions": ["core:default", "dialog:allow-open"]
 }

@@ -57,6 +57,17 @@ export function listInstalledGames(): Promise<Game[]> {
   return invokeCommand<Game[]>("list_installed_games");
 }
 
+export function refreshInstalledGames(): Promise<Game[]> {
+  return invokeCommand<Game[]>("refresh_installed_games");
+}
+
+export function addManualGame(input: {
+  title: string;
+  installPath: string;
+}): Promise<Game> {
+  return invokeCommand<Game>("add_manual_game", { input });
+}
+
 export function launchGame(gameId: string): Promise<LaunchGameResponse> {
   return invokeCommand<LaunchGameResponse>("launch_game", { gameId });
 }
