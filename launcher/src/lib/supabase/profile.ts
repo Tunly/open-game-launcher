@@ -971,21 +971,63 @@ export async function getUserLibraryPreview(userId: string): Promise<LibraryPrev
   const client = getSupabaseClient();
   const { data, error } = await client
     .from("user_library")
-    .select("id, game_id, games(title, cover_url), user_game_stats(playtime_minutes, last_played_at)")
+    .select("id, game_id")
     .eq("user_id", userId)
     .limit(6);
+  if (isMissingSchemaError(error)) {
+    return [];
+  }
   handleError(error);
 
-  return (data ?? []).map((row) => {
-    const record = row as UnknownRecord;
-    const game = record.games as UnknownRecord | null;
-    const statsList = Array.isArray(record.user_game_stats)
-      ? (record.user_game_stats as UnknownRecord[])
-      : [];
-    const stats = statsList[0] ?? {};
+  const libraryItems = (data ?? []).map((row) => row as UnknownRecord);
+  const gameIds = Array.from(new Set(libraryItems.map((row) => rowString(row, "game_id")).filter(Boolean)));
+
+  let gamesById = new Map<string, UnknownRecord>();
+  if (gameIds.length > 0) {
+    const { data: gamesData, error: gamesError } = await client
+      .from("games")
+      .select("id, title, cover_url")
+      .in("id", gameIds);
+    if (isMissingSchemaError(gamesError)) {
+      return [];
+    }
+    handleError(gamesError);
+
+    gamesById = new Map(
+      (gamesData ?? []).map((row) => {
+        const record = row as UnknownRecord;
+        return [rowString(record, "id"), record];
+      }),
+    );
+  }
+
+  let statsByGameId = new Map<string, UnknownRecord>();
+  if (gameIds.length > 0) {
+    const { data: statsData, error: statsError } = await client
+      .from("user_game_stats")
+      .select("game_id, playtime_minutes, last_played_at")
+      .eq("user_id", userId)
+      .in("game_id", gameIds);
+    if (!isMissingSchemaError(statsError)) {
+      handleError(statsError);
+
+      statsByGameId = new Map(
+        (statsData ?? []).map((row) => {
+          const record = row as UnknownRecord;
+          return [rowString(record, "game_id"), record];
+        }),
+      );
+    }
+  }
+
+  return libraryItems.map((record) => {
+    const gameId = rowString(record, "game_id");
+    const game = gamesById.get(gameId) ?? null;
+    const stats = statsByGameId.get(gameId) ?? {};
+
     return {
       id: rowString(record, "id"),
-      gameId: rowString(record, "game_id"),
+      gameId,
       title: game ? rowString(game, "title", "Unknown Game") : "Unknown Game",
       coverUrl: game ? rowNullableString(game, "cover_url") : null,
       playtimeMinutes: rowNumber(stats, "playtime_minutes"),
@@ -998,20 +1040,69 @@ export async function getUserAchievementPreview(userId: string): Promise<Achieve
   const client = getSupabaseClient();
   const { data, error } = await client
     .from("user_achievements")
-    .select("id, achievement_id, game_id, unlocked_at, achievements(name, description, icon_url, rarity), games(title)")
+    .select("id, achievement_id, game_id, unlocked_at")
     .eq("user_id", userId)
     .order("unlocked_at", { ascending: false })
     .limit(8);
+  if (isMissingSchemaError(error)) {
+    return [];
+  }
   handleError(error);
 
-  return (data ?? []).map((row) => {
-    const record = row as UnknownRecord;
-    const achievement = record.achievements as UnknownRecord | null;
-    const game = record.games as UnknownRecord | null;
+  const achievementUnlocks = (data ?? []).map((row) => row as UnknownRecord);
+  const achievementIds = Array.from(
+    new Set(achievementUnlocks.map((row) => rowString(row, "achievement_id")).filter(Boolean)),
+  );
+  const gameIds = Array.from(new Set(achievementUnlocks.map((row) => rowString(row, "game_id")).filter(Boolean)));
+
+  let achievementsById = new Map<string, UnknownRecord>();
+  if (achievementIds.length > 0) {
+    const { data: achievementsData, error: achievementsError } = await client
+      .from("achievements")
+      .select("id, name, description, icon_url, rarity")
+      .in("id", achievementIds);
+    if (isMissingSchemaError(achievementsError)) {
+      return [];
+    }
+    handleError(achievementsError);
+
+    achievementsById = new Map(
+      (achievementsData ?? []).map((row) => {
+        const record = row as UnknownRecord;
+        return [rowString(record, "id"), record];
+      }),
+    );
+  }
+
+  let gamesById = new Map<string, UnknownRecord>();
+  if (gameIds.length > 0) {
+    const { data: gamesData, error: gamesError } = await client
+      .from("games")
+      .select("id, title")
+      .in("id", gameIds);
+    if (isMissingSchemaError(gamesError)) {
+      return [];
+    }
+    handleError(gamesError);
+
+    gamesById = new Map(
+      (gamesData ?? []).map((row) => {
+        const record = row as UnknownRecord;
+        return [rowString(record, "id"), record];
+      }),
+    );
+  }
+
+  return achievementUnlocks.map((record) => {
+    const achievementId = rowString(record, "achievement_id");
+    const gameId = rowString(record, "game_id");
+    const achievement = achievementsById.get(achievementId) ?? null;
+    const game = gamesById.get(gameId) ?? null;
+
     return {
       id: rowString(record, "id"),
-      achievementId: rowString(record, "achievement_id"),
-      gameId: rowString(record, "game_id"),
+      achievementId,
+      gameId,
       gameTitle: game ? rowNullableString(game, "title") : null,
       name: achievement ? rowString(achievement, "name", "Achievement") : "Achievement",
       description: achievement ? rowNullableString(achievement, "description") : null,

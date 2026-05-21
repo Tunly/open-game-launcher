@@ -210,7 +210,7 @@ export function AppShell({
                   aria-expanded={isProfileMenuOpen}
                   aria-haspopup="menu"
                   aria-label="Profilmenu offnen"
-                  className="flex h-12 items-center gap-2 border-[3px] border-black bg-[#1f1c0f] p-1 shadow-[3px_3px_0_#1f1c0f] transition hover:-translate-y-0.5"
+                  className="flex h-12 items-center gap-2 border-[3px] border-black bg-[#fff9ed] p-1 shadow-[3px_3px_0_#1f1c0f] transition hover:-translate-y-0.5 hover:bg-[#f6edd8]"
                   disabled={isAuthLoading || !isAuthConfigured}
                   type="button"
                   onClick={() => {
@@ -225,7 +225,7 @@ export function AppShell({
                   />
                   <ChevronDown
                     aria-hidden="true"
-                    className="mr-1 h-4 w-4 text-[#fff9ed]"
+                    className="mr-1 h-4 w-4 text-[#1f1c0f]"
                   />
                 </button>
 

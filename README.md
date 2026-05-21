@@ -242,6 +242,7 @@ The profile UI uses React Router, Supabase Auth context, typed Supabase wrapper 
 
 ## Development Notes
 
+- The fixed project design system is documented in `docs/PROJECT_DESIGN.md`. New UI work should follow the Retro Manga Launcher style instead of introducing generic dark dashboard patterns.
 - UI state is currently backed by a mix of mock data, local storage, Supabase Auth, and Supabase profile APIs.
 - Sensitive writes such as entitlements, purchases, achievements, notifications, and system activity should move behind a trusted backend or Supabase `service_role` API before production.
 - The Rust command layer is already split by domain so launcher, download, and system behavior can evolve independently.
