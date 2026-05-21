@@ -21,10 +21,7 @@ export function ProfileHeader({
         <div className="grid gap-6 border-4 border-black bg-[#fff9ed] p-4 shadow-[6px_6px_0_#1f1c0f] lg:grid-cols-[auto_minmax(0,1fr)_300px] lg:items-center">
           <ProfileAvatar profile={profile} />
           <div className="min-w-0">
-            <p className="neo-copy inline-block border-2 border-black bg-[#007166] px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-white">
-              @{profile.username}
-            </p>
-            <h1 className="neo-title mt-2 truncate text-[clamp(2.4rem,6vw,5.2rem)] leading-none text-[#171411]">
+            <h1 className="neo-title truncate text-[clamp(2.4rem,6vw,5.2rem)] leading-none text-[#171411]">
               {profile.displayName ?? profile.username}
             </h1>
             <p className="mt-3 max-w-2xl text-sm font-semibold leading-6 text-[#5b403f]">
