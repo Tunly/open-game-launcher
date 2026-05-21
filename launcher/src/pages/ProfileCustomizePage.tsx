@@ -59,6 +59,9 @@ export function ProfileCustomizePage() {
     () => themes.find((theme) => theme.id === selectedThemeId) ?? null,
     [selectedThemeId, themes],
   );
+  const hasHardwareShowcase = showcases.some(
+    (showcase) => showcase.type === "hardware_setup",
+  );
 
   function handleMove(id: string, direction: "up" | "down") {
     setShowcases((current) => {
@@ -103,6 +106,29 @@ export function ProfileCustomizePage() {
     }
   }
 
+  async function handleCreateHardwareShowcase() {
+    if (hasHardwareShowcase) return;
+
+    setIsSaving(true);
+    setErrorMessage(null);
+    try {
+      const created = await createShowcase({
+        config: {},
+        isEnabled: true,
+        sortOrder: showcases.length,
+        title: "Hardware Rig",
+        type: "hardware_setup",
+        visibility: "public",
+      });
+      setShowcases((current) => [...current, created]);
+      setMessage("Hardware rig showcase created.");
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : String(error));
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
   async function handleSave() {
     setIsSaving(true);
     setMessage(null);
@@ -136,23 +162,41 @@ export function ProfileCustomizePage() {
   return (
     <Frame title="Customize Profile" eyebrow={`@${profile.username}`}>
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
-        <section className="border border-white/10 bg-white/[0.05] p-5">
+        <section className="border-4 border-black bg-[#fff9ed] p-5 shadow-[6px_6px_0_#171411]">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h2 className="text-xl font-bold text-white">Showcases</h2>
-              <p className="mt-1 text-sm text-slate-400">
+              <p className="neo-copy inline-block border-2 border-black bg-[#b7102a] px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-white shadow-[2px_2px_0_#171411]">
+                Panels
+              </p>
+              <h2 className="neo-title mt-2 text-4xl leading-none text-[#171411]">
+                Showcases
+              </h2>
+              <p className="mt-1 text-sm font-semibold text-[#5b403f]">
                 Reorder, rename, hide, and tune profile panels.
               </p>
             </div>
-            <button
-              className="inline-flex h-10 items-center gap-2 border border-white/10 px-3 text-sm font-bold text-white hover:bg-white/[0.08]"
-              disabled={isSaving}
-              type="button"
-              onClick={() => void handleCreateCustomText()}
-            >
-              <Plus className="h-4 w-4" />
-              Custom text
-            </button>
+            <div className="flex flex-wrap gap-2">
+              {!hasHardwareShowcase ? (
+                <button
+                  className="neo-copy inline-flex h-10 items-center gap-2 border-2 border-black bg-[#007166] px-3 text-[10px] font-black uppercase tracking-[0.12em] text-white shadow-[3px_3px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#b7102a]"
+                  disabled={isSaving}
+                  type="button"
+                  onClick={() => void handleCreateHardwareShowcase()}
+                >
+                  <Plus className="h-4 w-4" />
+                  Hardware Rig
+                </button>
+              ) : null}
+              <button
+                className="neo-copy inline-flex h-10 items-center gap-2 border-2 border-black bg-[#fff9ed] px-3 text-[10px] font-black uppercase tracking-[0.12em] text-[#171411] shadow-[3px_3px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#8cf5e4]"
+                disabled={isSaving}
+                type="button"
+                onClick={() => void handleCreateCustomText()}
+              >
+                <Plus className="h-4 w-4" />
+                Custom text
+              </button>
+            </div>
           </div>
           <div className="mt-5">
             {showcases.length > 0 ? (
@@ -168,10 +212,15 @@ export function ProfileCustomizePage() {
         </section>
 
         <aside className="space-y-5">
-          <section className="border border-white/10 bg-white/[0.05] p-5">
-            <h2 className="text-xl font-bold text-white">Theme</h2>
+          <section className="border-4 border-black bg-[#fff9ed] p-5 shadow-[6px_6px_0_#171411]">
+            <p className="neo-copy inline-block border-2 border-black bg-[#171411] px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-[#fff9ed]">
+              Cosmetic
+            </p>
+            <h2 className="neo-title mt-2 text-4xl leading-none text-[#171411]">
+              Theme
+            </h2>
             <select
-              className="mt-4 h-11 w-full border border-white/10 bg-[#0f172a] px-3 text-white"
+              className="neo-copy mt-4 h-11 w-full border-2 border-black bg-[#f6edd8] px-3 text-xs font-black uppercase tracking-[0.08em] text-[#171411] shadow-[2px_2px_0_#171411] outline-none focus:bg-[#8cf5e4]"
               value={selectedThemeId}
               onChange={(event) => setSelectedThemeId(event.target.value)}
             >
@@ -191,7 +240,7 @@ export function ProfileCustomizePage() {
           {errorMessage ? <Status tone="error" message={errorMessage} /> : null}
           {message ? <Status tone="success" message={message} /> : null}
           <button
-            className="flex h-12 w-full items-center justify-center gap-2 bg-sky-400 px-4 text-sm font-black text-slate-950 hover:bg-sky-300 disabled:opacity-60"
+            className="neo-copy flex h-12 w-full items-center justify-center gap-2 border-[3px] border-black bg-[#b7102a] px-4 text-[12px] font-black uppercase tracking-[0.16em] text-white shadow-[5px_5px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#007166] disabled:opacity-60"
             disabled={isSaving}
             type="button"
             onClick={() => void handleSave()}
@@ -215,9 +264,17 @@ function Frame({
   title: string;
 }) {
   return (
-    <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-      {eyebrow ? <p className="text-sm font-bold uppercase text-sky-200">{eyebrow}</p> : null}
-      <h1 className="mb-6 text-4xl font-black text-white">{title}</h1>
+    <div className="mx-auto w-full max-w-[1220px] px-0 py-2">
+      <div className="mb-7 border-b-4 border-black pb-5">
+        {eyebrow ? (
+          <p className="neo-copy inline-flex border-2 border-black bg-[#b7102a] px-3 py-1 text-[11px] font-black uppercase tracking-[0.14em] text-white shadow-[3px_3px_0_#171411]">
+            {eyebrow}
+          </p>
+        ) : null}
+        <h1 className="neo-title mt-3 text-[clamp(3.4rem,13vw,6rem)] leading-[0.82] text-[#171411]">
+          {title}
+        </h1>
+      </div>
       {children}
     </div>
   );
@@ -225,24 +282,24 @@ function Frame({
 
 function LoadingPanel() {
   return (
-    <div className="grid min-h-80 place-items-center border border-white/10 bg-white/[0.05]">
-      <Loader2 className="h-8 w-8 animate-spin text-sky-300" />
+    <div className="grid min-h-80 place-items-center border-4 border-black bg-[#fff9ed] shadow-[6px_6px_0_#171411]">
+      <Loader2 className="h-8 w-8 animate-spin text-[#b7102a]" />
     </div>
   );
 }
 
 function Notice({ body, title }: { body: string; title: string }) {
   return (
-    <div className="border border-white/10 bg-black/20 p-4">
-      <h3 className="font-bold text-white">{title}</h3>
-      <p className="mt-2 text-sm leading-6 text-slate-400">{body}</p>
+    <div className="border-[3px] border-black bg-[#f6edd8] p-4 shadow-[3px_3px_0_#171411]">
+      <h3 className="neo-title text-3xl leading-none text-[#171411]">{title}</h3>
+      <p className="mt-2 text-sm font-semibold leading-6 text-[#5b403f]">{body}</p>
     </div>
   );
 }
 
 function Status({ message, tone }: { message: string; tone: "error" | "success" }) {
   return (
-    <div className={tone === "error" ? "border border-rose-300/30 bg-rose-500/10 p-4 text-sm text-rose-100" : "border border-emerald-300/30 bg-emerald-500/10 p-4 text-sm text-emerald-100"}>
+    <div className={tone === "error" ? "neo-copy border-2 border-black bg-[#b7102a] p-4 text-[11px] font-black uppercase tracking-[0.1em] text-white shadow-[3px_3px_0_#171411]" : "neo-copy border-2 border-black bg-[#007166] p-4 text-[11px] font-black uppercase tracking-[0.1em] text-white shadow-[3px_3px_0_#171411]"}>
       {message}
     </div>
   );

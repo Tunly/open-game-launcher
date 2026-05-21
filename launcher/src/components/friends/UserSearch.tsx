@@ -7,9 +7,11 @@ export function UserSearch({
 }) {
   return (
     <label className="block">
-      <span className="text-sm font-semibold text-slate-300">Search users</span>
+      <span className="neo-copy text-[11px] font-black uppercase tracking-[0.12em] text-[#5b403f]">
+        Search users
+      </span>
       <input
-        className="mt-2 h-11 w-full border border-white/10 bg-white/[0.05] px-3 text-white outline-none focus:border-sky-300"
+        className="mt-2 h-11 w-full border-2 border-black bg-[#f6edd8] px-3 text-[#171411] shadow-[2px_2px_0_#171411] outline-none focus:bg-[#fff9ed]"
         placeholder="username"
         type="search"
         value={query}

@@ -8,6 +8,7 @@ import {
   updatePrivacySchema,
   updateProfileSchema,
   updateShowcaseSchema,
+  usernameSchema,
   type CreateShowcaseInput,
   type HardwareInput,
   type SocialLinksInput,
@@ -33,6 +34,9 @@ import type {
 } from "../types/profile";
 
 type UnknownRecord = Record<string, unknown>;
+
+const hardwareFallbackStorageKey = "og-launcher:profile-hardware:v1";
+const hardwareFallbackCache = new Map<string, UserHardware>();
 
 const profileSelect = `
   id,
@@ -136,12 +140,82 @@ function isMissingSchemaError(error: SupabaseErrorLike | null) {
     return false;
   }
 
+  return isMissingSchemaMessage(error.message) || error.code === "42703" || error.code === "42P01";
+}
+
+function isMissingSchemaMessage(message: string) {
+  const normalizedMessage = message.toLowerCase();
+
   return (
-    error.code === "42703" ||
-    error.code === "42P01" ||
-    error.message.includes("does not exist") ||
-    error.message.includes("schema cache")
+    normalizedMessage.includes("does not exist") ||
+    normalizedMessage.includes("schema cache")
   );
+}
+
+function readHardwareFallbackStore() {
+  try {
+    if (typeof globalThis.localStorage === "undefined") {
+      return {};
+    }
+
+    const rawValue = globalThis.localStorage.getItem(hardwareFallbackStorageKey);
+    const parsedValue = rawValue ? JSON.parse(rawValue) : {};
+    return parsedValue && typeof parsedValue === "object" && !Array.isArray(parsedValue)
+      ? (parsedValue as Record<string, UserHardware>)
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeHardwareFallbackStore(store: Record<string, UserHardware>) {
+  try {
+    if (typeof globalThis.localStorage !== "undefined") {
+      globalThis.localStorage.setItem(hardwareFallbackStorageKey, JSON.stringify(store));
+    }
+  } catch {
+    // In-memory fallback still keeps the current preview session working.
+  }
+}
+
+function getHardwareFallback(userId: string) {
+  const cached = hardwareFallbackCache.get(userId);
+  if (cached) {
+    return cached;
+  }
+
+  const stored = readHardwareFallbackStore()[userId] ?? null;
+  if (stored) {
+    hardwareFallbackCache.set(userId, stored);
+  }
+
+  return stored;
+}
+
+function saveHardwareFallback(userId: string, input: HardwareInput) {
+  const now = new Date().toISOString();
+  const existing = getHardwareFallback(userId);
+  const hardware: UserHardware = {
+    controller: input.controller ?? null,
+    cpu: input.cpu ?? null,
+    createdAt: existing?.createdAt ?? now,
+    gpu: input.gpu ?? null,
+    headset: input.headset ?? null,
+    keyboard: input.keyboard ?? null,
+    monitor: input.monitor ?? null,
+    mouse: input.mouse ?? null,
+    ram: input.ram ?? null,
+    setupImageUrl: input.setupImageUrl ?? null,
+    updatedAt: now,
+    userId,
+    visibility: input.visibility ?? "friends_only",
+  };
+  const store = readHardwareFallbackStore();
+  store[userId] = hardware;
+  hardwareFallbackCache.set(userId, hardware);
+  writeHardwareFallbackStore(store);
+
+  return hardware;
 }
 
 async function getCurrentUser() {
@@ -355,6 +429,33 @@ export async function getProfileByUsername(username: string) {
   handleError(error);
 
   return data ? toProfile(data as UnknownRecord) : null;
+}
+
+export async function isUsernameAvailable(username: string) {
+  const normalizedUsername = usernameSchema.parse(username.trim().toLowerCase());
+  const client = getSupabaseClient();
+  const { data, error } = await client.rpc("is_username_available", {
+    username_input: normalizedUsername,
+  });
+
+  if (!error && typeof data === "boolean") {
+    return data;
+  }
+
+  const message = error?.message.toLowerCase() ?? "";
+  const canFallback =
+    !error ||
+    error.code === "PGRST202" ||
+    error.code === "42883" ||
+    message.includes("is_username_available") ||
+    message.includes("schema cache");
+
+  if (!canFallback) {
+    handleError(error);
+  }
+
+  const existingProfile = await getProfileByUsername(normalizedUsername);
+  return !existingProfile;
 }
 
 export async function getProfileByUserId(userId: string) {
@@ -745,6 +846,48 @@ export async function createShowcase(input: CreateShowcaseInput) {
   handleError(error);
 
   return toShowcase(data as UnknownRecord);
+}
+
+export async function ensureMyHardwareShowcase(visibility: ProfileShowcase["visibility"]) {
+  try {
+    const showcases = await getMyShowcases();
+    const existing = showcases.find((showcase) => showcase.type === "hardware_setup");
+
+    if (!existing) {
+      return createShowcase({
+        config: {},
+        isEnabled: true,
+        sortOrder: showcases.length,
+        title: "Hardware Rig",
+        type: "hardware_setup",
+        visibility,
+      });
+    }
+
+    if (
+      existing.isEnabled &&
+      existing.visibility === visibility &&
+      existing.title === "Hardware Rig"
+    ) {
+      return existing;
+    }
+
+    return updateShowcase(existing.id, {
+      config: existing.config,
+      isEnabled: true,
+      sortOrder: existing.sortOrder,
+      title: "Hardware Rig",
+      visibility,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+
+    if (isMissingSchemaMessage(message)) {
+      return null;
+    }
+
+    throw error;
+  }
 }
 
 export async function updateShowcase(id: string, input: UpdateShowcaseInput) {
@@ -1146,7 +1289,7 @@ export async function getUserHardware(userId: string) {
     .eq("user_id", userId)
     .maybeSingle();
   if (isMissingSchemaError(error)) {
-    return null;
+    return getHardwareFallback(userId);
   }
   handleError(error);
   return toHardware(data as UnknownRecord | null);
@@ -1162,7 +1305,7 @@ export async function updateMyHardware(input: HardwareInput) {
     .select("*")
     .single();
   if (isMissingSchemaError(error)) {
-    return null;
+    return saveHardwareFallback(userId, parsed);
   }
   handleError(error);
   return toHardware(data as UnknownRecord);

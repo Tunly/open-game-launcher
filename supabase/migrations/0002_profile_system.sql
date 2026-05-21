@@ -438,14 +438,33 @@ as $$
   );
 $$;
 
+create or replace function public.is_username_available(username_input text)
+returns boolean
+language sql
+security definer
+stable
+set search_path = public
+as $$
+  select username_input is not null
+    and char_length(username_input) between 3 and 32
+    and username_input ~ '^[A-Za-z0-9_.-]+$'
+    and not exists (
+      select 1
+      from public.profiles p
+      where p.username = username_input::citext
+    );
+$$;
+
 revoke execute on function public.is_friend(uuid, uuid) from public;
 revoke execute on function public.is_blocked(uuid, uuid) from public;
 revoke execute on function public.can_view_visibility(uuid, uuid, text) from public;
 revoke execute on function public.can_view_profile(uuid, uuid) from public;
+revoke execute on function public.is_username_available(text) from public;
 grant execute on function public.is_friend(uuid, uuid) to anon, authenticated;
 grant execute on function public.is_blocked(uuid, uuid) to anon, authenticated;
 grant execute on function public.can_view_visibility(uuid, uuid, text) to anon, authenticated;
 grant execute on function public.can_view_profile(uuid, uuid) to anon, authenticated;
+grant execute on function public.is_username_available(text) to anon, authenticated;
 
 -- ---------------------------------------------------------------------------
 -- New-user bootstrap trigger
@@ -511,7 +530,8 @@ begin
     (new.id, 'favorite_games', 'Favorite Games', 1, 'public', '{}'::jsonb),
     (new.id, 'rare_achievements', 'Rare Achievements', 2, 'public', '{}'::jsonb),
     (new.id, 'stats', 'Stats', 3, 'public', '{}'::jsonb),
-    (new.id, 'activity', 'Activity', 4, 'friends_only', '{}'::jsonb)
+    (new.id, 'activity', 'Activity', 4, 'friends_only', '{}'::jsonb),
+    (new.id, 'hardware_setup', 'Hardware Rig', 5, 'friends_only', '{}'::jsonb)
   on conflict do nothing;
 
   return new;

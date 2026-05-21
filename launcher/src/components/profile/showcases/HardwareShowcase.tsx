@@ -10,11 +10,13 @@ export function HardwareShowcase({ hardware }: { hardware: UserHardware | null }
         ["Monitor", hardware.monitor],
         ["Keyboard", hardware.keyboard],
         ["Mouse", hardware.mouse],
+        ["Headset", hardware.headset],
+        ["Controller", hardware.controller],
       ].filter(([, value]) => Boolean(value))
     : [];
 
   return (
-    <ShowcasePanel kicker="Setup" title="Hardware">
+    <ShowcasePanel kicker="Setup" title="Hardware Rig">
       <div className="mt-4 grid gap-2 sm:grid-cols-2">
         {entries.length > 0 ? (
           entries.map(([label, value]) => (

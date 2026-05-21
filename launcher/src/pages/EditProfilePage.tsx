@@ -13,6 +13,7 @@ import { Link } from "react-router-dom";
 import { useCurrentUser } from "../hooks/useCurrentUser";
 import { detectHardwareInfo } from "../lib/launcher";
 import {
+  ensureMyHardwareShowcase,
   getMyProfile,
   getProfileThemes,
   getUserHardware,
@@ -24,7 +25,7 @@ import {
   uploadAvatar,
   uploadBanner,
 } from "../lib/supabase/profile";
-import type { Profile, ProfileTheme } from "../lib/types/profile";
+import type { Profile, ProfileTheme, ProfileVisibility } from "../lib/types/profile";
 
 interface ProfileFormState {
   username: string;
@@ -43,6 +44,7 @@ interface ProfileFormState {
   mouse: string;
   headset: string;
   controller: string;
+  hardwareVisibility: ProfileVisibility;
 }
 
 interface EditableSocialLink {
@@ -69,6 +71,7 @@ const emptyForm: ProfileFormState = {
   mouse: "",
   headset: "",
   controller: "",
+  hardwareVisibility: "friends_only",
 };
 
 const hardwareFields = [
@@ -138,6 +141,7 @@ export function EditProfilePage() {
           mouse: hardware?.mouse ?? "",
           headset: hardware?.headset ?? "",
           controller: hardware?.controller ?? "",
+          hardwareVisibility: hardware?.visibility ?? "friends_only",
         });
         setSocialLinks(
           loadedSocialLinks.map((link) => ({
@@ -212,7 +216,18 @@ export function EditProfilePage() {
         monitor: nullable(form.monitor),
         mouse: nullable(form.mouse),
         ram: nullable(form.ram),
-        visibility: "friends_only",
+        visibility: form.hardwareVisibility,
+      });
+      await ensureMyHardwareShowcase(form.hardwareVisibility).catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : String(error);
+        const normalizedMessage = message.toLowerCase();
+
+        if (
+          !normalizedMessage.includes("profile_showcases") &&
+          !normalizedMessage.includes("schema cache")
+        ) {
+          throw error;
+        }
       });
       await updateMySocialLinks(
         socialLinks
@@ -227,7 +242,7 @@ export function EditProfilePage() {
       );
 
       setProfile(nextProfile);
-      setMessage("Profile saved.");
+      setMessage("Profil und Hardware Rig gespeichert.");
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : String(error));
     } finally {
@@ -376,6 +391,25 @@ export function EditProfilePage() {
                 Hardware erkennen
               </button>
             </div>
+            <label className="mb-4 block">
+              <span className="neo-copy text-[11px] font-black uppercase tracking-[0.12em] text-[#5b403f]">
+                Hardware auf Profil anzeigen
+              </span>
+              <select
+                className="neo-copy mt-2 h-11 w-full border-2 border-black bg-[#f6edd8] px-3 text-xs font-black uppercase tracking-[0.08em] text-[#171411] shadow-[2px_2px_0_#171411] outline-none focus:bg-[#8cf5e4]"
+                value={form.hardwareVisibility}
+                onChange={(event) =>
+                  updateField(
+                    "hardwareVisibility",
+                    event.target.value as ProfileVisibility,
+                  )
+                }
+              >
+                <option value="public">Oeffentlich</option>
+                <option value="friends_only">Nur Freunde</option>
+                <option value="private">Privat</option>
+              </select>
+            </label>
             <div className="grid gap-4 sm:grid-cols-2">
               {hardwareFields.map((field) => (
                 <TextInput key={field} label={field.toUpperCase()} value={form[field]} onChange={(value) => updateField(field, value)} />

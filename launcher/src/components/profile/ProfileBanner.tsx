@@ -18,16 +18,6 @@ export function ProfileBanner({
       className="relative z-0 min-h-72 overflow-hidden border-b-4 border-black bg-cover bg-center"
       style={{ background }}
     >
-      <div className="absolute left-4 top-4 z-10 flex flex-wrap gap-2">
-        {["Player Card", "OG Network", "Public Profile"].map((label) => (
-          <span
-            key={label}
-            className="neo-copy border-2 border-black bg-[#fff9ed] px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-[#171411] shadow-[2px_2px_0_#1f1c0f]"
-          >
-            {label}
-          </span>
-        ))}
-      </div>
       <div className="absolute bottom-0 left-0 right-0 z-0 h-8 border-t-4 border-black bg-[repeating-linear-gradient(90deg,#171411_0_12px,#fff9ed_12px_24px)]" />
     </div>
   );

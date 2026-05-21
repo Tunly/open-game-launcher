@@ -96,11 +96,15 @@ export function FriendsPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-      <div className="mb-6 flex flex-col gap-3 border-b border-white/10 pb-5 md:flex-row md:items-end md:justify-between">
+    <div className="mx-auto w-full max-w-[1220px] px-0 py-2">
+      <div className="mb-7 flex flex-col gap-4 border-b-4 border-black pb-5 md:flex-row md:items-end md:justify-between">
         <div>
-          <p className="text-sm font-bold uppercase text-sky-200">Social</p>
-          <h1 className="text-4xl font-black text-white">Friends</h1>
+          <p className="neo-copy inline-flex border-2 border-black bg-[#b7102a] px-3 py-1 text-[11px] font-black uppercase tracking-[0.14em] text-white shadow-[3px_3px_0_#171411]">
+            Social
+          </p>
+          <h1 className="neo-title mt-3 text-[clamp(3.8rem,13vw,6.5rem)] leading-[0.82] text-[#171411]">
+            Friends
+          </h1>
         </div>
         <div className="grid grid-cols-3 gap-3 text-center">
           <Metric icon={<Users className="h-4 w-4" />} label="Friends" value={friends.length} />
@@ -110,43 +114,31 @@ export function FriendsPage() {
       </div>
 
       {isAuthLoading || isLoading ? (
-        <div className="grid min-h-80 place-items-center border border-white/10 bg-white/[0.05]">
-          <Loader2 className="h-8 w-8 animate-spin text-sky-300" />
+        <div className="grid min-h-80 place-items-center border-4 border-black bg-[#fff9ed] shadow-[6px_6px_0_#171411]">
+          <Loader2 className="h-8 w-8 animate-spin text-[#b7102a]" />
         </div>
       ) : !isConfigured ? (
-        <Notice title="Supabase is not configured" body="Friends and requests need the public Supabase env vars." />
+        <Notice title="Supabase nicht verbunden" body="Freunde und Requests brauchen die public Supabase Env Vars." />
       ) : !user ? (
-        <Notice title="Login required" body="Sign in before managing friends." />
+        <Notice title="Login erforderlich" body="Melde dich an, bevor du Freunde verwaltest." />
       ) : (
         <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
           <div className="space-y-5">
             <Panel title="Friend List">
-              <FriendsList friends={friends} />
+              <FriendsList currentUserId={user.id} friends={friends} />
             </Panel>
             <Panel title="Friend Requests">
-              <FriendRequestList requests={requests} />
-              <div className="mt-4 space-y-2">
-                {requests.map((request) => (
-                  <div key={`${request.id}-actions`} className="flex flex-wrap gap-2">
-                    <button
-                      className="bg-emerald-400 px-3 py-2 text-sm font-bold text-slate-950 disabled:opacity-60"
-                      disabled={isMutating}
-                      type="button"
-                      onClick={() => void runMutation(() => acceptFriendRequest(request.id), "Friend request accepted.")}
-                    >
-                      Accept {request.id.slice(0, 8)}
-                    </button>
-                    <button
-                      className="border border-white/10 px-3 py-2 text-sm font-bold text-slate-200 hover:bg-white/[0.08] disabled:opacity-60"
-                      disabled={isMutating}
-                      type="button"
-                      onClick={() => void runMutation(() => declineFriendRequest(request.id), "Friend request declined.")}
-                    >
-                      Decline
-                    </button>
-                  </div>
-                ))}
-              </div>
+              <FriendRequestList
+                currentUserId={user.id}
+                isMutating={isMutating}
+                requests={requests}
+                onAccept={(request) =>
+                  void runMutation(() => acceptFriendRequest(request.id), "Friend request accepted.")
+                }
+                onDecline={(request) =>
+                  void runMutation(() => declineFriendRequest(request.id), "Friend request declined.")
+                }
+              />
             </Panel>
           </div>
 
@@ -155,15 +147,24 @@ export function FriendsPage() {
               <UserSearch query={query} onQueryChange={setQuery} />
               <div className="mt-4 space-y-3">
                 {isSearching ? (
-                  <p className="text-sm text-slate-400">Searching...</p>
+                  <p className="neo-copy border-2 border-dashed border-black bg-[#f6edd8] p-3 text-[12px] font-bold uppercase leading-5 text-[#655f58]">
+                    Searching...
+                  </p>
                 ) : results.length > 0 ? (
                   results.map((profile) => (
-                    <div key={profile.id} className="border border-white/10 bg-black/20 p-3">
-                      <p className="font-bold text-white">{profile.displayName ?? profile.username}</p>
-                      <p className="text-xs text-slate-500">@{profile.username}</p>
+                    <div
+                      key={profile.id}
+                      className="border-[3px] border-black bg-[#f6edd8] p-3 shadow-[3px_3px_0_#171411]"
+                    >
+                      <p className="neo-title text-2xl leading-none text-[#171411]">
+                        {profile.displayName ?? profile.username}
+                      </p>
+                      <p className="neo-copy mt-1 text-[10px] font-black uppercase tracking-[0.12em] text-[#5b403f]">
+                        @{profile.username}
+                      </p>
                       <div className="mt-3 flex gap-2">
                         <button
-                          className="bg-sky-400 px-3 py-2 text-sm font-bold text-slate-950 disabled:opacity-60"
+                          className="neo-copy border-2 border-black bg-[#007166] px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-white shadow-[2px_2px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#b7102a] disabled:opacity-60"
                           disabled={isMutating}
                           type="button"
                           onClick={() => void runMutation(() => sendFriendRequest(profile.id), "Friend request sent.")}
@@ -171,7 +172,7 @@ export function FriendsPage() {
                           Add
                         </button>
                         <button
-                          className="border border-rose-300/30 px-3 py-2 text-sm font-bold text-rose-100 hover:bg-rose-500/10 disabled:opacity-60"
+                          className="neo-copy border-2 border-black bg-[#fff9ed] px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-[#b7102a] shadow-[2px_2px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#f3c3c9] disabled:opacity-60"
                           disabled={isMutating}
                           type="button"
                           onClick={() => void runMutation(() => blockUser(profile.id), "User blocked.")}
@@ -182,12 +183,14 @@ export function FriendsPage() {
                     </div>
                   ))
                 ) : (
-                  <p className="text-sm text-slate-400">Search by username or display name.</p>
+                  <p className="neo-copy border-2 border-dashed border-black bg-[#f6edd8] p-3 text-[12px] font-bold uppercase leading-5 text-[#655f58]">
+                    Search by username or display name.
+                  </p>
                 )}
               </div>
             </Panel>
             <Panel title="Sent Requests / Blocklist">
-              <p className="text-sm leading-6 text-slate-400">
+              <p className="neo-copy border-2 border-dashed border-black bg-[#f6edd8] p-3 text-[12px] font-bold uppercase leading-5 text-[#655f58]">
                 MVP placeholder. The tables and RLS policies exist; a dedicated
                 sent-request and blocklist query can be added when the social
                 inbox design is finalized.
@@ -212,20 +215,26 @@ function Metric({
   value: number;
 }) {
   return (
-    <div className="border border-white/10 bg-white/[0.05] px-4 py-3">
-      <div className="flex items-center justify-center gap-2 text-sky-200">
+    <div className="border-[3px] border-black bg-[#fff9ed] px-4 py-3 shadow-[4px_4px_0_#171411]">
+      <div className="flex items-center justify-center gap-2 text-[#b7102a]">
         {icon}
-        <span className="text-xs font-bold uppercase">{label}</span>
+        <span className="neo-copy text-[10px] font-black uppercase tracking-[0.12em]">
+          {label}
+        </span>
       </div>
-      <p className="mt-1 text-2xl font-black text-white">{value}</p>
+      <p className="neo-title mt-1 text-3xl leading-none text-[#171411]">
+        {value}
+      </p>
     </div>
   );
 }
 
 function Panel({ children, title }: { children: ReactNode; title: string }) {
   return (
-    <section className="border border-white/10 bg-white/[0.05] p-5">
-      <h2 className="text-xl font-bold text-white">{title}</h2>
+    <section className="relative border-4 border-black bg-[#fff9ed] p-5 shadow-[6px_6px_0_#171411]">
+      <h2 className="neo-title border-b-[3px] border-black pb-3 text-3xl leading-none text-[#171411]">
+        {title}
+      </h2>
       <div className="mt-4">{children}</div>
     </section>
   );
@@ -233,16 +242,16 @@ function Panel({ children, title }: { children: ReactNode; title: string }) {
 
 function Notice({ body, title }: { body: string; title: string }) {
   return (
-    <div className="border border-white/10 bg-white/[0.05] p-6">
-      <h2 className="text-2xl font-black text-white">{title}</h2>
-      <p className="mt-3 text-sm leading-6 text-slate-400">{body}</p>
+    <div className="border-4 border-black bg-[#fff9ed] p-6 shadow-[6px_6px_0_#171411]">
+      <h2 className="neo-title text-4xl leading-none text-[#171411]">{title}</h2>
+      <p className="neo-copy mt-3 text-[12px] font-bold uppercase leading-6 text-[#5b403f]">{body}</p>
     </div>
   );
 }
 
 function Status({ message, tone }: { message: string; tone: "error" | "success" }) {
   return (
-    <div className={tone === "error" ? "border border-rose-300/30 bg-rose-500/10 p-4 text-sm text-rose-100" : "border border-emerald-300/30 bg-emerald-500/10 p-4 text-sm text-emerald-100"}>
+    <div className={tone === "error" ? "neo-copy border-2 border-black bg-[#b7102a] p-4 text-[11px] font-black uppercase tracking-[0.1em] text-white shadow-[3px_3px_0_#171411]" : "neo-copy border-2 border-black bg-[#007166] p-4 text-[11px] font-black uppercase tracking-[0.1em] text-white shadow-[3px_3px_0_#171411]"}>
       {message}
     </div>
   );

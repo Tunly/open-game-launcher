@@ -129,12 +129,6 @@ export function ProfilePage() {
           <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_320px]">
             <ProfileShowcaseGrid data={state.data} />
             <aside className="space-y-4">
-              <ProfileSidePanel title="Online Status">
-                <div className="neo-copy inline-flex items-center gap-2 border-[3px] border-black bg-[#f6edd8] px-3 py-2 text-[11px] font-black uppercase tracking-[0.1em] text-[#171411] shadow-[3px_3px_0_#1f1c0f]">
-                  <span className="h-3 w-3 border-2 border-black bg-[#007166]" />
-                  Visible by privacy rules
-                </div>
-              </ProfileSidePanel>
               <ProfileSidePanel title="Featured Game">
                 <FeaturedText
                   title={state.data.libraryPreview[0]?.title ?? "No featured game"}

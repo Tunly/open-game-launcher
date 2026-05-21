@@ -15,6 +15,7 @@ export function ProfileShowcaseGrid({ data }: { data: ProfilePageData }) {
       : ([
           { id: "about", type: "about" },
           { id: "stats", type: "stats" },
+          { id: "hardware", type: "hardware_setup" },
           { id: "favorite", type: "favorite_games" },
           { id: "activity", type: "activity" },
         ] as Pick<ProfileShowcase, "id" | "type">[]);
