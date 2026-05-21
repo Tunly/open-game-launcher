@@ -369,7 +369,7 @@ function getLogoPlacementStyle(game: Game) {
   };
 }
 
-function formatLastPlayed(lastPlayed?: string) {
+function formatLastPlayed(lastPlayed?: string | null) {
   if (!lastPlayed) {
     return "Not played";
   }
@@ -394,6 +394,7 @@ function formatPlayTime(playtimeMinutes?: number) {
   return `${hours < 10 ? hours.toFixed(1) : Math.round(hours)} hours`;
 }
 
+
 function getPlatformIcon(platform: string) {
   if (platform === "windows") return "🪟";
   if (platform === "macos") return "🍎";
@@ -406,13 +407,11 @@ function LibraryRow({
   selected,
   onSelect,
   isFavorite,
-  onPlatformClick,
 }: {
   game: Game;
   selected?: boolean;
   onSelect: (game: Game) => void;
   isFavorite?: boolean;
-  onPlatformClick?: (platform: "windows" | "macos" | "linux") => void;
 }) {
   const [iconCandidateIndex, setIconCandidateIndex] = useState(0);
   const iconCandidates = getGameIconCandidates(game);
@@ -424,7 +423,7 @@ function LibraryRow({
 
   return (
     <button
-      className={`flex h-[28px] w-full min-w-0 items-center gap-2 px-3 text-left text-[14px] font-black leading-none transition ${
+      className={`flex min-h-[52px] w-full min-w-0 items-center gap-2 px-3 py-2 text-left transition ${
         selected
           ? "border-y-2 border-black bg-[#139a82] text-[#fffaf0]"
           : "text-[#171411] hover:bg-[#dfd4c1]"
@@ -455,27 +454,12 @@ function LibraryRow({
           getGameIcon(game.title)
         )}
       </span>
-      <span className="truncate flex-1">{game.title}</span>
-      {onPlatformClick && (
-        <span
-          onClick={(e) => {
-            e.stopPropagation();
-            onPlatformClick(game.platform as "windows" | "macos" | "linux");
-          }}
-          role="button"
-          tabIndex={0}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " ") {
-              e.stopPropagation();
-              onPlatformClick(game.platform as "windows" | "macos" | "linux");
-            }
-          }}
-          className="opacity-60 hover:opacity-100 hover:scale-110 transition shrink-0 mr-1 text-[11px] cursor-pointer"
-          title={`Filtern nach ${game.platform}`}
-        >
-          {getPlatformIcon(game.platform)}
+      <span className="min-w-0 flex-1">
+        <span className="block truncate text-[14px] font-black leading-none">
+          {game.title}
         </span>
-      )}
+      </span>
+
       {isFavorite && (
         <Heart className="h-3 w-3 fill-[#b7102a] text-[#b7102a] shrink-0" />
       )}
@@ -493,13 +477,15 @@ function Metric({
   value: string;
 }) {
   return (
-    <div className="flex min-h-[56px] min-w-0 items-center gap-2 border-4 border-black bg-[#fbf4e7] px-3 shadow-[3px_3px_0_#171411]">
-      <span className="grid h-8 w-8 shrink-0 place-items-center">{icon}</span>
-      <div className="min-w-0">
-        <div className="break-words text-[14px] font-black uppercase leading-none xl:text-[15px]">
+    <div className="grid min-h-[64px] min-w-0 grid-cols-[28px_minmax(0,1fr)] items-center gap-2 border-4 border-black bg-[#fbf4e7] px-3 py-2 shadow-[3px_3px_0_#171411]">
+      <span className="grid h-7 w-7 shrink-0 place-items-center overflow-hidden">{icon}</span>
+      <div className="min-w-0 overflow-hidden">
+        <div className="text-[11px] font-black uppercase leading-[0.95] sm:text-[12px]">
           {title}
         </div>
-        <div className="neo-copy mt-1 text-[12px] font-bold leading-none">{value}</div>
+        <div className="neo-copy mt-1 truncate text-[11px] font-bold leading-none sm:text-[12px]">
+          {value}
+        </div>
       </div>
     </div>
   );
@@ -961,13 +947,13 @@ export function LibraryPage() {
   const enrichedSelectedGame = selectedGame ? enrichGameWithMetadata(selectedGame) : null;
 
   return (
-    <div className="library-steam-shell min-h-[calc(100vh-80px)] overflow-x-auto border-x-0 border-black bg-[#fbf4e7] text-[#171411] sm:border-x-4">
-      <div className="grid min-h-[calc(100vh-80px)] min-w-[760px] grid-cols-[240px_minmax(0,1fr)] sm:grid-cols-[260px_minmax(0,1fr)] lg:min-w-0 lg:grid-cols-[290px_minmax(0,1fr)] relative">
+    <div className="library-steam-shell min-h-[calc(100vh-80px)] overflow-x-hidden border-x-0 border-black bg-[#fbf4e7] text-[#171411] sm:border-x-4">
+      <div className="relative grid min-h-[calc(100vh-80px)] min-w-0 grid-cols-1 md:grid-cols-[260px_minmax(0,1fr)] lg:grid-cols-[290px_minmax(0,1fr)]">
         
         {/* ====================================================
             SIDEBAR PANEL
             ==================================================== */}
-        <aside className="min-h-0 border-r-4 border-black bg-[#efe3cf] flex flex-col justify-between">
+        <aside className="min-h-0 border-b-4 border-black bg-[#efe3cf] flex flex-col justify-between md:border-b-0 md:border-r-4">
           <div className="flex-1 min-h-0 flex flex-col">
             <div className="flex h-11 items-center justify-between border-b-4 border-black bg-[#f4ead8]">
               <button className="h-full flex-1 px-3 text-left text-[16px] font-black" type="button">
@@ -1110,10 +1096,6 @@ export function LibraryPage() {
                     selected={selectedGame?.id === game.id}
                     onSelect={setSelectedGame}
                     isFavorite={favorites[game.id] === true}
-                    onPlatformClick={(plat) => {
-                      setActivePlatformFilter(plat);
-                      setSelectedCollectionName(null);
-                    }}
                   />
                 ))
               ) : normalizedSearchQuery && (installedGames.length > 0 || fallbackMockGames.length > 0) ? (
@@ -1134,7 +1116,7 @@ export function LibraryPage() {
             ==================================================== */}
         {isFilterPopupOpen ? (
           <div
-            className="absolute left-[240px] sm:left-[260px] lg:left-[290px] top-12 z-50 w-[380px] max-h-[82vh] overflow-y-auto border-4 border-black bg-[#fbf4e7] p-4 shadow-[6px_6px_0_#171411]"
+            className="absolute left-2 right-2 top-12 z-50 max-h-[82vh] overflow-y-auto border-4 border-black bg-[#fbf4e7] p-4 shadow-[6px_6px_0_#171411] sm:left-[260px] sm:right-auto sm:w-[380px] lg:left-[290px]"
             style={{ fontFamily: '"Arial Narrow", Impact, sans-serif' }}
           >
             <div className="flex items-center justify-between border-b-4 border-black pb-2 mb-4">
@@ -1530,30 +1512,30 @@ export function LibraryPage() {
               })()}
 
               {/* Game Control Section */}
-              <section className="grid gap-3 border-b-4 border-black bg-[#f3e8d7] p-3 md:grid-cols-[auto_minmax(0,1fr)] xl:grid-cols-[240px_minmax(0,1fr)_auto]">
-                <div className="flex min-w-0 md:order-1">
+              <section className="flex flex-wrap items-start gap-3 border-b-4 border-black bg-[#f3e8d7] p-3">
+                <div className="flex min-w-[220px] flex-1 sm:flex-none">
                   <button
-                    className="flex h-[58px] min-w-0 flex-1 items-center justify-center gap-3 border-4 border-black bg-[#169b83] text-[24px] font-black uppercase text-white shadow-[3px_3px_0_#171411] sm:min-w-[205px] sm:flex-none sm:text-[26px]"
+                    className="flex h-[64px] min-w-0 flex-1 items-center justify-center gap-3 border-4 border-black bg-[#169b83] px-5 text-[22px] font-black uppercase text-white shadow-[3px_3px_0_#171411] sm:min-w-[205px] sm:flex-none sm:text-[26px]"
                     type="button"
                     onClick={() => void handlePlay()}
                   >
                     <Play className="h-7 w-7 fill-current" />
                     Play
                   </button>
-                  <button className="grid h-[58px] w-[44px] place-items-center border-y-4 border-r-4 border-black bg-[#169b83] text-white shadow-[3px_3px_0_#171411]" type="button" aria-label="More play options">
+                  <button className="grid h-[64px] w-[44px] shrink-0 place-items-center border-y-4 border-r-4 border-black bg-[#169b83] text-white shadow-[3px_3px_0_#171411]" type="button" aria-label="More play options">
                     <ChevronDown className="h-6 w-6" />
                   </button>
                 </div>
 
-                <div className="grid min-w-0 gap-3 sm:grid-cols-2 md:order-3 md:col-span-2 xl:order-2 xl:col-span-1 xl:grid-cols-[repeat(4,minmax(130px,1fr))]">
+                <div className="grid min-w-[260px] flex-[999_1_420px] gap-3 sm:grid-cols-2 2xl:grid-cols-[repeat(4,minmax(130px,1fr))]">
                   <Metric icon={<Cloud className="h-7 w-7 fill-black text-black" />} title="Cloud" value="Up to date" />
-                  <Metric icon={<Clock3 className="h-7 w-7" />} title="Last Played" value={formatLastPlayed(enrichedSelectedGame.lastPlayed)} />
+                  <Metric icon={<Clock3 className="h-7 w-7" />} title="Last Played" value={formatLastPlayed(enrichedSelectedGame.lastPlayed ?? enrichedSelectedGame.lastPlayedAt)} />
                   <Metric icon={<Clock3 className="h-7 w-7" />} title="Play Time" value={formatPlayTime(enrichedSelectedGame.playtimeMinutes)} />
                   <Metric icon={<Award className="h-7 w-7 fill-black text-black" />} title="Achievements" value="0/0" />
                 </div>
 
                 {/* DETAILS POPUP INTERACTIONS (Favoriten, Kategorien verwalten, Hidden) */}
-                <div className="flex flex-wrap items-start justify-start gap-2 self-start md:order-2 md:justify-end xl:order-3 relative">
+                <div className="relative flex w-full flex-wrap items-start justify-start gap-2 self-start border-t-2 border-black/20 pt-1">
                   
                   {/* Settings Button */}
                   <div className="relative">

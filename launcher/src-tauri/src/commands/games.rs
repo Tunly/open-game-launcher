@@ -30,7 +30,7 @@ pub struct InstalledGame {
     install_path: Option<String>,
     #[serde(skip_serializing)]
     launch_uri: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(rename = "lastPlayed", skip_serializing_if = "Option::is_none")]
     last_played_at: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     playtime_minutes: Option<u32>,
@@ -168,7 +168,7 @@ fn scan_steam_games() -> Vec<InstalledGame> {
     let mut libraries = vec![steam_dir.clone()];
     libraries.extend(read_steam_library_folders(&steam_dir));
 
-    let last_played_times = read_steam_last_played_times(&steam_dir);
+    let steam_activity = read_steam_activity(&steam_dir);
 
     let mut seen_libraries = HashSet::new();
     let mut games = Vec::new();
@@ -205,67 +205,7 @@ fn scan_steam_games() -> Vec<InstalledGame> {
             let install_dir = find_quoted_value(&contents, "installdir");
             let app_id = find_quoted_value(&contents, "appid")
                 .or_else(|| steam_app_id_from_manifest_name(file_name));
-
-            if let Some(title) = name.filter(|value| !value.trim().is_empty()) {
-                let install_path = install_dir
-                    .map(|dir| steamapps.join("common").join(dir))
-                    .filter(|dir| dir.exists())
-                    .map(path_to_string);
-                let cover_url = app_id.as_ref().map(|id| {
-                    format!(
-                        "https://cdn.cloudflare.steamstatic.com/steam/apps/{id}/library_hero.jpg"
-                    )
-                });
-                let mut game = installed_game(
-                    &format!("steam-{title}"),
-                    title,
-                    "Steam".to_string(),
-                    install_path,
-                    cover_url,
-                );
-                if let Some(id) = &app_id {
-                    let icon_candidates = steam_icon_urls(&id, &game.title, &steam_dir);
-                    game.icon_url = icon_candidates.first().cloned();
-                    game.logo_urls = steam_logo_urls(&id);
-                    game.logo_url = game.logo_urls.first().cloned();
-                    game.launch_uri = Some(format!("steam://rungameid/{id}"));
-                    let logo_layout = steam_logo_layout(&id, &game.title, &steam_dir);
-                    game.logo_position = logo_layout.position;
-                    game.logo_width_percent = logo_layout.width_percent;
-                    game.logo_height_percent = logo_layout.height_percent;
-
-                    if let Some(&timestamp) = last_played_times.get(id) {
-                        game.last_played_at = Some(unix_timestamp_to_iso(timestamp));
-                    }
-                }
-
-                games.push(game);
-            }
-        }
-
-        let steamapps = library.join("steamapps");
-        let Ok(entries) = fs::read_dir(&steamapps) else {
-            continue;
-        };
-
-        for entry in entries.flatten() {
-            let path = entry.path();
-            let Some(file_name) = path.file_name().and_then(|name| name.to_str()) else {
-                continue;
-            };
-
-            if !file_name.starts_with("appmanifest_") || !file_name.ends_with(".acf") {
-                continue;
-            }
-
-            let Ok(contents) = fs::read_to_string(&path) else {
-                continue;
-            };
-
-            let name = find_quoted_value(&contents, "name");
-            let install_dir = find_quoted_value(&contents, "installdir");
-            let app_id = find_quoted_value(&contents, "appid")
-                .or_else(|| steam_app_id_from_manifest_name(file_name));
+            let manifest_activity = steam_activity_from_manifest(&contents);
 
             if let Some(title) = name.filter(|value| !value.trim().is_empty()) {
                 let install_path = install_dir
@@ -294,6 +234,16 @@ fn scan_steam_games() -> Vec<InstalledGame> {
                     game.logo_position = logo_layout.position;
                     game.logo_width_percent = logo_layout.width_percent;
                     game.logo_height_percent = logo_layout.height_percent;
+
+                    let mut activity = steam_activity.get(&id).cloned().unwrap_or_default();
+                    activity.merge(manifest_activity);
+
+                    if activity.has_data() {
+                        if let Some(timestamp) = activity.last_played {
+                            game.last_played_at = Some(unix_timestamp_to_iso(timestamp));
+                        }
+                        game.playtime_minutes = activity.playtime_minutes;
+                    }
                 }
 
                 games.push(game);
@@ -369,8 +319,6 @@ fn scan_gog_games() -> Vec<InstalledGame> {
 
     candidates.push(PathBuf::from(r"C:\GOG Games"));
 
-    let gog_last_played = read_gog_last_played_data();
-
     let mut games = Vec::new();
     let mut seen = HashSet::new();
 
@@ -404,9 +352,8 @@ fn scan_gog_games() -> Vec<InstalledGame> {
             game.logo_url = find_local_logo_asset(&path);
             game.icon_url = find_local_icon_asset(&path);
 
-            if let Some((last_played, playtime)) = gog_last_played.get(title) {
-                game.last_played_at = Some(unix_timestamp_to_iso(*last_played));
-                game.playtime_minutes = Some(*playtime);
+            if let Some(timestamp) = get_dir_last_modified(&path) {
+                game.last_played_at = Some(unix_timestamp_to_iso(timestamp));
             }
 
             games.push(game);
@@ -860,7 +807,61 @@ fn find_steam_userdata_dirs(steam_dir: &Path) -> Vec<PathBuf> {
         .collect()
 }
 
-fn read_steam_last_played_times(steam_dir: &Path) -> HashMap<String, u64> {
+#[derive(Debug, Default, Clone)]
+struct SteamAppActivity {
+    last_played: Option<u64>,
+    playtime_minutes: Option<u32>,
+}
+
+impl SteamAppActivity {
+    fn has_data(&self) -> bool {
+        self.last_played.is_some() || self.playtime_minutes.is_some()
+    }
+
+    fn merge(&mut self, other: SteamAppActivity) {
+        if let Some(timestamp) = other.last_played {
+            self.last_played = Some(
+                self.last_played
+                    .map_or(timestamp, |existing| existing.max(timestamp)),
+            );
+        }
+
+        if let Some(minutes) = other.playtime_minutes {
+            self.playtime_minutes = Some(
+                self.playtime_minutes
+                    .map_or(minutes, |existing| existing.max(minutes)),
+            );
+        }
+    }
+}
+
+fn steam_activity_from_manifest(contents: &str) -> SteamAppActivity {
+    let last_played = find_quoted_value(contents, "LastPlayed")
+        .or_else(|| find_quoted_value(contents, "LastPlayedTime"))
+        .and_then(|value| value.parse::<u64>().ok())
+        .filter(|timestamp| *timestamp > 1_000_000_000 && *timestamp < 2_000_000_000);
+
+    let playtime_minutes = [
+        "PlaytimeForever",
+        "playtime_forever",
+        "PlaytimeWindows",
+        "PlaytimeMacOS",
+        "PlaytimeLinux",
+        "Playtime",
+    ]
+    .into_iter()
+    .filter_map(|key| find_quoted_value(contents, key))
+    .filter_map(|value| value.parse::<u32>().ok())
+    .max()
+    .filter(|minutes| *minutes > 0);
+
+    SteamAppActivity {
+        last_played,
+        playtime_minutes,
+    }
+}
+
+fn read_steam_activity(steam_dir: &Path) -> HashMap<String, SteamAppActivity> {
     let mut result = HashMap::new();
 
     for userdata_dir in find_steam_userdata_dirs(steam_dir) {
@@ -869,175 +870,109 @@ fn read_steam_last_played_times(steam_dir: &Path) -> HashMap<String, u64> {
             continue;
         };
 
-        parse_steam_last_played_from_vdf(&contents, &mut result);
+        parse_steam_activity_from_vdf(&contents, &mut result);
     }
 
     result
 }
 
-fn parse_steam_last_played_from_vdf(contents: &str, out: &mut HashMap<String, u64>) {
-    let mut stack: Vec<String> = Vec::new();
-    let mut current_app_id: Option<String> = None;
+fn parse_steam_activity_from_vdf(contents: &str, out: &mut HashMap<String, SteamAppActivity>) {
+    let lines = contents.lines().collect::<Vec<_>>();
+    let mut index = 0;
 
-    for line in contents.lines() {
-        let trimmed = line.trim();
-        if trimmed.is_empty() || trimmed.starts_with("//") {
+    while index < lines.len() {
+        let trimmed = lines[index].trim();
+        let Some(app_id) = quoted_key(trimmed).filter(|key| key.chars().all(|c| c.is_ascii_digit()))
+        else {
+            index += 1;
+            continue;
+        };
+
+        let Some(open_index) = next_non_empty_line(&lines, index + 1) else {
+            break;
+        };
+
+        if lines[open_index].trim() != "{" {
+            index += 1;
             continue;
         }
 
-        if let Some((key, is_object_open)) = parse_vdf_line(trimmed) {
-            if is_object_open {
-                if key.chars().all(|c| c.is_ascii_digit())
-                    && stack.last() == Some(&"Apps".to_string())
-                {
-                    current_app_id = Some(key.clone());
-                }
-                stack.push(key);
-            } else if key == "LastPlayed" {
-                if let Some(app_id) = &current_app_id {
-                    if let Some(value) = extract_vdf_value(trimmed) {
+        let mut depth = 1;
+        let mut cursor = open_index + 1;
+        let mut activity = SteamAppActivity::default();
+
+        while cursor < lines.len() && depth > 0 {
+            let current = lines[cursor].trim();
+
+            if current == "{" {
+                depth += 1;
+            } else if current == "}" {
+                depth -= 1;
+            } else if depth == 1 {
+                if let Some((key, value)) = parse_vdf_key_value(current) {
+                    if key == "LastPlayed" {
                         if let Ok(timestamp) = value.parse::<u64>() {
                             if timestamp > 1_000_000_000 && timestamp < 2_000_000_000 {
-                                out.insert(app_id.clone(), timestamp);
+                                activity.last_played = Some(timestamp);
+                            }
+                        }
+                    } else if matches!(
+                        key.as_str(),
+                        "Playtime" | "playtime_forever" | "PlaytimeForever"
+                    ) {
+                        if let Ok(minutes) = value.parse::<u32>() {
+                            if minutes > 0 {
+                                activity.playtime_minutes = Some(minutes);
                             }
                         }
                     }
                 }
             }
-        } else if trimmed == "}" {
-            stack.pop();
-            if stack.last() != Some(&"Apps".to_string()) {
-                current_app_id = None;
-            }
+
+            cursor += 1;
         }
+
+        if activity.has_data() {
+            out.entry(app_id).or_default().merge(activity);
+        }
+
+        index = cursor;
     }
 }
 
-fn parse_vdf_line(line: &str) -> Option<(String, bool)> {
+fn quoted_key(line: &str) -> Option<String> {
     let trimmed = line.trim();
-    if trimmed.starts_with('"') {
-        if let Some(end_quote) = trimmed[1..].find('"').map(|index| index + 1) {
-            let key = &trimmed[1..end_quote];
-            let after_key = trimmed[end_quote + 1..].trim();
-            let is_object_open = after_key == "{";
-            return Some((key.to_string(), is_object_open));
+    let end_quote = trimmed.strip_prefix('"')?.find('"')?;
+    Some(trimmed[1..end_quote + 1].to_string())
+}
+
+fn parse_vdf_key_value(line: &str) -> Option<(String, String)> {
+    let trimmed = line.trim();
+    let key_end = trimmed.strip_prefix('"')?.find('"')? + 1;
+    let key = trimmed[1..key_end].to_string();
+    let value_start = trimmed[key_end + 1..].find('"')? + key_end + 2;
+    let value_end = trimmed[value_start..].find('"')? + value_start;
+
+    Some((key, trimmed[value_start..value_end].to_string()))
+}
+
+fn next_non_empty_line(lines: &[&str], start: usize) -> Option<usize> {
+    for (index, line) in lines.iter().enumerate().skip(start) {
+        let trimmed = line.trim();
+        if !trimmed.is_empty() && !trimmed.starts_with("//") {
+            return Some(index);
         }
     }
     None
 }
 
-fn extract_vdf_value(line: &str) -> Option<String> {
-    let trimmed = line.trim();
-    let parts: Vec<&str> = trimmed.split('"').collect();
-    if parts.len() >= 4 {
-        return Some(parts[1].to_string());
-    }
-    let remainder = trimmed.split_whitespace().nth(1)?;
-    Some(remainder.trim_matches('"').to_string())
-}
-
-fn find_gog_database_path() -> Option<PathBuf> {
-    let candidates = [
-        PathBuf::from(r"C:\ProgramData\GOG.com\Galaxy\storage\galaxy-2.0.db"),
-        PathBuf::from(r"C:\ProgramData\GOG.com\Galaxy\galaxy-2.0.db"),
-    ];
-
-    candidates.into_iter().find(|path| path.exists())
-}
-
-fn read_gog_last_played_data() -> HashMap<String, (u64, u32)> {
-    let mut result = HashMap::new();
-
-    let Some(db_path) = find_gog_database_path() else {
-        return result;
-    };
-
-    let Some(conn) =
-        rusqlite::Connection::open_with_flags(&db_path, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)
-            .ok()
-    else {
-        return result;
-    };
-
-    let query = "
-        SELECT LR.title, LPD.lastPlayedDate, GT.minutesInGame
-        FROM LibraryReleases LR
-        LEFT JOIN LastPlayedDates LPD ON LPD.gameReleaseKey = LR.releaseKey
-        LEFT JOIN GameTimes GT ON GT.releaseKey = LR.releaseKey
-        WHERE LR.title IS NOT NULL AND LPD.lastPlayedDate IS NOT NULL
-    ";
-
-    let Some(mut stmt) = conn.prepare(query).ok() else {
-        return result;
-    };
-    let Some(rows) = stmt
-        .query_map([], |row| {
-            let title: String = row.get(0)?;
-            let last_played_date: Option<String> = row.get(1)?;
-            let minutes: Option<i64> = row.get(2)?;
-            Ok((title, last_played_date, minutes))
-        })
+fn get_dir_last_modified(path: &Path) -> Option<u64> {
+    let metadata = fs::metadata(path).ok()?;
+    let modified = metadata.modified().ok()?;
+    modified
+        .duration_since(std::time::UNIX_EPOCH)
         .ok()
-    else {
-        return result;
-    };
-
-    for row in rows.flatten() {
-        let (title, last_played_date, minutes) = row;
-        if let Some(date_str) = last_played_date {
-            if let Some(timestamp) = parse_gog_date(&date_str) {
-                let playtime = minutes.unwrap_or(0).max(0) as u32;
-                result.insert(title, (timestamp, playtime));
-            }
-        }
-    }
-
-    result
-}
-
-fn parse_gog_date(date_str: &str) -> Option<u64> {
-    if let Ok(ts) = date_str.parse::<u64>() {
-        if ts > 1_000_000_000 && ts < 2_000_000_000 {
-            return Some(ts);
-        }
-        if ts > 1_000_000_000_000 {
-            return Some(ts / 1000);
-        }
-    }
-
-    let cleaned = date_str.trim();
-    if cleaned.len() >= 19 {
-        let parts: Vec<&str> = cleaned[0..19]
-            .split(|c: char| !c.is_ascii_digit())
-            .collect();
-        if parts.len() >= 6 {
-            let year = parts[0].parse::<i32>().ok()?;
-            let month = parts[1].parse::<u32>().ok()?;
-            let day = parts[2].parse::<u32>().ok()?;
-            let hour = parts[3].parse::<u32>().ok()?;
-            let minute = parts[4].parse::<u32>().ok()?;
-            let second = parts[5].parse::<u32>().ok()?;
-
-            let days_since_epoch = days_from_civil(year, month, day);
-            let seconds =
-                days_since_epoch * 86400 + hour as i64 * 3600 + minute as i64 * 60 + second as i64;
-            if seconds > 0 {
-                return Some(seconds as u64);
-            }
-        }
-    }
-
-    None
-}
-
-fn days_from_civil(year: i32, month: u32, day: u32) -> i64 {
-    let y = if month <= 2 { year - 1 } else { year };
-    let m = if month <= 2 { month + 9 } else { month - 3 };
-    let era = if y >= 0 { y / 400 } else { (y - 399) / 400 };
-    let yoe = (y - era * 400) as u32;
-    let doy = (153 * m + 2) / 5 + day - 1;
-    let doe = yoe as i64 * 365 + yoe as i64 / 4 - yoe as i64 / 100 + doy as i64;
-    era as i64 * 146097 + doe - 719468
+        .map(|d| d.as_secs())
 }
 
 fn steam_app_id_from_manifest_name(file_name: &str) -> Option<String> {
@@ -1668,4 +1603,46 @@ fn civil_from_days(days: i64) -> (i32, u32, u32) {
     let year = if m <= 2 { y + 1 } else { y };
 
     (year as i32, m as u32, d as u32)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_steam_activity_from_localconfig_app_blocks() {
+        let contents = r#"
+"UserLocalConfigStore"
+{
+    "Software"
+    {
+        "Valve"
+        {
+            "Steam"
+            {
+                "apps"
+                {
+                    "4000"
+                    {
+                        "LastPlayed"        "1764709295"
+                        "Playtime"          "13519"
+                        "cloud"
+                        {
+                            "last_sync_state"        "synchronized"
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+"#;
+        let mut activity = HashMap::new();
+
+        parse_steam_activity_from_vdf(contents, &mut activity);
+
+        let garrys_mod = activity.get("4000").expect("missing app activity");
+        assert_eq!(garrys_mod.last_played, Some(1764709295));
+        assert_eq!(garrys_mod.playtime_minutes, Some(13519));
+    }
 }

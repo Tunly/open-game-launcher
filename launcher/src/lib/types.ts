@@ -28,6 +28,7 @@ export interface Game {
   platform: Platform;
   installPath?: string;
   lastPlayed?: string;
+  lastPlayedAt?: string | null;
   playtimeMinutes?: number;
   sizeGb?: number;
   players?: string[];
