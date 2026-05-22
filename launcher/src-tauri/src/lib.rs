@@ -4,7 +4,6 @@ use tauri::{Manager, PhysicalPosition, WebviewWindow, WindowEvent};
 
 pub fn run() {
     tauri::Builder::default()
-        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             if let Some(window) = app.get_webview_window("main") {
                 keep_window_on_visible_monitor(&window);

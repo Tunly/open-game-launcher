@@ -20,7 +20,6 @@ import {
   Sparkles,
   X,
 } from "lucide-react";
-import { open } from "@tauri-apps/plugin-dialog";
 import { listen } from "@tauri-apps/api/event";
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
@@ -1049,29 +1048,9 @@ export function LibraryPage() {
     }
   }
 
-  async function handleSelectGameExecutable() {
+  function handleSelectGameExecutable() {
     setAddGameError(null);
-
-    try {
-      const selectedPath = await open({
-        title: "Select game executable",
-        multiple: false,
-        directory: false,
-        filters: [{ name: "Windows executable", extensions: ["exe"] }],
-      });
-
-      if (typeof selectedPath !== "string") {
-        return;
-      }
-
-      setAddGamePath(selectedPath);
-
-      if (!addGameTitle.trim()) {
-        setAddGameTitle(executableTitleFromPath(selectedPath));
-      }
-    } catch (error) {
-      setAddGameError(getErrorMessage(error));
-    }
+    setAddGameError("Dateiauswahl ist ohne Dialog-Plugin deaktiviert. Bitte den EXE-Pfad manuell einfugen.");
   }
 
   function handleLogoError(game: Game) {
@@ -2086,16 +2065,23 @@ export function LibraryPage() {
                   <input
                     className="h-11 min-w-0 border-4 border-black bg-[#fffaf0] px-3 text-[13px] font-bold outline-none shadow-[3px_3px_0_#171411]"
                     value={addGamePath}
-                    readOnly
-                    placeholder="No EXE selected"
+                    placeholder="C:/Games/Example/Game.exe"
+                    onChange={(event) => {
+                      const nextPath = event.target.value;
+                      setAddGameError(null);
+                      setAddGamePath(nextPath);
+                      if (!addGameTitle.trim()) {
+                        setAddGameTitle(executableTitleFromPath(nextPath));
+                      }
+                    }}
                   />
                   <button
                     type="button"
                     className="flex h-11 items-center justify-center gap-2 border-4 border-black bg-[#e8c843] px-4 text-[12px] font-black uppercase shadow-[3px_3px_0_#171411]"
-                    onClick={() => void handleSelectGameExecutable()}
+                    onClick={handleSelectGameExecutable}
                   >
                     <FileSearch className="h-4 w-4" />
-                    Select EXE
+                    Manual Path
                   </button>
                 </div>
               </label>
