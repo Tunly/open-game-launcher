@@ -9,6 +9,9 @@ use std::{
 };
 use tauri::Emitter;
 
+#[cfg(unix)]
+use std::os::unix::fs::PermissionsExt;
+
 const GAME_LIBRARY_CACHE_VERSION: u32 = 1;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -2207,15 +2210,31 @@ fn ubisoft_cached_asset_roots() -> Vec<PathBuf> {
 fn find_steam_dir() -> Option<PathBuf> {
     let mut candidates = Vec::new();
 
-    if let Some(program_files_x86) = env_path("ProgramFiles(x86)") {
-        candidates.push(program_files_x86.join("Steam"));
-    }
+    if cfg!(target_os = "windows") {
+        if let Some(program_files_x86) = env_path("ProgramFiles(x86)") {
+            candidates.push(program_files_x86.join("Steam"));
+        }
 
-    if let Some(program_files) = env_path("ProgramFiles") {
-        candidates.push(program_files.join("Steam"));
-    }
+        if let Some(program_files) = env_path("ProgramFiles") {
+            candidates.push(program_files.join("Steam"));
+        }
 
-    candidates.push(PathBuf::from(r"C:\Steam"));
+        candidates.push(PathBuf::from(r"C:\Steam"));
+    } else {
+        if let Some(home) = env_path("HOME") {
+            // Standard Linux paths
+            candidates.push(home.join(".local/share/Steam"));
+            candidates.push(home.join(".steam/steam"));
+            candidates.push(home.join(".steam/root"));
+
+            // Flatpak Steam paths
+            candidates.push(home.join(".var/app/com.valvesoftware.Steam/.local/share/Steam"));
+            candidates.push(home.join(".var/app/com.valvesoftware.Steam/data/Steam"));
+
+            // macOS path
+            candidates.push(home.join("Library/Application Support/Steam"));
+        }
+    }
 
     candidates.into_iter().find(|candidate| candidate.exists())
 }
@@ -2945,13 +2964,29 @@ fn emit_game_activity_update(app: &tauri::AppHandle, update: &GameActivityUpdate
     let _ = app.emit("game_activity_updated", update);
 }
 
-fn find_launch_executable(install_path: &Path, title: &str) -> Option<PathBuf> {
-    if install_path.is_file()
-        && install_path
-            .extension()
-            .and_then(|extension| extension.to_str())
-            .is_some_and(|extension| extension.eq_ignore_ascii_case("exe"))
+fn is_file_executable(path: &Path) -> bool {
+    if !path.is_file() {
+        return false;
+    }
+
+    #[cfg(unix)]
     {
+        if let Ok(metadata) = fs::metadata(path) {
+            return metadata.permissions().mode() & 0o111 != 0;
+        }
+    }
+
+    if let Some(extension) = path.extension().and_then(|ext| ext.to_str()) {
+        return extension.eq_ignore_ascii_case("exe")
+            || extension.eq_ignore_ascii_case("bat")
+            || extension.eq_ignore_ascii_case("cmd");
+    }
+
+    false
+}
+
+fn find_launch_executable(install_path: &Path, title: &str) -> Option<PathBuf> {
+    if is_file_executable(install_path) {
         return Some(install_path.to_path_buf());
     }
 
@@ -2988,11 +3023,7 @@ fn collect_executable_candidates(path: &Path, depth: usize, candidates: &mut Vec
                 continue;
             }
             collect_executable_candidates(&path, depth + 1, candidates);
-        } else if path
-            .extension()
-            .and_then(|extension| extension.to_str())
-            .is_some_and(|extension| extension.eq_ignore_ascii_case("exe"))
-        {
+        } else if is_file_executable(&path) {
             candidates.push(path);
         }
     }
