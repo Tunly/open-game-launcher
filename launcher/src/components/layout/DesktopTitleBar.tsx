@@ -46,6 +46,18 @@ export function DesktopTitleBar() {
     }
   }
 
+  async function startWindowDrag(event: React.MouseEvent<HTMLDivElement>) {
+    if (event.button !== 0) {
+      return;
+    }
+
+    try {
+      await getCurrentWindow().startDragging();
+    } catch (error) {
+      reportWindowCommandError("start dragging", error);
+    }
+  }
+
   async function closeWindow() {
     try {
       await getCurrentWindow().close();
@@ -60,6 +72,7 @@ export function DesktopTitleBar() {
         className="neo-copy flex min-w-0 flex-1 items-center gap-2 px-4 text-[10px] font-black uppercase tracking-[0.16em]"
         data-tauri-drag-region
         onDoubleClick={() => void toggleMaximizeWindow()}
+        onMouseDown={(event) => void startWindowDrag(event)}
       >
         <span className="h-3 w-3 shrink-0 border-2 border-black bg-[#b7102a]" />
         <span className="truncate" data-tauri-drag-region>

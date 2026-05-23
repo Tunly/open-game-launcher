@@ -29,12 +29,43 @@ import { addManualGame, launchGame, listInstalledGames, refreshInstalledGames, s
 import type { Game } from "../lib/types";
 
 const STARTUP_LIBRARY_RESCAN_KEY = "launcher_startup_library_rescan_done";
+const LIBRARY_SNAPSHOT_KEY = "launcher_library_snapshot";
 
 type GameActivityUpdate = {
   gameId: string;
   lastPlayed?: string | null;
   playtimeMinutes?: number | null;
 };
+
+function readLibrarySnapshot() {
+  try {
+    const saved = localStorage.getItem(LIBRARY_SNAPSHOT_KEY);
+    if (!saved) {
+      return [];
+    }
+
+    const games = JSON.parse(saved);
+    return Array.isArray(games) ? (games as Game[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeLibrarySnapshot(games: Game[]) {
+  try {
+    localStorage.setItem(LIBRARY_SNAPSHOT_KEY, JSON.stringify(games));
+  } catch {
+    // The native cache is authoritative; this snapshot only prevents UI flicker.
+  }
+}
+
+function areGameListsEqual(left: Game[], right: Game[]) {
+  if (left.length !== right.length) {
+    return false;
+  }
+
+  return left.every((game, index) => JSON.stringify(game) === JSON.stringify(right[index]));
+}
 
 // ----------------------------------------------------
 // FALLBACK MOCK GAMES FOR WEB/BROWSER DEMONSTRATION
@@ -414,6 +445,8 @@ function getGameSource(game: Game) {
   if (id.startsWith("ubisoft-") || description.includes("ubisoft")) return "ubisoft";
   if (id.startsWith("xbox-") || description.includes("xbox")) return "xbox";
   if (id.startsWith("steam-") || description.includes("steam")) return "steam";
+  if (id.startsWith("battlenet-") || description.includes("battle.net")) return "battlenet";
+  if (id.startsWith("ea-") || description.includes("ea app") || description.includes("origin")) return "ea";
 
   return game.platform;
 }
@@ -523,9 +556,10 @@ function Metric({
 }
 
 export function LibraryPage() {
-  const [installedGames, setInstalledGames] = useState<Game[]>([]);
+  const [initialLibrarySnapshot] = useState(readLibrarySnapshot);
+  const [installedGames, setInstalledGames] = useState<Game[]>(initialLibrarySnapshot);
   const [selectedGame, setSelectedGame] = useState<Game | null>(null);
-  const [isDiscoveringGames, setIsDiscoveringGames] = useState(true);
+  const [isDiscoveringGames, setIsDiscoveringGames] = useState(initialLibrarySnapshot.length === 0);
   const [discoveryMessage, setDiscoveryMessage] = useState<string | null>(null);
   const [logoCandidateIndexes, setLogoCandidateIndexes] = useState<
     Record<string, number>
@@ -591,6 +625,14 @@ export function LibraryPage() {
   useEffect(() => {
     localStorage.setItem("launcher_custom_categories", JSON.stringify(customCategories));
   }, [customCategories]);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      writeLibrarySnapshot(installedGames);
+    }, 300);
+
+    return () => window.clearTimeout(timeout);
+  }, [installedGames]);
 
   // ----------------------------------------------------
   // DYNAMIC COLLECTIONS STATES (localStorage)
@@ -663,6 +705,7 @@ export function LibraryPage() {
   // QUERY FILTER ENGINE (USEMEMO)
   // ----------------------------------------------------
   const normalizedSearchQuery = searchQuery.trim().toLocaleLowerCase();
+  const shouldShowLibraryLoading = isDiscoveringGames && installedGames.length === 0;
 
   // Parse size querying from the main search bar
   const sizeRegexInSearch = /(?:size\s*)?([><=])\s*(\d+(?:\.\d+)?)\s*(kb|mb|gb|tb)?/i;
@@ -855,7 +898,9 @@ export function LibraryPage() {
         return;
       }
 
-      setInstalledGames(games);
+      setInstalledGames((current) =>
+        areGameListsEqual(current, games) ? current : games,
+      );
       setDiscoveryMessage(
         games.length > 0
           ? null
@@ -897,7 +942,11 @@ export function LibraryPage() {
     let isMounted = true;
 
     async function loadLibrary() {
-      await loadInstalledGames(false, () => isMounted);
+      await loadInstalledGames(
+        false,
+        () => isMounted,
+        initialLibrarySnapshot.length === 0,
+      );
 
       if (isMounted && shouldRunStartupLibraryRescan()) {
         await loadInstalledGames(true, () => isMounted, false);
@@ -909,7 +958,7 @@ export function LibraryPage() {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [initialLibrarySnapshot.length]);
 
   useEffect(() => {
     let isMounted = true;
@@ -1214,7 +1263,7 @@ export function LibraryPage() {
               </div>
 
               {/* RENDER LIST ROWS */}
-              {isDiscoveringGames ? (
+              {shouldShowLibraryLoading ? (
                 <p className="neo-copy px-3 py-2 text-[11px] font-bold uppercase text-[#55504a]">
                   Bibliothek wird geladen...
                 </p>
@@ -1602,7 +1651,7 @@ export function LibraryPage() {
             GAME DETAILS MAIN CONTENT
             ==================================================== */}
         <main className="min-w-0 overflow-hidden">
-          {isDiscoveringGames ? (
+          {shouldShowLibraryLoading ? (
             <section className="grid min-h-[calc(100vh-124px)] place-items-center border-b-4 border-black bg-[#efe3cf] px-4 text-center" style={{ fontFamily: '"Arial Narrow", Impact, sans-serif' }}>
               <div className="max-w-[560px] border-4 border-black bg-[#fbf4e7] p-8 shadow-[8px_8px_0_#171411]">
                 <Settings className="mx-auto mb-4 h-10 w-10 animate-[spin_4s_linear_infinite] text-[#087d6d]" />
@@ -1625,6 +1674,7 @@ export function LibraryPage() {
                 const hasEpicBanner =
                   gameSource === "epic" && Boolean(enrichedSelectedGame.coverUrl);
                 const shouldShowTextFallback =
+                  gameSource !== "gog" &&
                   !hasUbisoftBanner &&
                   !hasEpicBanner &&
                   (!logoSrc || !loadedLogoUrls.has(logoSrc));
@@ -2011,7 +2061,7 @@ export function LibraryPage() {
                     : discoveryMessage}
                 </p>
                 <p className="neo-copy mt-3 text-[11px] font-bold uppercase leading-5 text-[#55504a]">
-                  Rescan sucht nach Steam-, Epic-Games-, GOG-, Ubisoft- und Xbox-Installationen auf diesem PC.
+                  Rescan sucht nach Steam-, Epic-Games-, GOG-, Ubisoft-, Xbox-, Battle.net- und EA App-Installationen auf diesem PC.
                 </p>
               </div>
             </section>

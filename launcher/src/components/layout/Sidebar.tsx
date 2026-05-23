@@ -44,7 +44,7 @@ export function Sidebar({
 }: SidebarProps) {
   return (
     <nav className="min-w-0 overflow-hidden">
-      <div className="flex gap-2 overflow-x-auto px-1 pb-1">
+      <div className="flex gap-2 overflow-x-auto px-1 pb-1 scrollbar-none">
         {navItems.map((item) => {
           const Icon = item.icon;
           const isActive = item.key && activePage === item.key;

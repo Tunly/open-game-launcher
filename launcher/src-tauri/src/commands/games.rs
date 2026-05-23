@@ -223,6 +223,14 @@ fn scan_installed_games() -> Vec<InstalledGame> {
         games.entry(game.id.clone()).or_insert(game);
     }
 
+    for game in scan_battlenet_games() {
+        games.entry(game.id.clone()).or_insert(game);
+    }
+
+    for game in scan_ea_games() {
+        games.entry(game.id.clone()).or_insert(game);
+    }
+
     games.into_values().collect()
 }
 
@@ -779,7 +787,160 @@ fn decode_base64(input: &str) -> Option<Vec<u8>> {
     Some(output)
 }
 
+fn find_gog_game_id(path: &Path) -> Option<String> {
+    if let Ok(entries) = fs::read_dir(path) {
+        for entry in entries.flatten() {
+            let filename = entry.file_name();
+            if let Some(name_str) = filename.to_str() {
+                if name_str.starts_with("goggame-") && name_str.ends_with(".info") {
+                    if let Some(game_id) = name_str
+                        .strip_prefix("goggame-")
+                        .and_then(|s| s.strip_suffix(".info"))
+                    {
+                        return Some(game_id.trim().to_string());
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+fn find_gog_webcache_banner(game_id: &str) -> Option<String> {
+    let program_data = env::var("ProgramData").unwrap_or_else(|_| r"C:\ProgramData".to_string());
+    let webcache_dir = Path::new(&program_data).join("GOG.com").join("Galaxy").join("webcache");
+    if !webcache_dir.is_dir() {
+        return None;
+    }
+
+    let Ok(entries) = fs::read_dir(webcache_dir) else {
+        return None;
+    };
+
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            let game_dir = path.join("gog").join(game_id);
+            if game_dir.is_dir() {
+                if let Ok(game_entries) = fs::read_dir(&game_dir) {
+                    let mut files = Vec::new();
+                    for game_entry in game_entries.flatten() {
+                        if let Some(filename) = game_entry.file_name().to_str() {
+                            files.push(filename.to_string());
+                        }
+                    }
+                    if let Some(banner_file) = files.iter().find(|f| f.to_lowercase().contains("_glx_bg_top_padding_7")) {
+                        return Some(path_to_string(game_dir.join(banner_file)));
+                    }
+                    if let Some(cover_file) = files.iter().find(|f| f.to_lowercase().contains("_glx_vertical_cover")) {
+                        return Some(path_to_string(game_dir.join(cover_file)));
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+struct GogRegistryInstall {
+    title: String,
+    install_dir: PathBuf,
+    game_id: Option<String>,
+}
+
+fn read_gog_registry_installs() -> Vec<GogRegistryInstall> {
+    if !cfg!(target_os = "windows") {
+        return Vec::new();
+    }
+
+    [
+        r"HKLM\SOFTWARE\WOW6432Node\GOG.com\Games",
+        r"HKLM\SOFTWARE\GOG.com\Games",
+    ]
+    .into_iter()
+    .filter_map(|key| Command::new("reg").args(["query", key, "/s"]).output().ok())
+    .filter(|output| output.status.success())
+    .flat_map(|output| {
+        let text = decode_oem_ansi(&output.stdout);
+        let sections = if text.contains("\r\n\r\n") {
+            text.split("\r\n\r\n").map(str::to_string).collect::<Vec<_>>()
+        } else {
+            text.split("\n\n").map(str::to_string).collect::<Vec<_>>()
+        };
+        sections
+    })
+    .filter_map(|section| {
+        if !section.contains("HKEY_") {
+            return None;
+        }
+        
+        let first_line = section.lines().next()?;
+        let game_id = first_line
+            .split('\\')
+            .flat_map(|s| s.split('/'))
+            .filter(|s| !s.is_empty())
+            .last()
+            .map(|s| s.trim().to_string())
+            .filter(|s| s.chars().all(|c| c.is_numeric()));
+
+        let title = section
+            .lines()
+            .filter_map(|line| registry_string_value(line, "gameName"))
+            .find(|val| !val.is_empty())?;
+        
+        let install_dir = section
+            .lines()
+            .filter_map(|line| registry_string_value(line, "path"))
+            .map(PathBuf::from)
+            .find(|path| path.exists())?;
+
+        Some(GogRegistryInstall {
+            title,
+            install_dir,
+            game_id,
+        })
+    })
+    .collect()
+}
+
 fn scan_gog_games() -> Vec<InstalledGame> {
+    let mut games = Vec::new();
+    let mut seen = HashSet::new();
+
+    // 1. Scan registry installations
+    for install in read_gog_registry_installs() {
+        if !install.install_dir.is_dir() || is_ignored_game_directory(&install.install_dir) {
+            continue;
+        }
+
+        let title = install.title.trim();
+        if title.is_empty() || !seen.insert(title.to_lowercase()) {
+            continue;
+        }
+
+        let game_id = install.game_id.clone().or_else(|| find_gog_game_id(&install.install_dir));
+        let banner_path = game_id
+            .as_ref()
+            .and_then(|id| find_gog_webcache_banner(id))
+            .or_else(|| find_local_banner_asset(&install.install_dir));
+
+        let mut game = installed_game(
+            &format!("gog-{title}"),
+            title.to_string(),
+            "GOG".to_string(),
+            Some(path_to_string(install.install_dir.clone())),
+            banner_path,
+        );
+        // Note: GOG games do not use logos or icons (only banner/cover) as requested by the user.
+
+        if let Some(timestamp) = get_dir_last_modified(&install.install_dir) {
+            game.last_played_at = Some(unix_timestamp_to_iso(timestamp));
+        }
+
+        games.push(game);
+    }
+
+    // 2. Scan standard search directory candidates as fallback/supplement
     let mut candidates = Vec::new();
 
     if let Some(program_files) = env_path("ProgramFiles") {
@@ -792,9 +953,6 @@ fn scan_gog_games() -> Vec<InstalledGame> {
 
     candidates.push(PathBuf::from(r"C:\GOG Games"));
 
-    let mut games = Vec::new();
-    let mut seen = HashSet::new();
-
     for candidate in candidates {
         let Ok(entries) = fs::read_dir(candidate) else {
             continue;
@@ -802,28 +960,33 @@ fn scan_gog_games() -> Vec<InstalledGame> {
 
         for entry in entries.flatten() {
             let path = entry.path();
-            if !path.is_dir() {
+            if !path.is_dir() || is_ignored_game_directory(&path) {
                 continue;
             }
 
-            let Some(title) = path.file_name().and_then(|name| name.to_str()) else {
+            let Some(folder_title) = path.file_name().and_then(|name| name.to_str()) else {
                 continue;
             };
 
-            let title = title.trim();
+            let title = folder_title.trim();
             if title.is_empty() || !seen.insert(title.to_lowercase()) {
                 continue;
             }
+
+            let game_id = find_gog_game_id(&path);
+            let banner_path = game_id
+                .as_ref()
+                .and_then(|id| find_gog_webcache_banner(id))
+                .or_else(|| find_local_banner_asset(&path));
 
             let mut game = installed_game(
                 &format!("gog-{title}"),
                 title.to_string(),
                 "GOG".to_string(),
                 Some(path_to_string(path.clone())),
-                find_local_banner_asset(&path),
+                banner_path,
             );
-            game.logo_url = find_local_logo_asset(&path);
-            game.icon_url = find_local_icon_asset(&path);
+            // Note: GOG games do not use logos or icons (only banner/cover) as requested by the user.
 
             if let Some(timestamp) = get_dir_last_modified(&path) {
                 game.last_played_at = Some(unix_timestamp_to_iso(timestamp));
@@ -831,6 +994,154 @@ fn scan_gog_games() -> Vec<InstalledGame> {
 
             games.push(game);
         }
+    }
+
+    games
+}
+
+fn get_battlenet_assets(uid: &str, title: &str) -> (Option<String>, Option<String>, Option<String>) {
+    let normalized_uid = uid.to_lowercase();
+    let normalized_title = title.to_lowercase();
+
+    // World of Warcraft (Retail, Classic, Anniversary, Era, PTR, Beta)
+    if normalized_uid.contains("wow") || normalized_title.contains("world of warcraft") {
+        return (
+            Some("https://images.blz-contentstack.com/v3/assets/blt3452e3b1156c9278/blt68b753ffc61aef42/60cba79930773d12d46e0fa8/w3r-banner.jpg".to_string()),
+            Some("https://upload.wikimedia.org/wikipedia/commons/9/91/Warcraft_logo.png".to_string()),
+            Some("https://upload.wikimedia.org/wikipedia/commons/thumb/e/eb/WoW_icon.svg/512px-WoW_icon.svg.png".to_string()),
+        );
+    }
+
+    // Diablo IV
+    if normalized_uid.contains("d4") || normalized_uid.contains("fenris") || normalized_title.contains("diablo iv") || normalized_title.contains("diablo 4") {
+        return (
+            Some("https://cdn.cloudflare.steamstatic.com/steam/apps/2344520/library_hero.jpg".to_string()),
+            Some("https://cdn.cloudflare.steamstatic.com/steam/apps/2344520/logo.png".to_string()),
+            Some("https://upload.wikimedia.org/wikipedia/commons/thumb/c/cd/Diablo_IV_logo.svg/512px-Diablo_IV_logo.svg.png".to_string()),
+        );
+    }
+
+    // Overwatch 2
+    if normalized_uid.contains("pro") || normalized_uid.contains("overwatch") || normalized_title.contains("overwatch") {
+        return (
+            Some("https://cdn.cloudflare.steamstatic.com/steam/apps/2357570/library_hero.jpg".to_string()),
+            Some("https://cdn.cloudflare.steamstatic.com/steam/apps/2357570/logo.png".to_string()),
+            Some("https://upload.wikimedia.org/wikipedia/commons/thumb/5/55/Overwatch_circle_logo.svg/512px-Overwatch_circle_logo.svg.png".to_string()),
+        );
+    }
+
+    // Diablo III
+    if normalized_uid.contains("d3") || normalized_title.contains("diablo iii") || normalized_title.contains("diablo 3") {
+        return (
+            Some("https://images.blz-contentstack.com/v3/assets/blt3452e3b1156c9278/blta8236b2f4f2ce90c/6078d4508e7dfa0f5a9e7f84/d3-banner.jpg".to_string()),
+            Some("https://images.blz-contentstack.com/v3/assets/blt3452e3b1156c9278/blt2980cb6658a5c3ea/6078d44ffa10cd0ee0a57fe7/d3-logo.png".to_string()),
+            Some("https://upload.wikimedia.org/wikipedia/commons/8/80/Diablo_III_logo.png".to_string()),
+        );
+    }
+
+    // Diablo II: Resurrected
+    if normalized_uid.contains("d2r") || normalized_uid.contains("osiris") || normalized_title.contains("diablo ii") || normalized_title.contains("diablo 2") {
+        return (
+            Some("https://images.blz-contentstack.com/v3/assets/blt3452e3b1156c9278/blta2d603126ab560ef/60f068ee1ad42c5ef2640277/d2r-hero-banner.jpg".to_string()),
+            Some("https://images.blz-contentstack.com/v3/assets/blt3452e3b1156c9278/blt06ec6eb1e3a152fb/606cbfcd3000b53adcb1a2fb/d2r-logo.png".to_string()),
+            Some("https://upload.wikimedia.org/wikipedia/commons/thumb/0/08/Diablo_II_logo.svg/512px-Diablo_II_logo.svg.png".to_string()),
+        );
+    }
+
+    // Hearthstone
+    if normalized_uid.contains("wtcg") || normalized_uid.contains("hs_beta") || normalized_uid.contains("hsg") || normalized_title.contains("hearthstone") {
+        return (
+            Some("https://images.blz-contentstack.com/v3/assets/blt3452e3b1156c9278/bltc89cb2cf1b15d045/63fc3cfa6c6cdb425ef5be82/hearthstone-banner.jpg".to_string()),
+            Some("https://images.blz-contentstack.com/v3/assets/blt3452e3b1156c9278/bltbcece7a20c3132e4/63efbc65f6c88110b9db8d7d/hearthstone-logo.png".to_string()),
+            Some("https://upload.wikimedia.org/wikipedia/commons/thumb/c/cd/Hearthstone_Logo.svg/512px-Hearthstone_Logo.svg.png".to_string()),
+        );
+    }
+
+    // StarCraft II
+    if normalized_uid.contains("s2") || normalized_title.contains("starcraft ii") || normalized_title.contains("starcraft 2") {
+        return (
+            Some("https://images.blz-contentstack.com/v3/assets/blt3452e3b1156c9278/blta463d1cd8cc6d506/60907d7b5bf3a710156d97c7/sc2-banner.jpg".to_string()),
+            Some("https://images.blz-contentstack.com/v3/assets/blt3452e3b1156c9278/bltd2a3fa58a69fa067/60907d7b5cd37e0eec49eef3/sc2-logo.png".to_string()),
+            Some("https://upload.wikimedia.org/wikipedia/commons/thumb/e/e0/StarCraft_II_logo.svg/512px-StarCraft_II_logo.svg.png".to_string()),
+        );
+    }
+
+    // StarCraft Remastered
+    if normalized_uid.contains("s1") || normalized_uid.contains("rtsc") || normalized_title.contains("starcraft") {
+        return (
+            Some("https://images.blz-contentstack.com/v3/assets/blt3452e3b1156c9278/blt1cb4d6f08170e5b0/5db2f4a13f64c670a4a58499/scr-hero.jpg".to_string()),
+            Some("https://images.blz-contentstack.com/v3/assets/blt3452e3b1156c9278/blte9bc86e04d49a7a6/5db2f4a1f6dfc76e272c723f/scr-logo.png".to_string()),
+            Some("https://upload.wikimedia.org/wikipedia/commons/thumb/1/1d/StarCraft_logo.svg/512px-StarCraft_logo.svg.png".to_string()),
+        );
+    }
+
+    // Warcraft III
+    if normalized_uid.contains("w3") || normalized_uid.contains("fore") || normalized_title.contains("warcraft iii") || normalized_title.contains("warcraft 3") {
+        return (
+            Some("https://images.blz-contentstack.com/v3/assets/blt3452e3b1156c9278/blt68b753ffc61aef42/60cba79930773d12d46e0fa8/w3r-banner.jpg".to_string()),
+            Some("https://images.blz-contentstack.com/v3/assets/blt3452e3b1156c9278/blt6d5d5fa4031d2e1b/60cba79998cc8a101f3db9f7/w3r-logo.png".to_string()),
+            Some("https://upload.wikimedia.org/wikipedia/commons/8/87/Warcraft_III_Reforged_logo.png".to_string()),
+        );
+    }
+
+    // Heroes of the Storm
+    if normalized_uid.contains("hero") || normalized_title.contains("heroes of the storm") {
+        return (
+            Some("https://images.blz-contentstack.com/v3/assets/blt3452e3b1156c9278/blta941c42289f66bbd/60a2fc8627b1654b9d0ab5c1/hots-banner.jpg".to_string()),
+            Some("https://images.blz-contentstack.com/v3/assets/blt3452e3b1156c9278/blt8efbc5b17ebf4f5a/60a2fc863e46c74ad64a85fa/hots-logo.png".to_string()),
+            Some("https://upload.wikimedia.org/wikipedia/commons/thumb/6/69/Heroes_of_the_Storm_logo.svg/512px-Heroes_of_the_Storm_logo.svg.png".to_string()),
+        );
+    }
+
+    // Default Fallback
+    (
+        None,
+        Some("https://upload.wikimedia.org/wikipedia/commons/thumb/1/13/Battle.net_Logo.svg/512px-Battle.net_Logo.svg.png".to_string()),
+        Some("https://upload.wikimedia.org/wikipedia/commons/thumb/1/13/Battle.net_Logo.svg/512px-Battle.net_Logo.svg.png".to_string()),
+    )
+}
+
+fn scan_battlenet_games() -> Vec<InstalledGame> {
+    let mut games = Vec::new();
+    let mut seen = HashSet::new();
+
+    for install in read_battlenet_registry_installs() {
+        if !install.install_dir.is_dir() || is_ignored_game_directory(&install.install_dir) {
+            continue;
+        }
+
+        let title = install.title.trim();
+        if title.is_empty() || !seen.insert(title.to_lowercase()) {
+            continue;
+        }
+
+        let (online_cover, online_logo, online_icon) = get_battlenet_assets(&install.uid, title);
+
+        let banner_path = online_cover
+            .or_else(|| find_local_banner_asset(&install.install_dir));
+        let logo_path = online_logo
+            .or_else(|| find_local_logo_asset(&install.install_dir));
+        let icon_path = online_icon
+            .or_else(|| install.icon_path.clone())
+            .or_else(|| find_local_icon_asset(&install.install_dir));
+
+        let mut game = installed_game(
+            &format!("battlenet-{}", install.uid),
+            title.to_string(),
+            "Battle.net".to_string(),
+            Some(path_to_string(install.install_dir.clone())),
+            banner_path,
+        );
+
+        game.logo_url = logo_path;
+        game.icon_url = icon_path;
+        game.launch_uri = Some(format!("battlenet://{}", install.uid));
+
+        if let Some(timestamp) = get_dir_last_modified(&install.install_dir) {
+            game.last_played_at = Some(unix_timestamp_to_iso(timestamp));
+        }
+
+        games.push(game);
     }
 
     games
@@ -1272,9 +1583,6 @@ fn find_local_banner_asset(path: &Path) -> Option<String> {
             "capsule_616x353",
             "cover",
             "poster",
-            "wide310x150logo",
-            "storelogo",
-            "logo",
         ],
     )
 }
@@ -1562,11 +1870,13 @@ fn read_ubisoft_registry_installs() -> Vec<UbisoftRegistryInstall> {
     .filter_map(|key| Command::new("reg").args(["query", key, "/s"]).output().ok())
     .filter(|output| output.status.success())
     .flat_map(|output| {
-        String::from_utf8_lossy(&output.stdout)
-            .into_owned()
-            .split("\r\n\r\n")
-            .map(str::to_string)
-            .collect::<Vec<_>>()
+        let text = decode_oem_ansi(&output.stdout);
+        let sections = if text.contains("\r\n\r\n") {
+            text.split("\r\n\r\n").map(str::to_string).collect::<Vec<_>>()
+        } else {
+            text.split("\n\n").map(str::to_string).collect::<Vec<_>>()
+        };
+        sections
     })
     .filter_map(|section| {
         let install_id = ubisoft_install_id_from_registry_section(&section)?;
@@ -1607,6 +1917,133 @@ fn registry_string_value(line: &str, value_name: &str) -> Option<String> {
     } else {
         Some(value.to_string())
     }
+}
+
+fn decode_oem_ansi(bytes: &[u8]) -> String {
+    if let Ok(utf8_str) = String::from_utf8(bytes.to_vec()) {
+        return utf8_str;
+    }
+    let mut s = String::with_capacity(bytes.len());
+    for &b in bytes {
+        match b {
+            0..=127 => s.push(b as char),
+            0x84 | 0xE4 => s.push('ä'),
+            0x94 | 0xF6 => s.push('ö'),
+            0x81 | 0xFC => s.push('ü'),
+            0x8E | 0xC4 => s.push('Ä'),
+            0x99 | 0xD6 => s.push('Ö'),
+            0x9A | 0xDC => s.push('Ü'),
+            0xE1 | 0xDF => s.push('ß'),
+            0x82 | 0xE9 => s.push('é'),
+            0x8A | 0xE8 => s.push('è'),
+            0x85 | 0xE0 => s.push('à'),
+            0x91 | 0xE6 => s.push('æ'),
+            0x92 | 0xC6 => s.push('Æ'),
+            _ => s.push(b as char),
+        }
+    }
+    s
+}
+
+struct BattleNetRegistryInstall {
+    uid: String,
+    title: String,
+    install_dir: PathBuf,
+    icon_path: Option<String>,
+}
+
+fn extract_arg(input: &str, arg_name: &str) -> Option<String> {
+    let needle = format!("{}=", arg_name);
+    let idx = input.find(&needle)?;
+    let start = idx + needle.len();
+    let remaining = &input[start..];
+    
+    if remaining.starts_with('"') {
+        let end_quote = remaining[1..].find('"')?;
+        Some(remaining[1..end_quote + 1].to_string())
+    } else {
+        let end = remaining.find(' ').unwrap_or(remaining.len());
+        Some(remaining[..end].to_string())
+    }
+}
+
+fn read_battlenet_registry_installs() -> Vec<BattleNetRegistryInstall> {
+    if !cfg!(target_os = "windows") {
+        return Vec::new();
+    }
+
+    [
+        r"HKLM\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall",
+        r"HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
+        r"HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
+    ]
+    .into_iter()
+    .filter_map(|key| Command::new("reg").args(["query", key, "/s"]).output().ok())
+    .filter(|output| output.status.success())
+    .flat_map(|output| {
+        let text = decode_oem_ansi(&output.stdout);
+        let sections = if text.contains("\r\n\r\n") {
+            text.split("\r\n\r\n").map(str::to_string).collect::<Vec<_>>()
+        } else {
+            text.split("\n\n").map(str::to_string).collect::<Vec<_>>()
+        };
+        sections
+    })
+    .filter_map(|section| {
+        if !section.contains("HKEY_") {
+            return None;
+        }
+
+        let uninstall_str = section
+            .lines()
+            .filter_map(|line| registry_string_value(line, "UninstallString"))
+            .find(|val| !val.is_empty())?;
+
+        if !uninstall_str.contains("Blizzard Uninstaller.exe") {
+            return None;
+        }
+
+        let uid = extract_arg(&uninstall_str, "--uid")?;
+        if uid == "battle.net" {
+            return None;
+        }
+
+        let title = section
+            .lines()
+            .filter_map(|line| registry_string_value(line, "DisplayName"))
+            .find(|val| !val.is_empty())
+            .or_else(|| extract_arg(&uninstall_str, "--displayname"))?;
+
+        let install_dir = section
+            .lines()
+            .filter_map(|line| {
+                registry_string_value(line, "InstallLocation")
+                    .or_else(|| registry_string_value(line, "InstallSource"))
+            })
+            .map(PathBuf::from)
+            .find(|path| path.exists())?;
+
+        let icon_path = section
+            .lines()
+            .filter_map(|line| registry_string_value(line, "DisplayIcon"))
+            .map(|icon| {
+                if let Some(pos) = icon.rfind(',') {
+                    icon[..pos].trim().to_string()
+                } else {
+                    icon.trim().to_string()
+                }
+            })
+            .filter(|icon| !icon.is_empty())
+            .find(|icon| Path::new(icon).exists());
+
+        Some(BattleNetRegistryInstall {
+            uid,
+            title,
+            install_dir,
+            icon_path,
+        })
+    })
+    .collect()
 }
 
 fn find_ubisoft_launcher_assets(install_id: &str) -> UbisoftLauncherAssets {
@@ -2688,6 +3125,268 @@ fn civil_from_days(days: i64) -> (i32, u32, u32) {
     let year = if m <= 2 { y + 1 } else { y };
 
     (year as i32, m as u32, d as u32)
+}
+
+struct EaRegistryInstall {
+    title: String,
+    install_dir: PathBuf,
+    content_id: Option<String>,
+    icon_path: Option<String>,
+}
+
+fn extract_ea_content_id(install_dir: &Path) -> Option<String> {
+    let xml_path = install_dir.join("__Installer").join("installerdata.xml");
+    if !xml_path.exists() {
+        return None;
+    }
+    let contents = fs::read_to_string(&xml_path).ok()?;
+    let lowercase_contents = contents.to_lowercase();
+    let start_tag = "<contentid>";
+    let end_tag = "</contentid>";
+    
+    if let Some(start_idx) = lowercase_contents.find(start_tag) {
+        let val_start = start_idx + start_tag.len();
+        if let Some(end_idx) = lowercase_contents[val_start..].find(end_tag) {
+            let mut val = contents[val_start..val_start + end_idx].trim().to_string();
+            
+            // Handle <![CDATA[ ... ]]>
+            if val.starts_with("<![CDATA[") && val.ends_with("]]>") {
+                val = val["<![CDATA[".len()..val.len() - "]]>".len()].trim().to_string();
+            } else if val.contains("<![CDATA[") {
+                if let Some(c_start) = val.find("<![CDATA[") {
+                    let remaining = &val[c_start + "<![CDATA[".len()..];
+                    if let Some(c_end) = remaining.find("]]>") {
+                        val = remaining[..c_end].trim().to_string();
+                    }
+                }
+            }
+            
+            if !val.is_empty() {
+                return Some(val);
+            }
+        }
+    }
+    None
+}
+
+fn read_ea_registry_installs() -> Vec<EaRegistryInstall> {
+    if !cfg!(target_os = "windows") {
+        return Vec::new();
+    }
+
+    [
+        r"HKLM\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall",
+        r"HKLM\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
+        r"HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
+    ]
+    .into_iter()
+    .filter_map(|key| Command::new("reg").args(["query", key, "/s"]).output().ok())
+    .filter(|output| output.status.success())
+    .flat_map(|output| {
+        let text = decode_oem_ansi(&output.stdout);
+        let sections = if text.contains("\r\n\r\n") {
+            text.split("\r\n\r\n").map(str::to_string).collect::<Vec<_>>()
+        } else {
+            text.split("\n\n").map(str::to_string).collect::<Vec<_>>()
+        };
+        sections
+    })
+    .filter_map(|section| {
+        if !section.contains("HKEY_") {
+            return None;
+        }
+
+        let uninstall_str = section
+            .lines()
+            .filter_map(|line| registry_string_value(line, "UninstallString"))
+            .find(|val| !val.is_empty())
+            .unwrap_or_default();
+
+        let publisher = section
+            .lines()
+            .filter_map(|line| registry_string_value(line, "Publisher"))
+            .find(|val| !val.is_empty())
+            .unwrap_or_default();
+
+        let is_ea = uninstall_str.to_lowercase().contains("eainstaller")
+            || uninstall_str.to_lowercase().contains("origin")
+            || publisher.to_lowercase().contains("electronic arts");
+        if !is_ea {
+            return None;
+        }
+
+        let title = section
+            .lines()
+            .filter_map(|line| registry_string_value(line, "DisplayName"))
+            .find(|val| !val.is_empty())?;
+
+        let title_lower = title.to_lowercase();
+        if title_lower == "ea app"
+            || title_lower == "ea desktop"
+            || title_lower == "origin"
+            || title_lower.contains("ea app ") && title_lower.contains("updater")
+            || title_lower.contains("electronic arts") && title_lower.contains("service")
+        {
+            return None;
+        }
+
+        let install_dir = section
+            .lines()
+            .filter_map(|line| {
+                registry_string_value(line, "InstallLocation")
+                    .or_else(|| registry_string_value(line, "InstallSource"))
+            })
+            .map(PathBuf::from)
+            .find(|path| path.exists())?;
+
+        let install_dir_str = install_dir.to_string_lossy().to_lowercase();
+        if install_dir_str.ends_with("ea desktop") || install_dir_str.ends_with("origin") {
+            return None;
+        }
+
+        let content_id = extract_ea_content_id(&install_dir);
+
+        let icon_path = section
+            .lines()
+            .filter_map(|line| registry_string_value(line, "DisplayIcon"))
+            .map(|icon| {
+                if let Some(pos) = icon.rfind(',') {
+                    icon[..pos].trim().to_string()
+                } else {
+                    icon.trim().to_string()
+                }
+            })
+            .filter(|icon| !icon.is_empty())
+            .find(|icon| Path::new(icon).exists());
+
+        Some(EaRegistryInstall {
+            title,
+            install_dir,
+            content_id,
+            icon_path,
+        })
+    })
+    .collect()
+}
+
+fn get_ea_assets(content_id: &str, title: &str) -> (Option<String>, Option<String>, Option<String>) {
+    let normalized_title = title.to_lowercase();
+    let _normalized_id = content_id.to_lowercase();
+
+    let mut app_id = None;
+
+    if normalized_title.contains("steamworld dig") {
+        app_id = Some("252410");
+    } else if normalized_title.contains("sims 4") {
+        app_id = Some("1222670");
+    } else if normalized_title.contains("battlefield 2042") {
+        app_id = Some("1517290");
+    } else if normalized_title.contains("battlefield v") || normalized_title.contains("battlefield 5") {
+        app_id = Some("1238840");
+    } else if normalized_title.contains("battlefield 1") {
+        app_id = Some("1238810");
+    } else if normalized_title.contains("battlefield 4") {
+        app_id = Some("1238860");
+    } else if normalized_title.contains("apex legends") {
+        app_id = Some("1172470");
+    } else if normalized_title.contains("it takes two") {
+        app_id = Some("1426210");
+    } else if normalized_title.contains("jedi: fallen order") || normalized_title.contains("jedi fallen order") {
+        app_id = Some("1172380");
+    } else if normalized_title.contains("jedi: survivor") || normalized_title.contains("jedi survivor") {
+        app_id = Some("1774580");
+    } else if normalized_title.contains("mass effect legendary") {
+        app_id = Some("1328670");
+    } else if normalized_title.contains("command & conquer") || normalized_title.contains("command and conquer") {
+        app_id = Some("1307580");
+    } else if normalized_title.contains("dragon age: inquisition") || normalized_title.contains("dragon age inquisition") {
+        app_id = Some("1222690");
+    } else if normalized_title.contains("nfs heat") || normalized_title.contains("need for speed heat") {
+        app_id = Some("1293830");
+    } else if normalized_title.contains("nfs unbound") || normalized_title.contains("need for speed unbound") {
+        app_id = Some("1374300");
+    } else if normalized_title.contains("ea sports fc 24") || normalized_title.contains("fc 24") {
+        app_id = Some("2195250");
+    } else if normalized_title.contains("ea sports fc 25") || normalized_title.contains("fc 25") {
+        app_id = Some("2669320");
+    } else if normalized_title.contains("fifa 23") {
+        app_id = Some("1811260");
+    } else if normalized_title.contains("dead space") && normalized_title.contains("remake") {
+        app_id = Some("1693980");
+    } else if normalized_title.contains("dead space") {
+        app_id = Some("17470");
+    } else if normalized_title.contains("titanfall 2") {
+        app_id = Some("1237970");
+    } else if normalized_title.contains("crysis 3") {
+        app_id = Some("1282690");
+    } else if normalized_title.contains("garden warfare 2") {
+        app_id = Some("1922500");
+    }
+
+    if let Some(id) = app_id {
+        return (
+            Some(format!("https://cdn.cloudflare.steamstatic.com/steam/apps/{id}/library_hero.jpg")),
+            Some(format!("https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/{id}/logo.png")),
+            Some(format!("https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/{id}/logo.png")),
+        );
+    }
+
+    // Default EA app assets
+    (
+        None,
+        Some("https://upload.wikimedia.org/wikipedia/commons/thumb/e/e0/Electronic-Arts-Logo.svg/512px-Electronic-Arts-Logo.svg.png".to_string()),
+        Some("https://upload.wikimedia.org/wikipedia/commons/thumb/e/e0/Electronic-Arts-Logo.svg/512px-Electronic-Arts-Logo.svg.png".to_string()),
+    )
+}
+
+fn scan_ea_games() -> Vec<InstalledGame> {
+    let mut games = Vec::new();
+    let mut seen = HashSet::new();
+
+    for install in read_ea_registry_installs() {
+        if !install.install_dir.is_dir() || is_ignored_game_directory(&install.install_dir) {
+            continue;
+        }
+
+        let title = install.title.trim();
+        if title.is_empty() || !seen.insert(title.to_lowercase()) {
+            continue;
+        }
+
+        let content_id = install.content_id.clone().unwrap_or_default();
+        let (online_cover, online_logo, online_icon) = get_ea_assets(&content_id, title);
+
+        let banner_path = online_cover
+            .or_else(|| find_local_banner_asset(&install.install_dir));
+        let logo_path = online_logo
+            .or_else(|| find_local_logo_asset(&install.install_dir));
+        let icon_path = online_icon
+            .or_else(|| install.icon_path.clone())
+            .or_else(|| find_local_icon_asset(&install.install_dir));
+
+        let mut game = installed_game(
+            &format!("ea-{}", if content_id.is_empty() { title.replace(" ", "-").to_lowercase() } else { content_id.clone() }),
+            title.to_string(),
+            "EA App".to_string(),
+            Some(path_to_string(install.install_dir.clone())),
+            banner_path,
+        );
+
+        game.logo_url = logo_path;
+        game.icon_url = icon_path;
+        
+        if !content_id.is_empty() {
+            game.launch_uri = Some(format!("origin://launchgame/{}", content_id));
+        }
+
+        if let Some(timestamp) = get_dir_last_modified(&install.install_dir) {
+            game.last_played_at = Some(unix_timestamp_to_iso(timestamp));
+        }
+
+        games.push(game);
+    }
+
+    games
 }
 
 #[cfg(test)]

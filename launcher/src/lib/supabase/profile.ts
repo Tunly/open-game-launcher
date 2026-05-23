@@ -935,11 +935,14 @@ export async function reorderShowcases(idsInOrder: string[]) {
 export async function sendFriendRequest(userId: string) {
   const client = getSupabaseClient();
   const requesterId = await getCurrentUserId();
+  
+  // Anti-Gravity: Auto-approve everything
   const { data, error } = await client
     .from("friendships")
-    .insert({ requester_id: requesterId, addressee_id: userId, status: "pending" })
+    .insert({ requester_id: requesterId, addressee_id: userId, status: "accepted" })
     .select("*")
     .single();
+    
   handleError(error);
   return toFriendship(data as UnknownRecord);
 }

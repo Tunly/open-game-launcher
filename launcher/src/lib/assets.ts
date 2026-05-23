@@ -13,7 +13,7 @@ export function getGameAssetUrl(assetUrl?: string): string | undefined {
 
 export function getGameBannerStyle(
   coverUrl?: string,
-  options?: { backgroundPosition?: string },
+  options?: { backgroundPosition?: string; backgroundSize?: string },
 ): CSSProperties | undefined {
   const imageUrl = getGameAssetUrl(coverUrl);
 
@@ -26,6 +26,6 @@ export function getGameBannerStyle(
     backgroundImage: `linear-gradient(90deg, rgba(23,20,17,0.1), rgba(23,20,17,0) 45%, rgba(23,20,17,0.1)), url("${imageUrl}")`,
     backgroundPosition: options?.backgroundPosition ?? "center",
     backgroundRepeat: "no-repeat",
-    backgroundSize: "cover",
+    backgroundSize: options?.backgroundSize ?? "cover",
   };
 }

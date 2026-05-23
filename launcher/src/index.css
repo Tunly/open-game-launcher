@@ -222,6 +222,20 @@ a:focus-visible {
     linear-gradient(180deg, #007166, #171411 76%);
 }
 
+.library-source-art-battlenet {
+  background:
+    radial-gradient(circle at 25% 75%, rgba(140, 245, 228, 0.78) 0 12%, transparent 13%),
+    repeating-linear-gradient(-32deg, rgba(23, 20, 17, 0.25) 0 3px, transparent 4px 18px),
+    linear-gradient(180deg, #087d6d 0 42%, #171411 43% 76%, #b7102a 77% 100%);
+}
+
+.library-source-art-ea {
+  background:
+    radial-gradient(circle at 75% 25%, rgba(246, 242, 232, 0.72) 0 11%, transparent 12%),
+    repeating-linear-gradient(45deg, rgba(23, 20, 17, 0.28) 0 4px, transparent 5px 22px),
+    linear-gradient(180deg, #d93728 0 45%, #171411 46% 78%, #4aa5c8 79% 100%);
+}
+
 .library-source-art-windows,
 .library-source-art-linux,
 .library-source-art-macos {
@@ -347,4 +361,13 @@ a:focus-visible {
 
 .cup-two::after {
   background: #4aa5c8;
+}
+
+/* Hide scrollbar but keep functionality */
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+.scrollbar-none {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
 }
