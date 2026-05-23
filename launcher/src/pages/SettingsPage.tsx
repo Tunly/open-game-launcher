@@ -1,9 +1,11 @@
-import { FolderOpen, HardDrive, Power, RefreshCw, ShieldCheck } from "lucide-react";
+import { FolderOpen, HardDrive, Power, RefreshCw, ShieldCheck, User, Key, Link, LogOut, Gamepad2 } from "lucide-react";
 import { useEffect, useState } from "react";
+import { listen } from "@tauri-apps/api/event";
 
 import { useLocalStorageState } from "../hooks/useLocalStorageState";
-import { getDefaultInstallDir, getSystemInfo } from "../lib/launcher";
+import { getDefaultInstallDir, getSystemInfo, openSteamLoginWindow, openGogLoginWindow, openEpicLoginWindow } from "../lib/launcher";
 import type { SystemInfo } from "../lib/types";
+
 
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
@@ -56,6 +58,183 @@ export function SettingsPage() {
   const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null);
   const [commandError, setCommandError] = useState<string | null>(null);
   const [folderMessage, setFolderMessage] = useState<string | null>(null);
+
+  const [steamId, setSteamId] = useLocalStorageState(
+    "launcher.steamId",
+    "",
+  );
+  const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
+
+  const [gogConnected, setGogConnected] = useState(false);
+  const [epicConnected, setEpicConnected] = useState(false);
+  const [epicCodeInput, setEpicCodeInput] = useState("");
+  const [epicDisplayName, setEpicDisplayName] = useState("");
+
+  useEffect(() => {
+    const gogTokenStr = localStorage.getItem("launcher.gogToken");
+    if (gogTokenStr) {
+      try {
+        const token = JSON.parse(gogTokenStr);
+        if (token && token.accessToken) {
+          setGogConnected(true);
+        }
+      } catch {
+        localStorage.removeItem("launcher.gogToken");
+      }
+    }
+
+    const epicTokenStr = localStorage.getItem("launcher.epicToken");
+    if (epicTokenStr) {
+      try {
+        const token = JSON.parse(epicTokenStr);
+        if (token && token.accessToken) {
+          setEpicConnected(true);
+          setEpicDisplayName(token.displayName || "");
+        }
+      } catch {
+        localStorage.removeItem("launcher.epicToken");
+      }
+    }
+  }, []);
+
+  async function handleGogCodeExchange(code: string) {
+    setTestResult({ success: true, message: "GOG Login-Code empfangen. Tausche aus..." });
+    try {
+      const params = new URLSearchParams();
+      params.append("client_id", "46899977096215655");
+      params.append("client_secret", "9d85c43b1482497dbbce61f6e4aa173a433796eeae2ca8c5f6129f2dc4de46d9");
+      params.append("grant_type", "authorization_code");
+      params.append("code", code);
+      params.append("redirect_uri", "http://127.0.0.1:18235/");
+
+      const response = await fetch("https://auth.gog.com/token", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+        },
+        body: params.toString(),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Token-Austausch fehlgeschlagen mit Status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      if (data.access_token) {
+        localStorage.setItem("launcher.gogToken", JSON.stringify({
+          accessToken: data.access_token,
+          refreshToken: data.refresh_token,
+          expiresAt: Date.now() + (data.expires_in * 1000),
+          userId: data.user_id,
+        }));
+        setGogConnected(true);
+        setTestResult({
+          success: true,
+          message: "Erfolgreich mit GOG verknüpft! Deine GOG-Spiele werden jetzt synchronisiert.",
+        });
+      } else {
+        throw new Error("Kein access_token in der Antwort von GOG erhalten.");
+      }
+    } catch (err) {
+      setTestResult({
+        success: false,
+        message: `GOG Login fehlgeschlagen: ${getErrorMessage(err)}`,
+      });
+    }
+  }
+
+  async function handleEpicCodeExchange(authCode: string) {
+    if (!authCode.trim()) {
+      setTestResult({ success: false, message: "Bitte gib einen gültigen Epic Authorization-Code ein." });
+      return;
+    }
+    setTestResult({ success: true, message: "Tausche Epic Authorization-Code aus..." });
+    try {
+      const params = new URLSearchParams();
+      params.append("grant_type", "authorization_code");
+      params.append("code", authCode.trim());
+
+      const response = await fetch("https://account-public-service-prod.ol.epicgames.com/account/api/oauth/token", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          "Authorization": "Basic MzRhMDJjZjhmNDQxNGUyOWIxNTk4NTI4ZmIzNDYyNDU6YjA3MGVlNTM1YjliNGNjZmJhMmM1NTZiNjk2Nzc1ZGI=",
+        },
+        body: params.toString(),
+      });
+
+      if (!response.ok) {
+        throw new Error(`Epic-Austausch fehlgeschlagen mit Status: ${response.status}`);
+      }
+
+      const data = await response.json();
+      if (data.access_token) {
+        localStorage.setItem("launcher.epicToken", JSON.stringify({
+          accessToken: data.access_token,
+          refreshToken: data.refresh_token,
+          expiresAt: Date.now() + (data.expires_in * 1000),
+          accountId: data.account_id,
+          displayName: data.displayName,
+        }));
+        setEpicConnected(true);
+        setEpicDisplayName(data.displayName || "");
+        setEpicCodeInput("");
+        setTestResult({
+          success: true,
+          message: `Erfolgreich mit Epic Games verknüpft! Angemeldet als ${data.displayName}.`,
+        });
+      } else {
+        throw new Error("Kein access_token in der Antwort von Epic erhalten.");
+      }
+    } catch (err) {
+      setTestResult({
+        success: false,
+        message: `Epic Games Login fehlgeschlagen: ${getErrorMessage(err)}`,
+      });
+    }
+  }
+
+  useEffect(() => {
+    let unlistenPromise: Promise<() => void> | null = null;
+    
+    try {
+      unlistenPromise = listen<string>("steam_login_success", (event) => {
+        const steamIdVal = event.payload;
+        setSteamId(steamIdVal);
+        setTestResult({
+          success: true,
+          message: "Erfolgreich über Steam eingeloggt! Deine Spiele werden jetzt synchronisiert.",
+        });
+      });
+    } catch (err) {
+      console.warn("Failed to setup steam_login_success listener:", err);
+    }
+    
+    return () => {
+      if (unlistenPromise) {
+        void unlistenPromise.then((unlisten) => unlisten());
+      }
+    };
+  }, [setSteamId]);
+
+  useEffect(() => {
+    let unlistenPromise: Promise<() => void> | null = null;
+    
+    try {
+      unlistenPromise = listen<string>("gog_login_code", async (event) => {
+        const code = event.payload;
+        await handleGogCodeExchange(code);
+      });
+    } catch (err) {
+      console.warn("Failed to setup gog_login_code listener:", err);
+    }
+    
+    return () => {
+      if (unlistenPromise) {
+        void unlistenPromise.then((unlisten) => unlisten());
+      }
+    };
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -176,6 +355,234 @@ export function SettingsPage() {
                   {folderMessage}
                 </p>
               ) : null}
+            </div>
+          </div>
+
+          {/* CLOUD ACCOUNTS LINKING */}
+          <div className="border-4 border-black bg-[#f5eedf] shadow-[4px_4px_0_#171411]">
+            <div className="flex items-center justify-between border-b-4 border-black p-5">
+              <div>
+                <p className="neo-copy text-[10px] font-bold uppercase text-[#55504a]">
+                  Drittanbieter Integration
+                </p>
+                <h2 className="text-3xl font-black uppercase text-[#171411]">
+                  Cloud Account Link
+                </h2>
+              </div>
+              <Link className="h-10 w-10 text-[#087d6d]" />
+            </div>
+
+            <div className="p-5 space-y-6">
+              <div className="grid gap-4 md:grid-cols-3">
+                {/* STEAM CARD */}
+                <div className="border-2 border-black bg-[#efe6d4] p-4 flex flex-col justify-between shadow-[2px_2px_0_#171411]">
+                  <div>
+                    <h3 className="text-xl font-black uppercase text-[#171411] mb-1">
+                      Steam
+                    </h3>
+                    <p className="neo-copy text-[9px] font-bold uppercase text-[#55504a] leading-relaxed mb-4">
+                      Synchronisiert deine Steam-Bibliothek über dein öffentliches Profil.
+                    </p>
+                  </div>
+                  <div>
+                    {steamId ? (
+                      <div className="border border-black bg-[#f5eedf] p-3 space-y-2">
+                        <span className="neo-copy text-[8px] font-bold uppercase text-[#55504a] block">Verbunden mit SteamID</span>
+                        <span className="font-black text-xs text-[#087d6d] block truncate">{steamId}</span>
+                        <button
+                          className="neo-copy w-full flex h-8 items-center justify-center gap-2 border-2 border-black bg-[#c20b2f] px-3 text-[10px] font-bold uppercase text-white shadow-[1px_1px_0_#171411] hover:bg-[#a10825] transition"
+                          type="button"
+                          onClick={() => {
+                            setSteamId("");
+                            setTestResult(null);
+                          }}
+                        >
+                          <LogOut className="h-3 w-3" />
+                          Trennen
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        className="neo-copy w-full flex h-10 items-center justify-center gap-2 border-2 border-black bg-[#c20b2f] px-4 text-xs font-black uppercase text-white shadow-[2px_2px_0_#171411] hover:bg-[#a10825] transition"
+                        type="button"
+                        onClick={() => {
+                          void openSteamLoginWindow().catch((err) => {
+                            setTestResult({ success: false, message: `Fehler beim Öffnen: ${getErrorMessage(err)}` });
+                          });
+                        }}
+                      >
+                        <Link className="h-3.5 w-3.5" />
+                        Verbinden
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* GOG CARD */}
+                <div className="border-2 border-black bg-[#efe6d4] p-4 flex flex-col justify-between shadow-[2px_2px_0_#171411]">
+                  <div>
+                    <h3 className="text-xl font-black uppercase text-[#171411] mb-1">
+                      GOG Galaxy
+                    </h3>
+                    <p className="neo-copy text-[9px] font-bold uppercase text-[#55504a] leading-relaxed mb-4">
+                      Vollautomatische Synchronisierung deiner GOG-Spiele über sicheren Login.
+                    </p>
+                  </div>
+                  <div>
+                    {gogConnected ? (
+                      <div className="border border-black bg-[#f5eedf] p-3 space-y-2">
+                        <span className="neo-copy text-[8px] font-bold uppercase text-[#55504a] block">Status</span>
+                        <span className="font-black text-xs text-[#087d6d] block truncate">Erfolgreich Verbunden</span>
+                        <button
+                          className="neo-copy w-full flex h-8 items-center justify-center gap-2 border-2 border-black bg-[#c20b2f] px-3 text-[10px] font-bold uppercase text-white shadow-[1px_1px_0_#171411] hover:bg-[#a10825] transition"
+                          type="button"
+                          onClick={() => {
+                            localStorage.removeItem("launcher.gogToken");
+                            setGogConnected(false);
+                            setTestResult(null);
+                          }}
+                        >
+                          <LogOut className="h-3 w-3" />
+                          Trennen
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        className="neo-copy w-full flex h-10 items-center justify-center gap-2 border-2 border-black bg-[#087d6d] px-4 text-xs font-black uppercase text-white shadow-[2px_2px_0_#171411] hover:bg-[#066154] transition"
+                        type="button"
+                        onClick={() => {
+                          void openGogLoginWindow().catch((err) => {
+                            setTestResult({ success: false, message: `Fehler beim Öffnen: ${getErrorMessage(err)}` });
+                          });
+                        }}
+                      >
+                        <Link className="h-3.5 w-3.5" />
+                        Verbinden
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* EPIC GAMES CARD */}
+                <div className="border-2 border-black bg-[#efe6d4] p-4 flex flex-col justify-between shadow-[2px_2px_0_#171411]">
+                  <div>
+                    <h3 className="text-xl font-black uppercase text-[#171411] mb-1">
+                      Epic Games
+                    </h3>
+                    <p className="neo-copy text-[9px] font-bold uppercase text-[#55504a] leading-relaxed mb-4">
+                      Importiere deine Epic-Bibliothek. Melde dich im Browser an und füge den erhaltenen Code ein.
+                    </p>
+                  </div>
+                  <div>
+                    {epicConnected ? (
+                      <div className="border border-black bg-[#f5eedf] p-3 space-y-2">
+                        <span className="neo-copy text-[8px] font-bold uppercase text-[#55504a] block">Angemeldet als</span>
+                        <span className="font-black text-xs text-[#087d6d] block truncate">{epicDisplayName || "Epic User"}</span>
+                        <button
+                          className="neo-copy w-full flex h-8 items-center justify-center gap-2 border-2 border-black bg-[#c20b2f] px-3 text-[10px] font-bold uppercase text-white shadow-[1px_1px_0_#171411] hover:bg-[#a10825] transition"
+                          type="button"
+                          onClick={() => {
+                            localStorage.removeItem("launcher.epicToken");
+                            setEpicConnected(false);
+                            setEpicDisplayName("");
+                            setTestResult(null);
+                          }}
+                        >
+                          <LogOut className="h-3 w-3" />
+                          Trennen
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <button
+                          className="neo-copy w-full flex h-10 items-center justify-center gap-2 border-2 border-black bg-[#171411] px-4 text-xs font-black uppercase text-white shadow-[2px_2px_0_#171411] hover:bg-[#333] transition"
+                          type="button"
+                          onClick={() => {
+                            void openEpicLoginWindow().catch((err) => {
+                              setTestResult({ success: false, message: `Fehler beim Öffnen: ${getErrorMessage(err)}` });
+                            });
+                          }}
+                        >
+                          <Link className="h-3.5 w-3.5" />
+                          1. Login im Browser
+                        </button>
+
+                        <div className="flex gap-1.5 mt-2">
+                          <input
+                            type="text"
+                            placeholder="Epic Auth-Code..."
+                            value={epicCodeInput}
+                            onChange={(e) => setEpicCodeInput(e.target.value)}
+                            className="neo-copy flex-1 border-2 border-black bg-[#f5eedf] px-2 text-[10px] font-bold outline-none placeholder:text-[#8c8273]"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => void handleEpicCodeExchange(epicCodeInput)}
+                            className="neo-copy border-2 border-black bg-[#087d6d] px-3 py-1.5 text-[9px] font-black uppercase text-white shadow-[1.5px_1.5px_0_#171411] hover:bg-[#066154]"
+                          >
+                            Link
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              {testResult ? (
+                <div
+                  className={`neo-copy border-2 border-black px-3 py-2 text-xs font-bold uppercase text-white shadow-[2px_2px_0_#171411] ${
+                    testResult.success ? "bg-[#087d6d]" : "bg-[#c20b2f]"
+                  }`}
+                >
+                  {testResult.message}
+                </div>
+              ) : null}
+            </div>
+          </div>
+
+          {/* MULTI-PLATFORM SCANNER STATUS */}
+          <div className="border-4 border-black bg-[#f5eedf] shadow-[4px_4px_0_#171411]">
+            <div className="flex items-center justify-between border-b-4 border-black p-5">
+              <div>
+                <p className="neo-copy text-[10px] font-bold uppercase text-[#55504a]">
+                  System-Kompatibilität
+                </p>
+                <h2 className="text-3xl font-black uppercase text-[#171411]">
+                  Lokale Scanner & Launcher
+                </h2>
+              </div>
+              <Gamepad2 className="h-10 w-10 text-[#c20b2f]" />
+            </div>
+
+            <div className="p-5">
+              <p className="neo-copy text-[10px] font-bold uppercase text-[#55504a] leading-relaxed mb-4">
+                Der Open Game Launcher scannt deinen PC vollautomatisch im Hintergrund nach installierten Spielen dieser Launcher. Es ist kein Login erforderlich!
+              </p>
+
+              <div className="grid gap-2 sm:grid-cols-2">
+                {[
+                  ["Steam", "Lokaler Scan & Cloud-Synchronisierung"],
+                  ["Epic Games", "Lokaler Manifest-Scan (Windows/Linux)"],
+                  ["GOG Galaxy", "Lokaler Manifest-Scan (Windows/Linux)"],
+                  ["Ubisoft Connect", "Automatischer Pfad-Scan & Launcher-Start"],
+                  ["EA App", "Lokaler Spiele-Bibliothek Scan"],
+                  ["Battle.net", "Automatischer Scan installierter Titel"],
+                  ["MS Store / Xbox", "Lokaler Windows/MS-App-Bibliothek Scan"],
+                ].map(([name, desc]) => (
+                  <div key={name} className="border-2 border-black bg-[#efe6d4] p-3 flex flex-col justify-between">
+                    <div>
+                      <span className="font-black text-sm text-[#171411] block uppercase">{name}</span>
+                      <span className="neo-copy text-[8px] font-bold uppercase text-[#55504a] leading-tight block mt-1">{desc}</span>
+                    </div>
+                    <div className="mt-2 text-left">
+                      <span className="neo-copy inline-block border border-black bg-[#087d6d] px-1.5 py-0.5 text-[8px] font-black uppercase text-white">
+                        Aktiv // Lokal
+                      </span>
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
 

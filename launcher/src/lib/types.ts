@@ -27,6 +27,7 @@ export interface Game {
   status: GameStatus;
   platform: Platform;
   installPath?: string;
+  launchUri?: string;
   lastPlayed?: string;
   lastPlayedAt?: string | null;
   playtimeMinutes?: number;

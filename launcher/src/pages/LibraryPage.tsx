@@ -1,6 +1,7 @@
 import {
   Award,
   ChevronDown,
+  Download,
   CircleHelp,
   Clock3,
   Cloud,
@@ -25,7 +26,8 @@ import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 
 import { getGameAssetUrl, getGameBannerStyle } from "../lib/assets";
-import { addManualGame, launchGame, listInstalledGames, refreshInstalledGames, startDownload } from "../lib/launcher";
+import { addManualGame, launchGame, listInstalledGames, refreshInstalledGames, startDownload, fetchSteamOwnedGames, fetchGogOwnedGames, fetchEpicOwnedGames } from "../lib/launcher";
+import type { OwnedGame } from "../lib/launcher";
 import type { Game } from "../lib/types";
 
 const STARTUP_LIBRARY_RESCAN_KEY = "launcher_startup_library_rescan_done";
@@ -74,18 +76,18 @@ const fallbackMockGames: Game[] = [
   {
     id: "steam-Neo-Tokyo Drift",
     title: "Neo-Tokyo Drift",
-    description: "Zuletzt gespielt: Heute. Neues Content-Pack...",
+    description: "Last played: Today. New content pack...",
     version: "1.8.2",
     status: "installed",
     platform: "windows",
     installPath: "C:/Games/OpenGameLauncher/Starfall Outpost",
-    lastPlayed: "Heute",
+    lastPlayed: "Today",
     playtimeMinutes: 3480,
   },
   {
     id: "steam-Steel Battalion X",
     title: "Steel Battalion X",
-    description: "52 Stunden gespielt",
+    description: "52 hours played",
     version: "0.9.4",
     status: "update_available",
     platform: "windows",
@@ -96,7 +98,7 @@ const fallbackMockGames: Game[] = [
   {
     id: "steam-Netrunner: Phantom",
     title: "Netrunner: Phantom",
-    description: "Noch nie gespielt",
+    description: "Never played",
     version: "2.1.0",
     status: "update_available",
     platform: "linux",
@@ -105,7 +107,7 @@ const fallbackMockGames: Game[] = [
   {
     id: "steam-Akira's Revenge",
     title: "Akira's Revenge",
-    description: "Wird heruntergeladen",
+    description: "Downloading",
     version: "1.2.7",
     status: "installed",
     platform: "linux",
@@ -879,6 +881,25 @@ export function LibraryPage() {
     parsedSearchText,
   ]);
 
+  /** Convert backend OwnedGame into a frontend Game object */
+  function ownedGameToGame(og: OwnedGame): Game {
+    return {
+      id: og.id,
+      title: og.title,
+      description: og.description,
+      version: "1.0",
+      coverUrl: og.coverUrl ?? undefined,
+      logoUrl: og.logoUrl ?? undefined,
+      iconUrl: og.iconUrl ?? undefined,
+      iconUrls: [],
+      logoUrls: [],
+      logoPosition: "centerCenter",
+      status: "not_installed",
+      platform: "windows",
+      playtimeMinutes: og.playtimeMinutes,
+    } as Game;
+  }
+
   async function loadInstalledGames(
     forceRefresh = false,
     shouldApplyResult: () => boolean = () => true,
@@ -890,9 +911,109 @@ export function LibraryPage() {
     }
 
     try {
-      const games = forceRefresh
+      let games = forceRefresh
         ? await refreshInstalledGames()
         : await listInstalledGames();
+
+      const steamId = localStorage.getItem("launcher.steamId")?.replace(/"/g, "") || "";
+      console.log("[OG-Launcher] Steam ID from localStorage:", JSON.stringify(steamId), "length:", steamId.length);
+
+      if (steamId) {
+        try {
+          console.log("[OG-Launcher] Fetching Steam owned games via backend...");
+          const ownedRaw = await fetchSteamOwnedGames(steamId);
+          console.log("[OG-Launcher] Steam owned games fetched:", ownedRaw.length, "games");
+          const ownedGames = ownedRaw.map(ownedGameToGame);
+
+          if (ownedGames.length > 0) {
+            const installedSteamAppIds = new Set<string>();
+            games.forEach((g) => {
+              if (g.launchUri?.startsWith("steam://rungameid/")) {
+                const appid = g.launchUri.replace("steam://rungameid/", "");
+                installedSteamAppIds.add(appid);
+              }
+            });
+
+            const installedTitles = new Set(games.map(g => g.title.toLowerCase().trim()));
+
+            const uninstalledOwnedGames = ownedGames.filter((og) => {
+              const appid = og.id.replace("steam-owned-", "");
+              return !installedSteamAppIds.has(appid) && !installedTitles.has(og.title.toLowerCase().trim());
+            });
+
+            games = [...games, ...uninstalledOwnedGames];
+          }
+        } catch (err) {
+          console.warn("Failed to fetch owned steam games during load:", err);
+        }
+      }
+
+      // 1. Fetch and merge GOG owned games
+      const gogTokenStr = localStorage.getItem("launcher.gogToken");
+      if (gogTokenStr) {
+        try {
+          const tokenObj = JSON.parse(gogTokenStr);
+          if (tokenObj && tokenObj.accessToken) {
+            const ownedRaw = await fetchGogOwnedGames(tokenObj.accessToken);
+            const ownedGogGames = ownedRaw.map(ownedGameToGame);
+            if (ownedGogGames.length > 0) {
+              const installedGogIds = new Set<string>();
+              games.forEach((g) => {
+                if (g.id.startsWith("gog-")) {
+                  installedGogIds.add(g.id.replace("gog-", ""));
+                }
+              });
+
+              const installedTitles = new Set(games.map(g => g.title.toLowerCase().trim()));
+
+              const uninstalledOwnedGogGames = ownedGogGames.filter((og) => {
+                const gogId = og.id.replace("gog-owned-", "");
+                return !installedGogIds.has(gogId) && !installedTitles.has(og.title.toLowerCase().trim());
+              });
+
+              games = [...games, ...uninstalledOwnedGogGames];
+            }
+          }
+        } catch (err) {
+          console.warn("Failed to fetch owned GOG games during load:", err);
+        }
+      }
+
+      // 2. Fetch and merge Epic owned games
+      const epicTokenStr = localStorage.getItem("launcher.epicToken");
+      if (epicTokenStr) {
+        try {
+          const tokenObj = JSON.parse(epicTokenStr);
+          if (tokenObj && tokenObj.accessToken && tokenObj.accountId) {
+            const ownedRaw = await fetchEpicOwnedGames(tokenObj.accessToken, tokenObj.accountId);
+            const ownedEpicGames = ownedRaw.map(ownedGameToGame);
+            if (ownedEpicGames.length > 0) {
+              const installedEpicIds = new Set<string>();
+              games.forEach((g) => {
+                if (g.id.startsWith("epic-")) {
+                  installedEpicIds.add(g.id.replace("epic-", ""));
+                }
+              });
+
+              const installedTitles = new Set(games.map(g => g.title.toLowerCase().trim()));
+
+              const uninstalledOwnedEpicGames = ownedEpicGames.filter((og) => {
+                const epicParts = og.id.replace("epic-owned-", "").split(":");
+                const catalogItemId = epicParts[1] || "";
+                const appName = epicParts[2] || "";
+                
+                return !installedEpicIds.has(catalogItemId) && 
+                       !installedEpicIds.has(appName) && 
+                       !installedTitles.has(og.title.toLowerCase().trim());
+              });
+
+              games = [...games, ...uninstalledOwnedEpicGames];
+            }
+          }
+        } catch (err) {
+          console.warn("Failed to fetch owned Epic games during load:", err);
+        }
+      }
 
       if (!shouldApplyResult()) {
         return;
@@ -904,7 +1025,7 @@ export function LibraryPage() {
       setDiscoveryMessage(
         games.length > 0
           ? null
-          : "Keine installierten Steam-, Epic- oder GOG-Spiele gefunden. Demo-Modus geladen.",
+          : "No installed Steam, Epic, or GOG games found. Demo mode loaded.",
       );
     } catch {
       if (!shouldApplyResult()) {
@@ -914,8 +1035,8 @@ export function LibraryPage() {
       setInstalledGames([]);
       setDiscoveryMessage(
         forceRefresh
-          ? "Rescan nicht verfugbar. Zeige Mock-Bibliothek."
-          : "Gespeicherte Bibliothek nicht verfugbar. Zeige Mock-Bibliothek.",
+          ? "Rescan not available. Showing mock library."
+          : "Saved library not available. Showing mock library.",
       );
     } finally {
       if (showLoading && shouldApplyResult()) {
@@ -1052,6 +1173,16 @@ export function LibraryPage() {
     setStatusMessage(null);
 
     try {
+      if (
+        selectedGame.id.startsWith("steam-owned-") ||
+        selectedGame.id.startsWith("gog-owned-") ||
+        selectedGame.id.startsWith("epic-owned-")
+      ) {
+        const response = await launchGame(selectedGame.id);
+        setStatusMessage(response.message);
+        return;
+      }
+
       if (selectedGame.status === "installed") {
         const response = await launchGame(selectedGame.id);
         setStatusMessage(response.message);
@@ -1089,7 +1220,7 @@ export function LibraryPage() {
       setAddGamePath("");
       setAddGameError(null);
       setIsAddGameOpen(false);
-      setStatusMessage(`${game.title} wurde zur Bibliothek hinzugefugt.`);
+      setStatusMessage(`${game.title} has been added to the library.`);
     } catch (error) {
       setAddGameError(getErrorMessage(error));
     } finally {
@@ -1237,7 +1368,7 @@ export function LibraryPage() {
               {/* LIST TITLE */}
               <div className="px-2 pb-1 pt-2 text-[13px] font-black uppercase flex items-center justify-between">
                 <span className="min-w-0 truncate">
-                  - Installed ({filteredGames.length}
+                  - Library ({filteredGames.length}
                   {normalizedSearchQuery || activePlatformFilter !== "all" || Object.values(advancedFilters).some(v => Array.isArray(v) ? v.length > 0 : v !== "") ? ` / ${installedGames.length || fallbackMockGames.length}` : ""})
                 </span>
                 <div className="flex shrink-0 items-center gap-1">
@@ -1246,8 +1377,8 @@ export function LibraryPage() {
                   onClick={() => void loadInstalledGames(true)}
                   disabled={isDiscoveringGames}
                   className="grid h-7 w-7 place-items-center border-2 border-black bg-[#f4ead8] text-[#171411] transition hover:bg-[#8cf5e4] disabled:cursor-not-allowed disabled:opacity-60"
-                  aria-label="Bibliothek neu scannen"
-                  title="Bibliothek neu scannen"
+                  aria-label="Rescan library"
+                  title="Rescan library"
                 >
                   <RefreshCw className={`h-3.5 w-3.5 ${isDiscoveringGames ? "animate-spin" : ""}`} />
                 </button>
@@ -1265,7 +1396,7 @@ export function LibraryPage() {
               {/* RENDER LIST ROWS */}
               {shouldShowLibraryLoading ? (
                 <p className="neo-copy px-3 py-2 text-[11px] font-bold uppercase text-[#55504a]">
-                  Bibliothek wird geladen...
+                  Loading library...
                 </p>
               ) : filteredGames.length > 0 ? (
                 filteredGames.map((game) => (
@@ -1279,7 +1410,7 @@ export function LibraryPage() {
                 ))
               ) : normalizedSearchQuery && (installedGames.length > 0 || fallbackMockGames.length > 0) ? (
                 <p className="neo-copy px-3 py-2 text-[11px] font-bold uppercase leading-5 text-[#55504a]">
-                  Keine Spiele fur "{searchQuery.trim()}" gefunden.
+                  No games found for "{searchQuery.trim()}".
                 </p>
               ) : (
                 <p className="neo-copy px-3 py-2 text-[11px] font-bold uppercase leading-5 text-[#55504a]">
@@ -1345,10 +1476,10 @@ export function LibraryPage() {
                 </div>
               </div>
 
-              {/* SPIELERANZAHL CHECKBOXES */}
+              {/* PLAYER COUNT CHECKBOXES */}
               <div className="border-2 border-black bg-[#efe3cf] p-2 shadow-[2px_2px_0_#000]">
                 <h4 className="font-black uppercase text-[12px] border-b border-black pb-1 mb-2 flex items-center justify-between">
-                  <span>Spieleranzahl</span>
+                  <span>Player Count</span>
                   {advancedFilters.players.length > 0 && (
                     <button onClick={() => setAdvancedFilters(prev => ({ ...prev, players: [] }))} className="text-[10px] underline lowercase">clear</button>
                   )}
@@ -1476,7 +1607,7 @@ export function LibraryPage() {
               {/* PLAY STATUS CHECKBOXES */}
               <div className="border-2 border-black bg-[#efe3cf] p-2 shadow-[2px_2px_0_#000]">
                 <h4 className="font-black uppercase text-[12px] border-b border-black pb-1 mb-2 flex items-center justify-between">
-                  <span>Spielstatus</span>
+                  <span>Play Status</span>
                   {advancedFilters.status.length > 0 && (
                     <button onClick={() => setAdvancedFilters(prev => ({ ...prev, status: [] }))} className="text-[10px] underline lowercase">clear</button>
                   )}
@@ -1540,17 +1671,17 @@ export function LibraryPage() {
               {/* PRODUCT CATEGORIES FILTER */}
               <div className="border-2 border-black bg-[#efe3cf] p-2 shadow-[2px_2px_0_#000]">
                 <h4 className="font-black uppercase text-[11px] border-b border-black pb-1 mb-2">
-                  Produktkategorien (Anzeigen/Ausblenden)
+                  Product Categories (Show/Hide)
                 </h4>
                 <div className="grid grid-cols-2 gap-1.5">
                   {[
-                    { key: "game", label: "Spiele" },
+                    { key: "game", label: "Games" },
                     { key: "software", label: "Software" },
                     { key: "video", label: "Videos" },
                     { key: "dlc", label: "DLCs" },
                     { key: "soundtrack", label: "Soundtracks" },
                     { key: "demo", label: "Demos" },
-                    { key: "beta", label: "Beta-Zugänge" }
+                    { key: "beta", label: "Beta Access" }
                   ].map(({ key, label }) => {
                     const isChecked = advancedFilters.productCategories.includes(key);
                     return (
@@ -1714,14 +1845,25 @@ export function LibraryPage() {
               {/* Game Control Section */}
               <section className="flex flex-wrap items-start gap-3 border-b-4 border-black bg-[#f3e8d7] p-3">
                 <div className="flex min-w-[220px] flex-1 sm:flex-none">
-                  <button
-                    className="flex h-[64px] min-w-0 flex-1 items-center justify-center gap-3 border-4 border-black bg-[#169b83] px-5 text-[22px] font-black uppercase text-white shadow-[3px_3px_0_#171411] sm:min-w-[205px] sm:flex-none sm:text-[26px]"
-                    type="button"
-                    onClick={() => void handlePlay()}
-                  >
-                    <Play className="h-7 w-7 fill-current" />
-                    Play
-                  </button>
+                  {enrichedSelectedGame.status === "not_installed" ? (
+                    <button
+                      className="flex h-[64px] min-w-0 flex-1 items-center justify-center gap-3 border-4 border-black bg-[#b7102a] px-5 text-[22px] font-black uppercase text-white shadow-[3px_3px_0_#171411] sm:min-w-[205px] sm:flex-none sm:text-[26px] hover:bg-[#990a20] transition-colors"
+                      type="button"
+                      onClick={() => void handlePlay()}
+                    >
+                      <Download className="h-7 w-7" />
+                      Install
+                    </button>
+                  ) : (
+                    <button
+                      className="flex h-[64px] min-w-0 flex-1 items-center justify-center gap-3 border-4 border-black bg-[#169b83] px-5 text-[22px] font-black uppercase text-white shadow-[3px_3px_0_#171411] sm:min-w-[205px] sm:flex-none sm:text-[26px]"
+                      type="button"
+                      onClick={() => void handlePlay()}
+                    >
+                      <Play className="h-7 w-7 fill-current" />
+                      Play
+                    </button>
+                  )}
                   <button className="grid h-[64px] w-[44px] shrink-0 place-items-center border-y-4 border-r-4 border-black bg-[#169b83] text-white shadow-[3px_3px_0_#171411]" type="button" aria-label="More play options">
                     <ChevronDown className="h-6 w-6" />
                   </button>
@@ -1993,7 +2135,7 @@ export function LibraryPage() {
                         )}
                         {enrichedSelectedGame.players && enrichedSelectedGame.players.length > 0 && (
                           <div>
-                            <span className="text-[#55504a] uppercase block mb-1">Spieleranzahl:</span>
+                            <span className="text-[#55504a] uppercase block mb-1">Player Count:</span>
                             <div className="flex flex-wrap gap-1">
                               {enrichedSelectedGame.players.map(p => (
                                 <span key={p} className="bg-[#efe3cf] border border-black px-1.5 py-0.5 text-[9px] uppercase font-black">{p}</span>
@@ -2053,15 +2195,15 @@ export function LibraryPage() {
             <section className="grid min-h-[calc(100vh-124px)] place-items-center border-b-4 border-black bg-[#f8f0df] px-4 text-center">
               <div className="max-w-[560px] border-4 border-black bg-[#fbf4e7] p-6 shadow-[4px_4px_0_#171411]">
                 <h1 className="text-[clamp(2.4rem,12vw,4rem)] font-black uppercase leading-none">
-                  Keine Spiele erkannt
+                  No Games Detected
                 </h1>
                 <p className="neo-copy mt-4 text-[13px] font-bold uppercase leading-6 text-[#55504a]">
                   {isDiscoveringGames
-                    ? "Bibliothek wird geladen..."
+                    ? "Loading library..."
                     : discoveryMessage}
                 </p>
                 <p className="neo-copy mt-3 text-[11px] font-bold uppercase leading-5 text-[#55504a]">
-                  Rescan sucht nach Steam-, Epic-Games-, GOG-, Ubisoft-, Xbox-, Battle.net- und EA App-Installationen auf diesem PC.
+                  Rescan searches for Steam, Epic Games, GOG, Ubisoft, Xbox, Battle.net, and EA App installations on this PC.
                 </p>
               </div>
             </section>

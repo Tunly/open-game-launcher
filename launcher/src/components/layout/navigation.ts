@@ -7,7 +7,7 @@ const pagePaths: Record<PageKey, string> = {
   home: "/home",
   library: "/library",
   profile: "/settings/profile",
-  settings: "/settings/profile",
+  settings: "/settings",
   store: "/store",
 };
 

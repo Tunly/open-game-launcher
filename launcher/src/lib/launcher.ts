@@ -82,6 +82,40 @@ export function startDownload(gameId: string): Promise<StartDownloadResponse> {
   return invokeCommand<StartDownloadResponse>("start_download", { gameId });
 }
 
+export function openSteamLoginWindow(): Promise<void> {
+  return invokeCommand<void>("open_steam_login_window");
+}
+
+export function openGogLoginWindow(): Promise<void> {
+  return invokeCommand<void>("open_gog_login_window");
+}
+
+export function openEpicLoginWindow(): Promise<void> {
+  return invokeCommand<void>("open_epic_login_window");
+}
+
+export interface OwnedGame {
+  id: string;
+  title: string;
+  description: string;
+  coverUrl: string | null;
+  logoUrl: string | null;
+  iconUrl: string | null;
+  playtimeMinutes: number;
+}
+
+export function fetchSteamOwnedGames(steamId: string): Promise<OwnedGame[]> {
+  return invokeCommand<OwnedGame[]>("fetch_steam_owned_games", { steamId });
+}
+
+export function fetchGogOwnedGames(accessToken: string): Promise<OwnedGame[]> {
+  return invokeCommand<OwnedGame[]>("fetch_gog_owned_games", { accessToken });
+}
+
+export function fetchEpicOwnedGames(accessToken: string, accountId: string): Promise<OwnedGame[]> {
+  return invokeCommand<OwnedGame[]>("fetch_epic_owned_games", { accessToken, accountId });
+}
+
 function getBrowserHardwareInfo(): HardwareInfo {
   const navigatorWithMemory = navigator as Navigator & {
     deviceMemory?: number;

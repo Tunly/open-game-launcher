@@ -124,16 +124,16 @@ struct InstalledGamesCache {
 }
 
 #[tauri::command]
-pub fn list_installed_games() -> Result<Vec<InstalledGame>, String> {
+pub async fn list_installed_games() -> Result<Vec<InstalledGame>, String> {
     if let Some(games) = read_installed_games_cache() {
         return Ok(games);
     }
 
-    refresh_installed_games()
+    refresh_installed_games().await
 }
 
 #[tauri::command]
-pub fn refresh_installed_games() -> Result<Vec<InstalledGame>, String> {
+pub async fn refresh_installed_games() -> Result<Vec<InstalledGame>, String> {
     let mut games = BTreeMap::<String, InstalledGame>::new();
     let cached_games = read_installed_games_cache().unwrap_or_default();
     let cached_activity = cached_games
@@ -160,7 +160,7 @@ pub fn refresh_installed_games() -> Result<Vec<InstalledGame>, String> {
 }
 
 #[tauri::command]
-pub fn add_manual_game(input: AddManualGameRequest) -> Result<InstalledGame, String> {
+pub async fn add_manual_game(input: AddManualGameRequest) -> Result<InstalledGame, String> {
     let title = input.title.trim();
     if title.is_empty() {
         return Err("Titel darf nicht leer sein.".to_string());
@@ -206,32 +206,50 @@ pub fn add_manual_game(input: AddManualGameRequest) -> Result<InstalledGame, Str
 fn scan_installed_games() -> Vec<InstalledGame> {
     let mut games = BTreeMap::<String, InstalledGame>::new();
 
-    for game in scan_steam_games() {
-        games.entry(game.id.clone()).or_insert(game);
-    }
+    // Spawn threads for parallel scanning
+    let handle_steam = thread::spawn(|| scan_steam_games());
+    let handle_epic = thread::spawn(|| scan_epic_games());
+    let handle_gog = thread::spawn(|| scan_gog_games());
+    let handle_ubisoft = thread::spawn(|| scan_ubisoft_games());
+    let handle_xbox = thread::spawn(|| scan_xbox_games());
+    let handle_battlenet = thread::spawn(|| scan_battlenet_games());
+    let handle_ea = thread::spawn(|| scan_ea_games());
 
-    for game in scan_epic_games() {
-        games.entry(game.id.clone()).or_insert(game);
+    // Join and merge results
+    if let Ok(steam_games) = handle_steam.join() {
+        for game in steam_games {
+            games.entry(game.id.clone()).or_insert(game);
+        }
     }
-
-    for game in scan_gog_games() {
-        games.entry(game.id.clone()).or_insert(game);
+    if let Ok(epic_games) = handle_epic.join() {
+        for game in epic_games {
+            games.entry(game.id.clone()).or_insert(game);
+        }
     }
-
-    for game in scan_ubisoft_games() {
-        games.entry(game.id.clone()).or_insert(game);
+    if let Ok(gog_games) = handle_gog.join() {
+        for game in gog_games {
+            games.entry(game.id.clone()).or_insert(game);
+        }
     }
-
-    for game in scan_xbox_games() {
-        games.entry(game.id.clone()).or_insert(game);
+    if let Ok(ubisoft_games) = handle_ubisoft.join() {
+        for game in ubisoft_games {
+            games.entry(game.id.clone()).or_insert(game);
+        }
     }
-
-    for game in scan_battlenet_games() {
-        games.entry(game.id.clone()).or_insert(game);
+    if let Ok(xbox_games) = handle_xbox.join() {
+        for game in xbox_games {
+            games.entry(game.id.clone()).or_insert(game);
+        }
     }
-
-    for game in scan_ea_games() {
-        games.entry(game.id.clone()).or_insert(game);
+    if let Ok(battlenet_games) = handle_battlenet.join() {
+        for game in battlenet_games {
+            games.entry(game.id.clone()).or_insert(game);
+        }
+    }
+    if let Ok(ea_games) = handle_ea.join() {
+        for game in ea_games {
+            games.entry(game.id.clone()).or_insert(game);
+        }
     }
 
     games.into_values().collect()
@@ -261,10 +279,44 @@ fn merge_cached_game_activity(game: &mut InstalledGame, cached_game: &InstalledG
 }
 
 #[tauri::command]
-pub fn launch_game(app: tauri::AppHandle, game_id: String) -> Result<LaunchGameResponse, String> {
+pub async fn launch_game(app: tauri::AppHandle, game_id: String) -> Result<LaunchGameResponse, String> {
     let game_id = normalize_game_id(game_id)?;
     println!("[open-game-launcher] launch_game requested for {game_id}");
-    let game = list_installed_games()?
+
+    if game_id.starts_with("steam-owned-") {
+        let app_id = game_id.strip_prefix("steam-owned-").unwrap_or(&game_id);
+        let uri = format!("steam://install/{app_id}");
+        open_uri(&uri).map_err(|e| format!("Konnte Installation nicht starten: {e}"))?;
+        return Ok(LaunchGameResponse {
+            game_id: game_id.clone(),
+            success: true,
+            message: "Installation in Steam gestartet.".to_string(),
+        });
+    }
+
+    if game_id.starts_with("gog-owned-") {
+        let gog_id = game_id.strip_prefix("gog-owned-").unwrap_or(&game_id);
+        let uri = format!("goggalaxy://open-store/{gog_id}");
+        open_uri(&uri).map_err(|e| format!("Konnte GOG Galaxy nicht starten: {e}"))?;
+        return Ok(LaunchGameResponse {
+            game_id: game_id.clone(),
+            success: true,
+            message: "Installation in GOG Galaxy gestartet.".to_string(),
+        });
+    }
+
+    if game_id.starts_with("epic-owned-") {
+        let epic_id = game_id.strip_prefix("epic-owned-").unwrap_or(&game_id);
+        let uri = format!("com.epicgames.launcher://apps/{epic_id}?action=install");
+        open_uri(&uri).map_err(|e| format!("Konnte Epic Games Launcher nicht starten: {e}"))?;
+        return Ok(LaunchGameResponse {
+            game_id: game_id.clone(),
+            success: true,
+            message: "Installation im Epic Games Launcher gestartet.".to_string(),
+        });
+    }
+
+    let game = list_installed_games().await?
         .into_iter()
         .find(|game| game.id == game_id)
         .ok_or_else(|| format!("Game '{game_id}' wurde nicht gefunden."))?;

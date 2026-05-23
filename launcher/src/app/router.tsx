@@ -13,6 +13,7 @@ import { PrivacySettingsPage } from "../pages/PrivacySettingsPage";
 import { ProfileCustomizePage } from "../pages/ProfileCustomizePage";
 import { ProfilePage } from "../pages/ProfilePage";
 import { StorePage } from "../pages/StorePage";
+import { SettingsPage } from "../pages/SettingsPage";
 
 // Browser history is correct for the web preview. If a future Tauri build needs
 // simple deep-link handling without a web server, switch this to a HashRouter.
@@ -29,6 +30,7 @@ export const router = createBrowserRouter([
       { path: "/auth", element: <AuthPage /> },
       { path: "/u/:username", element: <ProfilePage /> },
       { path: "/settings/profile", element: <EditProfilePage /> },
+      { path: "/settings", element: <SettingsPage /> },
       { path: "/settings/profile/customize", element: <ProfileCustomizePage /> },
       { path: "/settings/privacy", element: <PrivacySettingsPage /> },
       { path: "/friends", element: <FriendsPage /> },
