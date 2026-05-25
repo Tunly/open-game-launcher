@@ -1,7 +1,7 @@
 import { FolderOpen, HardDrive, Power, RefreshCw, ShieldCheck, User, Key, Link, LogOut, Gamepad2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
-
+import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { useLocalStorageState } from "../hooks/useLocalStorageState";
 import { getDefaultInstallDir, getSystemInfo, openSteamLoginWindow, openGogLoginWindow, openEpicLoginWindow } from "../lib/launcher";
 import type { SystemInfo } from "../lib/types";
@@ -64,6 +64,8 @@ export function SettingsPage() {
     "",
   );
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [steamTestResult, setSteamTestResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [isSteamTesting, setIsSteamTesting] = useState(false);
 
   const [gogConnected, setGogConnected] = useState(false);
   const [epicConnected, setEpicConnected] = useState(false);
@@ -195,25 +197,61 @@ export function SettingsPage() {
   }
 
   useEffect(() => {
+    let isMounted = true;
     let unlistenPromise: Promise<() => void> | null = null;
+    let unlistenScrapedPromise: Promise<() => void> | null = null;
+    let unlistenErrorPromise: Promise<() => void> | null = null;
     
     try {
       unlistenPromise = listen<string>("steam_login_success", (event) => {
+        if (!isMounted) return;
         const steamIdVal = event.payload;
         setSteamId(steamIdVal);
         setTestResult({
           success: true,
-          message: "Erfolgreich über Steam eingeloggt! Deine Spiele werden jetzt synchronisiert.",
+          message: "Login erfolgreich! Deine Spieleliste wird jetzt abgerufen...",
+        });
+      });
+
+      unlistenScrapedPromise = listen<any[]>("steam_scraped_games_success", (event) => {
+        if (!isMounted) return;
+        console.log("[Settings] Scraped games successfully:", event.payload.length);
+        localStorage.setItem("launcher.steamOwnedGamesCache", JSON.stringify(event.payload));
+        
+        const successMsg = `✓ Found ${event.payload.length} owned games`;
+        setSteamTestResult({
+          success: true,
+          message: successMsg,
+        });
+        setTestResult({
+          success: true,
+          message: `Erfolgreich über Steam eingeloggt! ${event.payload.length} Spiele wurden synchronisiert.`,
+        });
+      });
+
+      unlistenErrorPromise = listen<string>("steam_scraped_games_error", (event) => {
+        if (!isMounted) return;
+        console.warn("[Settings] Scraper failed:", event.payload);
+        
+        const errorMsg = `✗ ${event.payload}`;
+        setSteamTestResult({
+          success: false,
+          message: errorMsg,
+        });
+        setTestResult({
+          success: false,
+          message: `Steam-Synchronisierung fehlgeschlagen: ${event.payload}`,
         });
       });
     } catch (err) {
-      console.warn("Failed to setup steam_login_success listener:", err);
+      console.warn("Failed to setup Steam event listeners:", err);
     }
     
     return () => {
-      if (unlistenPromise) {
-        void unlistenPromise.then((unlisten) => unlisten());
-      }
+      isMounted = false;
+      if (unlistenPromise) void unlistenPromise.then((un) => un());
+      if (unlistenScrapedPromise) void unlistenScrapedPromise.then((un) => un());
+      if (unlistenErrorPromise) void unlistenErrorPromise.then((un) => un());
     };
   }, [setSteamId]);
 
@@ -381,25 +419,51 @@ export function SettingsPage() {
                       Steam
                     </h3>
                     <p className="neo-copy text-[9px] font-bold uppercase text-[#55504a] leading-relaxed mb-4">
-                      Synchronisiert deine Steam-Bibliothek über dein öffentliches Profil.
+                      Synchronisiert deine Steam-Bibliothek per sicherem Login (kein API-Key benötigt).
                     </p>
                   </div>
                   <div>
                     {steamId ? (
                       <div className="border border-black bg-[#f5eedf] p-3 space-y-2">
-                        <span className="neo-copy text-[8px] font-bold uppercase text-[#55504a] block">Verbunden mit SteamID</span>
-                        <span className="font-black text-xs text-[#087d6d] block truncate">{steamId}</span>
-                        <button
-                          className="neo-copy w-full flex h-8 items-center justify-center gap-2 border-2 border-black bg-[#c20b2f] px-3 text-[10px] font-bold uppercase text-white shadow-[1px_1px_0_#171411] hover:bg-[#a10825] transition"
-                          type="button"
-                          onClick={() => {
-                            setSteamId("");
-                            setTestResult(null);
-                          }}
-                        >
-                          <LogOut className="h-3 w-3" />
-                          Trennen
-                        </button>
+                        <span className="neo-copy text-[8px] font-bold uppercase text-[#55504a] block">Connected SteamID64</span>
+                        <span className="font-black text-xs text-[#087d6d] block truncate" title={steamId}>{steamId}</span>
+                        
+                        <div className="flex gap-2">
+                          <button
+                            className="neo-copy flex-1 flex h-8 items-center justify-center gap-1 border-2 border-black bg-[#087d6d] px-2 text-[9px] font-bold uppercase text-white shadow-[1px_1px_0_#171411] hover:bg-[#065e52] transition disabled:opacity-50"
+                            type="button"
+                            disabled={isSteamTesting}
+                            onClick={() => {
+                              setIsSteamTesting(true);
+                              setSteamTestResult(null);
+                              setSteamTestResult({ success: true, message: "Silent Scraper gestartet..." });
+                              try {
+                                new WebviewWindow("steam-silent-scraper", {
+                                  url: `https://steamcommunity.com/profiles/${steamId}/games/?tab=all`,
+                                  visible: false,
+                                });
+                              } catch (err) {
+                                setSteamTestResult({ success: false, message: `✗ ${getErrorMessage(err)}` });
+                                setIsSteamTesting(false);
+                              }
+                            }}
+                          >
+                            {isSteamTesting ? "Testing..." : "Test"}
+                          </button>
+                          <button
+                            className="neo-copy flex-1 flex h-8 items-center justify-center gap-1 border-2 border-black bg-[#c20b2f] px-2 text-[9px] font-bold uppercase text-white shadow-[1px_1px_0_#171411] hover:bg-[#a10825] transition"
+                            type="button"
+                            onClick={() => { setSteamId(""); setTestResult(null); setSteamTestResult(null); }}
+                          >
+                            <LogOut className="h-3 w-3" />
+                            Disconnect
+                          </button>
+                        </div>
+                        {steamTestResult && (
+                          <p className={`neo-copy text-[9px] font-bold leading-tight break-all ${steamTestResult.success ? "text-[#087d6d]" : "text-[#c20b2f]"}`}>
+                            {steamTestResult.message}
+                          </p>
+                        )}
                       </div>
                     ) : (
                       <button

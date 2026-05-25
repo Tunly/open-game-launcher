@@ -22,6 +22,7 @@ import {
   X,
 } from "lucide-react";
 import { listen } from "@tauri-apps/api/event";
+import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 
@@ -32,6 +33,18 @@ import type { Game } from "../lib/types";
 
 const STARTUP_LIBRARY_RESCAN_KEY = "launcher_startup_library_rescan_done";
 const LIBRARY_SNAPSHOT_KEY = "launcher_library_snapshot";
+
+function triggerSilentSteamScraper(steamId: string) {
+  try {
+    console.log("[OG-Launcher] Opening silent Steam scraper window in background...");
+    new WebviewWindow("steam-silent-scraper", {
+      url: `https://steamcommunity.com/profiles/${steamId}/games/?tab=all`,
+      visible: false,
+    });
+  } catch (err) {
+    console.warn("Failed to open silent steam scraper window:", err);
+  }
+}
 
 type GameActivityUpdate = {
   gameId: string;
@@ -920,12 +933,24 @@ export function LibraryPage() {
 
       if (steamId) {
         try {
-          console.log("[OG-Launcher] Fetching Steam owned games via backend...");
-          const ownedRaw = await fetchSteamOwnedGames(steamId);
-          console.log("[OG-Launcher] Steam owned games fetched:", ownedRaw.length, "games");
-          const ownedGames = ownedRaw.map(ownedGameToGame);
+          let ownedRaw: OwnedGame[] = [];
+          
+          // Load owned games from the local WebView scraper cache
+          const cacheStr = localStorage.getItem("launcher.steamOwnedGamesCache");
+          if (cacheStr) {
+            try {
+              ownedRaw = JSON.parse(cacheStr);
+              console.log("[OG-Launcher] Loaded Steam owned games from cache:", ownedRaw.length, "games");
+            } catch (err) {
+              console.warn("Failed to parse steamOwnedGamesCache:", err);
+            }
+          }
+          
+          // Trigger a silent scrape in the background using WebView cookies to update the cache
+          triggerSilentSteamScraper(steamId);
 
-          if (ownedGames.length > 0) {
+          if (ownedRaw.length > 0) {
+            const ownedGames = ownedRaw.map(ownedGameToGame);
             const installedSteamAppIds = new Set<string>();
             games.forEach((g) => {
               if (g.launchUri?.startsWith("steam://rungameid/")) {
@@ -944,7 +969,11 @@ export function LibraryPage() {
             games = [...games, ...uninstalledOwnedGames];
           }
         } catch (err) {
-          console.warn("Failed to fetch owned steam games during load:", err);
+          const msg = String(err);
+          console.warn("Failed to fetch owned steam games during load:", msg);
+          if (msg.includes("400") || msg.includes("403") || msg.includes("Game Details")) {
+            setStatusMessage("⚠️ Steam: Please set 'Game Details' to Public in Steam → Profile → Privacy Settings, then rescan.");
+          }
         }
       }
 
@@ -1110,6 +1139,37 @@ export function LibraryPage() {
     return () => {
       isMounted = false;
       void unlistenPromise.then((unlisten) => unlisten());
+    };
+  }, []);
+
+  // Auto-reload library when Steam, GOG or Epic account connects or silent scrape completes
+  useEffect(() => {
+    let isMounted = true;
+
+    const unlistenSteam = listen<string>("steam_login_success", () => {
+      if (!isMounted) return;
+      console.log("[OG-Launcher] Steam connected – reloading library...");
+      void loadInstalledGames(false, () => isMounted, false);
+    });
+
+    const unlistenScrapedSuccess = listen<any[]>("steam_scraped_games_success", (event) => {
+      if (!isMounted) return;
+      console.log("[OG-Launcher] Scraper successfully fetched games:", event.payload.length);
+      localStorage.setItem("launcher.steamOwnedGamesCache", JSON.stringify(event.payload));
+      void loadInstalledGames(false, () => isMounted, false);
+    });
+
+    const unlistenScrapedError = listen<string>("steam_scraped_games_error", (event) => {
+      if (!isMounted) return;
+      console.warn("[OG-Launcher] Silent scraper failed:", event.payload);
+      setStatusMessage(`⚠️ Steam: ${event.payload}`);
+    });
+
+    return () => {
+      isMounted = false;
+      void unlistenSteam.then((u) => u());
+      void unlistenScrapedSuccess.then((u) => u());
+      void unlistenScrapedError.then((u) => u());
     };
   }, []);
 

@@ -1,4 +1,5 @@
 use serde::Serialize;
+use tauri::Manager;
 use std::{
     env, fs,
     io::{Read, Write},
@@ -276,30 +277,128 @@ fn start_local_callback_server(app: tauri::AppHandle) {
                 Err(_) => continue,
             };
 
-            let mut buffer = [0; 4096];
-            let bytes_read = match stream.read(&mut buffer) {
-                Ok(n) => n,
-                Err(_) => continue,
+            let mut buffer = Vec::new();
+            let mut temp_buf = [0u8; 4096];
+            
+            // Read headers first
+            let mut headers_end = None;
+            loop {
+                let bytes_read = match stream.read(&mut temp_buf) {
+                    Ok(0) => break,
+                    Ok(n) => n,
+                    Err(_) => break,
+                };
+                buffer.extend_from_slice(&temp_buf[..bytes_read]);
+                
+                // Find \r\n\r\n
+                if let Some(pos) = buffer.windows(4).position(|w| w == b"\r\n\r\n") {
+                    headers_end = Some(pos);
+                    break;
+                }
+                if buffer.len() > 16384 {
+                    break;
+                }
+            }
+
+            let Some(h_end) = headers_end else {
+                continue;
             };
 
-            let request = String::from_utf8_lossy(&buffer[..bytes_read]);
+            let headers_str = String::from_utf8_lossy(&buffer[..h_end]).into_owned();
             
+            // Handle CORS preflight request (OPTIONS)
+            if headers_str.starts_with("OPTIONS ") {
+                let response = "HTTP/1.1 200 OK\r\n\
+                                Access-Control-Allow-Origin: *\r\n\
+                                Access-Control-Allow-Methods: POST, GET, OPTIONS\r\n\
+                                Access-Control-Allow-Headers: content-type\r\n\
+                                Connection: close\r\n\
+                                Content-Length: 0\r\n\r\n";
+                let _ = stream.write_all(response.as_bytes());
+                continue;
+            }
+
+            // Extract Content-Length for POST requests
+            let mut content_length = 0usize;
+            for line in headers_str.lines() {
+                if line.to_lowercase().starts_with("content-length:") {
+                    if let Some(val) = line.split(':').nth(1) {
+                        content_length = val.trim().parse().unwrap_or(0);
+                    }
+                }
+            }
+
+            // Read the remaining body bytes
+            let body_start = h_end + 4;
+            while buffer.len() < body_start + content_length {
+                let mut chunk = [0u8; 4096];
+                let bytes_read = match stream.read(&mut chunk) {
+                    Ok(0) => break,
+                    Ok(n) => n,
+                    Err(_) => break,
+                };
+                buffer.extend_from_slice(&chunk[..bytes_read]);
+            }
+
+            let body_str = String::from_utf8_lossy(&buffer[body_start..body_start + content_length]);
+
+            // CASE 1: POST /scraped (scraped games list from WebView)
+            if headers_str.starts_with("POST /scraped") {
+                if let Ok(parsed_data) = serde_json::from_str::<serde_json::Value>(&body_str) {
+                    use tauri::Emitter;
+
+                    if let Some(games_array) = parsed_data.get("games") {
+                        if games_array.as_array().map_or(0, |a| a.len()) > 0 {
+                            println!("[Steam Scraper] Received {} owned games from Webview!", games_array.as_array().unwrap().len());
+                            let _ = app.emit("steam_scraped_games_success", games_array.clone());
+                            
+                            // Close both standard login window and silent scraper if present
+                            if let Some(login_window) = app.get_webview_window("steam-login") {
+                                let _ = login_window.close();
+                            }
+                            if let Some(scraper_window) = app.get_webview_window("steam-silent-scraper") {
+                                let _ = scraper_window.close();
+                            }
+                        }
+                    } else if let Some(is_private) = parsed_data.get("isPrivate").and_then(|v| v.as_bool()) {
+                        if is_private {
+                            println!("[Steam Scraper] Scraper reported profile or game details are private.");
+                            let _ = app.emit("steam_scraped_games_error", "Steam-Profil oder Spieldetails sind privat.".to_string());
+                            
+                            if let Some(login_window) = app.get_webview_window("steam-login") {
+                                let _ = login_window.close();
+                            }
+                            if let Some(scraper_window) = app.get_webview_window("steam-silent-scraper") {
+                                let _ = scraper_window.close();
+                            }
+                        }
+                    }
+                }
+
+                let response = "HTTP/1.1 200 OK\r\n\
+                                Access-Control-Allow-Origin: *\r\n\
+                                Connection: close\r\n\
+                                Content-Length: 0\r\n\r\n";
+                let _ = stream.write_all(response.as_bytes());
+                continue;
+            }
+
+            // CASE 2: GET / (OpenID Login Redirect)
             let mut steam_id = None;
-            
-            if let Some(pos) = request.find("openid%2Fid%2F") {
+            if let Some(pos) = headers_str.find("openid%2Fid%2F") {
                 let start_idx = pos + "openid%2Fid%2F".len();
-                if request.len() >= start_idx + 17 {
-                    steam_id = Some(&request[start_idx..start_idx + 17]);
+                if headers_str.len() >= start_idx + 17 {
+                    steam_id = Some(&headers_str[start_idx..start_idx + 17]);
                 }
-            } else if let Some(pos) = request.find("openid%2fid%2f") {
+            } else if let Some(pos) = headers_str.find("openid%2fid%2f") {
                 let start_idx = pos + "openid%2fid%2f".len();
-                if request.len() >= start_idx + 17 {
-                    steam_id = Some(&request[start_idx..start_idx + 17]);
+                if headers_str.len() >= start_idx + 17 {
+                    steam_id = Some(&headers_str[start_idx..start_idx + 17]);
                 }
-            } else if let Some(pos) = request.find("openid/id/") {
+            } else if let Some(pos) = headers_str.find("openid/id/") {
                 let start_idx = pos + "openid/id/".len();
-                if request.len() >= start_idx + 17 {
-                    steam_id = Some(&request[start_idx..start_idx + 17]);
+                if headers_str.len() >= start_idx + 17 {
+                    steam_id = Some(&headers_str[start_idx..start_idx + 17]);
                 }
             }
 
@@ -310,63 +409,62 @@ fn start_local_callback_server(app: tauri::AppHandle) {
                     use tauri::Emitter;
                     let _ = app.emit("steam_login_success", sid.to_string());
 
-                    let response_body = r#"
+                    // Respond with a page that immediately redirects to their games list.
+                    // Since they just logged in inside the Webview, cookies are fully active!
+                    let redirect_html = format!(r#"
                         <!DOCTYPE html>
                         <html>
                         <head>
                             <meta charset="utf-8">
-                            <title>OG Launcher - Login Successful</title>
+                            <title>OG Launcher - Redirecting...</title>
                             <style>
-                                body {
+                                body {{
                                     font-family: system-ui, -apple-system, sans-serif;
                                     background-color: #fbf4e7;
                                     color: #171411;
                                     text-align: center;
                                     padding: 50px;
                                     margin: 0;
-                                }
-                                .container {
+                                }}
+                                .container {{
                                     max-width: 500px;
                                     margin: 80px auto;
                                     border: 4px solid #000;
                                     background-color: #efe6d4;
                                     padding: 40px 30px;
                                     box-shadow: 6px 6px 0px #000;
-                                }
-                                h1 { 
+                                }}
+                                h1 {{ 
                                     font-weight: 900; 
                                     text-transform: uppercase; 
                                     margin-bottom: 20px; 
-                                    font-size: 28px;
+                                    font-size: 24px;
                                     letter-spacing: -0.02em;
-                                }
-                                p { font-weight: bold; font-size: 16px; line-height: 1.5; color: #55504a; }
-                                .success-icon {
-                                    font-size: 48px;
-                                    color: #087d6d;
-                                    margin-bottom: 20px;
-                                }
+                                }}
+                                p {{ font-weight: bold; font-size: 14px; color: #55504a; }}
                             </style>
                         </head>
                         <body>
                             <div class="container">
-                                <div class="success-icon">✓</div>
-                                <h1>Login Successful!</h1>
-                                <p>Your Steam integration was successful. You can close this tab now and return to the Open Game Launcher.</p>
+                                <h1>Login erfolgreich!</h1>
+                                <p>Deine Steam-Spieleliste wird geladen...</p>
                             </div>
+                            <script>
+                                window.location.href = "https://steamcommunity.com/profiles/{}/games/?tab=all";
+                            </script>
                         </body>
                         </html>
-                    "#;
+                    "#, sid);
 
                     let response = format!(
                         "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=UTF-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
-                        response_body.len(),
-                        response_body
+                        redirect_html.len(),
+                        redirect_html
                     );
 
                     let _ = stream.write_all(response.as_bytes());
                     let _ = stream.flush();
-                    break;
+                    continue;
                 }
             }
 
@@ -378,11 +476,65 @@ fn start_local_callback_server(app: tauri::AppHandle) {
 
 #[tauri::command]
 pub async fn open_steam_login_window(app: tauri::AppHandle) -> Result<(), String> {
-    start_local_callback_server(app);
+    start_local_callback_server(app.clone());
 
     let url = "https://steamcommunity.com/openid/login?openid.ns=http://specs.openid.net/auth/2.0&openid.mode=checkid_setup&openid.return_to=http://localhost:18234/&openid.realm=http://localhost:18234/&openid.identity=http://specs.openid.net/auth/2.0/identifier_select&openid.claimed_id=http://specs.openid.net/auth/2.0/identifier_select";
     
-    open_uri(url)?;
+    // Injected JavaScript to scrape rgGames list automatically and post it to our local server
+    let scraper_script = r#"
+        (function() {
+            console.log("[Steam Scraper] Active!");
+            
+            function tryScrape() {
+                const url = window.location.href;
+                if (!url.includes("steamcommunity.com/profiles/") && !url.includes("steamcommunity.com/id/")) {
+                    return;
+                }
+                if (!url.includes("/games")) {
+                    return;
+                }
+                
+                console.log("[Steam Scraper] We are on the games page, attempting scrape...");
+                const games = window.rgGames || window.g_rgGames;
+                const isPrivate = document.body.innerHTML.includes("This profile is private") || 
+                                  document.body.innerHTML.includes("profile_private_info") || 
+                                  document.title.includes("Sign In");
+                                  
+                if (games && games.length > 0) {
+                    console.log("[Steam Scraper] Found games: " + games.length + ", posting to backend...");
+                    fetch("http://localhost:18234/scraped", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ games })
+                    }).catch(e => console.error("[Steam Scraper] Fetch error: ", e));
+                } else if (isPrivate) {
+                    console.log("[Steam Scraper] Profile is private or requires login, reporting to backend...");
+                    fetch("http://localhost:18234/scraped", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({ isPrivate: true })
+                    }).catch(e => console.error("[Steam Scraper] Fetch error: ", e));
+                }
+            }
+
+            window.addEventListener("DOMContentLoaded", tryScrape);
+            setInterval(tryScrape, 1500);
+        })();
+    "#;
+
+    // Create a native Tauri window for logging in, sharing cookies
+    let _window = tauri::WebviewWindowBuilder::new(
+        &app,
+        "steam-login",
+        tauri::WebviewUrl::External(url.parse().map_err(|e| format!("Failed to parse login URL: {e}"))?)
+    )
+    .title("Steam Login")
+    .inner_size(800.0, 600.0)
+    .center()
+    .resizable(true)
+    .initialization_script(scraper_script)
+    .build()
+    .map_err(|e| format!("Failed to create login window: {e}"))?;
 
     Ok(())
 }
@@ -528,63 +680,210 @@ pub struct OwnedGame {
 #[tauri::command]
 pub async fn fetch_steam_owned_games(steam_id: String) -> Result<Vec<OwnedGame>, String> {
     let url = format!(
-        "https://steamcommunity.com/profiles/{}/games?tab=all&xml=1",
+        "https://steamcommunity.com/profiles/{}/games?tab=all",
         steam_id
     );
 
-    let client = reqwest::Client::new();
-    let xml_text = client
+    println!("[Steam] Requesting HTML games page: {url}");
+
+    let client = reqwest::Client::builder()
+        .user_agent("Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
+        .build()
+        .map_err(|e| format!("Failed to build HTTP client: {e}"))?;
+
+    let response = client
         .get(&url)
         .send()
         .await
-        .map_err(|e| format!("HTTP request failed: {e}"))?
+        .map_err(|e| format!("HTTP request failed: {e}"))?;
+
+    let status = response.status();
+    println!("[Steam] Response status: {status}");
+
+    if !status.is_success() {
+        let body = response.text().await.unwrap_or_default();
+        let preview = &body[..body.len().min(300)];
+        return Err(format!("Steam HTTP {status} for ID '{steam_id}': {preview}"));
+    }
+
+    let html = response
         .text()
         .await
         .map_err(|e| format!("Failed to read response: {e}"))?;
 
-    // Simple XML parsing — extract <game> blocks
-    let mut games = Vec::new();
-    let mut pos = 0;
-    let xml_len = xml_text.len();
+    println!("[Steam] HTML length: {} bytes", html.len());
 
-    while pos < xml_len {
-        let game_start = match xml_text[pos..].find("<game>") {
+    // Steam embeds game data as: var rgGames = [...];
+    // We find this JSON array and parse it directly.
+    let json_array = extract_rg_games_json(&html).ok_or_else(|| {
+        // Check if it's a private profile page
+        if html.contains("This profile is private") || html.contains("profile_private_info") {
+            format!("Steam profile or game details are private for ID '{steam_id}'. Set both 'Profile' and 'Game Details' to Public in Steam Privacy Settings.")
+        } else if html.contains("sign in") || html.contains("login") || html.contains("Sign In") {
+            format!("Steam requires login to view games anonymously for ID '{steam_id}'. Please connect your Steam account in Settings.")
+        } else {
+            format!("Could not find game list in Steam page for ID '{steam_id}'. The page may have changed format. HTML length: {} bytes.", html.len())
+        }
+    })?;
+
+    println!("[Steam] Found rgGames JSON, length: {} chars", json_array.len());
+
+    // Parse the JSON array of game objects
+    let games = parse_rg_games_json(&json_array, &steam_id);
+    println!("[Steam] Parsed {} games for ID '{steam_id}'", games.len());
+    Ok(games)
+}
+
+/// Find and extract the JSON array from Steam's embedded `var rgGames = [...];`
+fn extract_rg_games_json(html: &str) -> Option<String> {
+    // Steam embeds the games as: var rgGames = [{...},...];
+    // Try several known variable names Steam has used
+    let needles = ["var rgGames = ", "var g_rgGames = ", "rgGames = "];
+
+    for needle in &needles {
+        if let Some(start) = html.find(needle) {
+            let after = &html[start + needle.len()..];
+            // The JSON array starts with '['
+            if let Some(bracket_pos) = after.find('[') {
+                let json_start = &after[bracket_pos..];
+                // Find the matching closing bracket
+                let mut depth = 0usize;
+                let mut in_string = false;
+                let mut escape_next = false;
+                for (i, ch) in json_start.char_indices() {
+                    if escape_next {
+                        escape_next = false;
+                        continue;
+                    }
+                    match ch {
+                        '\\' if in_string => escape_next = true,
+                        '"' => in_string = !in_string,
+                        '[' if !in_string => depth += 1,
+                        ']' if !in_string => {
+                            depth -= 1;
+                            if depth == 0 {
+                                return Some(json_start[..=i].to_string());
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Parse the extracted rgGames JSON into OwnedGame structs (no serde dependency needed)
+fn parse_rg_games_json(json: &str, _steam_id: &str) -> Vec<OwnedGame> {
+    let mut games = Vec::new();
+
+    // Each game object: {"appid":730,"name":"Counter-Strike 2","hours_forever":"1,234",...}
+    // We extract values using simple string search to avoid needing a full JSON parser dependency
+    let mut pos = 0;
+    while pos < json.len() {
+        let obj_start = match json[pos..].find('{') {
             Some(i) => pos + i,
             None => break,
         };
-        let game_end = match xml_text[game_start..].find("</game>") {
-            Some(i) => game_start + i + 7,
+        // Find matching closing brace
+        let mut depth = 0usize;
+        let mut in_string = false;
+        let mut escape_next = false;
+        let mut obj_end = None;
+        for (i, ch) in json[obj_start..].char_indices() {
+            if escape_next { escape_next = false; continue; }
+            match ch {
+                '\\' if in_string => escape_next = true,
+                '"' => in_string = !in_string,
+                '{' if !in_string => depth += 1,
+                '}' if !in_string => {
+                    depth -= 1;
+                    if depth == 0 {
+                        obj_end = Some(obj_start + i + 1);
+                        break;
+                    }
+                }
+                _ => {}
+            }
+        }
+        let obj_end = match obj_end {
+            Some(e) => e,
             None => break,
         };
-        let block = &xml_text[game_start..game_end];
+        let obj = &json[obj_start..obj_end];
 
-        let appid = extract_xml_tag(block, "appID").unwrap_or_default();
-        let name = extract_xml_tag(block, "name").unwrap_or_default();
-        let hours_str = extract_xml_tag(block, "hoursOnRecord").unwrap_or_else(|| "0".to_string());
-        let hours_clean = hours_str.replace(',', "");
-        let playtime = (hours_clean.parse::<f64>().unwrap_or(0.0) * 60.0).round() as u64;
-        let logo = extract_xml_tag(block, "logo");
+        let appid = extract_json_str_field(obj, "appid")
+            .or_else(|| extract_json_num_field(obj, "appid"))
+            .unwrap_or_default();
+        let name = extract_json_str_field(obj, "name").unwrap_or_default();
 
         if !appid.is_empty() && !name.is_empty() {
+            let hours_str = extract_json_str_field(obj, "hours_forever")
+                .or_else(|| extract_json_str_field(obj, "hours"))
+                .or_else(|| extract_json_num_field(obj, "hours_forever"))
+                .unwrap_or_else(|| "0".to_string());
+            let hours_clean = hours_str.replace(',', "");
+            let playtime = (hours_clean.parse::<f64>().unwrap_or(0.0) * 60.0).round() as u64;
+
             games.push(OwnedGame {
                 id: format!("steam-owned-{appid}"),
                 title: name,
-                description: format!("Steam game (Owned). ID: {appid}"),
+                description: format!("Steam game (Owned). AppID: {appid}"),
                 cover_url: Some(format!(
                     "https://cdn.cloudflare.steamstatic.com/steam/apps/{appid}/library_600x900.jpg"
                 )),
                 logo_url: Some(format!(
-                    "https://cdn.cloudflare.steamstatic.com/steam/apps/{appid}/logo.png"
+                    "https://cdn.cloudflare.steamstatic.com/steam/apps/{appid}/header.jpg"
                 )),
-                icon_url: logo,
+                icon_url: None,
                 playtime_minutes: playtime,
             });
         }
-
-        pos = game_end;
+        pos = obj_end;
     }
+    games
+}
 
-    Ok(games)
+/// Extract a string field value from a JSON object string: `"key":"value"`
+fn extract_json_str_field(obj: &str, key: &str) -> Option<String> {
+    let needle = format!("\"{}\":", key);
+    let start = obj.find(&needle)? + needle.len();
+    let rest = obj[start..].trim_start();
+    if !rest.starts_with('"') {
+        return None;
+    }
+    let inner = &rest[1..];
+    let mut result = String::new();
+    let mut escape_next = false;
+    for ch in inner.chars() {
+        if escape_next {
+            match ch {
+                'n' => result.push('\n'),
+                't' => result.push('\t'),
+                'r' => result.push('\r'),
+                other => result.push(other),
+            }
+            escape_next = false;
+        } else if ch == '\\' {
+            escape_next = true;
+        } else if ch == '"' {
+            break;
+        } else {
+            result.push(ch);
+        }
+    }
+    Some(result)
+}
+
+/// Extract a numeric field value from a JSON object string: `"key":12345`
+fn extract_json_num_field(obj: &str, key: &str) -> Option<String> {
+    let needle = format!("\"{}\":", key);
+    let start = obj.find(&needle)? + needle.len();
+    let rest = obj[start..].trim_start();
+    let end = rest.find(|c: char| !c.is_ascii_digit() && c != '.').unwrap_or(rest.len());
+    let num = &rest[..end];
+    if num.is_empty() { None } else { Some(num.to_string()) }
 }
 
 fn extract_xml_tag(block: &str, tag: &str) -> Option<String> {
