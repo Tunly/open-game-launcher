@@ -108,14 +108,14 @@ export function DownloadsPage() {
         <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
           <div className="min-w-0">
             <span className="neo-copy inline-flex border-2 border-black bg-[#087d6d] px-3 py-1 text-xs font-bold uppercase text-white shadow-[3px_3px_0_#171411]">
-              Transfer aktiv
+              Transfer active
             </span>
             <h1 className="neo-title mt-2 max-w-[680px] text-[clamp(3.4rem,15vw,6rem)] leading-[0.82] text-[#171411]">
               Download Queue
             </h1>
             <p className="neo-copy mt-3 text-xs font-bold uppercase text-[#55504a]">
-              {activeCount} aktive Transfers // {pausedCount} pausiert //{" "}
-              {completedCount} abgeschlossen
+              {activeCount} active transfers // {pausedCount} paused //{" "}
+              {completedCount} completed
             </p>
           </div>
 
@@ -152,9 +152,9 @@ export function DownloadsPage() {
 
         <div className="grid grid-cols-3 border-4 border-black bg-[#171411] text-center text-[#f5eedf] shadow-[4px_4px_0_#171411] lg:grid-cols-1">
           {[
-            ["Aktiv", activeCount],
+            ["Active", activeCount],
             ["Pause", pausedCount],
-            ["Fertig", completedCount],
+            ["Complete", completedCount],
           ].map(([label, value]) => (
             <div
               key={label}
@@ -172,7 +172,7 @@ export function DownloadsPage() {
       <div className="space-y-4">
         {loading ? (
           <div className="neo-copy border-4 border-black bg-[#f5eedf] p-8 text-center text-xs font-bold uppercase text-[#55504a] shadow-[4px_4px_0_#171411]">
-            Lade Download-Warteschlange...
+            Loading download queue...
           </div>
         ) : items.length > 0 ? (
           items.map((item, index) => (
@@ -186,7 +186,7 @@ export function DownloadsPage() {
           ))
         ) : (
           <div className="neo-copy border-4 border-black bg-[#f5eedf] p-8 text-center text-xs font-bold uppercase text-[#55504a] shadow-[4px_4px_0_#171411]">
-            Keine aktiven Downloads.
+            No active downloads.
           </div>
         )}
       </div>

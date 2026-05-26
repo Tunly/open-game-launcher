@@ -286,7 +286,7 @@ function enrichGameWithMetadata(game: Game): Game {
     };
   }
 
-  // 2. Generic deterministic hashing for any scanned games
+  // 2. Sizeneric deterministic hashing for any scanned games
   let hash = 0;
   for (let i = 0; i < title.length; i++) {
     hash = (hash << 5) - hash + title.charCodeAt(i);
@@ -300,12 +300,12 @@ function enrichGameWithMetadata(game: Game): Game {
   const productCategories = ["game", "software", "video", "dlc", "soundtrack", "demo", "beta"];
   const compatibilities: ("verified" | "playable" | "unsupported" | "unknown")[] = ["verified", "playable", "unsupported", "unknown"];
 
-  const numGenres = (hash % 3) + 1;
-  const assignedGenres: string[] = [];
-  for (let i = 0; i < numGenres; i++) {
+  const numSizenres = (hash % 3) + 1;
+  const assignedSizenres: string[] = [];
+  for (let i = 0; i < numSizenres; i++) {
     const idx = (hash + i * 7) % genresList.length;
-    if (!assignedGenres.includes(genresList[idx])) {
-      assignedGenres.push(genresList[idx]);
+    if (!assignedSizenres.includes(genresList[idx])) {
+      assignedSizenres.push(genresList[idx]);
     }
   }
 
@@ -337,7 +337,7 @@ function enrichGameWithMetadata(game: Game): Game {
     sizeGb,
     players: assignedPlayers,
     features: assignedFeatures,
-    genres: assignedGenres,
+    genres: assignedSizenres,
     productCategory: assignedProductCategory,
     steamDeckCompatibility: assignedDeckCompatibility,
     protonCompatible
@@ -350,20 +350,20 @@ function matchSize(gameSizeGb: number, query: string): boolean {
   const sizeRegex = /(?:size\s*)?([><=])\s*(\d+(?:\.\d+)?)\s*(kb|mb|gb|tb)?/i;
   const match = trimmed.match(sizeRegex);
   if (!match) return true;
-  
+
   const operator = match[1];
   const rawVal = parseFloat(match[2]);
   const unit = match[3] || "gb";
-  
+
   let valInGb = rawVal;
   if (unit === "kb") valInGb = rawVal / (1024 * 1024);
   else if (unit === "mb") valInGb = rawVal / 1024;
   else if (unit === "tb") valInGb = rawVal * 1024;
-  
+
   if (operator === ">") return gameSizeGb > valInGb;
   if (operator === "<") return gameSizeGb < valInGb;
   if (operator === "=") return Math.abs(gameSizeGb - valInGb) < 0.05;
-  
+
   return true;
 }
 
@@ -871,7 +871,7 @@ export function LibraryPage() {
   useEffect(() => {
     localStorage.setItem("launcher_manual_collections", JSON.stringify(manualCollections));
   }, [manualCollections]);
-  
+
   const [selectedManualCollectionName, setSelectedManualCollectionName] = useState<string | null>(null);
 
   function saveCurrentFilterAsCollection(name: string) {
@@ -1017,7 +1017,7 @@ export function LibraryPage() {
         const gameFeatures = game.features || [];
         const matchesFeatures = advancedFilters.features.some((f) => {
           const normF = f.toLowerCase().replace(/[^a-z0-9]/g, "_");
-          
+
           if (normF.includes("achieve")) return gameFeatures.includes("Steam Achievements");
           if (normF.includes("controller")) return gameFeatures.includes("Full Controller Support");
           if (normF.includes("card")) return gameFeatures.includes("Steam Trading Cards");
@@ -1028,7 +1028,7 @@ export function LibraryPage() {
           if (normF.includes("purchase")) return gameFeatures.includes("In-App Purchases");
           if (normF.includes("vr")) return gameFeatures.includes("VR Supported");
           if (normF.includes("comment")) return gameFeatures.includes("Comments available") || game.description.includes("comment") || game.id.includes("starfall");
-          
+
           return gameFeatures.some(gf => gf.toLowerCase().replace(/[^a-z0-9]/g, "_") === normF);
         });
         if (!matchesFeatures) return false;
@@ -1047,14 +1047,14 @@ export function LibraryPage() {
         if (!matchesHardware) return false;
       }
 
-      // Genre
+      // Sizenre
       if (advancedFilters.genres.length > 0) {
-        const gameGenres = game.genres || [];
-        const matchesGenres = advancedFilters.genres.some((g) => {
+        const gameSizenres = game.genres || [];
+        const matchesSizenres = advancedFilters.genres.some((g) => {
           const normG = g.toLowerCase().replace(/[^a-z0-9]/g, "_");
-          return gameGenres.some(gg => gg.toLowerCase().replace(/[^a-z0-9]/g, "_") === normG);
+          return gameSizenres.some(gg => gg.toLowerCase().replace(/[^a-z0-9]/g, "_") === normG);
         });
-        if (!matchesGenres) return false;
+        if (!matchesSizenres) return false;
       }
 
       // Custom Categories Filter
@@ -1173,7 +1173,7 @@ export function LibraryPage() {
       if (steamId) {
         try {
           let ownedRaw: OwnedGame[] = [];
-          
+
           // Load owned games from the local WebView scraper cache
           const cacheStr = localStorage.getItem(STEAM_OWNED_GAMES_CACHE_KEY);
           const cacheVersion = localStorage.getItem(STEAM_OWNED_GAMES_CACHE_VERSION_KEY);
@@ -1193,7 +1193,7 @@ export function LibraryPage() {
               localStorage.setItem(STEAM_OWNED_GAMES_CACHE_VERSION_KEY, STEAM_OWNED_GAMES_CACHE_VERSION);
             }
           }
-          
+
           // Trigger a silent scrape in the background using WebView cookies to update the cache
           triggerSilentSteamScraper(steamId);
 
@@ -1220,7 +1220,7 @@ export function LibraryPage() {
           const msg = String(err);
           console.warn("Failed to fetch owned steam games during load:", msg);
           if (msg.includes("400") || msg.includes("403") || msg.includes("Game Details")) {
-            setStatusMessage("⚠️ Steam: Please set 'Game Details' to Public in Steam → Profile → Privacy Settings. OG-Launcher will sync automatically.");
+            setStatusMessage("Warning: Steam: Please set 'Game Details' to Public in Steam > Profile > Privacy Settings. OG-Launcher will sync automatically.");
           }
         }
       }
@@ -1278,9 +1278,9 @@ export function LibraryPage() {
                 const epicParts = og.id.replace("epic-owned-", "").split(":");
                 const catalogItemId = epicParts[1] || "";
                 const appName = epicParts[2] || "";
-                
-                return !installedEpicIds.has(catalogItemId) && 
-                       !installedEpicIds.has(appName) && 
+
+                return !installedEpicIds.has(catalogItemId) &&
+                       !installedEpicIds.has(appName) &&
                        !installedTitles.has(og.title.toLowerCase().trim());
               });
 
@@ -1416,7 +1416,7 @@ export function LibraryPage() {
 
     const unlistenSteam = listen<string>("steam_login_success", () => {
       if (!isMounted) return;
-      console.log("[OG-Launcher] Steam connected – reloading library...");
+      console.log("[OG-Launcher] Steam connected - reloading library...");
       void runAutomaticLibrarySync(false);
     });
 
@@ -1432,7 +1432,7 @@ export function LibraryPage() {
     const unlistenScrapedError = listen<string>("steam_scraped_games_error", (event) => {
       if (!isMounted) return;
       console.warn("[OG-Launcher] Silent scraper failed:", event.payload);
-      setStatusMessage(`⚠️ Steam: ${event.payload}`);
+      setStatusMessage(`Warning: Steam: ${event.payload}`);
     });
 
     return () => {
@@ -1558,7 +1558,7 @@ export function LibraryPage() {
     const installPath = addGamePath.trim();
 
     if (!title || !installPath) {
-      setAddGameError("Titel und EXE werden benotigt.");
+      setAddGameError("Title and EXE are required.");
       return;
     }
 
@@ -1587,7 +1587,7 @@ export function LibraryPage() {
 
   function handleSelectGameExecutable() {
     setAddGameError(null);
-    setAddGameError("Dateiauswahl ist ohne Dialog-Plugin deaktiviert. Bitte den EXE-Pfad manuell einfugen.");
+    setAddGameError("File selection is disabled without the dialog plugin. Enter the EXE path manually.");
   }
 
   function handleLogoError(game: Game) {
@@ -1622,7 +1622,7 @@ export function LibraryPage() {
   return (
     <div className="library-steam-shell h-full min-h-0 overflow-hidden border-x-0 border-black bg-[#fbf4e7] text-[#171411] sm:border-x-4">
       <div className="relative grid h-full min-h-0 min-w-0 grid-cols-1 md:grid-cols-[260px_minmax(0,1fr)] lg:grid-cols-[290px_minmax(0,1fr)]">
-        
+
         {/* ====================================================
             SIDEBAR PANEL
             ==================================================== */}
@@ -1654,8 +1654,8 @@ export function LibraryPage() {
                   value={searchQuery}
                   onChange={(event) => setSearchQuery(event.target.value)}
                 />
-                <select 
-                  value={sortOption} 
+                <select
+                  value={sortOption}
                   onChange={(e) => setSortOption(e.target.value as LibrarySortOption)}
                   className="h-6 border-2 border-black bg-[#d8cbb7] text-[10px] font-black uppercase tracking-wider outline-none neo-copy cursor-pointer"
                   title="Sortieren"
@@ -1663,7 +1663,7 @@ export function LibraryPage() {
                   <option value="alphabetical">A-Z</option>
                   <option value="last_played">Zuletzt</option>
                   <option value="playtime">Spielzeit</option>
-                  <option value="size">Größe</option>
+                  <option value="size">Size</option>
                 </select>
                 <button
                   type="button"
@@ -1682,7 +1682,7 @@ export function LibraryPage() {
 
             {/* Fixed list controls */}
             <div className="shrink-0">
-              
+
               {/* SAVED DYNAMIC COLLECTIONS */}
               {dynamicCollections.length > 0 ? (
                 <div className="px-2 pt-1 border-b-2 border-dashed border-[#ded3c1] pb-2">
@@ -1916,8 +1916,8 @@ export function LibraryPage() {
                 </h4>
                 <div className="grid grid-cols-2 gap-1.5">
                   {[
-                    "Steam Achievements", "Full Controller Support", "Steam Trading Cards", 
-                    "Steam Workshop", "Steam Cloud", "Stats", "Leaderboards", 
+                    "Steam Achievements", "Full Controller Support", "Steam Trading Cards",
+                    "Steam Workshop", "Steam Cloud", "Stats", "Leaderboards",
                     "In-App Purchases", "VR Supported", "Comments available"
                   ].map((f) => {
                     const isChecked = advancedFilters.features.includes(f);
@@ -1944,7 +1944,7 @@ export function LibraryPage() {
               {/* HARDWARE COMPATIBILITY */}
               <div className="border-2 border-black bg-[#efe3cf] p-2 shadow-[2px_2px_0_#000]">
                 <h4 className="font-black uppercase text-[12px] border-b border-black pb-1 mb-2 flex items-center justify-between">
-                  <span>Hardware-Kompatibilität</span>
+                  <span>Hardware Compatibility</span>
                   {advancedFilters.hardware.length > 0 && (
                     <button onClick={() => setAdvancedFilters(prev => ({ ...prev, hardware: [] }))} className="text-[10px] underline lowercase">clear</button>
                   )}
@@ -1975,7 +1975,7 @@ export function LibraryPage() {
               {/* GENRE BUTTONS */}
               <div className="border-2 border-black bg-[#efe3cf] p-2 shadow-[2px_2px_0_#000]">
                 <h4 className="font-black uppercase text-[12px] border-b border-black pb-1 mb-2 flex items-center justify-between">
-                  <span>Genre</span>
+                  <span>Sizenre</span>
                   {advancedFilters.genres.length > 0 && (
                     <button onClick={() => setAdvancedFilters(prev => ({ ...prev, genres: [] }))} className="text-[10px] underline lowercase">clear</button>
                   )}
@@ -2108,7 +2108,7 @@ export function LibraryPage() {
               {/* SIZE FILTER TEXT & PRESETS */}
               <div className="border-2 border-black bg-[#efe3cf] p-2 shadow-[2px_2px_0_#000]">
                 <h4 className="font-black uppercase text-[12px] border-b border-black pb-1 mb-2 flex items-center justify-between">
-                  <span>Größe</span>
+                  <span>Size</span>
                   {advancedFilters.sizeQuery && (
                     <button onClick={() => setAdvancedFilters(prev => ({ ...prev, sizeQuery: "" }))} className="text-[10px] underline lowercase">clear</button>
                   )}
@@ -2278,7 +2278,7 @@ export function LibraryPage() {
 
                 {/* DETAILS POPUP INTERACTIONS (Favoriten, Kategorien verwalten, Hidden) */}
                 <div className="relative flex w-full flex-wrap items-start justify-start gap-2 self-start border-t-2 border-black/20 pt-1">
-                  
+
                   {/* Settings Button */}
                   <div className="relative">
                     <button
@@ -2297,7 +2297,7 @@ export function LibraryPage() {
                         <h4 className="font-black uppercase text-[12px] border-b border-black pb-1 mb-2">
                           Options: {enrichedSelectedGame.title}
                         </h4>
-                        
+
                         {/* HIDE GAME TOGGLE */}
                         <div className="mb-3">
                           <button
@@ -2311,7 +2311,7 @@ export function LibraryPage() {
                                 : "bg-[#ded3c1] text-[#171411] hover:bg-[#d5c7b1]"
                             }`}
                           >
-                            {hiddenGames[enrichedSelectedGame.id] === true ? "🛈 Hidden (Ausgeblendet)" : "👁 Hide Game (Ausblenden)"}
+                            {hiddenGames[enrichedSelectedGame.id] === true ? "Hidden" : "Hide Game"}
                           </button>
                         </div>
 
@@ -2346,7 +2346,7 @@ export function LibraryPage() {
                               +
                             </button>
                           </div>
-                          
+
                           {(customCategories[enrichedSelectedGame.id] || []).length > 0 ? (
                             <div className="flex flex-wrap gap-1 mt-1">
                               {(customCategories[enrichedSelectedGame.id] || []).map((cat) => (
@@ -2364,7 +2364,7 @@ export function LibraryPage() {
                                     }}
                                     className="text-[#b7102a] font-bold"
                                   >
-                                    ×
+                                    x
                                   </button>
                                 </span>
                               ))}
@@ -2377,9 +2377,9 @@ export function LibraryPage() {
                         {/* ADD TO MANUAL COLLECTION */}
                         <div className="mt-3 border-t border-black pt-2">
                           <label className="block text-[11px] font-black uppercase mb-1">
-                            Zu Collection hinzufügen:
+                            Add to collection:
                           </label>
-                          <select 
+                          <select
                             className="neo-copy w-full border-2 border-black bg-[#f4ead8] p-1 text-[10px] font-bold outline-none mb-1"
                             onChange={(e) => {
                               if (!e.target.value) return;
@@ -2394,7 +2394,7 @@ export function LibraryPage() {
                               e.target.value = "";
                             }}
                           >
-                            <option value="">-- Wähle Collection --</option>
+                            <option value="">-- Choose Collection --</option>
                             {Object.keys(manualCollections).map(col => (
                               <option key={col} value={col}>{col}</option>
                             ))}
@@ -2402,7 +2402,7 @@ export function LibraryPage() {
                           <div className="flex gap-1 mb-2">
                             <input
                               type="text"
-                              placeholder="Neue Collection..."
+                              placeholder="New collection..."
                               id="newManualColInput"
                               className="neo-copy h-7 flex-1 border-2 border-black bg-[#f4ead8] px-2 text-[10px] font-bold outline-none"
                             />
@@ -2443,7 +2443,7 @@ export function LibraryPage() {
                     className="grid h-10 w-10 place-items-center border-4 border-black bg-[#fbf4e7] hover:bg-[#efe3cf] transition"
                     type="button"
                     aria-label="Information help"
-                    onClick={() => alert(`Support: Besuche die Hilfeseite für ${enrichedSelectedGame.title}.`)}
+                    onClick={() => alert(`Support: Visit the support page for ${enrichedSelectedGame.title}.`)}
                   >
                     <CircleHelp className="h-6 w-6" />
                   </button>
@@ -2476,7 +2476,7 @@ export function LibraryPage() {
                 ) : null}
 
                 <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_300px]">
-                  
+
                   {/* Left Column: Activity Feed */}
                   <section className="min-w-0">
                     <div className="mb-2 flex items-center justify-between">
@@ -2526,7 +2526,7 @@ export function LibraryPage() {
 
                   {/* Right Column: RICH METADATA & Hardware cards */}
                   <aside className="space-y-4">
-                    
+
                     {/* ENRICHED METADATA INFORMATION CARD */}
                     <section className="border-4 border-black bg-[#fbf4e7] shadow-[3px_3px_0_#171411]" style={{ fontFamily: '"Arial Narrow", Impact, sans-serif' }}>
                       <h2 className="border-b-2 border-black px-3 py-2 text-[15px] font-black uppercase leading-none">
@@ -2534,7 +2534,7 @@ export function LibraryPage() {
                       </h2>
                       <div className="p-3 space-y-2.5 text-[12px] font-bold">
                         <div className="flex justify-between border-b border-black/10 pb-1">
-                          <span className="text-[#55504a] uppercase">Größe:</span>
+                          <span className="text-[#55504a] uppercase">Size:</span>
                           <span className="font-black text-right">{enrichedSelectedGame.sizeGb ? `${enrichedSelectedGame.sizeGb.toFixed(1)} GB` : "Unbekannt"}</span>
                         </div>
                         <div className="flex justify-between border-b border-black/10 pb-1">
@@ -2578,7 +2578,7 @@ export function LibraryPage() {
                         </div>
                         {enrichedSelectedGame.developer && (
                           <div className="flex justify-between border-b border-black/10 pb-1">
-                            <span className="text-[#55504a] uppercase">Entwickler:</span>
+                            <span className="text-[#55504a] uppercase">Developer:</span>
                             <span className="font-black text-right">{enrichedSelectedGame.developer}</span>
                           </div>
                         )}
@@ -2590,25 +2590,25 @@ export function LibraryPage() {
                         )}
                         {enrichedSelectedGame.installPath && (
                           <div className="flex flex-col gap-1 border-b border-black/10 pb-2">
-                            <span className="text-[#55504a] uppercase">Installationspfad:</span>
+                            <span className="text-[#55504a] uppercase">Install Path:</span>
                             <span className="font-black break-all text-[10px]">{enrichedSelectedGame.installPath}</span>
                             <button
                               onClick={() => {
-                                const newPath = prompt(`Spiel verschieben.\nAktueller Pfad: ${enrichedSelectedGame.installPath}\n\nGeben Sie den neuen absoluten Pfad ein:`);
+                                const newPath = prompt(`Move game.\nCurrent path: ${enrichedSelectedGame.installPath}\n\nEnter the new absolute path:`);
                                 if (newPath && newPath.trim() !== "") {
                                   moveGame({ gameId: enrichedSelectedGame.id, newPath: newPath.trim() })
                                     .then(() => {
-                                      alert("Spiel erfolgreich verschoben!");
+                                      alert("Game moved successfully!");
                                       void runAutomaticLibrarySync(true);
                                     })
                                     .catch((err) => {
-                                      alert("Fehler beim Verschieben: " + err);
+                                      alert("Failed to move game: " + err);
                                     });
                                 }
                               }}
                               className="self-start border-2 border-black bg-[#169b83] text-white px-2 py-0.5 text-[10px] font-black uppercase hover:bg-[#138872] transition shadow-[1px_1px_0_#000]"
                             >
-                              Ordner Verschieben
+                              Move Folder
                             </button>
                           </div>
                         )}
@@ -2620,7 +2620,7 @@ export function LibraryPage() {
                         )}
                         {enrichedSelectedGame.genres && enrichedSelectedGame.genres.length > 0 && (
                           <div className="border-b border-black/10 pb-1">
-                            <span className="text-[#55504a] uppercase block mb-1">Genres:</span>
+                            <span className="text-[#55504a] uppercase block mb-1">Sizenres:</span>
                             <div className="flex flex-wrap gap-1">
                               {enrichedSelectedGame.genres.map(g => (
                                 <span key={g} className="bg-[#efe3cf] border border-black px-1.5 py-0.5 text-[9px] uppercase font-black">{g}</span>

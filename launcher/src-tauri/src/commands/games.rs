@@ -215,17 +215,17 @@ pub async fn refresh_installed_games() -> Result<Vec<InstalledGame>, String> {
 pub async fn add_manual_game(input: AddManualGameRequest) -> Result<InstalledGame, String> {
     let title = input.title.trim();
     if title.is_empty() {
-        return Err("Titel darf nicht leer sein.".to_string());
+        return Err("Title must not be empty.".to_string());
     }
 
     let install_path = input.install_path.trim();
     if install_path.is_empty() {
-        return Err("Installationspfad darf nicht leer sein.".to_string());
+        return Err("Install path must not be empty.".to_string());
     }
 
     let path = PathBuf::from(install_path);
     if !path.exists() {
-        return Err(format!("Pfad wurde nicht gefunden: {install_path}"));
+        return Err(format!("Path was not found: {install_path}"));
     }
 
     let asset_root = if path.is_dir() {
@@ -483,32 +483,32 @@ pub async fn move_game(input: MoveGameRequest) -> Result<(), String> {
     let game_index = games
         .iter()
         .position(|g| g.id == input.game_id)
-        .ok_or_else(|| "Spiel nicht im Cache gefunden.".to_string())?;
+        .ok_or_else(|| "Game was not found in the cache.".to_string())?;
 
     let old_path = games[game_index]
         .install_path
         .as_ref()
-        .ok_or_else(|| "Spiel hat keinen Installationspfad.".to_string())?;
+        .ok_or_else(|| "Game has no install path.".to_string())?;
 
     let old_path_buf = PathBuf::from(old_path);
     let new_path_buf = PathBuf::from(&input.new_path);
 
     if !old_path_buf.exists() {
-        return Err("Alter Installationspfad existiert nicht.".to_string());
+        return Err("Old install path does not exist.".to_string());
     }
 
     let folder_name = old_path_buf
         .file_name()
-        .ok_or_else(|| "Ungültiger Pfad.".to_string())?;
+        .ok_or_else(|| "Invalid path.".to_string())?;
     let final_new_path = new_path_buf.join(folder_name);
 
     if final_new_path.exists() {
-        return Err("Zielordner existiert bereits.".to_string());
+        return Err("Target folder already exists.".to_string());
     }
 
     fs::rename(&old_path_buf, &final_new_path).map_err(|e| {
         format!(
-            "Fehler beim Verschieben (Möglicherweise Laufwerksgrenze überschritten): {}",
+            "Failed to move game. This may have crossed drive boundaries: {}",
             e
         )
     })?;
@@ -616,7 +616,7 @@ pub async fn launch_game(
     if game_id.starts_with("steam-owned-") {
         let app_id = game_id.strip_prefix("steam-owned-").unwrap_or(&game_id);
         let uri = format!("steam://install/{app_id}");
-        open_uri(&uri).map_err(|e| format!("Konnte Installation nicht starten: {e}"))?;
+        open_uri(&uri).map_err(|e| format!("Could not start installation: {e}"))?;
         return Ok(LaunchGameResponse {
             game_id: game_id.clone(),
             success: true,
@@ -627,7 +627,7 @@ pub async fn launch_game(
     if game_id.starts_with("gog-owned-") {
         let gog_id = game_id.strip_prefix("gog-owned-").unwrap_or(&game_id);
         let uri = format!("goggalaxy://open-store/{gog_id}");
-        open_uri(&uri).map_err(|e| format!("Konnte GOG Galaxy nicht starten: {e}"))?;
+        open_uri(&uri).map_err(|e| format!("Could not start GOG Galaxy: {e}"))?;
         return Ok(LaunchGameResponse {
             game_id: game_id.clone(),
             success: true,
@@ -638,7 +638,7 @@ pub async fn launch_game(
     if game_id.starts_with("epic-owned-") {
         let epic_id = game_id.strip_prefix("epic-owned-").unwrap_or(&game_id);
         let uri = format!("com.epicgames.launcher://apps/{epic_id}?action=install");
-        open_uri(&uri).map_err(|e| format!("Konnte Epic Games Launcher nicht starten: {e}"))?;
+        open_uri(&uri).map_err(|e| format!("Could not start Epic Games Launcher: {e}"))?;
         return Ok(LaunchGameResponse {
             game_id: game_id.clone(),
             success: true,
@@ -2741,18 +2741,18 @@ fn decode_oem_ansi(bytes: &[u8]) -> String {
     for &b in bytes {
         match b {
             0..=127 => s.push(b as char),
-            0x84 | 0xE4 => s.push('ä'),
-            0x94 | 0xF6 => s.push('ö'),
-            0x81 | 0xFC => s.push('ü'),
-            0x8E | 0xC4 => s.push('Ä'),
-            0x99 | 0xD6 => s.push('Ö'),
-            0x9A | 0xDC => s.push('Ü'),
-            0xE1 | 0xDF => s.push('ß'),
-            0x82 | 0xE9 => s.push('é'),
-            0x8A | 0xE8 => s.push('è'),
-            0x85 | 0xE0 => s.push('à'),
-            0x91 | 0xE6 => s.push('æ'),
-            0x92 | 0xC6 => s.push('Æ'),
+            0x84 | 0xE4 => s.push('\u{00e4}'),
+            0x94 | 0xF6 => s.push('\u{00f6}'),
+            0x81 | 0xFC => s.push('\u{00fc}'),
+            0x8E | 0xC4 => s.push('\u{00c4}'),
+            0x99 | 0xD6 => s.push('\u{00d6}'),
+            0x9A | 0xDC => s.push('\u{00dc}'),
+            0xE1 | 0xDF => s.push('\u{00df}'),
+            0x82 | 0xE9 => s.push('\u{00e9}'),
+            0x8A | 0xE8 => s.push('\u{00e8}'),
+            0x85 | 0xE0 => s.push('\u{00e0}'),
+            0x91 | 0xE6 => s.push('\u{00e6}'),
+            0x92 | 0xC6 => s.push('\u{00c6}'),
             _ => s.push(b as char),
         }
     }
@@ -3676,16 +3676,16 @@ fn installed_game(
 
 fn launch_installed_game(game: &InstalledGame) -> Result<Option<Child>, String> {
     if let Some(uri) = &game.launch_uri {
-        open_uri(uri).map_err(|error| format!("Konnte {} nicht starten: {error}", game.title))?;
+        open_uri(uri).map_err(|error| format!("Could not launch {}: {error}", game.title))?;
         return Ok(None);
     }
 
     let Some(install_path) = game.install_path.as_ref().map(PathBuf::from) else {
-        return Err(format!("Kein Startpfad fur {} gefunden.", game.title));
+        return Err(format!("No launch path found for {}.", game.title));
     };
 
     let executable = find_launch_executable(&install_path, &game.title)
-        .ok_or_else(|| format!("Keine passende .exe fur {} gefunden.", game.title))?;
+        .ok_or_else(|| format!("No matching .exe found for {}.", game.title))?;
     let working_dir = executable.parent().unwrap_or(&install_path);
 
     Command::new(&executable)

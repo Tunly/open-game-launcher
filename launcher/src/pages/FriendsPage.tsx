@@ -118,9 +118,9 @@ export function FriendsPage() {
           <Loader2 className="h-8 w-8 animate-spin text-[#b7102a]" />
         </div>
       ) : !isConfigured ? (
-        <Notice title="Supabase nicht verbunden" body="Freunde und Requests brauchen die public Supabase Env Vars." />
+        <Notice title="Supabase is not connected" body="Friends and requests require the public Supabase environment variables." />
       ) : !user ? (
-        <Notice title="Login erforderlich" body="Melde dich an, bevor du Freunde verwaltest." />
+        <Notice title="Login required" body="Sign in before managing friends." />
       ) : (
         <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
           <div className="space-y-5">

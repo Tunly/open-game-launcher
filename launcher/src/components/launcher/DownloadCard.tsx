@@ -10,12 +10,12 @@ interface DownloadCardProps {
 }
 
 const statusLabel: Record<DownloadStatus, string> = {
-  completed: "Abgeschlossen",
-  downloading: "Lauft",
-  failed: "Fehler",
-  paused: "Pausiert",
-  cancelled: "Abgebrochen",
-  error: "Fehler",
+  completed: "Completed",
+  downloading: "Running",
+  failed: "Error",
+  paused: "Paused",
+  cancelled: "Cancelled",
+  error: "Error",
 };
 
 const statusClass: Record<DownloadStatus, string> = {
@@ -60,7 +60,7 @@ export function DownloadCard({
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2 mb-1">
               <span className="neo-copy text-[10px] font-bold uppercase text-[#55504a]">
-                Paket-ID: {item.gameId}
+                Package ID: {item.gameId}
               </span>
               {item.platform && (
                 <span className={`neo-copy border px-1.5 py-0.2 text-[8px] font-extrabold uppercase shadow-[1px_1px_0_#171411] ${platformColors[item.platform] || "bg-[#efe6d4] text-[#171411] border-black"}`}>
@@ -81,7 +81,7 @@ export function DownloadCard({
 
         <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
           <p className="neo-copy text-xs font-bold uppercase text-[#55504a]">
-            {item.progress}% komplett
+            {item.progress}% complete
           </p>
           <p className="neo-copy text-xs font-bold uppercase text-[#55504a]">
             {item.speed}
@@ -107,7 +107,7 @@ export function DownloadCard({
             ) : (
               <Play className="h-4 w-4 fill-current" />
             )}
-            {item.status === "downloading" ? "Pause" : "Weiter"}
+            {item.status === "downloading" ? "Pause" : "Resume"}
           </button>
         ) : (
           <button
@@ -115,7 +115,7 @@ export function DownloadCard({
             type="button"
           >
             <RotateCcw className="h-4 w-4" />
-            Archiv
+            Archive
           </button>
         )}
         {item.status !== "completed" ? (
@@ -125,14 +125,14 @@ export function DownloadCard({
             onClick={() => onCancel(item.id)}
           >
             <X className="h-4 w-4" />
-            Abbrechen
+            Cancel
           </button>
         ) : (
           <button
             className="neo-copy min-h-14 bg-[#f5eedf] px-4 text-xs font-bold uppercase text-[#171411]"
             type="button"
           >
-            Bereit
+            Ready
           </button>
         )}
       </div>

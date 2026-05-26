@@ -80,16 +80,16 @@ export function DesktopTitleBar() {
         </span>
       </div>
       <div className="flex h-full shrink-0">
-        <WindowControlButton label="Minimieren" onClick={() => void minimizeWindow()}>
+        <WindowControlButton label="Minimize" onClick={() => void minimizeWindow()}>
           <Minimize className="h-4 w-4" />
         </WindowControlButton>
         <WindowControlButton
-          label={isMaximized ? "Wiederherstellen" : "Maximieren"}
+          label={isMaximized ? "Restore" : "Maximize"}
           onClick={() => void toggleMaximizeWindow()}
         >
           {isMaximized ? <Square className="h-3.5 w-3.5" /> : <Maximize className="h-4 w-4" />}
         </WindowControlButton>
-        <WindowControlButton isDanger label="Schliessen" onClick={() => void closeWindow()}>
+        <WindowControlButton isDanger label="Close" onClick={() => void closeWindow()}>
           <X className="h-4 w-4" />
         </WindowControlButton>
       </div>

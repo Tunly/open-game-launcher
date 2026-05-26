@@ -51,30 +51,30 @@ interface NotificationItem {
 const notificationItems: NotificationItem[] = [
   {
     id: "download-complete",
-    title: "Download abgeschlossen",
-    message: "Akira's Revenge ist bereit zum Starten.",
-    time: "Gerade eben",
+    title: "Download Complete",
+    message: "Akira's Revenge is ready to launch.",
+    time: "Just now",
     isUnread: true,
     type: "download",
-    action: { label: "Downloads offnen", page: "downloads" },
+    action: { label: "Open Downloads", page: "downloads" },
   },
   {
     id: "update-ready",
-    title: "Update verfugbar",
-    message: "Neo-Tokyo Drift hat ein neues Content-Pack.",
+    title: "Update Available",
+    message: "Neo-Tokyo Drift has a new content pack.",
     time: "12 Min.",
     isUnread: true,
     type: "update",
-    action: { label: "Bibliothek offnen", page: "library" },
+    action: { label: "Open Library", page: "library" },
   },
   {
     id: "store-drop",
-    title: "Neuer Store Drop",
-    message: "Drei neue Indie-Titel sind im Store gelandet.",
-    time: "1 Std.",
+    title: "New Store Drop",
+    message: "Three new indie titles just landed in the store.",
+    time: "1 hr",
     isUnread: true,
     type: "social",
-    action: { label: "Store ansehen", page: "store" },
+    action: { label: "View Store", page: "store" },
   },
 ];
 
@@ -194,7 +194,7 @@ export function AppShell({
           <div className="ml-auto flex shrink-0 items-center gap-2 sm:gap-3">
             <div ref={notificationMenuRef} className="relative">
               <TopIconButton
-                label="Benachrichtigungen"
+                label="Notifications"
                 disabled={!isAuthenticated}
                 onClick={() => {
                   setIsNotificationMenuOpen((isOpen) => !isOpen);
@@ -237,7 +237,7 @@ export function AppShell({
                 <button
                   aria-expanded={isProfileMenuOpen}
                   aria-haspopup="menu"
-                  aria-label="Profilmenu offnen"
+                  aria-label="Open profile menu"
                   className="flex h-12 items-center gap-2 border-[3px] border-black bg-[#fff9ed] p-1 shadow-[3px_3px_0_#1f1c0f] transition hover:-translate-y-0.5 hover:bg-[#f6edd8]"
                   disabled={isAuthLoading || !isAuthConfigured}
                   type="button"
@@ -345,7 +345,7 @@ function NotificationMenu({
 }) {
   return (
     <div
-      aria-label="Benachrichtigungen"
+      aria-label="Notifications"
       className="absolute right-0 top-full z-50 mt-3 w-[min(22rem,calc(100vw-2rem))] border-4 border-black bg-[#fff9ed] p-3 shadow-[7px_7px_0_#1f1c0f]"
       role="dialog"
     >
@@ -359,7 +359,7 @@ function NotificationMenu({
           </h2>
         </div>
         <button
-          aria-label="Benachrichtigungen schliessen"
+          aria-label="Close notifications"
           className="flex h-9 w-9 items-center justify-center border-2 border-black bg-[#f6edd8] shadow-[2px_2px_0_#1f1c0f]"
           type="button"
           onClick={onClose}
@@ -385,7 +385,7 @@ function NotificationMenu({
         type="button"
         onClick={onMarkAllRead}
       >
-        Alle als gelesen markieren
+        Mark all as read
       </button>
     </div>
   );
@@ -509,7 +509,7 @@ function ProfileMenu({
         <ProfileMenuItem
           disabled={isAuthProfileLoading || !authProfilePath}
           icon={<UserCircle className="h-5 w-5" />}
-          label={isAuthProfileLoading ? "Profil laden" : "Profil anzeigen"}
+          label={isAuthProfileLoading ? "Loading profile" : "View profile"}
           onClick={() => {
             onClose();
             if (authProfilePath) {
@@ -519,7 +519,7 @@ function ProfileMenu({
         />
         <ProfileMenuItem
           icon={<Users className="h-5 w-5" />}
-          label="Freunde"
+          label="Friends"
           onClick={() => {
             onClose();
             onNavigate("friends");
@@ -527,7 +527,7 @@ function ProfileMenu({
         />
         <ProfileMenuItem
           icon={<Settings className="h-5 w-5" />}
-          label="Einstellungen"
+          label="Settings"
           onClick={() => {
             onClose();
             onNavigate("settings");

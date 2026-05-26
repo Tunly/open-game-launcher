@@ -20,18 +20,18 @@ const artClassById: Record<string, string> = {
 
 function getButtonLabel(game: Game, isBusy: boolean) {
   if (isBusy) {
-    return "Warten ...";
+    return "Waiting ...";
   }
 
   if (game.id === "embers-and-engines") {
-    return "Warten ...";
+    return "Waiting ...";
   }
 
   if (game.status === "update_available") {
-    return "Spielen";
+    return "Play";
   }
 
-  return "Starten";
+  return "Launch";
 }
 
 export function GameCard({
@@ -67,9 +67,9 @@ export function GameCard({
               <span className="border border-black px-3 py-2">Cyberpunk</span>
             </div>
             <p className="mt-5 text-sm leading-5 text-[#55504a]">
-              Zuletzt gespielt: Heute.
+              Last played: Today.
               <br />
-              Neues Content-Pack...
+              New content pack...
             </p>
             <button
               className="neo-copy mt-auto h-10 border-2 border-black bg-[#c20b2f] px-5 text-xs font-bold uppercase text-white shadow-[2px_2px_0_#171411]"
@@ -77,7 +77,7 @@ export function GameCard({
               type="button"
               onClick={() => onPrimaryAction(game)}
             >
-              {isBusy ? "Warten ..." : "Spielen"}
+              {isBusy ? "Waiting ..." : "Play"}
             </button>
           </div>
         </div>
@@ -128,7 +128,7 @@ export function GameCard({
       >
         {game.status === "update_available" ? (
           <span className="neo-copy absolute right-3 top-[60%] border-2 border-black bg-[#087d6d] px-3 py-3 text-[10px] font-bold uppercase text-white">
-            Neu
+            New
           </span>
         ) : null}
         {game.id === "iron-vale" ? (
@@ -155,7 +155,7 @@ export function GameCard({
           {isBusy ? (
             <span className="inline-flex items-center gap-2">
               <RotateCw className="h-4 w-4 animate-spin" />
-              Warten ...
+              Waiting ...
             </span>
           ) : (
             <span className="inline-flex items-center gap-2">

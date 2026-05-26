@@ -38,7 +38,7 @@ function NeoToggle({ checked, description, label, onChange }: NeoToggleProps) {
         type="button"
         onClick={() => onChange(!checked)}
       >
-        {checked ? "Aktiv" : "Aus"}
+        {checked ? "Active" : "Off"}
       </button>
     </div>
   );
@@ -99,7 +99,7 @@ export function SettingsPage() {
   }, []);
 
   async function handleGogCodeExchange(code: string) {
-    setTestResult({ success: true, message: "GOG Login-Code empfangen. Tausche aus..." });
+    setTestResult({ success: true, message: "GOG login code received. Exchanging..." });
     try {
       const params = new URLSearchParams();
       params.append("client_id", "46899977096215655");
@@ -117,7 +117,7 @@ export function SettingsPage() {
       });
 
       if (!response.ok) {
-        throw new Error(`Token-Austausch fehlgeschlagen mit Status: ${response.status}`);
+        throw new Error(`Token exchange failed with status: ${response.status}`);
       }
 
       const data = await response.json();
@@ -131,25 +131,25 @@ export function SettingsPage() {
         setGogConnected(true);
         setTestResult({
           success: true,
-          message: "Erfolgreich mit GOG verknüpft! Deine GOG-Spiele werden jetzt synchronisiert.",
+          message: "Successfully linked GOG. Your GOG games are now syncing.",
         });
       } else {
-        throw new Error("Kein access_token in der Antwort von GOG erhalten.");
+        throw new Error("No access_token received from GOG response.");
       }
     } catch (err) {
       setTestResult({
         success: false,
-        message: `GOG Login fehlgeschlagen: ${getErrorMessage(err)}`,
+        message: `GOG login failed: ${getErrorMessage(err)}`,
       });
     }
   }
 
   async function handleEpicCodeExchange(authCode: string) {
     if (!authCode.trim()) {
-      setTestResult({ success: false, message: "Bitte gib einen gültigen Epic Authorization-Code ein." });
+      setTestResult({ success: false, message: "Enter a valid Epic authorization code." });
       return;
     }
-    setTestResult({ success: true, message: "Tausche Epic Authorization-Code aus..." });
+    setTestResult({ success: true, message: "Exchanging Epic authorization code..." });
     try {
       const params = new URLSearchParams();
       params.append("grant_type", "authorization_code");
@@ -165,7 +165,7 @@ export function SettingsPage() {
       });
 
       if (!response.ok) {
-        throw new Error(`Epic-Austausch fehlgeschlagen mit Status: ${response.status}`);
+        throw new Error(`Epic exchange failed with status: ${response.status}`);
       }
 
       const data = await response.json();
@@ -182,15 +182,15 @@ export function SettingsPage() {
         setEpicCodeInput("");
         setTestResult({
           success: true,
-          message: `Erfolgreich mit Epic Games verknüpft! Angemeldet als ${data.displayName}.`,
+          message: `Successfully linked Epic Games. Signed in as ${data.displayName}.`,
         });
       } else {
-        throw new Error("Kein access_token in der Antwort von Epic erhalten.");
+        throw new Error("No access_token received from Epic response.");
       }
     } catch (err) {
       setTestResult({
         success: false,
-        message: `Epic Games Login fehlgeschlagen: ${getErrorMessage(err)}`,
+        message: `Epic Games login failed: ${getErrorMessage(err)}`,
       });
     }
   }
@@ -200,7 +200,7 @@ export function SettingsPage() {
     let unlistenPromise: Promise<() => void> | null = null;
     let unlistenScrapedPromise: Promise<() => void> | null = null;
     let unlistenErrorPromise: Promise<() => void> | null = null;
-    
+
     try {
       unlistenPromise = listen<string>("steam_login_success", (event) => {
         if (!isMounted) return;
@@ -208,7 +208,7 @@ export function SettingsPage() {
         setSteamId(steamIdVal);
         setTestResult({
           success: true,
-          message: "Login erfolgreich! Deine Spieleliste wird jetzt abgerufen...",
+          message: "Login successful. Your game list is now being fetched...",
         });
       });
 
@@ -218,8 +218,8 @@ export function SettingsPage() {
         console.log("[Settings] Scraped games successfully:", ownedGames.length);
         localStorage.setItem("launcher.steamOwnedGamesCache", JSON.stringify(ownedGames));
         localStorage.setItem("launcher.steamOwnedGamesCacheVersion", "2");
-        
-        const successMsg = `✓ Found ${ownedGames.length} owned games`;
+
+        const successMsg = `OK: Found ${ownedGames.length} owned games`;
         setSteamTestResult({
           success: true,
           message: successMsg,
@@ -227,28 +227,28 @@ export function SettingsPage() {
         setIsSteamTesting(false);
         setTestResult({
           success: true,
-          message: `Erfolgreich über Steam eingeloggt! ${ownedGames.length} Spiele wurden synchronisiert.`,
+          message: `Successfully signed in through Steam. ${ownedGames.length} games were synced.`,
         });
       });
 
       unlistenErrorPromise = listen<string>("steam_scraped_games_error", (event) => {
         if (!isMounted) return;
         console.warn("[Settings] Scraper failed:", event.payload);
-        
-        const errorMsg = `✗ ${event.payload}`;
+
+        const errorMsg = `Error: ${event.payload}`;
         setSteamTestResult({
           success: false,
           message: errorMsg,
         });
         setTestResult({
           success: false,
-          message: `Steam-Synchronisierung fehlgeschlagen: ${event.payload}`,
+          message: `Steam sync failed: ${event.payload}`,
         });
       });
     } catch (err) {
       console.warn("Failed to setup Steam event listeners:", err);
     }
-    
+
     return () => {
       isMounted = false;
       if (unlistenPromise) void unlistenPromise.then((un) => un());
@@ -259,7 +259,7 @@ export function SettingsPage() {
 
   useEffect(() => {
     let unlistenPromise: Promise<() => void> | null = null;
-    
+
     try {
       unlistenPromise = listen<string>("gog_login_code", async (event) => {
         const code = event.payload;
@@ -268,7 +268,7 @@ export function SettingsPage() {
     } catch (err) {
       console.warn("Failed to setup gog_login_code listener:", err);
     }
-    
+
     return () => {
       if (unlistenPromise) {
         void unlistenPromise.then((unlisten) => unlisten());
@@ -307,7 +307,7 @@ export function SettingsPage() {
 
   function handleChooseInstallFolder() {
     setFolderMessage(
-      "Native folder dialog ist vorbereitet und wartet auf Tauri-Integration.",
+      "Native folder dialog is prepared and waiting for Tauri integration.",
     );
   }
 
@@ -325,13 +325,13 @@ export function SettingsPage() {
         <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
           <div className="min-w-0">
             <span className="neo-copy inline-flex border-2 border-black bg-[#171411] px-3 py-1 text-xs font-bold uppercase text-white shadow-[3px_3px_0_#171411]">
-              System Konfiguration
+              System Configuration
             </span>
             <h1 className="neo-title mt-2 max-w-[680px] text-[clamp(3.5rem,15vw,6rem)] leading-[0.82] text-[#171411]">
               Settings Panel
             </h1>
             <p className="neo-copy mt-3 text-xs font-bold uppercase text-[#55504a]">
-              Launcher runtime // lokaler speicher // native pfade
+              Launcher runtime // local storage // native paths
             </p>
           </div>
 
@@ -341,7 +341,7 @@ export function SettingsPage() {
             onClick={handleReloadPath}
           >
             <RefreshCw className="h-4 w-4" />
-            Neu laden
+            Reload
           </button>
         </div>
       </div>
@@ -352,7 +352,7 @@ export function SettingsPage() {
             <div className="flex items-center justify-between border-b-4 border-black p-5">
               <div>
                 <p className="neo-copy text-[10px] font-bold uppercase text-[#55504a]">
-                  Installationsziel
+                  Install Target
                 </p>
                 <h2 className="text-3xl font-black uppercase text-[#171411]">
                   Game Storage
@@ -367,7 +367,7 @@ export function SettingsPage() {
                   Default install folder
                 </p>
                 <p className="mt-2 break-all text-lg font-black text-[#171411]">
-                  {installDir ?? "Native path wird geladen..."}
+                  {installDir ?? "Loading native path..."}
                 </p>
               </div>
 
@@ -378,7 +378,7 @@ export function SettingsPage() {
                   onClick={handleChooseInstallFolder}
                 >
                   <FolderOpen className="h-4 w-4" />
-                  Ordner wahlen
+                  Choose Folder
                 </button>
                 <button
                   className="neo-copy flex h-11 items-center justify-center gap-3 border-2 border-black bg-[#f5eedf] px-5 text-xs font-bold uppercase shadow-[3px_3px_0_#171411]"
@@ -386,7 +386,7 @@ export function SettingsPage() {
                   onClick={handleReloadPath}
                 >
                   <RefreshCw className="h-4 w-4" />
-                  Pfad neu laden
+                  Reload Path
                 </button>
               </div>
 
@@ -403,7 +403,7 @@ export function SettingsPage() {
             <div className="flex items-center justify-between border-b-4 border-black p-5">
               <div>
                 <p className="neo-copy text-[10px] font-bold uppercase text-[#55504a]">
-                  Drittanbieter Integration
+                  Third-Party Integration
                 </p>
                 <h2 className="text-3xl font-black uppercase text-[#171411]">
                   Cloud Account Link
@@ -421,7 +421,7 @@ export function SettingsPage() {
                       Steam
                     </h3>
                     <p className="neo-copy text-[9px] font-bold uppercase text-[#55504a] leading-relaxed mb-4">
-                      Synchronisiert deine Steam-Bibliothek per sicherem Login (kein API-Key benötigt).
+                      Syncs your Steam library through secure login. No API key required.
                     </p>
                   </div>
                   <div>
@@ -429,7 +429,7 @@ export function SettingsPage() {
                       <div className="border border-black bg-[#f5eedf] p-3 space-y-2">
                         <span className="neo-copy text-[8px] font-bold uppercase text-[#55504a] block">Connected SteamID64</span>
                         <span className="font-black text-xs text-[#087d6d] block truncate" title={steamId}>{steamId}</span>
-                        
+
                         <div className="flex gap-2">
                           <button
                             className="neo-copy flex-1 flex h-8 items-center justify-center gap-1 border-2 border-black bg-[#087d6d] px-2 text-[9px] font-bold uppercase text-white shadow-[1px_1px_0_#171411] hover:bg-[#065e52] transition disabled:opacity-50"
@@ -438,9 +438,9 @@ export function SettingsPage() {
                             onClick={() => {
                               setIsSteamTesting(true);
                               setSteamTestResult(null);
-                              setSteamTestResult({ success: true, message: "Silent Scraper gestartet..." });
+                              setSteamTestResult({ success: true, message: "Silent scraper started..." });
                               void openSteamScraperWindow(steamId).catch((err) => {
-                                setSteamTestResult({ success: false, message: `✗ ${getErrorMessage(err)}` });
+                                setSteamTestResult({ success: false, message: `Error: ${getErrorMessage(err)}` });
                                 setIsSteamTesting(false);
                               });
                             }}
@@ -468,12 +468,12 @@ export function SettingsPage() {
                         type="button"
                         onClick={() => {
                           void openSteamLoginWindow().catch((err) => {
-                            setTestResult({ success: false, message: `Fehler beim Öffnen: ${getErrorMessage(err)}` });
+                            setTestResult({ success: false, message: `Failed to open: ${getErrorMessage(err)}` });
                           });
                         }}
                       >
                         <Link className="h-3.5 w-3.5" />
-                        Verbinden
+                        Connect
                       </button>
                     )}
                   </div>
@@ -486,14 +486,14 @@ export function SettingsPage() {
                       GOG Galaxy
                     </h3>
                     <p className="neo-copy text-[9px] font-bold uppercase text-[#55504a] leading-relaxed mb-4">
-                      Vollautomatische Synchronisierung deiner GOG-Spiele über sicheren Login.
+                      Fully automatic synchronization of your GOG games through secure login.
                     </p>
                   </div>
                   <div>
                     {gogConnected ? (
                       <div className="border border-black bg-[#f5eedf] p-3 space-y-2">
                         <span className="neo-copy text-[8px] font-bold uppercase text-[#55504a] block">Status</span>
-                        <span className="font-black text-xs text-[#087d6d] block truncate">Erfolgreich Verbunden</span>
+                        <span className="font-black text-xs text-[#087d6d] block truncate">Successfully Connected</span>
                         <button
                           className="neo-copy w-full flex h-8 items-center justify-center gap-2 border-2 border-black bg-[#c20b2f] px-3 text-[10px] font-bold uppercase text-white shadow-[1px_1px_0_#171411] hover:bg-[#a10825] transition"
                           type="button"
@@ -504,7 +504,7 @@ export function SettingsPage() {
                           }}
                         >
                           <LogOut className="h-3 w-3" />
-                          Trennen
+                          Disconnect
                         </button>
                       </div>
                     ) : (
@@ -513,12 +513,12 @@ export function SettingsPage() {
                         type="button"
                         onClick={() => {
                           void openGogLoginWindow().catch((err) => {
-                            setTestResult({ success: false, message: `Fehler beim Öffnen: ${getErrorMessage(err)}` });
+                            setTestResult({ success: false, message: `Failed to open: ${getErrorMessage(err)}` });
                           });
                         }}
                       >
                         <Link className="h-3.5 w-3.5" />
-                        Verbinden
+                        Connect
                       </button>
                     )}
                   </div>
@@ -531,13 +531,13 @@ export function SettingsPage() {
                       Epic Games
                     </h3>
                     <p className="neo-copy text-[9px] font-bold uppercase text-[#55504a] leading-relaxed mb-4">
-                      Importiere deine Epic-Bibliothek. Melde dich im Browser an und füge den erhaltenen Code ein.
+                      Import your Epic library. Sign in through the browser and paste the received code.
                     </p>
                   </div>
                   <div>
                     {epicConnected ? (
                       <div className="border border-black bg-[#f5eedf] p-3 space-y-2">
-                        <span className="neo-copy text-[8px] font-bold uppercase text-[#55504a] block">Angemeldet als</span>
+                        <span className="neo-copy text-[8px] font-bold uppercase text-[#55504a] block">Signed in as</span>
                         <span className="font-black text-xs text-[#087d6d] block truncate">{epicDisplayName || "Epic User"}</span>
                         <button
                           className="neo-copy w-full flex h-8 items-center justify-center gap-2 border-2 border-black bg-[#c20b2f] px-3 text-[10px] font-bold uppercase text-white shadow-[1px_1px_0_#171411] hover:bg-[#a10825] transition"
@@ -550,7 +550,7 @@ export function SettingsPage() {
                           }}
                         >
                           <LogOut className="h-3 w-3" />
-                          Trennen
+                          Disconnect
                         </button>
                       </div>
                     ) : (
@@ -560,12 +560,12 @@ export function SettingsPage() {
                           type="button"
                           onClick={() => {
                             void openEpicLoginWindow().catch((err) => {
-                              setTestResult({ success: false, message: `Fehler beim Öffnen: ${getErrorMessage(err)}` });
+                              setTestResult({ success: false, message: `Failed to open: ${getErrorMessage(err)}` });
                             });
                           }}
                         >
                           <Link className="h-3.5 w-3.5" />
-                          1. Login im Browser
+                          1. Browser Login
                         </button>
 
                         <div className="flex gap-1.5 mt-2">
@@ -607,10 +607,10 @@ export function SettingsPage() {
             <div className="flex items-center justify-between border-b-4 border-black p-5">
               <div>
                 <p className="neo-copy text-[10px] font-bold uppercase text-[#55504a]">
-                  System-Kompatibilität
+                  System Compatibility
                 </p>
                 <h2 className="text-3xl font-black uppercase text-[#171411]">
-                  Lokale Scanner & Launcher
+                  Local Scanners & Launchers
                 </h2>
               </div>
               <Gamepad2 className="h-10 w-10 text-[#c20b2f]" />
@@ -618,18 +618,18 @@ export function SettingsPage() {
 
             <div className="p-5">
               <p className="neo-copy text-[10px] font-bold uppercase text-[#55504a] leading-relaxed mb-4">
-                Der Open Game Launcher scannt deinen PC vollautomatisch im Hintergrund nach installierten Spielen dieser Launcher. Es ist kein Login erforderlich!
+                Open Game Launcher automatically scans your PC in the background for installed games from these launchers. No login required.
               </p>
 
               <div className="grid gap-2 sm:grid-cols-2">
                 {[
-                  ["Steam", "Lokaler Scan & Cloud-Synchronisierung"],
-                  ["Epic Games", "Lokaler Manifest-Scan (Windows/Linux)"],
-                  ["GOG Galaxy", "Lokaler Manifest-Scan (Windows/Linux)"],
-                  ["Ubisoft Connect", "Automatischer Pfad-Scan & Launcher-Start"],
-                  ["EA App", "Lokaler Spiele-Bibliothek Scan"],
-                  ["Battle.net", "Automatischer Scan installierter Titel"],
-                  ["MS Store / Xbox", "Lokaler Windows/MS-App-Bibliothek Scan"],
+                  ["Steam", "Local scan & cloud sync"],
+                  ["Epic Games", "Local manifest scan (Windows/Linux)"],
+                  ["GOG Galaxy", "Local manifest scan (Windows/Linux)"],
+                  ["Ubisoft Connect", "Automatic path scan & launcher launch"],
+                  ["EA App", "Local game library scan"],
+                  ["Battle.net", "Automatic scan of installed titles"],
+                  ["MS Store / Xbox", "Local Windows/MS app library scan"],
                 ].map(([name, desc]) => (
                   <div key={name} className="border-2 border-black bg-[#efe6d4] p-3 flex flex-col justify-between">
                     <div>
@@ -638,7 +638,7 @@ export function SettingsPage() {
                     </div>
                     <div className="mt-2 text-left">
                       <span className="neo-copy inline-block border border-black bg-[#087d6d] px-1.5 py-0.5 text-[8px] font-black uppercase text-white">
-                        Aktiv // Lokal
+                        Active // Local
                       </span>
                     </div>
                   </div>
@@ -649,13 +649,13 @@ export function SettingsPage() {
 
           <NeoToggle
             checked={startWithSystem}
-            description="Lokale launcher-praferenz im browser-speicher"
-            label="Start mit System"
+            description="Local launcher preference in browser storage"
+            label="Start With System"
             onChange={setStartWithSystem}
           />
           <NeoToggle
             checked={autoUpdateGames}
-            description="Updates automatisch in die download queue einreihen"
+            description="Automatically queue updates in the download queue"
             label="Auto-Update Games"
             onChange={setAutoUpdateGames}
           />
@@ -698,7 +698,7 @@ export function SettingsPage() {
                 Native Commands
               </p>
               <p className="mt-2 text-3xl font-black uppercase text-[#171411]">
-                {commandError ? "Fallback" : "Bereit"}
+                {commandError ? "Fallback" : "Ready"}
               </p>
               {commandError ? (
                 <p className="neo-copy mt-4 border-2 border-black bg-[#efe6d4] p-3 text-[10px] font-bold uppercase text-[#55504a]">
@@ -706,7 +706,7 @@ export function SettingsPage() {
                 </p>
               ) : (
                 <p className="neo-copy mt-4 text-[10px] font-bold uppercase text-[#55504a]">
-                  Systemdaten wurden geladen.
+                  System data loaded.
                 </p>
               )}
             </div>

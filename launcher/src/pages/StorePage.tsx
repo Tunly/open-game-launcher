@@ -23,7 +23,7 @@ export function StorePage() {
           <div className="max-w-[590px]">
             <div className="neo-copy flex flex-wrap gap-2 text-[11px] font-bold uppercase">
               <span className="border-2 border-[#c20b2f] px-3 py-1 text-[#c20b2f]">
-                Neuerscheinung
+                New Release
               </span>
               <span className="border-2 border-[#087d6d] px-3 py-1 text-[#087d6d]">
                 Action
@@ -33,9 +33,8 @@ export function StorePage() {
               Neo-Strike
             </h1>
             <p className="mt-4 max-w-[560px] text-base leading-7 text-[#fffaf0] sm:text-lg">
-              Der ultimative Cyber-Brawler. Kampfe dich durch die Neon-
-              Schluchten von Neo-Berlin. Uberlebe die Nacht. Vernichte das
-              System.
+              The ultimate cyber brawler. Fight through the neon
+              canyons of Neo-Berlin. Survive the night. Break the system.
             </p>
             <div className="mt-8 grid gap-3 sm:flex sm:flex-wrap sm:items-center sm:gap-5">
               <button
@@ -43,13 +42,13 @@ export function StorePage() {
                 type="button"
               >
                 <Play className="h-4 w-4 fill-current" />
-                Jetzt kaufen - 49.99€
+                Buy Now - 49.99 EUR
               </button>
               <button
                 className="neo-copy h-12 border-2 border-[#fffaf0] bg-black/35 px-5 text-xs font-bold uppercase text-[#fffaf0]"
                 type="button"
               >
-                Trailer ansehen
+                Watch Trailer
               </button>
             </div>
           </div>
@@ -63,7 +62,7 @@ export function StorePage() {
           </h2>
           <div className="neo-copy hidden gap-2 text-[11px] font-bold uppercase sm:flex">
             <button className="border-2 border-black px-4 py-1" type="button">
-              Alle
+              All
             </button>
             <button className="border-2 border-black px-4 py-1" type="button">
               RPG

@@ -86,7 +86,7 @@ export function AuthPage() {
 
     if (!parsed.success) {
       setUsernameStatus("idle");
-      setErrorMessage(parsed.error.issues[0]?.message ?? "Username ist ungueltig.");
+      setErrorMessage(parsed.error.issues[0]?.message ?? "Username is invalid.");
       return false;
     }
 
@@ -97,7 +97,7 @@ export function AuthPage() {
       const available = await isUsernameAvailable(parsed.data);
       setUsernameStatus(available ? "available" : "taken");
       if (!available) {
-        setErrorMessage("Username ist bereits vergeben.");
+        setErrorMessage("Username is already taken.");
       }
       return available;
     } catch (error) {
@@ -123,7 +123,7 @@ export function AuthPage() {
     setErrorMessage(null);
 
     if (!supabase) {
-      setErrorMessage("Supabase ist nicht konfiguriert.");
+      setErrorMessage("Supabase is not configured.");
       setIsSubmitting(false);
       return;
     }
@@ -132,7 +132,7 @@ export function AuthPage() {
       try {
         const result = await supabase.auth.signInWithPassword({ email, password });
         if (result.error) throw result.error;
-        setMessage("Login erfolgreich.");
+        setMessage("Login successful.");
         setPassword("");
         navigate("/store", { replace: true });
       } catch (error) {
@@ -145,7 +145,7 @@ export function AuthPage() {
 
     if (signupStep === "credentials") {
       if (password !== confirmPassword) {
-        setErrorMessage("Passwoerter stimmen nicht ueberein.");
+        setErrorMessage("Passwords do not match.");
         setIsSubmitting(false);
         return;
       }
@@ -196,7 +196,7 @@ export function AuthPage() {
           }
         } catch (profileError) {
           setMessage(
-            `Account erstellt. Profil-Setup bitte nach dem Login fortsetzen: ${getErrorMessage(profileError)}`,
+            `Account created. Continue profile setup after login: ${getErrorMessage(profileError)}`,
           );
           setPassword("");
           setConfirmPassword("");
@@ -208,9 +208,9 @@ export function AuthPage() {
       setMessage(
         result.data.session
           ? avatarUploaded
-            ? "Account erstellt. Username und Profilbild wurden gespeichert."
-            : "Account erstellt. Username wurde gespeichert."
-          : "Account erstellt. Username wurde vorgemerkt. Profilbild nach E-Mail-Bestaetigung hochladen.",
+            ? "Account created. Username and profile image were saved."
+            : "Account created. Username was saved."
+          : "Account created. Username was reserved. Upload a profile image after email confirmation.",
       );
       setPassword("");
       setConfirmPassword("");
@@ -225,12 +225,12 @@ export function AuthPage() {
   const isSignupProfileStep = mode === "sign-up" && signupStep === "profile";
   const usernameStatusText =
     usernameStatus === "checking"
-      ? "Pruefe Datenbank..."
+      ? "Checking database..."
       : usernameStatus === "available"
-        ? "Username ist frei."
+        ? "Username is available."
         : usernameStatus === "taken"
-          ? "Username ist vergeben."
-          : "3-32 Zeichen: Buchstaben, Zahlen, _, . oder -";
+          ? "Username is taken."
+          : "3-32 characters: letters, numbers, _, . or -";
 
   return (
     <section className="grid min-h-[calc(100vh-150px)] content-center gap-6 py-4 sm:py-6 lg:min-h-[calc(100vh-112px)] lg:grid-cols-[minmax(0,1fr)_390px] lg:items-center">
@@ -275,7 +275,7 @@ export function AuthPage() {
           <div>
             <div className="mb-4 flex items-center justify-between gap-3">
               <span className="neo-copy border-2 border-black bg-[#171411] px-2 py-1 text-[10px] font-bold uppercase text-white">
-                Step 2 / Profil
+                Step 2 / Profile
               </span>
               <button
                 className="neo-copy inline-flex h-9 items-center gap-2 border-2 border-black bg-[#fbf8ef] px-3 text-[10px] font-bold uppercase text-[#171411] shadow-[2px_2px_0_#171411]"
@@ -288,7 +288,7 @@ export function AuthPage() {
                 }}
               >
                 <ArrowLeft className="h-4 w-4" />
-                Zurueck
+                Back
               </button>
             </div>
 
@@ -314,7 +314,7 @@ export function AuthPage() {
                   }}
                 />
                 <button
-                  aria-label="Username pruefen"
+                  aria-label="Check username"
                   className="flex h-8 w-8 shrink-0 items-center justify-center border-2 border-black bg-[#efe6d4] text-[#171411]"
                   disabled={isSubmitting || usernameStatus === "checking"}
                   type="button"
@@ -342,7 +342,7 @@ export function AuthPage() {
 
             <label className="mt-4 grid gap-2">
               <span className="neo-copy text-[10px] font-bold uppercase text-[#55504a]">
-                Profilbild optional
+                Profile image optional
               </span>
               <span className="flex min-h-20 items-center gap-3 border-2 border-black bg-[#fbf8ef] px-3 py-3">
                 <span className="neo-title flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden border-2 border-black bg-[#087d6d] text-xl text-white">
@@ -358,7 +358,7 @@ export function AuthPage() {
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className="neo-copy block text-[10px] font-bold uppercase text-[#171411]">
-                    {avatarFile?.name ?? "Bild auswaehlen"}
+                    {avatarFile?.name ?? "Choose image"}
                   </span>
                   <span className="mt-1 block text-xs font-bold text-[#55504a]">
                     Wird direkt hochgeladen, wenn Supabase nach Signup eine
@@ -396,7 +396,7 @@ export function AuthPage() {
 
             <label className="mt-4 grid gap-2">
               <span className="neo-copy text-[10px] font-bold uppercase text-[#55504a]">
-                Passwort
+                Password
               </span>
               <span className="flex h-12 items-center gap-3 border-2 border-black bg-[#fbf8ef] px-3">
                 <KeyRound className="h-5 w-5 shrink-0" />
@@ -417,7 +417,7 @@ export function AuthPage() {
             {mode === "sign-up" ? (
               <label className="mt-4 grid gap-2">
                 <span className="neo-copy text-[10px] font-bold uppercase text-[#55504a]">
-                  Passwort wiederholen
+                  Repeat Password
                 </span>
                 <span className="flex h-12 items-center gap-3 border-2 border-black bg-[#fbf8ef] px-3">
                   <KeyRound className="h-5 w-5 shrink-0" />
@@ -459,12 +459,12 @@ export function AuthPage() {
             <UserPlus className="h-4 w-4" />
           )}
           {isSubmitting
-            ? "Bitte warten"
+            ? "Please wait"
             : mode === "sign-in"
-              ? "Einloggen"
+              ? "Sign In"
               : isSignupProfileStep
-                ? "Account finalisieren"
-                : "Weiter"}
+                ? "Finish Account"
+                : "Continue"}
         </button>
       </form>
     </section>

@@ -15,7 +15,7 @@ const activityFeed = [
     tone: "bg-[#c20b2f] text-white",
   },
   {
-    channel: "Squad Suche",
+    channel: "Squad Search",
     headline: "Steel Battalion X Raid-Team offen",
     meta: "vor 22 min // 4 plaetze frei",
     tone: "bg-[#087d6d] text-white",
@@ -23,7 +23,7 @@ const activityFeed = [
   {
     channel: "Turnier",
     headline: "Netrunner Phantom Cup startet Freitag",
-    meta: "vor 1 std // 96 registriert",
+    meta: "1 hr ago // 96 registered",
     tone: "bg-[#efe6d4] text-[#171411]",
   },
 ];
@@ -53,7 +53,7 @@ export function CommunityPage() {
               Community Hub
             </h1>
             <p className="neo-copy mt-3 text-xs font-bold uppercase text-[#55504a]">
-              128 spieler online // 14 gruppen aktiv // 3 live-events
+              128 players online // 14 active groups // 3 live events
             </p>
           </div>
 

@@ -242,7 +242,7 @@ export function EditProfilePage() {
       );
 
       setProfile(nextProfile);
-      setMessage("Profil und Hardware Rig gespeichert.");
+      setMessage("Profile and hardware rig saved.");
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : String(error));
     } finally {
@@ -274,8 +274,8 @@ export function EditProfilePage() {
 
       setMessage(
         filledLabels
-          ? `Hardware erkannt (${detectedHardware.source}): ${filledLabels}. Speichern, um die Werte im Profil zu ubernehmen.`
-          : "Keine Hardwaredaten erkannt. Im Web-Preview sind nur Browser-Schatzwerte verfugbar.",
+          ? `Hardware detected (${detectedHardware.source}): ${filledLabels}. Save to apply these values to your profile.`
+          : "No hardware data detected. Browser preview only provides estimated browser values.",
       );
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : String(error));
@@ -291,7 +291,7 @@ export function EditProfilePage() {
   if (!isConfigured) {
     return (
       <PageFrame title="Edit Profile">
-        <NoticePanel title="Supabase nicht verbunden" body="Profil-Daten sind aktuell nicht erreichbar." />
+        <NoticePanel title="Supabase is not connected" body="Profile data is currently unavailable." />
       </PageFrame>
     );
   }
@@ -299,7 +299,7 @@ export function EditProfilePage() {
   if (!user || !profile) {
     return (
       <PageFrame title="Edit Profile">
-        <NoticePanel title="Login erforderlich" body="Melde dich an, um dein Spielerprofil zu bearbeiten." />
+        <NoticePanel title="Login required" body="Sign in to edit your player profile." />
       </PageFrame>
     );
   }
@@ -307,12 +307,12 @@ export function EditProfilePage() {
   return (
     <PageFrame
       eyebrow="Settings"
-      title="Profil bearbeiten"
-      action={<Link className="neo-copy border-2 border-black bg-[#fff9ed] px-4 py-2 text-[11px] font-black uppercase tracking-[0.12em] text-[#171411] shadow-[3px_3px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#8cf5e4]" to={`/u/${profile.username}`}>Offentliches Profil</Link>}
+      title="Edit Profile"
+      action={<Link className="neo-copy border-2 border-black bg-[#fff9ed] px-4 py-2 text-[11px] font-black uppercase tracking-[0.12em] text-[#171411] shadow-[3px_3px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#8cf5e4]" to={`/u/${profile.username}`}>Public Profile</Link>}
     >
       <form className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]" onSubmit={handleSubmit}>
         <div className="space-y-5">
-          <Panel label="Player Card" title="Identitat">
+          <Panel label="Player Card" title="Identity">
             <div className="grid gap-4 sm:grid-cols-2">
               <TextInput label="Username" value={form.username} onChange={(value) => updateField("username", value)} />
               <TextInput label="Display Name" value={form.displayName} onChange={(value) => updateField("displayName", value)} />
@@ -375,7 +375,7 @@ export function EditProfilePage() {
           <Panel label="Setup" title="Hardware Rig">
             <div className="mb-4 flex flex-col gap-3 border-[3px] border-black bg-[#f6edd8] p-3 shadow-[3px_3px_0_#171411] md:flex-row md:items-center md:justify-between">
               <p className="neo-copy text-[11px] font-black uppercase leading-5 tracking-[0.08em] text-[#5b403f]">
-                Desktop erkennt CPU, GPU, RAM, Monitor und Eingabegeraete. Web-Preview nutzt Browser-Schatzwerte.
+                Desktop mode detects CPU, GPU, RAM, monitor, and input devices. Browser preview uses estimated browser values.
               </p>
               <button
                 className="neo-copy inline-flex h-11 shrink-0 items-center justify-center gap-2 border-2 border-black bg-[#007166] px-3 text-[11px] font-black uppercase tracking-[0.12em] text-white shadow-[3px_3px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#b7102a] disabled:cursor-not-allowed disabled:opacity-60"
@@ -388,12 +388,12 @@ export function EditProfilePage() {
                 ) : (
                   <Cpu className="h-4 w-4" />
                 )}
-                Hardware erkennen
+                Detect Hardware
               </button>
             </div>
             <label className="mb-4 block">
               <span className="neo-copy text-[11px] font-black uppercase tracking-[0.12em] text-[#5b403f]">
-                Hardware auf Profil anzeigen
+                Show Hardware On Profile
               </span>
               <select
                 className="neo-copy mt-2 h-11 w-full border-2 border-black bg-[#f6edd8] px-3 text-xs font-black uppercase tracking-[0.08em] text-[#171411] shadow-[2px_2px_0_#171411] outline-none focus:bg-[#8cf5e4]"
@@ -405,9 +405,9 @@ export function EditProfilePage() {
                   )
                 }
               >
-                <option value="public">Oeffentlich</option>
-                <option value="friends_only">Nur Freunde</option>
-                <option value="private">Privat</option>
+                <option value="public">Public</option>
+                <option value="friends_only">Friends Only</option>
+                <option value="private">Private</option>
               </select>
             </label>
             <div className="grid gap-4 sm:grid-cols-2">
@@ -419,15 +419,15 @@ export function EditProfilePage() {
         </div>
 
         <aside className="space-y-5">
-          <Panel label="Assets" title="Profilbilder">
+          <Panel label="Assets" title="Profile Images">
             <AssetUpload label="Avatar" onChange={(event) => void handleAssetUpload(event, "avatar")} />
             <AssetUpload label="Banner" onChange={(event) => void handleAssetUpload(event, "banner")} />
           </Panel>
           <Panel label="Showcase" title="Featured Slots">
             <div className="space-y-3">
-              <MiniReadout label="Featured Game" value="Nicht gesetzt" />
-              <MiniReadout label="Achievement" value="Nicht gesetzt" />
-              <MiniReadout label="Badge" value="Nicht gesetzt" />
+              <MiniReadout label="Featured Game" value="Not Set" />
+              <MiniReadout label="Achievement" value="Not Set" />
+              <MiniReadout label="Badge" value="Not Set" />
             </div>
           </Panel>
           {errorMessage ? <StatusPanel tone="error" message={errorMessage} /> : null}
@@ -438,7 +438,7 @@ export function EditProfilePage() {
             type="submit"
           >
             {isSaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-            Profil speichern
+            Save Profile
           </button>
         </aside>
       </form>

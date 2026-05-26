@@ -5,19 +5,19 @@ export const libraryGames: Game[] = [
     id: "starfall-outpost",
     title: "Neo-Tokyo Drift",
     description:
-      "Zuletzt gespielt: Heute. Neues Content-Pack...",
+      "Last played: today. New content pack...",
     version: "1.8.2",
     status: "installed",
     platform: "windows",
     installPath: "C:/Games/OpenGameLauncher/Starfall Outpost",
-    lastPlayed: "Heute",
+    lastPlayed: "Today",
     playtimeMinutes: 3480,
   },
   {
     id: "iron-vale",
     title: "Steel Battalion X",
     description:
-      "52 Stunden gespielt",
+      "52 hours played",
     version: "0.9.4",
     status: "update_available",
     platform: "windows",
@@ -29,7 +29,7 @@ export const libraryGames: Game[] = [
     id: "neon-rally",
     title: "Netrunner: Phantom",
     description:
-      "Noch nie gespielt",
+      "Never played",
     version: "2.1.0",
     status: "update_available",
     platform: "linux",
@@ -39,7 +39,7 @@ export const libraryGames: Game[] = [
     id: "embers-and-engines",
     title: "Akira's Revenge",
     description:
-      "Wird heruntergeladen",
+      "Downloading",
     version: "1.2.7",
     status: "installed",
     platform: "linux",
@@ -89,7 +89,7 @@ export const downloads: DownloadItem[] = [
   {
     id: "download-neon-rally",
     gameId: "neon-rally",
-    title: "Netrunner: Phantom // Basisdaten",
+    title: "Netrunner: Phantom // Base Data",
     progress: 31,
     speed: "Paused",
     status: "paused",

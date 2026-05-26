@@ -80,13 +80,13 @@ pub fn pause_download(game_id: String) -> Result<(), String> {
         if dl.status == "downloading" {
             dl.paused = true;
             dl.status = "paused".to_string();
-            dl.speed = "Pausiert".to_string();
+            dl.speed = "Paused".to_string();
             let _ = dl.pause_tx.send(true);
             println!("[open-game-launcher] Paused download for {game_id}");
         } else if dl.status == "paused" {
             dl.paused = false;
             dl.status = "downloading".to_string();
-            dl.speed = "Verbinden...".to_string();
+            dl.speed = "Connecting...".to_string();
             let _ = dl.pause_tx.send(false);
             println!("[open-game-launcher] Resumed download for {game_id}");
         }
@@ -120,7 +120,7 @@ pub async fn start_download(
     println!("[open-game-launcher] start_download requested for {game_id}");
 
     // Get the title of the game
-    let mut title = "Unbekanntes Spiel".to_string();
+    let mut title = "Unknown Game".to_string();
     let mut has_game = false;
 
     // Read from cache path to get game name
@@ -157,7 +157,7 @@ pub async fn start_download(
             game_id: game_id.clone(),
             download_id: download_id.clone(),
             status: DownloadStartStatus::Started,
-            message: "Download bereits in der Warteschlange.".to_string(),
+            message: "Download is already queued.".to_string(),
         });
     }
 
@@ -167,7 +167,7 @@ pub async fn start_download(
     let active = ActiveDownload {
         title: title.clone(),
         progress: 0,
-        speed: "Warten...".to_string(),
+        speed: "Waiting...".to_string(),
         status: "downloading".to_string(),
         eta: 0,
         paused: false,
@@ -190,7 +190,7 @@ pub async fn start_download(
             Ok(r) => r,
             Err(e) => {
                 update_download_status(&game_id_clone, "error", &e.to_string(), 0, 0);
-                emit_download_progress(&app_clone, &game_id_clone, 0, "Fehler", "error", 0);
+                emit_download_progress(&app_clone, &game_id_clone, 0, "Error", "error", 0);
                 return;
             }
         };
@@ -208,12 +208,12 @@ pub async fn start_download(
         while let Some(item) = body.next().await {
             // Check cancellation
             if *cancel_rx.borrow() {
-                update_download_status(&game_id_clone, "cancelled", "Abgebrochen", 0, 0);
+                update_download_status(&game_id_clone, "cancelled", "Cancelled", 0, 0);
                 emit_download_progress(
                     &app_clone,
                     &game_id_clone,
                     0,
-                    "Abgebrochen",
+                    "Cancelled",
                     "cancelled",
                     0,
                 );
@@ -222,23 +222,23 @@ pub async fn start_download(
 
             // Check pause
             while *pause_rx.borrow() {
-                update_download_status(&game_id_clone, "paused", "Pausiert", downloaded as u32, 0);
+                update_download_status(&game_id_clone, "paused", "Paused", downloaded as u32, 0);
                 emit_download_progress(
                     &app_clone,
                     &game_id_clone,
                     ((downloaded as f64 / total_size as f64) * 100.0) as u32,
-                    "Pausiert",
+                    "Paused",
                     "paused",
                     0,
                 );
                 tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
                 if *cancel_rx.borrow() {
-                    update_download_status(&game_id_clone, "cancelled", "Abgebrochen", 0, 0);
+                    update_download_status(&game_id_clone, "cancelled", "Cancelled", 0, 0);
                     emit_download_progress(
                         &app_clone,
                         &game_id_clone,
                         0,
-                        "Abgebrochen",
+                        "Cancelled",
                         "cancelled",
                         0,
                     );
@@ -250,7 +250,7 @@ pub async fn start_download(
                 Ok(c) => c,
                 Err(e) => {
                     update_download_status(&game_id_clone, "error", &e.to_string(), 0, 0);
-                    emit_download_progress(&app_clone, &game_id_clone, 0, "Fehler", "error", 0);
+                    emit_download_progress(&app_clone, &game_id_clone, 0, "Error", "error", 0);
                     return;
                 }
             };
@@ -372,7 +372,7 @@ pub async fn start_download(
                             new_game.insert(
                                 "description".to_string(),
                                 serde_json::Value::String(format!(
-                                    "Heruntergeladenes Spiel: {title_clone}"
+                                    "Downloaded game: {title_clone}"
                                 )),
                             );
                             new_game
@@ -407,7 +407,7 @@ pub async fn start_download(
             }
         }
 
-        update_download_status(&game_id_clone, "completed", "Fertig", 100, 0);
+        update_download_status(&game_id_clone, "completed", "Done", 100, 0);
         emit_download_progress(&app_clone, &game_id_clone, 100, "Complete", "completed", 0);
 
         // Remove from manager after 2 seconds
@@ -420,7 +420,7 @@ pub async fn start_download(
         game_id,
         download_id,
         status: DownloadStartStatus::Started,
-        message: "Download gestartet.".to_string(),
+        message: "Download started.".to_string(),
     })
 }
 

@@ -268,21 +268,21 @@ fn open_uri(uri: &str) -> Result<(), String> {
         Command::new("cmd")
             .args(["/C", "start", "", uri])
             .spawn()
-            .map_err(|e| format!("Fehler beim Öffnen des Browsers: {e}"))?;
+            .map_err(|e| format!("Failed to open browser: {e}"))?;
     }
     #[cfg(target_os = "macos")]
     {
         Command::new("open")
             .arg(uri)
             .spawn()
-            .map_err(|e| format!("Fehler beim Öffnen des Browsers: {e}"))?;
+            .map_err(|e| format!("Failed to open browser: {e}"))?;
     }
     #[cfg(target_os = "linux")]
     {
         Command::new("xdg-open")
             .arg(uri)
             .spawn()
-            .map_err(|e| format!("Fehler beim Öffnen des Browsers: {e}"))?;
+            .map_err(|e| format!("Failed to open browser: {e}"))?;
     }
     Ok(())
 }
@@ -401,7 +401,7 @@ fn start_local_callback_server(app: tauri::AppHandle) {
                             println!("[Steam Scraper] Scraper reported profile or game details are private.");
                             let _ = app.emit(
                                 "steam_scraped_games_error",
-                                "Steam-Profil oder Spieldetails sind privat.".to_string(),
+                                "Steam profile or game details are private.".to_string(),
                             );
 
                             if let Some(login_window) = app.get_webview_window("steam-login") {
@@ -488,8 +488,8 @@ fn start_local_callback_server(app: tauri::AppHandle) {
                         </head>
                         <body>
                             <div class="container">
-                                <h1>Login erfolgreich!</h1>
-                                <p>Deine Steam-Spieleliste wird geladen...</p>
+                                <h1>Login successful!</h1>
+                                <p>Your Steam game list is loading...</p>
                             </div>
                             <script>
                                 window.location.href = "https://steamcommunity.com/profiles/{}/games/?tab=all";
@@ -818,7 +818,7 @@ fn start_gog_callback_server(app: tauri::AppHandle) {
                                 </head>
                                 <body>
                                     <div class="container">
-                                        <div class="success-icon">✓</div>
+                                        <div class="success-icon">OK</div>
                                         <h1>GOG Login Successful!</h1>
                                         <p>Your GOG integration was successful. You can close this tab now and return to the Open Game Launcher.</p>
                                     </div>
