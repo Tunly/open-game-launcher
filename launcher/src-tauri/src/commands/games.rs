@@ -1562,21 +1562,20 @@ fn apply_battlenet_assets(mut game: InstalledGame, _display_icon: Option<&str>) 
         .and_then(|uri| uri.strip_prefix("battlenet://"))
         .or_else(|| game.id.strip_prefix("battlenet-"))
         .unwrap_or(&game.id);
-    let (fallback_cover, fallback_logo, fallback_icon) = get_battlenet_assets(uid, &game.title);
+    let (fallback_cover, _fallback_logo, fallback_icon) = get_battlenet_assets(uid, &game.title);
     let rawg_assets = get_rawg_battlenet_assets(uid, &game.title);
-    let (cover, logo, icon) = rawg_assets
+    let (cover, icon) = rawg_assets
         .map(|assets| {
             (
                 assets.cover_url.or(fallback_cover.clone()),
-                assets.logo_url.or(fallback_logo.clone()),
                 assets.icon_url.or(fallback_icon.clone()),
             )
         })
-        .unwrap_or((fallback_cover, fallback_logo, fallback_icon));
+        .unwrap_or((fallback_cover, fallback_icon));
 
     game.cover_url = cover;
-    game.logo_url = logo.clone();
-    game.logo_urls = logo.into_iter().collect();
+    game.logo_url = None;
+    game.logo_urls = Vec::new();
     game.icon_url = icon.clone();
     game.icon_urls = icon.into_iter().collect();
     game.logo_position = LogoPosition::CenterCenter;
@@ -1742,7 +1741,6 @@ fn fetch_rawg_assets(api_key: &str, title: &str) -> Option<RawgAssets> {
     let id = result.get("id").and_then(|value| value.as_u64());
 
     let mut cover_url = rawg_string_field(&result, "background_image");
-    let mut logo_url = cover_url.clone();
     let mut icon_url = cover_url.clone();
 
     if let Some(game_id) = id {
@@ -1752,8 +1750,6 @@ fn fetch_rawg_assets(api_key: &str, title: &str) -> Option<RawgAssets> {
         );
         if let Some(detail_json) = rawg_get_json(&client, &detail_url) {
             cover_url = rawg_string_field(&detail_json, "background_image").or(cover_url);
-            logo_url = rawg_string_field(&detail_json, "background_image_additional")
-                .or(cover_url.clone());
         }
 
         let screenshots_url = format!(
@@ -1772,7 +1768,7 @@ fn fetch_rawg_assets(api_key: &str, title: &str) -> Option<RawgAssets> {
 
     Some(RawgAssets {
         cover_url,
-        logo_url,
+        logo_url: None,
         icon_url,
         fetched_at: current_unix_timestamp(),
     })

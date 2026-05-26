@@ -198,8 +198,8 @@ export function normalizeSteamOwnedGames(games: unknown): OwnedGame[] {
           readString(record, ["description"]) ||
           `Steam game (Owned). AppID: ${appId}`,
         coverUrl:
-          readString(record, ["coverUrl", "cover_url"]) ||
-          steamImageUrl(appId, "library_600x900.jpg"),
+          readString(record, ["heroUrl", "hero_url", "bannerUrl", "banner_url"]) ||
+          steamImageUrl(appId, "library_hero.jpg"),
         logoUrl:
           readString(record, ["logoUrl", "logo_url"]) ||
           steamImageUrl(appId, "header.jpg"),

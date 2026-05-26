@@ -928,11 +928,11 @@ fn fetch_local_steam_owned_games(steam_id: &str) -> Vec<OwnedGame> {
             cover_url: find_steam_cached_asset(
                 &steam_dir,
                 &app_id,
-                &["library_600x900.jpg", "library_capsule.jpg"],
+                &["library_hero.jpg", "library_header.jpg", "header.jpg"],
             )
             .or_else(|| {
                 Some(format!(
-                    "https://cdn.cloudflare.steamstatic.com/steam/apps/{app_id}/library_600x900.jpg"
+                    "https://cdn.cloudflare.steamstatic.com/steam/apps/{app_id}/library_hero.jpg"
                 ))
             }),
             logo_url: find_steam_cached_asset(
@@ -1509,7 +1509,7 @@ fn parse_rg_games_json(json: &str, _steam_id: &str) -> Vec<OwnedGame> {
                 title: name,
                 description: format!("Steam game (Owned). AppID: {appid}"),
                 cover_url: Some(format!(
-                    "https://cdn.cloudflare.steamstatic.com/steam/apps/{appid}/library_600x900.jpg"
+                    "https://cdn.cloudflare.steamstatic.com/steam/apps/{appid}/library_hero.jpg"
                 )),
                 logo_url: Some(format!(
                     "https://cdn.cloudflare.steamstatic.com/steam/apps/{appid}/header.jpg"

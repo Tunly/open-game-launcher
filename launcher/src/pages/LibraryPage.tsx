@@ -33,7 +33,7 @@ const STARTUP_LIBRARY_RESCAN_KEY = "launcher_startup_library_rescan_done";
 const LIBRARY_SNAPSHOT_KEY = "launcher_library_snapshot";
 const STEAM_OWNED_GAMES_CACHE_KEY = "launcher.steamOwnedGamesCache";
 const STEAM_OWNED_GAMES_CACHE_VERSION_KEY = "launcher.steamOwnedGamesCacheVersion";
-const STEAM_OWNED_GAMES_CACHE_VERSION = "2";
+const STEAM_OWNED_GAMES_CACHE_VERSION = "3";
 
 type LibrarySortOption = "alphabetical" | "last_played" | "playtime" | "size";
 
@@ -2198,13 +2198,17 @@ export function LibraryPage() {
               {(() => {
                 const logoCandidates = getGameLogoCandidates(enrichedSelectedGame);
                 const logoCandidateIndex = logoCandidateIndexes[enrichedSelectedGame.id] ?? 0;
-                const logoSrc = getGameAssetUrl(logoCandidates[logoCandidateIndex]);
                 const gameSource = getGameSource(enrichedSelectedGame);
+                const shouldHideHeroOverlay = gameSource === "battlenet";
+                const logoSrc = shouldHideHeroOverlay
+                  ? undefined
+                  : getGameAssetUrl(logoCandidates[logoCandidateIndex]);
                 const hasUbisoftBanner =
                   gameSource === "ubisoft" && Boolean(enrichedSelectedGame.coverUrl);
                 const hasEpicBanner =
                   gameSource === "epic" && Boolean(enrichedSelectedGame.coverUrl);
                 const shouldShowTextFallback =
+                  !shouldHideHeroOverlay &&
                   gameSource !== "gog" &&
                   !hasUbisoftBanner &&
                   !hasEpicBanner &&

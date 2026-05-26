@@ -1,8 +1,11 @@
 mod commands;
 
+use std::{env, fs, path::PathBuf};
 use tauri::{Manager, PhysicalPosition, WebviewWindow, WindowEvent};
 
 pub fn run() {
+    load_local_env_files();
+
     tauri::Builder::default()
         .setup(|app| {
             if let Some(window) = app.get_webview_window("main") {
@@ -43,6 +46,54 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running Open Game Launcher");
+}
+
+fn load_local_env_files() {
+    for env_path in local_env_file_candidates() {
+        let Ok(contents) = fs::read_to_string(env_path) else {
+            continue;
+        };
+
+        for line in contents.lines() {
+            let line = line.trim();
+            if line.is_empty() || line.starts_with('#') {
+                continue;
+            }
+
+            let Some((key, value)) = line.split_once('=') else {
+                continue;
+            };
+
+            let key = key.trim();
+            if key.is_empty() || env::var_os(key).is_some() {
+                continue;
+            }
+
+            let value = value
+                .trim()
+                .trim_matches(|character| character == '"' || character == '\'');
+            env::set_var(key, value);
+        }
+    }
+}
+
+fn local_env_file_candidates() -> Vec<PathBuf> {
+    let mut candidates = Vec::new();
+    if let Ok(current_dir) = env::current_dir() {
+        candidates.push(current_dir.join(".env.local"));
+        candidates.push(current_dir.join(".env"));
+    }
+
+    let tauri_manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    candidates.push(tauri_manifest_dir.join(".env.local"));
+    candidates.push(tauri_manifest_dir.join(".env"));
+
+    if let Some(frontend_dir) = tauri_manifest_dir.parent() {
+        candidates.push(frontend_dir.join(".env.local"));
+        candidates.push(frontend_dir.join(".env"));
+    }
+
+    candidates
 }
 
 fn attach_window_bounds_guard(window: &WebviewWindow) {

@@ -209,14 +209,7 @@ pub async fn start_download(
             // Check cancellation
             if *cancel_rx.borrow() {
                 update_download_status(&game_id_clone, "cancelled", "Cancelled", 0, 0);
-                emit_download_progress(
-                    &app_clone,
-                    &game_id_clone,
-                    0,
-                    "Cancelled",
-                    "cancelled",
-                    0,
-                );
+                emit_download_progress(&app_clone, &game_id_clone, 0, "Cancelled", "cancelled", 0);
                 return;
             }
 
