@@ -1,4 +1,5 @@
 supabase/.temp/
+.vs/
 launcher/.env
 launcher/.env.local
 launcher/.env.*.local

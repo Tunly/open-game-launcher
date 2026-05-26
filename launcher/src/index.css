@@ -60,6 +60,31 @@ a:focus-visible {
   background: #eee4d2;
 }
 
+::-webkit-scrollbar-button {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  display: none;
+  height: 0;
+  width: 0;
+}
+
+::-webkit-scrollbar-button:single-button,
+::-webkit-scrollbar-button:vertical:start:decrement,
+::-webkit-scrollbar-button:vertical:end:increment,
+::-webkit-scrollbar-button:horizontal:start:decrement,
+::-webkit-scrollbar-button:horizontal:end:increment {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  border: 0;
+  display: none;
+  height: 0;
+  width: 0;
+}
+
 ::-webkit-scrollbar-thumb {
   background: #171411;
   border-radius: 0;
@@ -256,32 +281,90 @@ a:focus-visible {
   font-family: "Roboto Condensed", "Arial Narrow", Impact, sans-serif;
 }
 
+.library-scroll-frame {
+  min-height: 0;
+  padding-right: 10px;
+  position: relative;
+}
+
 .library-game-list-scroll,
 .library-detail-scroll {
-  scrollbar-color: #171411 #efe6d4;
-  scrollbar-gutter: stable;
-  scrollbar-width: thin;
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }
 
 .library-game-list-scroll::-webkit-scrollbar,
 .library-detail-scroll::-webkit-scrollbar {
-  width: 11px;
+  height: 0;
+  width: 0;
 }
 
-.library-game-list-scroll::-webkit-scrollbar-track,
-.library-detail-scroll::-webkit-scrollbar-track {
-  background: #efe6d4;
+.library-custom-scrollbar {
+  background: #eee4d2;
+  bottom: 0;
+  cursor: pointer;
+  position: absolute;
+  right: 0;
+  top: 0;
+  width: 10px;
+  z-index: 20;
 }
 
-.library-game-list-scroll::-webkit-scrollbar-thumb,
-.library-detail-scroll::-webkit-scrollbar-thumb {
+.library-custom-scrollbar-thumb {
   background: #171411;
   border-radius: 0;
+  cursor: grab;
+  left: 0;
+  min-height: 28px;
+  position: absolute;
+  right: 0;
+  top: 0;
 }
 
-.library-game-list-scroll::-webkit-scrollbar-thumb:hover,
-.library-detail-scroll::-webkit-scrollbar-thumb:hover {
-  background: #007166;
+.library-custom-scrollbar-thumb:hover,
+.library-custom-scrollbar-thumb:active {
+  background: #087d6d;
+}
+
+.library-custom-scrollbar-thumb:active {
+  cursor: grabbing;
+}
+
+.library-custom-scrollbar::before,
+.library-custom-scrollbar::after,
+.library-custom-scrollbar-thumb::before,
+.library-custom-scrollbar-thumb::after {
+  border-radius: 0;
+  content: none;
+}
+
+/* WebView2 keeps native arrow buttons on nested scroll panes; these panes use the custom rail above. */
+.library-game-list-scroll::-webkit-scrollbar-track,
+.library-detail-scroll::-webkit-scrollbar-track,
+.library-game-list-scroll::-webkit-scrollbar-button,
+.library-detail-scroll::-webkit-scrollbar-button,
+.library-game-list-scroll::-webkit-scrollbar-button:single-button,
+.library-detail-scroll::-webkit-scrollbar-button:single-button,
+.library-game-list-scroll::-webkit-scrollbar-button:vertical:start:decrement,
+.library-detail-scroll::-webkit-scrollbar-button:vertical:start:decrement,
+.library-game-list-scroll::-webkit-scrollbar-button:vertical:end:increment,
+.library-detail-scroll::-webkit-scrollbar-button:vertical:end:increment,
+.library-game-list-scroll::-webkit-scrollbar-button:horizontal:start:decrement,
+.library-detail-scroll::-webkit-scrollbar-button:horizontal:start:decrement,
+.library-game-list-scroll::-webkit-scrollbar-button:horizontal:end:increment,
+.library-detail-scroll::-webkit-scrollbar-button:horizontal:end:increment,
+.library-game-list-scroll::-webkit-scrollbar-thumb,
+.library-detail-scroll::-webkit-scrollbar-thumb,
+.library-game-list-scroll::-webkit-scrollbar-corner,
+.library-detail-scroll::-webkit-scrollbar-corner {
+  -webkit-appearance: none;
+  appearance: none;
+  border: 0;
+  border-radius: 0;
+  display: none;
+  height: 0;
+  width: 0;
+  background: #eee4d2;
 }
 
 .cuphead-character,

@@ -22,8 +22,8 @@ import {
   X,
 } from "lucide-react";
 import { listen } from "@tauri-apps/api/event";
-import type { ReactNode } from "react";
-import { useEffect, useMemo, useState } from "react";
+import type { PointerEvent as ReactPointerEvent, ReactNode, RefObject } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { getGameAssetUrl, getGameBannerStyle } from "../lib/assets";
 import { addManualGame, launchGame, listInstalledGames, refreshInstalledGames, startDownload, fetchSteamOwnedGames, fetchGogOwnedGames, fetchEpicOwnedGames, normalizeSteamOwnedGames, openSteamScraperWindow } from "../lib/launcher";
@@ -499,10 +499,10 @@ function LibraryRow({
 
   return (
     <button
-      className={`flex min-h-[52px] w-full min-w-0 items-center gap-2 px-3 py-2 text-left transition ${
+      className={`flex min-h-[52px] w-full min-w-0 items-center gap-2 border-2 px-3 py-2 text-left transition ${
         selected
-          ? "border-y-2 border-black bg-[#139a82] text-[#fffaf0]"
-          : "text-[#171411] hover:bg-[#dfd4c1]"
+          ? "border-black bg-[#139a82] text-[#fffaf0]"
+          : "border-transparent text-[#171411] hover:bg-[#dfd4c1]"
       }`}
       type="button"
       onClick={() => onSelect(game)}
@@ -543,6 +543,174 @@ function LibraryRow({
   );
 }
 
+type LibraryScrollbarState = {
+  height: number;
+  top: number;
+  visible: boolean;
+};
+
+function useLibraryScrollbar(targetRef: RefObject<HTMLElement>) {
+  const [scrollbarState, setScrollbarState] = useState<LibraryScrollbarState>({
+    height: 0,
+    top: 0,
+    visible: false,
+  });
+
+  const updateScrollbar = useCallback(() => {
+    const target = targetRef.current;
+
+    if (!target) {
+      setScrollbarState((current) =>
+        current.visible ? { height: 0, top: 0, visible: false } : current,
+      );
+      return;
+    }
+
+    const maxScrollTop = target.scrollHeight - target.clientHeight;
+    const visible = maxScrollTop > 1;
+
+    if (!visible) {
+      setScrollbarState((current) =>
+        current.visible ? { height: 0, top: 0, visible: false } : current,
+      );
+      return;
+    }
+
+    const trackHeight = target.clientHeight;
+    const thumbHeight = Math.max(28, Math.round((target.clientHeight / target.scrollHeight) * trackHeight));
+    const maxThumbTop = Math.max(1, trackHeight - thumbHeight);
+    const thumbTop = Math.round((target.scrollTop / maxScrollTop) * maxThumbTop);
+
+    setScrollbarState((current) => {
+      if (
+        current.visible === visible &&
+        current.height === thumbHeight &&
+        current.top === thumbTop
+      ) {
+        return current;
+      }
+
+      return {
+        height: thumbHeight,
+        top: thumbTop,
+        visible,
+      };
+    });
+  }, [targetRef]);
+
+  useEffect(() => {
+    const target = targetRef.current;
+
+    if (!target) {
+      return;
+    }
+
+    updateScrollbar();
+    target.addEventListener("scroll", updateScrollbar, { passive: true });
+
+    const resizeObserver = new ResizeObserver(updateScrollbar);
+    resizeObserver.observe(target);
+
+    const mutationObserver = new MutationObserver(updateScrollbar);
+    mutationObserver.observe(target, { childList: true, subtree: true });
+
+    window.addEventListener("resize", updateScrollbar);
+    const animationFrame = window.requestAnimationFrame(updateScrollbar);
+
+    return () => {
+      window.cancelAnimationFrame(animationFrame);
+      window.removeEventListener("resize", updateScrollbar);
+      target.removeEventListener("scroll", updateScrollbar);
+      resizeObserver.disconnect();
+      mutationObserver.disconnect();
+    };
+  }, [targetRef, updateScrollbar]);
+
+  return {
+    scrollbarState,
+    updateScrollbar,
+  };
+}
+
+function LibraryCustomScrollbar({ targetRef }: { targetRef: RefObject<HTMLElement> }) {
+  const { scrollbarState, updateScrollbar } = useLibraryScrollbar(targetRef);
+
+  const scrollToThumbPosition = useCallback(
+    (track: HTMLDivElement, clientY: number, thumbOffset: number) => {
+      const target = targetRef.current;
+
+      if (!target || !scrollbarState.visible) {
+        return;
+      }
+
+      const trackRect = track.getBoundingClientRect();
+      const maxScrollTop = target.scrollHeight - target.clientHeight;
+      const maxThumbTop = Math.max(1, trackRect.height - scrollbarState.height);
+      const nextThumbTop = Math.min(
+        maxThumbTop,
+        Math.max(0, clientY - trackRect.top - thumbOffset),
+      );
+
+      target.scrollTop = (nextThumbTop / maxThumbTop) * maxScrollTop;
+      updateScrollbar();
+    },
+    [scrollbarState.height, scrollbarState.visible, targetRef, updateScrollbar],
+  );
+
+  if (!scrollbarState.visible) {
+    return null;
+  }
+
+  return (
+    <div
+      className="library-custom-scrollbar"
+      aria-hidden="true"
+      onPointerDown={(event: ReactPointerEvent<HTMLDivElement>) => {
+        if (event.target !== event.currentTarget) {
+          return;
+        }
+
+        scrollToThumbPosition(event.currentTarget, event.clientY, scrollbarState.height / 2);
+      }}
+    >
+      <div
+        className="library-custom-scrollbar-thumb"
+        style={{
+          height: `${scrollbarState.height}px`,
+          transform: `translateY(${scrollbarState.top}px)`,
+        }}
+        onPointerDown={(event: ReactPointerEvent<HTMLDivElement>) => {
+          event.preventDefault();
+          event.stopPropagation();
+
+          const thumb = event.currentTarget;
+          const track = thumb.parentElement;
+
+          if (!(track instanceof HTMLDivElement)) {
+            return;
+          }
+
+          const thumbOffset = event.clientY - thumb.getBoundingClientRect().top;
+          thumb.setPointerCapture(event.pointerId);
+
+          const handlePointerMove = (moveEvent: PointerEvent) => {
+            scrollToThumbPosition(track, moveEvent.clientY, thumbOffset);
+          };
+
+          const handlePointerUp = (upEvent: PointerEvent) => {
+            thumb.releasePointerCapture(upEvent.pointerId);
+            document.removeEventListener("pointermove", handlePointerMove);
+            document.removeEventListener("pointerup", handlePointerUp);
+          };
+
+          document.addEventListener("pointermove", handlePointerMove);
+          document.addEventListener("pointerup", handlePointerUp, { once: true });
+        }}
+      />
+    </div>
+  );
+}
+
 function Metric({
   icon,
   title,
@@ -568,6 +736,8 @@ function Metric({
 }
 
 export function LibraryPage() {
+  const gameListScrollRef = useRef<HTMLDivElement>(null);
+  const detailScrollRef = useRef<HTMLElement>(null);
   const [initialLibrarySnapshot] = useState(readLibrarySnapshot);
   const [installedGames, setInstalledGames] = useState<Game[]>(initialLibrarySnapshot);
   const [selectedGame, setSelectedGame] = useState<Game | null>(null);
@@ -1465,31 +1635,34 @@ export function LibraryPage() {
             </div>
 
             {/* Scrollable list of items */}
-            <div className="library-game-list-scroll flex-1 overflow-y-scroll pb-3">
-              {/* RENDER LIST ROWS */}
-              {shouldShowLibraryLoading ? (
-                <p className="neo-copy px-3 py-2 text-[11px] font-bold uppercase text-[#55504a]">
-                  Loading library...
-                </p>
-              ) : filteredGames.length > 0 ? (
-                filteredGames.map((game) => (
-                  <LibraryRow
-                    key={game.id}
-                    game={game}
-                    selected={selectedGame?.id === game.id}
-                    onSelect={setSelectedGame}
-                    isFavorite={favorites[game.id] === true}
-                  />
-                ))
-              ) : normalizedSearchQuery && (installedGames.length > 0 || fallbackMockGames.length > 0) ? (
-                <p className="neo-copy px-3 py-2 text-[11px] font-bold uppercase leading-5 text-[#55504a]">
-                  No games found for "{searchQuery.trim()}".
-                </p>
-              ) : (
-                <p className="neo-copy px-3 py-2 text-[11px] font-bold uppercase leading-5 text-[#55504a]">
-                  {discoveryMessage}
-                </p>
-              )}
+            <div className="library-scroll-frame flex-1">
+              <div ref={gameListScrollRef} className="library-game-list-scroll h-full overflow-y-auto pb-3">
+                {/* RENDER LIST ROWS */}
+                {shouldShowLibraryLoading ? (
+                  <p className="neo-copy px-3 py-2 text-[11px] font-bold uppercase text-[#55504a]">
+                    Loading library...
+                  </p>
+                ) : filteredGames.length > 0 ? (
+                  filteredGames.map((game) => (
+                    <LibraryRow
+                      key={game.id}
+                      game={game}
+                      selected={selectedGame?.id === game.id}
+                      onSelect={setSelectedGame}
+                      isFavorite={favorites[game.id] === true}
+                    />
+                  ))
+                ) : normalizedSearchQuery && (installedGames.length > 0 || fallbackMockGames.length > 0) ? (
+                  <p className="neo-copy px-3 py-2 text-[11px] font-bold uppercase leading-5 text-[#55504a]">
+                    No games found for "{searchQuery.trim()}".
+                  </p>
+                ) : (
+                  <p className="neo-copy px-3 py-2 text-[11px] font-bold uppercase leading-5 text-[#55504a]">
+                    {discoveryMessage}
+                  </p>
+                )}
+              </div>
+              <LibraryCustomScrollbar targetRef={gameListScrollRef} />
             </div>
           </div>
         </aside>
@@ -1854,7 +2027,8 @@ export function LibraryPage() {
         {/* ====================================================
             GAME DETAILS MAIN CONTENT
             ==================================================== */}
-        <main className="library-detail-scroll min-h-0 min-w-0 overflow-x-hidden overflow-y-auto">
+        <div className="library-scroll-frame min-h-0 min-w-0">
+          <main ref={detailScrollRef} className="library-detail-scroll h-full min-h-0 min-w-0 overflow-x-hidden overflow-y-auto">
           {shouldShowLibraryLoading ? (
             <section className="grid min-h-[calc(100vh-124px)] place-items-center border-b-4 border-black bg-[#efe3cf] px-4 text-center" style={{ fontFamily: '"Arial Narrow", Impact, sans-serif' }}>
               <div className="max-w-[560px] border-4 border-black bg-[#fbf4e7] p-8 shadow-[8px_8px_0_#171411]">
@@ -2281,7 +2455,9 @@ export function LibraryPage() {
               </div>
             </section>
           )}
-        </main>
+          </main>
+          <LibraryCustomScrollbar targetRef={detailScrollRef} />
+        </div>
       </div>
 
       {isAddGameOpen ? (

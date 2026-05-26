@@ -6,7 +6,7 @@ const workspaceRoots = [
   "O:/launcher",
   "X:/launcher",
   "E:/Coding Projects/open-game-launcher/launcher",
-  process.cwd().replaceAll("\\", "/"),
+  process.cwd().replace(/\\/g, "/"),
 ];
 
 export default defineConfig({
