@@ -1,11 +1,13 @@
+use notify::{Config, RecommendedWatcher, RecursiveMode, Watcher};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
     env, fs,
     path::{Path, PathBuf},
     process::{Child, Command},
+    sync::mpsc,
     thread,
-    time::{Instant, SystemTime, UNIX_EPOCH},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 use tauri::Emitter;
 
@@ -53,6 +55,16 @@ pub struct InstalledGame {
     last_played_at: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     playtime_minutes: Option<u32>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    genres: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    developer: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    publisher: Option<String>,
+    #[serde(rename = "releaseDate", skip_serializing_if = "Option::is_none")]
+    release_date: Option<String>,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    features: Vec<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -113,6 +125,13 @@ struct GameActivityUpdate {
     playtime_minutes: Option<u32>,
 }
 
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct LibraryInventoryChanged {
+    reason: String,
+    game_count: usize,
+}
+
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum VerificationStatus {
@@ -152,13 +171,20 @@ pub async fn refresh_installed_games() -> Result<Vec<InstalledGame>, String> {
         .map(|game| (game.id.clone(), game.clone()))
         .collect::<HashMap<_, _>>();
 
-    for game in cached_games.into_iter().filter(is_manual_game) {
+    for mut game in cached_games.into_iter().filter(is_manual_game) {
+        if game.genres.is_empty() {
+            game = sync_game_metadata(game).await;
+        }
         games.insert(game.id.clone(), game);
     }
 
     for mut game in scan_installed_games() {
         if let Some(cached_game) = cached_activity.get(&game.id) {
             merge_cached_game_activity(&mut game, cached_game);
+        }
+
+        if game.genres.is_empty() {
+            game = sync_game_metadata(game).await;
         }
 
         games.insert(game.id.clone(), game);
@@ -202,6 +228,8 @@ pub async fn add_manual_game(input: AddManualGameRequest) -> Result<InstalledGam
     game.icon_url = find_local_icon_asset(asset_root);
     game.logo_url = find_local_logo_asset(asset_root);
 
+    game = sync_game_metadata(game).await;
+
     let mut games = BTreeMap::<String, InstalledGame>::new();
     for cached_game in read_installed_games_cache().unwrap_or_default() {
         games.insert(cached_game.id.clone(), cached_game);
@@ -212,6 +240,268 @@ pub async fn add_manual_game(input: AddManualGameRequest) -> Result<InstalledGam
     write_installed_games_cache(&games);
 
     Ok(game)
+}
+
+pub fn start_library_inventory_watcher(app_handle: tauri::AppHandle) {
+    thread::spawn(move || {
+        let (tx, rx) = mpsc::channel();
+        let watcher_result = RecommendedWatcher::new(
+            move |result| {
+                let _ = tx.send(result);
+            },
+            Config::default(),
+        );
+
+        let Ok(mut watcher) = watcher_result else {
+            eprintln!("[open-game-launcher] Failed to start library inventory watcher.");
+            return;
+        };
+
+        let mut watched_paths = HashSet::new();
+        let watched_count = watch_library_inventory_paths(&mut watcher, &mut watched_paths);
+        if watched_count == 0 {
+            eprintln!("[open-game-launcher] Library inventory watcher has no paths to watch.");
+        }
+
+        loop {
+            let Ok(result) = rx.recv() else {
+                break;
+            };
+
+            if let Err(error) = result {
+                eprintln!("[open-game-launcher] Library watcher event error: {error}");
+                continue;
+            }
+
+            while matches!(rx.recv_timeout(Duration::from_secs(2)), Ok(_)) {}
+
+            match tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+            {
+                Ok(runtime) => match runtime.block_on(refresh_installed_games()) {
+                    Ok(games) => {
+                        watch_library_inventory_paths(&mut watcher, &mut watched_paths);
+                        let _ = app_handle.emit(
+                            "library_inventory_changed",
+                            LibraryInventoryChanged {
+                                reason: "file_watcher".to_string(),
+                                game_count: games.len(),
+                            },
+                        );
+                    }
+                    Err(error) => {
+                        eprintln!("[open-game-launcher] Automatic library refresh failed: {error}");
+                    }
+                },
+                Err(error) => {
+                    eprintln!("[open-game-launcher] Failed to create watcher runtime: {error}");
+                }
+            }
+        }
+    });
+}
+
+fn watch_library_inventory_paths(
+    watcher: &mut RecommendedWatcher,
+    watched_paths: &mut HashSet<String>,
+) -> usize {
+    let mut watched_count = 0;
+
+    for path in library_inventory_watch_paths() {
+        let key = watch_path_key(&path);
+        if !watched_paths.insert(key) {
+            continue;
+        }
+
+        match watcher.watch(&path, RecursiveMode::Recursive) {
+            Ok(()) => watched_count += 1,
+            Err(error) => {
+                eprintln!(
+                    "[open-game-launcher] Failed to watch library path {}: {error}",
+                    path.display()
+                );
+            }
+        }
+    }
+
+    watched_count
+}
+
+fn watch_path_key(path: &Path) -> String {
+    path.canonicalize()
+        .unwrap_or_else(|_| path.to_path_buf())
+        .to_string_lossy()
+        .to_lowercase()
+}
+
+fn library_inventory_watch_paths() -> Vec<PathBuf> {
+    let mut paths = Vec::new();
+
+    if let Some(data_dir) = open_game_launcher_data_dir() {
+        paths.push(data_dir.clone());
+        paths.push(data_dir.join("games"));
+    }
+
+    if let Some(cache_path) =
+        installed_games_cache_path().and_then(|path| path.parent().map(Path::to_path_buf))
+    {
+        paths.push(cache_path);
+    }
+
+    if let Some(steam_dir) = find_steam_dir() {
+        paths.push(steam_dir.join("steamapps"));
+        paths.push(steam_dir.join("userdata"));
+        for library in read_steam_library_folders(&steam_dir) {
+            paths.push(library.join("steamapps"));
+        }
+    }
+
+    if cfg!(target_os = "windows") {
+        paths.push(PathBuf::from(
+            r"C:\ProgramData\Epic\EpicGamesLauncher\Data\Manifests",
+        ));
+        paths.push(PathBuf::from(
+            r"C:\ProgramData\Epic\EpicGamesLauncher\Data\Catalog",
+        ));
+        paths.push(PathBuf::from(r"C:\ProgramData\GOG.com\Galaxy\webcache"));
+        paths.push(PathBuf::from(
+            r"C:\ProgramData\Ubisoft\Ubisoft Game Launcher\cache",
+        ));
+
+        if let Some(program_files) = env_path("ProgramFiles") {
+            paths.push(program_files.join("GOG Galaxy").join("Games"));
+            paths.push(program_files.join("Ubisoft Game Launcher").join("games"));
+        }
+
+        if let Some(program_files_x86) = env_path("ProgramFiles(x86)") {
+            paths.push(program_files_x86.join("GOG Galaxy").join("Games"));
+            paths.push(
+                program_files_x86
+                    .join("Ubisoft")
+                    .join("Ubisoft Game Launcher")
+                    .join("games"),
+            );
+            paths.push(
+                program_files_x86
+                    .join("Ubisoft Game Launcher")
+                    .join("games"),
+            );
+        }
+
+        if let Some(local_app_data) = env_path("LOCALAPPDATA") {
+            paths.push(
+                local_app_data
+                    .join("Ubisoft")
+                    .join("Ubisoft Game Launcher")
+                    .join("cache"),
+            );
+        }
+
+        paths.push(PathBuf::from(r"C:\GOG Games"));
+        paths.push(PathBuf::from(r"C:\Ubisoft Games"));
+
+        for drive in local_drive_roots() {
+            paths.push(drive.join("XboxGames"));
+        }
+
+        for install in read_gog_registry_installs() {
+            paths.push(install.install_dir);
+        }
+
+        for install in read_ubisoft_registry_installs() {
+            paths.push(install.install_dir);
+        }
+
+        for install in read_battlenet_registry_installs() {
+            paths.push(install.install_dir);
+        }
+
+        for install in read_ea_registry_installs() {
+            paths.push(install.install_dir);
+        }
+    }
+
+    for game in read_installed_games_cache().unwrap_or_default() {
+        if let Some(install_path) = game.install_path {
+            paths.push(PathBuf::from(install_path));
+        }
+    }
+
+    dedupe_existing_watch_paths(paths)
+}
+
+fn dedupe_existing_watch_paths(paths: Vec<PathBuf>) -> Vec<PathBuf> {
+    let mut seen = HashSet::new();
+    let mut unique = Vec::new();
+
+    for path in paths {
+        if !path.exists() {
+            continue;
+        }
+
+        let key = path
+            .canonicalize()
+            .unwrap_or_else(|_| path.clone())
+            .to_string_lossy()
+            .to_lowercase();
+
+        if seen.insert(key) {
+            unique.push(path);
+        }
+    }
+
+    unique
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct MoveGameRequest {
+    game_id: String,
+    new_path: String,
+}
+
+#[tauri::command]
+pub async fn move_game(input: MoveGameRequest) -> Result<(), String> {
+    let mut games = read_installed_games_cache().unwrap_or_default();
+
+    let game_index = games
+        .iter()
+        .position(|g| g.id == input.game_id)
+        .ok_or_else(|| "Spiel nicht im Cache gefunden.".to_string())?;
+
+    let old_path = games[game_index]
+        .install_path
+        .as_ref()
+        .ok_or_else(|| "Spiel hat keinen Installationspfad.".to_string())?;
+
+    let old_path_buf = PathBuf::from(old_path);
+    let new_path_buf = PathBuf::from(&input.new_path);
+
+    if !old_path_buf.exists() {
+        return Err("Alter Installationspfad existiert nicht.".to_string());
+    }
+
+    let folder_name = old_path_buf
+        .file_name()
+        .ok_or_else(|| "Ungültiger Pfad.".to_string())?;
+    let final_new_path = new_path_buf.join(folder_name);
+
+    if final_new_path.exists() {
+        return Err("Zielordner existiert bereits.".to_string());
+    }
+
+    fs::rename(&old_path_buf, &final_new_path).map_err(|e| {
+        format!(
+            "Fehler beim Verschieben (Möglicherweise Laufwerksgrenze überschritten): {}",
+            e
+        )
+    })?;
+
+    games[game_index].install_path = Some(final_new_path.to_string_lossy().to_string());
+    write_installed_games_cache(&games);
+
+    Ok(())
 }
 
 fn scan_installed_games() -> Vec<InstalledGame> {
@@ -286,6 +576,17 @@ fn merge_cached_game_activity(game: &mut InstalledGame, cached_game: &InstalledG
             game.playtime_minutes
                 .map_or(cached_minutes, |minutes| minutes.max(cached_minutes)),
         );
+    }
+
+    if !cached_game.genres.is_empty() {
+        game.genres = cached_game.genres.clone();
+        game.developer = cached_game.developer.clone();
+        game.publisher = cached_game.publisher.clone();
+        game.release_date = cached_game.release_date.clone();
+        game.features = cached_game.features.clone();
+        if !cached_game.description.contains("//") {
+            game.description = cached_game.description.clone();
+        }
     }
 }
 
@@ -494,14 +795,14 @@ fn write_installed_games_cache(games: &[InstalledGame]) {
     }
 }
 
-fn installed_games_cache_path() -> Option<PathBuf> {
+fn open_game_launcher_data_dir() -> Option<PathBuf> {
     dirs::data_local_dir()
         .or_else(dirs::data_dir)
-        .map(|data_dir| {
-            data_dir
-                .join("open-game-launcher")
-                .join("installed-games.json")
-        })
+        .map(|data_dir| data_dir.join("open-game-launcher"))
+}
+
+fn installed_games_cache_path() -> Option<PathBuf> {
+    open_game_launcher_data_dir().map(|data_dir| data_dir.join("installed-games.json"))
 }
 
 fn scan_epic_games() -> Vec<InstalledGame> {
@@ -2952,6 +3253,11 @@ fn installed_game(
         launch_uri: None,
         last_played_at: None,
         playtime_minutes: None,
+        genres: Vec::new(),
+        developer: None,
+        publisher: None,
+        release_date: None,
+        features: Vec::new(),
     }
 }
 
@@ -3604,6 +3910,230 @@ fn scan_ea_games() -> Vec<InstalledGame> {
     }
 
     games
+}
+
+async fn search_steam_appid(title: &str) -> Option<u32> {
+    let client = reqwest::Client::new();
+    let response = client
+        .get("https://store.steampowered.com/api/storesearch/")
+        .query(&[("term", title), ("l", "german"), ("cc", "de")])
+        .send()
+        .await
+        .ok()?;
+    let json: serde_json::Value = response.json().await.ok()?;
+
+    let items = json.get("items")?.as_array()?;
+    if items.is_empty() {
+        return None;
+    }
+
+    let first = items.first()?;
+    let id = first.get("id")?.as_u64()? as u32;
+    Some(id)
+}
+
+async fn fetch_steam_metadata(
+    appid: u32,
+) -> Option<(
+    Vec<String>,
+    Option<String>,
+    Option<String>,
+    Option<String>,
+    Vec<String>,
+    Option<String>,
+)> {
+    let url = format!("https://store.steampowered.com/api/appdetails?appids={appid}&l=german");
+    let client = reqwest::Client::new();
+    let response = client.get(&url).send().await.ok()?;
+    let json: serde_json::Value = response.json().await.ok()?;
+
+    let app_data = json.get(appid.to_string())?;
+    if !app_data.get("success")?.as_bool().unwrap_or(false) {
+        return None;
+    }
+
+    let data = app_data.get("data")?;
+
+    let description = data
+        .get("short_description")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+
+    let developer = data
+        .get("developers")
+        .and_then(|v| v.as_array())
+        .and_then(|arr| arr.first())
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+
+    let publisher = data
+        .get("publishers")
+        .and_then(|v| v.as_array())
+        .and_then(|arr| arr.first())
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+
+    let release_date = data
+        .get("release_date")
+        .and_then(|v| v.get("date"))
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+
+    let mut genres = Vec::new();
+    if let Some(genres_arr) = data.get("genres").and_then(|v| v.as_array()) {
+        for gen in genres_arr {
+            if let Some(desc) = gen.get("description").and_then(|v| v.as_str()) {
+                genres.push(desc.to_string());
+            }
+        }
+    }
+
+    let mut features = Vec::new();
+    if let Some(cats_arr) = data.get("categories").and_then(|v| v.as_array()) {
+        for cat in cats_arr {
+            if let Some(desc) = cat.get("description").and_then(|v| v.as_str()) {
+                features.push(desc.to_string());
+            }
+        }
+    }
+
+    Some((
+        genres,
+        developer,
+        publisher,
+        release_date,
+        features,
+        description,
+    ))
+}
+
+async fn sync_game_metadata(mut game: InstalledGame) -> InstalledGame {
+    if !game.genres.is_empty() || game.developer.is_some() {
+        return game;
+    }
+
+    let mut appid = None;
+    if game.id.starts_with("steam-") {
+        let clean_id = game
+            .id
+            .trim_start_matches("steam-")
+            .trim_start_matches("owned-");
+        if let Ok(id) = clean_id.parse::<u32>() {
+            appid = Some(id);
+        }
+    } else if let Some(uri) = &game.launch_uri {
+        if uri.starts_with("steam://rungameid/") {
+            let clean_id = uri.trim_start_matches("steam://rungameid/");
+            if let Ok(id) = clean_id.parse::<u32>() {
+                appid = Some(id);
+            }
+        }
+    }
+
+    if appid.is_none() {
+        appid = search_steam_appid(&game.title).await;
+    }
+
+    if let Some(id) = appid {
+        if let Some((genres, developer, publisher, release_date, features, description)) =
+            fetch_steam_metadata(id).await
+        {
+            game.genres = genres;
+            game.developer = developer;
+            game.publisher = publisher;
+            game.release_date = release_date;
+            game.features = features;
+            if let Some(desc) = description {
+                game.description = desc;
+            }
+        }
+    }
+
+    game
+}
+
+pub fn start_playtime_poller(app_handle: tauri::AppHandle) {
+    thread::spawn(move || {
+        use sysinfo::System;
+        let mut sys = System::new_all();
+        // Keep track of accumulated seconds for each running game in this thread
+        let mut active_sessions = HashMap::<String, u32>::new();
+
+        loop {
+            thread::sleep(std::time::Duration::from_secs(10));
+
+            // Refresh processes (just executables/paths to be fast)
+            sys.refresh_processes_specifics(
+                sysinfo::ProcessesToUpdate::All,
+                sysinfo::ProcessRefreshKind::new().with_exe(sysinfo::UpdateKind::Always),
+            );
+
+            let cached_games = read_installed_games_cache().unwrap_or_default();
+            if cached_games.is_empty() {
+                continue;
+            }
+
+            // Collect all running process paths
+            let mut running_exe_paths = Vec::new();
+            for (_pid, process) in sys.processes() {
+                if let Some(exe_path) = process.exe() {
+                    running_exe_paths.push(exe_path.to_string_lossy().to_lowercase());
+                }
+            }
+
+            let mut games_updated = false;
+            let mut updated_cache = cached_games.clone();
+
+            for game in updated_cache.iter_mut() {
+                let Some(install_path) = &game.install_path else {
+                    continue;
+                };
+                let norm_install_path = install_path.replace("\\", "/").to_lowercase();
+
+                // Check if any running process resides under this game's install path
+                let is_running = running_exe_paths.iter().any(|exe_path| {
+                    let norm_exe = exe_path.replace("\\", "/");
+                    norm_exe.starts_with(&norm_install_path)
+                });
+
+                if is_running {
+                    // Increment session time
+                    let secs = active_sessions.entry(game.id.clone()).or_insert(0);
+                    *secs += 10;
+
+                    // Update last played time to now
+                    let now = current_unix_timestamp();
+                    game.last_played_at = Some(unix_timestamp_to_iso(now));
+
+                    if *secs >= 60 {
+                        // Increment playtime minutes
+                        let current_min = game.playtime_minutes.unwrap_or_default();
+                        game.playtime_minutes = Some(current_min + 1);
+                        *secs = 0; // reset seconds accumulator
+                        games_updated = true;
+                    }
+                } else {
+                    // Game is not running. If it was previously running, we reset session
+                    if active_sessions.remove(&game.id).is_some() {
+                        games_updated = true; // save stopped state/last updated playtime
+                    }
+                }
+            }
+
+            if games_updated {
+                write_installed_games_cache(&updated_cache);
+                // Emit event for all games that had changes
+                for game in updated_cache {
+                    let update = GameActivityUpdate {
+                        game_id: game.id.clone(),
+                        last_played: game.last_played_at.clone(),
+                        playtime_minutes: game.playtime_minutes,
+                    };
+                    let _ = app_handle.emit("game_activity_updated", &update);
+                }
+            }
+        }
+    });
 }
 
 #[cfg(test)]

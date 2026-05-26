@@ -12,7 +12,6 @@ import {
   Laptop,
   Monitor,
   Play,
-  RefreshCw,
   Search,
   Settings,
   SlidersHorizontal,
@@ -26,7 +25,7 @@ import type { PointerEvent as ReactPointerEvent, ReactNode, RefObject } from "re
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { getGameAssetUrl, getGameBannerStyle } from "../lib/assets";
-import { addManualGame, launchGame, listInstalledGames, refreshInstalledGames, startDownload, fetchSteamOwnedGames, fetchGogOwnedGames, fetchEpicOwnedGames, normalizeSteamOwnedGames, openSteamScraperWindow } from "../lib/launcher";
+import { addManualGame, launchGame, listInstalledGames, refreshInstalledGames, startDownload, fetchSteamOwnedGames, fetchGogOwnedGames, fetchEpicOwnedGames, normalizeSteamOwnedGames, openSteamScraperWindow, moveGame } from "../lib/launcher";
 import type { OwnedGame } from "../lib/launcher";
 import type { Game } from "../lib/types";
 
@@ -35,6 +34,8 @@ const LIBRARY_SNAPSHOT_KEY = "launcher_library_snapshot";
 const STEAM_OWNED_GAMES_CACHE_KEY = "launcher.steamOwnedGamesCache";
 const STEAM_OWNED_GAMES_CACHE_VERSION_KEY = "launcher.steamOwnedGamesCacheVersion";
 const STEAM_OWNED_GAMES_CACHE_VERSION = "2";
+
+type LibrarySortOption = "alphabetical" | "last_played" | "playtime" | "size";
 
 function triggerSilentSteamScraper(steamId: string) {
   console.log("[OG-Launcher] Opening silent Steam scraper window in background...");
@@ -47,6 +48,11 @@ type GameActivityUpdate = {
   gameId: string;
   lastPlayed?: string | null;
   playtimeMinutes?: number | null;
+};
+
+type LibraryInventoryChanged = {
+  reason: string;
+  gameCount: number;
 };
 
 function readLibrarySnapshot() {
@@ -166,6 +172,18 @@ const fallbackMockGames: Game[] = [
 // RESTRUCTURING GAME DATA WITH RICH METADATA
 // ----------------------------------------------------
 function enrichGameWithMetadata(game: Game): Game {
+  // If we already have real metadata from backend, let's preserve it!
+  if (game.genres && game.genres.length > 0) {
+    return {
+      ...game,
+      sizeGb: game.sizeGb || Number(((game.title.length * 7 % 115) + 0.5).toFixed(1)),
+      players: game.players || ["Singleplayer"],
+      productCategory: game.productCategory || "game",
+      steamDeckCompatibility: game.steamDeckCompatibility || "playable",
+      protonCompatible: game.protonCompatible !== undefined ? game.protonCompatible : true
+    };
+  }
+
   const title = game.title;
   const id = game.id;
   const lowerTitle = title.toLowerCase();
@@ -738,6 +756,8 @@ function Metric({
 export function LibraryPage() {
   const gameListScrollRef = useRef<HTMLDivElement>(null);
   const detailScrollRef = useRef<HTMLElement>(null);
+  const automaticSyncInFlightRef = useRef(false);
+  const lastFocusSyncAtRef = useRef(0);
   const [initialLibrarySnapshot] = useState(readLibrarySnapshot);
   const [installedGames, setInstalledGames] = useState<Game[]>(initialLibrarySnapshot);
   const [selectedGame, setSelectedGame] = useState<Game | null>(null);
@@ -765,6 +785,7 @@ export function LibraryPage() {
   const [activePlatformFilter, setActivePlatformFilter] = useState<"all" | "windows" | "macos" | "linux">("all");
   const [isFilterPopupOpen, setIsFilterPopupOpen] = useState(false);
   const [advancedFilters, setAdvancedFilters] = useState(initialAdvancedFilters);
+  const [sortOption, setSortOption] = useState<LibrarySortOption>("alphabetical");
 
   // ----------------------------------------------------
   // FAVORITE & HIDDEN & CATEGORIES STATES (localStorage)
@@ -835,6 +856,24 @@ export function LibraryPage() {
   const [newCollectionName, setNewCollectionName] = useState("");
   const [selectedCollectionName, setSelectedCollectionName] = useState<string | null>(null);
 
+  // ----------------------------------------------------
+  // MANUAL COLLECTIONS STATES (localStorage)
+  // ----------------------------------------------------
+  const [manualCollections, setManualCollections] = useState<Record<string, string[]>>(() => {
+    try {
+      const saved = localStorage.getItem("launcher_manual_collections");
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  useEffect(() => {
+    localStorage.setItem("launcher_manual_collections", JSON.stringify(manualCollections));
+  }, [manualCollections]);
+  
+  const [selectedManualCollectionName, setSelectedManualCollectionName] = useState<string | null>(null);
+
   function saveCurrentFilterAsCollection(name: string) {
     if (!name.trim()) return;
     const newCol: DynamicCollection = {
@@ -904,7 +943,7 @@ export function LibraryPage() {
     const baseGames = installedGames.length > 0 ? installedGames : fallbackMockGames;
     const enriched = baseGames.map(enrichGameWithMetadata);
 
-    return enriched.filter((game) => {
+    const filtered = enriched.filter((game) => {
       // Hidden games logic: Hide by default unless "Hidden" filter is active
       const isHidden = hiddenGames[game.id] === true;
       const isHiddenFilterActive = advancedFilters.status.includes("Hidden");
@@ -1048,8 +1087,38 @@ export function LibraryPage() {
         if (!matchesStatus) return false;
       }
 
+      // Manual Collections Filter
+      if (selectedManualCollectionName) {
+        const gameIdsInCollection = manualCollections[selectedManualCollectionName] || [];
+        if (!gameIdsInCollection.includes(game.id)) {
+          return false;
+        }
+      }
+
       return true;
     });
+
+    // Sorting
+    switch (sortOption) {
+      case "alphabetical":
+        filtered.sort((a, b) => a.title.localeCompare(b.title));
+        break;
+      case "last_played":
+        filtered.sort((a, b) => {
+          const aTime = a.lastPlayedAt ? new Date(a.lastPlayedAt).getTime() : Number.NEGATIVE_INFINITY;
+          const bTime = b.lastPlayedAt ? new Date(b.lastPlayedAt).getTime() : Number.NEGATIVE_INFINITY;
+          return bTime - aTime;
+        });
+        break;
+      case "playtime":
+        filtered.sort((a, b) => (b.playtimeMinutes || 0) - (a.playtimeMinutes || 0));
+        break;
+      case "size":
+        filtered.sort((a, b) => (b.sizeGb || 0) - (a.sizeGb || 0));
+        break;
+    }
+
+    return filtered;
   }, [
     installedGames,
     activePlatformFilter,
@@ -1059,6 +1128,9 @@ export function LibraryPage() {
     customCategories,
     activeSizeQueryFromSearch,
     parsedSearchText,
+    selectedManualCollectionName,
+    manualCollections,
+    sortOption,
   ]);
 
   /** Convert backend OwnedGame into a frontend Game object */
@@ -1148,7 +1220,7 @@ export function LibraryPage() {
           const msg = String(err);
           console.warn("Failed to fetch owned steam games during load:", msg);
           if (msg.includes("400") || msg.includes("403") || msg.includes("Game Details")) {
-            setStatusMessage("⚠️ Steam: Please set 'Game Details' to Public in Steam → Profile → Privacy Settings, then rescan.");
+            setStatusMessage("⚠️ Steam: Please set 'Game Details' to Public in Steam → Profile → Privacy Settings. OG-Launcher will sync automatically.");
           }
         }
       }
@@ -1240,7 +1312,7 @@ export function LibraryPage() {
       setInstalledGames([]);
       setDiscoveryMessage(
         forceRefresh
-          ? "Rescan not available. Showing mock library."
+          ? "Automatic sync not available. Showing mock library."
           : "Saved library not available. Showing mock library.",
       );
     } finally {
@@ -1263,7 +1335,20 @@ export function LibraryPage() {
     }
   }
 
-  // Load cached games first, then rescan once per app session for new installs.
+  async function runAutomaticLibrarySync(forceRefresh = false) {
+    if (automaticSyncInFlightRef.current) {
+      return;
+    }
+
+    automaticSyncInFlightRef.current = true;
+    try {
+      await loadInstalledGames(forceRefresh, () => true, false);
+    } finally {
+      automaticSyncInFlightRef.current = false;
+    }
+  }
+
+  // Load cached games first, then run one silent sync per app session for new installs.
   useEffect(() => {
     let isMounted = true;
 
@@ -1323,10 +1408,16 @@ export function LibraryPage() {
   useEffect(() => {
     let isMounted = true;
 
+    const unlistenInventory = listen<LibraryInventoryChanged>("library_inventory_changed", (event) => {
+      if (!isMounted) return;
+      console.log("[OG-Launcher] Library inventory changed:", event.payload);
+      void runAutomaticLibrarySync(false);
+    });
+
     const unlistenSteam = listen<string>("steam_login_success", () => {
       if (!isMounted) return;
       console.log("[OG-Launcher] Steam connected – reloading library...");
-      void loadInstalledGames(false, () => isMounted, false);
+      void runAutomaticLibrarySync(false);
     });
 
     const unlistenScrapedSuccess = listen<unknown[]>("steam_scraped_games_success", (event) => {
@@ -1335,7 +1426,7 @@ export function LibraryPage() {
       console.log("[OG-Launcher] Scraper successfully fetched games:", ownedGames.length);
       localStorage.setItem(STEAM_OWNED_GAMES_CACHE_KEY, JSON.stringify(ownedGames));
       localStorage.setItem(STEAM_OWNED_GAMES_CACHE_VERSION_KEY, STEAM_OWNED_GAMES_CACHE_VERSION);
-      void loadInstalledGames(false, () => isMounted, false);
+      void runAutomaticLibrarySync(false);
     });
 
     const unlistenScrapedError = listen<string>("steam_scraped_games_error", (event) => {
@@ -1346,9 +1437,35 @@ export function LibraryPage() {
 
     return () => {
       isMounted = false;
+      void unlistenInventory.then((u) => u());
       void unlistenSteam.then((u) => u());
       void unlistenScrapedSuccess.then((u) => u());
       void unlistenScrapedError.then((u) => u());
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
+    const syncOnFocus = () => {
+      if (document.visibilityState === "hidden") {
+        return;
+      }
+
+      const now = Date.now();
+      if (now - lastFocusSyncAtRef.current < 30_000) {
+        return;
+      }
+
+      lastFocusSyncAtRef.current = now;
+      void runAutomaticLibrarySync(true);
+    };
+
+    window.addEventListener("focus", syncOnFocus);
+    document.addEventListener("visibilitychange", syncOnFocus);
+
+    return () => {
+      window.removeEventListener("focus", syncOnFocus);
+      document.removeEventListener("visibilitychange", syncOnFocus);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -1513,7 +1630,10 @@ export function LibraryPage() {
           <div className="flex-1 min-h-0 flex flex-col">
             <div className="flex h-11 items-center justify-between border-b-4 border-black bg-[#f4ead8]">
               <button className="h-full flex-1 px-3 text-left text-[16px] font-black" type="button">
-                Library
+                <span className="block min-w-0 truncate">
+                  Library ({filteredGames.length}
+                  {normalizedSearchQuery || activePlatformFilter !== "all" || Object.values(advancedFilters).some(v => Array.isArray(v) ? v.length > 0 : v !== "") ? ` / ${installedGames.length || fallbackMockGames.length}` : ""})
+                </span>
               </button>
               <button className="grid h-full w-11 place-items-center border-l-4 border-black" type="button" aria-label="Grid view">
                 <Grid2X2 className="h-6 w-6" />
@@ -1529,11 +1649,22 @@ export function LibraryPage() {
                 <input
                   className="neo-copy min-w-0 flex-1 bg-transparent text-[11px] font-black uppercase tracking-[0.08em] text-[#171411] outline-none placeholder:text-[#686157]"
                   aria-label="Search library"
-                  placeholder="Search title / size..."
+                  placeholder="Search..."
                   type="search"
                   value={searchQuery}
                   onChange={(event) => setSearchQuery(event.target.value)}
                 />
+                <select 
+                  value={sortOption} 
+                  onChange={(e) => setSortOption(e.target.value as LibrarySortOption)}
+                  className="h-6 border-2 border-black bg-[#d8cbb7] text-[10px] font-black uppercase tracking-wider outline-none neo-copy cursor-pointer"
+                  title="Sortieren"
+                >
+                  <option value="alphabetical">A-Z</option>
+                  <option value="last_played">Zuletzt</option>
+                  <option value="playtime">Spielzeit</option>
+                  <option value="size">Größe</option>
+                </select>
                 <button
                   type="button"
                   onClick={() => setIsFilterPopupOpen(!isFilterPopupOpen)}
@@ -1605,33 +1736,55 @@ export function LibraryPage() {
                 </div>
               ) : null}
 
-              {/* LIST TITLE */}
-              <div className="px-2 pb-1 pt-2 text-[13px] font-black uppercase flex items-center justify-between">
-                <span className="min-w-0 truncate">
-                  - Library ({filteredGames.length}
-                  {normalizedSearchQuery || activePlatformFilter !== "all" || Object.values(advancedFilters).some(v => Array.isArray(v) ? v.length > 0 : v !== "") ? ` / ${installedGames.length || fallbackMockGames.length}` : ""})
-                </span>
-                <div className="flex shrink-0 items-center gap-1">
-                <button
-                  type="button"
-                  onClick={() => void loadInstalledGames(true)}
-                  disabled={isDiscoveringGames}
-                  className="grid h-7 w-7 place-items-center border-2 border-black bg-[#f4ead8] text-[#171411] transition hover:bg-[#8cf5e4] disabled:cursor-not-allowed disabled:opacity-60"
-                  aria-label="Rescan library"
-                  title="Rescan library"
-                >
-                  <RefreshCw className={`h-3.5 w-3.5 ${isDiscoveringGames ? "animate-spin" : ""}`} />
-                </button>
-                {(searchQuery || activePlatformFilter !== "all" || Object.values(advancedFilters).some(v => Array.isArray(v) ? v.length > 0 : v !== "")) && (
-                  <button
-                    onClick={clearActiveCollection}
-                    className="text-[9px] text-[#b7102a] underline font-bold uppercase"
-                  >
-                    Reset All
-                  </button>
-                )}
+              {/* MANUAL COLLECTIONS */}
+              {Object.keys(manualCollections).length > 0 && (
+                <div className="px-2 pt-1 border-b-2 border-dashed border-[#ded3c1] pb-2">
+                  <div className="flex items-center justify-between text-[10px] font-black uppercase text-[#55504a] tracking-wide mb-1 px-1">
+                    <span>Manual Collections</span>
+                    {selectedManualCollectionName && (
+                      <button
+                        onClick={() => setSelectedManualCollectionName(null)}
+                        className="text-[9px] underline hover:text-black font-bold"
+                      >
+                        Clear
+                      </button>
+                    )}
+                  </div>
+                  <div className="space-y-1">
+                    {Object.entries(manualCollections).map(([colName, gameIds]) => (
+                      <button
+                        key={colName}
+                        onClick={() => setSelectedManualCollectionName(colName)}
+                        className={`flex w-full items-center justify-between border-2 border-black px-2 py-1 text-left text-[11px] font-black leading-none transition ${
+                          selectedManualCollectionName === colName
+                            ? "bg-[#e8c843] text-black shadow-[2px_2px_0_#000]"
+                            : "bg-[#d8cbb7] text-[#171411] hover:bg-[#dfd4c1]"
+                        }`}
+                      >
+                        <span className="truncate flex items-center gap-1.5">
+                          <Grid2X2 className="h-3 w-3 shrink-0 text-[#b7102a]" />
+                          {colName}
+                        </span>
+                        <span className="flex items-center gap-1.5 shrink-0">
+                          <span className="text-[9px] bg-black/15 px-1 border border-black/25">
+                            {gameIds.length}
+                          </span>
+                          <Trash2
+                            className="h-3 w-3 text-black hover:text-[#b7102a] hover:scale-110 transition"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              const newCols = { ...manualCollections };
+                              delete newCols[colName];
+                              setManualCollections(newCols);
+                              if (selectedManualCollectionName === colName) setSelectedManualCollectionName(null);
+                            }}
+                          />
+                        </span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
 
             {/* Scrollable list of items */}
@@ -2036,7 +2189,7 @@ export function LibraryPage() {
                 <h2 className="neo-title text-3xl mb-2 uppercase text-[#171411]">LOADING LIBRARY</h2>
                 <div className="neo-dots h-1.5 w-12 bg-black mx-auto mb-4" />
                 <p className="neo-copy text-[14px] font-black uppercase text-[#6c675e]">
-                  Reading saved games. Use rescan when installs change.
+                  Reading saved games. Library sync watches installs automatically.
                 </p>
               </div>
             </section>
@@ -2220,6 +2373,59 @@ export function LibraryPage() {
                             <p className="text-[10px] italic text-gray-500">Keine Kategorien zugewiesen.</p>
                           )}
                         </div>
+
+                        {/* ADD TO MANUAL COLLECTION */}
+                        <div className="mt-3 border-t border-black pt-2">
+                          <label className="block text-[11px] font-black uppercase mb-1">
+                            Zu Collection hinzufügen:
+                          </label>
+                          <select 
+                            className="neo-copy w-full border-2 border-black bg-[#f4ead8] p-1 text-[10px] font-bold outline-none mb-1"
+                            onChange={(e) => {
+                              if (!e.target.value) return;
+                              const col = e.target.value;
+                              setManualCollections(prev => {
+                                const currentIds = prev[col] || [];
+                                if (!currentIds.includes(enrichedSelectedGame.id)) {
+                                  return { ...prev, [col]: [...currentIds, enrichedSelectedGame.id] };
+                                }
+                                return prev;
+                              });
+                              e.target.value = "";
+                            }}
+                          >
+                            <option value="">-- Wähle Collection --</option>
+                            {Object.keys(manualCollections).map(col => (
+                              <option key={col} value={col}>{col}</option>
+                            ))}
+                          </select>
+                          <div className="flex gap-1 mb-2">
+                            <input
+                              type="text"
+                              placeholder="Neue Collection..."
+                              id="newManualColInput"
+                              className="neo-copy h-7 flex-1 border-2 border-black bg-[#f4ead8] px-2 text-[10px] font-bold outline-none"
+                            />
+                            <button
+                              onClick={() => {
+                                const input = document.getElementById("newManualColInput") as HTMLInputElement;
+                                if (!input || !input.value.trim()) return;
+                                const col = input.value.trim();
+                                setManualCollections(prev => {
+                                  const currentIds = prev[col] || [];
+                                  if (!currentIds.includes(enrichedSelectedGame.id)) {
+                                    return { ...prev, [col]: [...currentIds, enrichedSelectedGame.id] };
+                                  }
+                                  return prev;
+                                });
+                                input.value = "";
+                              }}
+                              className="border-2 border-black bg-black text-white hover:bg-[#2c2c2c] px-2 text-[10px] font-black uppercase"
+                            >
+                              +
+                            </button>
+                          </div>
+                        </div>
                       </div>
                     ) : null}
                   </div>
@@ -2370,6 +2576,48 @@ export function LibraryPage() {
                             {enrichedSelectedGame.steamDeckCompatibility || "unknown"}
                           </span>
                         </div>
+                        {enrichedSelectedGame.developer && (
+                          <div className="flex justify-between border-b border-black/10 pb-1">
+                            <span className="text-[#55504a] uppercase">Entwickler:</span>
+                            <span className="font-black text-right">{enrichedSelectedGame.developer}</span>
+                          </div>
+                        )}
+                        {enrichedSelectedGame.publisher && (
+                          <div className="flex justify-between border-b border-black/10 pb-1">
+                            <span className="text-[#55504a] uppercase">Publisher:</span>
+                            <span className="font-black text-right">{enrichedSelectedGame.publisher}</span>
+                          </div>
+                        )}
+                        {enrichedSelectedGame.installPath && (
+                          <div className="flex flex-col gap-1 border-b border-black/10 pb-2">
+                            <span className="text-[#55504a] uppercase">Installationspfad:</span>
+                            <span className="font-black break-all text-[10px]">{enrichedSelectedGame.installPath}</span>
+                            <button
+                              onClick={() => {
+                                const newPath = prompt(`Spiel verschieben.\nAktueller Pfad: ${enrichedSelectedGame.installPath}\n\nGeben Sie den neuen absoluten Pfad ein:`);
+                                if (newPath && newPath.trim() !== "") {
+                                  moveGame({ gameId: enrichedSelectedGame.id, newPath: newPath.trim() })
+                                    .then(() => {
+                                      alert("Spiel erfolgreich verschoben!");
+                                      void runAutomaticLibrarySync(true);
+                                    })
+                                    .catch((err) => {
+                                      alert("Fehler beim Verschieben: " + err);
+                                    });
+                                }
+                              }}
+                              className="self-start border-2 border-black bg-[#169b83] text-white px-2 py-0.5 text-[10px] font-black uppercase hover:bg-[#138872] transition shadow-[1px_1px_0_#000]"
+                            >
+                              Ordner Verschieben
+                            </button>
+                          </div>
+                        )}
+                        {enrichedSelectedGame.releaseDate && (
+                          <div className="flex justify-between border-b border-black/10 pb-1">
+                            <span className="text-[#55504a] uppercase">Release:</span>
+                            <span className="font-black text-right">{enrichedSelectedGame.releaseDate}</span>
+                          </div>
+                        )}
                         {enrichedSelectedGame.genres && enrichedSelectedGame.genres.length > 0 && (
                           <div className="border-b border-black/10 pb-1">
                             <span className="text-[#55504a] uppercase block mb-1">Genres:</span>
@@ -2450,7 +2698,7 @@ export function LibraryPage() {
                     : discoveryMessage}
                 </p>
                 <p className="neo-copy mt-3 text-[11px] font-bold uppercase leading-5 text-[#55504a]">
-                  Rescan searches for Steam, Epic Games, GOG, Ubisoft, Xbox, Battle.net, and EA App installations on this PC.
+                  Auto-sync watches Steam, Epic Games, GOG, Ubisoft, Xbox, Battle.net, and EA App installations on this PC.
                 </p>
               </div>
             </section>

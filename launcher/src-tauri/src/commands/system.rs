@@ -24,6 +24,16 @@ pub struct SystemInfo {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct DiskInfo {
+    name: String,
+    mount_point: String,
+    total_space: u64,
+    available_space: u64,
+    file_system: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct HardwareInfo {
     cpu: Option<String>,
     gpu: Option<String>,
@@ -71,6 +81,22 @@ pub fn get_hardware_info() -> HardwareInfo {
         "macos" => macos_hardware_info(),
         _ => linux_hardware_info(),
     }
+}
+
+#[tauri::command]
+pub fn get_disk_info() -> Vec<DiskInfo> {
+    use sysinfo::Disks;
+    let disks = Disks::new_with_refreshed_list();
+    disks
+        .iter()
+        .map(|disk| DiskInfo {
+            name: disk.name().to_string_lossy().into_owned(),
+            mount_point: disk.mount_point().to_string_lossy().into_owned(),
+            total_space: disk.total_space(),
+            available_space: disk.available_space(),
+            file_system: disk.file_system().to_string_lossy().into_owned(),
+        })
+        .collect()
 }
 
 fn linux_install_dir() -> Option<PathBuf> {

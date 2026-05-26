@@ -4,8 +4,10 @@ import type {
   HardwareInfo,
   LaunchGameResponse,
   Game,
+  DownloadItem,
   StartDownloadResponse,
   SystemInfo,
+  DiskInfo,
   VerifyGameFilesResult,
 } from "./types";
 
@@ -37,6 +39,10 @@ export function getSystemInfo(): Promise<SystemInfo> {
   return invokeCommand<SystemInfo>("get_system_info");
 }
 
+export function getDiskInfo(): Promise<DiskInfo[]> {
+  return invokeCommand<DiskInfo[]>("get_disk_info");
+}
+
 export function getDefaultInstallDir(): Promise<string> {
   return invokeCommand<string>("get_default_install_dir");
 }
@@ -66,6 +72,13 @@ export function addManualGame(input: {
   installPath: string;
 }): Promise<Game> {
   return invokeCommand<Game>("add_manual_game", { input });
+}
+
+export function moveGame(input: {
+  gameId: string;
+  newPath: string;
+}): Promise<void> {
+  return invokeCommand<void>("move_game", { input });
 }
 
 export function launchGame(gameId: string): Promise<LaunchGameResponse> {
@@ -207,6 +220,18 @@ export function fetchGogOwnedGames(accessToken: string): Promise<OwnedGame[]> {
 
 export function fetchEpicOwnedGames(accessToken: string, accountId: string): Promise<OwnedGame[]> {
   return invokeCommand<OwnedGame[]>("fetch_epic_owned_games", { accessToken, accountId });
+}
+
+export function pauseDownload(gameId: string): Promise<void> {
+  return invokeCommand<void>("pause_download", { gameId });
+}
+
+export function cancelDownload(gameId: string): Promise<void> {
+  return invokeCommand<void>("cancel_download", { gameId });
+}
+
+export function getDownloadQueue(): Promise<DownloadItem[]> {
+  return invokeCommand<DownloadItem[]>("get_download_queue");
 }
 
 function getBrowserHardwareInfo(): HardwareInfo {

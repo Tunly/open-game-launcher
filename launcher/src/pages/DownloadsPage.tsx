@@ -1,35 +1,96 @@
 import { HardDriveDownload, ListFilter } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { listen } from "@tauri-apps/api/event";
 
 import { DownloadCard } from "../components/launcher/DownloadCard";
-import { downloads as mockDownloads } from "../lib/mock-data";
 import type { DownloadItem } from "../lib/types";
+import {
+  cancelDownload,
+  getDownloadQueue,
+  pauseDownload,
+} from "../lib/launcher";
 
 export function DownloadsPage() {
-  const [items, setItems] = useState<DownloadItem[]>(mockDownloads);
+  const [items, setItems] = useState<DownloadItem[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  function handlePauseToggle(id: string) {
-    setItems((current) =>
-      current.map((item) => {
-        if (item.id !== id) {
-          return item;
+  useEffect(() => {
+    let active = true;
+
+    async function loadQueue() {
+      try {
+        const queue = await getDownloadQueue();
+        if (active) {
+          setItems(queue);
         }
-
-        if (item.status === "downloading") {
-          return { ...item, speed: "Pausiert", status: "paused" };
+      } catch (err) {
+        console.error("Failed to load download queue:", err);
+      } finally {
+        if (active) {
+          setLoading(false);
         }
+      }
+    }
 
-        if (item.status === "paused") {
-          return { ...item, speed: "12.8 MB/s", status: "downloading" };
-        }
+    void loadQueue();
 
-        return item;
-      }),
+    // Listen to download progress events
+    const unlistenPromise = listen<DownloadItem>(
+      "download_progress",
+      (event) => {
+        if (!active) return;
+        const payload = event.payload;
+
+        setItems((current) => {
+          const index = current.findIndex((item) => item.gameId === payload.gameId);
+          if (index > -1) {
+            // Update existing item
+            const updated = [...current];
+            updated[index] = {
+              ...updated[index],
+              progress: payload.progress,
+              speed: payload.speed,
+              status: payload.status,
+              eta: payload.eta,
+              // Keep title if payload has empty title
+              title: payload.title || updated[index].title,
+            };
+            return updated;
+          } else {
+            // Add new item
+            return [...current, payload];
+          }
+        });
+      },
     );
+
+    return () => {
+      active = false;
+      void unlistenPromise.then((unlisten) => unlisten());
+    };
+  }, []);
+
+  async function handlePauseToggle(id: string) {
+    const item = items.find((x) => x.id === id);
+    if (!item) return;
+
+    try {
+      await pauseDownload(item.gameId);
+    } catch (err) {
+      console.error("Failed to toggle pause:", err);
+    }
   }
 
-  function handleCancel(id: string) {
-    setItems((current) => current.filter((item) => item.id !== id));
+  async function handleCancel(id: string) {
+    const item = items.find((x) => x.id === id);
+    if (!item) return;
+
+    try {
+      await cancelDownload(item.gameId);
+      setItems((current) => current.filter((x) => x.id !== id));
+    } catch (err) {
+      console.error("Failed to cancel download:", err);
+    }
   }
 
   const activeCount = items.filter((item) => item.status === "downloading").length;
@@ -109,7 +170,11 @@ export function DownloadsPage() {
       </div>
 
       <div className="space-y-4">
-        {items.length > 0 ? (
+        {loading ? (
+          <div className="neo-copy border-4 border-black bg-[#f5eedf] p-8 text-center text-xs font-bold uppercase text-[#55504a] shadow-[4px_4px_0_#171411]">
+            Lade Download-Warteschlange...
+          </div>
+        ) : items.length > 0 ? (
           items.map((item, index) => (
             <DownloadCard
               key={item.id}

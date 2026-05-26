@@ -14,6 +14,8 @@ const statusLabel: Record<DownloadStatus, string> = {
   downloading: "Lauft",
   failed: "Fehler",
   paused: "Pausiert",
+  cancelled: "Abgebrochen",
+  error: "Fehler",
 };
 
 const statusClass: Record<DownloadStatus, string> = {
@@ -21,6 +23,18 @@ const statusClass: Record<DownloadStatus, string> = {
   downloading: "bg-[#c20b2f] text-white",
   failed: "bg-[#171411] text-white",
   paused: "bg-[#efe6d4] text-[#171411]",
+  cancelled: "bg-[#171411] text-white",
+  error: "bg-[#171411] text-white",
+};
+
+const platformColors: Record<string, string> = {
+  "Steam": "bg-[#0b1c2e] text-[#66c0f4] border-[#66c0f4]",
+  "Epic Games": "bg-[#1f1f1f] text-white border-white",
+  "GOG Galaxy": "bg-[#4f0c6b] text-[#fbf0ff] border-[#fbf0ff]",
+  "EA App": "bg-[#f54242] text-white border-[#f54242]",
+  "Ubisoft Connect": "bg-[#0070b8] text-white border-[#0070b8]",
+  "Xbox Game Pass": "bg-[#107c10] text-white border-[#107c10]",
+  "OG Store": "bg-[#087d6d] text-white border-black",
 };
 
 export function DownloadCard({
@@ -44,9 +58,16 @@ export function DownloadCard({
       <div className="p-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
-            <p className="neo-copy text-[10px] font-bold uppercase text-[#55504a]">
-              Paket-ID: {item.gameId}
-            </p>
+            <div className="flex flex-wrap items-center gap-2 mb-1">
+              <span className="neo-copy text-[10px] font-bold uppercase text-[#55504a]">
+                Paket-ID: {item.gameId}
+              </span>
+              {item.platform && (
+                <span className={`neo-copy border px-1.5 py-0.2 text-[8px] font-extrabold uppercase shadow-[1px_1px_0_#171411] ${platformColors[item.platform] || "bg-[#efe6d4] text-[#171411] border-black"}`}>
+                  {item.platform}
+                </span>
+              )}
+            </div>
             <h2 className="mt-1 text-[clamp(1.5rem,8vw,1.875rem)] font-black uppercase leading-none text-[#171411]">
               {item.title}
             </h2>

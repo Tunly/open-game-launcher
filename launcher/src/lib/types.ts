@@ -9,7 +9,9 @@ export type DownloadStatus =
   | "downloading"
   | "paused"
   | "completed"
-  | "failed";
+  | "failed"
+  | "cancelled"
+  | "error";
 
 export interface Game {
   id: string;
@@ -38,6 +40,9 @@ export interface Game {
   productCategory?: string; // e.g. "game", "software", "video", "dlc", "soundtrack", "demo", "beta"
   steamDeckCompatibility?: "verified" | "playable" | "unsupported" | "unknown";
   protonCompatible?: boolean;
+  developer?: string;
+  publisher?: string;
+  releaseDate?: string;
 }
 
 export interface StoreGame {
@@ -57,12 +62,22 @@ export interface DownloadItem {
   progress: number;
   speed: string;
   status: DownloadStatus;
+  eta?: number;
+  platform?: string;
 }
 
 export interface SystemInfo {
   os: string;
   arch: string;
   appVersion: string;
+}
+
+export interface DiskInfo {
+  name: string;
+  mountPoint: string;
+  totalSpace: number;
+  availableSpace: number;
+  fileSystem: string;
 }
 
 export interface HardwareInfo {

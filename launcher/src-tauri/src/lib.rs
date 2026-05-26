@@ -12,12 +12,17 @@ pub fn run() {
                 let _ = window.set_focus();
             }
 
+            // Start the background process poller for tracking playtime
+            commands::games::start_playtime_poller(app.handle().clone());
+            commands::games::start_library_inventory_watcher(app.handle().clone());
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             commands::system::get_system_info,
             commands::system::get_default_install_dir,
             commands::system::get_hardware_info,
+            commands::system::get_disk_info,
             commands::system::open_steam_login_window,
             commands::system::open_steam_scraper_window,
             commands::system::open_gog_login_window,
@@ -26,11 +31,15 @@ pub fn run() {
             commands::system::fetch_gog_owned_games,
             commands::system::fetch_epic_owned_games,
             commands::games::add_manual_game,
+            commands::games::move_game,
             commands::games::list_installed_games,
             commands::games::refresh_installed_games,
             commands::games::launch_game,
             commands::games::verify_game_files,
             commands::downloads::start_download,
+            commands::downloads::pause_download,
+            commands::downloads::cancel_download,
+            commands::downloads::get_download_queue,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Open Game Launcher");
