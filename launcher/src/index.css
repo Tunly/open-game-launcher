@@ -99,6 +99,10 @@ a:focus-visible {
   top: 2.25rem;
 }
 
+.tauri-runtime .app-library-main {
+  height: calc(100vh - 2.25rem - 80px);
+}
+
 .steam-game-banner {
   aspect-ratio: 460 / 215;
   min-height: 0;
@@ -250,6 +254,34 @@ a:focus-visible {
 
 .library-steam-shell {
   font-family: "Roboto Condensed", "Arial Narrow", Impact, sans-serif;
+}
+
+.library-game-list-scroll,
+.library-detail-scroll {
+  scrollbar-color: #171411 #efe6d4;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+}
+
+.library-game-list-scroll::-webkit-scrollbar,
+.library-detail-scroll::-webkit-scrollbar {
+  width: 11px;
+}
+
+.library-game-list-scroll::-webkit-scrollbar-track,
+.library-detail-scroll::-webkit-scrollbar-track {
+  background: #efe6d4;
+}
+
+.library-game-list-scroll::-webkit-scrollbar-thumb,
+.library-detail-scroll::-webkit-scrollbar-thumb {
+  background: #171411;
+  border-radius: 0;
+}
+
+.library-game-list-scroll::-webkit-scrollbar-thumb:hover,
+.library-detail-scroll::-webkit-scrollbar-thumb:hover {
+  background: #007166;
 }
 
 .cuphead-character,

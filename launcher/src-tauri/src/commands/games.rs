@@ -12,6 +12,17 @@ use tauri::Emitter;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
+#[cfg(windows)]
+use winreg::{
+    enums::{RegType, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, KEY_READ},
+    RegKey, RegValue, HKEY,
+};
+
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
 const GAME_LIBRARY_CACHE_VERSION: u32 = 1;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -279,7 +290,10 @@ fn merge_cached_game_activity(game: &mut InstalledGame, cached_game: &InstalledG
 }
 
 #[tauri::command]
-pub async fn launch_game(app: tauri::AppHandle, game_id: String) -> Result<LaunchGameResponse, String> {
+pub async fn launch_game(
+    app: tauri::AppHandle,
+    game_id: String,
+) -> Result<LaunchGameResponse, String> {
     let game_id = normalize_game_id(game_id)?;
     println!("[open-game-launcher] launch_game requested for {game_id}");
 
@@ -316,7 +330,8 @@ pub async fn launch_game(app: tauri::AppHandle, game_id: String) -> Result<Launc
         });
     }
 
-    let game = list_installed_games().await?
+    let game = list_installed_games()
+        .await?
         .into_iter()
         .find(|game| game.id == game_id)
         .ok_or_else(|| format!("Game '{game_id}' wurde nicht gefunden."))?;
@@ -863,7 +878,10 @@ fn find_gog_game_id(path: &Path) -> Option<String> {
 
 fn find_gog_webcache_banner(game_id: &str) -> Option<String> {
     let program_data = env::var("ProgramData").unwrap_or_else(|_| r"C:\ProgramData".to_string());
-    let webcache_dir = Path::new(&program_data).join("GOG.com").join("Galaxy").join("webcache");
+    let webcache_dir = Path::new(&program_data)
+        .join("GOG.com")
+        .join("Galaxy")
+        .join("webcache");
     if !webcache_dir.is_dir() {
         return None;
     }
@@ -884,10 +902,16 @@ fn find_gog_webcache_banner(game_id: &str) -> Option<String> {
                             files.push(filename.to_string());
                         }
                     }
-                    if let Some(banner_file) = files.iter().find(|f| f.to_lowercase().contains("_glx_bg_top_padding_7")) {
+                    if let Some(banner_file) = files
+                        .iter()
+                        .find(|f| f.to_lowercase().contains("_glx_bg_top_padding_7"))
+                    {
                         return Some(path_to_string(game_dir.join(banner_file)));
                     }
-                    if let Some(cover_file) = files.iter().find(|f| f.to_lowercase().contains("_glx_vertical_cover")) {
+                    if let Some(cover_file) = files
+                        .iter()
+                        .find(|f| f.to_lowercase().contains("_glx_vertical_cover"))
+                    {
                         return Some(path_to_string(game_dir.join(cover_file)));
                     }
                 }
@@ -913,22 +937,12 @@ fn read_gog_registry_installs() -> Vec<GogRegistryInstall> {
         r"HKLM\SOFTWARE\GOG.com\Games",
     ]
     .into_iter()
-    .filter_map(|key| Command::new("reg").args(["query", key, "/s"]).output().ok())
-    .filter(|output| output.status.success())
-    .flat_map(|output| {
-        let text = decode_oem_ansi(&output.stdout);
-        let sections = if text.contains("\r\n\r\n") {
-            text.split("\r\n\r\n").map(str::to_string).collect::<Vec<_>>()
-        } else {
-            text.split("\n\n").map(str::to_string).collect::<Vec<_>>()
-        };
-        sections
-    })
+    .flat_map(query_registry_sections)
     .filter_map(|section| {
         if !section.contains("HKEY_") {
             return None;
         }
-        
+
         let first_line = section.lines().next()?;
         let game_id = first_line
             .split('\\')
@@ -942,7 +956,7 @@ fn read_gog_registry_installs() -> Vec<GogRegistryInstall> {
             .lines()
             .filter_map(|line| registry_string_value(line, "gameName"))
             .find(|val| !val.is_empty())?;
-        
+
         let install_dir = section
             .lines()
             .filter_map(|line| registry_string_value(line, "path"))
@@ -973,7 +987,10 @@ fn scan_gog_games() -> Vec<InstalledGame> {
             continue;
         }
 
-        let game_id = install.game_id.clone().or_else(|| find_gog_game_id(&install.install_dir));
+        let game_id = install
+            .game_id
+            .clone()
+            .or_else(|| find_gog_game_id(&install.install_dir));
         let banner_path = game_id
             .as_ref()
             .and_then(|id| find_gog_webcache_banner(id))
@@ -1054,7 +1071,10 @@ fn scan_gog_games() -> Vec<InstalledGame> {
     games
 }
 
-fn get_battlenet_assets(uid: &str, title: &str) -> (Option<String>, Option<String>, Option<String>) {
+fn get_battlenet_assets(
+    uid: &str,
+    title: &str,
+) -> (Option<String>, Option<String>, Option<String>) {
     let normalized_uid = uid.to_lowercase();
     let normalized_title = title.to_lowercase();
 
@@ -1068,7 +1088,11 @@ fn get_battlenet_assets(uid: &str, title: &str) -> (Option<String>, Option<Strin
     }
 
     // Diablo IV
-    if normalized_uid.contains("d4") || normalized_uid.contains("fenris") || normalized_title.contains("diablo iv") || normalized_title.contains("diablo 4") {
+    if normalized_uid.contains("d4")
+        || normalized_uid.contains("fenris")
+        || normalized_title.contains("diablo iv")
+        || normalized_title.contains("diablo 4")
+    {
         return (
             Some("https://cdn.cloudflare.steamstatic.com/steam/apps/2344520/library_hero.jpg".to_string()),
             Some("https://cdn.cloudflare.steamstatic.com/steam/apps/2344520/logo.png".to_string()),
@@ -1077,7 +1101,10 @@ fn get_battlenet_assets(uid: &str, title: &str) -> (Option<String>, Option<Strin
     }
 
     // Overwatch 2
-    if normalized_uid.contains("pro") || normalized_uid.contains("overwatch") || normalized_title.contains("overwatch") {
+    if normalized_uid.contains("pro")
+        || normalized_uid.contains("overwatch")
+        || normalized_title.contains("overwatch")
+    {
         return (
             Some("https://cdn.cloudflare.steamstatic.com/steam/apps/2357570/library_hero.jpg".to_string()),
             Some("https://cdn.cloudflare.steamstatic.com/steam/apps/2357570/logo.png".to_string()),
@@ -1086,7 +1113,10 @@ fn get_battlenet_assets(uid: &str, title: &str) -> (Option<String>, Option<Strin
     }
 
     // Diablo III
-    if normalized_uid.contains("d3") || normalized_title.contains("diablo iii") || normalized_title.contains("diablo 3") {
+    if normalized_uid.contains("d3")
+        || normalized_title.contains("diablo iii")
+        || normalized_title.contains("diablo 3")
+    {
         return (
             Some("https://images.blz-contentstack.com/v3/assets/blt3452e3b1156c9278/blta8236b2f4f2ce90c/6078d4508e7dfa0f5a9e7f84/d3-banner.jpg".to_string()),
             Some("https://images.blz-contentstack.com/v3/assets/blt3452e3b1156c9278/blt2980cb6658a5c3ea/6078d44ffa10cd0ee0a57fe7/d3-logo.png".to_string()),
@@ -1095,7 +1125,11 @@ fn get_battlenet_assets(uid: &str, title: &str) -> (Option<String>, Option<Strin
     }
 
     // Diablo II: Resurrected
-    if normalized_uid.contains("d2r") || normalized_uid.contains("osiris") || normalized_title.contains("diablo ii") || normalized_title.contains("diablo 2") {
+    if normalized_uid.contains("d2r")
+        || normalized_uid.contains("osiris")
+        || normalized_title.contains("diablo ii")
+        || normalized_title.contains("diablo 2")
+    {
         return (
             Some("https://images.blz-contentstack.com/v3/assets/blt3452e3b1156c9278/blta2d603126ab560ef/60f068ee1ad42c5ef2640277/d2r-hero-banner.jpg".to_string()),
             Some("https://images.blz-contentstack.com/v3/assets/blt3452e3b1156c9278/blt06ec6eb1e3a152fb/606cbfcd3000b53adcb1a2fb/d2r-logo.png".to_string()),
@@ -1104,7 +1138,11 @@ fn get_battlenet_assets(uid: &str, title: &str) -> (Option<String>, Option<Strin
     }
 
     // Hearthstone
-    if normalized_uid.contains("wtcg") || normalized_uid.contains("hs_beta") || normalized_uid.contains("hsg") || normalized_title.contains("hearthstone") {
+    if normalized_uid.contains("wtcg")
+        || normalized_uid.contains("hs_beta")
+        || normalized_uid.contains("hsg")
+        || normalized_title.contains("hearthstone")
+    {
         return (
             Some("https://images.blz-contentstack.com/v3/assets/blt3452e3b1156c9278/bltc89cb2cf1b15d045/63fc3cfa6c6cdb425ef5be82/hearthstone-banner.jpg".to_string()),
             Some("https://images.blz-contentstack.com/v3/assets/blt3452e3b1156c9278/bltbcece7a20c3132e4/63efbc65f6c88110b9db8d7d/hearthstone-logo.png".to_string()),
@@ -1113,7 +1151,10 @@ fn get_battlenet_assets(uid: &str, title: &str) -> (Option<String>, Option<Strin
     }
 
     // StarCraft II
-    if normalized_uid.contains("s2") || normalized_title.contains("starcraft ii") || normalized_title.contains("starcraft 2") {
+    if normalized_uid.contains("s2")
+        || normalized_title.contains("starcraft ii")
+        || normalized_title.contains("starcraft 2")
+    {
         return (
             Some("https://images.blz-contentstack.com/v3/assets/blt3452e3b1156c9278/blta463d1cd8cc6d506/60907d7b5bf3a710156d97c7/sc2-banner.jpg".to_string()),
             Some("https://images.blz-contentstack.com/v3/assets/blt3452e3b1156c9278/bltd2a3fa58a69fa067/60907d7b5cd37e0eec49eef3/sc2-logo.png".to_string()),
@@ -1122,7 +1163,10 @@ fn get_battlenet_assets(uid: &str, title: &str) -> (Option<String>, Option<Strin
     }
 
     // StarCraft Remastered
-    if normalized_uid.contains("s1") || normalized_uid.contains("rtsc") || normalized_title.contains("starcraft") {
+    if normalized_uid.contains("s1")
+        || normalized_uid.contains("rtsc")
+        || normalized_title.contains("starcraft")
+    {
         return (
             Some("https://images.blz-contentstack.com/v3/assets/blt3452e3b1156c9278/blt1cb4d6f08170e5b0/5db2f4a13f64c670a4a58499/scr-hero.jpg".to_string()),
             Some("https://images.blz-contentstack.com/v3/assets/blt3452e3b1156c9278/blte9bc86e04d49a7a6/5db2f4a1f6dfc76e272c723f/scr-logo.png".to_string()),
@@ -1131,7 +1175,11 @@ fn get_battlenet_assets(uid: &str, title: &str) -> (Option<String>, Option<Strin
     }
 
     // Warcraft III
-    if normalized_uid.contains("w3") || normalized_uid.contains("fore") || normalized_title.contains("warcraft iii") || normalized_title.contains("warcraft 3") {
+    if normalized_uid.contains("w3")
+        || normalized_uid.contains("fore")
+        || normalized_title.contains("warcraft iii")
+        || normalized_title.contains("warcraft 3")
+    {
         return (
             Some("https://images.blz-contentstack.com/v3/assets/blt3452e3b1156c9278/blt68b753ffc61aef42/60cba79930773d12d46e0fa8/w3r-banner.jpg".to_string()),
             Some("https://images.blz-contentstack.com/v3/assets/blt3452e3b1156c9278/blt6d5d5fa4031d2e1b/60cba79998cc8a101f3db9f7/w3r-logo.png".to_string()),
@@ -1172,10 +1220,8 @@ fn scan_battlenet_games() -> Vec<InstalledGame> {
 
         let (online_cover, online_logo, online_icon) = get_battlenet_assets(&install.uid, title);
 
-        let banner_path = online_cover
-            .or_else(|| find_local_banner_asset(&install.install_dir));
-        let logo_path = online_logo
-            .or_else(|| find_local_logo_asset(&install.install_dir));
+        let banner_path = online_cover.or_else(|| find_local_banner_asset(&install.install_dir));
+        let logo_path = online_logo.or_else(|| find_local_logo_asset(&install.install_dir));
         let icon_path = online_icon
             .or_else(|| install.icon_path.clone())
             .or_else(|| find_local_icon_asset(&install.install_dir));
@@ -1416,16 +1462,21 @@ fn collect_xbox_config_roots(path: &Path, depth: usize, roots: &mut Vec<PathBuf>
 }
 
 fn read_windows_app_game_roots() -> Vec<PathBuf> {
-    if !cfg!(target_os = "windows") {
-        return Vec::new();
-    }
+    read_windows_app_install_locations()
+        .into_iter()
+        .filter(|path| is_windows_app_game_root(path))
+        .collect()
+}
 
+#[cfg(windows)]
+fn read_windows_app_install_locations() -> Vec<PathBuf> {
     Command::new("powershell")
         .args([
             "-NoProfile",
             "-Command",
             "Get-AppxPackage | ForEach-Object { $_.InstallLocation }",
         ])
+        .creation_flags(CREATE_NO_WINDOW)
         .output()
         .ok()
         .filter(|output| output.status.success())
@@ -1435,10 +1486,14 @@ fn read_windows_app_game_roots() -> Vec<PathBuf> {
                 .map(str::trim)
                 .filter(|line| !line.is_empty())
                 .map(PathBuf::from)
-                .filter(|path| is_windows_app_game_root(path))
                 .collect()
         })
         .unwrap_or_default()
+}
+
+#[cfg(not(windows))]
+fn read_windows_app_install_locations() -> Vec<PathBuf> {
+    Vec::new()
 }
 
 fn is_windows_app_game_root(path: &Path) -> bool {
@@ -1922,17 +1977,7 @@ fn read_ubisoft_registry_installs() -> Vec<UbisoftRegistryInstall> {
         r"HKLM\SOFTWARE\Ubisoft\Launcher\Installs",
     ]
     .into_iter()
-    .filter_map(|key| Command::new("reg").args(["query", key, "/s"]).output().ok())
-    .filter(|output| output.status.success())
-    .flat_map(|output| {
-        let text = decode_oem_ansi(&output.stdout);
-        let sections = if text.contains("\r\n\r\n") {
-            text.split("\r\n\r\n").map(str::to_string).collect::<Vec<_>>()
-        } else {
-            text.split("\n\n").map(str::to_string).collect::<Vec<_>>()
-        };
-        sections
-    })
+    .flat_map(query_registry_sections)
     .filter_map(|section| {
         let install_id = ubisoft_install_id_from_registry_section(&section)?;
         let install_dir = section
@@ -2012,7 +2057,7 @@ fn extract_arg(input: &str, arg_name: &str) -> Option<String> {
     let idx = input.find(&needle)?;
     let start = idx + needle.len();
     let remaining = &input[start..];
-    
+
     if remaining.starts_with('"') {
         let end_quote = remaining[1..].find('"')?;
         Some(remaining[1..end_quote + 1].to_string())
@@ -2033,17 +2078,7 @@ fn read_battlenet_registry_installs() -> Vec<BattleNetRegistryInstall> {
         r"HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
     ]
     .into_iter()
-    .filter_map(|key| Command::new("reg").args(["query", key, "/s"]).output().ok())
-    .filter(|output| output.status.success())
-    .flat_map(|output| {
-        let text = decode_oem_ansi(&output.stdout);
-        let sections = if text.contains("\r\n\r\n") {
-            text.split("\r\n\r\n").map(str::to_string).collect::<Vec<_>>()
-        } else {
-            text.split("\n\n").map(str::to_string).collect::<Vec<_>>()
-        };
-        sections
-    })
+    .flat_map(query_registry_sections)
     .filter_map(|section| {
         if !section.contains("HKEY_") {
             return None;
@@ -3147,6 +3182,91 @@ fn env_path(key: &str) -> Option<PathBuf> {
     env::var_os(key).map(PathBuf::from)
 }
 
+#[cfg(windows)]
+fn query_registry_sections(key: &str) -> Vec<String> {
+    let Some((hkey, subkey)) = parse_registry_root(key) else {
+        return Vec::new();
+    };
+
+    let Ok(root) = RegKey::predef(hkey).open_subkey_with_flags(subkey, KEY_READ) else {
+        return Vec::new();
+    };
+
+    let mut sections = Vec::new();
+    collect_registry_sections(root, key.to_string(), &mut sections);
+    sections
+}
+
+#[cfg(not(windows))]
+fn query_registry_sections(_key: &str) -> Vec<String> {
+    Vec::new()
+}
+
+#[cfg(windows)]
+fn parse_registry_root(key: &str) -> Option<(HKEY, &str)> {
+    key.strip_prefix(r"HKLM\")
+        .map(|subkey| (HKEY_LOCAL_MACHINE, subkey))
+        .or_else(|| {
+            key.strip_prefix(r"HKCU\")
+                .map(|subkey| (HKEY_CURRENT_USER, subkey))
+        })
+}
+
+#[cfg(windows)]
+fn collect_registry_sections(key: RegKey, path: String, sections: &mut Vec<String>) {
+    let mut lines = vec![windows_registry_path(&path)];
+
+    for value in key.enum_values().flatten() {
+        let (name, reg_value) = value;
+        if let Some(value_text) = registry_value_to_string(&reg_value) {
+            lines.push(format!("    {name}    REG_SZ    {value_text}"));
+        }
+    }
+
+    sections.push(lines.join("\r\n"));
+
+    for subkey_name in key.enum_keys().flatten() {
+        if let Ok(subkey) = key.open_subkey_with_flags(&subkey_name, KEY_READ) {
+            collect_registry_sections(subkey, format!("{path}\\{subkey_name}"), sections);
+        }
+    }
+}
+
+#[cfg(windows)]
+fn windows_registry_path(path: &str) -> String {
+    path.replacen(r"HKLM\", r"HKEY_LOCAL_MACHINE\", 1)
+        .replacen(r"HKCU\", r"HKEY_CURRENT_USER\", 1)
+}
+
+#[cfg(windows)]
+fn registry_value_to_string(value: &RegValue) -> Option<String> {
+    match value.vtype {
+        RegType::REG_SZ | RegType::REG_EXPAND_SZ => utf16_registry_string(&value.bytes),
+        RegType::REG_MULTI_SZ => Some(
+            utf16_registry_string(&value.bytes)?
+                .split('\0')
+                .filter(|part| !part.is_empty())
+                .collect::<Vec<_>>()
+                .join("; "),
+        ),
+        _ => None,
+    }
+}
+
+#[cfg(windows)]
+fn utf16_registry_string(bytes: &[u8]) -> Option<String> {
+    let words = bytes
+        .chunks_exact(2)
+        .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
+        .take_while(|word| *word != 0)
+        .collect::<Vec<_>>();
+
+    String::from_utf16(&words)
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
 fn path_to_string(path: PathBuf) -> String {
     path.to_string_lossy().to_string()
 }
@@ -3226,15 +3346,17 @@ fn extract_ea_content_id(install_dir: &Path) -> Option<String> {
     let lowercase_contents = contents.to_lowercase();
     let start_tag = "<contentid>";
     let end_tag = "</contentid>";
-    
+
     if let Some(start_idx) = lowercase_contents.find(start_tag) {
         let val_start = start_idx + start_tag.len();
         if let Some(end_idx) = lowercase_contents[val_start..].find(end_tag) {
             let mut val = contents[val_start..val_start + end_idx].trim().to_string();
-            
+
             // Handle <![CDATA[ ... ]]>
             if val.starts_with("<![CDATA[") && val.ends_with("]]>") {
-                val = val["<![CDATA[".len()..val.len() - "]]>".len()].trim().to_string();
+                val = val["<![CDATA[".len()..val.len() - "]]>".len()]
+                    .trim()
+                    .to_string();
             } else if val.contains("<![CDATA[") {
                 if let Some(c_start) = val.find("<![CDATA[") {
                     let remaining = &val[c_start + "<![CDATA[".len()..];
@@ -3243,7 +3365,7 @@ fn extract_ea_content_id(install_dir: &Path) -> Option<String> {
                     }
                 }
             }
-            
+
             if !val.is_empty() {
                 return Some(val);
             }
@@ -3263,17 +3385,7 @@ fn read_ea_registry_installs() -> Vec<EaRegistryInstall> {
         r"HKCU\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
     ]
     .into_iter()
-    .filter_map(|key| Command::new("reg").args(["query", key, "/s"]).output().ok())
-    .filter(|output| output.status.success())
-    .flat_map(|output| {
-        let text = decode_oem_ansi(&output.stdout);
-        let sections = if text.contains("\r\n\r\n") {
-            text.split("\r\n\r\n").map(str::to_string).collect::<Vec<_>>()
-        } else {
-            text.split("\n\n").map(str::to_string).collect::<Vec<_>>()
-        };
-        sections
-    })
+    .flat_map(query_registry_sections)
     .filter_map(|section| {
         if !section.contains("HKEY_") {
             return None;
@@ -3352,7 +3464,10 @@ fn read_ea_registry_installs() -> Vec<EaRegistryInstall> {
     .collect()
 }
 
-fn get_ea_assets(content_id: &str, title: &str) -> (Option<String>, Option<String>, Option<String>) {
+fn get_ea_assets(
+    content_id: &str,
+    title: &str,
+) -> (Option<String>, Option<String>, Option<String>) {
     let normalized_title = title.to_lowercase();
     let _normalized_id = content_id.to_lowercase();
 
@@ -3364,7 +3479,9 @@ fn get_ea_assets(content_id: &str, title: &str) -> (Option<String>, Option<Strin
         app_id = Some("1222670");
     } else if normalized_title.contains("battlefield 2042") {
         app_id = Some("1517290");
-    } else if normalized_title.contains("battlefield v") || normalized_title.contains("battlefield 5") {
+    } else if normalized_title.contains("battlefield v")
+        || normalized_title.contains("battlefield 5")
+    {
         app_id = Some("1238840");
     } else if normalized_title.contains("battlefield 1") {
         app_id = Some("1238810");
@@ -3374,19 +3491,31 @@ fn get_ea_assets(content_id: &str, title: &str) -> (Option<String>, Option<Strin
         app_id = Some("1172470");
     } else if normalized_title.contains("it takes two") {
         app_id = Some("1426210");
-    } else if normalized_title.contains("jedi: fallen order") || normalized_title.contains("jedi fallen order") {
+    } else if normalized_title.contains("jedi: fallen order")
+        || normalized_title.contains("jedi fallen order")
+    {
         app_id = Some("1172380");
-    } else if normalized_title.contains("jedi: survivor") || normalized_title.contains("jedi survivor") {
+    } else if normalized_title.contains("jedi: survivor")
+        || normalized_title.contains("jedi survivor")
+    {
         app_id = Some("1774580");
     } else if normalized_title.contains("mass effect legendary") {
         app_id = Some("1328670");
-    } else if normalized_title.contains("command & conquer") || normalized_title.contains("command and conquer") {
+    } else if normalized_title.contains("command & conquer")
+        || normalized_title.contains("command and conquer")
+    {
         app_id = Some("1307580");
-    } else if normalized_title.contains("dragon age: inquisition") || normalized_title.contains("dragon age inquisition") {
+    } else if normalized_title.contains("dragon age: inquisition")
+        || normalized_title.contains("dragon age inquisition")
+    {
         app_id = Some("1222690");
-    } else if normalized_title.contains("nfs heat") || normalized_title.contains("need for speed heat") {
+    } else if normalized_title.contains("nfs heat")
+        || normalized_title.contains("need for speed heat")
+    {
         app_id = Some("1293830");
-    } else if normalized_title.contains("nfs unbound") || normalized_title.contains("need for speed unbound") {
+    } else if normalized_title.contains("nfs unbound")
+        || normalized_title.contains("need for speed unbound")
+    {
         app_id = Some("1374300");
     } else if normalized_title.contains("ea sports fc 24") || normalized_title.contains("fc 24") {
         app_id = Some("2195250");
@@ -3439,16 +3568,21 @@ fn scan_ea_games() -> Vec<InstalledGame> {
         let content_id = install.content_id.clone().unwrap_or_default();
         let (online_cover, online_logo, online_icon) = get_ea_assets(&content_id, title);
 
-        let banner_path = online_cover
-            .or_else(|| find_local_banner_asset(&install.install_dir));
-        let logo_path = online_logo
-            .or_else(|| find_local_logo_asset(&install.install_dir));
+        let banner_path = online_cover.or_else(|| find_local_banner_asset(&install.install_dir));
+        let logo_path = online_logo.or_else(|| find_local_logo_asset(&install.install_dir));
         let icon_path = online_icon
             .or_else(|| install.icon_path.clone())
             .or_else(|| find_local_icon_asset(&install.install_dir));
 
         let mut game = installed_game(
-            &format!("ea-{}", if content_id.is_empty() { title.replace(" ", "-").to_lowercase() } else { content_id.clone() }),
+            &format!(
+                "ea-{}",
+                if content_id.is_empty() {
+                    title.replace(" ", "-").to_lowercase()
+                } else {
+                    content_id.clone()
+                }
+            ),
             title.to_string(),
             "EA App".to_string(),
             Some(path_to_string(install.install_dir.clone())),
@@ -3457,7 +3591,7 @@ fn scan_ea_games() -> Vec<InstalledGame> {
 
         game.logo_url = logo_path;
         game.icon_url = icon_path;
-        
+
         if !content_id.is_empty() {
             game.launch_uri = Some(format!("origin://launchgame/{}", content_id));
         }

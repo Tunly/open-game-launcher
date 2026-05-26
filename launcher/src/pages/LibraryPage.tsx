@@ -22,28 +22,25 @@ import {
   X,
 } from "lucide-react";
 import { listen } from "@tauri-apps/api/event";
-import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
 
 import { getGameAssetUrl, getGameBannerStyle } from "../lib/assets";
-import { addManualGame, launchGame, listInstalledGames, refreshInstalledGames, startDownload, fetchSteamOwnedGames, fetchGogOwnedGames, fetchEpicOwnedGames } from "../lib/launcher";
+import { addManualGame, launchGame, listInstalledGames, refreshInstalledGames, startDownload, fetchSteamOwnedGames, fetchGogOwnedGames, fetchEpicOwnedGames, normalizeSteamOwnedGames, openSteamScraperWindow } from "../lib/launcher";
 import type { OwnedGame } from "../lib/launcher";
 import type { Game } from "../lib/types";
 
 const STARTUP_LIBRARY_RESCAN_KEY = "launcher_startup_library_rescan_done";
 const LIBRARY_SNAPSHOT_KEY = "launcher_library_snapshot";
+const STEAM_OWNED_GAMES_CACHE_KEY = "launcher.steamOwnedGamesCache";
+const STEAM_OWNED_GAMES_CACHE_VERSION_KEY = "launcher.steamOwnedGamesCacheVersion";
+const STEAM_OWNED_GAMES_CACHE_VERSION = "2";
 
 function triggerSilentSteamScraper(steamId: string) {
-  try {
-    console.log("[OG-Launcher] Opening silent Steam scraper window in background...");
-    new WebviewWindow("steam-silent-scraper", {
-      url: `https://steamcommunity.com/profiles/${steamId}/games/?tab=all`,
-      visible: false,
-    });
-  } catch (err) {
+  console.log("[OG-Launcher] Opening silent Steam scraper window in background...");
+  void openSteamScraperWindow(steamId).catch((err) => {
     console.warn("Failed to open silent steam scraper window:", err);
-  }
+  });
 }
 
 type GameActivityUpdate = {
@@ -936,13 +933,22 @@ export function LibraryPage() {
           let ownedRaw: OwnedGame[] = [];
           
           // Load owned games from the local WebView scraper cache
-          const cacheStr = localStorage.getItem("launcher.steamOwnedGamesCache");
-          if (cacheStr) {
+          const cacheStr = localStorage.getItem(STEAM_OWNED_GAMES_CACHE_KEY);
+          const cacheVersion = localStorage.getItem(STEAM_OWNED_GAMES_CACHE_VERSION_KEY);
+          if (!forceRefresh && cacheVersion === STEAM_OWNED_GAMES_CACHE_VERSION && cacheStr) {
             try {
-              ownedRaw = JSON.parse(cacheStr);
+              ownedRaw = normalizeSteamOwnedGames(JSON.parse(cacheStr));
               console.log("[OG-Launcher] Loaded Steam owned games from cache:", ownedRaw.length, "games");
             } catch (err) {
               console.warn("Failed to parse steamOwnedGamesCache:", err);
+            }
+          }
+
+          if (ownedRaw.length === 0) {
+            ownedRaw = normalizeSteamOwnedGames(await fetchSteamOwnedGames(steamId));
+            if (ownedRaw.length > 0) {
+              localStorage.setItem(STEAM_OWNED_GAMES_CACHE_KEY, JSON.stringify(ownedRaw));
+              localStorage.setItem(STEAM_OWNED_GAMES_CACHE_VERSION_KEY, STEAM_OWNED_GAMES_CACHE_VERSION);
             }
           }
           
@@ -1108,6 +1114,7 @@ export function LibraryPage() {
     return () => {
       isMounted = false;
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialLibrarySnapshot.length]);
 
   useEffect(() => {
@@ -1152,10 +1159,12 @@ export function LibraryPage() {
       void loadInstalledGames(false, () => isMounted, false);
     });
 
-    const unlistenScrapedSuccess = listen<any[]>("steam_scraped_games_success", (event) => {
+    const unlistenScrapedSuccess = listen<unknown[]>("steam_scraped_games_success", (event) => {
       if (!isMounted) return;
-      console.log("[OG-Launcher] Scraper successfully fetched games:", event.payload.length);
-      localStorage.setItem("launcher.steamOwnedGamesCache", JSON.stringify(event.payload));
+      const ownedGames = normalizeSteamOwnedGames(event.payload);
+      console.log("[OG-Launcher] Scraper successfully fetched games:", ownedGames.length);
+      localStorage.setItem(STEAM_OWNED_GAMES_CACHE_KEY, JSON.stringify(ownedGames));
+      localStorage.setItem(STEAM_OWNED_GAMES_CACHE_VERSION_KEY, STEAM_OWNED_GAMES_CACHE_VERSION);
       void loadInstalledGames(false, () => isMounted, false);
     });
 
@@ -1171,6 +1180,7 @@ export function LibraryPage() {
       void unlistenScrapedSuccess.then((u) => u());
       void unlistenScrapedError.then((u) => u());
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Update selected game if list updates
@@ -1323,8 +1333,8 @@ export function LibraryPage() {
   const enrichedSelectedGame = selectedGame ? enrichGameWithMetadata(selectedGame) : null;
 
   return (
-    <div className="library-steam-shell min-h-[calc(100vh-80px)] overflow-x-hidden border-x-0 border-black bg-[#fbf4e7] text-[#171411] sm:border-x-4">
-      <div className="relative grid min-h-[calc(100vh-80px)] min-w-0 grid-cols-1 md:grid-cols-[260px_minmax(0,1fr)] lg:grid-cols-[290px_minmax(0,1fr)]">
+    <div className="library-steam-shell h-full min-h-0 overflow-hidden border-x-0 border-black bg-[#fbf4e7] text-[#171411] sm:border-x-4">
+      <div className="relative grid h-full min-h-0 min-w-0 grid-cols-1 md:grid-cols-[260px_minmax(0,1fr)] lg:grid-cols-[290px_minmax(0,1fr)]">
         
         {/* ====================================================
             SIDEBAR PANEL
@@ -1369,8 +1379,8 @@ export function LibraryPage() {
               </label>
             </div>
 
-            {/* Scrollable list of items */}
-            <div className="flex-1 overflow-y-auto pb-3">
+            {/* Fixed list controls */}
+            <div className="shrink-0">
               
               {/* SAVED DYNAMIC COLLECTIONS */}
               {dynamicCollections.length > 0 ? (
@@ -1452,7 +1462,10 @@ export function LibraryPage() {
                 )}
                 </div>
               </div>
+            </div>
 
+            {/* Scrollable list of items */}
+            <div className="library-game-list-scroll flex-1 overflow-y-scroll pb-3">
               {/* RENDER LIST ROWS */}
               {shouldShowLibraryLoading ? (
                 <p className="neo-copy px-3 py-2 text-[11px] font-bold uppercase text-[#55504a]">
@@ -1841,7 +1854,7 @@ export function LibraryPage() {
         {/* ====================================================
             GAME DETAILS MAIN CONTENT
             ==================================================== */}
-        <main className="min-w-0 overflow-hidden">
+        <main className="library-detail-scroll min-h-0 min-w-0 overflow-x-hidden overflow-y-auto">
           {shouldShowLibraryLoading ? (
             <section className="grid min-h-[calc(100vh-124px)] place-items-center border-b-4 border-black bg-[#efe3cf] px-4 text-center" style={{ fontFamily: '"Arial Narrow", Impact, sans-serif' }}>
               <div className="max-w-[560px] border-4 border-black bg-[#fbf4e7] p-8 shadow-[8px_8px_0_#171411]">

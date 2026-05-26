@@ -1,16 +1,18 @@
 use serde::Serialize;
-use tauri::Manager;
 use std::{
+    collections::{BTreeMap, BTreeSet},
     env, fs,
     io::{Read, Write},
     net::TcpListener,
-    path::PathBuf,
+    path::{Path, PathBuf},
     process::Command,
     thread,
 };
+use tauri::Manager;
 
 const LAUNCHER_DIR: &str = "open-game-launcher";
 const PRODUCT_DIR: &str = "Open Game Launcher";
+const STEAM_ID64_BASE: u64 = 76_561_197_960_265_728;
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -279,7 +281,7 @@ fn start_local_callback_server(app: tauri::AppHandle) {
 
             let mut buffer = Vec::new();
             let mut temp_buf = [0u8; 4096];
-            
+
             // Read headers first
             let mut headers_end = None;
             loop {
@@ -289,7 +291,7 @@ fn start_local_callback_server(app: tauri::AppHandle) {
                     Err(_) => break,
                 };
                 buffer.extend_from_slice(&temp_buf[..bytes_read]);
-                
+
                 // Find \r\n\r\n
                 if let Some(pos) = buffer.windows(4).position(|w| w == b"\r\n\r\n") {
                     headers_end = Some(pos);
@@ -305,7 +307,7 @@ fn start_local_callback_server(app: tauri::AppHandle) {
             };
 
             let headers_str = String::from_utf8_lossy(&buffer[..h_end]).into_owned();
-            
+
             // Handle CORS preflight request (OPTIONS)
             if headers_str.starts_with("OPTIONS ") {
                 let response = "HTTP/1.1 200 OK\r\n\
@@ -340,7 +342,8 @@ fn start_local_callback_server(app: tauri::AppHandle) {
                 buffer.extend_from_slice(&chunk[..bytes_read]);
             }
 
-            let body_str = String::from_utf8_lossy(&buffer[body_start..body_start + content_length]);
+            let body_str =
+                String::from_utf8_lossy(&buffer[body_start..body_start + content_length]);
 
             // CASE 1: POST /scraped (scraped games list from WebView)
             if headers_str.starts_with("POST /scraped") {
@@ -349,26 +352,38 @@ fn start_local_callback_server(app: tauri::AppHandle) {
 
                     if let Some(games_array) = parsed_data.get("games") {
                         if games_array.as_array().map_or(0, |a| a.len()) > 0 {
-                            println!("[Steam Scraper] Received {} owned games from Webview!", games_array.as_array().unwrap().len());
+                            println!(
+                                "[Steam Scraper] Received {} owned games from Webview!",
+                                games_array.as_array().unwrap().len()
+                            );
                             let _ = app.emit("steam_scraped_games_success", games_array.clone());
-                            
+
                             // Close both standard login window and silent scraper if present
                             if let Some(login_window) = app.get_webview_window("steam-login") {
                                 let _ = login_window.close();
                             }
-                            if let Some(scraper_window) = app.get_webview_window("steam-silent-scraper") {
+                            if let Some(scraper_window) =
+                                app.get_webview_window("steam-silent-scraper")
+                            {
                                 let _ = scraper_window.close();
                             }
                         }
-                    } else if let Some(is_private) = parsed_data.get("isPrivate").and_then(|v| v.as_bool()) {
+                    } else if let Some(is_private) =
+                        parsed_data.get("isPrivate").and_then(|v| v.as_bool())
+                    {
                         if is_private {
                             println!("[Steam Scraper] Scraper reported profile or game details are private.");
-                            let _ = app.emit("steam_scraped_games_error", "Steam-Profil oder Spieldetails sind privat.".to_string());
-                            
+                            let _ = app.emit(
+                                "steam_scraped_games_error",
+                                "Steam-Profil oder Spieldetails sind privat.".to_string(),
+                            );
+
                             if let Some(login_window) = app.get_webview_window("steam-login") {
                                 let _ = login_window.close();
                             }
-                            if let Some(scraper_window) = app.get_webview_window("steam-silent-scraper") {
+                            if let Some(scraper_window) =
+                                app.get_webview_window("steam-silent-scraper")
+                            {
                                 let _ = scraper_window.close();
                             }
                         }
@@ -411,7 +426,8 @@ fn start_local_callback_server(app: tauri::AppHandle) {
 
                     // Respond with a page that immediately redirects to their games list.
                     // Since they just logged in inside the Webview, cookies are fully active!
-                    let redirect_html = format!(r#"
+                    let redirect_html = format!(
+                        r#"
                         <!DOCTYPE html>
                         <html>
                         <head>
@@ -434,10 +450,10 @@ fn start_local_callback_server(app: tauri::AppHandle) {
                                     padding: 40px 30px;
                                     box-shadow: 6px 6px 0px #000;
                                 }}
-                                h1 {{ 
-                                    font-weight: 900; 
-                                    text-transform: uppercase; 
-                                    margin-bottom: 20px; 
+                                h1 {{
+                                    font-weight: 900;
+                                    text-transform: uppercase;
+                                    margin-bottom: 20px;
                                     font-size: 24px;
                                     letter-spacing: -0.02em;
                                 }}
@@ -454,7 +470,9 @@ fn start_local_callback_server(app: tauri::AppHandle) {
                             </script>
                         </body>
                         </html>
-                    "#, sid);
+                    "#,
+                        sid
+                    );
 
                     let response = format!(
                         "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=UTF-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
@@ -468,23 +486,133 @@ fn start_local_callback_server(app: tauri::AppHandle) {
                 }
             }
 
-            let response_body = "HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+            let response_body =
+                "HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
             let _ = stream.write_all(response_body.as_bytes());
         }
     });
 }
 
-#[tauri::command]
-pub async fn open_steam_login_window(app: tauri::AppHandle) -> Result<(), String> {
-    start_local_callback_server(app.clone());
-
-    let url = "https://steamcommunity.com/openid/login?openid.ns=http://specs.openid.net/auth/2.0&openid.mode=checkid_setup&openid.return_to=http://localhost:18234/&openid.realm=http://localhost:18234/&openid.identity=http://specs.openid.net/auth/2.0/identifier_select&openid.claimed_id=http://specs.openid.net/auth/2.0/identifier_select";
-    
-    // Injected JavaScript to scrape rgGames list automatically and post it to our local server
-    let scraper_script = r#"
+fn steam_scraper_script() -> &'static str {
+    r#"
         (function() {
             console.log("[Steam Scraper] Active!");
-            
+
+            function appIdFromValue(value) {
+                if (!value) return "";
+                const match = String(value).match(/(?:app\/|appid[=:]|^)(\d{2,})/i);
+                return match ? match[1] : "";
+            }
+
+            function cleanTitle(value) {
+                return String(value || "")
+                    .replace(/\s+/g, " ")
+                    .replace(/\bView Store Page\b/gi, "")
+                    .trim();
+            }
+
+            function pushGame(map, appid, title, playtimeHours) {
+                appid = appIdFromValue(appid);
+                title = cleanTitle(title);
+                if (!appid || !title || map.has(appid)) return;
+                map.set(appid, {
+                    appid,
+                    name: title,
+                    hours_forever: playtimeHours || "0"
+                });
+            }
+
+            function collectFromGlobals(map) {
+                const sources = [window.rgGames, window.g_rgGames, window.g_rgGameList];
+                for (const source of sources) {
+                    if (!Array.isArray(source)) continue;
+                    for (const game of source) {
+                        pushGame(
+                            map,
+                            game && (game.appid || game.app_id || game.id),
+                            game && (game.name || game.title),
+                            game && (game.hours_forever || game.hours || game.playtime_forever)
+                        );
+                    }
+                }
+            }
+
+            function collectFromDom(map) {
+                const rows = document.querySelectorAll(
+                    '[data-ds-appid], [data-appid], a[href*="/app/"], .gameListRow'
+                );
+
+                rows.forEach((row) => {
+                    const hrefNode = row.matches && row.matches('a[href*="/app/"]')
+                        ? row
+                        : row.querySelector && row.querySelector('a[href*="/app/"]');
+                    const appid =
+                        row.getAttribute && (
+                            row.getAttribute('data-ds-appid') ||
+                            row.getAttribute('data-appid')
+                        ) ||
+                        (hrefNode && hrefNode.getAttribute('href')) ||
+                        "";
+                    const titleNode =
+                        row.querySelector && (
+                            row.querySelector('.gameListRowItemName') ||
+                            row.querySelector('.gameListRowLogo img') ||
+                            row.querySelector('img[alt]') ||
+                            row.querySelector('[title]')
+                        );
+                    const title =
+                        (titleNode && (
+                            titleNode.getAttribute('alt') ||
+                            titleNode.getAttribute('title') ||
+                            titleNode.textContent
+                        )) ||
+                        row.getAttribute && (
+                            row.getAttribute('aria-label') ||
+                            row.getAttribute('title')
+                        ) ||
+                        row.textContent ||
+                        "";
+                    pushGame(map, appid, title, "0");
+                });
+            }
+
+            function collectFromScripts(map) {
+                const text = Array.from(document.scripts)
+                    .map((script) => script.textContent || "")
+                    .join("\n");
+                const match = text.match(/(?:var\s+)?(?:rgGames|g_rgGames)\s*=\s*(\[[\s\S]*?\]);/);
+                if (!match) return;
+
+                try {
+                    const games = JSON.parse(match[1]);
+                    if (Array.isArray(games)) {
+                        for (const game of games) {
+                            pushGame(
+                                map,
+                                game && (game.appid || game.app_id || game.id),
+                                game && (game.name || game.title),
+                                game && (game.hours_forever || game.hours || game.playtime_forever)
+                            );
+                        }
+                    }
+                } catch (error) {
+                    console.warn("[Steam Scraper] Failed to parse script game list", error);
+                }
+            }
+
+            function post(payload) {
+                if (window.__ogSteamScraperPosted) return;
+                window.__ogSteamScraperPosted = true;
+                fetch("http://127.0.0.1:18234/scraped", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify(payload)
+                }).catch((error) => {
+                    window.__ogSteamScraperPosted = false;
+                    console.error("[Steam Scraper] Fetch error:", error);
+                });
+            }
+
             function tryScrape() {
                 const url = window.location.href;
                 if (!url.includes("steamcommunity.com/profiles/") && !url.includes("steamcommunity.com/id/")) {
@@ -493,48 +621,93 @@ pub async fn open_steam_login_window(app: tauri::AppHandle) -> Result<(), String
                 if (!url.includes("/games")) {
                     return;
                 }
-                
-                console.log("[Steam Scraper] We are on the games page, attempting scrape...");
-                const games = window.rgGames || window.g_rgGames;
-                const isPrivate = document.body.innerHTML.includes("This profile is private") || 
-                                  document.body.innerHTML.includes("profile_private_info") || 
-                                  document.title.includes("Sign In");
-                                  
-                if (games && games.length > 0) {
+
+                const map = new Map();
+                collectFromGlobals(map);
+                collectFromScripts(map);
+                collectFromDom(map);
+
+                const games = Array.from(map.values());
+                const bodyText = document.body ? document.body.innerText || document.body.innerHTML : "";
+                const isPrivate =
+                    bodyText.includes("This profile is private") ||
+                    bodyText.includes("Game details are private") ||
+                    bodyText.includes("profile_private_info") ||
+                    document.title.includes("Sign In");
+
+                if (games.length > 0) {
                     console.log("[Steam Scraper] Found games: " + games.length + ", posting to backend...");
-                    fetch("http://localhost:18234/scraped", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ games })
-                    }).catch(e => console.error("[Steam Scraper] Fetch error: ", e));
+                    post({ games });
                 } else if (isPrivate) {
                     console.log("[Steam Scraper] Profile is private or requires login, reporting to backend...");
-                    fetch("http://localhost:18234/scraped", {
-                        method: "POST",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({ isPrivate: true })
-                    }).catch(e => console.error("[Steam Scraper] Fetch error: ", e));
+                    post({ isPrivate: true });
                 }
             }
 
             window.addEventListener("DOMContentLoaded", tryScrape);
+            window.addEventListener("load", tryScrape);
             setInterval(tryScrape, 1500);
         })();
-    "#;
+    "#
+}
+
+#[tauri::command]
+pub async fn open_steam_login_window(app: tauri::AppHandle) -> Result<(), String> {
+    start_local_callback_server(app.clone());
+
+    let url = "https://steamcommunity.com/openid/login?openid.ns=http://specs.openid.net/auth/2.0&openid.mode=checkid_setup&openid.return_to=http://localhost:18234/&openid.realm=http://localhost:18234/&openid.identity=http://specs.openid.net/auth/2.0/identifier_select&openid.claimed_id=http://specs.openid.net/auth/2.0/identifier_select";
 
     // Create a native Tauri window for logging in, sharing cookies
     let _window = tauri::WebviewWindowBuilder::new(
         &app,
         "steam-login",
-        tauri::WebviewUrl::External(url.parse().map_err(|e| format!("Failed to parse login URL: {e}"))?)
+        tauri::WebviewUrl::External(
+            url.parse()
+                .map_err(|e| format!("Failed to parse login URL: {e}"))?,
+        ),
     )
     .title("Steam Login")
     .inner_size(800.0, 600.0)
     .center()
     .resizable(true)
-    .initialization_script(scraper_script)
+    .initialization_script(steam_scraper_script())
     .build()
     .map_err(|e| format!("Failed to create login window: {e}"))?;
+
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn open_steam_scraper_window(
+    app: tauri::AppHandle,
+    steam_id: String,
+) -> Result<(), String> {
+    let steam_id = steam_id.trim();
+    if steam_id.is_empty() || !steam_id.chars().all(|c| c.is_ascii_digit()) {
+        return Err("SteamID64 ist ungueltig.".to_string());
+    }
+
+    start_local_callback_server(app.clone());
+
+    if let Some(existing_window) = app.get_webview_window("steam-silent-scraper") {
+        let _ = existing_window.close();
+    }
+
+    let url = format!("https://steamcommunity.com/profiles/{steam_id}/games/?tab=all");
+    let _window = tauri::WebviewWindowBuilder::new(
+        &app,
+        "steam-silent-scraper",
+        tauri::WebviewUrl::External(
+            url.parse()
+                .map_err(|e| format!("Failed to parse Steam games URL: {e}"))?,
+        ),
+    )
+    .title("Steam Library Sync")
+    .inner_size(900.0, 700.0)
+    .visible(false)
+    .initialization_script(steam_scraper_script())
+    .build()
+    .map_err(|e| format!("Failed to create Steam sync window: {e}"))?;
 
     Ok(())
 }
@@ -564,12 +737,15 @@ fn start_gog_callback_server(app: tauri::AppHandle) {
             };
 
             let request = String::from_utf8_lossy(&buffer[..bytes_read]);
-            
+
             if request.contains("code=") {
                 if let Some(pos) = request.find("code=") {
                     let start_idx = pos + "code=".len();
                     let rest = &request[start_idx..];
-                    let code = rest.split(|c| c == ' ' || c == '&' || c == '\r' || c == '\n').next().unwrap_or("");
+                    let code = rest
+                        .split(|c| c == ' ' || c == '&' || c == '\r' || c == '\n')
+                        .next()
+                        .unwrap_or("");
                     if !code.is_empty() {
                         println!("[GOG Login] Extracted GOG Code: {}", code);
 
@@ -599,10 +775,10 @@ fn start_gog_callback_server(app: tauri::AppHandle) {
                                             padding: 40px 30px;
                                             box-shadow: 6px 6px 0px #000;
                                         }
-                                        h1 { 
-                                            font-weight: 900; 
-                                            text-transform: uppercase; 
-                                            margin-bottom: 20px; 
+                                        h1 {
+                                            font-weight: 900;
+                                            text-transform: uppercase;
+                                            margin-bottom: 20px;
                                             font-size: 28px;
                                             letter-spacing: -0.02em;
                                         }
@@ -637,7 +813,8 @@ fn start_gog_callback_server(app: tauri::AppHandle) {
                 }
             }
 
-            let response_body = "HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
+            let response_body =
+                "HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
             let _ = stream.write_all(response_body.as_bytes());
         }
     });
@@ -677,8 +854,475 @@ pub struct OwnedGame {
     pub playtime_minutes: u64,
 }
 
+fn fetch_local_steam_owned_games(steam_id: &str) -> Vec<OwnedGame> {
+    let Some(steam_dir) = find_steam_dir() else {
+        println!("[Steam] Local Steam install was not found.");
+        return Vec::new();
+    };
+
+    let Some(account_id) = steam_account_id_from_id64(steam_id) else {
+        println!("[Steam] Could not map SteamID64 '{steam_id}' to a local account id.");
+        return Vec::new();
+    };
+
+    let account_config_dir = steam_dir.join("userdata").join(&account_id).join("config");
+    if !account_config_dir.exists() {
+        println!(
+            "[Steam] Local Steam userdata was not found for SteamID64 '{steam_id}' (account id {account_id})."
+        );
+        return Vec::new();
+    }
+
+    let mut app_ids = collect_account_steam_app_ids(&account_config_dir);
+    app_ids.extend(collect_steam_library_asset_app_ids(&steam_dir));
+
+    if app_ids.is_empty() {
+        println!("[Steam] Local Steam cache did not contain any app ids.");
+        return Vec::new();
+    }
+
+    let titles = read_steam_appinfo_game_titles(&steam_dir);
+    if titles.is_empty() {
+        println!("[Steam] Local Steam appinfo cache did not contain game titles.");
+        return Vec::new();
+    }
+
+    let playtimes = read_steam_playtime_minutes(&account_config_dir);
+    let mut games = Vec::new();
+
+    for app_id in app_ids {
+        let Some(title) = titles.get(&app_id) else {
+            continue;
+        };
+
+        games.push(OwnedGame {
+            id: format!("steam-owned-{app_id}"),
+            title: title.clone(),
+            description: format!("Steam game (Owned). AppID: {app_id}"),
+            cover_url: find_steam_cached_asset(
+                &steam_dir,
+                &app_id,
+                &["library_600x900.jpg", "library_capsule.jpg"],
+            )
+            .or_else(|| {
+                Some(format!(
+                    "https://cdn.cloudflare.steamstatic.com/steam/apps/{app_id}/library_600x900.jpg"
+                ))
+            }),
+            logo_url: find_steam_cached_asset(
+                &steam_dir,
+                &app_id,
+                &[
+                    "logo.png",
+                    "library_logo.png",
+                    "library_header.jpg",
+                    "header.jpg",
+                ],
+            )
+            .or_else(|| {
+                Some(format!(
+                    "https://cdn.cloudflare.steamstatic.com/steam/apps/{app_id}/header.jpg"
+                ))
+            }),
+            icon_url: find_steam_cached_asset(
+                &steam_dir,
+                &app_id,
+                &["header.jpg", "library_header.jpg"],
+            ),
+            playtime_minutes: playtimes.get(&app_id).copied().unwrap_or_default(),
+        });
+    }
+
+    games.sort_by(|a, b| {
+        a.title
+            .to_lowercase()
+            .cmp(&b.title.to_lowercase())
+            .then_with(|| a.id.cmp(&b.id))
+    });
+
+    games
+}
+
+fn steam_account_id_from_id64(steam_id: &str) -> Option<String> {
+    let id64 = steam_id.trim().parse::<u64>().ok()?;
+    id64.checked_sub(STEAM_ID64_BASE)
+        .map(|account_id| account_id.to_string())
+}
+
+fn find_steam_dir() -> Option<PathBuf> {
+    let mut candidates = Vec::new();
+
+    if cfg!(target_os = "windows") {
+        if let Some(program_files_x86) = env_path("ProgramFiles(x86)") {
+            candidates.push(program_files_x86.join("Steam"));
+        }
+
+        if let Some(program_files) = env_path("ProgramFiles") {
+            candidates.push(program_files.join("Steam"));
+        }
+
+        candidates.push(PathBuf::from(r"C:\Steam"));
+    } else if let Some(home) = env_path("HOME") {
+        candidates.push(home.join(".local/share/Steam"));
+        candidates.push(home.join(".steam/steam"));
+        candidates.push(home.join(".steam/root"));
+        candidates.push(home.join(".var/app/com.valvesoftware.Steam/.local/share/Steam"));
+        candidates.push(home.join(".var/app/com.valvesoftware.Steam/data/Steam"));
+        candidates.push(home.join("Library/Application Support/Steam"));
+    }
+
+    candidates.into_iter().find(|candidate| candidate.exists())
+}
+
+fn env_path(key: &str) -> Option<PathBuf> {
+    env::var_os(key).map(PathBuf::from)
+}
+
+fn collect_account_steam_app_ids(account_config_dir: &Path) -> BTreeSet<String> {
+    let mut app_ids = BTreeSet::new();
+
+    let library_cache_dir = account_config_dir.join("librarycache");
+    if let Ok(entries) = fs::read_dir(library_cache_dir) {
+        for entry in entries.filter_map(|entry| entry.ok()) {
+            let path = entry.path();
+            if path.extension().and_then(|extension| extension.to_str()) != Some("json") {
+                continue;
+            }
+
+            let Some(stem) = path.file_stem().and_then(|stem| stem.to_str()) else {
+                continue;
+            };
+
+            if is_numeric_steam_app_id(stem) {
+                app_ids.insert(stem.to_string());
+            }
+        }
+    }
+
+    let localconfig = account_config_dir.join("localconfig.vdf");
+    if let Ok(contents) = fs::read_to_string(localconfig) {
+        app_ids.extend(collect_vdf_block_keys(&contents, "apps"));
+        app_ids.extend(collect_vdf_block_keys(&contents, "apptickets"));
+    }
+
+    app_ids
+}
+
+fn collect_steam_library_asset_app_ids(steam_dir: &Path) -> BTreeSet<String> {
+    let mut app_ids = BTreeSet::new();
+    let library_cache_dir = steam_dir.join("appcache").join("librarycache");
+
+    let Ok(entries) = fs::read_dir(library_cache_dir) else {
+        return app_ids;
+    };
+
+    for entry in entries.filter_map(|entry| entry.ok()) {
+        let Ok(file_type) = entry.file_type() else {
+            continue;
+        };
+
+        if !file_type.is_dir() {
+            continue;
+        }
+
+        let Some(name) = entry.file_name().to_str().map(|name| name.to_string()) else {
+            continue;
+        };
+
+        if is_numeric_steam_app_id(&name) {
+            app_ids.insert(name);
+        }
+    }
+
+    app_ids
+}
+
+fn read_steam_appinfo_game_titles(steam_dir: &Path) -> BTreeMap<String, String> {
+    let appinfo_path = steam_dir.join("appcache").join("appinfo.vdf");
+    let Ok(contents) = fs::read(appinfo_path) else {
+        return BTreeMap::new();
+    };
+
+    let mut titles = BTreeMap::new();
+    let mut position = 16usize;
+
+    while position + 8 <= contents.len() {
+        let Some(app_id) = read_u32_le(&contents, position) else {
+            break;
+        };
+        let Some(record_size) = read_u32_le(&contents, position + 4).map(|size| size as usize)
+        else {
+            break;
+        };
+
+        if app_id == 0 || record_size == 0 {
+            break;
+        }
+
+        let record_start = position + 8;
+        let record_end = record_start.saturating_add(record_size);
+        if record_end > contents.len() {
+            break;
+        }
+
+        let record = &contents[record_start..record_end];
+        let title = extract_appinfo_string_field(record, 4);
+        let product_type = extract_appinfo_string_field(record, 5);
+
+        if let (Some(title), Some(product_type)) = (title, product_type) {
+            if product_type.eq_ignore_ascii_case("game") && is_valid_steam_title(&title) {
+                titles.insert(app_id.to_string(), title);
+            }
+        }
+
+        position = record_end;
+    }
+
+    titles
+}
+
+fn read_u32_le(bytes: &[u8], position: usize) -> Option<u32> {
+    let slice = bytes.get(position..position + 4)?;
+    Some(u32::from_le_bytes(slice.try_into().ok()?))
+}
+
+fn extract_appinfo_string_field(record: &[u8], key: u32) -> Option<String> {
+    let needle = [
+        1,
+        (key & 0xff) as u8,
+        ((key >> 8) & 0xff) as u8,
+        ((key >> 16) & 0xff) as u8,
+        ((key >> 24) & 0xff) as u8,
+    ];
+
+    let index = find_bytes(record, &needle)?;
+    let value_start = index + needle.len();
+    let value_end = record[value_start..]
+        .iter()
+        .position(|byte| *byte == 0)
+        .map(|relative| value_start + relative)?;
+
+    let value = String::from_utf8_lossy(&record[value_start..value_end])
+        .trim()
+        .to_string();
+
+    (!value.is_empty()).then_some(value)
+}
+
+fn find_bytes(haystack: &[u8], needle: &[u8]) -> Option<usize> {
+    haystack
+        .windows(needle.len())
+        .position(|window| window == needle)
+}
+
+fn is_valid_steam_title(title: &str) -> bool {
+    let title = title.trim();
+    !title.is_empty()
+        && title.len() <= 180
+        && !title.contains('\u{fffd}')
+        && !title.chars().any(|character| {
+            character.is_control() && character != '\t' && character != '\n' && character != '\r'
+        })
+}
+
+fn find_steam_cached_asset(steam_dir: &Path, app_id: &str, filenames: &[&str]) -> Option<String> {
+    let app_cache_dir = steam_dir.join("appcache").join("librarycache").join(app_id);
+
+    for filename in filenames {
+        let path = app_cache_dir.join(filename);
+        if path.is_file() {
+            return Some(path_to_string(path));
+        }
+    }
+
+    let entries = fs::read_dir(app_cache_dir).ok()?;
+    for entry in entries.filter_map(|entry| entry.ok()) {
+        let Ok(file_type) = entry.file_type() else {
+            continue;
+        };
+
+        if !file_type.is_dir() {
+            continue;
+        }
+
+        for filename in filenames {
+            let path = entry.path().join(filename);
+            if path.is_file() {
+                return Some(path_to_string(path));
+            }
+        }
+    }
+
+    None
+}
+
+fn read_steam_playtime_minutes(account_config_dir: &Path) -> BTreeMap<String, u64> {
+    let localconfig = account_config_dir.join("localconfig.vdf");
+    let Ok(contents) = fs::read_to_string(localconfig) else {
+        return BTreeMap::new();
+    };
+
+    let mut playtimes = BTreeMap::new();
+    let lines: Vec<&str> = contents.lines().collect();
+    let Some(apps_section_start) = find_vdf_section_open_line(&lines, "apps") else {
+        return playtimes;
+    };
+
+    let mut depth = 0usize;
+    let mut current_app_id: Option<String> = None;
+
+    for line in lines.iter().skip(apps_section_start) {
+        let trimmed = line.trim();
+        match trimmed {
+            "{" => {
+                depth += 1;
+                continue;
+            }
+            "}" => {
+                if depth == 2 {
+                    current_app_id = None;
+                }
+
+                if depth == 0 {
+                    break;
+                }
+
+                depth -= 1;
+                if depth == 0 {
+                    break;
+                }
+                continue;
+            }
+            _ => {}
+        }
+
+        if depth == 1 {
+            if let Some(app_id) = quoted_vdf_key(trimmed) {
+                if is_numeric_steam_app_id(&app_id) {
+                    current_app_id = Some(app_id);
+                }
+            }
+            continue;
+        }
+
+        if depth == 2 {
+            let Some(app_id) = current_app_id.as_ref() else {
+                continue;
+            };
+
+            if let Some((key, value)) = parse_vdf_key_value(trimmed) {
+                if key == "Playtime" {
+                    if let Ok(minutes) = value.parse::<u64>() {
+                        playtimes.insert(app_id.clone(), minutes);
+                    }
+                }
+            }
+        }
+    }
+
+    playtimes
+}
+
+fn collect_vdf_block_keys(contents: &str, section_name: &str) -> BTreeSet<String> {
+    let lines: Vec<&str> = contents.lines().collect();
+    let Some(section_open_line) = find_vdf_section_open_line(&lines, section_name) else {
+        return BTreeSet::new();
+    };
+
+    let mut keys = BTreeSet::new();
+    let mut depth = 0usize;
+
+    for line in lines.iter().skip(section_open_line) {
+        let trimmed = line.trim();
+        match trimmed {
+            "{" => {
+                depth += 1;
+                continue;
+            }
+            "}" => {
+                if depth == 0 {
+                    break;
+                }
+
+                depth -= 1;
+                if depth == 0 {
+                    break;
+                }
+                continue;
+            }
+            _ => {}
+        }
+
+        if depth == 1 {
+            if let Some(key) = quoted_vdf_key(trimmed) {
+                if is_numeric_steam_app_id(&key) {
+                    keys.insert(key);
+                }
+            }
+        }
+    }
+
+    keys
+}
+
+fn find_vdf_section_open_line(lines: &[&str], section_name: &str) -> Option<usize> {
+    for (index, line) in lines.iter().enumerate() {
+        if quoted_vdf_key(line).as_deref() != Some(section_name) {
+            continue;
+        }
+
+        let open_index = next_non_empty_line(lines, index + 1)?;
+        if lines[open_index].trim() == "{" {
+            return Some(open_index);
+        }
+    }
+
+    None
+}
+
+fn next_non_empty_line(lines: &[&str], start: usize) -> Option<usize> {
+    lines
+        .iter()
+        .enumerate()
+        .skip(start)
+        .find(|(_, line)| {
+            let trimmed = line.trim();
+            !trimmed.is_empty() && !trimmed.starts_with("//")
+        })
+        .map(|(index, _)| index)
+}
+
+fn quoted_vdf_key(line: &str) -> Option<String> {
+    let trimmed = line.trim();
+    let end_quote = trimmed.strip_prefix('"')?.find('"')?;
+    Some(trimmed[1..end_quote + 1].to_string())
+}
+
+fn parse_vdf_key_value(line: &str) -> Option<(String, String)> {
+    let trimmed = line.trim();
+    let key_end = trimmed.strip_prefix('"')?.find('"')? + 1;
+    let key = trimmed[1..key_end].to_string();
+    let value_start = trimmed[key_end + 1..].find('"')? + key_end + 2;
+    let value_end = trimmed[value_start..].find('"')? + value_start;
+
+    Some((key, trimmed[value_start..value_end].to_string()))
+}
+
+fn is_numeric_steam_app_id(value: &str) -> bool {
+    !value.is_empty() && value.chars().all(|character| character.is_ascii_digit())
+}
+
 #[tauri::command]
 pub async fn fetch_steam_owned_games(steam_id: String) -> Result<Vec<OwnedGame>, String> {
+    let local_games = fetch_local_steam_owned_games(&steam_id);
+    if !local_games.is_empty() {
+        println!(
+            "[Steam] Loaded {} owned games from local Steam client cache for ID '{steam_id}'",
+            local_games.len()
+        );
+        return Ok(local_games);
+    }
+
     let url = format!(
         "https://steamcommunity.com/profiles/{}/games?tab=all",
         steam_id
@@ -703,7 +1347,9 @@ pub async fn fetch_steam_owned_games(steam_id: String) -> Result<Vec<OwnedGame>,
     if !status.is_success() {
         let body = response.text().await.unwrap_or_default();
         let preview = &body[..body.len().min(300)];
-        return Err(format!("Steam HTTP {status} for ID '{steam_id}': {preview}"));
+        return Err(format!(
+            "Steam HTTP {status} for ID '{steam_id}': {preview}"
+        ));
     }
 
     let html = response
@@ -726,7 +1372,10 @@ pub async fn fetch_steam_owned_games(steam_id: String) -> Result<Vec<OwnedGame>,
         }
     })?;
 
-    println!("[Steam] Found rgGames JSON, length: {} chars", json_array.len());
+    println!(
+        "[Steam] Found rgGames JSON, length: {} chars",
+        json_array.len()
+    );
 
     // Parse the JSON array of game objects
     let games = parse_rg_games_json(&json_array, &steam_id);
@@ -792,7 +1441,10 @@ fn parse_rg_games_json(json: &str, _steam_id: &str) -> Vec<OwnedGame> {
         let mut escape_next = false;
         let mut obj_end = None;
         for (i, ch) in json[obj_start..].char_indices() {
-            if escape_next { escape_next = false; continue; }
+            if escape_next {
+                escape_next = false;
+                continue;
+            }
             match ch {
                 '\\' if in_string => escape_next = true,
                 '"' => in_string = !in_string,
@@ -881,9 +1533,15 @@ fn extract_json_num_field(obj: &str, key: &str) -> Option<String> {
     let needle = format!("\"{}\":", key);
     let start = obj.find(&needle)? + needle.len();
     let rest = obj[start..].trim_start();
-    let end = rest.find(|c: char| !c.is_ascii_digit() && c != '.').unwrap_or(rest.len());
+    let end = rest
+        .find(|c: char| !c.is_ascii_digit() && c != '.')
+        .unwrap_or(rest.len());
     let num = &rest[..end];
-    if num.is_empty() { None } else { Some(num.to_string()) }
+    if num.is_empty() {
+        None
+    } else {
+        Some(num.to_string())
+    }
 }
 
 fn extract_xml_tag(block: &str, tag: &str) -> Option<String> {
@@ -915,7 +1573,10 @@ pub async fn fetch_gog_owned_games(access_token: String) -> Result<Vec<OwnedGame
         .map_err(|e| format!("GOG user data request failed: {e}"))?;
 
     if !data_resp.status().is_success() {
-        return Err(format!("GOG user data returned status {}", data_resp.status()));
+        return Err(format!(
+            "GOG user data returned status {}",
+            data_resp.status()
+        ));
     }
 
     let data: serde_json::Value = data_resp
@@ -944,10 +1605,18 @@ pub async fn fetch_gog_owned_games(access_token: String) -> Result<Vec<OwnedGame
                         .to_string();
 
                     let logo2x = detail["images"]["logo2x"].as_str().map(|u| {
-                        if u.starts_with("//") { format!("https:{u}") } else { u.to_string() }
+                        if u.starts_with("//") {
+                            format!("https:{u}")
+                        } else {
+                            u.to_string()
+                        }
                     });
                     let icon = detail["images"]["icon"].as_str().map(|u| {
-                        if u.starts_with("//") { format!("https:{u}") } else { u.to_string() }
+                        if u.starts_with("//") {
+                            format!("https:{u}")
+                        } else {
+                            u.to_string()
+                        }
                     });
 
                     games.push(OwnedGame {

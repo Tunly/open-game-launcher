@@ -19,6 +19,7 @@ pub fn run() {
             commands::system::get_default_install_dir,
             commands::system::get_hardware_info,
             commands::system::open_steam_login_window,
+            commands::system::open_steam_scraper_window,
             commands::system::open_gog_login_window,
             commands::system::open_epic_login_window,
             commands::system::fetch_steam_owned_games,

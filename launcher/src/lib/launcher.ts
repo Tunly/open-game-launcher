@@ -86,6 +86,10 @@ export function openSteamLoginWindow(): Promise<void> {
   return invokeCommand<void>("open_steam_login_window");
 }
 
+export function openSteamScraperWindow(steamId: string): Promise<void> {
+  return invokeCommand<void>("open_steam_scraper_window", { steamId });
+}
+
 export function openGogLoginWindow(): Promise<void> {
   return invokeCommand<void>("open_gog_login_window");
 }
@@ -102,6 +106,95 @@ export interface OwnedGame {
   logoUrl: string | null;
   iconUrl: string | null;
   playtimeMinutes: number;
+}
+
+type SteamRawGame = Record<string, unknown>;
+
+function readString(record: SteamRawGame, keys: string[]) {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "string" && value.trim()) {
+      return value.trim();
+    }
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return String(value);
+    }
+  }
+
+  return "";
+}
+
+function readNumber(record: SteamRawGame, keys: string[]) {
+  for (const key of keys) {
+    const value = record[key];
+    if (typeof value === "number" && Number.isFinite(value)) {
+      return value;
+    }
+    if (typeof value === "string" && value.trim()) {
+      const parsed = Number.parseFloat(value.replace(/,/g, ""));
+      if (Number.isFinite(parsed)) {
+        return parsed;
+      }
+    }
+  }
+
+  return 0;
+}
+
+function steamImageUrl(appId: string, asset: string) {
+  return `https://cdn.cloudflare.steamstatic.com/steam/apps/${appId}/${asset}`;
+}
+
+export function normalizeSteamOwnedGames(games: unknown): OwnedGame[] {
+  if (!Array.isArray(games)) {
+    return [];
+  }
+
+  return games.flatMap((game): OwnedGame[] => {
+    if (!game || typeof game !== "object") {
+      return [];
+    }
+
+    const record = game as SteamRawGame;
+    const appId =
+      readString(record, ["appid", "appId", "app_id"]) ||
+      readString(record, ["id"]).replace(/^steam-owned-/, "");
+    const title = readString(record, ["title", "name"]);
+
+    if (!appId || !title) {
+      return [];
+    }
+
+    const existingId = readString(record, ["id"]);
+    const hours = readNumber(record, [
+      "hours_forever",
+      "hours",
+      "playtimeHours",
+    ]);
+    const playtimeMinutes =
+      readNumber(record, ["playtimeMinutes", "playtime_minutes"]) ||
+      Math.round(hours * 60);
+
+    return [
+      {
+        id: existingId.startsWith("steam-owned-")
+          ? existingId
+          : `steam-owned-${appId}`,
+        title,
+        description:
+          readString(record, ["description"]) ||
+          `Steam game (Owned). AppID: ${appId}`,
+        coverUrl:
+          readString(record, ["coverUrl", "cover_url"]) ||
+          steamImageUrl(appId, "library_600x900.jpg"),
+        logoUrl:
+          readString(record, ["logoUrl", "logo_url"]) ||
+          steamImageUrl(appId, "header.jpg"),
+        iconUrl: readString(record, ["iconUrl", "icon_url"]) || null,
+        playtimeMinutes,
+      },
+    ];
+  });
 }
 
 export function fetchSteamOwnedGames(steamId: string): Promise<OwnedGame[]> {

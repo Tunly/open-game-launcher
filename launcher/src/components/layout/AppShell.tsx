@@ -284,11 +284,17 @@ export function AppShell({
           </div>
         </header>
 
-        <main className="neo-dots min-h-[calc(100vh-80px)] min-w-0">
+        <main
+          className={
+            activePage === "library"
+              ? "app-library-main neo-dots h-[calc(100vh-80px)] min-h-0 min-w-0 overflow-hidden"
+              : "neo-dots min-h-[calc(100vh-80px)] min-w-0"
+          }
+        >
           <div
             className={
               activePage === "library"
-                ? "w-full px-0 py-0"
+                ? "h-full min-h-0 w-full overflow-hidden px-0 py-0"
                 : "mx-auto w-full max-w-[1220px] px-6 py-7"
             }
           >

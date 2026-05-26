@@ -1,9 +1,8 @@
-import { FolderOpen, HardDrive, Power, RefreshCw, ShieldCheck, User, Key, Link, LogOut, Gamepad2 } from "lucide-react";
+import { FolderOpen, HardDrive, Power, RefreshCw, ShieldCheck, Link, LogOut, Gamepad2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { useLocalStorageState } from "../hooks/useLocalStorageState";
-import { getDefaultInstallDir, getSystemInfo, openSteamLoginWindow, openGogLoginWindow, openEpicLoginWindow } from "../lib/launcher";
+import { getDefaultInstallDir, getSystemInfo, openSteamLoginWindow, openGogLoginWindow, openEpicLoginWindow, normalizeSteamOwnedGames, openSteamScraperWindow } from "../lib/launcher";
 import type { SystemInfo } from "../lib/types";
 
 
@@ -213,19 +212,22 @@ export function SettingsPage() {
         });
       });
 
-      unlistenScrapedPromise = listen<any[]>("steam_scraped_games_success", (event) => {
+      unlistenScrapedPromise = listen<unknown[]>("steam_scraped_games_success", (event) => {
         if (!isMounted) return;
-        console.log("[Settings] Scraped games successfully:", event.payload.length);
-        localStorage.setItem("launcher.steamOwnedGamesCache", JSON.stringify(event.payload));
+        const ownedGames = normalizeSteamOwnedGames(event.payload);
+        console.log("[Settings] Scraped games successfully:", ownedGames.length);
+        localStorage.setItem("launcher.steamOwnedGamesCache", JSON.stringify(ownedGames));
+        localStorage.setItem("launcher.steamOwnedGamesCacheVersion", "2");
         
-        const successMsg = `✓ Found ${event.payload.length} owned games`;
+        const successMsg = `✓ Found ${ownedGames.length} owned games`;
         setSteamTestResult({
           success: true,
           message: successMsg,
         });
+        setIsSteamTesting(false);
         setTestResult({
           success: true,
-          message: `Erfolgreich über Steam eingeloggt! ${event.payload.length} Spiele wurden synchronisiert.`,
+          message: `Erfolgreich über Steam eingeloggt! ${ownedGames.length} Spiele wurden synchronisiert.`,
         });
       });
 
@@ -437,15 +439,10 @@ export function SettingsPage() {
                               setIsSteamTesting(true);
                               setSteamTestResult(null);
                               setSteamTestResult({ success: true, message: "Silent Scraper gestartet..." });
-                              try {
-                                new WebviewWindow("steam-silent-scraper", {
-                                  url: `https://steamcommunity.com/profiles/${steamId}/games/?tab=all`,
-                                  visible: false,
-                                });
-                              } catch (err) {
+                              void openSteamScraperWindow(steamId).catch((err) => {
                                 setSteamTestResult({ success: false, message: `✗ ${getErrorMessage(err)}` });
                                 setIsSteamTesting(false);
-                              }
+                              });
                             }}
                           >
                             {isSteamTesting ? "Testing..." : "Test"}
