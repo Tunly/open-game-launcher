@@ -274,16 +274,6 @@ pnpm build
 
 ## License
 
-This project is licensed under the Creative Commons Attribution-NonCommercial 4.0 International License (CC BY-NC 4.0).
-
-You are free to:
-- **Share** - copy and redistribute the material in any medium or format
-- **Adapt** - remix, transform, and build upon the material
-
-Under the following terms:
-- **Attribution** - You must give appropriate credit, provide a link to the license, and indicate if changes were made.
-- **NonCommercial** - You may not use the material for commercial purposes.
+This project is licensed under the GNU Affero General Public License v3.0 only (AGPL-3.0-only).
 
 See the [LICENSE](LICENSE) file for the full license text.
-
-For commercial use, please contact the project author for separate licensing arrangements.

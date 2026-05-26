@@ -153,6 +153,21 @@ struct InstalledGamesCache {
     games: Vec<InstalledGame>,
 }
 
+#[derive(Debug, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+struct RawgAssetCache {
+    entries: HashMap<String, RawgAssets>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct RawgAssets {
+    cover_url: Option<String>,
+    logo_url: Option<String>,
+    icon_url: Option<String>,
+    fetched_at: u64,
+}
+
 #[tauri::command]
 pub async fn list_installed_games() -> Result<Vec<InstalledGame>, String> {
     if let Some(games) = read_installed_games_cache() {
@@ -773,7 +788,30 @@ fn read_installed_games_cache() -> Option<Vec<InstalledGame>> {
     let contents = fs::read_to_string(cache_path).ok()?;
     let cache = serde_json::from_str::<InstalledGamesCache>(&contents).ok()?;
 
-    (cache.version == GAME_LIBRARY_CACHE_VERSION).then_some(cache.games)
+    (cache.version == GAME_LIBRARY_CACHE_VERSION).then_some(
+        cache
+            .games
+            .into_iter()
+            .map(repair_cached_game_assets)
+            .collect(),
+    )
+}
+
+fn repair_cached_game_assets(game: InstalledGame) -> InstalledGame {
+    if is_battlenet_game(&game) {
+        return apply_battlenet_assets(game, None);
+    }
+
+    game
+}
+
+fn is_battlenet_game(game: &InstalledGame) -> bool {
+    game.id.starts_with("battlenet-")
+        || game
+            .launch_uri
+            .as_deref()
+            .is_some_and(|uri| uri.starts_with("battlenet://"))
+        || game.description.starts_with("Battle.net")
 }
 
 fn write_installed_games_cache(games: &[InstalledGame]) {
@@ -803,6 +841,10 @@ fn open_game_launcher_data_dir() -> Option<PathBuf> {
 
 fn installed_games_cache_path() -> Option<PathBuf> {
     open_game_launcher_data_dir().map(|data_dir| data_dir.join("installed-games.json"))
+}
+
+fn rawg_asset_cache_path() -> Option<PathBuf> {
+    open_game_launcher_data_dir().map(|data_dir| data_dir.join("rawg-assets.json"))
 }
 
 fn scan_epic_games() -> Vec<InstalledGame> {
@@ -1372,137 +1414,507 @@ fn scan_gog_games() -> Vec<InstalledGame> {
     games
 }
 
-fn get_battlenet_assets(
-    uid: &str,
-    title: &str,
-) -> (Option<String>, Option<String>, Option<String>) {
+struct BattleNetAssetTheme {
+    family: &'static str,
+    initials: &'static str,
+    bg: &'static str,
+    bg_alt: &'static str,
+    accent: &'static str,
+    accent_alt: &'static str,
+}
+
+fn battlenet_asset_theme(uid: &str, title: &str) -> BattleNetAssetTheme {
     let normalized_uid = uid.to_lowercase();
     let normalized_title = title.to_lowercase();
 
-    // World of Warcraft (Retail, Classic, Anniversary, Era, PTR, Beta)
     if normalized_uid.contains("wow") || normalized_title.contains("world of warcraft") {
-        return (
-            Some("https://images.blz-contentstack.com/v3/assets/blt3452e3b1156c9278/blt68b753ffc61aef42/60cba79930773d12d46e0fa8/w3r-banner.jpg".to_string()),
-            Some("https://upload.wikimedia.org/wikipedia/commons/9/91/Warcraft_logo.png".to_string()),
-            Some("https://upload.wikimedia.org/wikipedia/commons/thumb/e/eb/WoW_icon.svg/512px-WoW_icon.svg.png".to_string()),
-        );
+        return BattleNetAssetTheme {
+            family: "WORLD OF WARCRAFT",
+            initials: "WOW",
+            bg: "#101a2b",
+            bg_alt: "#263f5c",
+            accent: "#d8a33c",
+            accent_alt: "#f2d36d",
+        };
     }
 
-    // Diablo IV
     if normalized_uid.contains("d4")
         || normalized_uid.contains("fenris")
         || normalized_title.contains("diablo iv")
         || normalized_title.contains("diablo 4")
-    {
-        return (
-            Some("https://cdn.cloudflare.steamstatic.com/steam/apps/2344520/library_hero.jpg".to_string()),
-            Some("https://cdn.cloudflare.steamstatic.com/steam/apps/2344520/logo.png".to_string()),
-            Some("https://upload.wikimedia.org/wikipedia/commons/thumb/c/cd/Diablo_IV_logo.svg/512px-Diablo_IV_logo.svg.png".to_string()),
-        );
-    }
-
-    // Overwatch 2
-    if normalized_uid.contains("pro")
-        || normalized_uid.contains("overwatch")
-        || normalized_title.contains("overwatch")
-    {
-        return (
-            Some("https://cdn.cloudflare.steamstatic.com/steam/apps/2357570/library_hero.jpg".to_string()),
-            Some("https://cdn.cloudflare.steamstatic.com/steam/apps/2357570/logo.png".to_string()),
-            Some("https://upload.wikimedia.org/wikipedia/commons/thumb/5/55/Overwatch_circle_logo.svg/512px-Overwatch_circle_logo.svg.png".to_string()),
-        );
-    }
-
-    // Diablo III
-    if normalized_uid.contains("d3")
+        || normalized_uid.contains("d3")
         || normalized_title.contains("diablo iii")
         || normalized_title.contains("diablo 3")
-    {
-        return (
-            Some("https://images.blz-contentstack.com/v3/assets/blt3452e3b1156c9278/blta8236b2f4f2ce90c/6078d4508e7dfa0f5a9e7f84/d3-banner.jpg".to_string()),
-            Some("https://images.blz-contentstack.com/v3/assets/blt3452e3b1156c9278/blt2980cb6658a5c3ea/6078d44ffa10cd0ee0a57fe7/d3-logo.png".to_string()),
-            Some("https://upload.wikimedia.org/wikipedia/commons/8/80/Diablo_III_logo.png".to_string()),
-        );
-    }
-
-    // Diablo II: Resurrected
-    if normalized_uid.contains("d2r")
+        || normalized_uid.contains("d2r")
         || normalized_uid.contains("osiris")
         || normalized_title.contains("diablo ii")
         || normalized_title.contains("diablo 2")
     {
-        return (
-            Some("https://images.blz-contentstack.com/v3/assets/blt3452e3b1156c9278/blta2d603126ab560ef/60f068ee1ad42c5ef2640277/d2r-hero-banner.jpg".to_string()),
-            Some("https://images.blz-contentstack.com/v3/assets/blt3452e3b1156c9278/blt06ec6eb1e3a152fb/606cbfcd3000b53adcb1a2fb/d2r-logo.png".to_string()),
-            Some("https://upload.wikimedia.org/wikipedia/commons/thumb/0/08/Diablo_II_logo.svg/512px-Diablo_II_logo.svg.png".to_string()),
-        );
+        return BattleNetAssetTheme {
+            family: "DIABLO",
+            initials: "D",
+            bg: "#170606",
+            bg_alt: "#3b0b0f",
+            accent: "#c20b2f",
+            accent_alt: "#ffcc66",
+        };
     }
 
-    // Hearthstone
+    if normalized_uid.contains("pro")
+        || normalized_uid.contains("overwatch")
+        || normalized_title.contains("overwatch")
+    {
+        return BattleNetAssetTheme {
+            family: "OVERWATCH",
+            initials: "OW",
+            bg: "#11151c",
+            bg_alt: "#39404a",
+            accent: "#f28c28",
+            accent_alt: "#f5eedf",
+        };
+    }
+
     if normalized_uid.contains("wtcg")
         || normalized_uid.contains("hs_beta")
         || normalized_uid.contains("hsg")
         || normalized_title.contains("hearthstone")
     {
-        return (
-            Some("https://images.blz-contentstack.com/v3/assets/blt3452e3b1156c9278/bltc89cb2cf1b15d045/63fc3cfa6c6cdb425ef5be82/hearthstone-banner.jpg".to_string()),
-            Some("https://images.blz-contentstack.com/v3/assets/blt3452e3b1156c9278/bltbcece7a20c3132e4/63efbc65f6c88110b9db8d7d/hearthstone-logo.png".to_string()),
-            Some("https://upload.wikimedia.org/wikipedia/commons/thumb/c/cd/Hearthstone_Logo.svg/512px-Hearthstone_Logo.svg.png".to_string()),
-        );
+        return BattleNetAssetTheme {
+            family: "HEARTHSTONE",
+            initials: "HS",
+            bg: "#123d6a",
+            bg_alt: "#235d9a",
+            accent: "#e8c843",
+            accent_alt: "#fff0a6",
+        };
     }
 
-    // StarCraft II
     if normalized_uid.contains("s2")
         || normalized_title.contains("starcraft ii")
         || normalized_title.contains("starcraft 2")
-    {
-        return (
-            Some("https://images.blz-contentstack.com/v3/assets/blt3452e3b1156c9278/blta463d1cd8cc6d506/60907d7b5bf3a710156d97c7/sc2-banner.jpg".to_string()),
-            Some("https://images.blz-contentstack.com/v3/assets/blt3452e3b1156c9278/bltd2a3fa58a69fa067/60907d7b5cd37e0eec49eef3/sc2-logo.png".to_string()),
-            Some("https://upload.wikimedia.org/wikipedia/commons/thumb/e/e0/StarCraft_II_logo.svg/512px-StarCraft_II_logo.svg.png".to_string()),
-        );
-    }
-
-    // StarCraft Remastered
-    if normalized_uid.contains("s1")
+        || normalized_uid.contains("s1")
         || normalized_uid.contains("rtsc")
         || normalized_title.contains("starcraft")
     {
-        return (
-            Some("https://images.blz-contentstack.com/v3/assets/blt3452e3b1156c9278/blt1cb4d6f08170e5b0/5db2f4a13f64c670a4a58499/scr-hero.jpg".to_string()),
-            Some("https://images.blz-contentstack.com/v3/assets/blt3452e3b1156c9278/blte9bc86e04d49a7a6/5db2f4a1f6dfc76e272c723f/scr-logo.png".to_string()),
-            Some("https://upload.wikimedia.org/wikipedia/commons/thumb/1/1d/StarCraft_logo.svg/512px-StarCraft_logo.svg.png".to_string()),
-        );
+        return BattleNetAssetTheme {
+            family: "STARCRAFT",
+            initials: "SC",
+            bg: "#071426",
+            bg_alt: "#12365a",
+            accent: "#8cf5e4",
+            accent_alt: "#ffffff",
+        };
     }
 
-    // Warcraft III
     if normalized_uid.contains("w3")
         || normalized_uid.contains("fore")
         || normalized_title.contains("warcraft iii")
         || normalized_title.contains("warcraft 3")
     {
-        return (
-            Some("https://images.blz-contentstack.com/v3/assets/blt3452e3b1156c9278/blt68b753ffc61aef42/60cba79930773d12d46e0fa8/w3r-banner.jpg".to_string()),
-            Some("https://images.blz-contentstack.com/v3/assets/blt3452e3b1156c9278/blt6d5d5fa4031d2e1b/60cba79998cc8a101f3db9f7/w3r-logo.png".to_string()),
-            Some("https://upload.wikimedia.org/wikipedia/commons/8/87/Warcraft_III_Reforged_logo.png".to_string()),
-        );
+        return BattleNetAssetTheme {
+            family: "WARCRAFT III",
+            initials: "W3",
+            bg: "#1e2f17",
+            bg_alt: "#3d552c",
+            accent: "#b7102a",
+            accent_alt: "#d8a33c",
+        };
     }
 
-    // Heroes of the Storm
     if normalized_uid.contains("hero") || normalized_title.contains("heroes of the storm") {
-        return (
-            Some("https://images.blz-contentstack.com/v3/assets/blt3452e3b1156c9278/blta941c42289f66bbd/60a2fc8627b1654b9d0ab5c1/hots-banner.jpg".to_string()),
-            Some("https://images.blz-contentstack.com/v3/assets/blt3452e3b1156c9278/blt8efbc5b17ebf4f5a/60a2fc863e46c74ad64a85fa/hots-logo.png".to_string()),
-            Some("https://upload.wikimedia.org/wikipedia/commons/thumb/6/69/Heroes_of_the_Storm_logo.svg/512px-Heroes_of_the_Storm_logo.svg.png".to_string()),
-        );
+        return BattleNetAssetTheme {
+            family: "HEROES OF THE STORM",
+            initials: "H",
+            bg: "#24184a",
+            bg_alt: "#4e2e85",
+            accent: "#8cf5e4",
+            accent_alt: "#f5eedf",
+        };
     }
 
-    // Default Fallback
+    BattleNetAssetTheme {
+        family: "BATTLE.NET",
+        initials: "BN",
+        bg: "#171411",
+        bg_alt: "#1e3431",
+        accent: "#159d8d",
+        accent_alt: "#f5eedf",
+    }
+}
+
+fn get_battlenet_assets(
+    uid: &str,
+    title: &str,
+) -> (Option<String>, Option<String>, Option<String>) {
+    let theme = battlenet_asset_theme(uid, title);
+
     (
-        None,
-        Some("https://upload.wikimedia.org/wikipedia/commons/thumb/1/13/Battle.net_Logo.svg/512px-Battle.net_Logo.svg.png".to_string()),
-        Some("https://upload.wikimedia.org/wikipedia/commons/thumb/1/13/Battle.net_Logo.svg/512px-Battle.net_Logo.svg.png".to_string()),
+        Some(battlenet_banner_asset(title, &theme)),
+        Some(battlenet_logo_asset(title, &theme)),
+        Some(battlenet_icon_asset(&theme)),
     )
+}
+
+fn apply_battlenet_assets(mut game: InstalledGame, _display_icon: Option<&str>) -> InstalledGame {
+    let uid = game
+        .launch_uri
+        .as_deref()
+        .and_then(|uri| uri.strip_prefix("battlenet://"))
+        .or_else(|| game.id.strip_prefix("battlenet-"))
+        .unwrap_or(&game.id);
+    let (fallback_cover, fallback_logo, fallback_icon) = get_battlenet_assets(uid, &game.title);
+    let rawg_assets = get_rawg_battlenet_assets(uid, &game.title);
+    let (cover, logo, icon) = rawg_assets
+        .map(|assets| {
+            (
+                assets.cover_url.or(fallback_cover.clone()),
+                assets.logo_url.or(fallback_logo.clone()),
+                assets.icon_url.or(fallback_icon.clone()),
+            )
+        })
+        .unwrap_or((fallback_cover, fallback_logo, fallback_icon));
+
+    game.cover_url = cover;
+    game.logo_url = logo.clone();
+    game.logo_urls = logo.into_iter().collect();
+    game.icon_url = icon.clone();
+    game.icon_urls = icon.into_iter().collect();
+    game.logo_position = LogoPosition::CenterCenter;
+    game.logo_width_percent = Some(58.0);
+    game.logo_height_percent = Some(48.0);
+    game
+}
+
+fn get_rawg_battlenet_assets(uid: &str, title: &str) -> Option<RawgAssets> {
+    let cache_key = battlenet_asset_cache_key(uid, title);
+    let mut cache = read_rawg_asset_cache();
+    if let Some(cached_assets) = cache.entries.get(&cache_key) {
+        return Some(cached_assets.clone());
+    }
+
+    let api_key = env::var("RAWG_API_KEY")
+        .or_else(|_| env::var("OG_RAWG_API_KEY"))
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())?;
+
+    let search_title = battlenet_rawg_search_title(uid, title);
+    let assets = fetch_rawg_assets(&api_key, &search_title)?;
+
+    if assets.cover_url.is_some() || assets.logo_url.is_some() || assets.icon_url.is_some() {
+        cache.entries.insert(cache_key, assets.clone());
+        write_rawg_asset_cache(&cache);
+        return Some(assets);
+    }
+
+    None
+}
+
+fn battlenet_asset_cache_key(uid: &str, title: &str) -> String {
+    format!(
+        "{}:{}",
+        uid.trim().to_lowercase(),
+        title.trim().to_lowercase()
+    )
+}
+
+fn read_rawg_asset_cache() -> RawgAssetCache {
+    let Some(cache_path) = rawg_asset_cache_path() else {
+        return RawgAssetCache::default();
+    };
+
+    fs::read_to_string(cache_path)
+        .ok()
+        .and_then(|contents| serde_json::from_str::<RawgAssetCache>(&contents).ok())
+        .unwrap_or_default()
+}
+
+fn write_rawg_asset_cache(cache: &RawgAssetCache) {
+    let Some(cache_path) = rawg_asset_cache_path() else {
+        return;
+    };
+
+    if let Some(parent) = cache_path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+
+    if let Ok(contents) = serde_json::to_string_pretty(cache) {
+        let _ = fs::write(cache_path, contents);
+    }
+}
+
+fn battlenet_rawg_search_title(uid: &str, title: &str) -> String {
+    let normalized_uid = uid.to_lowercase();
+    let normalized_title = title.to_lowercase();
+
+    if normalized_uid.contains("wow") || normalized_title.contains("world of warcraft") {
+        if normalized_uid.contains("classic")
+            || normalized_title.contains("classic")
+            || normalized_title.contains("burning crusade")
+            || normalized_title.contains("wrath")
+        {
+            return "World of Warcraft Classic".to_string();
+        }
+
+        return "World of Warcraft".to_string();
+    }
+
+    if normalized_uid.contains("d4")
+        || normalized_uid.contains("fenris")
+        || normalized_title.contains("diablo iv")
+        || normalized_title.contains("diablo 4")
+    {
+        return "Diablo IV".to_string();
+    }
+
+    if normalized_uid.contains("d3")
+        || normalized_title.contains("diablo iii")
+        || normalized_title.contains("diablo 3")
+    {
+        return "Diablo III".to_string();
+    }
+
+    if normalized_uid.contains("d2r")
+        || normalized_uid.contains("osiris")
+        || normalized_title.contains("diablo ii")
+        || normalized_title.contains("diablo 2")
+    {
+        return "Diablo II Resurrected".to_string();
+    }
+
+    if normalized_uid.contains("pro")
+        || normalized_uid.contains("overwatch")
+        || normalized_title.contains("overwatch")
+    {
+        return "Overwatch 2".to_string();
+    }
+
+    if normalized_uid.contains("wtcg")
+        || normalized_uid.contains("hs_beta")
+        || normalized_uid.contains("hsg")
+        || normalized_title.contains("hearthstone")
+    {
+        return "Hearthstone".to_string();
+    }
+
+    if normalized_uid.contains("s2")
+        || normalized_title.contains("starcraft ii")
+        || normalized_title.contains("starcraft 2")
+    {
+        return "StarCraft II".to_string();
+    }
+
+    if normalized_uid.contains("s1")
+        || normalized_uid.contains("rtsc")
+        || normalized_title.contains("starcraft")
+    {
+        return "StarCraft Remastered".to_string();
+    }
+
+    if normalized_uid.contains("w3")
+        || normalized_uid.contains("fore")
+        || normalized_title.contains("warcraft iii")
+        || normalized_title.contains("warcraft 3")
+    {
+        return "Warcraft III Reforged".to_string();
+    }
+
+    if normalized_uid.contains("hero") || normalized_title.contains("heroes of the storm") {
+        return "Heroes of the Storm".to_string();
+    }
+
+    title.to_string()
+}
+
+fn fetch_rawg_assets(api_key: &str, title: &str) -> Option<RawgAssets> {
+    let client = reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(4))
+        .user_agent("OG-Launcher/0.1")
+        .build()
+        .ok()?;
+    let search_url = format!(
+        "https://api.rawg.io/api/games?key={}&search={}&search_precise=true&page_size=1",
+        url_query_encode(api_key),
+        url_query_encode(title)
+    );
+    let search_json = rawg_get_json(&client, &search_url)?;
+    let result = search_json.get("results")?.as_array()?.first()?.clone();
+    let id = result.get("id").and_then(|value| value.as_u64());
+
+    let mut cover_url = rawg_string_field(&result, "background_image");
+    let mut logo_url = cover_url.clone();
+    let mut icon_url = cover_url.clone();
+
+    if let Some(game_id) = id {
+        let detail_url = format!(
+            "https://api.rawg.io/api/games/{game_id}?key={}",
+            url_query_encode(api_key)
+        );
+        if let Some(detail_json) = rawg_get_json(&client, &detail_url) {
+            cover_url = rawg_string_field(&detail_json, "background_image").or(cover_url);
+            logo_url = rawg_string_field(&detail_json, "background_image_additional")
+                .or(cover_url.clone());
+        }
+
+        let screenshots_url = format!(
+            "https://api.rawg.io/api/games/{game_id}/screenshots?key={}&page_size=1",
+            url_query_encode(api_key)
+        );
+        if let Some(screenshots_json) = rawg_get_json(&client, &screenshots_url) {
+            icon_url = screenshots_json
+                .get("results")
+                .and_then(|value| value.as_array())
+                .and_then(|results| results.first())
+                .and_then(|screenshot| rawg_string_field(screenshot, "image"))
+                .or_else(|| icon_url.clone());
+        }
+    }
+
+    Some(RawgAssets {
+        cover_url,
+        logo_url,
+        icon_url,
+        fetched_at: current_unix_timestamp(),
+    })
+}
+
+fn rawg_get_json(client: &reqwest::blocking::Client, url: &str) -> Option<serde_json::Value> {
+    let response = client.get(url).send().ok()?;
+
+    if !response.status().is_success() {
+        return None;
+    }
+
+    response.json::<serde_json::Value>().ok()
+}
+
+fn rawg_string_field(value: &serde_json::Value, key: &str) -> Option<String> {
+    value
+        .get(key)
+        .and_then(|value| value.as_str())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+}
+
+fn url_query_encode(value: &str) -> String {
+    let mut encoded = String::with_capacity(value.len());
+
+    for byte in value.as_bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                encoded.push(*byte as char)
+            }
+            b' ' => encoded.push('+'),
+            _ => encoded.push_str(&format!("%{:02X}", byte)),
+        }
+    }
+
+    encoded
+}
+
+fn battlenet_banner_asset(title: &str, theme: &BattleNetAssetTheme) -> String {
+    let title = xml_escape(&title.to_uppercase());
+    let family = xml_escape(theme.family);
+    let initials = xml_escape(theme.initials);
+    let svg = format!(
+        r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 420">
+<defs>
+<linearGradient id="bg" x1="0" x2="1" y1="0" y2="1"><stop offset="0" stop-color="{bg}"/><stop offset="1" stop-color="{bg_alt}"/></linearGradient>
+<pattern id="dots" width="18" height="18" patternUnits="userSpaceOnUse"><circle cx="3" cy="3" r="2" fill="#000" opacity=".18"/></pattern>
+</defs>
+<rect width="1280" height="420" fill="url(#bg)"/>
+<rect width="1280" height="420" fill="url(#dots)"/>
+<path d="M0 324 1280 180v240H0z" fill="{accent}" opacity=".18"/>
+<path d="M900 0h380v420H812z" fill="{accent}" opacity=".16"/>
+<g transform="translate(90 68)">
+<rect x="0" y="0" width="206" height="206" fill="{accent}" stroke="#000" stroke-width="12"/>
+<rect x="16" y="16" width="174" height="174" fill="{bg}" stroke="#000" stroke-width="6"/>
+<text x="103" y="132" text-anchor="middle" font-family="Arial Black, Impact, sans-serif" font-size="76" fill="{accent_alt}">{initials}</text>
+</g>
+<g transform="translate(338 98)">
+<text x="0" y="46" font-family="Arial Black, Impact, sans-serif" font-size="48" fill="{accent_alt}" letter-spacing="3">{family}</text>
+<text x="0" y="145" font-family="Arial Black, Impact, sans-serif" font-size="78" fill="#fff" textLength="820" lengthAdjust="spacingAndGlyphs">{title}</text>
+<rect x="0" y="184" width="410" height="18" fill="{accent}" stroke="#000" stroke-width="6"/>
+</g>
+<text x="1180" y="360" text-anchor="middle" font-family="Arial Black, Impact, sans-serif" font-size="28" fill="{accent_alt}" opacity=".9">BATTLE.NET</text>
+</svg>"##,
+        bg = theme.bg,
+        bg_alt = theme.bg_alt,
+        accent = theme.accent,
+        accent_alt = theme.accent_alt,
+        family = family,
+        title = title,
+        initials = initials,
+    );
+
+    svg_data_url(&svg)
+}
+
+fn battlenet_logo_asset(title: &str, theme: &BattleNetAssetTheme) -> String {
+    let title = xml_escape(&title.to_uppercase());
+    let family = xml_escape(theme.family);
+    let svg = format!(
+        r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 700 220">
+<rect x="10" y="20" width="680" height="180" rx="0" fill="{bg}" stroke="#000" stroke-width="12"/>
+<text x="350" y="92" text-anchor="middle" font-family="Arial Black, Impact, sans-serif" font-size="42" fill="{accent}" letter-spacing="2">{family}</text>
+<text x="350" y="158" text-anchor="middle" font-family="Arial Black, Impact, sans-serif" font-size="48" fill="#fff" textLength="600" lengthAdjust="spacingAndGlyphs">{title}</text>
+</svg>"##,
+        bg = theme.bg,
+        accent = theme.accent,
+        family = family,
+        title = title,
+    );
+
+    svg_data_url(&svg)
+}
+
+fn battlenet_icon_asset(theme: &BattleNetAssetTheme) -> String {
+    let initials = xml_escape(theme.initials);
+    let svg = format!(
+        r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+<rect width="256" height="256" fill="{accent}" stroke="#000" stroke-width="16"/>
+<rect x="30" y="30" width="196" height="196" fill="{bg}" stroke="#000" stroke-width="8"/>
+<circle cx="128" cy="128" r="76" fill="{bg_alt}" stroke="{accent_alt}" stroke-width="10"/>
+<text x="128" y="151" text-anchor="middle" font-family="Arial Black, Impact, sans-serif" font-size="62" fill="{accent_alt}">{initials}</text>
+</svg>"##,
+        bg = theme.bg,
+        bg_alt = theme.bg_alt,
+        accent = theme.accent,
+        accent_alt = theme.accent_alt,
+        initials = initials,
+    );
+
+    svg_data_url(&svg)
+}
+
+fn svg_data_url(svg: &str) -> String {
+    format!("data:image/svg+xml,{}", percent_encode_svg(svg))
+}
+
+fn percent_encode_svg(svg: &str) -> String {
+    let mut encoded = String::with_capacity(svg.len());
+
+    for byte in svg.as_bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' | b'/' | b':' => {
+                encoded.push(*byte as char)
+            }
+            b' ' => encoded.push_str("%20"),
+            b'\n' | b'\r' | b'\t' => {}
+            _ => encoded.push_str(&format!("%{:02X}", byte)),
+        }
+    }
+
+    encoded
+}
+
+fn xml_escape(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
 }
 
 fn scan_battlenet_games() -> Vec<InstalledGame> {
@@ -1538,6 +1950,7 @@ fn scan_battlenet_games() -> Vec<InstalledGame> {
         game.logo_url = logo_path;
         game.icon_url = icon_path;
         game.launch_uri = Some(format!("battlenet://{}", install.uid));
+        game = apply_battlenet_assets(game, install.icon_path.as_deref());
 
         if let Some(timestamp) = get_dir_last_modified(&install.install_dir) {
             game.last_played_at = Some(unix_timestamp_to_iso(timestamp));

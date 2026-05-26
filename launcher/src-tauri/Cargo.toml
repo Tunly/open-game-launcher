@@ -3,6 +3,7 @@ name = "open-game-launcher"
 version = "0.1.0"
 description = "A cross-platform desktop game launcher MVP."
 authors = ["Open Game Launcher"]
+license = "AGPL-3.0-only"
 edition = "2021"
 rust-version = "1.77"
 
@@ -18,7 +19,7 @@ dirs = "5"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tauri = { version = "2", features = ["protocol-asset"] }
-reqwest = { version = "0.12", features = ["json", "stream"] }
+reqwest = { version = "0.12", features = ["blocking", "json", "stream"] }
 tokio = { version = "1", features = ["full"] }
 sysinfo = { version = "0.31", features = ["serde"] }
 futures-util = "0.3"
