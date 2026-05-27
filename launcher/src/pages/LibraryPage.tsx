@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { listen } from "@tauri-apps/api/event";
 import type { PointerEvent as ReactPointerEvent, ReactNode, RefObject } from "react";
+import { LibrarySidebar } from "../components/library/LibrarySidebar";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { getGameAssetUrl, getGameBannerStyle } from "../lib/assets";
@@ -35,7 +36,7 @@ const STEAM_OWNED_GAMES_CACHE_KEY = "launcher.steamOwnedGamesCache";
 const STEAM_OWNED_GAMES_CACHE_VERSION_KEY = "launcher.steamOwnedGamesCacheVersion";
 const STEAM_OWNED_GAMES_CACHE_VERSION = "3";
 
-type LibrarySortOption = "alphabetical" | "last_played" | "playtime" | "size";
+export type LibrarySortOption = "alphabetical" | "last_played" | "playtime" | "size";
 
 function triggerSilentSteamScraper(steamId: string) {
   console.log("[OG-Launcher] Opening silent Steam scraper window in background...");
@@ -1626,199 +1627,28 @@ export function LibraryPage() {
         {/* ====================================================
             SIDEBAR PANEL
             ==================================================== */}
-        <aside className="min-h-0 border-b-4 border-black bg-[#efe3cf] flex flex-col justify-between md:border-b-0 md:border-r-4">
-          <div className="flex-1 min-h-0 flex flex-col">
-            <div className="flex h-11 items-center justify-between border-b-4 border-black bg-[#f4ead8]">
-              <button className="h-full flex-1 px-3 text-left text-[16px] font-black" type="button">
-                <span className="block min-w-0 truncate">
-                  Library ({filteredGames.length}
-                  {normalizedSearchQuery || activePlatformFilter !== "all" || Object.values(advancedFilters).some(v => Array.isArray(v) ? v.length > 0 : v !== "") ? ` / ${installedGames.length || fallbackMockGames.length}` : ""})
-                </span>
-              </button>
-              <button className="grid h-full w-11 place-items-center border-l-4 border-black" type="button" aria-label="Grid view">
-                <Grid2X2 className="h-6 w-6" />
-              </button>
-            </div>
-
-
-
-            {/* Search Input Row */}
-            <div className="space-y-2 p-2">
-              <label className="flex h-9 items-center gap-2 border-2 border-black bg-[#fbf8ef] px-2.5">
-                <Search className="h-4 w-4 text-[#686157]" />
-                <input
-                  className="neo-copy min-w-0 flex-1 bg-transparent text-[11px] font-black uppercase tracking-[0.08em] text-[#171411] outline-none placeholder:text-[#686157]"
-                  aria-label="Search library"
-                  placeholder="Search..."
-                  type="search"
-                  value={searchQuery}
-                  onChange={(event) => setSearchQuery(event.target.value)}
-                />
-                <select
-                  value={sortOption}
-                  onChange={(e) => setSortOption(e.target.value as LibrarySortOption)}
-                  className="h-6 border-2 border-black bg-[#d8cbb7] text-[10px] font-black uppercase tracking-wider outline-none neo-copy cursor-pointer"
-                  title="Sortieren"
-                >
-                  <option value="alphabetical">A-Z</option>
-                  <option value="last_played">Zuletzt</option>
-                  <option value="playtime">Spielzeit</option>
-                  <option value="size">Size</option>
-                </select>
-                <button
-                  type="button"
-                  onClick={() => setIsFilterPopupOpen(!isFilterPopupOpen)}
-                  className={`grid h-6 w-6 place-items-center border-2 border-black transition ${
-                    isFilterPopupOpen || Object.values(advancedFilters).some(v => Array.isArray(v) ? v.length > 0 : v !== "")
-                      ? "bg-[#e8c843]"
-                      : "bg-[#d8cbb7] hover:bg-[#cbbcb2]"
-                  }`}
-                  aria-label="Advanced filters"
-                >
-                  <SlidersHorizontal className="h-3.5 w-3.5" />
-                </button>
-              </label>
-            </div>
-
-            {/* Fixed list controls */}
-            <div className="shrink-0">
-
-              {/* SAVED DYNAMIC COLLECTIONS */}
-              {dynamicCollections.length > 0 ? (
-                <div className="px-2 pt-1 border-b-2 border-dashed border-[#ded3c1] pb-2">
-                  <div className="flex items-center justify-between text-[10px] font-black uppercase text-[#55504a] tracking-wide mb-1 px-1">
-                    <span>Saved Collections</span>
-                    {selectedCollectionName && (
-                      <button
-                        onClick={clearActiveCollection}
-                        className="text-[9px] underline hover:text-black font-bold"
-                      >
-                        Clear
-                      </button>
-                    )}
-                  </div>
-                  <div className="space-y-1">
-                    {dynamicCollections.map((col) => (
-                      <button
-                        key={col.name}
-                        onClick={() => applyCollection(col)}
-                        className={`flex w-full items-center justify-between border-2 border-black px-2 py-1 text-left text-[11px] font-black leading-none transition ${
-                          selectedCollectionName === col.name
-                            ? "bg-[#e8c843] text-black shadow-[2px_2px_0_#000]"
-                            : "bg-[#d8cbb7] text-[#171411] hover:bg-[#dfd4c1]"
-                        }`}
-                      >
-                        <span className="truncate flex items-center gap-1.5">
-                          <Sparkles className="h-3 w-3 shrink-0 text-[#b7102a]" />
-                          {col.name}
-                        </span>
-                        <span className="flex items-center gap-1.5 shrink-0">
-                          <span className="text-[9px] bg-black/15 px-1 border border-black/25">
-                            {(() => {
-                              const baseList = installedGames.length > 0 ? installedGames : fallbackMockGames;
-                              const enriched = baseList.map(enrichGameWithMetadata);
-                              return enriched.filter((game) => {
-                                if (col.platformFilter !== "all" && game.platform !== col.platformFilter) return false;
-                                if (col.filters.productCategories.length > 0 && !col.filters.productCategories.includes(game.productCategory || "game")) return false;
-                                if (col.filters.genres.length > 0 && !col.filters.genres.some(g => (game.genres || []).includes(g))) return false;
-                                return true;
-                              }).length;
-                            })()}
-                          </span>
-                          <Trash2
-                            className="h-3 w-3 text-black hover:text-[#b7102a] hover:scale-110 transition"
-                            onClick={(e) => deleteCollection(col.name, e)}
-                          />
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              ) : null}
-
-              {/* MANUAL COLLECTIONS */}
-              {Object.keys(manualCollections).length > 0 && (
-                <div className="px-2 pt-1 border-b-2 border-dashed border-[#ded3c1] pb-2">
-                  <div className="flex items-center justify-between text-[10px] font-black uppercase text-[#55504a] tracking-wide mb-1 px-1">
-                    <span>Manual Collections</span>
-                    {selectedManualCollectionName && (
-                      <button
-                        onClick={() => setSelectedManualCollectionName(null)}
-                        className="text-[9px] underline hover:text-black font-bold"
-                      >
-                        Clear
-                      </button>
-                    )}
-                  </div>
-                  <div className="space-y-1">
-                    {Object.entries(manualCollections).map(([colName, gameIds]) => (
-                      <button
-                        key={colName}
-                        onClick={() => setSelectedManualCollectionName(colName)}
-                        className={`flex w-full items-center justify-between border-2 border-black px-2 py-1 text-left text-[11px] font-black leading-none transition ${
-                          selectedManualCollectionName === colName
-                            ? "bg-[#e8c843] text-black shadow-[2px_2px_0_#000]"
-                            : "bg-[#d8cbb7] text-[#171411] hover:bg-[#dfd4c1]"
-                        }`}
-                      >
-                        <span className="truncate flex items-center gap-1.5">
-                          <Grid2X2 className="h-3 w-3 shrink-0 text-[#b7102a]" />
-                          {colName}
-                        </span>
-                        <span className="flex items-center gap-1.5 shrink-0">
-                          <span className="text-[9px] bg-black/15 px-1 border border-black/25">
-                            {gameIds.length}
-                          </span>
-                          <Trash2
-                            className="h-3 w-3 text-black hover:text-[#b7102a] hover:scale-110 transition"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              const newCols = { ...manualCollections };
-                              delete newCols[colName];
-                              setManualCollections(newCols);
-                              if (selectedManualCollectionName === colName) setSelectedManualCollectionName(null);
-                            }}
-                          />
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Scrollable list of items */}
-            <div className="library-scroll-frame flex-1">
-              <div ref={gameListScrollRef} className="library-game-list-scroll h-full overflow-y-auto pb-3">
-                {/* RENDER LIST ROWS */}
-                {shouldShowLibraryLoading ? (
-                  <p className="neo-copy px-3 py-2 text-[11px] font-bold uppercase text-[#55504a]">
-                    Loading library...
-                  </p>
-                ) : filteredGames.length > 0 ? (
-                  filteredGames.map((game) => (
-                    <LibraryRow
-                      key={game.id}
-                      game={game}
-                      selected={selectedGame?.id === game.id}
-                      onSelect={setSelectedGame}
-                      isFavorite={favorites[game.id] === true}
-                    />
-                  ))
-                ) : normalizedSearchQuery && (installedGames.length > 0 || fallbackMockGames.length > 0) ? (
-                  <p className="neo-copy px-3 py-2 text-[11px] font-bold uppercase leading-5 text-[#55504a]">
-                    No games found for "{searchQuery.trim()}".
-                  </p>
-                ) : (
-                  <p className="neo-copy px-3 py-2 text-[11px] font-bold uppercase leading-5 text-[#55504a]">
-                    {discoveryMessage}
-                  </p>
-                )}
-              </div>
-              <LibraryCustomScrollbar targetRef={gameListScrollRef} />
-            </div>
-          </div>
-        </aside>
+        <LibrarySidebar
+          games={installedGames}
+          filteredGames={filteredGames}
+          searchQuery={searchQuery}
+          setSearchQuery={setSearchQuery}
+          sortOption={sortOption}
+          setSortOption={setSortOption}
+          isFilterPopupOpen={isFilterPopupOpen}
+          setIsFilterPopupOpen={setIsFilterPopupOpen}
+          activePlatformFilter={activePlatformFilter}
+          advancedFilters={advancedFilters}
+          customCategories={customCategories}
+          groupOption={"none"}
+          groupedGames={{}}
+          selectedGame={selectedGame}
+          setSelectedGame={setSelectedGame}
+          favorites={favorites}
+          fallbackMockGames={fallbackMockGames}
+          listScrollRef={gameListScrollRef}
+          setIsAddGameOpen={setIsAddGameOpen}
+          setAddGameError={setAddGameError}
+        />
 
         {/* ====================================================
             ADVANCED FILTER POPUP PANEL (Overlay)
