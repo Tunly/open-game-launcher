@@ -1,13 +1,17 @@
 import {
   ArrowLeft,
   CheckCircle2,
+  Chrome,
+  Github,
   ImagePlus,
   KeyRound,
   LogIn,
   Mail,
+  MessageCircle,
   Search,
   UserPlus,
 } from "lucide-react";
+import type { Provider } from "@supabase/supabase-js";
 import {
   type ChangeEvent,
   type FormEvent,
@@ -28,6 +32,16 @@ import { usernameSchema } from "../lib/validation/profile";
 type AuthMode = "sign-in" | "sign-up";
 type SignupStep = "credentials" | "profile";
 type UsernameStatus = "idle" | "checking" | "available" | "taken";
+
+const oauthProviders: Array<{
+  icon: typeof Github;
+  label: string;
+  provider: Provider;
+}> = [
+  { icon: Github, label: "GitHub", provider: "github" },
+  { icon: Chrome, label: "Google", provider: "google" },
+  { icon: MessageCircle, label: "Discord", provider: "discord" },
+];
 
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
@@ -222,6 +236,31 @@ export function AuthPage() {
     }
   }
 
+  async function handleOAuthLogin(provider: Provider) {
+    setIsSubmitting(true);
+    setMessage(null);
+    setErrorMessage(null);
+
+    if (!supabase) {
+      setErrorMessage("Supabase is not configured.");
+      setIsSubmitting(false);
+      return;
+    }
+
+    try {
+      const { error } = await supabase.auth.signInWithOAuth({
+        options: {
+          redirectTo: `${window.location.origin}/auth`,
+        },
+        provider,
+      });
+      if (error) throw error;
+    } catch (error) {
+      setErrorMessage(getErrorMessage(error));
+      setIsSubmitting(false);
+    }
+  }
+
   const isSignupProfileStep = mode === "sign-up" && signupStep === "profile";
   const usernameStatusText =
     usernameStatus === "checking"
@@ -242,8 +281,8 @@ export function AuthPage() {
           Launcher Account
         </h1>
         <p className="neo-copy mt-5 max-w-[560px] text-xs font-bold uppercase leading-6 text-[#55504a]">
-          Library, Downloads und Community sind accountgebunden. Store und
-          lokale Settings bleiben zum Stobern erreichbar.
+          Library, downloads, and community features are account-bound. Store
+          browsing and local settings stay available without login.
         </p>
       </div>
 
@@ -269,6 +308,28 @@ export function AuthPage() {
               {item === "sign-in" ? "Login" : "Signup"}
             </button>
           ))}
+        </div>
+
+        <div className="mb-5 grid gap-2">
+          {oauthProviders.map((item) => {
+            const Icon = item.icon;
+
+            return (
+              <button
+                key={item.provider}
+                className="neo-copy flex h-11 items-center justify-center gap-3 border-2 border-black bg-[#fbf8ef] text-[10px] font-bold uppercase text-[#171411] shadow-[2px_2px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#8cf5e4] disabled:opacity-60"
+                disabled={isSubmitting}
+                type="button"
+                onClick={() => void handleOAuthLogin(item.provider)}
+              >
+                <Icon className="h-4 w-4" />
+                Continue with {item.label}
+              </button>
+            );
+          })}
+          <p className="neo-copy text-[9px] font-black uppercase tracking-[0.12em] text-[#655f58]">
+            Enable providers and redirect URLs in Supabase Auth before use.
+          </p>
         </div>
 
         {isSignupProfileStep ? (
@@ -361,8 +422,8 @@ export function AuthPage() {
                     {avatarFile?.name ?? "Choose image"}
                   </span>
                   <span className="mt-1 block text-xs font-bold text-[#55504a]">
-                    Wird direkt hochgeladen, wenn Supabase nach Signup eine
-                    Session erstellt.
+                    Uploads immediately when Supabase creates a session after
+                    signup.
                   </span>
                 </span>
                 <ImagePlus className="h-5 w-5 shrink-0" />

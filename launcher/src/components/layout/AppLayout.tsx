@@ -12,6 +12,7 @@ function getActivePage(pathname: string): PageKey {
   if (pathname.startsWith("/library")) return "library";
   if (pathname.startsWith("/community")) return "community";
   if (pathname.startsWith("/downloads")) return "downloads";
+  if (pathname.startsWith("/mods")) return "mods";
   if (pathname.startsWith("/friends")) return "friends";
   if (pathname.startsWith("/settings")) return "settings";
   if (pathname.startsWith("/u/")) return "profile";

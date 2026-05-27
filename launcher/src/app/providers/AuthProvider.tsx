@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { Session } from "@supabase/supabase-js";
 
 import { isSupabaseConfigured, supabase, supabaseConfigError } from "../../lib/supabase/client";
+import { clearLauncherPresence, setLauncherPresence } from "../../lib/supabase/presence";
 import { AuthContext, type AuthContextValue } from "./auth-context";
 
 export function AuthProvider({ children }: { children: ReactNode }) {
@@ -42,6 +43,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       subscription.unsubscribe();
     };
   }, []);
+
+  useEffect(() => {
+    if (!supabase || !session?.user) {
+      return;
+    }
+
+    const syncPresence = (status: "away" | "online") => {
+      void setLauncherPresence({ status }).catch(() => undefined);
+    };
+
+    syncPresence(document.visibilityState === "hidden" ? "away" : "online");
+    const heartbeat = window.setInterval(() => {
+      syncPresence(document.visibilityState === "hidden" ? "away" : "online");
+    }, 45_000);
+    const handleVisibilityChange = () => {
+      syncPresence(document.visibilityState === "hidden" ? "away" : "online");
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.clearInterval(heartbeat);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      void clearLauncherPresence().catch(() => undefined);
+    };
+  }, [session?.user]);
 
   const value = useMemo<AuthContextValue>(
     () => ({

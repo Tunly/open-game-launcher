@@ -813,12 +813,12 @@ export async function updateShowcases(showcases: ProfileShowcase[]) {
     title: showcase.title,
     sort_order: index,
     visibility: showcase.visibility,
-    config: showcase.config,
+    config: showcase.config as any,
     is_enabled: showcase.isEnabled,
   }));
   const { data, error } = await client
     .from("profile_showcases")
-    .upsert(payload)
+    .upsert(payload as any)
     .select("*")
     .order("sort_order");
   handleError(error);
@@ -838,7 +838,7 @@ export async function createShowcase(input: CreateShowcaseInput) {
       title: parsed.title,
       sort_order: parsed.sortOrder,
       visibility: parsed.visibility,
-      config: parsed.config,
+      config: parsed.config as any,
       is_enabled: parsed.isEnabled,
     })
     .select("*")
@@ -900,7 +900,7 @@ export async function updateShowcase(id: string, input: UpdateShowcaseInput) {
       title: parsed.title,
       sort_order: parsed.sortOrder,
       visibility: parsed.visibility,
-      config: parsed.config,
+      config: parsed.config as any,
       is_enabled: parsed.isEnabled,
     })
     .eq("id", id)

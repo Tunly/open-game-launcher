@@ -6,6 +6,7 @@ const pagePaths: Record<PageKey, string> = {
   friends: "/friends",
   home: "/home",
   library: "/library",
+  mods: "/mods",
   profile: "/settings/profile",
   settings: "/settings",
   store: "/store",

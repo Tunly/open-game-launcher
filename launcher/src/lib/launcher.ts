@@ -5,10 +5,21 @@ import type {
   LaunchGameResponse,
   Game,
   DownloadItem,
+  SaveFile,
   StartDownloadResponse,
   SystemInfo,
   DiskInfo,
   VerifyGameFilesResult,
+  RepairGameFilesResponse,
+  CheckGameUpdatesResponse,
+  InstallGameUpdateResponse,
+  SyncGameSavesResponse,
+  UploadGameSavesToCloudResponse,
+  DownloadGameSavesFromCloudResponse,
+  RestoreGameSavesFromCloudResponse,
+  SyncGameAchievementsResponse,
+  UninstallGameResponse,
+  UnifiedAchievement,
 } from "./types";
 
 type CommandArgs = Record<string, unknown>;
@@ -81,6 +92,23 @@ export function moveGame(input: {
   return invokeCommand<void>("move_game", { input });
 }
 
+export function updateGameMetadata(input: {
+  gameId: string;
+  coverUrl?: string;
+  logoUrl?: string;
+  iconUrl?: string;
+  rating?: number;
+  achievements?: UnifiedAchievement[];
+  saveFiles?: SaveFile[];
+  friendsPlaying?: string[];
+}): Promise<Game> {
+  return invokeCommand<Game>("update_game_metadata", { input });
+}
+
+export function importLibrarySnapshot(games: Game[]): Promise<Game[]> {
+  return invokeCommand<Game[]>("import_library_snapshot", { games });
+}
+
 export function launchGame(gameId: string): Promise<LaunchGameResponse> {
   return invokeCommand<LaunchGameResponse>("launch_game", { gameId });
 }
@@ -89,6 +117,64 @@ export function verifyGameFiles(
   gameId: string,
 ): Promise<VerifyGameFilesResult> {
   return invokeCommand<VerifyGameFilesResult>("verify_game_files", { gameId });
+}
+
+export function repairGameFiles(gameId: string): Promise<RepairGameFilesResponse> {
+  return invokeCommand<RepairGameFilesResponse>("repair_game_files", { gameId });
+}
+
+export function checkGameUpdates(): Promise<CheckGameUpdatesResponse> {
+  return invokeCommand<CheckGameUpdatesResponse>("check_game_updates");
+}
+
+export function installGameUpdate(gameId: string): Promise<InstallGameUpdateResponse> {
+  return invokeCommand<InstallGameUpdateResponse>("install_game_update", { gameId });
+}
+
+export function syncGameSaves(gameId: string): Promise<SyncGameSavesResponse> {
+  return invokeCommand<SyncGameSavesResponse>("sync_game_saves", { gameId });
+}
+
+export function uploadGameSavesToCloud(input: {
+  gameId: string;
+  supabaseUrl: string;
+  apiKey: string;
+  accessToken: string;
+  userId: string;
+}): Promise<UploadGameSavesToCloudResponse> {
+  return invokeCommand<UploadGameSavesToCloudResponse>("upload_game_saves_to_cloud", { input });
+}
+
+export function downloadGameSavesFromCloud(input: {
+  gameId: string;
+  supabaseUrl: string;
+  apiKey: string;
+  accessToken: string;
+  userId: string;
+}): Promise<DownloadGameSavesFromCloudResponse> {
+  return invokeCommand<DownloadGameSavesFromCloudResponse>("download_game_saves_from_cloud", { input });
+}
+
+export function restoreGameSavesFromCloud(input: {
+  gameId: string;
+  supabaseUrl: string;
+  apiKey: string;
+  accessToken: string;
+  userId: string;
+}): Promise<RestoreGameSavesFromCloudResponse> {
+  return invokeCommand<RestoreGameSavesFromCloudResponse>("restore_game_saves_from_cloud", { input });
+}
+
+export function syncGameAchievements(
+  gameId: string,
+  steamId?: string,
+  apiKey?: string
+): Promise<SyncGameAchievementsResponse> {
+  return invokeCommand<SyncGameAchievementsResponse>("sync_game_achievements", { gameId, steamId, apiKey });
+}
+
+export function uninstallGame(gameId: string): Promise<UninstallGameResponse> {
+  return invokeCommand<UninstallGameResponse>("uninstall_game", { gameId });
 }
 
 export function startDownload(gameId: string): Promise<StartDownloadResponse> {

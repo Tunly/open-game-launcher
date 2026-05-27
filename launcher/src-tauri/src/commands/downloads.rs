@@ -126,7 +126,7 @@ pub async fn start_download(
     // Read from cache path to get game name
     let cache_path = dirs::data_local_dir()
         .or_else(dirs::data_dir)
-        .map(|d| d.join("open-game-launcher").join("installed_games.json"));
+        .map(|d| d.join("open-game-launcher").join("installed-games.json"));
 
     if let Some(path) = cache_path {
         if let Ok(contents) = std::fs::read_to_string(path) {
@@ -299,12 +299,21 @@ pub async fn start_download(
                 "game"
             };
             let _ = std::fs::write(dir.join(dummy_exe), b"OG Launcher Mock Game Executable");
+            let manifest = serde_json::json!({
+                "gameId": game_id_clone,
+                "title": title_clone,
+                "version": "1.0.0",
+                "managedBy": "OG-Launcher"
+            });
+            if let Ok(contents) = serde_json::to_string_pretty(&manifest) {
+                let _ = std::fs::write(dir.join("og-manifest.json"), contents);
+            }
         }
 
         // Update installed games cache
         let cache_path = dirs::data_local_dir()
             .or_else(dirs::data_dir)
-            .map(|d| d.join("open-game-launcher").join("installed_games.json"));
+            .map(|d| d.join("open-game-launcher").join("installed-games.json"));
 
         if let Some(path) = cache_path {
             if let Ok(contents) = std::fs::read_to_string(&path) {
@@ -331,6 +340,10 @@ pub async fn start_download(
                                     obj.insert(
                                         "playtimeMinutes".to_string(),
                                         serde_json::Value::Number(0.into()),
+                                    );
+                                    obj.insert(
+                                        "version".to_string(),
+                                        serde_json::Value::String("1.0.0".to_string()),
                                     );
                                 });
                                 found = true;
@@ -380,7 +393,7 @@ pub async fn start_download(
                             );
                             new_game.insert(
                                 "version".to_string(),
-                                serde_json::Value::String("1.0".to_string()),
+                                serde_json::Value::String("1.0.0".to_string()),
                             );
                             games_arr.push(serde_json::Value::Object(new_game));
                         }

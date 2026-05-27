@@ -1,5 +1,14 @@
 supabase/.temp/
+supabase/functions/.env
+supabase/functions/.env.local
+supabase/functions/.env.*.local
 .vs/
 launcher/.env
 launcher/.env.local
 launcher/.env.*.local
+
+# Zusätzlicher Schutz für den Hauptordner
+.env
+.env.local
+.env.*.local
+*.log

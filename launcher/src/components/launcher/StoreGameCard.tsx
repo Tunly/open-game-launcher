@@ -1,11 +1,19 @@
-import { ShoppingCart } from "lucide-react";
+import { Bell, Check, Heart, ShoppingCart } from "lucide-react";
+import { useState } from "react";
 
 import type { StoreGame } from "../../lib/types";
 
 interface StoreGameCardProps {
   game: StoreGame;
   isAdded: boolean;
-  onAddToLibrary: (gameId: string) => void;
+  isInCart: boolean;
+  isWishlisted: boolean;
+  priceAlert: number | null;
+  onAddToCart: (gameId: string) => void;
+  onBuyNow: (gameId: string) => void;
+  onSetPriceAlert: (gameId: string, value: number | null) => void;
+  onToggleWishlist: (gameId: string) => void;
+  onViewDetails: (gameId: string) => void;
 }
 
 const artClassById: Record<string, string> = {
@@ -28,8 +36,18 @@ function formatPrice(game: StoreGame) {
 export function StoreGameCard({
   game,
   isAdded,
-  onAddToLibrary,
+  isInCart,
+  isWishlisted,
+  onAddToCart,
+  onBuyNow,
+  onSetPriceAlert,
+  onToggleWishlist,
+  onViewDetails,
+  priceAlert,
 }: StoreGameCardProps) {
+  const [isPriceAlertEditorOpen, setIsPriceAlertEditorOpen] = useState(false);
+  const [priceAlertInput, setPriceAlertInput] = useState(priceAlert?.toString() ?? "");
+
   return (
     <article className="overflow-hidden border-4 border-black bg-[#f5eedf] shadow-[5px_5px_0_#171411]">
       <div className={`${artClassById[game.id] ?? "card-art-drift"} steam-game-banner relative border-b-4 border-black`}>
@@ -52,19 +70,124 @@ export function StoreGameCard({
         <p className="neo-copy mt-2 text-xs font-bold uppercase text-[#171411]">
           {game.description}
         </p>
-        <div className="my-4 h-0.5 bg-[#171411]" />
-        <div className="flex items-center justify-between gap-4">
-          <p className="text-2xl font-black text-[#171411]">{formatPrice(game)}</p>
-          <button
-            aria-label={isAdded ? "Added to library" : `Add ${game.title}`}
-            className="flex h-10 w-10 items-center justify-center border-2 border-black bg-[#087d6d] text-white shadow-[3px_3px_0_#171411] disabled:opacity-60"
-            disabled={isAdded}
-            type="button"
-            onClick={() => onAddToLibrary(game.id)}
-          >
-            <ShoppingCart className="h-6 w-6" />
-          </button>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {(game.genres ?? [game.tagLine]).slice(0, 3).map((genre) => (
+            <span
+              key={genre}
+              className="neo-copy border-2 border-black bg-[#efe3cf] px-2 py-1 text-[9px] font-black uppercase tracking-[0.1em] text-[#171411]"
+            >
+              {genre}
+            </span>
+          ))}
+          {game.discountPercent ? (
+            <span className="neo-copy border-2 border-black bg-[#b7102a] px-2 py-1 text-[9px] font-black uppercase tracking-[0.1em] text-white">
+              -{game.discountPercent}%
+            </span>
+          ) : null}
         </div>
+        <div className="my-4 h-0.5 bg-[#171411]" />
+        <div className="flex items-end justify-between gap-4">
+          <div>
+            {game.originalPrice && game.originalPrice > game.price ? (
+              <p className="neo-copy text-[10px] font-black uppercase text-[#655f58] line-through">
+                {new Intl.NumberFormat("de-DE", {
+                  currency: "EUR",
+                  style: "currency",
+                }).format(game.originalPrice)}
+              </p>
+            ) : null}
+            <p className="text-2xl font-black text-[#171411]">{formatPrice(game)}</p>
+          </div>
+          <div className="flex gap-2">
+            <button
+              aria-label={isWishlisted ? `Remove ${game.title} from wishlist` : `Wishlist ${game.title}`}
+              className={`flex h-10 w-10 items-center justify-center border-2 border-black shadow-[3px_3px_0_#171411] ${
+                isWishlisted ? "bg-[#b7102a] text-white" : "bg-[#fff9ed] text-[#171411]"
+              }`}
+              type="button"
+              onClick={() => onToggleWishlist(game.id)}
+            >
+              <Heart className={`h-5 w-5 ${isWishlisted ? "fill-current" : ""}`} />
+            </button>
+            <button
+              aria-label={priceAlert ? `Clear price alert for ${game.title}` : `Set price alert for ${game.title}`}
+              className={`flex h-10 w-10 items-center justify-center border-2 border-black shadow-[3px_3px_0_#171411] ${
+                priceAlert ? "bg-[#f2c14e] text-[#171411]" : "bg-[#fff9ed] text-[#171411]"
+              }`}
+              type="button"
+              onClick={() => {
+                if (priceAlert) {
+                  onSetPriceAlert(game.id, null);
+                  setPriceAlertInput("");
+                  return;
+                }
+
+                setIsPriceAlertEditorOpen((isOpen) => !isOpen);
+              }}
+            >
+              <Bell className="h-5 w-5" />
+            </button>
+            <button
+              aria-label={isInCart ? `${game.title} is in cart` : `Add ${game.title} to cart`}
+              className="flex h-10 w-10 items-center justify-center border-2 border-black bg-[#087d6d] text-white shadow-[3px_3px_0_#171411] disabled:opacity-60"
+              disabled={isInCart || isAdded}
+              type="button"
+              onClick={() => onAddToCart(game.id)}
+            >
+              {isInCart || isAdded ? <Check className="h-6 w-6" /> : <ShoppingCart className="h-6 w-6" />}
+            </button>
+          </div>
+        </div>
+        <button
+          className="neo-copy mt-4 h-10 w-full border-2 border-black bg-[#171411] px-3 text-[10px] font-black uppercase tracking-[0.12em] text-[#fff9ed] shadow-[3px_3px_0_#171411] transition hover:-translate-y-0.5 disabled:opacity-60"
+          disabled={isAdded}
+          type="button"
+          onClick={() => onBuyNow(game.id)}
+        >
+          {isAdded ? "Owned" : game.isFree ? "Claim" : "Buy Now"}
+        </button>
+        <button
+          className="neo-copy mt-2 h-9 w-full border-2 border-black bg-[#fff9ed] px-3 text-[10px] font-black uppercase tracking-[0.12em] text-[#171411] shadow-[3px_3px_0_#171411] transition hover:-translate-y-0.5"
+          type="button"
+          onClick={() => onViewDetails(game.id)}
+        >
+          Details
+        </button>
+        {priceAlert !== null ? (
+          <p className="neo-copy mt-3 border-2 border-black bg-[#f2c14e] p-2 text-[9px] font-black uppercase tracking-[0.1em] text-[#171411]">
+            Alert below {new Intl.NumberFormat("de-DE", {
+              currency: "EUR",
+              style: "currency",
+            }).format(priceAlert)}
+          </p>
+        ) : null}
+        {isPriceAlertEditorOpen && priceAlert === null ? (
+          <form
+            className="mt-3 flex gap-2"
+            onSubmit={(event) => {
+              event.preventDefault();
+              const parsed = Number.parseFloat(priceAlertInput.replace(",", "."));
+              if (Number.isFinite(parsed) && parsed >= 0) {
+                onSetPriceAlert(game.id, parsed);
+                setIsPriceAlertEditorOpen(false);
+              }
+            }}
+          >
+            <input
+              className="neo-copy min-w-0 flex-1 border-2 border-black bg-[#fff9ed] px-2 text-[10px] font-black uppercase text-[#171411] outline-none"
+              inputMode="decimal"
+              placeholder="Target EUR"
+              value={priceAlertInput}
+              onChange={(event) => setPriceAlertInput(event.target.value)}
+            />
+            <button
+              className="neo-copy border-2 border-black bg-[#f2c14e] px-3 text-[10px] font-black uppercase text-[#171411] shadow-[2px_2px_0_#171411]"
+              type="submit"
+            >
+              Save
+            </button>
+          </form>
+        ) : null}
       </div>
     </article>
   );

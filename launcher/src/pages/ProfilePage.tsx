@@ -111,6 +111,14 @@ export function ProfilePage() {
   const canShowComments =
     isOwnProfile || state.data.profile.commentsVisibility !== "private";
 
+  function handleCommentsChange(comments: ProfilePageData["comments"]) {
+    setState((current) =>
+      current.status === "ready"
+        ? { ...current, data: { ...current.data, comments } }
+        : current,
+    );
+  }
+
   return (
     <ProfileShell>
       {state.isMock ? (
@@ -179,7 +187,14 @@ export function ProfilePage() {
           </div>
 
           {canShowComments ? (
-            <ProfileComments comments={state.data.comments} />
+            <ProfileComments
+              canWrite={Boolean(user) && !state.isMock}
+              comments={state.data.comments}
+              currentUserId={user?.id ?? null}
+              isMock={state.isMock}
+              profileUserId={state.data.profile.id}
+              onCommentsChange={handleCommentsChange}
+            />
           ) : (
             <ProfileSidePanel title="Guestbook">
               <p className="neo-copy border-2 border-dashed border-black bg-[#f6edd8] p-3 text-[12px] font-bold uppercase leading-5 text-[#655f58]">
@@ -290,7 +305,7 @@ function createMockProfilePageData(username: string): ProfilePageData {
       bannerUrl: null,
       bio: "A customizable gaming profile with showcases, badges, comments, hardware, and privacy controls.",
       countryCode: "DE",
-      language: "de",
+      language: "en",
       timezone: "Europe/Berlin",
       profileVisibility: "public",
       onlineStatusVisibility: "public",

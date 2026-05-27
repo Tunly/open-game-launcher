@@ -62,6 +62,10 @@ export function SettingsPage() {
     "launcher.steamId",
     "",
   );
+  const [steamApiKey, setSteamApiKey] = useLocalStorageState(
+    "launcher.steamApiKey",
+    "",
+  );
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const [steamTestResult, setSteamTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const [isSteamTesting, setIsSteamTesting] = useState(false);
@@ -461,6 +465,16 @@ export function SettingsPage() {
                             {steamTestResult.message}
                           </p>
                         )}
+                        <div className="pt-2 mt-2 border-t border-[#d6cbb8]">
+                          <span className="neo-copy text-[8px] font-bold uppercase text-[#55504a] block mb-1">Steam Web API Key (Optional, for Achievements)</span>
+                          <input
+                            type="password"
+                            placeholder="Enter API Key..."
+                            value={steamApiKey}
+                            onChange={(e) => setSteamApiKey(e.target.value)}
+                            className="neo-copy w-full border border-black bg-[#efe6d4] px-2 py-1 text-[10px] font-bold outline-none placeholder:text-[#8c8273]"
+                          />
+                        </div>
                       </div>
                     ) : (
                       <button

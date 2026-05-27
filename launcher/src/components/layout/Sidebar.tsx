@@ -2,6 +2,7 @@ import {
   Gamepad2,
   HardDriveDownload,
   MessageSquareMore,
+  PackagePlus,
   Store,
   type LucideIcon,
 } from "lucide-react";
@@ -14,6 +15,7 @@ export type PageKey =
   | "store"
   | "community"
   | "downloads"
+  | "mods"
   | "settings"
   | "profile"
   | "friends";
@@ -31,10 +33,11 @@ interface SidebarProps {
 }
 
 const navItems: NavItem[] = [
-  { key: "store", label: "Store", icon: Store },
   { key: "library", label: "Library", icon: Gamepad2 },
-  { key: "community", label: "Community", icon: MessageSquareMore },
   { key: "downloads", label: "Downloads", icon: HardDriveDownload },
+  { key: "community", label: "Community", icon: MessageSquareMore },
+  { key: "mods", label: "Mods", icon: PackagePlus },
+  { key: "store", label: "Store", icon: Store },
 ];
 
 export function Sidebar({

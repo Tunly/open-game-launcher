@@ -121,6 +121,21 @@ VITE_SUPABASE_ANON_KEY=your_supabase_anon_or_publishable_key
 
 `VITE_SUPABASE_PUBLISHABLE_KEY` is also supported as an alternative to `VITE_SUPABASE_ANON_KEY`. Do not expose a Supabase `service_role` key in the client.
 
+RAWG artwork is fetched through the Supabase Edge Function in `supabase/functions/rawg-assets`, so production builds should keep the RAWG key in Supabase secrets instead of the launcher client:
+
+```bash
+supabase secrets set RAWG_API_KEY=your_rawg_key
+supabase functions deploy rawg-assets
+```
+
+For local Edge Function testing, create `supabase/functions/.env.local` with `RAWG_API_KEY=...` and run:
+
+```bash
+supabase functions serve rawg-assets --env-file supabase/functions/.env.local
+```
+
+`launcher/.env.local` may still define `RAWG_API_KEY` as a development fallback for native scans, but do not ship it in client-facing builds.
+
 Start the desktop app in development mode:
 
 ```bash

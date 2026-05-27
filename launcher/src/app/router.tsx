@@ -8,6 +8,7 @@ import { EditProfilePage } from "../pages/EditProfilePage";
 import { FriendsPage } from "../pages/FriendsPage";
 import { HomePage } from "../pages/HomePage";
 import { LibraryPage } from "../pages/LibraryPage";
+import { ModsPage } from "../pages/ModsPage";
 import { NotFoundPage } from "../pages/NotFoundPage";
 import { PrivacySettingsPage } from "../pages/PrivacySettingsPage";
 import { ProfileCustomizePage } from "../pages/ProfileCustomizePage";
@@ -27,6 +28,7 @@ export const router = createBrowserRouter([
       { path: "/store", element: <StorePage /> },
       { path: "/community", element: <CommunityPage /> },
       { path: "/downloads", element: <DownloadsPage /> },
+      { path: "/mods", element: <ModsPage /> },
       { path: "/auth", element: <AuthPage /> },
       { path: "/u/:username", element: <ProfilePage /> },
       { path: "/settings/profile", element: <EditProfilePage /> },

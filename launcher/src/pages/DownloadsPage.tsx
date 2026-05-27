@@ -124,7 +124,7 @@ export function DownloadsPage() {
             type="button"
           >
             <ListFilter className="h-4 w-4" />
-            Queue filtern
+            Filter queue
           </button>
         </div>
       </div>
@@ -134,7 +134,7 @@ export function DownloadsPage() {
           <div className="flex items-center justify-between gap-4">
             <div>
               <p className="neo-copy text-xs font-bold uppercase text-[#55504a]">
-                Gesamtauslastung
+                Total load
               </p>
               <p className="mt-1 text-[clamp(2rem,10vw,2.25rem)] font-black uppercase text-[#171411]">
                 {totalProgress}%

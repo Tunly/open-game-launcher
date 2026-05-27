@@ -121,6 +121,49 @@ export interface FriendRequest extends Friendship {
   addresseeProfile?: Profile;
 }
 
+export interface UserPresence {
+  userId: string;
+  status: "offline" | "online" | "away" | "busy" | "invisible";
+  customStatus: string | null;
+  currentGameId: string | null;
+  currentGameTitle: string | null;
+  lastHeartbeatAt: string | null;
+  updatedAt: string;
+}
+
+export interface ChatRoom {
+  id: string;
+  type: "dm" | "group";
+  name: string | null;
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ChatMessage {
+  id: string;
+  roomId: string;
+  senderId: string;
+  content: string;
+  deletedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GameInvite {
+  id: string;
+  senderId: string;
+  receiverId: string;
+  gameId: string | null;
+  gameTitle: string;
+  launchUri: string | null;
+  status: "pending" | "accepted" | "declined" | "cancelled" | "expired";
+  message: string | null;
+  expiresAt: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface UserBadge {
   id: string;
   userId: string;
