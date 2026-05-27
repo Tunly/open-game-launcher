@@ -287,6 +287,10 @@ a:focus-visible {
   position: relative;
 }
 
+.library-sidebar-scroll-frame {
+  padding-right: 10px;
+}
+
 .library-game-list-scroll,
 .library-detail-scroll {
   -ms-overflow-style: none;

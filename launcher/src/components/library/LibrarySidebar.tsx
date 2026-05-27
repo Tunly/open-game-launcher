@@ -2,7 +2,9 @@ import { Search, SlidersHorizontal, Grid2X2 } from "lucide-react";
 import type { Game } from "../../lib/types";
 import type { LibrarySortOption } from "../../pages/LibraryPage";
 import { LibraryRow } from "./LibraryRow";
-import { LibraryCustomScrollbar, useLibraryScrollbar } from "./LibraryCustomScrollbar";
+import { LibraryCustomScrollbar } from "./LibraryCustomScrollbar";
+
+type LibraryAdvancedFilters = Record<string, string | string[]>;
 
 export interface LibrarySidebarProps {
   games: Game[];
@@ -14,8 +16,7 @@ export interface LibrarySidebarProps {
   isFilterPopupOpen: boolean;
   setIsFilterPopupOpen: (open: boolean) => void;
   activePlatformFilter: string;
-  advancedFilters: any;
-  customCategories: Record<string, string[]>;
+  advancedFilters: LibraryAdvancedFilters;
   groupOption: string;
   groupedGames: Record<string, Game[]>;
   selectedGame: Game | null;
@@ -38,7 +39,6 @@ export function LibrarySidebar({
   setIsFilterPopupOpen,
   activePlatformFilter,
   advancedFilters,
-  customCategories,
   groupOption,
   groupedGames,
   selectedGame,
@@ -50,7 +50,7 @@ export function LibrarySidebar({
   setAddGameError
 }: LibrarySidebarProps) {
   
-  const hasActiveFilters = searchQuery || activePlatformFilter !== "all" || Object.values(advancedFilters).some((v: any) => Array.isArray(v) ? v.length > 0 : v !== "");
+  const hasActiveFilters = searchQuery || activePlatformFilter !== "all" || Object.values(advancedFilters).some((value) => Array.isArray(value) ? value.length > 0 : value !== "");
 
   return (
     <aside className="min-h-0 border-b-4 border-black bg-[#efe3cf] flex flex-col justify-between md:border-b-0 md:border-r-4">
@@ -94,7 +94,7 @@ export function LibrarySidebar({
               type="button"
               onClick={() => setIsFilterPopupOpen(!isFilterPopupOpen)}
               className={`grid h-6 w-8 place-items-center border-2 border-black transition ${
-                isFilterPopupOpen ? "bg-[#139a82] text-[#fffaf0]" : "bg-[#d8cbb7] text-[#171411] hover:bg-[#c9bcab]"
+                isFilterPopupOpen ? "bg-[#139a82] text-[#fffaf0]" : "bg-[#e8c843] text-[#171411] hover:bg-[#f0d95a]"
               }`}
               title="Advanced Filters"
             >
@@ -104,8 +104,8 @@ export function LibrarySidebar({
         </div>
 
         {/* List Frame */}
-        <div className="library-scroll-frame flex-1 min-h-0 border-t-2 border-black">
-          <div ref={listScrollRef} className="library-list-scroll h-full min-h-0 overflow-y-auto overflow-x-hidden p-2 pr-4 space-y-1">
+        <div className="library-scroll-frame library-sidebar-scroll-frame flex-1 min-h-0 border-t-2 border-black">
+          <div ref={listScrollRef} className="library-game-list-scroll h-full min-h-0 overflow-y-auto overflow-x-hidden py-0 pl-0 pr-0 space-y-1">
             {groupOption !== "none" ? (
               Object.entries(groupedGames).length === 0 ? (
                 <div className="py-8 text-center text-[12px] font-black uppercase text-[#686157]">

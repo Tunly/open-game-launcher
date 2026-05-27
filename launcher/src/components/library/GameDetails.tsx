@@ -15,7 +15,7 @@ import type { Game } from "../../lib/types";
 import { Metric } from "./Metric";
 import { LibraryCustomScrollbar } from "./LibraryCustomScrollbar";
 import { PlatformIcon } from "./PlatformIcons";
-import { formatPlayTime, formatLastPlayed } from "../../lib/formatters";
+import { formatAchievementProgress, formatPlayTime, formatLastPlayed } from "../../lib/formatters";
 import { getGameAssetUrl, getGameBannerStyle } from "../../lib/assets";
 import { getFallbackBannerClass, getGameLogoCandidates, getGameSource, getLogoPositionClass, getLogoPlacementStyle } from "../../pages/LibraryPage";
 
@@ -24,6 +24,8 @@ export interface GameDetailsProps {
   enrichedSelectedGame: Game | null;
   shouldShowLibraryLoading: boolean;
   handlePlay: () => void;
+  handleSyncAchievements: () => void;
+  isSyncingAchievements: boolean;
   logoCandidateIndexes: Record<string, number>;
   loadedLogoUrls: Set<string>;
   handleLogoLoad: (src: string) => void;
@@ -52,6 +54,8 @@ export function GameDetails({
   enrichedSelectedGame,
   shouldShowLibraryLoading,
   handlePlay,
+  handleSyncAchievements,
+  isSyncingAchievements,
   logoCandidateIndexes,
   loadedLogoUrls,
   handleLogoLoad,
@@ -80,6 +84,8 @@ export function GameDetails({
   const [newCategoryInput, setNewCategoryInput] = useState("");
   const [isMovePathEditorOpen, setIsMovePathEditorOpen] = useState(false);
   const [movePathInput, setMovePathInput] = useState("");
+  const achievements = enrichedSelectedGame?.achievements ?? [];
+  const unlockedAchievementCount = achievements.filter((achievement) => achievement.unlockedAt).length;
 
   // Close popovers on game switch
   useEffect(() => {
@@ -209,7 +215,7 @@ export function GameDetails({
                   <Metric icon={<Cloud className="h-7 w-7 fill-black text-black" />} title="Cloud" value="Up to date" />
                   <Metric icon={<Clock3 className="h-7 w-7" />} title="Last Played" value={formatLastPlayed(enrichedSelectedGame.lastPlayed ?? enrichedSelectedGame.lastPlayedAt)} />
                   <Metric icon={<Clock3 className="h-7 w-7" />} title="Play Time" value={formatPlayTime(enrichedSelectedGame.playtimeMinutes)} />
-                  <Metric icon={<Award className="h-7 w-7 fill-black text-black" />} title="Achievements" value="0/0" />
+                  <Metric icon={<Award className="h-7 w-7 fill-black text-black" />} title="Achievements" value={formatAchievementProgress(enrichedSelectedGame)} />
                 </div>
 
                 {/* DETAILS POPUP INTERACTIONS (Favoriten, Kategorien verwalten, Hidden) */}
@@ -367,6 +373,20 @@ export function GameDetails({
                   </div>
 
                   <button
+                    className="grid h-10 w-10 place-items-center border-4 border-black bg-[#fbf4e7] hover:bg-[#efe3cf] transition disabled:cursor-not-allowed disabled:opacity-55"
+                    type="button"
+                    aria-label="Sync achievements"
+                    title="Sync achievements"
+                    disabled={isSyncingAchievements}
+                    onClick={() => {
+                      setStatusMessage("Syncing Steam achievements...");
+                      void handleSyncAchievements();
+                    }}
+                  >
+                    <Award className={`h-6 w-6 ${isSyncingAchievements ? "animate-pulse" : ""}`} />
+                  </button>
+
+                  <button
                     className="grid h-10 w-10 place-items-center border-4 border-black bg-[#fbf4e7] hover:bg-[#efe3cf] transition"
                     type="button"
                     aria-label="Controller compatibility"
@@ -462,6 +482,65 @@ export function GameDetails({
 
                   {/* Right Column: RICH METADATA & Hardware cards */}
                   <aside className="space-y-4">
+                    <section className="border-4 border-black bg-[#fbf4e7] shadow-[3px_3px_0_#171411]">
+                      <div className="flex items-center justify-between gap-2 border-b-2 border-black px-3 py-2">
+                        <h2 className="text-[15px] font-black uppercase leading-none">
+                          Achievements
+                        </h2>
+                        <span className="neo-copy border-2 border-black bg-[#e8c843] px-2 py-0.5 text-[10px] font-black uppercase">
+                          {unlockedAchievementCount}/{achievements.length}
+                        </span>
+                      </div>
+
+                      {achievements.length > 0 ? (
+                        <div className="max-h-[360px] space-y-2 overflow-y-auto p-3">
+                          {achievements.map((achievement) => {
+                            const isUnlocked = Boolean(achievement.unlockedAt);
+
+                            return (
+                              <article
+                                key={achievement.id}
+                                className={`grid grid-cols-[38px_minmax(0,1fr)] gap-2 border-2 border-black p-2 ${
+                                  isUnlocked ? "bg-[#efe3cf]" : "bg-[#f6edd8] opacity-75"
+                                }`}
+                              >
+                                <div className={`grid h-[38px] w-[38px] place-items-center overflow-hidden border-2 border-black ${
+                                  isUnlocked ? "bg-[#169b83] text-white" : "bg-[#d8cbb7] text-[#171411]"
+                                }`}>
+                                  {achievement.iconUrl ? (
+                                    <img
+                                      alt=""
+                                      className="h-full w-full object-cover"
+                                      loading="lazy"
+                                      src={achievement.iconUrl}
+                                    />
+                                  ) : (
+                                    <Award className="h-5 w-5" />
+                                  )}
+                                </div>
+                                <div className="min-w-0">
+                                  <h3 className="truncate text-[12px] font-black uppercase leading-tight">
+                                    {achievement.name}
+                                  </h3>
+                                  {achievement.description ? (
+                                    <p className="mt-1 line-clamp-2 text-[11px] font-bold leading-4 text-[#55504a]">
+                                      {achievement.description}
+                                    </p>
+                                  ) : null}
+                                  <p className="neo-copy mt-1 text-[9px] font-black uppercase text-[#655f58]">
+                                    {isUnlocked ? "Unlocked" : "Locked"}
+                                  </p>
+                                </div>
+                              </article>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <div className="p-3 text-[12px] font-bold leading-5 text-[#55504a]">
+                          No achievements synced yet. Use the trophy button above to sync Steam achievements.
+                        </div>
+                      )}
+                    </section>
 
                     {/* ENRICHED METADATA INFORMATION CARD */}
                     <section className="border-4 border-black bg-[#fbf4e7] shadow-[3px_3px_0_#171411]" style={{ fontFamily: '"Arial Narrow", Impact, sans-serif' }}>

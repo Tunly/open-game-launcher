@@ -2302,6 +2302,16 @@ pub async fn sync_game_achievements(
     })
 }
 
+#[allow(non_snake_case)]
+#[tauri::command]
+pub async fn syncGameAchievements(
+    game_id: String,
+    steam_id: Option<String>,
+    api_key: Option<String>,
+) -> Result<SyncGameAchievementsResponse, String> {
+    sync_game_achievements(game_id, steam_id, api_key).await
+}
+
 #[tauri::command]
 pub fn uninstall_game(game_id: String) -> Result<UninstallGameResponse, String> {
     let game_id = normalize_game_id(game_id)?;
@@ -6216,8 +6226,16 @@ async fn fetch_steam_achievements(
         .map(|id| id.trim().trim_matches('"').to_string())
         .filter(|id| !id.is_empty());
 
-    if let (Some(api_key), Some(steam_id)) = (api_key.as_deref(), steam_id.as_deref()) {
-        if let Ok(achievements) = fetch_steam_player_achievements(appid, steam_id, api_key).await {
+    if let Some(steam_id) = steam_id.as_deref() {
+        if let Ok(achievements) =
+            fetch_steam_player_achievements(appid, steam_id, api_key.as_deref()).await
+        {
+            if !achievements.is_empty() {
+                return Ok(achievements);
+            }
+        }
+
+        if let Ok(achievements) = fetch_steam_community_xml_achievements(appid, steam_id).await {
             if !achievements.is_empty() {
                 return Ok(achievements);
             }
@@ -6233,7 +6251,7 @@ async fn fetch_steam_achievements(
     }
 
     Err(
-        "Steam achievement sync needs STEAM_WEB_API_KEY or STEAM_API_KEY. Add STEAM_ID too to mark unlocked achievements."
+        "Steam achievement sync could not read public player achievements from Steam Web API or Steam Community XML. Add a Steam Web API Key in Settings, or make sure your Steam profile and game details are public."
             .to_string(),
     )
 }
@@ -6241,17 +6259,22 @@ async fn fetch_steam_achievements(
 async fn fetch_steam_player_achievements(
     appid: u32,
     steam_id: &str,
-    api_key: &str,
+    api_key: Option<&str>,
 ) -> Result<Vec<UnifiedAchievement>, String> {
     let client = reqwest::Client::new();
+    let mut query = vec![
+        ("appid", appid.to_string()),
+        ("steamid", steam_id.to_string()),
+        ("l", "en".to_string()),
+    ];
+
+    if let Some(api_key) = api_key {
+        query.push(("key", api_key.to_string()));
+    }
+
     let response = client
         .get("https://api.steampowered.com/ISteamUserStats/GetPlayerAchievements/v0001/")
-        .query(&[
-            ("appid", appid.to_string()),
-            ("steamid", steam_id.to_string()),
-            ("key", api_key.to_string()),
-            ("l", "en".to_string()),
-        ])
+        .query(&query)
         .send()
         .await
         .map_err(|error| format!("Could not contact Steam achievements API: {error}"))?;
@@ -6308,6 +6331,115 @@ async fn fetch_steam_player_achievements(
             })
         })
         .collect())
+}
+
+async fn fetch_steam_community_xml_achievements(
+    appid: u32,
+    steam_id: &str,
+) -> Result<Vec<UnifiedAchievement>, String> {
+    let url = format!("https://steamcommunity.com/profiles/{steam_id}/stats/{appid}/?xml=1");
+    let client = reqwest::Client::new();
+    let response = client
+        .get(url)
+        .send()
+        .await
+        .map_err(|error| format!("Could not contact Steam Community achievements XML: {error}"))?;
+
+    if !response.status().is_success() {
+        return Err(format!(
+            "Steam Community achievements XML returned status {}.",
+            response.status()
+        ));
+    }
+
+    let xml = response
+        .text()
+        .await
+        .map_err(|error| format!("Could not read Steam Community achievements XML: {error}"))?;
+    let mut achievements = Vec::new();
+    let mut remaining = xml.as_str();
+
+    while let Some(start_index) = remaining.find("<achievement") {
+        let after_start = &remaining[start_index..];
+        let Some(open_end_index) = after_start.find('>') else {
+            break;
+        };
+        let after_open = &after_start[open_end_index + 1..];
+        let Some(close_index) = after_open.find("</achievement>") else {
+            break;
+        };
+        let block = &after_open[..close_index];
+
+        if let Some(name) = xml_tag_text(block, "name") {
+            let id = xml_tag_text(block, "apiname")
+                .or_else(|| xml_tag_text(block, "apiName"))
+                .unwrap_or_else(|| normalize_achievement_id(&name));
+            let unlock_timestamp = xml_tag_text(block, "unlockTimestamp")
+                .and_then(|value| value.parse::<u64>().ok())
+                .filter(|timestamp| *timestamp > 0);
+            let is_closed = xml_tag_text(block, "closed")
+                .map(|value| value == "1" || value.eq_ignore_ascii_case("true"))
+                .unwrap_or(false);
+            let unlocked_at = unlock_timestamp
+                .map(unix_timestamp_to_iso)
+                .or_else(|| is_closed.then(|| unix_timestamp_to_iso(current_unix_timestamp())));
+
+            achievements.push(UnifiedAchievement {
+                id,
+                name,
+                description: xml_tag_text(block, "description"),
+                icon_url: xml_tag_text(block, "iconClosed")
+                    .or_else(|| xml_tag_text(block, "iconOpen")),
+                unlocked_at,
+                rarity: None,
+            });
+        }
+
+        remaining = &after_open[close_index + "</achievement>".len()..];
+    }
+
+    Ok(achievements)
+}
+
+fn xml_tag_text(block: &str, tag: &str) -> Option<String> {
+    let open_tag = format!("<{tag}>");
+    let close_tag = format!("</{tag}>");
+    let start = block.find(&open_tag)? + open_tag.len();
+    let end = block[start..].find(&close_tag)? + start;
+    let value = block[start..end].trim();
+    let value = value
+        .strip_prefix("<![CDATA[")
+        .and_then(|inner| inner.strip_suffix("]]>"))
+        .unwrap_or(value);
+    let value = xml_unescape(value.trim());
+
+    (!value.is_empty()).then_some(value)
+}
+
+fn xml_unescape(value: &str) -> String {
+    value
+        .replace("&amp;", "&")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&apos;", "'")
+}
+
+fn normalize_achievement_id(name: &str) -> String {
+    name
+        .chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() {
+                character.to_ascii_lowercase()
+            } else {
+                '_'
+            }
+        })
+        .collect::<String>()
+        .split('_')
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join("_")
 }
 
 async fn fetch_steam_schema_achievements(

@@ -27,12 +27,13 @@ import { GameDetails } from "../components/library/GameDetails";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { getGameAssetUrl, getGameBannerStyle } from "../lib/assets";
-import { addManualGame, launchGame, listInstalledGames, refreshInstalledGames, startDownload, fetchSteamOwnedGames, fetchGogOwnedGames, fetchEpicOwnedGames, normalizeSteamOwnedGames, openSteamScraperWindow, moveGame } from "../lib/launcher";
+import { addManualGame, launchGame, listInstalledGames, refreshInstalledGames, startDownload, fetchSteamOwnedGames, fetchGogOwnedGames, fetchEpicOwnedGames, normalizeSteamOwnedGames, openSteamScraperWindow, moveGame, syncGameAchievements } from "../lib/launcher";
 import type { OwnedGame } from "../lib/launcher";
 import type { Game } from "../lib/types";
 
 const STARTUP_LIBRARY_RESCAN_KEY = "launcher_startup_library_rescan_done";
 const LIBRARY_SNAPSHOT_KEY = "launcher_library_snapshot";
+const LIBRARY_FILTER_STATE_KEY = "launcher_library_filter_state";
 const STEAM_OWNED_GAMES_CACHE_KEY = "launcher.steamOwnedGamesCache";
 const STEAM_OWNED_GAMES_CACHE_VERSION_KEY = "launcher.steamOwnedGamesCacheVersion";
 const STEAM_OWNED_GAMES_CACHE_VERSION = "3";
@@ -77,6 +78,38 @@ function writeLibrarySnapshot(games: Game[]) {
   } catch {
     // The native cache is authoritative; this snapshot only prevents UI flicker.
   }
+}
+
+function readLocalStorageString(key: string) {
+  try {
+    const value = localStorage.getItem(key);
+    if (!value) {
+      return "";
+    }
+
+    const parsed = JSON.parse(value);
+    return typeof parsed === "string" ? parsed.trim() : "";
+  } catch {
+    return localStorage.getItem(key)?.trim().replace(/^"|"$/g, "") ?? "";
+  }
+}
+
+function getSteamAppId(game: Game) {
+  if (game.launcher === "steam" && game.externalId && /^\d+$/.test(game.externalId)) {
+    return game.externalId;
+  }
+
+  for (const prefix of ["steam-owned-", "steam-"]) {
+    if (game.id.startsWith(prefix)) {
+      const appId = game.id.slice(prefix.length);
+      if (/^\d+$/.test(appId)) {
+        return appId;
+      }
+    }
+  }
+
+  const launchUriAppId = game.launchUri?.match(/^steam:\/\/rungameid\/(\d+)$/)?.[1];
+  return launchUriAppId ?? null;
 }
 
 function areGameListsEqual(left: Game[], right: Game[]) {
@@ -387,6 +420,71 @@ const initialAdvancedFilters = {
   sizeQuery: "",
   productCategories: ["game", "software", "video", "dlc", "soundtrack", "demo", "beta"] as string[],
 };
+
+type AdvancedFilters = typeof initialAdvancedFilters;
+
+type PersistedLibraryFilterState = {
+  activePlatformFilter: "all" | "windows" | "macos" | "linux";
+  advancedFilters: AdvancedFilters;
+  searchQuery: string;
+  sortOption: LibrarySortOption;
+};
+
+function normalizeStringArray(value: unknown) {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === "string")
+    : [];
+}
+
+function normalizeAdvancedFilters(value: unknown): AdvancedFilters {
+  const stored = value && typeof value === "object"
+    ? value as Partial<Record<keyof AdvancedFilters, unknown>>
+    : {};
+
+  return {
+    players: normalizeStringArray(stored.players),
+    features: normalizeStringArray(stored.features),
+    hardware: normalizeStringArray(stored.hardware),
+    genres: normalizeStringArray(stored.genres),
+    status: normalizeStringArray(stored.status),
+    platforms: normalizeStringArray(stored.platforms),
+    categories: normalizeStringArray(stored.categories),
+    sizeQuery: typeof stored.sizeQuery === "string" ? stored.sizeQuery : "",
+    productCategories: normalizeStringArray(stored.productCategories).length > 0
+      ? normalizeStringArray(stored.productCategories)
+      : initialAdvancedFilters.productCategories,
+  };
+}
+
+function readPersistedLibraryFilterState(): PersistedLibraryFilterState {
+  try {
+    const saved = localStorage.getItem(LIBRARY_FILTER_STATE_KEY);
+    const parsed = saved ? JSON.parse(saved) : {};
+    const state = parsed && typeof parsed === "object"
+      ? parsed as Partial<PersistedLibraryFilterState>
+      : {};
+    const activePlatformFilter = ["all", "windows", "macos", "linux"].includes(state.activePlatformFilter ?? "")
+      ? state.activePlatformFilter as PersistedLibraryFilterState["activePlatformFilter"]
+      : "all";
+    const sortOption = ["alphabetical", "last_played", "playtime", "size"].includes(state.sortOption ?? "")
+      ? state.sortOption as LibrarySortOption
+      : "alphabetical";
+
+    return {
+      activePlatformFilter,
+      advancedFilters: normalizeAdvancedFilters(state.advancedFilters),
+      searchQuery: typeof state.searchQuery === "string" ? state.searchQuery : "",
+      sortOption,
+    };
+  } catch {
+    return {
+      activePlatformFilter: "all",
+      advancedFilters: initialAdvancedFilters,
+      searchQuery: "",
+      sortOption: "alphabetical",
+    };
+  }
+}
 
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
@@ -759,6 +857,7 @@ export function LibraryPage() {
   const gameListScrollRef = useRef<HTMLDivElement>(null);
   const detailScrollRef = useRef<HTMLElement>(null);
   const automaticSyncInFlightRef = useRef(false);
+  const autoAchievementSyncAttemptedRef = useRef<Set<string>>(new Set());
   const lastFocusSyncAtRef = useRef(0);
   const [initialLibrarySnapshot] = useState(readLibrarySnapshot);
   const [installedGames, setInstalledGames] = useState<Game[]>(initialLibrarySnapshot);
@@ -773,21 +872,25 @@ export function LibraryPage() {
   const [loadedLogoUrls, setLoadedLogoUrls] = useState<Set<string>>(
     () => new Set(),
   );
-  const [searchQuery, setSearchQuery] = useState("");
+  const [persistedLibraryFilterState] = useState(readPersistedLibraryFilterState);
+  const [searchQuery, setSearchQuery] = useState(persistedLibraryFilterState.searchQuery);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [isAddGameOpen, setIsAddGameOpen] = useState(false);
   const [addGameTitle, setAddGameTitle] = useState("");
   const [addGamePath, setAddGamePath] = useState("");
   const [addGameError, setAddGameError] = useState<string | null>(null);
   const [isAddingGame, setIsAddingGame] = useState(false);
+  const [syncingAchievementGameId, setSyncingAchievementGameId] = useState<string | null>(null);
 
   // ----------------------------------------------------
   // FILTER STATES
   // ----------------------------------------------------
-  const [activePlatformFilter, setActivePlatformFilter] = useState<"all" | "windows" | "macos" | "linux">("all");
+  const [activePlatformFilter, setActivePlatformFilter] = useState<"all" | "windows" | "macos" | "linux">(
+    persistedLibraryFilterState.activePlatformFilter,
+  );
   const [isFilterPopupOpen, setIsFilterPopupOpen] = useState(false);
-  const [advancedFilters, setAdvancedFilters] = useState(initialAdvancedFilters);
-  const [sortOption, setSortOption] = useState<LibrarySortOption>("alphabetical");
+  const [advancedFilters, setAdvancedFilters] = useState(persistedLibraryFilterState.advancedFilters);
+  const [sortOption, setSortOption] = useState<LibrarySortOption>(persistedLibraryFilterState.sortOption);
 
   // ----------------------------------------------------
   // FAVORITE & HIDDEN & CATEGORIES STATES (localStorage)
@@ -830,6 +933,22 @@ export function LibraryPage() {
   useEffect(() => {
     localStorage.setItem("launcher_custom_categories", JSON.stringify(customCategories));
   }, [customCategories]);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      localStorage.setItem(
+        LIBRARY_FILTER_STATE_KEY,
+        JSON.stringify({
+          activePlatformFilter,
+          advancedFilters,
+          searchQuery,
+          sortOption,
+        } satisfies PersistedLibraryFilterState),
+      );
+    }, 150);
+
+    return () => window.clearTimeout(timeout);
+  }, [activePlatformFilter, advancedFilters, searchQuery, sortOption]);
 
   useEffect(() => {
     const timeout = window.setTimeout(() => {
@@ -1514,6 +1633,24 @@ export function LibraryPage() {
     return () => window.clearTimeout(timeout);
   }, [statusMessage]);
 
+  useEffect(() => {
+    if (!selectedGame || selectedGame.achievements?.length) {
+      return;
+    }
+
+    if (!getSteamAppId(selectedGame) || !readLocalStorageString("launcher.steamId")) {
+      return;
+    }
+
+    if (autoAchievementSyncAttemptedRef.current.has(selectedGame.id)) {
+      return;
+    }
+
+    autoAchievementSyncAttemptedRef.current.add(selectedGame.id);
+    void syncAchievementsForGame(selectedGame, { silent: true });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedGame?.id, selectedGame?.achievements?.length]);
+
   async function handlePlay() {
     if (!selectedGame) {
       return;
@@ -1543,6 +1680,62 @@ export function LibraryPage() {
     } catch (error) {
       setStatusMessage(getErrorMessage(error));
     }
+  }
+
+  async function syncAchievementsForGame(game: Game, options: { silent?: boolean } = {}) {
+    const hasSteamAppId = Boolean(getSteamAppId(game));
+    if (!hasSteamAppId) {
+      if (!options.silent) {
+        setStatusMessage(`${game.title} does not expose a Steam AppID for achievement sync.`);
+      }
+      return;
+    }
+
+    const steamId = readLocalStorageString("launcher.steamId");
+    const steamApiKey = readLocalStorageString("launcher.steamApiKey");
+    if (!steamId && !steamApiKey) {
+      if (!options.silent) {
+        setStatusMessage("Steam achievement sync needs a connected Steam account or a Steam Web API Key in Settings.");
+      }
+      return;
+    }
+
+    if (!options.silent) {
+      setStatusMessage(null);
+    }
+    setSyncingAchievementGameId(game.id);
+
+    try {
+      const response = await syncGameAchievements(
+        game.id,
+        steamId || undefined,
+        steamApiKey || undefined,
+      );
+
+      setInstalledGames((current) =>
+        current.map((game) => (game.id === response.game.id ? response.game : game)),
+      );
+      setSelectedGame((current) => (current?.id === response.game.id ? response.game : current));
+      if (!options.silent) {
+        setStatusMessage(response.message);
+      }
+    } catch (error) {
+      if (!options.silent) {
+        setStatusMessage(getErrorMessage(error));
+      } else {
+        console.warn("[OG-Launcher] Auto achievement sync failed:", getErrorMessage(error));
+      }
+    } finally {
+      setSyncingAchievementGameId(null);
+    }
+  }
+
+  async function handleSyncAchievements() {
+    if (!selectedGame) {
+      return;
+    }
+
+    await syncAchievementsForGame(selectedGame);
   }
 
   async function handleAddManualGame() {
@@ -1629,7 +1822,6 @@ export function LibraryPage() {
           setIsFilterPopupOpen={setIsFilterPopupOpen}
           activePlatformFilter={activePlatformFilter}
           advancedFilters={advancedFilters}
-          customCategories={customCategories}
           groupOption={"none"}
           groupedGames={{}}
           selectedGame={selectedGame}
@@ -2006,6 +2198,8 @@ export function LibraryPage() {
           enrichedSelectedGame={enrichedSelectedGame}
           shouldShowLibraryLoading={shouldShowLibraryLoading}
           handlePlay={handlePlay}
+          handleSyncAchievements={handleSyncAchievements}
+          isSyncingAchievements={syncingAchievementGameId === selectedGame?.id}
           logoCandidateIndexes={logoCandidateIndexes}
           loadedLogoUrls={loadedLogoUrls}
           handleLogoLoad={handleLogoLoad}

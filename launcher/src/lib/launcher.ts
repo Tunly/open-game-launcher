@@ -170,7 +170,30 @@ export function syncGameAchievements(
   steamId?: string,
   apiKey?: string
 ): Promise<SyncGameAchievementsResponse> {
-  return invokeCommand<SyncGameAchievementsResponse>("sync_game_achievements", { gameId, steamId, apiKey });
+  return invokeCommand<SyncGameAchievementsResponse>("sync_game_achievements", { gameId, steamId, apiKey })
+    .catch((error) => {
+      const message = getCommandErrorText(error);
+      if (!message.includes("not found")) {
+        throw error;
+      }
+
+      return invokeCommand<SyncGameAchievementsResponse>("syncGameAchievements", { gameId, steamId, apiKey })
+        .catch((fallbackError) => {
+          const fallbackMessage = getCommandErrorText(fallbackError);
+          if (fallbackMessage.includes("not found")) {
+            throw new LauncherCommandError(
+              "sync_game_achievements",
+              "The running Tauri app does not include the achievements sync command yet. Restart the desktop app or rerun `pnpm tauri dev` so the updated Rust command registry is loaded.",
+            );
+          }
+
+          throw fallbackError;
+        });
+    });
+}
+
+function getCommandErrorText(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
 
 export function uninstallGame(gameId: string): Promise<UninstallGameResponse> {
