@@ -2,8 +2,12 @@ import type { RealtimeChannel } from "@supabase/supabase-js";
 
 import { getSupabaseClient, supabase } from "./client";
 import type { UserPresence } from "../types/profile";
-
-type UnknownRecord = Record<string, unknown>;
+import {
+  isMissingSchemaError,
+  rowNullableString,
+  rowString,
+  type UnknownRecord,
+} from "./helpers";
 
 export type PresenceUpdateInput = {
   customStatus?: string | null;
@@ -11,25 +15,6 @@ export type PresenceUpdateInput = {
   currentGameTitle?: string | null;
   status?: UserPresence["status"];
 };
-
-function rowString(row: UnknownRecord, key: string, fallback = "") {
-  const value = row[key];
-  return typeof value === "string" ? value : fallback;
-}
-
-function rowNullableString(row: UnknownRecord, key: string) {
-  const value = row[key];
-  return typeof value === "string" ? value : null;
-}
-
-function isMissingSchemaError(error: { code?: string; message: string } | null) {
-  if (!error) {
-    return false;
-  }
-
-  const message = error.message.toLowerCase();
-  return error.code === "42P01" || error.code === "42703" || message.includes("schema cache") || message.includes("does not exist");
-}
 
 function toPresence(row: UnknownRecord): UserPresence {
   return {
@@ -59,7 +44,14 @@ async function getCurrentUserId() {
 export async function setLauncherPresence(input: PresenceUpdateInput = {}) {
   const client = getSupabaseClient();
   const userId = await getCurrentUserId();
-  const payload: any = {
+  const payload: {
+    last_heartbeat_at: string;
+    status: string;
+    user_id: string;
+    custom_status?: string | null;
+    current_game_id?: string | null;
+    current_game_title?: string | null;
+  } = {
     last_heartbeat_at: new Date().toISOString(),
     status: input.status ?? "online",
     user_id: userId,

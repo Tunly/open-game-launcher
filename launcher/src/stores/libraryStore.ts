@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import type { Game } from "../lib/types";
+
 import type { LibrarySortOption } from "../pages/LibraryPage";
 
 export interface AdvancedFilters {
@@ -77,7 +77,7 @@ export interface LibraryState {
 
 export const useLibraryStore = create<LibraryState>()(
   persist(
-    (set, get) => ({
+    (set) => ({
       searchQuery: "",
       setSearchQuery: (query) => set({ searchQuery: query }),
       

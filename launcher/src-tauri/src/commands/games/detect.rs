@@ -1,15 +1,11 @@
-use notify::{Config, RecommendedWatcher, RecursiveMode, Watcher};
-use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
     env, fs,
     path::{Path, PathBuf},
-    process::{Child, Command},
-    sync::mpsc,
+    process::Command,
     thread,
-    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
+    time::Duration,
 };
-use tauri::Emitter;
 
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
@@ -25,798 +21,14 @@ use winreg::{
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
-const GAME_LIBRARY_CACHE_VERSION: u32 = 1;
-const OG_MANAGED_LATEST_VERSION: &str = "1.1.0";
-const OG_MANAGED_MANIFEST_FILE: &str = "og-manifest.json";
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct InstalledGame {
-    id: String,
-    title: String,
-    #[serde(default)]
-    slug: String,
-    description: String,
-    version: String,
-    #[serde(default)]
-    launcher: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    external_id: Option<String>,
-    cover_url: Option<String>,
-    icon_url: Option<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    icon_urls: Vec<String>,
-    logo_url: Option<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    logo_urls: Vec<String>,
-    #[serde(default = "default_logo_position")]
-    logo_position: LogoPosition,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    logo_width_percent: Option<f64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    logo_height_percent: Option<f64>,
-    status: GameStatus,
-    platform: Platform,
-    install_path: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    executable_path: Option<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    process_names: Vec<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    launch_uri: Option<String>,
-    #[serde(rename = "lastPlayed", skip_serializing_if = "Option::is_none")]
-    last_played_at: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    playtime_minutes: Option<u32>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    genres: Vec<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    developer: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    publisher: Option<String>,
-    #[serde(rename = "releaseDate", skip_serializing_if = "Option::is_none")]
-    release_date: Option<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    features: Vec<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    rating: Option<f64>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    achievements: Vec<UnifiedAchievement>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    save_files: Vec<SaveFile>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    friends_playing: Vec<String>,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct UnifiedAchievement {
-    id: String,
-    name: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    description: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    icon_url: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    unlocked_at: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    rarity: Option<f64>,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct SaveFile {
-    id: String,
-    path: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    label: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    size_bytes: Option<u64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    modified_at: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    synced_at: Option<String>,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "snake_case")]
-pub enum GameStatus {
-    Installed,
-    NotInstalled,
-    UpdateAvailable,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "snake_case")]
-pub enum Platform {
-    Windows,
-    Linux,
-    Macos,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
-pub enum LogoPosition {
-    BottomLeft,
-    UpperCenter,
-    CenterCenter,
-    BottomCenter,
-}
-
-fn default_logo_position() -> LogoPosition {
-    LogoPosition::BottomLeft
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
-struct LogoLayout {
-    position: LogoPosition,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    width_percent: Option<f64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    height_percent: Option<f64>,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct LaunchGameResponse {
-    game_id: String,
-    success: bool,
-    message: String,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct VerifyGameFilesResponse {
-    game_id: String,
-    checked_files: u32,
-    missing_files: Vec<String>,
-    status: VerificationStatus,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RepairGameFilesResponse {
-    game_id: String,
-    success: bool,
-    game: InstalledGame,
-    repaired_files: Vec<String>,
-    message: String,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct CheckGameUpdatesResponse {
-    update_count: usize,
-    games: Vec<InstalledGame>,
-    message: String,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct InstallGameUpdateResponse {
-    game_id: String,
-    success: bool,
-    game: InstalledGame,
-    message: String,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SyncGameSavesResponse {
-    game_id: String,
-    success: bool,
-    game: InstalledGame,
-    synced_files: Vec<String>,
-    missing_files: Vec<String>,
-    sync_root: String,
-    message: String,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct UploadGameSavesToCloudResponse {
-    game_id: String,
-    success: bool,
-    game: InstalledGame,
-    uploaded_files: Vec<String>,
-    missing_files: Vec<String>,
-    failed_files: Vec<String>,
-    message: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct UploadGameSavesToCloudRequest {
-    game_id: String,
-    supabase_url: String,
-    api_key: String,
-    access_token: String,
-    user_id: String,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct DownloadGameSavesFromCloudResponse {
-    game_id: String,
-    success: bool,
-    restore_root: String,
-    downloaded_files: Vec<String>,
-    failed_files: Vec<String>,
-    message: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct DownloadGameSavesFromCloudRequest {
-    game_id: String,
-    supabase_url: String,
-    api_key: String,
-    access_token: String,
-    user_id: String,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RestoreGameSavesFromCloudResponse {
-    game_id: String,
-    success: bool,
-    restored_files: Vec<String>,
-    backed_up_files: Vec<String>,
-    skipped_files: Vec<String>,
-    failed_files: Vec<String>,
-    message: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct RestoreGameSavesFromCloudRequest {
-    game_id: String,
-    supabase_url: String,
-    api_key: String,
-    access_token: String,
-    user_id: String,
-}
-
-#[derive(Debug)]
-struct SaveUploadSource {
-    source_path: PathBuf,
-    object_path: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct StorageListObject {
-    name: String,
-    #[serde(default)]
-    id: Option<String>,
-    #[serde(default)]
-    metadata: Option<serde_json::Value>,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SyncGameAchievementsResponse {
-    game_id: String,
-    success: bool,
-    game: InstalledGame,
-    synced_achievements: usize,
-    unlocked_achievements: usize,
-    message: String,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct UninstallGameResponse {
-    game_id: String,
-    success: bool,
-    removed_from_library: bool,
-    game: Option<InstalledGame>,
-    message: String,
-}
-
-#[derive(Debug, Serialize, Clone)]
-#[serde(rename_all = "camelCase")]
-struct GameActivityUpdate {
-    game_id: String,
-    last_played: Option<String>,
-    playtime_minutes: Option<u32>,
-}
-
-#[derive(Debug, Serialize, Clone)]
-#[serde(rename_all = "camelCase")]
-struct LibraryInventoryChanged {
-    reason: String,
-    game_count: usize,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "snake_case")]
-pub enum VerificationStatus {
-    Verified,
-    RepairRequired,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AddManualGameRequest {
-    title: String,
-    install_path: String,
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct UpdateGameMetadataRequest {
-    game_id: String,
-    cover_url: Option<String>,
-    logo_url: Option<String>,
-    icon_url: Option<String>,
-    rating: Option<f64>,
-    achievements: Option<Vec<UnifiedAchievement>>,
-    save_files: Option<Vec<SaveFile>>,
-    friends_playing: Option<Vec<String>>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct InstalledGamesCache {
-    version: u32,
-    games: Vec<InstalledGame>,
-}
-
-#[derive(Debug, Serialize, Deserialize, Default)]
-#[serde(rename_all = "camelCase")]
-struct RawgAssetCache {
-    entries: HashMap<String, RawgAssets>,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
-struct RawgAssets {
-    cover_url: Option<String>,
-    logo_url: Option<String>,
-    icon_url: Option<String>,
-    fetched_at: u64,
-}
-
-#[tauri::command]
-pub async fn list_installed_games() -> Result<Vec<InstalledGame>, String> {
-    if let Some(games) = read_installed_games_cache() {
-        return Ok(games);
-    }
-
-    refresh_installed_games().await
-}
-
-#[tauri::command]
-pub async fn refresh_installed_games() -> Result<Vec<InstalledGame>, String> {
-    let mut games = BTreeMap::<String, InstalledGame>::new();
-    let cached_games = read_installed_games_cache().unwrap_or_default();
-    let cached_activity = cached_games
-        .iter()
-        .map(|game| (game.id.clone(), game.clone()))
-        .collect::<HashMap<_, _>>();
-
-    for mut game in cached_games.into_iter().filter(is_manual_game) {
-        if game.genres.is_empty() {
-            game = sync_game_metadata(game).await;
-        }
-        games.insert(game.id.clone(), game);
-    }
-
-    for mut game in scan_installed_games() {
-        if let Some(cached_game) = cached_activity.get(&game.id) {
-            merge_cached_game_activity(&mut game, cached_game);
-        }
-
-        if game.genres.is_empty() {
-            game = sync_game_metadata(game).await;
-        }
-
-        games.insert(game.id.clone(), game);
-    }
-
-    let games = games.into_values().collect::<Vec<_>>();
-    write_installed_games_cache(&games);
-
-    Ok(games)
-}
-
-#[tauri::command]
-pub async fn add_manual_game(input: AddManualGameRequest) -> Result<InstalledGame, String> {
-    let title = input.title.trim();
-    if title.is_empty() {
-        return Err("Title must not be empty.".to_string());
-    }
-
-    let install_path = input.install_path.trim();
-    if install_path.is_empty() {
-        return Err("Install path must not be empty.".to_string());
-    }
-
-    let path = PathBuf::from(install_path);
-    if !path.exists() {
-        return Err(format!("Path was not found: {install_path}"));
-    }
-
-    let asset_root = if path.is_dir() {
-        path.as_path()
-    } else {
-        path.parent().unwrap_or(path.as_path())
-    };
-    let mut game = installed_game(
-        &format!("manual-{title}-{install_path}"),
-        title.to_string(),
-        "Manual".to_string(),
-        Some(path.to_string_lossy().to_string()),
-        find_local_banner_asset(asset_root),
-    );
-    game.icon_url = find_local_icon_asset(asset_root);
-    game.logo_url = find_local_logo_asset(asset_root);
-
-    game = sync_game_metadata(game).await;
-
-    let mut games = BTreeMap::<String, InstalledGame>::new();
-    for cached_game in read_installed_games_cache().unwrap_or_default() {
-        games.insert(cached_game.id.clone(), cached_game);
-    }
-    games.insert(game.id.clone(), game.clone());
-
-    let games = games.into_values().collect::<Vec<_>>();
-    write_installed_games_cache(&games);
-
-    Ok(game)
-}
-
-#[tauri::command]
-pub fn update_game_metadata(input: UpdateGameMetadataRequest) -> Result<InstalledGame, String> {
-    let game_id = normalize_game_id(input.game_id)?;
-    let mut games = read_installed_games_cache().unwrap_or_default();
-
-    let game = games
-        .iter_mut()
-        .find(|game| game.id == game_id)
-        .ok_or_else(|| format!("Game '{game_id}' was not found in the local library cache."))?;
-
-    if let Some(cover_url) = sanitize_optional_text(input.cover_url) {
-        game.cover_url = Some(cover_url);
-    }
-    if let Some(logo_url) = sanitize_optional_text(input.logo_url) {
-        game.logo_url = Some(logo_url.clone());
-        if !game.logo_urls.contains(&logo_url) {
-            game.logo_urls.insert(0, logo_url);
-        }
-    }
-    if let Some(icon_url) = sanitize_optional_text(input.icon_url) {
-        game.icon_url = Some(icon_url.clone());
-        if !game.icon_urls.contains(&icon_url) {
-            game.icon_urls.insert(0, icon_url);
-        }
-    }
-    if let Some(rating) = input.rating {
-        game.rating = Some(rating.clamp(0.0, 5.0));
-    }
-    if let Some(achievements) = input.achievements {
-        game.achievements = achievements
-            .into_iter()
-            .filter(|achievement| !achievement.name.trim().is_empty())
-            .collect();
-    }
-    if let Some(save_files) = input.save_files {
-        game.save_files = save_files
-            .into_iter()
-            .filter(|save_file| !save_file.path.trim().is_empty())
-            .collect();
-    }
-    if let Some(friends_playing) = input.friends_playing {
-        game.friends_playing = friends_playing
-            .into_iter()
-            .map(|friend| friend.trim().to_string())
-            .filter(|friend| !friend.is_empty())
-            .collect();
-    }
-
-    let updated_game = game.clone();
-    write_installed_games_cache(&games);
-
-    Ok(updated_game)
-}
-
-#[tauri::command]
-pub fn import_library_snapshot(games: Vec<InstalledGame>) -> Result<Vec<InstalledGame>, String> {
-    let mut imported_games = Vec::new();
-    let mut seen_ids = HashSet::new();
-
-    for mut game in games {
-        game.id = game.id.trim().to_string();
-        game.title = game.title.trim().to_string();
-
-        if game.id.is_empty() || game.title.is_empty() || !seen_ids.insert(game.id.clone()) {
-            continue;
-        }
-
-        if game.slug.trim().is_empty() {
-            game.slug = slugify(&game.title);
-        }
-        if game.launcher.trim().is_empty() {
-            game.launcher = "unknown".to_string();
-        }
-        if game.description.trim().is_empty() {
-            game.description = format!("Imported Library entry for {}.", game.title);
-        }
-        if game.version.trim().is_empty() {
-            game.version = "unknown".to_string();
-        }
-
-        imported_games.push(game);
-    }
-
-    write_installed_games_cache(&imported_games);
-    Ok(imported_games)
-}
-
-pub fn start_library_inventory_watcher(app_handle: tauri::AppHandle) {
-    thread::spawn(move || {
-        let (tx, rx) = mpsc::channel();
-        let watcher_result = RecommendedWatcher::new(
-            move |result| {
-                let _ = tx.send(result);
-            },
-            Config::default(),
-        );
-
-        let Ok(mut watcher) = watcher_result else {
-            eprintln!("[open-game-launcher] Failed to start library inventory watcher.");
-            return;
-        };
-
-        let mut watched_paths = HashSet::new();
-        let watched_count = watch_library_inventory_paths(&mut watcher, &mut watched_paths);
-        if watched_count == 0 {
-            eprintln!("[open-game-launcher] Library inventory watcher has no paths to watch.");
-        }
-
-        loop {
-            let Ok(result) = rx.recv() else {
-                break;
-            };
-
-            if let Err(error) = result {
-                eprintln!("[open-game-launcher] Library watcher event error: {error}");
-                continue;
-            }
-
-            while matches!(rx.recv_timeout(Duration::from_secs(2)), Ok(_)) {}
-
-            match tokio::runtime::Builder::new_current_thread()
-                .enable_all()
-                .build()
-            {
-                Ok(runtime) => match runtime.block_on(refresh_installed_games()) {
-                    Ok(games) => {
-                        watch_library_inventory_paths(&mut watcher, &mut watched_paths);
-                        let _ = app_handle.emit(
-                            "library_inventory_changed",
-                            LibraryInventoryChanged {
-                                reason: "file_watcher".to_string(),
-                                game_count: games.len(),
-                            },
-                        );
-                    }
-                    Err(error) => {
-                        eprintln!("[open-game-launcher] Automatic library refresh failed: {error}");
-                    }
-                },
-                Err(error) => {
-                    eprintln!("[open-game-launcher] Failed to create watcher runtime: {error}");
-                }
-            }
-        }
-    });
-}
-
-fn watch_library_inventory_paths(
-    watcher: &mut RecommendedWatcher,
-    watched_paths: &mut HashSet<String>,
-) -> usize {
-    let mut watched_count = 0;
-
-    for path in library_inventory_watch_paths() {
-        let key = watch_path_key(&path);
-        if !watched_paths.insert(key) {
-            continue;
-        }
-
-        match watcher.watch(&path, RecursiveMode::Recursive) {
-            Ok(()) => watched_count += 1,
-            Err(error) => {
-                eprintln!(
-                    "[open-game-launcher] Failed to watch library path {}: {error}",
-                    path.display()
-                );
-            }
-        }
-    }
-
-    watched_count
-}
-
-fn watch_path_key(path: &Path) -> String {
-    path.canonicalize()
-        .unwrap_or_else(|_| path.to_path_buf())
-        .to_string_lossy()
-        .to_lowercase()
-}
-
-fn library_inventory_watch_paths() -> Vec<PathBuf> {
-    let mut paths = Vec::new();
-
-    if let Some(data_dir) = open_game_launcher_data_dir() {
-        paths.push(data_dir.clone());
-        paths.push(data_dir.join("games"));
-    }
-
-    if let Some(cache_path) =
-        installed_games_cache_path().and_then(|path| path.parent().map(Path::to_path_buf))
-    {
-        paths.push(cache_path);
-    }
-
-    if let Some(steam_dir) = find_steam_dir() {
-        paths.push(steam_dir.join("steamapps"));
-        paths.push(steam_dir.join("userdata"));
-        for library in read_steam_library_folders(&steam_dir) {
-            paths.push(library.join("steamapps"));
-        }
-    }
-
-    if cfg!(target_os = "windows") {
-        paths.push(PathBuf::from(
-            r"C:\ProgramData\Epic\EpicGamesLauncher\Data\Manifests",
-        ));
-        paths.push(PathBuf::from(
-            r"C:\ProgramData\Epic\EpicGamesLauncher\Data\Catalog",
-        ));
-        paths.push(PathBuf::from(r"C:\ProgramData\GOG.com\Galaxy\webcache"));
-        paths.push(PathBuf::from(
-            r"C:\ProgramData\Ubisoft\Ubisoft Game Launcher\cache",
-        ));
-
-        if let Some(program_files) = env_path("ProgramFiles") {
-            paths.push(program_files.join("GOG Galaxy").join("Games"));
-            paths.push(program_files.join("Ubisoft Game Launcher").join("games"));
-        }
-
-        if let Some(program_files_x86) = env_path("ProgramFiles(x86)") {
-            paths.push(program_files_x86.join("GOG Galaxy").join("Games"));
-            paths.push(
-                program_files_x86
-                    .join("Ubisoft")
-                    .join("Ubisoft Game Launcher")
-                    .join("games"),
-            );
-            paths.push(
-                program_files_x86
-                    .join("Ubisoft Game Launcher")
-                    .join("games"),
-            );
-        }
-
-        if let Some(local_app_data) = env_path("LOCALAPPDATA") {
-            paths.push(
-                local_app_data
-                    .join("Ubisoft")
-                    .join("Ubisoft Game Launcher")
-                    .join("cache"),
-            );
-        }
-
-        paths.push(PathBuf::from(r"C:\GOG Games"));
-        paths.push(PathBuf::from(r"C:\Ubisoft Games"));
-
-        for drive in local_drive_roots() {
-            paths.push(drive.join("XboxGames"));
-        }
-
-        for install in read_gog_registry_installs() {
-            paths.push(install.install_dir);
-        }
-
-        for install in read_ubisoft_registry_installs() {
-            paths.push(install.install_dir);
-        }
-
-        for install in read_battlenet_registry_installs() {
-            paths.push(install.install_dir);
-        }
-
-        for install in read_ea_registry_installs() {
-            paths.push(install.install_dir);
-        }
-    }
-
-    for game in read_installed_games_cache().unwrap_or_default() {
-        if let Some(install_path) = game.install_path {
-            paths.push(PathBuf::from(install_path));
-        }
-    }
-
-    dedupe_existing_watch_paths(paths)
-}
-
-fn dedupe_existing_watch_paths(paths: Vec<PathBuf>) -> Vec<PathBuf> {
-    let mut seen = HashSet::new();
-    let mut unique = Vec::new();
-
-    for path in paths {
-        if !path.exists() {
-            continue;
-        }
-
-        let key = path
-            .canonicalize()
-            .unwrap_or_else(|_| path.clone())
-            .to_string_lossy()
-            .to_lowercase();
-
-        if seen.insert(key) {
-            unique.push(path);
-        }
-    }
-
-    unique
-}
-
-#[derive(Debug, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct MoveGameRequest {
-    game_id: String,
-    new_path: String,
-}
-
-#[tauri::command]
-pub async fn move_game(input: MoveGameRequest) -> Result<(), String> {
-    let mut games = read_installed_games_cache().unwrap_or_default();
-
-    let game_index = games
-        .iter()
-        .position(|g| g.id == input.game_id)
-        .ok_or_else(|| "Game was not found in the cache.".to_string())?;
-
-    let old_path = games[game_index]
-        .install_path
-        .as_ref()
-        .ok_or_else(|| "Game has no install path.".to_string())?;
-
-    let old_path_buf = PathBuf::from(old_path);
-    let new_path_buf = PathBuf::from(&input.new_path);
-
-    if !old_path_buf.exists() {
-        return Err("Old install path does not exist.".to_string());
-    }
-
-    let folder_name = old_path_buf
-        .file_name()
-        .ok_or_else(|| "Invalid path.".to_string())?;
-    let final_new_path = new_path_buf.join(folder_name);
-
-    if final_new_path.exists() {
-        return Err("Target folder already exists.".to_string());
-    }
-
-    fs::rename(&old_path_buf, &final_new_path).map_err(|e| {
-        format!(
-            "Failed to move game. This may have crossed drive boundaries: {}",
-            e
-        )
-    })?;
-
-    games[game_index].install_path = Some(final_new_path.to_string_lossy().to_string());
-    write_installed_games_cache(&games);
-
-    Ok(())
-}
-
-fn scan_installed_games() -> Vec<InstalledGame> {
+use super::types::*;
+use super::core::{
+    path_to_string, get_dir_last_modified, current_unix_timestamp, installed_game,
+    env_path, unix_timestamp_to_iso, rawg_asset_cache_path,
+    is_ignored_game_directory, apply_battlenet_assets, local_drive_roots,
+};
+
+pub fn scan_installed_games() -> Vec<InstalledGame> {
     let mut games = BTreeMap::<String, InstalledGame>::new();
 
     // Spawn threads for parallel scanning
@@ -868,1518 +80,7 @@ fn scan_installed_games() -> Vec<InstalledGame> {
     games.into_values().collect()
 }
 
-fn is_manual_game(game: &InstalledGame) -> bool {
-    game.id.starts_with("manual-")
-}
-
-fn mark_game_not_installed(game: &mut InstalledGame) {
-    game.status = GameStatus::NotInstalled;
-    game.install_path = None;
-    game.executable_path = None;
-    game.process_names = Vec::new();
-    game.launch_uri = None;
-}
-
-fn is_og_managed_install_path(path: &Path) -> bool {
-    let Some(games_root) = open_game_launcher_data_dir().map(|dir| dir.join("games")) else {
-        return false;
-    };
-
-    let normalized_path = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
-    let normalized_root = games_root.canonicalize().unwrap_or(games_root);
-
-    normalized_path.starts_with(normalized_root)
-}
-
-fn remove_managed_install_path(path: &Path) -> Result<(), String> {
-    if !is_og_managed_install_path(path) {
-        return Err("Refusing to remove a path outside the OG managed install folder.".to_string());
-    }
-
-    if !path.exists() {
-        return Ok(());
-    }
-
-    if path.is_dir() {
-        fs::remove_dir_all(path)
-            .map_err(|error| format!("Could not remove install folder: {error}"))
-    } else {
-        fs::remove_file(path).map_err(|error| format!("Could not remove install file: {error}"))
-    }
-}
-
-fn uninstall_uri_for_game(game: &InstalledGame) -> Option<String> {
-    match game.launcher.as_str() {
-        "steam" => game
-            .external_id
-            .as_deref()
-            .map(|external_id| format!("steam://uninstall/{external_id}")),
-        "epic" => game.launch_uri.as_deref().map(|uri| {
-            uri.replace("action=launch", "action=uninstall")
-                .replace("action=install", "action=uninstall")
-        }),
-        "gog" => game
-            .external_id
-            .as_deref()
-            .map(|external_id| format!("goggalaxy://open-game-view/{external_id}")),
-        _ => None,
-    }
-}
-
-fn update_uri_for_game(game: &InstalledGame) -> Option<String> {
-    match game.launcher.as_str() {
-        "steam" => game
-            .external_id
-            .as_deref()
-            .map(|external_id| format!("steam://rungameid/{external_id}")),
-        "epic" => game.launch_uri.clone(),
-        "gog" => game
-            .external_id
-            .as_deref()
-            .map(|external_id| format!("goggalaxy://open-game-view/{external_id}")),
-        _ => None,
-    }
-}
-
-fn read_og_managed_version(install_path: &Path) -> Option<String> {
-    let manifest_path = install_path.join(OG_MANAGED_MANIFEST_FILE);
-    let contents = fs::read_to_string(manifest_path).ok()?;
-    let value = serde_json::from_str::<serde_json::Value>(&contents).ok()?;
-    value
-        .get("version")
-        .and_then(|version| version.as_str())
-        .map(str::trim)
-        .filter(|version| !version.is_empty())
-        .map(ToOwned::to_owned)
-}
-
-fn write_og_managed_manifest(
-    install_path: &Path,
-    game_id: &str,
-    title: &str,
-    version: &str,
-) -> Result<(), String> {
-    let manifest_path = install_path.join(OG_MANAGED_MANIFEST_FILE);
-    let contents = serde_json::to_string_pretty(&serde_json::json!({
-        "gameId": game_id,
-        "title": title,
-        "version": version,
-        "managedBy": "OG-Launcher",
-        "updatedAt": unix_timestamp_to_iso(current_unix_timestamp())
-    }))
-    .map_err(|error| format!("Could not serialize update manifest: {error}"))?;
-    fs::write(manifest_path, contents)
-        .map_err(|error| format!("Could not write update manifest: {error}"))
-}
-
-fn save_sync_root_for_game(game_id: &str) -> Option<PathBuf> {
-    open_game_launcher_data_dir().map(|data_dir| data_dir.join("save-sync").join(slugify(game_id)))
-}
-
-fn sync_destination_for_save(sync_root: &Path, save_file: &SaveFile, source: &Path) -> PathBuf {
-    let label = save_file
-        .label
-        .as_deref()
-        .filter(|label| !label.trim().is_empty())
-        .or_else(|| source.file_name().and_then(|name| name.to_str()))
-        .unwrap_or("save");
-    let mut destination_name = slugify(label);
-    if destination_name.is_empty() {
-        destination_name = "save".to_string();
-    }
-
-    if source.is_file() {
-        if let Some(extension) = source.extension().and_then(|extension| extension.to_str()) {
-            destination_name.push('.');
-            destination_name.push_str(extension);
-        }
-    }
-
-    sync_root.join(destination_name)
-}
-
-fn copy_path_to_sync_cache(
-    source: &Path,
-    destination: &Path,
-    sync_root: &Path,
-) -> Result<(), String> {
-    ensure_path_inside_root(destination, sync_root)?;
-
-    if source.is_dir() {
-        if destination.exists() {
-            remove_sync_cache_path(destination, sync_root)?;
-        }
-        copy_dir_recursive(source, destination, sync_root)
-    } else {
-        if let Some(parent) = destination.parent() {
-            ensure_path_inside_root(parent, sync_root)?;
-            fs::create_dir_all(parent)
-                .map_err(|error| format!("Could not create sync destination: {error}"))?;
-        }
-        fs::copy(source, destination)
-            .map(|_| ())
-            .map_err(|error| format!("Could not copy save file: {error}"))
-    }
-}
-
-fn copy_dir_recursive(source: &Path, destination: &Path, sync_root: &Path) -> Result<(), String> {
-    ensure_path_inside_root(destination, sync_root)?;
-    fs::create_dir_all(destination)
-        .map_err(|error| format!("Could not create sync folder: {error}"))?;
-
-    let entries =
-        fs::read_dir(source).map_err(|error| format!("Could not read save folder: {error}"))?;
-    for entry in entries.flatten() {
-        let source_path = entry.path();
-        let destination_path = destination.join(entry.file_name());
-        ensure_path_inside_root(&destination_path, sync_root)?;
-        if source_path.is_dir() {
-            copy_dir_recursive(&source_path, &destination_path, sync_root)?;
-        } else {
-            fs::copy(&source_path, &destination_path)
-                .map_err(|error| format!("Could not copy save file: {error}"))?;
-        }
-    }
-
-    Ok(())
-}
-
-fn remove_sync_cache_path(path: &Path, sync_root: &Path) -> Result<(), String> {
-    ensure_path_inside_root(path, sync_root)?;
-    if path.is_dir() {
-        fs::remove_dir_all(path).map_err(|error| format!("Could not clear sync folder: {error}"))
-    } else if path.exists() {
-        fs::remove_file(path).map_err(|error| format!("Could not clear sync file: {error}"))
-    } else {
-        Ok(())
-    }
-}
-
-fn ensure_path_inside_root(path: &Path, root: &Path) -> Result<(), String> {
-    let normalized_root = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
-    let normalized_path = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
-    if normalized_path.starts_with(&normalized_root) {
-        Ok(())
-    } else {
-        Err("Refusing to write outside the OG save-sync folder.".to_string())
-    }
-}
-
-fn path_size_bytes(path: &Path) -> Option<u64> {
-    if path.is_file() {
-        return fs::metadata(path).ok().map(|metadata| metadata.len());
-    }
-
-    if path.is_dir() {
-        let mut size = 0_u64;
-        collect_path_size(path, &mut size);
-        return Some(size);
-    }
-
-    None
-}
-
-fn sanitize_storage_segment(segment: &str) -> String {
-    let mut output = slugify(segment);
-    if output.is_empty() {
-        output = "file".to_string();
-    }
-    output
-}
-
-fn storage_object_path_for_file(
-    user_id: &str,
-    game_id: &str,
-    save_file: &SaveFile,
-    source_root: &Path,
-    file_path: &Path,
-) -> String {
-    let label_segment = save_file
-        .label
-        .as_deref()
-        .filter(|label| !label.trim().is_empty())
-        .or_else(|| source_root.file_name().and_then(|name| name.to_str()))
-        .map(sanitize_storage_segment)
-        .unwrap_or_else(|| "save".to_string());
-
-    let mut segments = vec![
-        sanitize_storage_segment(user_id),
-        sanitize_storage_segment(game_id),
-        label_segment,
-    ];
-
-    if let Ok(relative_path) = file_path.strip_prefix(source_root) {
-        for component in relative_path.components() {
-            let segment = component.as_os_str().to_string_lossy();
-            if !segment.trim().is_empty() {
-                segments.push(sanitize_storage_segment(&segment));
-            }
-        }
-    } else if let Some(file_name) = file_path.file_name().and_then(|name| name.to_str()) {
-        segments.push(sanitize_storage_segment(file_name));
-    }
-
-    if file_path.is_file() {
-        if let Some(extension) = file_path
-            .extension()
-            .and_then(|extension| extension.to_str())
-        {
-            if let Some(last_segment) = segments.last_mut() {
-                if !last_segment.ends_with(&format!(".{extension}")) {
-                    last_segment.push('.');
-                    last_segment.push_str(extension);
-                }
-            }
-        }
-    }
-
-    segments.join("/")
-}
-
-fn collect_save_upload_sources(
-    user_id: &str,
-    game_id: &str,
-    save_file: &SaveFile,
-    source_root: &Path,
-    path: &Path,
-    uploads: &mut Vec<SaveUploadSource>,
-) -> Result<(), String> {
-    if path.is_file() {
-        uploads.push(SaveUploadSource {
-            source_path: path.to_path_buf(),
-            object_path: storage_object_path_for_file(
-                user_id,
-                game_id,
-                save_file,
-                source_root,
-                path,
-            ),
-        });
-        return Ok(());
-    }
-
-    if path.is_dir() {
-        let entries =
-            fs::read_dir(path).map_err(|error| format!("Could not read save folder: {error}"))?;
-        for entry in entries.flatten() {
-            collect_save_upload_sources(
-                user_id,
-                game_id,
-                save_file,
-                source_root,
-                &entry.path(),
-                uploads,
-            )?;
-        }
-    }
-
-    Ok(())
-}
-
-fn url_encode_path(path: &str) -> String {
-    path.split('/')
-        .map(|segment| {
-            let mut encoded = String::new();
-            for byte in segment.as_bytes() {
-                match *byte {
-                    b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
-                        encoded.push(*byte as char)
-                    }
-                    _ => encoded.push_str(&format!("%{byte:02X}")),
-                }
-            }
-            encoded
-        })
-        .collect::<Vec<_>>()
-        .join("/")
-}
-
-async fn upload_file_to_supabase_storage(
-    client: &reqwest::Client,
-    supabase_url: &str,
-    api_key: &str,
-    access_token: &str,
-    upload: &SaveUploadSource,
-) -> Result<(), String> {
-    let bytes = tokio::fs::read(&upload.source_path)
-        .await
-        .map_err(|error| format!("Could not read save file for upload: {error}"))?;
-    let base_url = supabase_url.trim_end_matches('/');
-    let object_path = url_encode_path(&upload.object_path);
-    let url = format!("{base_url}/storage/v1/object/game-saves/{object_path}");
-    let response = client
-        .post(url)
-        .header("apikey", api_key)
-        .bearer_auth(access_token)
-        .header("x-upsert", "true")
-        .header("cache-control", "3600")
-        .header("content-type", "application/octet-stream")
-        .body(bytes)
-        .send()
-        .await
-        .map_err(|error| format!("Could not upload save file to Supabase Storage: {error}"))?;
-
-    if response.status().is_success() {
-        Ok(())
-    } else {
-        let status = response.status();
-        let body = response.text().await.unwrap_or_default();
-        Err(format!(
-            "Supabase Storage upload failed with {status}: {body}"
-        ))
-    }
-}
-
-async fn list_supabase_storage_objects_recursive(
-    client: &reqwest::Client,
-    supabase_url: &str,
-    api_key: &str,
-    access_token: &str,
-    prefix: &str,
-    depth: u8,
-    output: &mut Vec<String>,
-) -> Result<(), String> {
-    if depth > 8 {
-        return Ok(());
-    }
-
-    let base_url = supabase_url.trim_end_matches('/');
-    let url = format!("{base_url}/storage/v1/object/list/game-saves");
-    let response = client
-        .post(url)
-        .header("apikey", api_key)
-        .bearer_auth(access_token)
-        .json(&serde_json::json!({
-            "prefix": prefix,
-            "limit": 1000,
-            "offset": 0,
-            "sortBy": { "column": "name", "order": "asc" }
-        }))
-        .send()
-        .await
-        .map_err(|error| format!("Could not list Supabase Storage objects: {error}"))?;
-
-    if !response.status().is_success() {
-        let status = response.status();
-        let body = response.text().await.unwrap_or_default();
-        return Err(format!(
-            "Supabase Storage list failed with {status}: {body}"
-        ));
-    }
-
-    let objects = response
-        .json::<Vec<StorageListObject>>()
-        .await
-        .map_err(|error| format!("Could not parse Supabase Storage list response: {error}"))?;
-
-    for object in objects {
-        let object_path = if prefix.is_empty() {
-            object.name.clone()
-        } else {
-            format!("{}/{}", prefix.trim_end_matches('/'), object.name)
-        };
-
-        if object.id.is_some() || object.metadata.is_some() {
-            output.push(object_path);
-        } else {
-            Box::pin(list_supabase_storage_objects_recursive(
-                client,
-                supabase_url,
-                api_key,
-                access_token,
-                &object_path,
-                depth.saturating_add(1),
-                output,
-            ))
-            .await?;
-        }
-    }
-
-    Ok(())
-}
-
-async fn download_file_from_supabase_storage(
-    client: &reqwest::Client,
-    supabase_url: &str,
-    api_key: &str,
-    access_token: &str,
-    object_path: &str,
-    destination: &Path,
-    restore_root: &Path,
-) -> Result<(), String> {
-    ensure_path_inside_root(destination, restore_root)?;
-    if let Some(parent) = destination.parent() {
-        ensure_path_inside_root(parent, restore_root)?;
-        fs::create_dir_all(parent)
-            .map_err(|error| format!("Could not create restore folder: {error}"))?;
-    }
-
-    let base_url = supabase_url.trim_end_matches('/');
-    let object_path = url_encode_path(object_path);
-    let url = format!("{base_url}/storage/v1/object/authenticated/game-saves/{object_path}");
-    let response = client
-        .get(url)
-        .header("apikey", api_key)
-        .bearer_auth(access_token)
-        .send()
-        .await
-        .map_err(|error| format!("Could not download save file from Supabase Storage: {error}"))?;
-
-    if !response.status().is_success() {
-        let status = response.status();
-        let body = response.text().await.unwrap_or_default();
-        return Err(format!(
-            "Supabase Storage download failed with {status}: {body}"
-        ));
-    }
-
-    let bytes = response
-        .bytes()
-        .await
-        .map_err(|error| format!("Could not read downloaded save file: {error}"))?;
-    tokio::fs::write(destination, bytes)
-        .await
-        .map_err(|error| format!("Could not write restored save file: {error}"))
-}
-
-fn restore_destination_for_object(
-    restore_root: &Path,
-    object_path: &str,
-    object_prefix: &str,
-) -> PathBuf {
-    let relative = object_path
-        .strip_prefix(object_prefix)
-        .unwrap_or(object_path)
-        .trim_start_matches('/');
-
-    let mut destination = restore_root.to_path_buf();
-    for segment in relative.split('/') {
-        if !segment.trim().is_empty() {
-            destination.push(sanitize_storage_segment(segment));
-        }
-    }
-    destination
-}
-
-fn save_file_label_segment(save_file: &SaveFile) -> String {
-    let source = PathBuf::from(&save_file.path);
-    save_file
-        .label
-        .as_deref()
-        .filter(|label| !label.trim().is_empty())
-        .or_else(|| source.file_name().and_then(|name| name.to_str()))
-        .map(sanitize_storage_segment)
-        .unwrap_or_else(|| "save".to_string())
-}
-
-fn restore_destination_for_configured_save(
-    save_file: &SaveFile,
-    object_path: &str,
-    object_prefix: &str,
-) -> Option<PathBuf> {
-    let label_segment = save_file_label_segment(save_file);
-    let label_prefix = format!("{}/{}", object_prefix.trim_end_matches('/'), label_segment);
-    let relative = object_path
-        .strip_prefix(&label_prefix)?
-        .trim_start_matches('/');
-    let configured_path = PathBuf::from(&save_file.path);
-
-    if configured_path.is_file() || configured_path.extension().is_some() {
-        return Some(configured_path);
-    }
-
-    let mut destination = configured_path;
-    for segment in relative.split('/') {
-        if !segment.trim().is_empty() {
-            destination.push(sanitize_storage_segment(segment));
-        }
-    }
-
-    Some(destination)
-}
-
-fn backup_root_for_game(game_id: &str) -> Option<PathBuf> {
-    open_game_launcher_data_dir().map(|data_dir| {
-        data_dir
-            .join("save-backups")
-            .join(slugify(game_id))
-            .join(unix_timestamp_to_iso(current_unix_timestamp()).replace([':', '.'], "-"))
-    })
-}
-
-fn backup_existing_file(
-    target: &Path,
-    backup_root: &Path,
-    backed_up_files: &mut Vec<String>,
-) -> Result<(), String> {
-    if !target.exists() || target.is_dir() {
-        return Ok(());
-    }
-
-    let file_name = target
-        .file_name()
-        .and_then(|name| name.to_str())
-        .map(sanitize_storage_segment)
-        .unwrap_or_else(|| "save-file".to_string());
-    let backup_path = backup_root.join(file_name);
-    if let Some(parent) = backup_path.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|error| format!("Could not create save backup folder: {error}"))?;
-    }
-    fs::copy(target, &backup_path)
-        .map_err(|error| format!("Could not back up existing save file: {error}"))?;
-    backed_up_files.push(path_to_string(backup_path));
-    Ok(())
-}
-
-async fn restore_cloud_object_to_local_path(
-    client: &reqwest::Client,
-    supabase_url: &str,
-    api_key: &str,
-    access_token: &str,
-    object_path: &str,
-    destination: &Path,
-    backup_root: &Path,
-    backed_up_files: &mut Vec<String>,
-) -> Result<(), String> {
-    backup_existing_file(destination, backup_root, backed_up_files)?;
-    if let Some(parent) = destination.parent() {
-        fs::create_dir_all(parent)
-            .map_err(|error| format!("Could not create local save folder: {error}"))?;
-    }
-
-    let base_url = supabase_url.trim_end_matches('/');
-    let object_path = url_encode_path(object_path);
-    let url = format!("{base_url}/storage/v1/object/authenticated/game-saves/{object_path}");
-    let response = client
-        .get(url)
-        .header("apikey", api_key)
-        .bearer_auth(access_token)
-        .send()
-        .await
-        .map_err(|error| format!("Could not download cloud save: {error}"))?;
-
-    if !response.status().is_success() {
-        let status = response.status();
-        let body = response.text().await.unwrap_or_default();
-        return Err(format!(
-            "Supabase Storage download failed with {status}: {body}"
-        ));
-    }
-
-    let bytes = response
-        .bytes()
-        .await
-        .map_err(|error| format!("Could not read cloud save download: {error}"))?;
-    tokio::fs::write(destination, bytes)
-        .await
-        .map_err(|error| format!("Could not write local save file: {error}"))
-}
-
-fn collect_path_size(path: &Path, size: &mut u64) {
-    let Ok(entries) = fs::read_dir(path) else {
-        return;
-    };
-
-    for entry in entries.flatten() {
-        let entry_path = entry.path();
-        if entry_path.is_dir() {
-            collect_path_size(&entry_path, size);
-        } else if let Ok(metadata) = fs::metadata(entry_path) {
-            *size = size.saturating_add(metadata.len());
-        }
-    }
-}
-
-fn launcher_display_name(launcher: &str) -> &'static str {
-    match launcher {
-        "steam" => "Steam",
-        "epic" => "Epic Games Launcher",
-        "ubisoft" => "Ubisoft Connect",
-        "ea" => "EA App",
-        "battlenet" => "Battle.net",
-        "gog" => "GOG Galaxy",
-        "xbox" => "Xbox app",
-        "manual" => "OG Launcher",
-        _ => "the source launcher",
-    }
-}
-
-fn merge_cached_game_activity(game: &mut InstalledGame, cached_game: &InstalledGame) {
-    match (&game.last_played_at, &cached_game.last_played_at) {
-        (Some(current), Some(cached)) if cached > current => {
-            game.last_played_at = Some(cached.clone());
-        }
-        (None, Some(cached)) => {
-            game.last_played_at = Some(cached.clone());
-        }
-        _ => {}
-    }
-
-    if let Some(cached_minutes) = cached_game.playtime_minutes {
-        game.playtime_minutes = Some(
-            game.playtime_minutes
-                .map_or(cached_minutes, |minutes| minutes.max(cached_minutes)),
-        );
-    }
-
-    if !cached_game.genres.is_empty() {
-        game.genres = cached_game.genres.clone();
-        game.developer = cached_game.developer.clone();
-        game.publisher = cached_game.publisher.clone();
-        game.release_date = cached_game.release_date.clone();
-        game.features = cached_game.features.clone();
-        game.rating = cached_game.rating;
-        if !cached_game.description.contains("//") {
-            game.description = cached_game.description.clone();
-        }
-    }
-
-    if game.external_id.is_none() {
-        game.external_id = cached_game.external_id.clone();
-    }
-    if game.executable_path.is_none() {
-        game.executable_path = cached_game.executable_path.clone();
-    }
-    if game.process_names.is_empty() {
-        game.process_names = cached_game.process_names.clone();
-    }
-    if game.achievements.is_empty() {
-        game.achievements = cached_game.achievements.clone();
-    }
-    if game.save_files.is_empty() {
-        game.save_files = cached_game.save_files.clone();
-    }
-    if game.friends_playing.is_empty() {
-        game.friends_playing = cached_game.friends_playing.clone();
-    }
-}
-
-#[tauri::command]
-pub async fn launch_game(
-    app: tauri::AppHandle,
-    game_id: String,
-) -> Result<LaunchGameResponse, String> {
-    let game_id = normalize_game_id(game_id)?;
-    println!("[open-game-launcher] launch_game requested for {game_id}");
-
-    if game_id.starts_with("gog-owned-") {
-        let gog_id = game_id.strip_prefix("gog-owned-").unwrap_or(&game_id);
-        let uri = format!("goggalaxy://open-store/{gog_id}");
-        open_uri(&uri).map_err(|e| format!("Could not start GOG Galaxy: {e}"))?;
-        return Ok(LaunchGameResponse {
-            game_id: game_id.clone(),
-            success: true,
-            message: "Installation started in GOG Galaxy.".to_string(),
-        });
-    }
-
-    if game_id.starts_with("epic-owned-") {
-        let epic_id = game_id.strip_prefix("epic-owned-").unwrap_or(&game_id);
-        let uri = format!("com.epicgames.launcher://apps/{epic_id}?action=install");
-        open_uri(&uri).map_err(|e| format!("Could not start Epic Games Launcher: {e}"))?;
-        return Ok(LaunchGameResponse {
-            game_id: game_id.clone(),
-            success: true,
-            message: "Installation started in Epic Games Launcher.".to_string(),
-        });
-    }
-
-    if game_id.starts_with("steam-owned-") {
-        let steam_id = game_id.strip_prefix("steam-owned-").unwrap_or(&game_id);
-        let uri = format!("steam://install/{steam_id}");
-        open_uri(&uri).map_err(|e| format!("Could not start Steam: {e}"))?;
-        return Ok(LaunchGameResponse {
-            game_id: game_id.clone(),
-            success: true,
-            message: "Installation started in Steam.".to_string(),
-        });
-    }
-
-    let game = list_installed_games()
-        .await?
-        .into_iter()
-        .find(|game| game.id == game_id)
-        .ok_or_else(|| format!("Game '{game_id}' was not found."))?;
-
-    let child = launch_installed_game(&game)?;
-    if let Some(update) = record_game_launch_started(&game.id) {
-        emit_game_activity_update(&app, &update);
-    }
-    if let Some(child) = child {
-        record_game_play_session_when_finished(app, game.id.clone(), child);
-    }
-
-    Ok(LaunchGameResponse {
-        game_id,
-        success: true,
-        message: format!("{} is starting.", game.title),
-    })
-}
-
-#[tauri::command]
-pub fn verify_game_files(game_id: String) -> Result<VerifyGameFilesResponse, String> {
-    let game_id = normalize_game_id(game_id)?;
-    println!("[open-game-launcher] verify_game_files requested for {game_id}");
-
-    let games = read_installed_games_cache().unwrap_or_default();
-    let game = games
-        .iter()
-        .find(|game| game.id == game_id)
-        .ok_or_else(|| format!("Game '{game_id}' was not found in the local library cache."))?;
-
-    let mut missing_files = Vec::new();
-    let mut checked_files = 0;
-
-    if let Some(install_path) = game.install_path.as_deref() {
-        checked_files += 1;
-        if !Path::new(install_path).exists() {
-            missing_files.push(install_path.to_string());
-        }
-    } else if matches!(game.status, GameStatus::Installed) {
-        missing_files.push("install path".to_string());
-    }
-
-    if let Some(executable_path) = game.executable_path.as_deref() {
-        checked_files += 1;
-        if !Path::new(executable_path).exists() {
-            missing_files.push(executable_path.to_string());
-        }
-    } else if let Some(install_path) = game.install_path.as_deref() {
-        checked_files += 1;
-        if find_launch_executable(Path::new(install_path), &game.title).is_none() {
-            missing_files.push("launch executable".to_string());
-        }
-    }
-
-    for save_file in &game.save_files {
-        checked_files += 1;
-        if !Path::new(&save_file.path).exists() {
-            missing_files.push(save_file.path.clone());
-        }
-    }
-
-    let status = if missing_files.is_empty() {
-        VerificationStatus::Verified
-    } else {
-        VerificationStatus::RepairRequired
-    };
-
-    Ok(VerifyGameFilesResponse {
-        game_id,
-        checked_files,
-        missing_files,
-        status,
-    })
-}
-
-#[tauri::command]
-pub fn repair_game_files(game_id: String) -> Result<RepairGameFilesResponse, String> {
-    let game_id = normalize_game_id(game_id)?;
-    println!("[open-game-launcher] repair_game_files requested for {game_id}");
-
-    let mut games = read_installed_games_cache().unwrap_or_default();
-    let game_index = games
-        .iter()
-        .position(|game| game.id == game_id)
-        .ok_or_else(|| format!("Game '{game_id}' was not found in the local library cache."))?;
-
-    let mut game = games[game_index].clone();
-    let install_path = game
-        .install_path
-        .as_deref()
-        .map(PathBuf::from)
-        .or_else(|| {
-            open_game_launcher_data_dir().map(|data_dir| data_dir.join("games").join(&game.id))
-        })
-        .ok_or_else(|| "Could not resolve the OG managed install folder.".to_string())?;
-
-    if !is_og_managed_install_path(&install_path) {
-        return Err(format!(
-            "{} is managed by {}. Use that launcher to repair the installation.",
-            game.title,
-            launcher_display_name(&game.launcher)
-        ));
-    }
-
-    fs::create_dir_all(&install_path)
-        .map_err(|error| format!("Could not create install folder: {error}"))?;
-
-    let dummy_exe_name = if cfg!(target_os = "windows") {
-        "game.exe"
-    } else {
-        "game"
-    };
-    let executable_path = install_path.join(dummy_exe_name);
-    fs::write(
-        &executable_path,
-        b"OG Launcher repaired managed game executable",
-    )
-    .map_err(|error| format!("Could not repair executable: {error}"))?;
-    write_og_managed_manifest(&install_path, &game.id, &game.title, &game.version)?;
-
-    game.status = GameStatus::Installed;
-    game.install_path = Some(path_to_string(install_path.clone()));
-    game.executable_path = Some(path_to_string(executable_path.clone()));
-    game.process_names = executable_path
-        .file_name()
-        .and_then(|name| name.to_str())
-        .map(|name| vec![name.to_string()])
-        .unwrap_or_default();
-
-    games[game_index] = game.clone();
-    write_installed_games_cache(&games);
-
-    Ok(RepairGameFilesResponse {
-        game_id,
-        success: true,
-        game: game.clone(),
-        repaired_files: vec![path_to_string(executable_path)],
-        message: format!("{} repair completed.", game.title),
-    })
-}
-
-#[tauri::command]
-pub fn check_game_updates() -> Result<CheckGameUpdatesResponse, String> {
-    let mut games = read_installed_games_cache().unwrap_or_default();
-    let mut update_count = 0;
-
-    for game in games.iter_mut() {
-        let Some(install_path) = game.install_path.as_deref().map(PathBuf::from) else {
-            continue;
-        };
-
-        if !is_og_managed_install_path(&install_path) {
-            continue;
-        }
-
-        let local_version =
-            read_og_managed_version(&install_path).unwrap_or_else(|| game.version.clone());
-        if local_version.trim() != OG_MANAGED_LATEST_VERSION {
-            game.status = GameStatus::UpdateAvailable;
-            game.version = local_version;
-            update_count += 1;
-        }
-    }
-
-    write_installed_games_cache(&games);
-
-    let message = if update_count == 0 {
-        "All OG-managed games are up to date.".to_string()
-    } else {
-        format!("{update_count} OG-managed updates are available.")
-    };
-
-    Ok(CheckGameUpdatesResponse {
-        update_count,
-        games,
-        message,
-    })
-}
-
-#[tauri::command]
-pub fn install_game_update(game_id: String) -> Result<InstallGameUpdateResponse, String> {
-    let game_id = normalize_game_id(game_id)?;
-    println!("[open-game-launcher] install_game_update requested for {game_id}");
-
-    let mut games = read_installed_games_cache().unwrap_or_default();
-    let game_index = games
-        .iter()
-        .position(|game| game.id == game_id)
-        .ok_or_else(|| format!("Game '{game_id}' was not found in the local library cache."))?;
-
-    let mut game = games[game_index].clone();
-
-    if !matches!(game.status, GameStatus::UpdateAvailable) {
-        return Ok(InstallGameUpdateResponse {
-            game_id,
-            success: true,
-            game: game.clone(),
-            message: format!("{} is already up to date.", game.title),
-        });
-    }
-
-    let install_path = game
-        .install_path
-        .as_deref()
-        .map(PathBuf::from)
-        .ok_or_else(|| format!("{} has no install folder to update.", game.title))?;
-
-    if !is_og_managed_install_path(&install_path) {
-        if let Some(uri) = update_uri_for_game(&game) {
-            open_uri(&uri).map_err(|error| format!("Could not open update flow: {error}"))?;
-            return Ok(InstallGameUpdateResponse {
-                game_id,
-                success: true,
-                game: game.clone(),
-                message: format!(
-                    "{} update was handed off to {}.",
-                    game.title,
-                    launcher_display_name(&game.launcher)
-                ),
-            });
-        }
-
-        return Err(format!(
-            "{} is managed by {}. Use that launcher to update the installation.",
-            game.title,
-            launcher_display_name(&game.launcher)
-        ));
-    }
-
-    fs::create_dir_all(&install_path)
-        .map_err(|error| format!("Could not create install folder: {error}"))?;
-    let executable_path = install_path.join(if cfg!(target_os = "windows") {
-        "game.exe"
-    } else {
-        "game"
-    });
-    fs::write(
-        &executable_path,
-        format!("OG Launcher managed game executable // version {OG_MANAGED_LATEST_VERSION}"),
-    )
-    .map_err(|error| format!("Could not write updated executable: {error}"))?;
-    write_og_managed_manifest(
-        &install_path,
-        &game.id,
-        &game.title,
-        OG_MANAGED_LATEST_VERSION,
-    )?;
-
-    game.status = GameStatus::Installed;
-    game.version = OG_MANAGED_LATEST_VERSION.to_string();
-    game.executable_path = Some(path_to_string(executable_path.clone()));
-    game.process_names = executable_path
-        .file_name()
-        .and_then(|name| name.to_str())
-        .map(|name| vec![name.to_string()])
-        .unwrap_or_default();
-
-    games[game_index] = game.clone();
-    write_installed_games_cache(&games);
-
-    Ok(InstallGameUpdateResponse {
-        game_id,
-        success: true,
-        game: game.clone(),
-        message: format!("{} updated to version {}.", game.title, game.version),
-    })
-}
-
-#[tauri::command]
-pub fn sync_game_saves(game_id: String) -> Result<SyncGameSavesResponse, String> {
-    let game_id = normalize_game_id(game_id)?;
-    println!("[open-game-launcher] sync_game_saves requested for {game_id}");
-
-    let mut games = read_installed_games_cache().unwrap_or_default();
-    let game_index = games
-        .iter()
-        .position(|game| game.id == game_id)
-        .ok_or_else(|| format!("Game '{game_id}' was not found in the local library cache."))?;
-
-    let mut game = games[game_index].clone();
-    let sync_root = save_sync_root_for_game(&game.id)
-        .ok_or_else(|| "Could not resolve the local save-sync folder.".to_string())?;
-    fs::create_dir_all(&sync_root)
-        .map_err(|error| format!("Could not create save-sync folder: {error}"))?;
-
-    let synced_at = unix_timestamp_to_iso(current_unix_timestamp());
-    let mut synced_files = Vec::new();
-    let mut missing_files = Vec::new();
-
-    for save_file in game.save_files.iter_mut() {
-        let source = PathBuf::from(&save_file.path);
-        if !source.exists() {
-            missing_files.push(save_file.path.clone());
-            continue;
-        }
-
-        let destination = sync_destination_for_save(&sync_root, save_file, &source);
-        copy_path_to_sync_cache(&source, &destination, &sync_root)?;
-        save_file.synced_at = Some(synced_at.clone());
-        save_file.modified_at = get_dir_last_modified(&source).map(unix_timestamp_to_iso);
-        save_file.size_bytes = path_size_bytes(&source);
-        synced_files.push(path_to_string(destination));
-    }
-
-    games[game_index] = game.clone();
-    write_installed_games_cache(&games);
-
-    let message = if missing_files.is_empty() {
-        format!("{} save sync completed.", game.title)
-    } else {
-        format!(
-            "{} save sync completed with {} missing path(s).",
-            game.title,
-            missing_files.len()
-        )
-    };
-
-    Ok(SyncGameSavesResponse {
-        game_id,
-        success: missing_files.is_empty(),
-        game: game.clone(),
-        synced_files,
-        missing_files,
-        sync_root: path_to_string(sync_root),
-        message,
-    })
-}
-
-#[tauri::command]
-pub async fn upload_game_saves_to_cloud(
-    input: UploadGameSavesToCloudRequest,
-) -> Result<UploadGameSavesToCloudResponse, String> {
-    let game_id = normalize_game_id(input.game_id)?;
-    println!("[open-game-launcher] upload_game_saves_to_cloud requested for {game_id}");
-
-    if input.supabase_url.trim().is_empty()
-        || input.api_key.trim().is_empty()
-        || input.access_token.trim().is_empty()
-        || input.user_id.trim().is_empty()
-    {
-        return Err("Supabase URL, public key, user token, and user ID are required.".to_string());
-    }
-
-    let mut games = read_installed_games_cache().unwrap_or_default();
-    let game_index = games
-        .iter()
-        .position(|game| game.id == game_id)
-        .ok_or_else(|| format!("Game '{game_id}' was not found in the local library cache."))?;
-    let mut game = games[game_index].clone();
-
-    if game.save_files.is_empty() {
-        return Err("Add at least one save path before uploading saves to cloud.".to_string());
-    }
-
-    let mut uploads = Vec::new();
-    let mut missing_files = Vec::new();
-    for save_file in &game.save_files {
-        let source = PathBuf::from(&save_file.path);
-        if !source.exists() {
-            missing_files.push(save_file.path.clone());
-            continue;
-        }
-        collect_save_upload_sources(
-            &input.user_id,
-            &game.id,
-            save_file,
-            &source,
-            &source,
-            &mut uploads,
-        )?;
-    }
-
-    let client = reqwest::Client::new();
-    let mut uploaded_files = Vec::new();
-    let mut failed_files = Vec::new();
-    for upload in &uploads {
-        match upload_file_to_supabase_storage(
-            &client,
-            &input.supabase_url,
-            &input.api_key,
-            &input.access_token,
-            upload,
-        )
-        .await
-        {
-            Ok(()) => uploaded_files.push(upload.object_path.clone()),
-            Err(error) => failed_files.push(format!(
-                "{} // {error}",
-                path_to_string(upload.source_path.clone())
-            )),
-        }
-    }
-
-    if !uploaded_files.is_empty() {
-        let synced_at = unix_timestamp_to_iso(current_unix_timestamp());
-        for save_file in game.save_files.iter_mut() {
-            let source = PathBuf::from(&save_file.path);
-            if source.exists() {
-                save_file.synced_at = Some(synced_at.clone());
-                save_file.modified_at = get_dir_last_modified(&source).map(unix_timestamp_to_iso);
-                save_file.size_bytes = path_size_bytes(&source);
-            }
-        }
-        games[game_index] = game.clone();
-        write_installed_games_cache(&games);
-    }
-
-    let message = if failed_files.is_empty() && missing_files.is_empty() {
-        format!("{} cloud save upload completed.", game.title)
-    } else {
-        format!(
-            "{} cloud save upload completed with {} failed and {} missing file(s).",
-            game.title,
-            failed_files.len(),
-            missing_files.len()
-        )
-    };
-
-    Ok(UploadGameSavesToCloudResponse {
-        game_id,
-        success: failed_files.is_empty() && missing_files.is_empty(),
-        game: game.clone(),
-        uploaded_files,
-        missing_files,
-        failed_files,
-        message,
-    })
-}
-
-#[tauri::command]
-pub async fn download_game_saves_from_cloud(
-    input: DownloadGameSavesFromCloudRequest,
-) -> Result<DownloadGameSavesFromCloudResponse, String> {
-    let game_id = normalize_game_id(input.game_id)?;
-    println!("[open-game-launcher] download_game_saves_from_cloud requested for {game_id}");
-
-    if input.supabase_url.trim().is_empty()
-        || input.api_key.trim().is_empty()
-        || input.access_token.trim().is_empty()
-        || input.user_id.trim().is_empty()
-    {
-        return Err("Supabase URL, public key, user token, and user ID are required.".to_string());
-    }
-
-    let games = read_installed_games_cache().unwrap_or_default();
-    let game = games
-        .iter()
-        .find(|game| game.id == game_id)
-        .ok_or_else(|| format!("Game '{game_id}' was not found in the local library cache."))?;
-
-    let restore_root = save_sync_root_for_game(&game.id)
-        .ok_or_else(|| "Could not resolve the local save-sync folder.".to_string())?
-        .join("cloud-restore");
-    fs::create_dir_all(&restore_root)
-        .map_err(|error| format!("Could not create cloud restore folder: {error}"))?;
-
-    let object_prefix = format!(
-        "{}/{}",
-        sanitize_storage_segment(&input.user_id),
-        sanitize_storage_segment(&game.id)
-    );
-    let client = reqwest::Client::new();
-    let mut object_paths = Vec::new();
-    list_supabase_storage_objects_recursive(
-        &client,
-        &input.supabase_url,
-        &input.api_key,
-        &input.access_token,
-        &object_prefix,
-        0,
-        &mut object_paths,
-    )
-    .await?;
-
-    if object_paths.is_empty() {
-        return Ok(DownloadGameSavesFromCloudResponse {
-            game_id,
-            success: false,
-            restore_root: path_to_string(restore_root),
-            downloaded_files: Vec::new(),
-            failed_files: Vec::new(),
-            message: format!("No cloud saves were found for {}.", game.title),
-        });
-    }
-
-    let mut downloaded_files = Vec::new();
-    let mut failed_files = Vec::new();
-    for object_path in object_paths {
-        let destination =
-            restore_destination_for_object(&restore_root, &object_path, &object_prefix);
-        match download_file_from_supabase_storage(
-            &client,
-            &input.supabase_url,
-            &input.api_key,
-            &input.access_token,
-            &object_path,
-            &destination,
-            &restore_root,
-        )
-        .await
-        {
-            Ok(()) => downloaded_files.push(path_to_string(destination)),
-            Err(error) => failed_files.push(format!("{object_path} // {error}")),
-        }
-    }
-
-    let message = if failed_files.is_empty() {
-        format!(
-            "{} cloud save restore downloaded {} file(s).",
-            game.title,
-            downloaded_files.len()
-        )
-    } else {
-        format!(
-            "{} cloud save restore downloaded {} file(s) with {} failure(s).",
-            game.title,
-            downloaded_files.len(),
-            failed_files.len()
-        )
-    };
-
-    Ok(DownloadGameSavesFromCloudResponse {
-        game_id,
-        success: failed_files.is_empty(),
-        restore_root: path_to_string(restore_root),
-        downloaded_files,
-        failed_files,
-        message,
-    })
-}
-
-#[tauri::command]
-pub async fn restore_game_saves_from_cloud(
-    input: RestoreGameSavesFromCloudRequest,
-) -> Result<RestoreGameSavesFromCloudResponse, String> {
-    let game_id = normalize_game_id(input.game_id)?;
-    println!("[open-game-launcher] restore_game_saves_from_cloud requested for {game_id}");
-
-    if input.supabase_url.trim().is_empty()
-        || input.api_key.trim().is_empty()
-        || input.access_token.trim().is_empty()
-        || input.user_id.trim().is_empty()
-    {
-        return Err("Supabase URL, public key, user token, and user ID are required.".to_string());
-    }
-
-    let games = read_installed_games_cache().unwrap_or_default();
-    let game = games
-        .iter()
-        .find(|game| game.id == game_id)
-        .ok_or_else(|| format!("Game '{game_id}' was not found in the local library cache."))?;
-
-    if game.save_files.is_empty() {
-        return Err("Add at least one save path before restoring cloud saves.".to_string());
-    }
-
-    let object_prefix = format!(
-        "{}/{}",
-        sanitize_storage_segment(&input.user_id),
-        sanitize_storage_segment(&game.id)
-    );
-    let client = reqwest::Client::new();
-    let mut object_paths = Vec::new();
-    list_supabase_storage_objects_recursive(
-        &client,
-        &input.supabase_url,
-        &input.api_key,
-        &input.access_token,
-        &object_prefix,
-        0,
-        &mut object_paths,
-    )
-    .await?;
-
-    if object_paths.is_empty() {
-        return Ok(RestoreGameSavesFromCloudResponse {
-            game_id,
-            success: false,
-            restored_files: Vec::new(),
-            backed_up_files: Vec::new(),
-            skipped_files: Vec::new(),
-            failed_files: Vec::new(),
-            message: format!("No cloud saves were found for {}.", game.title),
-        });
-    }
-
-    let backup_root = backup_root_for_game(&game.id)
-        .ok_or_else(|| "Could not resolve the local save-backup folder.".to_string())?;
-    let mut restored_files = Vec::new();
-    let mut backed_up_files = Vec::new();
-    let mut skipped_files = Vec::new();
-    let mut failed_files = Vec::new();
-
-    for object_path in object_paths {
-        let Some((save_file, destination)) = game.save_files.iter().find_map(|save_file| {
-            restore_destination_for_configured_save(save_file, &object_path, &object_prefix)
-                .map(|destination| (save_file, destination))
-        }) else {
-            skipped_files.push(object_path);
-            continue;
-        };
-
-        if save_file.path.trim().is_empty() {
-            skipped_files.push(object_path);
-            continue;
-        }
-
-        match restore_cloud_object_to_local_path(
-            &client,
-            &input.supabase_url,
-            &input.api_key,
-            &input.access_token,
-            &object_path,
-            &destination,
-            &backup_root,
-            &mut backed_up_files,
-        )
-        .await
-        {
-            Ok(()) => restored_files.push(path_to_string(destination)),
-            Err(error) => failed_files.push(format!("{object_path} // {error}")),
-        }
-    }
-
-    let message = if failed_files.is_empty() {
-        format!(
-            "{} cloud saves restored to configured paths: {} file(s).",
-            game.title,
-            restored_files.len()
-        )
-    } else {
-        format!(
-            "{} cloud save restore finished with {} restored and {} failed file(s).",
-            game.title,
-            restored_files.len(),
-            failed_files.len()
-        )
-    };
-
-    Ok(RestoreGameSavesFromCloudResponse {
-        game_id,
-        success: failed_files.is_empty() && !restored_files.is_empty(),
-        restored_files,
-        backed_up_files,
-        skipped_files,
-        failed_files,
-        message,
-    })
-}
-
-#[tauri::command]
-pub async fn sync_game_achievements(
-    game_id: String,
-    steam_id: Option<String>,
-    api_key: Option<String>,
-) -> Result<SyncGameAchievementsResponse, String> {
-    let game_id = normalize_game_id(game_id)?;
-    println!("[open-game-launcher] sync_game_achievements requested for {game_id}");
-
-    let mut games = read_installed_games_cache().unwrap_or_default();
-    let game_index = games
-        .iter()
-        .position(|game| game.id == game_id)
-        .ok_or_else(|| format!("Game '{game_id}' was not found in the local library cache."))?;
-
-    let mut game = games[game_index].clone();
-    let appid = steam_app_id_for_game(&game).ok_or_else(|| {
-        format!(
-            "{} does not expose a Steam app ID, so achievements cannot be synced yet.",
-            game.title
-        )
-    })?;
-
-    let achievements = fetch_steam_achievements(appid, steam_id, api_key).await?;
-    if achievements.is_empty() {
-        return Err(format!(
-            "Steam returned no achievements for {}. The game may not expose public achievement data.",
-            game.title
-        ));
-    }
-
-    let unlocked_achievements = achievements
-        .iter()
-        .filter(|achievement| achievement.unlocked_at.is_some())
-        .count();
-    let synced_achievements = achievements.len();
-    game.achievements = achievements;
-
-    games[game_index] = game.clone();
-    write_installed_games_cache(&games);
-
-    Ok(SyncGameAchievementsResponse {
-        game_id,
-        success: true,
-        game: game.clone(),
-        synced_achievements,
-        unlocked_achievements,
-        message: format!(
-            "{} achievements synced: {unlocked_achievements}/{synced_achievements} unlocked.",
-            game.title
-        ),
-    })
-}
-
-#[allow(non_snake_case)]
-#[tauri::command]
-pub async fn syncGameAchievements(
-    game_id: String,
-    steam_id: Option<String>,
-    api_key: Option<String>,
-) -> Result<SyncGameAchievementsResponse, String> {
-    sync_game_achievements(game_id, steam_id, api_key).await
-}
-
-#[tauri::command]
-pub fn uninstall_game(game_id: String) -> Result<UninstallGameResponse, String> {
-    let game_id = normalize_game_id(game_id)?;
-    println!("[open-game-launcher] uninstall_game requested for {game_id}");
-
-    let mut games = read_installed_games_cache().unwrap_or_default();
-    let game_index = games
-        .iter()
-        .position(|game| game.id == game_id)
-        .ok_or_else(|| format!("Game '{game_id}' was not found in the local library cache."))?;
-
-    let mut game = games[game_index].clone();
-
-    if is_manual_game(&game) {
-        games.remove(game_index);
-        write_installed_games_cache(&games);
-        return Ok(UninstallGameResponse {
-            game_id,
-            success: true,
-            removed_from_library: true,
-            game: None,
-            message: format!("{} was removed from the Library.", game.title),
-        });
-    }
-
-    if let Some(install_path) = game.install_path.as_deref() {
-        let install_path = PathBuf::from(install_path);
-        if is_og_managed_install_path(&install_path) {
-            remove_managed_install_path(&install_path)?;
-            mark_game_not_installed(&mut game);
-            games[game_index] = game.clone();
-            write_installed_games_cache(&games);
-            return Ok(UninstallGameResponse {
-                game_id,
-                success: true,
-                removed_from_library: false,
-                game: Some(game.clone()),
-                message: format!(
-                    "{} was uninstalled from the OG managed library.",
-                    game.title
-                ),
-            });
-        }
-    }
-
-    if let Some(uri) = uninstall_uri_for_game(&game) {
-        open_uri(&uri).map_err(|error| format!("Could not open uninstall flow: {error}"))?;
-        return Ok(UninstallGameResponse {
-            game_id,
-            success: true,
-            removed_from_library: false,
-            game: Some(game.clone()),
-            message: format!(
-                "{} uninstall was handed off to {}.",
-                game.title,
-                launcher_display_name(&game.launcher)
-            ),
-        });
-    }
-
-    Err(format!(
-        "{} is managed by {}. Open that launcher to uninstall it, or remove only manually added entries from OG Launcher.",
-        game.title,
-        launcher_display_name(&game.launcher)
-    ))
-}
-
-fn scan_steam_games() -> Vec<InstalledGame> {
+pub fn scan_steam_games() -> Vec<InstalledGame> {
     let Some(steam_dir) = find_steam_dir() else {
         return Vec::new();
     };
@@ -2474,96 +175,7 @@ fn scan_steam_games() -> Vec<InstalledGame> {
     games
 }
 
-fn read_installed_games_cache() -> Option<Vec<InstalledGame>> {
-    let cache_path = installed_games_cache_path()?;
-    let contents = fs::read_to_string(cache_path).ok()?;
-    let cache = serde_json::from_str::<InstalledGamesCache>(&contents).ok()?;
-
-    (cache.version == GAME_LIBRARY_CACHE_VERSION).then_some(
-        cache
-            .games
-            .into_iter()
-            .map(repair_cached_game_assets)
-            .collect(),
-    )
-}
-
-fn repair_cached_game_assets(mut game: InstalledGame) -> InstalledGame {
-    if game.slug.is_empty() {
-        game.slug = slugify(&game.title);
-    }
-    if game.launcher.is_empty() {
-        game.launcher = launcher_key_from_source(&game.description).to_string();
-    }
-    if game.executable_path.is_none() {
-        if let Some(install_path) = game.install_path.as_deref() {
-            game.executable_path =
-                find_launch_executable(Path::new(install_path), &game.title).map(path_to_string);
-        }
-    }
-    if game.process_names.is_empty() {
-        game.process_names = game
-            .executable_path
-            .as_deref()
-            .and_then(|path| {
-                Path::new(path)
-                    .file_name()
-                    .and_then(|name| name.to_str())
-                    .map(|name| vec![name.to_string()])
-            })
-            .unwrap_or_default();
-    }
-
-    if is_battlenet_game(&game) {
-        return apply_battlenet_assets(game, None);
-    }
-
-    game
-}
-
-fn is_battlenet_game(game: &InstalledGame) -> bool {
-    game.id.starts_with("battlenet-")
-        || game
-            .launch_uri
-            .as_deref()
-            .is_some_and(|uri| uri.starts_with("battlenet://"))
-        || game.description.starts_with("Battle.net")
-}
-
-fn write_installed_games_cache(games: &[InstalledGame]) {
-    let Some(cache_path) = installed_games_cache_path() else {
-        return;
-    };
-
-    if let Some(parent) = cache_path.parent() {
-        let _ = fs::create_dir_all(parent);
-    }
-
-    let cache = InstalledGamesCache {
-        version: GAME_LIBRARY_CACHE_VERSION,
-        games: games.to_vec(),
-    };
-
-    if let Ok(contents) = serde_json::to_string_pretty(&cache) {
-        let _ = fs::write(cache_path, contents);
-    }
-}
-
-fn open_game_launcher_data_dir() -> Option<PathBuf> {
-    dirs::data_local_dir()
-        .or_else(dirs::data_dir)
-        .map(|data_dir| data_dir.join("open-game-launcher"))
-}
-
-fn installed_games_cache_path() -> Option<PathBuf> {
-    open_game_launcher_data_dir().map(|data_dir| data_dir.join("installed-games.json"))
-}
-
-fn rawg_asset_cache_path() -> Option<PathBuf> {
-    open_game_launcher_data_dir().map(|data_dir| data_dir.join("rawg-assets.json"))
-}
-
-fn scan_epic_games() -> Vec<InstalledGame> {
+pub fn scan_epic_games() -> Vec<InstalledGame> {
     let manifest_dir = PathBuf::from(r"C:\ProgramData\Epic\EpicGamesLauncher\Data\Manifests");
     let Ok(entries) = fs::read_dir(manifest_dir) else {
         return Vec::new();
@@ -3009,13 +621,13 @@ fn find_gog_webcache_banner(game_id: &str) -> Option<String> {
     None
 }
 
-struct GogRegistryInstall {
-    title: String,
-    install_dir: PathBuf,
-    game_id: Option<String>,
+pub struct GogRegistryInstall {
+    pub title: String,
+    pub install_dir: PathBuf,
+    pub game_id: Option<String>,
 }
 
-fn read_gog_registry_installs() -> Vec<GogRegistryInstall> {
+pub fn read_gog_registry_installs() -> Vec<GogRegistryInstall> {
     if !cfg!(target_os = "windows") {
         return Vec::new();
     }
@@ -3060,7 +672,7 @@ fn read_gog_registry_installs() -> Vec<GogRegistryInstall> {
     .collect()
 }
 
-fn scan_gog_games() -> Vec<InstalledGame> {
+pub fn scan_gog_games() -> Vec<InstalledGame> {
     let mut games = Vec::new();
     let mut seen = HashSet::new();
 
@@ -3161,16 +773,16 @@ fn scan_gog_games() -> Vec<InstalledGame> {
     games
 }
 
-struct BattleNetAssetTheme {
-    family: &'static str,
-    initials: &'static str,
-    bg: &'static str,
-    bg_alt: &'static str,
-    accent: &'static str,
-    accent_alt: &'static str,
+pub struct BattleNetAssetTheme {
+    pub family: &'static str,
+    pub initials: &'static str,
+    pub bg: &'static str,
+    pub bg_alt: &'static str,
+    pub accent: &'static str,
+    pub accent_alt: &'static str,
 }
 
-fn battlenet_asset_theme(uid: &str, title: &str) -> BattleNetAssetTheme {
+pub fn battlenet_asset_theme(uid: &str, title: &str) -> BattleNetAssetTheme {
     let normalized_uid = uid.to_lowercase();
     let normalized_title = title.to_lowercase();
 
@@ -3289,7 +901,7 @@ fn battlenet_asset_theme(uid: &str, title: &str) -> BattleNetAssetTheme {
     }
 }
 
-fn get_battlenet_assets(
+pub fn get_battlenet_assets(
     uid: &str,
     title: &str,
 ) -> (Option<String>, Option<String>, Option<String>) {
@@ -3302,36 +914,7 @@ fn get_battlenet_assets(
     )
 }
 
-fn apply_battlenet_assets(mut game: InstalledGame, _display_icon: Option<&str>) -> InstalledGame {
-    let uid = game
-        .launch_uri
-        .as_deref()
-        .and_then(|uri| uri.strip_prefix("battlenet://"))
-        .or_else(|| game.id.strip_prefix("battlenet-"))
-        .unwrap_or(&game.id);
-    let (fallback_cover, _fallback_logo, fallback_icon) = get_battlenet_assets(uid, &game.title);
-    let rawg_assets = get_rawg_battlenet_assets(uid, &game.title);
-    let (cover, icon) = rawg_assets
-        .map(|assets| {
-            (
-                assets.cover_url.or(fallback_cover.clone()),
-                assets.icon_url.or(fallback_icon.clone()),
-            )
-        })
-        .unwrap_or((fallback_cover, fallback_icon));
-
-    game.cover_url = cover;
-    game.logo_url = None;
-    game.logo_urls = Vec::new();
-    game.icon_url = icon.clone();
-    game.icon_urls = icon.into_iter().collect();
-    game.logo_position = LogoPosition::CenterCenter;
-    game.logo_width_percent = Some(58.0);
-    game.logo_height_percent = Some(48.0);
-    game
-}
-
-fn get_rawg_battlenet_assets(uid: &str, title: &str) -> Option<RawgAssets> {
+pub fn get_rawg_battlenet_assets(uid: &str, title: &str) -> Option<RawgAssets> {
     let cache_key = battlenet_asset_cache_key(uid, title);
     let mut cache = read_rawg_asset_cache();
     if let Some(cached_assets) = cache.entries.get(&cache_key) {
@@ -3697,7 +1280,7 @@ fn xml_escape(value: &str) -> String {
         .replace('"', "&quot;")
 }
 
-fn scan_battlenet_games() -> Vec<InstalledGame> {
+pub fn scan_battlenet_games() -> Vec<InstalledGame> {
     let mut games = Vec::new();
     let mut seen = HashSet::new();
 
@@ -3743,7 +1326,7 @@ fn scan_battlenet_games() -> Vec<InstalledGame> {
     games
 }
 
-fn scan_ubisoft_games() -> Vec<InstalledGame> {
+pub fn scan_ubisoft_games() -> Vec<InstalledGame> {
     let mut candidates = Vec::new();
 
     if let Some(program_files_x86) = env_path("ProgramFiles(x86)") {
@@ -3852,29 +1435,37 @@ fn apply_ubisoft_launcher_assets(
     }
 }
 
-fn scan_xbox_games() -> Vec<InstalledGame> {
+pub fn scan_xbox_games() -> Vec<InstalledGame> {
     let mut roots = Vec::new();
+    let uwp_packages = read_windows_app_packages();
 
     for xbox_root in local_drive_roots()
         .into_iter()
         .map(|drive| drive.join("XboxGames"))
         .filter(|path| path.is_dir())
     {
-        roots.extend(read_xbox_games_root_dirs(&xbox_root));
-        collect_xbox_config_roots(&xbox_root, 0, &mut roots);
+        roots.extend(read_xbox_games_root_dirs(&xbox_root).into_iter().map(|p| (p, None)));
+        
+        let mut config_roots = Vec::new();
+        collect_xbox_config_roots(&xbox_root, 0, &mut config_roots);
+        roots.extend(config_roots.into_iter().map(|p| (p, None)));
     }
 
-    roots.extend(read_windows_app_game_roots());
+    for (install_loc, package_family_name) in uwp_packages {
+        if is_windows_app_game_root(&install_loc) {
+            roots.push((install_loc, Some(package_family_name)));
+        }
+    }
 
     collect_xbox_games_from_roots(roots)
 }
 
-fn collect_xbox_games_from_roots(roots: Vec<PathBuf>) -> Vec<InstalledGame> {
+fn collect_xbox_games_from_roots(roots: Vec<(PathBuf, Option<String>)>) -> Vec<InstalledGame> {
     let mut games = Vec::new();
     let mut seen_paths = HashSet::new();
     let mut seen_titles = HashSet::new();
 
-    for root in roots {
+    for (root, package_family_name) in roots {
         if !root.is_dir() || is_ignored_game_directory(&root) {
             continue;
         }
@@ -3912,6 +1503,17 @@ fn collect_xbox_games_from_roots(roots: Vec<PathBuf>) -> Vec<InstalledGame> {
         game.icon_url = find_local_icon_asset(&root)
             .or_else(|| game.logo_url.clone())
             .or_else(|| game.cover_url.clone());
+
+        if let Some(pfn) = package_family_name {
+            if let Ok(contents) = fs::read_to_string(root.join("AppxManifest.xml")) {
+                if let Some(app_id) = find_uwp_app_id(&contents) {
+                    let aumid = format!("{}!{}", pfn, app_id);
+                    game.launch_uri = Some(format!("shell:AppsFolder\\{}", aumid));
+                    println!("[open-game-launcher] Detected Xbox AUMID launch URI for {}: {}", game.title, aumid);
+                }
+            }
+        }
+
         if let Some(timestamp) = get_dir_last_modified(&root) {
             game.last_played_at = Some(unix_timestamp_to_iso(timestamp));
         }
@@ -3935,13 +1537,7 @@ fn read_xbox_games_root_dirs(xbox_root: &Path) -> Vec<PathBuf> {
 }
 
 fn collect_xbox_config_roots(path: &Path, depth: usize, roots: &mut Vec<PathBuf>) {
-    if depth > 5 {
-        return;
-    }
-
-    let config_path = path.join("MicrosoftGame.config");
-    if config_path.is_file() {
-        roots.push(path.to_path_buf());
+    if depth > 3 {
         return;
     }
 
@@ -3955,43 +1551,52 @@ fn collect_xbox_config_roots(path: &Path, depth: usize, roots: &mut Vec<PathBuf>
             continue;
         }
 
+        if child.join("MicrosoftGame.config").is_file() {
+            roots.push(child.clone());
+        }
+
         collect_xbox_config_roots(&child, depth + 1, roots);
     }
 }
 
-fn read_windows_app_game_roots() -> Vec<PathBuf> {
-    read_windows_app_install_locations()
-        .into_iter()
-        .filter(|path| is_windows_app_game_root(path))
-        .collect()
-}
-
 #[cfg(windows)]
-fn read_windows_app_install_locations() -> Vec<PathBuf> {
-    Command::new("powershell")
+fn read_windows_app_packages() -> HashMap<PathBuf, String> {
+    let mut result = HashMap::new();
+    let output = Command::new("powershell")
         .args([
             "-NoProfile",
             "-Command",
-            "Get-AppxPackage | ForEach-Object { $_.InstallLocation }",
+            "Get-AppxPackage | ForEach-Object { $_.InstallLocation + '|' + $_.PackageFamilyName }",
         ])
         .creation_flags(CREATE_NO_WINDOW)
-        .output()
-        .ok()
-        .filter(|output| output.status.success())
-        .map(|output| {
-            String::from_utf8_lossy(&output.stdout)
-                .lines()
-                .map(str::trim)
-                .filter(|line| !line.is_empty())
-                .map(PathBuf::from)
-                .collect()
-        })
-        .unwrap_or_default()
+        .output();
+
+    if let Ok(output) = output {
+        if output.status.success() {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            for line in stdout.lines() {
+                let line = line.trim();
+                if line.is_empty() {
+                    continue;
+                }
+
+                let parts: Vec<&str> = line.split('|').collect();
+                if parts.len() == 2 {
+                    let install_location = parts[0].trim();
+                    let package_family_name = parts[1].trim();
+                    if !install_location.is_empty() && !package_family_name.is_empty() {
+                        result.insert(PathBuf::from(install_location), package_family_name.to_string());
+                    }
+                }
+            }
+        }
+    }
+    result
 }
 
 #[cfg(not(windows))]
-fn read_windows_app_install_locations() -> Vec<PathBuf> {
-    Vec::new()
+fn read_windows_app_packages() -> HashMap<PathBuf, String> {
+    HashMap::new()
 }
 
 fn is_windows_app_game_root(path: &Path) -> bool {
@@ -4008,6 +1613,20 @@ fn is_windows_app_game_root(path: &Path) -> bool {
             .is_some_and(|contents| {
                 contents.contains("Microsoft.XboxGameCallableUI") || contents.contains("XboxLive")
             })
+}
+
+fn find_uwp_app_id(contents: &str) -> Option<String> {
+    let app_start = contents.find("<Application ")?;
+    let sub = &contents[app_start..];
+
+    let sub_lower = sub.to_lowercase();
+    let id_marker = sub_lower.find("id=").or_else(|| sub_lower.find("id ="))?;
+
+    let val_start = sub[id_marker..].find('"')? + id_marker + 1;
+    let val_sub = &sub[val_start..];
+    let val_end = val_sub.find('"')?;
+
+    Some(val_sub[..val_end].to_string())
 }
 
 fn collect_directory_games(
@@ -4147,7 +1766,7 @@ fn clean_xbox_package_title(value: &str) -> String {
         .join(" ")
 }
 
-fn find_local_banner_asset(path: &Path) -> Option<String> {
+pub fn find_local_banner_asset(path: &Path) -> Option<String> {
     let config_paths = [
         path.join("MicrosoftGame.config"),
         path.join("Content").join("MicrosoftGame.config"),
@@ -4195,7 +1814,7 @@ fn find_local_banner_asset(path: &Path) -> Option<String> {
     )
 }
 
-fn find_local_logo_asset(path: &Path) -> Option<String> {
+pub fn find_local_logo_asset(path: &Path) -> Option<String> {
     let config_paths = [
         path.join("MicrosoftGame.config"),
         path.join("Content").join("MicrosoftGame.config"),
@@ -4219,7 +1838,7 @@ fn find_local_logo_asset(path: &Path) -> Option<String> {
     find_named_image_asset(path, &["library_logo", "title", "storelogo", "logo"])
 }
 
-fn find_local_icon_asset(path: &Path) -> Option<String> {
+pub fn find_local_icon_asset(path: &Path) -> Option<String> {
     let config_paths = [
         path.join("MicrosoftGame.config"),
         path.join("Content").join("MicrosoftGame.config"),
@@ -4422,50 +2041,18 @@ fn find_xml_attribute(contents: &str, element: &str, attribute: &str) -> Option<
     Some(after_attribute[..value_end].to_string())
 }
 
-fn is_ignored_game_directory(path: &Path) -> bool {
-    let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
-        return true;
-    };
-
-    let normalized = name.trim().to_lowercase();
-    normalized.is_empty()
-        || normalized.starts_with('.')
-        || matches!(
-            normalized.as_str(),
-            "content"
-                | "gamesave"
-                | "modifiablewindowsapps"
-                | "msixvc"
-                | "pgs"
-                | "program files"
-                | "wgs"
-                | "windowsapps"
-        )
+pub struct UbisoftRegistryInstall {
+    pub install_id: String,
+    pub install_dir: PathBuf,
 }
 
-fn local_drive_roots() -> Vec<PathBuf> {
-    if !cfg!(target_os = "windows") {
-        return Vec::new();
-    }
-
-    (b'C'..=b'Z')
-        .map(|letter| PathBuf::from(format!("{}:\\", letter as char)))
-        .filter(|path| path.exists())
-        .collect()
+pub struct UbisoftLauncherAssets {
+    pub cover_url: Option<String>,
+    pub logo_url: Option<String>,
+    pub icon_url: Option<String>,
 }
 
-struct UbisoftRegistryInstall {
-    install_id: String,
-    install_dir: PathBuf,
-}
-
-struct UbisoftLauncherAssets {
-    cover_url: Option<String>,
-    logo_url: Option<String>,
-    icon_url: Option<String>,
-}
-
-fn read_ubisoft_registry_installs() -> Vec<UbisoftRegistryInstall> {
+pub fn read_ubisoft_registry_installs() -> Vec<UbisoftRegistryInstall> {
     if !cfg!(target_os = "windows") {
         return Vec::new();
     }
@@ -4505,7 +2092,7 @@ fn ubisoft_install_id_from_registry_section(section: &str) -> Option<String> {
         .map(ToOwned::to_owned)
 }
 
-fn registry_string_value(line: &str, value_name: &str) -> Option<String> {
+pub fn registry_string_value(line: &str, value_name: &str) -> Option<String> {
     let trimmed = line.trim();
     let remainder = trimmed.strip_prefix(value_name)?.trim_start();
     let value = remainder.strip_prefix("REG_SZ")?.trim();
@@ -4517,7 +2104,8 @@ fn registry_string_value(line: &str, value_name: &str) -> Option<String> {
     }
 }
 
-fn decode_oem_ansi(bytes: &[u8]) -> String {
+#[allow(dead_code)]
+pub fn decode_oem_ansi(bytes: &[u8]) -> String {
     if let Ok(utf8_str) = String::from_utf8(bytes.to_vec()) {
         return utf8_str;
     }
@@ -4543,11 +2131,11 @@ fn decode_oem_ansi(bytes: &[u8]) -> String {
     s
 }
 
-struct BattleNetRegistryInstall {
-    uid: String,
-    title: String,
-    install_dir: PathBuf,
-    icon_path: Option<String>,
+pub struct BattleNetRegistryInstall {
+    pub uid: String,
+    pub title: String,
+    pub install_dir: PathBuf,
+    pub icon_path: Option<String>,
 }
 
 fn extract_arg(input: &str, arg_name: &str) -> Option<String> {
@@ -4565,7 +2153,7 @@ fn extract_arg(input: &str, arg_name: &str) -> Option<String> {
     }
 }
 
-fn read_battlenet_registry_installs() -> Vec<BattleNetRegistryInstall> {
+pub fn read_battlenet_registry_installs() -> Vec<BattleNetRegistryInstall> {
     if !cfg!(target_os = "windows") {
         return Vec::new();
     }
@@ -4634,7 +2222,7 @@ fn read_battlenet_registry_installs() -> Vec<BattleNetRegistryInstall> {
     .collect()
 }
 
-fn find_ubisoft_launcher_assets(install_id: &str) -> UbisoftLauncherAssets {
+pub fn find_ubisoft_launcher_assets(install_id: &str) -> UbisoftLauncherAssets {
     let Some(config_segment) = read_ubisoft_launcher_config_segment(install_id) else {
         return UbisoftLauncherAssets {
             cover_url: None,
@@ -4792,7 +2380,7 @@ fn ubisoft_cached_asset_roots() -> Vec<PathBuf> {
     roots
 }
 
-pub(crate) fn find_steam_dir() -> Option<PathBuf> {
+pub fn find_steam_dir() -> Option<PathBuf> {
     let mut candidates = Vec::new();
 
     if cfg!(target_os = "windows") {
@@ -4824,7 +2412,7 @@ pub(crate) fn find_steam_dir() -> Option<PathBuf> {
     candidates.into_iter().find(|candidate| candidate.exists())
 }
 
-pub(crate) fn read_steam_library_folders(steam_dir: &Path) -> Vec<PathBuf> {
+pub fn read_steam_library_folders(steam_dir: &Path) -> Vec<PathBuf> {
     let library_file = steam_dir.join("steamapps").join("libraryfolders.vdf");
     let Ok(contents) = fs::read_to_string(library_file) else {
         return Vec::new();
@@ -5016,20 +2604,6 @@ fn next_non_empty_line(lines: &[&str], start: usize) -> Option<usize> {
         }
     }
     None
-}
-
-fn get_dir_last_modified(path: &Path) -> Option<u64> {
-    let metadata = fs::metadata(path).ok()?;
-    let modified = metadata.modified().ok()?;
-    system_time_to_unix_timestamp(modified)
-}
-
-fn current_unix_timestamp() -> u64 {
-    system_time_to_unix_timestamp(SystemTime::now()).unwrap_or_default()
-}
-
-fn system_time_to_unix_timestamp(time: SystemTime) -> Option<u64> {
-    time.duration_since(UNIX_EPOCH).ok().map(|d| d.as_secs())
 }
 
 fn steam_app_id_from_manifest_name(file_name: &str) -> Option<String> {
@@ -5410,7 +2984,7 @@ fn logo_position_from_pinned_value(value: &str) -> LogoPosition {
     }
 }
 
-fn find_quoted_value(contents: &str, key: &str) -> Option<String> {
+pub fn find_quoted_value(contents: &str, key: &str) -> Option<String> {
     let needle = format!("\"{key}\"");
     let index = contents.find(&needle)?;
     let after_key = &contents[index + needle.len()..];
@@ -5419,319 +2993,6 @@ fn find_quoted_value(contents: &str, key: &str) -> Option<String> {
     let value_end = after_quote.find('"')?;
 
     Some(after_quote[..value_end].to_string())
-}
-
-fn installed_game(
-    id_seed: &str,
-    title: String,
-    source: String,
-    install_path: Option<String>,
-    cover_url: Option<String>,
-) -> InstalledGame {
-    let id = slugify(id_seed);
-    let slug = slugify(&title);
-    let launcher = launcher_key_from_source(&source).to_string();
-    let executable_path = install_path
-        .as_ref()
-        .and_then(|path| find_launch_executable(Path::new(path), &title))
-        .map(path_to_string);
-    let process_names = executable_path
-        .as_ref()
-        .and_then(|path| {
-            Path::new(path)
-                .file_name()
-                .and_then(|name| name.to_str())
-                .map(|name| vec![name.to_string()])
-        })
-        .unwrap_or_default();
-
-    InstalledGame {
-        id,
-        slug,
-        description: install_path
-            .as_ref()
-            .map(|path| format!("{source} // {path}"))
-            .unwrap_or(source),
-        title,
-        version: "local".to_string(),
-        launcher,
-        external_id: None,
-        cover_url,
-        icon_url: None,
-        icon_urls: Vec::new(),
-        logo_url: None,
-        logo_urls: Vec::new(),
-        logo_position: LogoPosition::BottomLeft,
-        logo_width_percent: None,
-        logo_height_percent: None,
-        status: GameStatus::Installed,
-        platform: current_platform(),
-        install_path,
-        executable_path,
-        process_names,
-        launch_uri: None,
-        last_played_at: None,
-        playtime_minutes: None,
-        genres: Vec::new(),
-        developer: None,
-        publisher: None,
-        release_date: None,
-        features: Vec::new(),
-        rating: None,
-        achievements: Vec::new(),
-        save_files: Vec::new(),
-        friends_playing: Vec::new(),
-    }
-}
-
-fn launcher_key_from_source(source: &str) -> &'static str {
-    let normalized = source.to_lowercase();
-    if normalized.contains("steam") {
-        "steam"
-    } else if normalized.contains("epic") {
-        "epic"
-    } else if normalized.contains("ubisoft") {
-        "ubisoft"
-    } else if normalized.contains("ea") || normalized.contains("origin") {
-        "ea"
-    } else if normalized.contains("battle.net") || normalized.contains("battlenet") {
-        "battlenet"
-    } else if normalized.contains("gog") {
-        "gog"
-    } else if normalized.contains("xbox") {
-        "xbox"
-    } else if normalized.contains("manual") {
-        "manual"
-    } else {
-        "unknown"
-    }
-}
-
-fn launch_installed_game(game: &InstalledGame) -> Result<Option<Child>, String> {
-    if let Some(uri) = &game.launch_uri {
-        open_uri(uri).map_err(|error| format!("Could not launch {}: {error}", game.title))?;
-        return Ok(None);
-    }
-
-    let Some(install_path) = game.install_path.as_ref().map(PathBuf::from) else {
-        return Err(format!("No launch path found for {}.", game.title));
-    };
-
-    let executable = find_launch_executable(&install_path, &game.title)
-        .ok_or_else(|| format!("No matching .exe found for {}.", game.title))?;
-    let working_dir = executable.parent().unwrap_or(&install_path);
-
-    Command::new(&executable)
-        .current_dir(working_dir)
-        .spawn()
-        .map(Some)
-        .map_err(|error| error.to_string())
-}
-
-fn open_uri(uri: &str) -> std::io::Result<()> {
-    if cfg!(target_os = "windows") {
-        Command::new("cmd").args(["/C", "start", "", uri]).spawn()?;
-        return Ok(());
-    }
-
-    if cfg!(target_os = "macos") {
-        Command::new("open").arg(uri).spawn()?;
-        return Ok(());
-    }
-
-    Command::new("xdg-open").arg(uri).spawn()?;
-    Ok(())
-}
-
-fn record_game_launch_started(game_id: &str) -> Option<GameActivityUpdate> {
-    update_cached_game_activity(game_id, Some(current_unix_timestamp()), None)
-}
-
-fn record_game_play_session_when_finished(
-    app: tauri::AppHandle,
-    game_id: String,
-    mut child: Child,
-) {
-    thread::spawn(move || {
-        let started_at = Instant::now();
-        if child.wait().is_err() {
-            return;
-        }
-
-        let elapsed_seconds = started_at.elapsed().as_secs();
-        let played_minutes = ((elapsed_seconds + 59) / 60).max(1).min(u32::MAX as u64) as u32;
-        if let Some(update) = update_cached_game_activity(
-            &game_id,
-            Some(current_unix_timestamp()),
-            Some(played_minutes),
-        ) {
-            emit_game_activity_update(&app, &update);
-        }
-    });
-}
-
-fn update_cached_game_activity(
-    game_id: &str,
-    last_played: Option<u64>,
-    add_playtime_minutes: Option<u32>,
-) -> Option<GameActivityUpdate> {
-    let mut games = read_installed_games_cache().unwrap_or_default();
-    let Some(game) = games.iter_mut().find(|game| game.id == game_id) else {
-        return None;
-    };
-
-    if let Some(timestamp) = last_played {
-        game.last_played_at = Some(unix_timestamp_to_iso(timestamp));
-    }
-
-    if let Some(minutes) = add_playtime_minutes {
-        let current = game.playtime_minutes.unwrap_or_default();
-        game.playtime_minutes = Some(current.saturating_add(minutes));
-    }
-
-    let update = GameActivityUpdate {
-        game_id: game_id.to_string(),
-        last_played: game.last_played_at.clone(),
-        playtime_minutes: game.playtime_minutes,
-    };
-
-    write_installed_games_cache(&games);
-    Some(update)
-}
-
-fn emit_game_activity_update(app: &tauri::AppHandle, update: &GameActivityUpdate) {
-    let _ = app.emit("game_activity_updated", update);
-}
-
-fn is_file_executable(path: &Path) -> bool {
-    if !path.is_file() {
-        return false;
-    }
-
-    #[cfg(unix)]
-    {
-        if let Ok(metadata) = fs::metadata(path) {
-            return metadata.permissions().mode() & 0o111 != 0;
-        }
-    }
-
-    if let Some(extension) = path.extension().and_then(|ext| ext.to_str()) {
-        return extension.eq_ignore_ascii_case("exe")
-            || extension.eq_ignore_ascii_case("bat")
-            || extension.eq_ignore_ascii_case("cmd");
-    }
-
-    false
-}
-
-fn find_launch_executable(install_path: &Path, title: &str) -> Option<PathBuf> {
-    if is_file_executable(install_path) {
-        return Some(install_path.to_path_buf());
-    }
-
-    let title_score = normalize_executable_name(title);
-    let mut candidates = Vec::new();
-    collect_executable_candidates(install_path, 0, &mut candidates);
-
-    candidates
-        .into_iter()
-        .filter(|path| !is_ignored_executable(path))
-        .max_by_key(|path| executable_score(path, &title_score))
-}
-
-fn collect_executable_candidates(path: &Path, depth: usize, candidates: &mut Vec<PathBuf>) {
-    if depth > 3 {
-        return;
-    }
-
-    let Ok(entries) = fs::read_dir(path) else {
-        return;
-    };
-
-    for entry in entries.flatten() {
-        let path = entry.path();
-        if path.is_dir() {
-            let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
-                continue;
-            };
-            let normalized = name.to_lowercase();
-            if matches!(
-                normalized.as_str(),
-                "_commonredist" | "redist" | "redistributables" | "support" | "tools"
-            ) {
-                continue;
-            }
-            collect_executable_candidates(&path, depth + 1, candidates);
-        } else if is_file_executable(&path) {
-            candidates.push(path);
-        }
-    }
-}
-
-fn executable_score(path: &Path, title_score: &str) -> i32 {
-    let Some(stem) = path.file_stem().and_then(|stem| stem.to_str()) else {
-        return 0;
-    };
-
-    let normalized = normalize_executable_name(stem);
-    let mut score = 10;
-
-    if normalized == title_score {
-        score += 100;
-    } else if normalized.contains(title_score) || title_score.contains(&normalized) {
-        score += 60;
-    }
-
-    if let Some(parent) = path
-        .parent()
-        .and_then(|parent| parent.file_name())
-        .and_then(|name| name.to_str())
-    {
-        let parent = parent.to_lowercase();
-        if matches!(parent.as_str(), "bin" | "binaries" | "win64" | "x64") {
-            score += 10;
-        }
-    }
-
-    score
-}
-
-fn is_ignored_executable(path: &Path) -> bool {
-    path.file_stem()
-        .and_then(|stem| stem.to_str())
-        .map(|stem| {
-            let normalized = stem.to_lowercase();
-            normalized.contains("unins")
-                || normalized.contains("setup")
-                || normalized.contains("install")
-                || normalized.contains("crash")
-                || normalized.contains("redist")
-                || normalized.contains("vcredist")
-                || normalized.contains("dxsetup")
-        })
-        .unwrap_or(true)
-}
-
-fn normalize_executable_name(value: &str) -> String {
-    value
-        .chars()
-        .filter(|character| character.is_ascii_alphanumeric())
-        .flat_map(char::to_lowercase)
-        .collect()
-}
-
-fn current_platform() -> Platform {
-    if cfg!(target_os = "windows") {
-        Platform::Windows
-    } else if cfg!(target_os = "macos") {
-        Platform::Macos
-    } else {
-        Platform::Linux
-    }
-}
-
-fn env_path(key: &str) -> Option<PathBuf> {
-    env::var_os(key).map(PathBuf::from)
 }
 
 #[cfg(windows)]
@@ -5819,80 +3080,11 @@ fn utf16_registry_string(bytes: &[u8]) -> Option<String> {
         .filter(|value| !value.is_empty())
 }
 
-fn path_to_string(path: PathBuf) -> String {
-    path.to_string_lossy().to_string()
-}
-
-fn slugify(value: &str) -> String {
-    let mut slug = String::new();
-    let mut last_was_dash = false;
-
-    for character in value.chars().flat_map(char::to_lowercase) {
-        if character.is_ascii_alphanumeric() {
-            slug.push(character);
-            last_was_dash = false;
-        } else if !last_was_dash {
-            slug.push('-');
-            last_was_dash = true;
-        }
-    }
-
-    slug.trim_matches('-').to_string()
-}
-
-fn normalize_game_id(game_id: String) -> Result<String, String> {
-    let normalized = game_id.trim().to_string();
-
-    if normalized.is_empty() {
-        return Err("game_id must not be empty.".to_string());
-    }
-
-    Ok(normalized)
-}
-
-fn sanitize_optional_text(value: Option<String>) -> Option<String> {
-    value
-        .map(|text| text.trim().to_string())
-        .filter(|text| !text.is_empty())
-}
-
-fn unix_timestamp_to_iso(timestamp: u64) -> String {
-    let secs = timestamp as i64;
-    let days = secs / 86400;
-    let remaining = secs % 86400;
-    let hours = (remaining / 3600) as u32;
-    let minutes = ((remaining % 3600) / 60) as u32;
-    let seconds = (remaining % 60) as u32;
-
-    let (year, month, day) = civil_from_days(days);
-
-    format!("{year:04}-{month:02}-{day:02}T{hours:02}:{minutes:02}:{seconds:02}Z")
-}
-
-fn civil_from_days(days: i64) -> (i32, u32, u32) {
-    let days = days + 719468;
-    let era = if days >= 0 {
-        days / 146097
-    } else {
-        (days - 146096) / 146097
-    };
-    let doe = days - era * 146097;
-    let yoe = (doe - doe / 1460 + doe / 36524 - doe / 146096) / 365;
-    let y = yoe + era * 400;
-    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
-    let mp = (5 * doy + 2) / 153;
-    let d = doy - (153 * mp + 2) / 5 + 1;
-    let m = if mp < 10 { mp + 3 } else { mp - 9 };
-    let year = if m <= 2 { y + 1 } else { y };
-
-    (year as i32, m as u32, d as u32)
-}
-
-struct EaRegistryInstall {
-    title: String,
-    install_dir: PathBuf,
-    content_id: Option<String>,
-    icon_path: Option<String>,
+pub struct EaRegistryInstall {
+    pub title: String,
+    pub install_dir: PathBuf,
+    pub content_id: Option<String>,
+    pub icon_path: Option<String>,
 }
 
 fn extract_ea_content_id(install_dir: &Path) -> Option<String> {
@@ -5932,7 +3124,7 @@ fn extract_ea_content_id(install_dir: &Path) -> Option<String> {
     None
 }
 
-fn read_ea_registry_installs() -> Vec<EaRegistryInstall> {
+pub fn read_ea_registry_installs() -> Vec<EaRegistryInstall> {
     if !cfg!(target_os = "windows") {
         return Vec::new();
     }
@@ -6022,7 +3214,7 @@ fn read_ea_registry_installs() -> Vec<EaRegistryInstall> {
     .collect()
 }
 
-fn get_ea_assets(
+pub fn get_ea_assets(
     content_id: &str,
     title: &str,
 ) -> (Option<String>, Option<String>, Option<String>) {
@@ -6109,7 +3301,7 @@ fn get_ea_assets(
     )
 }
 
-fn scan_ea_games() -> Vec<InstalledGame> {
+pub fn scan_ea_games() -> Vec<InstalledGame> {
     let mut games = Vec::new();
     let mut seen = HashSet::new();
 
@@ -6167,7 +3359,7 @@ fn scan_ea_games() -> Vec<InstalledGame> {
     games
 }
 
-async fn search_steam_appid(title: &str) -> Option<u32> {
+pub async fn search_steam_appid(title: &str) -> Option<u32> {
     let client = reqwest::Client::new();
     let response = client
         .get("https://store.steampowered.com/api/storesearch/")
@@ -6187,7 +3379,7 @@ async fn search_steam_appid(title: &str) -> Option<u32> {
     Some(id)
 }
 
-fn steam_app_id_for_game(game: &InstalledGame) -> Option<u32> {
+pub fn steam_app_id_for_game(game: &InstalledGame) -> Option<u32> {
     if game.launcher == "steam" {
         if let Some(external_id) = game.external_id.as_deref() {
             if let Ok(appid) = external_id.parse::<u32>() {
@@ -6210,7 +3402,7 @@ fn steam_app_id_for_game(game: &InstalledGame) -> Option<u32> {
         .and_then(|appid| appid.parse::<u32>().ok())
 }
 
-async fn fetch_steam_achievements(
+pub async fn fetch_steam_achievements(
     appid: u32,
     steam_id: Option<String>,
     api_key: Option<String>,
@@ -6583,7 +3775,7 @@ async fn fetch_steam_metadata(
     ))
 }
 
-async fn sync_game_metadata(mut game: InstalledGame) -> InstalledGame {
+pub async fn sync_game_metadata(mut game: InstalledGame) -> InstalledGame {
     if !game.genres.is_empty() || game.developer.is_some() {
         return game;
     }
@@ -6627,90 +3819,6 @@ async fn sync_game_metadata(mut game: InstalledGame) -> InstalledGame {
     }
 
     game
-}
-
-pub fn start_playtime_poller(app_handle: tauri::AppHandle) {
-    thread::spawn(move || {
-        use sysinfo::System;
-        let mut sys = System::new_all();
-        // Keep track of accumulated seconds for each running game in this thread
-        let mut active_sessions = HashMap::<String, u32>::new();
-
-        loop {
-            thread::sleep(std::time::Duration::from_secs(10));
-
-            // Refresh processes (just executables/paths to be fast)
-            sys.refresh_processes_specifics(
-                sysinfo::ProcessesToUpdate::All,
-                sysinfo::ProcessRefreshKind::new().with_exe(sysinfo::UpdateKind::Always),
-            );
-
-            let cached_games = read_installed_games_cache().unwrap_or_default();
-            if cached_games.is_empty() {
-                continue;
-            }
-
-            // Collect all running process paths
-            let mut running_exe_paths = Vec::new();
-            for (_pid, process) in sys.processes() {
-                if let Some(exe_path) = process.exe() {
-                    running_exe_paths.push(exe_path.to_string_lossy().to_lowercase());
-                }
-            }
-
-            let mut games_updated = false;
-            let mut updated_cache = cached_games.clone();
-
-            for game in updated_cache.iter_mut() {
-                let Some(install_path) = &game.install_path else {
-                    continue;
-                };
-                let norm_install_path = install_path.replace("\\", "/").to_lowercase();
-
-                // Check if any running process resides under this game's install path
-                let is_running = running_exe_paths.iter().any(|exe_path| {
-                    let norm_exe = exe_path.replace("\\", "/");
-                    norm_exe.starts_with(&norm_install_path)
-                });
-
-                if is_running {
-                    // Increment session time
-                    let secs = active_sessions.entry(game.id.clone()).or_insert(0);
-                    *secs += 10;
-
-                    // Update last played time to now
-                    let now = current_unix_timestamp();
-                    game.last_played_at = Some(unix_timestamp_to_iso(now));
-
-                    if *secs >= 60 {
-                        // Increment playtime minutes
-                        let current_min = game.playtime_minutes.unwrap_or_default();
-                        game.playtime_minutes = Some(current_min + 1);
-                        *secs = 0; // reset seconds accumulator
-                        games_updated = true;
-                    }
-                } else {
-                    // Game is not running. If it was previously running, we reset session
-                    if active_sessions.remove(&game.id).is_some() {
-                        games_updated = true; // save stopped state/last updated playtime
-                    }
-                }
-            }
-
-            if games_updated {
-                write_installed_games_cache(&updated_cache);
-                // Emit event for all games that had changes
-                for game in updated_cache {
-                    let update = GameActivityUpdate {
-                        game_id: game.id.clone(),
-                        last_played: game.last_played_at.clone(),
-                        playtime_minutes: game.playtime_minutes,
-                    };
-                    let _ = app_handle.emit("game_activity_updated", &update);
-                }
-            }
-        }
-    });
 }
 
 #[cfg(test)]

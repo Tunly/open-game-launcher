@@ -12,12 +12,12 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 
 const variantClasses: Record<ButtonVariant, string> = {
   primary:
-    "bg-sky-400 text-slate-950 hover:bg-sky-300 active:bg-sky-500 shadow-sm shadow-sky-950/40",
+    "bg-[#c20b2f] text-[#fbf4e7] border-2 border-[#171411] hover:bg-[#e92846] active:bg-[#a60724] shadow-[3px_3px_0_#171411]",
   secondary:
-    "border border-white/10 bg-white/[0.06] text-slate-100 hover:border-white/20 hover:bg-white/[0.1]",
-  ghost: "text-slate-300 hover:bg-white/[0.07] hover:text-white",
+    "bg-[#fbf4e7] text-[#171411] border-2 border-[#171411] hover:bg-[#f5eedf] active:bg-[#eee4d2] shadow-[3px_3px_0_#171411]",
+  ghost: "text-[#171411] hover:bg-[#eee4d2] active:bg-[#d9d7d0]",
   danger:
-    "border border-rose-400/30 bg-rose-500/10 text-rose-100 hover:bg-rose-500/20",
+    "bg-[#d93728] text-[#fbf4e7] border-2 border-[#171411] hover:bg-[#e92846] active:bg-[#a60724] shadow-[3px_3px_0_#171411]",
 };
 
 const sizeClasses: Record<ButtonSize, string> = {
@@ -35,7 +35,7 @@ export function Button({
   return (
     <button
       className={cn(
-        "inline-flex items-center justify-center gap-2 rounded-lg font-semibold transition disabled:cursor-not-allowed disabled:opacity-50",
+        "inline-flex items-center justify-center gap-2 font-semibold transition disabled:cursor-not-allowed disabled:opacity-50",
         sizeClasses[size],
         variantClasses[variant],
         className,

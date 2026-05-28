@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { useLocalStorageState } from "../hooks/useLocalStorageState";
 import { getDefaultInstallDir, getSystemInfo, openSteamLoginWindow, openGogLoginWindow, openEpicLoginWindow, normalizeSteamOwnedGames, openSteamScraperWindow } from "../lib/launcher";
+import { STORAGE_KEYS } from "../lib/storage-keys";
 import type { SystemInfo } from "../lib/types";
 
 
@@ -76,7 +77,7 @@ export function SettingsPage() {
   const [epicDisplayName, setEpicDisplayName] = useState("");
 
   useEffect(() => {
-    const gogTokenStr = localStorage.getItem("launcher.gogToken");
+    const gogTokenStr = localStorage.getItem(STORAGE_KEYS.GOG_TOKEN);
     if (gogTokenStr) {
       try {
         const token = JSON.parse(gogTokenStr);
@@ -88,7 +89,7 @@ export function SettingsPage() {
       }
     }
 
-    const epicTokenStr = localStorage.getItem("launcher.epicToken");
+    const epicTokenStr = localStorage.getItem(STORAGE_KEYS.EPIC_TOKEN);
     if (epicTokenStr) {
       try {
         const token = JSON.parse(epicTokenStr);
@@ -126,7 +127,7 @@ export function SettingsPage() {
 
       const data = await response.json();
       if (data.access_token) {
-        localStorage.setItem("launcher.gogToken", JSON.stringify({
+        localStorage.setItem(STORAGE_KEYS.GOG_TOKEN, JSON.stringify({
           accessToken: data.access_token,
           refreshToken: data.refresh_token,
           expiresAt: Date.now() + (data.expires_in * 1000),
@@ -174,7 +175,7 @@ export function SettingsPage() {
 
       const data = await response.json();
       if (data.access_token) {
-        localStorage.setItem("launcher.epicToken", JSON.stringify({
+        localStorage.setItem(STORAGE_KEYS.EPIC_TOKEN, JSON.stringify({
           accessToken: data.access_token,
           refreshToken: data.refresh_token,
           expiresAt: Date.now() + (data.expires_in * 1000),
@@ -220,8 +221,8 @@ export function SettingsPage() {
         if (!isMounted) return;
         const ownedGames = normalizeSteamOwnedGames(event.payload);
         console.log("[Settings] Scraped games successfully:", ownedGames.length);
-        localStorage.setItem("launcher.steamOwnedGamesCache", JSON.stringify(ownedGames));
-        localStorage.setItem("launcher.steamOwnedGamesCacheVersion", "2");
+        localStorage.setItem(STORAGE_KEYS.STEAM_OWNED_GAMES_CACHE, JSON.stringify(ownedGames));
+        localStorage.setItem(STORAGE_KEYS.STEAM_OWNED_GAMES_CACHE_VERSION, "2");
 
         const successMsg = `OK: Found ${ownedGames.length} owned games`;
         setSteamTestResult({
@@ -512,7 +513,7 @@ export function SettingsPage() {
                           className="neo-copy w-full flex h-8 items-center justify-center gap-2 border-2 border-black bg-[#c20b2f] px-3 text-[10px] font-bold uppercase text-white shadow-[1px_1px_0_#171411] hover:bg-[#a10825] transition"
                           type="button"
                           onClick={() => {
-                            localStorage.removeItem("launcher.gogToken");
+        localStorage.removeItem(STORAGE_KEYS.GOG_TOKEN);
                             setGogConnected(false);
                             setTestResult(null);
                           }}
@@ -557,7 +558,7 @@ export function SettingsPage() {
                           className="neo-copy w-full flex h-8 items-center justify-center gap-2 border-2 border-black bg-[#c20b2f] px-3 text-[10px] font-bold uppercase text-white shadow-[1px_1px_0_#171411] hover:bg-[#a10825] transition"
                           type="button"
                           onClick={() => {
-                            localStorage.removeItem("launcher.epicToken");
+        localStorage.removeItem(STORAGE_KEYS.EPIC_TOKEN);
                             setEpicConnected(false);
                             setEpicDisplayName("");
                             setTestResult(null);

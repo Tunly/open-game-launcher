@@ -15,7 +15,7 @@ export interface LibrarySidebarProps {
   setSortOption: (option: LibrarySortOption) => void;
   isFilterPopupOpen: boolean;
   setIsFilterPopupOpen: (open: boolean) => void;
-  activePlatformFilter: string;
+  activePlatformFilter: "all" | "windows" | "macos" | "linux";
   advancedFilters: LibraryAdvancedFilters;
   groupOption: string;
   groupedGames: Record<string, Game[]>;
@@ -68,7 +68,7 @@ export function LibrarySidebar({
         </div>
 
         {/* Search Input Row */}
-        <div className="space-y-2 p-2">
+        <div className="space-y-2 p-2 pb-1">
           <label className="flex h-9 items-center gap-2 border-2 border-black bg-[#fbf8ef] px-2.5">
             <Search className="h-4 w-4 text-[#686157]" />
             <input

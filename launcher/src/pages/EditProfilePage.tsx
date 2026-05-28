@@ -1,4 +1,4 @@
-import { Cpu, Loader2, Plus, Save, Trash2, Upload } from "lucide-react";
+import { CheckCircle2, Cpu, Loader2, Plus, Save, Search, Trash2, Upload } from "lucide-react";
 import {
   useEffect,
   useState,
@@ -24,7 +24,9 @@ import {
   updateMySocialLinks,
   uploadAvatar,
   uploadBanner,
+  isUsernameAvailable,
 } from "../lib/supabase/profile";
+import { usernameSchema } from "../lib/validation/profile";
 import type { Profile, ProfileTheme, ProfileVisibility } from "../lib/types/profile";
 
 interface ProfileFormState {
@@ -74,6 +76,12 @@ const emptyForm: ProfileFormState = {
   hardwareVisibility: "friends_only",
 };
 
+type UsernameStatus = "idle" | "checking" | "available" | "taken";
+
+function normalizeUsername(username: string) {
+  return username.trim().toLowerCase();
+}
+
 const hardwareFields = [
   "cpu",
   "gpu",
@@ -99,6 +107,7 @@ export function EditProfilePage() {
   const [isDetectingHardware, setIsDetectingHardware] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [usernameStatus, setUsernameStatus] = useState<UsernameStatus>("idle");
 
   useEffect(() => {
     let isMounted = true;
@@ -189,15 +198,54 @@ export function EditProfilePage() {
     }
   }
 
+  async function checkUsername(currentUsername: string) {
+    const normalizedUsername = normalizeUsername(currentUsername);
+    if (normalizedUsername === profile?.username) {
+      setUsernameStatus("available");
+      return true;
+    }
+
+    const parsed = usernameSchema.safeParse(normalizedUsername);
+    if (!parsed.success) {
+      setUsernameStatus("idle");
+      setErrorMessage(parsed.error.issues[0]?.message ?? "Username is invalid.");
+      return false;
+    }
+
+    setUsernameStatus("checking");
+    setErrorMessage(null);
+
+    try {
+      const available = await isUsernameAvailable(parsed.data);
+      setUsernameStatus(available ? "available" : "taken");
+      if (!available) {
+        setErrorMessage("Username is already taken.");
+      }
+      return available;
+    } catch (error) {
+      setUsernameStatus("idle");
+      setErrorMessage(error instanceof Error ? error.message : String(error));
+      return false;
+    }
+  }
+
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setIsSaving(true);
     setMessage(null);
     setErrorMessage(null);
 
+    const normalizedUsername = normalizeUsername(form.username);
+    const usernameAvailable = await checkUsername(normalizedUsername);
+    
+    if (!usernameAvailable) {
+      setIsSaving(false);
+      return;
+    }
+
     try {
       const nextProfile = await updateMyProfile({
-        username: form.username,
+        username: normalizedUsername,
         displayName: nullable(form.displayName),
         avatarUrl: nullable(form.avatarUrl),
         bannerUrl: nullable(form.bannerUrl),
@@ -242,7 +290,10 @@ export function EditProfilePage() {
       );
 
       setProfile(nextProfile);
+      setForm(current => ({ ...current, username: nextProfile.username }));
+      setUsernameStatus("idle");
       setMessage("Profile and hardware rig saved.");
+      window.dispatchEvent(new CustomEvent('profile-updated', { detail: { username: nextProfile.username } }));
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : String(error));
     } finally {
@@ -314,7 +365,43 @@ export function EditProfilePage() {
         <div className="space-y-5">
           <Panel label="Player Card" title="Identity">
             <div className="grid gap-4 sm:grid-cols-2">
-              <TextInput label="Username" value={form.username} onChange={(value) => updateField("username", value)} />
+              <label className="block">
+                <span className="neo-copy text-[11px] font-black uppercase tracking-[0.12em] text-[#5b403f]">Username</span>
+                <span className="mt-2 flex h-11 items-center gap-2 border-2 border-black bg-[#f6edd8] px-3 shadow-[2px_2px_0_#171411] focus-within:bg-[#fff9ed]">
+                  <input
+                    className="min-w-0 flex-1 bg-transparent text-[#171411] outline-none lowercase"
+                    maxLength={32}
+                    minLength={3}
+                    value={form.username}
+                    onBlur={() => {
+                      if (form.username.trim() && form.username !== profile?.username) void checkUsername(form.username);
+                    }}
+                    onChange={(event) => {
+                      updateField("username", event.target.value);
+                      if (event.target.value === profile?.username) {
+                         setUsernameStatus("idle");
+                      } else {
+                         setUsernameStatus("idle");
+                      }
+                    }}
+                  />
+                  <button
+                    aria-label="Check username"
+                    className="flex h-7 w-7 shrink-0 items-center justify-center border-2 border-black bg-[#efe6d4] text-[#171411]"
+                    disabled={isSaving || usernameStatus === "checking"}
+                    type="button"
+                    onClick={() => void checkUsername(form.username)}
+                  >
+                    {usernameStatus === "available" || form.username === profile?.username ? (
+                      <CheckCircle2 className="h-4 w-4 text-[#087d6d]" />
+                    ) : (
+                      <Search className="h-4 w-4" />
+                    )}
+                  </button>
+                </span>
+                {usernameStatus === "taken" && <span className="neo-copy mt-1 block text-[10px] font-bold uppercase text-[#c20b2f]">Username is taken</span>}
+                {usernameStatus === "available" && form.username !== profile?.username && <span className="neo-copy mt-1 block text-[10px] font-bold uppercase text-[#087d6d]">Username is available</span>}
+              </label>
               <TextInput label="Display Name" value={form.displayName} onChange={(value) => updateField("displayName", value)} />
               <TextInput label="Country" value={form.countryCode} onChange={(value) => updateField("countryCode", value)} placeholder="DE" />
               <TextInput label="Language" value={form.language} onChange={(value) => updateField("language", value)} placeholder="en" />

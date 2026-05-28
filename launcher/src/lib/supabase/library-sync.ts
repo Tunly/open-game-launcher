@@ -5,8 +5,9 @@ import {
   uploadGameSavesToCloud as uploadGameSavesToCloudCommand,
 } from "../launcher";
 import { getSupabaseClient, supabasePublicKey, supabasePublicUrl } from "./client";
+import { STORAGE_KEYS } from "../storage-keys";
 
-const CLOUD_SYNC_DEVICE_ID_KEY = "launcher.cloudSyncDeviceId";
+const CLOUD_SYNC_DEVICE_ID_KEY = STORAGE_KEYS.CLOUD_SYNC_DEVICE_ID;
 const SNAPSHOT_VERSION = 1;
 
 export type LibraryCloudSnapshotInput = {
@@ -139,7 +140,7 @@ export async function uploadLibraryCloudSnapshot(input: LibraryCloudSnapshotInpu
         device_id: deviceId,
         game_count: input.games.length,
         last_synced_at: exportedAt,
-        snapshot: snapshot as any,
+        snapshot: snapshot as unknown as string,
         snapshot_version: SNAPSHOT_VERSION,
         user_id: userId,
       },
@@ -154,7 +155,7 @@ export async function uploadLibraryCloudSnapshot(input: LibraryCloudSnapshotInpu
 
   await Promise.all(input.games.map((game) => syncGameSaveMetadataToCloud(game, userId)));
 
-  return data as any as LibraryCloudSnapshotRow;
+  return data as unknown as LibraryCloudSnapshotRow;
 }
 
 export async function fetchLatestLibraryCloudSnapshot() {

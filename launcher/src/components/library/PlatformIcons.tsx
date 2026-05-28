@@ -10,7 +10,7 @@ export function PlatformIcon({ platform, className = "h-4 w-4" }: { platform: st
 }
 
 export function PlatformSourceIcon({ game, className = "h-3.5 w-3.5" }: { game: Game; className?: string }) {
-  const source = game.launcher || getGameSource(game);
+  const source = getGameSource(game);
 
   switch (source) {
     case "steam":

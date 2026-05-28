@@ -4,6 +4,7 @@ import { Outlet, useLocation, useNavigate } from "react-router-dom";
 import { useCurrentUser } from "../../hooks/useCurrentUser";
 import { getMyProfile } from "../../lib/supabase/profile";
 import { AppShell } from "./AppShell";
+import { UsernamePromptModal } from "./UsernamePromptModal";
 import type { PageKey } from "./Sidebar";
 import { getPathForPage } from "./navigation";
 
@@ -76,27 +77,55 @@ export function AppLayout() {
     };
   }, [isConfigured, metadataUsername, user]);
 
-  return (
-    <AppShell
-      activePage={getActivePage(location.pathname)}
-      authAvatarUrl={avatarUrl}
-      authDisplayName={displayName}
-      authEmail={user?.email ?? null}
-      authUsername={profileUsername ?? metadataUsername}
-      authProfilePath={
-        profileUsername ? `/u/${encodeURIComponent(profileUsername)}` : null
+  useEffect(() => {
+    function handleProfileUpdate(event: Event) {
+      const customEvent = event as CustomEvent<{ username: string }>;
+      if (customEvent.detail?.username) {
+        setProfileUsername(customEvent.detail.username);
       }
-      isAuthConfigured={isConfigured}
-      isAuthLoading={isLoading}
-      isAuthProfileLoading={isProfileUsernameLoading}
-      isAuthenticated={Boolean(user)}
-      subtitle=""
-      title=""
-      onLogout={signOut}
-      onNavigate={(page) => navigate(getPathForPage(page))}
-      onRoute={(path) => navigate(path)}
-    >
-        <Outlet />
-    </AppShell>
+    }
+    
+    window.addEventListener("profile-updated", handleProfileUpdate);
+    return () => {
+      window.removeEventListener("profile-updated", handleProfileUpdate);
+    };
+  }, []);
+
+  const needsUsernameSetup = Boolean(
+    user && profileUsername && profileUsername.startsWith(`user_${user.id.slice(0, 8)}`)
+  );
+
+  return (
+    <>
+      <AppShell
+        activePage={getActivePage(location.pathname)}
+        authAvatarUrl={avatarUrl}
+        authDisplayName={displayName}
+        authEmail={user?.email ?? null}
+        authUsername={profileUsername ?? metadataUsername}
+        authProfilePath={
+          profileUsername ? `/u/${encodeURIComponent(profileUsername)}` : null
+        }
+        isAuthConfigured={isConfigured}
+        isAuthLoading={isLoading}
+        isAuthProfileLoading={isProfileUsernameLoading}
+        isAuthenticated={Boolean(user)}
+        subtitle=""
+        title=""
+        onLogout={signOut}
+        onNavigate={(page) => navigate(getPathForPage(page))}
+        onRoute={(path) => navigate(path)}
+      >
+          <Outlet />
+      </AppShell>
+
+      {needsUsernameSetup && (
+        <UsernamePromptModal
+          onComplete={(newUsername) => {
+            setProfileUsername(newUsername);
+          }}
+        />
+      )}
+    </>
   );
 }

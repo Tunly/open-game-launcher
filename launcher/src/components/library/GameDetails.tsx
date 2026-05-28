@@ -5,19 +5,28 @@ import {
   Cloud,
   Clock as Clock3,
   Download,
-  ChevronDown,
-  Award,
   Gamepad2,
-  CircleHelp
+  CircleHelp,
+  Award,
+  LockKeyhole,
+  LockKeyholeOpen
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import type { Game } from "../../lib/types";
 import { Metric } from "./Metric";
 import { LibraryCustomScrollbar } from "./LibraryCustomScrollbar";
 import { PlatformIcon } from "./PlatformIcons";
-import { formatAchievementProgress, formatPlayTime, formatLastPlayed } from "../../lib/formatters";
+import {
+  formatAchievementProgress,
+  formatPlayTime,
+  formatLastPlayed,
+  getFallbackBannerClass,
+  getGameLogoCandidates,
+  getGameSource,
+  getLogoPositionClass,
+  getLogoPlacementStyle,
+} from "../../lib/formatters";
 import { getGameAssetUrl, getGameBannerStyle } from "../../lib/assets";
-import { getFallbackBannerClass, getGameLogoCandidates, getGameSource, getLogoPositionClass, getLogoPlacementStyle } from "../../pages/LibraryPage";
 
 export interface GameDetailsProps {
   selectedGame: Game | null;
@@ -82,8 +91,6 @@ export function GameDetails({
   // Local state that was originally in LibraryPage
   const [isSettingsPopoverOpen, setIsSettingsPopoverOpen] = useState(false);
   const [newCategoryInput, setNewCategoryInput] = useState("");
-  const [isMovePathEditorOpen, setIsMovePathEditorOpen] = useState(false);
-  const [movePathInput, setMovePathInput] = useState("");
   const achievements = enrichedSelectedGame?.achievements ?? [];
   const unlockedAchievementCount = achievements.filter((achievement) => achievement.unlockedAt).length;
 
@@ -91,35 +98,11 @@ export function GameDetails({
   useEffect(() => {
     setIsSettingsPopoverOpen(false);
     setNewCategoryInput("");
-    setIsMovePathEditorOpen(false);
-    setMovePathInput("");
   }, [selectedGame?.id]);
-
-  function handleMoveSelectedGame() {
-    if (!enrichedSelectedGame) return;
-    const path = movePathInput.trim();
-    if (!path) return;
-    moveGame({ gameId: enrichedSelectedGame.id, newPath: path })
-      .then(() => {
-        alert("Game moved successfully!");
-        void runAutomaticLibrarySync(true);
-        setIsMovePathEditorOpen(false);
-      })
-      .catch((err) => {
-        alert("Failed to move game: " + err);
-      });
-  }
-
-  function handleDetectController() {
-    if (!enrichedSelectedGame) return;
-    alert(`Controller: ${enrichedSelectedGame.title} hat vollen Gamepad-Support.`);
-  }
-  
-  const isControllerPanelOpen = false;
 
   return (
     <div className="library-scroll-frame relative z-10 min-h-0 min-w-0">
-          <main ref={detailScrollRef as any} className="library-detail-scroll h-full min-h-0 min-w-0 overflow-x-hidden overflow-y-auto">
+          <main ref={detailScrollRef} className="library-detail-scroll h-full min-h-0 min-w-0 overflow-x-hidden overflow-y-auto">
           {shouldShowLibraryLoading ? (
             <section className="grid min-h-[calc(100vh-124px)] place-items-center border-b-4 border-black bg-[#efe3cf] px-4 text-center" style={{ fontFamily: '"Arial Narrow", Impact, sans-serif' }}>
               <div className="max-w-[560px] border-4 border-black bg-[#fbf4e7] p-8 shadow-[8px_8px_0_#171411]">
@@ -232,7 +215,7 @@ export function GameDetails({
                     </button>
 
                     {isSettingsPopoverOpen ? (
-                      <div className="absolute right-0 top-12 z-50 w-64 border-4 border-black bg-[#fbf4e7] p-3 shadow-[5px_5px_0_#171411]" style={{ fontFamily: '"Arial Narrow", Impact, sans-serif' }}>
+                      <div className="absolute left-0 top-12 z-50 w-64 border-4 border-black bg-[#fbf4e7] p-3 shadow-[5px_5px_0_#171411]" style={{ fontFamily: '"Arial Narrow", Impact, sans-serif' }}>
                         <h4 className="font-black uppercase text-[12px] border-b border-black pb-1 mb-2">
                           Options: {enrichedSelectedGame.title}
                         </h4>
@@ -497,7 +480,7 @@ export function GameDetails({
                             return (
                               <article
                                 key={achievement.id}
-                                className={`grid grid-cols-[38px_minmax(0,1fr)] gap-2 border-2 border-black p-2 ${
+                                className={`grid grid-cols-[38px_minmax(0,1fr)_32px] items-center gap-2 border-2 border-black p-2 ${
                                   isUnlocked ? "bg-[#efe3cf]" : "bg-[#f6edd8] opacity-75"
                                 }`}
                               >
@@ -524,9 +507,13 @@ export function GameDetails({
                                       {achievement.description}
                                     </p>
                                   ) : null}
-                                  <p className="neo-copy mt-1 text-[9px] font-black uppercase text-[#655f58]">
-                                    {isUnlocked ? "Unlocked" : "Locked"}
-                                  </p>
+                                </div>
+                                <div className="grid h-8 w-8 place-items-center shrink-0" title={isUnlocked ? "Unlocked" : "Locked"}>
+                                  {isUnlocked ? (
+                                    <LockKeyholeOpen className="h-5 w-5 text-[#169b83]" />
+                                  ) : (
+                                    <LockKeyhole className="h-5 w-5 text-[#8e877e]" />
+                                  )}
                                 </div>
                               </article>
                             );

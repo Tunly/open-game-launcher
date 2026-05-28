@@ -878,6 +878,7 @@ pub struct OwnedGame {
     pub logo_url: Option<String>,
     pub icon_url: Option<String>,
     pub playtime_minutes: u64,
+    pub last_played_at: Option<String>,
 }
 
 fn fetch_local_steam_owned_games(steam_id: &str) -> Vec<OwnedGame> {
@@ -925,6 +926,7 @@ fn fetch_local_steam_owned_games(steam_id: &str) -> Vec<OwnedGame> {
             id: format!("steam-owned-{app_id}"),
             title: title.clone(),
             description: format!("Steam game (Owned). AppID: {app_id}"),
+            last_played_at: None, // We do not parse last_played from local steam cache for uninstalled games right now
             cover_url: find_steam_cached_asset(
                 &steam_dir,
                 &app_id,
@@ -1503,6 +1505,11 @@ fn parse_rg_games_json(json: &str, _steam_id: &str) -> Vec<OwnedGame> {
                 .unwrap_or_else(|| "0".to_string());
             let hours_clean = hours_str.replace(',', "");
             let playtime = (hours_clean.parse::<f64>().unwrap_or(0.0) * 60.0).round() as u64;
+            
+            let last_played_at = extract_json_num_field(obj, "last_played")
+                .and_then(|v| v.parse::<u64>().ok())
+                .filter(|&v| v > 0)
+                .map(crate::commands::games::unix_timestamp_to_iso);
 
             games.push(OwnedGame {
                 id: format!("steam-owned-{appid}"),
@@ -1516,6 +1523,7 @@ fn parse_rg_games_json(json: &str, _steam_id: &str) -> Vec<OwnedGame> {
                 )),
                 icon_url: None,
                 playtime_minutes: playtime,
+                last_played_at,
             });
         }
         pos = obj_end;
@@ -1570,6 +1578,7 @@ fn extract_json_num_field(obj: &str, key: &str) -> Option<String> {
     }
 }
 
+#[allow(dead_code)]
 fn extract_xml_tag(block: &str, tag: &str) -> Option<String> {
     let open = format!("<{}>", tag);
     let close = format!("</{}>", tag);
@@ -1653,6 +1662,7 @@ pub async fn fetch_gog_owned_games(access_token: String) -> Result<Vec<OwnedGame
                         logo_url: logo2x,
                         icon_url: icon,
                         playtime_minutes: 0,
+                        last_played_at: None,
                     });
                 }
             }
@@ -1724,6 +1734,7 @@ pub async fn fetch_epic_owned_games(
                 logo_url: cover_url,
                 icon_url: None,
                 playtime_minutes: 0,
+                last_played_at: None,
             });
         }
     }

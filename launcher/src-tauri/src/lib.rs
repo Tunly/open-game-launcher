@@ -49,7 +49,6 @@ pub fn run() {
             commands::games::download_game_saves_from_cloud,
             commands::games::restore_game_saves_from_cloud,
             commands::games::sync_game_achievements,
-            commands::games::syncGameAchievements,
             commands::games::uninstall_game,
             commands::downloads::start_download,
             commands::downloads::pause_download,

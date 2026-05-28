@@ -3,6 +3,7 @@ import { CheckCircle2, Heart, Play, ReceiptText, ShoppingCart, Tags, Trash2 } fr
 
 import { StoreGameCard } from "../components/launcher/StoreGameCard";
 import { storeGames } from "../lib/mock-data";
+import { STORAGE_KEYS } from "../lib/storage-keys";
 
 type StoreTab = "browse" | "wishlist" | "cart" | "orders";
 
@@ -13,11 +14,11 @@ interface StoreOrder {
   createdAt: string;
 }
 
-const ownedKey = "og-launcher:store-owned:v1";
-const wishlistKey = "og-launcher:store-wishlist:v1";
-const cartKey = "og-launcher:store-cart:v1";
-const priceAlertsKey = "og-launcher:store-price-alerts:v1";
-const ordersKey = "og-launcher:store-orders:v1";
+const ownedKey = STORAGE_KEYS.STORE_OWNED;
+const wishlistKey = STORAGE_KEYS.STORE_WISHLIST;
+const cartKey = STORAGE_KEYS.STORE_CART;
+const priceAlertsKey = STORAGE_KEYS.STORE_PRICE_ALERTS;
+const ordersKey = STORAGE_KEYS.STORE_ORDERS;
 
 function readStringArray(key: string) {
   try {

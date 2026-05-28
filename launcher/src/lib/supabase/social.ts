@@ -2,8 +2,13 @@ import type { RealtimeChannel } from "@supabase/supabase-js";
 
 import { getSupabaseClient, supabase } from "./client";
 import type { ChatMessage, ChatRoom, GameInvite } from "../types/profile";
-
-type UnknownRecord = Record<string, unknown>;
+import {
+  handleError as baseHandleError,
+  isMissingSchemaError,
+  rowNullableString,
+  rowString,
+  type UnknownRecord,
+} from "./helpers";
 
 export type DirectThread = {
   messages: ChatMessage[];
@@ -18,32 +23,11 @@ export type GameInviteInput = {
   receiverId: string;
 };
 
-function rowString(row: UnknownRecord, key: string, fallback = "") {
-  const value = row[key];
-  return typeof value === "string" ? value : fallback;
-}
-
-function rowNullableString(row: UnknownRecord, key: string) {
-  const value = row[key];
-  return typeof value === "string" ? value : null;
-}
-
-function isMissingSchemaError(error: { code?: string; message: string } | null) {
-  if (!error) {
-    return false;
-  }
-
-  const message = error.message.toLowerCase();
-  return error.code === "42P01" || error.code === "42703" || message.includes("schema cache") || message.includes("does not exist");
-}
-
 function handleError(error: { code?: string; message: string } | null) {
   if (isMissingSchemaError(error)) {
     throw new Error("Social realtime tables are not installed yet. Apply the Supabase migrations first.");
   }
-  if (error) {
-    throw new Error(error.message);
-  }
+  baseHandleError(error);
 }
 
 function toRoom(row: UnknownRecord): ChatRoom {

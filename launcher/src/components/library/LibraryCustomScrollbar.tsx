@@ -6,7 +6,7 @@ type LibraryScrollbarState = {
   visible: boolean;
 };
 
-export function useLibraryScrollbar(targetRef: RefObject<HTMLElement>) {
+function useLibraryScrollbar(targetRef: RefObject<HTMLElement>) {
   const [scrollbarState, setScrollbarState] = useState<LibraryScrollbarState>({
     height: 0,
     top: 0,

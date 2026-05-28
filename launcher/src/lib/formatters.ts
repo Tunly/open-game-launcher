@@ -111,14 +111,16 @@ export function formatAchievementProgress(game: Game): string {
 export function getGameSource(game: Game): string {
   const id = game.id.toLowerCase();
   const description = game.description.toLowerCase();
+  const launcher = (game.launcher || "").toLowerCase();
 
-  if (id.startsWith("epic-") || description.includes("epic")) return "epic";
-  if (id.startsWith("gog-") || description.includes("gog")) return "gog";
-  if (id.startsWith("ubisoft-") || description.includes("ubisoft")) return "ubisoft";
-  if (id.startsWith("xbox-") || description.includes("xbox")) return "xbox";
-  if (id.startsWith("steam-") || description.includes("steam")) return "steam";
-  if (id.startsWith("battlenet-") || description.includes("battle.net")) return "battlenet";
-  if (id.startsWith("ea-") || description.includes("ea app") || description.includes("origin")) return "ea";
+  if (launcher.includes("steam") || id.startsWith("steam-") || description.includes("steam")) return "steam";
+  if (launcher.includes("epic") || id.startsWith("epic-") || description.includes("epic")) return "epic";
+  if (launcher.includes("gog") || id.startsWith("gog-") || description.includes("gog")) return "gog";
+  if (launcher.includes("ubisoft") || id.startsWith("ubisoft-") || description.includes("ubisoft")) return "ubisoft";
+  if (launcher.includes("xbox") || id.startsWith("xbox-") || description.includes("xbox")) return "xbox";
+  if (launcher.includes("battlenet") || launcher.includes("battle.net") || id.startsWith("battlenet-") || description.includes("battle.net")) return "battlenet";
+  if (launcher.includes("ea") || id.startsWith("ea-") || description.includes("ea app") || description.includes("origin")) return "ea";
+  if (launcher.includes("manual") || id.startsWith("manual-")) return "manual";
 
   return game.platform;
 }

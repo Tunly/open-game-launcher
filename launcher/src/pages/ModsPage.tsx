@@ -10,6 +10,7 @@ import {
   Trash2,
 } from "lucide-react";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { STORAGE_KEYS } from "../lib/storage-keys";
 
 type ModSource = "manual" | "steam_workshop" | "nexus" | "local";
 
@@ -26,8 +27,8 @@ interface ManagedMod {
   installedAt: string;
 }
 
-const modsStorageKey = "og-launcher:mods:v1";
-const profileStorageKey = "og-launcher:mod-profile:v1";
+const modsStorageKey = STORAGE_KEYS.MODS_ENABLED;
+const profileStorageKey = STORAGE_KEYS.MODS_ACTIVE_PROFILE;
 
 function readMods() {
   try {
@@ -159,182 +160,200 @@ export function ModsPage() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-[1220px] px-0 py-2">
-      <div className="mb-7 flex flex-col gap-4 border-b-4 border-black pb-5 md:flex-row md:items-end md:justify-between">
-        <div>
-          <p className="neo-copy inline-flex border-2 border-black bg-[#b7102a] px-3 py-1 text-[11px] font-black uppercase tracking-[0.14em] text-white shadow-[3px_3px_0_#171411]">
-            Loadout
+    <div className="relative min-h-[600px]">
+      <div className="absolute inset-0 z-20 flex items-center justify-center p-4">
+        <div className="border-[6px] border-black bg-[#f2c14e] p-8 md:p-12 shadow-[12px_12px_0_#171411] text-center max-w-md rotate-[-3deg] transition hover:rotate-[0deg] hover:scale-105 duration-300">
+          <h2 className="neo-title text-5xl md:text-7xl text-[#171411] uppercase leading-none tracking-tight">
+            Coming
+          </h2>
+          <h2 className="neo-title text-5xl md:text-7xl text-[#171411] uppercase leading-none tracking-tight mt-1">
+            Soon
+          </h2>
+          <p className="neo-copy mt-5 text-[11px] font-black uppercase tracking-[0.2em] text-[#171411] border-t-2 border-black pt-4">
+            Official Mods slice
           </p>
-          <h1 className="neo-title mt-3 text-[clamp(3.4rem,12vw,6rem)] leading-[0.82] text-[#171411]">
-            Mods
-          </h1>
-        </div>
-        <div className="grid grid-cols-3 gap-3 text-center">
-          <Metric icon={<PackagePlus className="h-4 w-4" />} label="Mods" value={visibleMods.length} />
-          <Metric icon={<Power className="h-4 w-4" />} label="Enabled" value={enabledCount} />
-          <Metric icon={<AlertTriangle className="h-4 w-4" />} label="Conflicts" value={conflicts.length} />
         </div>
       </div>
 
-      {statusMessage ? (
-        <div className="neo-copy mb-5 border-[3px] border-black bg-[#8cf5e4] p-3 text-[11px] font-black uppercase tracking-[0.12em] text-[#171411] shadow-[4px_4px_0_#171411]">
-          {statusMessage}
-        </div>
-      ) : null}
-
-      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
-        <section className="border-4 border-black bg-[#fff9ed] p-5 shadow-[6px_6px_0_#171411]">
-          <div className="flex flex-col gap-3 border-b-[3px] border-black pb-3 md:flex-row md:items-center md:justify-between">
-            <h2 className="neo-title text-3xl leading-none text-[#171411]">
-              Load Order
-            </h2>
-            <button
-              className="neo-copy inline-flex h-10 items-center justify-center gap-2 border-2 border-black bg-[#171411] px-3 text-[10px] font-black uppercase tracking-[0.12em] text-[#fff9ed] shadow-[2px_2px_0_#171411]"
-              type="button"
-              onClick={exportProfile}
-            >
-              <Download className="h-4 w-4" />
-              Export
-            </button>
-          </div>
-
-          <div className="mt-4 space-y-3">
-            {visibleMods.length > 0 ? (
-              visibleMods.map((mod, index) => (
-                <article
-                  key={mod.id}
-                  className={`border-[3px] border-black p-4 shadow-[3px_3px_0_#171411] ${
-                    mod.enabled ? "bg-[#f6edd8]" : "bg-[#e3d5ba] opacity-80"
-                  }`}
-                >
-                  <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="neo-copy border-2 border-black bg-[#007166] px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-white">
-                          #{mod.loadOrder}
-                        </span>
-                        <span className="neo-copy border-2 border-black bg-[#fff9ed] px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-[#171411]">
-                          {sourceLabel(mod.source)}
-                        </span>
-                      </div>
-                      <h3 className="neo-title mt-3 text-3xl leading-none text-[#171411]">{mod.name}</h3>
-                      <p className="neo-copy mt-2 text-[10px] font-black uppercase tracking-[0.12em] text-[#655f58]">
-                        {mod.gameTitle} / v{mod.version}
-                      </p>
-                      {mod.pathOrUrl ? (
-                        <p className="mt-2 break-all text-xs font-bold leading-5 text-[#5b403f]">{mod.pathOrUrl}</p>
-                      ) : null}
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      <IconButton label="Move up" disabled={index === 0} onClick={() => moveMod(mod.id, -1)}>
-                        <ArrowUp className="h-4 w-4" />
-                      </IconButton>
-                      <IconButton label="Move down" disabled={index === visibleMods.length - 1} onClick={() => moveMod(mod.id, 1)}>
-                        <ArrowDown className="h-4 w-4" />
-                      </IconButton>
-                      <IconButton label={mod.enabled ? "Disable mod" : "Enable mod"} onClick={() => toggleMod(mod.id)}>
-                        {mod.enabled ? <CheckCircle2 className="h-4 w-4" /> : <Power className="h-4 w-4" />}
-                      </IconButton>
-                      <IconButton label="Remove mod" tone="danger" onClick={() => removeMod(mod.id)}>
-                        <Trash2 className="h-4 w-4" />
-                      </IconButton>
-                    </div>
-                  </div>
-                </article>
-              ))
-            ) : (
-              <p className="neo-copy border-[3px] border-dashed border-black bg-[#f6edd8] p-8 text-center text-[12px] font-black uppercase tracking-[0.12em] text-[#655f58]">
-                Add a mod to build a loadout for this profile.
+      <div className="pointer-events-none select-none blur-[6px] opacity-75">
+        <div className="mx-auto w-full max-w-[1220px] px-0 py-2">
+          <div className="mb-7 flex flex-col gap-4 border-b-4 border-black pb-5 md:flex-row md:items-end md:justify-between">
+            <div>
+              <p className="neo-copy inline-flex border-2 border-black bg-[#b7102a] px-3 py-1 text-[11px] font-black uppercase tracking-[0.14em] text-white shadow-[3px_3px_0_#171411]">
+                Loadout
               </p>
-            )}
+              <h1 className="neo-title mt-3 text-[clamp(3.4rem,12vw,6rem)] leading-[0.82] text-[#171411]">
+                Mods
+              </h1>
+            </div>
+            <div className="grid grid-cols-3 gap-3 text-center">
+              <Metric icon={<PackagePlus className="h-4 w-4" />} label="Mods" value={visibleMods.length} />
+              <Metric icon={<Power className="h-4 w-4" />} label="Enabled" value={enabledCount} />
+              <Metric icon={<AlertTriangle className="h-4 w-4" />} label="Conflicts" value={conflicts.length} />
+            </div>
           </div>
-        </section>
 
-        <aside className="space-y-5">
-          <section className="border-4 border-black bg-[#fff9ed] p-5 shadow-[6px_6px_0_#171411]">
-            <h2 className="neo-title border-b-[3px] border-black pb-3 text-3xl leading-none text-[#171411]">
-              Profile
-            </h2>
-            <div className="mt-4 grid gap-3">
-              <select
-                className="neo-copy h-10 border-2 border-black bg-[#f6edd8] px-2 text-[11px] font-black uppercase tracking-[0.08em] text-[#171411] outline-none"
-                value={activeProfile}
-                onChange={(event) => setActiveProfile(event.target.value)}
-              >
-                {profiles.map((profile) => (
-                  <option key={profile} value={profile}>{profile}</option>
-                ))}
-              </select>
-              <div className="flex gap-2">
-                <input
-                  className="neo-copy min-w-0 flex-1 border-2 border-black bg-[#f6edd8] px-2 text-[11px] font-black uppercase text-[#171411] outline-none"
-                  placeholder="New profile"
-                  value={newProfileName}
-                  onChange={(event) => setNewProfileName(event.target.value)}
-                />
+          {statusMessage ? (
+            <div className="neo-copy mb-5 border-[3px] border-black bg-[#8cf5e4] p-3 text-[11px] font-black uppercase tracking-[0.12em] text-[#171411] shadow-[4px_4px_0_#171411]">
+              {statusMessage}
+            </div>
+          ) : null}
+
+          <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
+            <section className="border-4 border-black bg-[#fff9ed] p-5 shadow-[6px_6px_0_#171411]">
+              <div className="flex flex-col gap-3 border-b-[3px] border-black pb-3 md:flex-row md:items-center md:justify-between">
+                <h2 className="neo-title text-3xl leading-none text-[#171411]">
+                  Load Order
+                </h2>
                 <button
-                  className="flex h-10 w-10 items-center justify-center border-2 border-black bg-[#007166] text-white shadow-[2px_2px_0_#171411]"
+                  className="neo-copy inline-flex h-10 items-center justify-center gap-2 border-2 border-black bg-[#171411] px-3 text-[10px] font-black uppercase tracking-[0.12em] text-[#fff9ed] shadow-[2px_2px_0_#171411]"
                   type="button"
-                  onClick={createProfile}
+                  onClick={exportProfile}
                 >
-                  <Save className="h-4 w-4" />
+                  <Download className="h-4 w-4" />
+                  Export
                 </button>
               </div>
-            </div>
-          </section>
 
-          <section className="border-4 border-black bg-[#fff9ed] p-5 shadow-[6px_6px_0_#171411]">
-            <h2 className="neo-title border-b-[3px] border-black pb-3 text-3xl leading-none text-[#171411]">
-              Add Mod
-            </h2>
-            <div className="mt-4 grid gap-3">
-              <TextInput label="Mod Name" value={name} onChange={setName} />
-              <TextInput label="Game Title" value={gameTitle} onChange={setGameTitle} />
-              <TextInput label="Version" value={version} onChange={setVersion} />
-              <label className="grid gap-1">
-                <span className="neo-copy text-[10px] font-black uppercase tracking-[0.12em] text-[#655f58]">Source</span>
-                <select
-                  className="neo-copy h-10 border-2 border-black bg-[#f6edd8] px-2 text-[11px] font-black uppercase tracking-[0.08em] text-[#171411] outline-none"
-                  value={source}
-                  onChange={(event) => setSource(event.target.value as ModSource)}
-                >
-                  <option value="manual">Manual</option>
-                  <option value="steam_workshop">Steam Workshop</option>
-                  <option value="nexus">Nexus</option>
-                  <option value="local">Local Folder</option>
-                </select>
-              </label>
-              <TextInput label="Path Or URL" value={pathOrUrl} onChange={setPathOrUrl} />
-              <button
-                className="neo-copy inline-flex h-11 items-center justify-center gap-2 border-2 border-black bg-[#b7102a] px-4 text-[11px] font-black uppercase tracking-[0.12em] text-white shadow-[3px_3px_0_#171411]"
-                type="button"
-                onClick={addMod}
-              >
-                <PackagePlus className="h-4 w-4" />
-                Add To Loadout
-              </button>
-            </div>
-          </section>
-
-          <section className="border-4 border-black bg-[#fff9ed] p-5 shadow-[6px_6px_0_#171411]">
-            <h2 className="neo-title border-b-[3px] border-black pb-3 text-3xl leading-none text-[#171411]">
-              Conflicts
-            </h2>
-            <div className="mt-4 space-y-2">
-              {conflicts.length > 0 ? (
-                conflicts.map((conflict) => (
-                  <p key={conflict} className="neo-copy border-2 border-black bg-[#f2c14e] p-2 text-[10px] font-black uppercase tracking-[0.1em] text-[#171411] shadow-[2px_2px_0_#171411]">
-                    {conflict}
+              <div className="mt-4 space-y-3">
+                {visibleMods.length > 0 ? (
+                  visibleMods.map((mod, index) => (
+                    <article
+                      key={mod.id}
+                      className={`border-[3px] border-black p-4 shadow-[3px_3px_0_#171411] ${
+                        mod.enabled ? "bg-[#f6edd8]" : "bg-[#e3d5ba] opacity-80"
+                      }`}
+                    >
+                      <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="neo-copy border-2 border-black bg-[#007166] px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-white">
+                              #{mod.loadOrder}
+                            </span>
+                            <span className="neo-copy border-2 border-black bg-[#fff9ed] px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-[#171411]">
+                              {sourceLabel(mod.source)}
+                            </span>
+                          </div>
+                          <h3 className="neo-title mt-3 text-3xl leading-none text-[#171411]">{mod.name}</h3>
+                          <p className="neo-copy mt-2 text-[10px] font-black uppercase tracking-[0.12em] text-[#655f58]">
+                            {mod.gameTitle} / v{mod.version}
+                          </p>
+                          {mod.pathOrUrl ? (
+                            <p className="mt-2 break-all text-xs font-bold leading-5 text-[#5b403f]">{mod.pathOrUrl}</p>
+                          ) : null}
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <IconButton label="Move up" disabled={index === 0} onClick={() => moveMod(mod.id, -1)}>
+                            <ArrowUp className="h-4 w-4" />
+                          </IconButton>
+                          <IconButton label="Move down" disabled={index === visibleMods.length - 1} onClick={() => moveMod(mod.id, 1)}>
+                            <ArrowDown className="h-4 w-4" />
+                          </IconButton>
+                          <IconButton label={mod.enabled ? "Disable mod" : "Enable mod"} onClick={() => toggleMod(mod.id)}>
+                            {mod.enabled ? <CheckCircle2 className="h-4 w-4" /> : <Power className="h-4 w-4" />}
+                          </IconButton>
+                          <IconButton label="Remove mod" tone="danger" onClick={() => removeMod(mod.id)}>
+                            <Trash2 className="h-4 w-4" />
+                          </IconButton>
+                        </div>
+                      </div>
+                    </article>
+                  ))
+                ) : (
+                  <p className="neo-copy border-[3px] border-dashed border-black bg-[#f6edd8] p-8 text-center text-[12px] font-black uppercase tracking-[0.12em] text-[#655f58]">
+                    Add a mod to build a loadout for this profile.
                   </p>
-                ))
-              ) : (
-                <p className="neo-copy border-2 border-dashed border-black bg-[#f6edd8] p-3 text-[11px] font-black uppercase leading-5 text-[#655f58]">
-                  No load-order conflicts detected.
-                </p>
-              )}
-            </div>
-          </section>
-        </aside>
+                )}
+              </div>
+            </section>
+
+            <aside className="space-y-5">
+              <section className="border-4 border-black bg-[#fff9ed] p-5 shadow-[6px_6px_0_#171411]">
+                <h2 className="neo-title border-b-[3px] border-black pb-3 text-3xl leading-none text-[#171411]">
+                  Profile
+                </h2>
+                <div className="mt-4 grid gap-3">
+                  <select
+                    className="neo-copy h-10 border-2 border-black bg-[#f6edd8] px-2 text-[11px] font-black uppercase tracking-[0.08em] text-[#171411] outline-none"
+                    value={activeProfile}
+                    onChange={(event) => setActiveProfile(event.target.value)}
+                  >
+                    {profiles.map((profile) => (
+                      <option key={profile} value={profile}>{profile}</option>
+                    ))}
+                  </select>
+                  <div className="flex gap-2">
+                    <input
+                      className="neo-copy min-w-0 flex-1 border-2 border-black bg-[#f6edd8] px-2 text-[11px] font-black uppercase text-[#171411] outline-none"
+                      placeholder="New profile"
+                      value={newProfileName}
+                      onChange={(event) => setNewProfileName(event.target.value)}
+                    />
+                    <button
+                      className="flex h-10 w-10 items-center justify-center border-2 border-black bg-[#007166] text-white shadow-[2px_2px_0_#171411]"
+                      type="button"
+                      onClick={createProfile}
+                    >
+                      <Save className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+              </section>
+
+              <section className="border-4 border-black bg-[#fff9ed] p-5 shadow-[6px_6px_0_#171411]">
+                <h2 className="neo-title border-b-[3px] border-black pb-3 text-3xl leading-none text-[#171411]">
+                  Add Mod
+                </h2>
+                <div className="mt-4 grid gap-3">
+                  <TextInput label="Mod Name" value={name} onChange={setName} />
+                  <TextInput label="Game Title" value={gameTitle} onChange={setGameTitle} />
+                  <TextInput label="Version" value={version} onChange={setVersion} />
+                  <label className="grid gap-1">
+                    <span className="neo-copy text-[10px] font-black uppercase tracking-[0.12em] text-[#655f58]">Source</span>
+                    <select
+                      className="neo-copy h-10 border-2 border-black bg-[#f6edd8] px-2 text-[11px] font-black uppercase tracking-[0.08em] text-[#171411] outline-none"
+                      value={source}
+                      onChange={(event) => setSource(event.target.value as ModSource)}
+                    >
+                      <option value="manual">Manual</option>
+                      <option value="steam_workshop">Steam Workshop</option>
+                      <option value="nexus">Nexus</option>
+                      <option value="local">Local Folder</option>
+                    </select>
+                  </label>
+                  <TextInput label="Path Or URL" value={pathOrUrl} onChange={setPathOrUrl} />
+                  <button
+                    className="neo-copy inline-flex h-11 items-center justify-center gap-2 border-2 border-black bg-[#b7102a] px-4 text-[11px] font-black uppercase tracking-[0.12em] text-white shadow-[3px_3px_0_#171411]"
+                    type="button"
+                    onClick={addMod}
+                  >
+                    <PackagePlus className="h-4 w-4" />
+                    Add To Loadout
+                  </button>
+                </div>
+              </section>
+
+              <section className="border-4 border-black bg-[#fff9ed] p-5 shadow-[6px_6px_0_#171411]">
+                <h2 className="neo-title border-b-[3px] border-black pb-3 text-3xl leading-none text-[#171411]">
+                  Conflicts
+                </h2>
+                <div className="mt-4 space-y-2">
+                  {conflicts.length > 0 ? (
+                    conflicts.map((conflict) => (
+                      <p key={conflict} className="neo-copy border-2 border-black bg-[#f2c14e] p-2 text-[10px] font-black uppercase tracking-[0.1em] text-[#171411] shadow-[2px_2px_0_#171411]">
+                        {conflict}
+                      </p>
+                    ))
+                  ) : (
+                    <p className="neo-copy border-2 border-dashed border-black bg-[#f6edd8] p-3 text-[11px] font-black uppercase leading-5 text-[#655f58]">
+                      No load-order conflicts detected.
+                    </p>
+                  )}
+                </div>
+              </section>
+            </aside>
+          </div>
+        </div>
       </div>
     </div>
   );

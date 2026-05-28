@@ -1,21 +1,13 @@
 import {
-  ArrowLeft,
   CheckCircle2,
-  Chrome,
-  Github,
-  ImagePlus,
   KeyRound,
   LogIn,
   Mail,
-  MessageCircle,
   Search,
   UserPlus,
 } from "lucide-react";
-import type { Provider } from "@supabase/supabase-js";
 import {
-  type ChangeEvent,
   type FormEvent,
-  useEffect,
   useState,
 } from "react";
 import { useNavigate } from "react-router-dom";
@@ -25,23 +17,11 @@ import {
   getMyProfile,
   isUsernameAvailable,
   updateMyProfile,
-  uploadAvatar,
 } from "../lib/supabase/profile";
 import { usernameSchema } from "../lib/validation/profile";
 
 type AuthMode = "sign-in" | "sign-up";
-type SignupStep = "credentials" | "profile";
 type UsernameStatus = "idle" | "checking" | "available" | "taken";
-
-const oauthProviders: Array<{
-  icon: typeof Github;
-  label: string;
-  provider: Provider;
-}> = [
-  { icon: Github, label: "GitHub", provider: "github" },
-  { icon: Chrome, label: "Google", provider: "google" },
-  { icon: MessageCircle, label: "Discord", provider: "discord" },
-];
 
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
@@ -54,44 +34,23 @@ function normalizeUsername(username: string) {
 export function AuthPage() {
   const navigate = useNavigate();
   const [mode, setMode] = useState<AuthMode>("sign-in");
-  const [signupStep, setSignupStep] = useState<SignupStep>("credentials");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [username, setUsername] = useState("");
-  const [avatarFile, setAvatarFile] = useState<File | null>(null);
-  const [avatarPreviewUrl, setAvatarPreviewUrl] = useState<string | null>(null);
   const [usernameStatus, setUsernameStatus] =
     useState<UsernameStatus>("idle");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  useEffect(() => {
-    return () => {
-      if (avatarPreviewUrl) {
-        URL.revokeObjectURL(avatarPreviewUrl);
-      }
-    };
-  }, [avatarPreviewUrl]);
-
-  function resetSignupProfileStep() {
-    setSignupStep("credentials");
-    setUsername("");
-    setUsernameStatus("idle");
-    setAvatarFile(null);
-    setAvatarPreviewUrl((current) => {
-      if (current) URL.revokeObjectURL(current);
-      return null;
-    });
-  }
-
   function switchMode(nextMode: AuthMode) {
     setMode(nextMode);
     setErrorMessage(null);
     setMessage(null);
     setConfirmPassword("");
-    resetSignupProfileStep();
+    setUsername("");
+    setUsernameStatus("idle");
   }
 
   async function checkUsername() {
@@ -121,15 +80,6 @@ export function AuthPage() {
     }
   }
 
-  function handleAvatarChange(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0] ?? null;
-    setAvatarFile(file);
-    setAvatarPreviewUrl((current) => {
-      if (current) URL.revokeObjectURL(current);
-      return file ? URL.createObjectURL(file) : null;
-    });
-  }
-
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setIsSubmitting(true);
@@ -157,14 +107,8 @@ export function AuthPage() {
       return;
     }
 
-    if (signupStep === "credentials") {
-      if (password !== confirmPassword) {
-        setErrorMessage("Passwords do not match.");
-        setIsSubmitting(false);
-        return;
-      }
-
-      setSignupStep("profile");
+    if (password !== confirmPassword) {
+      setErrorMessage("Passwords do not match.");
       setIsSubmitting(false);
       return;
     }
@@ -190,45 +134,30 @@ export function AuthPage() {
 
       if (result.error) throw result.error;
 
-      let avatarUploaded = false;
       if (result.data.session) {
         try {
           await getMyProfile();
-          if (avatarFile) {
-            const avatarUrl = await uploadAvatar(avatarFile);
-            await updateMyProfile({
-              avatarUrl,
-              displayName: normalizedUsername,
-              username: normalizedUsername,
-            });
-            avatarUploaded = true;
-          } else {
-            await updateMyProfile({
-              displayName: normalizedUsername,
-              username: normalizedUsername,
-            });
-          }
+          await updateMyProfile({
+            displayName: normalizedUsername,
+            username: normalizedUsername,
+          });
         } catch (profileError) {
           setMessage(
             `Account created. Continue profile setup after login: ${getErrorMessage(profileError)}`,
           );
           setPassword("");
           setConfirmPassword("");
-          resetSignupProfileStep();
           return;
         }
       }
 
       setMessage(
         result.data.session
-          ? avatarUploaded
-            ? "Account created. Username and profile image were saved."
-            : "Account created. Username was saved."
-          : "Account created. Username was reserved. Upload a profile image after email confirmation.",
+          ? "Account created. Username was saved."
+          : "Account created. Username was reserved.",
       );
       setPassword("");
       setConfirmPassword("");
-      resetSignupProfileStep();
     } catch (error) {
       setErrorMessage(getErrorMessage(error));
     } finally {
@@ -236,32 +165,6 @@ export function AuthPage() {
     }
   }
 
-  async function handleOAuthLogin(provider: Provider) {
-    setIsSubmitting(true);
-    setMessage(null);
-    setErrorMessage(null);
-
-    if (!supabase) {
-      setErrorMessage("Supabase is not configured.");
-      setIsSubmitting(false);
-      return;
-    }
-
-    try {
-      const { error } = await supabase.auth.signInWithOAuth({
-        options: {
-          redirectTo: `${window.location.origin}/auth`,
-        },
-        provider,
-      });
-      if (error) throw error;
-    } catch (error) {
-      setErrorMessage(getErrorMessage(error));
-      setIsSubmitting(false);
-    }
-  }
-
-  const isSignupProfileStep = mode === "sign-up" && signupStep === "profile";
   const usernameStatusText =
     usernameStatus === "checking"
       ? "Checking database..."
@@ -310,49 +213,8 @@ export function AuthPage() {
           ))}
         </div>
 
-        <div className="mb-5 grid gap-2">
-          {oauthProviders.map((item) => {
-            const Icon = item.icon;
-
-            return (
-              <button
-                key={item.provider}
-                className="neo-copy flex h-11 items-center justify-center gap-3 border-2 border-black bg-[#fbf8ef] text-[10px] font-bold uppercase text-[#171411] shadow-[2px_2px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#8cf5e4] disabled:opacity-60"
-                disabled={isSubmitting}
-                type="button"
-                onClick={() => void handleOAuthLogin(item.provider)}
-              >
-                <Icon className="h-4 w-4" />
-                Continue with {item.label}
-              </button>
-            );
-          })}
-          <p className="neo-copy text-[9px] font-black uppercase tracking-[0.12em] text-[#655f58]">
-            Enable providers and redirect URLs in Supabase Auth before use.
-          </p>
-        </div>
-
-        {isSignupProfileStep ? (
-          <div>
-            <div className="mb-4 flex items-center justify-between gap-3">
-              <span className="neo-copy border-2 border-black bg-[#171411] px-2 py-1 text-[10px] font-bold uppercase text-white">
-                Step 2 / Profile
-              </span>
-              <button
-                className="neo-copy inline-flex h-9 items-center gap-2 border-2 border-black bg-[#fbf8ef] px-3 text-[10px] font-bold uppercase text-[#171411] shadow-[2px_2px_0_#171411]"
-                disabled={isSubmitting}
-                type="button"
-                onClick={() => {
-                  setSignupStep("credentials");
-                  setErrorMessage(null);
-                  setMessage(null);
-                }}
-              >
-                <ArrowLeft className="h-4 w-4" />
-                Back
-              </button>
-            </div>
-
+        {mode === "sign-up" && (
+          <div className="mb-4">
             <label className="grid gap-2">
               <span className="neo-copy text-[10px] font-bold uppercase text-[#55504a]">
                 Username
@@ -400,114 +262,77 @@ export function AuthPage() {
                 {usernameStatusText}
               </span>
             </label>
-
-            <label className="mt-4 grid gap-2">
-              <span className="neo-copy text-[10px] font-bold uppercase text-[#55504a]">
-                Profile image optional
-              </span>
-              <span className="flex min-h-20 items-center gap-3 border-2 border-black bg-[#fbf8ef] px-3 py-3">
-                <span className="neo-title flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden border-2 border-black bg-[#087d6d] text-xl text-white">
-                  {avatarPreviewUrl ? (
-                    <img
-                      alt=""
-                      className="h-full w-full object-cover"
-                      src={avatarPreviewUrl}
-                    />
-                  ) : (
-                    normalizeUsername(username).slice(0, 2).toUpperCase() || "OG"
-                  )}
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="neo-copy block text-[10px] font-bold uppercase text-[#171411]">
-                    {avatarFile?.name ?? "Choose image"}
-                  </span>
-                  <span className="mt-1 block text-xs font-bold text-[#55504a]">
-                    Uploads immediately when Supabase creates a session after
-                    signup.
-                  </span>
-                </span>
-                <ImagePlus className="h-5 w-5 shrink-0" />
-                <input
-                  className="sr-only"
-                  type="file"
-                  accept="image/*"
-                  onChange={handleAvatarChange}
-                />
-              </span>
-            </label>
           </div>
-        ) : (
-          <>
-            <label className="grid gap-2">
-              <span className="neo-copy text-[10px] font-bold uppercase text-[#55504a]">
-                Email
-              </span>
-              <span className="flex h-12 items-center gap-3 border-2 border-black bg-[#fbf8ef] px-3">
-                <Mail className="h-5 w-5 shrink-0" />
-                <input
-                  required
-                  autoComplete="email"
-                  className="min-w-0 flex-1 bg-transparent text-base font-black outline-none"
-                  type="email"
-                  value={email}
-                  onChange={(event) => setEmail(event.target.value)}
-                />
-              </span>
-            </label>
-
-            <label className="mt-4 grid gap-2">
-              <span className="neo-copy text-[10px] font-bold uppercase text-[#55504a]">
-                Password
-              </span>
-              <span className="flex h-12 items-center gap-3 border-2 border-black bg-[#fbf8ef] px-3">
-                <KeyRound className="h-5 w-5 shrink-0" />
-                <input
-                  required
-                  autoComplete={
-                    mode === "sign-in" ? "current-password" : "new-password"
-                  }
-                  className="min-w-0 flex-1 bg-transparent text-base font-black outline-none"
-                  minLength={6}
-                  type="password"
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                />
-              </span>
-            </label>
-
-            {mode === "sign-up" ? (
-              <label className="mt-4 grid gap-2">
-                <span className="neo-copy text-[10px] font-bold uppercase text-[#55504a]">
-                  Repeat Password
-                </span>
-                <span className="flex h-12 items-center gap-3 border-2 border-black bg-[#fbf8ef] px-3">
-                  <KeyRound className="h-5 w-5 shrink-0" />
-                  <input
-                    required
-                    autoComplete="new-password"
-                    className="min-w-0 flex-1 bg-transparent text-base font-black outline-none"
-                    minLength={6}
-                    type="password"
-                    value={confirmPassword}
-                    onChange={(event) => setConfirmPassword(event.target.value)}
-                  />
-                </span>
-              </label>
-            ) : null}
-          </>
         )}
 
-        {errorMessage ? (
+        <label className="grid gap-2">
+          <span className="neo-copy text-[10px] font-bold uppercase text-[#55504a]">
+            Email
+          </span>
+          <span className="flex h-12 items-center gap-3 border-2 border-black bg-[#fbf8ef] px-3">
+            <Mail className="h-5 w-5 shrink-0" />
+            <input
+              required
+              autoComplete="email"
+              className="min-w-0 flex-1 bg-transparent text-base font-black outline-none"
+              type="email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+            />
+          </span>
+        </label>
+
+        <label className="mt-4 grid gap-2">
+          <span className="neo-copy text-[10px] font-bold uppercase text-[#55504a]">
+            Password
+          </span>
+          <span className="flex h-12 items-center gap-3 border-2 border-black bg-[#fbf8ef] px-3">
+            <KeyRound className="h-5 w-5 shrink-0" />
+            <input
+              required
+              autoComplete={
+                mode === "sign-in" ? "current-password" : "new-password"
+              }
+              className="min-w-0 flex-1 bg-transparent text-base font-black outline-none"
+              minLength={6}
+              type="password"
+              value={password}
+              onChange={(event) => setPassword(event.target.value)}
+            />
+          </span>
+        </label>
+
+        {mode === "sign-up" && (
+          <label className="mt-4 grid gap-2">
+            <span className="neo-copy text-[10px] font-bold uppercase text-[#55504a]">
+              Repeat Password
+            </span>
+            <span className="flex h-12 items-center gap-3 border-2 border-black bg-[#fbf8ef] px-3">
+              <KeyRound className="h-5 w-5 shrink-0" />
+              <input
+                required
+                autoComplete="new-password"
+                className="min-w-0 flex-1 bg-transparent text-base font-black outline-none"
+                minLength={6}
+                type="password"
+                value={confirmPassword}
+                onChange={(event) => setConfirmPassword(event.target.value)}
+              />
+            </span>
+          </label>
+        )}
+
+        {errorMessage && (
           <p className="neo-copy mt-4 border-2 border-black bg-[#c20b2f] p-3 text-[10px] font-bold uppercase text-white">
             {errorMessage}
           </p>
-        ) : null}
+        )}
 
-        {message ? (
+        {message && (
           <p className="neo-copy mt-4 border-2 border-black bg-[#087d6d] p-3 text-[10px] font-bold uppercase text-white">
             {message}
           </p>
-        ) : null}
+        )}
 
         <button
           className="neo-copy mt-5 flex h-12 w-full items-center justify-center gap-3 border-2 border-black bg-[#c20b2f] px-5 text-xs font-bold uppercase text-white shadow-[3px_3px_0_#171411] disabled:opacity-60"
@@ -523,9 +348,7 @@ export function AuthPage() {
             ? "Please wait"
             : mode === "sign-in"
               ? "Sign In"
-              : isSignupProfileStep
-                ? "Finish Account"
-                : "Continue"}
+              : "Sign Up"}
         </button>
       </form>
     </section>

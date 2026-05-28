@@ -1,41 +1,25 @@
 import {
-  Award,
-  ChevronDown,
-  Download,
-  CircleHelp,
-  Clock3,
-  Cloud,
   FileSearch,
-  Gamepad2,
-  Grid2X2,
-  Heart,
-  Laptop,
-  Monitor,
-  Play,
-  Search,
-  Settings,
   SlidersHorizontal,
-  TerminalSquare,
-  Trash2,
   Sparkles,
   X,
 } from "lucide-react";
 import { listen } from "@tauri-apps/api/event";
-import type { PointerEvent as ReactPointerEvent, ReactNode, RefObject } from "react";
+
 import { LibrarySidebar } from "../components/library/LibrarySidebar";
 import { GameDetails } from "../components/library/GameDetails";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
-import { getGameAssetUrl, getGameBannerStyle } from "../lib/assets";
+import { getGameAssetUrl } from "../lib/assets";
 import { addManualGame, launchGame, listInstalledGames, refreshInstalledGames, startDownload, fetchSteamOwnedGames, fetchGogOwnedGames, fetchEpicOwnedGames, normalizeSteamOwnedGames, openSteamScraperWindow, moveGame, syncGameAchievements } from "../lib/launcher";
 import type { OwnedGame } from "../lib/launcher";
 import type { Game } from "../lib/types";
+import {
+  executableTitleFromPath,
+  getGameLogoCandidates,
+} from "../lib/formatters";
+import { STORAGE_KEYS } from "../lib/storage-keys";
 
-const STARTUP_LIBRARY_RESCAN_KEY = "launcher_startup_library_rescan_done";
-const LIBRARY_SNAPSHOT_KEY = "launcher_library_snapshot";
-const LIBRARY_FILTER_STATE_KEY = "launcher_library_filter_state";
-const STEAM_OWNED_GAMES_CACHE_KEY = "launcher.steamOwnedGamesCache";
-const STEAM_OWNED_GAMES_CACHE_VERSION_KEY = "launcher.steamOwnedGamesCacheVersion";
 const STEAM_OWNED_GAMES_CACHE_VERSION = "3";
 
 export type LibrarySortOption = "alphabetical" | "last_played" | "playtime" | "size";
@@ -60,7 +44,7 @@ type LibraryInventoryChanged = {
 
 function readLibrarySnapshot() {
   try {
-    const saved = localStorage.getItem(LIBRARY_SNAPSHOT_KEY);
+    const saved = localStorage.getItem(STORAGE_KEYS.LIBRARY_SNAPSHOT);
     if (!saved) {
       return [];
     }
@@ -74,7 +58,7 @@ function readLibrarySnapshot() {
 
 function writeLibrarySnapshot(games: Game[]) {
   try {
-    localStorage.setItem(LIBRARY_SNAPSHOT_KEY, JSON.stringify(games));
+    localStorage.setItem(STORAGE_KEYS.LIBRARY_SNAPSHOT, JSON.stringify(games));
   } catch {
     // The native cache is authoritative; this snapshot only prevents UI flicker.
   }
@@ -458,7 +442,7 @@ function normalizeAdvancedFilters(value: unknown): AdvancedFilters {
 
 function readPersistedLibraryFilterState(): PersistedLibraryFilterState {
   try {
-    const saved = localStorage.getItem(LIBRARY_FILTER_STATE_KEY);
+    const saved = localStorage.getItem(STORAGE_KEYS.LIBRARY_FILTER_STATE);
     const parsed = saved ? JSON.parse(saved) : {};
     const state = parsed && typeof parsed === "object"
       ? parsed as Partial<PersistedLibraryFilterState>
@@ -490,368 +474,9 @@ function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
 }
 
-function executableTitleFromPath(path: string) {
-  const fileName = path.split(/[\\/]/).pop() ?? path;
-  return fileName.replace(/\.exe$/i, "").replace(/[_-]+/g, " ").trim() || fileName;
-}
-
-export function getGameLogoCandidates(game: Game) {
-  return [game.logoUrl, ...(game.logoUrls ?? [])].filter(
-    (logoUrl, index, logoUrls): logoUrl is string =>
-      Boolean(logoUrl) && logoUrls.indexOf(logoUrl) === index,
-  );
-}
-
-function getGameIconCandidates(game: Game) {
-  return [
-    game.iconUrl,
-    ...(game.iconUrls ?? []),
-    game.logoUrl,
-    ...(game.logoUrls ?? []),
-    game.coverUrl,
-  ].filter(
-    (iconUrl, index, iconUrls): iconUrl is string =>
-      Boolean(iconUrl) && iconUrls.indexOf(iconUrl) === index,
-  );
-}
-
-export function getLogoPositionClass(game: Game) {
-  switch (game.logoPosition) {
-    case "upperCenter":
-      return "left-1/2 top-[9%] max-h-[42%] w-[min(44%,420px)] -translate-x-1/2";
-    case "centerCenter":
-      return "left-1/2 top-1/2 max-h-[46%] w-[min(46%,440px)] -translate-x-1/2 -translate-y-1/2";
-    case "bottomCenter":
-      return "bottom-[13%] left-1/2 max-h-[42%] w-[min(44%,420px)] -translate-x-1/2";
-    case "bottomLeft":
-    default:
-      return "bottom-[12%] left-[5%] max-h-[42%] w-[min(38%,360px)]";
-  }
-}
-
-export function getLogoPlacementStyle(game: Game) {
-  return {
-    width: game.logoWidthPercent
-      ? `${Math.min(Math.max(game.logoWidthPercent, 18), 52)}%`
-      : undefined,
-    maxHeight: game.logoHeightPercent
-      ? `${Math.min(Math.max(game.logoHeightPercent, 24), 46)}%`
-      : undefined,
-  };
-}
-
-function formatLastPlayed(lastPlayed?: string | null) {
-  if (!lastPlayed) {
-    return "Not played";
-  }
-
-  const date = new Date(lastPlayed);
-  if (Number.isNaN(date.getTime())) {
-    return lastPlayed;
-  }
-
-  return new Intl.DateTimeFormat("en", {
-    month: "short",
-    day: "numeric",
-  }).format(date);
-}
-
-function formatPlayTime(playtimeMinutes?: number) {
-  if (!playtimeMinutes || playtimeMinutes <= 0) {
-    return "0 hours";
-  }
-
-  const hours = playtimeMinutes / 60;
-  return `${hours < 10 ? hours.toFixed(1) : Math.round(hours)} hours`;
-}
 
 
-export function getGameSource(game: Game) {
-  const id = game.id.toLowerCase();
-  const description = game.description.toLowerCase();
 
-  if (id.startsWith("epic-") || description.includes("epic")) return "epic";
-  if (id.startsWith("gog-") || description.includes("gog")) return "gog";
-  if (id.startsWith("ubisoft-") || description.includes("ubisoft")) return "ubisoft";
-  if (id.startsWith("xbox-") || description.includes("xbox")) return "xbox";
-  if (id.startsWith("steam-") || description.includes("steam")) return "steam";
-  if (id.startsWith("battlenet-") || description.includes("battle.net")) return "battlenet";
-  if (id.startsWith("ea-") || description.includes("ea app") || description.includes("origin")) return "ea";
-
-  return game.platform;
-}
-
-export function getFallbackBannerClass(game: Game) {
-  if (game.coverUrl) {
-    return "";
-  }
-
-  return `library-source-art library-source-art-${getGameSource(game)}`;
-}
-
-function PlatformIcon({ platform, className = "h-4 w-4" }: { platform: string; className?: string }) {
-  if (platform === "windows") return <Monitor className={className} />;
-  if (platform === "macos") return <Laptop className={className} />;
-  if (platform === "linux") return <TerminalSquare className={className} />;
-  return <Gamepad2 className={className} />;
-}
-
-function LibraryRow({
-  game,
-  selected,
-  onSelect,
-  isFavorite,
-}: {
-  game: Game;
-  selected?: boolean;
-  onSelect: (game: Game) => void;
-  isFavorite?: boolean;
-}) {
-  const [iconCandidateIndex, setIconCandidateIndex] = useState(0);
-  const iconCandidates = getGameIconCandidates(game);
-  const iconUrl = getGameAssetUrl(iconCandidates[iconCandidateIndex]);
-
-  useEffect(() => {
-    setIconCandidateIndex(0);
-  }, [game.id, game.iconUrl, game.iconUrls]);
-
-  return (
-    <button
-      className={`flex min-h-[52px] w-full min-w-0 items-center gap-2 border-2 px-3 py-2 text-left transition ${
-        selected
-          ? "border-black bg-[#139a82] text-[#fffaf0]"
-          : "border-transparent text-[#171411] hover:bg-[#dfd4c1]"
-      }`}
-      type="button"
-      onClick={() => onSelect(game)}
-    >
-      <span
-        className={`grid h-[22px] w-[22px] shrink-0 place-items-center overflow-hidden border border-black text-[10px] leading-none ${
-          selected ? "bg-[#e8c843] text-[#171411]" : "bg-[#d8cbb7]"
-        }`}
-      >
-        {iconUrl ? (
-          <img
-            alt=""
-            className="h-full w-full object-cover"
-            loading="lazy"
-            src={iconUrl}
-            onError={() =>
-              setIconCandidateIndex((currentIndex) =>
-                currentIndex + 1 >= iconCandidates.length
-                  ? iconCandidates.length
-                  : currentIndex + 1,
-              )
-            }
-          />
-        ) : (
-          <PlatformIcon platform={game.platform} className="h-3.5 w-3.5" />
-        )}
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-[14px] font-black leading-none">
-          {game.title}
-        </span>
-      </span>
-
-      {isFavorite && (
-        <Heart className="h-3 w-3 fill-[#b7102a] text-[#b7102a] shrink-0" />
-      )}
-    </button>
-  );
-}
-
-type LibraryScrollbarState = {
-  height: number;
-  top: number;
-  visible: boolean;
-};
-
-function useLibraryScrollbar(targetRef: RefObject<HTMLElement>) {
-  const [scrollbarState, setScrollbarState] = useState<LibraryScrollbarState>({
-    height: 0,
-    top: 0,
-    visible: false,
-  });
-
-  const updateScrollbar = useCallback(() => {
-    const target = targetRef.current;
-
-    if (!target) {
-      setScrollbarState((current) =>
-        current.visible ? { height: 0, top: 0, visible: false } : current,
-      );
-      return;
-    }
-
-    const maxScrollTop = target.scrollHeight - target.clientHeight;
-    const visible = maxScrollTop > 1;
-
-    if (!visible) {
-      setScrollbarState((current) =>
-        current.visible ? { height: 0, top: 0, visible: false } : current,
-      );
-      return;
-    }
-
-    const trackHeight = target.clientHeight;
-    const thumbHeight = Math.max(28, Math.round((target.clientHeight / target.scrollHeight) * trackHeight));
-    const maxThumbTop = Math.max(1, trackHeight - thumbHeight);
-    const thumbTop = Math.round((target.scrollTop / maxScrollTop) * maxThumbTop);
-
-    setScrollbarState((current) => {
-      if (
-        current.visible === visible &&
-        current.height === thumbHeight &&
-        current.top === thumbTop
-      ) {
-        return current;
-      }
-
-      return {
-        height: thumbHeight,
-        top: thumbTop,
-        visible,
-      };
-    });
-  }, [targetRef]);
-
-  useEffect(() => {
-    const target = targetRef.current;
-
-    if (!target) {
-      return;
-    }
-
-    updateScrollbar();
-    target.addEventListener("scroll", updateScrollbar, { passive: true });
-
-    const resizeObserver = new ResizeObserver(updateScrollbar);
-    resizeObserver.observe(target);
-
-    const mutationObserver = new MutationObserver(updateScrollbar);
-    mutationObserver.observe(target, { childList: true, subtree: true });
-
-    window.addEventListener("resize", updateScrollbar);
-    const animationFrame = window.requestAnimationFrame(updateScrollbar);
-
-    return () => {
-      window.cancelAnimationFrame(animationFrame);
-      window.removeEventListener("resize", updateScrollbar);
-      target.removeEventListener("scroll", updateScrollbar);
-      resizeObserver.disconnect();
-      mutationObserver.disconnect();
-    };
-  }, [targetRef, updateScrollbar]);
-
-  return {
-    scrollbarState,
-    updateScrollbar,
-  };
-}
-
-function LibraryCustomScrollbar({ targetRef }: { targetRef: RefObject<HTMLElement> }) {
-  const { scrollbarState, updateScrollbar } = useLibraryScrollbar(targetRef);
-
-  const scrollToThumbPosition = useCallback(
-    (track: HTMLDivElement, clientY: number, thumbOffset: number) => {
-      const target = targetRef.current;
-
-      if (!target || !scrollbarState.visible) {
-        return;
-      }
-
-      const trackRect = track.getBoundingClientRect();
-      const maxScrollTop = target.scrollHeight - target.clientHeight;
-      const maxThumbTop = Math.max(1, trackRect.height - scrollbarState.height);
-      const nextThumbTop = Math.min(
-        maxThumbTop,
-        Math.max(0, clientY - trackRect.top - thumbOffset),
-      );
-
-      target.scrollTop = (nextThumbTop / maxThumbTop) * maxScrollTop;
-      updateScrollbar();
-    },
-    [scrollbarState.height, scrollbarState.visible, targetRef, updateScrollbar],
-  );
-
-  if (!scrollbarState.visible) {
-    return null;
-  }
-
-  return (
-    <div
-      className="library-custom-scrollbar"
-      aria-hidden="true"
-      onPointerDown={(event: ReactPointerEvent<HTMLDivElement>) => {
-        if (event.target !== event.currentTarget) {
-          return;
-        }
-
-        scrollToThumbPosition(event.currentTarget, event.clientY, scrollbarState.height / 2);
-      }}
-    >
-      <div
-        className="library-custom-scrollbar-thumb"
-        style={{
-          height: `${scrollbarState.height}px`,
-          transform: `translateY(${scrollbarState.top}px)`,
-        }}
-        onPointerDown={(event: ReactPointerEvent<HTMLDivElement>) => {
-          event.preventDefault();
-          event.stopPropagation();
-
-          const thumb = event.currentTarget;
-          const track = thumb.parentElement;
-
-          if (!(track instanceof HTMLDivElement)) {
-            return;
-          }
-
-          const thumbOffset = event.clientY - thumb.getBoundingClientRect().top;
-          thumb.setPointerCapture(event.pointerId);
-
-          const handlePointerMove = (moveEvent: PointerEvent) => {
-            scrollToThumbPosition(track, moveEvent.clientY, thumbOffset);
-          };
-
-          const handlePointerUp = (upEvent: PointerEvent) => {
-            thumb.releasePointerCapture(upEvent.pointerId);
-            document.removeEventListener("pointermove", handlePointerMove);
-            document.removeEventListener("pointerup", handlePointerUp);
-          };
-
-          document.addEventListener("pointermove", handlePointerMove);
-          document.addEventListener("pointerup", handlePointerUp, { once: true });
-        }}
-      />
-    </div>
-  );
-}
-
-function Metric({
-  icon,
-  title,
-  value,
-}: {
-  icon: ReactNode;
-  title: string;
-  value: string;
-}) {
-  return (
-    <div className="grid min-h-[64px] min-w-0 grid-cols-[28px_minmax(0,1fr)] items-center gap-2 border-4 border-black bg-[#fbf4e7] px-3 py-2 shadow-[3px_3px_0_#171411]">
-      <span className="grid h-7 w-7 shrink-0 place-items-center overflow-hidden">{icon}</span>
-      <div className="min-w-0 overflow-hidden">
-        <div className="text-[11px] font-black uppercase leading-[0.95] sm:text-[12px]">
-          {title}
-        </div>
-        <div className="neo-copy mt-1 truncate text-[11px] font-bold leading-none sm:text-[12px]">
-          {value}
-        </div>
-      </div>
-    </div>
-  );
-}
 
 export function LibraryPage() {
   const gameListScrollRef = useRef<HTMLDivElement>(null);
@@ -897,7 +522,7 @@ export function LibraryPage() {
   // ----------------------------------------------------
   const [favorites, setFavorites] = useState<Record<string, boolean>>(() => {
     try {
-      const saved = localStorage.getItem("launcher_favorites");
+      const saved = localStorage.getItem(STORAGE_KEYS.LIBRARY_FAVORITES);
       return saved ? JSON.parse(saved) : {};
     } catch {
       return {};
@@ -906,7 +531,7 @@ export function LibraryPage() {
 
   const [hiddenGames, setHiddenGames] = useState<Record<string, boolean>>(() => {
     try {
-      const saved = localStorage.getItem("launcher_hidden");
+      const saved = localStorage.getItem(STORAGE_KEYS.LIBRARY_HIDDEN);
       return saved ? JSON.parse(saved) : {};
     } catch {
       return {};
@@ -915,7 +540,7 @@ export function LibraryPage() {
 
   const [customCategories, setCustomCategories] = useState<Record<string, string[]>>(() => {
     try {
-      const saved = localStorage.getItem("launcher_custom_categories");
+      const saved = localStorage.getItem(STORAGE_KEYS.LIBRARY_CUSTOM_CATEGORIES);
       return saved ? JSON.parse(saved) : {};
     } catch {
       return {};
@@ -923,21 +548,21 @@ export function LibraryPage() {
   });
 
   useEffect(() => {
-    localStorage.setItem("launcher_favorites", JSON.stringify(favorites));
+    localStorage.setItem(STORAGE_KEYS.LIBRARY_FAVORITES, JSON.stringify(favorites));
   }, [favorites]);
 
   useEffect(() => {
-    localStorage.setItem("launcher_hidden", JSON.stringify(hiddenGames));
+    localStorage.setItem(STORAGE_KEYS.LIBRARY_HIDDEN, JSON.stringify(hiddenGames));
   }, [hiddenGames]);
 
   useEffect(() => {
-    localStorage.setItem("launcher_custom_categories", JSON.stringify(customCategories));
+    localStorage.setItem(STORAGE_KEYS.LIBRARY_CUSTOM_CATEGORIES, JSON.stringify(customCategories));
   }, [customCategories]);
 
   useEffect(() => {
     const timeout = window.setTimeout(() => {
       localStorage.setItem(
-        LIBRARY_FILTER_STATE_KEY,
+        STORAGE_KEYS.LIBRARY_FILTER_STATE,
         JSON.stringify({
           activePlatformFilter,
           advancedFilters,
@@ -963,7 +588,7 @@ export function LibraryPage() {
   // ----------------------------------------------------
   const [dynamicCollections, setDynamicCollections] = useState<DynamicCollection[]>(() => {
     try {
-      const saved = localStorage.getItem("launcher_dynamic_collections");
+      const saved = localStorage.getItem(STORAGE_KEYS.LIBRARY_DYNAMIC_COLLECTIONS);
       return saved ? JSON.parse(saved) : [];
     } catch {
       return [];
@@ -971,10 +596,11 @@ export function LibraryPage() {
   });
 
   useEffect(() => {
-    localStorage.setItem("launcher_dynamic_collections", JSON.stringify(dynamicCollections));
+    localStorage.setItem(STORAGE_KEYS.LIBRARY_DYNAMIC_COLLECTIONS, JSON.stringify(dynamicCollections));
   }, [dynamicCollections]);
 
   const [newCollectionName, setNewCollectionName] = useState("");
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const [selectedCollectionName, setSelectedCollectionName] = useState<string | null>(null);
 
   // ----------------------------------------------------
@@ -982,7 +608,7 @@ export function LibraryPage() {
   // ----------------------------------------------------
   const [manualCollections, setManualCollections] = useState<Record<string, string[]>>(() => {
     try {
-      const saved = localStorage.getItem("launcher_manual_collections");
+      const saved = localStorage.getItem(STORAGE_KEYS.LIBRARY_MANUAL_COLLECTIONS);
       return saved ? JSON.parse(saved) : {};
     } catch {
       return {};
@@ -990,10 +616,12 @@ export function LibraryPage() {
   });
 
   useEffect(() => {
-    localStorage.setItem("launcher_manual_collections", JSON.stringify(manualCollections));
+    localStorage.setItem(STORAGE_KEYS.LIBRARY_MANUAL_COLLECTIONS, JSON.stringify(manualCollections));
   }, [manualCollections]);
 
-  const [selectedManualCollectionName, setSelectedManualCollectionName] = useState<string | null>(null);
+  const selectedManualCollectionName: string | null = null;
+
+
 
   function saveCurrentFilterAsCollection(name: string) {
     if (!name.trim()) return;
@@ -1011,32 +639,12 @@ export function LibraryPage() {
     setSelectedCollectionName(name.trim());
   }
 
-  function applyCollection(collection: DynamicCollection) {
-    setAdvancedFilters(collection.filters);
-    setActivePlatformFilter(collection.platformFilter);
-    setSearchQuery(collection.searchQuery);
-    setSelectedCollectionName(collection.name);
-  }
 
-  function clearActiveCollection() {
-    setSelectedCollectionName(null);
-    setAdvancedFilters(initialAdvancedFilters);
-    setActivePlatformFilter("all");
-    setSearchQuery("");
-  }
-
-  function deleteCollection(name: string, event: React.MouseEvent) {
-    event.stopPropagation();
-    setDynamicCollections(prev => prev.filter(c => c.name !== name));
-    if (selectedCollectionName === name) {
-      setSelectedCollectionName(null);
-    }
-  }
 
   // ----------------------------------------------------
   // QUERY FILTER ENGINE (USEMEMO)
   // ----------------------------------------------------
-  const normalizedSearchQuery = searchQuery.trim().toLocaleLowerCase();
+
   const shouldShowLibraryLoading = isDiscoveringGames && installedGames.length === 0;
 
   // Parse size querying from the main search bar
@@ -1260,6 +868,8 @@ export function LibraryPage() {
       status: "not_installed",
       platform: "windows",
       playtimeMinutes: og.playtimeMinutes,
+      lastPlayedAt: og.lastPlayedAt,
+      lastPlayed: og.lastPlayedAt ?? undefined,
     } as Game;
   }
 
@@ -1278,7 +888,7 @@ export function LibraryPage() {
         ? await refreshInstalledGames()
         : await listInstalledGames();
 
-      const steamId = localStorage.getItem("launcher.steamId")?.replace(/"/g, "") || "";
+      const steamId = localStorage.getItem(STORAGE_KEYS.STEAM_ID)?.replace(/"/g, "") || "";
       console.log("[OG-Launcher] Steam ID from localStorage:", JSON.stringify(steamId), "length:", steamId.length);
 
       if (steamId) {
@@ -1286,8 +896,8 @@ export function LibraryPage() {
           let ownedRaw: OwnedGame[] = [];
 
           // Load owned games from the local WebView scraper cache
-          const cacheStr = localStorage.getItem(STEAM_OWNED_GAMES_CACHE_KEY);
-          const cacheVersion = localStorage.getItem(STEAM_OWNED_GAMES_CACHE_VERSION_KEY);
+          const cacheStr = localStorage.getItem(STORAGE_KEYS.STEAM_OWNED_GAMES_CACHE);
+          const cacheVersion = localStorage.getItem(STORAGE_KEYS.STEAM_OWNED_GAMES_CACHE_VERSION);
           if (!forceRefresh && cacheVersion === STEAM_OWNED_GAMES_CACHE_VERSION && cacheStr) {
             try {
               ownedRaw = normalizeSteamOwnedGames(JSON.parse(cacheStr));
@@ -1300,8 +910,8 @@ export function LibraryPage() {
           if (ownedRaw.length === 0) {
             ownedRaw = normalizeSteamOwnedGames(await fetchSteamOwnedGames(steamId));
             if (ownedRaw.length > 0) {
-              localStorage.setItem(STEAM_OWNED_GAMES_CACHE_KEY, JSON.stringify(ownedRaw));
-              localStorage.setItem(STEAM_OWNED_GAMES_CACHE_VERSION_KEY, STEAM_OWNED_GAMES_CACHE_VERSION);
+              localStorage.setItem(STORAGE_KEYS.STEAM_OWNED_GAMES_CACHE, JSON.stringify(ownedRaw));
+              localStorage.setItem(STORAGE_KEYS.STEAM_OWNED_GAMES_CACHE_VERSION, STEAM_OWNED_GAMES_CACHE_VERSION);
             }
           }
 
@@ -1337,7 +947,7 @@ export function LibraryPage() {
       }
 
       // 1. Fetch and merge GOG owned games
-      const gogTokenStr = localStorage.getItem("launcher.gogToken");
+      const gogTokenStr = localStorage.getItem(STORAGE_KEYS.GOG_TOKEN);
       if (gogTokenStr) {
         try {
           const tokenObj = JSON.parse(gogTokenStr);
@@ -1368,7 +978,7 @@ export function LibraryPage() {
       }
 
       // 2. Fetch and merge Epic owned games
-      const epicTokenStr = localStorage.getItem("launcher.epicToken");
+      const epicTokenStr = localStorage.getItem(STORAGE_KEYS.EPIC_TOKEN);
       if (epicTokenStr) {
         try {
           const tokenObj = JSON.parse(epicTokenStr);
@@ -1435,11 +1045,11 @@ export function LibraryPage() {
 
   function shouldRunStartupLibraryRescan() {
     try {
-      if (sessionStorage.getItem(STARTUP_LIBRARY_RESCAN_KEY) === "true") {
+      if (sessionStorage.getItem(STORAGE_KEYS.STARTUP_LIBRARY_RESCAN_DONE) === "true") {
         return false;
       }
 
-      sessionStorage.setItem(STARTUP_LIBRARY_RESCAN_KEY, "true");
+      sessionStorage.setItem(STORAGE_KEYS.STARTUP_LIBRARY_RESCAN_DONE, "true");
       return true;
     } catch {
       return true;
@@ -1535,8 +1145,8 @@ export function LibraryPage() {
       if (!isMounted) return;
       const ownedGames = normalizeSteamOwnedGames(event.payload);
       console.log("[OG-Launcher] Scraper successfully fetched games:", ownedGames.length);
-      localStorage.setItem(STEAM_OWNED_GAMES_CACHE_KEY, JSON.stringify(ownedGames));
-      localStorage.setItem(STEAM_OWNED_GAMES_CACHE_VERSION_KEY, STEAM_OWNED_GAMES_CACHE_VERSION);
+      localStorage.setItem(STORAGE_KEYS.STEAM_OWNED_GAMES_CACHE, JSON.stringify(ownedGames));
+      localStorage.setItem(STORAGE_KEYS.STEAM_OWNED_GAMES_CACHE_VERSION, STEAM_OWNED_GAMES_CACHE_VERSION);
       void runAutomaticLibrarySync(false);
     });
 
@@ -1638,7 +1248,7 @@ export function LibraryPage() {
       return;
     }
 
-    if (!getSteamAppId(selectedGame) || !readLocalStorageString("launcher.steamId")) {
+    if (!getSteamAppId(selectedGame) || !readLocalStorageString(STORAGE_KEYS.STEAM_ID)) {
       return;
     }
 
@@ -1691,8 +1301,8 @@ export function LibraryPage() {
       return;
     }
 
-    const steamId = readLocalStorageString("launcher.steamId");
-    const steamApiKey = readLocalStorageString("launcher.steamApiKey");
+    const steamId = readLocalStorageString(STORAGE_KEYS.STEAM_ID);
+    const steamApiKey = readLocalStorageString(STORAGE_KEYS.STEAM_API_KEY);
     if (!steamId && !steamApiKey) {
       if (!options.silent) {
         setStatusMessage("Steam achievement sync needs a connected Steam account or a Steam Web API Key in Settings.");
@@ -1707,7 +1317,7 @@ export function LibraryPage() {
 
     try {
       const response = await syncGameAchievements(
-        game.id,
+        game,
         steamId || undefined,
         steamApiKey || undefined,
       );

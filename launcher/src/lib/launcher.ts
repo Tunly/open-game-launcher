@@ -166,34 +166,11 @@ export function restoreGameSavesFromCloud(input: {
 }
 
 export function syncGameAchievements(
-  gameId: string,
+  game: Game,
   steamId?: string,
   apiKey?: string
 ): Promise<SyncGameAchievementsResponse> {
-  return invokeCommand<SyncGameAchievementsResponse>("sync_game_achievements", { gameId, steamId, apiKey })
-    .catch((error) => {
-      const message = getCommandErrorText(error);
-      if (!message.includes("not found")) {
-        throw error;
-      }
-
-      return invokeCommand<SyncGameAchievementsResponse>("syncGameAchievements", { gameId, steamId, apiKey })
-        .catch((fallbackError) => {
-          const fallbackMessage = getCommandErrorText(fallbackError);
-          if (fallbackMessage.includes("not found")) {
-            throw new LauncherCommandError(
-              "sync_game_achievements",
-              "The running Tauri app does not include the achievements sync command yet. Restart the desktop app or rerun `pnpm tauri dev` so the updated Rust command registry is loaded.",
-            );
-          }
-
-          throw fallbackError;
-        });
-    });
-}
-
-function getCommandErrorText(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+  return invokeCommand<SyncGameAchievementsResponse>("sync_game_achievements", { gameId: game.id, steamId, apiKey });
 }
 
 export function uninstallGame(gameId: string): Promise<UninstallGameResponse> {
@@ -226,8 +203,9 @@ export interface OwnedGame {
   description: string;
   coverUrl: string | null;
   logoUrl: string | null;
-  iconUrl: string | null;
+  iconUrl?: string;
   playtimeMinutes: number;
+  lastPlayedAt?: string | null;
 }
 
 type SteamRawGame = Record<string, unknown>;
@@ -312,7 +290,7 @@ export function normalizeSteamOwnedGames(games: unknown): OwnedGame[] {
         logoUrl:
           readString(record, ["logoUrl", "logo_url"]) ||
           steamImageUrl(appId, "header.jpg"),
-        iconUrl: readString(record, ["iconUrl", "icon_url"]) || null,
+        iconUrl: readString(record, ["iconUrl", "icon_url"]) || undefined,
         playtimeMinutes,
       },
     ];

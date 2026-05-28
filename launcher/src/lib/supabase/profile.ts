@@ -32,10 +32,21 @@ import type {
   UserSocialLink,
   WishlistPreviewItem,
 } from "../types/profile";
+import {
+  assertSingle,
+  handleError,
+  isMissingSchemaError,
+  isMissingSchemaMessage,
+  rowBoolean,
+  rowConfig,
+  rowNullableString,
+  rowNumber,
+  rowString,
+  type UnknownRecord,
+} from "./helpers";
+import { STORAGE_KEYS } from "../storage-keys";
 
-type UnknownRecord = Record<string, unknown>;
-
-const hardwareFallbackStorageKey = "og-launcher:profile-hardware:v1";
+const hardwareFallbackStorageKey = STORAGE_KEYS.HARDWARE_FALLBACK;
 const hardwareFallbackCache = new Map<string, UserHardware>();
 
 const profileSelect = `
@@ -88,69 +99,6 @@ const baseProfileSelect = `
   created_at,
   updated_at
 `;
-
-type SupabaseErrorLike = {
-  code?: string;
-  message: string;
-};
-
-function rowString(row: UnknownRecord, key: string, fallback = "") {
-  const value = row[key];
-  return typeof value === "string" ? value : fallback;
-}
-
-function rowNullableString(row: UnknownRecord, key: string) {
-  const value = row[key];
-  return typeof value === "string" ? value : null;
-}
-
-function rowNumber(row: UnknownRecord, key: string, fallback = 0) {
-  const value = row[key];
-  return typeof value === "number" ? value : fallback;
-}
-
-function rowBoolean(row: UnknownRecord, key: string, fallback = false) {
-  const value = row[key];
-  return typeof value === "boolean" ? value : fallback;
-}
-
-function rowConfig(row: UnknownRecord, key: string) {
-  const value = row[key];
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {};
-}
-
-function assertSingle<T>(data: T | null, message: string): T {
-  if (!data) {
-    throw new Error(message);
-  }
-
-  return data;
-}
-
-function handleError(error: { message: string } | null) {
-  if (error) {
-    throw new Error(error.message);
-  }
-}
-
-function isMissingSchemaError(error: SupabaseErrorLike | null) {
-  if (!error) {
-    return false;
-  }
-
-  return isMissingSchemaMessage(error.message) || error.code === "42703" || error.code === "42P01";
-}
-
-function isMissingSchemaMessage(message: string) {
-  const normalizedMessage = message.toLowerCase();
-
-  return (
-    normalizedMessage.includes("does not exist") ||
-    normalizedMessage.includes("schema cache")
-  );
-}
 
 function readHardwareFallbackStore() {
   try {
@@ -813,12 +761,12 @@ export async function updateShowcases(showcases: ProfileShowcase[]) {
     title: showcase.title,
     sort_order: index,
     visibility: showcase.visibility,
-    config: showcase.config as any,
+    config: showcase.config as unknown as string,
     is_enabled: showcase.isEnabled,
   }));
   const { data, error } = await client
     .from("profile_showcases")
-    .upsert(payload as any)
+    .upsert(payload as unknown as { user_id: string; type: string; sort_order: number }[])
     .select("*")
     .order("sort_order");
   handleError(error);
@@ -838,7 +786,7 @@ export async function createShowcase(input: CreateShowcaseInput) {
       title: parsed.title,
       sort_order: parsed.sortOrder,
       visibility: parsed.visibility,
-      config: parsed.config as any,
+      config: parsed.config as unknown as string,
       is_enabled: parsed.isEnabled,
     })
     .select("*")
@@ -900,7 +848,7 @@ export async function updateShowcase(id: string, input: UpdateShowcaseInput) {
       title: parsed.title,
       sort_order: parsed.sortOrder,
       visibility: parsed.visibility,
-      config: parsed.config as any,
+      config: parsed.config as unknown as string,
       is_enabled: parsed.isEnabled,
     })
     .eq("id", id)

@@ -183,8 +183,8 @@ pub async fn start_download(
     let title_clone = title.clone();
 
     tokio::spawn(async move {
-        let mut cancel_rx = cancel_rx;
-        let mut pause_rx = pause_rx;
+        let cancel_rx = cancel_rx;
+        let pause_rx = pause_rx;
 
         let url = "https://ash-speed.hetzner.com/10MB.bin"; // 10MB real test file
             let client = reqwest::Client::new();
