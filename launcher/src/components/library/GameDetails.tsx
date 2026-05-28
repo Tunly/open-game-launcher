@@ -118,7 +118,7 @@ export function GameDetails({
   const isControllerPanelOpen = false;
 
   return (
-    <div className="library-scroll-frame min-h-0 min-w-0">
+    <div className="library-scroll-frame relative z-10 min-h-0 min-w-0">
           <main ref={detailScrollRef as any} className="library-detail-scroll h-full min-h-0 min-w-0 overflow-x-hidden overflow-y-auto">
           {shouldShowLibraryLoading ? (
             <section className="grid min-h-[calc(100vh-124px)] place-items-center border-b-4 border-black bg-[#efe3cf] px-4 text-center" style={{ fontFamily: '"Arial Narrow", Impact, sans-serif' }}>
@@ -206,9 +206,6 @@ export function GameDetails({
                       Play
                     </button>
                   )}
-                  <button className="grid h-[64px] w-[44px] shrink-0 place-items-center border-y-4 border-r-4 border-black bg-[#169b83] text-white shadow-[3px_3px_0_#171411]" type="button" aria-label="More play options">
-                    <ChevronDown className="h-6 w-6" />
-                  </button>
                 </div>
 
                 <div className="grid min-w-[260px] flex-[999_1_420px] gap-3 sm:grid-cols-2 2xl:grid-cols-[repeat(4,minmax(130px,1fr))]">
@@ -231,7 +228,7 @@ export function GameDetails({
                       type="button"
                       aria-label="Game Settings"
                     >
-                      <Settings className="h-6 w-6 animate-[spin_8s_linear_infinite]" />
+                      <Settings className="h-6 w-6" />
                     </button>
 
                     {isSettingsPopoverOpen ? (

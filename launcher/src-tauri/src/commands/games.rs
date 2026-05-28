@@ -1563,17 +1563,6 @@ pub async fn launch_game(
     let game_id = normalize_game_id(game_id)?;
     println!("[open-game-launcher] launch_game requested for {game_id}");
 
-    if game_id.starts_with("steam-owned-") {
-        let app_id = game_id.strip_prefix("steam-owned-").unwrap_or(&game_id);
-        let uri = format!("steam://install/{app_id}");
-        open_uri(&uri).map_err(|e| format!("Could not start installation: {e}"))?;
-        return Ok(LaunchGameResponse {
-            game_id: game_id.clone(),
-            success: true,
-            message: "Installation started in Steam.".to_string(),
-        });
-    }
-
     if game_id.starts_with("gog-owned-") {
         let gog_id = game_id.strip_prefix("gog-owned-").unwrap_or(&game_id);
         let uri = format!("goggalaxy://open-store/{gog_id}");
@@ -1593,6 +1582,17 @@ pub async fn launch_game(
             game_id: game_id.clone(),
             success: true,
             message: "Installation started in Epic Games Launcher.".to_string(),
+        });
+    }
+
+    if game_id.starts_with("steam-owned-") {
+        let steam_id = game_id.strip_prefix("steam-owned-").unwrap_or(&game_id);
+        let uri = format!("steam://install/{steam_id}");
+        open_uri(&uri).map_err(|e| format!("Could not start Steam: {e}"))?;
+        return Ok(LaunchGameResponse {
+            game_id: game_id.clone(),
+            success: true,
+            message: "Installation started in Steam.".to_string(),
         });
     }
 
@@ -4792,7 +4792,7 @@ fn ubisoft_cached_asset_roots() -> Vec<PathBuf> {
     roots
 }
 
-fn find_steam_dir() -> Option<PathBuf> {
+pub(crate) fn find_steam_dir() -> Option<PathBuf> {
     let mut candidates = Vec::new();
 
     if cfg!(target_os = "windows") {
@@ -4824,7 +4824,7 @@ fn find_steam_dir() -> Option<PathBuf> {
     candidates.into_iter().find(|candidate| candidate.exists())
 }
 
-fn read_steam_library_folders(steam_dir: &Path) -> Vec<PathBuf> {
+pub(crate) fn read_steam_library_folders(steam_dir: &Path) -> Vec<PathBuf> {
     let library_file = steam_dir.join("steamapps").join("libraryfolders.vdf");
     let Ok(contents) = fs::read_to_string(library_file) else {
         return Vec::new();

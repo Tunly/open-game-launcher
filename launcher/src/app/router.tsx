@@ -1,4 +1,4 @@
-import { createBrowserRouter } from "react-router-dom";
+import { createBrowserRouter, Navigate } from "react-router-dom";
 
 import { AppLayout } from "../components/layout/AppLayout";
 import { AuthPage } from "../pages/AuthPage";
@@ -22,7 +22,7 @@ export const router = createBrowserRouter([
   {
     element: <AppLayout />,
     children: [
-      { path: "/", element: <StorePage /> },
+      { path: "/", element: <Navigate to="/library" replace /> },
       { path: "/home", element: <HomePage /> },
       { path: "/library", element: <LibraryPage /> },
       { path: "/store", element: <StorePage /> },

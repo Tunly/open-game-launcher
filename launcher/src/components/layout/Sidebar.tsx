@@ -35,9 +35,9 @@ interface SidebarProps {
 const navItems: NavItem[] = [
   { key: "library", label: "Library", icon: Gamepad2 },
   { key: "downloads", label: "Downloads", icon: HardDriveDownload },
-  { key: "community", label: "Community", icon: MessageSquareMore },
   { key: "mods", label: "Mods", icon: PackagePlus },
   { key: "store", label: "Store", icon: Store },
+  { key: "community", label: "Community", icon: MessageSquareMore },
 ];
 
 export function Sidebar({

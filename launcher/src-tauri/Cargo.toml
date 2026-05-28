@@ -24,6 +24,7 @@ tokio = { version = "1", features = ["full"] }
 sysinfo = { version = "0.31", features = ["serde"] }
 futures-util = "0.3"
 notify = "6"
+zip = "4.2.0"
 
 
 [target.'cfg(windows)'.dependencies]
