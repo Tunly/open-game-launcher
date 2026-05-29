@@ -11,7 +11,23 @@ import { GameDetails } from "../components/library/GameDetails";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { getGameAssetUrl } from "../lib/assets";
-import { addManualGame, launchGame, listInstalledGames, refreshInstalledGames, startDownload, fetchSteamOwnedGames, fetchGogOwnedGames, fetchEpicOwnedGames, normalizeSteamOwnedGames, openSteamScraperWindow, moveGame, syncGameAchievements } from "../lib/launcher";
+import {
+  addManualGame,
+  fetchEpicOwnedGames,
+  fetchGamePassCatalog,
+  fetchGogOwnedGames,
+  fetchSteamOwnedGames,
+  installXboxGame,
+  launchGame,
+  launchXboxGame,
+  listInstalledGames,
+  moveGame,
+  normalizeSteamOwnedGames,
+  openSteamScraperWindow,
+  refreshInstalledGames,
+  startDownload,
+  syncGameAchievements,
+} from "../lib/launcher";
 import type { OwnedGame } from "../lib/launcher";
 import type { Game } from "../lib/types";
 import {
@@ -102,6 +118,29 @@ function areGameListsEqual(left: Game[], right: Game[]) {
   }
 
   return left.every((game, index) => JSON.stringify(game) === JSON.stringify(right[index]));
+}
+
+function normalizeGameTitle(title: string) {
+  return title.toLowerCase().trim();
+}
+
+function mergeUniqueLibraryGames(baseGames: Game[], extraGames: Game[]) {
+  const seenIds = new Set(baseGames.map((game) => game.id));
+  const seenTitles = new Set(baseGames.map((game) => normalizeGameTitle(game.title)));
+  const merged = [...baseGames];
+
+  for (const game of extraGames) {
+    const normalizedTitle = normalizeGameTitle(game.title);
+    if (seenIds.has(game.id) || seenTitles.has(normalizedTitle)) {
+      continue;
+    }
+
+    merged.push(game);
+    seenIds.add(game.id);
+    seenTitles.add(normalizedTitle);
+  }
+
+  return merged;
 }
 
 // ----------------------------------------------------
@@ -400,10 +439,27 @@ const initialAdvancedFilters = {
   genres: [] as string[],
   status: [] as string[],
   platforms: [] as string[],
+  launchers: [] as string[],
   categories: [] as string[],
   sizeQuery: "",
   productCategories: ["game", "software", "video", "dlc", "soundtrack", "demo", "beta"] as string[],
+  showGamePassCatalog: getXboxConnectionStatus(),
 };
+
+function getXboxConnectionStatus(): boolean {
+  try {
+    if (localStorage.getItem(STORAGE_KEYS.XBOX_USERNAME)) {
+      return true;
+    }
+
+    const cache = localStorage.getItem(STORAGE_KEYS.XBOX_GAMES_CACHE);
+    if (cache) {
+      const parsed = JSON.parse(cache);
+      return Array.isArray(parsed);
+    }
+  } catch { /* ignore */ }
+  return false;
+}
 
 type AdvancedFilters = typeof initialAdvancedFilters;
 
@@ -432,11 +488,13 @@ function normalizeAdvancedFilters(value: unknown): AdvancedFilters {
     genres: normalizeStringArray(stored.genres),
     status: normalizeStringArray(stored.status),
     platforms: normalizeStringArray(stored.platforms),
+    launchers: normalizeStringArray(stored.launchers),
     categories: normalizeStringArray(stored.categories),
     sizeQuery: typeof stored.sizeQuery === "string" ? stored.sizeQuery : "",
     productCategories: normalizeStringArray(stored.productCategories).length > 0
       ? normalizeStringArray(stored.productCategories)
       : initialAdvancedFilters.productCategories,
+    showGamePassCatalog: getXboxConnectionStatus() ? true : (typeof stored.showGamePassCatalog === "boolean" ? stored.showGamePassCatalog : false),
   };
 }
 
@@ -710,15 +768,16 @@ export function LibraryPage() {
       // Advanced Platform Filter
       if (advancedFilters.platforms.length > 0) {
         const matchesPlatform = advancedFilters.platforms.some((plat) => {
-          const lowerPlat = plat.toLowerCase();
-          if (lowerPlat.includes("win")) return game.platform === "windows";
-          if (lowerPlat.includes("mac")) return game.platform === "macos";
-          if (lowerPlat.includes("lin")) {
-            return game.platform === "linux" || (game.platform === "windows" && game.protonCompatible === true);
-          }
-          return false;
+          return game.platform?.toLowerCase() === plat.toLowerCase();
         });
         if (!matchesPlatform) return false;
+      }
+
+      if (advancedFilters.launchers && advancedFilters.launchers.length > 0) {
+        const matchesLauncher = advancedFilters.launchers.some((l) => {
+          return game.launcher?.toLowerCase() === l.toLowerCase();
+        });
+        if (!matchesLauncher) return false;
       }
 
       // Players Filter
@@ -806,6 +865,13 @@ export function LibraryPage() {
         if (!matchesStatus) return false;
       }
 
+      // Game Pass Catalog Filter
+      if (!advancedFilters.showGamePassCatalog) {
+        if (game.id.startsWith("gamepass-")) {
+          return false;
+        }
+      }
+
       // Manual Collections Filter
       if (selectedManualCollectionName) {
         const gameIdsInCollection = manualCollections[selectedManualCollectionName] || [];
@@ -854,6 +920,12 @@ export function LibraryPage() {
 
   /** Convert backend OwnedGame into a frontend Game object */
   function ownedGameToGame(og: OwnedGame): Game {
+    let launcher = "manual";
+    if (og.id.startsWith("steam-")) launcher = "steam";
+    else if (og.id.startsWith("epic-")) launcher = "epic";
+    else if (og.id.startsWith("gog-")) launcher = "gog";
+    else if (og.id.startsWith("xbox-") || og.id.startsWith("gamepass-")) launcher = "xbox";
+
     return {
       id: og.id,
       title: og.title,
@@ -867,9 +939,11 @@ export function LibraryPage() {
       logoPosition: "centerCenter",
       status: "not_installed",
       platform: "windows",
+      launcher,
       playtimeMinutes: og.playtimeMinutes,
       lastPlayedAt: og.lastPlayedAt,
       lastPlayed: og.lastPlayedAt ?? undefined,
+      cloudGamingUrl: og.cloudGamingUrl ?? undefined,
     } as Game;
   }
 
@@ -1013,6 +1087,50 @@ export function LibraryPage() {
         }
       }
 
+      // 3. Fetch and merge Xbox owned games
+      const xboxGamesStr = localStorage.getItem(STORAGE_KEYS.XBOX_GAMES_CACHE);
+      if (xboxGamesStr) {
+        try {
+          const xboxRaw = JSON.parse(xboxGamesStr);
+          if (Array.isArray(xboxRaw) && xboxRaw.length > 0) {
+            const ownedXboxGames = xboxRaw.map(ownedGameToGame);
+            const installedXboxIds = new Set<string>();
+            games.forEach((g) => {
+              if (g.id.startsWith("xbox-")) {
+                installedXboxIds.add(g.id.replace("xbox-", ""));
+              }
+            });
+
+            const installedTitles = new Set(games.map(g => g.title.toLowerCase().trim()));
+
+            const uninstalledOwnedXboxGames = ownedXboxGames.filter((og) => {
+              const xboxId = og.id.replace("xbox-owned-", "");
+              return !installedXboxIds.has(xboxId) && !installedTitles.has(og.title.toLowerCase().trim());
+            });
+
+            games = [...games, ...uninstalledOwnedXboxGames];
+          }
+        } catch (err) {
+          console.warn("Failed to load Xbox games from cache:", err);
+        }
+      }
+
+      // 4. Fetch and merge Game Pass catalog
+      const gamePassGamesStr = localStorage.getItem(STORAGE_KEYS.GAME_PASS_CATALOG_CACHE);
+      if (gamePassGamesStr) {
+        try {
+          const gamePassRaw = JSON.parse(gamePassGamesStr);
+          if (Array.isArray(gamePassRaw) && gamePassRaw.length > 0) {
+            const gamePassGames = gamePassRaw.map(ownedGameToGame);
+            const installedTitles = new Set(games.map(g => g.title.toLowerCase().trim()));
+            const uninstalledGamePassGames = gamePassGames.filter(og => !installedTitles.has(og.title.toLowerCase().trim()));
+            games = [...games, ...uninstalledGamePassGames];
+          }
+        } catch (err) {
+          console.warn("Failed to load Game Pass catalog from cache:", err);
+        }
+      }
+
       if (!shouldApplyResult()) {
         return;
       }
@@ -1074,14 +1192,20 @@ export function LibraryPage() {
     let isMounted = true;
 
     async function loadLibrary() {
-      await loadInstalledGames(
-        false,
-        () => isMounted,
-        initialLibrarySnapshot.length === 0,
-      );
+      if (automaticSyncInFlightRef.current) return;
+      automaticSyncInFlightRef.current = true;
+      try {
+        await loadInstalledGames(
+          false,
+          () => isMounted,
+          initialLibrarySnapshot.length === 0,
+        );
 
-      if (isMounted && shouldRunStartupLibraryRescan()) {
-        await loadInstalledGames(true, () => isMounted, false);
+        if (isMounted && shouldRunStartupLibraryRescan()) {
+          await loadInstalledGames(true, () => isMounted, false);
+        }
+      } finally {
+        automaticSyncInFlightRef.current = false;
       }
     }
 
@@ -1092,6 +1216,48 @@ export function LibraryPage() {
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialLibrarySnapshot.length]);
+
+  useEffect(() => {
+    let isMounted = true;
+    
+    if (advancedFilters.showGamePassCatalog) {
+      const cacheStr = localStorage.getItem(STORAGE_KEYS.GAME_PASS_CATALOG_CACHE);
+      let needsFetch = !cacheStr;
+      if (cacheStr) {
+        try {
+          const parsed = JSON.parse(cacheStr);
+          if (!Array.isArray(parsed) || parsed.length === 0) {
+            needsFetch = true;
+          }
+        } catch (e) {
+          needsFetch = true;
+        }
+      }
+
+      if (needsFetch) {
+        setIsDiscoveringGames(true);
+        setDiscoveryMessage("Fetching Xbox Game Pass Catalog (~500 games)...");
+        fetchGamePassCatalog().then(games => {
+          if (!isMounted) return;
+          localStorage.setItem(STORAGE_KEYS.GAME_PASS_CATALOG_CACHE, JSON.stringify(games));
+          void runAutomaticLibrarySync(true);
+        }).catch(err => {
+          if (!isMounted) return;
+          console.error("Game Pass fetch failed", err);
+        }).finally(() => {
+          if (!isMounted) return;
+          setIsDiscoveringGames(false);
+          setDiscoveryMessage(null);
+        });
+      } else {
+        void runAutomaticLibrarySync(false);
+      }
+    }
+
+    return () => {
+      isMounted = false;
+    };
+  }, [advancedFilters.showGamePassCatalog]);
 
   useEffect(() => {
     let isMounted = true;
@@ -1191,6 +1357,27 @@ export function LibraryPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Auto-enable Game Pass catalog when Xbox is connected
+  useEffect(() => {
+    const checkAndEnable = () => {
+      if (getXboxConnectionStatus() && !advancedFilters.showGamePassCatalog) {
+        setAdvancedFilters(prev => ({ ...prev, showGamePassCatalog: true }));
+      }
+    };
+
+    checkAndEnable();
+
+    const handleFocus = () => checkAndEnable();
+    window.addEventListener("focus", handleFocus);
+    document.addEventListener("visibilitychange", handleFocus);
+
+    return () => {
+      window.removeEventListener("focus", handleFocus);
+      document.removeEventListener("visibilitychange", handleFocus);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [advancedFilters.showGamePassCatalog]);
+
   // Update selected game if list updates
   useEffect(() => {
     if (filteredGames.length === 0) {
@@ -1269,6 +1456,20 @@ export function LibraryPage() {
     setStatusMessage(null);
 
     try {
+      if (selectedGame.id.startsWith("xbox-owned-")) {
+        const pfn = selectedGame.id.replace("xbox-owned-", "");
+        await installXboxGame(pfn);
+        setStatusMessage("Opened Microsoft Store for installation.");
+        return;
+      }
+      
+      if (selectedGame.id.startsWith("xbox-")) {
+        const pfn = selectedGame.id.replace("xbox-", "");
+        await launchXboxGame(pfn);
+        setStatusMessage("Launching Xbox game...");
+        return;
+      }
+
       if (
         selectedGame.id.startsWith("steam-owned-") ||
         selectedGame.id.startsWith("gog-owned-") ||
@@ -1293,21 +1494,23 @@ export function LibraryPage() {
   }
 
   async function syncAchievementsForGame(game: Game, options: { silent?: boolean } = {}) {
-    const hasSteamAppId = Boolean(getSteamAppId(game));
-    if (!hasSteamAppId) {
-      if (!options.silent) {
-        setStatusMessage(`${game.title} does not expose a Steam AppID for achievement sync.`);
+    if (game.platform !== "xbox") {
+      const hasSteamAppId = Boolean(getSteamAppId(game));
+      if (!hasSteamAppId) {
+        if (!options.silent) {
+          setStatusMessage(`${game.title} does not expose a Steam AppID for achievement sync.`);
+        }
+        return;
       }
-      return;
-    }
 
-    const steamId = readLocalStorageString(STORAGE_KEYS.STEAM_ID);
-    const steamApiKey = readLocalStorageString(STORAGE_KEYS.STEAM_API_KEY);
-    if (!steamId && !steamApiKey) {
-      if (!options.silent) {
-        setStatusMessage("Steam achievement sync needs a connected Steam account or a Steam Web API Key in Settings.");
+      const steamId = readLocalStorageString(STORAGE_KEYS.STEAM_ID);
+      const steamApiKey = readLocalStorageString(STORAGE_KEYS.STEAM_API_KEY);
+      if (!steamId && !steamApiKey) {
+        if (!options.silent) {
+          setStatusMessage("Steam achievement sync needs a connected Steam account or a Steam Web API Key in Settings.");
+        }
+        return;
       }
-      return;
     }
 
     if (!options.silent) {
@@ -1442,7 +1645,6 @@ export function LibraryPage() {
           setIsAddGameOpen={setIsAddGameOpen}
           setAddGameError={setAddGameError}
         />
-
         {/* ====================================================
             ADVANCED FILTER POPUP PANEL (Overlay)
             ==================================================== */}
@@ -1498,6 +1700,40 @@ export function LibraryPage() {
                 </div>
               </div>
 
+              {/* LAUNCHERS CHECKBOXES */}
+              <div className="border-2 border-black bg-[#efe3cf] p-2 shadow-[2px_2px_0_#000]">
+                <h4 className="font-black uppercase text-[12px] border-b border-black pb-1 mb-2 flex items-center justify-between">
+                  <span>Game Platform (Store)</span>
+                  {advancedFilters.launchers && advancedFilters.launchers.length > 0 && (
+                    <button onClick={() => setAdvancedFilters(prev => ({ ...prev, launchers: [] }))} className="text-[10px] underline lowercase">clear</button>
+                  )}
+                </h4>
+                <div className="grid grid-cols-3 gap-1">
+                  {["Steam", "Epic", "GOG", "Xbox", "Manual"].map((l) => {
+                    const isChecked = advancedFilters.launchers?.includes(l.toLowerCase());
+                    return (
+                      <button
+                        key={l}
+                        onClick={() => {
+                          setAdvancedFilters(prev => {
+                            const launchers = prev.launchers || [];
+                            return {
+                              ...prev,
+                              launchers: isChecked ? launchers.filter(x => x !== l.toLowerCase()) : [...launchers, l.toLowerCase()]
+                            };
+                          });
+                        }}
+                        className={`border-2 border-black py-1 px-1 text-[10px] font-black uppercase transition ${
+                          isChecked ? "bg-[#139a82] text-white shadow-[1px_1px_0_#000]" : "bg-[#ded3c1] hover:bg-[#d5c7b1]"
+                        }`}
+                      >
+                        {l}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
               {/* PLAYER COUNT CHECKBOXES */}
               <div className="border-2 border-black bg-[#efe3cf] p-2 shadow-[2px_2px_0_#000]">
                 <h4 className="font-black uppercase text-[12px] border-b border-black pb-1 mb-2 flex items-center justify-between">
@@ -1523,41 +1759,6 @@ export function LibraryPage() {
                           className="w-3.5 h-3.5 border-2 border-black accent-[#139a82]"
                         />
                         <span>{p}</span>
-                      </label>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* FEATURES CHECKBOXES */}
-              <div className="border-2 border-black bg-[#efe3cf] p-2 shadow-[2px_2px_0_#000]">
-                <h4 className="font-black uppercase text-[12px] border-b border-black pb-1 mb-2 flex items-center justify-between">
-                  <span>Features</span>
-                  {advancedFilters.features.length > 0 && (
-                    <button onClick={() => setAdvancedFilters(prev => ({ ...prev, features: [] }))} className="text-[10px] underline lowercase">clear</button>
-                  )}
-                </h4>
-                <div className="grid grid-cols-2 gap-1.5">
-                  {[
-                    "Steam Achievements", "Full Controller Support", "Steam Trading Cards",
-                    "Steam Workshop", "Steam Cloud", "Stats", "Leaderboards",
-                    "In-App Purchases", "VR Supported", "Comments available"
-                  ].map((f) => {
-                    const isChecked = advancedFilters.features.includes(f);
-                    return (
-                      <label key={f} className="flex items-center gap-1.5 text-[11px] font-bold cursor-pointer">
-                        <input
-                          type="checkbox"
-                          checked={isChecked}
-                          onChange={() => {
-                            setAdvancedFilters(prev => ({
-                              ...prev,
-                              features: isChecked ? prev.features.filter(x => x !== f) : [...prev.features, f]
-                            }));
-                          }}
-                          className="w-3.5 h-3.5 border-2 border-black accent-[#139a82]"
-                        />
-                        <span>{f}</span>
                       </label>
                     );
                   })}
@@ -1598,7 +1799,7 @@ export function LibraryPage() {
               {/* GENRE BUTTONS */}
               <div className="border-2 border-black bg-[#efe3cf] p-2 shadow-[2px_2px_0_#000]">
                 <h4 className="font-black uppercase text-[12px] border-b border-black pb-1 mb-2 flex items-center justify-between">
-                  <span>Sizenre</span>
+                  <span>Genre</span>
                   {advancedFilters.genres.length > 0 && (
                     <button onClick={() => setAdvancedFilters(prev => ({ ...prev, genres: [] }))} className="text-[10px] underline lowercase">clear</button>
                   )}
@@ -1624,6 +1825,22 @@ export function LibraryPage() {
                     );
                   })}
                 </div>
+              </div>
+
+              {/* GAME PASS CATALOG FILTER */}
+              <div className="border-2 border-black bg-[#efe3cf] p-2 shadow-[2px_2px_0_#000]">
+                <h4 className="font-black uppercase text-[12px] border-b border-black pb-1 mb-2">
+                  Xbox Game Pass
+                </h4>
+                <label className="flex items-center gap-1.5 text-[11px] font-bold cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={advancedFilters.showGamePassCatalog}
+                    onChange={(e) => setAdvancedFilters(prev => ({ ...prev, showGamePassCatalog: e.target.checked }))}
+                    className="w-3.5 h-3.5 border-2 border-black accent-[#139a82]"
+                  />
+                  <span>Show Game Pass Catalog</span>
+                </label>
               </div>
 
               {/* PLAY STATUS CHECKBOXES */}
@@ -1799,6 +2016,7 @@ export function LibraryPage() {
             </div>
           </div>
         ) : null}
+
 
         {/* ====================================================
             GAME DETAILS MAIN CONTENT

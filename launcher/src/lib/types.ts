@@ -63,6 +63,7 @@ export interface Game {
   executablePath?: string;
   processNames?: string[];
   launchUri?: string;
+  cloudGamingUrl?: string;
   lastPlayed?: string;
   lastPlayedAt?: string | null;
   playtimeMinutes?: number;

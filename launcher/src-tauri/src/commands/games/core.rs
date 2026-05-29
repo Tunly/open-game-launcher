@@ -424,6 +424,34 @@ pub fn uninstall_game(game_id: String) -> Result<UninstallGameResponse, String> 
         }
     }
 
+    if game.launcher == "xbox" {
+        let pfn = game.id.strip_prefix("xbox-").unwrap_or(&game.id).split('!').next().unwrap_or(&game.id);
+        let script = format!(
+            "$pkg = Get-AppxPackage -Name \"*{}*\"; if ($pkg) {{ Remove-AppxPackage -Package $pkg.PackageFullName }}",
+            pfn.split('_').next().unwrap_or(pfn)
+        );
+        match std::process::Command::new("powershell")
+            .args(["-NoProfile", "-NonInteractive", "-Command", &script])
+            .spawn()
+        {
+            Ok(_) => {
+                mark_game_not_installed(&mut game);
+                games[game_index] = game.clone();
+                write_installed_games_cache(&games);
+                return Ok(UninstallGameResponse {
+                    game_id,
+                    success: true,
+                    removed_from_library: false,
+                    game: Some(game.clone()),
+                    message: format!("{} uninstall was launched via PowerShell.", game.title),
+                });
+            }
+            Err(e) => {
+                return Err(format!("Failed to launch Xbox uninstaller: {}", e));
+            }
+        }
+    }
+
     if let Some(uri) = uninstall_uri_for_game(&game) {
         open_uri(&uri).map_err(|error| format!("Could not open uninstall flow: {error}"))?;
         return Ok(UninstallGameResponse {

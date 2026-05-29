@@ -54,6 +54,12 @@ pub fn run() {
             commands::downloads::pause_download,
             commands::downloads::cancel_download,
             commands::downloads::get_download_queue,
+            commands::xbox::open_xbox_login_window,
+            commands::xbox::fetch_xbox_owned_games,
+            commands::xbox::launch_xbox_game,
+            commands::xbox::install_xbox_game,
+            commands::xbox::fetch_game_pass_catalog,
+            commands::xbox::sync_xbox_achievements,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Open Game Launcher");

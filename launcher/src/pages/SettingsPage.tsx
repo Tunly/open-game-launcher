@@ -2,7 +2,7 @@ import { FolderOpen, HardDrive, Power, RefreshCw, ShieldCheck, Link, LogOut, Gam
 import { useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { useLocalStorageState } from "../hooks/useLocalStorageState";
-import { getDefaultInstallDir, getSystemInfo, openSteamLoginWindow, openGogLoginWindow, openEpicLoginWindow, normalizeSteamOwnedGames, openSteamScraperWindow } from "../lib/launcher";
+import { getDefaultInstallDir, getSystemInfo, openSteamLoginWindow, openGogLoginWindow, openEpicLoginWindow, openXboxLoginWindow, fetchXboxOwnedGames, normalizeSteamOwnedGames, openSteamScraperWindow } from "../lib/launcher";
 import { STORAGE_KEYS } from "../lib/storage-keys";
 import type { SystemInfo } from "../lib/types";
 
@@ -76,6 +76,10 @@ export function SettingsPage() {
   const [epicCodeInput, setEpicCodeInput] = useState("");
   const [epicDisplayName, setEpicDisplayName] = useState("");
 
+  const [xboxConnected, setXboxConnected] = useState(false);
+  const [xboxGamesCount, setXboxGamesCount] = useState(0);
+  const [xboxGamertag, setXboxGamertag] = useState("");
+
   useEffect(() => {
     const gogTokenStr = localStorage.getItem(STORAGE_KEYS.GOG_TOKEN);
     if (gogTokenStr) {
@@ -99,6 +103,21 @@ export function SettingsPage() {
         }
       } catch {
         localStorage.removeItem("launcher.epicToken");
+      }
+    }
+
+    const xboxGamesStr = localStorage.getItem(STORAGE_KEYS.XBOX_GAMES_CACHE);
+    if (xboxGamesStr) {
+      try {
+        const games = JSON.parse(xboxGamesStr);
+        if (Array.isArray(games)) {
+          setXboxConnected(true);
+          setXboxGamesCount(games.length);
+          const gt = localStorage.getItem(STORAGE_KEYS.XBOX_USERNAME);
+          if (gt) setXboxGamertag(gt);
+        }
+      } catch {
+        // ignore
       }
     }
   }, []);
@@ -275,6 +294,40 @@ export function SettingsPage() {
     }
 
     return () => {
+      if (unlistenPromise) {
+        void unlistenPromise.then((unlisten) => unlisten());
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+    let unlistenPromise: Promise<() => void> | null = null;
+
+    try {
+      unlistenPromise = listen<string>("xbox_login_code", async (event) => {
+        if (!isMounted) return;
+        setTestResult({ success: true, message: "Xbox login code received. Fetching library..." });
+        try {
+          const result = await fetchXboxOwnedGames(event.payload);
+          localStorage.setItem(STORAGE_KEYS.XBOX_GAMES_CACHE, JSON.stringify(result.games));
+          if (result.gamertag) {
+            localStorage.setItem(STORAGE_KEYS.XBOX_USERNAME, result.gamertag);
+            setXboxGamertag(result.gamertag);
+          }
+          setXboxConnected(true);
+          setXboxGamesCount(result.games.length);
+          setTestResult({ success: true, message: `Successfully linked Xbox Live. ${result.games.length} games imported.` });
+        } catch (err) {
+          setTestResult({ success: false, message: `Xbox Live login failed: ${getErrorMessage(err)}` });
+        }
+      });
+    } catch (err) {
+      console.warn("Failed to setup xbox_login_code listener:", err);
+    }
+
+    return () => {
+      isMounted = false;
       if (unlistenPromise) {
         void unlistenPromise.then((unlisten) => unlisten());
       }
@@ -513,7 +566,7 @@ export function SettingsPage() {
                           className="neo-copy w-full flex h-8 items-center justify-center gap-2 border-2 border-black bg-[#c20b2f] px-3 text-[10px] font-bold uppercase text-white shadow-[1px_1px_0_#171411] hover:bg-[#a10825] transition"
                           type="button"
                           onClick={() => {
-        localStorage.removeItem(STORAGE_KEYS.GOG_TOKEN);
+                            localStorage.removeItem(STORAGE_KEYS.GOG_TOKEN);
                             setGogConnected(false);
                             setTestResult(null);
                           }}
@@ -558,7 +611,7 @@ export function SettingsPage() {
                           className="neo-copy w-full flex h-8 items-center justify-center gap-2 border-2 border-black bg-[#c20b2f] px-3 text-[10px] font-bold uppercase text-white shadow-[1px_1px_0_#171411] hover:bg-[#a10825] transition"
                           type="button"
                           onClick={() => {
-        localStorage.removeItem(STORAGE_KEYS.EPIC_TOKEN);
+                            localStorage.removeItem(STORAGE_KEYS.EPIC_TOKEN);
                             setEpicConnected(false);
                             setEpicDisplayName("");
                             setTestResult(null);
@@ -600,6 +653,57 @@ export function SettingsPage() {
                           </button>
                         </div>
                       </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* XBOX CARD */}
+                <div className="border-2 border-black bg-[#efe6d4] p-4 flex flex-col justify-between shadow-[2px_2px_0_#171411]">
+                  <div>
+                    <h3 className="text-xl font-black uppercase text-[#171411] mb-1">
+                      Xbox / MS Store
+                    </h3>
+                    <p className="neo-copy text-[9px] font-bold uppercase text-[#55504a] leading-relaxed mb-4">
+                      Import your Xbox Game Pass and Microsoft Store games.
+                    </p>
+                  </div>
+                  <div>
+                    {xboxConnected ? (
+                      <div className="border border-black bg-[#f5eedf] p-3 space-y-2">
+                        <span className="neo-copy text-[8px] font-bold uppercase text-[#55504a] block">Status</span>
+                        <div className="flex flex-col gap-1">
+                          <span className="font-black text-xs text-[#087d6d] block truncate">Connected ({xboxGamesCount} games)</span>
+                          {xboxGamertag && <span className="font-bold text-[10px] text-black">User: {xboxGamertag}</span>}
+                        </div>
+                        <button
+                          className="neo-copy w-full flex h-8 items-center justify-center gap-2 border-2 border-black bg-[#c20b2f] px-3 text-[10px] font-bold uppercase text-white shadow-[1px_1px_0_#171411] hover:bg-[#a10825] transition"
+                          type="button"
+                          onClick={() => {
+                            localStorage.removeItem(STORAGE_KEYS.XBOX_GAMES_CACHE);
+                            localStorage.removeItem(STORAGE_KEYS.XBOX_USERNAME);
+                            setXboxConnected(false);
+                            setXboxGamesCount(0);
+                            setXboxGamertag("");
+                            setTestResult(null);
+                          }}
+                        >
+                          <LogOut className="h-3 w-3" />
+                          Disconnect
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        className="neo-copy w-full flex h-10 items-center justify-center gap-2 border-2 border-black bg-[#107c10] px-4 text-xs font-black uppercase text-white shadow-[2px_2px_0_#171411] hover:bg-[#0b580b] transition"
+                        type="button"
+                        onClick={() => {
+                          void openXboxLoginWindow().catch((err) => {
+                            setTestResult({ success: false, message: `Failed to open: ${getErrorMessage(err)}` });
+                          });
+                        }}
+                      >
+                        <Link className="h-3.5 w-3.5" />
+                        Connect Xbox
+                      </button>
                     )}
                   </div>
                 </div>

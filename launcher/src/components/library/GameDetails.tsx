@@ -27,6 +27,7 @@ import {
   getLogoPlacementStyle,
 } from "../../lib/formatters";
 import { getGameAssetUrl, getGameBannerStyle } from "../../lib/assets";
+import { uninstallGame } from "../../lib/launcher";
 
 export interface GameDetailsProps {
   selectedGame: Game | null;
@@ -189,6 +190,17 @@ export function GameDetails({
                       Play
                     </button>
                   )}
+                  {enrichedSelectedGame.cloudGamingUrl && (
+                    <a
+                      href={enrichedSelectedGame.cloudGamingUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex h-[64px] min-w-0 flex-1 items-center justify-center gap-2 border-4 border-black bg-[#0d8544] px-3 text-[18px] font-black uppercase text-white shadow-[3px_3px_0_#171411] hover:bg-[#0a6634] transition-colors"
+                    >
+                      <Cloud className="h-6 w-6" />
+                      Play via Cloud
+                    </a>
+                  )}
                 </div>
 
                 <div className="grid min-w-[260px] flex-[999_1_420px] gap-3 sm:grid-cols-2 2xl:grid-cols-[repeat(4,minmax(130px,1fr))]">
@@ -236,6 +248,27 @@ export function GameDetails({
                             {hiddenGames[enrichedSelectedGame.id] === true ? "Hidden" : "Hide Game"}
                           </button>
                         </div>
+
+                        {/* UNINSTALL GAME */}
+                        {enrichedSelectedGame.status === "installed" && (
+                          <div className="mb-3 border-b border-black pb-3">
+                            <button
+                              onClick={() => {
+                                if (window.confirm(`Are you sure you want to uninstall ${enrichedSelectedGame.title}?`)) {
+                                  uninstallGame(enrichedSelectedGame.id)
+                                    .then(() => {
+                                      setStatusMessage("Uninstall process started. Library will sync automatically.");
+                                      void runAutomaticLibrarySync(true);
+                                    })
+                                    .catch(err => alert("Failed to start uninstaller: " + err));
+                                }
+                              }}
+                              className="w-full border-2 border-black bg-[#b7102a] text-white py-1 text-[10px] font-black uppercase hover:bg-[#990a20] transition shadow-[1px_1px_0_#000]"
+                            >
+                              Uninstall Game
+                            </button>
+                          </div>
+                        )}
 
                         {/* CUSTOM CATEGORIES */}
                         <div>
@@ -538,7 +571,14 @@ export function GameDetails({
                         </div>
                         <div className="flex justify-between border-b border-black/10 pb-1">
                           <span className="text-[#55504a] uppercase">Kategorie:</span>
-                          <span className="font-black capitalize">{enrichedSelectedGame.productCategory || "game"}</span>
+                          <div className="flex items-center gap-2">
+                            {enrichedSelectedGame.id.startsWith("gamepass-") && (
+                              <span className="bg-[#139a82] text-white px-1.5 py-0.5 text-[10px] font-black uppercase shadow-[1px_1px_0_#000]">
+                                Game Pass
+                              </span>
+                            )}
+                            <span className="font-black capitalize">{enrichedSelectedGame.productCategory || "game"}</span>
+                          </div>
                         </div>
                         <div className="flex justify-between border-b border-black/10 pb-1">
                           <span className="text-[#55504a] uppercase">Plattform:</span>

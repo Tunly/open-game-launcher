@@ -29,6 +29,29 @@ Required style: **Retro Manga Launcher**.
 
 Use an aged paper background, halftone texture, thick black borders, hard offset shadows, sharp corners, dense launcher panels, red/teal accents, game art surfaces, and header navigation. Keep the header brand as `OG-Launcher`. Reuse `neo-title`, `neo-copy`, `neo-dots`, and the existing art placeholder classes. Do not replace the app with a dark SaaS/admin dashboard style.
 
+### Tailwind Design Tokens
+
+The Tailwind config (`tailwind.config.ts`) provides the Retro Manga palette:
+
+| Token | Usage |
+| --- | --- |
+| `neo-paper` | `#fbf4e7` — Primary paper background |
+| `neo-paperAlt` | `#f5eedf` — Secondary paper |
+| `neo-paperDark` | `#eee4d2` — Darker paper for hover states |
+| `neo-ink` | `#171411` — Text and borders |
+| `neo-red` | `#c20b2f` — Primary red accent |
+| `neo-redBright` | `#e92846` — Bright red for hover |
+| `neo-redDark` | `#a60724` — Dark red for active |
+| `neo-teal` | `#087d6d` — Primary teal accent |
+| `neo-tealDark` | `#007166` — Dark teal |
+| `neo-blue` | `#4aa5c8` — Secondary accent |
+| `neo-yellow` | `#e2bd22` — Warning/highlight |
+| `neo-muted` | `#55504a` — Muted text |
+
+Font families: `font-oswald` (titles), `font-mono` (code/labels), `font-body` (body text).
+
+Shadow tokens: `shadow-neo` (4px offset), `shadow-neo-sm` (3px offset).
+
 ## Features
 
 - Tauri 2 desktop application shell with React/Vite frontend.
@@ -51,7 +74,7 @@ Use an aged paper background, halftone texture, thick black borders, hard offset
 | --- | --- |
 | Desktop runtime | Tauri 2 |
 | Frontend | React 18, Vite 6, TypeScript |
-| Styling | Tailwind CSS |
+| Styling | Tailwind CSS, Retro Manga Launcher design tokens |
 | Native layer | Rust |
 | Backend services | Supabase Auth, Database, Storage |
 | Validation | Zod |
@@ -71,6 +94,9 @@ Use an aged paper background, halftone texture, thick black borders, hard offset
 |   |   |-- features/            # Feature-scoped profile/friends code
 |   |   |-- hooks/               # React hooks and auth state
 |   |   |-- lib/                 # Tauri wrappers, Supabase client, types, mock data
+|   |   |   |-- supabase/        # Supabase services with shared helpers
+|   |   |   |-- storage-keys.ts  # Centralized localStorage key registry
+|   |   |   `-- types/           # Domain type definitions
 |   |   |-- pages/               # App pages and route screens
 |   |   `-- main.tsx
 |   |-- src-tauri/
@@ -154,8 +180,6 @@ The browser-only Vite app can render most UI. Native Tauri `invoke()` commands o
 
 Run these from `launcher/`.
 
-| Script | Description |
-| --- | --- |
 | `pnpm dev` | Starts Vite on `127.0.0.1:1420` |
 | `pnpm build` | Runs TypeScript project build and creates the Vite production build |
 | `pnpm preview` | Serves the built frontend for preview |
@@ -237,7 +261,7 @@ The launcher currently stores state in several places:
 - Installed game cache: local app data under `open-game-launcher/installed-games.json`.
 - RAWG/Steam asset cache: local app data under `open-game-launcher/rawg-assets.json`.
 - Download state: in-memory while the app is running.
-- UI preferences, connected platform cache data, favorites, hidden games, and collections: browser `localStorage`.
+- UI preferences, connected platform cache data, favorites, hidden games, and collections: browser `localStorage` (keys centralized in `launcher/src/lib/storage-keys.ts`).
 - Profile, friends, privacy, comments, and public social data: Supabase when configured.
 
 The local app configuration story is still incomplete. Settings should move out of scattered `localStorage` keys and into a native config file before production.
@@ -390,6 +414,9 @@ The policies allow public reads and restrict authenticated uploads, updates, and
 - Keep `OG-Launcher` as the header brand and keep primary navigation in the header.
 - Use the Tauri wrapper functions in `launcher/src/lib/launcher.ts` instead of direct `invoke()` calls in components.
 - Preserve the separation between UI, native commands, Supabase access, and validation.
+- Use `launcher/src/lib/storage-keys.ts` for all `localStorage` keys instead of hardcoded strings.
+- Use shared Supabase helpers from `launcher/src/lib/supabase/helpers.ts` (row accessors, error handling) instead of duplicating them across service files.
+- Use the `neo-*` Tailwind tokens (`neo-paper`, `neo-ink`, `neo-red`, `neo-teal`, etc.) and font families (`font-oswald`, `font-mono`, `font-body`) for consistent Retro Manga styling.
 - Do not commit local generated test artifacts such as temporary Steam JSON dumps unless they become intentional fixtures.
 
 ## Checks

@@ -113,6 +113,7 @@ export function launchGame(gameId: string): Promise<LaunchGameResponse> {
   return invokeCommand<LaunchGameResponse>("launch_game", { gameId });
 }
 
+
 export function verifyGameFiles(
   gameId: string,
 ): Promise<VerifyGameFilesResult> {
@@ -168,8 +169,15 @@ export function restoreGameSavesFromCloud(input: {
 export function syncGameAchievements(
   game: Game,
   steamId?: string,
-  apiKey?: string
+  apiKey?: string,
 ): Promise<SyncGameAchievementsResponse> {
+  if (game.launcher === "xbox") {
+    // Xbox uses its own sync command
+    return invokeCommand<SyncGameAchievementsResponse>("sync_xbox_achievements", { 
+      gameId: game.id,
+      titleId: game.externalId || ""
+    });
+  }
   return invokeCommand<SyncGameAchievementsResponse>("sync_game_achievements", { gameId: game.id, steamId, apiKey });
 }
 
@@ -197,8 +205,34 @@ export function openEpicLoginWindow(): Promise<void> {
   return invokeCommand<void>("open_epic_login_window");
 }
 
+export function openXboxLoginWindow(): Promise<void> {
+  return invokeCommand<void>("open_xbox_login_window");
+}
+
+export interface XboxFetchResult {
+  games: OwnedGame[];
+  gamertag?: string | null;
+}
+
+export function fetchXboxOwnedGames(code: string): Promise<XboxFetchResult> {
+  return invokeCommand<XboxFetchResult>("fetch_xbox_owned_games", { code });
+}
+
+export function launchXboxGame(pfn: string): Promise<void> {
+  return invokeCommand<void>("launch_xbox_game", { pfn });
+}
+
+export function installXboxGame(pfn: string): Promise<void> {
+  return invokeCommand<void>("install_xbox_game", { pfn });
+}
+
+export function fetchGamePassCatalog(): Promise<OwnedGame[]> {
+  return invokeCommand<OwnedGame[]>("fetch_game_pass_catalog");
+}
+
 export interface OwnedGame {
   id: string;
+  externalId?: string | null;
   title: string;
   description: string;
   coverUrl: string | null;
@@ -206,6 +240,7 @@ export interface OwnedGame {
   iconUrl?: string;
   playtimeMinutes: number;
   lastPlayedAt?: string | null;
+  cloudGamingUrl?: string | null;
 }
 
 type SteamRawGame = Record<string, unknown>;

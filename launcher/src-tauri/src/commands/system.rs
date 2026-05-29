@@ -262,7 +262,7 @@ fn clean_line(value: &str) -> Option<String> {
     }
 }
 
-fn open_uri(uri: &str) -> Result<(), String> {
+pub fn open_uri(uri: &str) -> Result<(), String> {
     #[cfg(target_os = "windows")]
     {
         Command::new("cmd")
@@ -872,6 +872,7 @@ pub async fn open_epic_login_window() -> Result<(), String> {
 #[serde(rename_all = "camelCase")]
 pub struct OwnedGame {
     pub id: String,
+    pub external_id: Option<String>,
     pub title: String,
     pub description: String,
     pub cover_url: Option<String>,
@@ -879,6 +880,7 @@ pub struct OwnedGame {
     pub icon_url: Option<String>,
     pub playtime_minutes: u64,
     pub last_played_at: Option<String>,
+    pub cloud_gaming_url: Option<String>,
 }
 
 fn fetch_local_steam_owned_games(steam_id: &str) -> Vec<OwnedGame> {
@@ -924,6 +926,7 @@ fn fetch_local_steam_owned_games(steam_id: &str) -> Vec<OwnedGame> {
 
         games.push(OwnedGame {
             id: format!("steam-owned-{app_id}"),
+            external_id: Some(app_id.clone()),
             title: title.clone(),
             description: format!("Steam game (Owned). AppID: {app_id}"),
             last_played_at: None, // We do not parse last_played from local steam cache for uninstalled games right now
@@ -958,6 +961,7 @@ fn fetch_local_steam_owned_games(steam_id: &str) -> Vec<OwnedGame> {
                 &["header.jpg", "library_header.jpg"],
             ),
             playtime_minutes: playtimes.get(&app_id).copied().unwrap_or_default(),
+            cloud_gaming_url: None,
         });
     }
 
@@ -1513,6 +1517,7 @@ fn parse_rg_games_json(json: &str, _steam_id: &str) -> Vec<OwnedGame> {
 
             games.push(OwnedGame {
                 id: format!("steam-owned-{appid}"),
+                external_id: Some(appid.to_string()),
                 title: name,
                 description: format!("Steam game (Owned). AppID: {appid}"),
                 cover_url: Some(format!(
@@ -1524,6 +1529,7 @@ fn parse_rg_games_json(json: &str, _steam_id: &str) -> Vec<OwnedGame> {
                 icon_url: None,
                 playtime_minutes: playtime,
                 last_played_at,
+                cloud_gaming_url: None,
             });
         }
         pos = obj_end;
@@ -1656,6 +1662,7 @@ pub async fn fetch_gog_owned_games(access_token: String) -> Result<Vec<OwnedGame
 
                     games.push(OwnedGame {
                         id: format!("gog-owned-{id}"),
+                        external_id: Some(id.to_string()),
                         title,
                         description: format!("GOG game (Owned). ID: {id}"),
                         cover_url: logo2x.clone(),
@@ -1663,6 +1670,7 @@ pub async fn fetch_gog_owned_games(access_token: String) -> Result<Vec<OwnedGame
                         icon_url: icon,
                         playtime_minutes: 0,
                         last_played_at: None,
+                        cloud_gaming_url: None,
                     });
                 }
             }
@@ -1728,6 +1736,7 @@ pub async fn fetch_epic_owned_games(
         if !catalog_item_id.is_empty() {
             games.push(OwnedGame {
                 id: format!("epic-owned-{namespace}:{catalog_item_id}:{app_name}"),
+                external_id: Some(catalog_item_id.to_string()),
                 title,
                 description: format!("Epic Games game (Owned). ID: {catalog_item_id}"),
                 cover_url: cover_url.clone(),
@@ -1735,9 +1744,11 @@ pub async fn fetch_epic_owned_games(
                 icon_url: None,
                 playtime_minutes: 0,
                 last_played_at: None,
+                cloud_gaming_url: None,
             });
         }
     }
 
     Ok(games)
 }
+

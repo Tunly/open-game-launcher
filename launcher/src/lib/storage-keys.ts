@@ -23,6 +23,9 @@ export const STORAGE_KEYS = {
   STEAM_ID: "launcher.steamId",
   STEAM_OWNED_GAMES_CACHE: "launcher.steamOwnedGamesCache",
   STEAM_OWNED_GAMES_CACHE_VERSION: "launcher.steamOwnedGamesCacheVersion",
+  XBOX_GAMES_CACHE: "launcher.xboxGamesCache",
+  XBOX_USERNAME: "launcher.xboxUsername",
+  GAME_PASS_CATALOG_CACHE: "launcher.gamePassCatalogCache",
 
   STORE_CART: "og-launcher:store:cart",
   STORE_OWNED: "og-launcher:store:owned",

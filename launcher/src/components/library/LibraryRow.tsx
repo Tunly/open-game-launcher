@@ -57,10 +57,15 @@ export function LibraryRow({
           <PlatformIcon platform={game.platform} className="h-3.5 w-3.5" />
         )}
       </span>
-      <span className="min-w-0 flex-1">
+      <span className="min-w-0 flex-1 flex flex-col justify-center">
         <span className="block truncate text-[14px] font-black leading-none">
           {game.title}
         </span>
+        {game.id.startsWith("gamepass-") && (
+          <span className="text-[9px] font-bold uppercase text-[#139a82] mt-0.5 tracking-wider">
+            Game Pass
+          </span>
+        )}
       </span>
 
       <PlatformSourceIcon game={game} className="h-3.5 w-3.5 shrink-0" />

@@ -4,7 +4,7 @@ import type { LibrarySortOption } from "../../pages/LibraryPage";
 import { LibraryRow } from "./LibraryRow";
 import { LibraryCustomScrollbar } from "./LibraryCustomScrollbar";
 
-type LibraryAdvancedFilters = Record<string, string | string[]>;
+type LibraryAdvancedFilters = Record<string, string | string[] | boolean>;
 
 export interface LibrarySidebarProps {
   games: Game[];
@@ -50,7 +50,11 @@ export function LibrarySidebar({
   setAddGameError
 }: LibrarySidebarProps) {
   
-  const hasActiveFilters = searchQuery || activePlatformFilter !== "all" || Object.values(advancedFilters).some((value) => Array.isArray(value) ? value.length > 0 : value !== "");
+  const hasActiveFilters = Boolean(searchQuery) || activePlatformFilter !== "all" || Object.values(advancedFilters).some((value) => {
+    if (Array.isArray(value)) return value.length > 0;
+    if (typeof value === "boolean") return value;
+    return value !== "";
+  });
 
   return (
     <aside className="min-h-0 border-b-4 border-black bg-[#efe3cf] flex flex-col justify-between md:border-b-0 md:border-r-4">
