@@ -2,7 +2,7 @@ import { FolderOpen, HardDrive, Power, RefreshCw, ShieldCheck, Link, LogOut, Gam
 import { useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { useLocalStorageState } from "../hooks/useLocalStorageState";
-import { getDefaultInstallDir, getSystemInfo, openSteamLoginWindow, openGogLoginWindow, openEpicLoginWindow, openXboxLoginWindow, fetchXboxOwnedGames, normalizeSteamOwnedGames, openSteamScraperWindow } from "../lib/launcher";
+import { getDefaultInstallDir, getSystemInfo, openSteamLoginWindow, openGogLoginWindow, openEpicLoginWindow, openEaLoginWindow, openXboxLoginWindow, fetchXboxOwnedGames, normalizeSteamOwnedGames, fetchSteamProfileName, authenticateEpicLegendary, gogExchangeCode, gogLogout, gogGetToken, eaGetToken, eaLogout } from "../lib/launcher";
 import { STORAGE_KEYS } from "../lib/storage-keys";
 import type { SystemInfo } from "../lib/types";
 
@@ -63,17 +63,16 @@ export function SettingsPage() {
     "launcher.steamId",
     "",
   );
-  const [steamApiKey, setSteamApiKey] = useLocalStorageState(
-    "launcher.steamApiKey",
+  const [steamUsername, setSteamUsername] = useLocalStorageState(
+    "launcher.steamUsername",
     "",
   );
+
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
-  const [steamTestResult, setSteamTestResult] = useState<{ success: boolean; message: string } | null>(null);
-  const [isSteamTesting, setIsSteamTesting] = useState(false);
 
   const [gogConnected, setGogConnected] = useState(false);
+  const [eaConnected, setEaConnected] = useState(false);
   const [epicConnected, setEpicConnected] = useState(false);
-  const [epicCodeInput, setEpicCodeInput] = useState("");
   const [epicDisplayName, setEpicDisplayName] = useState("");
 
   const [xboxConnected, setXboxConnected] = useState(false);
@@ -81,17 +80,84 @@ export function SettingsPage() {
   const [xboxGamertag, setXboxGamertag] = useState("");
 
   useEffect(() => {
-    const gogTokenStr = localStorage.getItem(STORAGE_KEYS.GOG_TOKEN);
-    if (gogTokenStr) {
-      try {
-        const token = JSON.parse(gogTokenStr);
-        if (token && token.accessToken) {
-          setGogConnected(true);
+    let isMounted = true;
+
+    // Check GOG connection via backend token first, then fallback to localStorage
+    gogGetToken().then((backendToken) => {
+      if (!isMounted) return;
+      if (backendToken && backendToken.accessToken) {
+        setGogConnected(true);
+        // Sync to localStorage for backward compatibility
+        localStorage.setItem(STORAGE_KEYS.GOG_TOKEN, JSON.stringify({
+          accessToken: backendToken.accessToken,
+          refreshToken: backendToken.refreshToken,
+          expiresAt: backendToken.expiresAt,
+          userId: backendToken.userId,
+        }));
+      } else {
+        // Check localStorage as fallback
+        const gogTokenStr = localStorage.getItem(STORAGE_KEYS.GOG_TOKEN);
+        if (gogTokenStr) {
+          try {
+            const token = JSON.parse(gogTokenStr);
+            if (token && token.accessToken) {
+              setGogConnected(true);
+            }
+          } catch {
+            localStorage.removeItem(STORAGE_KEYS.GOG_TOKEN);
+          }
         }
-      } catch {
-        localStorage.removeItem("launcher.gogToken");
       }
-    }
+    }).catch(() => {
+      if (!isMounted) return;
+      const gogTokenStr = localStorage.getItem(STORAGE_KEYS.GOG_TOKEN);
+      if (gogTokenStr) {
+        try {
+          const token = JSON.parse(gogTokenStr);
+          if (token && token.accessToken) {
+            setGogConnected(true);
+          }
+        } catch {
+          localStorage.removeItem(STORAGE_KEYS.GOG_TOKEN);
+        }
+      }
+    });
+
+    eaGetToken().then((backendEaToken) => {
+      if (!isMounted) return;
+      if (backendEaToken?.accessToken) {
+        setEaConnected(true);
+        localStorage.setItem(STORAGE_KEYS.EA_TOKEN, JSON.stringify({
+          accessToken: backendEaToken.accessToken,
+          capturedAt: backendEaToken.capturedAt,
+        }));
+      } else {
+        const eaTokenStr = localStorage.getItem(STORAGE_KEYS.EA_TOKEN);
+        if (eaTokenStr) {
+          try {
+            const token = JSON.parse(eaTokenStr);
+            if (token?.accessToken) {
+              setEaConnected(true);
+            }
+          } catch {
+            localStorage.removeItem(STORAGE_KEYS.EA_TOKEN);
+          }
+        }
+      }
+    }).catch(() => {
+      if (!isMounted) return;
+      const eaTokenStr = localStorage.getItem(STORAGE_KEYS.EA_TOKEN);
+      if (eaTokenStr) {
+        try {
+          const token = JSON.parse(eaTokenStr);
+          if (token?.accessToken) {
+            setEaConnected(true);
+          }
+        } catch {
+          localStorage.removeItem(STORAGE_KEYS.EA_TOKEN);
+        }
+      }
+    });
 
     const epicTokenStr = localStorage.getItem(STORAGE_KEYS.EPIC_TOKEN);
     if (epicTokenStr) {
@@ -120,37 +186,33 @@ export function SettingsPage() {
         // ignore
       }
     }
-  }, []);
+
+    if (steamId && !steamUsername) {
+      void fetchSteamProfileName(steamId).then(name => {
+        if (!isMounted) return;
+        setSteamUsername(name);
+      }).catch(err => {
+        console.warn("Failed to fetch steam username on mount:", err);
+        if (isMounted) setSteamUsername("Steam User");
+      });
+    }
+
+    return () => {
+      isMounted = false;
+    };
+  }, [steamId, steamUsername, setSteamUsername]);
 
   async function handleGogCodeExchange(code: string) {
     setTestResult({ success: true, message: "GOG login code received. Exchanging..." });
     try {
-      const params = new URLSearchParams();
-      params.append("client_id", "46899977096215655");
-      params.append("client_secret", "9d85c43b1482497dbbce61f6e4aa173a433796eeae2ca8c5f6129f2dc4de46d9");
-      params.append("grant_type", "authorization_code");
-      params.append("code", code);
-      params.append("redirect_uri", "http://127.0.0.1:18235/");
-
-      const response = await fetch("https://auth.gog.com/token", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-        },
-        body: params.toString(),
-      });
-
-      if (!response.ok) {
-        throw new Error(`Token exchange failed with status: ${response.status}`);
-      }
-
-      const data = await response.json();
-      if (data.access_token) {
+      const token = await gogExchangeCode(code);
+      if (token && token.accessToken) {
+        // Store in localStorage for backward compatibility with LibraryPage
         localStorage.setItem(STORAGE_KEYS.GOG_TOKEN, JSON.stringify({
-          accessToken: data.access_token,
-          refreshToken: data.refresh_token,
-          expiresAt: Date.now() + (data.expires_in * 1000),
-          userId: data.user_id,
+          accessToken: token.accessToken,
+          refreshToken: token.refreshToken,
+          expiresAt: token.expiresAt,
+          userId: token.userId,
         }));
         setGogConnected(true);
         setTestResult({
@@ -173,44 +235,20 @@ export function SettingsPage() {
       setTestResult({ success: false, message: "Enter a valid Epic authorization code." });
       return;
     }
-    setTestResult({ success: true, message: "Exchanging Epic authorization code..." });
+    setTestResult({ success: true, message: "Authenticating with Legendary..." });
     try {
-      const params = new URLSearchParams();
-      params.append("grant_type", "authorization_code");
-      params.append("code", authCode.trim());
-
-      const response = await fetch("https://account-public-service-prod.ol.epicgames.com/account/api/oauth/token", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded",
-          "Authorization": "Basic MzRhMDJjZjhmNDQxNGUyOWIxNTk4NTI4ZmIzNDYyNDU6YjA3MGVlNTM1YjliNGNjZmJhMmM1NTZiNjk2Nzc1ZGI=",
-        },
-        body: params.toString(),
+      const response = await authenticateEpicLegendary(authCode.trim());
+      
+      localStorage.setItem(STORAGE_KEYS.EPIC_TOKEN, JSON.stringify({
+        accessToken: "legendary-auth-token",
+        displayName: "Epic User",
+      }));
+      setEpicConnected(true);
+      setEpicDisplayName("Epic User");
+      setTestResult({
+        success: true,
+        message: response,
       });
-
-      if (!response.ok) {
-        throw new Error(`Epic exchange failed with status: ${response.status}`);
-      }
-
-      const data = await response.json();
-      if (data.access_token) {
-        localStorage.setItem(STORAGE_KEYS.EPIC_TOKEN, JSON.stringify({
-          accessToken: data.access_token,
-          refreshToken: data.refresh_token,
-          expiresAt: Date.now() + (data.expires_in * 1000),
-          accountId: data.account_id,
-          displayName: data.displayName,
-        }));
-        setEpicConnected(true);
-        setEpicDisplayName(data.displayName || "");
-        setEpicCodeInput("");
-        setTestResult({
-          success: true,
-          message: `Successfully linked Epic Games. Signed in as ${data.displayName}.`,
-        });
-      } else {
-        throw new Error("No access_token received from Epic response.");
-      }
     } catch (err) {
       setTestResult({
         success: false,
@@ -226,10 +264,17 @@ export function SettingsPage() {
     let unlistenErrorPromise: Promise<() => void> | null = null;
 
     try {
-      unlistenPromise = listen<string>("steam_login_success", (event) => {
+      unlistenPromise = listen<string>("steam_login_success", async (event) => {
         if (!isMounted) return;
         const steamIdVal = event.payload;
         setSteamId(steamIdVal);
+        try {
+          const name = await fetchSteamProfileName(steamIdVal);
+          if (isMounted) setSteamUsername(name);
+        } catch (err) {
+          console.warn("Failed to fetch steam username:", err);
+          if (isMounted) setSteamUsername("Steam User");
+        }
         setTestResult({
           success: true,
           message: "Login successful. Your game list is now being fetched...",
@@ -243,12 +288,6 @@ export function SettingsPage() {
         localStorage.setItem(STORAGE_KEYS.STEAM_OWNED_GAMES_CACHE, JSON.stringify(ownedGames));
         localStorage.setItem(STORAGE_KEYS.STEAM_OWNED_GAMES_CACHE_VERSION, "2");
 
-        const successMsg = `OK: Found ${ownedGames.length} owned games`;
-        setSteamTestResult({
-          success: true,
-          message: successMsg,
-        });
-        setIsSteamTesting(false);
         setTestResult({
           success: true,
           message: `Successfully signed in through Steam. ${ownedGames.length} games were synced.`,
@@ -259,11 +298,6 @@ export function SettingsPage() {
         if (!isMounted) return;
         console.warn("[Settings] Scraper failed:", event.payload);
 
-        const errorMsg = `Error: ${event.payload}`;
-        setSteamTestResult({
-          success: false,
-          message: errorMsg,
-        });
         setTestResult({
           success: false,
           message: `Steam sync failed: ${event.payload}`,
@@ -279,24 +313,49 @@ export function SettingsPage() {
       if (unlistenScrapedPromise) void unlistenScrapedPromise.then((un) => un());
       if (unlistenErrorPromise) void unlistenErrorPromise.then((un) => un());
     };
-  }, [setSteamId]);
+  }, [setSteamId, setSteamUsername]);
 
   useEffect(() => {
     let unlistenPromise: Promise<() => void> | null = null;
+    let unlistenEpicPromise: Promise<() => void> | null = null;
 
     try {
       unlistenPromise = listen<string>("gog_login_code", async (event) => {
         const code = event.payload;
         await handleGogCodeExchange(code);
       });
+      unlistenEpicPromise = listen<string>("epic_login_code", async (event) => {
+        const code = event.payload;
+        await handleEpicCodeExchange(code);
+      });
     } catch (err) {
-      console.warn("Failed to setup gog_login_code listener:", err);
+      console.warn("Failed to setup gog or epic login listeners:", err);
+    }
+
+    let unlistenEaPromise: Promise<() => void> | null = null;
+    try {
+      unlistenEaPromise = listen("ea_login_success", async () => {
+        const token = await eaGetToken();
+        if (token?.accessToken) {
+          localStorage.setItem(STORAGE_KEYS.EA_TOKEN, JSON.stringify({
+            accessToken: token.accessToken,
+            capturedAt: token.capturedAt,
+          }));
+          setEaConnected(true);
+          setTestResult({
+            success: true,
+            message: "Successfully linked EA App. Your EA library is now syncing.",
+          });
+        }
+      });
+    } catch (err) {
+      console.warn("Failed to setup EA login listener:", err);
     }
 
     return () => {
-      if (unlistenPromise) {
-        void unlistenPromise.then((unlisten) => unlisten());
-      }
+      if (unlistenPromise) void unlistenPromise.then((unlisten) => unlisten());
+      if (unlistenEpicPromise) void unlistenEpicPromise.then((unlisten) => unlisten());
+      if (unlistenEaPromise) void unlistenEaPromise.then((unlisten) => unlisten());
     };
   }, []);
 
@@ -485,50 +544,16 @@ export function SettingsPage() {
                   <div>
                     {steamId ? (
                       <div className="border border-black bg-[#f5eedf] p-3 space-y-2">
-                        <span className="neo-copy text-[8px] font-bold uppercase text-[#55504a] block">Connected SteamID64</span>
-                        <span className="font-black text-xs text-[#087d6d] block truncate" title={steamId}>{steamId}</span>
-
-                        <div className="flex gap-2">
-                          <button
-                            className="neo-copy flex-1 flex h-8 items-center justify-center gap-1 border-2 border-black bg-[#087d6d] px-2 text-[9px] font-bold uppercase text-white shadow-[1px_1px_0_#171411] hover:bg-[#065e52] transition disabled:opacity-50"
-                            type="button"
-                            disabled={isSteamTesting}
-                            onClick={() => {
-                              setIsSteamTesting(true);
-                              setSteamTestResult(null);
-                              setSteamTestResult({ success: true, message: "Silent scraper started..." });
-                              void openSteamScraperWindow(steamId).catch((err) => {
-                                setSteamTestResult({ success: false, message: `Error: ${getErrorMessage(err)}` });
-                                setIsSteamTesting(false);
-                              });
-                            }}
-                          >
-                            {isSteamTesting ? "Testing..." : "Test"}
-                          </button>
-                          <button
-                            className="neo-copy flex-1 flex h-8 items-center justify-center gap-1 border-2 border-black bg-[#c20b2f] px-2 text-[9px] font-bold uppercase text-white shadow-[1px_1px_0_#171411] hover:bg-[#a10825] transition"
-                            type="button"
-                            onClick={() => { setSteamId(""); setTestResult(null); setSteamTestResult(null); }}
-                          >
-                            <LogOut className="h-3 w-3" />
-                            Disconnect
-                          </button>
-                        </div>
-                        {steamTestResult && (
-                          <p className={`neo-copy text-[9px] font-bold leading-tight break-all ${steamTestResult.success ? "text-[#087d6d]" : "text-[#c20b2f]"}`}>
-                            {steamTestResult.message}
-                          </p>
-                        )}
-                        <div className="pt-2 mt-2 border-t border-[#d6cbb8]">
-                          <span className="neo-copy text-[8px] font-bold uppercase text-[#55504a] block mb-1">Steam Web API Key (Optional, for Achievements)</span>
-                          <input
-                            type="password"
-                            placeholder="Enter API Key..."
-                            value={steamApiKey}
-                            onChange={(e) => setSteamApiKey(e.target.value)}
-                            className="neo-copy w-full border border-black bg-[#efe6d4] px-2 py-1 text-[10px] font-bold outline-none placeholder:text-[#8c8273]"
-                          />
-                        </div>
+                        <span className="neo-copy text-[8px] font-bold uppercase text-[#55504a] block">Signed in as</span>
+                        <span className="font-black text-xs text-[#087d6d] block truncate">{steamUsername || "Steam User"}</span>
+                        <button
+                          className="neo-copy w-full flex h-8 items-center justify-center gap-2 border-2 border-black bg-[#c20b2f] px-3 text-[10px] font-bold uppercase text-white shadow-[1px_1px_0_#171411] hover:bg-[#a10825] transition"
+                          type="button"
+                          onClick={() => { setSteamId(""); setSteamUsername(""); setTestResult(null); }}
+                        >
+                          <LogOut className="h-3 w-3" />
+                          Disconnect
+                        </button>
                       </div>
                     ) : (
                       <button
@@ -566,6 +591,7 @@ export function SettingsPage() {
                           className="neo-copy w-full flex h-8 items-center justify-center gap-2 border-2 border-black bg-[#c20b2f] px-3 text-[10px] font-bold uppercase text-white shadow-[1px_1px_0_#171411] hover:bg-[#a10825] transition"
                           type="button"
                           onClick={() => {
+                            gogLogout().catch(() => {});
                             localStorage.removeItem(STORAGE_KEYS.GOG_TOKEN);
                             setGogConnected(false);
                             setTestResult(null);
@@ -592,6 +618,52 @@ export function SettingsPage() {
                   </div>
                 </div>
 
+                {/* EA APP CARD */}
+                <div className="border-2 border-black bg-[#efe6d4] p-4 flex flex-col justify-between shadow-[2px_2px_0_#171411]">
+                  <div>
+                    <h3 className="text-xl font-black uppercase text-[#171411] mb-1">
+                      EA App
+                    </h3>
+                    <p className="neo-copy text-[9px] font-bold uppercase text-[#55504a] leading-relaxed mb-4">
+                      Sync your EA library via secure browser login (same flow as Playnite). Installed EA games are still detected locally.
+                    </p>
+                  </div>
+                  <div>
+                    {eaConnected ? (
+                      <div className="border border-black bg-[#f5eedf] p-3 space-y-2">
+                        <span className="neo-copy text-[8px] font-bold uppercase text-[#55504a] block">Status</span>
+                        <span className="font-black text-xs text-[#087d6d] block truncate">Successfully Connected</span>
+                        <button
+                          className="neo-copy w-full flex h-8 items-center justify-center gap-2 border-2 border-black bg-[#c20b2f] px-3 text-[10px] font-bold uppercase text-white shadow-[1px_1px_0_#171411] hover:bg-[#a10825] transition"
+                          type="button"
+                          onClick={() => {
+                            void eaLogout().catch(() => {});
+                            localStorage.removeItem(STORAGE_KEYS.EA_TOKEN);
+                            setEaConnected(false);
+                            setTestResult(null);
+                          }}
+                        >
+                          <LogOut className="h-3 w-3" />
+                          Disconnect
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        className="neo-copy w-full flex h-10 items-center justify-center gap-2 border-2 border-black bg-[#f56c2d] px-4 text-xs font-black uppercase text-white shadow-[2px_2px_0_#171411] hover:bg-[#d45a22] transition"
+                        type="button"
+                        onClick={() => {
+                          void openEaLoginWindow().catch((err) => {
+                            setTestResult({ success: false, message: `Failed to open: ${getErrorMessage(err)}` });
+                          });
+                        }}
+                      >
+                        <Link className="h-3.5 w-3.5" />
+                        Connect EA
+                      </button>
+                    )}
+                  </div>
+                </div>
+
                 {/* EPIC GAMES CARD */}
                 <div className="border-2 border-black bg-[#efe6d4] p-4 flex flex-col justify-between shadow-[2px_2px_0_#171411]">
                   <div>
@@ -599,7 +671,7 @@ export function SettingsPage() {
                       Epic Games
                     </h3>
                     <p className="neo-copy text-[9px] font-bold uppercase text-[#55504a] leading-relaxed mb-4">
-                      Import your Epic library. Sign in through the browser and paste the received code.
+                      Import your Epic library. Sign in through the browser to automatically connect.
                     </p>
                   </div>
                   <div>
@@ -622,37 +694,18 @@ export function SettingsPage() {
                         </button>
                       </div>
                     ) : (
-                      <div className="space-y-2">
-                        <button
-                          className="neo-copy w-full flex h-10 items-center justify-center gap-2 border-2 border-black bg-[#171411] px-4 text-xs font-black uppercase text-white shadow-[2px_2px_0_#171411] hover:bg-[#333] transition"
-                          type="button"
-                          onClick={() => {
-                            void openEpicLoginWindow().catch((err) => {
-                              setTestResult({ success: false, message: `Failed to open: ${getErrorMessage(err)}` });
-                            });
-                          }}
-                        >
-                          <Link className="h-3.5 w-3.5" />
-                          1. Browser Login
-                        </button>
-
-                        <div className="flex gap-1.5 mt-2">
-                          <input
-                            type="text"
-                            placeholder="Epic Auth-Code..."
-                            value={epicCodeInput}
-                            onChange={(e) => setEpicCodeInput(e.target.value)}
-                            className="neo-copy flex-1 border-2 border-black bg-[#f5eedf] px-2 text-[10px] font-bold outline-none placeholder:text-[#8c8273]"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => void handleEpicCodeExchange(epicCodeInput)}
-                            className="neo-copy border-2 border-black bg-[#087d6d] px-3 py-1.5 text-[9px] font-black uppercase text-white shadow-[1.5px_1.5px_0_#171411] hover:bg-[#066154]"
-                          >
-                            Link
-                          </button>
-                        </div>
-                      </div>
+                      <button
+                        className="neo-copy w-full flex h-10 items-center justify-center gap-2 border-2 border-black bg-[#171411] px-4 text-xs font-black uppercase text-white shadow-[2px_2px_0_#171411] hover:bg-[#333] transition"
+                        type="button"
+                        onClick={() => {
+                          void openEpicLoginWindow().catch((err) => {
+                            setTestResult({ success: false, message: `Failed to open: ${getErrorMessage(err)}` });
+                          });
+                        }}
+                      >
+                        <Link className="h-3.5 w-3.5" />
+                        Browser Login
+                      </button>
                     )}
                   </div>
                 </div>
@@ -746,7 +799,7 @@ export function SettingsPage() {
                   ["Epic Games", "Local manifest scan (Windows/Linux)"],
                   ["GOG Galaxy", "Local manifest scan (Windows/Linux)"],
                   ["Ubisoft Connect", "Automatic path scan & launcher launch"],
-                  ["EA App", "Local game library scan"],
+                  ["EA App", "Local scan + cloud library when connected"],
                   ["Battle.net", "Automatic scan of installed titles"],
                   ["MS Store / Xbox", "Local Windows/MS app library scan"],
                 ].map(([name, desc]) => (

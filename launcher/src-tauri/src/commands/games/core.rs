@@ -273,23 +273,83 @@ pub async fn launch_game(
 
     if game_id.starts_with("gog-owned-") {
         let gog_id = game_id.strip_prefix("gog-owned-").unwrap_or(&game_id);
-        let uri = format!("goggalaxy://open-store/{gog_id}");
-        open_uri(&uri).map_err(|e| format!("Could not start GOG Galaxy: {e}"))?;
+
+        // Check if the game is already installed locally
+        let installed_games = list_installed_games().await.unwrap_or_default();
+        let local_match = installed_games.iter().find(|g| {
+            g.launcher == "gog"
+                && g.external_id.as_deref() == Some(gog_id)
+        });
+
+        if let Some(installed_game) = local_match {
+            // Game is installed — launch it locally
+            if let Some(ref path) = installed_game.install_path {
+                let install_dir = std::path::PathBuf::from(path);
+                if let Some(exe) = find_gog_executable(&install_dir, gog_id) {
+                    let child = std::process::Command::new(&exe)
+                        .current_dir(&install_dir)
+                        .spawn()
+                        .map_err(|e| format!("Failed to launch GOG game: {e}"))?;
+                    if let Some(update) = record_game_launch_started(&installed_game.id) {
+                        emit_game_activity_update(&app, &update);
+                    }
+                    record_game_play_session_when_finished(app, installed_game.id.clone(), child);
+                    return Ok(LaunchGameResponse {
+                        game_id: game_id.clone(),
+                        success: true,
+                        message: format!("{} is starting.", installed_game.title),
+                    });
+                }
+            }
+            // Fall through to download if launch fails
+        }
+
+        // Not installed — start download via our GOG integration
+        let app_handle = app.clone();
+        let gog_id_owned = gog_id.to_string();
+        tokio::spawn(async move {
+            match crate::commands::gog::gog_start_download(app_handle.clone(), gog_id_owned.clone(), None).await {
+                Ok(_) => {
+                    let _ = app_handle.emit(
+                        "gog_download_started",
+                        serde_json::json!({ "gogId": gog_id_owned }),
+                    );
+                }
+                Err(e) => {
+                    eprintln!("[GOG] Failed to start download: {e}");
+                    // Fallback to Galaxy
+                    let uri = format!("goggalaxy://open-store/{gog_id_owned}");
+                    let _ = crate::commands::system::open_uri(&uri);
+                }
+            }
+        });
+
         return Ok(LaunchGameResponse {
             game_id: game_id.clone(),
             success: true,
-            message: "Installation started in GOG Galaxy.".to_string(),
+            message: "GOG download started. The game will launch when ready.".to_string(),
         });
     }
 
     if game_id.starts_with("epic-owned-") {
         let epic_id = game_id.strip_prefix("epic-owned-").unwrap_or(&game_id);
-        let uri = format!("com.epicgames.launcher://apps/{epic_id}?action=install");
-        open_uri(&uri).map_err(|e| format!("Could not start Epic Games Launcher: {e}"))?;
+        
+        // Spawn legendary launch in background
+        let epic_id_clone = epic_id.to_string();
+        
+        tokio::spawn(async move {
+            if let Ok(legendary_path) = crate::commands::epic::ensure_legendary_binary().await {
+                let _ = std::process::Command::new(legendary_path)
+                    .arg("launch")
+                    .arg(&epic_id_clone)
+                    .spawn();
+            }
+        });
+
         return Ok(LaunchGameResponse {
             game_id: game_id.clone(),
             success: true,
-            message: "Installation started in Epic Games Launcher.".to_string(),
+            message: "Installation / Launch started via Legendary.".to_string(),
         });
     }
 
@@ -1052,7 +1112,12 @@ pub fn launcher_key_from_source(source: &str) -> &'static str {
         "epic"
     } else if normalized.contains("ubisoft") {
         "ubisoft"
-    } else if normalized.contains("ea ") || normalized.contains(" ea") || normalized.contains("origin") {
+    } else if normalized.contains("origin")
+        || normalized.starts_with("ea")
+        || normalized.contains("ea app")
+        || normalized.contains("ea desktop")
+        || normalized == "ea"
+    {
         "ea"
     } else if normalized.contains("battle.net") || normalized.contains("battlenet") {
         "battlenet"
@@ -1139,6 +1204,42 @@ pub fn find_launch_executable(install_path: &Path, title: &str) -> Option<PathBu
         .into_iter()
         .filter(|path| !is_ignored_executable(path))
         .max_by_key(|path| executable_score(path, &title_score))
+}
+
+fn find_gog_executable(install_path: &Path, gog_id: &str) -> Option<PathBuf> {
+    // Try to read the goggame-*.info manifest first
+    let info_pattern = format!("goggame-{}.info", gog_id);
+    let info_path = install_path.join(&info_pattern);
+
+    if info_path.exists() {
+        if let Ok(contents) = fs::read_to_string(&info_path) {
+            if let Ok(manifest) = serde_json::from_str::<serde_json::Value>(&contents) {
+                // Look for play tasks
+                if let Some(play_tasks) = manifest.get("playTasks").and_then(|v| v.as_array()) {
+                    for task in play_tasks {
+                        if task.get("isPrimary").and_then(|v| v.as_bool()) == Some(true) {
+                            if let Some(path) = task.get("path").and_then(|v| v.as_str()) {
+                                let exe_path = install_path.join(path);
+                                if exe_path.exists() {
+                                    return Some(exe_path);
+                                }
+                            }
+                            // Some manifests use "workingDir" + exe name
+                            if let Some(exe) = task.get("exec").and_then(|v| v.as_str()) {
+                                let exe_path = install_path.join(exe);
+                                if exe_path.exists() {
+                                    return Some(exe_path);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Fallback: search for executables matching the game name
+    find_launch_executable(install_path, &gog_id.replace('-', " "))
 }
 
 fn collect_executable_candidates(path: &Path, depth: usize, candidates: &mut Vec<PathBuf>) {
@@ -1323,6 +1424,37 @@ pub fn open_game_launcher_data_dir() -> Option<PathBuf> {
     dirs::data_local_dir()
         .or_else(dirs::data_dir)
         .map(|data_dir| data_dir.join("open-game-launcher"))
+}
+
+fn supabase_access_token_path() -> Option<PathBuf> {
+    open_game_launcher_data_dir().map(|data_dir| data_dir.join("supabase-access-token"))
+}
+
+pub fn read_supabase_access_token() -> Option<String> {
+    let path = supabase_access_token_path()?;
+    let token = fs::read_to_string(path).ok()?.trim().to_string();
+    (!token.is_empty()).then_some(token)
+}
+
+#[tauri::command]
+pub fn cache_supabase_access_token(token: String) -> Result<(), String> {
+    let Some(path) = supabase_access_token_path() else {
+        return Err("Could not resolve launcher data directory.".to_string());
+    };
+
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    }
+
+    let trimmed = token.trim();
+    if trimmed.is_empty() {
+        if path.exists() {
+            fs::remove_file(&path).map_err(|error| error.to_string())?;
+        }
+        return Ok(());
+    }
+
+    fs::write(path, trimmed).map_err(|error| error.to_string())
 }
 
 pub fn installed_games_cache_path() -> Option<PathBuf> {

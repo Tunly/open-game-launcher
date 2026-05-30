@@ -51,7 +51,7 @@ export interface GameDetailsProps {
   manualCollections: Record<string, string[]>;
   setManualCollections: React.Dispatch<React.SetStateAction<Record<string, string[]>>>;
   setActivePlatformFilter: (platform: "all" | "windows" | "macos" | "linux") => void;
-  setSelectedCollectionName: (name: string | null) => void;
+  clearCollectionSelection: () => void;
   detailScrollRef: React.RefObject<HTMLElement>;
   isDiscoveringGames: boolean;
   discoveryMessage: string | null;
@@ -81,7 +81,7 @@ export function GameDetails({
   manualCollections,
   setManualCollections,
   setActivePlatformFilter,
-  setSelectedCollectionName,
+  clearCollectionSelection,
   detailScrollRef,
   isDiscoveringGames,
   discoveryMessage,
@@ -586,7 +586,7 @@ export function GameDetails({
                             type="button"
                             onClick={() => {
                               setActivePlatformFilter(enrichedSelectedGame.platform as "windows" | "macos" | "linux");
-                              setSelectedCollectionName(null);
+                              clearCollectionSelection();
                             }}
                             className="font-black capitalize hover:text-[#139a82] hover:underline flex items-center gap-1 cursor-pointer select-none"
                             title={`Filter nach ${enrichedSelectedGame.platform}`}

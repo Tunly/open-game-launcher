@@ -75,7 +75,13 @@ export function UsernamePromptModal({ onComplete }: UsernamePromptModalProps) {
       });
       onComplete(normalizedUsername);
     } catch (error) {
-      setErrorMessage(getErrorMessage(error));
+      const message = getErrorMessage(error).toLowerCase();
+      if (message.includes("username") && message.includes("taken")) {
+        setUsernameStatus("taken");
+        setErrorMessage("Username is already taken.");
+      } else {
+        setErrorMessage(getErrorMessage(error));
+      }
     } finally {
       setIsSubmitting(false);
     }

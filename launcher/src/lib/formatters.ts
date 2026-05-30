@@ -108,21 +108,68 @@ export function formatAchievementProgress(game: Game): string {
   return `${unlocked}/${total}`;
 }
 
+function launcherHintFromId(id: string): Game["launcher"] | null {
+  if (id.startsWith("steam-") || id.startsWith("steam-owned-")) return "steam";
+  if (id.startsWith("epic-")) return "epic";
+  if (id.startsWith("gog-")) return "gog";
+  if (id.startsWith("ubisoft-")) return "ubisoft";
+  if (id.startsWith("xbox-") || id.startsWith("gamepass-")) return "xbox";
+  if (id.startsWith("battlenet-")) return "battlenet";
+  if (id.startsWith("ea-")) return "ea";
+  if (id.startsWith("manual-")) return "manual";
+  return null;
+}
+
+function launcherHintFromLabel(launcher: string): Game["launcher"] | null {
+  const value = launcher.toLowerCase();
+  if (value.includes("steam")) return "steam";
+  if (value.includes("epic")) return "epic";
+  if (value.includes("gog")) return "gog";
+  if (value.includes("ubisoft")) return "ubisoft";
+  if (value.includes("xbox")) return "xbox";
+  if (value.includes("battle.net") || value.includes("battlenet")) return "battlenet";
+  if (value.includes("origin") || value.includes("ea app") || value === "ea" || value.startsWith("ea ")) {
+    return "ea";
+  }
+  if (value.includes("manual")) return "manual";
+  return null;
+}
+
+/** Normalize backend launcher strings (`EA App`, `Steam`, …) to LauncherType keys. */
+export function normalizeLauncherKey(launcher?: string, gameId?: string): Game["launcher"] {
+  const id = (gameId || "").toLowerCase();
+  return launcherHintFromId(id)
+    ?? launcherHintFromLabel(launcher || "")
+    ?? (launcher as Game["launcher"])
+    ?? "unknown";
+}
+
 export function getGameSource(game: Game): string {
   const id = game.id.toLowerCase();
-  const description = game.description.toLowerCase();
-  const launcher = (game.launcher || "").toLowerCase();
+  const launcher = normalizeLauncherKey(game.launcher, game.id);
 
-  if (launcher.includes("steam") || id.startsWith("steam-") || description.includes("steam")) return "steam";
-  if (launcher.includes("epic") || id.startsWith("epic-") || description.includes("epic")) return "epic";
-  if (launcher.includes("gog") || id.startsWith("gog-") || description.includes("gog")) return "gog";
-  if (launcher.includes("ubisoft") || id.startsWith("ubisoft-") || description.includes("ubisoft")) return "ubisoft";
-  if (launcher.includes("xbox") || id.startsWith("xbox-") || description.includes("xbox")) return "xbox";
-  if (launcher.includes("battlenet") || launcher.includes("battle.net") || id.startsWith("battlenet-") || description.includes("battle.net")) return "battlenet";
-  if (launcher.includes("ea") || id.startsWith("ea-") || description.includes("ea app") || description.includes("origin")) return "ea";
-  if (launcher.includes("manual") || id.startsWith("manual-")) return "manual";
+  const fromId = launcherHintFromId(id);
+  if (fromId) return fromId;
+
+  if (launcher && launcher !== "unknown") return launcher;
+
+  const description = game.description.toLowerCase();
+  if (description.includes("ea app") || description.includes("origin")) return "ea";
+  if (description.includes("epic")) return "epic";
+  if (description.includes("gog")) return "gog";
+  if (description.includes("ubisoft")) return "ubisoft";
+  if (description.includes("xbox")) return "xbox";
+  if (description.includes("battle.net")) return "battlenet";
+  if (description.includes("steam")) return "steam";
 
   return game.platform;
+}
+
+/** Match advanced library launcher filter (e.g. "ea" matches "EA App" installs). */
+export function matchesLauncherFilter(game: Game, filterLauncher: string): boolean {
+  const filterToken = filterLauncher.toLowerCase().replace(/[^a-z0-9]/g, "");
+  const sourceToken = getGameSource(game).replace(/[^a-z0-9]/g, "");
+  return sourceToken === filterToken;
 }
 
 export function getFallbackBannerClass(game: Game): string {

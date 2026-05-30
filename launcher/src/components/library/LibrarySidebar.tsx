@@ -1,10 +1,9 @@
 import { Search, SlidersHorizontal, Grid2X2 } from "lucide-react";
 import type { Game } from "../../lib/types";
+import type { LibraryAdvancedFilters } from "../../lib/library-filters";
 import type { LibrarySortOption } from "../../pages/LibraryPage";
 import { LibraryRow } from "./LibraryRow";
 import { LibraryCustomScrollbar } from "./LibraryCustomScrollbar";
-
-type LibraryAdvancedFilters = Record<string, string | string[] | boolean>;
 
 export interface LibrarySidebarProps {
   games: Game[];
@@ -17,6 +16,7 @@ export interface LibrarySidebarProps {
   setIsFilterPopupOpen: (open: boolean) => void;
   activePlatformFilter: "all" | "windows" | "macos" | "linux";
   advancedFilters: LibraryAdvancedFilters;
+  hasActiveFilters?: boolean;
   groupOption: string;
   groupedGames: Record<string, Game[]>;
   selectedGame: Game | null;
@@ -39,6 +39,7 @@ export function LibrarySidebar({
   setIsFilterPopupOpen,
   activePlatformFilter,
   advancedFilters,
+  hasActiveFilters: hasActiveFiltersProp,
   groupOption,
   groupedGames,
   selectedGame,
@@ -50,11 +51,15 @@ export function LibrarySidebar({
   setAddGameError
 }: LibrarySidebarProps) {
   
-  const hasActiveFilters = Boolean(searchQuery) || activePlatformFilter !== "all" || Object.values(advancedFilters).some((value) => {
-    if (Array.isArray(value)) return value.length > 0;
-    if (typeof value === "boolean") return value;
-    return value !== "";
-  });
+  const hasActiveFilters = hasActiveFiltersProp ?? (
+    Boolean(searchQuery)
+    || activePlatformFilter !== "all"
+    || Object.values(advancedFilters).some((value) => {
+      if (Array.isArray(value)) return value.length > 0;
+      if (typeof value === "boolean") return value;
+      return value !== "";
+    })
+  );
 
   return (
     <aside className="min-h-0 border-b-4 border-black bg-[#efe3cf] flex flex-col justify-between md:border-b-0 md:border-r-4">

@@ -1,7 +1,7 @@
 use crate::commands::system::OwnedGame;
 use reqwest::header::{HeaderMap, HeaderValue, ACCEPT_LANGUAGE, AUTHORIZATION};
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, HashSet};
+use std::collections::HashSet;
 use std::io::{Read, Write};
 use std::net::TcpListener;
 use std::process::Command;

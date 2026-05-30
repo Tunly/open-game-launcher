@@ -6,3 +6,9 @@ dist-ssr
 src-tauri/target
 src-tauri/gen
 *.log
+
+# Ignore temporary directories and compiled binaries
+scratch/
+.codex-logs/
+*.exe
+*.obj

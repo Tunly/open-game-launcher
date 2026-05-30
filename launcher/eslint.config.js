@@ -5,7 +5,7 @@ import reactRefresh from "eslint-plugin-react-refresh";
 import tseslint from "typescript-eslint";
 
 export default tseslint.config(
-  { ignores: ["dist", "src-tauri/target", "src/lib/supabase/database.types.ts"] },
+  { ignores: ["dist", "scratch", "src-tauri/target", "src/lib/supabase/database.types.ts"] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {

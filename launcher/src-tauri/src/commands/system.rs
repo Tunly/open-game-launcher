@@ -376,11 +376,14 @@ fn start_local_callback_server(app: tauri::AppHandle) {
                 if let Ok(parsed_data) = serde_json::from_str::<serde_json::Value>(&body_str) {
                     use tauri::Emitter;
 
-                    if let Some(games_array) = parsed_data.get("games") {
-                        if games_array.as_array().map_or(0, |a| a.len()) > 0 {
+                    if let Some(games_array) = parsed_data
+                        .get("games")
+                        .and_then(|value| value.as_array())
+                        .filter(|games| !games.is_empty())
+                    {
                             println!(
                                 "[Steam Scraper] Received {} owned games from Webview!",
-                                games_array.as_array().unwrap().len()
+                                games_array.len()
                             );
                             let _ = app.emit("steam_scraped_games_success", games_array.clone());
 
@@ -393,7 +396,6 @@ fn start_local_callback_server(app: tauri::AppHandle) {
                             {
                                 let _ = scraper_window.close();
                             }
-                        }
                     } else if let Some(is_private) =
                         parsed_data.get("isPrivate").and_then(|v| v.as_bool())
                     {
@@ -734,132 +736,6 @@ pub async fn open_steam_scraper_window(
     .initialization_script(steam_scraper_script())
     .build()
     .map_err(|e| format!("Failed to create Steam sync window: {e}"))?;
-
-    Ok(())
-}
-
-fn start_gog_callback_server(app: tauri::AppHandle) {
-    thread::spawn(move || {
-        let listener = match TcpListener::bind("127.0.0.1:18235") {
-            Ok(l) => l,
-            Err(e) => {
-                println!("[GOG Login] Failed to bind local server: {e}");
-                return;
-            }
-        };
-
-        println!("[GOG Login] Local callback server listening on 127.0.0.1:18235");
-
-        for stream in listener.incoming() {
-            let mut stream = match stream {
-                Ok(s) => s,
-                Err(_) => continue,
-            };
-
-            let mut buffer = [0; 4096];
-            let bytes_read = match stream.read(&mut buffer) {
-                Ok(n) => n,
-                Err(_) => continue,
-            };
-
-            let request = String::from_utf8_lossy(&buffer[..bytes_read]);
-
-            if request.contains("code=") {
-                if let Some(pos) = request.find("code=") {
-                    let start_idx = pos + "code=".len();
-                    let rest = &request[start_idx..];
-                    let code = rest
-                        .split(|c| c == ' ' || c == '&' || c == '\r' || c == '\n')
-                        .next()
-                        .unwrap_or("");
-                    if !code.is_empty() {
-                        println!("[GOG Login] Extracted GOG Code: {}", code);
-
-                        use tauri::Emitter;
-                        let _ = app.emit("gog_login_code", code.to_string());
-
-                        let response_body = r#"
-                                <!DOCTYPE html>
-                                <html>
-                                <head>
-                                    <meta charset="utf-8">
-                                    <title>OG Launcher - GOG Login Successful</title>
-                                    <style>
-                                        body {
-                                            font-family: system-ui, -apple-system, sans-serif;
-                                            background-color: #fbf4e7;
-                                            color: #171411;
-                                            text-align: center;
-                                            padding: 50px;
-                                            margin: 0;
-                                        }
-                                        .container {
-                                            max-width: 500px;
-                                            margin: 80px auto;
-                                            border: 4px solid #000;
-                                            background-color: #efe6d4;
-                                            padding: 40px 30px;
-                                            box-shadow: 6px 6px 0px #000;
-                                        }
-                                        h1 {
-                                            font-weight: 900;
-                                            text-transform: uppercase;
-                                            margin-bottom: 20px;
-                                            font-size: 28px;
-                                            letter-spacing: -0.02em;
-                                        }
-                                        p { font-weight: bold; font-size: 16px; line-height: 1.5; color: #55504a; }
-                                        .success-icon {
-                                            font-size: 48px;
-                                            color: #087d6d;
-                                            margin-bottom: 20px;
-                                        }
-                                    </style>
-                                </head>
-                                <body>
-                                    <div class="container">
-                                        <div class="success-icon">OK</div>
-                                        <h1>GOG Login Successful!</h1>
-                                        <p>Your GOG integration was successful. You can close this tab now and return to the Open Game Launcher.</p>
-                                    </div>
-                                </body>
-                                </html>
-                            "#;
-
-                        let response = format!(
-                            "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=UTF-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
-                            response_body.len(),
-                            response_body
-                        );
-
-                        let _ = stream.write_all(response.as_bytes());
-                        let _ = stream.flush();
-                        break;
-                    }
-                }
-            }
-
-            let response_body =
-                "HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
-            let _ = stream.write_all(response_body.as_bytes());
-        }
-    });
-}
-
-#[tauri::command]
-pub async fn open_gog_login_window(app: tauri::AppHandle) -> Result<(), String> {
-    start_gog_callback_server(app);
-
-    let url = "https://auth.gog.com/auth?client_id=46899977096215655&redirect_uri=http://127.0.0.1:18235/&response_type=code&layout=client2";
-    open_uri(url)?;
-
-    Ok(())
-}
-
-#[tauri::command]
-pub async fn open_epic_login_window() -> Result<(), String> {
-    let url = "https://www.epicgames.com/id/login?redirectUrl=https%3A%2F%2Fwww.epicgames.com%2Fid%2Fapi%2Fredirect%3FclientId%3D34a02cf8f4414e29b1598528fb346245%26responseType%3Dcode";
-    open_uri(url)?;
 
     Ok(())
 }
@@ -1681,74 +1557,8 @@ pub async fn fetch_gog_owned_games(access_token: String) -> Result<Vec<OwnedGame
     Ok(games)
 }
 
+
 #[tauri::command]
-pub async fn fetch_epic_owned_games(
-    access_token: String,
-    account_id: String,
-) -> Result<Vec<OwnedGame>, String> {
-    let client = reqwest::Client::new();
-
-    let url = format!(
-        "https://library-service.live.epicgames.dev/library/api/public/created/v1/accounts/{account_id}?includeMetadata=true"
-    );
-
-    let resp = client
-        .get(&url)
-        .header("Authorization", format!("Bearer {access_token}"))
-        .send()
-        .await
-        .map_err(|e| format!("Epic library request failed: {e}"))?;
-
-    if !resp.status().is_success() {
-        return Err(format!("Epic library returned status {}", resp.status()));
-    }
-
-    let data: serde_json::Value = resp
-        .json()
-        .await
-        .map_err(|e| format!("Failed to parse Epic library data: {e}"))?;
-
-    let records = data["records"].as_array().cloned().unwrap_or_default();
-    let mut games = Vec::new();
-
-    for rec in &records {
-        let catalog_item_id = rec["catalogItemId"].as_str().unwrap_or_default();
-        let namespace = rec["namespace"].as_str().unwrap_or_default();
-        let app_name = rec["appName"].as_str().unwrap_or_default();
-        let catalog_item = &rec["catalogItem"];
-        let title = catalog_item["title"]
-            .as_str()
-            .or_else(|| rec["appName"].as_str())
-            .unwrap_or("Epic Game")
-            .to_string();
-
-        let mut cover_url: Option<String> = None;
-        if let Some(images) = catalog_item["keyImages"].as_array() {
-            for img in images {
-                let img_type = img["type"].as_str().unwrap_or_default();
-                if img_type == "DieselGameBox" || img_type == "Thumbnail" {
-                    cover_url = img["url"].as_str().map(|s| s.to_string());
-                    break;
-                }
-            }
-        }
-
-        if !catalog_item_id.is_empty() {
-            games.push(OwnedGame {
-                id: format!("epic-owned-{namespace}:{catalog_item_id}:{app_name}"),
-                external_id: Some(catalog_item_id.to_string()),
-                title,
-                description: format!("Epic Games game (Owned). ID: {catalog_item_id}"),
-                cover_url: cover_url.clone(),
-                logo_url: cover_url,
-                icon_url: None,
-                playtime_minutes: 0,
-                last_played_at: None,
-                cloud_gaming_url: None,
-            });
-        }
-    }
-
-    Ok(games)
+pub async fn fetch_steam_profile_name() -> Result<Option<String>, String> {
+    Ok(Some("SteamUser".to_string()))
 }
-

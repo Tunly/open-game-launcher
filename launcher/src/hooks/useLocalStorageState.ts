@@ -1,4 +1,4 @@
-import { useEffect, useState, type Dispatch, type SetStateAction } from "react";
+import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
 
 export function useLocalStorageState<T>(
   key: string,
@@ -13,7 +13,14 @@ export function useLocalStorageState<T>(
     }
   });
 
+  const skipInitialWrite = useRef(true);
+
   useEffect(() => {
+    if (skipInitialWrite.current) {
+      skipInitialWrite.current = false;
+      return;
+    }
+
     try {
       window.localStorage.setItem(key, JSON.stringify(value));
     } catch {

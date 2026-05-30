@@ -25,10 +25,12 @@ sysinfo = { version = "0.31", features = ["serde"] }
 futures-util = "0.3"
 notify = "6"
 zip = "4.2.0"
+ureq = { version = "3.2.1", features = ["json"] }
 
 
-[target.'cfg(windows)'.dependencies]
+[target.'cfg(target_os = "windows")'.dependencies]
 winreg = "0.55"
+windows-sys = { version = "0.61", features = ["Win32_UI_Shell"] }
 
 [profile.dev]
 incremental = true

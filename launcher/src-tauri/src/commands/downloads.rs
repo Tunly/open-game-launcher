@@ -8,10 +8,10 @@ use tokio::sync::watch;
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct StartDownloadResponse {
-    game_id: String,
-    download_id: String,
-    status: DownloadStartStatus,
-    message: String,
+    pub game_id: String,
+    pub download_id: String,
+    pub status: DownloadStartStatus,
+    pub message: String,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -23,14 +23,14 @@ pub enum DownloadStartStatus {
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct DownloadItemPayload {
-    id: String,
-    game_id: String,
-    title: String,
-    progress: u32,
-    speed: String,
-    status: String,
-    eta: u32,
-    platform: String,
+    pub id: String,
+    pub game_id: String,
+    pub title: String,
+    pub progress: u32,
+    pub speed: String,
+    pub status: String,
+    pub eta: u32,
+    pub platform: String,
 }
 
 struct ActiveDownload {
@@ -54,7 +54,8 @@ fn get_download_manager() -> &'static DownloadMap {
 
 #[tauri::command]
 pub fn get_download_queue() -> Result<Vec<DownloadItemPayload>, String> {
-    let map = get_download_manager().lock().unwrap();
+    let map = get_download_manager().lock()
+        .map_err(|error| format!("Download manager lock poisoned: {error}"))?;
     let queue: Vec<DownloadItemPayload> = map
         .iter()
         .map(|(game_id, dl)| DownloadItemPayload {
@@ -75,7 +76,8 @@ pub fn get_download_queue() -> Result<Vec<DownloadItemPayload>, String> {
 pub fn pause_download(game_id: String) -> Result<(), String> {
     let game_id = normalize_game_id(game_id)?;
     let map = get_download_manager();
-    let mut guard = map.lock().unwrap();
+    let mut guard = map.lock()
+        .map_err(|error| format!("Download manager lock poisoned: {error}"))?;
     if let Some(dl) = guard.get_mut(&game_id) {
         if dl.status == "downloading" {
             dl.paused = true;
@@ -98,7 +100,8 @@ pub fn pause_download(game_id: String) -> Result<(), String> {
 pub fn cancel_download(game_id: String) -> Result<(), String> {
     let game_id = normalize_game_id(game_id)?;
     let map = get_download_manager();
-    let mut guard = map.lock().unwrap();
+    let mut guard = map.lock()
+        .map_err(|error| format!("Download manager lock poisoned: {error}"))?;
     if let Some(dl) = guard.get_mut(&game_id) {
         dl.cancelled = true;
         dl.status = "cancelled".to_string();
@@ -118,6 +121,17 @@ pub async fn start_download(
     let download_id = format!("download-{game_id}");
 
     println!("[open-game-launcher] start_download requested for {game_id}");
+
+    // Route GOG downloads through our native GOG integration
+    if game_id.starts_with("gog-owned-") {
+        let gog_id = game_id.strip_prefix("gog-owned-").unwrap_or(&game_id);
+        return crate::commands::gog::gog_start_download(app, gog_id.to_string(), None).await;
+    }
+    if game_id.starts_with("gog-") {
+        // Already installed GOG game — shouldn't be downloading, but handle gracefully
+        let gog_id = game_id.strip_prefix("gog-").unwrap_or(&game_id);
+        return crate::commands::gog::gog_start_download(app, gog_id.to_string(), None).await;
+    }
 
     // Get the title of the game
     let mut title = "Unknown Game".to_string();
@@ -150,7 +164,8 @@ pub async fn start_download(
     }
 
     let map = get_download_manager();
-    let mut guard = map.lock().unwrap();
+    let mut guard = map.lock()
+        .map_err(|error| format!("Download manager lock poisoned: {error}"))?;
 
     if guard.contains_key(&game_id) {
         return Ok(StartDownloadResponse {
@@ -432,8 +447,9 @@ pub async fn start_download(
 
         // Remove from manager after 2 seconds
         tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
-        let mut guard = get_download_manager().lock().unwrap();
-        guard.remove(&game_id_clone);
+        if let Ok(mut guard) = get_download_manager().lock() {
+            guard.remove(&game_id_clone);
+        }
     });
 
     Ok(StartDownloadResponse {
@@ -445,8 +461,9 @@ pub async fn start_download(
 }
 
 pub(crate) fn update_download_status(game_id: &str, status: &str, speed: &str, progress: u32, eta: u32) {
-    let map = get_download_manager();
-    let mut guard = map.lock().unwrap();
+    let Ok(mut guard) = get_download_manager().lock() else {
+        return;
+    };
     if let Some(dl) = guard.get_mut(game_id) {
         dl.status = status.to_string();
         dl.speed = speed.to_string();
@@ -463,13 +480,11 @@ pub(crate) fn emit_download_progress(
     status: &str,
     eta: u32,
 ) {
-    let title = {
-        let guard = get_download_manager().lock().unwrap();
-        guard
-            .get(game_id)
-            .map(|dl| dl.title.clone())
-            .unwrap_or_else(|| "".to_string())
-    };
+    let title = get_download_manager()
+        .lock()
+        .ok()
+        .and_then(|guard| guard.get(game_id).map(|dl| dl.title.clone()))
+        .unwrap_or_default();
     let payload = DownloadItemPayload {
         id: format!("download-{game_id}"),
         game_id: game_id.to_string(),

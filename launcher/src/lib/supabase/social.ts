@@ -81,8 +81,24 @@ async function getCurrentUserId() {
   return data.user.id;
 }
 
+function buildDmPairKey(currentUserId: string, friendId: string) {
+  return [currentUserId, friendId].sort().join(":");
+}
+
 async function findExistingDirectRoom(currentUserId: string, friendId: string) {
   const client = getSupabaseClient();
+  const dmPairKey = buildDmPairKey(currentUserId, friendId);
+  const pairResult = await client
+    .from("chat_rooms")
+    .select("*")
+    .eq("type", "dm")
+    .filter("dm_pair_key", "eq", dmPairKey)
+    .maybeSingle();
+  handleError(pairResult.error);
+  if (pairResult.data) {
+    return toRoom(pairResult.data as UnknownRecord);
+  }
+
   const ownMemberships = await client
     .from("chat_room_members")
     .select("room_id")
@@ -137,17 +153,34 @@ export async function ensureDirectRoom(friendId: string) {
     throw new Error("Cannot create a chat with yourself.");
   }
 
+  const dmPairKey = buildDmPairKey(currentUserId, friendId);
   const existingRoom = await findExistingDirectRoom(currentUserId, friendId);
   if (existingRoom) {
     return existingRoom;
   }
 
+  const roomInsert = {
+    created_by: currentUserId,
+    dm_pair_key: dmPairKey,
+    type: "dm",
+  };
   const roomResult = await client
     .from("chat_rooms")
-    .insert({ created_by: currentUserId, type: "dm" })
+    .insert(roomInsert as never)
     .select("*")
     .single();
-  handleError(roomResult.error);
+
+  if (roomResult.error) {
+    const message = roomResult.error.message.toLowerCase();
+    if (roomResult.error.code === "23505" || message.includes("duplicate") || message.includes("unique")) {
+      const racedRoom = await findExistingDirectRoom(currentUserId, friendId);
+      if (racedRoom) {
+        return racedRoom;
+      }
+    }
+    handleError(roomResult.error);
+  }
+
   const room = toRoom(roomResult.data as UnknownRecord);
 
   const memberResult = await client

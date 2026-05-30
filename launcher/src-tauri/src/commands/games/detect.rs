@@ -28,6 +28,83 @@ use super::core::{
     is_ignored_game_directory, apply_battlenet_assets, local_drive_roots,
 };
 
+fn normalize_scanned_launcher(launcher: &str) -> String {
+    super::core::launcher_key_from_source(launcher).to_string()
+}
+
+fn launcher_scan_priority(game: &InstalledGame) -> u8 {
+    match super::core::launcher_key_from_source(&game.launcher) {
+        "manual" => 100,
+        "ea" => 90,
+        "epic" => 85,
+        "gog" => 80,
+        "ubisoft" => 75,
+        "battlenet" => 70,
+        "xbox" => 65,
+        "steam" => 10,
+        _ => 50,
+    }
+}
+
+fn canonical_install_path(path: &str) -> Option<PathBuf> {
+    let path = PathBuf::from(path);
+    if !path.exists() {
+        return Some(path);
+    }
+    path.canonicalize().ok()
+}
+
+fn merge_scanned_game(games: &mut BTreeMap<String, InstalledGame>, mut candidate: InstalledGame) {
+    candidate.launcher = normalize_scanned_launcher(&candidate.launcher);
+
+    if let Some(install_path) = candidate.install_path.as_deref().filter(|path| !path.is_empty()) {
+        if let Some(candidate_canon) = canonical_install_path(install_path) {
+            let mut replace_id: Option<String> = None;
+            let mut skip_insert = false;
+
+            for (existing_id, existing) in games.iter() {
+                let Some(existing_path) = existing.install_path.as_deref() else {
+                    continue;
+                };
+                let Some(existing_canon) = canonical_install_path(existing_path) else {
+                    continue;
+                };
+                if existing_canon != candidate_canon {
+                    continue;
+                }
+
+                if launcher_scan_priority(&candidate) > launcher_scan_priority(existing) {
+                    replace_id = Some(existing_id.clone());
+                } else {
+                    skip_insert = true;
+                }
+                break;
+            }
+
+            if skip_insert {
+                return;
+            }
+            if let Some(old_id) = replace_id {
+                games.remove(&old_id);
+            }
+        }
+    }
+
+    games.entry(candidate.id.clone()).or_insert(candidate);
+}
+
+pub fn is_ea_install_directory(path: &Path) -> bool {
+    if extract_ea_content_id(path).is_some() {
+        return true;
+    }
+
+    let lowered = path.to_string_lossy().to_lowercase();
+    lowered.contains("origin games")
+        || lowered.contains("\\ea games\\")
+        || lowered.contains("/ea games/")
+        || lowered.contains("\\electronic arts\\")
+}
+
 pub fn scan_installed_games() -> Vec<InstalledGame> {
     let mut games = BTreeMap::<String, InstalledGame>::new();
 
@@ -40,40 +117,40 @@ pub fn scan_installed_games() -> Vec<InstalledGame> {
     let handle_battlenet = thread::spawn(|| scan_battlenet_games());
     let handle_ea = thread::spawn(|| scan_ea_games());
 
-    // Join and merge results
+    // Join and merge results (EA/Epic/etc. win over Steam for the same install folder)
     if let Ok(steam_games) = handle_steam.join() {
         for game in steam_games {
-            games.entry(game.id.clone()).or_insert(game);
+            merge_scanned_game(&mut games, game);
         }
     }
     if let Ok(epic_games) = handle_epic.join() {
         for game in epic_games {
-            games.entry(game.id.clone()).or_insert(game);
+            merge_scanned_game(&mut games, game);
         }
     }
     if let Ok(gog_games) = handle_gog.join() {
         for game in gog_games {
-            games.entry(game.id.clone()).or_insert(game);
+            merge_scanned_game(&mut games, game);
         }
     }
     if let Ok(ubisoft_games) = handle_ubisoft.join() {
         for game in ubisoft_games {
-            games.entry(game.id.clone()).or_insert(game);
+            merge_scanned_game(&mut games, game);
         }
     }
     if let Ok(xbox_games) = handle_xbox.join() {
         for game in xbox_games {
-            games.entry(game.id.clone()).or_insert(game);
+            merge_scanned_game(&mut games, game);
         }
     }
     if let Ok(battlenet_games) = handle_battlenet.join() {
         for game in battlenet_games {
-            games.entry(game.id.clone()).or_insert(game);
+            merge_scanned_game(&mut games, game);
         }
     }
     if let Ok(ea_games) = handle_ea.join() {
         for game in ea_games {
-            games.entry(game.id.clone()).or_insert(game);
+            merge_scanned_game(&mut games, game);
         }
     }
 
@@ -128,19 +205,31 @@ pub fn scan_steam_games() -> Vec<InstalledGame> {
             let manifest_activity = steam_activity_from_manifest(&contents);
 
             if let Some(title) = name.filter(|value| !value.trim().is_empty()) {
-                let install_path = install_dir
+                let install_dir_path = install_dir
                     .map(|dir| steamapps.join("common").join(dir))
-                    .filter(|dir| dir.exists())
-                    .map(path_to_string);
+                    .filter(|dir| dir.exists());
+
+                if install_dir_path
+                    .as_ref()
+                    .is_some_and(|path| is_ea_install_directory(path))
+                {
+                    continue;
+                }
+
+                let install_path = install_dir_path.map(path_to_string);
                 let cover_url = app_id.as_ref().map(|id| {
                     format!(
                         "https://cdn.cloudflare.steamstatic.com/steam/apps/{id}/library_hero.jpg"
                     )
                 });
+                let game_id = app_id
+                    .as_ref()
+                    .map(|id| format!("steam-{id}"))
+                    .unwrap_or_else(|| format!("steam-{}", super::core::slugify(&title)));
                 let mut game = installed_game(
-                    &format!("steam-{title}"),
+                    &game_id,
                     title,
-                    "Steam".to_string(),
+                    "steam".to_string(),
                     install_path,
                     cover_url,
                 );
@@ -227,21 +316,17 @@ pub fn scan_epic_games() -> Vec<InstalledGame> {
                 .map(ToOwned::to_owned);
             let install_root = install_path.as_ref().map(PathBuf::from);
             let epic_assets = find_epic_launcher_assets(&value, &title, &catalog_cache);
-            let cover_url = epic_assets.cover_url.or_else(|| {
-                install_root
-                    .as_ref()
-                    .and_then(|path| find_local_banner_asset(path))
-            });
-            let logo_url = epic_assets.logo_url.or_else(|| {
-                install_root
-                    .as_ref()
-                    .and_then(|path| find_local_logo_asset(path))
-            });
-            let icon_url = epic_assets.icon_url.or_else(|| {
-                install_root
-                    .as_ref()
-                    .and_then(|path| find_local_icon_asset(path))
-            });
+            let rawg_assets = get_rawg_game_assets("epic", app_name.as_deref().unwrap_or(&title), &title);
+
+            let cover_url = rawg_assets.as_ref().and_then(|a| a.cover_url.clone())
+                .or_else(|| epic_assets.cover_url.clone())
+                .or_else(|| install_root.as_ref().and_then(|path| find_local_banner_asset(path)));
+            let logo_url = rawg_assets.as_ref().and_then(|a| a.logo_url.clone())
+                .or_else(|| epic_assets.logo_url.clone())
+                .or_else(|| install_root.as_ref().and_then(|path| find_local_logo_asset(path)));
+            let icon_url = rawg_assets.as_ref().and_then(|a| a.icon_url.clone())
+                .or_else(|| epic_assets.icon_url.clone())
+                .or_else(|| install_root.as_ref().and_then(|path| find_local_icon_asset(path)));
 
             let cover_url = cover_url.or_else(|| {
                 value
@@ -914,22 +999,21 @@ pub fn get_battlenet_assets(
     )
 }
 
-pub fn get_rawg_battlenet_assets(uid: &str, title: &str) -> Option<RawgAssets> {
-    let cache_key = battlenet_asset_cache_key(uid, title);
+pub fn get_rawg_game_assets(platform: &str, id: &str, search_title: &str) -> Option<RawgAssets> {
+    let cache_key = format!("{}:{}:{}", platform.to_lowercase(), id.trim().to_lowercase(), search_title.trim().to_lowercase());
     let mut cache = read_rawg_asset_cache();
     if let Some(cached_assets) = cache.entries.get(&cache_key) {
         return Some(cached_assets.clone());
     }
 
-    let search_title = battlenet_rawg_search_title(uid, title);
-    let assets = fetch_rawg_assets_via_supabase(&search_title).or_else(|| {
+    let assets = fetch_rawg_assets_via_supabase(search_title).or_else(|| {
         let api_key = env::var("RAWG_API_KEY")
             .or_else(|_| env::var("OG_RAWG_API_KEY"))
             .ok()
             .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty())?;
 
-        fetch_rawg_assets(&api_key, &search_title)
+        fetch_rawg_assets(&api_key, search_title)
     })?;
 
     if assets.cover_url.is_some() || assets.logo_url.is_some() || assets.icon_url.is_some() {
@@ -941,12 +1025,9 @@ pub fn get_rawg_battlenet_assets(uid: &str, title: &str) -> Option<RawgAssets> {
     None
 }
 
-fn battlenet_asset_cache_key(uid: &str, title: &str) -> String {
-    format!(
-        "{}:{}",
-        uid.trim().to_lowercase(),
-        title.trim().to_lowercase()
-    )
+pub fn get_rawg_battlenet_assets(uid: &str, title: &str) -> Option<RawgAssets> {
+    let search_title = battlenet_rawg_search_title(uid, title);
+    get_rawg_game_assets("battlenet", uid, &search_title)
 }
 
 fn read_rawg_asset_cache() -> RawgAssetCache {
@@ -1071,39 +1152,29 @@ fn fetch_rawg_assets_via_supabase(title: &str) -> Option<RawgAssets> {
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())?;
 
-    let client = reqwest::blocking::Client::builder()
-        .timeout(Duration::from_secs(6))
-        .user_agent("OG-Launcher/0.1")
-        .build()
-        .ok()?;
+    let bearer_token = super::core::read_supabase_access_token().unwrap_or(supabase_key.clone());
     let url = format!("{supabase_url}/functions/v1/rawg-assets");
-    let response = client
-        .post(url)
+
+    use std::io::Read;
+    let response = ureq::post(&url)
         .header("apikey", &supabase_key)
-        .bearer_auth(&supabase_key)
-        .json(&serde_json::json!({ "title": title }))
-        .send()
+        .header("Authorization", &format!("Bearer {}", bearer_token))
+        .send_json(serde_json::json!({ "title": title }))
         .ok()?;
 
-    if !response.status().is_success() {
-        return None;
-    }
-
-    response.json::<RawgAssets>().ok()
+    let mut reader = response.into_body().into_reader();
+    let mut text = String::new();
+    reader.read_to_string(&mut text).ok()?;
+    serde_json::from_str::<RawgAssets>(&text).ok()
 }
 
 fn fetch_rawg_assets(api_key: &str, title: &str) -> Option<RawgAssets> {
-    let client = reqwest::blocking::Client::builder()
-        .timeout(Duration::from_secs(4))
-        .user_agent("OG-Launcher/0.1")
-        .build()
-        .ok()?;
     let search_url = format!(
         "https://api.rawg.io/api/games?key={}&search={}&search_precise=true&page_size=1",
         url_query_encode(api_key),
         url_query_encode(title)
     );
-    let search_json = rawg_get_json(&client, &search_url)?;
+    let search_json = rawg_get_json(&search_url)?;
     let result = search_json.get("results")?.as_array()?.first()?.clone();
     let id = result.get("id").and_then(|value| value.as_u64());
 
@@ -1115,7 +1186,7 @@ fn fetch_rawg_assets(api_key: &str, title: &str) -> Option<RawgAssets> {
             "https://api.rawg.io/api/games/{game_id}?key={}",
             url_query_encode(api_key)
         );
-        if let Some(detail_json) = rawg_get_json(&client, &detail_url) {
+        if let Some(detail_json) = rawg_get_json(&detail_url) {
             cover_url = rawg_string_field(&detail_json, "background_image").or(cover_url);
         }
 
@@ -1123,7 +1194,7 @@ fn fetch_rawg_assets(api_key: &str, title: &str) -> Option<RawgAssets> {
             "https://api.rawg.io/api/games/{game_id}/screenshots?key={}&page_size=1",
             url_query_encode(api_key)
         );
-        if let Some(screenshots_json) = rawg_get_json(&client, &screenshots_url) {
+        if let Some(screenshots_json) = rawg_get_json(&screenshots_url) {
             icon_url = screenshots_json
                 .get("results")
                 .and_then(|value| value.as_array())
@@ -1141,14 +1212,13 @@ fn fetch_rawg_assets(api_key: &str, title: &str) -> Option<RawgAssets> {
     })
 }
 
-fn rawg_get_json(client: &reqwest::blocking::Client, url: &str) -> Option<serde_json::Value> {
-    let response = client.get(url).send().ok()?;
-
-    if !response.status().is_success() {
-        return None;
-    }
-
-    response.json::<serde_json::Value>().ok()
+fn rawg_get_json(url: &str) -> Option<serde_json::Value> {
+    use std::io::Read;
+    let response = ureq::get(url).call().ok()?;
+    let mut reader = response.into_body().into_reader();
+    let mut text = String::new();
+    reader.read_to_string(&mut text).ok()?;
+    serde_json::from_str(&text).ok()
 }
 
 fn rawg_string_field(value: &serde_json::Value, key: &str) -> Option<String> {
@@ -1355,7 +1425,7 @@ pub fn scan_ubisoft_games() -> Vec<InstalledGame> {
 
     candidates.push(PathBuf::from(r"C:\Ubisoft Games"));
 
-    let mut games = collect_directory_games(candidates, "ubisoft", "Ubisoft Connect");
+    let mut games = collect_directory_games(candidates, "ubisoft", "ubisoft");
     let mut seen_titles = games
         .iter()
         .map(|game| game.title.to_lowercase())
@@ -1384,9 +1454,9 @@ pub fn scan_ubisoft_games() -> Vec<InstalledGame> {
         }
 
         let mut game = installed_game(
-            &format!("ubisoft-{title}"),
+            &format!("ubisoft-{}", install.install_id),
             title.to_string(),
-            "Ubisoft Connect".to_string(),
+            "ubisoft".to_string(),
             Some(path_to_string(install.install_dir.clone())),
             launcher_assets
                 .cover_url
@@ -2060,6 +2130,8 @@ pub fn read_ubisoft_registry_installs() -> Vec<UbisoftRegistryInstall> {
     [
         r"HKLM\SOFTWARE\WOW6432Node\Ubisoft\Launcher\Installs",
         r"HKLM\SOFTWARE\Ubisoft\Launcher\Installs",
+        r"HKLM\SOFTWARE\WOW6432Node\ubisoft\Launcher\Installs",
+        r"HKLM\SOFTWARE\ubisoft\Launcher\Installs",
     ]
     .into_iter()
     .flat_map(query_registry_sections)
@@ -3334,7 +3406,7 @@ pub fn scan_ea_games() -> Vec<InstalledGame> {
                 }
             ),
             title.to_string(),
-            "EA App".to_string(),
+            "ea".to_string(),
             Some(path_to_string(install.install_dir.clone())),
             banner_path,
         );
@@ -3380,7 +3452,7 @@ pub async fn search_steam_appid(title: &str) -> Option<u32> {
 }
 
 pub fn steam_app_id_for_game(game: &InstalledGame) -> Option<u32> {
-    if game.launcher == "steam" {
+    if super::core::launcher_key_from_source(&game.launcher) == "steam" {
         if let Some(external_id) = game.external_id.as_deref() {
             if let Ok(appid) = external_id.parse::<u32>() {
                 return Some(appid);
@@ -3776,7 +3848,13 @@ async fn fetch_steam_metadata(
 }
 
 pub async fn sync_game_metadata(mut game: InstalledGame) -> InstalledGame {
+    game.launcher = normalize_scanned_launcher(&game.launcher);
+
     if !game.genres.is_empty() || game.developer.is_some() {
+        return game;
+    }
+
+    if super::core::launcher_key_from_source(&game.launcher) != "steam" {
         return game;
     }
 

@@ -1,3 +1,4 @@
+import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import type { Session } from "@supabase/supabase-js";
 
@@ -34,6 +35,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      if (!isMounted) {
+        return;
+      }
       setSession(nextSession);
       setIsLoading(false);
     });
@@ -43,6 +47,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       subscription.unsubscribe();
     };
   }, []);
+
+  useEffect(() => {
+    const accessToken = session?.access_token?.trim();
+    void invoke("cache_supabase_access_token", { token: accessToken ?? "" }).catch(() => undefined);
+  }, [session?.access_token]);
 
   useEffect(() => {
     if (!supabase || !session?.user) {

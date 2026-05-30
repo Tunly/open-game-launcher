@@ -142,9 +142,14 @@ export function AuthPage() {
             username: normalizedUsername,
           });
         } catch (profileError) {
-          setMessage(
-            `Account created. Continue profile setup after login: ${getErrorMessage(profileError)}`,
-          );
+          const profileMessage = getErrorMessage(profileError).toLowerCase();
+          if (profileMessage.includes("username") && profileMessage.includes("taken")) {
+            setErrorMessage("Username was taken before profile setup finished. Pick another username after login.");
+          } else {
+            setMessage(
+              `Account created. Continue profile setup after login: ${getErrorMessage(profileError)}`,
+            );
+          }
           setPassword("");
           setConfirmPassword("");
           return;
@@ -154,7 +159,7 @@ export function AuthPage() {
       setMessage(
         result.data.session
           ? "Account created. Username was saved."
-          : "Account created. Username was reserved.",
+          : "Account created. Confirm your email, then sign in to finish profile setup.",
       );
       setPassword("");
       setConfirmPassword("");

@@ -68,10 +68,23 @@ export function FriendsPage() {
       return;
     }
 
+    let isMounted = true;
     setIsLoading(true);
     void refresh()
-      .catch((error: unknown) => setErrorMessage(error instanceof Error ? error.message : String(error)))
-      .finally(() => setIsLoading(false));
+      .catch((error: unknown) => {
+        if (isMounted) {
+          setErrorMessage(error instanceof Error ? error.message : String(error));
+        }
+      })
+      .finally(() => {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
   }, [isConfigured, refresh, user]);
 
   useEffect(() => {
@@ -165,11 +178,15 @@ export function FriendsPage() {
     }
 
     let isMounted = true;
-    let unsubscribe: () => void = () => undefined;
+    let unsubscribe: (() => void) | null = null;
+    const friendId = selectedFriendId;
 
-    void getDirectThread(selectedFriendId)
+    void getDirectThread(friendId)
       .then((loadedThread) => {
-        if (!isMounted) return;
+        if (!isMounted) {
+          return;
+        }
+
         setThread(loadedThread);
         unsubscribe = subscribeToRoomMessages(loadedThread.room.id, (nextMessage) => {
           setThread((current) => {
@@ -187,7 +204,7 @@ export function FriendsPage() {
 
     return () => {
       isMounted = false;
-      unsubscribe();
+      unsubscribe?.();
     };
   }, [isConfigured, selectedFriendId]);
 

@@ -193,16 +193,114 @@ export function openSteamLoginWindow(): Promise<void> {
   return invokeCommand<void>("open_steam_login_window");
 }
 
-export function openSteamScraperWindow(steamId: string): Promise<void> {
+export async function openSteamScraperWindow(steamId: string) {
   return invokeCommand<void>("open_steam_scraper_window", { steamId });
+}
+
+export async function fetchSteamProfileName(steamId: string) {
+  return invokeCommand<string>("fetch_steam_profile_name", { steamId });
 }
 
 export function openGogLoginWindow(): Promise<void> {
   return invokeCommand<void>("open_gog_login_window");
 }
 
-export function openEpicLoginWindow(): Promise<void> {
+export interface GogToken {
+  accessToken: string;
+  refreshToken: string;
+  expiresAt: number;
+  userId: string;
+}
+
+export function gogExchangeCode(code: string): Promise<GogToken> {
+  return invokeCommand<GogToken>("gog_exchange_code", { code });
+}
+
+export function gogRefreshToken(): Promise<GogToken> {
+  return invokeCommand<GogToken>("gog_refresh_token_command");
+}
+
+export function gogGetToken(): Promise<GogToken | null> {
+  return invokeCommand<GogToken | null>("gog_get_token");
+}
+
+export function gogLogout(): Promise<void> {
+  return invokeCommand<void>("gog_logout");
+}
+
+export function gogFetchOwnedGames(): Promise<OwnedGame[]> {
+  return invokeCommand<OwnedGame[]>("gog_fetch_owned_games");
+}
+
+export interface EaToken {
+  accessToken: string;
+  capturedAt: number;
+}
+
+export function openEaLoginWindow(): Promise<void> {
+  return invokeCommand<void>("open_ea_login_window");
+}
+
+export function eaGetToken(): Promise<EaToken | null> {
+  return invokeCommand<EaToken | null>("ea_get_token");
+}
+
+export function eaLogout(): Promise<void> {
+  return invokeCommand<void>("ea_logout");
+}
+
+export function eaFetchOwnedGames(): Promise<OwnedGame[]> {
+  return invokeCommand<OwnedGame[]>("ea_fetch_owned_games");
+}
+
+export interface GogDownloadInfo {
+  gameId: string;
+  title: string;
+  installerId: string;
+  version: string;
+  totalSize: number;
+  files: Array<{
+    id: string;
+    name: string;
+    size: number;
+    checksum: string;
+    chunks: Array<{
+      id: string;
+      byteOffset: number;
+      byteSize: number;
+      checksum: string;
+    }>;
+  }>;
+  downloadUrl: string | null;
+}
+
+export function gogGetDownloadInfo(gogId: string, platform?: string): Promise<GogDownloadInfo> {
+  return invokeCommand<GogDownloadInfo>("gog_get_download_info", { gogId, platform });
+}
+
+export function gogStartDownload(gogId: string, installPath?: string): Promise<StartDownloadResponse> {
+  return invokeCommand<StartDownloadResponse>("gog_start_download", { gogId, installPath });
+}
+
+export interface GogCloudSaveInfo {
+  gameId: string;
+  files: Array<{
+    path: string;
+    timestamp: number;
+    size: number;
+  }>;
+}
+
+export function gogGetCloudSaves(gogId: string): Promise<GogCloudSaveInfo> {
+  return invokeCommand<GogCloudSaveInfo>("gog_get_cloud_saves", { gogId });
+}
+
+export async function openEpicLoginWindow(): Promise<void> {
   return invokeCommand<void>("open_epic_login_window");
+}
+
+export async function authenticateEpicLegendary(code: string): Promise<string> {
+  return invokeCommand<string>("authenticate_epic_legendary", { code });
 }
 
 export function openXboxLoginWindow(): Promise<void> {
@@ -336,12 +434,17 @@ export function fetchSteamOwnedGames(steamId: string): Promise<OwnedGame[]> {
   return invokeCommand<OwnedGame[]>("fetch_steam_owned_games", { steamId });
 }
 
-export function fetchGogOwnedGames(accessToken: string): Promise<OwnedGame[]> {
-  return invokeCommand<OwnedGame[]>("fetch_gog_owned_games", { accessToken });
+export function fetchGogOwnedGames(): Promise<OwnedGame[]> {
+  // Use the backend's token-aware command instead of passing token from frontend
+  return gogFetchOwnedGames();
 }
 
-export function fetchEpicOwnedGames(accessToken: string, accountId: string): Promise<OwnedGame[]> {
-  return invokeCommand<OwnedGame[]>("fetch_epic_owned_games", { accessToken, accountId });
+export async function fetchEpicOwnedGames(): Promise<OwnedGame[]> {
+  return invokeCommand<OwnedGame[]>("fetch_epic_owned_games");
+}
+
+export async function fetchUbisoftOwnedGames(): Promise<OwnedGame[]> {
+  return invokeCommand<OwnedGame[]>("fetch_ubisoft_owned_games");
 }
 
 export function pauseDownload(gameId: string): Promise<void> {

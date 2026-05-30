@@ -1,6 +1,7 @@
 export const STORAGE_KEYS = {
   CLOUD_SYNC_DEVICE_ID: "launcher.cloudSyncDeviceId",
 
+  EA_TOKEN: "launcher.eaToken",
   EPIC_TOKEN: "launcher.epicToken",
   GOG_TOKEN: "launcher.gogToken",
 
