@@ -1,4 +1,4 @@
-﻿﻿using Playnite;
+using Playnite;
 using Playnite.Common;
 using Playnite.SDK.Data;
 using Playnite.SDK.Models;
@@ -184,4 +184,3 @@ namespace UplayLibrary
         }
     }
 }
-
