@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { listen } from "@tauri-apps/api/event";
 import {
   Bell,
   ChevronDown,
@@ -15,6 +16,9 @@ import {
 
 import { Sidebar, type PageKey } from "./Sidebar";
 import { DesktopTitleBar } from "./DesktopTitleBar";
+import { useDownloadStore } from "../../stores/downloadStore";
+import { getDownloadQueue } from "../../lib/launcher";
+import type { DownloadItem } from "../../lib/types";
 
 interface AppShellProps {
   activePage: PageKey;
@@ -109,6 +113,8 @@ export function AppShell({
     (item) => item.isUnread && !readNotificationIds.has(item.id),
   ).length;
 
+  const downloadCount = useDownloadStore((s) => s.activeCount());
+
   useEffect(() => {
     if (!isProfileMenuOpen && !isNotificationMenuOpen) {
       return;
@@ -168,6 +174,33 @@ export function AppShell({
     };
   }, [activePage]);
 
+  // Initial download queue load + global listener for badge/cross-page state
+  useEffect(() => {
+    let active = true;
+
+    const unlistenPromise = listen<DownloadItem>(
+      "download_progress",
+      (event) => {
+        if (active) {
+          useDownloadStore.getState().upsertItem(event.payload);
+        }
+      },
+    );
+
+    getDownloadQueue()
+      .then((queue) => {
+        if (active) {
+          useDownloadStore.getState().setItems(queue);
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      active = false;
+      void unlistenPromise.then((unlisten) => unlisten());
+    };
+  }, []);
+
   async function handleLogout() {
     setIsProfileMenuOpen(false);
     await onLogout();
@@ -188,7 +221,7 @@ export function AppShell({
           </button>
 
           <div className="order-3 min-w-0 flex-1 basis-full sm:order-none sm:basis-auto">
-            <Sidebar activePage={activePage} onNavigate={onNavigate} />
+            <Sidebar activePage={activePage} downloadCount={downloadCount} onNavigate={onNavigate} />
           </div>
 
           <div className="ml-auto flex shrink-0 items-center gap-2 sm:gap-3">

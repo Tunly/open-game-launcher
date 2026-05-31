@@ -188,7 +188,7 @@ fn start_xbox_callback_server(app: tauri::AppHandle) {
 
                         use tauri::{Emitter, Manager};
                         let _ = app.emit("xbox_login_code", code.to_string());
-                        
+
                         if let Some(window) = app.get_webview_window("xbox-login") {
                             let _ = window.close();
                         }
@@ -277,7 +277,7 @@ pub async fn open_xbox_login_window(app: tauri::AppHandle) -> Result<(), String>
         "Xboxlive.signin%20Xboxlive.offline_access",
         "https://login.live.com/oauth20_desktop.srf"
     );
-    
+
     let script = r#"
         window.addEventListener("DOMContentLoaded", () => {
             if (window.location.href.includes("oauth20_desktop.srf")) {
@@ -333,7 +333,9 @@ async fn get_oauth_token(code: &str) -> Result<TokenResponse, String> {
         return Err(format!("OAuth error: {}", res.status()));
     }
 
-    res.json::<TokenResponse>().await.map_err(|e| format!("Failed to parse OAuth token: {}", e))
+    res.json::<TokenResponse>()
+        .await
+        .map_err(|e| format!("Failed to parse OAuth token: {}", e))
 }
 
 async fn refresh_xbox_oauth_token(refresh_token: &str) -> Result<TokenResponse, String> {
@@ -356,7 +358,9 @@ async fn refresh_xbox_oauth_token(refresh_token: &str) -> Result<TokenResponse, 
         return Err(format!("OAuth refresh error: {}", res.status()));
     }
 
-    res.json::<TokenResponse>().await.map_err(|e| format!("Failed to parse refreshed OAuth token: {}", e))
+    res.json::<TokenResponse>()
+        .await
+        .map_err(|e| format!("Failed to parse refreshed OAuth token: {}", e))
 }
 
 async fn authenticate_xbox_live(access_token: &str) -> Result<AuthResponse, String> {
@@ -386,7 +390,9 @@ async fn authenticate_xbox_live(access_token: &str) -> Result<AuthResponse, Stri
         return Err(format!("XBL auth error: {}", res.status()));
     }
 
-    res.json::<AuthResponse>().await.map_err(|e| format!("Failed to parse XBL auth: {}", e))
+    res.json::<AuthResponse>()
+        .await
+        .map_err(|e| format!("Failed to parse XBL auth: {}", e))
 }
 
 async fn authorize_xsts(user_token: &str) -> Result<AuthResponse, String> {
@@ -415,14 +421,16 @@ async fn authorize_xsts(user_token: &str) -> Result<AuthResponse, String> {
         return Err(format!("XSTS auth error: {}", res.status()));
     }
 
-    res.json::<AuthResponse>().await.map_err(|e| format!("Failed to parse XSTS auth: {}", e))
+    res.json::<AuthResponse>()
+        .await
+        .map_err(|e| format!("Failed to parse XSTS auth: {}", e))
 }
 
 fn get_installed_uwp_apps() -> Vec<AppxPackage> {
     if !cfg!(target_os = "windows") {
         return Vec::new();
     }
-    
+
     // We run a quick powershell script to get all AppxPackages for the current user
     let script = "Get-AppxPackage -User $env:USERNAME | Select-Object PackageFamilyName, InstallLocation | ConvertTo-Json -Compress -Depth 2";
     let output = match Command::new("powershell")
@@ -437,7 +445,10 @@ fn get_installed_uwp_apps() -> Vec<AppxPackage> {
     };
 
     if !output.status.success() {
-        println!("[Xbox] Get-AppxPackage returned error: {}", String::from_utf8_lossy(&output.stderr));
+        println!(
+            "[Xbox] Get-AppxPackage returned error: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
         return Vec::new();
     }
 
@@ -461,7 +472,10 @@ fn get_installed_uwp_apps() -> Vec<AppxPackage> {
 
 #[tauri::command]
 pub async fn fetch_xbox_owned_games(code: String) -> Result<XboxFetchResult, String> {
-    println!("[Xbox] Starting fetch_xbox_owned_games with code length: {}", code.len());
+    println!(
+        "[Xbox] Starting fetch_xbox_owned_games with code length: {}",
+        code.len()
+    );
     let oauth_token = match get_oauth_token(&code).await {
         Ok(t) => t,
         Err(e) => {
@@ -470,7 +484,7 @@ pub async fn fetch_xbox_owned_games(code: String) -> Result<XboxFetchResult, Str
         }
     };
     save_xbox_token(&oauth_token.refresh_token);
-    
+
     println!("[Xbox] Got OAuth token. Authenticating Xbox Live...");
     let xbl_auth = match authenticate_xbox_live(&oauth_token.access_token).await {
         Ok(t) => t,
@@ -479,7 +493,7 @@ pub async fn fetch_xbox_owned_games(code: String) -> Result<XboxFetchResult, Str
             return Err(e);
         }
     };
-    
+
     println!("[Xbox] Authorizing XSTS...");
     let xsts_auth = match authorize_xsts(&xbl_auth.Token).await {
         Ok(t) => t,
@@ -495,20 +509,22 @@ pub async fn fetch_xbox_owned_games(code: String) -> Result<XboxFetchResult, Str
         .first()
         .map(|x| x.uhs.clone())
         .unwrap_or_default();
-        
+
     let gamertag = xsts_auth
         .DisplayClaims
         .xui
         .first()
         .and_then(|x| x.gtg.clone());
-    
-    println!("[Xbox] XSTS authorized. gamertag: {:?}, uhs: {}", gamertag, uhs);
+
+    println!(
+        "[Xbox] XSTS authorized. gamertag: {:?}, uhs: {}",
+        gamertag, uhs
+    );
     let xid = xsts_auth
         .DisplayClaims
         .xui
         .first()
         .and_then(|x| x.xid.clone());
-
 
     let auth_header = format!("XBL3.0 x={};{}", uhs, xsts_auth.Token);
 
@@ -520,7 +536,10 @@ pub async fn fetch_xbox_owned_games(code: String) -> Result<XboxFetchResult, Str
 
     let mut headers = HeaderMap::new();
     headers.insert("x-xbl-contract-version", HeaderValue::from_static("2"));
-    headers.insert(AUTHORIZATION, HeaderValue::from_str(&auth_header).map_err(|e| e.to_string())?);
+    headers.insert(
+        AUTHORIZATION,
+        HeaderValue::from_str(&auth_header).map_err(|e| e.to_string())?,
+    );
     headers.insert(ACCEPT_LANGUAGE, HeaderValue::from_static("en-US"));
 
     let res = client
@@ -541,7 +560,7 @@ pub async fn fetch_xbox_owned_games(code: String) -> Result<XboxFetchResult, Str
 
     let mut games = Vec::new();
     let installed_apps = get_installed_uwp_apps();
-    
+
     // Create a set of installed PFNs for fast lookup (case-insensitive)
     let installed_pfns: HashSet<String> = installed_apps
         .iter()
@@ -567,7 +586,10 @@ pub async fn fetch_xbox_owned_games(code: String) -> Result<XboxFetchResult, Str
             continue;
         }
 
-        let raw_name = title.name.clone().unwrap_or_else(|| "Unknown Xbox Game".to_string());
+        let raw_name = title
+            .name
+            .clone()
+            .unwrap_or_else(|| "Unknown Xbox Game".to_string());
         // Clean name like Playnite does
         let clean_name = raw_name
             .replace("(PC)", "")
@@ -576,10 +598,8 @@ pub async fn fetch_xbox_owned_games(code: String) -> Result<XboxFetchResult, Str
             .replace("- Windows 10", "")
             .trim()
             .to_string();
-            
-        let last_played = title
-            .titleHistory
-            .and_then(|th| th.lastTimePlayed);
+
+        let last_played = title.titleHistory.and_then(|th| th.lastTimePlayed);
 
         let is_installed = installed_pfns.contains(&pfn.to_lowercase());
 
@@ -599,11 +619,11 @@ pub async fn fetch_xbox_owned_games(code: String) -> Result<XboxFetchResult, Str
                 for group in groups {
                     if let Some(group_stats) = group.get("statlist").and_then(|s| s.as_array()) {
                         for stat in group_stats {
-                             if stat.get("name").and_then(|n| n.as_str()) == Some("MinutesPlayed") {
-                                 if let Some(val) = stat.get("value").and_then(|v| v.as_u64()) {
-                                     playtime_minutes = val;
-                                 }
-                             }
+                            if stat.get("name").and_then(|n| n.as_str()) == Some("MinutesPlayed") {
+                                if let Some(val) = stat.get("value").and_then(|v| v.as_u64()) {
+                                    playtime_minutes = val;
+                                }
+                            }
                         }
                     }
                 }
@@ -614,20 +634,24 @@ pub async fn fetch_xbox_owned_games(code: String) -> Result<XboxFetchResult, Str
             id: format!("xbox-{}", pfn), // We use the PFN as the unique identifier
             external_id: Some(title.titleId.clone()),
             title: clean_name,
-            description: if is_installed { "Xbox Game (Installed)".to_string() } else { "Xbox Game (Not Installed)".to_string() },
+            description: if is_installed {
+                "Xbox Game (Installed)".to_string()
+            } else {
+                "Xbox Game (Not Installed)".to_string()
+            },
             cover_url: None, // Could be fetched via titlehub details if needed
             logo_url: None,
             icon_url: None,
             playtime_minutes,
             last_played_at: last_played,
-            cloud_gaming_url: Some(format!("https://www.xbox.com/play/launch/{}", title.titleId)),
+            cloud_gaming_url: Some(format!(
+                "https://www.xbox.com/play/launch/{}",
+                title.titleId
+            )),
         });
     }
 
-    Ok(XboxFetchResult {
-        games,
-        gamertag,
-    })
+    Ok(XboxFetchResult { games, gamertag })
 }
 
 #[tauri::command]
@@ -635,21 +659,21 @@ pub async fn launch_xbox_game(pfn: String) -> Result<(), String> {
     if !cfg!(target_os = "windows") {
         return Err("Only supported on Windows".into());
     }
-    
+
     // PFN is something like "Microsoft.FlightSimulator_8wekyb3d8bbwe"
     // Usually the AppUserModelId (AUMID) is PFN!App
-    // Let's assume "!App" for now, which covers 90% of games. 
+    // Let's assume "!App" for now, which covers 90% of games.
     // Playnite parses the AppxManifest.xml to find the exact Application ID.
     // We will try "!App" as a quick default, but falling back to exploring it if needed.
     // For simplicity:
     let aumid = format!("{}!App", pfn);
     let target = format!("shell:AppsFolder\\{}", aumid);
-    
+
     Command::new("explorer.exe")
         .arg(&target)
         .spawn()
         .map_err(|e| format!("Failed to launch Xbox game: {}", e))?;
-        
+
     Ok(())
 }
 
@@ -658,40 +682,40 @@ pub async fn install_xbox_game(pfn: String) -> Result<(), String> {
     if !cfg!(target_os = "windows") {
         return Err("Only supported on Windows".into());
     }
-    
+
     // If it doesn't contain an underscore, it's likely a ProductId instead of a PackageFamilyName
     let url = if pfn.contains('_') {
         format!("ms-windows-store://pdp/?PFN={}", pfn)
     } else {
         format!("ms-windows-store://pdp/?ProductId={}", pfn)
     };
-    
+
     crate::commands::system::open_uri(&url)?;
-    
+
     Ok(())
 }
 
 #[tauri::command]
 pub async fn fetch_game_pass_catalog() -> Result<Vec<OwnedGame>, String> {
     let client = reqwest::Client::new();
-    
+
     // 1. Fetch the list of Game Pass PC product IDs
     let list_res = client
         .get("https://catalog.gamepass.com/sigls/v2?id=fdd9e2a7-0fee-49f6-ad69-4354098401ff&language=en-us&market=US")
         .send()
         .await
         .map_err(|e| format!("Failed to fetch Game Pass catalog list: {}", e))?;
-        
+
     let items: Vec<GamePassCatalogItem> = list_res
         .json()
         .await
         .map_err(|e| format!("Failed to parse Game Pass catalog list: {}", e))?;
-        
+
     // Skip the first item which is usually a metadata/header item
     let ids: Vec<String> = items.into_iter().filter_map(|item| item.id).collect();
-    
+
     let mut games = Vec::new();
-    
+
     // 2. Fetch details in batches of 50
     for chunk in ids.chunks(50) {
         let big_ids = chunk.join(",");
@@ -699,12 +723,9 @@ pub async fn fetch_game_pass_catalog() -> Result<Vec<OwnedGame>, String> {
             "https://displaycatalog.mp.microsoft.com/v7.0/products?bigIds={}&market=US&languages=en-us&MS-CV=DUMMY.1",
             big_ids
         );
-        
-        let detail_res = client
-            .get(&url)
-            .send()
-            .await;
-            
+
+        let detail_res = client.get(&url).send().await;
+
         if let Ok(res) = detail_res {
             let status = res.status();
             match res.json::<DisplayCatalogResponse>().await {
@@ -712,23 +733,43 @@ pub async fn fetch_game_pass_catalog() -> Result<Vec<OwnedGame>, String> {
                     for product in catalog_data.Products {
                         if let Some(props_list) = product.LocalizedProperties {
                             if let Some(props) = props_list.first() {
-                                let Some(product_id) = product.ProductId.as_deref().map(str::trim).filter(|id| !id.is_empty()) else {
+                                let Some(product_id) = product
+                                    .ProductId
+                                    .as_deref()
+                                    .map(str::trim)
+                                    .filter(|id| !id.is_empty())
+                                else {
                                     continue;
                                 };
-                                let Some(title) = props.ProductTitle.as_deref().map(str::trim).filter(|title| !title.is_empty()) else {
+                                let Some(title) = props
+                                    .ProductTitle
+                                    .as_deref()
+                                    .map(str::trim)
+                                    .filter(|title| !title.is_empty())
+                                else {
                                     continue;
                                 };
-                                
+
                                 // Find the poster image
                                 let cover_url = if let Some(images) = &props.Images {
-                                    images.iter()
-                                        .find(|img| img.ImagePurpose.eq_ignore_ascii_case("Poster") || img.ImagePurpose.eq_ignore_ascii_case("BoxArt"))
+                                    images
+                                        .iter()
+                                        .find(|img| {
+                                            img.ImagePurpose.eq_ignore_ascii_case("Poster")
+                                                || img.ImagePurpose.eq_ignore_ascii_case("BoxArt")
+                                        })
                                         .or_else(|| images.first())
-                                        .map(|img| if img.Uri.starts_with("//") { format!("https:{}", img.Uri) } else { img.Uri.clone() })
+                                        .map(|img| {
+                                            if img.Uri.starts_with("//") {
+                                                format!("https:{}", img.Uri)
+                                            } else {
+                                                img.Uri.clone()
+                                            }
+                                        })
                                 } else {
                                     None
                                 };
-                                    
+
                                 games.push(OwnedGame {
                                     id: format!("gamepass-{}", product_id),
                                     external_id: Some(product_id.to_string()),
@@ -746,7 +787,10 @@ pub async fn fetch_game_pass_catalog() -> Result<Vec<OwnedGame>, String> {
                     }
                 }
                 Err(e) => {
-                    println!("[Xbox] Failed to parse DisplayCatalogResponse (status {}): {}", status, e);
+                    println!(
+                        "[Xbox] Failed to parse DisplayCatalogResponse (status {}): {}",
+                        status, e
+                    );
                 }
             }
         } else if let Err(e) = detail_res {
@@ -805,8 +849,18 @@ pub async fn sync_xbox_achievements(
     let xbl_auth = authenticate_xbox_live(&oauth_token.access_token).await?;
     let xsts_auth = authorize_xsts(&xbl_auth.Token).await?;
 
-    let uhs = xsts_auth.DisplayClaims.xui.first().map(|x| x.uhs.clone()).unwrap_or_default();
-    let xid = xsts_auth.DisplayClaims.xui.first().and_then(|x| x.xid.clone()).ok_or("No XUID found")?;
+    let uhs = xsts_auth
+        .DisplayClaims
+        .xui
+        .first()
+        .map(|x| x.uhs.clone())
+        .unwrap_or_default();
+    let xid = xsts_auth
+        .DisplayClaims
+        .xui
+        .first()
+        .and_then(|x| x.xid.clone())
+        .ok_or("No XUID found")?;
 
     let auth_header = format!("XBL3.0 x={};{}", uhs, xsts_auth.Token);
 
@@ -818,7 +872,10 @@ pub async fn sync_xbox_achievements(
 
     let mut headers = HeaderMap::new();
     headers.insert("x-xbl-contract-version", HeaderValue::from_static("2"));
-    headers.insert(AUTHORIZATION, HeaderValue::from_str(&auth_header).map_err(|e| e.to_string())?);
+    headers.insert(
+        AUTHORIZATION,
+        HeaderValue::from_str(&auth_header).map_err(|e| e.to_string())?,
+    );
     headers.insert(ACCEPT_LANGUAGE, HeaderValue::from_static("en-US"));
 
     let res = client
@@ -839,11 +896,13 @@ pub async fn sync_xbox_achievements(
 
     let mut unified = Vec::new();
     for ach in ach_res.achievements {
-        let icon_url = ach.mediaAssets.unwrap_or_default()
+        let icon_url = ach
+            .mediaAssets
+            .unwrap_or_default()
             .into_iter()
             .find(|m| m.name.eq_ignore_ascii_case("Icon"))
             .map(|m| m.url);
-            
+
         let unlocked_at = if ach.progressState.eq_ignore_ascii_case("Achieved") {
             ach.progression.map(|p| p.timeUnlocked)
         } else {
@@ -875,12 +934,17 @@ pub async fn sync_xbox_achievements(
     games[game_index] = game.clone();
     crate::commands::games::core::write_installed_games_cache(&games);
 
-    Ok(crate::commands::games::types::SyncGameAchievementsResponse {
-        game_id,
-        success: true,
-        game,
-        synced_achievements,
-        unlocked_achievements,
-        message: format!("Xbox achievements synced: {}/{} unlocked", unlocked_achievements, synced_achievements),
-    })
+    Ok(
+        crate::commands::games::types::SyncGameAchievementsResponse {
+            game_id,
+            success: true,
+            game,
+            synced_achievements,
+            unlocked_achievements,
+            message: format!(
+                "Xbox achievements synced: {}/{} unlocked",
+                unlocked_achievements, synced_achievements
+            ),
+        },
+    )
 }

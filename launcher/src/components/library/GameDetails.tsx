@@ -12,6 +12,7 @@ import {
   LockKeyholeOpen
 } from "lucide-react";
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import type { Game } from "../../lib/types";
 import { Metric } from "./Metric";
 import { LibraryCustomScrollbar } from "./LibraryCustomScrollbar";
@@ -28,6 +29,7 @@ import {
 } from "../../lib/formatters";
 import { getGameAssetUrl, getGameBannerStyle } from "../../lib/assets";
 import { uninstallGame } from "../../lib/launcher";
+import { useDownloadStore } from "../../stores/downloadStore";
 
 export interface GameDetailsProps {
   selectedGame: Game | null;
@@ -94,6 +96,14 @@ export function GameDetails({
   const [newCategoryInput, setNewCategoryInput] = useState("");
   const achievements = enrichedSelectedGame?.achievements ?? [];
   const unlockedAchievementCount = achievements.filter((achievement) => achievement.unlockedAt).length;
+
+  const navigate = useNavigate();
+  const downloadItems = useDownloadStore((s) => s.items);
+  const activeDownload = enrichedSelectedGame
+    ? downloadItems.find(
+        (d) => d.gameId === enrichedSelectedGame.id && (d.status === "downloading" || d.status === "paused"),
+      )
+    : null;
 
   // Close popovers on game switch
   useEffect(() => {
@@ -171,7 +181,31 @@ export function GameDetails({
               {/* Game Control Section */}
               <section className="flex flex-wrap items-start gap-3 border-b-4 border-black bg-[#f3e8d7] p-3">
                 <div className="flex min-w-[220px] flex-1 sm:flex-none">
-                  {enrichedSelectedGame.status === "not_installed" ? (
+                  {activeDownload ? (
+                    <div className="flex min-w-0 flex-1 flex-col gap-2 sm:min-w-[205px] sm:flex-none">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="neo-copy text-[10px] font-bold uppercase text-[#55504a]">
+                          Downloading {activeDownload.progress}%
+                        </span>
+                        <span className="neo-copy text-[10px] font-bold uppercase text-[#c20b2f]">
+                          {activeDownload.speed}
+                        </span>
+                      </div>
+                      <div className="h-3 border-2 border-black bg-[#efe6d4]">
+                        <div
+                          className="h-full bg-[#c20b2f]"
+                          style={{ width: `${activeDownload.progress}%` }}
+                        />
+                      </div>
+                      <button
+                        className="neo-copy h-9 border-2 border-black bg-[#171411] px-3 text-[10px] font-bold uppercase text-white hover:bg-[#333] transition-colors"
+                        type="button"
+                        onClick={() => navigate("/downloads")}
+                      >
+                        View in Downloads
+                      </button>
+                    </div>
+                  ) : enrichedSelectedGame.status === "not_installed" ? (
                     <button
                       className="flex h-[64px] min-w-0 flex-1 items-center justify-center gap-3 border-4 border-black bg-[#b7102a] px-5 text-[22px] font-black uppercase text-white shadow-[3px_3px_0_#171411] sm:min-w-[205px] sm:flex-none sm:text-[26px] hover:bg-[#990a20] transition-colors"
                       type="button"

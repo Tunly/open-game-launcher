@@ -187,11 +187,15 @@ pub async fn fetch_ubisoft_owned_games() -> Result<Vec<OwnedGame>, String> {
         return Ok(Vec::new());
     };
 
-    let ubisoft_games = tokio::task::spawn_blocking(move || parse_ubisoft_configurations(&cache_path))
-        .await
-        .map_err(|error| error.to_string())?;
+    let ubisoft_games =
+        tokio::task::spawn_blocking(move || parse_ubisoft_configurations(&cache_path))
+            .await
+            .map_err(|error| error.to_string())?;
 
-    println!("[Ubisoft] Parsed {} owned games from cache.", ubisoft_games.len());
+    println!(
+        "[Ubisoft] Parsed {} owned games from cache.",
+        ubisoft_games.len()
+    );
 
     let owned_games = ubisoft_games
         .into_iter()

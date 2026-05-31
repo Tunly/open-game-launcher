@@ -3,14 +3,15 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use super::types::*;
 use super::core::{
-    normalize_game_id, read_installed_games_cache, write_installed_games_cache,
-    find_launch_executable, path_to_string, is_og_managed_install_path,
-    read_og_managed_version, write_og_managed_manifest,
-    launcher_display_name, update_uri_for_game, open_uri,
-    OG_MANAGED_LATEST_VERSION,
+    extract_og_zip_package, find_launch_executable, is_og_managed_install_path, is_zip_package,
+    launcher_display_name, normalize_game_id, og_manifest_file_for_path,
+    og_manifest_path_for_entry, og_manifest_relative_path, open_uri, path_to_string,
+    read_installed_games_cache, read_og_managed_manifest, read_og_managed_version,
+    update_uri_for_game, write_installed_games_cache, write_og_managed_manifest,
+    write_og_managed_manifest_details, OG_MANAGED_LATEST_VERSION,
 };
+use super::types::*;
 
 #[tauri::command]
 pub fn verify_game_files(game_id: String) -> Result<VerifyGameFilesResponse, String> {
@@ -26,23 +27,64 @@ pub fn verify_game_files(game_id: String) -> Result<VerifyGameFilesResponse, Str
     let mut missing_files = Vec::new();
     let mut checked_files = 0;
 
-    if let Some(install_path) = game.install_path.as_deref() {
+    let install_path = game.install_path.as_deref().map(PathBuf::from);
+    let manifest = install_path.as_deref().and_then(read_og_managed_manifest);
+
+    if let Some(install_path) = install_path.as_deref() {
         checked_files += 1;
-        if !Path::new(install_path).exists() {
-            missing_files.push(install_path.to_string());
+        if !install_path.exists() {
+            missing_files.push(path_to_string(install_path.to_path_buf()));
         }
     } else if matches!(game.status, GameStatus::Installed) {
         missing_files.push("install path".to_string());
     }
 
-    if let Some(executable_path) = game.executable_path.as_deref() {
-        checked_files += 1;
-        if !Path::new(executable_path).exists() {
-            missing_files.push(executable_path.to_string());
+    if let (Some(install_path), Some(manifest)) = (install_path.as_deref(), manifest.as_ref()) {
+        for file in &manifest.files {
+            checked_files += 1;
+            let Some(file_path) = og_manifest_path_for_entry(install_path, &file.path) else {
+                missing_files.push(format!("invalid manifest path: {}", file.path));
+                continue;
+            };
+
+            match fs::metadata(&file_path) {
+                Ok(metadata) if metadata.is_file() => {
+                    if let Some(expected_size) = file.size_bytes {
+                        if metadata.len() != expected_size {
+                            missing_files
+                                .push(format!("{} (size mismatch)", path_to_string(file_path)));
+                        }
+                    }
+                }
+                _ => missing_files.push(path_to_string(file_path)),
+            }
         }
-    } else if let Some(install_path) = game.install_path.as_deref() {
+    }
+
+    let manifest_executable = install_path
+        .as_deref()
+        .zip(
+            manifest
+                .as_ref()
+                .and_then(|manifest| manifest.executable_path.as_deref()),
+        )
+        .and_then(|(install_path, executable_path)| {
+            og_manifest_path_for_entry(install_path, executable_path)
+        });
+
+    if let Some(executable_path) = game
+        .executable_path
+        .as_deref()
+        .map(PathBuf::from)
+        .or(manifest_executable)
+    {
         checked_files += 1;
-        if find_launch_executable(Path::new(install_path), &game.title).is_none() {
+        if !executable_path.exists() {
+            missing_files.push(path_to_string(executable_path));
+        }
+    } else if let Some(install_path) = install_path.as_deref() {
+        checked_files += 1;
+        if find_launch_executable(install_path, &game.title).is_none() {
             missing_files.push("launch executable".to_string());
         }
     }
@@ -85,7 +127,8 @@ pub fn repair_game_files(game_id: String) -> Result<RepairGameFilesResponse, Str
         .as_deref()
         .map(PathBuf::from)
         .or_else(|| {
-            super::core::open_game_launcher_data_dir().map(|data_dir| data_dir.join("games").join(&game.id))
+            super::core::open_game_launcher_data_dir()
+                .map(|data_dir| data_dir.join("games").join(&game.id))
         })
         .ok_or_else(|| "Could not resolve the OG managed install folder.".to_string())?;
 
@@ -100,18 +143,44 @@ pub fn repair_game_files(game_id: String) -> Result<RepairGameFilesResponse, Str
     fs::create_dir_all(&install_path)
         .map_err(|error| format!("Could not create install folder: {error}"))?;
 
-    let dummy_exe_name = if cfg!(target_os = "windows") {
-        "game.exe"
+    let mut manifest = read_og_managed_manifest(&install_path).ok_or_else(|| {
+        format!(
+            "{} does not have an OG managed manifest. Re-run the download to repair it.",
+            game.title
+        )
+    })?;
+    let package_file = manifest
+        .package_file
+        .as_deref()
+        .ok_or_else(|| format!("{} has no local package to repair from.", game.title))?;
+    let package_path = og_manifest_path_for_entry(&install_path, package_file)
+        .ok_or_else(|| "The local package path in the manifest is invalid.".to_string())?;
+
+    if !package_path.exists() {
+        return Err(format!(
+            "{} cannot be repaired because the local package is missing: {}",
+            game.title,
+            path_to_string(package_path)
+        ));
+    }
+
+    let repaired_manifest_files = if is_zip_package(&package_path) {
+        extract_og_zip_package(&package_path, &install_path, |_, _| {})?
     } else {
-        "game"
+        og_manifest_file_for_path(&install_path, &package_path)
+            .into_iter()
+            .collect()
     };
-    let executable_path = install_path.join(dummy_exe_name);
-    fs::write(
-        &executable_path,
-        b"OG Launcher repaired managed game executable",
-    )
-    .map_err(|error| format!("Could not repair executable: {error}"))?;
-    write_og_managed_manifest(&install_path, &game.id, &game.title, &game.version)?;
+
+    let executable_path = find_launch_executable(&install_path, &game.title).ok_or_else(|| {
+        format!(
+            "{} repair did not produce a launchable executable.",
+            game.title
+        )
+    })?;
+    manifest.files = repaired_manifest_files.clone();
+    manifest.executable_path = og_manifest_relative_path(&install_path, &executable_path);
+    write_og_managed_manifest_details(&install_path, &manifest)?;
 
     game.status = GameStatus::Installed;
     game.install_path = Some(path_to_string(install_path.clone()));
@@ -129,7 +198,11 @@ pub fn repair_game_files(game_id: String) -> Result<RepairGameFilesResponse, Str
         game_id,
         success: true,
         game: game.clone(),
-        repaired_files: vec![path_to_string(executable_path)],
+        repaired_files: repaired_manifest_files
+            .iter()
+            .filter_map(|file| og_manifest_path_for_entry(&install_path, &file.path))
+            .map(path_to_string)
+            .collect(),
         message: format!("{} repair completed.", game.title),
     })
 }

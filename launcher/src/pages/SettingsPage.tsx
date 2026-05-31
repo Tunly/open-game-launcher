@@ -2,7 +2,7 @@ import { FolderOpen, HardDrive, Power, RefreshCw, ShieldCheck, Link, LogOut, Gam
 import { useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { useLocalStorageState } from "../hooks/useLocalStorageState";
-import { getDefaultInstallDir, getSystemInfo, openSteamLoginWindow, openGogLoginWindow, openEpicLoginWindow, openEaLoginWindow, openXboxLoginWindow, fetchXboxOwnedGames, normalizeSteamOwnedGames, fetchSteamProfileName, authenticateEpicLegendary, gogExchangeCode, gogLogout, gogGetToken, eaGetToken, eaLogout } from "../lib/launcher";
+import { getDefaultInstallDir, getSystemInfo, openSteamLoginWindow, openGogLoginWindow, openEpicLoginWindow, openEaLoginWindow, openXboxLoginWindow, fetchXboxOwnedGames, normalizeSteamOwnedGames, fetchSteamProfileName, authenticateEpicLegendary, gogExchangeCode, gogLogout, gogGetToken, eaGetToken, eaLogout, openBattleNetLoginWindow, processBattleNetGamesPayload } from "../lib/launcher";
 import { STORAGE_KEYS } from "../lib/storage-keys";
 import type { SystemInfo } from "../lib/types";
 
@@ -78,6 +78,9 @@ export function SettingsPage() {
   const [xboxConnected, setXboxConnected] = useState(false);
   const [xboxGamesCount, setXboxGamesCount] = useState(0);
   const [xboxGamertag, setXboxGamertag] = useState("");
+
+  const [battlenetConnected, setBattlenetConnected] = useState(false);
+  const [battlenetGamesCount, setBattlenetGamesCount] = useState(0);
 
   useEffect(() => {
     let isMounted = true;
@@ -181,6 +184,19 @@ export function SettingsPage() {
           setXboxGamesCount(games.length);
           const gt = localStorage.getItem(STORAGE_KEYS.XBOX_USERNAME);
           if (gt) setXboxGamertag(gt);
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    const battlenetGamesStr = localStorage.getItem(STORAGE_KEYS.BATTLENET_GAMES_CACHE);
+    if (battlenetGamesStr) {
+      try {
+        const games = JSON.parse(battlenetGamesStr);
+        if (Array.isArray(games)) {
+          setBattlenetConnected(true);
+          setBattlenetGamesCount(games.length);
         }
       } catch {
         // ignore
@@ -383,6 +399,39 @@ export function SettingsPage() {
       });
     } catch (err) {
       console.warn("Failed to setup xbox_login_code listener:", err);
+    }
+
+    return () => {
+      isMounted = false;
+      if (unlistenPromise) {
+        void unlistenPromise.then((unlisten) => unlisten());
+      }
+    };
+  }, []);
+
+  useEffect(() => {
+    let isMounted = true;
+    let unlistenPromise: Promise<() => void> | null = null;
+
+    try {
+      unlistenPromise = listen<string>("battlenet_login_data", async (event) => {
+        if (!isMounted) return;
+        setTestResult({ success: true, message: "Battle.net session captured. Processing library..." });
+        try {
+          const games = await processBattleNetGamesPayload(event.payload);
+          localStorage.setItem(STORAGE_KEYS.BATTLENET_GAMES_CACHE, JSON.stringify(games));
+          setBattlenetConnected(true);
+          setBattlenetGamesCount(games.length);
+          setTestResult({ success: true, message: `Successfully linked Battle.net. ${games.length} games imported.` });
+          
+          // Dispatch a custom event so LibraryPage can reload
+          window.dispatchEvent(new Event("battlenet_library_updated"));
+        } catch (err) {
+          setTestResult({ success: false, message: `Battle.net parsing failed: ${getErrorMessage(err)}` });
+        }
+      });
+    } catch (err) {
+      console.warn("Failed to setup battlenet_login_data listener:", err);
     }
 
     return () => {
@@ -756,6 +805,52 @@ export function SettingsPage() {
                       >
                         <Link className="h-3.5 w-3.5" />
                         Connect Xbox
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* BATTLENET CARD */}
+                <div className="border-2 border-black bg-[#efe6d4] p-4 flex flex-col justify-between shadow-[2px_2px_0_#171411]">
+                  <div>
+                    <h3 className="text-xl font-black uppercase text-[#171411] mb-1">
+                      Battle.net
+                    </h3>
+                    <p className="neo-copy text-[9px] font-bold uppercase text-[#55504a] leading-relaxed mb-4">
+                      Import your Blizzard library via web login.
+                    </p>
+                  </div>
+                  <div>
+                    {battlenetConnected ? (
+                      <div className="border border-black bg-[#f5eedf] p-3 space-y-2">
+                        <span className="neo-copy text-[8px] font-bold uppercase text-[#55504a] block">Status</span>
+                        <span className="font-black text-xs text-[#087d6d] block truncate">Connected ({battlenetGamesCount} games)</span>
+                        <button
+                          className="neo-copy w-full flex h-8 items-center justify-center gap-2 border-2 border-black bg-[#c20b2f] px-3 text-[10px] font-bold uppercase text-white shadow-[1px_1px_0_#171411] hover:bg-[#a10825] transition"
+                          type="button"
+                          onClick={() => {
+                            localStorage.removeItem(STORAGE_KEYS.BATTLENET_GAMES_CACHE);
+                            setBattlenetConnected(false);
+                            setBattlenetGamesCount(0);
+                            setTestResult(null);
+                          }}
+                        >
+                          <LogOut className="h-3 w-3" />
+                          Disconnect
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        className="neo-copy w-full flex h-10 items-center justify-center gap-2 border-2 border-black bg-[#0074e0] px-4 text-xs font-black uppercase text-white shadow-[2px_2px_0_#171411] hover:bg-[#005bb5] transition"
+                        type="button"
+                        onClick={() => {
+                          void openBattleNetLoginWindow().catch((err) => {
+                            setTestResult({ success: false, message: `Failed to open: ${getErrorMessage(err)}` });
+                          });
+                        }}
+                      >
+                        <Link className="h-3.5 w-3.5" />
+                        Connect BNet
                       </button>
                     )}
                   </div>

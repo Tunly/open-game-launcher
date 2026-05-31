@@ -17,6 +17,7 @@ export interface LibrarySidebarProps {
   activePlatformFilter: "all" | "windows" | "macos" | "linux";
   advancedFilters: LibraryAdvancedFilters;
   hasActiveFilters?: boolean;
+  onResetFilters?: () => void;
   groupOption: string;
   groupedGames: Record<string, Game[]>;
   selectedGame: Game | null;
@@ -40,6 +41,7 @@ export function LibrarySidebar({
   activePlatformFilter,
   advancedFilters,
   hasActiveFilters: hasActiveFiltersProp,
+  onResetFilters,
   groupOption,
   groupedGames,
   selectedGame,
@@ -81,7 +83,7 @@ export function LibrarySidebar({
           <label className="flex h-9 items-center gap-2 border-2 border-black bg-[#fbf8ef] px-2.5">
             <Search className="h-4 w-4 text-[#686157]" />
             <input
-              className="neo-copy min-w-0 flex-1 bg-transparent text-[11px] font-black uppercase tracking-[0.08em] text-[#171411] outline-none placeholder:text-[#686157]"
+              className="neo-copy min-w-0 flex-1 bg-transparent text-[11px] font-black tracking-[0.08em] text-[#171411] outline-none placeholder:text-[#686157]"
               aria-label="Search library"
               placeholder="Search..."
               type="search"
@@ -133,7 +135,7 @@ export function LibrarySidebar({
                           game={game}
                           selected={selectedGame?.id === game.id}
                           onSelect={setSelectedGame}
-                  isFavorite={favorites[game.id] === true}
+                          isFavorite={favorites[game.id] === true}
                         />
                       ))}
                     </div>
@@ -141,8 +143,19 @@ export function LibrarySidebar({
                 ))
               )
             ) : filteredGames.length === 0 ? (
-              <div className="py-8 text-center text-[12px] font-black uppercase text-[#686157]">
-                No games found
+              <div className="py-12 px-4 text-center space-y-4">
+                <p className="text-[12px] font-black uppercase text-[#686157]">
+                  {hasActiveFilters ? "No games match active filters" : "No games found"}
+                </p>
+                {hasActiveFilters && onResetFilters && (
+                  <button
+                    type="button"
+                    onClick={onResetFilters}
+                    className="neo-copy inline-flex h-9 items-center justify-center border-2 border-black bg-[#e8c843] px-4 text-[10px] font-black uppercase shadow-[2px_2px_0_#171411] hover:bg-[#f0d95a] transition active:translate-y-0.5 active:shadow-[1px_1px_0_#171411]"
+                  >
+                    Reset Filters
+                  </button>
+                )}
               </div>
             ) : (
               filteredGames.map((game) => (

@@ -1,15 +1,15 @@
+use notify::{Config, RecommendedWatcher, RecursiveMode, Watcher};
+use serde::{Deserialize, Serialize};
 use std::{
-    collections::{HashMap, HashSet, BTreeMap},
-    env, fs,
-    path::{Path, PathBuf},
+    collections::{BTreeMap, HashMap, HashSet},
+    env, fs, io,
+    path::{Component, Path, PathBuf},
     process::{Child, Command},
     sync::mpsc,
     thread,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 use tauri::{AppHandle, Emitter, Manager};
-use serde::{Deserialize, Serialize};
-use notify::{Config, RecommendedWatcher, RecursiveMode, Watcher};
 
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
@@ -20,22 +20,57 @@ use winreg::{
     RegKey, RegValue, HKEY,
 };
 
-use super::types::*;
 use super::detect::{
-    scan_installed_games, sync_game_metadata, find_steam_dir,
-    read_steam_library_folders, read_gog_registry_installs,
-    read_ubisoft_registry_installs, read_battlenet_registry_installs,
-    read_ea_registry_installs, steam_app_id_for_game, fetch_steam_achievements,
-    find_local_banner_asset, find_local_icon_asset, find_local_logo_asset,
+    fetch_steam_achievements, find_local_banner_asset, find_local_icon_asset,
+    find_local_logo_asset, find_steam_dir, read_battlenet_registry_installs,
+    read_ea_registry_installs, read_gog_registry_installs, read_steam_library_folders,
+    read_ubisoft_registry_installs, scan_installed_games, steam_app_id_for_game,
+    sync_game_metadata,
 };
 use super::playtime::{
-    record_game_launch_started, record_game_play_session_when_finished,
-    update_cached_game_activity, emit_game_activity_update,
+    emit_game_activity_update, record_game_launch_started, record_game_play_session_when_finished,
+    update_cached_game_activity,
 };
+use super::types::*;
 
 pub const GAME_LIBRARY_CACHE_VERSION: u32 = 1;
 pub const OG_MANAGED_LATEST_VERSION: &str = "1.1.0";
 pub const OG_MANAGED_MANIFEST_FILE: &str = "og-manifest.json";
+
+#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct OgManagedManifest {
+    #[serde(default)]
+    pub game_id: String,
+    #[serde(default)]
+    pub title: String,
+    #[serde(default)]
+    pub version: String,
+    #[serde(default)]
+    pub managed_by: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub download_url: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub download_sha256: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub package_file: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub files: Vec<OgManagedManifestFile>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub executable_path: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub updated_at: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct OgManagedManifestFile {
+    pub path: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size_bytes: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sha256: Option<String>,
+}
 
 #[tauri::command]
 pub async fn list_installed_games() -> Result<Vec<InstalledGame>, String> {
@@ -264,10 +299,7 @@ pub async fn move_game(input: MoveGameRequest) -> Result<(), String> {
 }
 
 #[tauri::command]
-pub async fn launch_game(
-    app: AppHandle,
-    game_id: String,
-) -> Result<LaunchGameResponse, String> {
+pub async fn launch_game(app: AppHandle, game_id: String) -> Result<LaunchGameResponse, String> {
     let game_id = normalize_game_id(game_id)?;
     println!("[open-game-launcher] launch_game requested for {game_id}");
 
@@ -276,10 +308,9 @@ pub async fn launch_game(
 
         // Check if the game is already installed locally
         let installed_games = list_installed_games().await.unwrap_or_default();
-        let local_match = installed_games.iter().find(|g| {
-            g.launcher == "gog"
-                && g.external_id.as_deref() == Some(gog_id)
-        });
+        let local_match = installed_games
+            .iter()
+            .find(|g| g.launcher == "gog" && g.external_id.as_deref() == Some(gog_id));
 
         if let Some(installed_game) = local_match {
             // Game is installed — launch it locally
@@ -308,7 +339,13 @@ pub async fn launch_game(
         let app_handle = app.clone();
         let gog_id_owned = gog_id.to_string();
         tokio::spawn(async move {
-            match crate::commands::gog::gog_start_download(app_handle.clone(), gog_id_owned.clone(), None).await {
+            match crate::commands::gog::gog_start_download(
+                app_handle.clone(),
+                gog_id_owned.clone(),
+                None,
+            )
+            .await
+            {
                 Ok(_) => {
                     let _ = app_handle.emit(
                         "gog_download_started",
@@ -333,10 +370,10 @@ pub async fn launch_game(
 
     if game_id.starts_with("epic-owned-") {
         let epic_id = game_id.strip_prefix("epic-owned-").unwrap_or(&game_id);
-        
+
         // Spawn legendary launch in background
         let epic_id_clone = epic_id.to_string();
-        
+
         tokio::spawn(async move {
             if let Ok(legendary_path) = crate::commands::epic::ensure_legendary_binary().await {
                 let _ = std::process::Command::new(legendary_path)
@@ -485,7 +522,13 @@ pub fn uninstall_game(game_id: String) -> Result<UninstallGameResponse, String> 
     }
 
     if game.launcher == "xbox" {
-        let pfn = game.id.strip_prefix("xbox-").unwrap_or(&game.id).split('!').next().unwrap_or(&game.id);
+        let pfn = game
+            .id
+            .strip_prefix("xbox-")
+            .unwrap_or(&game.id)
+            .split('!')
+            .next()
+            .unwrap_or(&game.id);
         let script = format!(
             "$pkg = Get-AppxPackage -Name \"*{}*\"; if ($pkg) {{ Remove-AppxPackage -Package $pkg.PackageFullName }}",
             pfn.split('_').next().unwrap_or(pfn)
@@ -824,15 +867,16 @@ pub fn update_uri_for_game(game: &InstalledGame) -> Option<String> {
 }
 
 pub fn read_og_managed_version(install_path: &Path) -> Option<String> {
+    read_og_managed_manifest(install_path).and_then(|manifest| {
+        let version = manifest.version.trim().to_string();
+        (!version.is_empty()).then_some(version)
+    })
+}
+
+pub fn read_og_managed_manifest(install_path: &Path) -> Option<OgManagedManifest> {
     let manifest_path = install_path.join(OG_MANAGED_MANIFEST_FILE);
     let contents = fs::read_to_string(manifest_path).ok()?;
-    let value = serde_json::from_str::<serde_json::Value>(&contents).ok()?;
-    value
-        .get("version")
-        .and_then(|version| version.as_str())
-        .map(str::trim)
-        .filter(|version| !version.is_empty())
-        .map(ToOwned::to_owned)
+    serde_json::from_str::<OgManagedManifest>(&contents).ok()
 }
 
 pub fn write_og_managed_manifest(
@@ -841,17 +885,165 @@ pub fn write_og_managed_manifest(
     title: &str,
     version: &str,
 ) -> Result<(), String> {
+    let manifest = OgManagedManifest {
+        game_id: game_id.to_string(),
+        title: title.to_string(),
+        version: version.to_string(),
+        managed_by: "OG-Launcher".to_string(),
+        updated_at: Some(unix_timestamp_to_iso(current_unix_timestamp())),
+        ..Default::default()
+    };
+    write_og_managed_manifest_details(install_path, &manifest)
+}
+
+pub fn write_og_managed_manifest_details(
+    install_path: &Path,
+    manifest: &OgManagedManifest,
+) -> Result<(), String> {
     let manifest_path = install_path.join(OG_MANAGED_MANIFEST_FILE);
-    let contents = serde_json::to_string_pretty(&serde_json::json!({
-        "gameId": game_id,
-        "title": title,
-        "version": version,
-        "managedBy": "OG-Launcher",
-        "updatedAt": unix_timestamp_to_iso(current_unix_timestamp())
-    }))
-    .map_err(|error| format!("Could not serialize update manifest: {error}"))?;
+    let mut manifest = manifest.clone();
+    if manifest.managed_by.trim().is_empty() {
+        manifest.managed_by = "OG-Launcher".to_string();
+    }
+    if manifest.updated_at.is_none() {
+        manifest.updated_at = Some(unix_timestamp_to_iso(current_unix_timestamp()));
+    }
+
+    let contents = serde_json::to_string_pretty(&manifest)
+        .map_err(|error| format!("Could not serialize update manifest: {error}"))?;
     fs::write(manifest_path, contents)
         .map_err(|error| format!("Could not write update manifest: {error}"))
+}
+
+pub fn is_zip_package(path: &Path) -> bool {
+    path.extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("zip"))
+}
+
+pub fn og_manifest_path_for_entry(install_path: &Path, relative_path: &str) -> Option<PathBuf> {
+    let relative = Path::new(relative_path);
+    if relative.is_absolute() {
+        return None;
+    }
+    if relative.components().any(|component| {
+        matches!(
+            component,
+            Component::Prefix(_) | Component::RootDir | Component::ParentDir
+        )
+    }) {
+        return None;
+    }
+
+    Some(install_path.join(relative))
+}
+
+pub fn og_manifest_relative_path(install_path: &Path, path: &Path) -> Option<String> {
+    let relative = path.strip_prefix(install_path).ok()?;
+    if relative.as_os_str().is_empty() {
+        return None;
+    }
+    if relative.components().any(|component| {
+        matches!(
+            component,
+            Component::Prefix(_) | Component::RootDir | Component::ParentDir
+        )
+    }) {
+        return None;
+    }
+
+    Some(
+        relative
+            .components()
+            .filter_map(|component| match component {
+                Component::Normal(value) => Some(value.to_string_lossy().to_string()),
+                _ => None,
+            })
+            .collect::<Vec<_>>()
+            .join("/"),
+    )
+    .filter(|path| !path.trim().is_empty())
+}
+
+pub fn og_manifest_file_for_path(
+    install_path: &Path,
+    path: &Path,
+) -> Option<OgManagedManifestFile> {
+    let metadata = fs::metadata(path).ok()?;
+    if !metadata.is_file() {
+        return None;
+    }
+
+    Some(OgManagedManifestFile {
+        path: og_manifest_relative_path(install_path, path)?,
+        size_bytes: Some(metadata.len()),
+        sha256: None,
+    })
+}
+
+pub fn extract_og_zip_package<F>(
+    package_path: &Path,
+    install_path: &Path,
+    mut on_file: F,
+) -> Result<Vec<OgManagedManifestFile>, String>
+where
+    F: FnMut(usize, usize),
+{
+    let file = fs::File::open(package_path)
+        .map_err(|error| format!("Could not open downloaded ZIP package: {error}"))?;
+    let mut archive = zip::ZipArchive::new(file)
+        .map_err(|error| format!("Could not read ZIP package: {error}"))?;
+    let total = archive.len().max(1);
+    let mut files = Vec::new();
+
+    for index in 0..archive.len() {
+        let mut entry = archive
+            .by_index(index)
+            .map_err(|error| format!("Could not read ZIP entry: {error}"))?;
+
+        if entry.is_symlink() {
+            return Err("ZIP packages with symbolic links are not supported.".to_string());
+        }
+
+        let Some(relative_path) = entry.enclosed_name() else {
+            return Err("ZIP package contains an unsafe path.".to_string());
+        };
+        let outpath = install_path.join(relative_path);
+
+        if entry.is_dir() {
+            fs::create_dir_all(&outpath)
+                .map_err(|error| format!("Could not create ZIP directory: {error}"))?;
+            on_file(index + 1, total);
+            continue;
+        }
+
+        if let Some(parent) = outpath.parent() {
+            fs::create_dir_all(parent)
+                .map_err(|error| format!("Could not create ZIP output folder: {error}"))?;
+        }
+
+        let mut outfile = fs::File::create(&outpath)
+            .map_err(|error| format!("Could not write extracted ZIP file: {error}"))?;
+        io::copy(&mut entry, &mut outfile)
+            .map_err(|error| format!("Could not extract ZIP file: {error}"))?;
+
+        #[cfg(unix)]
+        if let Some(mode) = entry.unix_mode() {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = fs::set_permissions(&outpath, fs::Permissions::from_mode(mode));
+        }
+
+        if let Some(file) = og_manifest_file_for_path(install_path, &outpath) {
+            if file.path.eq_ignore_ascii_case(OG_MANAGED_MANIFEST_FILE) {
+                on_file(index + 1, total);
+                continue;
+            }
+            files.push(file);
+        }
+        on_file(index + 1, total);
+    }
+
+    Ok(files)
 }
 
 pub fn save_sync_root_for_game(game_id: &str) -> Option<PathBuf> {
@@ -1028,14 +1220,18 @@ pub fn is_battlenet_game(game: &InstalledGame) -> bool {
         || game.description.starts_with("Battle.net")
 }
 
-pub fn apply_battlenet_assets(mut game: InstalledGame, _display_icon: Option<&str>) -> InstalledGame {
+pub fn apply_battlenet_assets(
+    mut game: InstalledGame,
+    _display_icon: Option<&str>,
+) -> InstalledGame {
     let uid = game
         .launch_uri
         .as_deref()
         .and_then(|uri| uri.strip_prefix("battlenet://"))
         .or_else(|| game.id.strip_prefix("battlenet-"))
         .unwrap_or(&game.id);
-    let (fallback_cover, _fallback_logo, fallback_icon) = super::detect::get_battlenet_assets(uid, &game.title);
+    let (fallback_cover, _fallback_logo, fallback_icon) =
+        super::detect::get_battlenet_assets(uid, &game.title);
     let rawg_assets = super::detect::get_rawg_battlenet_assets(uid, &game.title);
     let (cover, icon) = rawg_assets
         .map(|assets| {
@@ -1149,10 +1345,7 @@ pub fn launch_installed_game(game: &InstalledGame) -> Result<Option<Child>, Stri
     let mut cmd = Command::new(&executable);
     cmd.current_dir(working_dir);
 
-
-    cmd.spawn()
-        .map(Some)
-        .map_err(|error| error.to_string())
+    cmd.spawn().map(Some).map_err(|error| error.to_string())
 }
 
 pub fn open_uri(uri: &str) -> std::io::Result<()> {

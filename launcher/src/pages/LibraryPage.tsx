@@ -50,6 +50,7 @@ import {
   type LibraryAdvancedFilters,
 } from "../lib/library-filters";
 import { STORAGE_KEYS } from "../lib/storage-keys";
+import { useDownloadStore } from "../stores/downloadStore";
 
 const STEAM_OWNED_GAMES_CACHE_VERSION = "3";
 
@@ -534,6 +535,8 @@ export function LibraryPage() {
   const [addGameError, setAddGameError] = useState<string | null>(null);
   const [isAddingGame, setIsAddingGame] = useState(false);
   const [syncingAchievementGameId, setSyncingAchievementGameId] = useState<string | null>(null);
+  const downloadCount = useDownloadStore((s) => s.items.length);
+  const completedDownloadCount = useDownloadStore((s) => s.completedCount());
 
   // ----------------------------------------------------
   // FILTER STATES
@@ -807,6 +810,7 @@ export function LibraryPage() {
     else if (og.id.startsWith("xbox-") || og.id.startsWith("gamepass-")) launcher = "xbox";
     else if (og.id.startsWith("ubisoft-")) launcher = "ubisoft";
     else if (og.id.startsWith("ea-")) launcher = "ea";
+    else if (og.id.startsWith("battlenet-")) launcher = "battlenet";
 
     const ubisoftLaunchId = og.externalId ?? og.id.replace(/^ubisoft-owned-/, "");
     const gogLaunchId = og.externalId ?? og.id.replace(/^gog-owned-/, "");
@@ -1158,6 +1162,38 @@ export function LibraryPage() {
         }
       }
 
+      // 6. Fetch and merge Battle.net owned games
+      const battlenetGamesStr = localStorage.getItem(STORAGE_KEYS.BATTLENET_GAMES_CACHE);
+      if (battlenetGamesStr) {
+        try {
+          const battlenetRaw = JSON.parse(battlenetGamesStr);
+          if (Array.isArray(battlenetRaw) && battlenetRaw.length > 0) {
+            const ownedBattlenetGames = battlenetRaw.map(ownedGameToGame);
+            const installedBattlenetIds = new Set<string>();
+            games.forEach((g) => {
+              if (g.id.startsWith("battlenet-")) {
+                installedBattlenetIds.add(g.id.replace("battlenet-", ""));
+                if (g.externalId) installedBattlenetIds.add(g.externalId);
+              }
+            });
+
+            const installedTitles = new Set(games.map(g => g.title.toLowerCase().trim()));
+
+            const uninstalledOwnedBattlenetGames = ownedBattlenetGames.filter((og) => {
+              const bnetId = og.id.replace("battlenet-owned-", "");
+              const extId = og.externalId || bnetId;
+              return !installedBattlenetIds.has(bnetId) && 
+                     !installedBattlenetIds.has(extId) && 
+                     !installedTitles.has(og.title.toLowerCase().trim());
+            });
+
+            games = [...games, ...uninstalledOwnedBattlenetGames];
+          }
+        } catch (err) {
+          console.warn("Failed to load Battle.net games from cache:", err);
+        }
+      }
+
       if (!shouldApplyResult()) {
         return;
       }
@@ -1348,6 +1384,13 @@ export function LibraryPage() {
       void runAutomaticLibrarySync(true);
     });
 
+    const handleBattlenetUpdated = () => {
+      if (!isMounted) return;
+      console.log("[OG-Launcher] Battle.net connected - reloading library...");
+      void runAutomaticLibrarySync(false);
+    };
+    window.addEventListener("battlenet_library_updated", handleBattlenetUpdated);
+
     const unlistenScrapedSuccess = listen<unknown[]>("steam_scraped_games_success", (event) => {
       if (!isMounted) return;
       const ownedGames = normalizeSteamOwnedGames(event.payload);
@@ -1369,6 +1412,7 @@ export function LibraryPage() {
       void unlistenSteam.then((u) => u());
       void unlistenGog.then((u) => u());
       void unlistenEa.then((u) => u());
+      window.removeEventListener("battlenet_library_updated", handleBattlenetUpdated);
       void unlistenScrapedSuccess.then((u) => u());
       void unlistenScrapedError.then((u) => u());
     };
@@ -1512,6 +1556,28 @@ export function LibraryPage() {
         return;
       }
 
+      // For owned games that are NOT installed, route through the download manager
+      // so they appear in the Download Queue with live progress tracking.
+      if (
+        selectedGame.status !== "installed" &&
+        (selectedGame.id.startsWith("steam-owned-") ||
+         selectedGame.id.startsWith("gog-owned-") ||
+         selectedGame.id.startsWith("epic-owned-") ||
+         selectedGame.id.startsWith("ea-owned-") ||
+         selectedGame.id.startsWith("ubisoft-owned-") ||
+         selectedGame.id.startsWith("battlenet-owned-"))
+      ) {
+        const response = await startDownload(
+          selectedGame.id,
+          selectedGame.title,
+          selectedGame.downloadUrl,
+          selectedGame.downloadSha256,
+        );
+        setStatusMessage(response.message);
+        return;
+      }
+
+      // For owned games that ARE installed, launch them via their native client
       if (
         selectedGame.id.startsWith("steam-owned-") ||
         selectedGame.id.startsWith("gog-owned-") ||
@@ -1528,7 +1594,12 @@ export function LibraryPage() {
         return;
       }
 
-      const response = await startDownload(selectedGame.id);
+      const response = await startDownload(
+        selectedGame.id,
+        selectedGame.title,
+        selectedGame.downloadUrl,
+        selectedGame.downloadSha256,
+      );
       setStatusMessage(response.message);
     } catch (error) {
       setStatusMessage(getErrorMessage(error));
@@ -1684,6 +1755,7 @@ export function LibraryPage() {
             || Boolean(selectedCollectionName)
             || Boolean(selectedManualCollectionName)
           }
+          onResetFilters={resetAdvancedFilters}
           groupOption={"none"}
           groupedGames={{}}
           selectedGame={selectedGame}
@@ -2295,7 +2367,9 @@ export function LibraryPage() {
         >
           + Add a Game
         </button>
-        <span className="hidden sm:inline">Downloads - 2 of 2 items Complete</span>
+        <span className="hidden sm:inline">
+          Downloads - {completedDownloadCount} of {downloadCount} items Complete
+        </span>
         <button type="button">Friends & Chat +</button>
       </footer>
     </div>

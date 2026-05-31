@@ -252,11 +252,7 @@ fn is_ea_login_complete(url: &str) -> bool {
         return false;
     }
     let path = base.strip_prefix("https://www.ea.com").unwrap_or("");
-    path.is_empty()
-        || path == "/"
-        || path == "/en-us"
-        || path == "/de-de"
-        || path == "/en-gb"
+    path.is_empty() || path == "/" || path == "/en-us" || path == "/de-de" || path == "/en-gb"
 }
 
 fn percent_decode_component(value: &str) -> String {
@@ -272,7 +268,11 @@ fn percent_decode_component(value: &str) -> String {
                 continue;
             }
         }
-        decoded.push(if bytes[index] == b'+' { b' ' } else { bytes[index] });
+        decoded.push(if bytes[index] == b'+' {
+            b' '
+        } else {
+            bytes[index]
+        });
         index += 1;
     }
     String::from_utf8_lossy(&decoded).into_owned()
@@ -366,7 +366,10 @@ async fn graphql_get(client: &Client, token: &str, url: &str) -> Result<serde_js
     Ok(root)
 }
 
-async fn fetch_owned_game_pages(client: &Client, token: &str) -> Result<Vec<serde_json::Value>, String> {
+async fn fetch_owned_game_pages(
+    client: &Client,
+    token: &str,
+) -> Result<Vec<serde_json::Value>, String> {
     let mut items = Vec::new();
     let mut offset = "0".to_string();
 
@@ -600,10 +603,8 @@ fn owned_item_to_game(
         .and_then(|entry| entry.content_id.clone())
         .filter(|value| !value.is_empty());
 
-    let (cover_from_assets, logo_from_assets, icon_from_assets) = get_ea_assets(
-        content_id.as_deref().unwrap_or(""),
-        &title,
-    );
+    let (cover_from_assets, logo_from_assets, icon_from_assets) =
+        get_ea_assets(content_id.as_deref().unwrap_or(""), &title);
     let cover_url = product
         .and_then(product_cover_url)
         .or(cover_from_assets)
@@ -793,6 +794,9 @@ pub async fn ea_fetch_owned_games() -> Result<Vec<OwnedGame>, String> {
         games.push(owned);
     }
 
-    println!("[EA] Returning {} owned games for library merge.", games.len());
+    println!(
+        "[EA] Returning {} owned games for library merge.",
+        games.len()
+    );
     Ok(games)
 }

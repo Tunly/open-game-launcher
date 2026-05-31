@@ -185,8 +185,18 @@ export function uninstallGame(gameId: string): Promise<UninstallGameResponse> {
   return invokeCommand<UninstallGameResponse>("uninstall_game", { gameId });
 }
 
-export function startDownload(gameId: string): Promise<StartDownloadResponse> {
-  return invokeCommand<StartDownloadResponse>("start_download", { gameId });
+export function startDownload(
+  gameId: string,
+  title?: string,
+  downloadUrl?: string,
+  downloadSha256?: string,
+): Promise<StartDownloadResponse> {
+  return invokeCommand<StartDownloadResponse>("start_download", {
+    gameId,
+    gameTitle: title,
+    downloadUrl,
+    downloadSha256,
+  });
 }
 
 export function openSteamLoginWindow(): Promise<void> {
@@ -447,12 +457,24 @@ export async function fetchUbisoftOwnedGames(): Promise<OwnedGame[]> {
   return invokeCommand<OwnedGame[]>("fetch_ubisoft_owned_games");
 }
 
+export async function openBattleNetLoginWindow(): Promise<void> {
+  return invokeCommand<void>("open_battlenet_login_window");
+}
+
+export async function processBattleNetGamesPayload(payloadB64: string): Promise<OwnedGame[]> {
+  return invokeCommand<OwnedGame[]>("process_battlenet_games_payload", { payloadB64 });
+}
+
 export function pauseDownload(gameId: string): Promise<void> {
   return invokeCommand<void>("pause_download", { gameId });
 }
 
 export function cancelDownload(gameId: string): Promise<void> {
   return invokeCommand<void>("cancel_download", { gameId });
+}
+
+export function archiveDownload(gameId: string): Promise<void> {
+  return invokeCommand<void>("archive_download", { gameId });
 }
 
 export function getDownloadQueue(): Promise<DownloadItem[]> {

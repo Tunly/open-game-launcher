@@ -5,6 +5,7 @@ import type { DownloadItem, DownloadStatus } from "../../lib/types";
 interface DownloadCardProps {
   index?: number;
   item: DownloadItem;
+  onArchive: (id: string) => void | Promise<void>;
   onCancel: (id: string) => void;
   onPauseToggle: (id: string) => void;
 }
@@ -34,18 +35,32 @@ const platformColors: Record<string, string> = {
   "EA App": "bg-[#f54242] text-white border-[#f54242]",
   "Ubisoft Connect": "bg-[#0070b8] text-white border-[#0070b8]",
   "Xbox Game Pass": "bg-[#107c10] text-white border-[#107c10]",
+  "Battle.net": "bg-[#00aeff] text-white border-[#00aeff]",
   "OG Store": "bg-[#087d6d] text-white border-black",
 };
 
 export function DownloadCard({
   index = 0,
   item,
+  onArchive,
   onCancel,
   onPauseToggle,
 }: DownloadCardProps) {
-  const canControl = item.status === "downloading" || item.status === "paused";
+  const isTerminal =
+    item.status === "completed" ||
+    item.status === "failed" ||
+    item.status === "cancelled" ||
+    item.status === "error";
+  const canPause =
+    Boolean(item.canPause) &&
+    (item.status === "downloading" || item.status === "paused");
+  const canCancel = Boolean(item.canCancel) && !isTerminal;
   const isComplete = item.status === "completed";
+  const isExternal = Boolean(item.external);
   const queueNumber = String(index + 1).padStart(2, "0");
+  const archiveLabel = isExternal && !isTerminal ? "Remove" : "Archive";
+  const phaseLabel = item.phase ? ` // ${item.phase}` : "";
+  const byteLabel = formatByteProgress(item);
 
   return (
     <article className="grid overflow-hidden border-4 border-black bg-[#f5eedf] shadow-[4px_4px_0_#171411] lg:grid-cols-[96px_1fr_210px]">
@@ -81,10 +96,10 @@ export function DownloadCard({
 
         <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
           <p className="neo-copy text-xs font-bold uppercase text-[#55504a]">
-            {item.progress}% complete
+            {item.progress}% complete{phaseLabel}
           </p>
           <p className="neo-copy text-xs font-bold uppercase text-[#55504a]">
-            {item.speed}
+            {byteLabel ? `${item.speed} // ${byteLabel}` : item.speed}
           </p>
         </div>
         <div className="mt-3 h-4 border-2 border-black bg-[#efe6d4]">
@@ -96,7 +111,7 @@ export function DownloadCard({
       </div>
 
       <div className="grid grid-cols-2 border-t-4 border-black lg:grid-cols-1 lg:border-l-4 lg:border-t-0">
-        {canControl ? (
+        {canPause ? (
           <button
             className="neo-copy flex min-h-14 items-center justify-center gap-2 border-r-2 border-black bg-[#f5eedf] px-4 text-xs font-bold uppercase hover:bg-[#efe6d4] lg:border-b-2 lg:border-r-0"
             type="button"
@@ -109,16 +124,26 @@ export function DownloadCard({
             )}
             {item.status === "downloading" ? "Pause" : "Resume"}
           </button>
+        ) : !isTerminal ? (
+          <button
+            className="neo-copy flex min-h-14 cursor-not-allowed items-center justify-center gap-2 border-r-2 border-black bg-[#efe6d4] px-4 text-xs font-bold uppercase text-[#55504a] lg:border-b-2 lg:border-r-0"
+            disabled
+            type="button"
+          >
+            <Play className="h-4 w-4" />
+            {isExternal ? "External" : "Locked"}
+          </button>
         ) : (
           <button
             className="neo-copy flex min-h-14 items-center justify-center gap-2 border-r-2 border-black bg-[#087d6d] px-4 text-xs font-bold uppercase text-white lg:border-b-2 lg:border-r-0"
             type="button"
+            onClick={() => onArchive(item.id)}
           >
             <RotateCcw className="h-4 w-4" />
-            Archive
+            {archiveLabel}
           </button>
         )}
-        {item.status !== "completed" ? (
+        {canCancel ? (
           <button
             className="neo-copy flex min-h-14 items-center justify-center gap-2 bg-[#c20b2f] px-4 text-xs font-bold uppercase text-white hover:bg-[#a50826]"
             type="button"
@@ -127,10 +152,20 @@ export function DownloadCard({
             <X className="h-4 w-4" />
             Cancel
           </button>
+        ) : !isComplete ? (
+          <button
+            className="neo-copy flex min-h-14 items-center justify-center gap-2 bg-[#f5eedf] px-4 text-xs font-bold uppercase text-[#171411] hover:bg-[#efe6d4]"
+            type="button"
+            onClick={() => onArchive(item.id)}
+          >
+            <X className="h-4 w-4" />
+            {archiveLabel}
+          </button>
         ) : (
           <button
             className="neo-copy min-h-14 bg-[#f5eedf] px-4 text-xs font-bold uppercase text-[#171411]"
             type="button"
+            onClick={() => onArchive(item.id)}
           >
             Ready
           </button>
@@ -138,4 +173,27 @@ export function DownloadCard({
       </div>
     </article>
   );
+}
+
+function formatByteProgress(item: DownloadItem) {
+  if (!item.bytesTotal || item.bytesTotal <= 0) {
+    return "";
+  }
+
+  const downloaded = item.bytesDownloaded ?? 0;
+  return `${formatBytes(downloaded)} / ${formatBytes(item.bytesTotal)}`;
+}
+
+function formatBytes(bytes: number) {
+  if (!Number.isFinite(bytes) || bytes <= 0) {
+    return "0 MB";
+  }
+
+  const gb = bytes / 1024 / 1024 / 1024;
+  if (gb >= 1) {
+    return `${gb.toFixed(gb >= 10 ? 0 : 1)} GB`;
+  }
+
+  const mb = bytes / 1024 / 1024;
+  return `${mb.toFixed(mb >= 10 ? 0 : 1)} MB`;
 }

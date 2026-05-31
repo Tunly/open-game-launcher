@@ -1,68 +1,46 @@
 import { HardDriveDownload, ListFilter } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 
 import { DownloadCard } from "../components/launcher/DownloadCard";
 import type { DownloadItem } from "../lib/types";
 import {
+  archiveDownload,
   cancelDownload,
   getDownloadQueue,
   pauseDownload,
 } from "../lib/launcher";
+import { useDownloadStore } from "../stores/downloadStore";
+
+type QueueFilter = "all" | "active" | "paused" | "done";
 
 export function DownloadsPage() {
-  const [items, setItems] = useState<DownloadItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const items = useDownloadStore((s) => s.items);
+  const removeItem = useDownloadStore((s) => s.removeItem);
+  const activeCount = useDownloadStore((s) => s.activeCount());
+  const pausedCount = useDownloadStore((s) => s.pausedCount());
+  const completedCount = useDownloadStore((s) => s.completedCount());
+  const totalProgress = useDownloadStore((s) => s.totalProgress());
+  const [filter, setFilter] = useState<QueueFilter>("all");
 
   useEffect(() => {
     let active = true;
 
-    async function loadQueue() {
-      try {
-        const queue = await getDownloadQueue();
-        if (active) {
-          setItems(queue);
-        }
-      } catch (err) {
-        console.error("Failed to load download queue:", err);
-      } finally {
-        if (active) {
-          setLoading(false);
-        }
-      }
-    }
-
-    void loadQueue();
-
-    // Listen to download progress events
     const unlistenPromise = listen<DownloadItem>(
       "download_progress",
       (event) => {
         if (!active) return;
-        const payload = event.payload;
-
-        setItems((current) => {
-          const index = current.findIndex((item) => item.gameId === payload.gameId);
-          if (index > -1) {
-            // Update existing item
-            const updated = [...current];
-            updated[index] = {
-              ...updated[index],
-              progress: payload.progress,
-              speed: payload.speed,
-              status: payload.status,
-              eta: payload.eta,
-              // Keep title if payload has empty title
-              title: payload.title || updated[index].title,
-            };
-            return updated;
-          } else {
-            // Add new item
-            return [...current, payload];
-          }
-        });
+        useDownloadStore.getState().upsertItem(event.payload);
       },
     );
+
+    getDownloadQueue()
+      .then((queue) => {
+        if (active) {
+          useDownloadStore.getState().setItems(queue);
+        }
+      })
+      .catch(() => {});
 
     return () => {
       active = false;
@@ -87,20 +65,41 @@ export function DownloadsPage() {
 
     try {
       await cancelDownload(item.gameId);
-      setItems((current) => current.filter((x) => x.id !== id));
+      removeItem(item.gameId);
     } catch (err) {
       console.error("Failed to cancel download:", err);
     }
   }
 
-  const activeCount = items.filter((item) => item.status === "downloading").length;
-  const pausedCount = items.filter((item) => item.status === "paused").length;
-  const completedCount = items.filter((item) => item.status === "completed").length;
-  const totalProgress = items.length
-    ? Math.round(
-        items.reduce((sum, item) => sum + item.progress, 0) / items.length,
-      )
-    : 0;
+  async function handleArchive(id: string) {
+    const item = items.find((x) => x.id === id);
+    if (!item) return;
+    try {
+      await archiveDownload(item.gameId);
+      removeItem(item.gameId);
+    } catch (err) {
+      console.error("Failed to archive download:", err);
+    }
+  }
+
+  const visibleItems = useMemo(() => {
+    if (filter === "active") {
+      return items.filter((item) => item.status === "downloading");
+    }
+    if (filter === "paused") {
+      return items.filter((item) => item.status === "paused");
+    }
+    if (filter === "done") {
+      return items.filter(
+        (item) =>
+          item.status === "completed" ||
+          item.status === "failed" ||
+          item.status === "cancelled" ||
+          item.status === "error",
+      );
+    }
+    return items;
+  }, [filter, items]);
 
   return (
     <section>
@@ -119,13 +118,30 @@ export function DownloadsPage() {
             </p>
           </div>
 
-          <button
-            className="neo-copy flex h-10 w-full items-center justify-center gap-3 border-2 border-black bg-[#f5eedf] px-5 text-xs font-bold uppercase shadow-[2px_2px_0_#171411] sm:w-fit"
-            type="button"
-          >
-            <ListFilter className="h-4 w-4" />
-            Filter queue
-          </button>
+          <div className="grid w-full grid-cols-[40px_repeat(4,minmax(0,1fr))] border-2 border-black bg-[#f5eedf] shadow-[2px_2px_0_#171411] sm:w-fit">
+            <span className="flex h-10 items-center justify-center">
+              <ListFilter className="h-4 w-4" />
+            </span>
+            {[
+              ["all", "All"],
+              ["active", "Run"],
+              ["paused", "Pause"],
+              ["done", "Done"],
+            ].map(([value, label]) => (
+              <button
+                key={value}
+                className={`neo-copy h-10 border-l-2 border-black px-3 text-[10px] font-bold uppercase sm:px-4 ${
+                  filter === value
+                    ? "bg-[#087d6d] text-white"
+                    : "bg-[#f5eedf] text-[#171411] hover:bg-[#efe6d4]"
+                }`}
+                type="button"
+                onClick={() => setFilter(value as QueueFilter)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -170,23 +186,20 @@ export function DownloadsPage() {
       </div>
 
       <div className="space-y-4">
-        {loading ? (
-          <div className="neo-copy border-4 border-black bg-[#f5eedf] p-8 text-center text-xs font-bold uppercase text-[#55504a] shadow-[4px_4px_0_#171411]">
-            Loading download queue...
-          </div>
-        ) : items.length > 0 ? (
-          items.map((item, index) => (
+        {visibleItems.length > 0 ? (
+          visibleItems.map((item, index) => (
             <DownloadCard
               key={item.id}
               index={index}
               item={item}
+              onArchive={handleArchive}
               onCancel={handleCancel}
               onPauseToggle={handlePauseToggle}
             />
           ))
         ) : (
           <div className="neo-copy border-4 border-black bg-[#f5eedf] p-8 text-center text-xs font-bold uppercase text-[#55504a] shadow-[4px_4px_0_#171411]">
-            No active downloads.
+            No downloads in this stack.
           </div>
         )}
       </div>

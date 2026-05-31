@@ -2,6 +2,7 @@ import { CloudDownload, Play, RotateCw } from "lucide-react";
 
 import { getGameBannerStyle } from "../../lib/assets";
 import type { Game } from "../../lib/types";
+import { useDownloadStore } from "../../stores/downloadStore";
 
 interface GameCardProps {
   game: Game;
@@ -42,6 +43,14 @@ export function GameCard({
   onPrimaryAction,
   onVerifyAction,
 }: GameCardProps) {
+  const download = useDownloadStore((s) =>
+    s.items.find(
+      (d) => d.gameId === game.id && d.status !== "completed" && d.status !== "cancelled",
+    ) ?? null,
+  );
+  const downloadProgress = download?.progress ?? 0;
+  const isDownloading = Boolean(download);
+
   if (index === 0) {
     return (
       <article className="relative overflow-hidden border-4 border-black bg-[#f5eedf] shadow-[4px_4px_0_#171411] sm:col-span-2 sm:row-span-2 lg:col-span-2">
@@ -94,10 +103,13 @@ export function GameCard({
         >
           <CloudDownload className="h-9 w-9 text-[#55504a]" />
           <p className="neo-copy mt-6 text-[10px] font-bold uppercase text-[#55504a]">
-            Installation... 45%
+            {isDownloading ? `Downloading... ${downloadProgress}%` : "Not installed"}
           </p>
           <div className="mt-4 h-2 w-[80%] border border-black bg-[#efe6d4]">
-            <div className="h-full w-[45%] bg-[#c20b2f]" />
+            <div
+              className="h-full bg-[#c20b2f]"
+              style={{ width: `${isDownloading ? downloadProgress : 0}%` }}
+            />
           </div>
         </div>
         <div className="p-4">

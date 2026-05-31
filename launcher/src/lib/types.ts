@@ -61,6 +61,8 @@ export interface Game {
   platform: Platform;
   installPath?: string;
   executablePath?: string;
+  downloadUrl?: string;
+  downloadSha256?: string;
   processNames?: string[];
   launchUri?: string;
   cloudGamingUrl?: string;
@@ -96,6 +98,8 @@ export interface StoreGame {
   releaseDate?: string;
   genres?: string[];
   tagLine: string;
+  downloadUrl?: string;
+  downloadSha256?: string;
 }
 
 export interface DownloadItem {
@@ -107,6 +111,12 @@ export interface DownloadItem {
   status: DownloadStatus;
   eta?: number;
   platform?: string;
+  phase?: string;
+  bytesDownloaded?: number | null;
+  bytesTotal?: number | null;
+  canPause?: boolean;
+  canCancel?: boolean;
+  external?: boolean;
 }
 
 export interface SystemInfo {

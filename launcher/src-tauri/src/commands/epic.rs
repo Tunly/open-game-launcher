@@ -1,8 +1,4 @@
-use std::{
-    fs,
-    path::PathBuf,
-    process::Command,
-};
+use std::{fs, path::PathBuf, process::Command};
 
 use super::games::core::open_game_launcher_data_dir;
 use super::system::OwnedGame;
@@ -12,20 +8,24 @@ use super::system::OwnedGame;
 pub async fn ensure_legendary_binary() -> Result<PathBuf, String> {
     let data_dir = open_game_launcher_data_dir()
         .ok_or_else(|| "Could not determine local data directory.".to_string())?;
-    
+
     let tools_dir = data_dir.join("tools");
     if !tools_dir.exists() {
         fs::create_dir_all(&tools_dir).map_err(|e| format!("Failed to create tools dir: {e}"))?;
     }
 
-    let legendary_path = tools_dir.join(if cfg!(target_os = "windows") { "legendary.exe" } else { "legendary" });
-    
+    let legendary_path = tools_dir.join(if cfg!(target_os = "windows") {
+        "legendary.exe"
+    } else {
+        "legendary"
+    });
+
     if legendary_path.exists() {
         return Ok(legendary_path);
     }
 
     println!("[Legendary] Downloading legendary binary...");
-    
+
     // For MVP, just hardcode Windows URL. In a real app we'd check OS.
     let url = if cfg!(target_os = "windows") {
         "https://github.com/derrod/legendary/releases/latest/download/legendary.exe"
@@ -36,12 +36,12 @@ pub async fn ensure_legendary_binary() -> Result<PathBuf, String> {
     let response = reqwest::get(url)
         .await
         .map_err(|e| format!("Failed to download legendary: {e}"))?;
-        
+
     let bytes = response
         .bytes()
         .await
         .map_err(|e| format!("Failed to read legendary bytes: {e}"))?;
-        
+
     fs::write(&legendary_path, bytes)
         .map_err(|e| format!("Failed to save legendary binary: {e}"))?;
 
@@ -63,7 +63,7 @@ pub async fn ensure_legendary_binary() -> Result<PathBuf, String> {
 #[tauri::command]
 pub async fn open_epic_login_window(app: tauri::AppHandle) -> Result<(), String> {
     use tauri::Manager;
-    
+
     // Close existing if open
     if let Some(existing) = app.get_webview_window("epic-login") {
         let _ = existing.close();
@@ -122,7 +122,7 @@ pub async fn open_epic_login_window(app: tauri::AppHandle) -> Result<(), String>
                     println!("[Epic Login] Extracted code: {}", code);
                     use tauri::Emitter;
                     let _ = app_clone.emit("epic_login_code", code.to_string());
-                    
+
                     if let Some(window) = app_clone.get_webview_window("epic-login") {
                         let _ = window.close();
                     }
@@ -141,7 +141,7 @@ pub async fn open_epic_login_window(app: tauri::AppHandle) -> Result<(), String>
 #[tauri::command]
 pub async fn authenticate_epic_legendary(code: String) -> Result<String, String> {
     let legendary = ensure_legendary_binary().await?;
-    
+
     let output = Command::new(&legendary)
         .arg("auth")
         .arg("--code")
@@ -149,39 +149,45 @@ pub async fn authenticate_epic_legendary(code: String) -> Result<String, String>
         .arg("--clear-cache")
         .output()
         .map_err(|e| format!("Failed to run legendary auth: {e}"))?;
-        
+
     if output.status.success() {
         Ok("Epic Games authenticated successfully via Legendary.".to_string())
     } else {
-        Err(format!("Legendary auth failed: {}", String::from_utf8_lossy(&output.stderr)))
+        Err(format!(
+            "Legendary auth failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        ))
     }
 }
 
 #[tauri::command]
 pub async fn fetch_epic_owned_games() -> Result<Vec<OwnedGame>, String> {
     let legendary = ensure_legendary_binary().await?;
-    
+
     let output = Command::new(&legendary)
         .arg("list")
         .arg("--json")
         .output()
         .map_err(|e| format!("Failed to run legendary list: {e}"))?;
-        
+
     if !output.status.success() {
-        return Err(format!("Legendary list failed: {}", String::from_utf8_lossy(&output.stderr)));
+        return Err(format!(
+            "Legendary list failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        ));
     }
-    
+
     let data_str = String::from_utf8_lossy(&output.stdout);
-    
+
     let data: Vec<serde_json::Value> = serde_json::from_str(&data_str)
         .map_err(|e| format!("Failed to parse legendary list json: {e}"))?;
-        
+
     let mut games = Vec::new();
-    
+
     for item in data {
         let app_name = item["app_name"].as_str().unwrap_or_default();
         let title = item["app_title"].as_str().unwrap_or("Epic Game");
-        
+
         // Legendary JSON has some metadata we can use.
         // We'll use the new get_rawg_game_assets to fill in the missing artwork!
         // We must run it in a blocking task because it uses blocking HTTP reqwest.
@@ -189,10 +195,18 @@ pub async fn fetch_epic_owned_games() -> Result<Vec<OwnedGame>, String> {
         let title_clone = title.to_string();
         let rawg_assets = tokio::task::spawn_blocking(move || {
             std::thread::spawn(move || {
-                crate::commands::games::detect::get_rawg_game_assets("epic", &app_name_clone, &title_clone)
-            }).join().unwrap_or(None)
-        }).await.unwrap_or(None);
-        
+                crate::commands::games::detect::get_rawg_game_assets(
+                    "epic",
+                    &app_name_clone,
+                    &title_clone,
+                )
+            })
+            .join()
+            .unwrap_or(None)
+        })
+        .await
+        .unwrap_or(None);
+
         games.push(OwnedGame {
             id: format!("epic-owned-{app_name}"),
             external_id: Some(app_name.to_string()),
@@ -206,6 +220,6 @@ pub async fn fetch_epic_owned_games() -> Result<Vec<OwnedGame>, String> {
             cloud_gaming_url: None,
         });
     }
-    
+
     Ok(games)
 }

@@ -3,13 +3,13 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use super::types::*;
 use super::core::{
-    normalize_game_id, read_installed_games_cache, write_installed_games_cache,
-    unix_timestamp_to_iso, current_unix_timestamp, get_dir_last_modified,
-    slugify, path_to_string, ensure_path_inside_root, path_size_bytes,
-    save_sync_root_for_game, sync_destination_for_save, backup_root_for_game,
+    backup_root_for_game, current_unix_timestamp, ensure_path_inside_root, get_dir_last_modified,
+    normalize_game_id, path_size_bytes, path_to_string, read_installed_games_cache,
+    save_sync_root_for_game, slugify, sync_destination_for_save, unix_timestamp_to_iso,
+    write_installed_games_cache,
 };
+use super::types::*;
 
 #[tauri::command]
 pub fn sync_game_saves(game_id: String) -> Result<SyncGameSavesResponse, String> {

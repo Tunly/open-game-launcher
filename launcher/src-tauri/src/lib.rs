@@ -18,6 +18,7 @@ pub fn run() {
             // Start the background process poller for tracking playtime
             commands::games::start_playtime_poller(app.handle().clone());
             commands::games::start_library_inventory_watcher(app.handle().clone());
+            commands::downloads::start_global_download_watcher(app.handle().clone());
 
             Ok(())
         })
@@ -41,6 +42,8 @@ pub fn run() {
             commands::gog::gog_get_token,
             commands::gog::gog_logout,
             commands::gog::gog_fetch_owned_games,
+            commands::battlenet::open_battlenet_login_window,
+            commands::battlenet::process_battlenet_games_payload,
             commands::ea::open_ea_login_window,
             commands::ea::ea_get_token,
             commands::ea::ea_logout,
@@ -49,7 +52,8 @@ pub fn run() {
             commands::gog::gog_start_download,
             commands::gog::gog_get_cloud_saves,
             commands::games::cache_supabase_access_token,
-            commands::games::add_manual_game,            commands::games::update_game_metadata,
+            commands::games::add_manual_game,
+            commands::games::update_game_metadata,
             commands::games::import_library_snapshot,
             commands::games::move_game,
             commands::games::list_installed_games,
@@ -68,6 +72,7 @@ pub fn run() {
             commands::downloads::start_download,
             commands::downloads::pause_download,
             commands::downloads::cancel_download,
+            commands::downloads::archive_download,
             commands::downloads::get_download_queue,
             commands::xbox::open_xbox_login_window,
             commands::xbox::fetch_xbox_owned_games,

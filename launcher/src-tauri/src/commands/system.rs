@@ -381,21 +381,20 @@ fn start_local_callback_server(app: tauri::AppHandle) {
                         .and_then(|value| value.as_array())
                         .filter(|games| !games.is_empty())
                     {
-                            println!(
-                                "[Steam Scraper] Received {} owned games from Webview!",
-                                games_array.len()
-                            );
-                            let _ = app.emit("steam_scraped_games_success", games_array.clone());
+                        println!(
+                            "[Steam Scraper] Received {} owned games from Webview!",
+                            games_array.len()
+                        );
+                        let _ = app.emit("steam_scraped_games_success", games_array.clone());
 
-                            // Close both standard login window and silent scraper if present
-                            if let Some(login_window) = app.get_webview_window("steam-login") {
-                                let _ = login_window.close();
-                            }
-                            if let Some(scraper_window) =
-                                app.get_webview_window("steam-silent-scraper")
-                            {
-                                let _ = scraper_window.close();
-                            }
+                        // Close both standard login window and silent scraper if present
+                        if let Some(login_window) = app.get_webview_window("steam-login") {
+                            let _ = login_window.close();
+                        }
+                        if let Some(scraper_window) = app.get_webview_window("steam-silent-scraper")
+                        {
+                            let _ = scraper_window.close();
+                        }
                     } else if let Some(is_private) =
                         parsed_data.get("isPrivate").and_then(|v| v.as_bool())
                     {
@@ -1385,7 +1384,7 @@ fn parse_rg_games_json(json: &str, _steam_id: &str) -> Vec<OwnedGame> {
                 .unwrap_or_else(|| "0".to_string());
             let hours_clean = hours_str.replace(',', "");
             let playtime = (hours_clean.parse::<f64>().unwrap_or(0.0) * 60.0).round() as u64;
-            
+
             let last_played_at = extract_json_num_field(obj, "last_played")
                 .and_then(|v| v.parse::<u64>().ok())
                 .filter(|&v| v > 0)
@@ -1556,7 +1555,6 @@ pub async fn fetch_gog_owned_games(access_token: String) -> Result<Vec<OwnedGame
 
     Ok(games)
 }
-
 
 #[tauri::command]
 pub async fn fetch_steam_profile_name() -> Result<Option<String>, String> {

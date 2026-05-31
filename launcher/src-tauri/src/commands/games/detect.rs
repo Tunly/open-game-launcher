@@ -21,12 +21,12 @@ use winreg::{
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
-use super::types::*;
 use super::core::{
-    path_to_string, get_dir_last_modified, current_unix_timestamp, installed_game,
-    env_path, unix_timestamp_to_iso, rawg_asset_cache_path,
-    is_ignored_game_directory, apply_battlenet_assets, local_drive_roots,
+    apply_battlenet_assets, current_unix_timestamp, env_path, get_dir_last_modified,
+    installed_game, is_ignored_game_directory, local_drive_roots, path_to_string,
+    rawg_asset_cache_path, unix_timestamp_to_iso,
 };
+use super::types::*;
 
 fn normalize_scanned_launcher(launcher: &str) -> String {
     super::core::launcher_key_from_source(launcher).to_string()
@@ -57,7 +57,11 @@ fn canonical_install_path(path: &str) -> Option<PathBuf> {
 fn merge_scanned_game(games: &mut BTreeMap<String, InstalledGame>, mut candidate: InstalledGame) {
     candidate.launcher = normalize_scanned_launcher(&candidate.launcher);
 
-    if let Some(install_path) = candidate.install_path.as_deref().filter(|path| !path.is_empty()) {
+    if let Some(install_path) = candidate
+        .install_path
+        .as_deref()
+        .filter(|path| !path.is_empty())
+    {
         if let Some(candidate_canon) = canonical_install_path(install_path) {
             let mut replace_id: Option<String> = None;
             let mut skip_insert = false;
@@ -316,17 +320,36 @@ pub fn scan_epic_games() -> Vec<InstalledGame> {
                 .map(ToOwned::to_owned);
             let install_root = install_path.as_ref().map(PathBuf::from);
             let epic_assets = find_epic_launcher_assets(&value, &title, &catalog_cache);
-            let rawg_assets = get_rawg_game_assets("epic", app_name.as_deref().unwrap_or(&title), &title);
+            let rawg_assets =
+                get_rawg_game_assets("epic", app_name.as_deref().unwrap_or(&title), &title);
 
-            let cover_url = rawg_assets.as_ref().and_then(|a| a.cover_url.clone())
+            let cover_url = rawg_assets
+                .as_ref()
+                .and_then(|a| a.cover_url.clone())
                 .or_else(|| epic_assets.cover_url.clone())
-                .or_else(|| install_root.as_ref().and_then(|path| find_local_banner_asset(path)));
-            let logo_url = rawg_assets.as_ref().and_then(|a| a.logo_url.clone())
+                .or_else(|| {
+                    install_root
+                        .as_ref()
+                        .and_then(|path| find_local_banner_asset(path))
+                });
+            let logo_url = rawg_assets
+                .as_ref()
+                .and_then(|a| a.logo_url.clone())
                 .or_else(|| epic_assets.logo_url.clone())
-                .or_else(|| install_root.as_ref().and_then(|path| find_local_logo_asset(path)));
-            let icon_url = rawg_assets.as_ref().and_then(|a| a.icon_url.clone())
+                .or_else(|| {
+                    install_root
+                        .as_ref()
+                        .and_then(|path| find_local_logo_asset(path))
+                });
+            let icon_url = rawg_assets
+                .as_ref()
+                .and_then(|a| a.icon_url.clone())
                 .or_else(|| epic_assets.icon_url.clone())
-                .or_else(|| install_root.as_ref().and_then(|path| find_local_icon_asset(path)));
+                .or_else(|| {
+                    install_root
+                        .as_ref()
+                        .and_then(|path| find_local_icon_asset(path))
+                });
 
             let cover_url = cover_url.or_else(|| {
                 value
@@ -1000,7 +1023,12 @@ pub fn get_battlenet_assets(
 }
 
 pub fn get_rawg_game_assets(platform: &str, id: &str, search_title: &str) -> Option<RawgAssets> {
-    let cache_key = format!("{}:{}:{}", platform.to_lowercase(), id.trim().to_lowercase(), search_title.trim().to_lowercase());
+    let cache_key = format!(
+        "{}:{}:{}",
+        platform.to_lowercase(),
+        id.trim().to_lowercase(),
+        search_title.trim().to_lowercase()
+    );
     let mut cache = read_rawg_asset_cache();
     if let Some(cached_assets) = cache.entries.get(&cache_key) {
         return Some(cached_assets.clone());
@@ -1514,8 +1542,12 @@ pub fn scan_xbox_games() -> Vec<InstalledGame> {
         .map(|drive| drive.join("XboxGames"))
         .filter(|path| path.is_dir())
     {
-        roots.extend(read_xbox_games_root_dirs(&xbox_root).into_iter().map(|p| (p, None)));
-        
+        roots.extend(
+            read_xbox_games_root_dirs(&xbox_root)
+                .into_iter()
+                .map(|p| (p, None)),
+        );
+
         let mut config_roots = Vec::new();
         collect_xbox_config_roots(&xbox_root, 0, &mut config_roots);
         roots.extend(config_roots.into_iter().map(|p| (p, None)));
@@ -1579,7 +1611,10 @@ fn collect_xbox_games_from_roots(roots: Vec<(PathBuf, Option<String>)>) -> Vec<I
                 if let Some(app_id) = find_uwp_app_id(&contents) {
                     let aumid = format!("{}!{}", pfn, app_id);
                     game.launch_uri = Some(format!("shell:AppsFolder\\{}", aumid));
-                    println!("[open-game-launcher] Detected Xbox AUMID launch URI for {}: {}", game.title, aumid);
+                    println!(
+                        "[open-game-launcher] Detected Xbox AUMID launch URI for {}: {}",
+                        game.title, aumid
+                    );
                 }
             }
         }
@@ -1655,7 +1690,10 @@ fn read_windows_app_packages() -> HashMap<PathBuf, String> {
                     let install_location = parts[0].trim();
                     let package_family_name = parts[1].trim();
                     if !install_location.is_empty() && !package_family_name.is_empty() {
-                        result.insert(PathBuf::from(install_location), package_family_name.to_string());
+                        result.insert(
+                            PathBuf::from(install_location),
+                            package_family_name.to_string(),
+                        );
                     }
                 }
             }
@@ -3603,11 +3641,10 @@ async fn fetch_steam_community_xml_achievements(
 ) -> Result<Vec<UnifiedAchievement>, String> {
     let url = format!("https://steamcommunity.com/profiles/{steam_id}/stats/{appid}/?xml=1");
     let client = reqwest::Client::new();
-    let response = client
-        .get(url)
-        .send()
-        .await
-        .map_err(|error| format!("Could not contact Steam Community achievements XML: {error}"))?;
+    let response =
+        client.get(url).send().await.map_err(|error| {
+            format!("Could not contact Steam Community achievements XML: {error}")
+        })?;
 
     if !response.status().is_success() {
         return Err(format!(
@@ -3690,8 +3727,7 @@ fn xml_unescape(value: &str) -> String {
 }
 
 fn normalize_achievement_id(name: &str) -> String {
-    name
-        .chars()
+    name.chars()
         .map(|character| {
             if character.is_ascii_alphanumeric() {
                 character.to_ascii_lowercase()

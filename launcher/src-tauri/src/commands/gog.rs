@@ -504,7 +504,8 @@ pub async fn gog_exchange_code(code: String) -> Result<GogToken, String> {
 
 #[tauri::command]
 pub async fn gog_refresh_token_command() -> Result<GogToken, String> {
-    let mut token = load_gog_token().ok_or_else(|| "No GOG token found. Please login first.".to_string())?;
+    let mut token =
+        load_gog_token().ok_or_else(|| "No GOG token found. Please login first.".to_string())?;
     ensure_valid_token(&mut token).await?;
     Ok(token)
 }
@@ -545,10 +546,7 @@ async fn fetch_gog_owned_games_from_catalog(
             .await
             .map_err(|error| format!("Failed to parse GOG library catalog: {error}"))?;
 
-        total_pages = catalog
-            .total_pages
-            .max(catalog.total_pages_camel)
-            .max(1);
+        total_pages = catalog.total_pages.max(catalog.total_pages_camel).max(1);
         if catalog.products.is_empty() {
             break;
         }
@@ -572,7 +570,8 @@ async fn fetch_gog_owned_games_from_user_data(
     client: &Client,
     token: &mut GogToken,
 ) -> Result<Vec<super::system::OwnedGame>, String> {
-    let data_resp = gog_api_get(client, token, &format!("{GOG_EMBED_BASE}/user/data/games")).await?;
+    let data_resp =
+        gog_api_get(client, token, &format!("{GOG_EMBED_BASE}/user/data/games")).await?;
     if !data_resp.status().is_success() {
         return Err(format!(
             "GOG user data returned status {}",
@@ -646,7 +645,8 @@ async fn fetch_gog_owned_games_from_user_data(
 
 #[tauri::command]
 pub async fn gog_fetch_owned_games() -> Result<Vec<super::system::OwnedGame>, String> {
-    let mut token = load_gog_token().ok_or_else(|| "No GOG token found. Please login first.".to_string())?;
+    let mut token =
+        load_gog_token().ok_or_else(|| "No GOG token found. Please login first.".to_string())?;
     let client = Client::new();
 
     match fetch_gog_owned_games_from_catalog(&client, &mut token).await {
@@ -707,7 +707,8 @@ pub async fn gog_get_download_info(
     gog_id: String,
     platform: Option<String>,
 ) -> Result<GogDownloadInfoPayload, String> {
-    let mut token = load_gog_token().ok_or_else(|| "No GOG token found. Please login first.".to_string())?;
+    let mut token =
+        load_gog_token().ok_or_else(|| "No GOG token found. Please login first.".to_string())?;
     let client = Client::new();
     let platform = platform.unwrap_or_else(|| detect_platform());
 
@@ -813,13 +814,12 @@ pub async fn gog_get_download_info(
     let title = {
         let detail_url = format!("{GOG_API_BASE}/products/{gog_id}");
         match gog_api_get(&client, &mut token, &detail_url).await {
-            Ok(resp) if resp.status().is_success() => {
-                resp.json::<GogProductDetail>()
-                    .await
-                    .ok()
-                    .and_then(|d| d.title)
-                    .unwrap_or_else(|| format!("GOG Game #{gog_id}"))
-            }
+            Ok(resp) if resp.status().is_success() => resp
+                .json::<GogProductDetail>()
+                .await
+                .ok()
+                .and_then(|d| d.title)
+                .unwrap_or_else(|| format!("GOG Game #{gog_id}")),
             _ => format!("GOG Game #{gog_id}"),
         }
     };
@@ -828,7 +828,10 @@ pub async fn gog_get_download_info(
         game_id: gog_id,
         title,
         installer_id: installer.id.clone(),
-        version: installer.version.clone().unwrap_or_else(|| latest_build.version_number.clone()),
+        version: installer
+            .version
+            .clone()
+            .unwrap_or_else(|| latest_build.version_number.clone()),
         total_size: installer.total_size,
         files: files_payload,
         download_url: resolved_url,
@@ -881,7 +884,8 @@ pub async fn gog_start_download(
     gog_id: String,
     install_path: Option<String>,
 ) -> Result<super::downloads::StartDownloadResponse, String> {
-    let mut token = load_gog_token().ok_or_else(|| "No GOG token found. Please login first.".to_string())?;
+    let mut token =
+        load_gog_token().ok_or_else(|| "No GOG token found. Please login first.".to_string())?;
 
     // Get download info
     let download_info = gog_get_download_info(gog_id.clone(), None).await?;
@@ -892,8 +896,9 @@ pub async fn gog_start_download(
     // Check if already downloading
     {
         let map = get_gog_download_manager();
-        let guard = map.lock()
-        .map_err(|error| format!("GOG manager lock poisoned: {error}"))?;
+        let guard = map
+            .lock()
+            .map_err(|error| format!("GOG manager lock poisoned: {error}"))?;
         if guard.contains_key(&game_id) {
             return Ok(super::downloads::StartDownloadResponse {
                 game_id: game_id.clone(),
@@ -905,16 +910,14 @@ pub async fn gog_start_download(
     }
 
     // Determine install directory
-    let install_dir = install_path
-        .map(PathBuf::from)
-        .unwrap_or_else(|| {
-            dirs::data_local_dir()
-                .or_else(dirs::data_dir)
-                .unwrap_or_else(|| PathBuf::from("."))
-                .join("open-game-launcher")
-                .join("games")
-                .join(&game_id)
-        });
+    let install_dir = install_path.map(PathBuf::from).unwrap_or_else(|| {
+        dirs::data_local_dir()
+            .or_else(dirs::data_dir)
+            .unwrap_or_else(|| PathBuf::from("."))
+            .join("open-game-launcher")
+            .join("games")
+            .join(&game_id)
+    });
 
     fs::create_dir_all(&install_dir)
         .map_err(|e| format!("Failed to create install directory: {e}"))?;
@@ -924,8 +927,9 @@ pub async fn gog_start_download(
 
     {
         let map = get_gog_download_manager();
-        let mut guard = map.lock()
-        .map_err(|error| format!("GOG manager lock poisoned: {error}"))?;
+        let mut guard = map
+            .lock()
+            .map_err(|error| format!("GOG manager lock poisoned: {error}"))?;
         guard.insert(
             game_id.clone(),
             GogActiveDownload {
@@ -990,12 +994,28 @@ pub async fn gog_start_download(
                 );
 
                 update_gog_download_status(&game_id_clone, "completed", "Done", 100, 0);
-                emit_gog_download_progress(&app_clone, &game_id_clone, &title_clone, 100, "Complete", "completed", 0);
+                emit_gog_download_progress(
+                    &app_clone,
+                    &game_id_clone,
+                    &title_clone,
+                    100,
+                    "Complete",
+                    "completed",
+                    0,
+                );
             }
             Err(e) => {
                 eprintln!("[GOG Download] Failed: {e}");
                 update_gog_download_status(&game_id_clone, "error", &e, 0, 0);
-                emit_gog_download_progress(&app_clone, &game_id_clone, &title_clone, 0, "Error", "error", 0);
+                emit_gog_download_progress(
+                    &app_clone,
+                    &game_id_clone,
+                    &title_clone,
+                    0,
+                    "Error",
+                    "error",
+                    0,
+                );
             }
         }
 
@@ -1025,20 +1045,39 @@ async fn download_gog_game_files(
     cancel_rx: &watch::Receiver<bool>,
 ) -> Result<(), String> {
     let client = Client::new();
+    let total_size = download_info.files.iter().map(|f| f.size).sum::<u64>();
+    let mut completed_bytes: u64 = 0;
+    let mut current_progress: u32 = 0;
 
     for file in &download_info.files {
         let file_path = install_dir.join(&file.name);
-        let mut downloaded: u64 = 0;
+        let completed_before_file = completed_bytes;
+        let mut file_downloaded: u64 = 0;
 
         // Check if file already exists with correct size (resume support)
         if let Ok(metadata) = fs::metadata(&file_path) {
-            downloaded = metadata.len();
-            if downloaded >= file.size {
+            file_downloaded = metadata.len().min(file.size);
+            if file_downloaded >= file.size {
+                completed_bytes = completed_bytes.saturating_add(file.size);
                 continue; // File already fully downloaded
             }
         }
 
         for chunk in &file.chunks {
+            let chunk_end = chunk.byte_offset.saturating_add(chunk.byte_size);
+            if file_downloaded >= chunk_end {
+                continue;
+            }
+
+            if file_downloaded > chunk.byte_offset {
+                fs::OpenOptions::new()
+                    .write(true)
+                    .open(&file_path)
+                    .and_then(|file_handle| file_handle.set_len(chunk.byte_offset))
+                    .map_err(|e| format!("Failed to rewind partial chunk: {e}"))?;
+                file_downloaded = chunk.byte_offset;
+            }
+
             // Check cancellation
             if *cancel_rx.borrow() {
                 return Err("Download cancelled.".to_string());
@@ -1046,8 +1085,16 @@ async fn download_gog_game_files(
 
             // Handle pause
             while *pause_rx.borrow() {
-                update_gog_download_status(game_id, "paused", "Paused", 0, 0);
-                emit_gog_download_progress(app, game_id, title, 0, "Paused", "paused", 0);
+                update_gog_download_status(game_id, "paused", "Paused", current_progress, 0);
+                emit_gog_download_progress(
+                    app,
+                    game_id,
+                    title,
+                    current_progress,
+                    "Paused",
+                    "paused",
+                    0,
+                );
                 tokio::time::sleep(Duration::from_millis(200)).await;
                 if *cancel_rx.borrow() {
                     return Err("Download cancelled.".to_string());
@@ -1065,7 +1112,14 @@ async fn download_gog_game_files(
             );
 
             // Try to resolve the actual download URL via the GOG API
-            let resolved_url = resolve_chunk_url(token, &download_info.game_id, &download_info.installer_id, &file.id, &chunk.id).await;
+            let resolved_url = resolve_chunk_url(
+                token,
+                &download_info.game_id,
+                &download_info.installer_id,
+                &file.id,
+                &chunk.id,
+            )
+            .await;
 
             let url = resolved_url.unwrap_or(chunk_url);
 
@@ -1078,7 +1132,10 @@ async fn download_gog_game_files(
                 .map_err(|e| format!("Chunk download request failed: {e}"))?;
 
             if !resp.status().is_success() {
-                return Err(format!("Chunk download failed with status: {}", resp.status()));
+                return Err(format!(
+                    "Chunk download failed with status: {}",
+                    resp.status()
+                ));
             }
 
             let _total_chunk_size = chunk.byte_size;
@@ -1119,32 +1176,49 @@ async fn download_gog_game_files(
                     .map_err(|e| format!("File write error: {e}"))?;
 
                 _chunk_downloaded += chunk_data.len() as u64;
-                downloaded += chunk_data.len() as u64;
+                file_downloaded = file_downloaded.saturating_add(chunk_data.len() as u64);
                 bytes_since_last_update += chunk_data.len() as u64;
 
                 let now = Instant::now();
                 let elapsed_ms = now.duration_since(last_update).as_millis();
                 if elapsed_ms >= 300 {
-                    let total_size = download_info.files.iter().map(|f| f.size).sum::<u64>();
+                    let downloaded_total = completed_before_file
+                        .saturating_add(file_downloaded)
+                        .min(total_size);
                     let progress = if total_size > 0 {
-                        ((downloaded as f64 / total_size as f64) * 100.0) as u32
+                        ((downloaded_total as f64 / total_size as f64) * 100.0) as u32
                     } else {
                         0
                     };
+                    current_progress = progress.min(99);
                     let speed_bytes_per_sec =
                         (bytes_since_last_update as f64) / (elapsed_ms as f64 / 1000.0);
                     let speed_mb_sec = speed_bytes_per_sec / (1024.0 * 1024.0);
                     let speed_str = format!("{:.1} MB/s", speed_mb_sec);
 
-                    let remaining_bytes = total_size.saturating_sub(downloaded);
+                    let remaining_bytes = total_size.saturating_sub(downloaded_total);
                     let eta = if speed_bytes_per_sec > 0.0 {
                         (remaining_bytes as f64 / speed_bytes_per_sec) as u32
                     } else {
                         999
                     };
 
-                    update_gog_download_status(game_id, "downloading", &speed_str, progress, eta);
-                    emit_gog_download_progress(app, game_id, title, progress, &speed_str, "downloading", eta);
+                    update_gog_download_status(
+                        game_id,
+                        "downloading",
+                        &speed_str,
+                        current_progress,
+                        eta,
+                    );
+                    emit_gog_download_progress(
+                        app,
+                        game_id,
+                        title,
+                        current_progress,
+                        &speed_str,
+                        "downloading",
+                        eta,
+                    );
 
                     last_update = now;
                     bytes_since_last_update = 0;
@@ -1157,6 +1231,8 @@ async fn download_gog_game_files(
                 // For now we trust the CDN integrity
             }
         }
+
+        completed_bytes = completed_before_file.saturating_add(file.size);
     }
 
     Ok(())
@@ -1210,6 +1286,97 @@ fn detect_platform() -> String {
 // GOG Download Status Helpers
 // ============================================================================
 
+pub fn get_gog_download_queue() -> Result<Vec<super::downloads::DownloadItemPayload>, String> {
+    let map = get_gog_download_manager()
+        .lock()
+        .map_err(|error| format!("GOG download manager lock poisoned: {error}"))?;
+    let queue: Vec<super::downloads::DownloadItemPayload> = map
+        .iter()
+        .map(|(game_id, dl)| super::downloads::DownloadItemPayload {
+            id: format!("download-{game_id}"),
+            game_id: game_id.clone(),
+            title: dl.title.clone(),
+            progress: dl.progress,
+            speed: dl.speed.clone(),
+            status: dl.status.clone(),
+            eta: dl.eta,
+            platform: "GOG Galaxy".to_string(),
+            phase: "download".to_string(),
+            bytes_downloaded: None,
+            bytes_total: None,
+            can_pause: true,
+            can_cancel: true,
+            external: false,
+        })
+        .collect();
+    Ok(queue)
+}
+
+pub fn pause_gog_download(app: tauri::AppHandle, game_id: String) -> Result<(), String> {
+    let map = get_gog_download_manager();
+    let mut guard = map
+        .lock()
+        .map_err(|error| format!("GOG download manager lock poisoned: {error}"))?;
+    if let Some(dl) = guard.get_mut(&game_id) {
+        if dl.status == "downloading" {
+            dl.paused = true;
+            dl.status = "paused".to_string();
+            dl.speed = "Paused".to_string();
+            let _ = dl.pause_tx.send(true);
+            println!("[GOG Download] Paused download for {game_id}");
+            emit_gog_download_progress(
+                &app,
+                &game_id,
+                &dl.title,
+                dl.progress,
+                &dl.speed,
+                &dl.status,
+                dl.eta,
+            );
+        } else if dl.status == "paused" {
+            dl.paused = false;
+            dl.status = "downloading".to_string();
+            dl.speed = "Connecting...".to_string();
+            let _ = dl.pause_tx.send(false);
+            println!("[GOG Download] Resumed download for {game_id}");
+            emit_gog_download_progress(
+                &app,
+                &game_id,
+                &dl.title,
+                dl.progress,
+                &dl.speed,
+                &dl.status,
+                dl.eta,
+            );
+        }
+    }
+    Ok(())
+}
+
+pub fn cancel_gog_download(app: tauri::AppHandle, game_id: String) -> Result<(), String> {
+    let map = get_gog_download_manager();
+    let mut guard = map
+        .lock()
+        .map_err(|error| format!("GOG download manager lock poisoned: {error}"))?;
+    if let Some(dl) = guard.get_mut(&game_id) {
+        dl.cancelled = true;
+        dl.status = "cancelled".to_string();
+        let _ = dl.cancel_tx.send(true);
+        println!("[GOG Download] Cancelled download for {game_id}");
+        emit_gog_download_progress(
+            &app,
+            &game_id,
+            &dl.title,
+            dl.progress,
+            "Cancelled",
+            "cancelled",
+            0,
+        );
+    }
+    guard.remove(&game_id);
+    Ok(())
+}
+
 fn update_gog_download_status(game_id: &str, status: &str, speed: &str, progress: u32, eta: u32) {
     let Ok(mut guard) = get_gog_download_manager().lock() else {
         return;
@@ -1239,8 +1406,15 @@ pub(crate) fn emit_gog_download_progress(
         speed: speed.to_string(),
         status: status.to_string(),
         eta,
-        platform: "GOG".to_string(),
+        platform: "GOG Galaxy".to_string(),
+        phase: "download".to_string(),
+        bytes_downloaded: None,
+        bytes_total: None,
+        can_pause: true,
+        can_cancel: true,
+        external: false,
     };
+    super::downloads::record_download_item(payload.clone());
     let _ = app.emit("download_progress", payload);
 }
 
@@ -1261,12 +1435,20 @@ fn update_installed_games_cache(game_id: &str, title: &str, install_dir: &PathBu
                     for g in games_arr.iter_mut() {
                         if g.get("id").and_then(|v| v.as_str()) == Some(game_id) {
                             if let Some(obj) = g.as_object_mut() {
-                                obj.insert("status".to_string(), serde_json::Value::String("installed".to_string()));
+                                obj.insert(
+                                    "status".to_string(),
+                                    serde_json::Value::String("installed".to_string()),
+                                );
                                 obj.insert(
                                     "installPath".to_string(),
-                                    serde_json::Value::String(install_dir.to_string_lossy().to_string()),
+                                    serde_json::Value::String(
+                                        install_dir.to_string_lossy().to_string(),
+                                    ),
                                 );
-                                obj.insert("playtimeMinutes".to_string(), serde_json::Value::Number(0.into()));
+                                obj.insert(
+                                    "playtimeMinutes".to_string(),
+                                    serde_json::Value::Number(0.into()),
+                                );
                             }
                             found = true;
                         }
@@ -1274,14 +1456,26 @@ fn update_installed_games_cache(game_id: &str, title: &str, install_dir: &PathBu
 
                     if !found {
                         let mut new_game = serde_json::Map::new();
-                        new_game.insert("id".to_string(), serde_json::Value::String(game_id.to_string()));
-                        new_game.insert("title".to_string(), serde_json::Value::String(title.to_string()));
-                        new_game.insert("status".to_string(), serde_json::Value::String("installed".to_string()));
+                        new_game.insert(
+                            "id".to_string(),
+                            serde_json::Value::String(game_id.to_string()),
+                        );
+                        new_game.insert(
+                            "title".to_string(),
+                            serde_json::Value::String(title.to_string()),
+                        );
+                        new_game.insert(
+                            "status".to_string(),
+                            serde_json::Value::String("installed".to_string()),
+                        );
                         new_game.insert(
                             "installPath".to_string(),
                             serde_json::Value::String(install_dir.to_string_lossy().to_string()),
                         );
-                        new_game.insert("platform".to_string(), serde_json::Value::String("windows".to_string()));
+                        new_game.insert(
+                            "platform".to_string(),
+                            serde_json::Value::String("windows".to_string()),
+                        );
                         new_game.insert(
                             "description".to_string(),
                             serde_json::Value::String(format!("GOG game: {title}")),
@@ -1319,14 +1513,18 @@ pub struct GogCloudSaveFile {
 
 #[tauri::command]
 pub async fn gog_get_cloud_saves(gog_id: String) -> Result<GogCloudSaveInfo, String> {
-    let mut token = load_gog_token().ok_or_else(|| "No GOG token found. Please login first.".to_string())?;
+    let mut token =
+        load_gog_token().ok_or_else(|| "No GOG token found. Please login first.".to_string())?;
     let client = Client::new();
 
     let url = format!("{GOG_EMBED_BASE}/games/{gog_id}/cloudStorage");
     let resp = gog_api_get(&client, &mut token, &url).await?;
 
     if !resp.status().is_success() {
-        return Err(format!("GOG cloud saves request failed with status: {}", resp.status()));
+        return Err(format!(
+            "GOG cloud saves request failed with status: {}",
+            resp.status()
+        ));
     }
 
     let data: serde_json::Value = resp
@@ -1337,14 +1535,25 @@ pub async fn gog_get_cloud_saves(gog_id: String) -> Result<GogCloudSaveInfo, Str
     let mut files = Vec::new();
     if let Some(items) = data.get("items").and_then(|v| v.as_array()) {
         for item in items {
-            let path = item.get("path").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let path = item
+                .get("path")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
             let timestamp = item.get("timestamp").and_then(|v| v.as_u64()).unwrap_or(0);
             let size = item.get("size").and_then(|v| v.as_u64()).unwrap_or(0);
             if !path.is_empty() {
-                files.push(GogCloudSaveFile { path, timestamp, size });
+                files.push(GogCloudSaveFile {
+                    path,
+                    timestamp,
+                    size,
+                });
             }
         }
     }
 
-    Ok(GogCloudSaveInfo { game_id: gog_id, files })
+    Ok(GogCloudSaveInfo {
+        game_id: gog_id,
+        files,
+    })
 }

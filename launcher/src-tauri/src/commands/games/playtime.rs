@@ -1,16 +1,12 @@
-use std::{
-    collections::HashMap,
-    thread,
-    time::Instant,
-};
 use std::process::Child;
+use std::{collections::HashMap, thread, time::Instant};
 use tauri::{AppHandle, Emitter};
 
-use super::types::*;
 use super::core::{
-    read_installed_games_cache, write_installed_games_cache, current_unix_timestamp,
-    unix_timestamp_to_iso,
+    current_unix_timestamp, read_installed_games_cache, unix_timestamp_to_iso,
+    write_installed_games_cache,
 };
+use super::types::*;
 
 pub fn start_playtime_poller(app_handle: AppHandle) {
     thread::spawn(move || {
@@ -100,11 +96,7 @@ pub fn record_game_launch_started(game_id: &str) -> Option<GameActivityUpdate> {
     update_cached_game_activity(game_id, Some(current_unix_timestamp()), None)
 }
 
-pub fn record_game_play_session_when_finished(
-    app: AppHandle,
-    game_id: String,
-    mut child: Child,
-) {
+pub fn record_game_play_session_when_finished(app: AppHandle, game_id: String, mut child: Child) {
     thread::spawn(move || {
         let started_at = Instant::now();
         if child.wait().is_err() {
