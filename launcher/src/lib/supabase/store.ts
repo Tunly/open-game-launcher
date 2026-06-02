@@ -1,20 +1,17 @@
+ 
 import { getSupabaseClient } from "./client";
-import type { StoreBuild, StoreCartItem, StoreLicense, StoreOrder, StoreProduct } from "../types/store";
-import type { DevApplicationStatus, DeveloperApplication } from "../types/store";
+import type { StoreBuild, StoreCartItem, StoreLicense, StoreProduct } from "../types/store";
+import type { DeveloperApplication } from "../types/store";
 
 const PRODUCT_SELECT = `id, title, slug, description, short_description, developer_id, publisher,
   release_date, genres, tags, platforms, price_cents, discount_percent, cover_image_url,
   screenshots, trailer_url, min_system_requirements, rec_system_requirements,
   rating, ratings_count, downloads_count, status, metadata, created_at, updated_at`;
 const CART_SELECT = `id, user_id, product_id, quantity, added_at`;
-const ORDER_SELECT = `id, user_id, stripe_session_id, stripe_payment_intent, subtotal_cents,
-  tax_cents, total_cents, currency, status, payment_method, paid_at, created_at, updated_at`;
 const BUILD_SELECT = `id, product_id, version, platform, arch, file_name, size_bytes,
   sha256, storage_path, changelog, is_latest, uploaded_at, created_at`;
 const LICENSE_SELECT = `id, user_id, product_id, order_id, license_key, platform,
   device_id, activations_left, expires_at, is_revoked, created_at`;
-
-function obj(fields: string[], row: any): any { const o: any = {}; for (const f of fields) o[f] = row[f]; return o; }
 
 export async function listPublishedProducts(): Promise<StoreProduct[]> {
   const client = getSupabaseClient();

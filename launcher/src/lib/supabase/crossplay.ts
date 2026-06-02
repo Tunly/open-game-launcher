@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { getSupabaseClient } from "./client";
 import type { CrossPlayIssue, CrossPlayPlatform, GameCrossPlay, GameCrossPlayReport } from "../types/crossplay";
 
@@ -11,6 +12,7 @@ const REPORT_SELECT = `
   status, created_at, updated_at
 `;
 
+ 
 function rowToCrossPlay(row: any): GameCrossPlay {
   return {
     id: row.id,
@@ -27,6 +29,7 @@ function rowToCrossPlay(row: any): GameCrossPlay {
   };
 }
 
+ 
 function rowToReport(row: any): GameCrossPlayReport {
   return {
     id: row.id,

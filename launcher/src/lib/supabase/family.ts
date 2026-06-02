@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { getSupabaseClient } from "./client";
 import type { FamilyGroup, FamilyMember, FamilySharedGame } from "../types/family";
 

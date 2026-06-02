@@ -14,3 +14,5 @@ pub mod cloud_crypto;
 pub mod crossplay;
 pub mod family;
 pub mod stripe;
+pub mod perf_monitor;
+pub mod overlay;
