@@ -1,10 +1,11 @@
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::PathBuf;
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tauri::Emitter;
+use std::path::PathBuf;
+use super::secure_store;
 use tokio::sync::watch;
 
 // ============================================================================
@@ -210,32 +211,21 @@ struct GogInstaller {
 // Token Storage
 // ============================================================================
 
-fn gog_token_path() -> PathBuf {
-    dirs::config_dir()
-        .or_else(|| dirs::data_local_dir())
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join("open-game-launcher")
-        .join("gog_auth.json")
-}
-
+/// Load the GOG token from OS keychain (with file fallback).
 pub fn load_gog_token() -> Option<GogToken> {
-    let path = gog_token_path();
-    let contents = fs::read_to_string(path).ok()?;
-    serde_json::from_str(&contents).ok()
+    let json = secure_store::get_secret("gog").ok().flatten()?;
+    serde_json::from_str(&json).ok()
 }
 
+/// Save the GOG token to OS keychain (with file fallback).
 pub fn save_gog_token(token: &GogToken) -> Result<(), String> {
-    let path = gog_token_path();
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|e| format!("Failed to create GOG config dir: {e}"))?;
-    }
-    let json = serde_json::to_string_pretty(token)
+    let json = serde_json::to_string(token)
         .map_err(|e| format!("Failed to serialize GOG token: {e}"))?;
-    fs::write(path, json).map_err(|e| format!("Failed to write GOG token: {e}"))
+    secure_store::set_secret("gog", &json)
 }
 
 fn delete_gog_token() {
-    let _ = fs::remove_file(gog_token_path());
+    let _ = secure_store::delete_secret("gog");
 }
 
 // ============================================================================
