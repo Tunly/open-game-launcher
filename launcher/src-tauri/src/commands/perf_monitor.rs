@@ -16,7 +16,7 @@ pub fn poll_performance_metrics() -> Result<RealtimeMetrics, String> {
     sys.refresh_all();
     let cpu = sys.global_cpu_usage() as f64;
     let used = sys.used_memory();
-    let total = sys.total_memory();
+    let _total = sys.total_memory();
     let ram_mb = (used as f64 / 1024.0 / 1024.0).round();
     let uptime_secs = sysinfo::System::uptime();
     let uptime = format!("{}h {}m", uptime_secs / 3600, (uptime_secs % 3600) / 60);

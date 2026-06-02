@@ -16,6 +16,10 @@ const PrivacySettingsPage = lazy(() => import("../pages/PrivacySettingsPage").th
 const ProfileCustomizePage = lazy(() => import("../pages/ProfileCustomizePage").then((page) => ({ default: page.ProfileCustomizePage })));
 const ProfilePage = lazy(() => import("../pages/ProfilePage").then((page) => ({ default: page.ProfilePage })));
 const SettingsPage = lazy(() => import("../pages/SettingsPage").then((page) => ({ default: page.SettingsPage })));
+
+const FamilyPage = lazy(() => import("../pages/FamilyPage").then((page) => ({ default: page.FamilyPage })));
+const DeveloperPortalPage = lazy(() => import("../pages/DeveloperPortalPage").then((page) => ({ default: page.DeveloperPortalPage })));
+const NewsPage = lazy(() => import("../pages/NewsPage").then((page) => ({ default: page.NewsPage })));
 const StorePage = lazy(() => import("../pages/StorePage").then((page) => ({ default: page.StorePage })));
 
 function page(element: ReactNode) {
@@ -54,6 +58,9 @@ export const router = createBrowserRouter([
       { path: "/settings/profile/customize", element: page(<ProfileCustomizePage />) },
       { path: "/settings/privacy", element: page(<PrivacySettingsPage />) },
       { path: "/friends", element: page(<FriendsPage />) },
+      { path: "/family", element: page(<FamilyPage />) },
+      { path: "/developer", element: page(<DeveloperPortalPage />) },
+      { path: "/news", element: page(<NewsPage />) },
       { path: "*", element: page(<NotFoundPage />) },
     ],
   },

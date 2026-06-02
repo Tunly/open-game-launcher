@@ -1,11 +1,4 @@
 use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
-use serde::{Deserialize, Serialize};
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct OverlayConfig {
-    pub enabled: bool,
-    pub hotkey: String,
-}
 
 /// Toggle the overlay window on/off.
 /// Creates a small always-on-top webview window with the overlay UI.

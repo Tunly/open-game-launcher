@@ -3,10 +3,13 @@ import type { PageKey } from "./Sidebar";
 const pagePaths: Record<PageKey, string> = {
   community: "/community",
   downloads: "/downloads",
+  family: "/family",
+  developer: "/developer",
   friends: "/friends",
   home: "/home",
   library: "/library",
   mods: "/mods",
+  news: "/news",
   profile: "/settings/profile",
   settings: "/settings",
   store: "/store",

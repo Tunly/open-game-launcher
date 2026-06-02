@@ -18,7 +18,10 @@ export type PageKey =
   | "mods"
   | "settings"
   | "profile"
-  | "friends";
+  | "friends"
+  | "family"
+  | "developer"
+  | "news";
 
 interface NavItem {
   key?: PageKey;
