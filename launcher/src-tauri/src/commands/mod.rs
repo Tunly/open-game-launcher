@@ -13,3 +13,4 @@ pub mod secure_store;
 pub mod cloud_crypto;
 pub mod crossplay;
 pub mod family;
+pub mod stripe;

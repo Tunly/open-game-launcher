@@ -49,6 +49,7 @@ pub fn run() {
             commands::games::sync::download_game_saves_from_cloud_e2e,
             commands::crossplay::launch_cross_play_join,
             commands::family::copy_family_invite,
+            commands::stripe::create_stripe_checkout_session,
             commands::battlenet::open_battlenet_login_window,
             commands::battlenet::process_battlenet_games_payload,
             commands::ea::open_ea_login_window,
