@@ -63,6 +63,8 @@ pub fn run() {
             commands::perf_monitor::poll_performance_metrics,
             commands::overlay::toggle_in_game_overlay,
             commands::overlay::capture_screenshot,
+            commands::mod_install::install_mod_from_url,
+            commands::mod_install::scan_mod_directory,
             commands::battlenet::open_battlenet_login_window,
             commands::battlenet::process_battlenet_games_payload,
             commands::ea::open_ea_login_window,

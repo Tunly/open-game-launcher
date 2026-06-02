@@ -17,3 +17,4 @@ pub mod stripe;
 pub mod perf_monitor;
 pub mod overlay;
 pub mod deeplink;
+pub mod mod_install;
