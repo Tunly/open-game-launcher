@@ -20,6 +20,9 @@ pub fn run() {
             commands::games::start_library_inventory_watcher(app.handle().clone());
             commands::downloads::start_global_download_watcher(app.handle().clone());
 
+            // One-time migration of legacy plaintext tokens into the OS keychain
+            commands::secure_store::migrate_legacy_tokens();
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
