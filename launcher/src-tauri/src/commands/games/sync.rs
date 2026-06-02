@@ -10,6 +10,7 @@ use super::core::{
     write_installed_games_cache,
 };
 use super::types::*;
+use crate::commands::cloud_crypto::{self, SaveFileMeta};
 
 #[tauri::command]
 pub fn sync_game_saves(game_id: String) -> Result<SyncGameSavesResponse, String> {
@@ -838,4 +839,425 @@ async fn restore_cloud_object_to_local_path(
     tokio::fs::write(destination, bytes)
         .await
         .map_err(|error| format!("Could not write local save file: {error}"))
+}
+
+
+// ============================================================================
+// E2E-Encrypted Cloud Save Sync (AES-256-GCM via OS Keychain)
+// ============================================================================
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+pub struct E2eUploadRequest {
+    pub game_id: String,
+    pub supabase_url: String,
+    pub api_key: String,
+    pub access_token: String,
+    pub user_id: String,
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+pub struct E2eUploadResponse {
+    pub game_id: String,
+    pub success: bool,
+    pub uploaded_files: Vec<String>,
+    pub failed_files: Vec<String>,
+    pub missing_files: Vec<String>,
+    pub message: String,
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+pub struct E2eDownloadRequest {
+    pub game_id: String,
+    pub supabase_url: String,
+    pub api_key: String,
+    pub access_token: String,
+    pub user_id: String,
+}
+
+#[derive(Debug, serde::Serialize, serde::Deserialize)]
+pub struct E2eDownloadResponse {
+    pub game_id: String,
+    pub success: bool,
+    pub restored_files: Vec<String>,
+    pub failed_files: Vec<String>,
+    pub message: String,
+}
+
+/// Upload game saves to Supabase Storage with AES-256-GCM E2E encryption.
+/// The master key is per-user, stored in the OS keychain (see S7).
+/// Files are stored as `${user_id}/${game_id}/<relative_path>.enc` with a
+/// sidecar `${user_id}/${game_id}/<relative_path>.meta.json`.
+#[tauri::command]
+pub async fn upload_game_saves_to_cloud_e2e(
+    input: E2eUploadRequest,
+) -> Result<E2eUploadResponse, String> {
+    use std::collections::HashMap;
+    let game_id = normalize_game_id(input.game_id)?;
+    println!("[E2E] upload_game_saves_to_cloud_e2e for {game_id}");
+
+    if input.supabase_url.trim().is_empty()
+        || input.api_key.trim().is_empty()
+        || input.access_token.trim().is_empty()
+        || input.user_id.trim().is_empty()
+    {
+        return Err("Supabase URL, public key, user token, and user ID are required.".to_string());
+    }
+
+    let master_key = cloud_crypto::get_or_create_user_keyring_key(&input.user_id)?;
+
+    let games = read_installed_games_cache().unwrap_or_default();
+    let game = games
+        .iter()
+        .find(|g| g.id == game_id)
+        .ok_or_else(|| format!("Game '{game_id}' was not found in the local library cache."))?
+        .clone();
+
+    if game.save_files.is_empty() {
+        return Err("Add at least one save path before uploading saves to cloud.".to_string());
+    }
+
+    let client = crate::commands::http::shared_http_client();
+    let mut uploaded_files = Vec::new();
+    let mut failed_files = Vec::new();
+    let mut missing_files = Vec::new();
+    let object_prefix = format!(
+        "{}/{}",
+        sanitize_storage_segment(&input.user_id),
+        sanitize_storage_segment(&game.id)
+    );
+
+    for save_file in &game.save_files {
+        let source = PathBuf::from(&save_file.path);
+        if !source.exists() {
+            missing_files.push(save_file.path.clone());
+            continue;
+        }
+        let mut file_collector: Vec<(PathBuf, String)> = Vec::new();
+        collect_save_file_paths(&source, &source, &mut file_collector);
+
+        for (file_path, relative) in file_collector {
+            let plaintext = match fs::read(&file_path) {
+                Ok(b) => b,
+                Err(e) => {
+                    failed_files.push(format!("{} // read: {e}", file_path.display()));
+                    continue;
+                }
+            };
+            let (ciphertext, meta) = match cloud_crypto::encrypt_file(&plaintext, &master_key) {
+                Ok(v) => v,
+                Err(e) => {
+                    failed_files.push(format!("{} // encrypt: {e}", file_path.display()));
+                    continue;
+                }
+            };
+            let meta_json = match serde_json::to_string(&meta) {
+                Ok(s) => s,
+                Err(e) => {
+                    failed_files.push(format!("{} // meta: {e}", file_path.display()));
+                    continue;
+                }
+            };
+
+            let rel_enc = format!("{}.enc", relative);
+            let rel_meta = format!("{}.meta.json", relative);
+            let object_path_enc = format!("{}/{}", object_prefix, rel_enc);
+            let object_path_meta = format!("{}/{}", object_prefix, rel_meta);
+
+            let enc_result = upload_bytes_to_supabase_storage(
+                &client, &input.supabase_url, &input.api_key, &input.access_token,
+                &object_path_enc, &ciphertext, "application/octet-stream",
+            ).await;
+            let meta_result = upload_bytes_to_supabase_storage(
+                &client, &input.supabase_url, &input.api_key, &input.access_token,
+                &object_path_meta, meta_json.as_bytes(), "application/json",
+            ).await;
+
+            match (enc_result, meta_result) {
+                (Ok(()), Ok(())) => uploaded_files.push(object_path_enc.clone()),
+                (Err(e), _) | (_, Err(e)) => {
+                    failed_files.push(format!("{} // upload: {e}", file_path.display()));
+                }
+            }
+        }
+    }
+
+    let success = failed_files.is_empty() && missing_files.is_empty();
+    let message = if success {
+        format!("{} E2E cloud save upload completed.", game.title)
+    } else {
+        format!(
+            "{} E2E cloud save upload completed with {} failed and {} missing file(s).",
+            game.title,
+            failed_files.len(),
+            missing_files.len()
+        )
+    };
+    Ok(E2eUploadResponse {
+        game_id,
+        success,
+        uploaded_files,
+        failed_files,
+        missing_files,
+        message,
+    })
+}
+
+/// Download E2E-encrypted saves, decrypt with the per-user master key, write to disk.
+#[tauri::command]
+pub async fn download_game_saves_from_cloud_e2e(
+    input: E2eDownloadRequest,
+) -> Result<E2eDownloadResponse, String> {
+    let game_id = normalize_game_id(input.game_id)?;
+    println!("[E2E] download_game_saves_from_cloud_e2e for {game_id}");
+
+    if input.supabase_url.trim().is_empty()
+        || input.api_key.trim().is_empty()
+        || input.access_token.trim().is_empty()
+        || input.user_id.trim().is_empty()
+    {
+        return Err("Supabase URL, public key, user token, and user ID are required.".to_string());
+    }
+
+    let master_key = cloud_crypto::get_or_create_user_keyring_key(&input.user_id)?;
+
+    let restore_root = save_sync_root_for_game(&game_id)
+        .ok_or_else(|| "Could not resolve the local save-sync folder.".to_string())?
+        .join("cloud-restore-e2e");
+    fs::create_dir_all(&restore_root)
+        .map_err(|error| format!("Could not create cloud restore folder: {error}"))?;
+
+    let object_prefix = format!(
+        "{}/{}",
+        sanitize_storage_segment(&input.user_id),
+        sanitize_storage_segment(&game_id)
+    );
+    let client = crate::commands::http::shared_http_client();
+
+    // List all .enc objects under the prefix
+    let mut enc_objects = Vec::new();
+    list_supabase_storage_objects_recursive_e2e(
+        &client,
+        &input.supabase_url,
+        &input.api_key,
+        &input.access_token,
+        "game-saves",
+        &object_prefix,
+        &mut enc_objects,
+    )
+    .await?;
+
+    let mut restored_files = Vec::new();
+    let mut failed_files = Vec::new();
+    for object_path in &enc_objects {
+        if !object_path.ends_with(".enc") {
+            continue;
+        }
+        let meta_path = object_path.replace(".enc", ".meta.json");
+        let ciphertext = match download_supabase_storage_object(
+            &client, &input.supabase_url, &input.api_key, &input.access_token,
+            "game-saves", object_path,
+        ).await {
+            Ok(b) => b,
+            Err(e) => { failed_files.push(format!("{object_path} // download: {e}")); continue; }
+        };
+        let meta_bytes = match download_supabase_storage_object(
+            &client, &input.supabase_url, &input.api_key, &input.access_token,
+            "game-saves", &meta_path,
+        ).await {
+            Ok(b) => b,
+            Err(e) => { failed_files.push(format!("{object_path} // meta: {e}")); continue; }
+        };
+        let meta: SaveFileMeta = match serde_json::from_slice(&meta_bytes) {
+            Ok(m) => m,
+            Err(e) => { failed_files.push(format!("{object_path} // meta parse: {e}")); continue; }
+        };
+        let plaintext = match cloud_crypto::decrypt_file(&ciphertext, &master_key, &meta) {
+            Ok(p) => p,
+            Err(e) => { failed_files.push(format!("{object_path} // decrypt: {e}")); continue; }
+        };
+        let relative = object_path
+            .strip_prefix(&object_prefix)
+            .unwrap_or(object_path)
+            .trim_start_matches('/')
+            .replace(".enc", "");
+        let dest = restore_root.join(&relative);
+        if let Some(parent) = dest.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+        match fs::write(&dest, &plaintext) {
+            Ok(()) => restored_files.push(relative),
+            Err(e) => failed_files.push(format!("{object_path} // write: {e}")),
+        }
+    }
+    let success = failed_files.is_empty();
+    let message = if success {
+        format!("E2E cloud save restore completed ({} files).", restored_files.len())
+    } else {
+        format!("E2E cloud save restore completed with {} failures.", failed_files.len())
+    };
+    Ok(E2eDownloadResponse { game_id, success, restored_files, failed_files, message })
+}
+
+// Helper: collect all files under a source dir recursively
+fn collect_save_file_paths(
+    source_root: &Path,
+    current: &Path,
+    out: &mut Vec<(PathBuf, String)>,
+) {
+    if !current.exists() {
+        return;
+    }
+    if current.is_file() {
+        let rel = current
+            .strip_prefix(source_root)
+            .unwrap_or(current)
+            .to_string_lossy()
+            .replace('\\', "/");
+        out.push((current.to_path_buf(), rel));
+        return;
+    }
+    if let Ok(entries) = fs::read_dir(current) {
+        for entry in entries.flatten() {
+            let p = entry.path();
+            if p == source_root {
+                continue;
+            }
+            collect_save_file_paths(source_root, &p, out);
+        }
+    }
+}
+
+
+// ============================================================================
+// E2E Storage Helpers
+// ============================================================================
+
+async fn upload_bytes_to_supabase_storage(
+    client: &reqwest::Client,
+    supabase_url: &str,
+    api_key: &str,
+    access_token: &str,
+    object_path: &str,
+    bytes: &[u8],
+    content_type: &str,
+) -> Result<(), String> {
+    let base_url = supabase_url.trim_end_matches('/');
+    let encoded = url_encode_path(object_path);
+    let url = format!("{base_url}/storage/v1/object/game-saves/{encoded}");
+    let response = client
+        .post(url)
+        .header("apikey", api_key)
+        .bearer_auth(access_token)
+        .header("x-upsert", "true")
+        .header("cache-control", "3600")
+        .header("content-type", content_type)
+        .body(bytes.to_vec())
+        .send()
+        .await
+        .map_err(|e| format!("E2E upload failed: {e}"))?;
+    if response.status().is_success() {
+        Ok(())
+    } else {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        Err(format!("E2E Supabase upload {status}: {body}"))
+    }
+}
+
+async fn download_supabase_storage_object(
+    client: &reqwest::Client,
+    supabase_url: &str,
+    api_key: &str,
+    access_token: &str,
+    bucket: &str,
+    object_path: &str,
+) -> Result<Vec<u8>, String> {
+    let base_url = supabase_url.trim_end_matches('/');
+    let encoded = url_encode_path(object_path);
+    let url = format!("{base_url}/storage/v1/object/authenticated/{bucket}/{encoded}");
+    let response = client
+        .get(url)
+        .header("apikey", api_key)
+        .bearer_auth(access_token)
+        .send()
+        .await
+        .map_err(|e| format!("E2E download failed: {e}"))?;
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        return Err(format!("E2E Supabase download {status}: {body}"));
+    }
+    response
+        .bytes()
+        .await
+        .map(|b| b.to_vec())
+        .map_err(|e| format!("E2E read body: {e}"))
+}
+
+async fn list_supabase_storage_objects_recursive_e2e(
+    client: &reqwest::Client,
+    supabase_url: &str,
+    api_key: &str,
+    access_token: &str,
+    bucket: &str,
+    prefix: &str,
+    output: &mut Vec<String>,
+) -> Result<(), String> {
+    // Iterative BFS: collect subfolders, then recurse
+    let mut folders = vec![String::new()];
+    let base_url = supabase_url.trim_end_matches('/');
+    #[derive(serde::Deserialize)]
+    struct Entry {
+        name: String,
+    }
+    while let Some(current_path) = folders.pop() {
+        let search_prefix = if current_path.is_empty() {
+            prefix.to_string()
+        } else {
+            format!("{}/{}", prefix, current_path)
+        };
+        let url = format!(
+            "{base_url}/storage/v1/object/list/{bucket}?prefix={}",
+            url_encode_path(&search_prefix)
+        );
+        let body = serde_json::json!({
+            "prefix": search_prefix,
+            "limit": 1000,
+            "offset": 0,
+            "sortBy": { "column": "name", "order": "asc" }
+        });
+        let response = client
+            .post(&url)
+            .header("apikey", api_key)
+            .bearer_auth(access_token)
+            .header("content-type", "application/json")
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| format!("E2E list failed: {e}"))?;
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            return Err(format!("E2E list {status}: {body}"));
+        }
+        let entries: Vec<Entry> = response
+            .json()
+            .await
+            .map_err(|e| format!("E2E list parse: {e}"))?;
+        for entry in entries {
+            let entry_path = if current_path.is_empty() {
+                entry.name.clone()
+            } else {
+                format!("{}/{}", current_path, entry.name)
+            };
+            if entry.name.ends_with(".enc") || entry.name.ends_with(".meta.json") {
+                let full = format!("{}/{}", prefix, entry_path);
+                output.push(full);
+            } else {
+                // assume folder
+                folders.push(entry_path);
+            }
+        }
+    }
+    Ok(())
 }

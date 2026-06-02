@@ -45,6 +45,8 @@ pub fn run() {
             commands::gog::gog_get_token,
             commands::gog::gog_logout,
             commands::gog::gog_fetch_owned_games,
+            commands::games::sync::upload_game_saves_to_cloud_e2e,
+            commands::games::sync::download_game_saves_from_cloud_e2e,
             commands::battlenet::open_battlenet_login_window,
             commands::battlenet::process_battlenet_games_payload,
             commands::ea::open_ea_login_window,

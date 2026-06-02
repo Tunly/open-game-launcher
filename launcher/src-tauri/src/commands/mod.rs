@@ -10,3 +10,4 @@ pub mod system;
 pub mod ubisoft;
 pub mod xbox;
 pub mod secure_store;
+pub mod cloud_crypto;

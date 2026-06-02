@@ -379,21 +379,82 @@ supabase gen types typescript --local > launcher/src/lib/database.types.ts
 - Chat/invites schema exists but frontend integration is minimal
 - Local DB sync commands exist but full offline-first flow is incomplete
 
-## Roadmap
+## Current State
 
-**Core:** Improve game discovery across all launchers. Harden Steam scanning (registry, appmanifest, Web API). Integrate Epic via Legendary. Expand Xbox detection. Native folder picker. Real download/install service. File verification from manifests.
+Open Game Launcher is a working desktop application. This section describes what runs today. The complete product spec is in [`FEATURE_PLAN.md`](./FEATURE_PLAN.md).
 
-**Platform:** Expand GOG, Ubisoft, EA, Battle.net via APIs/URIs/local manifests. External metadata providers (SteamGridDB, IGDB, HowLongToBeat). Non-launcher executable scanning.
+### What works today
+- Desktop shell (Tauri 2, custom title bar, frameless window, window-bounds guard)
+- Visual system: **Retro Manga Launcher** ([`docs/PROJECT_DESIGN.md`](./docs/PROJECT_DESIGN.md)) — aged paper, halftone, red/teal, sharp corners
+- Library: Installed-game scan, cache, manual add, move, launch, favorites, hidden, collections
+- Unified game model with cross-platform type, launcher source, external id, install path, metadata, playtime, artwork, achievements, saves
+- External libraries: **Steam, GOG, Epic (Legendary), Xbox, Game Pass, Ubisoft, Battle.net, EA**
+- Downloads: Persistent queue, resumable HTTP jobs, optional SHA-256 verification, GOG chunk-verified downloads, external launcher tracking
+- Cloud saves: Supabase Storage per-game upload/download/restore + library snapshots
+- Achievements: Xbox + Steam sync via Web/Live APIs
+- Presence: Supabase Realtime
+- Chat & invites: Direct messages, group chat rooms, game invites via Supabase Realtime
+- Local DB sync: SQLite-backed entity sync with dirty tracking and remote conflict resolution
+- Auth/Profile/Social: Supabase Auth, profile pages, friends, customization, privacy, blocks, comments, showcases, badges, social links, hardware
+- 9 Profile showcase panels (About, Activity, Stats, ...)
+- Mod-Management route (UI scaffolded, backend minimal)
+- RAWG artwork via Edge Function proxy
 
-**Social:** Supabase OAuth (Google, Discord, GitHub). Expand profile/friends flows. Realtime presence. Text chat + invites. Local-first offline sync. Cloud save sync for known save paths.
+## Open Work
 
-**Achievements & Media:** Cross-platform achievement aggregation. Screenshot/gallery management. Controller detection. Mod management (Steam Workshop). GDPR export/delete.
+Features described in [`FEATURE_PLAN.md`](./FEATURE_PLAN.md) that are not yet implemented or only partially implemented.
 
-**Store:** Real backend catalog. Product pages, reviews, ratings, wishlist, cart, orders. Stripe/PayPal via Edge Functions. Signed CDN URLs. License limits + device tracking. Developer portal.
+### Embedded Mode (Light Version)
+- Client-Detection for all 7 platforms (currently: login + owned-games flow only)
+- Process-Status-Polling for running clients (`ClientInfo` model)
+- "Steam läuft nicht" / "Steam starten"-Status indicators in the Library
+- See [FEATURE_PLAN.md Sektion 0](./FEATURE_PLAN.md) for the full Light Version design
 
-**Overlay:** Transparent always-on-top Tauri window for windowed/borderless games. Global hotkeys, notifications, chat, invites, perf stats.
+### Cross-Platform-Gameplay-Erkennung
+- `CrossPlaySupport` data in `games.metadata.cross_play_platforms` JSONB
+- IGDB API integration for initial data population
+- Smart-Join UI in friends list ("Spiel auf deiner Plattform starten")
+- Honest UX: verified vs. reported vs. not supported
 
-**Quality:** Automated tests (Rust, React, RLS). Performance targets. Windows/Linux release automation.
+### Custom-Link Invites
+- `universallauncher://` URI-handler in Tauri
+- JWT-based share tokens (separate `share_tokens` table)
+- Web fallback page for users without the launcher installed
+- Cross-platform invite flow with platform-native fallback
+
+### Real Store
+- Backend catalog (currently mock data in `lib/mock-data.ts`)
+- Stripe/PayPal integration via Edge Functions
+- DRM, License-Management
+- Developer Portal
+- Wishlist + Price-Tracker
+- Reviews + Ratings
+
+### Additional Open Features
+- Screenshots & Capture
+- In-Game Overlay (always-on-top Tauri window for windowed/borderless games)
+- Performance-Monitor (FPS, CPU, GPU live)
+- Controller-Support + Re-Mapping
+- Anti-Cheat-Kompatibilitäts-DB
+- Backup/Restore (lokal)
+- Remote Play, Mobile App
+- Family Sharing
+- Real Mod-Management (Steam Workshop, Nexus, ...)
+- News-Feed, Preis-Tracker
+- Cloud-Save-Sync mit Save-Pfad-Community-DB
+- Smart Install (Mirror-Selection, price-comparison)
+- One-Click Setup (new PC onboarding)
+- Game Activity Dashboard (Spotify-Wrapped-style)
+- Plugin-System, Themes, LAN-Transfer, Broadcasting
+
+## Architectural Decisions
+
+- **Cloud-first** (Supabase) mit Local-Cache (SQLite `launcher_local_entities`) für Offline-Resilienz
+- **AGPL-3.0 Open-Source** Lizenz
+- **Retro Manga Launcher** als fixes Design-System (siehe [`docs/PROJECT_DESIGN.md`](./docs/PROJECT_DESIGN.md))
+- **Embedded Mode Light Version** als Default: Open Game Launcher ist ein Aggregator, kein Client-Manager. Kein Silent-Install, keine Auto-Updates, keine Client-Modifikation. Client-Start via offizielles URI-Protokoll.
+- **Tauri 2 + React 18 + TypeScript 5.7 + Rust 1.77+** als Stack
+- **Supabase** für Auth, DB, Storage, Realtime
 
 ## Checks
 
