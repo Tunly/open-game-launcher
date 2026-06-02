@@ -5,26 +5,18 @@ import type {
   LaunchGameResponse,
   Game,
   DownloadItem,
-  SaveFile,
+  LocalEntityKey,
+  LocalEntityPayload,
+  LocalSyncStatus,
   StartDownloadResponse,
   SystemInfo,
-  DiskInfo,
-  VerifyGameFilesResult,
-  RepairGameFilesResponse,
-  CheckGameUpdatesResponse,
-  InstallGameUpdateResponse,
-  SyncGameSavesResponse,
-  UploadGameSavesToCloudResponse,
-  DownloadGameSavesFromCloudResponse,
-  RestoreGameSavesFromCloudResponse,
   SyncGameAchievementsResponse,
   UninstallGameResponse,
-  UnifiedAchievement,
 } from "./types";
 
 type CommandArgs = Record<string, unknown>;
 
-export class LauncherCommandError extends Error {
+class LauncherCommandError extends Error {
   constructor(
     public readonly command: string,
     cause: unknown,
@@ -50,15 +42,11 @@ export function getSystemInfo(): Promise<SystemInfo> {
   return invokeCommand<SystemInfo>("get_system_info");
 }
 
-export function getDiskInfo(): Promise<DiskInfo[]> {
-  return invokeCommand<DiskInfo[]>("get_disk_info");
-}
-
 export function getDefaultInstallDir(): Promise<string> {
   return invokeCommand<string>("get_default_install_dir");
 }
 
-export function getHardwareInfo(): Promise<HardwareInfo> {
+function getHardwareInfo(): Promise<HardwareInfo> {
   return invokeCommand<HardwareInfo>("get_hardware_info");
 }
 
@@ -92,84 +80,13 @@ export function moveGame(input: {
   return invokeCommand<void>("move_game", { input });
 }
 
-export function updateGameMetadata(input: {
-  gameId: string;
-  coverUrl?: string;
-  logoUrl?: string;
-  iconUrl?: string;
-  rating?: number;
-  achievements?: UnifiedAchievement[];
-  saveFiles?: SaveFile[];
-  friendsPlaying?: string[];
-}): Promise<Game> {
-  return invokeCommand<Game>("update_game_metadata", { input });
-}
-
-export function importLibrarySnapshot(games: Game[]): Promise<Game[]> {
-  return invokeCommand<Game[]>("import_library_snapshot", { games });
-}
-
 export function launchGame(gameId: string): Promise<LaunchGameResponse> {
   return invokeCommand<LaunchGameResponse>("launch_game", { gameId });
-}
-
-
-export function verifyGameFiles(
-  gameId: string,
-): Promise<VerifyGameFilesResult> {
-  return invokeCommand<VerifyGameFilesResult>("verify_game_files", { gameId });
-}
-
-export function repairGameFiles(gameId: string): Promise<RepairGameFilesResponse> {
-  return invokeCommand<RepairGameFilesResponse>("repair_game_files", { gameId });
-}
-
-export function checkGameUpdates(): Promise<CheckGameUpdatesResponse> {
-  return invokeCommand<CheckGameUpdatesResponse>("check_game_updates");
-}
-
-export function installGameUpdate(gameId: string): Promise<InstallGameUpdateResponse> {
-  return invokeCommand<InstallGameUpdateResponse>("install_game_update", { gameId });
-}
-
-export function syncGameSaves(gameId: string): Promise<SyncGameSavesResponse> {
-  return invokeCommand<SyncGameSavesResponse>("sync_game_saves", { gameId });
-}
-
-export function uploadGameSavesToCloud(input: {
-  gameId: string;
-  supabaseUrl: string;
-  apiKey: string;
-  accessToken: string;
-  userId: string;
-}): Promise<UploadGameSavesToCloudResponse> {
-  return invokeCommand<UploadGameSavesToCloudResponse>("upload_game_saves_to_cloud", { input });
-}
-
-export function downloadGameSavesFromCloud(input: {
-  gameId: string;
-  supabaseUrl: string;
-  apiKey: string;
-  accessToken: string;
-  userId: string;
-}): Promise<DownloadGameSavesFromCloudResponse> {
-  return invokeCommand<DownloadGameSavesFromCloudResponse>("download_game_saves_from_cloud", { input });
-}
-
-export function restoreGameSavesFromCloud(input: {
-  gameId: string;
-  supabaseUrl: string;
-  apiKey: string;
-  accessToken: string;
-  userId: string;
-}): Promise<RestoreGameSavesFromCloudResponse> {
-  return invokeCommand<RestoreGameSavesFromCloudResponse>("restore_game_saves_from_cloud", { input });
 }
 
 export function syncGameAchievements(
   game: Game,
   steamId?: string,
-  apiKey?: string,
 ): Promise<SyncGameAchievementsResponse> {
   if (game.launcher === "xbox") {
     // Xbox uses its own sync command
@@ -178,7 +95,7 @@ export function syncGameAchievements(
       titleId: game.externalId || ""
     });
   }
-  return invokeCommand<SyncGameAchievementsResponse>("sync_game_achievements", { gameId: game.id, steamId, apiKey });
+  return invokeCommand<SyncGameAchievementsResponse>("sync_game_achievements", { gameId: game.id, steamId });
 }
 
 export function uninstallGame(gameId: string): Promise<UninstallGameResponse> {
@@ -208,7 +125,7 @@ export async function openSteamScraperWindow(steamId: string) {
 }
 
 export async function fetchSteamProfileName(steamId: string) {
-  return invokeCommand<string>("fetch_steam_profile_name", { steamId });
+  return invokeCommand<string | null>("fetch_steam_profile_name", { steamId });
 }
 
 export function openGogLoginWindow(): Promise<void> {
@@ -238,7 +155,7 @@ export function gogLogout(): Promise<void> {
   return invokeCommand<void>("gog_logout");
 }
 
-export function gogFetchOwnedGames(): Promise<OwnedGame[]> {
+function gogFetchOwnedGames(): Promise<OwnedGame[]> {
   return invokeCommand<OwnedGame[]>("gog_fetch_owned_games");
 }
 
@@ -261,48 +178,6 @@ export function eaLogout(): Promise<void> {
 
 export function eaFetchOwnedGames(): Promise<OwnedGame[]> {
   return invokeCommand<OwnedGame[]>("ea_fetch_owned_games");
-}
-
-export interface GogDownloadInfo {
-  gameId: string;
-  title: string;
-  installerId: string;
-  version: string;
-  totalSize: number;
-  files: Array<{
-    id: string;
-    name: string;
-    size: number;
-    checksum: string;
-    chunks: Array<{
-      id: string;
-      byteOffset: number;
-      byteSize: number;
-      checksum: string;
-    }>;
-  }>;
-  downloadUrl: string | null;
-}
-
-export function gogGetDownloadInfo(gogId: string, platform?: string): Promise<GogDownloadInfo> {
-  return invokeCommand<GogDownloadInfo>("gog_get_download_info", { gogId, platform });
-}
-
-export function gogStartDownload(gogId: string, installPath?: string): Promise<StartDownloadResponse> {
-  return invokeCommand<StartDownloadResponse>("gog_start_download", { gogId, installPath });
-}
-
-export interface GogCloudSaveInfo {
-  gameId: string;
-  files: Array<{
-    path: string;
-    timestamp: number;
-    size: number;
-  }>;
-}
-
-export function gogGetCloudSaves(gogId: string): Promise<GogCloudSaveInfo> {
-  return invokeCommand<GogCloudSaveInfo>("gog_get_cloud_saves", { gogId });
 }
 
 export async function openEpicLoginWindow(): Promise<void> {
@@ -434,7 +309,9 @@ export function normalizeSteamOwnedGames(games: unknown): OwnedGame[] {
           readString(record, ["logoUrl", "logo_url"]) ||
           steamImageUrl(appId, "header.jpg"),
         iconUrl: readString(record, ["iconUrl", "icon_url"]) || undefined,
+        externalId: readString(record, ["externalId", "external_id"]) || appId,
         playtimeMinutes,
+        lastPlayedAt: readString(record, ["lastPlayedAt", "last_played_at"]) || null,
       },
     ];
   });
@@ -479,6 +356,34 @@ export function archiveDownload(gameId: string): Promise<void> {
 
 export function getDownloadQueue(): Promise<DownloadItem[]> {
   return invokeCommand<DownloadItem[]>("get_download_queue");
+}
+
+export function getLocalDatabasePath(): Promise<string> {
+  return invokeCommand<string>("get_local_database_path");
+}
+
+export function getLocalSyncStatus(): Promise<LocalSyncStatus> {
+  return invokeCommand<LocalSyncStatus>("get_local_sync_status");
+}
+
+export function getPendingLocalEntities(): Promise<LocalEntityPayload[]> {
+  return invokeCommand<LocalEntityPayload[]>("get_pending_local_entities");
+}
+
+export function getAllLocalEntities(): Promise<LocalEntityPayload[]> {
+  return invokeCommand<LocalEntityPayload[]>("get_all_local_entities");
+}
+
+export function markLocalEntitiesSynced(
+  entities: LocalEntityKey[],
+): Promise<void> {
+  return invokeCommand<void>("mark_local_entities_synced", { entities });
+}
+
+export function applyRemoteLocalEntities(
+  entities: LocalEntityPayload[],
+): Promise<void> {
+  return invokeCommand<void>("apply_remote_local_entities", { entities });
 }
 
 function getBrowserHardwareInfo(): HardwareInfo {

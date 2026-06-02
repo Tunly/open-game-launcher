@@ -1,7 +1,7 @@
 import { getGameSource, matchesLauncherFilter } from "./formatters";
 import type { Game, Platform } from "./types";
 
-export type LibraryPlatformFilter = "all" | Platform;
+type LibraryPlatformFilter = "all" | Platform;
 
 export interface LibraryAdvancedFilters {
   players: string[];
@@ -48,15 +48,15 @@ export const LIBRARY_FEATURE_FILTER_OPTIONS = [
   "Comments available",
 ] as const;
 
-export function normalizeFilterToken(value: string): string {
+function normalizeFilterToken(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]/g, "");
 }
 
-export function getGameProductCategory(game: Game): string {
+function getGameProductCategory(game: Game): string {
   return (game.productCategory || "game").toLowerCase();
 }
 
-export function matchesSidebarPlatform(game: Game, filter: LibraryPlatformFilter): boolean {
+function matchesSidebarPlatform(game: Game, filter: LibraryPlatformFilter): boolean {
   if (filter === "all") {
     return true;
   }
@@ -72,7 +72,7 @@ export function matchesSidebarPlatform(game: Game, filter: LibraryPlatformFilter
   return true;
 }
 
-export function matchesAdvancedPlatformLabel(game: Game, platformLabel: string): boolean {
+function matchesAdvancedPlatformLabel(game: Game, platformLabel: string): boolean {
   const token = normalizeFilterToken(platformLabel);
   if (token === "windows" || token === "win") {
     return game.platform === "windows";
@@ -86,7 +86,7 @@ export function matchesAdvancedPlatformLabel(game: Game, platformLabel: string):
   return (game.platform || "").toLowerCase() === platformLabel.toLowerCase();
 }
 
-export function matchesPlayerMode(game: Game, filter: string): boolean {
+function matchesPlayerMode(game: Game, filter: string): boolean {
   const token = normalizeFilterToken(filter);
   const players = game.players || [];
   if (players.length === 0) {
@@ -123,7 +123,7 @@ export function matchesPlayerMode(game: Game, filter: string): boolean {
   });
 }
 
-export function matchesGenreLabel(game: Game, filter: string): boolean {
+function matchesGenreLabel(game: Game, filter: string): boolean {
   const token = normalizeFilterToken(filter);
   const genres = game.genres || [];
   if (genres.length === 0) {
@@ -135,7 +135,7 @@ export function matchesGenreLabel(game: Game, filter: string): boolean {
   });
 }
 
-export function matchesFeatureLabel(game: Game, filter: string): boolean {
+function matchesFeatureLabel(game: Game, filter: string): boolean {
   const token = normalizeFilterToken(filter);
   const features = (game.features || []).map((feature) => feature.toLowerCase());
   const description = (game.description || "").toLowerCase();
@@ -179,7 +179,7 @@ export function matchesFeatureLabel(game: Game, filter: string): boolean {
     || (source === "steam" && token === "steam");
 }
 
-export function matchesHardwareLabel(game: Game, filter: string): boolean {
+function matchesHardwareLabel(game: Game, filter: string): boolean {
   const token = filter.toLowerCase();
   const features = game.features || [];
   if (token.includes("verified")) {
@@ -197,7 +197,7 @@ export function matchesHardwareLabel(game: Game, filter: string): boolean {
   return false;
 }
 
-export function matchesPlayStatus(
+function matchesPlayStatus(
   game: Game,
   filter: string,
   favorites: Record<string, boolean>,
@@ -225,7 +225,7 @@ export function matchesPlayStatus(
   return false;
 }
 
-export function matchesHiddenVisibility(
+function matchesHiddenVisibility(
   game: Game,
   statusFilters: string[],
   hiddenGames: Record<string, boolean>,

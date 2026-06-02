@@ -82,14 +82,6 @@ export async function setLauncherPresence(input: PresenceUpdateInput = {}) {
   return toPresence(data as UnknownRecord);
 }
 
-export function publishGamePresence(game: { id: string; title: string }) {
-  return setLauncherPresence({
-    currentGameId: game.id,
-    currentGameTitle: game.title,
-    status: "online",
-  });
-}
-
 export function clearLauncherPresence() {
   return setLauncherPresence({
     customStatus: null,

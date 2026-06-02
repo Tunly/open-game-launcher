@@ -146,7 +146,7 @@ async function findExistingDirectRoom(currentUserId: string, friendId: string) {
   return rooms.find((room) => userSetsByRoom.get(room.id)?.size === 2) ?? null;
 }
 
-export async function ensureDirectRoom(friendId: string) {
+async function ensureDirectRoom(friendId: string) {
   const client = getSupabaseClient();
   const currentUserId = await getCurrentUserId();
   if (friendId === currentUserId) {

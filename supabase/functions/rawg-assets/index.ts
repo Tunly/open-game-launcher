@@ -109,14 +109,34 @@ Deno.serve(async (request) => {
 });
 
 async function fetchRawgAssets(apiKey: string, title: string): Promise<RawgAssetResponse> {
+  return (
+    await fetchRawgAssetsSearch(apiKey, title, true)
+  ) ?? (
+    await fetchRawgAssetsSearch(apiKey, title, false)
+  ) ?? {
+    coverUrl: null,
+    logoUrl: null,
+    iconUrl: null,
+    fetchedAt: Math.floor(Date.now() / 1000),
+  };
+}
+
+async function fetchRawgAssetsSearch(
+  apiKey: string,
+  title: string,
+  precise: boolean,
+): Promise<RawgAssetResponse | null> {
   const searchUrl = new URL("https://api.rawg.io/api/games");
   searchUrl.searchParams.set("key", apiKey);
   searchUrl.searchParams.set("search", title);
-  searchUrl.searchParams.set("search_precise", "true");
+  searchUrl.searchParams.set("search_precise", String(precise));
   searchUrl.searchParams.set("page_size", "1");
 
   const searchJson = await rawgGetJson(searchUrl);
   const result = Array.isArray(searchJson?.results) ? searchJson.results[0] : null;
+  if (!result) {
+    return null;
+  }
   const gameId = typeof result?.id === "number" ? result.id : null;
 
   let coverUrl = readString(result, "background_image");

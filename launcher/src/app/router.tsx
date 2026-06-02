@@ -1,20 +1,38 @@
 import { createBrowserRouter, Navigate } from "react-router-dom";
+import { lazy, Suspense, type ReactNode } from "react";
 
 import { AppLayout } from "../components/layout/AppLayout";
-import { AuthPage } from "../pages/AuthPage";
-import { CommunityPage } from "../pages/CommunityPage";
-import { DownloadsPage } from "../pages/DownloadsPage";
-import { EditProfilePage } from "../pages/EditProfilePage";
-import { FriendsPage } from "../pages/FriendsPage";
-import { HomePage } from "../pages/HomePage";
-import { LibraryPage } from "../pages/LibraryPage";
-import { ModsPage } from "../pages/ModsPage";
-import { NotFoundPage } from "../pages/NotFoundPage";
-import { PrivacySettingsPage } from "../pages/PrivacySettingsPage";
-import { ProfileCustomizePage } from "../pages/ProfileCustomizePage";
-import { ProfilePage } from "../pages/ProfilePage";
-import { StorePage } from "../pages/StorePage";
-import { SettingsPage } from "../pages/SettingsPage";
+
+const AuthPage = lazy(() => import("../pages/AuthPage").then((page) => ({ default: page.AuthPage })));
+const CommunityPage = lazy(() => import("../pages/CommunityPage").then((page) => ({ default: page.CommunityPage })));
+const DownloadsPage = lazy(() => import("../pages/DownloadsPage").then((page) => ({ default: page.DownloadsPage })));
+const EditProfilePage = lazy(() => import("../pages/EditProfilePage").then((page) => ({ default: page.EditProfilePage })));
+const FriendsPage = lazy(() => import("../pages/FriendsPage").then((page) => ({ default: page.FriendsPage })));
+const HomePage = lazy(() => import("../pages/HomePage").then((page) => ({ default: page.HomePage })));
+const LibraryPage = lazy(() => import("../pages/LibraryPage").then((page) => ({ default: page.LibraryPage })));
+const ModsPage = lazy(() => import("../pages/ModsPage").then((page) => ({ default: page.ModsPage })));
+const NotFoundPage = lazy(() => import("../pages/NotFoundPage").then((page) => ({ default: page.NotFoundPage })));
+const PrivacySettingsPage = lazy(() => import("../pages/PrivacySettingsPage").then((page) => ({ default: page.PrivacySettingsPage })));
+const ProfileCustomizePage = lazy(() => import("../pages/ProfileCustomizePage").then((page) => ({ default: page.ProfileCustomizePage })));
+const ProfilePage = lazy(() => import("../pages/ProfilePage").then((page) => ({ default: page.ProfilePage })));
+const SettingsPage = lazy(() => import("../pages/SettingsPage").then((page) => ({ default: page.SettingsPage })));
+const StorePage = lazy(() => import("../pages/StorePage").then((page) => ({ default: page.StorePage })));
+
+function page(element: ReactNode) {
+  return (
+    <Suspense
+      fallback={
+        <section className="grid h-full place-items-center bg-[#fbf4e7] text-[#171411]">
+          <div className="border-4 border-black bg-[#f4ead8] px-5 py-3 text-[14px] font-black uppercase shadow-[6px_6px_0_#171411]">
+            Loading
+          </div>
+        </section>
+      }
+    >
+      {element}
+    </Suspense>
+  );
+}
 
 // Browser history is correct for the web preview. If a future Tauri build needs
 // simple deep-link handling without a web server, switch this to a HashRouter.
@@ -23,20 +41,20 @@ export const router = createBrowserRouter([
     element: <AppLayout />,
     children: [
       { path: "/", element: <Navigate to="/library" replace /> },
-      { path: "/home", element: <HomePage /> },
-      { path: "/library", element: <LibraryPage /> },
-      { path: "/store", element: <StorePage /> },
-      { path: "/community", element: <CommunityPage /> },
-      { path: "/downloads", element: <DownloadsPage /> },
-      { path: "/mods", element: <ModsPage /> },
-      { path: "/auth", element: <AuthPage /> },
-      { path: "/u/:username", element: <ProfilePage /> },
-      { path: "/settings/profile", element: <EditProfilePage /> },
-      { path: "/settings", element: <SettingsPage /> },
-      { path: "/settings/profile/customize", element: <ProfileCustomizePage /> },
-      { path: "/settings/privacy", element: <PrivacySettingsPage /> },
-      { path: "/friends", element: <FriendsPage /> },
-      { path: "*", element: <NotFoundPage /> },
+      { path: "/home", element: page(<HomePage />) },
+      { path: "/library", element: page(<LibraryPage />) },
+      { path: "/store", element: page(<StorePage />) },
+      { path: "/community", element: page(<CommunityPage />) },
+      { path: "/downloads", element: page(<DownloadsPage />) },
+      { path: "/mods", element: page(<ModsPage />) },
+      { path: "/auth", element: page(<AuthPage />) },
+      { path: "/u/:username", element: page(<ProfilePage />) },
+      { path: "/settings/profile", element: page(<EditProfilePage />) },
+      { path: "/settings", element: page(<SettingsPage />) },
+      { path: "/settings/profile/customize", element: page(<ProfileCustomizePage />) },
+      { path: "/settings/privacy", element: page(<PrivacySettingsPage />) },
+      { path: "/friends", element: page(<FriendsPage />) },
+      { path: "*", element: page(<NotFoundPage />) },
     ],
   },
 ]);

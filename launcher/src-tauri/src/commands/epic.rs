@@ -1,9 +1,14 @@
 use std::{fs, path::PathBuf, process::Command};
 
+use futures_util::{stream, StreamExt};
+
 use super::games::core::open_game_launcher_data_dir;
+use super::games::detect::{self, EpicLauncherAssets};
 use super::system::OwnedGame;
 
 // For now let's just copy what we need or reference them cleanly.
+
+const EPIC_OWNED_ASSET_CONCURRENCY: usize = 6;
 
 pub async fn ensure_legendary_binary() -> Result<PathBuf, String> {
     let data_dir = open_game_launcher_data_dir()
@@ -182,44 +187,168 @@ pub async fn fetch_epic_owned_games() -> Result<Vec<OwnedGame>, String> {
     let data: Vec<serde_json::Value> = serde_json::from_str(&data_str)
         .map_err(|e| format!("Failed to parse legendary list json: {e}"))?;
 
-    let mut games = Vec::new();
-
-    for item in data {
-        let app_name = item["app_name"].as_str().unwrap_or_default();
-        let title = item["app_title"].as_str().unwrap_or("Epic Game");
-
-        // Legendary JSON has some metadata we can use.
-        // We'll use the new get_rawg_game_assets to fill in the missing artwork!
-        // We must run it in a blocking task because it uses blocking HTTP reqwest.
-        let app_name_clone = app_name.to_string();
-        let title_clone = title.to_string();
-        let rawg_assets = tokio::task::spawn_blocking(move || {
-            std::thread::spawn(move || {
-                crate::commands::games::detect::get_rawg_game_assets(
-                    "epic",
-                    &app_name_clone,
-                    &title_clone,
-                )
-            })
-            .join()
-            .unwrap_or(None)
-        })
-        .await
-        .unwrap_or(None);
-
-        games.push(OwnedGame {
-            id: format!("epic-owned-{app_name}"),
-            external_id: Some(app_name.to_string()),
-            title: title.to_string(),
-            description: format!("Epic Games game (Owned). ID: {app_name}"),
-            cover_url: rawg_assets.as_ref().and_then(|a| a.cover_url.clone()),
-            logo_url: rawg_assets.as_ref().and_then(|a| a.logo_url.clone()),
-            icon_url: rawg_assets.as_ref().and_then(|a| a.icon_url.clone()),
-            playtime_minutes: 0,
-            last_played_at: None,
-            cloud_gaming_url: None,
-        });
-    }
+    let games = stream::iter(data.into_iter().map(epic_owned_game_draft))
+        .map(epic_owned_game_from_draft)
+        .buffered(EPIC_OWNED_ASSET_CONCURRENCY)
+        .collect::<Vec<_>>()
+        .await;
 
     Ok(games)
+}
+
+#[derive(Clone)]
+struct EpicOwnedGameDraft {
+    app_name: String,
+    title: String,
+    api_assets: EpicLauncherAssets,
+    catalog_id: Option<String>,
+    namespace: Option<String>,
+}
+
+#[derive(Default)]
+struct EpicOwnedOnlineAssets {
+    catalog_assets: EpicLauncherAssets,
+    rawg_assets: Option<super::games::types::RawgAssets>,
+}
+
+fn epic_owned_game_draft(item: serde_json::Value) -> EpicOwnedGameDraft {
+    let app_name = epic_json_string(
+        &item,
+        &[
+            &["app_name"][..],
+            &["asset_info", "app_name"][..],
+            &["appName"][..],
+        ],
+    )
+    .unwrap_or_default();
+    let title = epic_json_string(
+        &item,
+        &[
+            &["app_title"][..],
+            &["metadata", "title"][..],
+            &["title"][..],
+        ],
+    )
+    .unwrap_or_else(|| "Epic Game".to_string());
+    let api_assets = detect::find_epic_json_assets(&item);
+    let catalog_id = epic_json_string(
+        &item,
+        &[
+            &["asset_info", "catalog_item_id"][..],
+            &["metadata", "id"][..],
+            &["catalog_item_id"][..],
+            &["catalogItemId"][..],
+        ],
+    );
+    let namespace = epic_json_string(
+        &item,
+        &[
+            &["asset_info", "namespace"][..],
+            &["metadata", "namespace"][..],
+            &["namespace"][..],
+        ],
+    );
+
+    EpicOwnedGameDraft {
+        app_name,
+        title,
+        api_assets,
+        catalog_id,
+        namespace,
+    }
+}
+
+async fn epic_owned_game_from_draft(draft: EpicOwnedGameDraft) -> OwnedGame {
+    let online_assets = if detect::epic_assets_have_banner_and_icon(&draft.api_assets) {
+        EpicOwnedOnlineAssets::default()
+    } else {
+        let api_assets = draft.api_assets.clone();
+        let asset_id = draft
+            .catalog_id
+            .clone()
+            .unwrap_or_else(|| draft.app_name.clone());
+        let title = draft.title.clone();
+        let namespace = draft.namespace.clone();
+        let catalog_id = draft.catalog_id.clone();
+
+        tokio::task::spawn_blocking(move || {
+            let catalog_assets =
+                detect::get_epic_catalog_api_assets(namespace.as_deref(), catalog_id.as_deref());
+            let has_epic_banner_and_icon = (api_assets.cover_url.is_some()
+                || catalog_assets.cover_url.is_some())
+                && (api_assets.icon_url.is_some() || catalog_assets.icon_url.is_some());
+            let rawg_assets = if has_epic_banner_and_icon {
+                None
+            } else {
+                detect::get_rawg_epic_assets(&asset_id, &title)
+            };
+
+            EpicOwnedOnlineAssets {
+                catalog_assets,
+                rawg_assets,
+            }
+        })
+        .await
+        .unwrap_or_default()
+    };
+
+    let cover_url = draft
+        .api_assets
+        .cover_url
+        .or(online_assets.catalog_assets.cover_url)
+        .or_else(|| {
+            online_assets
+                .rawg_assets
+                .as_ref()
+                .and_then(|assets| assets.cover_url.clone())
+        });
+    let logo_url = draft
+        .api_assets
+        .logo_url
+        .or(online_assets.catalog_assets.logo_url)
+        .or_else(|| {
+            online_assets
+                .rawg_assets
+                .as_ref()
+                .and_then(|assets| assets.logo_url.clone())
+        });
+    let icon_url = draft
+        .api_assets
+        .icon_url
+        .or(online_assets.catalog_assets.icon_url)
+        .or_else(|| {
+            online_assets
+                .rawg_assets
+                .as_ref()
+                .and_then(|assets| assets.icon_url.clone())
+        })
+        .or_else(|| logo_url.clone())
+        .or_else(|| cover_url.clone());
+
+    OwnedGame {
+        id: format!("epic-owned-{}", draft.app_name),
+        external_id: Some(draft.app_name.clone()),
+        title: draft.title.clone(),
+        description: format!("Epic Games game (Owned). ID: {}", draft.app_name),
+        cover_url,
+        logo_url,
+        icon_url,
+        playtime_minutes: 0,
+        last_played_at: None,
+        cloud_gaming_url: None,
+    }
+}
+
+fn epic_json_string(value: &serde_json::Value, paths: &[&[&str]]) -> Option<String> {
+    paths.iter().find_map(|path| {
+        let mut current = value;
+        for key in *path {
+            current = current.get(*key)?;
+        }
+        current
+            .as_str()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToOwned::to_owned)
+    })
 }

@@ -10,6 +10,10 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "tauri": "tauri",
+    "supabase": "supabase --workdir ..",
+    "supabase:migration:list": "supabase --workdir .. migration list",
+    "supabase:migration:new": "supabase --workdir .. migration new",
+    "supabase:db:push": "supabase --workdir .. db push",
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --max-warnings=0"
   },
@@ -38,6 +42,7 @@
     "eslint-plugin-react-refresh": "^0.4.16",
     "globals": "^15.14.0",
     "postcss": "^8.4.49",
+    "supabase": "2.104.0",
     "tailwindcss": "^3.4.17",
     "typescript": "^5.7.2",
     "typescript-eslint": "^8.18.2",

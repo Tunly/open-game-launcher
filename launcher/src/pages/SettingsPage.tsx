@@ -1,15 +1,23 @@
 import { FolderOpen, HardDrive, Power, RefreshCw, ShieldCheck, Link, LogOut, Gamepad2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
+import { z } from "zod";
 import { useLocalStorageState } from "../hooks/useLocalStorageState";
 import { getDefaultInstallDir, getSystemInfo, openSteamLoginWindow, openGogLoginWindow, openEpicLoginWindow, openEaLoginWindow, openXboxLoginWindow, fetchXboxOwnedGames, normalizeSteamOwnedGames, fetchSteamProfileName, authenticateEpicLegendary, gogExchangeCode, gogLogout, gogGetToken, eaGetToken, eaLogout, openBattleNetLoginWindow, processBattleNetGamesPayload } from "../lib/launcher";
-import { STORAGE_KEYS } from "../lib/storage-keys";
+import { STEAM_OWNED_GAMES_CACHE_VERSION, STORAGE_KEYS } from "../lib/storage-keys";
 import type { SystemInfo } from "../lib/types";
 
 
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
 }
+
+const settingSchemas = {
+  startWithSystem: z.boolean(),
+  autoUpdateGames: z.boolean(),
+  steamId: z.string().max(64),
+  steamUsername: z.string().max(128),
+};
 
 interface NeoToggleProps {
   checked: boolean;
@@ -49,10 +57,12 @@ export function SettingsPage() {
   const [startWithSystem, setStartWithSystem] = useLocalStorageState(
     "launcher.startWithSystem",
     false,
+    settingSchemas.startWithSystem,
   );
   const [autoUpdateGames, setAutoUpdateGames] = useLocalStorageState(
     "launcher.autoUpdateGames",
     true,
+    settingSchemas.autoUpdateGames,
   );
   const [installDir, setInstallDir] = useState<string | null>(null);
   const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null);
@@ -62,10 +72,12 @@ export function SettingsPage() {
   const [steamId, setSteamId] = useLocalStorageState(
     "launcher.steamId",
     "",
+    settingSchemas.steamId,
   );
   const [steamUsername, setSteamUsername] = useLocalStorageState(
     "launcher.steamUsername",
     "",
+    settingSchemas.steamUsername,
   );
 
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
@@ -206,7 +218,7 @@ export function SettingsPage() {
     if (steamId && !steamUsername) {
       void fetchSteamProfileName(steamId).then(name => {
         if (!isMounted) return;
-        setSteamUsername(name);
+        setSteamUsername(name ?? "Steam User");
       }).catch(err => {
         console.warn("Failed to fetch steam username on mount:", err);
         if (isMounted) setSteamUsername("Steam User");
@@ -286,7 +298,7 @@ export function SettingsPage() {
         setSteamId(steamIdVal);
         try {
           const name = await fetchSteamProfileName(steamIdVal);
-          if (isMounted) setSteamUsername(name);
+          if (isMounted) setSteamUsername(name ?? "Steam User");
         } catch (err) {
           console.warn("Failed to fetch steam username:", err);
           if (isMounted) setSteamUsername("Steam User");
@@ -300,9 +312,8 @@ export function SettingsPage() {
       unlistenScrapedPromise = listen<unknown[]>("steam_scraped_games_success", (event) => {
         if (!isMounted) return;
         const ownedGames = normalizeSteamOwnedGames(event.payload);
-        console.log("[Settings] Scraped games successfully:", ownedGames.length);
         localStorage.setItem(STORAGE_KEYS.STEAM_OWNED_GAMES_CACHE, JSON.stringify(ownedGames));
-        localStorage.setItem(STORAGE_KEYS.STEAM_OWNED_GAMES_CACHE_VERSION, "2");
+        localStorage.setItem(STORAGE_KEYS.STEAM_OWNED_GAMES_CACHE_VERSION, STEAM_OWNED_GAMES_CACHE_VERSION);
 
         setTestResult({
           success: true,
@@ -587,7 +598,7 @@ export function SettingsPage() {
                       Steam
                     </h3>
                     <p className="neo-copy text-[9px] font-bold uppercase text-[#55504a] leading-relaxed mb-4">
-                      Syncs your Steam library through secure login. No API key required.
+                      Syncs your Steam library through secure login and local Steam cache. No API key required.
                     </p>
                   </div>
                   <div>

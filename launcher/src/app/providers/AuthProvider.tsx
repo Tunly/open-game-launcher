@@ -1,50 +1,74 @@
 import { invoke } from "@tauri-apps/api/core";
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { Session } from "@supabase/supabase-js";
 
-import { isSupabaseConfigured, supabase, supabaseConfigError } from "../../lib/supabase/client";
-import { clearLauncherPresence, setLauncherPresence } from "../../lib/supabase/presence";
+import { isSupabaseConfigured, supabaseConfigError } from "../../lib/supabase/config";
 import { AuthContext, type AuthContextValue } from "./auth-context";
 
+type SupabaseClientModule = typeof import("../../lib/supabase/client");
+
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const supabaseModuleRef = useRef<SupabaseClientModule | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [isLoading, setIsLoading] = useState(isSupabaseConfigured);
   const [error, setError] = useState<string | null>(supabaseConfigError);
 
   useEffect(() => {
-    if (!supabase) {
+    if (!isSupabaseConfigured) {
       setIsLoading(false);
       return;
     }
 
     let isMounted = true;
+    let subscription: { unsubscribe: () => void } | null = null;
 
-    void supabase.auth
-      .getSession()
-      .then(({ data, error: sessionError }) => {
+    void import("../../lib/supabase/client")
+      .then((module) => {
         if (!isMounted) {
           return;
         }
-        if (sessionError) {
-          setError(sessionError.message);
+
+        supabaseModuleRef.current = module;
+        const { supabase } = module;
+        if (!supabase) {
+          setIsLoading(false);
+          return;
         }
-        setSession(data.session);
+
+        void supabase.auth
+          .getSession()
+          .then(({ data, error: sessionError }) => {
+            if (!isMounted) {
+              return;
+            }
+            if (sessionError) {
+              setError(sessionError.message);
+            }
+            setSession(data.session);
+            setIsLoading(false);
+          });
+
+        const authListener = supabase.auth.onAuthStateChange((_event, nextSession) => {
+          if (!isMounted) {
+            return;
+          }
+          setSession(nextSession);
+          setIsLoading(false);
+        });
+        subscription = authListener.data.subscription;
+      })
+      .catch((loadError: unknown) => {
+        if (!isMounted) {
+          return;
+        }
+
+        setError(loadError instanceof Error ? loadError.message : String(loadError));
         setIsLoading(false);
       });
 
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, nextSession) => {
-      if (!isMounted) {
-        return;
-      }
-      setSession(nextSession);
-      setIsLoading(false);
-    });
-
     return () => {
       isMounted = false;
-      subscription.unsubscribe();
+      subscription?.unsubscribe();
     };
   }, []);
 
@@ -54,28 +78,64 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [session?.access_token]);
 
   useEffect(() => {
-    if (!supabase || !session?.user) {
+    if (!isSupabaseConfigured || !session?.user?.id) {
       return;
     }
 
-    const syncPresence = (status: "away" | "online") => {
-      void setLauncherPresence({ status }).catch(() => undefined);
-    };
-
-    syncPresence(document.visibilityState === "hidden" ? "away" : "online");
-    const heartbeat = window.setInterval(() => {
-      syncPresence(document.visibilityState === "hidden" ? "away" : "online");
-    }, 45_000);
-    const handleVisibilityChange = () => {
-      syncPresence(document.visibilityState === "hidden" ? "away" : "online");
-    };
-
-    document.addEventListener("visibilitychange", handleVisibilityChange);
+    let isActive = true;
+    void import("../../lib/supabase/local-entity-sync")
+      .then(({ syncLocalEntitiesWithSupabase }) => {
+        if (!isActive) {
+          return;
+        }
+        return syncLocalEntitiesWithSupabase(session.user.id);
+      })
+      .catch((syncError: unknown) => {
+        console.warn("Local entity Supabase sync failed", syncError);
+      });
 
     return () => {
-      window.clearInterval(heartbeat);
-      document.removeEventListener("visibilitychange", handleVisibilityChange);
-      void clearLauncherPresence().catch(() => undefined);
+      isActive = false;
+    };
+  }, [session?.user?.id]);
+
+  useEffect(() => {
+    if (!isSupabaseConfigured || !session?.user) {
+      return;
+    }
+
+    let isActive = true;
+    let cleanup: (() => void) | null = null;
+
+    void import("../../lib/supabase/presence").then(({ clearLauncherPresence, setLauncherPresence }) => {
+      if (!isActive) {
+        return;
+      }
+
+      const syncPresence = (status: "away" | "online") => {
+        void setLauncherPresence({ status }).catch(() => undefined);
+      };
+
+      syncPresence(document.visibilityState === "hidden" ? "away" : "online");
+      const heartbeat = window.setInterval(() => {
+        syncPresence(document.visibilityState === "hidden" ? "away" : "online");
+      }, 45_000);
+      const handleVisibilityChange = () => {
+        syncPresence(document.visibilityState === "hidden" ? "away" : "online");
+      };
+
+      document.addEventListener("visibilitychange", handleVisibilityChange);
+
+      cleanup = () => {
+        window.clearInterval(heartbeat);
+        document.removeEventListener("visibilitychange", handleVisibilityChange);
+        void clearLauncherPresence().catch(() => undefined);
+      };
+    }).catch(() => undefined);
+
+    return () => {
+      isActive = false;
+      cleanup?.();
     };
   }, [session?.user]);
 
@@ -87,6 +147,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       session,
       user: session?.user ?? null,
       signOut: async () => {
+        const module = supabaseModuleRef.current ?? await import("../../lib/supabase/client");
+        supabaseModuleRef.current = module;
+        const { supabase } = module;
         if (!supabase) {
           return;
         }

@@ -67,8 +67,6 @@ struct GogFilteredProductsPage {
     #[serde(default)]
     products: Vec<GogCatalogProduct>,
     #[serde(default)]
-    page: u32,
-    #[serde(default)]
     total_pages: u32,
     #[serde(default, rename = "totalPages")]
     total_pages_camel: u32,
@@ -129,21 +127,15 @@ fn gog_catalog_product_to_owned(product: GogCatalogProduct) -> Option<super::sys
 }
 
 #[derive(Debug, Deserialize)]
-#[allow(dead_code)]
 struct GogProductDetail {
     title: Option<String>,
     #[serde(default)]
     images: Option<GogProductImages>,
     #[serde(default)]
     description: Option<String>,
-    #[serde(default)]
-    developer: Option<String>,
-    #[serde(default)]
-    publisher: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
-#[allow(dead_code)]
 struct GogProductImages {
     #[serde(default)]
     logo2x: Option<String>,
@@ -152,29 +144,6 @@ struct GogProductImages {
     #[serde(default)]
     #[serde(rename = "sidebarIcon")]
     sidebar_icon: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-#[allow(dead_code)]
-struct GogGameDetails {
-    #[serde(default)]
-    downloadables: Option<Vec<GogDownloadable>>,
-}
-
-#[derive(Debug, Deserialize)]
-#[allow(dead_code)]
-struct GogDownloadable {
-    id: u64,
-    name: Option<String>,
-    #[serde(default)]
-    os: Option<String>,
-    #[serde(default)]
-    language: Option<String>,
-    #[serde(default)]
-    version: Option<String>,
-    total_size: Option<u64>,
-    #[serde(default)]
-    files: Option<Vec<GogInstallerFile>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -217,12 +186,9 @@ struct GogGameBuilds {
 }
 
 #[derive(Debug, Deserialize)]
-#[allow(dead_code)]
 struct GogBuild {
     version_number: String,
     build_id: String,
-    #[serde(default)]
-    pubdate: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -231,36 +197,13 @@ struct GogInstallersResponse {
 }
 
 #[derive(Debug, Deserialize)]
-#[allow(dead_code)]
 struct GogInstaller {
     id: String,
-    name: String,
     os: String,
-    language: String,
     #[serde(default)]
     version: Option<String>,
     total_size: u64,
     files: Vec<GogInstallerFile>,
-    #[serde(default)]
-    downloader: Option<GogDownloaderInfo>,
-}
-
-#[derive(Debug, Deserialize)]
-#[allow(dead_code)]
-struct GogCloudSaves {
-    #[serde(default)]
-    items: Option<Vec<GogCloudSaveItem>>,
-}
-
-#[derive(Debug, Deserialize)]
-#[allow(dead_code)]
-struct GogCloudSaveItem {
-    #[serde(default)]
-    path: Option<String>,
-    #[serde(default)]
-    timestamp: Option<u64>,
-    #[serde(default)]
-    size: Option<u64>,
 }
 
 // ============================================================================
@@ -842,29 +785,12 @@ pub async fn gog_get_download_info(
 // GOG Download Manager
 // ============================================================================
 
-#[derive(Debug, Serialize, Clone)]
-#[serde(rename_all = "camelCase")]
-#[allow(dead_code)]
-pub struct GogDownloadProgress {
-    pub game_id: String,
-    pub file_name: String,
-    pub progress: u32,
-    pub speed: String,
-    pub status: String,
-    pub eta: u32,
-    pub downloaded_bytes: u64,
-    pub total_bytes: u64,
-}
-
-#[allow(dead_code)]
 struct GogActiveDownload {
     title: String,
     progress: u32,
     speed: String,
     status: String,
     eta: u32,
-    paused: bool,
-    cancelled: bool,
     pause_tx: watch::Sender<bool>,
     cancel_tx: watch::Sender<bool>,
 }
@@ -938,8 +864,6 @@ pub async fn gog_start_download(
                 speed: "Waiting...".to_string(),
                 status: "downloading".to_string(),
                 eta: 0,
-                paused: false,
-                cancelled: false,
                 pause_tx,
                 cancel_tx,
             },
@@ -1138,8 +1062,6 @@ async fn download_gog_game_files(
                 ));
             }
 
-            let _total_chunk_size = chunk.byte_size;
-            let mut _chunk_downloaded: u64 = 0;
             let mut last_update = Instant::now();
             let mut bytes_since_last_update: u64 = 0;
 
@@ -1175,7 +1097,6 @@ async fn download_gog_game_files(
                     .write_all(&chunk_data)
                     .map_err(|e| format!("File write error: {e}"))?;
 
-                _chunk_downloaded += chunk_data.len() as u64;
                 file_downloaded = file_downloaded.saturating_add(chunk_data.len() as u64);
                 bytes_since_last_update += chunk_data.len() as u64;
 
@@ -1307,6 +1228,7 @@ pub fn get_gog_download_queue() -> Result<Vec<super::downloads::DownloadItemPayl
             can_pause: true,
             can_cancel: true,
             external: false,
+            last_updated_at: 0,
         })
         .collect();
     Ok(queue)
@@ -1319,7 +1241,6 @@ pub fn pause_gog_download(app: tauri::AppHandle, game_id: String) -> Result<(), 
         .map_err(|error| format!("GOG download manager lock poisoned: {error}"))?;
     if let Some(dl) = guard.get_mut(&game_id) {
         if dl.status == "downloading" {
-            dl.paused = true;
             dl.status = "paused".to_string();
             dl.speed = "Paused".to_string();
             let _ = dl.pause_tx.send(true);
@@ -1334,7 +1255,6 @@ pub fn pause_gog_download(app: tauri::AppHandle, game_id: String) -> Result<(), 
                 dl.eta,
             );
         } else if dl.status == "paused" {
-            dl.paused = false;
             dl.status = "downloading".to_string();
             dl.speed = "Connecting...".to_string();
             let _ = dl.pause_tx.send(false);
@@ -1359,7 +1279,6 @@ pub fn cancel_gog_download(app: tauri::AppHandle, game_id: String) -> Result<(),
         .lock()
         .map_err(|error| format!("GOG download manager lock poisoned: {error}"))?;
     if let Some(dl) = guard.get_mut(&game_id) {
-        dl.cancelled = true;
         dl.status = "cancelled".to_string();
         let _ = dl.cancel_tx.send(true);
         println!("[GOG Download] Cancelled download for {game_id}");
@@ -1413,6 +1332,7 @@ pub(crate) fn emit_gog_download_progress(
         can_pause: true,
         can_cancel: true,
         external: false,
+        last_updated_at: 0,
     };
     super::downloads::record_download_item(payload.clone());
     let _ = app.emit("download_progress", payload);
@@ -1423,73 +1343,27 @@ pub(crate) fn emit_gog_download_progress(
 // ============================================================================
 
 fn update_installed_games_cache(game_id: &str, title: &str, install_dir: &PathBuf) {
-    let cache_path = dirs::data_local_dir()
-        .or_else(dirs::data_dir)
-        .map(|d| d.join("open-game-launcher").join("installed-games.json"));
+    let mut games = crate::commands::games::core::read_installed_games_cache().unwrap_or_default();
+    let install_path = install_dir.to_string_lossy().to_string();
 
-    if let Some(path) = cache_path {
-        if let Ok(contents) = fs::read_to_string(&path) {
-            if let Ok(mut json) = serde_json::from_str::<serde_json::Value>(&contents) {
-                if let Some(games_arr) = json.get_mut("games").and_then(|v| v.as_array_mut()) {
-                    let mut found = false;
-                    for g in games_arr.iter_mut() {
-                        if g.get("id").and_then(|v| v.as_str()) == Some(game_id) {
-                            if let Some(obj) = g.as_object_mut() {
-                                obj.insert(
-                                    "status".to_string(),
-                                    serde_json::Value::String("installed".to_string()),
-                                );
-                                obj.insert(
-                                    "installPath".to_string(),
-                                    serde_json::Value::String(
-                                        install_dir.to_string_lossy().to_string(),
-                                    ),
-                                );
-                                obj.insert(
-                                    "playtimeMinutes".to_string(),
-                                    serde_json::Value::Number(0.into()),
-                                );
-                            }
-                            found = true;
-                        }
-                    }
-
-                    if !found {
-                        let mut new_game = serde_json::Map::new();
-                        new_game.insert(
-                            "id".to_string(),
-                            serde_json::Value::String(game_id.to_string()),
-                        );
-                        new_game.insert(
-                            "title".to_string(),
-                            serde_json::Value::String(title.to_string()),
-                        );
-                        new_game.insert(
-                            "status".to_string(),
-                            serde_json::Value::String("installed".to_string()),
-                        );
-                        new_game.insert(
-                            "installPath".to_string(),
-                            serde_json::Value::String(install_dir.to_string_lossy().to_string()),
-                        );
-                        new_game.insert(
-                            "platform".to_string(),
-                            serde_json::Value::String("windows".to_string()),
-                        );
-                        new_game.insert(
-                            "description".to_string(),
-                            serde_json::Value::String(format!("GOG game: {title}")),
-                        );
-                        games_arr.push(serde_json::Value::Object(new_game));
-                    }
-                }
-
-                if let Ok(updated) = serde_json::to_string_pretty(&json) {
-                    let _ = fs::write(&path, updated);
-                }
-            }
-        }
+    if let Some(game) = games.iter_mut().find(|game| game.id == game_id) {
+        game.status = crate::commands::games::types::GameStatus::Installed;
+        game.install_path = Some(install_path);
+        game.playtime_minutes = Some(game.playtime_minutes.unwrap_or(0));
+    } else {
+        let mut game = crate::commands::games::core::installed_game(
+            game_id,
+            title.to_string(),
+            "gog".to_string(),
+            Some(install_path),
+            None,
+        );
+        game.description = format!("GOG game: {title}");
+        game.playtime_minutes = Some(0);
+        games.push(game);
     }
+
+    crate::commands::games::core::write_installed_games_cache(&games);
 }
 
 // ============================================================================

@@ -1,12 +1,16 @@
-import { useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 
 import { useCurrentUser } from "../../hooks/useCurrentUser";
-import { getMyProfile } from "../../lib/supabase/profile";
 import { AppShell } from "./AppShell";
-import { UsernamePromptModal } from "./UsernamePromptModal";
 import type { PageKey } from "./Sidebar";
 import { getPathForPage } from "./navigation";
+
+const UsernamePromptModal = lazy(() =>
+  import("./UsernamePromptModal").then((module) => ({
+    default: module.UsernamePromptModal,
+  })),
+);
 
 function getActivePage(pathname: string): PageKey {
   if (pathname.startsWith("/store")) return "store";
@@ -58,7 +62,8 @@ export function AppLayout() {
 
     setIsProfileUsernameLoading(true);
 
-    void getMyProfile()
+    void import("../../lib/supabase/profile")
+      .then(({ getMyProfile }) => getMyProfile())
       .then((profile) => {
         if (!isMounted) return;
         setProfileUsername(profile.username);
@@ -120,11 +125,13 @@ export function AppLayout() {
       </AppShell>
 
       {needsUsernameSetup && (
-        <UsernamePromptModal
-          onComplete={(newUsername) => {
-            setProfileUsername(newUsername);
-          }}
-        />
+        <Suspense fallback={null}>
+          <UsernamePromptModal
+            onComplete={(newUsername) => {
+              setProfileUsername(newUsername);
+            }}
+          />
+        </Suspense>
       )}
     </>
   );

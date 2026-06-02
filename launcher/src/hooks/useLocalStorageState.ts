@@ -1,13 +1,25 @@
 import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from "react";
+import type { ZodType } from "zod";
 
 export function useLocalStorageState<T>(
   key: string,
   initialValue: T,
+  schema?: ZodType<T>,
 ): [T, Dispatch<SetStateAction<T>>] {
   const [value, setValue] = useState<T>(() => {
     try {
       const storedValue = window.localStorage.getItem(key);
-      return storedValue ? (JSON.parse(storedValue) as T) : initialValue;
+      if (!storedValue) {
+        return initialValue;
+      }
+
+      const parsed: unknown = JSON.parse(storedValue);
+      if (schema) {
+        const result = schema.safeParse(parsed);
+        return result.success ? result.data : initialValue;
+      }
+
+      return parsed as T;
     } catch {
       return initialValue;
     }

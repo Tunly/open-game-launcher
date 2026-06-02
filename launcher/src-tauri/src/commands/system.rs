@@ -10,6 +10,12 @@ use std::{
 };
 use tauri::Manager;
 
+#[cfg(windows)]
+use winreg::{
+    enums::{HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, KEY_READ},
+    RegKey,
+};
+
 const LAUNCHER_DIR: &str = "open-game-launcher";
 const PRODUCT_DIR: &str = "Open Game Launcher";
 const STEAM_ID64_BASE: u64 = 76_561_197_960_265_728;
@@ -527,7 +533,7 @@ fn steam_scraper_script() -> &'static str {
 
             function appIdFromValue(value) {
                 if (!value) return "";
-                const match = String(value).match(/(?:app\/|appid[=:]|^)(\d{2,})/i);
+                const match = String(value).match(/(?:app\/|appid[=:]|^|,)(\d{2,})/i);
                 return match ? match[1] : "";
             }
 
@@ -538,15 +544,20 @@ fn steam_scraper_script() -> &'static str {
                     .trim();
             }
 
-            function pushGame(map, appid, title, playtimeHours) {
+            function pushGame(map, appid, title, playtimeHours, lastPlayed) {
                 appid = appIdFromValue(appid);
                 title = cleanTitle(title);
                 if (!appid || !title || map.has(appid)) return;
-                map.set(appid, {
+                const game = {
                     appid,
                     name: title,
                     hours_forever: playtimeHours || "0"
-                });
+                };
+                const parsedLastPlayed = Number(lastPlayed || 0);
+                if (Number.isFinite(parsedLastPlayed) && parsedLastPlayed > 0) {
+                    game.last_played = parsedLastPlayed;
+                }
+                map.set(appid, game);
             }
 
             function collectFromGlobals(map) {
@@ -558,7 +569,8 @@ fn steam_scraper_script() -> &'static str {
                             map,
                             game && (game.appid || game.app_id || game.id),
                             game && (game.name || game.title),
-                            game && (game.hours_forever || game.hours || game.playtime_forever)
+                            game && (game.hours_forever || game.hours || game.playtime_forever),
+                            game && (game.last_played || game.lastPlayed || game.rtime_last_played)
                         );
                     }
                 }
@@ -618,7 +630,8 @@ fn steam_scraper_script() -> &'static str {
                                 map,
                                 game && (game.appid || game.app_id || game.id),
                                 game && (game.name || game.title),
-                                game && (game.hours_forever || game.hours || game.playtime_forever)
+                                game && (game.hours_forever || game.hours || game.playtime_forever),
+                                game && (game.last_played || game.lastPlayed || game.rtime_last_played)
                             );
                         }
                     }
@@ -758,6 +771,12 @@ pub struct OwnedGame {
     pub cloud_gaming_url: Option<String>,
 }
 
+#[derive(Debug, Default, Clone)]
+struct LocalSteamOwnedActivity {
+    playtime_minutes: u64,
+    last_played: Option<u64>,
+}
+
 fn fetch_local_steam_owned_games(steam_id: &str) -> Vec<OwnedGame> {
     let Some(steam_dir) = find_steam_dir() else {
         println!("[Steam] Local Steam install was not found.");
@@ -777,8 +796,7 @@ fn fetch_local_steam_owned_games(steam_id: &str) -> Vec<OwnedGame> {
         return Vec::new();
     }
 
-    let mut app_ids = collect_account_steam_app_ids(&account_config_dir);
-    app_ids.extend(collect_steam_library_asset_app_ids(&steam_dir));
+    let app_ids = collect_account_steam_app_ids(&account_config_dir);
 
     if app_ids.is_empty() {
         println!("[Steam] Local Steam cache did not contain any app ids.");
@@ -791,20 +809,27 @@ fn fetch_local_steam_owned_games(steam_id: &str) -> Vec<OwnedGame> {
         return Vec::new();
     }
 
-    let playtimes = read_steam_playtime_minutes(&account_config_dir);
+    let activity = read_steam_owned_activity(&account_config_dir);
     let mut games = Vec::new();
 
     for app_id in app_ids {
         let Some(title) = titles.get(&app_id) else {
             continue;
         };
+        if is_steam_non_game_owned_item(Some(&app_id), title) {
+            continue;
+        }
+
+        let app_activity = activity.get(&app_id).cloned().unwrap_or_default();
 
         games.push(OwnedGame {
             id: format!("steam-owned-{app_id}"),
             external_id: Some(app_id.clone()),
             title: title.clone(),
             description: format!("Steam game (Owned). AppID: {app_id}"),
-            last_played_at: None, // We do not parse last_played from local steam cache for uninstalled games right now
+            last_played_at: app_activity
+                .last_played
+                .map(crate::commands::games::unix_timestamp_to_iso),
             cover_url: find_steam_cached_asset(
                 &steam_dir,
                 &app_id,
@@ -835,7 +860,7 @@ fn fetch_local_steam_owned_games(steam_id: &str) -> Vec<OwnedGame> {
                 &app_id,
                 &["header.jpg", "library_header.jpg"],
             ),
-            playtime_minutes: playtimes.get(&app_id).copied().unwrap_or_default(),
+            playtime_minutes: app_activity.playtime_minutes,
             cloud_gaming_url: None,
         });
     }
@@ -860,6 +885,8 @@ fn find_steam_dir() -> Option<PathBuf> {
     let mut candidates = Vec::new();
 
     if cfg!(target_os = "windows") {
+        candidates.extend(find_steam_dirs_from_registry());
+
         if let Some(program_files_x86) = env_path("ProgramFiles(x86)") {
             candidates.push(program_files_x86.join("Steam"));
         }
@@ -879,6 +906,40 @@ fn find_steam_dir() -> Option<PathBuf> {
     }
 
     candidates.into_iter().find(|candidate| candidate.exists())
+}
+
+#[cfg(windows)]
+fn find_steam_dirs_from_registry() -> Vec<PathBuf> {
+    let mut candidates = Vec::new();
+    let roots = [
+        (HKEY_CURRENT_USER, r"Software\Valve\Steam"),
+        (HKEY_LOCAL_MACHINE, r"SOFTWARE\WOW6432Node\Valve\Steam"),
+        (HKEY_LOCAL_MACHINE, r"SOFTWARE\Valve\Steam"),
+    ];
+
+    for (hkey, path) in roots {
+        let root = RegKey::predef(hkey);
+        let Ok(key) = root.open_subkey_with_flags(path, KEY_READ) else {
+            continue;
+        };
+
+        for value_name in ["SteamPath", "InstallPath"] {
+            let Ok(value) = key.get_value::<String, _>(value_name) else {
+                continue;
+            };
+
+            if !value.trim().is_empty() {
+                candidates.push(PathBuf::from(value.replace('/', "\\")));
+            }
+        }
+    }
+
+    candidates
+}
+
+#[cfg(not(windows))]
+fn find_steam_dirs_from_registry() -> Vec<PathBuf> {
+    Vec::new()
 }
 
 fn env_path(key: &str) -> Option<PathBuf> {
@@ -910,35 +971,6 @@ fn collect_account_steam_app_ids(account_config_dir: &Path) -> BTreeSet<String> 
     if let Ok(contents) = fs::read_to_string(localconfig) {
         app_ids.extend(collect_vdf_block_keys(&contents, "apps"));
         app_ids.extend(collect_vdf_block_keys(&contents, "apptickets"));
-    }
-
-    app_ids
-}
-
-fn collect_steam_library_asset_app_ids(steam_dir: &Path) -> BTreeSet<String> {
-    let mut app_ids = BTreeSet::new();
-    let library_cache_dir = steam_dir.join("appcache").join("librarycache");
-
-    let Ok(entries) = fs::read_dir(library_cache_dir) else {
-        return app_ids;
-    };
-
-    for entry in entries.filter_map(|entry| entry.ok()) {
-        let Ok(file_type) = entry.file_type() else {
-            continue;
-        };
-
-        if !file_type.is_dir() {
-            continue;
-        }
-
-        let Some(name) = entry.file_name().to_str().map(|name| name.to_string()) else {
-            continue;
-        };
-
-        if is_numeric_steam_app_id(&name) {
-            app_ids.insert(name);
-        }
     }
 
     app_ids
@@ -1032,6 +1064,42 @@ fn is_valid_steam_title(title: &str) -> bool {
         })
 }
 
+fn is_steam_non_game_owned_item(app_id: Option<&str>, title: &str) -> bool {
+    let normalized = title
+        .to_lowercase()
+        .replace(['_', '-'], " ")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+
+    if matches!(
+        app_id,
+        Some("228980")
+            | Some("1070560")
+            | Some("1391110")
+            | Some("1628350")
+            | Some("1887720")
+            | Some("2102450")
+            | Some("2289880")
+            | Some("250820")
+            | Some("1826330")
+    ) {
+        return true;
+    }
+
+    normalized == "steamworks common redistributables"
+        || normalized.starts_with("steam linux runtime")
+        || normalized.starts_with("proton ")
+        || normalized.contains("proton easyanticheat runtime")
+        || normalized.contains("proton battleye runtime")
+        || normalized.contains("steamvr")
+        || normalized.contains("steam vr")
+        || normalized.contains("common redistributable")
+        || normalized.contains("dedicated server")
+        || normalized.ends_with(" sdk")
+        || normalized.contains(" sdk ")
+}
+
 fn find_steam_cached_asset(steam_dir: &Path, app_id: &str, filenames: &[&str]) -> Option<String> {
     let app_cache_dir = steam_dir.join("appcache").join("librarycache").join(app_id);
 
@@ -1063,16 +1131,18 @@ fn find_steam_cached_asset(steam_dir: &Path, app_id: &str, filenames: &[&str]) -
     None
 }
 
-fn read_steam_playtime_minutes(account_config_dir: &Path) -> BTreeMap<String, u64> {
+fn read_steam_owned_activity(
+    account_config_dir: &Path,
+) -> BTreeMap<String, LocalSteamOwnedActivity> {
     let localconfig = account_config_dir.join("localconfig.vdf");
     let Ok(contents) = fs::read_to_string(localconfig) else {
         return BTreeMap::new();
     };
 
-    let mut playtimes = BTreeMap::new();
+    let mut activity_by_app = BTreeMap::new();
     let lines: Vec<&str> = contents.lines().collect();
     let Some(apps_section_start) = find_vdf_section_open_line(&lines, "apps") else {
-        return playtimes;
+        return activity_by_app;
     };
 
     let mut depth = 0usize;
@@ -1117,17 +1187,41 @@ fn read_steam_playtime_minutes(account_config_dir: &Path) -> BTreeMap<String, u6
                 continue;
             };
 
-            if let Some((key, value)) = parse_vdf_key_value(trimmed) {
-                if key == "Playtime" {
-                    if let Ok(minutes) = value.parse::<u64>() {
-                        playtimes.insert(app_id.clone(), minutes);
+            let Some((key, value)) = parse_vdf_key_value(trimmed) else {
+                continue;
+            };
+
+            let entry = activity_by_app
+                .entry(app_id.clone())
+                .or_insert_with(LocalSteamOwnedActivity::default);
+
+            if matches!(
+                key.as_str(),
+                "Playtime"
+                    | "PlaytimeForever"
+                    | "playtime_forever"
+                    | "PlaytimeWindows"
+                    | "PlaytimeMacOS"
+                    | "PlaytimeLinux"
+            ) {
+                if let Ok(minutes) = value.parse::<u64>() {
+                    entry.playtime_minutes = entry.playtime_minutes.max(minutes);
+                }
+            } else if matches!(key.as_str(), "LastPlayed" | "LastPlayedTime") {
+                if let Ok(timestamp) = value.parse::<u64>() {
+                    if timestamp > 1_000_000_000 && timestamp < 2_000_000_000 {
+                        entry.last_played = Some(
+                            entry
+                                .last_played
+                                .map_or(timestamp, |existing| existing.max(timestamp)),
+                        );
                     }
                 }
             }
         }
     }
 
-    playtimes
+    activity_by_app
 }
 
 fn collect_vdf_block_keys(contents: &str, section_name: &str) -> BTreeSet<String> {
@@ -1284,7 +1378,6 @@ pub async fn fetch_steam_owned_games(steam_id: String) -> Result<Vec<OwnedGame>,
         json_array.len()
     );
 
-    // Parse the JSON array of game objects
     let games = parse_rg_games_json(&json_array, &steam_id);
     println!("[Steam] Parsed {} games for ID '{steam_id}'", games.len());
     Ok(games)
@@ -1330,70 +1423,43 @@ fn extract_rg_games_json(html: &str) -> Option<String> {
     None
 }
 
-/// Parse the extracted rgGames JSON into OwnedGame structs (no serde dependency needed)
 fn parse_rg_games_json(json: &str, _steam_id: &str) -> Vec<OwnedGame> {
-    let mut games = Vec::new();
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(json) else {
+        return Vec::new();
+    };
 
-    // Each game object: {"appid":730,"name":"Counter-Strike 2","hours_forever":"1,234",...}
-    // We extract values using simple string search to avoid needing a full JSON parser dependency
-    let mut pos = 0;
-    while pos < json.len() {
-        let obj_start = match json[pos..].find('{') {
-            Some(i) => pos + i,
-            None => break,
-        };
-        // Find matching closing brace
-        let mut depth = 0usize;
-        let mut in_string = false;
-        let mut escape_next = false;
-        let mut obj_end = None;
-        for (i, ch) in json[obj_start..].char_indices() {
-            if escape_next {
-                escape_next = false;
-                continue;
+    let Some(items) = value.as_array() else {
+        return Vec::new();
+    };
+
+    items
+        .iter()
+        .filter_map(|item| {
+            let appid = json_string_or_number(item.get("appid"))?;
+            let name = item.get("name").and_then(serde_json::Value::as_str)?.trim();
+            if appid.is_empty() || name.is_empty() {
+                return None;
             }
-            match ch {
-                '\\' if in_string => escape_next = true,
-                '"' => in_string = !in_string,
-                '{' if !in_string => depth += 1,
-                '}' if !in_string => {
-                    depth -= 1;
-                    if depth == 0 {
-                        obj_end = Some(obj_start + i + 1);
-                        break;
-                    }
-                }
-                _ => {}
+            if is_steam_non_game_owned_item(Some(&appid), name) {
+                return None;
             }
-        }
-        let obj_end = match obj_end {
-            Some(e) => e,
-            None => break,
-        };
-        let obj = &json[obj_start..obj_end];
 
-        let appid = extract_json_str_field(obj, "appid")
-            .or_else(|| extract_json_num_field(obj, "appid"))
-            .unwrap_or_default();
-        let name = extract_json_str_field(obj, "name").unwrap_or_default();
+            let playtime = item
+                .get("hours_forever")
+                .or_else(|| item.get("hours"))
+                .and_then(json_hours_to_minutes)
+                .unwrap_or_default();
 
-        if !appid.is_empty() && !name.is_empty() {
-            let hours_str = extract_json_str_field(obj, "hours_forever")
-                .or_else(|| extract_json_str_field(obj, "hours"))
-                .or_else(|| extract_json_num_field(obj, "hours_forever"))
-                .unwrap_or_else(|| "0".to_string());
-            let hours_clean = hours_str.replace(',', "");
-            let playtime = (hours_clean.parse::<f64>().unwrap_or(0.0) * 60.0).round() as u64;
-
-            let last_played_at = extract_json_num_field(obj, "last_played")
-                .and_then(|v| v.parse::<u64>().ok())
-                .filter(|&v| v > 0)
+            let last_played_at = item
+                .get("last_played")
+                .and_then(json_u64)
+                .filter(|timestamp| *timestamp > 1_000_000_000 && *timestamp < 2_000_000_000)
                 .map(crate::commands::games::unix_timestamp_to_iso);
 
-            games.push(OwnedGame {
+            Some(OwnedGame {
                 id: format!("steam-owned-{appid}"),
-                external_id: Some(appid.to_string()),
-                title: name,
+                external_id: Some(appid.clone()),
+                title: name.to_string(),
                 description: format!("Steam game (Owned). AppID: {appid}"),
                 cover_url: Some(format!(
                     "https://cdn.cloudflare.steamstatic.com/steam/apps/{appid}/library_hero.jpg"
@@ -1405,80 +1471,35 @@ fn parse_rg_games_json(json: &str, _steam_id: &str) -> Vec<OwnedGame> {
                 playtime_minutes: playtime,
                 last_played_at,
                 cloud_gaming_url: None,
-            });
-        }
-        pos = obj_end;
-    }
-    games
+            })
+        })
+        .collect()
 }
 
-/// Extract a string field value from a JSON object string: `"key":"value"`
-fn extract_json_str_field(obj: &str, key: &str) -> Option<String> {
-    let needle = format!("\"{}\":", key);
-    let start = obj.find(&needle)? + needle.len();
-    let rest = obj[start..].trim_start();
-    if !rest.starts_with('"') {
-        return None;
-    }
-    let inner = &rest[1..];
-    let mut result = String::new();
-    let mut escape_next = false;
-    for ch in inner.chars() {
-        if escape_next {
-            match ch {
-                'n' => result.push('\n'),
-                't' => result.push('\t'),
-                'r' => result.push('\r'),
-                other => result.push(other),
-            }
-            escape_next = false;
-        } else if ch == '\\' {
-            escape_next = true;
-        } else if ch == '"' {
-            break;
-        } else {
-            result.push(ch);
-        }
-    }
-    Some(result)
-}
-
-/// Extract a numeric field value from a JSON object string: `"key":12345`
-fn extract_json_num_field(obj: &str, key: &str) -> Option<String> {
-    let needle = format!("\"{}\":", key);
-    let start = obj.find(&needle)? + needle.len();
-    let rest = obj[start..].trim_start();
-    let end = rest
-        .find(|c: char| !c.is_ascii_digit() && c != '.')
-        .unwrap_or(rest.len());
-    let num = &rest[..end];
-    if num.is_empty() {
-        None
-    } else {
-        Some(num.to_string())
+fn json_string_or_number(value: Option<&serde_json::Value>) -> Option<String> {
+    match value? {
+        serde_json::Value::String(value) => Some(value.trim().to_string()),
+        serde_json::Value::Number(value) => Some(value.to_string()),
+        _ => None,
     }
 }
 
-#[allow(dead_code)]
-fn extract_xml_tag(block: &str, tag: &str) -> Option<String> {
-    let open = format!("<{}>", tag);
-    let close = format!("</{}>", tag);
-    let start = block.find(&open)? + open.len();
-    let end = block[start..].find(&close)? + start;
-    let text = &block[start..end];
-    // Decode common XML entities
-    Some(
-        text.replace("&amp;", "&")
-            .replace("&lt;", "<")
-            .replace("&gt;", ">")
-            .replace("&quot;", "\"")
-            .replace("&apos;", "'"),
-    )
+fn json_u64(value: &serde_json::Value) -> Option<u64> {
+    value
+        .as_u64()
+        .or_else(|| value.as_str()?.replace(',', "").parse::<u64>().ok())
+}
+
+fn json_hours_to_minutes(value: &serde_json::Value) -> Option<u64> {
+    let hours = value
+        .as_f64()
+        .or_else(|| value.as_str()?.replace(',', "").parse::<f64>().ok())?;
+    Some((hours.max(0.0) * 60.0).round() as u64)
 }
 
 #[tauri::command]
 pub async fn fetch_gog_owned_games(access_token: String) -> Result<Vec<OwnedGame>, String> {
-    let client = reqwest::Client::new();
+    let client = crate::commands::http::shared_http_client();
 
     // Step 1: Get list of owned product IDs
     let data_resp = client
@@ -1557,6 +1578,157 @@ pub async fn fetch_gog_owned_games(access_token: String) -> Result<Vec<OwnedGame
 }
 
 #[tauri::command]
-pub async fn fetch_steam_profile_name() -> Result<Option<String>, String> {
-    Ok(Some("SteamUser".to_string()))
+pub async fn fetch_steam_profile_name(steam_id: String) -> Result<Option<String>, String> {
+    let steam_id = steam_id.trim();
+    if steam_id.is_empty() || !steam_id.chars().all(|character| character.is_ascii_digit()) {
+        return Err("SteamID64 ist ungueltig.".to_string());
+    }
+
+    let url = format!("https://steamcommunity.com/profiles/{steam_id}?xml=1");
+    let response = crate::commands::http::shared_http_client()
+        .get(&url)
+        .header("User-Agent", "Open Game Launcher Steam profile resolver")
+        .send()
+        .await
+        .map_err(|error| format!("Could not contact Steam profile page: {error}"))?;
+
+    if !response.status().is_success() {
+        return Err(format!(
+            "Steam profile request returned status {}.",
+            response.status()
+        ));
+    }
+
+    let xml = response
+        .text()
+        .await
+        .map_err(|error| format!("Could not read Steam profile response: {error}"))?;
+
+    Ok(extract_xml_tag_text(&xml, "steamID")
+        .or_else(|| extract_xml_tag_text(&xml, "customURL"))
+        .filter(|value| !value.trim().is_empty()))
+}
+
+fn extract_xml_tag_text(xml: &str, tag: &str) -> Option<String> {
+    let open = format!("<{tag}>");
+    let close = format!("</{tag}>");
+    let start = xml.find(&open)? + open.len();
+    let end = xml[start..].find(&close)? + start;
+    Some(decode_xml_text(xml[start..end].trim()).trim().to_string())
+}
+
+fn decode_xml_text(value: &str) -> String {
+    value
+        .replace("<![CDATA[", "")
+        .replace("]]>", "")
+        .replace("&amp;", "&")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&apos;", "'")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_steam_rg_games_with_numeric_and_string_fields() {
+        let json = r#"[
+            {"appid": 4000, "name": "Garry's Mod", "hours_forever": "225.3", "last_played": 1764709295},
+            {"appid": "730", "name": "Counter-Strike 2", "hours": 1.5}
+        ]"#;
+
+        let games = parse_rg_games_json(json, "76561198000000000");
+
+        assert_eq!(games.len(), 2);
+        assert_eq!(games[0].id, "steam-owned-4000");
+        assert_eq!(games[0].playtime_minutes, 13_518);
+        assert!(games[0].last_played_at.is_some());
+        assert_eq!(games[1].external_id.as_deref(), Some("730"));
+        assert_eq!(games[1].playtime_minutes, 90);
+    }
+
+    #[test]
+    fn filters_non_game_items_from_steam_owned_games() {
+        let json = r#"[
+            {"appid": 228980, "name": "Steamworks Common Redistributables"},
+            {"appid": 1070560, "name": "Steam Linux Runtime 1.0 (scout)"},
+            {"appid": 4000, "name": "Garry's Mod"}
+        ]"#;
+
+        let games = parse_rg_games_json(json, "76561198000000000");
+
+        assert_eq!(games.len(), 1);
+        assert_eq!(games[0].id, "steam-owned-4000");
+    }
+
+    #[test]
+    fn extracts_steam_profile_name_from_xml_cdata() {
+        let xml = r#"
+            <profile>
+                <steamID><![CDATA[OG &amp; Launcher]]></steamID>
+                <customURL>fallback</customURL>
+            </profile>
+        "#;
+
+        assert_eq!(
+            extract_xml_tag_text(xml, "steamID").as_deref(),
+            Some("OG & Launcher")
+        );
+    }
+
+    #[test]
+    fn parses_local_steam_owned_activity_from_vdf() {
+        let contents = r#"
+"UserLocalConfigStore"
+{
+    "Software"
+    {
+        "Valve"
+        {
+            "Steam"
+            {
+                "apps"
+                {
+                    "4000"
+                    {
+                        "Playtime"      "13519"
+                        "LastPlayed"    "1764709295"
+                    }
+                }
+            }
+        }
+    }
+}
+"#;
+        let lines = contents.lines().collect::<Vec<_>>();
+        let apps_section =
+            find_vdf_section_open_line(&lines, "apps").expect("missing apps section");
+        assert_eq!(lines[apps_section].trim(), "{");
+
+        let temp = tempfile_compat_dir();
+        let config_dir = temp.join("config");
+        fs::create_dir_all(&config_dir).expect("create config dir");
+        fs::write(config_dir.join("localconfig.vdf"), contents).expect("write localconfig");
+
+        let activity = read_steam_owned_activity(&config_dir);
+        let garrys_mod = activity.get("4000").expect("missing app activity");
+        assert_eq!(garrys_mod.playtime_minutes, 13_519);
+        assert_eq!(garrys_mod.last_played, Some(1_764_709_295));
+
+        let _ = fs::remove_dir_all(temp);
+    }
+
+    fn tempfile_compat_dir() -> PathBuf {
+        let mut path = env::temp_dir();
+        path.push(format!(
+            "og-launcher-steam-test-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock")
+                .as_nanos()
+        ));
+        path
+    }
 }

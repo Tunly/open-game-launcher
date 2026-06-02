@@ -94,7 +94,9 @@ export function FriendsPage() {
     if (!isConfigured || trimmed.length < 2) {
       setResults([]);
       setIsSearching(false);
-      return;
+      return () => {
+        isMounted = false;
+      };
     }
 
     setIsSearching(true);

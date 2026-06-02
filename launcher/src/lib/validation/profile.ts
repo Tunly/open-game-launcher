@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-export const visibilitySchema = z.enum(["public", "friends_only", "private"]);
+const visibilitySchema = z.enum(["public", "friends_only", "private"]);
 
 export const usernameSchema = z
   .string()
@@ -35,7 +35,7 @@ export const updatePrivacySchema = z.object({
   commentsVisibility: visibilitySchema,
 });
 
-export const showcaseTypeSchema = z.enum([
+const showcaseTypeSchema = z.enum([
   "about",
   "favorite_games",
   "rare_achievements",

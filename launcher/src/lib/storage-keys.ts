@@ -20,7 +20,6 @@ export const STORAGE_KEYS = {
 
   STARTUP_LIBRARY_RESCAN_DONE: "launcher_startup_library_rescan_done",
 
-  STEAM_API_KEY: "launcher.steamApiKey",
   STEAM_ID: "launcher.steamId",
   STEAM_OWNED_GAMES_CACHE: "launcher.steamOwnedGamesCache",
   STEAM_OWNED_GAMES_CACHE_VERSION: "launcher.steamOwnedGamesCacheVersion",
@@ -35,3 +34,5 @@ export const STORAGE_KEYS = {
   STORE_PRICE_ALERTS: "og-launcher:store:priceAlerts",
   STORE_WISHLIST: "og-launcher:store:wishlist",
 } as const;
+
+export const STEAM_OWNED_GAMES_CACHE_VERSION = "3";

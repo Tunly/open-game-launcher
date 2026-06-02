@@ -1,6 +1,1 @@
-export {
-  getSupabaseClient,
-  isSupabaseConfigured,
-  supabase,
-  supabaseConfigError,
-} from "./supabase/client";
+export { supabase } from "./supabase/client";

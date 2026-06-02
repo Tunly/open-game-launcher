@@ -1,6 +1,6 @@
-export type GameStatus = "installed" | "not_installed" | "update_available";
+type GameStatus = "installed" | "not_installed" | "update_available";
 export type Platform = "windows" | "linux" | "macos";
-export type LauncherType =
+type LauncherType =
   | "steam"
   | "epic"
   | "ubisoft"
@@ -10,20 +10,25 @@ export type LauncherType =
   | "xbox"
   | "manual"
   | "unknown";
-export type LogoPosition =
+type LogoPosition =
   | "bottomLeft"
   | "upperCenter"
   | "centerCenter"
   | "bottomCenter";
 export type DownloadStatus =
+  | "queued"
+  | "starting"
   | "downloading"
   | "paused"
+  | "pausing"
+  | "resuming"
+  | "installing"
   | "completed"
   | "failed"
   | "cancelled"
   | "error";
 
-export interface UnifiedAchievement {
+interface UnifiedAchievement {
   id: string;
   name: string;
   description?: string;
@@ -32,7 +37,9 @@ export interface UnifiedAchievement {
   rarity?: number | null;
 }
 
-export interface SaveFile {
+export type { UnifiedAchievement };
+
+interface SaveFile {
   id: string;
   path: string;
   label?: string;
@@ -81,6 +88,7 @@ export interface Game {
   releaseDate?: string;
   rating?: number | null;
   achievements?: UnifiedAchievement[];
+  achievementsSyncedAt?: string | null;
   saveFiles?: SaveFile[];
   friendsPlaying?: string[];
 }
@@ -117,20 +125,13 @@ export interface DownloadItem {
   canPause?: boolean;
   canCancel?: boolean;
   external?: boolean;
+  lastUpdatedAt?: number;
 }
 
 export interface SystemInfo {
   os: string;
   arch: string;
   appVersion: string;
-}
-
-export interface DiskInfo {
-  name: string;
-  mountPoint: string;
-  totalSpace: number;
-  availableSpace: number;
-  fileSystem: string;
 }
 
 export interface HardwareInfo {
@@ -151,73 +152,6 @@ export interface LaunchGameResponse {
   message: string;
 }
 
-export interface VerifyGameFilesResult {
-  gameId: string;
-  checkedFiles: number;
-  missingFiles: string[];
-  status: "verified" | "repair_required";
-}
-
-export interface RepairGameFilesResponse {
-  gameId: string;
-  success: boolean;
-  game: Game;
-  repairedFiles: string[];
-  message: string;
-}
-
-export interface CheckGameUpdatesResponse {
-  updateCount: number;
-  games: Game[];
-  message: string;
-}
-
-export interface InstallGameUpdateResponse {
-  gameId: string;
-  success: boolean;
-  game: Game;
-  message: string;
-}
-
-export interface SyncGameSavesResponse {
-  gameId: string;
-  success: boolean;
-  game: Game;
-  syncedFiles: string[];
-  missingFiles: string[];
-  syncRoot: string;
-  message: string;
-}
-
-export interface UploadGameSavesToCloudResponse {
-  gameId: string;
-  success: boolean;
-  game: Game;
-  uploadedFiles: string[];
-  missingFiles: string[];
-  failedFiles: string[];
-  message: string;
-}
-
-export interface DownloadGameSavesFromCloudResponse {
-  gameId: string;
-  success: boolean;
-  restoreRoot: string;
-  downloadedFiles: string[];
-  failedFiles: string[];
-  message: string;
-}
-
-export interface RestoreGameSavesFromCloudResponse {
-  gameId: string;
-  success: boolean;
-  restoredFiles: string[];
-  backedUpFiles: string[];
-  skippedFiles: string[];
-  failedFiles: string[];
-  message: string;
-}
-
 export interface SyncGameAchievementsResponse {
   gameId: string;
   success: boolean;
@@ -230,8 +164,27 @@ export interface SyncGameAchievementsResponse {
 export interface StartDownloadResponse {
   gameId: string;
   downloadId: string;
-  status: "started";
+  status: "started" | "already_installed";
   message: string;
+}
+
+export interface LocalSyncStatus {
+  databasePath: string;
+  schemaVersion: number;
+  entityCount: number;
+  pendingChanges: number;
+}
+
+export interface LocalEntityPayload {
+  kind: "games" | "downloads";
+  id: string;
+  entity: Record<string, unknown>;
+  updatedAt: number;
+}
+
+export interface LocalEntityKey {
+  kind: "games" | "downloads";
+  id: string;
 }
 
 export interface UninstallGameResponse {

@@ -115,7 +115,7 @@ pub async fn upload_game_saves_to_cloud(
         )?;
     }
 
-    let client = reqwest::Client::new();
+    let client = crate::commands::http::shared_http_client();
     let mut uploaded_files = Vec::new();
     let mut failed_files = Vec::new();
     for upload in &uploads {
@@ -204,7 +204,7 @@ pub async fn download_game_saves_from_cloud(
         sanitize_storage_segment(&input.user_id),
         sanitize_storage_segment(&game.id)
     );
-    let client = reqwest::Client::new();
+    let client = crate::commands::http::shared_http_client();
     let mut object_paths = Vec::new();
     list_supabase_storage_objects_recursive(
         &client,
@@ -304,7 +304,7 @@ pub async fn restore_game_saves_from_cloud(
         sanitize_storage_segment(&input.user_id),
         sanitize_storage_segment(&game.id)
     );
-    let client = reqwest::Client::new();
+    let client = crate::commands::http::shared_http_client();
     let mut object_paths = Vec::new();
     list_supabase_storage_objects_recursive(
         &client,

@@ -186,6 +186,14 @@ export function AppShell({
         }
       },
     );
+    const unlistenRemovedPromise = listen<{ gameId: string }>(
+      "download_removed",
+      (event) => {
+        if (active) {
+          useDownloadStore.getState().removeItem(event.payload.gameId);
+        }
+      },
+    );
 
     getDownloadQueue()
       .then((queue) => {
@@ -198,6 +206,7 @@ export function AppShell({
     return () => {
       active = false;
       void unlistenPromise.then((unlisten) => unlisten());
+      void unlistenRemovedPromise.then((unlisten) => unlisten());
     };
   }, []);
 

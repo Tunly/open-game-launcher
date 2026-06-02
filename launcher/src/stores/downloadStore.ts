@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { DownloadItem } from "../lib/types";
+import type { DownloadItem, DownloadStatus } from "../lib/types";
 
 export interface DownloadState {
   items: DownloadItem[];
@@ -12,6 +12,27 @@ export interface DownloadState {
   totalProgress: () => number;
 }
 
+const MAX_RETAINED_TERMINAL_ITEMS = 100;
+const TERMINAL_STATUSES = new Set<DownloadStatus>([
+  "completed",
+  "failed",
+  "cancelled",
+  "error",
+]);
+const ACTIVE_STATUSES = new Set<DownloadStatus>([
+  "queued",
+  "starting",
+  "downloading",
+  "pausing",
+  "resuming",
+  "installing",
+]);
+const PAUSED_STATUSES = new Set<DownloadStatus>(["paused"]);
+const PAUSE_TOGGLE_STATUSES = new Set<DownloadStatus>([
+  "downloading",
+  "paused",
+]);
+
 export const useDownloadStore = create<DownloadState>()((set, get) => ({
   items: [],
 
@@ -21,14 +42,13 @@ export const useDownloadStore = create<DownloadState>()((set, get) => ({
       const incomingByGameId = new Map(
         normalizedItems.map((item) => [item.gameId, item]),
       );
-      const retainedTerminalItems = state.items.filter(
-        (item) =>
-          !incomingByGameId.has(item.gameId) &&
-          (item.status === "completed" ||
-            item.status === "failed" ||
-            item.status === "cancelled" ||
-            item.status === "error"),
-      );
+      const retainedTerminalItems = state.items
+        .filter(
+          (item) =>
+            !incomingByGameId.has(item.gameId) &&
+            TERMINAL_STATUSES.has(item.status),
+        )
+        .slice(-MAX_RETAINED_TERMINAL_ITEMS);
 
       return { items: [...normalizedItems, ...retainedTerminalItems] };
     }),
@@ -56,17 +76,17 @@ export const useDownloadStore = create<DownloadState>()((set, get) => ({
     })),
 
   activeCount: () =>
-    get().items.filter((i) => i.status === "downloading").length,
+    get().items.filter((item) => isActiveDownloadItem(item)).length,
 
   pausedCount: () =>
-    get().items.filter((i) => i.status === "paused").length,
+    get().items.filter((item) => isPausedDownloadItem(item)).length,
 
   completedCount: () =>
     get().items.filter((i) => i.status === "completed").length,
 
   totalProgress: () => {
     const items = get().items.filter(
-      (item) => item.status === "downloading" || item.status === "paused",
+      (item) => isActiveDownloadItem(item) || isPausedDownloadItem(item),
     );
     if (items.length === 0) {
       return get().items.some((item) => item.status === "completed") ? 100 : 0;
@@ -79,22 +99,54 @@ export const useDownloadStore = create<DownloadState>()((set, get) => ({
 
 function normalizeDownloadItem(item: DownloadItem): DownloadItem {
   const external = Boolean(item.external);
-  const isTerminal =
-    item.status === "completed" ||
-    item.status === "failed" ||
-    item.status === "cancelled" ||
-    item.status === "error";
+  const isTerminal = isTerminalDownloadItem(item);
 
   return {
     ...item,
     progress: clampProgress(item.progress),
-    canPause: Boolean(item.canPause) && !external && !isTerminal,
+    canPause:
+      Boolean(item.canPause) &&
+      PAUSE_TOGGLE_STATUSES.has(item.status) &&
+      (!external || isSteamDownload(item.gameId)) &&
+      !isTerminal,
     canCancel: Boolean(item.canCancel) && !external && !isTerminal,
     external,
   };
 }
 
+function isSteamDownload(gameId: string) {
+  return /^steam-(owned-)?\d+$/.test(gameId);
+}
+
 function clampProgress(progress: number) {
   if (!Number.isFinite(progress)) return 0;
   return Math.min(100, Math.max(0, Math.round(progress)));
+}
+
+export function isTerminalDownloadStatus(status: DownloadStatus) {
+  return TERMINAL_STATUSES.has(status);
+}
+
+export function isActiveDownloadStatus(status: DownloadStatus) {
+  return ACTIVE_STATUSES.has(status);
+}
+
+export function isPausedDownloadStatus(status: DownloadStatus) {
+  return PAUSED_STATUSES.has(status);
+}
+
+export function isTerminalDownloadItem(item: DownloadItem) {
+  return isTerminalDownloadStatus(item.status);
+}
+
+export function isActiveDownloadItem(item: DownloadItem) {
+  return isActiveDownloadStatus(item.status);
+}
+
+export function isPausedDownloadItem(item: DownloadItem) {
+  return isPausedDownloadStatus(item.status);
+}
+
+export function isLiveDownloadItem(item: DownloadItem) {
+  return isActiveDownloadItem(item) || isPausedDownloadItem(item);
 }

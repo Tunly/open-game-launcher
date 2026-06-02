@@ -10,9 +10,24 @@ import {
   getDownloadQueue,
   pauseDownload,
 } from "../lib/launcher";
-import { useDownloadStore } from "../stores/downloadStore";
+import { getErrorMessage } from "../lib/formatters";
+import {
+  isActiveDownloadItem,
+  isPausedDownloadItem,
+  isTerminalDownloadItem,
+  useDownloadStore,
+} from "../stores/downloadStore";
 
 type QueueFilter = "all" | "active" | "paused" | "done";
+
+interface DownloadCommandError {
+  gameId: string;
+  message: string;
+}
+
+interface DownloadRemoved {
+  gameId: string;
+}
 
 export function DownloadsPage() {
   const items = useDownloadStore((s) => s.items);
@@ -22,6 +37,7 @@ export function DownloadsPage() {
   const completedCount = useDownloadStore((s) => s.completedCount());
   const totalProgress = useDownloadStore((s) => s.totalProgress());
   const [filter, setFilter] = useState<QueueFilter>("all");
+  const [commandError, setCommandError] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -31,6 +47,20 @@ export function DownloadsPage() {
       (event) => {
         if (!active) return;
         useDownloadStore.getState().upsertItem(event.payload);
+      },
+    );
+    const unlistenErrorPromise = listen<DownloadCommandError>(
+      "download_command_error",
+      (event) => {
+        if (!active) return;
+        setCommandError(event.payload.message);
+      },
+    );
+    const unlistenRemovedPromise = listen<DownloadRemoved>(
+      "download_removed",
+      (event) => {
+        if (!active) return;
+        useDownloadStore.getState().removeItem(event.payload.gameId);
       },
     );
 
@@ -45,6 +75,8 @@ export function DownloadsPage() {
     return () => {
       active = false;
       void unlistenPromise.then((unlisten) => unlisten());
+      void unlistenErrorPromise.then((unlisten) => unlisten());
+      void unlistenRemovedPromise.then((unlisten) => unlisten());
     };
   }, []);
 
@@ -53,8 +85,10 @@ export function DownloadsPage() {
     if (!item) return;
 
     try {
+      setCommandError(null);
       await pauseDownload(item.gameId);
     } catch (err) {
+      setCommandError(getErrorMessage(err));
       console.error("Failed to toggle pause:", err);
     }
   }
@@ -64,9 +98,11 @@ export function DownloadsPage() {
     if (!item) return;
 
     try {
+      setCommandError(null);
       await cancelDownload(item.gameId);
       removeItem(item.gameId);
     } catch (err) {
+      setCommandError(getErrorMessage(err));
       console.error("Failed to cancel download:", err);
     }
   }
@@ -75,28 +111,24 @@ export function DownloadsPage() {
     const item = items.find((x) => x.id === id);
     if (!item) return;
     try {
+      setCommandError(null);
       await archiveDownload(item.gameId);
       removeItem(item.gameId);
     } catch (err) {
+      setCommandError(getErrorMessage(err));
       console.error("Failed to archive download:", err);
     }
   }
 
   const visibleItems = useMemo(() => {
     if (filter === "active") {
-      return items.filter((item) => item.status === "downloading");
+      return items.filter((item) => isActiveDownloadItem(item));
     }
     if (filter === "paused") {
-      return items.filter((item) => item.status === "paused");
+      return items.filter((item) => isPausedDownloadItem(item));
     }
     if (filter === "done") {
-      return items.filter(
-        (item) =>
-          item.status === "completed" ||
-          item.status === "failed" ||
-          item.status === "cancelled" ||
-          item.status === "error",
-      );
+      return items.filter((item) => isTerminalDownloadItem(item));
     }
     return items;
   }, [filter, items]);
@@ -184,6 +216,12 @@ export function DownloadsPage() {
           ))}
         </div>
       </div>
+
+      {commandError ? (
+        <div className="neo-copy mb-5 border-4 border-black bg-[#c20b2f] p-4 text-xs font-bold uppercase text-white shadow-[4px_4px_0_#171411]">
+          {commandError}
+        </div>
+      ) : null}
 
       <div className="space-y-4">
         {visibleItems.length > 0 ? (

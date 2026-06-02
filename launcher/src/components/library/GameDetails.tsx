@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import type { Game } from "../../lib/types";
+import type { Game, UnifiedAchievement } from "../../lib/types";
 import { Metric } from "./Metric";
 import { LibraryCustomScrollbar } from "./LibraryCustomScrollbar";
 import { PlatformIcon } from "./PlatformIcons";
@@ -29,7 +29,71 @@ import {
 } from "../../lib/formatters";
 import { getGameAssetUrl, getGameBannerStyle } from "../../lib/assets";
 import { uninstallGame } from "../../lib/launcher";
-import { useDownloadStore } from "../../stores/downloadStore";
+import {
+  isLiveDownloadItem,
+  useDownloadStore,
+} from "../../stores/downloadStore";
+import { ConfirmDialog } from "../ui/ConfirmDialog";
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function filterAndSortAchievements(
+  achievements: UnifiedAchievement[],
+  filter: "all" | "locked" | "unlocked",
+  sort: "rarity" | "name" | "date",
+): UnifiedAchievement[] {
+  const filtered = achievements.filter((achievement) => {
+    if (filter === "locked") return !achievement.unlockedAt;
+    if (filter === "unlocked") return Boolean(achievement.unlockedAt);
+    return true;
+  });
+  const sorted = [...filtered];
+  if (sort === "rarity") {
+    // Lower rarity first (rarest = most interesting). Locked with no rarity go to the end.
+    sorted.sort((a, b) => {
+      const ar = typeof a.rarity === "number" ? a.rarity : Number.POSITIVE_INFINITY;
+      const br = typeof b.rarity === "number" ? b.rarity : Number.POSITIVE_INFINITY;
+      return ar - br;
+    });
+  } else if (sort === "name") {
+    sorted.sort((a, b) => a.name.localeCompare(b.name));
+  } else if (sort === "date") {
+    sorted.sort((a, b) => {
+      // Unlocked first, newest first. Locked go to the end.
+      if (Boolean(a.unlockedAt) !== Boolean(b.unlockedAt)) {
+        return a.unlockedAt ? -1 : 1;
+      }
+      const at = a.unlockedAt ? Date.parse(a.unlockedAt) : 0;
+      const bt = b.unlockedAt ? Date.parse(b.unlockedAt) : 0;
+      return bt - at;
+    });
+  }
+  return sorted;
+}
+
+function formatRelativeTime(iso: string | null | undefined): string {
+  if (!iso) return "never";
+  const then = Date.parse(iso);
+  if (Number.isNaN(then)) return "unknown";
+  const diff = Date.now() - then;
+  const minutes = Math.floor(diff / 60_000);
+  if (minutes < 1) return "just now";
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days}d ago`;
+  return new Date(then).toLocaleDateString();
+}
+
+function formatShortDate(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleDateString(undefined, { year: "2-digit", month: "short", day: "2-digit" });
+}
 
 export interface GameDetailsProps {
   selectedGame: Game | null;
@@ -94,14 +158,24 @@ export function GameDetails({
   // Local state that was originally in LibraryPage
   const [isSettingsPopoverOpen, setIsSettingsPopoverOpen] = useState(false);
   const [newCategoryInput, setNewCategoryInput] = useState("");
+  const [isUninstallDialogOpen, setIsUninstallDialogOpen] = useState(false);
+  const [isUninstalling, setIsUninstalling] = useState(false);
+  const [uninstallError, setUninstallError] = useState<string | null>(null);
+  const [achievementFilter, setAchievementFilter] = useState<"all" | "locked" | "unlocked">("all");
+  const [achievementSort, setAchievementSort] = useState<"rarity" | "name" | "date">("rarity");
   const achievements = enrichedSelectedGame?.achievements ?? [];
   const unlockedAchievementCount = achievements.filter((achievement) => achievement.unlockedAt).length;
+  const achievementProgressPercent = achievements.length === 0
+    ? 0
+    : Math.round((unlockedAchievementCount / achievements.length) * 100);
 
   const navigate = useNavigate();
   const downloadItems = useDownloadStore((s) => s.items);
   const activeDownload = enrichedSelectedGame
     ? downloadItems.find(
-        (d) => d.gameId === enrichedSelectedGame.id && (d.status === "downloading" || d.status === "paused"),
+        (download) =>
+          download.gameId === enrichedSelectedGame.id &&
+          isLiveDownloadItem(download),
       )
     : null;
 
@@ -109,9 +183,32 @@ export function GameDetails({
   useEffect(() => {
     setIsSettingsPopoverOpen(false);
     setNewCategoryInput("");
+    setIsUninstallDialogOpen(false);
+    setUninstallError(null);
+    setAchievementFilter("all");
+    setAchievementSort("rarity");
   }, [selectedGame?.id]);
 
+  async function handleUninstallConfirm() {
+    if (!enrichedSelectedGame || isUninstalling) {
+      return;
+    }
+
+    setIsUninstalling(true);
+    try {
+      await uninstallGame(enrichedSelectedGame.id);
+      setStatusMessage("Uninstall process started. Library will sync automatically.");
+      setIsUninstallDialogOpen(false);
+      void runAutomaticLibrarySync(true);
+    } catch (err) {
+      setUninstallError(getErrorMessage(err));
+    } finally {
+      setIsUninstalling(false);
+    }
+  }
+
   return (
+    <>
     <div className="library-scroll-frame relative z-10 min-h-0 min-w-0">
           <main ref={detailScrollRef} className="library-detail-scroll h-full min-h-0 min-w-0 overflow-x-hidden overflow-y-auto">
           {shouldShowLibraryLoading ? (
@@ -142,6 +239,7 @@ export function GameDetails({
                 const shouldShowTextFallback =
                   !shouldHideHeroOverlay &&
                   gameSource !== "gog" &&
+                  gameSource !== "xbox" &&
                   !hasUbisoftBanner &&
                   !hasEpicBanner &&
                   (!logoSrc || !loadedLogoUrls.has(logoSrc));
@@ -288,14 +386,8 @@ export function GameDetails({
                           <div className="mb-3 border-b border-black pb-3">
                             <button
                               onClick={() => {
-                                if (window.confirm(`Are you sure you want to uninstall ${enrichedSelectedGame.title}?`)) {
-                                  uninstallGame(enrichedSelectedGame.id)
-                                    .then(() => {
-                                      setStatusMessage("Uninstall process started. Library will sync automatically.");
-                                      void runAutomaticLibrarySync(true);
-                                    })
-                                    .catch(err => alert("Failed to start uninstaller: " + err));
-                                }
+                                setUninstallError(null);
+                                setIsUninstallDialogOpen(true);
                               }}
                               className="w-full border-2 border-black bg-[#b7102a] text-white py-1 text-[10px] font-black uppercase hover:bg-[#990a20] transition shadow-[1px_1px_0_#000]"
                             >
@@ -426,7 +518,8 @@ export function GameDetails({
                     title="Sync achievements"
                     disabled={isSyncingAchievements}
                     onClick={() => {
-                      setStatusMessage("Syncing Steam achievements...");
+                      const target = enrichedSelectedGame?.launcher === "xbox" ? "Xbox" : "Steam";
+                      setStatusMessage(`Syncing ${target} achievements...`);
                       void handleSyncAchievements();
                     }}
                   >
@@ -535,60 +628,120 @@ export function GameDetails({
                           Achievements
                         </h2>
                         <span className="neo-copy border-2 border-black bg-[#e8c843] px-2 py-0.5 text-[10px] font-black uppercase">
-                          {unlockedAchievementCount}/{achievements.length}
+                          {unlockedAchievementCount}/{achievements.length} · {achievementProgressPercent}%
                         </span>
                       </div>
 
                       {achievements.length > 0 ? (
-                        <div className="max-h-[360px] space-y-2 overflow-y-auto p-3">
-                          {achievements.map((achievement) => {
-                            const isUnlocked = Boolean(achievement.unlockedAt);
-
-                            return (
-                              <article
-                                key={achievement.id}
-                                className={`grid grid-cols-[38px_minmax(0,1fr)_32px] items-center gap-2 border-2 border-black p-2 ${
-                                  isUnlocked ? "bg-[#efe3cf]" : "bg-[#f6edd8] opacity-75"
+                        <>
+                          <div className="border-b-2 border-black bg-[#f3e8d7] px-3 py-1.5">
+                            <div className="h-2 border border-black bg-[#fbf4e7]">
+                              <div
+                                className="h-full bg-[#c20b2f]"
+                                style={{ width: `${achievementProgressPercent}%` }}
+                              />
+                            </div>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-1.5 border-b-2 border-black bg-[#f3e8d7] px-2 py-1.5">
+                            {(["all", "unlocked", "locked"] as const).map((key) => (
+                              <button
+                                key={key}
+                                type="button"
+                                onClick={() => setAchievementFilter(key)}
+                                className={`neo-copy border-2 border-black px-2 py-0.5 text-[9px] font-black uppercase ${
+                                  achievementFilter === key
+                                    ? "bg-[#087d6d] text-white"
+                                    : "bg-[#fbf4e7] text-[#171411] hover:bg-[#efe3cf]"
                                 }`}
                               >
-                                <div className={`grid h-[38px] w-[38px] place-items-center overflow-hidden border-2 border-black ${
-                                  isUnlocked ? "bg-[#169b83] text-white" : "bg-[#d8cbb7] text-[#171411]"
-                                }`}>
-                                  {achievement.iconUrl ? (
-                                    <img
-                                      alt=""
-                                      className="h-full w-full object-cover"
-                                      loading="lazy"
-                                      src={achievement.iconUrl}
-                                    />
-                                  ) : (
-                                    <Award className="h-5 w-5" />
-                                  )}
-                                </div>
-                                <div className="min-w-0">
-                                  <h3 className="truncate text-[12px] font-black uppercase leading-tight">
-                                    {achievement.name}
-                                  </h3>
-                                  {achievement.description ? (
-                                    <p className="mt-1 line-clamp-2 text-[11px] font-bold leading-4 text-[#55504a]">
-                                      {achievement.description}
-                                    </p>
-                                  ) : null}
-                                </div>
-                                <div className="grid h-8 w-8 place-items-center shrink-0" title={isUnlocked ? "Unlocked" : "Locked"}>
-                                  {isUnlocked ? (
-                                    <LockKeyholeOpen className="h-5 w-5 text-[#169b83]" />
-                                  ) : (
-                                    <LockKeyhole className="h-5 w-5 text-[#8e877e]" />
-                                  )}
-                                </div>
-                              </article>
-                            );
-                          })}
-                        </div>
+                                {key}
+                              </button>
+                            ))}
+                            <div className="ml-auto flex items-center gap-1">
+                              <span className="neo-copy text-[9px] font-black uppercase text-[#55504a]">Sort</span>
+                              <select
+                                value={achievementSort}
+                                onChange={(e) => setAchievementSort(e.target.value as "rarity" | "name" | "date")}
+                                className="neo-copy border-2 border-black bg-[#fbf4e7] px-1.5 py-0.5 text-[9px] font-black uppercase"
+                              >
+                                <option value="rarity">Rarity</option>
+                                <option value="name">Name</option>
+                                <option value="date">Date</option>
+                              </select>
+                            </div>
+                            {enrichedSelectedGame?.achievementsSyncedAt ? (
+                              <span className="neo-copy w-full text-right text-[9px] font-bold uppercase text-[#55504a]">
+                                Synced {formatRelativeTime(enrichedSelectedGame.achievementsSyncedAt)}
+                              </span>
+                            ) : null}
+                          </div>
+                          <div className="max-h-[360px] space-y-2 overflow-y-auto p-3">
+                            {filterAndSortAchievements(achievements, achievementFilter, achievementSort).map((achievement) => {
+                              const isUnlocked = Boolean(achievement.unlockedAt);
+
+                              return (
+                                <article
+                                  key={achievement.id}
+                                  className={`grid grid-cols-[38px_minmax(0,1fr)_auto] items-center gap-2 border-2 border-black p-2 ${
+                                    isUnlocked ? "bg-[#efe3cf]" : "bg-[#f6edd8] opacity-75"
+                                  }`}
+                                >
+                                  <div className={`grid h-[38px] w-[38px] place-items-center overflow-hidden border-2 border-black ${
+                                    isUnlocked ? "bg-[#169b83] text-white" : "bg-[#d8cbb7] text-[#171411]"
+                                  }`}>
+                                    {achievement.iconUrl ? (
+                                      <img
+                                        alt=""
+                                        className="h-full w-full object-cover"
+                                        loading="lazy"
+                                        src={achievement.iconUrl}
+                                      />
+                                    ) : (
+                                      <Award className="h-5 w-5" />
+                                    )}
+                                  </div>
+                                  <div className="min-w-0">
+                                    <h3 className="truncate text-[12px] font-black uppercase leading-tight">
+                                      {achievement.name}
+                                    </h3>
+                                    {achievement.description ? (
+                                      <p className="mt-1 line-clamp-2 text-[11px] font-bold leading-4 text-[#55504a]">
+                                        {achievement.description}
+                                      </p>
+                                    ) : null}
+                                    {typeof achievement.rarity === "number" ? (
+                                      <p className="mt-1 text-[10px] font-black uppercase text-[#087d6d]">
+                                        {achievement.rarity.toFixed(1)}% of players
+                                      </p>
+                                    ) : null}
+                                  </div>
+                                  <div className="flex flex-col items-end gap-1">
+                                    {isUnlocked && achievement.unlockedAt ? (
+                                      <span className="neo-copy text-[9px] font-bold uppercase text-[#55504a]">
+                                        {formatShortDate(achievement.unlockedAt)}
+                                      </span>
+                                    ) : null}
+                                    <div className="grid h-8 w-8 place-items-center shrink-0" title={isUnlocked ? "Unlocked" : "Locked"}>
+                                      {isUnlocked ? (
+                                        <LockKeyholeOpen className="h-5 w-5 text-[#169b83]" />
+                                      ) : (
+                                        <LockKeyhole className="h-5 w-5 text-[#8e877e]" />
+                                      )}
+                                    </div>
+                                  </div>
+                                </article>
+                              );
+                            })}
+                            {filterAndSortAchievements(achievements, achievementFilter, achievementSort).length === 0 ? (
+                              <div className="py-4 text-center text-[11px] font-bold uppercase text-[#55504a]">
+                                No achievements match this filter.
+                              </div>
+                            ) : null}
+                          </div>
+                        </>
                       ) : (
                         <div className="p-3 text-[12px] font-bold leading-5 text-[#55504a]">
-                          No achievements synced yet. Use the trophy button above to sync Steam achievements.
+                          No achievements synced yet. Use the trophy button above to sync achievements.
                         </div>
                       )}
                     </section>
@@ -779,5 +932,24 @@ export function GameDetails({
           </main>
           <LibraryCustomScrollbar targetRef={detailScrollRef} />
         </div>
+      <ConfirmDialog
+        cancelLabel="Keep Installed"
+        confirmLabel={isUninstalling ? "Uninstalling..." : "Uninstall"}
+        destructive
+        message={
+          uninstallError
+            ? `Failed to start uninstaller: ${uninstallError}`
+            : `This will remove ${enrichedSelectedGame?.title ?? "this game"} and any managed install files. This action cannot be undone.`
+        }
+        open={isUninstallDialogOpen}
+        title={uninstallError ? "Uninstall Failed" : "Uninstall Game?"}
+        onCancel={() => {
+          if (isUninstalling) return;
+          setIsUninstallDialogOpen(false);
+          setUninstallError(null);
+        }}
+        onConfirm={handleUninstallConfirm}
+      />
+    </>
   );
 }

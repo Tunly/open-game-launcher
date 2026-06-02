@@ -38,6 +38,29 @@ pub async fn open_battlenet_login_window(app: tauri::AppHandle) -> Result<(), St
                             const data2 = isJson2 ? await res2.json() : {};
                             
                             let extractedGames = [];
+                            const absolutizeAssetUrl = (url) => {
+                                if (!url || typeof url !== 'string') return null;
+                                const trimmed = url.trim();
+                                if (!trimmed) return null;
+                                if (trimmed.startsWith('//')) return 'https:' + trimmed;
+                                if (trimmed.startsWith('/')) return window.location.origin + trimmed;
+                                return trimmed;
+                            };
+                            const firstAssetUrl = (value, keys) => {
+                                if (!value || typeof value !== 'object') return null;
+                                for (const key of keys) {
+                                    const candidate = value[key];
+                                    if (typeof candidate === 'string') {
+                                        const url = absolutizeAssetUrl(candidate);
+                                        if (url) return url;
+                                    }
+                                    if (candidate && typeof candidate === 'object') {
+                                        const url = firstAssetUrl(candidate, keys);
+                                        if (url) return url;
+                                    }
+                                }
+                                return null;
+                            };
                             const walk = (v) => {
                                 if (Array.isArray(v)) v.forEach(walk);
                                 else if (v && typeof v === 'object') {
@@ -47,7 +70,23 @@ pub async fn open_battlenet_login_window(app: tauri::AppHandle) -> Result<(), St
                                         let finalId = id;
                                         if (!finalId && name) finalId = name.replace(/\s+/g, '-').toLowerCase();
                                         if (finalId) {
-                                            extractedGames.push({ n: name, i: finalId.toString() });
+                                            const coverUrl = firstAssetUrl(v, [
+                                                'backgroundImageUrl', 'backgroundImage', 'heroImageUrl', 'heroImage',
+                                                'coverUrl', 'cover', 'boxArtUrl', 'boxArt', 'tileImageUrl', 'tileImage',
+                                                'cardImageUrl', 'cardImage', 'imageUrl', 'image'
+                                            ]);
+                                            const iconUrl = firstAssetUrl(v, [
+                                                'iconUrl', 'icon', 'thumbnailUrl', 'thumbnail', 'logoUrl', 'logo',
+                                                'imageUrl', 'image'
+                                            ]) || coverUrl;
+                                            const logoUrl = firstAssetUrl(v, ['logoUrl', 'logo', 'titleLogoUrl', 'titleLogo']);
+                                            extractedGames.push({
+                                                n: name,
+                                                i: finalId.toString(),
+                                                c: coverUrl,
+                                                l: logoUrl,
+                                                u: iconUrl
+                                            });
                                             return;
                                         }
                                     }
@@ -176,6 +215,24 @@ pub async fn process_battlenet_games_payload(
                 obj.get("n").and_then(|v| v.as_str()),
                 obj.get("i").and_then(|v| v.as_str()),
             ) {
+                let api_cover_url = obj
+                    .get("c")
+                    .and_then(|v| v.as_str())
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(str::to_string);
+                let api_logo_url = obj
+                    .get("l")
+                    .and_then(|v| v.as_str())
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(str::to_string);
+                let api_icon_url = obj
+                    .get("u")
+                    .and_then(|v| v.as_str())
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(str::to_string);
                 let n_clone = n.to_string();
                 let i_clone = i.to_string();
                 let assets = std::thread::spawn(move || {
@@ -183,15 +240,26 @@ pub async fn process_battlenet_games_payload(
                 })
                 .join()
                 .unwrap_or(None);
+                let (fallback_cover, fallback_logo, fallback_icon) =
+                    crate::commands::games::detect::get_battlenet_assets(i, n);
+                let cover_url = api_cover_url
+                    .or_else(|| assets.as_ref().and_then(|a| a.cover_url.clone()))
+                    .or(fallback_cover);
+                let logo_url = api_logo_url
+                    .or_else(|| assets.as_ref().and_then(|a| a.logo_url.clone()))
+                    .or(fallback_logo);
+                let icon_url = api_icon_url
+                    .or_else(|| assets.as_ref().and_then(|a| a.icon_url.clone()))
+                    .or(fallback_icon);
 
                 games.push(OwnedGame {
                     id: format!("battlenet-owned-{}", i.replace(" ", "-").to_lowercase()),
                     external_id: Some(i.to_string()),
                     title: n.to_string(),
                     description: format!("Battle.net game (Owned). ID: {}", i),
-                    cover_url: assets.as_ref().and_then(|a| a.cover_url.clone()),
-                    logo_url: assets.as_ref().and_then(|a| a.logo_url.clone()),
-                    icon_url: assets.as_ref().and_then(|a| a.icon_url.clone()),
+                    cover_url,
+                    logo_url,
+                    icon_url,
                     playtime_minutes: 0,
                     last_played_at: None,
                     cloud_gaming_url: None,

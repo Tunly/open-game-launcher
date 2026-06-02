@@ -1,0 +1,11 @@
+{
+  "name": "open-game-launcher-root",
+  "private": true,
+  "packageManager": "pnpm@9.15.4",
+  "scripts": {
+    "supabase": "pnpm --dir launcher supabase",
+    "supabase:migration:list": "pnpm --dir launcher supabase:migration:list",
+    "supabase:migration:new": "pnpm --dir launcher supabase:migration:new",
+    "supabase:db:push": "pnpm --dir launcher supabase:db:push"
+  }
+}

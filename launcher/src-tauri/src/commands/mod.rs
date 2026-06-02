@@ -4,6 +4,8 @@ pub mod ea;
 pub mod epic;
 pub mod games;
 pub mod gog;
+pub mod http;
+pub mod local_db;
 pub mod system;
 pub mod ubisoft;
 pub mod xbox;

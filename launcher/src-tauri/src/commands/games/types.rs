@@ -53,6 +53,11 @@ pub struct InstalledGame {
     pub rating: Option<f64>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub achievements: Vec<UnifiedAchievement>,
+    #[serde(
+        rename = "achievementsSyncedAt",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub achievements_synced_at: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub save_files: Vec<SaveFile>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -325,13 +330,6 @@ pub struct UpdateGameMetadataRequest {
     pub achievements: Option<Vec<UnifiedAchievement>>,
     pub save_files: Option<Vec<SaveFile>>,
     pub friends_playing: Option<Vec<String>>,
-}
-
-#[derive(Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct InstalledGamesCache {
-    pub version: u32,
-    pub games: Vec<InstalledGame>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Default)]

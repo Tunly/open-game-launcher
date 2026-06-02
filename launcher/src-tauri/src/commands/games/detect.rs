@@ -3,6 +3,7 @@ use std::{
     env, fs,
     path::{Path, PathBuf},
     process::Command,
+    sync::{Mutex, OnceLock},
     thread,
     time::Duration,
 };
@@ -22,9 +23,9 @@ use winreg::{
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 use super::core::{
-    apply_battlenet_assets, current_unix_timestamp, env_path, get_dir_last_modified,
-    installed_game, is_ignored_game_directory, local_drive_roots, path_to_string,
-    rawg_asset_cache_path, unix_timestamp_to_iso,
+    apply_battlenet_assets, current_unix_timestamp, env_path, epic_catalog_asset_cache_path,
+    get_dir_last_modified, installed_game, is_ignored_game_directory, local_drive_roots,
+    path_to_string, rawg_asset_cache_path, unix_timestamp_to_iso,
 };
 use super::types::*;
 
@@ -54,8 +55,14 @@ fn canonical_install_path(path: &str) -> Option<PathBuf> {
     path.canonicalize().ok()
 }
 
-fn merge_scanned_game(games: &mut BTreeMap<String, InstalledGame>, mut candidate: InstalledGame) {
+fn merge_scanned_game(
+    games: &mut BTreeMap<String, InstalledGame>,
+    path_index: &mut HashMap<PathBuf, String>,
+    mut candidate: InstalledGame,
+) {
     candidate.launcher = normalize_scanned_launcher(&candidate.launcher);
+    let candidate_id = candidate.id.clone();
+    let mut candidate_canonical_path = None;
 
     if let Some(install_path) = candidate
         .install_path
@@ -63,38 +70,28 @@ fn merge_scanned_game(games: &mut BTreeMap<String, InstalledGame>, mut candidate
         .filter(|path| !path.is_empty())
     {
         if let Some(candidate_canon) = canonical_install_path(install_path) {
-            let mut replace_id: Option<String> = None;
-            let mut skip_insert = false;
-
-            for (existing_id, existing) in games.iter() {
-                let Some(existing_path) = existing.install_path.as_deref() else {
-                    continue;
-                };
-                let Some(existing_canon) = canonical_install_path(existing_path) else {
-                    continue;
-                };
-                if existing_canon != candidate_canon {
-                    continue;
+            if let Some(existing_id) = path_index.get(&candidate_canon).cloned() {
+                if let Some(existing) = games.get(&existing_id) {
+                    if launcher_scan_priority(&candidate) > launcher_scan_priority(existing) {
+                        games.remove(&existing_id);
+                    } else {
+                        return;
+                    }
                 }
-
-                if launcher_scan_priority(&candidate) > launcher_scan_priority(existing) {
-                    replace_id = Some(existing_id.clone());
-                } else {
-                    skip_insert = true;
-                }
-                break;
             }
 
-            if skip_insert {
-                return;
-            }
-            if let Some(old_id) = replace_id {
-                games.remove(&old_id);
-            }
+            candidate_canonical_path = Some(candidate_canon);
         }
     }
 
-    games.entry(candidate.id.clone()).or_insert(candidate);
+    if games.contains_key(&candidate_id) {
+        return;
+    }
+
+    games.insert(candidate_id.clone(), candidate);
+    if let Some(candidate_canon) = candidate_canonical_path {
+        path_index.insert(candidate_canon, candidate_id);
+    }
 }
 
 pub fn is_ea_install_directory(path: &Path) -> bool {
@@ -111,6 +108,7 @@ pub fn is_ea_install_directory(path: &Path) -> bool {
 
 pub fn scan_installed_games() -> Vec<InstalledGame> {
     let mut games = BTreeMap::<String, InstalledGame>::new();
+    let mut path_index = HashMap::<PathBuf, String>::new();
 
     // Spawn threads for parallel scanning
     let handle_steam = thread::spawn(|| scan_steam_games());
@@ -124,37 +122,37 @@ pub fn scan_installed_games() -> Vec<InstalledGame> {
     // Join and merge results (EA/Epic/etc. win over Steam for the same install folder)
     if let Ok(steam_games) = handle_steam.join() {
         for game in steam_games {
-            merge_scanned_game(&mut games, game);
+            merge_scanned_game(&mut games, &mut path_index, game);
         }
     }
     if let Ok(epic_games) = handle_epic.join() {
         for game in epic_games {
-            merge_scanned_game(&mut games, game);
+            merge_scanned_game(&mut games, &mut path_index, game);
         }
     }
     if let Ok(gog_games) = handle_gog.join() {
         for game in gog_games {
-            merge_scanned_game(&mut games, game);
+            merge_scanned_game(&mut games, &mut path_index, game);
         }
     }
     if let Ok(ubisoft_games) = handle_ubisoft.join() {
         for game in ubisoft_games {
-            merge_scanned_game(&mut games, game);
+            merge_scanned_game(&mut games, &mut path_index, game);
         }
     }
     if let Ok(xbox_games) = handle_xbox.join() {
         for game in xbox_games {
-            merge_scanned_game(&mut games, game);
+            merge_scanned_game(&mut games, &mut path_index, game);
         }
     }
     if let Ok(battlenet_games) = handle_battlenet.join() {
         for game in battlenet_games {
-            merge_scanned_game(&mut games, game);
+            merge_scanned_game(&mut games, &mut path_index, game);
         }
     }
     if let Ok(ea_games) = handle_ea.join() {
         for game in ea_games {
-            merge_scanned_game(&mut games, game);
+            merge_scanned_game(&mut games, &mut path_index, game);
         }
     }
 
@@ -209,18 +207,21 @@ pub fn scan_steam_games() -> Vec<InstalledGame> {
             let manifest_activity = steam_activity_from_manifest(&contents);
 
             if let Some(title) = name.filter(|value| !value.trim().is_empty()) {
-                let install_dir_path = install_dir
-                    .map(|dir| steamapps.join("common").join(dir))
-                    .filter(|dir| dir.exists());
-
-                if install_dir_path
-                    .as_ref()
-                    .is_some_and(|path| is_ea_install_directory(path))
-                {
+                if is_steam_non_game_manifest(app_id.as_deref(), &title) {
                     continue;
                 }
 
-                let install_path = install_dir_path.map(path_to_string);
+                let Some(install_dir_path) =
+                    steam_install_dir_path(&steamapps, install_dir.as_deref())
+                else {
+                    continue;
+                };
+
+                if is_ea_install_directory(&install_dir_path) {
+                    continue;
+                }
+
+                let install_path = Some(path_to_string(install_dir_path));
                 let cover_url = app_id.as_ref().map(|id| {
                     format!(
                         "https://cdn.cloudflare.steamstatic.com/steam/apps/{id}/library_hero.jpg"
@@ -320,31 +321,45 @@ pub fn scan_epic_games() -> Vec<InstalledGame> {
                 .map(ToOwned::to_owned);
             let install_root = install_path.as_ref().map(PathBuf::from);
             let epic_assets = find_epic_launcher_assets(&value, &title, &catalog_cache);
-            let rawg_assets =
-                get_rawg_game_assets("epic", app_name.as_deref().unwrap_or(&title), &title);
+            let epic_catalog_assets = if !epic_assets_have_banner_and_icon(&epic_assets) {
+                get_epic_catalog_api_assets(namespace.as_deref(), catalog_item_id.as_deref())
+            } else {
+                EpicLauncherAssets::default()
+            };
+            let has_epic_banner_and_icon = (epic_assets.cover_url.is_some()
+                || epic_catalog_assets.cover_url.is_some())
+                && (epic_assets.icon_url.is_some() || epic_catalog_assets.icon_url.is_some());
+            let rawg_assets = if has_epic_banner_and_icon {
+                None
+            } else {
+                get_rawg_epic_assets(app_name.as_deref().unwrap_or(&title), &title)
+            };
 
-            let cover_url = rawg_assets
-                .as_ref()
-                .and_then(|a| a.cover_url.clone())
-                .or_else(|| epic_assets.cover_url.clone())
+            let cover_url = epic_assets
+                .cover_url
+                .clone()
+                .or_else(|| epic_catalog_assets.cover_url.clone())
+                .or_else(|| rawg_assets.as_ref().and_then(|a| a.cover_url.clone()))
                 .or_else(|| {
                     install_root
                         .as_ref()
                         .and_then(|path| find_local_banner_asset(path))
                 });
-            let logo_url = rawg_assets
-                .as_ref()
-                .and_then(|a| a.logo_url.clone())
-                .or_else(|| epic_assets.logo_url.clone())
+            let logo_url = epic_assets
+                .logo_url
+                .clone()
+                .or_else(|| epic_catalog_assets.logo_url.clone())
+                .or_else(|| rawg_assets.as_ref().and_then(|a| a.logo_url.clone()))
                 .or_else(|| {
                     install_root
                         .as_ref()
                         .and_then(|path| find_local_logo_asset(path))
                 });
-            let icon_url = rawg_assets
-                .as_ref()
-                .and_then(|a| a.icon_url.clone())
-                .or_else(|| epic_assets.icon_url.clone())
+            let icon_url = epic_assets
+                .icon_url
+                .clone()
+                .or_else(|| epic_catalog_assets.icon_url.clone())
+                .or_else(|| rawg_assets.as_ref().and_then(|a| a.icon_url.clone()))
                 .or_else(|| {
                     install_root
                         .as_ref()
@@ -378,6 +393,8 @@ pub fn scan_epic_games() -> Vec<InstalledGame> {
             }
             game.logo_url = logo_url;
             game.icon_url = icon_url;
+            game.logo_urls = game.logo_url.clone().into_iter().collect();
+            game.icon_urls = game.icon_url.clone().into_iter().collect();
             if let Some(timestamp) = install_root
                 .as_ref()
                 .and_then(|path| get_dir_last_modified(path))
@@ -390,11 +407,11 @@ pub fn scan_epic_games() -> Vec<InstalledGame> {
         .collect()
 }
 
-#[derive(Default)]
-struct EpicLauncherAssets {
-    cover_url: Option<String>,
-    logo_url: Option<String>,
-    icon_url: Option<String>,
+#[derive(Clone, Default)]
+pub struct EpicLauncherAssets {
+    pub cover_url: Option<String>,
+    pub logo_url: Option<String>,
+    pub icon_url: Option<String>,
 }
 
 #[derive(Clone)]
@@ -404,6 +421,23 @@ struct EpicImageCandidate {
     width: Option<u64>,
     height: Option<u64>,
 }
+
+#[derive(serde::Serialize, serde::Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+struct EpicCatalogAssetCache {
+    entries: HashMap<String, EpicCatalogAssetCacheEntry>,
+}
+
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct EpicCatalogAssetCacheEntry {
+    cover_url: Option<String>,
+    logo_url: Option<String>,
+    icon_url: Option<String>,
+    fetched_at: u64,
+}
+
+const EPIC_CATALOG_ASSET_CACHE_MAX_AGE_SECS: u64 = 7 * 24 * 60 * 60;
 
 fn find_epic_launcher_assets(
     manifest: &serde_json::Value,
@@ -426,6 +460,149 @@ fn find_epic_launcher_assets(
         logo_url: select_epic_image(&images, EpicImagePurpose::Logo),
         icon_url: select_epic_image(&images, EpicImagePurpose::Icon),
     }
+}
+
+pub fn find_epic_json_assets(value: &serde_json::Value) -> EpicLauncherAssets {
+    let mut images = Vec::new();
+    collect_epic_image_candidates(value, &mut images);
+
+    EpicLauncherAssets {
+        cover_url: select_epic_image(&images, EpicImagePurpose::Cover),
+        logo_url: select_epic_image(&images, EpicImagePurpose::Logo),
+        icon_url: select_epic_image(&images, EpicImagePurpose::Icon),
+    }
+}
+
+pub fn epic_assets_have_banner_and_icon(assets: &EpicLauncherAssets) -> bool {
+    assets.cover_url.is_some() && assets.icon_url.is_some()
+}
+
+pub fn get_epic_catalog_api_assets(
+    namespace: Option<&str>,
+    catalog_item_id: Option<&str>,
+) -> EpicLauncherAssets {
+    let Some(namespace) = namespace.map(str::trim).filter(|value| !value.is_empty()) else {
+        return EpicLauncherAssets::default();
+    };
+    let Some(catalog_item_id) = catalog_item_id
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    else {
+        return EpicLauncherAssets::default();
+    };
+
+    let cache_key = epic_catalog_asset_cache_key(namespace, catalog_item_id);
+    if let Ok(cache) = epic_catalog_asset_cache_store().lock() {
+        if let Some(entry) = cache.entries.get(&cache_key) {
+            if current_unix_timestamp().saturating_sub(entry.fetched_at)
+                <= EPIC_CATALOG_ASSET_CACHE_MAX_AGE_SECS
+            {
+                return EpicLauncherAssets {
+                    cover_url: entry.cover_url.clone(),
+                    logo_url: entry.logo_url.clone(),
+                    icon_url: entry.icon_url.clone(),
+                };
+            }
+        }
+    }
+
+    let Some(assets) = fetch_epic_catalog_api_assets(namespace, catalog_item_id) else {
+        return EpicLauncherAssets::default();
+    };
+
+    if let Ok(mut cache) = epic_catalog_asset_cache_store().lock() {
+        cache.entries.insert(
+            cache_key,
+            EpicCatalogAssetCacheEntry {
+                cover_url: assets.cover_url.clone(),
+                logo_url: assets.logo_url.clone(),
+                icon_url: assets.icon_url.clone(),
+                fetched_at: current_unix_timestamp(),
+            },
+        );
+        write_epic_catalog_asset_cache(&cache);
+    }
+
+    assets
+}
+
+fn epic_catalog_asset_cache_store() -> &'static Mutex<EpicCatalogAssetCache> {
+    static CACHE: OnceLock<Mutex<EpicCatalogAssetCache>> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(read_epic_catalog_asset_cache()))
+}
+
+fn epic_catalog_asset_cache_key(namespace: &str, catalog_item_id: &str) -> String {
+    format!(
+        "{}:{}",
+        namespace.trim().to_lowercase(),
+        catalog_item_id.trim().to_lowercase()
+    )
+}
+
+fn read_epic_catalog_asset_cache() -> EpicCatalogAssetCache {
+    let Some(cache_path) = epic_catalog_asset_cache_path() else {
+        return EpicCatalogAssetCache::default();
+    };
+
+    fs::read_to_string(cache_path)
+        .ok()
+        .and_then(|contents| serde_json::from_str::<EpicCatalogAssetCache>(&contents).ok())
+        .unwrap_or_default()
+}
+
+fn write_epic_catalog_asset_cache(cache: &EpicCatalogAssetCache) {
+    let Some(cache_path) = epic_catalog_asset_cache_path() else {
+        return;
+    };
+
+    if let Some(parent) = cache_path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+
+    if let Ok(contents) = serde_json::to_string_pretty(cache) {
+        let _ = fs::write(cache_path, contents);
+    }
+}
+
+fn fetch_epic_catalog_api_assets(
+    namespace: &str,
+    catalog_item_id: &str,
+) -> Option<EpicLauncherAssets> {
+    let payload = serde_json::json!({
+        "query": r#"
+            query getCatalogItem($namespace: String!, $id: String!, $locale: String) {
+              Catalog {
+                catalogItem(namespace: $namespace, id: $id, locale: $locale) {
+                  id
+                  namespace
+                  title
+                  keyImages {
+                    type
+                    url
+                  }
+                }
+              }
+            }
+        "#,
+        "variables": {
+            "namespace": namespace,
+            "id": catalog_item_id,
+            "locale": "en-US",
+        },
+    });
+
+    use std::io::Read;
+    let response = ureq::post("https://graphql.epicgames.com/graphql")
+        .header("Content-Type", "application/json")
+        .send_json(payload)
+        .ok()?;
+    let mut reader = response.into_body().into_reader();
+    let mut text = String::new();
+    reader.read_to_string(&mut text).ok()?;
+    let value = serde_json::from_str::<serde_json::Value>(&text).ok()?;
+    let catalog_item = value.get("data")?.get("Catalog")?.get("catalogItem")?;
+
+    Some(find_epic_json_assets(catalog_item))
 }
 
 fn read_epic_catalog_cache() -> Vec<serde_json::Value> {
@@ -1029,9 +1206,10 @@ pub fn get_rawg_game_assets(platform: &str, id: &str, search_title: &str) -> Opt
         id.trim().to_lowercase(),
         search_title.trim().to_lowercase()
     );
-    let mut cache = read_rawg_asset_cache();
-    if let Some(cached_assets) = cache.entries.get(&cache_key) {
-        return Some(cached_assets.clone());
+    if let Ok(cache) = rawg_asset_cache_store().lock() {
+        if let Some(cached_assets) = cache.entries.get(&cache_key) {
+            return Some(cached_assets.clone());
+        }
     }
 
     let assets = fetch_rawg_assets_via_supabase(search_title).or_else(|| {
@@ -1045,8 +1223,10 @@ pub fn get_rawg_game_assets(platform: &str, id: &str, search_title: &str) -> Opt
     })?;
 
     if assets.cover_url.is_some() || assets.logo_url.is_some() || assets.icon_url.is_some() {
-        cache.entries.insert(cache_key, assets.clone());
-        write_rawg_asset_cache(&cache);
+        if let Ok(mut cache) = rawg_asset_cache_store().lock() {
+            cache.entries.insert(cache_key, assets.clone());
+            write_rawg_asset_cache(&cache);
+        }
         return Some(assets);
     }
 
@@ -1058,6 +1238,22 @@ pub fn get_rawg_battlenet_assets(uid: &str, title: &str) -> Option<RawgAssets> {
     get_rawg_game_assets("battlenet", uid, &search_title)
 }
 
+pub fn get_rawg_epic_assets(id: &str, title: &str) -> Option<RawgAssets> {
+    let search_title = epic_rawg_search_title(title);
+    let cache_id = if id.trim().is_empty() { title } else { id };
+    get_rawg_game_assets("epic", cache_id, &search_title)
+}
+
+pub fn get_rawg_ea_assets(content_id: &str, title: &str) -> Option<RawgAssets> {
+    let search_title = ea_rawg_search_title(content_id, title);
+    let cache_id = if content_id.trim().is_empty() {
+        title
+    } else {
+        content_id
+    };
+    get_rawg_game_assets("ea", cache_id, &search_title)
+}
+
 fn read_rawg_asset_cache() -> RawgAssetCache {
     let Some(cache_path) = rawg_asset_cache_path() else {
         return RawgAssetCache::default();
@@ -1067,6 +1263,11 @@ fn read_rawg_asset_cache() -> RawgAssetCache {
         .ok()
         .and_then(|contents| serde_json::from_str::<RawgAssetCache>(&contents).ok())
         .unwrap_or_default()
+}
+
+fn rawg_asset_cache_store() -> &'static Mutex<RawgAssetCache> {
+    static CACHE: OnceLock<Mutex<RawgAssetCache>> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(read_rawg_asset_cache()))
 }
 
 fn write_rawg_asset_cache(cache: &RawgAssetCache) {
@@ -1166,6 +1367,109 @@ fn battlenet_rawg_search_title(uid: &str, title: &str) -> String {
     title.to_string()
 }
 
+fn epic_rawg_search_title(title: &str) -> String {
+    let mut cleaned = title
+        .replace(['\u{2122}', '\u{00AE}'], "")
+        .replace("(TM)", "")
+        .replace("(R)", "")
+        .replace("  ", " ")
+        .trim()
+        .to_string();
+
+    let edition_suffixes = [
+        " - Standard Edition",
+        " Standard Edition",
+        " - Deluxe Edition",
+        " Deluxe Edition",
+        " - Ultimate Edition",
+        " Ultimate Edition",
+        " - Digital Deluxe Edition",
+        " Digital Deluxe Edition",
+        " - Complete Edition",
+        " Complete Edition",
+        " - Gold Edition",
+        " Gold Edition",
+    ];
+
+    for suffix in edition_suffixes {
+        if cleaned.len() > suffix.len() + 3 && cleaned.ends_with(suffix) {
+            cleaned.truncate(cleaned.len() - suffix.len());
+            break;
+        }
+    }
+
+    cleaned.trim().to_string()
+}
+
+fn ea_rawg_search_title(_content_id: &str, title: &str) -> String {
+    let cleaned = title
+        .replace(['\u{2122}', '\u{00AE}'], "")
+        .replace("(TM)", "")
+        .replace("(R)", "")
+        .replace("  ", " ")
+        .trim()
+        .to_string();
+    let normalized_title = cleaned.to_lowercase();
+
+    if normalized_title.contains("sims 4") {
+        return "The Sims 4".to_string();
+    }
+    if normalized_title.contains("battlefield 2042") {
+        return "Battlefield 2042".to_string();
+    }
+    if normalized_title.contains("battlefield v") || normalized_title.contains("battlefield 5") {
+        return "Battlefield V".to_string();
+    }
+    if normalized_title.contains("battlefield 1") {
+        return "Battlefield 1".to_string();
+    }
+    if normalized_title.contains("battlefield 4") {
+        return "Battlefield 4".to_string();
+    }
+    if normalized_title.contains("apex legends") {
+        return "Apex Legends".to_string();
+    }
+    if normalized_title.contains("it takes two") {
+        return "It Takes Two".to_string();
+    }
+    if normalized_title.contains("jedi: fallen order")
+        || normalized_title.contains("jedi fallen order")
+    {
+        return "Star Wars Jedi Fallen Order".to_string();
+    }
+    if normalized_title.contains("jedi: survivor") || normalized_title.contains("jedi survivor") {
+        return "Star Wars Jedi Survivor".to_string();
+    }
+    if normalized_title.contains("mass effect legendary") {
+        return "Mass Effect Legendary Edition".to_string();
+    }
+    if normalized_title.contains("nfs heat") || normalized_title.contains("need for speed heat") {
+        return "Need for Speed Heat".to_string();
+    }
+    if normalized_title.contains("nfs unbound")
+        || normalized_title.contains("need for speed unbound")
+    {
+        return "Need for Speed Unbound".to_string();
+    }
+    if normalized_title.contains("ea sports fc 25") || normalized_title.contains("fc 25") {
+        return "EA Sports FC 25".to_string();
+    }
+    if normalized_title.contains("ea sports fc 24") || normalized_title.contains("fc 24") {
+        return "EA Sports FC 24".to_string();
+    }
+    if normalized_title.contains("fifa 23") {
+        return "FIFA 23".to_string();
+    }
+    if normalized_title.contains("dead space") && normalized_title.contains("remake") {
+        return "Dead Space".to_string();
+    }
+    if normalized_title.contains("titanfall 2") {
+        return "Titanfall 2".to_string();
+    }
+
+    cleaned
+}
+
 fn fetch_rawg_assets_via_supabase(title: &str) -> Option<RawgAssets> {
     let supabase_url = env::var("VITE_SUPABASE_URL")
         .or_else(|_| env::var("SUPABASE_URL"))
@@ -1197,10 +1501,16 @@ fn fetch_rawg_assets_via_supabase(title: &str) -> Option<RawgAssets> {
 }
 
 fn fetch_rawg_assets(api_key: &str, title: &str) -> Option<RawgAssets> {
+    fetch_rawg_assets_search(api_key, title, true)
+        .or_else(|| fetch_rawg_assets_search(api_key, title, false))
+}
+
+fn fetch_rawg_assets_search(api_key: &str, title: &str, precise: bool) -> Option<RawgAssets> {
     let search_url = format!(
-        "https://api.rawg.io/api/games?key={}&search={}&search_precise=true&page_size=1",
+        "https://api.rawg.io/api/games?key={}&search={}&search_precise={}&page_size=1",
         url_query_encode(api_key),
-        url_query_encode(title)
+        url_query_encode(title),
+        if precise { "true" } else { "false" }
     );
     let search_json = rawg_get_json(&search_url)?;
     let result = search_json.get("results")?.as_array()?.first()?.clone();
@@ -2214,33 +2524,6 @@ pub fn registry_string_value(line: &str, value_name: &str) -> Option<String> {
     }
 }
 
-#[allow(dead_code)]
-pub fn decode_oem_ansi(bytes: &[u8]) -> String {
-    if let Ok(utf8_str) = String::from_utf8(bytes.to_vec()) {
-        return utf8_str;
-    }
-    let mut s = String::with_capacity(bytes.len());
-    for &b in bytes {
-        match b {
-            0..=127 => s.push(b as char),
-            0x84 | 0xE4 => s.push('\u{00e4}'),
-            0x94 | 0xF6 => s.push('\u{00f6}'),
-            0x81 | 0xFC => s.push('\u{00fc}'),
-            0x8E | 0xC4 => s.push('\u{00c4}'),
-            0x99 | 0xD6 => s.push('\u{00d6}'),
-            0x9A | 0xDC => s.push('\u{00dc}'),
-            0xE1 | 0xDF => s.push('\u{00df}'),
-            0x82 | 0xE9 => s.push('\u{00e9}'),
-            0x8A | 0xE8 => s.push('\u{00e8}'),
-            0x85 | 0xE0 => s.push('\u{00e0}'),
-            0x91 | 0xE6 => s.push('\u{00e6}'),
-            0x92 | 0xC6 => s.push('\u{00c6}'),
-            _ => s.push(b as char),
-        }
-    }
-    s
-}
-
 pub struct BattleNetRegistryInstall {
     pub uid: String,
     pub title: String,
@@ -2494,6 +2777,8 @@ pub fn find_steam_dir() -> Option<PathBuf> {
     let mut candidates = Vec::new();
 
     if cfg!(target_os = "windows") {
+        candidates.extend(find_steam_dirs_from_registry());
+
         if let Some(program_files_x86) = env_path("ProgramFiles(x86)") {
             candidates.push(program_files_x86.join("Steam"));
         }
@@ -2520,6 +2805,40 @@ pub fn find_steam_dir() -> Option<PathBuf> {
     }
 
     candidates.into_iter().find(|candidate| candidate.exists())
+}
+
+#[cfg(windows)]
+fn find_steam_dirs_from_registry() -> Vec<PathBuf> {
+    let mut candidates = Vec::new();
+    let roots = [
+        (HKEY_CURRENT_USER, r"Software\Valve\Steam"),
+        (HKEY_LOCAL_MACHINE, r"SOFTWARE\WOW6432Node\Valve\Steam"),
+        (HKEY_LOCAL_MACHINE, r"SOFTWARE\Valve\Steam"),
+    ];
+
+    for (hkey, path) in roots {
+        let root = RegKey::predef(hkey);
+        let Ok(key) = root.open_subkey_with_flags(path, KEY_READ) else {
+            continue;
+        };
+
+        for value_name in ["SteamPath", "InstallPath"] {
+            let Ok(value) = key.get_value::<String, _>(value_name) else {
+                continue;
+            };
+
+            if !value.trim().is_empty() {
+                candidates.push(PathBuf::from(value.replace('/', "\\")));
+            }
+        }
+    }
+
+    candidates
+}
+
+#[cfg(not(windows))]
+fn find_steam_dirs_from_registry() -> Vec<PathBuf> {
+    Vec::new()
 }
 
 pub fn read_steam_library_folders(steam_dir: &Path) -> Vec<PathBuf> {
@@ -2728,6 +3047,52 @@ fn steam_app_id_from_manifest_name(file_name: &str) -> Option<String> {
                 .trim_end_matches(".acf")
                 .to_string()
         })
+}
+
+fn steam_install_dir_path(steamapps: &Path, install_dir: Option<&str>) -> Option<PathBuf> {
+    let install_dir = install_dir?.trim();
+    if install_dir.is_empty() || install_dir.contains("..") {
+        return None;
+    }
+
+    let path = steamapps.join("common").join(install_dir);
+    path.is_dir().then_some(path)
+}
+
+fn is_steam_non_game_manifest(app_id: Option<&str>, title: &str) -> bool {
+    let normalized = title
+        .to_lowercase()
+        .replace(['_', '-'], " ")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+
+    if matches!(
+        app_id,
+        Some("228980")
+            | Some("1070560")
+            | Some("1391110")
+            | Some("1628350")
+            | Some("1887720")
+            | Some("2102450")
+            | Some("2289880")
+            | Some("250820")
+            | Some("1826330")
+    ) {
+        return true;
+    }
+
+    normalized == "steamworks common redistributables"
+        || normalized.starts_with("steam linux runtime")
+        || normalized.starts_with("proton ")
+        || normalized.contains("proton easyanticheat runtime")
+        || normalized.contains("proton battleye runtime")
+        || normalized.contains("steamvr")
+        || normalized.contains("steam vr")
+        || normalized.contains("common redistributable")
+        || normalized.contains("dedicated server")
+        || normalized.ends_with(" sdk")
+        || normalized.contains(" sdk ")
 }
 
 fn steam_logo_urls(app_id: &str) -> Vec<String> {
@@ -3328,8 +3693,20 @@ pub fn get_ea_assets(
     content_id: &str,
     title: &str,
 ) -> (Option<String>, Option<String>, Option<String>) {
+    let (fallback_cover, fallback_logo, fallback_icon) = get_known_ea_assets(title);
+    if let Some(api_assets) = get_rawg_ea_assets(content_id, title) {
+        return (
+            api_assets.cover_url.or(fallback_cover),
+            api_assets.logo_url.or(fallback_logo),
+            api_assets.icon_url.or(fallback_icon),
+        );
+    }
+
+    (fallback_cover, fallback_logo, fallback_icon)
+}
+
+fn get_known_ea_assets(title: &str) -> (Option<String>, Option<String>, Option<String>) {
     let normalized_title = title.to_lowercase();
-    let _normalized_id = content_id.to_lowercase();
 
     let mut app_id = None;
 
@@ -3470,7 +3847,7 @@ pub fn scan_ea_games() -> Vec<InstalledGame> {
 }
 
 pub async fn search_steam_appid(title: &str) -> Option<u32> {
-    let client = reqwest::Client::new();
+    let client = crate::commands::http::shared_http_client();
     let response = client
         .get("https://store.steampowered.com/api/storesearch/")
         .query(&[("term", title), ("l", "german"), ("cc", "de")])
@@ -3515,64 +3892,151 @@ pub fn steam_app_id_for_game(game: &InstalledGame) -> Option<u32> {
 pub async fn fetch_steam_achievements(
     appid: u32,
     steam_id: Option<String>,
-    api_key: Option<String>,
 ) -> Result<Vec<UnifiedAchievement>, String> {
-    let api_key = api_key
-        .or_else(|| env::var("STEAM_WEB_API_KEY").ok())
-        .or_else(|| env::var("STEAM_API_KEY").ok())
-        .map(|key| key.trim().to_string())
-        .filter(|key| !key.is_empty());
     let steam_id = steam_id
         .or_else(|| env::var("STEAM_ID").ok())
         .or_else(|| env::var("VITE_STEAM_ID").ok())
         .map(|id| id.trim().trim_matches('"').to_string())
         .filter(|id| !id.is_empty());
 
-    if let Some(steam_id) = steam_id.as_deref() {
-        if let Ok(achievements) =
-            fetch_steam_player_achievements(appid, steam_id, api_key.as_deref()).await
-        {
-            if !achievements.is_empty() {
-                return Ok(achievements);
-            }
+    let player_fut = async {
+        if let Some(steam_id) = steam_id.as_deref() {
+            fetch_steam_player_achievements(appid, steam_id)
+                .await
+                .unwrap_or_default()
+        } else {
+            Vec::new()
         }
+    };
+    let community_fut = async {
+        if let Some(steam_id) = steam_id.as_deref() {
+            fetch_steam_community_xml_achievements(appid, steam_id)
+                .await
+                .unwrap_or_default()
+        } else {
+            Vec::new()
+        }
+    };
+    let rarity_fut = async {
+        fetch_steam_global_achievement_percentages(appid)
+            .await
+            .unwrap_or_default()
+    };
 
-        if let Ok(achievements) = fetch_steam_community_xml_achievements(appid, steam_id).await {
-            if !achievements.is_empty() {
-                return Ok(achievements);
+    let (player, community, rarity) = tokio::join!(player_fut, community_fut, rarity_fut);
+
+    let merged = merge_achievement_sources(player, community, Vec::new(), &rarity);
+
+    if merged.is_empty() {
+        return Err(
+            "Steam achievement sync could not read public Steam achievements. Make sure your Steam profile and game details are public."
+                .to_string(),
+        );
+    }
+
+    Ok(merged)
+}
+
+fn merge_achievement_sources(
+    player: Vec<UnifiedAchievement>,
+    community: Vec<UnifiedAchievement>,
+    schema: Vec<UnifiedAchievement>,
+    rarity: &HashMap<String, f64>,
+) -> Vec<UnifiedAchievement> {
+    let mut by_id: HashMap<String, UnifiedAchievement> = HashMap::new();
+
+    // 1. Schema first: displayName, description, icon. No unlock state.
+    for ach in schema {
+        by_id.insert(ach.id.clone(), ach);
+    }
+
+    // 2. Community XML overlay: brings icons + descriptions + unlock data. Fills gaps in schema entries.
+    for ach in community {
+        by_id
+            .entry(ach.id.clone())
+            .and_modify(|existing| {
+                if existing.icon_url.is_none() {
+                    existing.icon_url = ach.icon_url.clone();
+                }
+                if existing.description.is_none() {
+                    existing.description = ach.description.clone();
+                }
+                if existing.unlocked_at.is_none() {
+                    existing.unlocked_at = ach.unlocked_at.clone();
+                }
+            })
+            .or_insert(ach);
+    }
+
+    // 3. Player data: authoritative unlock timestamp; cleaner display name.
+    for ach in player {
+        by_id
+            .entry(ach.id.clone())
+            .and_modify(|existing| {
+                if ach.unlocked_at.is_some() {
+                    existing.unlocked_at = ach.unlocked_at.clone();
+                }
+                if !ach.name.is_empty() && ach.name != ach.id {
+                    existing.name = ach.name.clone();
+                }
+            })
+            .or_insert(ach);
+    }
+
+    // 4. Global rarity overlay.
+    for (id, ach) in by_id.iter_mut() {
+        if let Some(pct) = rarity.get(id) {
+            ach.rarity = Some(*pct);
+        }
+    }
+
+    by_id.into_values().collect()
+}
+
+async fn fetch_steam_global_achievement_percentages(
+    appid: u32,
+) -> Result<HashMap<String, f64>, String> {
+    let client = crate::commands::http::shared_http_client();
+    let response = client
+        .get("https://api.steampowered.com/ISteamUserStats/GetGlobalAchievementPercentagesForApp/v0002/")
+        .query(&[("gameid", appid.to_string())])
+        .send()
+        .await
+        .map_err(|error| format!("Could not contact Steam global achievement API: {error}"))?;
+    let json: serde_json::Value = response
+        .json()
+        .await
+        .map_err(|error| format!("Could not parse Steam global achievement response: {error}"))?;
+
+    let mut map = HashMap::new();
+    if let Some(achievements) = json
+        .get("achievementpercentages")
+        .and_then(|p| p.get("achievements"))
+        .and_then(|a| a.as_array())
+    {
+        for ach in achievements {
+            if let (Some(name), Some(percent)) = (
+                ach.get("name").and_then(|v| v.as_str()),
+                ach.get("percent").and_then(|v| v.as_f64()),
+            ) {
+                map.insert(name.to_string(), percent);
             }
         }
     }
 
-    if let Some(api_key) = api_key.as_deref() {
-        if let Ok(achievements) = fetch_steam_schema_achievements(appid, api_key).await {
-            if !achievements.is_empty() {
-                return Ok(achievements);
-            }
-        }
-    }
-
-    Err(
-        "Steam achievement sync could not read public player achievements from Steam Web API or Steam Community XML. Add a Steam Web API Key in Settings, or make sure your Steam profile and game details are public."
-            .to_string(),
-    )
+    Ok(map)
 }
 
 async fn fetch_steam_player_achievements(
     appid: u32,
     steam_id: &str,
-    api_key: Option<&str>,
 ) -> Result<Vec<UnifiedAchievement>, String> {
-    let client = reqwest::Client::new();
-    let mut query = vec![
+    let client = crate::commands::http::shared_http_client();
+    let query = vec![
         ("appid", appid.to_string()),
         ("steamid", steam_id.to_string()),
         ("l", "en".to_string()),
     ];
-
-    if let Some(api_key) = api_key {
-        query.push(("key", api_key.to_string()));
-    }
 
     let response = client
         .get("https://api.steampowered.com/ISteamUserStats/GetPlayerAchievements/v0001/")
@@ -3640,7 +4104,7 @@ async fn fetch_steam_community_xml_achievements(
     steam_id: &str,
 ) -> Result<Vec<UnifiedAchievement>, String> {
     let url = format!("https://steamcommunity.com/profiles/{steam_id}/stats/{appid}/?xml=1");
-    let client = reqwest::Client::new();
+    let client = crate::commands::http::shared_http_client();
     let response =
         client.get(url).send().await.map_err(|error| {
             format!("Could not contact Steam Community achievements XML: {error}")
@@ -3742,64 +4206,6 @@ fn normalize_achievement_id(name: &str) -> String {
         .join("_")
 }
 
-async fn fetch_steam_schema_achievements(
-    appid: u32,
-    api_key: &str,
-) -> Result<Vec<UnifiedAchievement>, String> {
-    let client = reqwest::Client::new();
-    let response = client
-        .get("https://api.steampowered.com/ISteamUserStats/GetSchemaForGame/v2/")
-        .query(&[
-            ("appid", appid.to_string()),
-            ("key", api_key.to_string()),
-            ("l", "en".to_string()),
-        ])
-        .send()
-        .await
-        .map_err(|error| format!("Could not contact Steam achievement schema API: {error}"))?;
-    let json: serde_json::Value = response
-        .json()
-        .await
-        .map_err(|error| format!("Could not parse Steam achievement schema response: {error}"))?;
-
-    let achievements = json
-        .get("game")
-        .and_then(|game| game.get("availableGameStats"))
-        .and_then(|stats| stats.get("achievements"))
-        .and_then(|achievements| achievements.as_array())
-        .ok_or_else(|| "Steam did not return achievement schema for this game.".to_string())?;
-
-    Ok(achievements
-        .iter()
-        .filter_map(|achievement| {
-            let id = achievement
-                .get("name")
-                .and_then(|value| value.as_str())?
-                .to_string();
-            let name = achievement
-                .get("displayName")
-                .and_then(|value| value.as_str())
-                .unwrap_or(&id)
-                .to_string();
-
-            Some(UnifiedAchievement {
-                id,
-                name,
-                description: achievement
-                    .get("description")
-                    .and_then(|value| value.as_str())
-                    .map(ToOwned::to_owned),
-                icon_url: achievement
-                    .get("icon")
-                    .and_then(|value| value.as_str())
-                    .map(ToOwned::to_owned),
-                unlocked_at: None,
-                rarity: None,
-            })
-        })
-        .collect())
-}
-
 async fn fetch_steam_metadata(
     appid: u32,
 ) -> Option<(
@@ -3812,7 +4218,7 @@ async fn fetch_steam_metadata(
     Option<f64>,
 )> {
     let url = format!("https://store.steampowered.com/api/appdetails?appids={appid}&l=german");
-    let client = reqwest::Client::new();
+    let client = crate::commands::http::shared_http_client();
     let response = client.get(&url).send().await.ok()?;
     let json: serde_json::Value = response.json().await.ok()?;
 
@@ -3974,5 +4380,129 @@ mod tests {
         let garrys_mod = activity.get("4000").expect("missing app activity");
         assert_eq!(garrys_mod.last_played, Some(1764709295));
         assert_eq!(garrys_mod.playtime_minutes, Some(13519));
+    }
+
+    #[test]
+    fn filters_steam_runtime_and_redistributable_manifests() {
+        assert!(is_steam_non_game_manifest(
+            Some("228980"),
+            "Steamworks Common Redistributables"
+        ));
+        assert!(is_steam_non_game_manifest(
+            Some("1070560"),
+            "Steam Linux Runtime 1.0 (scout)"
+        ));
+        assert!(is_steam_non_game_manifest(
+            None,
+            "Proton EasyAntiCheat Runtime"
+        ));
+        assert!(!is_steam_non_game_manifest(Some("4000"), "Garry's Mod"));
+    }
+
+    #[test]
+    fn steam_install_dir_requires_existing_common_directory() {
+        let temp = temp_test_dir("steam-install-dir");
+        let steamapps = temp.join("steamapps");
+        let common = steamapps.join("common");
+        let game_dir = common.join("GarrysMod");
+        fs::create_dir_all(&game_dir).expect("create fake steam install");
+
+        assert_eq!(
+            steam_install_dir_path(&steamapps, Some("GarrysMod")).as_deref(),
+            Some(game_dir.as_path())
+        );
+        assert!(steam_install_dir_path(&steamapps, Some("MissingGame")).is_none());
+        assert!(steam_install_dir_path(&steamapps, Some("../Outside")).is_none());
+        assert!(steam_install_dir_path(&steamapps, None).is_none());
+
+        let _ = fs::remove_dir_all(temp);
+    }
+
+    #[test]
+    fn extracts_epic_catalog_images_by_purpose() {
+        let value = serde_json::json!({
+            "metadata": {
+                "keyImages": [
+                    {
+                        "type": "DieselGameBoxTall",
+                        "url": "https://cdn.example.invalid/box-tall.jpg"
+                    },
+                    {
+                        "type": "DieselGameBoxLogo",
+                        "url": "https://cdn.example.invalid/banner.jpg",
+                        "width": 1920,
+                        "height": 1080
+                    },
+                    {
+                        "type": "Thumbnail",
+                        "url": "https://cdn.example.invalid/icon.jpg",
+                        "width": 512,
+                        "height": 512
+                    }
+                ]
+            }
+        });
+
+        let assets = find_epic_json_assets(&value);
+
+        assert_eq!(
+            assets.cover_url.as_deref(),
+            Some("https://cdn.example.invalid/banner.jpg")
+        );
+        assert_eq!(
+            assets.logo_url.as_deref(),
+            Some("https://cdn.example.invalid/banner.jpg")
+        );
+        assert_eq!(
+            assets.icon_url.as_deref(),
+            Some("https://cdn.example.invalid/icon.jpg")
+        );
+    }
+
+    #[test]
+    fn merge_scanned_games_uses_path_priority_index() {
+        let install_path = Some("C:/Games/Same Install".to_string());
+        let steam = installed_game(
+            "steam-1",
+            "Same Install".to_string(),
+            "Steam".to_string(),
+            install_path.clone(),
+            None,
+        );
+        let epic = installed_game(
+            "epic-1",
+            "Same Install".to_string(),
+            "Epic Games".to_string(),
+            install_path.clone(),
+            None,
+        );
+        let lower_priority_steam = installed_game(
+            "steam-2",
+            "Same Install".to_string(),
+            "Steam".to_string(),
+            install_path,
+            None,
+        );
+        let mut games = BTreeMap::new();
+        let mut path_index = HashMap::new();
+
+        merge_scanned_game(&mut games, &mut path_index, steam);
+        merge_scanned_game(&mut games, &mut path_index, epic);
+        merge_scanned_game(&mut games, &mut path_index, lower_priority_steam);
+
+        assert_eq!(games.len(), 1);
+        assert!(games.contains_key("epic-1"));
+    }
+
+    fn temp_test_dir(name: &str) -> PathBuf {
+        let mut path = env::temp_dir();
+        path.push(format!(
+            "og-launcher-{name}-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .expect("system clock")
+                .as_nanos()
+        ));
+        path
     }
 }

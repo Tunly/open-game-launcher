@@ -14,12 +14,6 @@ use tauri::{AppHandle, Emitter, Manager};
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 
-#[cfg(windows)]
-use winreg::{
-    enums::{RegType, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, KEY_READ},
-    RegKey, RegValue, HKEY,
-};
-
 use super::detect::{
     fetch_steam_achievements, find_local_banner_asset, find_local_icon_asset,
     find_local_logo_asset, find_steam_dir, read_battlenet_registry_installs,
@@ -33,7 +27,6 @@ use super::playtime::{
 };
 use super::types::*;
 
-pub const GAME_LIBRARY_CACHE_VERSION: u32 = 1;
 pub const OG_MANAGED_LATEST_VERSION: &str = "1.1.0";
 pub const OG_MANAGED_MANIFEST_FILE: &str = "og-manifest.json";
 
@@ -426,7 +419,6 @@ pub async fn launch_game(app: AppHandle, game_id: String) -> Result<LaunchGameRe
 pub async fn sync_game_achievements(
     game_id: String,
     steam_id: Option<String>,
-    api_key: Option<String>,
 ) -> Result<SyncGameAchievementsResponse, String> {
     let game_id = normalize_game_id(game_id)?;
     println!("[open-game-launcher] sync_game_achievements requested for {game_id}");
@@ -445,7 +437,7 @@ pub async fn sync_game_achievements(
         )
     })?;
 
-    let achievements = fetch_steam_achievements(appid, steam_id, api_key).await?;
+    let achievements = fetch_steam_achievements(appid, steam_id).await?;
     if achievements.is_empty() {
         return Err(format!(
             "Steam returned no achievements for {}. The game may not expose public achievement data.",
@@ -458,7 +450,10 @@ pub async fn sync_game_achievements(
         .filter(|achievement| achievement.unlocked_at.is_some())
         .count();
     let synced_achievements = achievements.len();
-    game.achievements = achievements;
+    // Merge with existing local data: keep any previously known unlock timestamps that the
+    // new fetch did not return (e.g., transient API failure, dropped IDs).
+    game.achievements = preserve_known_unlocks(achievements, &game.achievements);
+    game.achievements_synced_at = Some(unix_timestamp_to_iso(current_unix_timestamp()));
 
     games[game_index] = game.clone();
     write_installed_games_cache(&games);
@@ -474,6 +469,38 @@ pub async fn sync_game_achievements(
             game.title
         ),
     })
+}
+
+pub(crate) fn preserve_known_unlocks(
+    new_achievements: Vec<UnifiedAchievement>,
+    previous: &[UnifiedAchievement],
+) -> Vec<UnifiedAchievement> {
+    let previous_unlocks: HashMap<String, String> = previous
+        .iter()
+        .filter_map(|a| a.unlocked_at.clone().map(|u| (a.id.clone(), u)))
+        .collect();
+    let new_ids: HashSet<String> = new_achievements.iter().map(|a| a.id.clone()).collect();
+
+    let mut result: Vec<UnifiedAchievement> = new_achievements
+        .into_iter()
+        .map(|mut ach| {
+            if ach.unlocked_at.is_none() {
+                if let Some(prev_unlock) = previous_unlocks.get(&ach.id) {
+                    ach.unlocked_at = Some(prev_unlock.clone());
+                }
+            }
+            ach
+        })
+        .collect();
+
+    // Keep any previous achievement the new fetch is missing (transient API gaps, dropped IDs).
+    for prev in previous {
+        if !new_ids.contains(&prev.id) {
+            result.push(prev.clone());
+        }
+    }
+
+    result
 }
 
 #[tauri::command]
@@ -678,12 +705,6 @@ fn library_inventory_watch_paths() -> Vec<PathBuf> {
     if let Some(data_dir) = open_game_launcher_data_dir() {
         paths.push(data_dir.clone());
         paths.push(data_dir.join("games"));
-    }
-
-    if let Some(cache_path) =
-        installed_games_cache_path().and_then(|path| path.parent().map(Path::to_path_buf))
-    {
-        paths.push(cache_path);
     }
 
     if let Some(steam_dir) = find_steam_dir() {
@@ -1146,36 +1167,19 @@ pub fn merge_cached_game_activity(game: &mut InstalledGame, cached_game: &Instal
 }
 
 pub fn read_installed_games_cache() -> Option<Vec<InstalledGame>> {
-    let cache_path = installed_games_cache_path()?;
-    let contents = fs::read_to_string(cache_path).ok()?;
-    let cache = serde_json::from_str::<InstalledGamesCache>(&contents).ok()?;
-
-    (cache.version == GAME_LIBRARY_CACHE_VERSION).then_some(
-        cache
-            .games
-            .into_iter()
-            .map(repair_cached_game_assets)
-            .collect(),
-    )
+    crate::commands::local_db::read_collection::<InstalledGame>("games")
+        .ok()
+        .map(|games| games.into_iter().map(repair_cached_game_assets).collect())
 }
 
 pub fn write_installed_games_cache(games: &[InstalledGame]) {
-    let Some(cache_path) = installed_games_cache_path() else {
-        return;
-    };
+    let repaired_games = games
+        .iter()
+        .cloned()
+        .map(repair_cached_game_assets)
+        .collect::<Vec<_>>();
 
-    if let Some(parent) = cache_path.parent() {
-        let _ = fs::create_dir_all(parent);
-    }
-
-    let cache = InstalledGamesCache {
-        version: GAME_LIBRARY_CACHE_VERSION,
-        games: games.to_vec(),
-    };
-
-    if let Ok(contents) = serde_json::to_string_pretty(&cache) {
-        let _ = fs::write(cache_path, contents);
-    }
+    let _ = crate::commands::local_db::write_collection("games", &repaired_games, |game| &game.id);
 }
 
 pub fn repair_cached_game_assets(mut game: InstalledGame) -> InstalledGame {
@@ -1230,21 +1234,22 @@ pub fn apply_battlenet_assets(
         .and_then(|uri| uri.strip_prefix("battlenet://"))
         .or_else(|| game.id.strip_prefix("battlenet-"))
         .unwrap_or(&game.id);
-    let (fallback_cover, _fallback_logo, fallback_icon) =
+    let (fallback_cover, fallback_logo, fallback_icon) =
         super::detect::get_battlenet_assets(uid, &game.title);
     let rawg_assets = super::detect::get_rawg_battlenet_assets(uid, &game.title);
-    let (cover, icon) = rawg_assets
+    let (cover, logo, icon) = rawg_assets
         .map(|assets| {
             (
                 assets.cover_url.or(fallback_cover.clone()),
+                assets.logo_url.or(fallback_logo.clone()),
                 assets.icon_url.or(fallback_icon.clone()),
             )
         })
-        .unwrap_or((fallback_cover, fallback_icon));
+        .unwrap_or((fallback_cover, fallback_logo, fallback_icon));
 
     game.cover_url = cover;
-    game.logo_url = None;
-    game.logo_urls = Vec::new();
+    game.logo_url = logo.clone();
+    game.logo_urls = logo.into_iter().collect();
     game.icon_url = icon.clone();
     game.icon_urls = icon.into_iter().collect();
     game.logo_position = LogoPosition::CenterCenter;
@@ -1295,6 +1300,7 @@ pub fn installed_game(
         features: Vec::new(),
         rating: None,
         achievements: Vec::new(),
+        achievements_synced_at: None,
         save_files: Vec::new(),
         friends_playing: Vec::new(),
     }
@@ -1650,12 +1656,12 @@ pub fn cache_supabase_access_token(token: String) -> Result<(), String> {
     fs::write(path, trimmed).map_err(|error| error.to_string())
 }
 
-pub fn installed_games_cache_path() -> Option<PathBuf> {
-    open_game_launcher_data_dir().map(|data_dir| data_dir.join("installed-games.json"))
-}
-
 pub fn rawg_asset_cache_path() -> Option<PathBuf> {
     open_game_launcher_data_dir().map(|data_dir| data_dir.join("rawg-assets.json"))
+}
+
+pub fn epic_catalog_asset_cache_path() -> Option<PathBuf> {
+    open_game_launcher_data_dir().map(|data_dir| data_dir.join("epic-catalog-assets.json"))
 }
 
 pub fn is_ignored_game_directory(path: &Path) -> bool {
@@ -1735,142 +1741,4 @@ fn collect_path_size(path: &Path, size: &mut u64) {
             *size = size.saturating_add(metadata.len());
         }
     }
-}
-
-#[allow(dead_code)]
-#[cfg(windows)]
-pub fn query_registry_sections(key: &str) -> Vec<String> {
-    let Some((hkey, subkey)) = parse_registry_root(key) else {
-        return Vec::new();
-    };
-
-    let Ok(root) = RegKey::predef(hkey).open_subkey_with_flags(subkey, KEY_READ) else {
-        return Vec::new();
-    };
-
-    let mut sections = Vec::new();
-    collect_registry_sections(root, key.to_string(), &mut sections);
-    sections
-}
-
-#[allow(dead_code)]
-#[cfg(not(windows))]
-pub fn query_registry_sections(_key: &str) -> Vec<String> {
-    Vec::new()
-}
-
-#[allow(dead_code)]
-#[cfg(windows)]
-fn parse_registry_root(key: &str) -> Option<(HKEY, &str)> {
-    key.strip_prefix(r"HKLM\")
-        .map(|subkey| (HKEY_LOCAL_MACHINE, subkey))
-        .or_else(|| {
-            key.strip_prefix(r"HKCU\")
-                .map(|subkey| (HKEY_CURRENT_USER, subkey))
-        })
-}
-
-#[allow(dead_code)]
-#[cfg(windows)]
-fn collect_registry_sections(key: RegKey, path: String, sections: &mut Vec<String>) {
-    let mut lines = vec![windows_registry_path(&path)];
-
-    for value in key.enum_values().flatten() {
-        let (name, reg_value) = value;
-        if let Some(value_text) = registry_value_to_string(&reg_value) {
-            lines.push(format!("    {name}    REG_SZ    {value_text}"));
-        }
-    }
-
-    sections.push(lines.join("\r\n"));
-
-    for subkey_name in key.enum_keys().flatten() {
-        if let Ok(subkey) = key.open_subkey_with_flags(&subkey_name, KEY_READ) {
-            collect_registry_sections(subkey, format!("{path}\\{subkey_name}"), sections);
-        }
-    }
-}
-
-#[allow(dead_code)]
-#[cfg(windows)]
-fn windows_registry_path(path: &str) -> String {
-    path.replacen(r"HKLM\", r"HKEY_LOCAL_MACHINE\", 1)
-        .replacen(r"HKCU\", r"HKEY_CURRENT_USER\", 1)
-}
-
-#[allow(dead_code)]
-#[cfg(windows)]
-fn registry_value_to_string(value: &RegValue) -> Option<String> {
-    match value.vtype {
-        RegType::REG_SZ | RegType::REG_EXPAND_SZ => utf16_registry_string(&value.bytes),
-        RegType::REG_MULTI_SZ => Some(
-            utf16_registry_string(&value.bytes)?
-                .split('\0')
-                .filter(|part| !part.is_empty())
-                .collect::<Vec<_>>()
-                .join("; "),
-        ),
-        _ => None,
-    }
-}
-
-#[allow(dead_code)]
-#[cfg(windows)]
-fn utf16_registry_string(bytes: &[u8]) -> Option<String> {
-    let words = bytes
-        .chunks_exact(2)
-        .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
-        .take_while(|word| *word != 0)
-        .collect::<Vec<_>>();
-
-    String::from_utf16(&words)
-        .ok()
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
-}
-
-#[allow(dead_code)]
-pub fn registry_string_value(line: &str, value_name: &str) -> Option<String> {
-    let trimmed = line.trim();
-    let remainder = trimmed.strip_prefix(value_name)?.trim_start();
-    let value = remainder.strip_prefix("REG_SZ")?.trim();
-
-    if value.is_empty() {
-        None
-    } else {
-        Some(value.to_string())
-    }
-}
-
-#[allow(dead_code)]
-pub fn decode_base64(input: &str) -> Option<Vec<u8>> {
-    let mut output = Vec::new();
-    let mut buffer = 0u32;
-    let mut bits = 0u8;
-
-    for byte in input.bytes().filter(|byte| !byte.is_ascii_whitespace()) {
-        if byte == b'=' {
-            break;
-        }
-
-        let value = match byte {
-            b'A'..=b'Z' => byte - b'A',
-            b'a'..=b'z' => byte - b'a' + 26,
-            b'0'..=b'9' => byte - b'0' + 52,
-            b'+' => 62,
-            b'/' => 63,
-            _ => return None,
-        } as u32;
-
-        buffer = (buffer << 6) | value;
-        bits += 6;
-
-        while bits >= 8 {
-            bits -= 8;
-            output.push((buffer >> bits) as u8);
-            buffer &= (1 << bits) - 1;
-        }
-    }
-
-    Some(output)
 }

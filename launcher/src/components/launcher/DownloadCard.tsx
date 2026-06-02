@@ -1,6 +1,7 @@
 import { Pause, Play, RotateCcw, X } from "lucide-react";
 
 import type { DownloadItem, DownloadStatus } from "../../lib/types";
+import { isTerminalDownloadItem } from "../../stores/downloadStore";
 
 interface DownloadCardProps {
   index?: number;
@@ -11,19 +12,29 @@ interface DownloadCardProps {
 }
 
 const statusLabel: Record<DownloadStatus, string> = {
+  queued: "Queued",
+  starting: "Starting",
   completed: "Completed",
   downloading: "Running",
   failed: "Error",
   paused: "Paused",
+  pausing: "Pausing",
+  resuming: "Resuming",
+  installing: "Installing",
   cancelled: "Cancelled",
   error: "Error",
 };
 
 const statusClass: Record<DownloadStatus, string> = {
+  queued: "bg-[#efe6d4] text-[#171411]",
+  starting: "bg-[#087d6d] text-white",
   completed: "bg-[#087d6d] text-white",
   downloading: "bg-[#c20b2f] text-white",
   failed: "bg-[#171411] text-white",
   paused: "bg-[#efe6d4] text-[#171411]",
+  pausing: "bg-[#efe6d4] text-[#171411]",
+  resuming: "bg-[#087d6d] text-white",
+  installing: "bg-[#c20b2f] text-white",
   cancelled: "bg-[#171411] text-white",
   error: "bg-[#171411] text-white",
 };
@@ -46,11 +57,7 @@ export function DownloadCard({
   onCancel,
   onPauseToggle,
 }: DownloadCardProps) {
-  const isTerminal =
-    item.status === "completed" ||
-    item.status === "failed" ||
-    item.status === "cancelled" ||
-    item.status === "error";
+  const isTerminal = isTerminalDownloadItem(item);
   const canPause =
     Boolean(item.canPause) &&
     (item.status === "downloading" || item.status === "paused");
@@ -59,6 +66,16 @@ export function DownloadCard({
   const isExternal = Boolean(item.external);
   const queueNumber = String(index + 1).padStart(2, "0");
   const archiveLabel = isExternal && !isTerminal ? "Remove" : "Archive";
+  const lockedLabel =
+    isExternal && /pausing|resuming/i.test(item.speed)
+      ? "Busy"
+      : item.status === "pausing" ||
+          item.status === "resuming" ||
+          item.status === "installing"
+        ? "Busy"
+      : isExternal
+        ? "External"
+        : "Locked";
   const phaseLabel = item.phase ? ` // ${item.phase}` : "";
   const byteLabel = formatByteProgress(item);
 
@@ -131,7 +148,7 @@ export function DownloadCard({
             type="button"
           >
             <Play className="h-4 w-4" />
-            {isExternal ? "External" : "Locked"}
+            {lockedLabel}
           </button>
         ) : (
           <button

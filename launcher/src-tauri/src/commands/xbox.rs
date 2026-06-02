@@ -38,22 +38,30 @@ struct TokenResponse {
 
 #[derive(Serialize)]
 struct AuthProperties {
-    AuthMethod: String,
-    SiteName: String,
-    RpsTicket: String,
+    #[serde(rename = "AuthMethod")]
+    auth_method: String,
+    #[serde(rename = "SiteName")]
+    site_name: String,
+    #[serde(rename = "RpsTicket")]
+    rps_ticket: String,
 }
 
 #[derive(Serialize)]
 struct AuthRequest {
-    Properties: AuthProperties,
-    RelyingParty: String,
-    TokenType: String,
+    #[serde(rename = "Properties")]
+    properties: AuthProperties,
+    #[serde(rename = "RelyingParty")]
+    relying_party: String,
+    #[serde(rename = "TokenType")]
+    token_type: String,
 }
 
 #[derive(Deserialize, Debug)]
 struct AuthResponse {
-    Token: String,
-    DisplayClaims: DisplayClaims,
+    #[serde(rename = "Token")]
+    token: String,
+    #[serde(rename = "DisplayClaims")]
+    display_claims: DisplayClaims,
 }
 
 #[derive(Deserialize, Debug)]
@@ -76,15 +84,20 @@ struct Xui {
 
 #[derive(Serialize)]
 struct XstsProperties {
-    SandboxId: String,
-    UserTokens: Vec<String>,
+    #[serde(rename = "SandboxId")]
+    sandbox_id: String,
+    #[serde(rename = "UserTokens")]
+    user_tokens: Vec<String>,
 }
 
 #[derive(Serialize)]
 struct XstsRequest {
-    Properties: XstsProperties,
-    RelyingParty: String,
-    TokenType: String,
+    #[serde(rename = "Properties")]
+    properties: XstsProperties,
+    #[serde(rename = "RelyingParty")]
+    relying_party: String,
+    #[serde(rename = "TokenType")]
+    token_type: String,
 }
 
 #[derive(Deserialize, Debug)]
@@ -94,27 +107,28 @@ struct TitleHistoryResponse {
 
 #[derive(Deserialize, Debug)]
 struct Title {
-    titleId: String,
+    #[serde(rename = "titleId")]
+    title_id: String,
     pfn: Option<String>,
     name: Option<String>,
     #[serde(rename = "type")]
     item_type: Option<String>,
     devices: Option<Vec<String>>,
-    titleHistory: Option<TitleHistoryDetail>,
-    achievement: Option<serde_json::Value>,
+    #[serde(rename = "titleHistory")]
+    title_history: Option<TitleHistoryDetail>,
     stats: Option<serde_json::Value>,
 }
 
 #[derive(Deserialize, Debug)]
 struct TitleHistoryDetail {
-    lastTimePlayed: Option<String>,
+    #[serde(rename = "lastTimePlayed")]
+    last_time_played: Option<String>,
 }
 
 #[derive(Deserialize, Debug)]
-#[allow(non_snake_case)]
 struct AppxPackage {
-    PackageFamilyName: Option<String>,
-    InstallLocation: Option<String>,
+    #[serde(rename = "PackageFamilyName")]
+    package_family_name: Option<String>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -313,7 +327,7 @@ pub async fn open_xbox_login_window(app: tauri::AppHandle) -> Result<(), String>
 }
 
 async fn get_oauth_token(code: &str) -> Result<TokenResponse, String> {
-    let client = reqwest::Client::new();
+    let client = crate::commands::http::shared_http_client();
     let params = [
         ("grant_type", "authorization_code"),
         ("code", code),
@@ -339,7 +353,7 @@ async fn get_oauth_token(code: &str) -> Result<TokenResponse, String> {
 }
 
 async fn refresh_xbox_oauth_token(refresh_token: &str) -> Result<TokenResponse, String> {
-    let client = reqwest::Client::new();
+    let client = crate::commands::http::shared_http_client();
     let params = [
         ("grant_type", "refresh_token"),
         ("refresh_token", refresh_token),
@@ -364,15 +378,15 @@ async fn refresh_xbox_oauth_token(refresh_token: &str) -> Result<TokenResponse, 
 }
 
 async fn authenticate_xbox_live(access_token: &str) -> Result<AuthResponse, String> {
-    let client = reqwest::Client::new();
+    let client = crate::commands::http::shared_http_client();
     let req_body = AuthRequest {
-        Properties: AuthProperties {
-            AuthMethod: "RPS".into(),
-            SiteName: "user.auth.xboxlive.com".into(),
-            RpsTicket: format!("d={}", access_token),
+        properties: AuthProperties {
+            auth_method: "RPS".into(),
+            site_name: "user.auth.xboxlive.com".into(),
+            rps_ticket: format!("d={}", access_token),
         },
-        RelyingParty: "http://auth.xboxlive.com".into(),
-        TokenType: "JWT".into(),
+        relying_party: "http://auth.xboxlive.com".into(),
+        token_type: "JWT".into(),
     };
 
     let mut headers = HeaderMap::new();
@@ -396,14 +410,14 @@ async fn authenticate_xbox_live(access_token: &str) -> Result<AuthResponse, Stri
 }
 
 async fn authorize_xsts(user_token: &str) -> Result<AuthResponse, String> {
-    let client = reqwest::Client::new();
+    let client = crate::commands::http::shared_http_client();
     let req_body = XstsRequest {
-        Properties: XstsProperties {
-            SandboxId: "RETAIL".into(),
-            UserTokens: vec![user_token.to_string()],
+        properties: XstsProperties {
+            sandbox_id: "RETAIL".into(),
+            user_tokens: vec![user_token.to_string()],
         },
-        RelyingParty: "http://xboxlive.com".into(),
-        TokenType: "JWT".into(),
+        relying_party: "http://xboxlive.com".into(),
+        token_type: "JWT".into(),
     };
 
     let mut headers = HeaderMap::new();
@@ -495,7 +509,7 @@ pub async fn fetch_xbox_owned_games(code: String) -> Result<XboxFetchResult, Str
     };
 
     println!("[Xbox] Authorizing XSTS...");
-    let xsts_auth = match authorize_xsts(&xbl_auth.Token).await {
+    let xsts_auth = match authorize_xsts(&xbl_auth.token).await {
         Ok(t) => t,
         Err(e) => {
             println!("[Xbox] authorize_xsts failed: {}", e);
@@ -504,14 +518,14 @@ pub async fn fetch_xbox_owned_games(code: String) -> Result<XboxFetchResult, Str
     };
 
     let uhs = xsts_auth
-        .DisplayClaims
+        .display_claims
         .xui
         .first()
         .map(|x| x.uhs.clone())
         .unwrap_or_default();
 
     let gamertag = xsts_auth
-        .DisplayClaims
+        .display_claims
         .xui
         .first()
         .and_then(|x| x.gtg.clone());
@@ -521,14 +535,14 @@ pub async fn fetch_xbox_owned_games(code: String) -> Result<XboxFetchResult, Str
         gamertag, uhs
     );
     let xid = xsts_auth
-        .DisplayClaims
+        .display_claims
         .xui
         .first()
         .and_then(|x| x.xid.clone());
 
-    let auth_header = format!("XBL3.0 x={};{}", uhs, xsts_auth.Token);
+    let auth_header = format!("XBL3.0 x={};{}", uhs, xsts_auth.token);
 
-    let client = reqwest::Client::new();
+    let client = crate::commands::http::shared_http_client();
     let url = format!(
         "https://titlehub.xboxlive.com/users/xuid({})/titles/titlehistory/decoration/detail,stat,achievement",
         xid.unwrap_or_default()
@@ -564,7 +578,7 @@ pub async fn fetch_xbox_owned_games(code: String) -> Result<XboxFetchResult, Str
     // Create a set of installed PFNs for fast lookup (case-insensitive)
     let installed_pfns: HashSet<String> = installed_apps
         .iter()
-        .filter_map(|app| app.PackageFamilyName.as_ref().map(|s| s.to_lowercase()))
+        .filter_map(|app| app.package_family_name.as_ref().map(|s| s.to_lowercase()))
         .collect();
 
     for title in history.titles {
@@ -599,7 +613,7 @@ pub async fn fetch_xbox_owned_games(code: String) -> Result<XboxFetchResult, Str
             .trim()
             .to_string();
 
-        let last_played = title.titleHistory.and_then(|th| th.lastTimePlayed);
+        let last_played = title.title_history.and_then(|th| th.last_time_played);
 
         let is_installed = installed_pfns.contains(&pfn.to_lowercase());
 
@@ -632,7 +646,7 @@ pub async fn fetch_xbox_owned_games(code: String) -> Result<XboxFetchResult, Str
 
         games.push(OwnedGame {
             id: format!("xbox-{}", pfn), // We use the PFN as the unique identifier
-            external_id: Some(title.titleId.clone()),
+            external_id: Some(title.title_id.clone()),
             title: clean_name,
             description: if is_installed {
                 "Xbox Game (Installed)".to_string()
@@ -646,7 +660,7 @@ pub async fn fetch_xbox_owned_games(code: String) -> Result<XboxFetchResult, Str
             last_played_at: last_played,
             cloud_gaming_url: Some(format!(
                 "https://www.xbox.com/play/launch/{}",
-                title.titleId
+                title.title_id
             )),
         });
     }
@@ -697,7 +711,7 @@ pub async fn install_xbox_game(pfn: String) -> Result<(), String> {
 
 #[tauri::command]
 pub async fn fetch_game_pass_catalog() -> Result<Vec<OwnedGame>, String> {
-    let client = reqwest::Client::new();
+    let client = crate::commands::http::shared_http_client();
 
     // 1. Fetch the list of Game Pass PC product IDs
     let list_res = client
@@ -847,24 +861,24 @@ pub async fn sync_xbox_achievements(
     save_xbox_token(&oauth_token.refresh_token);
 
     let xbl_auth = authenticate_xbox_live(&oauth_token.access_token).await?;
-    let xsts_auth = authorize_xsts(&xbl_auth.Token).await?;
+    let xsts_auth = authorize_xsts(&xbl_auth.token).await?;
 
     let uhs = xsts_auth
-        .DisplayClaims
+        .display_claims
         .xui
         .first()
         .map(|x| x.uhs.clone())
         .unwrap_or_default();
     let xid = xsts_auth
-        .DisplayClaims
+        .display_claims
         .xui
         .first()
         .and_then(|x| x.xid.clone())
         .ok_or("No XUID found")?;
 
-    let auth_header = format!("XBL3.0 x={};{}", uhs, xsts_auth.Token);
+    let auth_header = format!("XBL3.0 x={};{}", uhs, xsts_auth.token);
 
-    let client = reqwest::Client::new();
+    let client = crate::commands::http::shared_http_client();
     let url = format!(
         "https://achievements.xboxlive.com/users/xuid({})/achievements?titleId={}&maxItems=1000",
         xid, title_id
@@ -929,7 +943,11 @@ pub async fn sync_xbox_achievements(
     let mut game = games[game_index].clone();
     let unlocked_achievements = unified.iter().filter(|a| a.unlocked_at.is_some()).count();
     let synced_achievements = unified.len();
-    game.achievements = unified;
+    game.achievements =
+        crate::commands::games::core::preserve_known_unlocks(unified, &game.achievements);
+    game.achievements_synced_at = Some(crate::commands::games::core::unix_timestamp_to_iso(
+        crate::commands::games::core::current_unix_timestamp(),
+    ));
 
     games[game_index] = game.clone();
     crate::commands::games::core::write_installed_games_cache(&games);

@@ -354,7 +354,7 @@ function baseProfileUpdatePayload(input: UpdateProfileInput) {
   };
 }
 
-export async function getProfileByUsername(username: string) {
+async function getProfileByUsername(username: string) {
   const client = getSupabaseClient();
   const initial = await client
     .from("profiles")
@@ -406,7 +406,7 @@ export async function isUsernameAvailable(username: string) {
   return !existingProfile;
 }
 
-export async function getProfileByUserId(userId: string) {
+async function getProfileByUserId(userId: string) {
   const client = getSupabaseClient();
   const initial = await client
     .from("profiles")
@@ -838,7 +838,7 @@ export async function ensureMyHardwareShowcase(visibility: ProfileShowcase["visi
   }
 }
 
-export async function updateShowcase(id: string, input: UpdateShowcaseInput) {
+async function updateShowcase(id: string, input: UpdateShowcaseInput) {
   const parsed = updateShowcaseSchema.parse(input);
   const client = getSupabaseClient();
   const userId = await getCurrentUserId();
@@ -858,26 +858,6 @@ export async function updateShowcase(id: string, input: UpdateShowcaseInput) {
   handleError(error);
 
   return toShowcase(data as UnknownRecord);
-}
-
-export async function deleteShowcase(id: string) {
-  const client = getSupabaseClient();
-  const userId = await getCurrentUserId();
-  const { error } = await client
-    .from("profile_showcases")
-    .delete()
-    .eq("id", id)
-    .eq("user_id", userId);
-  handleError(error);
-}
-
-export async function reorderShowcases(idsInOrder: string[]) {
-  const showcases = await getMyShowcases();
-  const ordered = idsInOrder
-    .map((id) => showcases.find((showcase) => showcase.id === id))
-    .filter((showcase): showcase is ProfileShowcase => Boolean(showcase));
-
-  return updateShowcases(ordered);
 }
 
 export async function sendFriendRequest(userId: string) {
@@ -912,33 +892,12 @@ async function updateFriendshipStatus(friendshipId: string, status: Friendship["
   return toFriendship(data as UnknownRecord);
 }
 
-export async function removeFriend(userId: string) {
-  const client = getSupabaseClient();
-  const currentUserId = await getCurrentUserId();
-  const { error } = await client
-    .from("friendships")
-    .delete()
-    .or(`and(requester_id.eq.${currentUserId},addressee_id.eq.${userId}),and(requester_id.eq.${userId},addressee_id.eq.${currentUserId})`);
-  handleError(error);
-}
-
 export async function blockUser(userId: string) {
   const client = getSupabaseClient();
   const currentUserId = await getCurrentUserId();
   const { error } = await client
     .from("user_blocks")
     .insert({ blocker_id: currentUserId, blocked_id: userId });
-  handleError(error);
-}
-
-export async function unblockUser(userId: string) {
-  const client = getSupabaseClient();
-  const currentUserId = await getCurrentUserId();
-  const { error } = await client
-    .from("user_blocks")
-    .delete()
-    .eq("blocker_id", currentUserId)
-    .eq("blocked_id", userId);
   handleError(error);
 }
 
@@ -1015,20 +974,7 @@ export async function deleteProfileComment(commentId: string) {
   handleError(error);
 }
 
-export async function updateProfileComment(commentId: string, body: string) {
-  const parsed = commentSchema.parse({ body });
-  const client = getSupabaseClient();
-  const { data, error } = await client
-    .from("profile_comments")
-    .update({ body: parsed.body })
-    .eq("id", commentId)
-    .select("*")
-    .single();
-  handleError(error);
-  return toComment(data as UnknownRecord);
-}
-
-export async function getUserBadges(userId: string) {
+async function getUserBadges(userId: string) {
   const client = getSupabaseClient();
   const { data, error } = await client
     .from("user_badges")
@@ -1043,7 +989,7 @@ export async function getUserBadges(userId: string) {
   return (data ?? []).map((row) => toBadge(row as UnknownRecord));
 }
 
-export async function getUserActivity(userId: string) {
+async function getUserActivity(userId: string) {
   const client = getSupabaseClient();
   const { data, error } = await client
     .from("user_activity")
@@ -1058,7 +1004,7 @@ export async function getUserActivity(userId: string) {
   return (data ?? []).map((row) => toActivity(row as UnknownRecord));
 }
 
-export async function getUserLibraryPreview(userId: string): Promise<LibraryPreviewItem[]> {
+async function getUserLibraryPreview(userId: string): Promise<LibraryPreviewItem[]> {
   const client = getSupabaseClient();
   const { data, error } = await client
     .from("user_library")
@@ -1127,7 +1073,7 @@ export async function getUserLibraryPreview(userId: string): Promise<LibraryPrev
   });
 }
 
-export async function getUserAchievementPreview(userId: string): Promise<AchievementPreviewItem[]> {
+async function getUserAchievementPreview(userId: string): Promise<AchievementPreviewItem[]> {
   const client = getSupabaseClient();
   const { data, error } = await client
     .from("user_achievements")
@@ -1206,7 +1152,7 @@ export async function getUserAchievementPreview(userId: string): Promise<Achieve
   });
 }
 
-export async function getUserWishlistPreview(userId: string): Promise<WishlistPreviewItem[]> {
+async function getUserWishlistPreview(userId: string): Promise<WishlistPreviewItem[]> {
   const client = getSupabaseClient();
   const { data, error } = await client
     .from("user_wishlist")

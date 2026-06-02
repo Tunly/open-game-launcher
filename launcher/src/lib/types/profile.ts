@@ -1,6 +1,6 @@
 export type ProfileVisibility = "public" | "friends_only" | "private";
 
-export type ShowcaseType =
+type ShowcaseType =
   | "about"
   | "favorite_games"
   | "rare_achievements"
@@ -17,7 +17,7 @@ export type ShowcaseType =
   | "custom_text"
   | "trophy_case";
 
-export type BadgeRarity =
+type BadgeRarity =
   | "common"
   | "uncommon"
   | "rare"
@@ -50,17 +50,6 @@ export interface Profile {
   isBanned: boolean;
   isDeleted: boolean;
   lastSeenAt: string | null;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface ProfilePrivate {
-  userId: string;
-  realName: string | null;
-  birthdate: string | null;
-  phone: string | null;
-  marketingEmailsEnabled: boolean;
-  securityEmailsEnabled: boolean;
   createdAt: string;
   updatedAt: string;
 }

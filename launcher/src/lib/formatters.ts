@@ -79,29 +79,6 @@ export function formatPlayTime(playtimeMinutes?: number): string {
   return `${hours < 10 ? hours.toFixed(1) : Math.round(hours)} hours`;
 }
 
-export function formatLauncherName(launcher?: Game["launcher"]): string {
-  switch (launcher) {
-    case "steam":
-      return "Steam";
-    case "epic":
-      return "Epic Games";
-    case "ubisoft":
-      return "Ubisoft Connect";
-    case "ea":
-      return "EA App";
-    case "battlenet":
-      return "Battle.net";
-    case "gog":
-      return "GOG Galaxy";
-    case "xbox":
-      return "Xbox";
-    case "manual":
-      return "Manual";
-    default:
-      return "Unknown";
-  }
-}
-
 export function formatAchievementProgress(game: Game): string {
   const total = game.achievements?.length ?? 0;
   const unlocked = game.achievements?.filter((achievement) => achievement.unlockedAt).length ?? 0;

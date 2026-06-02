@@ -8,7 +8,7 @@ import { listen } from "@tauri-apps/api/event";
 
 import { LibrarySidebar } from "../components/library/LibrarySidebar";
 import { GameDetails } from "../components/library/GameDetails";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 
 import { getGameAssetUrl } from "../lib/assets";
 import {
@@ -49,15 +49,15 @@ import {
   matchesSizeQuery,
   type LibraryAdvancedFilters,
 } from "../lib/library-filters";
-import { STORAGE_KEYS } from "../lib/storage-keys";
+import { STEAM_OWNED_GAMES_CACHE_VERSION, STORAGE_KEYS } from "../lib/storage-keys";
 import { useDownloadStore } from "../stores/downloadStore";
 
-const STEAM_OWNED_GAMES_CACHE_VERSION = "3";
+const SIZE_QUERY_SEARCH_REGEX = /(?:size\s*)?([><=])\s*(\d+(?:\.\d+)?)\s*(kb|mb|gb|tb)?/i;
+const LOGO_PRELOAD_LIMIT = 48;
 
 export type LibrarySortOption = "alphabetical" | "last_played" | "playtime" | "size";
 
 function triggerSilentSteamScraper(steamId: string) {
-  console.log("[OG-Launcher] Opening silent Steam scraper window in background...");
   void openSteamScraperWindow(steamId).catch((err) => {
     console.warn("Failed to open silent steam scraper window:", err);
   });
@@ -97,16 +97,25 @@ function writeLibrarySnapshot(games: Game[]) {
 }
 
 function readLocalStorageString(key: string) {
-  try {
-    const value = localStorage.getItem(key);
-    if (!value) {
-      return "";
-    }
+  const raw = localStorage.getItem(key);
+  if (!raw) {
+    return "";
+  }
 
-    const parsed = JSON.parse(value);
-    return typeof parsed === "string" ? parsed.trim() : "";
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return typeof parsed === "string" ? parsed : "";
   } catch {
-    return localStorage.getItem(key)?.trim().replace(/^"|"$/g, "") ?? "";
+    // Stored as a raw string, possibly with surrounding quote characters.
+    const trimmed = raw.trim();
+    if (trimmed.length >= 2) {
+      const first = trimmed[0];
+      const last = trimmed[trimmed.length - 1];
+      if ((first === '"' && last === '"') || (first === "'" && last === "'")) {
+        return trimmed.slice(1, -1);
+      }
+    }
+    return trimmed;
   }
 }
 
@@ -134,6 +143,21 @@ function areGameListsEqual(left: Game[], right: Game[]) {
   }
 
   return left.every((game, index) => JSON.stringify(game) === JSON.stringify(right[index]));
+}
+
+function parseLibrarySearchQuery(query: string) {
+  const sizeMatch = query.match(SIZE_QUERY_SEARCH_REGEX);
+  if (!sizeMatch) {
+    return {
+      activeSizeQueryFromSearch: "",
+      parsedSearchText: query,
+    };
+  }
+
+  return {
+    activeSizeQueryFromSearch: sizeMatch[0],
+    parsedSearchText: query.replace(SIZE_QUERY_SEARCH_REGEX, "").trim(),
+  };
 }
 
 // ----------------------------------------------------
@@ -512,6 +536,8 @@ export function LibraryPage() {
   const detailScrollRef = useRef<HTMLElement>(null);
   const automaticSyncInFlightRef = useRef(false);
   const autoAchievementSyncAttemptedRef = useRef<Set<string>>(new Set());
+  const lastManualAchievementSyncRef = useRef<Map<string, number>>(new Map());
+  const ACHIEVEMENT_SYNC_COOLDOWN_MS = 30_000;
   const lastFocusSyncAtRef = useRef(0);
   const [initialLibrarySnapshot] = useState(readLibrarySnapshot);
   const [installedGames, setInstalledGames] = useState<Game[]>(initialLibrarySnapshot);
@@ -719,22 +745,31 @@ export function LibraryPage() {
   // ----------------------------------------------------
 
   const shouldShowLibraryLoading = isDiscoveringGames && installedGames.length === 0;
+  const deferredSearchQuery = useDeferredValue(searchQuery);
+  const baseLibraryGames = useMemo(
+    () => installedGames.length > 0 ? installedGames : fallbackMockGames,
+    [installedGames],
+  );
+  const enrichedLibraryGames = useMemo(
+    () => baseLibraryGames.map(enrichGameWithMetadata),
+    [baseLibraryGames],
+  );
+  const {
+    activeSizeQueryFromSearch,
+    parsedSearchText,
+  } = useMemo(
+    () => parseLibrarySearchQuery(deferredSearchQuery),
+    [deferredSearchQuery],
+  );
+  const selectedManualCollectionIds = useMemo(() => {
+    if (!selectedManualCollectionName) {
+      return null;
+    }
 
-  // Parse size querying from the main search bar
-  const sizeRegexInSearch = /(?:size\s*)?([><=])\s*(\d+(?:\.\d+)?)\s*(kb|mb|gb|tb)?/i;
-  const sizeMatch = searchQuery.match(sizeRegexInSearch);
-  let parsedSearchText = searchQuery;
-  let activeSizeQueryFromSearch = "";
-  if (sizeMatch) {
-    activeSizeQueryFromSearch = sizeMatch[0];
-    parsedSearchText = searchQuery.replace(sizeRegexInSearch, "").trim();
-  }
+    return new Set(manualCollections[selectedManualCollectionName] || []);
+  }, [manualCollections, selectedManualCollectionName]);
 
   const filteredGames = useMemo(() => {
-    // Fallback to mock data if scanning returns empty
-    const baseGames = installedGames.length > 0 ? installedGames : fallbackMockGames;
-    const enriched = baseGames.map(enrichGameWithMetadata);
-
     const filterContext = {
       activePlatformFilter,
       favorites,
@@ -742,7 +777,7 @@ export function LibraryPage() {
       customCategories,
     };
 
-    const filtered = enriched.filter((game) => {
+    const filtered = enrichedLibraryGames.filter((game) => {
       if (!matchesSearchQuery(game, parsedSearchText)) {
         return false;
       }
@@ -756,9 +791,8 @@ export function LibraryPage() {
         return false;
       }
 
-      if (selectedManualCollectionName) {
-        const gameIdsInCollection = manualCollections[selectedManualCollectionName] || [];
-        if (!gameIdsInCollection.includes(game.id)) {
+      if (selectedManualCollectionIds) {
+        if (!selectedManualCollectionIds.has(game.id)) {
           return false;
         }
       }
@@ -788,7 +822,7 @@ export function LibraryPage() {
 
     return filtered;
   }, [
-    installedGames,
+    enrichedLibraryGames,
     activePlatformFilter,
     advancedFilters,
     favorites,
@@ -796,8 +830,7 @@ export function LibraryPage() {
     customCategories,
     activeSizeQueryFromSearch,
     parsedSearchText,
-    selectedManualCollectionName,
-    manualCollections,
+    selectedManualCollectionIds,
     sortOption,
   ]);
 
@@ -815,25 +848,28 @@ export function LibraryPage() {
     const ubisoftLaunchId = og.externalId ?? og.id.replace(/^ubisoft-owned-/, "");
     const gogLaunchId = og.externalId ?? og.id.replace(/^gog-owned-/, "");
     const eaLaunchId = og.externalId ?? og.id.replace(/^ea-owned-/, "");
+    const steamLaunchId = og.externalId ?? og.id.replace(/^steam-owned-/, "");
 
     return {
       id: og.id,
       externalId: og.externalId ?? undefined,
       title: og.title,
-      launchUri: og.id.startsWith("ubisoft-owned-") && ubisoftLaunchId
-        ? `uplay://launch/${ubisoftLaunchId}`
-        : og.id.startsWith("gog-owned-") && gogLaunchId
-          ? `gogalaxy://openGameView/${gogLaunchId}`
-          : og.id.startsWith("ea-owned-") && eaLaunchId
-            ? `origin://launchgame/${eaLaunchId}`
-            : undefined,
+      launchUri: og.id.startsWith("steam-owned-") && /^\d+$/.test(steamLaunchId)
+        ? `steam://install/${steamLaunchId}`
+        : og.id.startsWith("ubisoft-owned-") && ubisoftLaunchId
+          ? `uplay://launch/${ubisoftLaunchId}`
+          : og.id.startsWith("gog-owned-") && gogLaunchId
+            ? `gogalaxy://openGameView/${gogLaunchId}`
+            : og.id.startsWith("ea-owned-") && eaLaunchId
+              ? `origin://launchgame/${eaLaunchId}`
+              : undefined,
       description: og.description,
       version: "1.0",
       coverUrl: og.coverUrl ?? undefined,
       logoUrl: og.logoUrl ?? undefined,
       iconUrl: og.iconUrl ?? undefined,
-      iconUrls: [],
-      logoUrls: [],
+      iconUrls: og.iconUrl ? [og.iconUrl] : [],
+      logoUrls: og.logoUrl ? [og.logoUrl] : [],
       logoPosition: "centerCenter",
       status: "not_installed",
       platform: "windows",
@@ -864,8 +900,7 @@ export function LibraryPage() {
         launcher: normalizeLauncherKey(game.launcher, game.id),
       }));
 
-      const steamId = localStorage.getItem(STORAGE_KEYS.STEAM_ID)?.replace(/"/g, "") || "";
-      console.log("[OG-Launcher] Steam ID from localStorage:", JSON.stringify(steamId), "length:", steamId.length);
+      const steamId = readLocalStorageString(STORAGE_KEYS.STEAM_ID);
 
       if (steamId) {
         try {
@@ -877,7 +912,6 @@ export function LibraryPage() {
           if (!forceRefresh && cacheVersion === STEAM_OWNED_GAMES_CACHE_VERSION && cacheStr) {
             try {
               ownedRaw = normalizeSteamOwnedGames(JSON.parse(cacheStr));
-              console.log("[OG-Launcher] Loaded Steam owned games from cache:", ownedRaw.length, "games");
             } catch (err) {
               console.warn("Failed to parse steamOwnedGamesCache:", err);
             }
@@ -944,7 +978,6 @@ export function LibraryPage() {
           }
 
           const ownedRaw = await fetchGogOwnedGames();
-          console.log("[OG-Launcher] GOG owned games:", ownedRaw.length);
           const ownedGogGames = ownedRaw.map(ownedGameToGame);
           if (ownedGogGames.length > 0) {
             const installedGogKeys = new Set<string>();
@@ -993,7 +1026,6 @@ export function LibraryPage() {
           }));
 
           const ownedRaw = await eaFetchOwnedGames();
-          console.log("[OG-Launcher] EA owned games:", ownedRaw.length);
           const ownedEaGames = ownedRaw.map(ownedGameToGame);
           if (ownedEaGames.length > 0) {
             const installedEaKeys = new Set<string>();
@@ -1073,16 +1105,9 @@ export function LibraryPage() {
         }
       }
 
-      if (shouldApplyResult()) {
-        setInstalledGames((current) =>
-          areGameListsEqual(current, games) ? current : games,
-        );
-      }
-
       // 3. Fetch and merge Ubisoft owned games
       try {
         const ubiRaw = await fetchUbisoftOwnedGames();
-        console.log("[OG-Launcher] Ubisoft owned games:", ubiRaw.length);
         const ownedUbiGames = ubiRaw.map(ownedGameToGame);
         if (ownedUbiGames.length > 0) {
           const installedUbiKeys = new Set<string>();
@@ -1258,14 +1283,20 @@ export function LibraryPage() {
       if (automaticSyncInFlightRef.current) return;
       automaticSyncInFlightRef.current = true;
       try {
-        await loadInstalledGames(
-          false,
-          () => isMounted,
-          initialLibrarySnapshot.length === 0,
-        );
+        const shouldRefreshOnStartup = shouldRunStartupLibraryRescan();
 
-        if (isMounted && shouldRunStartupLibraryRescan()) {
+        if (initialLibrarySnapshot.length > 0 && shouldRefreshOnStartup) {
           await loadInstalledGames(true, () => isMounted, false);
+        } else {
+          await loadInstalledGames(
+            false,
+            () => isMounted,
+            initialLibrarySnapshot.length === 0,
+          );
+
+          if (isMounted && shouldRefreshOnStartup) {
+            await loadInstalledGames(true, () => isMounted, false);
+          }
         }
       } finally {
         automaticSyncInFlightRef.current = false;
@@ -1360,33 +1391,28 @@ export function LibraryPage() {
   useEffect(() => {
     let isMounted = true;
 
-    const unlistenInventory = listen<LibraryInventoryChanged>("library_inventory_changed", (event) => {
+    const unlistenInventory = listen<LibraryInventoryChanged>("library_inventory_changed", () => {
       if (!isMounted) return;
-      console.log("[OG-Launcher] Library inventory changed:", event.payload);
       void runAutomaticLibrarySync(false);
     });
 
     const unlistenSteam = listen<string>("steam_login_success", () => {
       if (!isMounted) return;
-      console.log("[OG-Launcher] Steam connected - reloading library...");
       void runAutomaticLibrarySync(false);
     });
 
     const unlistenGog = listen<string>("gog_login_code", () => {
       if (!isMounted) return;
-      console.log("[OG-Launcher] GOG connected - reloading library...");
       void runAutomaticLibrarySync(true);
     });
 
     const unlistenEa = listen("ea_login_success", () => {
       if (!isMounted) return;
-      console.log("[OG-Launcher] EA connected - reloading library...");
       void runAutomaticLibrarySync(true);
     });
 
     const handleBattlenetUpdated = () => {
       if (!isMounted) return;
-      console.log("[OG-Launcher] Battle.net connected - reloading library...");
       void runAutomaticLibrarySync(false);
     };
     window.addEventListener("battlenet_library_updated", handleBattlenetUpdated);
@@ -1394,7 +1420,6 @@ export function LibraryPage() {
     const unlistenScrapedSuccess = listen<unknown[]>("steam_scraped_games_success", (event) => {
       if (!isMounted) return;
       const ownedGames = normalizeSteamOwnedGames(event.payload);
-      console.log("[OG-Launcher] Scraper successfully fetched games:", ownedGames.length);
       localStorage.setItem(STORAGE_KEYS.STEAM_OWNED_GAMES_CACHE, JSON.stringify(ownedGames));
       localStorage.setItem(STORAGE_KEYS.STEAM_OWNED_GAMES_CACHE_VERSION, STEAM_OWNED_GAMES_CACHE_VERSION);
       void runAutomaticLibrarySync(false);
@@ -1478,7 +1503,10 @@ export function LibraryPage() {
 
   // Image preloading
   useEffect(() => {
-    const listToPreload = installedGames.length > 0 ? installedGames : fallbackMockGames;
+    const listToPreload = [
+      ...(selectedGame ? [selectedGame] : []),
+      ...filteredGames.slice(0, LOGO_PRELOAD_LIMIT),
+    ];
     const logoUrls = Array.from(
       new Set(
         listToPreload.flatMap((game) => getGameLogoCandidates(game).slice(0, 2)),
@@ -1501,7 +1529,7 @@ export function LibraryPage() {
         image.onload = null;
       });
     };
-  }, [installedGames]);
+  }, [filteredGames, selectedGame]);
 
   // Autoclose status notices
   useEffect(() => {
@@ -1521,7 +1549,12 @@ export function LibraryPage() {
       return;
     }
 
-    if (!getSteamAppId(selectedGame) || !readLocalStorageString(STORAGE_KEYS.STEAM_ID)) {
+    const isXbox = selectedGame.launcher === "xbox";
+    if (!isXbox) {
+      if (!getSteamAppId(selectedGame) || !readLocalStorageString(STORAGE_KEYS.STEAM_ID)) {
+        return;
+      }
+    } else if (!selectedGame.externalId) {
       return;
     }
 
@@ -1606,7 +1639,7 @@ export function LibraryPage() {
     }
   }
 
-  async function syncAchievementsForGame(game: Game, options: { silent?: boolean } = {}) {
+  async function syncAchievementsForGame(game: Game, options: { silent?: boolean; force?: boolean } = {}) {
     let steamId: string | null = null;
 
     if (game.launcher !== "xbox") {
@@ -1627,8 +1660,21 @@ export function LibraryPage() {
       }
     }
 
+    if (!options.silent && !options.force) {
+      const last = lastManualAchievementSyncRef.current.get(game.id) ?? 0;
+      const elapsed = Date.now() - last;
+      if (elapsed < ACHIEVEMENT_SYNC_COOLDOWN_MS) {
+        const remaining = Math.ceil((ACHIEVEMENT_SYNC_COOLDOWN_MS - elapsed) / 1000);
+        setStatusMessage(`Please wait ${remaining}s before syncing again.`);
+        return;
+      }
+      lastManualAchievementSyncRef.current.set(game.id, Date.now());
+    }
+
+    const syncTarget = game.launcher === "xbox" ? "Xbox" : "Steam";
+
     if (!options.silent) {
-      setStatusMessage(null);
+      setStatusMessage(`Syncing ${syncTarget} achievements...`);
     }
     setSyncingAchievementGameId(game.id);
 
@@ -1638,13 +1684,25 @@ export function LibraryPage() {
         steamId || undefined,
       );
 
-      setInstalledGames((current) =>
-        current.map((game) => (game.id === response.game.id ? response.game : game)),
-      );
+      setInstalledGames((current) => {
+        const previous = current.find((g) => g.id === response.game.id);
+        const previousUnlocked = new Set(
+          previous?.achievements?.filter((a) => a.unlockedAt).map((a) => a.id) ?? [],
+        );
+        const newUnlocks =
+          response.game.achievements?.filter(
+            (a) => a.unlockedAt && !previousUnlocked.has(a.id),
+          ) ?? [];
+        if (newUnlocks.length > 0 && !options.silent) {
+          setStatusMessage(
+            `${newUnlocks.length} new achievement${newUnlocks.length === 1 ? "" : "s"} unlocked!`,
+          );
+        } else if (!options.silent) {
+          setStatusMessage(response.message);
+        }
+        return current.map((game) => (game.id === response.game.id ? response.game : game));
+      });
       setSelectedGame((current) => (current?.id === response.game.id ? response.game : current));
-      if (!options.silent) {
-        setStatusMessage(response.message);
-      }
     } catch (error) {
       if (!options.silent) {
         setStatusMessage(getErrorMessage(error));
@@ -1727,8 +1785,14 @@ export function LibraryPage() {
     });
   }
 
-  // Enrich selectedGame if available
-  const enrichedSelectedGame = selectedGame ? enrichGameWithMetadata(selectedGame) : null;
+  const enrichedSelectedGame = useMemo(() => {
+    if (!selectedGame) {
+      return null;
+    }
+
+    return enrichedLibraryGames.find((game) => game.id === selectedGame.id)
+      ?? enrichGameWithMetadata(selectedGame);
+  }, [enrichedLibraryGames, selectedGame]);
 
   return (
     <div className="library-steam-shell h-full min-h-0 overflow-hidden border-x-0 border-black bg-[#fbf4e7] text-[#171411] sm:border-x-4">
@@ -1749,7 +1813,7 @@ export function LibraryPage() {
           activePlatformFilter={activePlatformFilter}
           advancedFilters={advancedFilters}
           hasActiveFilters={
-            Boolean(parsedSearchText)
+            Boolean(searchQuery.trim())
             || activePlatformFilter !== "all"
             || activeAdvancedFilterCount > 0
             || Boolean(selectedCollectionName)

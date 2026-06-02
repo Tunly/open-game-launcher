@@ -1,21 +1,23 @@
-import { useState, useEffect } from "react";
+import { memo, useState, useEffect } from "react";
 import { Heart } from "lucide-react";
 import type { Game } from "../../lib/types";
 import { getGameAssetUrl } from "../../lib/assets";
 import { getGameIconCandidates } from "../../lib/formatters";
 import { PlatformIcon, PlatformSourceIcon } from "./PlatformIcons";
 
-export function LibraryRow({
-  game,
-  selected,
-  onSelect,
-  isFavorite,
-}: {
+type LibraryRowProps = {
   game: Game;
   selected?: boolean;
   onSelect: (game: Game) => void;
   isFavorite?: boolean;
-}) {
+};
+
+function LibraryRowBase({
+  game,
+  selected,
+  onSelect,
+  isFavorite,
+}: LibraryRowProps) {
   const [iconCandidateIndex, setIconCandidateIndex] = useState(0);
   const iconCandidates = getGameIconCandidates(game);
   const iconUrl = getGameAssetUrl(iconCandidates[iconCandidateIndex]);
@@ -76,3 +78,5 @@ export function LibraryRow({
     </button>
   );
 }
+
+export const LibraryRow = memo(LibraryRowBase);

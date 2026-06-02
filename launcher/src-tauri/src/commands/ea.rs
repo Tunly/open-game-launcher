@@ -111,7 +111,6 @@ struct LegacyOffer {
 }
 
 struct PlaytimeEntry {
-    slug: String,
     minutes: u64,
     last_played_at: Option<String>,
 }
@@ -574,7 +573,6 @@ async fn fetch_playtimes(
             output.insert(
                 slug.clone(),
                 PlaytimeEntry {
-                    slug,
                     minutes: seconds / 60,
                     last_played_at,
                 },

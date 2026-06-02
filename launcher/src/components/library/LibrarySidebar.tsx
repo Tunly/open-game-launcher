@@ -1,9 +1,15 @@
 import { Search, SlidersHorizontal, Grid2X2 } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import type { RefObject } from "react";
 import type { Game } from "../../lib/types";
 import type { LibraryAdvancedFilters } from "../../lib/library-filters";
 import type { LibrarySortOption } from "../../pages/LibraryPage";
 import { LibraryRow } from "./LibraryRow";
 import { LibraryCustomScrollbar } from "./LibraryCustomScrollbar";
+
+const LIBRARY_ROW_HEIGHT = 56;
+const LIBRARY_ROW_OVERSCAN = 8;
+const LIBRARY_VIRTUALIZE_THRESHOLD = 80;
 
 export interface LibrarySidebarProps {
   games: Game[];
@@ -24,7 +30,7 @@ export interface LibrarySidebarProps {
   setSelectedGame: (game: Game) => void;
   favorites: Record<string, boolean>;
   fallbackMockGames: Game[];
-  listScrollRef: React.RefObject<HTMLDivElement>;
+  listScrollRef: RefObject<HTMLDivElement>;
   setIsAddGameOpen: (open: boolean) => void;
   setAddGameError: (err: string | null) => void;
 }
@@ -61,6 +67,91 @@ export function LibrarySidebar({
       if (typeof value === "boolean") return value;
       return value !== "";
     })
+  );
+  const [listViewport, setListViewport] = useState({ height: 0, scrollTop: 0 });
+  const shouldVirtualize =
+    groupOption === "none" && filteredGames.length > LIBRARY_VIRTUALIZE_THRESHOLD;
+  const virtualRows = useMemo(() => {
+    if (!shouldVirtualize) {
+      return {
+        afterHeight: 0,
+        beforeHeight: 0,
+        games: filteredGames,
+      };
+    }
+
+    const maxStartIndex = Math.max(0, filteredGames.length - 1);
+    const startIndex = Math.min(
+      Math.max(0, Math.floor(listViewport.scrollTop / LIBRARY_ROW_HEIGHT) - LIBRARY_ROW_OVERSCAN),
+      maxStartIndex,
+    );
+    const visibleCount =
+      Math.ceil(Math.max(listViewport.height, LIBRARY_ROW_HEIGHT) / LIBRARY_ROW_HEIGHT)
+      + LIBRARY_ROW_OVERSCAN * 2;
+    const endIndex = Math.min(filteredGames.length, startIndex + visibleCount);
+
+    return {
+      afterHeight: Math.max(0, (filteredGames.length - endIndex) * LIBRARY_ROW_HEIGHT),
+      beforeHeight: startIndex * LIBRARY_ROW_HEIGHT,
+      games: filteredGames.slice(startIndex, endIndex),
+    };
+  }, [filteredGames, listViewport.height, listViewport.scrollTop, shouldVirtualize]);
+
+  useEffect(() => {
+    const element = listScrollRef.current;
+    if (!element) {
+      return;
+    }
+
+    let frame = 0;
+    const updateViewport = () => {
+      window.cancelAnimationFrame(frame);
+      frame = window.requestAnimationFrame(() => {
+        setListViewport((current) => {
+          const next = {
+            height: element.clientHeight,
+            scrollTop: element.scrollTop,
+          };
+          return current.height === next.height && current.scrollTop === next.scrollTop
+            ? current
+            : next;
+        });
+      });
+    };
+
+    updateViewport();
+    element.addEventListener("scroll", updateViewport, { passive: true });
+
+    const resizeObserver = new ResizeObserver(updateViewport);
+    resizeObserver.observe(element);
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+      element.removeEventListener("scroll", updateViewport);
+      resizeObserver.disconnect();
+    };
+  }, [listScrollRef]);
+
+  useEffect(() => {
+    const element = listScrollRef.current;
+    if (!element || !shouldVirtualize) {
+      return;
+    }
+
+    const maxScrollTop = Math.max(0, filteredGames.length * LIBRARY_ROW_HEIGHT - element.clientHeight);
+    if (element.scrollTop > maxScrollTop) {
+      element.scrollTop = maxScrollTop;
+    }
+  }, [filteredGames.length, listScrollRef, shouldVirtualize]);
+
+  const renderLibraryRow = (game: Game) => (
+    <LibraryRow
+      key={game.id}
+      game={game}
+      selected={selectedGame?.id === game.id}
+      onSelect={setSelectedGame}
+      isFavorite={favorites[game.id] === true}
+    />
   );
 
   return (
@@ -129,15 +220,7 @@ export function LibrarySidebar({
                       {groupName} ({groupGames.length})
                     </h3>
                     <div className="space-y-1">
-                      {groupGames.map((game) => (
-                        <LibraryRow
-                          key={game.id}
-                          game={game}
-                          selected={selectedGame?.id === game.id}
-                          onSelect={setSelectedGame}
-                          isFavorite={favorites[game.id] === true}
-                        />
-                      ))}
+                      {groupGames.map(renderLibraryRow)}
                     </div>
                   </div>
                 ))
@@ -158,15 +241,16 @@ export function LibrarySidebar({
                 )}
               </div>
             ) : (
-              filteredGames.map((game) => (
-                <LibraryRow
-                  key={game.id}
-                  game={game}
-                  selected={selectedGame?.id === game.id}
-                  onSelect={setSelectedGame}
-                  isFavorite={favorites[game.id] === true}
-                />
-              ))
+              <div
+                style={shouldVirtualize ? {
+                  paddingBottom: virtualRows.afterHeight,
+                  paddingTop: virtualRows.beforeHeight,
+                } : undefined}
+              >
+                <div className="space-y-1">
+                  {virtualRows.games.map(renderLibraryRow)}
+                </div>
+              </div>
             )}
           </div>
           <LibraryCustomScrollbar targetRef={listScrollRef} />
