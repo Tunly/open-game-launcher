@@ -9,3 +9,4 @@ pub mod local_db;
 pub mod system;
 pub mod ubisoft;
 pub mod xbox;
+pub mod secure_store;
