@@ -1,7 +1,7 @@
 mod commands;
 
 use std::{env, fs, path::PathBuf};
-use tauri::{Manager, PhysicalPosition, WebviewWindow, WindowEvent};
+use tauri::{Emitter, Manager, PhysicalPosition, WebviewWindow, WindowEvent};
 
 pub fn run() {
     load_local_env_files();
@@ -22,6 +22,16 @@ pub fn run() {
 
             // One-time migration of legacy plaintext tokens into the OS keychain
             commands::secure_store::migrate_legacy_tokens();
+
+            // Register the universallauncher:// protocol handler (Windows Registry)
+            commands::deeplink::register_protocol_handler();
+
+            // Check if app was launched via a deep link and emit event to frontend
+            if let Some(link) = commands::deeplink::check_deep_link_on_startup() {
+                let handle = app.handle().clone();
+                // emit to all windows
+                let _ = handle.emit("deep-link", link);
+            }
 
             Ok(())
         })

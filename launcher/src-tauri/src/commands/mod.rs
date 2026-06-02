@@ -16,3 +16,4 @@ pub mod family;
 pub mod stripe;
 pub mod perf_monitor;
 pub mod overlay;
+pub mod deeplink;
