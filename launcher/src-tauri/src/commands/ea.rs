@@ -1,3 +1,4 @@
+use super::secure_store;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -115,36 +116,19 @@ struct PlaytimeEntry {
     last_played_at: Option<String>,
 }
 
-fn ea_token_path() -> PathBuf {
-    dirs::config_dir()
-        .or_else(dirs::data_local_dir)
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join("open-game-launcher")
-        .join("ea_auth.json")
-}
-
-fn ea_legacy_cache_path() -> Option<PathBuf> {
-    open_game_launcher_data_dir().map(|dir| dir.join("ea-legacy-offers.json"))
-}
-
 pub fn load_ea_token() -> Option<EaToken> {
-    let path = ea_token_path();
-    let contents = fs::read_to_string(path).ok()?;
-    serde_json::from_str(&contents).ok()
+    let json = secure_store::get_secret("ea").ok().flatten()?;
+    serde_json::from_str(&json).ok()
 }
 
 fn save_ea_token(token: &EaToken) -> Result<(), String> {
-    let path = ea_token_path();
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|e| format!("Failed to create EA config dir: {e}"))?;
-    }
-    let json = serde_json::to_string_pretty(token)
+    let json = serde_json::to_string(token)
         .map_err(|e| format!("Failed to serialize EA token: {e}"))?;
-    fs::write(path, json).map_err(|e| format!("Failed to write EA token: {e}"))
+    secure_store::set_secret("ea", &json)
 }
 
 fn delete_ea_token() {
-    let _ = fs::remove_file(ea_token_path());
+    let _ = secure_store::delete_secret("ea");
 }
 
 fn now_secs() -> u64 {
@@ -412,6 +396,10 @@ async fn fetch_owned_game_pages(
     }
 
     Ok(items)
+}
+
+fn ea_legacy_cache_path() -> Option<PathBuf> {
+    open_game_launcher_data_dir().map(|dir| dir.join("ea-legacy-offers.json"))
 }
 
 fn load_legacy_offer_cache() -> HashMap<String, LegacyOffer> {
