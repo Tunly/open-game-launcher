@@ -1,3 +1,4 @@
+use super::secure_store;
 use crate::commands::system::OwnedGame;
 use reqwest::header::{HeaderMap, HeaderValue, ACCEPT_LANGUAGE, AUTHORIZATION};
 use serde::{Deserialize, Serialize};
@@ -11,23 +12,12 @@ const XBOX_CLIENT_ID: &str = "38cd2fa8-66fd-4760-afb2-405eb65d5b0c";
 const XBOX_SCOPE: &str = "Xboxlive.signin Xboxlive.offline_access";
 const XBOX_REDIRECT_URI: &str = "https://login.live.com/oauth20_desktop.srf";
 
-fn get_xbox_token_path() -> std::path::PathBuf {
-    let mut path = dirs::config_dir().unwrap_or_else(|| std::path::PathBuf::from("."));
-    path.push("open-game-launcher");
-    path.push("xbox_token.json");
-    path
-}
-
 fn save_xbox_token(refresh_token: &str) {
-    let path = get_xbox_token_path();
-    if let Some(p) = path.parent() {
-        let _ = std::fs::create_dir_all(p);
-    }
-    let _ = std::fs::write(path, refresh_token);
+    let _ = secure_store::set_secret("xbox", refresh_token);
 }
 
 fn load_xbox_token() -> Option<String> {
-    std::fs::read_to_string(get_xbox_token_path()).ok()
+    secure_store::get_secret("xbox").ok().flatten()
 }
 
 #[derive(Deserialize, Debug)]
