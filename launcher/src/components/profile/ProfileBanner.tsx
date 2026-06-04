@@ -10,8 +10,8 @@ export function ProfileBanner({
   const background =
     profile.bannerUrl !== null
       ? `linear-gradient(90deg, rgba(23,20,17,.76), rgba(23,20,17,.12)), url(${profile.bannerUrl})`
-      : theme?.backgroundValue ??
-        "radial-gradient(circle at 78% 24%, #8cf5e4 0 8%, transparent 9%), linear-gradient(115deg, transparent 0 34%, rgba(23,20,17,.24) 35% 37%, transparent 38%), repeating-linear-gradient(90deg, rgba(183,16,42,.32) 0 8px, transparent 9px 34px), linear-gradient(135deg, #f6edd8 0%, #087d6d 48%, #171411 49%, #c20b2f 100%)";
+      : (theme?.backgroundValue ??
+        "radial-gradient(circle at 78% 24%, #8cf5e4 0 8%, transparent 9%), linear-gradient(115deg, transparent 0 34%, rgba(23,20,17,.24) 35% 37%, transparent 38%), repeating-linear-gradient(90deg, rgba(183,16,42,.32) 0 8px, transparent 9px 34px), linear-gradient(135deg, #f6edd8 0%, #087d6d 48%, #171411 49%, #c20b2f 100%)");
 
   return (
     <div

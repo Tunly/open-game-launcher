@@ -6,9 +6,7 @@ export function getGameAssetUrl(assetUrl?: string): string | undefined {
     return undefined;
   }
 
-  return /^(https?:|data:|blob:)/i.test(assetUrl)
-    ? assetUrl
-    : convertFileSrc(assetUrl);
+  return /^(https?:|data:|blob:)/i.test(assetUrl) ? assetUrl : convertFileSrc(assetUrl);
 }
 
 export function getGameBannerStyle(

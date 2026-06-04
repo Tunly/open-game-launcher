@@ -27,7 +27,7 @@ function formatPrice(game: StoreGame) {
     return "Free";
   }
 
-  return new Intl.NumberFormat("de-DE", {
+  return new Intl.NumberFormat("en-US", {
     currency: "EUR",
     style: "currency",
   }).format(game.price);
@@ -50,7 +50,9 @@ export function StoreGameCard({
 
   return (
     <article className="overflow-hidden border-4 border-black bg-[#f5eedf] shadow-[5px_5px_0_#171411]">
-      <div className={`${artClassById[game.id] ?? "card-art-drift"} steam-game-banner relative border-b-4 border-black`}>
+      <div
+        className={`${artClassById[game.id] ?? "card-art-drift"} steam-game-banner relative border-b-4 border-black`}
+      >
         {game.id === "deep-signal" ? (
           <div className="absolute bottom-8 left-12 h-16 w-36 -skew-x-12 rounded-[45%] border-4 border-[#171411] bg-[#ece8de] shadow-[26px_20px_0_rgba(23,20,17,0.16)]">
             <div className="absolute -bottom-4 left-4 h-8 w-8 rounded-full border-4 border-[#171411] bg-[#f5eedf]" />
@@ -90,7 +92,7 @@ export function StoreGameCard({
           <div>
             {game.originalPrice && game.originalPrice > game.price ? (
               <p className="neo-copy text-[10px] font-black uppercase text-[#655f58] line-through">
-                {new Intl.NumberFormat("de-DE", {
+                {new Intl.NumberFormat("en-US", {
                   currency: "EUR",
                   style: "currency",
                 }).format(game.originalPrice)}
@@ -100,7 +102,9 @@ export function StoreGameCard({
           </div>
           <div className="flex gap-2">
             <button
-              aria-label={isWishlisted ? `Remove ${game.title} from wishlist` : `Wishlist ${game.title}`}
+              aria-label={
+                isWishlisted ? `Remove ${game.title} from wishlist` : `Wishlist ${game.title}`
+              }
               className={`flex h-10 w-10 items-center justify-center border-2 border-black shadow-[3px_3px_0_#171411] ${
                 isWishlisted ? "bg-[#b7102a] text-white" : "bg-[#fff9ed] text-[#171411]"
               }`}
@@ -110,7 +114,11 @@ export function StoreGameCard({
               <Heart className={`h-5 w-5 ${isWishlisted ? "fill-current" : ""}`} />
             </button>
             <button
-              aria-label={priceAlert ? `Clear price alert for ${game.title}` : `Set price alert for ${game.title}`}
+              aria-label={
+                priceAlert
+                  ? `Clear price alert for ${game.title}`
+                  : `Set price alert for ${game.title}`
+              }
               className={`flex h-10 w-10 items-center justify-center border-2 border-black shadow-[3px_3px_0_#171411] ${
                 priceAlert ? "bg-[#f2c14e] text-[#171411]" : "bg-[#fff9ed] text-[#171411]"
               }`}
@@ -134,7 +142,11 @@ export function StoreGameCard({
               type="button"
               onClick={() => onAddToCart(game.id)}
             >
-              {isInCart || isAdded ? <Check className="h-6 w-6" /> : <ShoppingCart className="h-6 w-6" />}
+              {isInCart || isAdded ? (
+                <Check className="h-6 w-6" />
+              ) : (
+                <ShoppingCart className="h-6 w-6" />
+              )}
             </button>
           </div>
         </div>
@@ -155,7 +167,8 @@ export function StoreGameCard({
         </button>
         {priceAlert !== null ? (
           <p className="neo-copy mt-3 border-2 border-black bg-[#f2c14e] p-2 text-[9px] font-black uppercase tracking-[0.1em] text-[#171411]">
-            Alert below {new Intl.NumberFormat("de-DE", {
+            Alert below{" "}
+            {new Intl.NumberFormat("en-US", {
               currency: "EUR",
               style: "currency",
             }).format(priceAlert)}

@@ -1,29 +1,69 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { getSupabaseClient } from "./client";
-import type { FamilyGroup, FamilyMember, FamilySharedGame } from "../types/family";
+import type { FamilyGroup, FamilyMember, FamilyRole, FamilySharedGame } from "../types/family";
 
 const GROUP_SELECT = `id, owner_id, name, invite_code, max_members, created_at, updated_at`;
 const MEMBER_SELECT = `id, family_id, user_id, role, joined_at`;
 const SHARED_GAME_SELECT = `id, family_id, game_id, shared_by_user_id, is_available, current_user_id, shared_at`;
 
-function rowToGroup(row: any): FamilyGroup {
+interface FamilyGroupRow {
+  id: string;
+  owner_id: string;
+  name: string;
+  invite_code: string;
+  max_members: number;
+  created_at: string;
+  updated_at: string;
+}
+
+interface FamilyMemberRow {
+  id: string;
+  family_id: string;
+  user_id: string;
+  role: string;
+  joined_at: string;
+}
+
+interface FamilyMemberLookupRow {
+  family_id: string;
+}
+
+interface FamilySharedGameRow {
+  id: string;
+  family_id: string;
+  game_id: string;
+  shared_by_user_id: string;
+  is_available: boolean;
+  current_user_id: string | null;
+  shared_at: string;
+}
+
+function rowToGroup(row: FamilyGroupRow): FamilyGroup {
   return {
-    id: row.id, ownerId: row.owner_id, name: row.name,
-    inviteCode: row.invite_code, maxMembers: row.max_members,
-    createdAt: row.created_at, updatedAt: row.updated_at,
+    id: row.id,
+    ownerId: row.owner_id,
+    name: row.name,
+    inviteCode: row.invite_code,
+    maxMembers: row.max_members,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
   };
 }
 
-function rowToMember(row: any): FamilyMember {
+function rowToMember(row: FamilyMemberRow): FamilyMember {
   return {
-    id: row.id, familyId: row.family_id, userId: row.user_id,
-    role: row.role, joinedAt: row.joined_at,
+    id: row.id,
+    familyId: row.family_id,
+    userId: row.user_id,
+    role: row.role as FamilyRole,
+    joinedAt: row.joined_at,
   };
 }
 
-function rowToSharedGame(row: any): FamilySharedGame {
+function rowToSharedGame(row: FamilySharedGameRow): FamilySharedGame {
   return {
-    id: row.id, familyId: row.family_id, gameId: row.game_id,
+    id: row.id,
+    familyId: row.family_id,
+    gameId: row.game_id,
     sharedByUserId: row.shared_by_user_id,
     isAvailable: row.is_available,
     currentUserId: row.current_user_id,
@@ -43,7 +83,7 @@ export async function getMyFamilyGroup(): Promise<FamilyGroup | null> {
     .eq("user_id", userId)
     .limit(1);
   if (memberErr) throw new Error(memberErr.message);
-  const familyId = (memberData ?? [])[0]?.family_id;
+  const familyId = ((memberData ?? []) as FamilyMemberLookupRow[])[0]?.family_id;
   if (!familyId) return null;
   const { data, error } = await client
     .from("family_groups")
@@ -51,7 +91,7 @@ export async function getMyFamilyGroup(): Promise<FamilyGroup | null> {
     .eq("id", familyId)
     .single();
   if (error) return null;
-  return rowToGroup(data);
+  return rowToGroup(data as FamilyGroupRow);
 }
 
 export async function createFamilyGroup(name: string): Promise<FamilyGroup | null> {
@@ -70,7 +110,7 @@ export async function createFamilyGroup(name: string): Promise<FamilyGroup | nul
   await client
     .from("family_members")
     .insert({ family_id: group.id, user_id: userId, role: "owner" });
-  return rowToGroup(group);
+  return rowToGroup(group as FamilyGroupRow);
 }
 
 export async function joinFamilyGroup(inviteCode: string): Promise<FamilyGroup | null> {
@@ -97,7 +137,7 @@ export async function joinFamilyGroup(inviteCode: string): Promise<FamilyGroup |
     .from("family_members")
     .insert({ family_id: group.id, user_id: userId, role: "member" });
   if (memberErr) throw new Error(memberErr.message);
-  return rowToGroup(group);
+  return rowToGroup(group as FamilyGroupRow);
 }
 
 export async function listFamilyMembers(familyId: string): Promise<FamilyMember[]> {
@@ -108,7 +148,7 @@ export async function listFamilyMembers(familyId: string): Promise<FamilyMember[
     .select(MEMBER_SELECT)
     .eq("family_id", familyId);
   if (error) throw new Error(error.message);
-  return (data ?? []).map(rowToMember);
+  return ((data ?? []) as FamilyMemberRow[]).map(rowToMember);
 }
 
 export async function listFamilySharedGames(familyId: string): Promise<FamilySharedGame[]> {
@@ -119,7 +159,7 @@ export async function listFamilySharedGames(familyId: string): Promise<FamilySha
     .select(SHARED_GAME_SELECT)
     .eq("family_id", familyId);
   if (error) throw new Error(error.message);
-  return (data ?? []).map(rowToSharedGame);
+  return ((data ?? []) as FamilySharedGameRow[]).map(rowToSharedGame);
 }
 
 export async function shareGameWithFamily(
@@ -136,13 +176,10 @@ export async function shareGameWithFamily(
     .select(SHARED_GAME_SELECT)
     .single();
   if (error) throw new Error(error.message);
-  return rowToSharedGame(data);
+  return rowToSharedGame(data as FamilySharedGameRow);
 }
 
-export async function unshareGameFromFamily(
-  familyId: string,
-  gameId: string,
-): Promise<boolean> {
+export async function unshareGameFromFamily(familyId: string, gameId: string): Promise<boolean> {
   const client = getSupabaseClient();
   if (!client) return false;
   const { error } = await client

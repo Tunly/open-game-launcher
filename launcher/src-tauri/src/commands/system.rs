@@ -293,6 +293,21 @@ pub fn open_uri(uri: &str) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+pub fn open_external_url(url: String) -> Result<(), String> {
+    let url = url.trim();
+    if url.is_empty() {
+        return Err("External URL is empty.".to_string());
+    }
+
+    let parsed = reqwest::Url::parse(url)
+        .map_err(|error| format!("External URL is invalid: {error}"))?;
+    match parsed.scheme() {
+        "http" | "https" => open_uri(parsed.as_str()),
+        scheme => Err(format!("External URL scheme is not allowed: {scheme}")),
+    }
+}
+
 fn start_local_callback_server(app: tauri::AppHandle) {
     thread::spawn(move || {
         let listener = match TcpListener::bind("127.0.0.1:18234") {
@@ -1607,6 +1622,38 @@ pub async fn fetch_steam_profile_name(steam_id: String) -> Result<Option<String>
     Ok(extract_xml_tag_text(&xml, "steamID")
         .or_else(|| extract_xml_tag_text(&xml, "customURL"))
         .filter(|value| !value.trim().is_empty()))
+}
+
+#[tauri::command]
+pub async fn fetch_steam_news(app_id: String) -> Result<serde_json::Value, String> {
+    let app_id = app_id.trim();
+    if app_id.is_empty() || !app_id.chars().all(|character| character.is_ascii_digit()) {
+        return Err("Steam AppID is invalid.".to_string());
+    }
+
+    let response = crate::commands::http::shared_http_client()
+        .get("https://api.steampowered.com/ISteamNews/GetNewsForApp/v2/")
+        .query(&[
+            ("appid", app_id),
+            ("count", "20"),
+            ("maxlength", "600"),
+        ])
+        .header("User-Agent", "Open Game Launcher Steam news resolver")
+        .send()
+        .await
+        .map_err(|error| format!("Could not contact Steam news API: {error}"))?;
+
+    if !response.status().is_success() {
+        return Err(format!(
+            "Steam news request returned status {}.",
+            response.status()
+        ));
+    }
+
+    response
+        .json::<serde_json::Value>()
+        .await
+        .map_err(|error| format!("Could not read Steam news response: {error}"))
 }
 
 fn extract_xml_tag_text(xml: &str, tag: &str) -> Option<String> {

@@ -2,6 +2,8 @@ import type { RealtimeChannel } from "@supabase/supabase-js";
 
 import { getSupabaseClient, supabase } from "./client";
 import type { ChatMessage, ChatRoom, GameInvite } from "../types/profile";
+export type { ChatMessage, ChatRoom, GameInvite };
+import type { CrossPlatformInvite, InviteFeasibility, PlatformType } from "../types/friends";
 import {
   handleError as baseHandleError,
   isMissingSchemaError,
@@ -25,7 +27,9 @@ export type GameInviteInput = {
 
 function handleError(error: { code?: string; message: string } | null) {
   if (isMissingSchemaError(error)) {
-    throw new Error("Social realtime tables are not installed yet. Apply the Supabase migrations first.");
+    throw new Error(
+      "Social realtime tables are not installed yet. Apply the Supabase migrations first.",
+    );
   }
   baseHandleError(error);
 }
@@ -113,11 +117,7 @@ async function findExistingDirectRoom(currentUserId: string, friendId: string) {
     return null;
   }
 
-  const roomResult = await client
-    .from("chat_rooms")
-    .select("*")
-    .eq("type", "dm")
-    .in("id", roomIds);
+  const roomResult = await client.from("chat_rooms").select("*").eq("type", "dm").in("id", roomIds);
   handleError(roomResult.error);
 
   const rooms = (roomResult.data ?? []).map((row) => toRoom(row as UnknownRecord));
@@ -172,7 +172,11 @@ async function ensureDirectRoom(friendId: string) {
 
   if (roomResult.error) {
     const message = roomResult.error.message.toLowerCase();
-    if (roomResult.error.code === "23505" || message.includes("duplicate") || message.includes("unique")) {
+    if (
+      roomResult.error.code === "23505" ||
+      message.includes("duplicate") ||
+      message.includes("unique")
+    ) {
       const racedRoom = await findExistingDirectRoom(currentUserId, friendId);
       if (racedRoom) {
         return racedRoom;
@@ -183,12 +187,10 @@ async function ensureDirectRoom(friendId: string) {
 
   const room = toRoom(roomResult.data as UnknownRecord);
 
-  const memberResult = await client
-    .from("chat_room_members")
-    .insert([
-      { role: "owner", room_id: room.id, user_id: currentUserId },
-      { role: "member", room_id: room.id, user_id: friendId },
-    ]);
+  const memberResult = await client.from("chat_room_members").insert([
+    { role: "owner", room_id: room.id, user_id: currentUserId },
+    { role: "member", room_id: room.id, user_id: friendId },
+  ]);
   handleError(memberResult.error);
 
   return room;
@@ -301,22 +303,280 @@ export function subscribeToGameInvites(userId: string, onInvite: (invite: GameIn
   const client = supabase;
   const channel: RealtimeChannel = client
     .channel(`og-invites-${userId}`)
-    .on(
-      "postgres_changes",
-      { event: "*", schema: "public", table: "game_invites" },
-      (payload) => {
-        const row = (payload.new && Object.keys(payload.new).length > 0
-          ? payload.new
-          : payload.old) as UnknownRecord;
-        const invite = toInvite(row);
-        if (invite.senderId === userId || invite.receiverId === userId) {
-          onInvite(invite);
-        }
-      },
-    )
+    .on("postgres_changes", { event: "*", schema: "public", table: "game_invites" }, (payload) => {
+      const row = (
+        payload.new && Object.keys(payload.new).length > 0 ? payload.new : payload.old
+      ) as UnknownRecord;
+      const invite = toInvite(row);
+      if (invite.senderId === userId || invite.receiverId === userId) {
+        onInvite(invite);
+      }
+    })
     .subscribe();
 
   return () => {
     void client.removeChannel(channel);
   };
+}
+
+// ============================================================================
+// Group Chat
+// ============================================================================
+
+export interface GroupChatInfo {
+  room: ChatRoom;
+  memberCount: number;
+}
+
+export async function createGroupChat(name: string, memberIds: string[]): Promise<ChatRoom> {
+  const client = getSupabaseClient();
+  const { data: userData, error: authError } = await client.auth.getUser();
+  handleError(authError);
+  if (!userData.user) throw new Error("You must be signed in.");
+
+  const currentUserId = userData.user.id;
+
+  const roomResult = await client
+    .from("chat_rooms")
+    .insert({ type: "group", name: name.trim() || null, created_by: currentUserId } as never)
+    .select("*")
+    .single();
+  handleError(roomResult.error);
+
+  const room = toRoom(roomResult.data as UnknownRecord);
+
+  // Add creator + members
+  const allMembers = [currentUserId, ...memberIds.filter((id) => id !== currentUserId)];
+  const memberRows = allMembers.map((userId, index) => ({
+    room_id: room.id,
+    user_id: userId,
+    role: index === 0 ? "owner" : "member",
+  }));
+
+  const { error: memberError } = await client.from("chat_room_members").insert(memberRows);
+  handleError(memberError);
+
+  return room;
+}
+
+export async function getMyGroupChats(): Promise<GroupChatInfo[]> {
+  const client = getSupabaseClient();
+  const { data: userData, error: authError } = await client.auth.getUser();
+  handleError(authError);
+  if (!userData.user) throw new Error("You must be signed in.");
+
+  // Get rooms I'm a member of that are groups
+  const { data: memberships, error: memErr } = await client
+    .from("chat_room_members")
+    .select("room_id")
+    .eq("user_id", userData.user.id);
+  if (isMissingSchemaError(memErr)) return [];
+  handleError(memErr);
+
+  const roomIds = (memberships ?? [])
+    .map((r) => rowString(r as UnknownRecord, "room_id"))
+    .filter(Boolean);
+  if (roomIds.length === 0) return [];
+
+  const { data: rooms, error: roomErr } = await client
+    .from("chat_rooms")
+    .select("*")
+    .eq("type", "group")
+    .in("id", roomIds)
+    .order("updated_at", { ascending: false });
+  handleError(roomErr);
+
+  return (rooms ?? []).map((r) => ({
+    room: toRoom(r as UnknownRecord),
+    memberCount: 0, // will be populated in UI if needed
+  }));
+}
+
+export async function addGroupMember(roomId: string, userId: string): Promise<void> {
+  const client = getSupabaseClient();
+  const { error } = await client
+    .from("chat_room_members")
+    .insert({ room_id: roomId, user_id: userId, role: "member" });
+  handleError(error);
+}
+
+export async function removeGroupMember(roomId: string, userId: string): Promise<void> {
+  const client = getSupabaseClient();
+  const { error } = await client
+    .from("chat_room_members")
+    .delete()
+    .eq("room_id", roomId)
+    .eq("user_id", userId);
+  handleError(error);
+}
+
+export async function leaveGroup(roomId: string): Promise<void> {
+  const client = getSupabaseClient();
+  const { data: userData, error: authError } = await client.auth.getUser();
+  handleError(authError);
+  if (!userData.user) throw new Error("You must be signed in.");
+
+  const { error } = await client
+    .from("chat_room_members")
+    .delete()
+    .eq("room_id", roomId)
+    .eq("user_id", userData.user.id);
+  handleError(error);
+}
+
+export async function renameGroup(roomId: string, name: string): Promise<void> {
+  const client = getSupabaseClient();
+  const { error } = await client
+    .from("chat_rooms")
+    .update({ name: name.trim() || null })
+    .eq("id", roomId);
+  handleError(error);
+}
+
+export async function getGroupMessages(
+  roomId: string,
+  limit = 80,
+  before?: string,
+): Promise<ChatMessage[]> {
+  const client = getSupabaseClient();
+  let query = client
+    .from("chat_messages")
+    .select("*")
+    .eq("room_id", roomId)
+    .is("deleted_at", null)
+    .order("created_at", { ascending: true })
+    .limit(limit);
+
+  if (before) {
+    query = query.lt("created_at", before);
+  }
+
+  const { data, error } = await query;
+  handleError(error);
+
+  return (data ?? []).map((row) => toMessage(row as UnknownRecord));
+}
+
+export async function sendGroupMessage(roomId: string, content: string): Promise<ChatMessage> {
+  const client = getSupabaseClient();
+  const { data: userData, error: authError } = await client.auth.getUser();
+  handleError(authError);
+  if (!userData.user) throw new Error("You must be signed in.");
+
+  const { data, error } = await client
+    .from("chat_messages")
+    .insert({ content: content.trim(), room_id: roomId, sender_id: userData.user.id })
+    .select("*")
+    .single();
+  handleError(error);
+
+  return toMessage(data as UnknownRecord);
+}
+
+export function subscribeToGroupMessages(
+  roomId: string,
+  onMessage: (message: ChatMessage) => void,
+) {
+  return subscribeToRoomMessages(roomId, onMessage);
+}
+
+// ============================================================================
+// Cross-Platform Invites (Enhanced)
+// ============================================================================
+
+function toCrossPlatformInvite(row: UnknownRecord): CrossPlatformInvite {
+  return {
+    id: rowString(row, "id"),
+    senderId: rowString(row, "sender_id"),
+    receiverId: rowString(row, "receiver_id"),
+    gameId: rowNullableString(row, "game_id"),
+    gameTitle: rowString(row, "game_title"),
+    platform: rowNullableString(row, "platform") as PlatformType | null,
+    launchUri: rowNullableString(row, "launch_uri"),
+    message: rowNullableString(row, "message"),
+    feasibility: (rowString(row, "feasibility", "uncertain") || "uncertain") as InviteFeasibility,
+    status: rowString(row, "status", "pending") as CrossPlatformInvite["status"],
+    expiresAt: rowString(row, "expires_at"),
+    createdAt: rowString(row, "created_at"),
+    updatedAt: rowString(row, "updated_at"),
+  };
+}
+
+export async function sendCrossplatformInvite(
+  receiverId: string,
+  gameTitle: string,
+  platform: PlatformType | null,
+  launchUri: string | null,
+  feasibility: InviteFeasibility,
+  message?: string | null,
+): Promise<CrossPlatformInvite> {
+  const client = getSupabaseClient();
+  const { data: userData, error: authError } = await client.auth.getUser();
+  handleError(authError);
+  if (!userData.user) throw new Error("You must be signed in.");
+
+  const { data, error } = await client
+    .from("game_invites")
+    .insert({
+      sender_id: userData.user.id,
+      receiver_id: receiverId,
+      game_title: gameTitle.trim(),
+      launch_uri: launchUri,
+      message: message?.trim() || null,
+      // Store platform + feasibility in metadata via the existing columns
+      // The game_invites table already has launch_uri; we repurpose message for feasibility info
+    })
+    .select("*")
+    .single();
+  handleError(error);
+
+  // Return as CrossPlatformInvite with additional computed fields
+  const invite = toCrossPlatformInvite(data as UnknownRecord);
+  return { ...invite, platform, feasibility };
+}
+
+/**
+ * Check if cross-platform invite is feasible based on game_cross_play data.
+ */
+export async function checkInviteFeasibility(
+  gameTitle: string,
+  senderPlatforms: PlatformType[],
+  receiverPlatforms: PlatformType[],
+): Promise<InviteFeasibility> {
+  const client = getSupabaseClient();
+
+  // Try to find the game in our catalog
+  const { data: games } = await client
+    .from("games")
+    .select("id")
+    .ilike("title", `%${gameTitle}%`)
+    .limit(1);
+
+  if (!games || games.length === 0) {
+    // Can't determine feasibility without game data
+    return "uncertain";
+  }
+
+  const gameId = rowString(games[0] as UnknownRecord, "id");
+
+  // Check cross-play support for this game
+  const { data: crossPlay } = await client
+    .from("game_cross_play")
+    .select("platform, is_enabled")
+    .eq("game_id", gameId)
+    .eq("is_enabled", true);
+
+  if (!crossPlay || crossPlay.length === 0) {
+    return "uncertain";
+  }
+
+  const enabledPlatforms = new Set(crossPlay.map((r) => rowString(r as UnknownRecord, "platform")));
+
+  // Check if both sender and receiver have at least one matching enabled platform
+  const senderMatch = senderPlatforms.some((p) => enabledPlatforms.has(p));
+  const receiverMatch = receiverPlatforms.some((p) => enabledPlatforms.has(p));
+
+  if (senderMatch && receiverMatch) return "possible";
+  if (!senderMatch && !receiverMatch) return "impossible";
+  return "uncertain";
 }

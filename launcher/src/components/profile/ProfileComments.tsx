@@ -74,9 +74,7 @@ export function ProfileComments({
         <span className="neo-copy border-2 border-black bg-[#007166] px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-white">
           Community
         </span>
-        <h2 className="neo-title text-3xl leading-none text-[#171411]">
-          Guestbook
-        </h2>
+        <h2 className="neo-title text-3xl leading-none text-[#171411]">Guestbook</h2>
       </div>
       <div className="mt-4 space-y-3">
         {comments.length > 0 ? (

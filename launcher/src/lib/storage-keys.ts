@@ -8,6 +8,7 @@ export const STORAGE_KEYS = {
   HARDWARE_FALLBACK: "og-launcher:profile-hardware:v1",
 
   LIBRARY_CUSTOM_CATEGORIES: "launcher_custom_categories",
+  LIBRARY_CUSTOM_ARTWORK: "launcher_custom_artwork",
   LIBRARY_DYNAMIC_COLLECTIONS: "launcher_dynamic_collections",
   LIBRARY_FAVORITES: "launcher_favorites",
   LIBRARY_FILTER_STATE: "launcher_library_filter_state",

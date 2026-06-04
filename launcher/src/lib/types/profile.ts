@@ -17,12 +17,7 @@ type ShowcaseType =
   | "custom_text"
   | "trophy_case";
 
-type BadgeRarity =
-  | "common"
-  | "uncommon"
-  | "rare"
-  | "epic"
-  | "legendary";
+type BadgeRarity = "common" | "uncommon" | "rare" | "epic" | "legendary";
 
 export interface Profile {
   id: string;
@@ -103,11 +98,19 @@ export interface Friendship {
   respondedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  profile?: Pick<
+    Profile,
+    "id" | "username" | "displayName" | "avatarUrl" | "profileVisibility"
+  > | null;
 }
 
 export interface FriendRequest extends Friendship {
-  requesterProfile?: Profile;
-  addresseeProfile?: Profile;
+  requesterProfile?:
+    | Pick<Profile, "id" | "username" | "displayName" | "avatarUrl" | "profileVisibility">
+    | undefined;
+  addresseeProfile?:
+    | Pick<Profile, "id" | "username" | "displayName" | "avatarUrl" | "profileVisibility">
+    | undefined;
 }
 
 export interface UserPresence {

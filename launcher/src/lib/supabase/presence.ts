@@ -2,12 +2,8 @@ import type { RealtimeChannel } from "@supabase/supabase-js";
 
 import { getSupabaseClient, supabase } from "./client";
 import type { UserPresence } from "../types/profile";
-import {
-  isMissingSchemaError,
-  rowNullableString,
-  rowString,
-  type UnknownRecord,
-} from "./helpers";
+export type { UserPresence };
+import { isMissingSchemaError, rowNullableString, rowString, type UnknownRecord } from "./helpers";
 
 export type PresenceUpdateInput = {
   customStatus?: string | null;
@@ -97,10 +93,7 @@ export async function getVisiblePresence(userIds: string[]) {
   }
 
   const client = getSupabaseClient();
-  const { data, error } = await client
-    .from("user_presence")
-    .select("*")
-    .in("user_id", userIds);
+  const { data, error } = await client.from("user_presence").select("*").in("user_id", userIds);
   if (isMissingSchemaError(error)) {
     return [];
   }
@@ -123,20 +116,16 @@ export function subscribeToPresenceChanges(
   const watchedUsers = new Set(userIds);
   const channel: RealtimeChannel = client
     .channel(`og-presence-${crypto.randomUUID()}`)
-    .on(
-      "postgres_changes",
-      { event: "*", schema: "public", table: "user_presence" },
-      (payload) => {
-        const row = (payload.new && Object.keys(payload.new).length > 0
-          ? payload.new
-          : payload.old) as UnknownRecord;
-        const userId = rowString(row, "user_id");
+    .on("postgres_changes", { event: "*", schema: "public", table: "user_presence" }, (payload) => {
+      const row = (
+        payload.new && Object.keys(payload.new).length > 0 ? payload.new : payload.old
+      ) as UnknownRecord;
+      const userId = rowString(row, "user_id");
 
-        if (watchedUsers.has(userId)) {
-          onChange(toPresence(row));
-        }
-      },
-    )
+      if (watchedUsers.has(userId)) {
+        onChange(toPresence(row));
+      }
+    })
     .subscribe();
 
   return () => {

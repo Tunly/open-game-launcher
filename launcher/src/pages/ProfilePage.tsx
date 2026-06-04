@@ -106,16 +106,12 @@ export function ProfilePage() {
   }
 
   const isOwnProfile = user?.id === state.data.profile.id;
-  const isPrivateForViewer =
-    state.data.profile.profileVisibility === "private" && !isOwnProfile;
-  const canShowComments =
-    isOwnProfile || state.data.profile.commentsVisibility !== "private";
+  const isPrivateForViewer = state.data.profile.profileVisibility === "private" && !isOwnProfile;
+  const canShowComments = isOwnProfile || state.data.profile.commentsVisibility !== "private";
 
   function handleCommentsChange(comments: ProfilePageData["comments"]) {
     setState((current) =>
-      current.status === "ready"
-        ? { ...current, data: { ...current.data, comments } }
-        : current,
+      current.status === "ready" ? { ...current, data: { ...current.data, comments } } : current,
     );
   }
 
@@ -123,8 +119,7 @@ export function ProfilePage() {
     <ProfileShell>
       {state.isMock ? (
         <div className="neo-copy mb-4 border-[3px] border-black bg-[#f6edd8] p-4 text-[11px] font-black uppercase tracking-[0.08em] text-[#5b403f] shadow-[4px_4px_0_#1f1c0f]">
-          Supabase env vars are missing, so this route is showing MVP fallback
-          profile data.
+          Supabase env vars are missing, so this route is showing MVP fallback profile data.
         </div>
       ) : null}
 
@@ -142,19 +137,14 @@ export function ProfilePage() {
                   title={state.data.libraryPreview[0]?.title ?? "No featured game"}
                   body={
                     state.data.libraryPreview[0]
-                      ? `${Math.floor(
-                          state.data.libraryPreview[0].playtimeMinutes / 60,
-                        )}h played`
+                      ? `${Math.floor(state.data.libraryPreview[0].playtimeMinutes / 60)}h played`
                       : "Pick a featured game after library data exists."
                   }
                 />
               </ProfileSidePanel>
               <ProfileSidePanel title="Featured Achievement">
                 <FeaturedText
-                  title={
-                    state.data.achievementPreview[0]?.name ??
-                    "No featured achievement"
-                  }
+                  title={state.data.achievementPreview[0]?.name ?? "No featured achievement"}
                   body={
                     state.data.achievementPreview[0]?.description ??
                     "Achievements are read-only from the client in this MVP."
@@ -209,31 +199,17 @@ export function ProfilePage() {
 }
 
 function ProfileShell({ children }: { children: ReactNode }) {
-  return (
-    <div className="mx-auto w-full max-w-[1220px] px-4 py-7 sm:px-6 lg:px-8">
-      {children}
-    </div>
-  );
+  return <div className="mx-auto w-full max-w-[1220px] px-4 py-7 sm:px-6 lg:px-8">{children}</div>;
 }
 
-function EmptyPanel({
-  body,
-  icon,
-  title,
-}: {
-  body: string;
-  icon: ReactNode;
-  title: string;
-}) {
+function EmptyPanel({ body, icon, title }: { body: string; icon: ReactNode; title: string }) {
   return (
     <div className="grid min-h-[420px] place-items-center border-4 border-black bg-[#fff9ed] p-8 text-center shadow-[7px_7px_0_#1f1c0f]">
       <div className="max-w-md">
         <div className="mx-auto flex h-16 w-16 items-center justify-center border-[3px] border-black bg-[#b7102a] text-white shadow-[4px_4px_0_#1f1c0f]">
           {icon}
         </div>
-        <h1 className="neo-title mt-5 text-5xl leading-none text-[#171411]">
-          {title}
-        </h1>
+        <h1 className="neo-title mt-5 text-5xl leading-none text-[#171411]">{title}</h1>
         <p className="mt-3 text-sm font-semibold leading-6 text-[#5b403f]">{body}</p>
       </div>
     </div>
@@ -253,27 +229,19 @@ function PrivateProfileState({ data }: { data: ProfilePageData }) {
             <p className="neo-copy inline-block border-2 border-black bg-[#f6edd8] px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-[#171411]">
               @{data.profile.username}
             </p>
-            <h1 className="neo-title mt-2 text-5xl leading-none text-[#171411]">
-              Private Profile
-            </h1>
+            <h1 className="neo-title mt-2 text-5xl leading-none text-[#171411]">Private Profile</h1>
           </div>
         </div>
         <p className="mt-5 max-w-xl text-sm font-semibold leading-6 text-[#5b403f]">
-          This player keeps their room private. Library, activity, achievements,
-          and comments are hidden by profile visibility rules.
+          This player keeps their room private. Library, activity, achievements, and comments are
+          hidden by profile visibility rules.
         </p>
       </div>
     </div>
   );
 }
 
-function ProfileSidePanel({
-  children,
-  title,
-}: {
-  children: ReactNode;
-  title: string;
-}) {
+function ProfileSidePanel({ children, title }: { children: ReactNode; title: string }) {
   return (
     <section className="border-4 border-black bg-[#fff9ed] p-5 shadow-[5px_5px_0_#1f1c0f]">
       <h2 className="neo-title border-b-[3px] border-black pb-3 text-3xl leading-none text-[#171411]">

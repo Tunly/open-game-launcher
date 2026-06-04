@@ -3,6 +3,7 @@ import { type FormEvent, useState } from "react";
 
 import { useCurrentUser } from "../../hooks/useCurrentUser";
 import { isUsernameAvailable, updateMyProfile } from "../../lib/supabase/profile";
+import { getErrorMessage } from "../../lib/formatters";
 import { usernameSchema } from "../../lib/validation/profile";
 
 type UsernameStatus = "idle" | "checking" | "available" | "taken";
@@ -13,10 +14,6 @@ interface UsernamePromptModalProps {
 
 function normalizeUsername(username: string) {
   return username.trim().toLowerCase();
-}
-
-function getErrorMessage(error: unknown) {
-  return error instanceof Error ? error.message : String(error);
 }
 
 export function UsernamePromptModal({ onComplete }: UsernamePromptModalProps) {
@@ -62,7 +59,7 @@ export function UsernamePromptModal({ onComplete }: UsernamePromptModalProps) {
 
     const normalizedUsername = normalizeUsername(username);
     const usernameAvailable = await checkUsername();
-    
+
     if (!usernameAvailable) {
       setIsSubmitting(false);
       return;
@@ -97,7 +94,7 @@ export function UsernamePromptModal({ onComplete }: UsernamePromptModalProps) {
           : "3-32 characters: letters, numbers, _, . or -";
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
       <div className="w-full max-w-[500px]">
         <div className="mb-4">
           <span className="neo-copy inline-flex border-2 border-black bg-[#c20b2f] px-3 py-1 text-xs font-bold uppercase text-white shadow-[3px_3px_0_#171411]">
@@ -107,7 +104,8 @@ export function UsernamePromptModal({ onComplete }: UsernamePromptModalProps) {
             Pick a Username
           </h2>
           <p className="neo-copy mt-4 text-xs font-bold uppercase leading-6 text-[#efe6d4]">
-            Your current account was created without a username. Please select one now to use social features.
+            Your current account was created without a username. Please select one now to use social
+            features.
           </p>
         </div>
 

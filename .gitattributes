@@ -1,0 +1,37 @@
+* text=auto eol=lf
+
+# Windows batch / PowerShell: keep CRLF
+*.bat          text eol=crlf
+*.cmd          text eol=crlf
+*.ps1          text eol=crlf
+
+# Shell scripts: LF
+*.sh           text eol=lf
+*.bash         text eol=lf
+
+# Lockfiles
+pnpm-lock.yaml text eol=lf
+package-lock.json text eol=lf
+
+# Markdown: allow trailing spaces (used for line breaks)
+*.md           text eol=lf whitespace=-trailing-space
+
+# Rust
+*.rs           text eol=lf
+
+# Binary files
+*.png          binary
+*.jpg          binary
+*.jpeg         binary
+*.gif          binary
+*.ico          binary
+*.webp         binary
+*.woff         binary
+*.woff2        binary
+*.ttf          binary
+*.eot          binary
+*.pdf          binary
+*.zip          binary
+*.tar          binary
+*.gz           binary
+*.7z           binary

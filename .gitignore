@@ -1,17 +1,58 @@
+# Local config / secrets
 supabase/.temp/
 supabase/functions/.env
 supabase/functions/.env.local
 supabase/functions/.env.*.local
 .vs/
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
 launcher/.env
 launcher/.env.local
 launcher/.env.*.local
 
-# Zusätzlicher Schutz für den Hauptordner
 .env
 .env.local
 .env.*.local
+
+# Logs
 *.log
+build.log
+lint.log
+tc.log
+typecheck.log
+vitest.log
+pnpm.log
+pnpm-debug.log*
+
+# Build / coverage artifacts
+launcher/dist/
+launcher/coverage/
+launcher/.tsbuildinfo
+*.tsbuildinfo
+launcher/src-tauri/target/
+launcher/src-tauri/gen/
+
+# Node
+node_modules/
+.pnpm-store/
+
+# Test runners / tooling
+.qoder/
+.husky/_
+
+# Stray helper scripts
+_*.ps1
+_dump.ps1
+_test.py
+
+# Generated code
+launcher/src/lib/supabase/database.types.ts
 
 # Developer-spezifische Toolchain-Konfig
 launcher/src-tauri/.cargo/config.toml

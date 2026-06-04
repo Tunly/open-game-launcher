@@ -1,4 +1,10 @@
-import { useState, useCallback, useEffect, type RefObject, type PointerEvent as ReactPointerEvent } from "react";
+import {
+  useState,
+  useCallback,
+  useEffect,
+  type RefObject,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 
 type LibraryScrollbarState = {
   height: number;
@@ -34,7 +40,10 @@ function useLibraryScrollbar(targetRef: RefObject<HTMLElement>) {
     }
 
     const trackHeight = target.clientHeight;
-    const thumbHeight = Math.max(28, Math.round((target.clientHeight / target.scrollHeight) * trackHeight));
+    const thumbHeight = Math.max(
+      28,
+      Math.round((target.clientHeight / target.scrollHeight) * trackHeight),
+    );
     const maxThumbTop = Math.max(1, trackHeight - thumbHeight);
     const thumbTop = Math.round((target.scrollTop / maxScrollTop) * maxThumbTop);
 

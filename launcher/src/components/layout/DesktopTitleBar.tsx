@@ -68,6 +68,9 @@ export function DesktopTitleBar() {
 
   return (
     <div className="sticky top-0 z-50 flex h-9 select-none items-center border-b-[3px] border-black bg-[#fff9ed] text-[#1f1c0f]">
+      {/* Tauri drag region — keyboard handlers are intentionally omitted because
+          window-drag is a native OS gesture, not a user-facing control. */}
+      {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions */}
       <div
         className="neo-copy flex min-w-0 flex-1 items-center gap-2 px-4 text-[10px] font-black uppercase tracking-[0.16em]"
         data-tauri-drag-region

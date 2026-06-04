@@ -17,7 +17,7 @@ create table if not exists public.mods (
   game_id uuid references public.games(id) on delete set null,
   game_title text not null,
   name text not null,
-  source text not null default 'manual' check (source in ('manual', 'steam_workshop', 'nexus', 'local')),
+  source text not null default 'manual' check (source in ('manual', 'steam_workshop', 'local')),
   source_url text,
   author text,
   description text,

@@ -15,9 +15,7 @@ export function ShowcasePanel({
         <span className="neo-copy border-2 border-black bg-[#b7102a] px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-white shadow-[2px_2px_0_#1f1c0f]">
           {kicker}
         </span>
-        <h3 className="neo-title text-2xl leading-none text-[#171411]">
-          {title}
-        </h3>
+        <h3 className="neo-title text-2xl leading-none text-[#171411]">{title}</h3>
       </div>
       {children}
     </section>

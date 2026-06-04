@@ -49,17 +49,10 @@ export function isMissingSchemaError(error: SupabaseErrorLike | null) {
   if (!error) {
     return false;
   }
-  return (
-    isMissingSchemaMessage(error.message) ||
-    error.code === "42703" ||
-    error.code === "42P01"
-  );
+  return isMissingSchemaMessage(error.message) || error.code === "42703" || error.code === "42P01";
 }
 
 export function isMissingSchemaMessage(message: string) {
   const normalizedMessage = message.toLowerCase();
-  return (
-    normalizedMessage.includes("does not exist") ||
-    normalizedMessage.includes("schema cache")
-  );
+  return normalizedMessage.includes("does not exist") || normalizedMessage.includes("schema cache");
 }

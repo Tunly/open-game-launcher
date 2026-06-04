@@ -233,13 +233,8 @@ pub async fn process_battlenet_games_payload(
                     .map(str::trim)
                     .filter(|value| !value.is_empty())
                     .map(str::to_string);
-                let n_clone = n.to_string();
-                let i_clone = i.to_string();
-                let assets = std::thread::spawn(move || {
-                    crate::commands::games::detect::get_rawg_battlenet_assets(&i_clone, &n_clone)
-                })
-                .join()
-                .unwrap_or(None);
+                let assets =
+                    crate::commands::games::detect::get_rawg_battlenet_assets(i, n);
                 let (fallback_cover, fallback_logo, fallback_icon) =
                     crate::commands::games::detect::get_battlenet_assets(i, n);
                 let cover_url = api_cover_url

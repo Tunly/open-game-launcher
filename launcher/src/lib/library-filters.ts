@@ -67,7 +67,9 @@ function matchesSidebarPlatform(game: Game, filter: LibraryPlatformFilter): bool
     return game.platform === "macos";
   }
   if (filter === "linux") {
-    return game.platform === "linux" || (game.platform === "windows" && game.protonCompatible === true);
+    return (
+      game.platform === "linux" || (game.platform === "windows" && game.protonCompatible === true)
+    );
   }
   return true;
 }
@@ -81,7 +83,9 @@ function matchesAdvancedPlatformLabel(game: Game, platformLabel: string): boolea
     return game.platform === "macos";
   }
   if (token === "linux") {
-    return game.platform === "linux" || (game.platform === "windows" && game.protonCompatible === true);
+    return (
+      game.platform === "linux" || (game.platform === "windows" && game.protonCompatible === true)
+    );
   }
   return (game.platform || "").toLowerCase() === platformLabel.toLowerCase();
 }
@@ -169,14 +173,18 @@ function matchesFeatureLabel(game: Game, filter: string): boolean {
     return features.some((feature) => feature.includes("vr"));
   }
   if (token.includes("comment")) {
-    return features.some((feature) => feature.includes("comment")) || description.includes("comment");
+    return (
+      features.some((feature) => feature.includes("comment")) || description.includes("comment")
+    );
   }
   if (token.includes("multiplayer") || token === "multi") {
     return (game.players || []).some((player) => normalizeFilterToken(player).includes("multi"));
   }
 
-  return features.some((feature) => normalizeFilterToken(feature) === token)
-    || (source === "steam" && token === "steam");
+  return (
+    features.some((feature) => normalizeFilterToken(feature) === token) ||
+    (source === "steam" && token === "steam")
+  );
 }
 
 function matchesHardwareLabel(game: Game, filter: string): boolean {
@@ -328,7 +336,9 @@ export function gamePassesAdvancedFilters(
   }
 
   if (filters.launchers.length > 0) {
-    const matchesStore = filters.launchers.some((launcher) => matchesLauncherFilter(game, launcher));
+    const matchesStore = filters.launchers.some((launcher) =>
+      matchesLauncherFilter(game, launcher),
+    );
     if (!matchesStore) {
       return false;
     }
@@ -349,7 +359,9 @@ export function gamePassesAdvancedFilters(
   }
 
   if (filters.hardware.length > 0) {
-    const matchesHardware = filters.hardware.some((hardware) => matchesHardwareLabel(game, hardware));
+    const matchesHardware = filters.hardware.some((hardware) =>
+      matchesHardwareLabel(game, hardware),
+    );
     if (!matchesHardware) {
       return false;
     }
@@ -364,7 +376,9 @@ export function gamePassesAdvancedFilters(
 
   if (filters.categories.length > 0) {
     const gameCategories = context.customCategories[game.id] || [];
-    const matchesCategories = filters.categories.some((category) => gameCategories.includes(category));
+    const matchesCategories = filters.categories.some((category) =>
+      gameCategories.includes(category),
+    );
     if (!matchesCategories) {
       return false;
     }
@@ -405,8 +419,8 @@ export function countActiveAdvancedFilters(
   const defaultCategories = new Set(defaults.productCategories.map((entry) => entry.toLowerCase()));
   const currentCategories = new Set(filters.productCategories.map((entry) => entry.toLowerCase()));
   const productCategoriesChanged =
-    defaultCategories.size !== currentCategories.size
-    || [...defaultCategories].some((entry) => !currentCategories.has(entry));
+    defaultCategories.size !== currentCategories.size ||
+    [...defaultCategories].some((entry) => !currentCategories.has(entry));
   if (productCategoriesChanged) count += 1;
 
   return count;

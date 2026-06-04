@@ -40,11 +40,7 @@ export function ProfileHeader({
             ) : null}
           </div>
           <div className="space-y-4">
-            <ProfileLevelBar
-              isEmbedded
-              level={profile.profileLevel}
-              xp={profile.profileXp}
-            />
+            <ProfileLevelBar isEmbedded level={profile.profileLevel} xp={profile.profileXp} />
             {isOwnProfile ? <EditProfileButton className="w-full" /> : null}
           </div>
         </div>

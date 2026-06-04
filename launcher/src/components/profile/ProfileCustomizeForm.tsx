@@ -28,9 +28,7 @@ export function ProfileCustomizeForm({
                 maxLength={80}
                 placeholder="Showcase title"
                 value={showcase.title ?? ""}
-                onChange={(event) =>
-                  onChange(showcase.id, { title: event.target.value || null })
-                }
+                onChange={(event) => onChange(showcase.id, { title: event.target.value || null })}
               />
             </label>
             <label>
@@ -57,18 +55,24 @@ export function ProfileCustomizeForm({
               <input
                 checked={showcase.isEnabled}
                 type="checkbox"
-                onChange={(event) =>
-                  onChange(showcase.id, { isEnabled: event.target.checked })
-                }
+                onChange={(event) => onChange(showcase.id, { isEnabled: event.target.checked })}
               />
               Enabled
             </label>
           </div>
           <div className="flex gap-2">
-            <button className="neo-copy border-2 border-black bg-[#fff9ed] px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-[#171411] shadow-[2px_2px_0_#1f1c0f] transition hover:-translate-y-0.5 hover:bg-[#8cf5e4]" type="button" onClick={() => onMove(showcase.id, "up")}>
+            <button
+              className="neo-copy border-2 border-black bg-[#fff9ed] px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-[#171411] shadow-[2px_2px_0_#1f1c0f] transition hover:-translate-y-0.5 hover:bg-[#8cf5e4]"
+              type="button"
+              onClick={() => onMove(showcase.id, "up")}
+            >
               Up
             </button>
-            <button className="neo-copy border-2 border-black bg-[#fff9ed] px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-[#171411] shadow-[2px_2px_0_#1f1c0f] transition hover:-translate-y-0.5 hover:bg-[#8cf5e4]" type="button" onClick={() => onMove(showcase.id, "down")}>
+            <button
+              className="neo-copy border-2 border-black bg-[#fff9ed] px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-[#171411] shadow-[2px_2px_0_#1f1c0f] transition hover:-translate-y-0.5 hover:bg-[#8cf5e4]"
+              type="button"
+              onClick={() => onMove(showcase.id, "down")}
+            >
               Down
             </button>
           </div>

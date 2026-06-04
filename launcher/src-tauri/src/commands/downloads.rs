@@ -57,6 +57,14 @@ pub struct DownloadItemPayload {
     pub external: bool,
     #[serde(default)]
     pub last_updated_at: u64,
+    #[serde(default)]
+    pub provider: String,
+    #[serde(default)]
+    pub raw_status: String,
+    #[serde(default)]
+    pub progress_source: String,
+    #[serde(default)]
+    pub error: Option<String>,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -88,6 +96,8 @@ struct ActiveDownload {
     cancelled: bool,
     pause_tx: watch::Sender<bool>,
     cancel_tx: watch::Sender<bool>,
+    raw_status: String,
+    error: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -127,6 +137,90 @@ const DOWNLOAD_STATUS_STARTING: &str = "starting";
 const DOWNLOAD_STATUS_PAUSING: &str = "pausing";
 const DOWNLOAD_STATUS_RESUMING: &str = "resuming";
 const DOWNLOAD_STATUS_INSTALLING: &str = "installing";
+const STEAM_CONTROL_TIMEOUT: Duration = Duration::from_secs(8);
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+enum DownloadStatusKind {
+    Queued,
+    Starting,
+    Downloading,
+    Pausing,
+    Paused,
+    Resuming,
+    Installing,
+    Completed,
+    Failed,
+    Cancelled,
+    Error,
+}
+
+impl DownloadStatusKind {
+    fn parse(status: &str) -> Option<Self> {
+        match status {
+            DOWNLOAD_STATUS_QUEUED => Some(Self::Queued),
+            DOWNLOAD_STATUS_STARTING => Some(Self::Starting),
+            DOWNLOAD_STATUS_DOWNLOADING => Some(Self::Downloading),
+            DOWNLOAD_STATUS_PAUSING => Some(Self::Pausing),
+            DOWNLOAD_STATUS_PAUSED => Some(Self::Paused),
+            DOWNLOAD_STATUS_RESUMING => Some(Self::Resuming),
+            DOWNLOAD_STATUS_INSTALLING => Some(Self::Installing),
+            DOWNLOAD_STATUS_COMPLETED => Some(Self::Completed),
+            DOWNLOAD_STATUS_FAILED => Some(Self::Failed),
+            DOWNLOAD_STATUS_CANCELLED => Some(Self::Cancelled),
+            DOWNLOAD_STATUS_ERROR => Some(Self::Error),
+            _ => None,
+        }
+    }
+
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Queued => DOWNLOAD_STATUS_QUEUED,
+            Self::Starting => DOWNLOAD_STATUS_STARTING,
+            Self::Downloading => DOWNLOAD_STATUS_DOWNLOADING,
+            Self::Pausing => DOWNLOAD_STATUS_PAUSING,
+            Self::Paused => DOWNLOAD_STATUS_PAUSED,
+            Self::Resuming => DOWNLOAD_STATUS_RESUMING,
+            Self::Installing => DOWNLOAD_STATUS_INSTALLING,
+            Self::Completed => DOWNLOAD_STATUS_COMPLETED,
+            Self::Failed => DOWNLOAD_STATUS_FAILED,
+            Self::Cancelled => DOWNLOAD_STATUS_CANCELLED,
+            Self::Error => DOWNLOAD_STATUS_ERROR,
+        }
+    }
+
+    fn is_terminal(self) -> bool {
+        matches!(
+            self,
+            Self::Completed | Self::Failed | Self::Cancelled | Self::Error
+        )
+    }
+
+    fn is_restart_interrupted(self) -> bool {
+        matches!(
+            self,
+            Self::Downloading
+                | Self::Queued
+                | Self::Starting
+                | Self::Pausing
+                | Self::Resuming
+                | Self::Installing
+        )
+    }
+
+    fn is_pause_toggle(self) -> bool {
+        matches!(self, Self::Downloading | Self::Paused)
+    }
+
+    fn is_steam_control_pending(self) -> bool {
+        matches!(self, Self::Pausing | Self::Resuming)
+    }
+}
+
+fn validated_download_status(status: &str) -> &'static str {
+    DownloadStatusKind::parse(status)
+        .unwrap_or(DownloadStatusKind::Failed)
+        .as_str()
+}
 
 fn get_download_manager() -> &'static DownloadMap {
     static MANAGER: OnceLock<DownloadMap> = OnceLock::new();
@@ -440,6 +534,8 @@ pub async fn start_download(
         cancelled: false,
         pause_tx,
         cancel_tx,
+        raw_status: "starting".to_string(),
+        error: None,
     };
     guard.insert(game_id.clone(), active);
     if let Some(dl) = guard.get(&game_id) {
@@ -964,6 +1060,7 @@ pub(crate) fn update_download_status(
     progress: u32,
     eta: u32,
 ) {
+    let status = validated_download_status(status);
     let Ok(mut guard) = get_download_manager().lock() else {
         return;
     };
@@ -1241,6 +1338,7 @@ pub(crate) fn emit_download_progress(
     status: &str,
     eta: u32,
 ) {
+    let status = validated_download_status(status);
     let mut payload = get_download_manager()
         .lock()
         .ok()
@@ -1282,6 +1380,10 @@ fn payload_from_active_download(game_id: &str, dl: &ActiveDownload) -> DownloadI
         can_cancel: dl.can_cancel,
         external: dl.external,
         last_updated_at: 0,
+        provider: provider_key_from_game_id(game_id),
+        raw_status: dl.raw_status.clone(),
+        progress_source: progress_source_from_game_id(game_id),
+        error: dl.error.clone(),
     })
 }
 
@@ -1302,10 +1404,15 @@ fn default_download_payload(game_id: &str, title: &str) -> DownloadItemPayload {
         can_cancel: true,
         external: false,
         last_updated_at: 0,
+        provider: provider_key_from_game_id(game_id),
+        raw_status: String::new(),
+        progress_source: progress_source_from_game_id(game_id),
+        error: None,
     })
 }
 
 fn normalize_queue_payload(mut item: DownloadItemPayload) -> DownloadItemPayload {
+    item.status = validated_download_status(&item.status).to_string();
     if item.id.trim().is_empty() {
         item.id = format!("download-{}", item.game_id);
     }
@@ -1314,6 +1421,15 @@ fn normalize_queue_payload(mut item: DownloadItemPayload) -> DownloadItemPayload
     }
     if item.phase.trim().is_empty() {
         item.phase = phase_from_status_and_speed(&item.status, &item.speed);
+    }
+    if item.provider.trim().is_empty() {
+        item.provider = provider_key_from_game_id(&item.game_id);
+    }
+    if item.progress_source.trim().is_empty() {
+        item.progress_source = progress_source_from_game_id(&item.game_id);
+    }
+    if item.raw_status.trim().is_empty() {
+        item.raw_status = item.status.clone();
     }
 
     let is_terminal = is_terminal_download_status(&item.status);
@@ -1589,33 +1705,19 @@ fn terminal_sort_rank(status: &str) -> u8 {
 }
 
 fn is_terminal_download_status(status: &str) -> bool {
-    matches!(
-        status,
-        DOWNLOAD_STATUS_COMPLETED
-            | DOWNLOAD_STATUS_FAILED
-            | DOWNLOAD_STATUS_CANCELLED
-            | DOWNLOAD_STATUS_ERROR
-    )
+    DownloadStatusKind::parse(status).is_some_and(DownloadStatusKind::is_terminal)
 }
 
 fn is_restart_interrupted_download_status(status: &str) -> bool {
-    matches!(
-        status,
-        DOWNLOAD_STATUS_DOWNLOADING
-            | DOWNLOAD_STATUS_QUEUED
-            | DOWNLOAD_STATUS_STARTING
-            | DOWNLOAD_STATUS_PAUSING
-            | DOWNLOAD_STATUS_RESUMING
-            | DOWNLOAD_STATUS_INSTALLING
-    )
+    DownloadStatusKind::parse(status).is_some_and(DownloadStatusKind::is_restart_interrupted)
 }
 
 fn is_pause_toggle_status(status: &str) -> bool {
-    matches!(status, DOWNLOAD_STATUS_DOWNLOADING | DOWNLOAD_STATUS_PAUSED)
+    DownloadStatusKind::parse(status).is_some_and(DownloadStatusKind::is_pause_toggle)
 }
 
 fn is_steam_control_pending_status(status: &str) -> bool {
-    matches!(status, DOWNLOAD_STATUS_PAUSING | DOWNLOAD_STATUS_RESUMING)
+    DownloadStatusKind::parse(status).is_some_and(DownloadStatusKind::is_steam_control_pending)
 }
 
 fn is_external_tracker_game_id(game_id: &str) -> bool {
@@ -1672,8 +1774,8 @@ fn toggle_steam_download_pause(
 
     let app_clone = app.clone();
     let game_id_clone = game_id.to_string();
-    std::thread::spawn(move || {
-        let result = try_control_steam_download(app_id, action);
+    tokio::runtime::Handle::current().spawn_blocking(move || {
+        let result = try_control_steam_download_with_timeout(app_id, action);
         finish_steam_download_control(&app_clone, &game_id_clone, action, result);
     });
 
@@ -1850,6 +1952,35 @@ fn try_control_steam_download(
     };
 
     control_steam_download_targets(targets, app_id, action)
+}
+
+fn try_control_steam_download_with_timeout(
+    app_id: u32,
+    action: SteamDownloadControlAction,
+) -> Result<(), String> {
+    let (tx, rx) = std::sync::mpsc::channel();
+    std::thread::spawn(move || {
+        let _ = tx.send(try_control_steam_download(app_id, action));
+    });
+
+    match rx.recv_timeout(STEAM_CONTROL_TIMEOUT) {
+        Ok(result) => result,
+        Err(std::sync::mpsc::RecvTimeoutError::Timeout) => Err(format!(
+            "Steam {} timed out after {}s. The download stays visible; retry when Steam is responsive.",
+            match action {
+                SteamDownloadControlAction::Pause => "pause",
+                SteamDownloadControlAction::Resume => "resume",
+            },
+            STEAM_CONTROL_TIMEOUT.as_secs()
+        )),
+        Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => Err(format!(
+            "Steam {} worker stopped unexpectedly.",
+            match action {
+                SteamDownloadControlAction::Pause => "pause",
+                SteamDownloadControlAction::Resume => "resume",
+            }
+        )),
+    }
 }
 
 fn control_steam_download_targets(
@@ -2275,6 +2406,9 @@ pub fn start_global_download_watcher(app: tauri::AppHandle) {
                                                         cancelled: false,
                                                         pause_tx,
                                                         cancel_tx,
+                                                        raw_status: "auto_detected_steam"
+                                                            .to_string(),
+                                                        error: None,
                                                     };
                                                     guard.insert(game_id.clone(), active);
                                                     if let Some(dl) = guard.get(&game_id) {
@@ -2650,6 +2784,274 @@ fn steam_downloading_dir_for_manifest(
     Some(manifest_path.parent()?.join("downloading").join(app_id))
 }
 
+// ── Provider Health Check ──────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ProviderHealthStatus {
+    pub provider: String,
+    pub installed: bool,
+    pub data_readable: bool,
+    pub details: String,
+    pub manifests_count: u32,
+}
+
+#[tauri::command]
+pub fn check_provider_health() -> Result<Vec<ProviderHealthStatus>, String> {
+    let mut results = Vec::new();
+
+    // Steam
+    results.push(check_steam_health());
+    // Epic
+    results.push(check_epic_health());
+    // EA
+    results.push(check_ea_health());
+    // Battle.net
+    results.push(check_battlenet_health());
+
+    Ok(results)
+}
+
+fn check_steam_health() -> ProviderHealthStatus {
+    let steam_dir = crate::commands::games::detect::find_steam_dir();
+    let Some(steam_dir) = steam_dir else {
+        return ProviderHealthStatus {
+            provider: "steam".to_string(),
+            installed: false,
+            data_readable: false,
+            details: "Steam installation not found".to_string(),
+            manifests_count: 0,
+        };
+    };
+
+    let libraries = crate::commands::games::detect::read_steam_library_folders(&steam_dir);
+    let mut folders = vec![steam_dir.clone()];
+    folders.extend(libraries);
+
+    let mut manifest_count = 0u32;
+    for lib in &folders {
+        let steamapps = lib.join("steamapps");
+        if let Ok(entries) = std::fs::read_dir(&steamapps) {
+            for entry in entries.flatten() {
+                if let Some(name) = entry.path().file_name().and_then(|n| n.to_str()) {
+                    if name.starts_with("appmanifest_") && name.ends_with(".acf") {
+                        manifest_count += 1;
+                    }
+                }
+            }
+        }
+    }
+
+    let cef_reachable = steam_cef_targets().is_ok();
+    let details = if cef_reachable {
+        format!("{} manifests, CEF reachable", manifest_count)
+    } else {
+        format!("{} manifests, CEF not available", manifest_count)
+    };
+
+    ProviderHealthStatus {
+        provider: "steam".to_string(),
+        installed: true,
+        data_readable: manifest_count > 0,
+        details,
+        manifests_count: manifest_count,
+    }
+}
+
+fn check_epic_health() -> ProviderHealthStatus {
+    let manifest_dir =
+        std::path::PathBuf::from(r"C:\ProgramData\Epic\EpicGamesLauncher\Data\Manifests");
+    if !manifest_dir.exists() {
+        return ProviderHealthStatus {
+            provider: "epic".to_string(),
+            installed: false,
+            data_readable: false,
+            details: "Epic Games manifest directory not found".to_string(),
+            manifests_count: 0,
+        };
+    }
+
+    let mut count = 0u32;
+    if let Ok(entries) = std::fs::read_dir(&manifest_dir) {
+        for entry in entries.flatten() {
+            if entry.path().extension().and_then(|e| e.to_str()) == Some("item") {
+                count += 1;
+            }
+        }
+    }
+
+    ProviderHealthStatus {
+        provider: "epic".to_string(),
+        installed: true,
+        data_readable: count > 0,
+        details: format!("{} item manifests found", count),
+        manifests_count: count,
+    }
+}
+
+fn check_ea_health() -> ProviderHealthStatus {
+    let games = crate::commands::games::detect::scan_ea_games();
+    let count = games.len() as u32;
+
+    ProviderHealthStatus {
+        provider: "ea".to_string(),
+        installed: count > 0,
+        data_readable: count > 0,
+        details: if count > 0 {
+            format!("{} EA games detected via registry", count)
+        } else {
+            "No EA entries found in registry".to_string()
+        },
+        manifests_count: count,
+    }
+}
+
+fn check_battlenet_health() -> ProviderHealthStatus {
+    let games = crate::commands::games::detect::scan_battlenet_games();
+    let count = games.len() as u32;
+
+    ProviderHealthStatus {
+        provider: "battlenet".to_string(),
+        installed: count > 0,
+        data_readable: count > 0,
+        details: if count > 0 {
+            format!("{} Battle.net games detected via registry", count)
+        } else {
+            "No Battle.net entries found in registry".to_string()
+        },
+        manifests_count: count,
+    }
+}
+
+// ── Download Reconciliation ────────────────────────────────────────────────────
+
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ReconciliationResult {
+    pub installed_removed: Vec<String>,
+    pub active_restored: Vec<String>,
+    pub stale_cleaned: Vec<String>,
+    pub errors: Vec<String>,
+}
+
+#[tauri::command]
+pub fn reconcile_downloads(app: tauri::AppHandle) -> Result<ReconciliationResult, String> {
+    let mut result = ReconciliationResult {
+        installed_removed: Vec::new(),
+        active_restored: Vec::new(),
+        stale_cleaned: Vec::new(),
+        errors: Vec::new(),
+    };
+
+    let history = load_download_history();
+    let mut updated_items: Vec<DownloadItemPayload> = Vec::new();
+    let now = now_unix_secs();
+    let stale_threshold = 7 * 24 * 60 * 60; // 7 days
+
+    // Pre-scan installed games for each provider
+    let epic_installed: std::collections::HashSet<String> = {
+        crate::commands::games::detect::scan_epic_games()
+            .into_iter()
+            .map(|g| g.id)
+            .collect()
+    };
+    let ea_installed: std::collections::HashSet<String> = {
+        crate::commands::games::detect::scan_ea_games()
+            .into_iter()
+            .map(|g| g.id)
+            .collect()
+    };
+    let battlenet_installed: std::collections::HashSet<String> = {
+        crate::commands::games::detect::scan_battlenet_games()
+            .into_iter()
+            .map(|g| g.id)
+            .collect()
+    };
+
+    for mut item in history {
+        let is_terminal = is_terminal_download_status(&item.status);
+
+        // Check if a non-terminal item is actually installed now
+        if !is_terminal {
+            let is_now_installed = is_download_game_installed(&item.game_id);
+
+            if is_now_installed && !has_active_download_work(&item) {
+                // Game is installed and no active download work -> mark completed
+                item.status = DOWNLOAD_STATUS_COMPLETED.to_string();
+                item.progress = 100;
+                item.speed = "Reconciled".to_string();
+                item.phase = "completed".to_string();
+                item.can_pause = false;
+                item.can_cancel = false;
+                item.last_updated_at = now;
+                result.installed_removed.push(item.game_id.clone());
+            }
+        }
+
+        // Check for stale entries: non-terminal, old last_updated_at, no provider confirmation
+        if !is_terminal && !is_terminal_download_status(&item.status) {
+            let age = now.saturating_sub(item.last_updated_at);
+            if item.last_updated_at > 0 && age > stale_threshold {
+                // Check if provider confirms it's still active
+                let provider_confirms =
+                    if let Some(app_id) = steam_app_id_from_download_id(&item.game_id) {
+                        steam_download_work_exists(app_id)
+                    } else if item.game_id.starts_with("epic-") {
+                        epic_installed.contains(&item.game_id)
+                    } else if item.game_id.starts_with("ea-") {
+                        ea_installed.contains(&item.game_id)
+                    } else if item.game_id.starts_with("battlenet-") {
+                        battlenet_installed.contains(&item.game_id)
+                    } else {
+                        false
+                    };
+
+                if !provider_confirms {
+                    result.stale_cleaned.push(item.game_id.clone());
+                    continue; // Drop this item from the history
+                }
+            }
+        }
+
+        // Check for Steam downloads that are active but were paused/interrupted
+        if let Some(app_id) = steam_app_id_from_download_id(&item.game_id) {
+            if is_terminal_download_status(&item.status) || item.status == DOWNLOAD_STATUS_PAUSED {
+                if steam_download_work_exists(app_id) {
+                    // Steam is actively downloading this but we had it as paused/terminal
+                    item.status = DOWNLOAD_STATUS_DOWNLOADING.to_string();
+                    item.speed = "Steam".to_string();
+                    item.phase = "external".to_string();
+                    item.external = true;
+                    item.can_pause = true;
+                    item.last_updated_at = now;
+                    result.active_restored.push(item.game_id.clone());
+                }
+            }
+        }
+
+        updated_items.push(item);
+    }
+
+    // Save the reconciled history
+    save_download_history(&updated_items);
+
+    // Emit library change event if anything changed
+    if !result.installed_removed.is_empty()
+        || !result.active_restored.is_empty()
+        || !result.stale_cleaned.is_empty()
+    {
+        let _ = app.emit(
+            "library_inventory_changed",
+            serde_json::json!({
+                "reason": "reconciliation",
+                "gameCount": updated_items.len()
+            }),
+        );
+    }
+
+    Ok(result)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2771,6 +3173,10 @@ mod tests {
             can_cancel: true,
             external: true,
             last_updated_at: 0,
+            provider: String::new(),
+            raw_status: String::new(),
+            progress_source: String::new(),
+            error: None,
         });
 
         let epic_item = normalize_queue_payload(DownloadItemPayload {
@@ -2789,6 +3195,10 @@ mod tests {
             can_cancel: true,
             external: true,
             last_updated_at: 0,
+            provider: String::new(),
+            raw_status: String::new(),
+            progress_source: String::new(),
+            error: None,
         });
 
         assert!(steam_item.can_pause);
@@ -2815,6 +3225,10 @@ mod tests {
             can_cancel: false,
             external: true,
             last_updated_at: 0,
+            provider: String::new(),
+            raw_status: String::new(),
+            progress_source: String::new(),
+            error: None,
         });
 
         let paused_item = normalize_queue_payload(DownloadItemPayload {
@@ -2845,6 +3259,51 @@ mod tests {
         assert!(!is_restart_interrupted_download_status(
             DOWNLOAD_STATUS_COMPLETED
         ));
+    }
+
+    #[test]
+    fn download_status_state_machine_validates_unknown_values() {
+        assert_eq!(
+            validated_download_status(DOWNLOAD_STATUS_DOWNLOADING),
+            DOWNLOAD_STATUS_DOWNLOADING
+        );
+        assert_eq!(validated_download_status("mystery"), DOWNLOAD_STATUS_FAILED);
+        assert!(DownloadStatusKind::parse(DOWNLOAD_STATUS_PAUSING)
+            .is_some_and(DownloadStatusKind::is_steam_control_pending));
+        assert!(DownloadStatusKind::parse(DOWNLOAD_STATUS_RESUMING)
+            .is_some_and(DownloadStatusKind::is_steam_control_pending));
+        assert!(!DownloadStatusKind::parse(DOWNLOAD_STATUS_INSTALLING)
+            .is_some_and(DownloadStatusKind::is_pause_toggle));
+    }
+
+    #[test]
+    fn normalize_queue_payload_converts_unknown_status_to_failed() {
+        let item = normalize_queue_payload(DownloadItemPayload {
+            id: "download-manual-test".to_string(),
+            game_id: "manual-test".to_string(),
+            title: "Manual Test".to_string(),
+            progress: 77,
+            speed: "Unknown".to_string(),
+            status: "weird".to_string(),
+            eta: 999,
+            platform: "OG Store".to_string(),
+            phase: String::new(),
+            bytes_downloaded: None,
+            bytes_total: None,
+            can_pause: true,
+            can_cancel: true,
+            external: false,
+            last_updated_at: 0,
+            provider: String::new(),
+            raw_status: String::new(),
+            progress_source: String::new(),
+            error: None,
+        });
+
+        assert_eq!(item.status, DOWNLOAD_STATUS_FAILED);
+        assert_eq!(item.progress, 77);
+        assert!(!item.can_pause);
+        assert!(!item.can_cancel);
     }
 
     #[test]
@@ -3099,6 +3558,44 @@ fn get_platform_from_game_id(game_id: &str) -> String {
         "Battle.net".to_string()
     } else {
         "OG Store".to_string()
+    }
+}
+
+fn provider_key_from_game_id(game_id: &str) -> String {
+    if game_id.starts_with("steam-") {
+        "steam".to_string()
+    } else if game_id.starts_with("epic-") {
+        "epic".to_string()
+    } else if game_id.starts_with("gog-") {
+        "gog".to_string()
+    } else if game_id.starts_with("ea-") {
+        "ea".to_string()
+    } else if game_id.starts_with("ubisoft-") {
+        "ubisoft".to_string()
+    } else if game_id.starts_with("xbox-") {
+        "xbox".to_string()
+    } else if game_id.starts_with("battlenet-") {
+        "battlenet".to_string()
+    } else {
+        "internal".to_string()
+    }
+}
+
+fn progress_source_from_game_id(game_id: &str) -> String {
+    if game_id.starts_with("steam-") {
+        "steam_acf".to_string()
+    } else if game_id.starts_with("epic-") {
+        "epic_stderr".to_string()
+    } else if game_id.starts_with("gog-") {
+        "gog_api".to_string()
+    } else if game_id.starts_with("ea-")
+        || game_id.starts_with("ubisoft-")
+        || game_id.starts_with("battlenet-")
+        || game_id.starts_with("xbox-")
+    {
+        "external_tracker".to_string()
+    } else {
+        "http_range".to_string()
     }
 }
 

@@ -17,9 +17,7 @@ export function RareAchievementsShowcase({
             >
               <div className="h-12 w-12 shrink-0 border-[3px] border-black bg-[#b7102a]" />
               <div>
-                <p className="neo-title text-2xl leading-none text-[#171411]">
-                  {achievement.name}
-                </p>
+                <p className="neo-title text-2xl leading-none text-[#171411]">{achievement.name}</p>
                 <p className="neo-copy mt-1 text-[10px] font-black uppercase tracking-[0.12em] text-[#b7102a]">
                   {achievement.rarity}
                 </p>

@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,700;1,400;1,700&family=Oswald:ital,wght@0,700;1,700&family=Roboto+Condensed:ital,wght@0,400;0,700;1,400;1,700&display=swap');
+@import url("https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,700;1,400;1,700&family=Oswald:ital,wght@0,700;1,700&family=Roboto+Condensed:ital,wght@0,400;0,700;1,400;1,700&display=swap");
 
 @tailwind base;
 @tailwind components;
@@ -7,8 +7,14 @@
 :root {
   color-scheme: light;
   font-family:
-    "Roboto Condensed", "Arial Narrow", Impact, system-ui, -apple-system,
-    BlinkMacSystemFont, "Segoe UI", sans-serif;
+    "Roboto Condensed",
+    "Arial Narrow",
+    Impact,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
   background: #f5eedf;
   color: #171411;
   font-synthesis: none;
@@ -35,9 +41,17 @@ body {
   min-width: 320px;
   background:
     linear-gradient(90deg, rgba(0, 0, 0, 0.035) 1px, transparent 1px),
-    linear-gradient(180deg, rgba(0, 0, 0, 0.025) 1px, transparent 1px),
-    #f5eedf;
+    linear-gradient(180deg, rgba(0, 0, 0, 0.025) 1px, transparent 1px), #f5eedf;
   background-size: 34px 34px;
+}
+
+html.floating-overlay-runtime,
+html.floating-overlay-runtime body,
+html.floating-overlay-runtime #root,
+body.floating-overlay-runtime {
+  background: transparent !important;
+  min-height: 100%;
+  overflow: hidden;
 }
 
 button,
@@ -114,9 +128,7 @@ a:focus-visible {
 }
 
 .neo-dots {
-  background:
-    radial-gradient(circle, rgba(23, 20, 17, 0.065) 1px, transparent 1px),
-    #fbf8ef;
+  background: radial-gradient(circle, rgba(23, 20, 17, 0.065) 1px, transparent 1px), #fbf8ef;
   background-size: 8px 8px;
 }
 
@@ -134,7 +146,18 @@ a:focus-visible {
   width: 100%;
 }
 
-.steam-game-banner-hero {
+.steam-game-banner-hero,
+.xbox-game-banner-hero,
+.epic-game-banner-hero,
+.gog-game-banner-hero,
+.ubisoft-game-banner-hero,
+.battlenet-game-banner-hero,
+.ea-game-banner-hero,
+.manual-game-banner-hero,
+.unknown-game-banner-hero,
+.windows-game-banner-hero,
+.macos-game-banner-hero,
+.linux-game-banner-hero {
   aspect-ratio: 1920 / 620;
   height: auto;
   min-height: 220px;
@@ -145,7 +168,12 @@ a:focus-visible {
   background:
     linear-gradient(90deg, rgba(0, 0, 0, 0.8), rgba(0, 0, 0, 0.38) 56%, rgba(0, 0, 0, 0.72)),
     radial-gradient(circle at 35% 7%, rgba(255, 255, 255, 0.65), transparent 5%),
-    linear-gradient(132deg, transparent 0 18%, rgba(255, 255, 255, 0.18) 18% 20%, transparent 20% 100%),
+    linear-gradient(
+      132deg,
+      transparent 0 18%,
+      rgba(255, 255, 255, 0.18) 18% 20%,
+      transparent 20% 100%
+    ),
     repeating-linear-gradient(112deg, #242424 0 13px, #0e0e0e 13px 27px, #333 27px 29px);
 }
 
@@ -212,7 +240,9 @@ a:focus-visible {
   background:
     radial-gradient(circle, rgba(255, 249, 237, 0.16) 1px, transparent 1px),
     linear-gradient(105deg, rgba(255, 249, 237, 0.2) 0 18%, transparent 19% 100%);
-  background-size: 8px 8px, 100% 100%;
+  background-size:
+    8px 8px,
+    100% 100%;
   mix-blend-mode: screen;
   pointer-events: none;
 }
@@ -242,7 +272,11 @@ a:focus-visible {
 .library-source-art-ubisoft {
   background:
     radial-gradient(circle at 60% 48%, rgba(255, 249, 237, 0.72) 0 9%, transparent 10%),
-    repeating-radial-gradient(circle at 60% 48%, rgba(23, 20, 17, 0.38) 0 3px, transparent 4px 18px),
+    repeating-radial-gradient(
+      circle at 60% 48%,
+      rgba(23, 20, 17, 0.38) 0 3px,
+      transparent 4px 18px
+    ),
     linear-gradient(126deg, #171411, #087d6d 46%, #f5eedf 47% 100%);
 }
 
@@ -394,8 +428,7 @@ a:focus-visible {
   background:
     radial-gradient(circle at 26% 30%, #171411 0 5px, transparent 6px),
     radial-gradient(circle at 72% 30%, #171411 0 5px, transparent 6px),
-    radial-gradient(circle at 50% 60%, #171411 0 6px, transparent 7px),
-    #fffaf0;
+    radial-gradient(circle at 50% 60%, #171411 0 6px, transparent 7px), #fffaf0;
   transform: rotate(8deg);
 }
 
@@ -408,9 +441,7 @@ a:focus-visible {
   height: 145px;
   border: 4px solid #171411;
   border-radius: 48% 48% 18px 18px;
-  background:
-    linear-gradient(90deg, transparent 0 42%, #fffaf0 43% 57%, transparent 58%),
-    #e2bd22;
+  background: linear-gradient(90deg, transparent 0 42%, #fffaf0 43% 57%, transparent 58%), #e2bd22;
 }
 
 .cuphead-devil {
@@ -431,8 +462,7 @@ a:focus-visible {
     radial-gradient(ellipse at 35% 50%, #fffaf0 0 16px, transparent 17px),
     radial-gradient(ellipse at 66% 50%, #fffaf0 0 16px, transparent 17px),
     radial-gradient(ellipse at 35% 55%, #171411 0 8px, transparent 9px),
-    radial-gradient(ellipse at 66% 55%, #171411 0 8px, transparent 9px),
-    #171411;
+    radial-gradient(ellipse at 66% 55%, #171411 0 8px, transparent 9px), #171411;
 }
 
 .cuphead-devil::after {
@@ -444,9 +474,7 @@ a:focus-visible {
   height: 115px;
   border: 5px solid #171411;
   border-radius: 48% 48% 35% 35%;
-  background:
-    linear-gradient(110deg, transparent 0 44%, #e8c843 45% 56%, transparent 57%),
-    #171411;
+  background: linear-gradient(110deg, transparent 0 44%, #e8c843 45% 56%, transparent 57%), #171411;
 }
 
 .cuphead-cup {
@@ -465,8 +493,7 @@ a:focus-visible {
   border-radius: 50%;
   background:
     radial-gradient(circle at 35% 54%, #171411 0 3px, transparent 4px),
-    radial-gradient(circle at 66% 54%, #171411 0 3px, transparent 4px),
-    #fffaf0;
+    radial-gradient(circle at 66% 54%, #171411 0 3px, transparent 4px), #fffaf0;
 }
 
 .cuphead-cup::after {
@@ -490,6 +517,6 @@ a:focus-visible {
   display: none;
 }
 .scrollbar-none {
-  -ms-overflow-style: none;  /* IE and Edge */
-  scrollbar-width: none;  /* Firefox */
+  -ms-overflow-style: none; /* IE and Edge */
+  scrollbar-width: none; /* Firefox */
 }

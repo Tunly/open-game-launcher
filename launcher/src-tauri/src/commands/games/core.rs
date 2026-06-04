@@ -90,7 +90,10 @@ pub async fn refresh_installed_games() -> Result<Vec<InstalledGame>, String> {
         games.insert(game.id.clone(), game);
     }
 
-    for mut game in scan_installed_games() {
+    let scanned = tokio::task::spawn_blocking(scan_installed_games)
+        .await
+        .map_err(|error| format!("Failed to scan installed games: {error}"))?;
+    for mut game in scanned {
         if let Some(cached_game) = cached_activity.get(&game.id) {
             merge_cached_game_activity(&mut game, cached_game);
         }
@@ -549,22 +552,52 @@ pub fn uninstall_game(game_id: String) -> Result<UninstallGameResponse, String> 
     }
 
     if game.launcher == "xbox" {
-        let pfn = game
+        let raw_pfn = game
             .id
             .strip_prefix("xbox-")
             .unwrap_or(&game.id)
             .split('!')
             .next()
             .unwrap_or(&game.id);
-        let script = format!(
-            "$pkg = Get-AppxPackage -Name \"*{}*\"; if ($pkg) {{ Remove-AppxPackage -Package $pkg.PackageFullName }}",
-            pfn.split('_').next().unwrap_or(pfn)
-        );
-        match std::process::Command::new("powershell")
-            .args(["-NoProfile", "-NonInteractive", "-Command", &script])
-            .spawn()
+        // The PFN segment before the first `_` is what Get-AppxPackage matches
+        // against. It must be alphanumeric — any other character is rejected so
+        // we cannot smuggle PowerShell metacharacters (`"`, `$`, backtick)
+        // into the `-Command` string below.
+        let pfn = raw_pfn.split('_').next().unwrap_or(raw_pfn);
+        if pfn.is_empty()
+            || pfn.len() > 128
+            || !pfn.chars().all(|c| c.is_ascii_alphanumeric())
         {
-            Ok(_) => {
+            return Err(format!(
+                "Refusing to launch uninstall: package family name '{pfn}' is not a safe identifier."
+            ));
+        }
+        // PowerShell string interpolation is the previous injection sink. We
+        // build the script with the value embedded as a `-Name` argument
+        // literal that has been pre-validated, and additionally call the
+        // script via stdin (`-Command -`) so the value can never be reparsed
+        // by the shell.
+        let script = format!(
+            "$ErrorActionPreference = 'Stop'\n\
+             $pkg = Get-AppxPackage -Name '*{pfn}*' -ErrorAction SilentlyContinue\n\
+             if ($pkg) {{ Remove-AppxPackage -Package $pkg.PackageFullName }}\n"
+        );
+        let mut child = std::process::Command::new("powershell");
+        child
+            .args(["-NoProfile", "-NonInteractive", "-Command", "-"])
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null());
+        match child.spawn() {
+            Ok(mut child) => {
+                if let Some(stdin) = child.stdin.as_mut() {
+                    use std::io::Write;
+                    let _ = stdin.write_all(script.as_bytes());
+                }
+                // PowerShell uninstall is fire-and-forget; we deliberately do
+                // not block on `wait()` because the call already returned and
+                // the parent has nothing meaningful to do with the exit code.
+                drop(child);
                 mark_game_not_installed(&mut game);
                 games[game_index] = game.clone();
                 write_installed_games_cache(&games);
@@ -1705,9 +1738,53 @@ pub fn local_drive_roots() -> Vec<PathBuf> {
 }
 
 pub fn ensure_path_inside_root(path: &Path, root: &Path) -> Result<(), String> {
-    let normalized_root = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
-    let normalized_path = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
-    if normalized_path.starts_with(&normalized_root) {
+    // Both inputs must be canonicalizable. If either fails (e.g. does not yet
+    // exist and we cannot resolve symlinks), we refuse — the previous
+    // implementation silently fell back to the raw input, which let a
+    // caller pass `..\..\Windows\System32\config\SAM` and have it accepted
+    // because `Path::starts_with` was compared against an un-canonicalized
+    // root.
+    let normalized_root = root
+        .canonicalize()
+        .map_err(|e| format!("Refusing to write outside the OG save-sync folder: root is not resolvable ({e})."))?;
+    let normalized_path = path
+        .canonicalize()
+        .map_err(|e| format!("Refusing to write outside the OG save-sync folder: path is not resolvable ({e})."))?;
+
+    // Reject any `..` components in the raw input up front as a defence in
+    // depth — canonicalize should already have collapsed them, but a path
+    // that *only* contained `..` would canonicalize to a parent directory
+    // and could be inside the root by accident.
+    for component in path.components() {
+        match component {
+            std::path::Component::ParentDir => {
+                return Err(
+                    "Refusing to write outside the OG save-sync folder: path contains '..'."
+                        .to_string(),
+                );
+            }
+            std::path::Component::Prefix(_) | std::path::Component::RootDir => {
+                return Err(
+                    "Refusing to write outside the OG save-sync folder: absolute paths are not allowed."
+                        .to_string(),
+                );
+            }
+            _ => {}
+        }
+    }
+
+    // Compare path components, not bytes — `C:\foo` should not be considered
+    // a child of `c:\foo` on Windows purely because of the drive letter, but
+    // `Foo` and `foo` are the same directory on NTFS and we want them to
+    // match. Use case-insensitive comparison on Windows only.
+    let same_root = if cfg!(windows) {
+        normalized_path.to_string_lossy().to_lowercase()
+            .starts_with(&normalized_root.to_string_lossy().to_lowercase())
+    } else {
+        normalized_path.starts_with(&normalized_root)
+    };
+
+    if same_root {
         Ok(())
     } else {
         Err("Refusing to write outside the OG save-sync folder.".to_string())

@@ -1,12 +1,34 @@
 import type { Game } from "./types";
 
+/**
+ * Coerce any thrown value into a human-readable string.
+ *
+ * - `Error` instances use `.message` (preserves subclass messages such as
+ *   `CloudNotConfiguredError`).
+ * - Strings, numbers, booleans are stringified.
+ * - `null` and `undefined` are reported explicitly as `"null"` / `"undefined"`
+ *   so the call site always gets a non-empty string.
+ */
 export function getErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
+  if (error === null) return "null";
+  if (error === undefined) return "undefined";
+  if (typeof error === "string") return error;
+  if (error instanceof Error) return error.message;
+  try {
+    return String(error);
+  } catch {
+    return "Unknown error";
+  }
 }
 
 export function executableTitleFromPath(path: string): string {
   const fileName = path.split(/[\\/]/).pop() ?? path;
-  return fileName.replace(/\.exe$/i, "").replace(/[_-]+/g, " ").trim() || fileName;
+  return (
+    fileName
+      .replace(/\.exe$/i, "")
+      .replace(/[_-]+/g, " ")
+      .trim() || fileName
+  );
 }
 
 export function getGameLogoCandidates(game: Game): string[] {
@@ -105,7 +127,12 @@ function launcherHintFromLabel(launcher: string): Game["launcher"] | null {
   if (value.includes("ubisoft")) return "ubisoft";
   if (value.includes("xbox")) return "xbox";
   if (value.includes("battle.net") || value.includes("battlenet")) return "battlenet";
-  if (value.includes("origin") || value.includes("ea app") || value === "ea" || value.startsWith("ea ")) {
+  if (
+    value.includes("origin") ||
+    value.includes("ea app") ||
+    value === "ea" ||
+    value.startsWith("ea ")
+  ) {
     return "ea";
   }
   if (value.includes("manual")) return "manual";
@@ -115,10 +142,12 @@ function launcherHintFromLabel(launcher: string): Game["launcher"] | null {
 /** Normalize backend launcher strings (`EA App`, `Steam`, …) to LauncherType keys. */
 export function normalizeLauncherKey(launcher?: string, gameId?: string): Game["launcher"] {
   const id = (gameId || "").toLowerCase();
-  return launcherHintFromId(id)
-    ?? launcherHintFromLabel(launcher || "")
-    ?? (launcher as Game["launcher"])
-    ?? "unknown";
+  return (
+    launcherHintFromId(id) ??
+    launcherHintFromLabel(launcher || "") ??
+    (launcher as Game["launcher"]) ??
+    "unknown"
+  );
 }
 
 export function getGameSource(game: Game): string {
@@ -154,4 +183,23 @@ export function getFallbackBannerClass(game: Game): string {
     return "";
   }
   return `library-source-art library-source-art-${getGameSource(game)}`;
+}
+
+const KNOWN_BANNER_SOURCES: Record<string, string> = {
+  steam: "steam-game-banner-hero",
+  xbox: "xbox-game-banner-hero",
+  epic: "epic-game-banner-hero",
+  gog: "gog-game-banner-hero",
+  ubisoft: "ubisoft-game-banner-hero",
+  battlenet: "battlenet-game-banner-hero",
+  ea: "ea-game-banner-hero",
+  manual: "manual-game-banner-hero",
+  unknown: "unknown-game-banner-hero",
+  windows: "windows-game-banner-hero",
+  macos: "macos-game-banner-hero",
+  linux: "linux-game-banner-hero",
+};
+
+export function getPlatformBannerClass(game: Game): string {
+  return KNOWN_BANNER_SOURCES[getGameSource(game)] ?? "steam-game-banner-hero";
 }

@@ -34,7 +34,10 @@ interface LauncherLocalEntityTable {
     options: { onConflict: string },
   ) => Promise<{ error: QueryError | null }>;
   select: (columns: string) => {
-    eq: (column: "user_id", value: string) => {
+    eq: (
+      column: "user_id",
+      value: string,
+    ) => {
       order: (
         column: "local_updated_at",
         options: { ascending: boolean },
@@ -74,9 +77,7 @@ export async function syncLocalEntitiesWithSupabase(userId: string) {
       throw error;
     }
 
-    await markLocalEntitiesSynced(
-      pending.map((entity) => ({ kind: entity.kind, id: entity.id })),
-    );
+    await markLocalEntitiesSynced(pending.map((entity) => ({ kind: entity.kind, id: entity.id })));
   }
 
   const { data, error } = await table

@@ -31,9 +31,7 @@ export function AppLayout() {
   const metadata = user?.user_metadata as Record<string, unknown> | undefined;
   const metadataUsername = useMemo(() => {
     const rawUsername = metadata?.username ?? metadata?.user_name;
-    return typeof rawUsername === "string" && rawUsername.trim()
-      ? rawUsername.trim()
-      : null;
+    return typeof rawUsername === "string" && rawUsername.trim() ? rawUsername.trim() : null;
   }, [metadata]);
   const [profileUsername, setProfileUsername] = useState<string | null>(null);
   const [isProfileUsernameLoading, setIsProfileUsernameLoading] = useState(false);
@@ -47,8 +45,8 @@ export function AppLayout() {
     typeof metadata?.avatar_url === "string"
       ? metadata.avatar_url
       : typeof metadata?.picture === "string"
-      ? metadata.picture
-      : null;
+        ? metadata.picture
+        : null;
 
   useEffect(() => {
     let isMounted = true;
@@ -89,7 +87,7 @@ export function AppLayout() {
         setProfileUsername(customEvent.detail.username);
       }
     }
-    
+
     window.addEventListener("profile-updated", handleProfileUpdate);
     return () => {
       window.removeEventListener("profile-updated", handleProfileUpdate);
@@ -97,7 +95,7 @@ export function AppLayout() {
   }, []);
 
   const needsUsernameSetup = Boolean(
-    user && profileUsername && profileUsername.startsWith(`user_${user.id.slice(0, 8)}`)
+    user && profileUsername && profileUsername.startsWith(`user_${user.id.slice(0, 8)}`),
   );
 
   return (
@@ -108,9 +106,7 @@ export function AppLayout() {
         authDisplayName={displayName}
         authEmail={user?.email ?? null}
         authUsername={profileUsername ?? metadataUsername}
-        authProfilePath={
-          profileUsername ? `/u/${encodeURIComponent(profileUsername)}` : null
-        }
+        authProfilePath={profileUsername ? `/u/${encodeURIComponent(profileUsername)}` : null}
         isAuthConfigured={isConfigured}
         isAuthLoading={isLoading}
         isAuthProfileLoading={isProfileUsernameLoading}
@@ -121,7 +117,7 @@ export function AppLayout() {
         onNavigate={(page) => navigate(getPathForPage(page))}
         onRoute={(path) => navigate(path)}
       >
-          <Outlet />
+        <Outlet />
       </AppShell>
 
       {needsUsernameSetup && (

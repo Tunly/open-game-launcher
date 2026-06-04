@@ -59,9 +59,7 @@ export function ProfileCustomizePage() {
     () => themes.find((theme) => theme.id === selectedThemeId) ?? null,
     [selectedThemeId, themes],
   );
-  const hasHardwareShowcase = showcases.some(
-    (showcase) => showcase.type === "hardware_setup",
-  );
+  const hasHardwareShowcase = showcases.some((showcase) => showcase.type === "hardware_setup");
 
   function handleMove(id: string, direction: "up" | "down") {
     setShowcases((current) => {
@@ -79,9 +77,7 @@ export function ProfileCustomizePage() {
 
   function handleChange(id: string, patch: Partial<ProfileShowcase>) {
     setShowcases((current) =>
-      current.map((showcase) =>
-        showcase.id === id ? { ...showcase, ...patch } : showcase,
-      ),
+      current.map((showcase) => (showcase.id === id ? { ...showcase, ...patch } : showcase)),
     );
   }
 
@@ -148,15 +144,30 @@ export function ProfileCustomizePage() {
   }
 
   if (isAuthLoading || isLoading) {
-    return <Frame title="Customize Profile"><LoadingPanel /></Frame>;
+    return (
+      <Frame title="Customize Profile">
+        <LoadingPanel />
+      </Frame>
+    );
   }
 
   if (!isConfigured) {
-    return <Frame title="Customize Profile"><Notice title="Supabase is not configured" body="Set the public Supabase env vars before editing profile cosmetics." /></Frame>;
+    return (
+      <Frame title="Customize Profile">
+        <Notice
+          title="Supabase is not configured"
+          body="Set the public Supabase env vars before editing profile cosmetics."
+        />
+      </Frame>
+    );
   }
 
   if (!user || !profile) {
-    return <Frame title="Customize Profile"><Notice title="Login required" body="Sign in before arranging your showcase panels." /></Frame>;
+    return (
+      <Frame title="Customize Profile">
+        <Notice title="Login required" body="Sign in before arranging your showcase panels." />
+      </Frame>
+    );
   }
 
   return (
@@ -168,9 +179,7 @@ export function ProfileCustomizePage() {
               <p className="neo-copy inline-block border-2 border-black bg-[#b7102a] px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-white shadow-[2px_2px_0_#171411]">
                 Panels
               </p>
-              <h2 className="neo-title mt-2 text-4xl leading-none text-[#171411]">
-                Showcases
-              </h2>
+              <h2 className="neo-title mt-2 text-4xl leading-none text-[#171411]">Showcases</h2>
               <p className="mt-1 text-sm font-semibold text-[#5b403f]">
                 Reorder, rename, hide, and tune profile panels.
               </p>
@@ -206,7 +215,10 @@ export function ProfileCustomizePage() {
                 onMove={handleMove}
               />
             ) : (
-              <Notice title="No showcases yet" body="New users receive defaults from the auth trigger after the migration is applied." />
+              <Notice
+                title="No showcases yet"
+                body="New users receive defaults from the auth trigger after the migration is applied."
+              />
             )}
           </div>
         </section>
@@ -216,9 +228,7 @@ export function ProfileCustomizePage() {
             <p className="neo-copy inline-block border-2 border-black bg-[#171411] px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-[#fff9ed]">
               Cosmetic
             </p>
-            <h2 className="neo-title mt-2 text-4xl leading-none text-[#171411]">
-              Theme
-            </h2>
+            <h2 className="neo-title mt-2 text-4xl leading-none text-[#171411]">Theme</h2>
             <select
               className="neo-copy mt-4 h-11 w-full border-2 border-black bg-[#f6edd8] px-3 text-xs font-black uppercase tracking-[0.08em] text-[#171411] shadow-[2px_2px_0_#171411] outline-none focus:bg-[#8cf5e4]"
               value={selectedThemeId}
@@ -226,14 +236,19 @@ export function ProfileCustomizePage() {
             >
               <option value="">Default</option>
               {themes.map((theme) => (
-                <option key={theme.id} value={theme.id}>{theme.name}</option>
+                <option key={theme.id} value={theme.id}>
+                  {theme.name}
+                </option>
               ))}
             </select>
             <div className="mt-4">
               {selectedTheme ? (
                 <ProfileThemePreview theme={selectedTheme} />
               ) : (
-                <Notice title="Default Theme" body="The default dark launcher room style will be used." />
+                <Notice
+                  title="Default Theme"
+                  body="The default dark launcher room style will be used."
+                />
               )}
             </div>
           </section>
@@ -299,7 +314,13 @@ function Notice({ body, title }: { body: string; title: string }) {
 
 function Status({ message, tone }: { message: string; tone: "error" | "success" }) {
   return (
-    <div className={tone === "error" ? "neo-copy border-2 border-black bg-[#b7102a] p-4 text-[11px] font-black uppercase tracking-[0.1em] text-white shadow-[3px_3px_0_#171411]" : "neo-copy border-2 border-black bg-[#007166] p-4 text-[11px] font-black uppercase tracking-[0.1em] text-white shadow-[3px_3px_0_#171411]"}>
+    <div
+      className={
+        tone === "error"
+          ? "neo-copy border-2 border-black bg-[#b7102a] p-4 text-[11px] font-black uppercase tracking-[0.1em] text-white shadow-[3px_3px_0_#171411]"
+          : "neo-copy border-2 border-black bg-[#007166] p-4 text-[11px] font-black uppercase tracking-[0.1em] text-white shadow-[3px_3px_0_#171411]"
+      }
+    >
       {message}
     </div>
   );

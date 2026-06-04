@@ -1,10 +1,7 @@
 import type { Profile } from "../../lib/types/profile";
 
 export function ProfileAvatar({ profile, size = "lg" }: { profile: Profile; size?: "md" | "lg" }) {
-  const dimension =
-    size === "lg"
-      ? "h-32 w-32 text-4xl"
-      : "h-16 w-16 text-xl";
+  const dimension = size === "lg" ? "h-32 w-32 text-4xl" : "h-16 w-16 text-xl";
   const label = profile.displayName ?? profile.username;
 
   if (profile.avatarUrl) {

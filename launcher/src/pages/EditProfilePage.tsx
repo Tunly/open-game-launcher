@@ -190,7 +190,9 @@ export function EditProfilePage() {
     try {
       const url = type === "avatar" ? await uploadAvatar(file) : await uploadBanner(file);
       updateField(type === "avatar" ? "avatarUrl" : "bannerUrl", url);
-      setMessage(`${type === "avatar" ? "Avatar" : "Banner"} uploaded. Save profile to persist it.`);
+      setMessage(
+        `${type === "avatar" ? "Avatar" : "Banner"} uploaded. Save profile to persist it.`,
+      );
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : String(error));
     } finally {
@@ -237,7 +239,7 @@ export function EditProfilePage() {
 
     const normalizedUsername = normalizeUsername(form.username);
     const usernameAvailable = await checkUsername(normalizedUsername);
-    
+
     if (!usernameAvailable) {
       setIsSaving(false);
       return;
@@ -290,10 +292,12 @@ export function EditProfilePage() {
       );
 
       setProfile(nextProfile);
-      setForm(current => ({ ...current, username: nextProfile.username }));
+      setForm((current) => ({ ...current, username: nextProfile.username }));
       setUsernameStatus("idle");
       setMessage("Profile and hardware rig saved.");
-      window.dispatchEvent(new CustomEvent('profile-updated', { detail: { username: nextProfile.username } }));
+      window.dispatchEvent(
+        new CustomEvent("profile-updated", { detail: { username: nextProfile.username } }),
+      );
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : String(error));
     } finally {
@@ -336,13 +340,20 @@ export function EditProfilePage() {
   }
 
   if (isAuthLoading || isLoading) {
-    return <PageFrame title="Edit Profile"><LoadingPanel /></PageFrame>;
+    return (
+      <PageFrame title="Edit Profile">
+        <LoadingPanel />
+      </PageFrame>
+    );
   }
 
   if (!isConfigured) {
     return (
       <PageFrame title="Edit Profile">
-        <NoticePanel title="Supabase is not connected" body="Profile data is currently unavailable." />
+        <NoticePanel
+          title="Supabase is not connected"
+          body="Profile data is currently unavailable."
+        />
       </PageFrame>
     );
   }
@@ -359,29 +370,39 @@ export function EditProfilePage() {
     <PageFrame
       eyebrow="Settings"
       title="Edit Profile"
-      action={<Link className="neo-copy border-2 border-black bg-[#fff9ed] px-4 py-2 text-[11px] font-black uppercase tracking-[0.12em] text-[#171411] shadow-[3px_3px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#8cf5e4]" to={`/u/${profile.username}`}>Public Profile</Link>}
+      action={
+        <Link
+          className="neo-copy border-2 border-black bg-[#fff9ed] px-4 py-2 text-[11px] font-black uppercase tracking-[0.12em] text-[#171411] shadow-[3px_3px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#8cf5e4]"
+          to={`/u/${profile.username}`}
+        >
+          Public Profile
+        </Link>
+      }
     >
       <form className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]" onSubmit={handleSubmit}>
         <div className="space-y-5">
           <Panel label="Player Card" title="Identity">
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="block">
-                <span className="neo-copy text-[11px] font-black uppercase tracking-[0.12em] text-[#5b403f]">Username</span>
+                <span className="neo-copy text-[11px] font-black uppercase tracking-[0.12em] text-[#5b403f]">
+                  Username
+                </span>
                 <span className="mt-2 flex h-11 items-center gap-2 border-2 border-black bg-[#f6edd8] px-3 shadow-[2px_2px_0_#171411] focus-within:bg-[#fff9ed]">
                   <input
-                    className="min-w-0 flex-1 bg-transparent text-[#171411] outline-none lowercase"
+                    className="min-w-0 flex-1 bg-transparent lowercase text-[#171411] outline-none"
                     maxLength={32}
                     minLength={3}
                     value={form.username}
                     onBlur={() => {
-                      if (form.username.trim() && form.username !== profile?.username) void checkUsername(form.username);
+                      if (form.username.trim() && form.username !== profile?.username)
+                        void checkUsername(form.username);
                     }}
                     onChange={(event) => {
                       updateField("username", event.target.value);
                       if (event.target.value === profile?.username) {
-                         setUsernameStatus("idle");
+                        setUsernameStatus("idle");
                       } else {
-                         setUsernameStatus("idle");
+                        setUsernameStatus("idle");
                       }
                     }}
                   />
@@ -399,15 +420,44 @@ export function EditProfilePage() {
                     )}
                   </button>
                 </span>
-                {usernameStatus === "taken" && <span className="neo-copy mt-1 block text-[10px] font-bold uppercase text-[#c20b2f]">Username is taken</span>}
-                {usernameStatus === "available" && form.username !== profile?.username && <span className="neo-copy mt-1 block text-[10px] font-bold uppercase text-[#087d6d]">Username is available</span>}
+                {usernameStatus === "taken" && (
+                  <span className="neo-copy mt-1 block text-[10px] font-bold uppercase text-[#c20b2f]">
+                    Username is taken
+                  </span>
+                )}
+                {usernameStatus === "available" && form.username !== profile?.username && (
+                  <span className="neo-copy mt-1 block text-[10px] font-bold uppercase text-[#087d6d]">
+                    Username is available
+                  </span>
+                )}
               </label>
-              <TextInput label="Display Name" value={form.displayName} onChange={(value) => updateField("displayName", value)} />
-              <TextInput label="Country" value={form.countryCode} onChange={(value) => updateField("countryCode", value)} placeholder="DE" />
-              <TextInput label="Language" value={form.language} onChange={(value) => updateField("language", value)} placeholder="en" />
-              <TextInput label="Timezone" value={form.timezone} onChange={(value) => updateField("timezone", value)} placeholder="Europe/Berlin" />
+              <TextInput
+                label="Display Name"
+                value={form.displayName}
+                onChange={(value) => updateField("displayName", value)}
+              />
+              <TextInput
+                label="Country"
+                value={form.countryCode}
+                onChange={(value) => updateField("countryCode", value)}
+                placeholder="DE"
+              />
+              <TextInput
+                label="Language"
+                value={form.language}
+                onChange={(value) => updateField("language", value)}
+                placeholder="en"
+              />
+              <TextInput
+                label="Timezone"
+                value={form.timezone}
+                onChange={(value) => updateField("timezone", value)}
+                placeholder="Europe/Berlin"
+              />
               <label>
-                <span className="neo-copy text-[11px] font-black uppercase tracking-[0.12em] text-[#5b403f]">Theme</span>
+                <span className="neo-copy text-[11px] font-black uppercase tracking-[0.12em] text-[#5b403f]">
+                  Theme
+                </span>
                 <select
                   className="neo-copy mt-2 h-11 w-full border-2 border-black bg-[#f6edd8] px-3 text-xs font-black uppercase tracking-[0.08em] text-[#171411] shadow-[2px_2px_0_#171411] outline-none focus:bg-[#8cf5e4]"
                   value={selectedThemeId}
@@ -415,13 +465,17 @@ export function EditProfilePage() {
                 >
                   <option value="">Default</option>
                   {themes.map((theme) => (
-                    <option key={theme.id} value={theme.id}>{theme.name}</option>
+                    <option key={theme.id} value={theme.id}>
+                      {theme.name}
+                    </option>
                   ))}
                 </select>
               </label>
             </div>
             <label className="mt-4 block">
-              <span className="neo-copy text-[11px] font-black uppercase tracking-[0.12em] text-[#5b403f]">Bio</span>
+              <span className="neo-copy text-[11px] font-black uppercase tracking-[0.12em] text-[#5b403f]">
+                Bio
+              </span>
               <textarea
                 className="mt-2 min-h-36 w-full border-2 border-black bg-[#f6edd8] px-3 py-3 text-[#171411] shadow-[3px_3px_0_#171411] outline-none focus:bg-[#fff9ed]"
                 maxLength={1000}
@@ -434,15 +488,36 @@ export function EditProfilePage() {
           <Panel label="Links" title="Social Slots">
             <div className="space-y-3">
               {socialLinks.map((link, index) => (
-                <div key={link.id ?? index} className="grid gap-3 md:grid-cols-[130px_1fr_1fr_auto]">
-                  <TextInput label="Platform" value={link.platform} onChange={(value) => updateSocialLink(index, { platform: value }, setSocialLinks)} />
-                  <TextInput label="Label" value={link.label} onChange={(value) => updateSocialLink(index, { label: value }, setSocialLinks)} />
-                  <TextInput label="URL" value={link.url} onChange={(value) => updateSocialLink(index, { url: value }, setSocialLinks)} />
+                <div
+                  key={link.id ?? index}
+                  className="grid gap-3 md:grid-cols-[130px_1fr_1fr_auto]"
+                >
+                  <TextInput
+                    label="Platform"
+                    value={link.platform}
+                    onChange={(value) =>
+                      updateSocialLink(index, { platform: value }, setSocialLinks)
+                    }
+                  />
+                  <TextInput
+                    label="Label"
+                    value={link.label}
+                    onChange={(value) => updateSocialLink(index, { label: value }, setSocialLinks)}
+                  />
+                  <TextInput
+                    label="URL"
+                    value={link.url}
+                    onChange={(value) => updateSocialLink(index, { url: value }, setSocialLinks)}
+                  />
                   <button
                     aria-label="Remove social link"
                     className="mt-7 flex h-11 items-center justify-center border-2 border-black bg-[#b7102a] px-3 text-white shadow-[2px_2px_0_#171411] transition hover:-translate-y-0.5"
                     type="button"
-                    onClick={() => setSocialLinks((current) => current.filter((_, itemIndex) => itemIndex !== index))}
+                    onClick={() =>
+                      setSocialLinks((current) =>
+                        current.filter((_, itemIndex) => itemIndex !== index),
+                      )
+                    }
                   >
                     <Trash2 className="h-4 w-4" />
                   </button>
@@ -452,7 +527,12 @@ export function EditProfilePage() {
             <button
               className="neo-copy mt-4 inline-flex h-10 items-center gap-2 border-2 border-black bg-[#007166] px-3 text-[11px] font-black uppercase tracking-[0.12em] text-white shadow-[3px_3px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#b7102a]"
               type="button"
-              onClick={() => setSocialLinks((current) => [...current, { label: "", platform: "website", url: "" }])}
+              onClick={() =>
+                setSocialLinks((current) => [
+                  ...current,
+                  { label: "", platform: "website", url: "" },
+                ])
+              }
             >
               <Plus className="h-4 w-4" />
               Add link
@@ -462,7 +542,8 @@ export function EditProfilePage() {
           <Panel label="Setup" title="Hardware Rig">
             <div className="mb-4 flex flex-col gap-3 border-[3px] border-black bg-[#f6edd8] p-3 shadow-[3px_3px_0_#171411] md:flex-row md:items-center md:justify-between">
               <p className="neo-copy text-[11px] font-black uppercase leading-5 tracking-[0.08em] text-[#5b403f]">
-                Desktop mode detects CPU, GPU, RAM, monitor, and input devices. Browser preview uses estimated browser values.
+                Desktop mode detects CPU, GPU, RAM, monitor, and input devices. Browser preview uses
+                estimated browser values.
               </p>
               <button
                 className="neo-copy inline-flex h-11 shrink-0 items-center justify-center gap-2 border-2 border-black bg-[#007166] px-3 text-[11px] font-black uppercase tracking-[0.12em] text-white shadow-[3px_3px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#b7102a] disabled:cursor-not-allowed disabled:opacity-60"
@@ -486,10 +567,7 @@ export function EditProfilePage() {
                 className="neo-copy mt-2 h-11 w-full border-2 border-black bg-[#f6edd8] px-3 text-xs font-black uppercase tracking-[0.08em] text-[#171411] shadow-[2px_2px_0_#171411] outline-none focus:bg-[#8cf5e4]"
                 value={form.hardwareVisibility}
                 onChange={(event) =>
-                  updateField(
-                    "hardwareVisibility",
-                    event.target.value as ProfileVisibility,
-                  )
+                  updateField("hardwareVisibility", event.target.value as ProfileVisibility)
                 }
               >
                 <option value="public">Public</option>
@@ -499,7 +577,12 @@ export function EditProfilePage() {
             </label>
             <div className="grid gap-4 sm:grid-cols-2">
               {hardwareFields.map((field) => (
-                <TextInput key={field} label={field.toUpperCase()} value={form[field]} onChange={(value) => updateField(field, value)} />
+                <TextInput
+                  key={field}
+                  label={field.toUpperCase()}
+                  value={form[field]}
+                  onChange={(value) => updateField(field, value)}
+                />
               ))}
             </div>
           </Panel>
@@ -507,8 +590,14 @@ export function EditProfilePage() {
 
         <aside className="space-y-5">
           <Panel label="Assets" title="Profile Images">
-            <AssetUpload label="Avatar" onChange={(event) => void handleAssetUpload(event, "avatar")} />
-            <AssetUpload label="Banner" onChange={(event) => void handleAssetUpload(event, "banner")} />
+            <AssetUpload
+              label="Avatar"
+              onChange={(event) => void handleAssetUpload(event, "avatar")}
+            />
+            <AssetUpload
+              label="Banner"
+              onChange={(event) => void handleAssetUpload(event, "banner")}
+            />
           </Panel>
           <Panel label="Showcase" title="Featured Slots">
             <div className="space-y-3">
@@ -539,9 +628,7 @@ function updateSocialLink(
   setSocialLinks: Dispatch<SetStateAction<EditableSocialLink[]>>,
 ) {
   setSocialLinks((current) =>
-    current.map((link, itemIndex) =>
-      itemIndex === index ? { ...link, ...patch } : link,
-    ),
+    current.map((link, itemIndex) => (itemIndex === index ? { ...link, ...patch } : link)),
   );
 }
 
@@ -565,8 +652,14 @@ function PageFrame({
     <div className="mx-auto w-full max-w-[1220px] px-0 py-2">
       <div className="mb-7 flex flex-col gap-4 border-b-4 border-black pb-5 md:flex-row md:items-end md:justify-between">
         <div>
-          {eyebrow ? <p className="neo-copy inline-flex border-2 border-black bg-[#b7102a] px-3 py-1 text-[11px] font-black uppercase tracking-[0.14em] text-white shadow-[3px_3px_0_#171411]">{eyebrow}</p> : null}
-          <h1 className="neo-title mt-3 text-[clamp(3.6rem,13vw,6rem)] leading-[0.82] text-[#171411]">{title}</h1>
+          {eyebrow ? (
+            <p className="neo-copy inline-flex border-2 border-black bg-[#b7102a] px-3 py-1 text-[11px] font-black uppercase tracking-[0.14em] text-white shadow-[3px_3px_0_#171411]">
+              {eyebrow}
+            </p>
+          ) : null}
+          <h1 className="neo-title mt-3 text-[clamp(3.6rem,13vw,6rem)] leading-[0.82] text-[#171411]">
+            {title}
+          </h1>
         </div>
         {action}
       </div>
@@ -575,15 +668,7 @@ function PageFrame({
   );
 }
 
-function Panel({
-  children,
-  label,
-  title,
-}: {
-  children: ReactNode;
-  label?: string;
-  title: string;
-}) {
+function Panel({ children, label, title }: { children: ReactNode; label?: string; title: string }) {
   return (
     <section className="relative border-4 border-black bg-[#fff9ed] p-5 shadow-[6px_6px_0_#171411]">
       {label ? (
@@ -610,7 +695,9 @@ function TextInput({
 }) {
   return (
     <label className="block">
-      <span className="neo-copy text-[11px] font-black uppercase tracking-[0.12em] text-[#5b403f]">{label}</span>
+      <span className="neo-copy text-[11px] font-black uppercase tracking-[0.12em] text-[#5b403f]">
+        {label}
+      </span>
       <input
         className="mt-2 h-11 w-full border-2 border-black bg-[#f6edd8] px-3 text-[#171411] shadow-[2px_2px_0_#171411] outline-none focus:bg-[#fff9ed]"
         placeholder={placeholder}
@@ -659,7 +746,13 @@ function NoticePanel({ body, title }: { body: string; title: string }) {
 
 function StatusPanel({ message, tone }: { message: string; tone: "error" | "success" }) {
   return (
-    <div className={tone === "error" ? "neo-copy border-2 border-black bg-[#b7102a] p-4 text-[11px] font-black uppercase tracking-[0.1em] text-white shadow-[3px_3px_0_#171411]" : "neo-copy border-2 border-black bg-[#007166] p-4 text-[11px] font-black uppercase tracking-[0.1em] text-white shadow-[3px_3px_0_#171411]"}>
+    <div
+      className={
+        tone === "error"
+          ? "neo-copy border-2 border-black bg-[#b7102a] p-4 text-[11px] font-black uppercase tracking-[0.1em] text-white shadow-[3px_3px_0_#171411]"
+          : "neo-copy border-2 border-black bg-[#007166] p-4 text-[11px] font-black uppercase tracking-[0.1em] text-white shadow-[3px_3px_0_#171411]"
+      }
+    >
       {message}
     </div>
   );

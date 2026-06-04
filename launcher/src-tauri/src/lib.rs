@@ -43,6 +43,8 @@ pub fn run() {
             commands::system::open_steam_login_window,
             commands::system::open_steam_scraper_window,
             commands::system::fetch_steam_profile_name,
+            commands::system::fetch_steam_news,
+            commands::system::open_external_url,
             commands::gog::open_gog_login_window,
             commands::epic::open_epic_login_window,
             commands::epic::authenticate_epic_legendary,

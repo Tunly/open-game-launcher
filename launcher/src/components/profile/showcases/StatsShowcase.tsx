@@ -15,9 +15,7 @@ export function StatsShowcase({ stats }: { stats: ProfileStatsPreview }) {
             key={label}
             className="border-[3px] border-black bg-[#f6edd8] p-4 shadow-[3px_3px_0_#1f1c0f]"
           >
-            <p className="neo-title text-4xl leading-none text-[#171411]">
-              {value}
-            </p>
+            <p className="neo-title text-4xl leading-none text-[#171411]">{value}</p>
             <p className="neo-copy mt-2 text-[10px] font-black uppercase tracking-[0.12em] text-[#5b403f]">
               {label}
             </p>

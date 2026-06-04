@@ -6,19 +6,10 @@ export interface DownloadState {
   setItems: (items: DownloadItem[]) => void;
   upsertItem: (item: DownloadItem) => void;
   removeItem: (gameId: string) => void;
-  activeCount: () => number;
-  pausedCount: () => number;
-  completedCount: () => number;
-  totalProgress: () => number;
 }
 
 const MAX_RETAINED_TERMINAL_ITEMS = 100;
-const TERMINAL_STATUSES = new Set<DownloadStatus>([
-  "completed",
-  "failed",
-  "cancelled",
-  "error",
-]);
+const TERMINAL_STATUSES = new Set<DownloadStatus>(["completed", "failed", "cancelled", "error"]);
 const ACTIVE_STATUSES = new Set<DownloadStatus>([
   "queued",
   "starting",
@@ -28,26 +19,17 @@ const ACTIVE_STATUSES = new Set<DownloadStatus>([
   "installing",
 ]);
 const PAUSED_STATUSES = new Set<DownloadStatus>(["paused"]);
-const PAUSE_TOGGLE_STATUSES = new Set<DownloadStatus>([
-  "downloading",
-  "paused",
-]);
+const PAUSE_TOGGLE_STATUSES = new Set<DownloadStatus>(["downloading", "paused"]);
 
-export const useDownloadStore = create<DownloadState>()((set, get) => ({
+export const useDownloadStore = create<DownloadState>()((set) => ({
   items: [],
 
   setItems: (items) =>
     set((state) => {
       const normalizedItems = items.map(normalizeDownloadItem);
-      const incomingByGameId = new Map(
-        normalizedItems.map((item) => [item.gameId, item]),
-      );
+      const incomingByGameId = new Map(normalizedItems.map((item) => [item.gameId, item]));
       const retainedTerminalItems = state.items
-        .filter(
-          (item) =>
-            !incomingByGameId.has(item.gameId) &&
-            TERMINAL_STATUSES.has(item.status),
-        )
+        .filter((item) => !incomingByGameId.has(item.gameId) && TERMINAL_STATUSES.has(item.status))
         .slice(-MAX_RETAINED_TERMINAL_ITEMS);
 
       return { items: [...normalizedItems, ...retainedTerminalItems] };
@@ -56,9 +38,7 @@ export const useDownloadStore = create<DownloadState>()((set, get) => ({
   upsertItem: (item) =>
     set((state) => {
       const normalizedItem = normalizeDownloadItem(item);
-      const index = state.items.findIndex(
-        (i) => i.gameId === normalizedItem.gameId,
-      );
+      const index = state.items.findIndex((i) => i.gameId === normalizedItem.gameId);
       if (index > -1) {
         const updated = [...state.items];
         updated[index] = normalizeDownloadItem({
@@ -74,28 +54,29 @@ export const useDownloadStore = create<DownloadState>()((set, get) => ({
     set((state) => ({
       items: state.items.filter((i) => i.gameId !== gameId),
     })),
-
-  activeCount: () =>
-    get().items.filter((item) => isActiveDownloadItem(item)).length,
-
-  pausedCount: () =>
-    get().items.filter((item) => isPausedDownloadItem(item)).length,
-
-  completedCount: () =>
-    get().items.filter((i) => i.status === "completed").length,
-
-  totalProgress: () => {
-    const items = get().items.filter(
-      (item) => isActiveDownloadItem(item) || isPausedDownloadItem(item),
-    );
-    if (items.length === 0) {
-      return get().items.some((item) => item.status === "completed") ? 100 : 0;
-    }
-    return Math.round(
-      items.reduce((sum, i) => sum + i.progress, 0) / items.length,
-    );
-  },
 }));
+
+export function selectActiveCount(state: DownloadState): number {
+  return state.items.filter((item) => isActiveDownloadItem(item)).length;
+}
+
+export function selectPausedCount(state: DownloadState): number {
+  return state.items.filter((item) => isPausedDownloadItem(item)).length;
+}
+
+export function selectCompletedCount(state: DownloadState): number {
+  return state.items.filter((i) => i.status === "completed").length;
+}
+
+export function selectTotalProgress(state: DownloadState): number {
+  const items = state.items.filter(
+    (item) => isActiveDownloadItem(item) || isPausedDownloadItem(item),
+  );
+  if (items.length === 0) {
+    return state.items.some((item) => item.status === "completed") ? 100 : 0;
+  }
+  return Math.round(items.reduce((sum, i) => sum + i.progress, 0) / items.length);
+}
 
 function normalizeDownloadItem(item: DownloadItem): DownloadItem {
   const external = Boolean(item.external);

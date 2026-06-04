@@ -16,7 +16,7 @@ import {
 
 import { Sidebar, type PageKey } from "./Sidebar";
 import { DesktopTitleBar } from "./DesktopTitleBar";
-import { useDownloadStore } from "../../stores/downloadStore";
+import { selectActiveCount, useDownloadStore } from "../../stores/downloadStore";
 import { getDownloadQueue } from "../../lib/launcher";
 import type { DownloadItem } from "../../lib/types";
 
@@ -99,9 +99,7 @@ export function AppShell({
   onRoute,
 }: AppShellProps) {
   const [isNotificationMenuOpen, setIsNotificationMenuOpen] = useState(false);
-  const [readNotificationIds, setReadNotificationIds] = useState<Set<string>>(
-    () => new Set(),
-  );
+  const [readNotificationIds, setReadNotificationIds] = useState<Set<string>>(() => new Set());
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const notificationMenuRef = useRef<HTMLDivElement | null>(null);
   const profileMenuRef = useRef<HTMLDivElement | null>(null);
@@ -113,7 +111,7 @@ export function AppShell({
     (item) => item.isUnread && !readNotificationIds.has(item.id),
   ).length;
 
-  const downloadCount = useDownloadStore((s) => s.activeCount());
+  const downloadCount = useDownloadStore(selectActiveCount);
 
   useEffect(() => {
     if (!isProfileMenuOpen && !isNotificationMenuOpen) {
@@ -123,11 +121,7 @@ export function AppShell({
     function handlePointerDown(event: PointerEvent) {
       const target = event.target as Node;
 
-      if (
-        isProfileMenuOpen &&
-        profileMenuRef.current &&
-        !profileMenuRef.current.contains(target)
-      ) {
+      if (isProfileMenuOpen && profileMenuRef.current && !profileMenuRef.current.contains(target)) {
         setIsProfileMenuOpen(false);
       }
 
@@ -178,22 +172,16 @@ export function AppShell({
   useEffect(() => {
     let active = true;
 
-    const unlistenPromise = listen<DownloadItem>(
-      "download_progress",
-      (event) => {
-        if (active) {
-          useDownloadStore.getState().upsertItem(event.payload);
-        }
-      },
-    );
-    const unlistenRemovedPromise = listen<{ gameId: string }>(
-      "download_removed",
-      (event) => {
-        if (active) {
-          useDownloadStore.getState().removeItem(event.payload.gameId);
-        }
-      },
-    );
+    const unlistenPromise = listen<DownloadItem>("download_progress", (event) => {
+      if (active) {
+        useDownloadStore.getState().upsertItem(event.payload);
+      }
+    });
+    const unlistenRemovedPromise = listen<{ gameId: string }>("download_removed", (event) => {
+      if (active) {
+        useDownloadStore.getState().removeItem(event.payload.gameId);
+      }
+    });
 
     getDownloadQueue()
       .then((queue) => {
@@ -230,7 +218,11 @@ export function AppShell({
           </button>
 
           <div className="order-3 min-w-0 flex-1 basis-full sm:order-none sm:basis-auto">
-            <Sidebar activePage={activePage} downloadCount={downloadCount} onNavigate={onNavigate} />
+            <Sidebar
+              activePage={activePage}
+              downloadCount={downloadCount}
+              onNavigate={onNavigate}
+            />
           </div>
 
           <div className="ml-auto flex shrink-0 items-center gap-2 sm:gap-3">
@@ -257,9 +249,7 @@ export function AppShell({
                   readNotificationIds={readNotificationIds}
                   onClose={() => setIsNotificationMenuOpen(false)}
                   onMarkAllRead={() =>
-                    setReadNotificationIds(
-                      new Set(notificationItems.map((item) => item.id)),
-                    )
+                    setReadNotificationIds(new Set(notificationItems.map((item) => item.id)))
                   }
                   onAction={(item, page) => {
                     setReadNotificationIds((current) => {
@@ -293,10 +283,7 @@ export function AppShell({
                     initials={avatarInitials}
                     label={accountLabel}
                   />
-                  <ChevronDown
-                    aria-hidden="true"
-                    className="mr-1 h-4 w-4 text-[#1f1c0f]"
-                  />
+                  <ChevronDown aria-hidden="true" className="mr-1 h-4 w-4 text-[#1f1c0f]" />
                 </button>
 
                 {isProfileMenuOpen ? (
@@ -396,9 +383,7 @@ function NotificationMenu({
           <p className="neo-copy text-[10px] font-black uppercase tracking-[0.14em] text-[#b7102a]">
             Launcher Feed
           </p>
-          <h2 className="neo-title text-3xl leading-none text-[#1f1c0f]">
-            Notifications
-          </h2>
+          <h2 className="neo-title text-3xl leading-none text-[#1f1c0f]">Notifications</h2>
         </div>
         <button
           aria-label="Close notifications"
@@ -461,9 +446,7 @@ function NotificationCard({
               {item.time}
             </span>
           </div>
-          <p className="mt-1 text-sm leading-5 text-[#5b403f]">
-            {item.message}
-          </p>
+          <p className="mt-1 text-sm leading-5 text-[#5b403f]">{item.message}</p>
           {action ? (
             <button
               className="neo-copy mt-3 border-2 border-black bg-[#007166] px-3 py-2 text-[10px] font-black uppercase tracking-[0.1em] text-white shadow-[2px_2px_0_#1f1c0f] transition hover:-translate-y-0.5"
@@ -643,9 +626,7 @@ function ProfileMenuItem({
   return (
     <button
       className={`neo-copy flex h-11 w-full items-center gap-3 border-2 border-black px-3 text-left text-[11px] font-black uppercase tracking-[0.1em] shadow-[2px_2px_0_#1f1c0f] transition hover:-translate-y-0.5 ${
-        tone === "danger"
-          ? "bg-[#b7102a] text-white"
-          : "bg-[#f6edd8] text-[#1f1c0f]"
+        tone === "danger" ? "bg-[#b7102a] text-white" : "bg-[#f6edd8] text-[#1f1c0f]"
       } disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0`}
       disabled={disabled}
       role="menuitem"

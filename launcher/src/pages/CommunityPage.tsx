@@ -1,11 +1,4 @@
-import {
-  MessageSquare,
-  Radio,
-  Shield,
-  Signal,
-  Trophy,
-  Users,
-} from "lucide-react";
+import { MessageSquare, Radio, Shield, Signal, Trophy, Users } from "lucide-react";
 
 const activityFeed = [
   {
@@ -45,21 +38,21 @@ export function CommunityPage() {
     <div className="relative min-h-[600px]">
       {/* Centered Coming Soon Overlay */}
       <div className="absolute inset-0 z-20 flex items-center justify-center p-4">
-        <div className="border-[6px] border-black bg-[#f2c14e] p-8 md:p-12 shadow-[12px_12px_0_#171411] text-center max-w-md rotate-[-3deg] transition hover:rotate-[0deg] hover:scale-105 duration-300">
-          <h2 className="neo-title text-5xl md:text-7xl text-[#171411] uppercase leading-none tracking-tight">
+        <div className="max-w-md rotate-[-3deg] border-[6px] border-black bg-[#f2c14e] p-8 text-center shadow-[12px_12px_0_#171411] transition duration-300 hover:rotate-[0deg] hover:scale-105 md:p-12">
+          <h2 className="neo-title text-5xl uppercase leading-none tracking-tight text-[#171411] md:text-7xl">
             Coming
           </h2>
-          <h2 className="neo-title text-5xl md:text-7xl text-[#171411] uppercase leading-none tracking-tight mt-1">
+          <h2 className="neo-title mt-1 text-5xl uppercase leading-none tracking-tight text-[#171411] md:text-7xl">
             Soon
           </h2>
-          <p className="neo-copy mt-5 text-[11px] font-black uppercase tracking-[0.2em] text-[#171411] border-t-2 border-black pt-4">
+          <p className="neo-copy mt-5 border-t-2 border-black pt-4 text-[11px] font-black uppercase tracking-[0.2em] text-[#171411]">
             Official Community slice
           </p>
         </div>
       </div>
 
       {/* Blurred Community Content */}
-      <div className="pointer-events-none select-none blur-[6px] opacity-75">
+      <div className="pointer-events-none select-none opacity-75 blur-[6px]">
         <section>
           <div className="mb-8 border-b-4 border-black pb-4">
             <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
@@ -112,9 +105,7 @@ export function CommunityPage() {
 
               <div className="border-4 border-black bg-[#f5eedf] shadow-[4px_4px_0_#171411]">
                 <div className="flex items-center justify-between border-b-4 border-black p-4">
-                  <h2 className="text-3xl font-black uppercase text-[#171411]">
-                    Live Feed
-                  </h2>
+                  <h2 className="text-3xl font-black uppercase text-[#171411]">Live Feed</h2>
                   <span className="neo-copy text-xs font-bold uppercase text-[#55504a]">
                     Echtzeit
                   </span>
@@ -122,10 +113,7 @@ export function CommunityPage() {
 
                 <div className="divide-y-4 divide-black">
                   {activityFeed.map((item, index) => (
-                    <article
-                      key={item.headline}
-                      className="grid gap-4 p-4 sm:grid-cols-[88px_1fr]"
-                    >
+                    <article key={item.headline} className="grid gap-4 p-4 sm:grid-cols-[88px_1fr]">
                       <div className="flex h-20 items-center justify-center bg-[#171411] text-[#f5eedf]">
                         <span className="neo-title text-4xl leading-none">
                           {String(index + 1).padStart(2, "0")}

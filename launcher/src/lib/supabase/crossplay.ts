@@ -1,6 +1,10 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { getSupabaseClient } from "./client";
-import type { CrossPlayIssue, CrossPlayPlatform, GameCrossPlay, GameCrossPlayReport } from "../types/crossplay";
+import type {
+  CrossPlayIssue,
+  CrossPlayPlatform,
+  GameCrossPlay,
+  GameCrossPlayReport,
+} from "../types/crossplay";
 
 const CROSSPLAY_SELECT = `
   id, game_id, platform, is_enabled, is_verified, verified_by_user_id,
@@ -12,8 +16,34 @@ const REPORT_SELECT = `
   status, created_at, updated_at
 `;
 
- 
-function rowToCrossPlay(row: any): GameCrossPlay {
+interface CrossPlayRow {
+  id: string;
+  game_id: string;
+  platform: string;
+  is_enabled: boolean;
+  is_verified: boolean;
+  verified_by_user_id: string | null;
+  verified_at: string | null;
+  notes: string | null;
+  metadata: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string;
+}
+
+interface CrossPlayReportRow {
+  id: string;
+  game_id: string;
+  reporter_id: string;
+  from_platform: string;
+  to_platform: string;
+  issue: string;
+  description: string | null;
+  status: string;
+  created_at: string;
+  updated_at: string;
+}
+
+function rowToCrossPlay(row: CrossPlayRow): GameCrossPlay {
   return {
     id: row.id,
     gameId: row.game_id,
@@ -29,8 +59,7 @@ function rowToCrossPlay(row: any): GameCrossPlay {
   };
 }
 
- 
-function rowToReport(row: any): GameCrossPlayReport {
+function rowToReport(row: CrossPlayReportRow): GameCrossPlayReport {
   return {
     id: row.id,
     gameId: row.game_id,
@@ -54,9 +83,10 @@ export async function listGameCrossPlay(gameId: string): Promise<GameCrossPlay[]
     .eq("game_id", gameId)
     .eq("is_enabled", true);
   if (error) {
-    throw new Error(error.message);
+    console.warn("listGameCrossPlay: query failed (table may not exist):", error.message);
+    return [];
   }
-  return (data ?? []).map(rowToCrossPlay);
+  return ((data ?? []) as CrossPlayRow[]).map(rowToCrossPlay);
 }
 
 export async function getCrossPlayPlatforms(gameId: string): Promise<CrossPlayPlatform[]> {
@@ -90,5 +120,27 @@ export async function reportCrossPlayIssue(
   if (error) {
     throw new Error(error.message);
   }
-  return rowToReport(data);
+  return rowToReport(data as CrossPlayReportRow);
+}
+
+interface GameExternalIdRow {
+  slug: string | null;
+  external_ids: Record<string, string> | null;
+}
+
+export async function getGameExternalId(
+  gameId: string,
+  platform: CrossPlayPlatform,
+): Promise<string | null> {
+  const client = getSupabaseClient();
+  if (!client) return null;
+  const { data, error } = await client
+    .from("games")
+    .select("slug, external_ids")
+    .eq("id", gameId)
+    .single();
+  if (error || !data) return null;
+  const row = data as GameExternalIdRow;
+  const ids = row.external_ids ?? {};
+  return ids[platform] ?? row.slug ?? null;
 }

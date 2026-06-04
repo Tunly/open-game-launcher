@@ -193,13 +193,41 @@ function toProfile(row: UnknownRecord): Profile {
     countryCode: rowNullableString(row, "country_code"),
     language: rowString(row, "language", "en"),
     timezone: rowNullableString(row, "timezone"),
-    profileVisibility: rowString(row, "profile_visibility", "public") as Profile["profileVisibility"],
-    onlineStatusVisibility: rowString(row, "online_status_visibility", "public") as Profile["onlineStatusVisibility"],
-    gameActivityVisibility: rowString(row, "game_activity_visibility", "friends_only") as Profile["gameActivityVisibility"],
-    achievementVisibility: rowString(row, "achievement_visibility", "public") as Profile["achievementVisibility"],
-    libraryVisibility: rowString(row, "library_visibility", "friends_only") as Profile["libraryVisibility"],
-    wishlistVisibility: rowString(row, "wishlist_visibility", "public") as Profile["wishlistVisibility"],
-    commentsVisibility: rowString(row, "comments_visibility", "friends_only") as Profile["commentsVisibility"],
+    profileVisibility: rowString(
+      row,
+      "profile_visibility",
+      "public",
+    ) as Profile["profileVisibility"],
+    onlineStatusVisibility: rowString(
+      row,
+      "online_status_visibility",
+      "public",
+    ) as Profile["onlineStatusVisibility"],
+    gameActivityVisibility: rowString(
+      row,
+      "game_activity_visibility",
+      "friends_only",
+    ) as Profile["gameActivityVisibility"],
+    achievementVisibility: rowString(
+      row,
+      "achievement_visibility",
+      "public",
+    ) as Profile["achievementVisibility"],
+    libraryVisibility: rowString(
+      row,
+      "library_visibility",
+      "friends_only",
+    ) as Profile["libraryVisibility"],
+    wishlistVisibility: rowString(
+      row,
+      "wishlist_visibility",
+      "public",
+    ) as Profile["wishlistVisibility"],
+    commentsVisibility: rowString(
+      row,
+      "comments_visibility",
+      "friends_only",
+    ) as Profile["commentsVisibility"],
     profileThemeId: rowNullableString(row, "profile_theme_id"),
     featuredBadgeId: rowNullableString(row, "featured_badge_id"),
     featuredGameId: rowNullableString(row, "featured_game_id"),
@@ -458,9 +486,7 @@ export async function searchProfiles(query: string) {
 
   handleError(error);
 
-  return (Array.isArray(data) ? data : []).map((row) =>
-    toProfile(row as UnknownRecord),
-  );
+  return (Array.isArray(data) ? data : []).map((row) => toProfile(row as UnknownRecord));
 }
 
 export async function getMyProfile() {
@@ -477,10 +503,8 @@ export async function getMyProfile() {
 async function createProfileForCurrentUser(user: User) {
   const client = getSupabaseClient();
   const metadata = user.user_metadata as Record<string, unknown>;
-  const displayName =
-    stringMeta(metadata, "display_name") ?? stringMeta(metadata, "full_name");
-  const avatarUrl =
-    stringMeta(metadata, "avatar_url") ?? stringMeta(metadata, "picture");
+  const displayName = stringMeta(metadata, "display_name") ?? stringMeta(metadata, "full_name");
+  const avatarUrl = stringMeta(metadata, "avatar_url") ?? stringMeta(metadata, "picture");
   const baseUsername = buildUsernameCandidate(
     stringMeta(metadata, "username") ??
       stringMeta(metadata, "user_name") ??
@@ -583,10 +607,7 @@ export async function getProfilePageData(username: string): Promise<ProfilePageD
     stats: {
       gamesOwned: libraryPreview.length,
       achievementsUnlocked: achievementPreview.length,
-      playtimeMinutes: libraryPreview.reduce(
-        (total, item) => total + item.playtimeMinutes,
-        0,
-      ),
+      playtimeMinutes: libraryPreview.reduce((total, item) => total + item.playtimeMinutes, 0),
       friendsCount: 0,
     },
   };
@@ -880,6 +901,14 @@ export function declineFriendRequest(friendshipId: string) {
   return updateFriendshipStatus(friendshipId, "declined");
 }
 
+export function cancelFriendRequest(friendshipId: string) {
+  return updateFriendshipStatus(friendshipId, "cancelled");
+}
+
+export function removeFriend(friendshipId: string) {
+  return updateFriendshipStatus(friendshipId, "cancelled");
+}
+
 async function updateFriendshipStatus(friendshipId: string, status: Friendship["status"]) {
   const client = getSupabaseClient();
   const { data, error } = await client
@@ -901,6 +930,57 @@ export async function blockUser(userId: string) {
   handleError(error);
 }
 
+export async function unblockUser(userId: string) {
+  const client = getSupabaseClient();
+  const currentUserId = await getCurrentUserId();
+  const { error } = await client
+    .from("user_blocks")
+    .delete()
+    .eq("blocker_id", currentUserId)
+    .eq("blocked_id", userId);
+  handleError(error);
+}
+
+export async function getMyBlocks(): Promise<{ blockedId: string }[]> {
+  const client = getSupabaseClient();
+  const currentUserId = await getCurrentUserId();
+  const { data, error } = await client
+    .from("user_blocks")
+    .select("blocked_id")
+    .eq("blocker_id", currentUserId);
+  handleError(error);
+  return (data ?? []).map((row) => ({ blockedId: rowString(row as UnknownRecord, "blocked_id") }));
+}
+
+async function getProfilesByIds(ids: string[]) {
+  if (ids.length === 0) {
+    return [] as Profile[];
+  }
+  const client = getSupabaseClient();
+  const initial = await client.from("profiles").select(profileSelect).in("id", ids);
+  let data: unknown = initial.data;
+  let error = initial.error;
+
+  if (isMissingSchemaError(error)) {
+    const retry = await client.from("profiles").select(baseProfileSelect).in("id", ids);
+    data = retry.data;
+    error = retry.error;
+  }
+
+  handleError(error);
+  return (Array.isArray(data) ? data : []).map((row) => toProfile(row as UnknownRecord));
+}
+
+function toFriendPreview(profile: Profile): NonNullable<Friendship["profile"]> {
+  return {
+    id: profile.id,
+    username: profile.username,
+    displayName: profile.displayName,
+    avatarUrl: profile.avatarUrl,
+    profileVisibility: profile.profileVisibility,
+  };
+}
+
 export async function getFriends(userId: string) {
   const client = getSupabaseClient();
   const { data, error } = await client
@@ -909,7 +989,17 @@ export async function getFriends(userId: string) {
     .or(`requester_id.eq.${userId},addressee_id.eq.${userId}`)
     .eq("status", "accepted");
   handleError(error);
-  return (data ?? []).map((row) => toFriendship(row as UnknownRecord));
+  const rows = (data ?? []).map((row) => toFriendship(row as UnknownRecord));
+  const otherIds = Array.from(
+    new Set(rows.map((row) => (row.requesterId === userId ? row.addresseeId : row.requesterId))),
+  );
+  const profiles = await getProfilesByIds(otherIds);
+  const profileById = new Map(profiles.map((profile) => [profile.id, profile]));
+  return rows.map((row) => {
+    const otherId = row.requesterId === userId ? row.addresseeId : row.requesterId;
+    const profile = profileById.get(otherId) ?? null;
+    return { ...row, profile: profile ? toFriendPreview(profile) : null };
+  });
 }
 
 export async function getMyFriendRequests(): Promise<FriendRequest[]> {
@@ -921,7 +1011,33 @@ export async function getMyFriendRequests(): Promise<FriendRequest[]> {
     .or(`requester_id.eq.${userId},addressee_id.eq.${userId}`)
     .eq("status", "pending");
   handleError(error);
-  return (data ?? []).map((row) => toFriendship(row as UnknownRecord));
+  const rows = (data ?? []).map((row) => toFriendship(row as UnknownRecord));
+  const otherIds = Array.from(
+    new Set(
+      rows.flatMap((row) =>
+        row.requesterId === userId
+          ? [row.addresseeId, row.requesterId]
+          : [row.requesterId, row.addresseeId],
+      ),
+    ),
+  );
+  const profiles = await getProfilesByIds(otherIds);
+  const profileById = new Map(profiles.map((profile) => [profile.id, profile]));
+  return rows.map((row) => ({
+    ...row,
+    requesterProfile: profileById.get(row.requesterId)
+      ? toFriendPreview(profileById.get(row.requesterId)!)
+      : undefined,
+    addresseeProfile: profileById.get(row.addresseeId)
+      ? toFriendPreview(profileById.get(row.addresseeId)!)
+      : undefined,
+  }));
+}
+
+export async function getProfilesForUsers(userIds: string[]) {
+  const unique = Array.from(new Set(userIds.filter((id) => Boolean(id))));
+  const profiles = await getProfilesByIds(unique);
+  return new Map(profiles.map((profile) => [profile.id, profile]));
 }
 
 function toFriendship(row: UnknownRecord): Friendship {
@@ -967,10 +1083,7 @@ export async function addProfileComment(profileUserId: string, body: string) {
 
 export async function deleteProfileComment(commentId: string) {
   const client = getSupabaseClient();
-  const { error } = await client
-    .from("profile_comments")
-    .delete()
-    .eq("id", commentId);
+  const { error } = await client.from("profile_comments").delete().eq("id", commentId);
   handleError(error);
 }
 
@@ -1017,7 +1130,9 @@ async function getUserLibraryPreview(userId: string): Promise<LibraryPreviewItem
   handleError(error);
 
   const libraryItems = (data ?? []).map((row) => row as UnknownRecord);
-  const gameIds = Array.from(new Set(libraryItems.map((row) => rowString(row, "game_id")).filter(Boolean)));
+  const gameIds = Array.from(
+    new Set(libraryItems.map((row) => rowString(row, "game_id")).filter(Boolean)),
+  );
 
   let gamesById = new Map<string, UnknownRecord>();
   if (gameIds.length > 0) {
@@ -1090,7 +1205,9 @@ async function getUserAchievementPreview(userId: string): Promise<AchievementPre
   const achievementIds = Array.from(
     new Set(achievementUnlocks.map((row) => rowString(row, "achievement_id")).filter(Boolean)),
   );
-  const gameIds = Array.from(new Set(achievementUnlocks.map((row) => rowString(row, "game_id")).filter(Boolean)));
+  const gameIds = Array.from(
+    new Set(achievementUnlocks.map((row) => rowString(row, "game_id")).filter(Boolean)),
+  );
 
   let achievementsById = new Map<string, UnknownRecord>();
   if (achievementIds.length > 0) {

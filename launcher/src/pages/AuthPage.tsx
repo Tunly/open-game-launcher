@@ -1,31 +1,14 @@
-import {
-  CheckCircle2,
-  KeyRound,
-  LogIn,
-  Mail,
-  Search,
-  UserPlus,
-} from "lucide-react";
-import {
-  type FormEvent,
-  useState,
-} from "react";
+import { CheckCircle2, KeyRound, LogIn, Mail, Search, UserPlus } from "lucide-react";
+import { type FormEvent, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { supabase } from "../lib/supabase";
-import {
-  getMyProfile,
-  isUsernameAvailable,
-  updateMyProfile,
-} from "../lib/supabase/profile";
+import { getMyProfile, isUsernameAvailable, updateMyProfile } from "../lib/supabase/profile";
+import { getErrorMessage } from "../lib/formatters";
 import { usernameSchema } from "../lib/validation/profile";
 
 type AuthMode = "sign-in" | "sign-up";
 type UsernameStatus = "idle" | "checking" | "available" | "taken";
-
-function getErrorMessage(error: unknown) {
-  return error instanceof Error ? error.message : String(error);
-}
 
 function normalizeUsername(username: string) {
   return username.trim().toLowerCase();
@@ -38,8 +21,7 @@ export function AuthPage() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [username, setUsername] = useState("");
-  const [usernameStatus, setUsernameStatus] =
-    useState<UsernameStatus>("idle");
+  const [usernameStatus, setUsernameStatus] = useState<UsernameStatus>("idle");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -144,7 +126,9 @@ export function AuthPage() {
         } catch (profileError) {
           const profileMessage = getErrorMessage(profileError).toLowerCase();
           if (profileMessage.includes("username") && profileMessage.includes("taken")) {
-            setErrorMessage("Username was taken before profile setup finished. Pick another username after login.");
+            setErrorMessage(
+              "Username was taken before profile setup finished. Pick another username after login.",
+            );
           } else {
             setMessage(
               `Account created. Continue profile setup after login: ${getErrorMessage(profileError)}`,
@@ -189,8 +173,8 @@ export function AuthPage() {
           Launcher Account
         </h1>
         <p className="neo-copy mt-5 max-w-[560px] text-xs font-bold uppercase leading-6 text-[#55504a]">
-          Library, downloads, and community features are account-bound. Store
-          browsing and local settings stay available without login.
+          Library, downloads, and community features are account-bound. Store browsing and local
+          settings stay available without login.
         </p>
       </div>
 
@@ -271,9 +255,7 @@ export function AuthPage() {
         )}
 
         <label className="grid gap-2">
-          <span className="neo-copy text-[10px] font-bold uppercase text-[#55504a]">
-            Email
-          </span>
+          <span className="neo-copy text-[10px] font-bold uppercase text-[#55504a]">Email</span>
           <span className="flex h-12 items-center gap-3 border-2 border-black bg-[#fbf8ef] px-3">
             <Mail className="h-5 w-5 shrink-0" />
             <input
@@ -288,16 +270,12 @@ export function AuthPage() {
         </label>
 
         <label className="mt-4 grid gap-2">
-          <span className="neo-copy text-[10px] font-bold uppercase text-[#55504a]">
-            Password
-          </span>
+          <span className="neo-copy text-[10px] font-bold uppercase text-[#55504a]">Password</span>
           <span className="flex h-12 items-center gap-3 border-2 border-black bg-[#fbf8ef] px-3">
             <KeyRound className="h-5 w-5 shrink-0" />
             <input
               required
-              autoComplete={
-                mode === "sign-in" ? "current-password" : "new-password"
-              }
+              autoComplete={mode === "sign-in" ? "current-password" : "new-password"}
               className="min-w-0 flex-1 bg-transparent text-base font-black outline-none"
               minLength={6}
               type="password"
@@ -344,16 +322,8 @@ export function AuthPage() {
           disabled={isSubmitting}
           type="submit"
         >
-          {mode === "sign-in" ? (
-            <LogIn className="h-4 w-4" />
-          ) : (
-            <UserPlus className="h-4 w-4" />
-          )}
-          {isSubmitting
-            ? "Please wait"
-            : mode === "sign-in"
-              ? "Sign In"
-              : "Sign Up"}
+          {mode === "sign-in" ? <LogIn className="h-4 w-4" /> : <UserPlus className="h-4 w-4" />}
+          {isSubmitting ? "Please wait" : mode === "sign-in" ? "Sign In" : "Sign Up"}
         </button>
       </form>
     </section>

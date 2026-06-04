@@ -77,7 +77,10 @@ export function PrivacySettingsPage() {
           <Loader2 className="h-8 w-8 animate-spin text-sky-300" />
         </div>
       ) : !isConfigured ? (
-        <Notice title="Supabase is not configured" body="Privacy settings need the public Supabase env vars." />
+        <Notice
+          title="Supabase is not configured"
+          body="Privacy settings need the public Supabase env vars."
+        />
       ) : !user || !profile ? (
         <Notice title="Login required" body="Sign in before changing your visibility rules." />
       ) : (
@@ -111,9 +114,14 @@ function Notice({ body, title }: { body: string; title: string }) {
 
 function Status({ message, tone }: { message: string; tone: "error" | "success" }) {
   return (
-    <div className={tone === "error" ? "border border-rose-300/30 bg-rose-500/10 p-4 text-sm text-rose-100" : "border border-emerald-300/30 bg-emerald-500/10 p-4 text-sm text-emerald-100"}>
+    <div
+      className={
+        tone === "error"
+          ? "border border-rose-300/30 bg-rose-500/10 p-4 text-sm text-rose-100"
+          : "border border-emerald-300/30 bg-emerald-500/10 p-4 text-sm text-emerald-100"
+      }
+    >
       {message}
     </div>
   );
 }
-

@@ -35,18 +35,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           return;
         }
 
-        void supabase.auth
-          .getSession()
-          .then(({ data, error: sessionError }) => {
-            if (!isMounted) {
-              return;
-            }
-            if (sessionError) {
-              setError(sessionError.message);
-            }
-            setSession(data.session);
-            setIsLoading(false);
-          });
+        void supabase.auth.getSession().then(({ data, error: sessionError }) => {
+          if (!isMounted) {
+            return;
+          }
+          if (sessionError) {
+            setError(sessionError.message);
+          }
+          setSession(data.session);
+          setIsLoading(false);
+        });
 
         const authListener = supabase.auth.onAuthStateChange((_event, nextSession) => {
           if (!isMounted) {
@@ -107,31 +105,33 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let isActive = true;
     let cleanup: (() => void) | null = null;
 
-    void import("../../lib/supabase/presence").then(({ clearLauncherPresence, setLauncherPresence }) => {
-      if (!isActive) {
-        return;
-      }
+    void import("../../lib/supabase/presence")
+      .then(({ clearLauncherPresence, setLauncherPresence }) => {
+        if (!isActive) {
+          return;
+        }
 
-      const syncPresence = (status: "away" | "online") => {
-        void setLauncherPresence({ status }).catch(() => undefined);
-      };
+        const syncPresence = (status: "away" | "online") => {
+          void setLauncherPresence({ status }).catch(() => undefined);
+        };
 
-      syncPresence(document.visibilityState === "hidden" ? "away" : "online");
-      const heartbeat = window.setInterval(() => {
         syncPresence(document.visibilityState === "hidden" ? "away" : "online");
-      }, 45_000);
-      const handleVisibilityChange = () => {
-        syncPresence(document.visibilityState === "hidden" ? "away" : "online");
-      };
+        const heartbeat = window.setInterval(() => {
+          syncPresence(document.visibilityState === "hidden" ? "away" : "online");
+        }, 45_000);
+        const handleVisibilityChange = () => {
+          syncPresence(document.visibilityState === "hidden" ? "away" : "online");
+        };
 
-      document.addEventListener("visibilitychange", handleVisibilityChange);
+        document.addEventListener("visibilitychange", handleVisibilityChange);
 
-      cleanup = () => {
-        window.clearInterval(heartbeat);
-        document.removeEventListener("visibilitychange", handleVisibilityChange);
-        void clearLauncherPresence().catch(() => undefined);
-      };
-    }).catch(() => undefined);
+        cleanup = () => {
+          window.clearInterval(heartbeat);
+          document.removeEventListener("visibilitychange", handleVisibilityChange);
+          void clearLauncherPresence().catch(() => undefined);
+        };
+      })
+      .catch(() => undefined);
 
     return () => {
       isActive = false;
@@ -147,7 +147,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       session,
       user: session?.user ?? null,
       signOut: async () => {
-        const module = supabaseModuleRef.current ?? await import("../../lib/supabase/client");
+        const module = supabaseModuleRef.current ?? (await import("../../lib/supabase/client"));
         supabaseModuleRef.current = module;
         const { supabase } = module;
         if (!supabase) {

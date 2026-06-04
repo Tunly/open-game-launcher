@@ -19,9 +19,7 @@ export function ProfileLevelBar({
       }
     >
       <div className="flex items-start justify-between gap-3">
-        <p className="neo-title text-5xl leading-none text-[#171411]">
-          {level}
-        </p>
+        <p className="neo-title text-5xl leading-none text-[#171411]">{level}</p>
         <div className="flex shrink-0 items-center gap-1.5">
           <p className="neo-copy inline-block border-2 border-black bg-[#b7102a] px-2 py-1 text-[9px] font-black uppercase tracking-[0.1em] text-white">
             Level

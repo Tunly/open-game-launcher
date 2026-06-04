@@ -3,7 +3,7 @@ import { listen } from "@tauri-apps/api/event";
 
 export interface DeepLinkParams {
   rawUrl: string;
-  action: string;        // "join", "open", "install"
+  action: string; // "join", "open", "install"
   params: Record<string, string>;
 }
 

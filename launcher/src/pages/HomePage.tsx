@@ -14,9 +14,9 @@ export function HomePage() {
               Build the player room behind the launcher.
             </h1>
             <p className="mt-5 max-w-2xl text-base leading-7 text-slate-300">
-              Public profiles, privacy rules, showcases, friends, comments,
-              cosmetics, and secure Supabase ownership boundaries are wired as
-              the next foundation for the launcher platform.
+              Public profiles, privacy rules, showcases, friends, comments, cosmetics, and secure
+              Supabase ownership boundaries are wired as the next foundation for the launcher
+              platform.
             </p>
             <div className="mt-6 flex flex-wrap gap-3">
               <Link
@@ -35,7 +35,11 @@ export function HomePage() {
           </div>
           <div className="grid gap-3">
             {[
-              ["Secure RLS", "Profile reads and writes stay behind Supabase policies.", ShieldCheck],
+              [
+                "Secure RLS",
+                "Profile reads and writes stay behind Supabase policies.",
+                ShieldCheck,
+              ],
               ["Showcases", "Custom panels turn a profile into a gaming room.", Sparkles],
               ["Social Layer", "Friend requests, blocks, and comments are modeled.", Users],
               ["Game Data", "Library and achievement writes are kept backend-only.", Gamepad2],
@@ -45,9 +49,7 @@ export function HomePage() {
                   <Icon className="mt-1 h-5 w-5 text-sky-300" />
                   <div>
                     <h2 className="font-bold text-white">{title as string}</h2>
-                    <p className="mt-1 text-sm leading-6 text-slate-400">
-                      {body as string}
-                    </p>
+                    <p className="mt-1 text-sm leading-6 text-slate-400">{body as string}</p>
                   </div>
                 </div>
               </article>
@@ -58,4 +60,3 @@ export function HomePage() {
     </div>
   );
 }
-

@@ -10,12 +10,12 @@ function createSupabaseClient() {
   }
 
   return createClient<Database>(supabaseUrl, supabaseAnonKey, {
-      auth: {
-        autoRefreshToken: true,
-        detectSessionInUrl: true,
-        persistSession: true,
-      },
-    });
+    auth: {
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
+      persistSession: true,
+    },
+  });
 }
 
 export const supabase = createSupabaseClient();

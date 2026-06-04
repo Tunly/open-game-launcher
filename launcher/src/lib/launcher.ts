@@ -8,11 +8,28 @@ import type {
   LocalEntityKey,
   LocalEntityPayload,
   LocalSyncStatus,
+  ProviderHealthStatus,
+  ReconciliationResult,
   StartDownloadResponse,
   SystemInfo,
   SyncGameAchievementsResponse,
   UninstallGameResponse,
+  SyncGameSavesResponse,
+  UploadGameSavesToCloudResponse,
+  DownloadGameSavesFromCloudResponse,
+  RestoreGameSavesFromCloudResponse,
 } from "./types";
+
+export type { Game };
+
+import type { PlatformFriend } from "./types/friends";
+import type {
+  InstalledModInfo,
+  ModInstallQueueItem,
+  ModInstallRequest,
+  ModInstallResult,
+  ModProvider,
+} from "./types/mods";
 
 type CommandArgs = Record<string, unknown>;
 
@@ -27,10 +44,7 @@ class LauncherCommandError extends Error {
   }
 }
 
-async function invokeCommand<T>(
-  command: string,
-  args?: CommandArgs,
-): Promise<T> {
+async function invokeCommand<T>(command: string, args?: CommandArgs): Promise<T> {
   try {
     return await invoke<T>(command, args);
   } catch (error) {
@@ -66,17 +80,11 @@ export function refreshInstalledGames(): Promise<Game[]> {
   return invokeCommand<Game[]>("refresh_installed_games");
 }
 
-export function addManualGame(input: {
-  title: string;
-  installPath: string;
-}): Promise<Game> {
+export function addManualGame(input: { title: string; installPath: string }): Promise<Game> {
   return invokeCommand<Game>("add_manual_game", { input });
 }
 
-export function moveGame(input: {
-  gameId: string;
-  newPath: string;
-}): Promise<void> {
+export function moveGame(input: { gameId: string; newPath: string }): Promise<void> {
   return invokeCommand<void>("move_game", { input });
 }
 
@@ -90,16 +98,97 @@ export function syncGameAchievements(
 ): Promise<SyncGameAchievementsResponse> {
   if (game.launcher === "xbox") {
     // Xbox uses its own sync command
-    return invokeCommand<SyncGameAchievementsResponse>("sync_xbox_achievements", { 
+    return invokeCommand<SyncGameAchievementsResponse>("sync_xbox_achievements", {
       gameId: game.id,
-      titleId: game.externalId || ""
+      titleId: game.externalId || "",
     });
   }
-  return invokeCommand<SyncGameAchievementsResponse>("sync_game_achievements", { gameId: game.id, steamId });
+  return invokeCommand<SyncGameAchievementsResponse>("sync_game_achievements", {
+    gameId: game.id,
+    steamId,
+  });
 }
 
 export function uninstallGame(gameId: string): Promise<UninstallGameResponse> {
   return invokeCommand<UninstallGameResponse>("uninstall_game", { gameId });
+}
+
+export function syncGameSaves(gameId: string): Promise<SyncGameSavesResponse> {
+  return invokeCommand<SyncGameSavesResponse>("sync_game_saves", { gameId });
+}
+
+export async function readCachedSupabaseAccessToken(): Promise<string | null> {
+  return invokeCommand<string | null>("read_cached_supabase_access_token");
+}
+
+export function isCloudKeyPresent(userId: string): Promise<boolean> {
+  return invokeCommand<boolean>("is_cloud_key_present", { userId });
+}
+
+export function generateCloudKey(userId: string): Promise<string> {
+  return invokeCommand<string>("generate_cloud_key", { userId });
+}
+
+export function rotateCloudKey(userId: string): Promise<string> {
+  return invokeCommand<string>("rotate_cloud_key", { userId });
+}
+
+export class CloudNotConfiguredError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "CloudNotConfiguredError";
+  }
+}
+
+async function buildCloudArgs(
+  gameId: string,
+  accessToken: string | null,
+  userId: string,
+): Promise<CommandArgs> {
+  if (!accessToken) {
+    throw new CloudNotConfiguredError(
+      "Sign in required for cloud sync. No cached access token found.",
+    );
+  }
+  const { supabaseUrl, supabaseAnonKey, supabaseConfigError } = await import("./supabase/config");
+  if (supabaseConfigError || !supabaseUrl || !supabaseAnonKey) {
+    throw new CloudNotConfiguredError(
+      supabaseConfigError ?? "Missing VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY for cloud sync.",
+    );
+  }
+  return {
+    input: {
+      gameId,
+      supabaseUrl,
+      apiKey: supabaseAnonKey,
+      accessToken,
+      userId,
+    },
+  };
+}
+
+export async function uploadGameSavesToCloud(
+  gameId: string,
+  options: { accessToken: string | null; userId: string },
+): Promise<UploadGameSavesToCloudResponse> {
+  const args = await buildCloudArgs(gameId, options.accessToken, options.userId);
+  return invokeCommand<UploadGameSavesToCloudResponse>("upload_game_saves_to_cloud", args);
+}
+
+export async function downloadGameSavesFromCloud(
+  gameId: string,
+  options: { accessToken: string | null; userId: string },
+): Promise<DownloadGameSavesFromCloudResponse> {
+  const args = await buildCloudArgs(gameId, options.accessToken, options.userId);
+  return invokeCommand<DownloadGameSavesFromCloudResponse>("download_game_saves_from_cloud", args);
+}
+
+export async function restoreGameSavesFromCloud(
+  gameId: string,
+  options: { accessToken: string | null; userId: string },
+): Promise<RestoreGameSavesFromCloudResponse> {
+  const args = await buildCloudArgs(gameId, options.accessToken, options.userId);
+  return invokeCommand<RestoreGameSavesFromCloudResponse>("restore_game_saves_from_cloud", args);
 }
 
 export function startDownload(
@@ -126,6 +215,14 @@ export async function openSteamScraperWindow(steamId: string) {
 
 export async function fetchSteamProfileName(steamId: string) {
   return invokeCommand<string | null>("fetch_steam_profile_name", { steamId });
+}
+
+export async function fetchSteamNewsForApp(appId: string): Promise<unknown> {
+  return invokeCommand<unknown>("fetch_steam_news", { appId });
+}
+
+export function openExternalUrl(url: string): Promise<void> {
+  return invokeCommand<void>("open_external_url", { url });
 }
 
 export function openGogLoginWindow(): Promise<void> {
@@ -284,30 +381,19 @@ export function normalizeSteamOwnedGames(games: unknown): OwnedGame[] {
     }
 
     const existingId = readString(record, ["id"]);
-    const hours = readNumber(record, [
-      "hours_forever",
-      "hours",
-      "playtimeHours",
-    ]);
+    const hours = readNumber(record, ["hours_forever", "hours", "playtimeHours"]);
     const playtimeMinutes =
-      readNumber(record, ["playtimeMinutes", "playtime_minutes"]) ||
-      Math.round(hours * 60);
+      readNumber(record, ["playtimeMinutes", "playtime_minutes"]) || Math.round(hours * 60);
 
     return [
       {
-        id: existingId.startsWith("steam-owned-")
-          ? existingId
-          : `steam-owned-${appId}`,
+        id: existingId.startsWith("steam-owned-") ? existingId : `steam-owned-${appId}`,
         title,
-        description:
-          readString(record, ["description"]) ||
-          `Steam game (Owned). AppID: ${appId}`,
+        description: readString(record, ["description"]) || `Steam game (Owned). AppID: ${appId}`,
         coverUrl:
           readString(record, ["heroUrl", "hero_url", "bannerUrl", "banner_url"]) ||
           steamImageUrl(appId, "library_hero.jpg"),
-        logoUrl:
-          readString(record, ["logoUrl", "logo_url"]) ||
-          steamImageUrl(appId, "header.jpg"),
+        logoUrl: readString(record, ["logoUrl", "logo_url"]) || steamImageUrl(appId, "header.jpg"),
         iconUrl: readString(record, ["iconUrl", "icon_url"]) || undefined,
         externalId: readString(record, ["externalId", "external_id"]) || appId,
         playtimeMinutes,
@@ -358,6 +444,50 @@ export function getDownloadQueue(): Promise<DownloadItem[]> {
   return invokeCommand<DownloadItem[]>("get_download_queue");
 }
 
+export function checkProviderHealth(): Promise<ProviderHealthStatus[]> {
+  return invokeCommand<ProviderHealthStatus[]>("check_provider_health");
+}
+
+export function reconcileDownloads(): Promise<ReconciliationResult> {
+  return invokeCommand<ReconciliationResult>("reconcile_downloads");
+}
+
+export function startModInstall(input: ModInstallRequest): Promise<ModInstallResult> {
+  return invokeCommand<ModInstallResult>("start_mod_install", { input });
+}
+
+export function getModQueue(): Promise<ModInstallQueueItem[]> {
+  return invokeCommand<ModInstallQueueItem[]>("get_mod_queue");
+}
+
+export function pauseModInstall(installId: string): Promise<void> {
+  return invokeCommand<void>("pause_mod_install", { installId });
+}
+
+export function cancelModInstall(installId: string): Promise<void> {
+  return invokeCommand<void>("cancel_mod_install", { installId });
+}
+
+export function scanGameMods(gameId: string): Promise<InstalledModInfo[]> {
+  return invokeCommand<InstalledModInfo[]>("scan_game_mods", { gameId });
+}
+
+export function enableMod(installId: string): Promise<InstalledModInfo> {
+  return invokeCommand<InstalledModInfo>("enable_mod", { installId });
+}
+
+export function disableMod(installId: string): Promise<InstalledModInfo> {
+  return invokeCommand<InstalledModInfo>("disable_mod", { installId });
+}
+
+export function uninstallMod(installId: string): Promise<void> {
+  return invokeCommand<void>("uninstall_mod", { installId });
+}
+
+export function setModProviderSecret(provider: ModProvider, secret: string): Promise<void> {
+  return invokeCommand<void>("set_mod_provider_secret", { provider, secret });
+}
+
 export function getLocalDatabasePath(): Promise<string> {
   return invokeCommand<string>("get_local_database_path");
 }
@@ -374,15 +504,11 @@ export function getAllLocalEntities(): Promise<LocalEntityPayload[]> {
   return invokeCommand<LocalEntityPayload[]>("get_all_local_entities");
 }
 
-export function markLocalEntitiesSynced(
-  entities: LocalEntityKey[],
-): Promise<void> {
+export function markLocalEntitiesSynced(entities: LocalEntityKey[]): Promise<void> {
   return invokeCommand<void>("mark_local_entities_synced", { entities });
 }
 
-export function applyRemoteLocalEntities(
-  entities: LocalEntityPayload[],
-): Promise<void> {
+export function applyRemoteLocalEntities(entities: LocalEntityPayload[]): Promise<void> {
   return invokeCommand<void>("apply_remote_local_entities", { entities });
 }
 
@@ -436,4 +562,36 @@ function normalizeBrowserGpuName(renderer: string) {
   }
 
   return renderer.length > 120 ? `${renderer.slice(0, 117)}...` : renderer;
+}
+
+// ============================================================================
+// Platform Friends Commands
+// ============================================================================
+
+export function fetchSteamFriends(steamId: string): Promise<PlatformFriend[]> {
+  return invokeCommand<PlatformFriend[]>("fetch_steam_friends", { steamId });
+}
+
+export function fetchGogFriends(accessToken: string): Promise<PlatformFriend[]> {
+  return invokeCommand<PlatformFriend[]>("fetch_gog_friends", { accessToken });
+}
+
+export function fetchEpicFriends(): Promise<PlatformFriend[]> {
+  return invokeCommand<PlatformFriend[]>("fetch_epic_friends");
+}
+
+export function fetchXboxFriends(xboxToken: string): Promise<PlatformFriend[]> {
+  return invokeCommand<PlatformFriend[]>("fetch_xbox_friends", { xboxToken });
+}
+
+export function captureScreenshot(): Promise<string> {
+  return invokeCommand<string>("capture_screenshot");
+}
+
+export function launchCrossPlayJoin(platform: string, gameSlug: string): Promise<string> {
+  return invokeCommand<string>("launch_cross_play_join", { platform, gameSlug });
+}
+
+export function resolveGameExternalId(gameId: string, platform: string): Promise<string> {
+  return invokeCommand<string>("resolve_game_external_id", { gameId, platform });
 }

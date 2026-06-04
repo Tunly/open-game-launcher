@@ -1,12 +1,40 @@
-import { FolderOpen, HardDrive, Power, RefreshCw, ShieldCheck, Link, LogOut, Gamepad2 } from "lucide-react";
+import {
+  FolderOpen,
+  HardDrive,
+  Power,
+  RefreshCw,
+  ShieldCheck,
+  Link,
+  LogOut,
+  Gamepad2,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { z } from "zod";
 import { useLocalStorageState } from "../hooks/useLocalStorageState";
-import { getDefaultInstallDir, getSystemInfo, openSteamLoginWindow, openGogLoginWindow, openEpicLoginWindow, openEaLoginWindow, openXboxLoginWindow, fetchXboxOwnedGames, normalizeSteamOwnedGames, fetchSteamProfileName, authenticateEpicLegendary, gogExchangeCode, gogLogout, gogGetToken, eaGetToken, eaLogout, openBattleNetLoginWindow, processBattleNetGamesPayload } from "../lib/launcher";
+import {
+  getDefaultInstallDir,
+  getSystemInfo,
+  openSteamLoginWindow,
+  openGogLoginWindow,
+  openEpicLoginWindow,
+  openEaLoginWindow,
+  openXboxLoginWindow,
+  fetchXboxOwnedGames,
+  normalizeSteamOwnedGames,
+  fetchSteamProfileName,
+  authenticateEpicLegendary,
+  gogExchangeCode,
+  gogLogout,
+  gogGetToken,
+  eaGetToken,
+  eaLogout,
+  openBattleNetLoginWindow,
+  processBattleNetGamesPayload,
+} from "../lib/launcher";
 import { STEAM_OWNED_GAMES_CACHE_VERSION, STORAGE_KEYS } from "../lib/storage-keys";
 import type { SystemInfo } from "../lib/types";
-
+import { CloudSavesSettings } from "../components/settings/CloudSavesSettings";
 
 function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
@@ -30,9 +58,7 @@ function NeoToggle({ checked, description, label, onChange }: NeoToggleProps) {
   return (
     <div className="grid gap-4 border-4 border-black bg-[#f5eedf] p-5 shadow-[4px_4px_0_#171411] sm:grid-cols-[1fr_110px] sm:items-center">
       <div>
-        <h3 className="text-2xl font-black uppercase leading-none text-[#171411]">
-          {label}
-        </h3>
+        <h3 className="text-2xl font-black uppercase leading-none text-[#171411]">{label}</h3>
         <p className="neo-copy mt-2 text-[10px] font-bold uppercase text-[#55504a]">
           {description}
         </p>
@@ -98,19 +124,38 @@ export function SettingsPage() {
     let isMounted = true;
 
     // Check GOG connection via backend token first, then fallback to localStorage
-    gogGetToken().then((backendToken) => {
-      if (!isMounted) return;
-      if (backendToken && backendToken.accessToken) {
-        setGogConnected(true);
-        // Sync to localStorage for backward compatibility
-        localStorage.setItem(STORAGE_KEYS.GOG_TOKEN, JSON.stringify({
-          accessToken: backendToken.accessToken,
-          refreshToken: backendToken.refreshToken,
-          expiresAt: backendToken.expiresAt,
-          userId: backendToken.userId,
-        }));
-      } else {
-        // Check localStorage as fallback
+    gogGetToken()
+      .then((backendToken) => {
+        if (!isMounted) return;
+        if (backendToken && backendToken.accessToken) {
+          setGogConnected(true);
+          // Sync to localStorage for backward compatibility
+          localStorage.setItem(
+            STORAGE_KEYS.GOG_TOKEN,
+            JSON.stringify({
+              accessToken: backendToken.accessToken,
+              refreshToken: backendToken.refreshToken,
+              expiresAt: backendToken.expiresAt,
+              userId: backendToken.userId,
+            }),
+          );
+        } else {
+          // Check localStorage as fallback
+          const gogTokenStr = localStorage.getItem(STORAGE_KEYS.GOG_TOKEN);
+          if (gogTokenStr) {
+            try {
+              const token = JSON.parse(gogTokenStr);
+              if (token && token.accessToken) {
+                setGogConnected(true);
+              }
+            } catch {
+              localStorage.removeItem(STORAGE_KEYS.GOG_TOKEN);
+            }
+          }
+        }
+      })
+      .catch(() => {
+        if (!isMounted) return;
         const gogTokenStr = localStorage.getItem(STORAGE_KEYS.GOG_TOKEN);
         if (gogTokenStr) {
           try {
@@ -122,31 +167,36 @@ export function SettingsPage() {
             localStorage.removeItem(STORAGE_KEYS.GOG_TOKEN);
           }
         }
-      }
-    }).catch(() => {
-      if (!isMounted) return;
-      const gogTokenStr = localStorage.getItem(STORAGE_KEYS.GOG_TOKEN);
-      if (gogTokenStr) {
-        try {
-          const token = JSON.parse(gogTokenStr);
-          if (token && token.accessToken) {
-            setGogConnected(true);
-          }
-        } catch {
-          localStorage.removeItem(STORAGE_KEYS.GOG_TOKEN);
-        }
-      }
-    });
+      });
 
-    eaGetToken().then((backendEaToken) => {
-      if (!isMounted) return;
-      if (backendEaToken?.accessToken) {
-        setEaConnected(true);
-        localStorage.setItem(STORAGE_KEYS.EA_TOKEN, JSON.stringify({
-          accessToken: backendEaToken.accessToken,
-          capturedAt: backendEaToken.capturedAt,
-        }));
-      } else {
+    eaGetToken()
+      .then((backendEaToken) => {
+        if (!isMounted) return;
+        if (backendEaToken?.accessToken) {
+          setEaConnected(true);
+          localStorage.setItem(
+            STORAGE_KEYS.EA_TOKEN,
+            JSON.stringify({
+              accessToken: backendEaToken.accessToken,
+              capturedAt: backendEaToken.capturedAt,
+            }),
+          );
+        } else {
+          const eaTokenStr = localStorage.getItem(STORAGE_KEYS.EA_TOKEN);
+          if (eaTokenStr) {
+            try {
+              const token = JSON.parse(eaTokenStr);
+              if (token?.accessToken) {
+                setEaConnected(true);
+              }
+            } catch {
+              localStorage.removeItem(STORAGE_KEYS.EA_TOKEN);
+            }
+          }
+        }
+      })
+      .catch(() => {
+        if (!isMounted) return;
         const eaTokenStr = localStorage.getItem(STORAGE_KEYS.EA_TOKEN);
         if (eaTokenStr) {
           try {
@@ -158,21 +208,7 @@ export function SettingsPage() {
             localStorage.removeItem(STORAGE_KEYS.EA_TOKEN);
           }
         }
-      }
-    }).catch(() => {
-      if (!isMounted) return;
-      const eaTokenStr = localStorage.getItem(STORAGE_KEYS.EA_TOKEN);
-      if (eaTokenStr) {
-        try {
-          const token = JSON.parse(eaTokenStr);
-          if (token?.accessToken) {
-            setEaConnected(true);
-          }
-        } catch {
-          localStorage.removeItem(STORAGE_KEYS.EA_TOKEN);
-        }
-      }
-    });
+      });
 
     const epicTokenStr = localStorage.getItem(STORAGE_KEYS.EPIC_TOKEN);
     if (epicTokenStr) {
@@ -216,13 +252,15 @@ export function SettingsPage() {
     }
 
     if (steamId && !steamUsername) {
-      void fetchSteamProfileName(steamId).then(name => {
-        if (!isMounted) return;
-        setSteamUsername(name ?? "Steam User");
-      }).catch(err => {
-        console.warn("Failed to fetch steam username on mount:", err);
-        if (isMounted) setSteamUsername("Steam User");
-      });
+      void fetchSteamProfileName(steamId)
+        .then((name) => {
+          if (!isMounted) return;
+          setSteamUsername(name ?? "Steam User");
+        })
+        .catch((err) => {
+          console.warn("Failed to fetch steam username on mount:", err);
+          if (isMounted) setSteamUsername("Steam User");
+        });
     }
 
     return () => {
@@ -236,12 +274,15 @@ export function SettingsPage() {
       const token = await gogExchangeCode(code);
       if (token && token.accessToken) {
         // Store in localStorage for backward compatibility with LibraryPage
-        localStorage.setItem(STORAGE_KEYS.GOG_TOKEN, JSON.stringify({
-          accessToken: token.accessToken,
-          refreshToken: token.refreshToken,
-          expiresAt: token.expiresAt,
-          userId: token.userId,
-        }));
+        localStorage.setItem(
+          STORAGE_KEYS.GOG_TOKEN,
+          JSON.stringify({
+            accessToken: token.accessToken,
+            refreshToken: token.refreshToken,
+            expiresAt: token.expiresAt,
+            userId: token.userId,
+          }),
+        );
         setGogConnected(true);
         setTestResult({
           success: true,
@@ -266,11 +307,14 @@ export function SettingsPage() {
     setTestResult({ success: true, message: "Authenticating with Legendary..." });
     try {
       const response = await authenticateEpicLegendary(authCode.trim());
-      
-      localStorage.setItem(STORAGE_KEYS.EPIC_TOKEN, JSON.stringify({
-        accessToken: "legendary-auth-token",
-        displayName: "Epic User",
-      }));
+
+      localStorage.setItem(
+        STORAGE_KEYS.EPIC_TOKEN,
+        JSON.stringify({
+          accessToken: "legendary-auth-token",
+          displayName: "Epic User",
+        }),
+      );
       setEpicConnected(true);
       setEpicDisplayName("Epic User");
       setTestResult({
@@ -313,7 +357,10 @@ export function SettingsPage() {
         if (!isMounted) return;
         const ownedGames = normalizeSteamOwnedGames(event.payload);
         localStorage.setItem(STORAGE_KEYS.STEAM_OWNED_GAMES_CACHE, JSON.stringify(ownedGames));
-        localStorage.setItem(STORAGE_KEYS.STEAM_OWNED_GAMES_CACHE_VERSION, STEAM_OWNED_GAMES_CACHE_VERSION);
+        localStorage.setItem(
+          STORAGE_KEYS.STEAM_OWNED_GAMES_CACHE_VERSION,
+          STEAM_OWNED_GAMES_CACHE_VERSION,
+        );
 
         setTestResult({
           success: true,
@@ -364,10 +411,13 @@ export function SettingsPage() {
       unlistenEaPromise = listen("ea_login_success", async () => {
         const token = await eaGetToken();
         if (token?.accessToken) {
-          localStorage.setItem(STORAGE_KEYS.EA_TOKEN, JSON.stringify({
-            accessToken: token.accessToken,
-            capturedAt: token.capturedAt,
-          }));
+          localStorage.setItem(
+            STORAGE_KEYS.EA_TOKEN,
+            JSON.stringify({
+              accessToken: token.accessToken,
+              capturedAt: token.capturedAt,
+            }),
+          );
           setEaConnected(true);
           setTestResult({
             success: true,
@@ -403,9 +453,15 @@ export function SettingsPage() {
           }
           setXboxConnected(true);
           setXboxGamesCount(result.games.length);
-          setTestResult({ success: true, message: `Successfully linked Xbox Live. ${result.games.length} games imported.` });
+          setTestResult({
+            success: true,
+            message: `Successfully linked Xbox Live. ${result.games.length} games imported.`,
+          });
         } catch (err) {
-          setTestResult({ success: false, message: `Xbox Live login failed: ${getErrorMessage(err)}` });
+          setTestResult({
+            success: false,
+            message: `Xbox Live login failed: ${getErrorMessage(err)}`,
+          });
         }
       });
     } catch (err) {
@@ -427,18 +483,27 @@ export function SettingsPage() {
     try {
       unlistenPromise = listen<string>("battlenet_login_data", async (event) => {
         if (!isMounted) return;
-        setTestResult({ success: true, message: "Battle.net session captured. Processing library..." });
+        setTestResult({
+          success: true,
+          message: "Battle.net session captured. Processing library...",
+        });
         try {
           const games = await processBattleNetGamesPayload(event.payload);
           localStorage.setItem(STORAGE_KEYS.BATTLENET_GAMES_CACHE, JSON.stringify(games));
           setBattlenetConnected(true);
           setBattlenetGamesCount(games.length);
-          setTestResult({ success: true, message: `Successfully linked Battle.net. ${games.length} games imported.` });
-          
+          setTestResult({
+            success: true,
+            message: `Successfully linked Battle.net. ${games.length} games imported.`,
+          });
+
           // Dispatch a custom event so LibraryPage can reload
           window.dispatchEvent(new Event("battlenet_library_updated"));
         } catch (err) {
-          setTestResult({ success: false, message: `Battle.net parsing failed: ${getErrorMessage(err)}` });
+          setTestResult({
+            success: false,
+            message: `Battle.net parsing failed: ${getErrorMessage(err)}`,
+          });
         }
       });
     } catch (err) {
@@ -458,10 +523,7 @@ export function SettingsPage() {
 
     async function loadNativeSettings() {
       try {
-        const [info, defaultDir] = await Promise.all([
-          getSystemInfo(),
-          getDefaultInstallDir(),
-        ]);
+        const [info, defaultDir] = await Promise.all([getSystemInfo(), getDefaultInstallDir()]);
 
         if (isMounted) {
           setSystemInfo(info);
@@ -483,9 +545,7 @@ export function SettingsPage() {
   }, []);
 
   function handleChooseInstallFolder() {
-    setFolderMessage(
-      "Native folder dialog is prepared and waiting for Tauri integration.",
-    );
+    setFolderMessage("Native folder dialog is prepared and waiting for Tauri integration.");
   }
 
   function handleReloadPath() {
@@ -531,9 +591,7 @@ export function SettingsPage() {
                 <p className="neo-copy text-[10px] font-bold uppercase text-[#55504a]">
                   Install Target
                 </p>
-                <h2 className="text-3xl font-black uppercase text-[#171411]">
-                  Game Storage
-                </h2>
+                <h2 className="text-3xl font-black uppercase text-[#171411]">Game Storage</h2>
               </div>
               <HardDrive className="h-10 w-10 text-[#c20b2f]" />
             </div>
@@ -575,6 +633,39 @@ export function SettingsPage() {
             </div>
           </div>
 
+          {/* E2E ENCRYPTION INFO */}
+          <div className="border-4 border-black bg-[#f5eedf] shadow-[4px_4px_0_#171411]">
+            <div className="flex items-center justify-between border-b-4 border-black p-5">
+              <div>
+                <p className="neo-copy text-[10px] font-bold uppercase text-[#55504a]">
+                  Security & Privacy
+                </p>
+                <h2 className="text-3xl font-black uppercase text-[#171411]">E2E Cloud Saves</h2>
+              </div>
+              <ShieldCheck className="h-10 w-10 text-[#087d6d]" />
+            </div>
+
+            <div className="p-5">
+              <div className="border-2 border-black bg-[#efe6d4] p-4">
+                <h3 className="mb-2 text-xl font-black uppercase text-[#171411]">
+                  Zero-Knowledge Architecture
+                </h3>
+                <p className="neo-copy mb-4 text-[10px] font-bold uppercase leading-relaxed text-[#55504a]">
+                  All game saves uploaded to our cloud storage are fully end-to-end encrypted
+                  locally on your device. We use{" "}
+                  <span className="font-black text-[#c20b2f]">AES-256-GCM</span> with keys securely
+                  derived via Argon2id and stored strictly in your operating system's native
+                  keychain.
+                </p>
+                <p className="neo-copy text-[10px] font-bold uppercase leading-relaxed text-[#55504a]">
+                  <strong className="text-[#087d6d]">DSGVO / GDPR Compliant:</strong> Because the
+                  decryption key never leaves your device, neither we nor any cloud provider can
+                  read your save data. Your privacy is guaranteed.
+                </p>
+              </div>
+            </div>
+          </div>
+
           {/* CLOUD ACCOUNTS LINKING */}
           <div className="border-4 border-black bg-[#f5eedf] shadow-[4px_4px_0_#171411]">
             <div className="flex items-center justify-between border-b-4 border-black p-5">
@@ -582,34 +673,39 @@ export function SettingsPage() {
                 <p className="neo-copy text-[10px] font-bold uppercase text-[#55504a]">
                   Third-Party Integration
                 </p>
-                <h2 className="text-3xl font-black uppercase text-[#171411]">
-                  Cloud Account Link
-                </h2>
+                <h2 className="text-3xl font-black uppercase text-[#171411]">Cloud Account Link</h2>
               </div>
               <Link className="h-10 w-10 text-[#087d6d]" />
             </div>
 
-            <div className="p-5 space-y-6">
+            <div className="space-y-6 p-5">
               <div className="grid gap-4 md:grid-cols-3">
                 {/* STEAM CARD */}
-                <div className="border-2 border-black bg-[#efe6d4] p-4 flex flex-col justify-between shadow-[2px_2px_0_#171411]">
+                <div className="flex flex-col justify-between border-2 border-black bg-[#efe6d4] p-4 shadow-[2px_2px_0_#171411]">
                   <div>
-                    <h3 className="text-xl font-black uppercase text-[#171411] mb-1">
-                      Steam
-                    </h3>
-                    <p className="neo-copy text-[9px] font-bold uppercase text-[#55504a] leading-relaxed mb-4">
-                      Syncs your Steam library through secure login and local Steam cache. No API key required.
+                    <h3 className="mb-1 text-xl font-black uppercase text-[#171411]">Steam</h3>
+                    <p className="neo-copy mb-4 text-[9px] font-bold uppercase leading-relaxed text-[#55504a]">
+                      Syncs your Steam library through secure login and local Steam cache. No API
+                      key required.
                     </p>
                   </div>
                   <div>
                     {steamId ? (
-                      <div className="border border-black bg-[#f5eedf] p-3 space-y-2">
-                        <span className="neo-copy text-[8px] font-bold uppercase text-[#55504a] block">Signed in as</span>
-                        <span className="font-black text-xs text-[#087d6d] block truncate">{steamUsername || "Steam User"}</span>
+                      <div className="space-y-2 border border-black bg-[#f5eedf] p-3">
+                        <span className="neo-copy block text-[8px] font-bold uppercase text-[#55504a]">
+                          Signed in as
+                        </span>
+                        <span className="block truncate text-xs font-black text-[#087d6d]">
+                          {steamUsername || "Steam User"}
+                        </span>
                         <button
-                          className="neo-copy w-full flex h-8 items-center justify-center gap-2 border-2 border-black bg-[#c20b2f] px-3 text-[10px] font-bold uppercase text-white shadow-[1px_1px_0_#171411] hover:bg-[#a10825] transition"
+                          className="neo-copy flex h-8 w-full items-center justify-center gap-2 border-2 border-black bg-[#c20b2f] px-3 text-[10px] font-bold uppercase text-white shadow-[1px_1px_0_#171411] transition hover:bg-[#a10825]"
                           type="button"
-                          onClick={() => { setSteamId(""); setSteamUsername(""); setTestResult(null); }}
+                          onClick={() => {
+                            setSteamId("");
+                            setSteamUsername("");
+                            setTestResult(null);
+                          }}
                         >
                           <LogOut className="h-3 w-3" />
                           Disconnect
@@ -617,11 +713,14 @@ export function SettingsPage() {
                       </div>
                     ) : (
                       <button
-                        className="neo-copy w-full flex h-10 items-center justify-center gap-2 border-2 border-black bg-[#c20b2f] px-4 text-xs font-black uppercase text-white shadow-[2px_2px_0_#171411] hover:bg-[#a10825] transition"
+                        className="neo-copy flex h-10 w-full items-center justify-center gap-2 border-2 border-black bg-[#c20b2f] px-4 text-xs font-black uppercase text-white shadow-[2px_2px_0_#171411] transition hover:bg-[#a10825]"
                         type="button"
                         onClick={() => {
                           void openSteamLoginWindow().catch((err) => {
-                            setTestResult({ success: false, message: `Failed to open: ${getErrorMessage(err)}` });
+                            setTestResult({
+                              success: false,
+                              message: `Failed to open: ${getErrorMessage(err)}`,
+                            });
                           });
                         }}
                       >
@@ -633,22 +732,24 @@ export function SettingsPage() {
                 </div>
 
                 {/* GOG CARD */}
-                <div className="border-2 border-black bg-[#efe6d4] p-4 flex flex-col justify-between shadow-[2px_2px_0_#171411]">
+                <div className="flex flex-col justify-between border-2 border-black bg-[#efe6d4] p-4 shadow-[2px_2px_0_#171411]">
                   <div>
-                    <h3 className="text-xl font-black uppercase text-[#171411] mb-1">
-                      GOG Galaxy
-                    </h3>
-                    <p className="neo-copy text-[9px] font-bold uppercase text-[#55504a] leading-relaxed mb-4">
+                    <h3 className="mb-1 text-xl font-black uppercase text-[#171411]">GOG Galaxy</h3>
+                    <p className="neo-copy mb-4 text-[9px] font-bold uppercase leading-relaxed text-[#55504a]">
                       Fully automatic synchronization of your GOG games through secure login.
                     </p>
                   </div>
                   <div>
                     {gogConnected ? (
-                      <div className="border border-black bg-[#f5eedf] p-3 space-y-2">
-                        <span className="neo-copy text-[8px] font-bold uppercase text-[#55504a] block">Status</span>
-                        <span className="font-black text-xs text-[#087d6d] block truncate">Successfully Connected</span>
+                      <div className="space-y-2 border border-black bg-[#f5eedf] p-3">
+                        <span className="neo-copy block text-[8px] font-bold uppercase text-[#55504a]">
+                          Status
+                        </span>
+                        <span className="block truncate text-xs font-black text-[#087d6d]">
+                          Successfully Connected
+                        </span>
                         <button
-                          className="neo-copy w-full flex h-8 items-center justify-center gap-2 border-2 border-black bg-[#c20b2f] px-3 text-[10px] font-bold uppercase text-white shadow-[1px_1px_0_#171411] hover:bg-[#a10825] transition"
+                          className="neo-copy flex h-8 w-full items-center justify-center gap-2 border-2 border-black bg-[#c20b2f] px-3 text-[10px] font-bold uppercase text-white shadow-[1px_1px_0_#171411] transition hover:bg-[#a10825]"
                           type="button"
                           onClick={() => {
                             gogLogout().catch(() => {});
@@ -663,11 +764,14 @@ export function SettingsPage() {
                       </div>
                     ) : (
                       <button
-                        className="neo-copy w-full flex h-10 items-center justify-center gap-2 border-2 border-black bg-[#087d6d] px-4 text-xs font-black uppercase text-white shadow-[2px_2px_0_#171411] hover:bg-[#066154] transition"
+                        className="neo-copy flex h-10 w-full items-center justify-center gap-2 border-2 border-black bg-[#087d6d] px-4 text-xs font-black uppercase text-white shadow-[2px_2px_0_#171411] transition hover:bg-[#066154]"
                         type="button"
                         onClick={() => {
                           void openGogLoginWindow().catch((err) => {
-                            setTestResult({ success: false, message: `Failed to open: ${getErrorMessage(err)}` });
+                            setTestResult({
+                              success: false,
+                              message: `Failed to open: ${getErrorMessage(err)}`,
+                            });
                           });
                         }}
                       >
@@ -679,22 +783,25 @@ export function SettingsPage() {
                 </div>
 
                 {/* EA APP CARD */}
-                <div className="border-2 border-black bg-[#efe6d4] p-4 flex flex-col justify-between shadow-[2px_2px_0_#171411]">
+                <div className="flex flex-col justify-between border-2 border-black bg-[#efe6d4] p-4 shadow-[2px_2px_0_#171411]">
                   <div>
-                    <h3 className="text-xl font-black uppercase text-[#171411] mb-1">
-                      EA App
-                    </h3>
-                    <p className="neo-copy text-[9px] font-bold uppercase text-[#55504a] leading-relaxed mb-4">
-                      Sync your EA library via secure browser login (same flow as Playnite). Installed EA games are still detected locally.
+                    <h3 className="mb-1 text-xl font-black uppercase text-[#171411]">EA App</h3>
+                    <p className="neo-copy mb-4 text-[9px] font-bold uppercase leading-relaxed text-[#55504a]">
+                      Sync your EA library via secure browser login (same flow as Playnite).
+                      Installed EA games are still detected locally.
                     </p>
                   </div>
                   <div>
                     {eaConnected ? (
-                      <div className="border border-black bg-[#f5eedf] p-3 space-y-2">
-                        <span className="neo-copy text-[8px] font-bold uppercase text-[#55504a] block">Status</span>
-                        <span className="font-black text-xs text-[#087d6d] block truncate">Successfully Connected</span>
+                      <div className="space-y-2 border border-black bg-[#f5eedf] p-3">
+                        <span className="neo-copy block text-[8px] font-bold uppercase text-[#55504a]">
+                          Status
+                        </span>
+                        <span className="block truncate text-xs font-black text-[#087d6d]">
+                          Successfully Connected
+                        </span>
                         <button
-                          className="neo-copy w-full flex h-8 items-center justify-center gap-2 border-2 border-black bg-[#c20b2f] px-3 text-[10px] font-bold uppercase text-white shadow-[1px_1px_0_#171411] hover:bg-[#a10825] transition"
+                          className="neo-copy flex h-8 w-full items-center justify-center gap-2 border-2 border-black bg-[#c20b2f] px-3 text-[10px] font-bold uppercase text-white shadow-[1px_1px_0_#171411] transition hover:bg-[#a10825]"
                           type="button"
                           onClick={() => {
                             void eaLogout().catch(() => {});
@@ -709,11 +816,14 @@ export function SettingsPage() {
                       </div>
                     ) : (
                       <button
-                        className="neo-copy w-full flex h-10 items-center justify-center gap-2 border-2 border-black bg-[#f56c2d] px-4 text-xs font-black uppercase text-white shadow-[2px_2px_0_#171411] hover:bg-[#d45a22] transition"
+                        className="neo-copy flex h-10 w-full items-center justify-center gap-2 border-2 border-black bg-[#f56c2d] px-4 text-xs font-black uppercase text-white shadow-[2px_2px_0_#171411] transition hover:bg-[#d45a22]"
                         type="button"
                         onClick={() => {
                           void openEaLoginWindow().catch((err) => {
-                            setTestResult({ success: false, message: `Failed to open: ${getErrorMessage(err)}` });
+                            setTestResult({
+                              success: false,
+                              message: `Failed to open: ${getErrorMessage(err)}`,
+                            });
                           });
                         }}
                       >
@@ -725,22 +835,25 @@ export function SettingsPage() {
                 </div>
 
                 {/* EPIC GAMES CARD */}
-                <div className="border-2 border-black bg-[#efe6d4] p-4 flex flex-col justify-between shadow-[2px_2px_0_#171411]">
+                <div className="flex flex-col justify-between border-2 border-black bg-[#efe6d4] p-4 shadow-[2px_2px_0_#171411]">
                   <div>
-                    <h3 className="text-xl font-black uppercase text-[#171411] mb-1">
-                      Epic Games
-                    </h3>
-                    <p className="neo-copy text-[9px] font-bold uppercase text-[#55504a] leading-relaxed mb-4">
-                      Import your Epic library. Sign in through the browser to automatically connect.
+                    <h3 className="mb-1 text-xl font-black uppercase text-[#171411]">Epic Games</h3>
+                    <p className="neo-copy mb-4 text-[9px] font-bold uppercase leading-relaxed text-[#55504a]">
+                      Import your Epic library. Sign in through the browser to automatically
+                      connect.
                     </p>
                   </div>
                   <div>
                     {epicConnected ? (
-                      <div className="border border-black bg-[#f5eedf] p-3 space-y-2">
-                        <span className="neo-copy text-[8px] font-bold uppercase text-[#55504a] block">Signed in as</span>
-                        <span className="font-black text-xs text-[#087d6d] block truncate">{epicDisplayName || "Epic User"}</span>
+                      <div className="space-y-2 border border-black bg-[#f5eedf] p-3">
+                        <span className="neo-copy block text-[8px] font-bold uppercase text-[#55504a]">
+                          Signed in as
+                        </span>
+                        <span className="block truncate text-xs font-black text-[#087d6d]">
+                          {epicDisplayName || "Epic User"}
+                        </span>
                         <button
-                          className="neo-copy w-full flex h-8 items-center justify-center gap-2 border-2 border-black bg-[#c20b2f] px-3 text-[10px] font-bold uppercase text-white shadow-[1px_1px_0_#171411] hover:bg-[#a10825] transition"
+                          className="neo-copy flex h-8 w-full items-center justify-center gap-2 border-2 border-black bg-[#c20b2f] px-3 text-[10px] font-bold uppercase text-white shadow-[1px_1px_0_#171411] transition hover:bg-[#a10825]"
                           type="button"
                           onClick={() => {
                             localStorage.removeItem(STORAGE_KEYS.EPIC_TOKEN);
@@ -755,11 +868,14 @@ export function SettingsPage() {
                       </div>
                     ) : (
                       <button
-                        className="neo-copy w-full flex h-10 items-center justify-center gap-2 border-2 border-black bg-[#171411] px-4 text-xs font-black uppercase text-white shadow-[2px_2px_0_#171411] hover:bg-[#333] transition"
+                        className="neo-copy flex h-10 w-full items-center justify-center gap-2 border-2 border-black bg-[#171411] px-4 text-xs font-black uppercase text-white shadow-[2px_2px_0_#171411] transition hover:bg-[#333]"
                         type="button"
                         onClick={() => {
                           void openEpicLoginWindow().catch((err) => {
-                            setTestResult({ success: false, message: `Failed to open: ${getErrorMessage(err)}` });
+                            setTestResult({
+                              success: false,
+                              message: `Failed to open: ${getErrorMessage(err)}`,
+                            });
                           });
                         }}
                       >
@@ -771,25 +887,33 @@ export function SettingsPage() {
                 </div>
 
                 {/* XBOX CARD */}
-                <div className="border-2 border-black bg-[#efe6d4] p-4 flex flex-col justify-between shadow-[2px_2px_0_#171411]">
+                <div className="flex flex-col justify-between border-2 border-black bg-[#efe6d4] p-4 shadow-[2px_2px_0_#171411]">
                   <div>
-                    <h3 className="text-xl font-black uppercase text-[#171411] mb-1">
+                    <h3 className="mb-1 text-xl font-black uppercase text-[#171411]">
                       Xbox / MS Store
                     </h3>
-                    <p className="neo-copy text-[9px] font-bold uppercase text-[#55504a] leading-relaxed mb-4">
+                    <p className="neo-copy mb-4 text-[9px] font-bold uppercase leading-relaxed text-[#55504a]">
                       Import your Xbox Game Pass and Microsoft Store games.
                     </p>
                   </div>
                   <div>
                     {xboxConnected ? (
-                      <div className="border border-black bg-[#f5eedf] p-3 space-y-2">
-                        <span className="neo-copy text-[8px] font-bold uppercase text-[#55504a] block">Status</span>
+                      <div className="space-y-2 border border-black bg-[#f5eedf] p-3">
+                        <span className="neo-copy block text-[8px] font-bold uppercase text-[#55504a]">
+                          Status
+                        </span>
                         <div className="flex flex-col gap-1">
-                          <span className="font-black text-xs text-[#087d6d] block truncate">Connected ({xboxGamesCount} games)</span>
-                          {xboxGamertag && <span className="font-bold text-[10px] text-black">User: {xboxGamertag}</span>}
+                          <span className="block truncate text-xs font-black text-[#087d6d]">
+                            Connected ({xboxGamesCount} games)
+                          </span>
+                          {xboxGamertag && (
+                            <span className="text-[10px] font-bold text-black">
+                              User: {xboxGamertag}
+                            </span>
+                          )}
                         </div>
                         <button
-                          className="neo-copy w-full flex h-8 items-center justify-center gap-2 border-2 border-black bg-[#c20b2f] px-3 text-[10px] font-bold uppercase text-white shadow-[1px_1px_0_#171411] hover:bg-[#a10825] transition"
+                          className="neo-copy flex h-8 w-full items-center justify-center gap-2 border-2 border-black bg-[#c20b2f] px-3 text-[10px] font-bold uppercase text-white shadow-[1px_1px_0_#171411] transition hover:bg-[#a10825]"
                           type="button"
                           onClick={() => {
                             localStorage.removeItem(STORAGE_KEYS.XBOX_GAMES_CACHE);
@@ -806,11 +930,14 @@ export function SettingsPage() {
                       </div>
                     ) : (
                       <button
-                        className="neo-copy w-full flex h-10 items-center justify-center gap-2 border-2 border-black bg-[#107c10] px-4 text-xs font-black uppercase text-white shadow-[2px_2px_0_#171411] hover:bg-[#0b580b] transition"
+                        className="neo-copy flex h-10 w-full items-center justify-center gap-2 border-2 border-black bg-[#107c10] px-4 text-xs font-black uppercase text-white shadow-[2px_2px_0_#171411] transition hover:bg-[#0b580b]"
                         type="button"
                         onClick={() => {
                           void openXboxLoginWindow().catch((err) => {
-                            setTestResult({ success: false, message: `Failed to open: ${getErrorMessage(err)}` });
+                            setTestResult({
+                              success: false,
+                              message: `Failed to open: ${getErrorMessage(err)}`,
+                            });
                           });
                         }}
                       >
@@ -822,22 +949,24 @@ export function SettingsPage() {
                 </div>
 
                 {/* BATTLENET CARD */}
-                <div className="border-2 border-black bg-[#efe6d4] p-4 flex flex-col justify-between shadow-[2px_2px_0_#171411]">
+                <div className="flex flex-col justify-between border-2 border-black bg-[#efe6d4] p-4 shadow-[2px_2px_0_#171411]">
                   <div>
-                    <h3 className="text-xl font-black uppercase text-[#171411] mb-1">
-                      Battle.net
-                    </h3>
-                    <p className="neo-copy text-[9px] font-bold uppercase text-[#55504a] leading-relaxed mb-4">
+                    <h3 className="mb-1 text-xl font-black uppercase text-[#171411]">Battle.net</h3>
+                    <p className="neo-copy mb-4 text-[9px] font-bold uppercase leading-relaxed text-[#55504a]">
                       Import your Blizzard library via web login.
                     </p>
                   </div>
                   <div>
                     {battlenetConnected ? (
-                      <div className="border border-black bg-[#f5eedf] p-3 space-y-2">
-                        <span className="neo-copy text-[8px] font-bold uppercase text-[#55504a] block">Status</span>
-                        <span className="font-black text-xs text-[#087d6d] block truncate">Connected ({battlenetGamesCount} games)</span>
+                      <div className="space-y-2 border border-black bg-[#f5eedf] p-3">
+                        <span className="neo-copy block text-[8px] font-bold uppercase text-[#55504a]">
+                          Status
+                        </span>
+                        <span className="block truncate text-xs font-black text-[#087d6d]">
+                          Connected ({battlenetGamesCount} games)
+                        </span>
                         <button
-                          className="neo-copy w-full flex h-8 items-center justify-center gap-2 border-2 border-black bg-[#c20b2f] px-3 text-[10px] font-bold uppercase text-white shadow-[1px_1px_0_#171411] hover:bg-[#a10825] transition"
+                          className="neo-copy flex h-8 w-full items-center justify-center gap-2 border-2 border-black bg-[#c20b2f] px-3 text-[10px] font-bold uppercase text-white shadow-[1px_1px_0_#171411] transition hover:bg-[#a10825]"
                           type="button"
                           onClick={() => {
                             localStorage.removeItem(STORAGE_KEYS.BATTLENET_GAMES_CACHE);
@@ -852,11 +981,14 @@ export function SettingsPage() {
                       </div>
                     ) : (
                       <button
-                        className="neo-copy w-full flex h-10 items-center justify-center gap-2 border-2 border-black bg-[#0074e0] px-4 text-xs font-black uppercase text-white shadow-[2px_2px_0_#171411] hover:bg-[#005bb5] transition"
+                        className="neo-copy flex h-10 w-full items-center justify-center gap-2 border-2 border-black bg-[#0074e0] px-4 text-xs font-black uppercase text-white shadow-[2px_2px_0_#171411] transition hover:bg-[#005bb5]"
                         type="button"
                         onClick={() => {
                           void openBattleNetLoginWindow().catch((err) => {
-                            setTestResult({ success: false, message: `Failed to open: ${getErrorMessage(err)}` });
+                            setTestResult({
+                              success: false,
+                              message: `Failed to open: ${getErrorMessage(err)}`,
+                            });
                           });
                         }}
                       >
@@ -895,8 +1027,9 @@ export function SettingsPage() {
             </div>
 
             <div className="p-5">
-              <p className="neo-copy text-[10px] font-bold uppercase text-[#55504a] leading-relaxed mb-4">
-                Open Game Launcher automatically scans your PC in the background for installed games from these launchers. No login required.
+              <p className="neo-copy mb-4 text-[10px] font-bold uppercase leading-relaxed text-[#55504a]">
+                Open Game Launcher automatically scans your PC in the background for installed games
+                from these launchers. No login required.
               </p>
 
               <div className="grid gap-2 sm:grid-cols-2">
@@ -909,10 +1042,17 @@ export function SettingsPage() {
                   ["Battle.net", "Automatic scan of installed titles"],
                   ["MS Store / Xbox", "Local Windows/MS app library scan"],
                 ].map(([name, desc]) => (
-                  <div key={name} className="border-2 border-black bg-[#efe6d4] p-3 flex flex-col justify-between">
+                  <div
+                    key={name}
+                    className="flex flex-col justify-between border-2 border-black bg-[#efe6d4] p-3"
+                  >
                     <div>
-                      <span className="font-black text-sm text-[#171411] block uppercase">{name}</span>
-                      <span className="neo-copy text-[8px] font-bold uppercase text-[#55504a] leading-tight block mt-1">{desc}</span>
+                      <span className="block text-sm font-black uppercase text-[#171411]">
+                        {name}
+                      </span>
+                      <span className="neo-copy mt-1 block text-[8px] font-bold uppercase leading-tight text-[#55504a]">
+                        {desc}
+                      </span>
                     </div>
                     <div className="mt-2 text-left">
                       <span className="neo-copy inline-block border border-black bg-[#087d6d] px-1.5 py-0.5 text-[8px] font-black uppercase text-white">
@@ -937,6 +1077,8 @@ export function SettingsPage() {
             label="Auto-Update Games"
             onChange={setAutoUpdateGames}
           />
+
+          <CloudSavesSettings />
         </div>
 
         <aside className="space-y-4">
@@ -955,9 +1097,7 @@ export function SettingsPage() {
                   key={label}
                   className="flex items-center justify-between gap-4 border-2 border-[#f5eedf] p-3"
                 >
-                  <dt className="neo-copy text-[10px] font-bold uppercase">
-                    {label}
-                  </dt>
+                  <dt className="neo-copy text-[10px] font-bold uppercase">{label}</dt>
                   <dd className="font-black uppercase">{value}</dd>
                 </div>
               ))}

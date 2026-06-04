@@ -2,8 +2,9 @@ import { Search, SlidersHorizontal, Grid2X2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { RefObject } from "react";
 import type { Game } from "../../lib/types";
+import type { GameGroup } from "../../lib/game-groups";
 import type { LibraryAdvancedFilters } from "../../lib/library-filters";
-import type { LibrarySortOption } from "../../pages/LibraryPage";
+import type { LibrarySortOption } from "../../lib/library-sort";
 import { LibraryRow } from "./LibraryRow";
 import { LibraryCustomScrollbar } from "./LibraryCustomScrollbar";
 
@@ -12,8 +13,8 @@ const LIBRARY_ROW_OVERSCAN = 8;
 const LIBRARY_VIRTUALIZE_THRESHOLD = 80;
 
 export interface LibrarySidebarProps {
-  games: Game[];
-  filteredGames: Game[];
+  games: GameGroup[];
+  filteredGames: GameGroup[];
   searchQuery: string;
   setSearchQuery: (query: string) => void;
   sortOption: LibrarySortOption;
@@ -25,14 +26,14 @@ export interface LibrarySidebarProps {
   hasActiveFilters?: boolean;
   onResetFilters?: () => void;
   groupOption: string;
-  groupedGames: Record<string, Game[]>;
-  selectedGame: Game | null;
-  setSelectedGame: (game: Game) => void;
+  groupedGames: Record<string, GameGroup[]>;
+  selectedGroup: GameGroup | null;
+  setSelectedGroup: (group: GameGroup) => void;
   favorites: Record<string, boolean>;
   fallbackMockGames: Game[];
   listScrollRef: RefObject<HTMLDivElement>;
   setIsAddGameOpen: (open: boolean) => void;
-  setAddGameError: (err: string | null) => void;
+  setAddGameError?: (err: string | null) => void;
 }
 
 export function LibrarySidebar({
@@ -50,24 +51,25 @@ export function LibrarySidebar({
   onResetFilters,
   groupOption,
   groupedGames,
-  selectedGame,
-  setSelectedGame,
+  selectedGroup,
+  setSelectedGroup,
   favorites,
   fallbackMockGames,
   listScrollRef,
   setIsAddGameOpen,
-  setAddGameError
+  setAddGameError,
 }: LibrarySidebarProps) {
-  
-  const hasActiveFilters = hasActiveFiltersProp ?? (
-    Boolean(searchQuery)
-    || activePlatformFilter !== "all"
-    || Object.values(advancedFilters).some((value) => {
-      if (Array.isArray(value)) return value.length > 0;
-      if (typeof value === "boolean") return value;
-      return value !== "";
-    })
-  );
+  const clearAddGameError = setAddGameError ?? (() => undefined);
+
+  const hasActiveFilters =
+    hasActiveFiltersProp ??
+    (Boolean(searchQuery) ||
+      activePlatformFilter !== "all" ||
+      Object.values(advancedFilters).some((value) => {
+        if (Array.isArray(value)) return value.length > 0;
+        if (typeof value === "boolean") return value;
+        return value !== "";
+      }));
   const [listViewport, setListViewport] = useState({ height: 0, scrollTop: 0 });
   const shouldVirtualize =
     groupOption === "none" && filteredGames.length > LIBRARY_VIRTUALIZE_THRESHOLD;
@@ -86,8 +88,8 @@ export function LibrarySidebar({
       maxStartIndex,
     );
     const visibleCount =
-      Math.ceil(Math.max(listViewport.height, LIBRARY_ROW_HEIGHT) / LIBRARY_ROW_HEIGHT)
-      + LIBRARY_ROW_OVERSCAN * 2;
+      Math.ceil(Math.max(listViewport.height, LIBRARY_ROW_HEIGHT) / LIBRARY_ROW_HEIGHT) +
+      LIBRARY_ROW_OVERSCAN * 2;
     const endIndex = Math.min(filteredGames.length, startIndex + visibleCount);
 
     return {
@@ -138,25 +140,28 @@ export function LibrarySidebar({
       return;
     }
 
-    const maxScrollTop = Math.max(0, filteredGames.length * LIBRARY_ROW_HEIGHT - element.clientHeight);
+    const maxScrollTop = Math.max(
+      0,
+      filteredGames.length * LIBRARY_ROW_HEIGHT - element.clientHeight,
+    );
     if (element.scrollTop > maxScrollTop) {
       element.scrollTop = maxScrollTop;
     }
   }, [filteredGames.length, listScrollRef, shouldVirtualize]);
 
-  const renderLibraryRow = (game: Game) => (
+  const renderLibraryRow = (group: GameGroup) => (
     <LibraryRow
-      key={game.id}
-      game={game}
-      selected={selectedGame?.id === game.id}
-      onSelect={setSelectedGame}
-      isFavorite={favorites[game.id] === true}
+      key={group.id}
+      group={group}
+      selected={selectedGroup?.id === group.id}
+      onSelect={setSelectedGroup}
+      isFavorite={group.variants.some((game) => favorites[game.id] === true)}
     />
   );
 
   return (
-    <aside className="min-h-0 border-b-4 border-black bg-[#efe3cf] flex flex-col justify-between md:border-b-0 md:border-r-4">
-      <div className="flex-1 min-h-0 flex flex-col">
+    <aside className="flex min-h-0 flex-col justify-between border-b-4 border-black bg-[#efe3cf] md:border-b-0 md:border-r-4">
+      <div className="flex min-h-0 flex-1 flex-col">
         <div className="flex h-11 items-center justify-between border-b-4 border-black bg-[#f4ead8]">
           <button className="h-full flex-1 px-3 text-left text-[16px] font-black" type="button">
             <span className="block min-w-0 truncate">
@@ -164,7 +169,11 @@ export function LibrarySidebar({
               {hasActiveFilters ? ` / ${games.length || fallbackMockGames.length}` : ""})
             </span>
           </button>
-          <button className="grid h-full w-11 place-items-center border-l-4 border-black" type="button" aria-label="Grid view">
+          <button
+            className="grid h-full w-11 place-items-center border-l-4 border-black"
+            type="button"
+            aria-label="Grid view"
+          >
             <Grid2X2 className="h-6 w-6" />
           </button>
         </div>
@@ -184,7 +193,7 @@ export function LibrarySidebar({
             <select
               value={sortOption}
               onChange={(e) => setSortOption(e.target.value as LibrarySortOption)}
-              className="h-6 border-2 border-black bg-[#d8cbb7] text-[10px] font-black uppercase tracking-wider outline-none neo-copy cursor-pointer"
+              className="neo-copy h-6 cursor-pointer border-2 border-black bg-[#d8cbb7] text-[10px] font-black uppercase tracking-wider outline-none"
               title="Sort"
             >
               <option value="alphabetical">A-Z</option>
@@ -196,7 +205,9 @@ export function LibrarySidebar({
               type="button"
               onClick={() => setIsFilterPopupOpen(!isFilterPopupOpen)}
               className={`grid h-6 w-8 place-items-center border-2 border-black transition ${
-                isFilterPopupOpen ? "bg-[#139a82] text-[#fffaf0]" : "bg-[#e8c843] text-[#171411] hover:bg-[#f0d95a]"
+                isFilterPopupOpen
+                  ? "bg-[#139a82] text-[#fffaf0]"
+                  : "bg-[#e8c843] text-[#171411] hover:bg-[#f0d95a]"
               }`}
               title="Advanced Filters"
             >
@@ -206,8 +217,11 @@ export function LibrarySidebar({
         </div>
 
         {/* List Frame */}
-        <div className="library-scroll-frame library-sidebar-scroll-frame flex-1 min-h-0 border-t-2 border-black">
-          <div ref={listScrollRef} className="library-game-list-scroll h-full min-h-0 overflow-y-auto overflow-x-hidden py-0 pl-0 pr-0 space-y-1">
+        <div className="library-scroll-frame library-sidebar-scroll-frame min-h-0 flex-1 border-t-2 border-black">
+          <div
+            ref={listScrollRef}
+            className="library-game-list-scroll h-full min-h-0 space-y-1 overflow-y-auto overflow-x-hidden py-0 pl-0 pr-0"
+          >
             {groupOption !== "none" ? (
               Object.entries(groupedGames).length === 0 ? (
                 <div className="py-8 text-center text-[12px] font-black uppercase text-[#686157]">
@@ -216,17 +230,15 @@ export function LibrarySidebar({
               ) : (
                 Object.entries(groupedGames).map(([groupName, groupGames]) => (
                   <div key={groupName} className="mb-4">
-                    <h3 className="sticky top-0 z-10 bg-[#efe3cf]/95 py-1 text-[11px] font-black uppercase tracking-wider text-[#b7102a] border-b-2 border-black/10 mb-2 backdrop-blur-sm">
+                    <h3 className="sticky top-0 z-10 mb-2 border-b-2 border-black/10 bg-[#efe3cf]/95 py-1 text-[11px] font-black uppercase tracking-wider text-[#b7102a] backdrop-blur-sm">
                       {groupName} ({groupGames.length})
                     </h3>
-                    <div className="space-y-1">
-                      {groupGames.map(renderLibraryRow)}
-                    </div>
+                    <div className="space-y-1">{groupGames.map(renderLibraryRow)}</div>
                   </div>
                 ))
               )
             ) : filteredGames.length === 0 ? (
-              <div className="py-12 px-4 text-center space-y-4">
+              <div className="space-y-4 px-4 py-12 text-center">
                 <p className="text-[12px] font-black uppercase text-[#686157]">
                   {hasActiveFilters ? "No games match active filters" : "No games found"}
                 </p>
@@ -234,7 +246,7 @@ export function LibrarySidebar({
                   <button
                     type="button"
                     onClick={onResetFilters}
-                    className="neo-copy inline-flex h-9 items-center justify-center border-2 border-black bg-[#e8c843] px-4 text-[10px] font-black uppercase shadow-[2px_2px_0_#171411] hover:bg-[#f0d95a] transition active:translate-y-0.5 active:shadow-[1px_1px_0_#171411]"
+                    className="neo-copy inline-flex h-9 items-center justify-center border-2 border-black bg-[#e8c843] px-4 text-[10px] font-black uppercase shadow-[2px_2px_0_#171411] transition hover:bg-[#f0d95a] active:translate-y-0.5 active:shadow-[1px_1px_0_#171411]"
                   >
                     Reset Filters
                   </button>
@@ -242,14 +254,16 @@ export function LibrarySidebar({
               </div>
             ) : (
               <div
-                style={shouldVirtualize ? {
-                  paddingBottom: virtualRows.afterHeight,
-                  paddingTop: virtualRows.beforeHeight,
-                } : undefined}
+                style={
+                  shouldVirtualize
+                    ? {
+                        paddingBottom: virtualRows.afterHeight,
+                        paddingTop: virtualRows.beforeHeight,
+                      }
+                    : undefined
+                }
               >
-                <div className="space-y-1">
-                  {virtualRows.games.map(renderLibraryRow)}
-                </div>
+                <div className="space-y-1">{virtualRows.games.map(renderLibraryRow)}</div>
               </div>
             )}
           </div>
@@ -261,7 +275,7 @@ export function LibrarySidebar({
           type="button"
           className="text-left uppercase leading-none hover:text-[#b7102a]"
           onClick={() => {
-            setAddGameError(null);
+            clearAddGameError(null);
             setIsAddGameOpen(true);
           }}
         >
