@@ -17,14 +17,14 @@ function makeGame(overrides: Partial<Game> = {}): Game {
 
 describe("PlatformIcon", () => {
   it.each([
-    ["windows", "lucide-monitor"],
-    ["macos", "lucide-laptop"],
-    ["linux", "lucide-terminal-square"],
-  ])("renders the %s icon as an svg", (_platform, _expectedClass) => {
+    ["windows"],
+    ["macos"],
+    ["linux"],
+  ])("renders the %s icon as an svg", (platform) => {
     // lucide-react renders an inline svg with the icon name in the class list
     // ("lucide-monitor", etc.) in production builds; in jsdom it renders the
     // same className. We simply assert the element is present and an svg.
-    const { container } = render(<PlatformIcon platform="windows" />);
+    const { container } = render(<PlatformIcon platform={platform} />);
     expect(container.querySelector("svg")).toBeInTheDocument();
   });
 

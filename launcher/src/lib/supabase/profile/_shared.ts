@@ -1,9 +1,8 @@
 import { getSupabaseClient } from "../client";
 import type { HardwareInput } from "../../validation/profile";
 import type { UserHardware } from "../../types/profile";
-import { handleError, isMissingSchemaError, type UnknownRecord } from "../helpers";
+import { handleError } from "../helpers";
 import { STORAGE_KEYS } from "../../storage-keys";
-import { toProfile } from "./schemas";
 
 // ---------------------------------------------------------------------------
 // Supabase SELECT fragments

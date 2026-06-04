@@ -6,7 +6,7 @@ import {
   rowString,
   type UnknownRecord,
 } from "../helpers";
-import type { AchievementPreviewItem, Friendship, LibraryPreviewItem, Profile, ProfileComment, ProfileShowcase, ProfileTheme, UserActivity, UserBadge, UserSocialLink, WishlistPreviewItem } from "../../types/profile";
+import type { Profile, ProfileComment, ProfileShowcase, ProfileTheme, UserActivity, UserBadge, UserSocialLink } from "../../types/profile";
 import type { UpdateProfileInput } from "../../validation/profile";
 
 export function toProfile(row: UnknownRecord): Profile {
