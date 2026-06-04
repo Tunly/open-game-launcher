@@ -10,7 +10,7 @@
 | 1 | Security & RLS Hardening | High | 1-2 days | Backlog | Close Stripe/RLS/path-traversal/injection holes |
 | 2 | Quick-Wins Tooling | Low | 1 day | Backlog | Editorconfig, Prettier, Husky, tsconfig strictness, .gitignore gaps |
 | 3 | LibraryPage Decomposition | High | 3-5 days | Backlog | Split 2749-LOC god-component into hooks + subcomponents |
-| 4 | Test Coverage | High | 2-3 days | **In progress** | Component/Store/Hook tests with Vitest |
+| 4 | Test Coverage | High | 2-3 days | **Completed** (173 tests) | Component/Store/Hook tests with Vitest |
 | 5 | Architecture Polish | Medium | 3-4 days | Backlog | Zustand selectors, error helpers, subscription hooks, any→types |
 | 6 | CI/CD Hardening | Medium | 1-2 days | Backlog | Windows runner, Rust checks, coverage thresholds in CI |
 
@@ -25,17 +25,19 @@ See `docs/IMPROVEMENTS_FINDINGS.md` for the raw audit.
 
 ### Scope (9 test files)
 
-| # | File | Target | Tests |
-|---|------|--------|-------|
-| 1 | `components/ui/Button.test.tsx` | Variants, sizes, disabled, click | 5 |
-| 2 | `components/ui/ConfirmDialog.test.tsx` | Open/close, Esc, Enter, A11y | 4 |
-| 3 | `components/library/PlatformIcons.test.tsx` | Source→icon mapping | 4 |
-| 4 | `components/library/LibrarySidebar.test.tsx` | Filter state, virtualization threshold, empty states | 8 |
-| 5 | `stores/downloadStore.test.ts` | upsert, remove, derived counts, status normalization | 10 |
-| 6 | `stores/modInstallStore.test.ts` | queue, progress, sort order, terminal | 8 |
-| 7 | `hooks/useDebouncedValue.test.ts` | (new hook + tests) | 4 |
-| 8 | `hooks/useLocalStorageState.test.tsx` | Extend existing (effect-driven updates) | +3 |
-| 9 | `lib/supabase/profile.test.ts` | `toProfile` / `toShowcase` / `toBadge` converters | 6 |
+| # | File | Target | Tests | Result |
+|---|------|--------|-------|--------|
+| 1 | `components/ui/Button.test.tsx` | Variants, sizes, disabled, click | 5 | ✅ 5 |
+| 2 | `components/ui/ConfirmDialog.test.tsx` | Open/close, Esc, Enter, A11y | 4 | ✅ 4 |
+| 3 | `components/library/PlatformIcons.test.tsx` | Source→icon mapping | 4 | ✅ 6 (3 each) |
+| 4 | `components/library/LibrarySidebar.test.tsx` | Filter state, virtualization threshold, empty states | 8 | ✅ 8 |
+| 5 | `stores/downloadStore.test.ts` | upsert, remove, derived counts, status normalization | 10 | ✅ 15 |
+| 6 | `stores/modInstallStore.test.ts` | queue, progress, sort order, terminal | 8 | ✅ 14 |
+| 7 | `hooks/useDebouncedValue.test.ts` | (new hook + tests) | 4 | ✅ 4 |
+| 8 | `hooks/useLocalStorageState.test.tsx` | Extend existing (effect-driven updates) | +3 | ✅ +3 (6 → 9) |
+| 9 | `lib/supabase/helpers.test.ts` | Row-converter helpers + schema error detection | 6 | ✅ 25 |
+
+**Result:** 89 → **173 tests**, all green. Per-file coverage on the in-scope files is 92-100%.
 
 ### Infrastructure
 
