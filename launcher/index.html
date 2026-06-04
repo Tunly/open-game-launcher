@@ -3,6 +3,53 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='4' fill='%23171411'/%3E%3Ctext x='16' y='23' font-size='20' font-weight='900' font-family='Arial' fill='%23169b83' text-anchor='middle'%3EOG%3C/text%3E%3C/svg%3E" />
+    <script>
+      (() => {
+        const params = new URLSearchParams(window.location.search);
+        const view = params.get("view");
+        const path = window.location.pathname.replace(/\/+$/, "");
+        const hashView = window.location.hash.replace(/^#\/?/, "");
+
+        const isFloatingView =
+          view === "overlay" ||
+          view === "fps-hud" ||
+          view === "fps_hud" ||
+          hashView === "overlay" ||
+          hashView === "fps-hud" ||
+          hashView === "fps_hud" ||
+          path === "/overlay" ||
+          path === "/fps-hud";
+
+        if (isFloatingView) {
+          document.documentElement.classList.add("floating-overlay-runtime");
+        }
+
+        window.addEventListener("DOMContentLoaded", () => {
+          if (!isFloatingView) return;
+          document.body.classList.add("floating-overlay-runtime");
+
+          const root = document.getElementById("root");
+          if (!root || root.childElementCount > 0) return;
+
+          const isFpsHud = hashView === "fps-hud" || view === "fps-hud" || view === "fps_hud";
+          const label = isFpsHud ? "FPS-HUD laedt..." : "Overlay laedt...";
+          const mainStyle = isFpsHud
+            ? "display:grid;min-height:100vh;place-items:center;background:#fbf8ef;color:#171411;font:700 13px 'Courier New',monospace;"
+            : "display:grid;min-height:100vh;place-items:center;background:rgba(0,0,0,.68);color:#fff9ed;font:700 13px 'Courier New',monospace;";
+          const sectionStyle = isFpsHud
+            ? "border:3px solid #171411;background:#fff9ed;padding:14px 16px;box-shadow:4px 4px 0 #1f1c0f;"
+            : "border:3px solid #171411;background:#171411cc;padding:14px 16px;box-shadow:4px 4px 0 #000;";
+          root.innerHTML = `
+            <main style="${mainStyle}">
+              <section style="${sectionStyle}">
+                ${label}
+              </section>
+            </main>
+          `;
+        });
+      })();
+    </script>
     <title>Open Game Launcher</title>
   </head>
   <body>

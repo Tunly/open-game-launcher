@@ -133,9 +133,7 @@ fn hex_decode(s: &str) -> Result<Vec<u8>, String> {
     }
     (0..s.len())
         .step_by(2)
-        .map(|i| {
-            u8::from_str_radix(&s[i..i + 2], 16).map_err(|e| format!("Hex decode error: {e}"))
-        })
+        .map(|i| u8::from_str_radix(&s[i..i + 2], 16).map_err(|e| format!("Hex decode error: {e}")))
         .collect()
 }
 
@@ -144,6 +142,41 @@ fn sanitize_user_id(id: &str) -> String {
         .filter(|c| c.is_ascii_alphanumeric() || *c == '-')
         .take(64)
         .collect()
+}
+
+fn keychain_domain(user_id: &str) -> String {
+    format!("cloud_save_key:{}", sanitize_user_id(user_id))
+}
+
+#[tauri::command]
+pub fn is_cloud_key_present(user_id: String) -> bool {
+    let domain = keychain_domain(&user_id);
+    match super::secure_store::get_secret(&domain) {
+        Ok(Some(key_hex)) => hex_decode(&key_hex)
+            .map(|bytes| bytes.len() == KEY_SIZE)
+            .unwrap_or(false),
+        _ => false,
+    }
+}
+
+#[tauri::command]
+pub fn generate_cloud_key(user_id: String) -> Result<String, String> {
+    let domain = keychain_domain(&user_id);
+    let mut key = [0u8; KEY_SIZE];
+    OsRng.fill_bytes(&mut key);
+    let key_hex = hex_encode(&key);
+    super::secure_store::set_secret(&domain, &key_hex)?;
+    Ok(key_hex)
+}
+
+#[tauri::command]
+pub fn rotate_cloud_key(user_id: String) -> Result<String, String> {
+    let domain = keychain_domain(&user_id);
+    let mut key = [0u8; KEY_SIZE];
+    OsRng.fill_bytes(&mut key);
+    let key_hex = hex_encode(&key);
+    super::secure_store::set_secret(&domain, &key_hex)?;
+    Ok(key_hex)
 }
 
 fn chrono_now() -> String {

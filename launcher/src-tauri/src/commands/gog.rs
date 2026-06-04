@@ -1,11 +1,11 @@
+use super::secure_store;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::fs;
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tauri::Emitter;
-use std::path::PathBuf;
-use super::secure_store;
 use tokio::sync::watch;
 
 // ============================================================================
@@ -219,8 +219,8 @@ pub fn load_gog_token() -> Option<GogToken> {
 
 /// Save the GOG token to OS keychain (with file fallback).
 pub fn save_gog_token(token: &GogToken) -> Result<(), String> {
-    let json = serde_json::to_string(token)
-        .map_err(|e| format!("Failed to serialize GOG token: {e}"))?;
+    let json =
+        serde_json::to_string(token).map_err(|e| format!("Failed to serialize GOG token: {e}"))?;
     secure_store::set_secret("gog", &json)
 }
 
@@ -1219,6 +1219,10 @@ pub fn get_gog_download_queue() -> Result<Vec<super::downloads::DownloadItemPayl
             can_cancel: true,
             external: false,
             last_updated_at: 0,
+            provider: "gog".to_string(),
+            raw_status: dl.status.clone(),
+            progress_source: "gog_api".to_string(),
+            error: None,
         })
         .collect();
     Ok(queue)
@@ -1323,6 +1327,10 @@ pub(crate) fn emit_gog_download_progress(
         can_cancel: true,
         external: false,
         last_updated_at: 0,
+        provider: "gog".to_string(),
+        raw_status: status.to_string(),
+        progress_source: "gog_api".to_string(),
+        error: None,
     };
     super::downloads::record_download_item(payload.clone());
     let _ = app.emit("download_progress", payload);

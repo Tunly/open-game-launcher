@@ -4,6 +4,7 @@ import {
   MessageSquareMore,
   PackagePlus,
   Store,
+  Trophy,
   type LucideIcon,
 } from "lucide-react";
 
@@ -16,6 +17,7 @@ export type PageKey =
   | "community"
   | "downloads"
   | "mods"
+  | "achievements"
   | "settings"
   | "profile"
   | "friends"
@@ -38,6 +40,7 @@ interface SidebarProps {
 
 const navItems: NavItem[] = [
   { key: "library", label: "Library", icon: Gamepad2 },
+  { key: "achievements", label: "Achievements", icon: Trophy },
   { key: "downloads", label: "Downloads", icon: HardDriveDownload },
   { key: "mods", label: "Mods", icon: PackagePlus },
   { key: "store", label: "Store", icon: Store },

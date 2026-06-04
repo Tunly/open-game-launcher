@@ -1669,6 +1669,11 @@ pub fn read_supabase_access_token() -> Option<String> {
 }
 
 #[tauri::command]
+pub fn read_cached_supabase_access_token() -> Option<String> {
+    read_supabase_access_token()
+}
+
+#[tauri::command]
 pub fn cache_supabase_access_token(token: String) -> Result<(), String> {
     let Some(path) = supabase_access_token_path() else {
         return Err("Could not resolve launcher data directory.".to_string());

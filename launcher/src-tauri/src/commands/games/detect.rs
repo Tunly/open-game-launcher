@@ -70,6 +70,9 @@ fn merge_scanned_game(
         .filter(|path| !path.is_empty())
     {
         if let Some(candidate_canon) = canonical_install_path(install_path) {
+            // Note: Disable path-based merging for different platforms to allow
+            // Steam & Ubisoft variants to both exist in the library.
+            /*
             if let Some(existing_id) = path_index.get(&candidate_canon).cloned() {
                 if let Some(existing) = games.get(&existing_id) {
                     if launcher_scan_priority(&candidate) > launcher_scan_priority(existing) {
@@ -79,6 +82,7 @@ fn merge_scanned_game(
                     }
                 }
             }
+            */
 
             candidate_canonical_path = Some(candidate_canon);
         }
@@ -292,6 +296,10 @@ pub fn scan_epic_games() -> Vec<InstalledGame> {
                 return None;
             }
 
+            if is_epic_unreal_asset_manifest(&value, &title) {
+                return None;
+            }
+
             let install_path = value
                 .get("InstallLocation")
                 .and_then(|location| location.as_str())
@@ -405,6 +413,124 @@ pub fn scan_epic_games() -> Vec<InstalledGame> {
             Some(game)
         })
         .collect()
+}
+
+fn is_epic_unreal_asset_manifest(manifest: &serde_json::Value, title: &str) -> bool {
+    let title = title.to_lowercase();
+    let app_name = manifest
+        .get("AppName")
+        .or_else(|| manifest.get("MainGameAppName"))
+        .and_then(|value| value.as_str())
+        .unwrap_or_default()
+        .trim()
+        .to_lowercase();
+
+    let search_text = format!("{} {}", title, app_name);
+
+    let namespace = manifest
+        .get("CatalogNamespace")
+        .or_else(|| manifest.get("Namespace"))
+        .and_then(|value| value.as_str())
+        .unwrap_or_default()
+        .trim()
+        .to_lowercase();
+
+    // ── 1. Namespace-based check ──
+    if namespace == "ue"
+        || namespace == "uefn"
+        || namespace.starts_with("ue-")
+        || namespace.starts_with("ue_")
+    {
+        return true;
+    }
+
+    // ── 2. Category-based check via AppCategories in the manifest ──
+    if let Some(cats) = manifest.get("AppCategories").and_then(|c| c.as_array()) {
+        let paths: Vec<String> = cats
+            .iter()
+            .filter_map(|c| {
+                // AppCategories can be strings or objects with "path"
+                c.as_str().map(|s| s.to_lowercase()).or_else(|| {
+                    c.get("path")
+                        .and_then(|p| p.as_str())
+                        .map(|s| s.to_lowercase())
+                })
+            })
+            .collect();
+
+        let has_games = paths.iter().any(|p| p.starts_with("games") || p == "game");
+        let is_ue_asset = paths.iter().any(|p| {
+            p.contains("unreal-engine")
+                || p.contains("unreal_engine")
+                || p.starts_with("asset-format")
+                || p.starts_with("plugins")
+                || p.starts_with("type/format-item")
+        });
+
+        if is_ue_asset && !has_games {
+            return true;
+        }
+    }
+
+    // ── 3. Keyword-based heuristics ──
+    let unreal_marker = search_text.contains("unreal engine")
+        || search_text.contains("unrealengine")
+        || search_text.contains("ue marketplace")
+        || search_text.contains("unreal marketplace")
+        || search_text.contains("marketplaceassets")
+        || search_text.contains("marketplace assets")
+        || search_text.contains("fab.com")
+        || search_text.contains("\"fab\"")
+        || search_text.contains("\"ue\"")
+        || search_text.contains("uefn")
+        || search_text.contains("ue-");
+    let asset_marker = search_text.contains("asset")
+        || search_text.contains("vault")
+        || search_text.contains("plugin")
+        || search_text.contains("plugins")
+        || search_text.contains("sample")
+        || search_text.contains("template")
+        || search_text.contains("environment")
+        || search_text.contains("environments")
+        || search_text.contains("material")
+        || search_text.contains("materials")
+        || search_text.contains("mesh")
+        || search_text.contains("meshes")
+        || search_text.contains("animation")
+        || search_text.contains("animations")
+        || search_text.contains("blueprint")
+        || search_text.contains("blueprints")
+        || search_text.contains("code plugin")
+        || search_text.contains("props")
+        || search_text.contains("texture")
+        || search_text.contains("textures")
+        || search_text.contains("vfx")
+        || search_text.contains("sfx")
+        || search_text.contains("sound effects")
+        || search_text.contains("music pack")
+        || search_text.contains("characters")
+        || search_text.contains("3d model")
+        || search_text.contains("kitbash")
+        || search_text.contains("modular")
+        || search_text.contains("stylized")
+        || search_text.contains("low poly");
+    let asset_title_marker = title.contains("asset")
+        || title.contains("plugin")
+        || title.contains("template")
+        || title.contains("environment")
+        || title.contains("material")
+        || title.contains("mesh")
+        || title.contains("animation")
+        || title.contains("blueprint")
+        || title.contains("props")
+        || title.contains("vfx")
+        || title.contains("sfx")
+        || title.contains("texture")
+        || title.contains("modular")
+        || title.contains("stylized")
+        || title.contains("low poly");
+
+    (unreal_marker && asset_marker) || (unreal_marker && asset_title_marker)
 }
 
 #[derive(Clone, Default)]
@@ -1238,6 +1364,11 @@ pub fn get_rawg_battlenet_assets(uid: &str, title: &str) -> Option<RawgAssets> {
     get_rawg_game_assets("battlenet", uid, &search_title)
 }
 
+pub fn get_rawg_ubisoft_assets(install_id: &str, title: &str) -> Option<RawgAssets> {
+    let search_title = ubisoft_rawg_search_title(title);
+    get_rawg_game_assets("ubisoft", install_id, &search_title)
+}
+
 pub fn get_rawg_epic_assets(id: &str, title: &str) -> Option<RawgAssets> {
     let search_title = epic_rawg_search_title(title);
     let cache_id = if id.trim().is_empty() { title } else { id };
@@ -1396,6 +1527,214 @@ fn epic_rawg_search_title(title: &str) -> String {
             cleaned.truncate(cleaned.len() - suffix.len());
             break;
         }
+    }
+
+    cleaned.trim().to_string()
+}
+
+fn ubisoft_rawg_search_title(title: &str) -> String {
+    let mut cleaned = title
+        .replace(['\u{2122}', '\u{00AE}'], "")
+        .replace("(TM)", "")
+        .replace("(R)", "")
+        .replace("  ", " ")
+        .trim()
+        .to_string();
+
+    // Strip edition suffixes that confuse RAWG search
+    let edition_suffixes = [
+        " - Standard Edition",
+        " Standard Edition",
+        " - Deluxe Edition",
+        " Deluxe Edition",
+        " - Ultimate Edition",
+        " Ultimate Edition",
+        " - Gold Edition",
+        " Gold Edition",
+        " - Complete Edition",
+        " Complete Edition",
+        " - Digital Deluxe Edition",
+        " Digital Deluxe Edition",
+        " - Animus Pack",
+    ];
+
+    for suffix in edition_suffixes {
+        if cleaned.len() > suffix.len() + 3 && cleaned.ends_with(suffix) {
+            cleaned.truncate(cleaned.len() - suffix.len());
+            break;
+        }
+    }
+
+    let normalized = cleaned.to_lowercase();
+
+    // Map well-known Ubisoft titles to canonical RAWG search terms
+    if normalized.contains("rainbow six siege") {
+        return "Tom Clancy's Rainbow Six Siege".to_string();
+    }
+    if normalized.contains("rainbow six extraction") {
+        return "Tom Clancy's Rainbow Six Extraction".to_string();
+    }
+    if normalized.contains("assassin's creed valhalla") || normalized.contains("assassins creed valhalla") {
+        return "Assassin's Creed Valhalla".to_string();
+    }
+    if normalized.contains("assassin's creed odyssey") || normalized.contains("assassins creed odyssey") {
+        return "Assassin's Creed Odyssey".to_string();
+    }
+    if normalized.contains("assassin's creed origins") || normalized.contains("assassins creed origins") {
+        return "Assassin's Creed Origins".to_string();
+    }
+    if normalized.contains("assassin's creed mirage") || normalized.contains("assassins creed mirage") {
+        return "Assassin's Creed Mirage".to_string();
+    }
+    if normalized.contains("assassin's creed shadows") || normalized.contains("assassins creed shadows") {
+        return "Assassin's Creed Shadows".to_string();
+    }
+    if normalized.contains("assassin's creed unity") || normalized.contains("assassins creed unity") {
+        return "Assassin's Creed Unity".to_string();
+    }
+    if normalized.contains("assassin's creed syndicate") || normalized.contains("assassins creed syndicate") {
+        return "Assassin's Creed Syndicate".to_string();
+    }
+    if normalized.contains("assassin's creed iv") || normalized.contains("assassin's creed 4") || normalized.contains("black flag") {
+        return "Assassin's Creed IV Black Flag".to_string();
+    }
+    if normalized.contains("assassin's creed iii") || normalized.contains("assassin's creed 3") {
+        return "Assassin's Creed III".to_string();
+    }
+    if normalized.contains("assassin's creed ii") || normalized.contains("assassin's creed 2") {
+        return "Assassin's Creed II".to_string();
+    }
+    if normalized.contains("assassin's creed brotherhood") {
+        return "Assassin's Creed Brotherhood".to_string();
+    }
+    if normalized.contains("assassin's creed revelations") {
+        return "Assassin's Creed Revelations".to_string();
+    }
+    if normalized.contains("assassin's creed rogue") {
+        return "Assassin's Creed Rogue".to_string();
+    }
+    if normalized.contains("far cry 6") {
+        return "Far Cry 6".to_string();
+    }
+    if normalized.contains("far cry 5") {
+        return "Far Cry 5".to_string();
+    }
+    if normalized.contains("far cry new dawn") {
+        return "Far Cry New Dawn".to_string();
+    }
+    if normalized.contains("far cry 4") {
+        return "Far Cry 4".to_string();
+    }
+    if normalized.contains("far cry 3") {
+        return "Far Cry 3".to_string();
+    }
+    if normalized.contains("far cry primal") {
+        return "Far Cry Primal".to_string();
+    }
+    if normalized.contains("watch dogs legion") || normalized.contains("watch_dogs legion") {
+        return "Watch Dogs Legion".to_string();
+    }
+    if normalized.contains("watch dogs 2") || normalized.contains("watch_dogs 2") || normalized.contains("watch_dogs2") {
+        return "Watch Dogs 2".to_string();
+    }
+    if normalized.contains("watch dogs") || normalized.contains("watch_dogs") {
+        return "Watch Dogs".to_string();
+    }
+    if normalized.contains("ghost recon breakpoint") {
+        return "Tom Clancy's Ghost Recon Breakpoint".to_string();
+    }
+    if normalized.contains("ghost recon wildlands") {
+        return "Tom Clancy's Ghost Recon Wildlands".to_string();
+    }
+    if normalized.contains("the division 2") || normalized.contains("division 2") {
+        return "Tom Clancy's The Division 2".to_string();
+    }
+    if normalized.contains("the division") {
+        return "Tom Clancy's The Division".to_string();
+    }
+    if normalized.contains("immortals fenyx") {
+        return "Immortals Fenyx Rising".to_string();
+    }
+    if normalized.contains("riders republic") {
+        return "Riders Republic".to_string();
+    }
+    if normalized.contains("steep") && !normalized.contains("steeple") {
+        return "Steep".to_string();
+    }
+    if normalized.contains("for honor") {
+        return "For Honor".to_string();
+    }
+    if normalized.contains("the crew motorfest") {
+        return "The Crew Motorfest".to_string();
+    }
+    if normalized.contains("the crew 2") {
+        return "The Crew 2".to_string();
+    }
+    if normalized.contains("the crew") {
+        return "The Crew".to_string();
+    }
+    if normalized.contains("skull and bones") || normalized.contains("skull & bones") {
+        return "Skull and Bones".to_string();
+    }
+    if normalized.contains("prince of persia") && normalized.contains("lost crown") {
+        return "Prince of Persia The Lost Crown".to_string();
+    }
+    if normalized.contains("avatar frontiers") {
+        return "Avatar Frontiers of Pandora".to_string();
+    }
+    if normalized.contains("anno 1800") {
+        return "Anno 1800".to_string();
+    }
+    if normalized.contains("splinter cell") {
+        return "Tom Clancy's Splinter Cell".to_string();
+    }
+    if normalized.contains("south park fractured") {
+        return "South Park The Fractured But Whole".to_string();
+    }
+    if normalized.contains("south park stick") {
+        return "South Park The Stick of Truth".to_string();
+    }
+    if normalized.contains("mario + rabbids") || normalized.contains("mario rabbids") {
+        return "Mario + Rabbids Kingdom Battle".to_string();
+    }
+    if normalized.contains("xdefiant") {
+        return "XDefiant".to_string();
+    }
+    if normalized.contains("hyper scape") {
+        return "Hyper Scape".to_string();
+    }
+    if normalized.contains("trackmania") {
+        return "Trackmania".to_string();
+    }
+    if normalized.contains("roller champions") {
+        return "Roller Champions".to_string();
+    }
+    if normalized.contains("just dance") {
+        return "Just Dance".to_string();
+    }
+    if normalized.contains("rayman legends") {
+        return "Rayman Legends".to_string();
+    }
+    if normalized.contains("rayman origins") {
+        return "Rayman Origins".to_string();
+    }
+    if normalized.contains("child of light") {
+        return "Child of Light".to_string();
+    }
+    if normalized.contains("valiant hearts") {
+        return "Valiant Hearts The Great War".to_string();
+    }
+    if normalized.contains("grow home") {
+        return "Grow Home".to_string();
+    }
+    if normalized.contains("grow up") {
+        return "Grow Up".to_string();
+    }
+    if normalized.contains("trials rising") {
+        return "Trials Rising".to_string();
+    }
+    if normalized.contains("trials fusion") {
+        return "Trials Fusion".to_string();
     }
 
     cleaned.trim().to_string()
@@ -1784,10 +2123,48 @@ pub fn scan_ubisoft_games() -> Vec<InstalledGame> {
             continue;
         };
 
+        let rawg_assets = get_rawg_ubisoft_assets(&install.install_id, title);
         let launcher_assets = find_ubisoft_launcher_assets(&install.install_id);
+        let cover_url = launcher_assets
+            .cover_url
+            .clone()
+            .or_else(|| find_local_banner_asset(&install.install_dir))
+            .or_else(|| {
+                rawg_assets
+                    .as_ref()
+                    .and_then(|assets| assets.cover_url.clone())
+            });
+        let logo_url = launcher_assets
+            .logo_url
+            .clone()
+            .or_else(|| find_local_logo_asset(&install.install_dir))
+            .or_else(|| {
+                rawg_assets
+                    .as_ref()
+                    .and_then(|assets| assets.logo_url.clone())
+            });
+        let icon_url = launcher_assets
+            .icon_url
+            .clone()
+            .or_else(|| find_local_icon_asset(&install.install_dir))
+            .or_else(|| {
+                rawg_assets
+                    .as_ref()
+                    .and_then(|assets| assets.icon_url.clone())
+            })
+            .or_else(|| logo_url.clone())
+            .or_else(|| cover_url.clone());
 
         if !seen_titles.insert(title.to_lowercase()) {
-            apply_ubisoft_launcher_assets(&mut games, title, launcher_assets);
+            apply_ubisoft_launcher_assets(
+                &mut games,
+                title,
+                UbisoftLauncherAssets {
+                    cover_url,
+                    logo_url,
+                    icon_url,
+                },
+            );
             continue;
         }
 
@@ -1796,23 +2173,48 @@ pub fn scan_ubisoft_games() -> Vec<InstalledGame> {
             title.to_string(),
             "ubisoft".to_string(),
             Some(path_to_string(install.install_dir.clone())),
-            launcher_assets
-                .cover_url
-                .or_else(|| find_local_banner_asset(&install.install_dir)),
+            cover_url,
         );
         game.external_id = Some(install.install_id.clone());
         game.launch_uri = Some(format!("uplay://launch/{}", install.install_id));
-        game.logo_url = launcher_assets
-            .logo_url
-            .or_else(|| find_local_logo_asset(&install.install_dir));
-        game.icon_url = launcher_assets
-            .icon_url
-            .or_else(|| find_local_icon_asset(&install.install_dir));
+        game.logo_url = logo_url.clone();
+        game.logo_urls = logo_url.into_iter().collect();
+        game.icon_url = icon_url.clone();
+        game.icon_urls = icon_url.into_iter().collect();
         if let Some(timestamp) = get_dir_last_modified(&install.install_dir) {
             game.last_played_at = Some(unix_timestamp_to_iso(timestamp));
         }
 
         games.push(game);
+    }
+
+    // Final pass: enrich any games still missing artwork with RAWG assets.
+    // Games found only by directory scanning (Pass 1) never received a RAWG
+    // lookup, so we catch them here – the same Supabase-proxied RAWG fallback
+    // that EA / Epic / Battle.net already use.
+    for game in &mut games {
+        if game.cover_url.is_some() && game.icon_url.is_some() {
+            continue;
+        }
+
+        let search_id = game
+            .external_id
+            .as_deref()
+            .unwrap_or(&game.id);
+
+        if let Some(rawg) = get_rawg_ubisoft_assets(search_id, &game.title) {
+            if game.cover_url.is_none() {
+                game.cover_url = rawg.cover_url;
+            }
+            if game.logo_url.is_none() {
+                game.logo_url = rawg.logo_url.clone();
+                game.logo_urls = rawg.logo_url.into_iter().collect();
+            }
+            if game.icon_url.is_none() {
+                game.icon_url = rawg.icon_url.clone();
+                game.icon_urls = rawg.icon_url.into_iter().collect();
+            }
+        }
     }
 
     games
@@ -1835,11 +2237,13 @@ fn apply_ubisoft_launcher_assets(
     }
 
     if game.logo_url.is_none() {
-        game.logo_url = assets.logo_url;
+        game.logo_url = assets.logo_url.clone();
+        game.logo_urls = assets.logo_url.into_iter().collect();
     }
 
     if game.icon_url.is_none() {
-        game.icon_url = assets.icon_url;
+        game.icon_url = assets.icon_url.clone();
+        game.icon_urls = assets.icon_url.into_iter().collect();
     }
 }
 
@@ -2632,9 +3036,10 @@ pub fn find_ubisoft_launcher_assets(install_id: &str) -> UbisoftLauncherAssets {
             "thumb_image",
             "dialog_image",
         ],
+        install_id,
     );
-    let logo_url = find_ubisoft_config_asset(&config_segment, &["logo_image"]);
-    let icon_url = find_ubisoft_config_asset(&config_segment, &["icon_image"])
+    let logo_url = find_ubisoft_config_asset(&config_segment, &["logo_image"], install_id);
+    let icon_url = find_ubisoft_config_asset(&config_segment, &["icon_image"], install_id)
         .or_else(|| logo_url.clone())
         .or_else(|| cover_url.clone());
 
@@ -2693,10 +3098,14 @@ fn ubisoft_launcher_config_paths() -> Vec<PathBuf> {
     paths
 }
 
-fn find_ubisoft_config_asset(config_segment: &str, keys: &[&str]) -> Option<String> {
+fn find_ubisoft_config_asset(
+    config_segment: &str,
+    keys: &[&str],
+    install_id: &str,
+) -> Option<String> {
     keys.iter()
         .filter_map(|key| find_yaml_like_value(&config_segment, key))
-        .filter_map(|file_name| find_ubisoft_cached_asset(&file_name))
+        .filter_map(|file_name| find_ubisoft_cached_asset_for_install(&file_name, install_id))
         .next()
 }
 
@@ -2726,15 +3135,17 @@ fn find_ubisoft_cached_asset(file_name: &str) -> Option<String> {
         return None;
     }
 
+    let file_stem = Path::new(&normalized)
+        .file_stem()
+        .and_then(|stem| stem.to_str())?
+        .to_string();
+
     for root in ubisoft_cached_asset_roots() {
         let direct_path = root.join(&normalized);
         if direct_path.exists() && direct_path.is_file() {
             return Some(path_to_string(direct_path));
         }
 
-        let file_stem = Path::new(&normalized)
-            .file_stem()
-            .and_then(|stem| stem.to_str())?;
         let Ok(entries) = fs::read_dir(&root) else {
             continue;
         };
@@ -2745,7 +3156,47 @@ fn find_ubisoft_cached_asset(file_name: &str) -> Option<String> {
                 && path
                     .file_stem()
                     .and_then(|stem| stem.to_str())
-                    .is_some_and(|stem| stem.eq_ignore_ascii_case(file_stem))
+                    .is_some_and(|stem| stem.eq_ignore_ascii_case(&file_stem))
+        }) {
+            return Some(path_to_string(path));
+        }
+    }
+
+    None
+}
+
+/// Same as [`find_ubisoft_cached_asset`] but also tries an
+/// `assets/<install_id>/<filename>` lookup. Newer Ubisoft Connect builds
+/// segregate per-game artwork in a sub-folder named after the numeric
+/// `install_id` (Uplay id) – e.g.
+/// `C:\ProgramData\Ubisoft\Ubisoft Game Launcher\cache\assets\1234\hero.jpg`.
+fn find_ubisoft_cached_asset_for_install(file_name: &str, install_id: &str) -> Option<String> {
+    if let Some(found) = find_ubisoft_cached_asset(file_name) {
+        return Some(found);
+    }
+
+    let normalized = file_name.trim().replace('/', "\\");
+    if normalized.is_empty() || install_id.trim().is_empty() {
+        return None;
+    }
+
+    let file_stem = Path::new(&normalized)
+        .file_stem()
+        .and_then(|stem| stem.to_str())?
+        .to_string();
+
+    for root in ubisoft_cached_asset_roots() {
+        let per_game_root = root.join(install_id);
+        let Ok(entries) = fs::read_dir(&per_game_root) else {
+            continue;
+        };
+        if let Some(path) = entries.flatten().map(|entry| entry.path()).find(|path| {
+            path.is_file()
+                && is_supported_image(path)
+                && path
+                    .file_stem()
+                    .and_then(|stem| stem.to_str())
+                    .is_some_and(|stem| stem.eq_ignore_ascii_case(&file_stem))
         }) {
             return Some(path_to_string(path));
         }
@@ -4416,6 +4867,26 @@ mod tests {
         assert!(steam_install_dir_path(&steamapps, None).is_none());
 
         let _ = fs::remove_dir_all(temp);
+    }
+
+    #[test]
+    fn steam_scan_smoke_test_filters_invalid_installed_entries_when_steam_exists() {
+        let games = scan_steam_games();
+
+        for game in games {
+            assert!(
+                game.install_path
+                    .as_deref()
+                    .is_some_and(|path| !path.is_empty()),
+                "Steam scan returned installed game without install path: {}",
+                game.title
+            );
+            assert!(
+                !is_steam_non_game_manifest(game.external_id.as_deref(), &game.title),
+                "Steam scan returned non-game manifest entry: {}",
+                game.title
+            );
+        }
     }
 
     #[test]

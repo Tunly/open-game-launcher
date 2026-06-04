@@ -187,13 +187,149 @@ pub async fn fetch_epic_owned_games() -> Result<Vec<OwnedGame>, String> {
     let data: Vec<serde_json::Value> = serde_json::from_str(&data_str)
         .map_err(|e| format!("Failed to parse legendary list json: {e}"))?;
 
-    let games = stream::iter(data.into_iter().map(epic_owned_game_draft))
-        .map(epic_owned_game_from_draft)
-        .buffered(EPIC_OWNED_ASSET_CONCURRENCY)
-        .collect::<Vec<_>>()
-        .await;
+    let games = stream::iter(
+        data.into_iter()
+            .filter(|item| !is_unreal_catalog_asset(item))
+            .map(epic_owned_game_draft),
+    )
+    .map(epic_owned_game_from_draft)
+    .buffered(EPIC_OWNED_ASSET_CONCURRENCY)
+    .collect::<Vec<_>>()
+    .await;
 
     Ok(games)
+}
+
+fn is_unreal_catalog_asset(item: &serde_json::Value) -> bool {
+    let title = epic_json_string(
+        item,
+        &[
+            &["app_title"][..],
+            &["metadata", "title"][..],
+            &["title"][..],
+        ],
+    )
+    .unwrap_or_default()
+    .to_lowercase();
+
+    let description = epic_json_string(
+        item,
+        &[&["metadata", "description"][..], &["description"][..]],
+    )
+    .unwrap_or_default()
+    .to_lowercase();
+
+    let search_text = format!("{} {}", title, description);
+
+    let namespace = epic_json_string(
+        item,
+        &[
+            &["asset_info", "namespace"][..],
+            &["metadata", "namespace"][..],
+            &["namespace"][..],
+        ],
+    )
+    .unwrap_or_default()
+    .to_lowercase();
+
+    // ── 1. Namespace-based check (most reliable) ──
+    if namespace == "ue"
+        || namespace == "uefn"
+        || namespace.starts_with("ue-")
+        || namespace.starts_with("ue_")
+    {
+        return true;
+    }
+
+    // ── 2. Category-based check via metadata.categories ──
+    // Legendary JSON for real games has [{"path":"games"},{"path":"applications"}]
+    // UE assets have [{"path":"asset-format/game-engine/unreal-engine"},{"path":"plugins/engine"},...]
+    let categories = item
+        .get("metadata")
+        .and_then(|m| m.get("categories"))
+        .and_then(|c| c.as_array());
+
+    if let Some(cats) = categories {
+        let paths: Vec<String> = cats
+            .iter()
+            .filter_map(|c| c.get("path").and_then(|p| p.as_str()))
+            .map(|s| s.to_lowercase())
+            .collect();
+
+        let has_games = paths.iter().any(|p| p.starts_with("games"));
+        let is_ue_asset = paths.iter().any(|p| {
+            p.contains("unreal-engine")
+                || p.contains("unreal_engine")
+                || p.starts_with("asset-format")
+                || p.starts_with("plugins")
+                || p.starts_with("type/format-item")
+        });
+
+        // Has UE asset category markers but is NOT a game → skip it
+        if is_ue_asset && !has_games {
+            return true;
+        }
+    }
+
+    // ── 3. Keyword-based heuristics ──
+    let unreal_marker = search_text.contains("unreal engine")
+        || search_text.contains("unrealengine")
+        || search_text.contains("ue marketplace")
+        || search_text.contains("unreal marketplace")
+        || search_text.contains("marketplaceassets")
+        || search_text.contains("marketplace assets")
+        || search_text.contains("fab.com")
+        || search_text.contains("\"fab\"")
+        || search_text.contains("\"ue\"")
+        || search_text.contains("uefn")
+        || search_text.contains("ue-");
+    let asset_marker = search_text.contains("asset")
+        || search_text.contains("vault")
+        || search_text.contains("plugin")
+        || search_text.contains("plugins")
+        || search_text.contains("sample")
+        || search_text.contains("template")
+        || search_text.contains("environment")
+        || search_text.contains("environments")
+        || search_text.contains("material")
+        || search_text.contains("materials")
+        || search_text.contains("mesh")
+        || search_text.contains("meshes")
+        || search_text.contains("animation")
+        || search_text.contains("animations")
+        || search_text.contains("blueprint")
+        || search_text.contains("blueprints")
+        || search_text.contains("code plugin")
+        || search_text.contains("props")
+        || search_text.contains("texture")
+        || search_text.contains("textures")
+        || search_text.contains("vfx")
+        || search_text.contains("sfx")
+        || search_text.contains("sound effects")
+        || search_text.contains("music pack")
+        || search_text.contains("characters")
+        || search_text.contains("3d model")
+        || search_text.contains("kitbash")
+        || search_text.contains("modular")
+        || search_text.contains("stylized")
+        || search_text.contains("low poly");
+    let asset_title_marker = title.contains("asset")
+        || title.contains("plugin")
+        || title.contains("template")
+        || title.contains("environment")
+        || title.contains("material")
+        || title.contains("mesh")
+        || title.contains("animation")
+        || title.contains("blueprint")
+        || title.contains("props")
+        || title.contains("vfx")
+        || title.contains("sfx")
+        || title.contains("texture")
+        || title.contains("modular")
+        || title.contains("stylized")
+        || title.contains("low poly");
+
+    (unreal_marker && asset_marker) || (unreal_marker && asset_title_marker)
 }
 
 #[derive(Clone)]

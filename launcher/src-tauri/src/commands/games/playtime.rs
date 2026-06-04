@@ -1,5 +1,6 @@
+use std::path::Path;
 use std::process::Child;
-use std::{collections::HashMap, thread, time::Instant};
+use std::{collections::HashMap, thread};
 use tauri::{AppHandle, Emitter};
 
 use super::core::{
@@ -29,11 +30,21 @@ pub fn start_playtime_poller(app_handle: AppHandle) {
                 continue;
             }
 
-            // Collect all running process paths
-            let mut running_exe_paths = Vec::new();
+            // Collect running process identities once per poll. Games can be
+            // identified by path, executable path, or launcher-provided names.
+            let mut running_processes = Vec::new();
             for (_pid, process) in sys.processes() {
+                let process_name = normalize_process_name(&process.name().to_string_lossy());
                 if let Some(exe_path) = process.exe() {
-                    running_exe_paths.push(exe_path.to_string_lossy().to_lowercase());
+                    running_processes.push(RunningProcess {
+                        name: process_name,
+                        exe_path: Some(normalize_path(&exe_path.to_string_lossy())),
+                    });
+                } else {
+                    running_processes.push(RunningProcess {
+                        name: process_name,
+                        exe_path: None,
+                    });
                 }
             }
 
@@ -41,16 +52,7 @@ pub fn start_playtime_poller(app_handle: AppHandle) {
             let mut updated_cache = cached_games.clone();
 
             for game in updated_cache.iter_mut() {
-                let Some(install_path) = &game.install_path else {
-                    continue;
-                };
-                let norm_install_path = install_path.replace("\\", "/").to_lowercase();
-
-                // Check if any running process resides under this game's install path
-                let is_running = running_exe_paths.iter().any(|exe_path| {
-                    let norm_exe = exe_path.replace("\\", "/");
-                    norm_exe.starts_with(&norm_install_path)
-                });
+                let is_running = is_game_running(game, &running_processes);
 
                 if is_running {
                     // Increment session time
@@ -92,24 +94,99 @@ pub fn start_playtime_poller(app_handle: AppHandle) {
     });
 }
 
+#[derive(Debug)]
+struct RunningProcess {
+    name: String,
+    exe_path: Option<String>,
+}
+
+fn normalize_path(path: &str) -> String {
+    path.replace("\\", "/").trim_end_matches('/').to_lowercase()
+}
+
+fn normalize_process_name(name: &str) -> String {
+    Path::new(name)
+        .file_name()
+        .and_then(|file_name| file_name.to_str())
+        .unwrap_or(name)
+        .to_lowercase()
+}
+
+fn process_name_candidates(game: &InstalledGame) -> Vec<String> {
+    let mut names = game.process_names.clone();
+    if let Some(executable_path) = &game.executable_path {
+        if let Some(file_name) = Path::new(executable_path)
+            .file_name()
+            .and_then(|file_name| file_name.to_str())
+        {
+            names.push(file_name.to_string());
+        }
+    }
+
+    names
+        .into_iter()
+        .map(|name| normalize_process_name(&name))
+        .filter(|name| !name.trim().is_empty())
+        .fold(Vec::<String>::new(), |mut unique, name| {
+            if !unique.contains(&name) {
+                unique.push(name);
+            }
+            unique
+        })
+}
+
+fn is_game_running(game: &InstalledGame, running_processes: &[RunningProcess]) -> bool {
+    let install_path = game.install_path.as_ref().map(|path| normalize_path(path));
+    let executable_path = game
+        .executable_path
+        .as_ref()
+        .map(|path| normalize_path(path));
+    let process_names = process_name_candidates(game);
+
+    if install_path.is_none() && executable_path.is_none() && process_names.is_empty() {
+        return false;
+    }
+
+    running_processes.iter().any(|process| {
+        if process_names.iter().any(|name| name == &process.name) {
+            return true;
+        }
+
+        let Some(process_path) = &process.exe_path else {
+            return false;
+        };
+
+        if executable_path
+            .as_ref()
+            .is_some_and(|path| process_path == path)
+        {
+            return true;
+        }
+
+        install_path.as_ref().is_some_and(|path| {
+            process_path == path
+                || process_path
+                    .strip_prefix(path)
+                    .is_some_and(|rest| rest.starts_with('/'))
+        })
+    })
+}
+
 pub fn record_game_launch_started(game_id: &str) -> Option<GameActivityUpdate> {
     update_cached_game_activity(game_id, Some(current_unix_timestamp()), None)
 }
 
 pub fn record_game_play_session_when_finished(app: AppHandle, game_id: String, mut child: Child) {
     thread::spawn(move || {
-        let started_at = Instant::now();
         if child.wait().is_err() {
             return;
         }
 
-        let elapsed_seconds = started_at.elapsed().as_secs();
-        let played_minutes = ((elapsed_seconds + 59) / 60).max(1).min(u32::MAX as u64) as u32;
-        if let Some(update) = update_cached_game_activity(
-            &game_id,
-            Some(current_unix_timestamp()),
-            Some(played_minutes),
-        ) {
+        // The background poller owns duration accounting. Child completion only
+        // finalizes last-played so direct executable launches do not double count.
+        if let Some(update) =
+            update_cached_game_activity(&game_id, Some(current_unix_timestamp()), None)
+        {
             emit_game_activity_update(&app, &update);
         }
     });

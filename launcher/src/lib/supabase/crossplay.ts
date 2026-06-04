@@ -144,3 +144,16 @@ export async function getGameExternalId(
   const ids = row.external_ids ?? {};
   return ids[platform] ?? row.slug ?? null;
 }
+
+export async function getGameExternalId(gameId: string, platform: CrossPlayPlatform): Promise<string | null> {
+  const client = getSupabaseClient();
+  if (!client) return null;
+  const { data, error } = await client
+    .from("games")
+    .select("slug, external_ids")
+    .eq("id", gameId)
+    .single() as { data: any; error: any };
+  if (error || !data) return null;
+  const ids = (data.external_ids as Record<string, string> | null) ?? {};
+  return ids[platform] ?? (data.slug as string | null) ?? null;
+}
