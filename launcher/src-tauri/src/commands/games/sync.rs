@@ -72,328 +72,6 @@ pub fn sync_game_saves(game_id: String) -> Result<SyncGameSavesResponse, String>
     })
 }
 
-#[tauri::command]
-pub async fn upload_game_saves_to_cloud(
-    input: UploadGameSavesToCloudRequest,
-) -> Result<UploadGameSavesToCloudResponse, String> {
-    let game_id = normalize_game_id(input.game_id)?;
-    println!("[open-game-launcher] upload_game_saves_to_cloud requested for {game_id}");
-
-    if input.supabase_url.trim().is_empty()
-        || input.api_key.trim().is_empty()
-        || input.access_token.trim().is_empty()
-        || input.user_id.trim().is_empty()
-    {
-        return Err("Supabase URL, public key, user token, and user ID are required.".to_string());
-    }
-
-    let mut games = read_installed_games_cache().unwrap_or_default();
-    let game_index = games
-        .iter()
-        .position(|game| game.id == game_id)
-        .ok_or_else(|| format!("Game '{game_id}' was not found in the local library cache."))?;
-    let mut game = games[game_index].clone();
-
-    if game.save_files.is_empty() {
-        return Err("Add at least one save path before uploading saves to cloud.".to_string());
-    }
-
-    let mut uploads = Vec::new();
-    let mut missing_files = Vec::new();
-    for save_file in &game.save_files {
-        let source = PathBuf::from(&save_file.path);
-        if !source.exists() {
-            missing_files.push(save_file.path.clone());
-            continue;
-        }
-        collect_save_upload_sources(
-            &input.user_id,
-            &game.id,
-            save_file,
-            &source,
-            &source,
-            &mut uploads,
-        )?;
-    }
-
-    let client = crate::commands::http::shared_http_client();
-    let mut uploaded_files = Vec::new();
-    let mut failed_files = Vec::new();
-    for upload in &uploads {
-        match upload_file_to_supabase_storage(
-            &client,
-            &input.supabase_url,
-            &input.api_key,
-            &input.access_token,
-            upload,
-        )
-        .await
-        {
-            Ok(()) => uploaded_files.push(upload.object_path.clone()),
-            Err(error) => failed_files.push(format!(
-                "{} // {error}",
-                path_to_string(upload.source_path.clone())
-            )),
-        }
-    }
-
-    if !uploaded_files.is_empty() {
-        let synced_at = unix_timestamp_to_iso(current_unix_timestamp());
-        for save_file in game.save_files.iter_mut() {
-            let source = PathBuf::from(&save_file.path);
-            if source.exists() {
-                save_file.synced_at = Some(synced_at.clone());
-                save_file.modified_at = get_dir_last_modified(&source).map(unix_timestamp_to_iso);
-                save_file.size_bytes = path_size_bytes(&source);
-            }
-        }
-        games[game_index] = game.clone();
-        write_installed_games_cache(&games);
-    }
-
-    let message = if failed_files.is_empty() && missing_files.is_empty() {
-        format!("{} cloud save upload completed.", game.title)
-    } else {
-        format!(
-            "{} cloud save upload completed with {} failed and {} missing file(s).",
-            game.title,
-            failed_files.len(),
-            missing_files.len()
-        )
-    };
-
-    Ok(UploadGameSavesToCloudResponse {
-        game_id: game_id.clone(),
-        success: failed_files.is_empty() && missing_files.is_empty(),
-        game: game.clone(),
-        uploaded_files,
-        missing_files,
-        failed_files,
-        message,
-    })
-}
-
-#[tauri::command]
-pub async fn download_game_saves_from_cloud(
-    input: DownloadGameSavesFromCloudRequest,
-) -> Result<DownloadGameSavesFromCloudResponse, String> {
-    let game_id = normalize_game_id(input.game_id)?;
-    println!("[open-game-launcher] download_game_saves_from_cloud requested for {game_id}");
-
-    if input.supabase_url.trim().is_empty()
-        || input.api_key.trim().is_empty()
-        || input.access_token.trim().is_empty()
-        || input.user_id.trim().is_empty()
-    {
-        return Err("Supabase URL, public key, user token, and user ID are required.".to_string());
-    }
-
-    let games = read_installed_games_cache().unwrap_or_default();
-    let game = games
-        .iter()
-        .find(|game| game.id == game_id)
-        .ok_or_else(|| format!("Game '{game_id}' was not found in the local library cache."))?;
-
-    let restore_root = save_sync_root_for_game(&game.id)
-        .ok_or_else(|| "Could not resolve the local save-sync folder.".to_string())?
-        .join("cloud-restore");
-    fs::create_dir_all(&restore_root)
-        .map_err(|error| format!("Could not create cloud restore folder: {error}"))?;
-
-    let object_prefix = format!(
-        "{}/{}",
-        sanitize_storage_segment(&input.user_id),
-        sanitize_storage_segment(&game.id)
-    );
-    let client = crate::commands::http::shared_http_client();
-    let mut object_paths = Vec::new();
-    list_supabase_storage_objects_recursive(
-        &client,
-        &input.supabase_url,
-        &input.api_key,
-        &input.access_token,
-        &object_prefix,
-        0,
-        &mut object_paths,
-    )
-    .await?;
-
-    if object_paths.is_empty() {
-        return Ok(DownloadGameSavesFromCloudResponse {
-            game_id: game_id.clone(),
-            success: false,
-            restore_root: path_to_string(restore_root),
-            downloaded_files: Vec::new(),
-            failed_files: Vec::new(),
-            message: format!("No cloud saves were found for {}.", game.title),
-        });
-    }
-
-    let mut downloaded_files = Vec::new();
-    let mut failed_files = Vec::new();
-    for object_path in object_paths {
-        let destination =
-            restore_destination_for_object(&restore_root, &object_path, &object_prefix);
-        match download_file_from_supabase_storage(
-            &client,
-            &input.supabase_url,
-            &input.api_key,
-            &input.access_token,
-            &object_path,
-            &destination,
-            &restore_root,
-        )
-        .await
-        {
-            Ok(()) => downloaded_files.push(path_to_string(destination)),
-            Err(error) => failed_files.push(format!("{object_path} // {error}")),
-        }
-    }
-
-    let message = if failed_files.is_empty() {
-        format!(
-            "{} cloud save restore downloaded {} file(s).",
-            game.title,
-            downloaded_files.len()
-        )
-    } else {
-        format!(
-            "{} cloud save restore downloaded {} file(s) with {} failure(s).",
-            game.title,
-            downloaded_files.len(),
-            failed_files.len()
-        )
-    };
-
-    Ok(DownloadGameSavesFromCloudResponse {
-        game_id: game_id.clone(),
-        success: failed_files.is_empty(),
-        restore_root: path_to_string(restore_root),
-        downloaded_files,
-        failed_files,
-        message,
-    })
-}
-
-#[tauri::command]
-pub async fn restore_game_saves_from_cloud(
-    input: RestoreGameSavesFromCloudRequest,
-) -> Result<RestoreGameSavesFromCloudResponse, String> {
-    let game_id = normalize_game_id(input.game_id)?;
-    println!("[open-game-launcher] restore_game_saves_from_cloud requested for {game_id}");
-
-    if input.supabase_url.trim().is_empty()
-        || input.api_key.trim().is_empty()
-        || input.access_token.trim().is_empty()
-        || input.user_id.trim().is_empty()
-    {
-        return Err("Supabase URL, public key, user token, and user ID are required.".to_string());
-    }
-
-    let games = read_installed_games_cache().unwrap_or_default();
-    let game = games
-        .iter()
-        .find(|game| game.id == game_id)
-        .ok_or_else(|| format!("Game '{game_id}' was not found in the local library cache."))?;
-
-    if game.save_files.is_empty() {
-        return Err("Add at least one save path before restoring cloud saves.".to_string());
-    }
-
-    let object_prefix = format!(
-        "{}/{}",
-        sanitize_storage_segment(&input.user_id),
-        sanitize_storage_segment(&game.id)
-    );
-    let client = crate::commands::http::shared_http_client();
-    let mut object_paths = Vec::new();
-    list_supabase_storage_objects_recursive(
-        &client,
-        &input.supabase_url,
-        &input.api_key,
-        &input.access_token,
-        &object_prefix,
-        0,
-        &mut object_paths,
-    )
-    .await?;
-
-    if object_paths.is_empty() {
-        return Ok(RestoreGameSavesFromCloudResponse {
-            game_id: game_id.clone(),
-            success: false,
-            restored_files: Vec::new(),
-            backed_up_files: Vec::new(),
-            skipped_files: Vec::new(),
-            failed_files: Vec::new(),
-            message: format!("No cloud saves were found for {}.", game.title),
-        });
-    }
-
-    let backup_root = backup_root_for_game(&game.id)
-        .ok_or_else(|| "Could not resolve the local save-backup folder.".to_string())?;
-    let mut restored_files = Vec::new();
-    let mut backed_up_files = Vec::new();
-    let mut skipped_files = Vec::new();
-    let mut failed_files = Vec::new();
-
-    for object_path in object_paths {
-        let Some((save_file, destination)) = game.save_files.iter().find_map(|save_file| {
-            restore_destination_for_configured_save(save_file, &object_path, &object_prefix)
-                .map(|destination| (save_file, destination))
-        }) else {
-            skipped_files.push(object_path);
-            continue;
-        };
-
-        if save_file.path.trim().is_empty() {
-            skipped_files.push(object_path);
-            continue;
-        }
-
-        match restore_cloud_object_to_local_path(
-            &client,
-            &input.supabase_url,
-            &input.api_key,
-            &input.access_token,
-            &object_path,
-            &destination,
-            &backup_root,
-            &mut backed_up_files,
-        )
-        .await
-        {
-            Ok(()) => restored_files.push(path_to_string(destination)),
-            Err(error) => failed_files.push(format!("{object_path} // {error}")),
-        }
-    }
-
-    let message = if failed_files.is_empty() {
-        format!(
-            "{} cloud saves restored to configured paths: {} file(s).",
-            game.title,
-            restored_files.len()
-        )
-    } else {
-        format!(
-            "{} cloud save restore finished with {} restored and {} failed file(s).",
-            game.title,
-            restored_files.len(),
-            failed_files.len()
-        )
-    };
-
-    Ok(RestoreGameSavesFromCloudResponse {
-        game_id: game_id.clone(),
-        success: failed_files.is_empty() && !restored_files.is_empty(),
-        restored_files,
-        backed_up_files,
-        skipped_files,
-        failed_files,
-        message,
-    })
-}
-
 // Helper functions for cloud save/restore
 
 fn copy_path_to_sync_cache(
@@ -841,59 +519,21 @@ async fn restore_cloud_object_to_local_path(
         .map_err(|error| format!("Could not write local save file: {error}"))
 }
 
-
 // ============================================================================
 // E2E-Encrypted Cloud Save Sync (AES-256-GCM via OS Keychain)
 // ============================================================================
-
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
-pub struct E2eUploadRequest {
-    pub game_id: String,
-    pub supabase_url: String,
-    pub api_key: String,
-    pub access_token: String,
-    pub user_id: String,
-}
-
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
-pub struct E2eUploadResponse {
-    pub game_id: String,
-    pub success: bool,
-    pub uploaded_files: Vec<String>,
-    pub failed_files: Vec<String>,
-    pub missing_files: Vec<String>,
-    pub message: String,
-}
-
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
-pub struct E2eDownloadRequest {
-    pub game_id: String,
-    pub supabase_url: String,
-    pub api_key: String,
-    pub access_token: String,
-    pub user_id: String,
-}
-
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
-pub struct E2eDownloadResponse {
-    pub game_id: String,
-    pub success: bool,
-    pub restored_files: Vec<String>,
-    pub failed_files: Vec<String>,
-    pub message: String,
-}
 
 /// Upload game saves to Supabase Storage with AES-256-GCM E2E encryption.
 /// The master key is per-user, stored in the OS keychain (see S7).
 /// Files are stored as `${user_id}/${game_id}/<relative_path>.enc` with a
 /// sidecar `${user_id}/${game_id}/<relative_path>.meta.json`.
 #[tauri::command]
-pub async fn upload_game_saves_to_cloud_e2e(
-    input: E2eUploadRequest,
-) -> Result<E2eUploadResponse, String> {
+pub async fn upload_game_saves_to_cloud(
+    input: UploadGameSavesToCloudRequest,
+) -> Result<UploadGameSavesToCloudResponse, String> {
     use std::collections::HashMap;
     let game_id = normalize_game_id(input.game_id)?;
-    println!("[E2E] upload_game_saves_to_cloud_e2e for {game_id}");
+    println!("[E2E] upload_game_saves_to_cloud for {game_id}");
 
     if input.supabase_url.trim().is_empty()
         || input.api_key.trim().is_empty()
@@ -964,13 +604,25 @@ pub async fn upload_game_saves_to_cloud_e2e(
             let object_path_meta = format!("{}/{}", object_prefix, rel_meta);
 
             let enc_result = upload_bytes_to_supabase_storage(
-                &client, &input.supabase_url, &input.api_key, &input.access_token,
-                &object_path_enc, &ciphertext, "application/octet-stream",
-            ).await;
+                &client,
+                &input.supabase_url,
+                &input.api_key,
+                &input.access_token,
+                &object_path_enc,
+                &ciphertext,
+                "application/octet-stream",
+            )
+            .await;
             let meta_result = upload_bytes_to_supabase_storage(
-                &client, &input.supabase_url, &input.api_key, &input.access_token,
-                &object_path_meta, meta_json.as_bytes(), "application/json",
-            ).await;
+                &client,
+                &input.supabase_url,
+                &input.api_key,
+                &input.access_token,
+                &object_path_meta,
+                meta_json.as_bytes(),
+                "application/json",
+            )
+            .await;
 
             match (enc_result, meta_result) {
                 (Ok(()), Ok(())) => uploaded_files.push(object_path_enc.clone()),
@@ -992,9 +644,10 @@ pub async fn upload_game_saves_to_cloud_e2e(
             missing_files.len()
         )
     };
-    Ok(E2eUploadResponse {
+    Ok(UploadGameSavesToCloudResponse {
         game_id,
         success,
+        game,
         uploaded_files,
         failed_files,
         missing_files,
@@ -1004,11 +657,11 @@ pub async fn upload_game_saves_to_cloud_e2e(
 
 /// Download E2E-encrypted saves, decrypt with the per-user master key, write to disk.
 #[tauri::command]
-pub async fn download_game_saves_from_cloud_e2e(
-    input: E2eDownloadRequest,
-) -> Result<E2eDownloadResponse, String> {
+pub async fn download_game_saves_from_cloud(
+    input: DownloadGameSavesFromCloudRequest,
+) -> Result<DownloadGameSavesFromCloudResponse, String> {
     let game_id = normalize_game_id(input.game_id)?;
-    println!("[E2E] download_game_saves_from_cloud_e2e for {game_id}");
+    println!("[E2E] download_game_saves_from_cloud for {game_id}");
 
     if input.supabase_url.trim().is_empty()
         || input.api_key.trim().is_empty()
@@ -1054,26 +707,50 @@ pub async fn download_game_saves_from_cloud_e2e(
         }
         let meta_path = object_path.replace(".enc", ".meta.json");
         let ciphertext = match download_supabase_storage_object(
-            &client, &input.supabase_url, &input.api_key, &input.access_token,
-            "game-saves", object_path,
-        ).await {
+            &client,
+            &input.supabase_url,
+            &input.api_key,
+            &input.access_token,
+            "game-saves",
+            object_path,
+        )
+        .await
+        {
             Ok(b) => b,
-            Err(e) => { failed_files.push(format!("{object_path} // download: {e}")); continue; }
+            Err(e) => {
+                failed_files.push(format!("{object_path} // download: {e}"));
+                continue;
+            }
         };
         let meta_bytes = match download_supabase_storage_object(
-            &client, &input.supabase_url, &input.api_key, &input.access_token,
-            "game-saves", &meta_path,
-        ).await {
+            &client,
+            &input.supabase_url,
+            &input.api_key,
+            &input.access_token,
+            "game-saves",
+            &meta_path,
+        )
+        .await
+        {
             Ok(b) => b,
-            Err(e) => { failed_files.push(format!("{object_path} // meta: {e}")); continue; }
+            Err(e) => {
+                failed_files.push(format!("{object_path} // meta: {e}"));
+                continue;
+            }
         };
         let meta: SaveFileMeta = match serde_json::from_slice(&meta_bytes) {
             Ok(m) => m,
-            Err(e) => { failed_files.push(format!("{object_path} // meta parse: {e}")); continue; }
+            Err(e) => {
+                failed_files.push(format!("{object_path} // meta parse: {e}"));
+                continue;
+            }
         };
         let plaintext = match cloud_crypto::decrypt_file(&ciphertext, &master_key, &meta) {
             Ok(p) => p,
-            Err(e) => { failed_files.push(format!("{object_path} // decrypt: {e}")); continue; }
+            Err(e) => {
+                failed_files.push(format!("{object_path} // decrypt: {e}"));
+                continue;
+            }
         };
         let relative = object_path
             .strip_prefix(&object_prefix)
@@ -1091,19 +768,211 @@ pub async fn download_game_saves_from_cloud_e2e(
     }
     let success = failed_files.is_empty();
     let message = if success {
-        format!("E2E cloud save restore completed ({} files).", restored_files.len())
+        format!(
+            "E2E cloud save restore completed ({} files).",
+            restored_files.len()
+        )
     } else {
-        format!("E2E cloud save restore completed with {} failures.", failed_files.len())
+        format!(
+            "E2E cloud save restore completed with {} failures.",
+            failed_files.len()
+        )
     };
-    Ok(E2eDownloadResponse { game_id, success, restored_files, failed_files, message })
+    Ok(DownloadGameSavesFromCloudResponse {
+        game_id,
+        success,
+        restore_root: path_to_string(restore_root),
+        downloaded_files: restored_files,
+        failed_files,
+        message,
+    })
+}
+
+#[tauri::command]
+pub async fn restore_game_saves_from_cloud(
+    input: RestoreGameSavesFromCloudRequest,
+) -> Result<RestoreGameSavesFromCloudResponse, String> {
+    let game_id = normalize_game_id(input.game_id)?;
+    println!("[E2E] restore_game_saves_from_cloud for {game_id}");
+
+    if input.supabase_url.trim().is_empty()
+        || input.api_key.trim().is_empty()
+        || input.access_token.trim().is_empty()
+        || input.user_id.trim().is_empty()
+    {
+        return Err("Supabase URL, public key, user token, and user ID are required.".to_string());
+    }
+
+    let master_key = cloud_crypto::get_or_create_user_keyring_key(&input.user_id)?;
+
+    let games = read_installed_games_cache().unwrap_or_default();
+    let game = games
+        .iter()
+        .find(|game| game.id == game_id)
+        .ok_or_else(|| format!("Game '{game_id}' was not found in the local library cache."))?;
+
+    if game.save_files.is_empty() {
+        return Err("Add at least one save path before restoring cloud saves.".to_string());
+    }
+
+    let object_prefix = format!(
+        "{}/{}",
+        sanitize_storage_segment(&input.user_id),
+        sanitize_storage_segment(&game_id)
+    );
+    let client = crate::commands::http::shared_http_client();
+    let mut object_paths = Vec::new();
+
+    list_supabase_storage_objects_recursive_e2e(
+        &client,
+        &input.supabase_url,
+        &input.api_key,
+        &input.access_token,
+        "game-saves",
+        &object_prefix,
+        &mut object_paths,
+    )
+    .await?;
+
+    if object_paths.is_empty() {
+        return Ok(RestoreGameSavesFromCloudResponse {
+            game_id: game_id.clone(),
+            success: false,
+            restored_files: Vec::new(),
+            backed_up_files: Vec::new(),
+            skipped_files: Vec::new(),
+            failed_files: Vec::new(),
+            message: format!("No cloud saves were found for {}.", game.title),
+        });
+    }
+
+    let backup_root = backup_root_for_game(&game.id)
+        .ok_or_else(|| "Could not resolve the local save-backup folder.".to_string())?;
+    let mut restored_files = Vec::new();
+    let mut backed_up_files = Vec::new();
+    let mut skipped_files = Vec::new();
+    let mut failed_files = Vec::new();
+
+    for object_path in object_paths {
+        if !object_path.ends_with(".enc") {
+            continue;
+        }
+
+        let rel_enc = object_path
+            .strip_prefix(&object_prefix)
+            .unwrap_or(&object_path)
+            .trim_start_matches('/');
+        let rel_plaintext = rel_enc.replace(".enc", "");
+        let fake_object_path = format!("{}/{}", object_prefix, rel_plaintext);
+
+        let Some((save_file, destination)) = game.save_files.iter().find_map(|save_file| {
+            restore_destination_for_configured_save(save_file, &fake_object_path, &object_prefix)
+                .map(|destination| (save_file, destination))
+        }) else {
+            skipped_files.push(object_path.clone());
+            continue;
+        };
+
+        if save_file.path.trim().is_empty() {
+            skipped_files.push(object_path.clone());
+            continue;
+        }
+
+        let meta_path = object_path.replace(".enc", ".meta.json");
+
+        let ciphertext = match download_supabase_storage_object(
+            &client,
+            &input.supabase_url,
+            &input.api_key,
+            &input.access_token,
+            "game-saves",
+            &object_path,
+        )
+        .await
+        {
+            Ok(b) => b,
+            Err(e) => {
+                failed_files.push(format!("{object_path} // download: {e}"));
+                continue;
+            }
+        };
+
+        let meta_bytes = match download_supabase_storage_object(
+            &client,
+            &input.supabase_url,
+            &input.api_key,
+            &input.access_token,
+            "game-saves",
+            &meta_path,
+        )
+        .await
+        {
+            Ok(b) => b,
+            Err(e) => {
+                failed_files.push(format!("{object_path} // meta: {e}"));
+                continue;
+            }
+        };
+
+        let meta: cloud_crypto::SaveFileMeta = match serde_json::from_slice(&meta_bytes) {
+            Ok(m) => m,
+            Err(e) => {
+                failed_files.push(format!("{object_path} // meta parse: {e}"));
+                continue;
+            }
+        };
+
+        let plaintext = match cloud_crypto::decrypt_file(&ciphertext, &master_key, &meta) {
+            Ok(p) => p,
+            Err(e) => {
+                failed_files.push(format!("{object_path} // decrypt: {e}"));
+                continue;
+            }
+        };
+
+        if let Err(e) = backup_existing_file(&destination, &backup_root, &mut backed_up_files) {
+            failed_files.push(format!("{object_path} // backup: {e}"));
+            continue;
+        }
+
+        if let Some(parent) = destination.parent() {
+            let _ = fs::create_dir_all(parent);
+        }
+
+        match fs::write(&destination, &plaintext) {
+            Ok(()) => restored_files.push(path_to_string(destination)),
+            Err(e) => failed_files.push(format!("{object_path} // write: {e}")),
+        }
+    }
+
+    let message = if failed_files.is_empty() {
+        format!(
+            "{} E2E cloud saves restored to configured paths: {} file(s).",
+            game.title,
+            restored_files.len()
+        )
+    } else {
+        format!(
+            "{} E2E cloud save restore finished with {} restored and {} failed file(s).",
+            game.title,
+            restored_files.len(),
+            failed_files.len()
+        )
+    };
+
+    Ok(RestoreGameSavesFromCloudResponse {
+        game_id: game_id.clone(),
+        success: failed_files.is_empty() && !restored_files.is_empty(),
+        restored_files,
+        backed_up_files,
+        skipped_files,
+        failed_files,
+        message,
+    })
 }
 
 // Helper: collect all files under a source dir recursively
-fn collect_save_file_paths(
-    source_root: &Path,
-    current: &Path,
-    out: &mut Vec<(PathBuf, String)>,
-) {
+fn collect_save_file_paths(source_root: &Path, current: &Path, out: &mut Vec<(PathBuf, String)>) {
     if !current.exists() {
         return;
     }
@@ -1126,7 +995,6 @@ fn collect_save_file_paths(
         }
     }
 }
-
 
 // ============================================================================
 // E2E Storage Helpers

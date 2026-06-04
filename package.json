@@ -6,6 +6,8 @@
     "supabase": "pnpm --dir launcher supabase",
     "supabase:migration:list": "pnpm --dir launcher supabase:migration:list",
     "supabase:migration:new": "pnpm --dir launcher supabase:migration:new",
-    "supabase:db:push": "pnpm --dir launcher supabase:db:push"
+    "supabase:db:push": "pnpm --dir launcher supabase:db:push",
+    "setup:cloud": "node launcher/scripts/setup-cloud.mjs",
+    "setup:cloud:dry": "node launcher/scripts/setup-cloud.mjs --dry-run"
   }
 }

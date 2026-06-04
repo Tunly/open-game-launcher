@@ -2,6 +2,7 @@ import { Search, SlidersHorizontal, Grid2X2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { RefObject } from "react";
 import type { Game } from "../../lib/types";
+import type { GameGroup } from "../../lib/game-groups";
 import type { LibraryAdvancedFilters } from "../../lib/library-filters";
 import type { LibrarySortOption } from "../../pages/LibraryPage";
 import { LibraryRow } from "./LibraryRow";
@@ -12,8 +13,8 @@ const LIBRARY_ROW_OVERSCAN = 8;
 const LIBRARY_VIRTUALIZE_THRESHOLD = 80;
 
 export interface LibrarySidebarProps {
-  games: Game[];
-  filteredGames: Game[];
+  games: GameGroup[];
+  filteredGames: GameGroup[];
   searchQuery: string;
   setSearchQuery: (query: string) => void;
   sortOption: LibrarySortOption;
@@ -25,9 +26,9 @@ export interface LibrarySidebarProps {
   hasActiveFilters?: boolean;
   onResetFilters?: () => void;
   groupOption: string;
-  groupedGames: Record<string, Game[]>;
-  selectedGame: Game | null;
-  setSelectedGame: (game: Game) => void;
+  groupedGames: Record<string, GameGroup[]>;
+  selectedGroup: GameGroup | null;
+  setSelectedGroup: (group: GameGroup) => void;
   favorites: Record<string, boolean>;
   fallbackMockGames: Game[];
   listScrollRef: RefObject<HTMLDivElement>;
@@ -50,8 +51,8 @@ export function LibrarySidebar({
   onResetFilters,
   groupOption,
   groupedGames,
-  selectedGame,
-  setSelectedGame,
+  selectedGroup,
+  setSelectedGroup,
   favorites,
   fallbackMockGames,
   listScrollRef,
@@ -144,13 +145,13 @@ export function LibrarySidebar({
     }
   }, [filteredGames.length, listScrollRef, shouldVirtualize]);
 
-  const renderLibraryRow = (game: Game) => (
+  const renderLibraryRow = (group: GameGroup) => (
     <LibraryRow
-      key={game.id}
-      game={game}
-      selected={selectedGame?.id === game.id}
-      onSelect={setSelectedGame}
-      isFavorite={favorites[game.id] === true}
+      key={group.id}
+      group={group}
+      selected={selectedGroup?.id === group.id}
+      onSelect={setSelectedGroup}
+      isFavorite={group.variants.some((game) => favorites[game.id] === true)}
     />
   );
 

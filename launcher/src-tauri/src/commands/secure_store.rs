@@ -100,8 +100,7 @@ fn write_fallback_map(map: &FallbackMap) -> Result<(), String> {
             .args(["+H", path.to_string_lossy().as_ref()])
             .output();
     }
-    let json = serde_json::to_string_pretty(map)
-        .map_err(|e| format!("Serialize fallback: {e}"))?;
+    let json = serde_json::to_string_pretty(map).map_err(|e| format!("Serialize fallback: {e}"))?;
     fs::write(&path, json).map_err(|e| format!("Write fallback: {e}"))?;
     Ok(())
 }
@@ -126,7 +125,9 @@ fn delete_fallback(domain: &str) {
 /// One-time migration: moves legacy plaintext tokens into secure store.
 /// Safe to call multiple times — checks if keychain entry already exists.
 pub fn migrate_legacy_tokens() {
-    let Some(config_dir) = dirs::config_dir() else { return };
+    let Some(config_dir) = dirs::config_dir() else {
+        return;
+    };
     let launcher_dir = config_dir.join(KEYRING_FALLBACK_DIR);
 
     const LEGACY_TOKEN_FILES: &[(&str, &str)] = &[
@@ -148,10 +149,7 @@ pub fn migrate_legacy_tokens() {
             let trimmed = contents.trim();
             if !trimmed.is_empty() {
                 if set_secret(domain, &contents).is_ok() {
-                    let _ = fs::rename(
-                        &legacy_path,
-                        legacy_path.with_extension("json.migrated"),
-                    );
+                    let _ = fs::rename(&legacy_path, legacy_path.with_extension("json.migrated"));
                 }
             }
         }

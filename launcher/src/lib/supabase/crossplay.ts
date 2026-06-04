@@ -54,7 +54,8 @@ export async function listGameCrossPlay(gameId: string): Promise<GameCrossPlay[]
     .eq("game_id", gameId)
     .eq("is_enabled", true);
   if (error) {
-    throw new Error(error.message);
+    console.warn("listGameCrossPlay: query failed (table may not exist):", error.message);
+    return [];
   }
   return (data ?? []).map(rowToCrossPlay);
 }
@@ -91,4 +92,17 @@ export async function reportCrossPlayIssue(
     throw new Error(error.message);
   }
   return rowToReport(data);
+}
+
+export async function getGameExternalId(gameId: string, platform: CrossPlayPlatform): Promise<string | null> {
+  const client = getSupabaseClient();
+  if (!client) return null;
+  const { data, error } = await client
+    .from("games")
+    .select("slug, external_ids")
+    .eq("id", gameId)
+    .single() as { data: any; error: any };
+  if (error || !data) return null;
+  const ids = (data.external_ids as Record<string, string> | null) ?? {};
+  return ids[platform] ?? (data.slug as string | null) ?? null;
 }

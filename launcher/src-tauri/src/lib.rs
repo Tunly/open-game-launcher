@@ -2,11 +2,26 @@ mod commands;
 
 use std::{env, fs, path::PathBuf};
 use tauri::{Emitter, Manager, PhysicalPosition, WebviewWindow, WindowEvent};
+use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
 pub fn run() {
     load_local_env_files();
 
     tauri::Builder::default()
+        .plugin(
+            tauri_plugin_global_shortcut::Builder::new()
+                .with_handler(|app, _shortcut, event| {
+                    if event.state == ShortcutState::Pressed {
+                        if let Some(window) = app.get_webview_window("in_game_overlay") {
+                            let _ = window.emit("overlay-global-toggle", ());
+                            let _ = window.set_focus();
+                        } else {
+                            let _ = commands::overlay::toggle_in_game_overlay(app.clone());
+                        }
+                    }
+                })
+                .build(),
+        )
         .setup(|app| {
             if let Some(window) = app.get_webview_window("main") {
                 keep_window_on_visible_monitor(&window);
@@ -33,6 +48,12 @@ pub fn run() {
                 let _ = handle.emit("deep-link", link);
             }
 
+            // Register global overlay hotkey (Shift+Tab)
+            let shortcut_manager = app.global_shortcut();
+            if !shortcut_manager.is_registered("Shift+F1") {
+                let _ = shortcut_manager.register("Shift+F1");
+            }
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -55,16 +76,33 @@ pub fn run() {
             commands::gog::gog_get_token,
             commands::gog::gog_logout,
             commands::gog::gog_fetch_owned_games,
-            commands::games::sync::upload_game_saves_to_cloud_e2e,
-            commands::games::sync::download_game_saves_from_cloud_e2e,
             commands::crossplay::launch_cross_play_join,
+            commands::crossplay::resolve_game_external_id,
             commands::family::copy_family_invite,
             commands::stripe::create_stripe_checkout_session,
             commands::perf_monitor::poll_performance_metrics,
             commands::overlay::toggle_in_game_overlay,
+            commands::overlay::toggle_fps_hud,
             commands::overlay::capture_screenshot,
+            commands::overlay::list_screenshots,
+            commands::overlay::delete_screenshot,
+            commands::overlay::get_overlay_settings,
+            commands::overlay::save_overlay_settings,
+            commands::overlay::emit_achievement_popup,
+            commands::perf_monitor::report_frame_rendered,
+            commands::anti_cheat::detect_anti_cheat_processes,
+            commands::anti_cheat::is_overlay_blocked_by_anti_cheat,
             commands::mod_install::install_mod_from_url,
             commands::mod_install::scan_mod_directory,
+            commands::mod_install::start_mod_install,
+            commands::mod_install::get_mod_queue,
+            commands::mod_install::pause_mod_install,
+            commands::mod_install::cancel_mod_install,
+            commands::mod_install::scan_game_mods,
+            commands::mod_install::enable_mod,
+            commands::mod_install::disable_mod,
+            commands::mod_install::uninstall_mod,
+            commands::mod_install::set_mod_provider_secret,
             commands::battlenet::open_battlenet_login_window,
             commands::battlenet::process_battlenet_games_payload,
             commands::ea::open_ea_login_window,
@@ -75,6 +113,10 @@ pub fn run() {
             commands::gog::gog_start_download,
             commands::gog::gog_get_cloud_saves,
             commands::games::cache_supabase_access_token,
+            commands::games::read_cached_supabase_access_token,
+            commands::cloud_crypto::is_cloud_key_present,
+            commands::cloud_crypto::generate_cloud_key,
+            commands::cloud_crypto::rotate_cloud_key,
             commands::games::add_manual_game,
             commands::games::update_game_metadata,
             commands::games::import_library_snapshot,
@@ -97,6 +139,8 @@ pub fn run() {
             commands::downloads::cancel_download,
             commands::downloads::archive_download,
             commands::downloads::get_download_queue,
+            commands::downloads::check_provider_health,
+            commands::downloads::reconcile_downloads,
             commands::local_db::apply_remote_local_entities,
             commands::local_db::get_all_local_entities,
             commands::local_db::get_local_database_path,
@@ -109,6 +153,10 @@ pub fn run() {
             commands::xbox::install_xbox_game,
             commands::xbox::fetch_game_pass_catalog,
             commands::xbox::sync_xbox_achievements,
+            commands::friends::fetch_steam_friends,
+            commands::friends::fetch_gog_friends,
+            commands::friends::fetch_epic_friends,
+            commands::friends::fetch_xbox_friends,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Open Game Launcher");

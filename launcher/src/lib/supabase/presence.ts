@@ -2,6 +2,7 @@ import type { RealtimeChannel } from "@supabase/supabase-js";
 
 import { getSupabaseClient, supabase } from "./client";
 import type { UserPresence } from "../types/profile";
+export type { UserPresence };
 import {
   isMissingSchemaError,
   rowNullableString,

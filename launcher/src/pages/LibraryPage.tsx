@@ -1,5 +1,7 @@
 import {
+  Download,
   FileSearch,
+  Play,
   SlidersHorizontal,
   Sparkles,
   X,
@@ -8,11 +10,15 @@ import { listen } from "@tauri-apps/api/event";
 
 import { LibrarySidebar } from "../components/library/LibrarySidebar";
 import { GameDetails } from "../components/library/GameDetails";
+import { PlatformSourceIcon } from "../components/library/PlatformIcons";
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 
+import { useActivityLogger } from "../hooks/useActivityLogger";
 import { getGameAssetUrl } from "../lib/assets";
 import {
   addManualGame,
+  captureScreenshot,
   fetchEpicOwnedGames,
   fetchUbisoftOwnedGames,
   fetchGamePassCatalog,
@@ -30,13 +36,30 @@ import {
   normalizeSteamOwnedGames,
   openSteamScraperWindow,
   refreshInstalledGames,
+  launchCrossPlayJoin,
   startDownload,
   syncGameAchievements,
 } from "../lib/launcher";
+import { useCloudAutoSync } from "../hooks/useCloudAutoSync";
+import { syncGamePlaytimeStats } from "../lib/supabase/playtime";
 import type { OwnedGame } from "../lib/launcher";
 import type { Game } from "../lib/types";
 import {
+  groupGames,
+  isInstallableGame,
+  isPlayableGame,
+  supportedAchievementSyncGames,
+  type GameGroup,
+} from "../lib/game-groups";
+import {
+  applyCustomArtwork,
+  type CustomArtworkKind,
+  type CustomArtworkMap,
+} from "../lib/custom-artwork";
+import {
   executableTitleFromPath,
+  formatPlayTime,
+  getGameSource,
   getGameLogoCandidates,
   normalizeLauncherKey,
 } from "../lib/formatters";
@@ -56,6 +79,44 @@ const SIZE_QUERY_SEARCH_REGEX = /(?:size\s*)?([><=])\s*(\d+(?:\.\d+)?)\s*(kb|mb|
 const LOGO_PRELOAD_LIMIT = 48;
 
 export type LibrarySortOption = "alphabetical" | "last_played" | "playtime" | "size";
+
+type ProviderPickerState = {
+  mode: "play" | "install";
+  title: string;
+  variants: Game[];
+} | null;
+
+function groupLastPlayedMillis(group: GameGroup): number {
+  if (!group.lastPlayedAt) {
+    return Number.NEGATIVE_INFINITY;
+  }
+
+  const parsed = Date.parse(group.lastPlayedAt);
+  return Number.isNaN(parsed) ? Number.NEGATIVE_INFINITY : parsed;
+}
+
+function groupSizeGb(group: GameGroup): number {
+  return group.variants.reduce((total, game) => total + (game.sizeGb ?? 0), 0);
+}
+
+function sortGameGroups(groups: GameGroup[], sortOption: LibrarySortOption): GameGroup[] {
+  const sorted = [...groups];
+  switch (sortOption) {
+    case "alphabetical":
+      sorted.sort((left, right) => left.title.localeCompare(right.title));
+      break;
+    case "last_played":
+      sorted.sort((left, right) => groupLastPlayedMillis(right) - groupLastPlayedMillis(left));
+      break;
+    case "playtime":
+      sorted.sort((left, right) => right.playtimeMinutes - left.playtimeMinutes);
+      break;
+    case "size":
+      sorted.sort((left, right) => groupSizeGb(right) - groupSizeGb(left));
+      break;
+  }
+  return sorted;
+}
 
 function triggerSilentSteamScraper(steamId: string) {
   void openSteamScraperWindow(steamId).catch((err) => {
@@ -527,7 +588,234 @@ function getErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
 }
 
+function readCustomArtworkMap(): CustomArtworkMap {
+  try {
+    const saved = localStorage.getItem(STORAGE_KEYS.LIBRARY_CUSTOM_ARTWORK);
+    const parsed: unknown = saved ? JSON.parse(saved) : {};
+    return parsed && typeof parsed === "object" ? parsed as CustomArtworkMap : {};
+  } catch {
+    return {};
+  }
+}
 
+function readImageAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Could not read selected artwork file."));
+    reader.onload = () => {
+      if (typeof reader.result === "string") {
+        resolve(reader.result);
+        return;
+      }
+      reject(new Error("Selected artwork file could not be converted."));
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+function isUnrealEngineAssetEntry(game: Pick<Game, "id" | "title" | "description" | "launcher" | "status">): boolean {
+  const launcher = normalizeLauncherKey(game.launcher, game.id);
+  if (launcher !== "epic") {
+    return false;
+  }
+
+  const text = `${game.id} ${game.title} ${game.description}`.toLowerCase();
+  const titleLower = game.title.toLowerCase();
+  const unrealMarker =
+    text.includes("unreal engine")
+    || text.includes("unrealengine")
+    || text.includes("unreal marketplace")
+    || text.includes("ue marketplace")
+    || text.includes("marketplaceassets")
+    || text.includes("marketplace assets")
+    || text.includes("fab.com")
+    || text.includes("\"fab\"")
+    || text.includes("\"ue\"")
+    || text.includes("uefn")
+    || text.includes("ue-")
+    || /\bue[45]?\b/.test(text);
+  const assetMarker =
+    text.includes("asset")
+    || text.includes("vault")
+    || text.includes("plugin")
+    || text.includes("plugins")
+    || text.includes("template")
+    || text.includes("sample project")
+    || text.includes("sample")
+    || text.includes("environment")
+    || text.includes("environments")
+    || text.includes("material")
+    || text.includes("materials")
+    || text.includes("blueprint")
+    || text.includes("blueprints")
+    || text.includes("mesh")
+    || text.includes("meshes")
+    || text.includes("animation pack")
+    || text.includes("animation")
+    || text.includes("animations")
+    || text.includes("vfx")
+    || text.includes("sfx")
+    || text.includes("sound effects")
+    || text.includes("music pack")
+    || text.includes("texture")
+    || text.includes("textures")
+    || text.includes("props")
+    || text.includes("characters")
+    || text.includes("3d model")
+    || text.includes("kitbash")
+    || text.includes("props pack")
+    || text.includes("modular")
+    || text.includes("low poly")
+    || text.includes("stylized");
+
+  // For epic-owned entries, also check title-only patterns that indicate
+  // non-game content (e.g. Megascans, content packs from Fab/UE Marketplace)
+  if (game.id.startsWith("epic-owned-")) {
+    const titleAssetMarker =
+      titleLower.includes("asset")
+      || titleLower.includes("plugin")
+      || titleLower.includes("template")
+      || titleLower.includes("megascans")
+      || titleLower.includes("quixel")
+      || titleLower.includes("material")
+      || titleLower.includes("mesh")
+      || titleLower.includes("blueprint")
+      || titleLower.includes("texture")
+      || titleLower.includes("environment")
+      || titleLower.includes("modular")
+      || titleLower.includes("props")
+      || titleLower.includes("vfx")
+      || titleLower.includes("sfx")
+      || titleLower.includes("animation pack")
+      || titleLower.includes("stylized")
+      || titleLower.includes("low poly")
+      || titleLower.includes("kitbash")
+      || titleLower.includes("3d model");
+    return unrealMarker || assetMarker || titleAssetMarker;
+  }
+
+  return unrealMarker && assetMarker;
+}
+
+function isUbisoftDlcEntry(game: Pick<Game, "id" | "title" | "description" | "launcher">): boolean {
+  const launcher = normalizeLauncherKey(game.launcher, game.id);
+  if (launcher !== "ubisoft" || !game.id.startsWith("ubisoft-owned-")) {
+    return false;
+  }
+
+  const titleLower = game.title.toLowerCase();
+  const text = `${game.title} ${game.description}`.toLowerCase();
+
+  // ── Internal / meta entries ──
+  if (titleLower.includes("benchmark")
+    || titleLower.includes("pts")
+    || titleLower.includes("language pack")
+    || titleLower.includes("texture pack")
+    || titleLower.includes("ultra hd")
+    || titleLower.includes("hd texture")
+    || titleLower.includes("high-rez")
+  ) {
+    return true;
+  }
+
+  // ── DLC keyword matching ──
+  const hasDlcKeyword = text.includes(" dlc")
+    || text.includes("add-on")
+    || text.includes("addon")
+    || text.includes("season pass")
+    || text.includes("battle pass")
+    || text.includes("expansion")
+    || text.includes("pack")
+    || text.includes("paket")
+    || text.includes("pass")
+    || text.includes("bonus")
+    || text.includes("upgrade")
+    || text.includes("credit")
+    || text.includes("coin")
+    || text.includes("currency")
+    || text.includes("helix")
+    || text.includes("year")
+    || text.includes("episode ")
+    || text.includes("bundle")
+    || text.includes("unlock")
+    || text.includes("skin")
+    || text.includes("outfit")
+    || text.includes("costume")
+    || text.includes("weapon")
+    || text.includes("cosmetic")
+    || text.includes("knuckles")
+    || text.includes("gauntlet")
+    || text.includes("revolver")
+    || text.includes("pistol")
+    || text.includes("rifle")
+    || text.includes("kukri")
+    || text.includes("rapier")
+    || text.includes("sword")
+    || text.includes("spear")
+    || text.includes("axe")
+    || text.includes("artbook")
+    || text.includes("art book")
+    || text.includes("soundtrack")
+    || text.includes("ornament")
+    || text.includes("figurehead")
+    || text.includes("pre-order")
+    || text.includes("preorder")
+    || text.includes("promo")
+    || text.includes("giveaway")
+    || text.includes("xp boost")
+    || text.includes("loot")
+    || text.includes("ubicollectibles")
+    || text.includes("edition")
+    || text.includes("hero skin")
+    || text.includes("premier")
+    || text.includes("welcome")
+    || text.includes("signature")
+    || text.includes("season ");
+
+  if (hasDlcKeyword) {
+    return true;
+  }
+
+  // ── Pattern: "Base Game - DLC Subtitle" ──
+  const dashIdx = titleLower.indexOf(" - ");
+  if (dashIdx !== -1) {
+    const suffix = titleLower.slice(dashIdx + 3);
+    if (suffix.includes("hero")
+      || suffix.includes("operator")
+      || suffix.includes("character")
+      || suffix.includes("quest")
+      || suffix.includes("mission")
+      || suffix.includes("dead kings")
+      || suffix.includes("secrets of")
+      || suffix.includes("freedom cry")
+      || suffix.includes("last stand")
+      || suffix.includes("human conditions")
+      || suffix.includes("no compromise")
+      || suffix.includes("bad blood")
+      || suffix.includes("road to")
+      || suffix.includes("conspiracy")
+      || suffix.includes("void dasher")
+      || suffix.includes("dedsec")
+      || suffix.startsWith("the ")
+      || suffix.includes("base game")
+      || suffix.includes("gold edition")
+      || suffix.includes("deluxe")
+      || suffix.includes("ultimate")
+      || suffix.includes("starter")
+      || suffix.includes("elite")
+      || suffix.includes("special")
+      || suffix.includes("animus")
+    ) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+function shouldHideNonGameLibraryEntry(game: Pick<Game, "id" | "title" | "description" | "launcher" | "status">): boolean {
+  return isUnrealEngineAssetEntry(game) || isUbisoftDlcEntry(game);
+}
 
 
 
@@ -539,9 +827,24 @@ export function LibraryPage() {
   const lastManualAchievementSyncRef = useRef<Map<string, number>>(new Map());
   const ACHIEVEMENT_SYNC_COOLDOWN_MS = 30_000;
   const lastFocusSyncAtRef = useRef(0);
+  const { logGameStart, logAchievement, logScreenshot } = useActivityLogger();
+
+  async function handleCaptureScreenshot() {
+    if (!selectedGame) return;
+    try {
+      const dataUrl = await captureScreenshot();
+      void logScreenshot(selectedGame.id, selectedGame.title, dataUrl);
+      setStatusMessage("Screenshot captured and posted to your activity feed.");
+    } catch (err) {
+      setStatusMessage(`Screenshot failed: ${getErrorMessage(err)}`);
+    }
+  }
   const [initialLibrarySnapshot] = useState(readLibrarySnapshot);
+  const installedGamesRef = useRef<Game[]>(initialLibrarySnapshot);
   const [installedGames, setInstalledGames] = useState<Game[]>(initialLibrarySnapshot);
-  const [selectedGame, setSelectedGame] = useState<Game | null>(null);
+  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
+  const [pendingSelectedGameId, setPendingSelectedGameId] = useState<string | null>(null);
+  const [providerPicker, setProviderPicker] = useState<ProviderPickerState>(null);
   const [isDiscoveringGames, setIsDiscoveringGames] = useState(initialLibrarySnapshot.length === 0);
   const [discoveryMessage, setDiscoveryMessage] = useState<string | null>(null);
   const [logoCandidateIndexes, setLogoCandidateIndexes] = useState<
@@ -561,8 +864,30 @@ export function LibraryPage() {
   const [addGameError, setAddGameError] = useState<string | null>(null);
   const [isAddingGame, setIsAddingGame] = useState(false);
   const [syncingAchievementGameId, setSyncingAchievementGameId] = useState<string | null>(null);
+  const [customArtwork, setCustomArtwork] = useState<CustomArtworkMap>(readCustomArtworkMap);
   const downloadCount = useDownloadStore((s) => s.items.length);
   const completedDownloadCount = useDownloadStore((s) => s.completedCount());
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  useEffect(() => {
+    installedGamesRef.current = installedGames;
+  }, [installedGames]);
+
+  useEffect(() => {
+    const joinGame = searchParams.get("join");
+    const platform = searchParams.get("platform");
+    if (joinGame && platform) {
+      void launchCrossPlayJoin(platform, joinGame)
+        .then(() => {
+          setStatusMessage(`Joining game on ${platform}...`);
+          setSearchParams({}, { replace: true });
+        })
+        .catch((err: unknown) => {
+          setStatusMessage(err instanceof Error ? err.message : String(err));
+          setSearchParams({}, { replace: true });
+        });
+    }
+  }, [searchParams, setSearchParams]);
 
   // ----------------------------------------------------
   // FILTER STATES
@@ -615,6 +940,15 @@ export function LibraryPage() {
   useEffect(() => {
     localStorage.setItem(STORAGE_KEYS.LIBRARY_CUSTOM_CATEGORIES, JSON.stringify(customCategories));
   }, [customCategories]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(STORAGE_KEYS.LIBRARY_CUSTOM_ARTWORK, JSON.stringify(customArtwork));
+    } catch (error) {
+      console.warn("Failed to persist custom artwork:", error);
+      setStatusMessage("Artwork could not be saved. Try a smaller image file.");
+    }
+  }, [customArtwork]);
 
   useEffect(() => {
     const timeout = window.setTimeout(() => {
@@ -747,8 +1081,10 @@ export function LibraryPage() {
   const shouldShowLibraryLoading = isDiscoveringGames && installedGames.length === 0;
   const deferredSearchQuery = useDeferredValue(searchQuery);
   const baseLibraryGames = useMemo(
-    () => installedGames.length > 0 ? installedGames : fallbackMockGames,
-    [installedGames],
+    () => (installedGames.length > 0 ? installedGames : fallbackMockGames)
+      .filter((game) => !shouldHideNonGameLibraryEntry(game))
+      .map((game) => applyCustomArtwork(game, customArtwork[game.id])),
+    [customArtwork, installedGames],
   );
   const enrichedLibraryGames = useMemo(
     () => baseLibraryGames.map(enrichGameWithMetadata),
@@ -769,7 +1105,12 @@ export function LibraryPage() {
     return new Set(manualCollections[selectedManualCollectionName] || []);
   }, [manualCollections, selectedManualCollectionName]);
 
-  const filteredGames = useMemo(() => {
+  const libraryGroups = useMemo(
+    () => sortGameGroups(groupGames(enrichedLibraryGames), sortOption),
+    [enrichedLibraryGames, sortOption],
+  );
+
+  const filteredVariantGames = useMemo(() => {
     const filterContext = {
       activePlatformFilter,
       favorites,
@@ -800,26 +1141,6 @@ export function LibraryPage() {
       return true;
     });
 
-    // Sorting
-    switch (sortOption) {
-      case "alphabetical":
-        filtered.sort((a, b) => a.title.localeCompare(b.title));
-        break;
-      case "last_played":
-        filtered.sort((a, b) => {
-          const aTime = a.lastPlayedAt ? new Date(a.lastPlayedAt).getTime() : Number.NEGATIVE_INFINITY;
-          const bTime = b.lastPlayedAt ? new Date(b.lastPlayedAt).getTime() : Number.NEGATIVE_INFINITY;
-          return bTime - aTime;
-        });
-        break;
-      case "playtime":
-        filtered.sort((a, b) => (b.playtimeMinutes || 0) - (a.playtimeMinutes || 0));
-        break;
-      case "size":
-        filtered.sort((a, b) => (b.sizeGb || 0) - (a.sizeGb || 0));
-        break;
-    }
-
     return filtered;
   }, [
     enrichedLibraryGames,
@@ -831,8 +1152,25 @@ export function LibraryPage() {
     activeSizeQueryFromSearch,
     parsedSearchText,
     selectedManualCollectionIds,
-    sortOption,
   ]);
+
+  const filteredGroups = useMemo(
+    () => sortGameGroups(groupGames(filteredVariantGames), sortOption),
+    [filteredVariantGames, sortOption],
+  );
+
+  const selectedGroup = useMemo(
+    () => filteredGroups.find((group) => group.id === selectedGroupId) ?? null,
+    [filteredGroups, selectedGroupId],
+  );
+
+  const selectedGame = selectedGroup?.displayGame ?? null;
+  const selectedPrimaryGame = selectedGroup?.primaryGame ?? null;
+
+  const { maybeSyncOnLaunch: maybeAutoSyncOnLaunch } = useCloudAutoSync({
+    game: selectedPrimaryGame ?? selectedGame,
+    onMessage: setStatusMessage,
+  });
 
   /** Convert backend OwnedGame into a frontend Game object */
   function ownedGameToGame(og: OwnedGame): Game {
@@ -932,17 +1270,15 @@ export function LibraryPage() {
             const ownedGames = ownedRaw.map(ownedGameToGame);
             const installedSteamAppIds = new Set<string>();
             games.forEach((g) => {
-              if (g.launchUri?.startsWith("steam://rungameid/")) {
-                const appid = g.launchUri.replace("steam://rungameid/", "");
-                installedSteamAppIds.add(appid);
+              if (g.id.startsWith("steam-")) {
+                installedSteamAppIds.add(g.id.replace("steam-", ""));
+                installedSteamAppIds.add(g.title.toLowerCase());
               }
             });
 
-            const installedTitles = new Set(games.map(g => g.title.toLowerCase().trim()));
-
             const uninstalledOwnedGames = ownedGames.filter((og) => {
               const appid = og.id.replace("steam-owned-", "");
-              return !installedSteamAppIds.has(appid) && !installedTitles.has(og.title.toLowerCase().trim());
+              return !installedSteamAppIds.has(appid) && !installedSteamAppIds.has(og.title.toLowerCase());
             });
 
             games = [...games, ...uninstalledOwnedGames];
@@ -988,23 +1324,22 @@ export function LibraryPage() {
 
               installedGogKeys.add(g.id);
               installedGogKeys.add(g.id.replace(/^gog-/, ""));
+              installedGogKeys.add(g.title.toLowerCase());
               if (g.externalId) {
                 installedGogKeys.add(g.externalId);
                 installedGogKeys.add(`gog-owned-${g.externalId}`);
               }
             });
 
-            const installedTitles = new Set(games.map(g => g.title.toLowerCase().trim()));
-
             const uninstalledOwnedGogGames = ownedGogGames.filter((og) => {
               const ownedId = og.externalId ?? og.id.replace(/^gog-owned-/, "");
-              if (installedGogKeys.has(og.id)) {
+              if (installedGogKeys.has(og.id) || installedGogKeys.has(og.title.toLowerCase())) {
                 return false;
               }
               if (installedGogKeys.has(ownedId) || installedGogKeys.has(`gog-owned-${ownedId}`)) {
                 return false;
               }
-              return !installedTitles.has(og.title.toLowerCase().trim());
+              return true;
             });
 
             games = [...games, ...uninstalledOwnedGogGames];
@@ -1036,23 +1371,22 @@ export function LibraryPage() {
               }
 
               installedEaKeys.add(g.id);
+              installedEaKeys.add(g.title.toLowerCase());
               if (g.externalId) {
                 installedEaKeys.add(g.externalId);
                 installedEaKeys.add(`ea-owned-${g.externalId}`);
               }
             });
 
-            const installedTitles = new Set(games.map((g) => g.title.toLowerCase().trim()));
-
             const uninstalledOwnedEaGames = ownedEaGames.filter((og) => {
               const ownedId = og.externalId ?? og.id.replace(/^ea-owned-/, "");
-              if (installedEaKeys.has(og.id)) {
+              if (installedEaKeys.has(og.id) || installedEaKeys.has(og.title.toLowerCase())) {
                 return false;
               }
               if (installedEaKeys.has(ownedId) || installedEaKeys.has(`ea-owned-${ownedId}`)) {
                 return false;
               }
-              return !installedTitles.has(og.title.toLowerCase().trim());
+              return true;
             });
 
             games = [...games, ...uninstalledOwnedEaGames];
@@ -1076,16 +1410,17 @@ export function LibraryPage() {
           const tokenObj = JSON.parse(epicTokenStr);
           if (tokenObj && tokenObj.accessToken) {
             const ownedRaw = await fetchEpicOwnedGames();
-            const ownedEpicGames = ownedRaw.map(ownedGameToGame);
+            const ownedEpicGames = ownedRaw
+              .map(ownedGameToGame)
+              .filter((game) => !shouldHideNonGameLibraryEntry(game));
             if (ownedEpicGames.length > 0) {
               const installedEpicIds = new Set<string>();
               games.forEach((g) => {
                 if (g.id.startsWith("epic-")) {
                   installedEpicIds.add(g.id.replace("epic-", ""));
+                  installedEpicIds.add(g.title.toLowerCase());
                 }
               });
-
-              const installedTitles = new Set(games.map(g => g.title.toLowerCase().trim()));
 
               const uninstalledOwnedEpicGames = ownedEpicGames.filter((og) => {
                 const epicParts = og.id.replace("epic-owned-", "").split(":");
@@ -1094,7 +1429,7 @@ export function LibraryPage() {
 
                 return !installedEpicIds.has(catalogItemId) &&
                        !installedEpicIds.has(appName) &&
-                       !installedTitles.has(og.title.toLowerCase().trim());
+                       !installedEpicIds.has(og.title.toLowerCase());
               });
 
               games = [...games, ...uninstalledOwnedEpicGames];
@@ -1108,7 +1443,9 @@ export function LibraryPage() {
       // 3. Fetch and merge Ubisoft owned games
       try {
         const ubiRaw = await fetchUbisoftOwnedGames();
-        const ownedUbiGames = ubiRaw.map(ownedGameToGame);
+        const ownedUbiGames = ubiRaw
+          .map(ownedGameToGame)
+          .filter((game) => !shouldHideNonGameLibraryEntry(game));
         if (ownedUbiGames.length > 0) {
           const installedUbiKeys = new Set<string>();
           games.forEach((g) => {
@@ -1118,23 +1455,22 @@ export function LibraryPage() {
 
             installedUbiKeys.add(g.id);
             installedUbiKeys.add(g.id.replace(/^ubisoft-/, ""));
+            installedUbiKeys.add(g.title.toLowerCase());
             if (g.externalId) {
               installedUbiKeys.add(g.externalId);
               installedUbiKeys.add(`ubisoft-owned-${g.externalId}`);
             }
           });
 
-          const installedTitles = new Set(games.map(g => g.title.toLowerCase().trim()));
-
           const uninstalledOwnedUbiGames = ownedUbiGames.filter((og) => {
             const ownedNumericId = og.externalId ?? og.id.replace(/^ubisoft-owned-/, "");
-            if (installedUbiKeys.has(og.id)) {
+            if (installedUbiKeys.has(og.id) || installedUbiKeys.has(og.title.toLowerCase())) {
               return false;
             }
             if (installedUbiKeys.has(ownedNumericId) || installedUbiKeys.has(`ubisoft-owned-${ownedNumericId}`)) {
               return false;
             }
-            return !installedTitles.has(og.title.toLowerCase().trim());
+            return true;
           });
 
           games = [...games, ...uninstalledOwnedUbiGames];
@@ -1154,14 +1490,13 @@ export function LibraryPage() {
             games.forEach((g) => {
               if (g.id.startsWith("xbox-")) {
                 installedXboxIds.add(g.id.replace("xbox-", ""));
+                installedXboxIds.add(g.title.toLowerCase());
               }
             });
 
-            const installedTitles = new Set(games.map(g => g.title.toLowerCase().trim()));
-
             const uninstalledOwnedXboxGames = ownedXboxGames.filter((og) => {
               const xboxId = og.id.replace("xbox-owned-", "");
-              return !installedXboxIds.has(xboxId) && !installedTitles.has(og.title.toLowerCase().trim());
+              return !installedXboxIds.has(xboxId) && !installedXboxIds.has(og.title.toLowerCase());
             });
 
             games = [...games, ...uninstalledOwnedXboxGames];
@@ -1175,13 +1510,11 @@ export function LibraryPage() {
       const gamePassGamesStr = localStorage.getItem(STORAGE_KEYS.GAME_PASS_CATALOG_CACHE);
       if (gamePassGamesStr) {
         try {
-          const gamePassRaw = JSON.parse(gamePassGamesStr);
-          if (Array.isArray(gamePassRaw) && gamePassRaw.length > 0) {
-            const gamePassGames = gamePassRaw.map(ownedGameToGame);
-            const installedTitles = new Set(games.map(g => g.title.toLowerCase().trim()));
-            const uninstalledGamePassGames = gamePassGames.filter(og => !installedTitles.has(og.title.toLowerCase().trim()));
-            games = [...games, ...uninstalledGamePassGames];
-          }
+            const gamePassRaw = JSON.parse(gamePassGamesStr);
+            if (Array.isArray(gamePassRaw) && gamePassRaw.length > 0) {
+              const gamePassGames = gamePassRaw.map(ownedGameToGame);
+              games = [...games, ...gamePassGames];
+            }
         } catch (err) {
           console.warn("Failed to load Game Pass catalog from cache:", err);
         }
@@ -1198,18 +1531,17 @@ export function LibraryPage() {
             games.forEach((g) => {
               if (g.id.startsWith("battlenet-")) {
                 installedBattlenetIds.add(g.id.replace("battlenet-", ""));
+                installedBattlenetIds.add(g.title.toLowerCase());
                 if (g.externalId) installedBattlenetIds.add(g.externalId);
               }
             });
 
-            const installedTitles = new Set(games.map(g => g.title.toLowerCase().trim()));
-
             const uninstalledOwnedBattlenetGames = ownedBattlenetGames.filter((og) => {
               const bnetId = og.id.replace("battlenet-owned-", "");
               const extId = og.externalId || bnetId;
-              return !installedBattlenetIds.has(bnetId) && 
-                     !installedBattlenetIds.has(extId) && 
-                     !installedTitles.has(og.title.toLowerCase().trim());
+              return !installedBattlenetIds.has(bnetId)
+                && !installedBattlenetIds.has(extId)
+                && !installedBattlenetIds.has(og.title.toLowerCase());
             });
 
             games = [...games, ...uninstalledOwnedBattlenetGames];
@@ -1223,11 +1555,12 @@ export function LibraryPage() {
         return;
       }
 
+      const gamesWithoutAssets = games.filter((game) => !shouldHideNonGameLibraryEntry(game));
       setInstalledGames((current) =>
-        areGameListsEqual(current, games) ? current : games,
+        areGameListsEqual(current, gamesWithoutAssets) ? current : gamesWithoutAssets,
       );
       setDiscoveryMessage(
-        games.length > 0
+        gamesWithoutAssets.length > 0
           ? null
           : "No installed Steam, Epic, or GOG games found. Demo mode loaded.",
       );
@@ -1377,7 +1710,18 @@ export function LibraryPage() {
             : game;
 
         setInstalledGames((current) => current.map(applyUpdate));
-        setSelectedGame((current) => (current ? applyUpdate(current) : current));
+
+        const sourceGame = installedGamesRef.current.find((game) => game.id === update.gameId);
+        if (sourceGame) {
+          const updatedGame = applyUpdate(sourceGame);
+          void syncGamePlaytimeStats({
+            game: updatedGame,
+            playtimeMinutes: updatedGame.playtimeMinutes,
+            lastPlayedAt: updatedGame.lastPlayedAt ?? updatedGame.lastPlayed ?? null,
+          }).catch((error) => {
+            console.warn("Failed to sync playtime stats:", error);
+          });
+        }
       },
     );
 
@@ -1489,23 +1833,34 @@ export function LibraryPage() {
     };
   }, [advancedFilters.showGamePassCatalog]);
 
-  // Update selected game if list updates
+  // Update selected group if list updates
   useEffect(() => {
-    if (filteredGames.length === 0) {
-      setSelectedGame(null);
+    if (filteredGroups.length === 0) {
+      setSelectedGroupId(null);
       return;
     }
 
-    if (!selectedGame || !filteredGames.some((game) => game.id === selectedGame.id)) {
-      setSelectedGame(filteredGames[0]);
+    if (pendingSelectedGameId) {
+      const pendingGroup = filteredGroups.find((group) =>
+        group.variants.some((game) => game.id === pendingSelectedGameId),
+      );
+      if (pendingGroup) {
+        setSelectedGroupId(pendingGroup.id);
+        setPendingSelectedGameId(null);
+        return;
+      }
     }
-  }, [filteredGames, selectedGame]);
+
+    if (!selectedGroupId || !filteredGroups.some((group) => group.id === selectedGroupId)) {
+      setSelectedGroupId(filteredGroups[0].id);
+    }
+  }, [filteredGroups, pendingSelectedGameId, selectedGroupId]);
 
   // Image preloading
   useEffect(() => {
     const listToPreload = [
       ...(selectedGame ? [selectedGame] : []),
-      ...filteredGames.slice(0, LOGO_PRELOAD_LIMIT),
+      ...filteredGroups.slice(0, LOGO_PRELOAD_LIMIT).map((group) => group.displayGame),
     ];
     const logoUrls = Array.from(
       new Set(
@@ -1529,7 +1884,7 @@ export function LibraryPage() {
         image.onload = null;
       });
     };
-  }, [filteredGames, selectedGame]);
+  }, [filteredGroups, selectedGame]);
 
   // Autoclose status notices
   useEffect(() => {
@@ -1545,66 +1900,75 @@ export function LibraryPage() {
   }, [statusMessage]);
 
   useEffect(() => {
-    if (!selectedGame || selectedGame.achievements?.length) {
+    if (!selectedGroup || selectedGroup.achievements.length > 0) {
       return;
     }
 
-    const isXbox = selectedGame.launcher === "xbox";
-    if (!isXbox) {
-      if (!getSteamAppId(selectedGame) || !readLocalStorageString(STORAGE_KEYS.STEAM_ID)) {
-        return;
+    const candidates = supportedAchievementSyncGames(selectedGroup).filter(
+      (game) => !(game.achievements?.length),
+    );
+    if (candidates.length === 0) {
+      return;
+    }
+
+    for (const game of candidates) {
+      if (autoAchievementSyncAttemptedRef.current.has(game.id)) {
+        continue;
       }
-    } else if (!selectedGame.externalId) {
-      return;
-    }
 
-    if (autoAchievementSyncAttemptedRef.current.has(selectedGame.id)) {
-      return;
-    }
+      if (getGameSource(game) === "steam" && !readLocalStorageString(STORAGE_KEYS.STEAM_ID)) {
+        continue;
+      }
 
-    autoAchievementSyncAttemptedRef.current.add(selectedGame.id);
-    void syncAchievementsForGame(selectedGame, { silent: true });
+      autoAchievementSyncAttemptedRef.current.add(game.id);
+      void syncAchievementsForGame(game, { silent: true });
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedGame?.id, selectedGame?.achievements?.length]);
+  }, [selectedGroup?.id, selectedGroup?.achievements.length]);
 
-  async function handlePlay() {
-    if (!selectedGame) {
-      return;
-    }
-
+  async function handlePlayVariant(game: Game) {
     setStatusMessage(null);
 
     try {
-      if (selectedGame.id.startsWith("xbox-owned-")) {
-        const pfn = selectedGame.id.replace("xbox-owned-", "");
+      if (game.id.startsWith("xbox-owned-")) {
+        const pfn = game.id.replace("xbox-owned-", "");
         await installXboxGame(pfn);
         setStatusMessage("Opened Microsoft Store for installation.");
         return;
       }
       
-      if (selectedGame.id.startsWith("xbox-")) {
-        const pfn = selectedGame.id.replace("xbox-", "");
+      if (game.id.startsWith("xbox-")) {
+        const pfn = game.id.replace("xbox-", "");
         await launchXboxGame(pfn);
         setStatusMessage("Launching Xbox game...");
+        void logGameStart(game.id, game.title, { launcher: "xbox" });
+        void syncGamePlaytimeStats({
+          game,
+          playtimeMinutes: game.playtimeMinutes,
+          lastPlayedAt: new Date().toISOString(),
+          countSessionStart: true,
+        }).catch((error) => {
+          console.warn("Failed to sync play session start:", error);
+        });
         return;
       }
 
       // For owned games that are NOT installed, route through the download manager
       // so they appear in the Download Queue with live progress tracking.
       if (
-        selectedGame.status !== "installed" &&
-        (selectedGame.id.startsWith("steam-owned-") ||
-         selectedGame.id.startsWith("gog-owned-") ||
-         selectedGame.id.startsWith("epic-owned-") ||
-         selectedGame.id.startsWith("ea-owned-") ||
-         selectedGame.id.startsWith("ubisoft-owned-") ||
-         selectedGame.id.startsWith("battlenet-owned-"))
+        game.status !== "installed" &&
+        (game.id.startsWith("steam-owned-") ||
+         game.id.startsWith("gog-owned-") ||
+         game.id.startsWith("epic-owned-") ||
+         game.id.startsWith("ea-owned-") ||
+         game.id.startsWith("ubisoft-owned-") ||
+         game.id.startsWith("battlenet-owned-"))
       ) {
         const response = await startDownload(
-          selectedGame.id,
-          selectedGame.title,
-          selectedGame.downloadUrl,
-          selectedGame.downloadSha256,
+          game.id,
+          game.title,
+          game.downloadUrl,
+          game.downloadSha256,
         );
         setStatusMessage(response.message);
         return;
@@ -1612,26 +1976,46 @@ export function LibraryPage() {
 
       // For owned games that ARE installed, launch them via their native client
       if (
-        selectedGame.id.startsWith("steam-owned-") ||
-        selectedGame.id.startsWith("gog-owned-") ||
-        selectedGame.id.startsWith("epic-owned-")
+        game.id.startsWith("steam-owned-") ||
+        game.id.startsWith("gog-owned-") ||
+        game.id.startsWith("epic-owned-")
       ) {
-        const response = await launchGame(selectedGame.id);
+        const response = await launchGame(game.id);
         setStatusMessage(response.message);
+        void logGameStart(game.id, game.title, { launcher: game.launcher });
+        void syncGamePlaytimeStats({
+          game,
+          playtimeMinutes: game.playtimeMinutes,
+          lastPlayedAt: new Date().toISOString(),
+          countSessionStart: true,
+        }).catch((error) => {
+          console.warn("Failed to sync play session start:", error);
+        });
+        void maybeAutoSyncOnLaunch();
         return;
       }
 
-      if (selectedGame.status === "installed") {
-        const response = await launchGame(selectedGame.id);
+      if (game.status === "installed") {
+        const response = await launchGame(game.id);
         setStatusMessage(response.message);
+        void logGameStart(game.id, game.title, { launcher: game.launcher });
+        void syncGamePlaytimeStats({
+          game,
+          playtimeMinutes: game.playtimeMinutes,
+          lastPlayedAt: new Date().toISOString(),
+          countSessionStart: true,
+        }).catch((error) => {
+          console.warn("Failed to sync play session start:", error);
+        });
+        void maybeAutoSyncOnLaunch();
         return;
       }
 
       const response = await startDownload(
-        selectedGame.id,
-        selectedGame.title,
-        selectedGame.downloadUrl,
-        selectedGame.downloadSha256,
+        game.id,
+        game.title,
+        game.downloadUrl,
+        game.downloadSha256,
       );
       setStatusMessage(response.message);
     } catch (error) {
@@ -1639,10 +2023,66 @@ export function LibraryPage() {
     }
   }
 
+  async function handlePlay() {
+    if (!selectedGroup) {
+      return;
+    }
+
+    const playableVariants = selectedGroup.variants.filter(isPlayableGame);
+    if (playableVariants.length > 1) {
+      setProviderPicker({
+        mode: "play",
+        title: selectedGroup.title,
+        variants: playableVariants,
+      });
+      return;
+    }
+
+    if (playableVariants.length === 1) {
+      await handlePlayVariant(playableVariants[0]);
+      return;
+    }
+
+    const installableVariants = selectedGroup.variants.filter(isInstallableGame);
+    if (installableVariants.length > 1) {
+      setProviderPicker({
+        mode: "install",
+        title: selectedGroup.title,
+        variants: installableVariants,
+      });
+      return;
+    }
+
+    if (installableVariants.length === 1) {
+      await handlePlayVariant(installableVariants[0]);
+    }
+  }
+
+  async function handleInstallFromProvider() {
+    if (!selectedGroup) {
+      return;
+    }
+
+    const installableVariants = selectedGroup.variants.filter(isInstallableGame);
+    if (installableVariants.length > 1) {
+      setProviderPicker({
+        mode: "install",
+        title: selectedGroup.title,
+        variants: installableVariants,
+      });
+      return;
+    }
+
+    if (installableVariants.length === 1) {
+      await handlePlayVariant(installableVariants[0]);
+    }
+  }
+
   async function syncAchievementsForGame(game: Game, options: { silent?: boolean; force?: boolean } = {}) {
     let steamId: string | null = null;
+    const syncSource = getGameSource(game);
 
-    if (game.launcher !== "xbox") {
+    if (syncSource !== "xbox") {
       const hasSteamAppId = Boolean(getSteamAppId(game));
       if (!hasSteamAppId) {
         if (!options.silent) {
@@ -1671,7 +2111,7 @@ export function LibraryPage() {
       lastManualAchievementSyncRef.current.set(game.id, Date.now());
     }
 
-    const syncTarget = game.launcher === "xbox" ? "Xbox" : "Steam";
+    const syncTarget = syncSource === "xbox" ? "Xbox" : "Steam";
 
     if (!options.silent) {
       setStatusMessage(`Syncing ${syncTarget} achievements...`);
@@ -1693,6 +2133,14 @@ export function LibraryPage() {
           response.game.achievements?.filter(
             (a) => a.unlockedAt && !previousUnlocked.has(a.id),
           ) ?? [];
+        for (const unlock of newUnlocks) {
+          void logAchievement(
+            response.game.id,
+            response.game.title,
+            unlock.name ?? null,
+            { achievementId: unlock.id, rarity: unlock.rarity ?? null },
+          );
+        }
         if (newUnlocks.length > 0 && !options.silent) {
           setStatusMessage(
             `${newUnlocks.length} new achievement${newUnlocks.length === 1 ? "" : "s"} unlocked!`,
@@ -1702,7 +2150,6 @@ export function LibraryPage() {
         }
         return current.map((game) => (game.id === response.game.id ? response.game : game));
       });
-      setSelectedGame((current) => (current?.id === response.game.id ? response.game : current));
     } catch (error) {
       if (!options.silent) {
         setStatusMessage(getErrorMessage(error));
@@ -1715,11 +2162,19 @@ export function LibraryPage() {
   }
 
   async function handleSyncAchievements() {
-    if (!selectedGame) {
+    if (!selectedGroup) {
       return;
     }
 
-    await syncAchievementsForGame(selectedGame);
+    const candidates = supportedAchievementSyncGames(selectedGroup);
+    if (candidates.length === 0) {
+      setStatusMessage("No Steam or Xbox variant is available for achievement sync.");
+      return;
+    }
+
+    for (const game of candidates) {
+      await syncAchievementsForGame(game, { force: candidates.length > 1 });
+    }
   }
 
   async function handleAddManualGame() {
@@ -1741,7 +2196,7 @@ export function LibraryPage() {
         const withoutDuplicate = current.filter((item) => item.id !== game.id);
         return [...withoutDuplicate, game];
       });
-      setSelectedGame(game);
+      setPendingSelectedGameId(game.id);
       setAddGameTitle("");
       setAddGamePath("");
       setAddGameError(null);
@@ -1785,14 +2240,63 @@ export function LibraryPage() {
     });
   }
 
-  const enrichedSelectedGame = useMemo(() => {
-    if (!selectedGame) {
-      return null;
+  async function handleSelectCustomArtwork(
+    gameId: string,
+    kind: CustomArtworkKind,
+    file: File,
+  ) {
+    if (!file.type.startsWith("image/")) {
+      setStatusMessage("Only image files can be used as custom artwork.");
+      return;
     }
 
-    return enrichedLibraryGames.find((game) => game.id === selectedGame.id)
-      ?? enrichGameWithMetadata(selectedGame);
-  }, [enrichedLibraryGames, selectedGame]);
+    try {
+      const dataUrl = await readImageAsDataUrl(file);
+      setCustomArtwork((current) => ({
+        ...current,
+        [gameId]: {
+          ...current[gameId],
+          [`${kind}Url`]: dataUrl,
+          updatedAt: Date.now(),
+        },
+      }));
+      setLogoCandidateIndexes((current) => ({ ...current, [gameId]: 0 }));
+      setStatusMessage(`Custom ${kind} artwork saved.`);
+    } catch (error) {
+      setStatusMessage(getErrorMessage(error));
+    }
+  }
+
+  function handleResetCustomArtwork(gameId: string, kind?: CustomArtworkKind) {
+    setCustomArtwork((current) => {
+      const currentArtwork = current[gameId];
+      if (!currentArtwork) {
+        return current;
+      }
+
+      const next = { ...current };
+      if (!kind) {
+        delete next[gameId];
+        return next;
+      }
+
+      const nextArtwork = { ...currentArtwork };
+      delete nextArtwork[`${kind}Url`];
+      nextArtwork.updatedAt = Date.now();
+
+      if (!nextArtwork.coverUrl && !nextArtwork.iconUrl && !nextArtwork.logoUrl) {
+        delete next[gameId];
+      } else {
+        next[gameId] = nextArtwork;
+      }
+
+      return next;
+    });
+    setLogoCandidateIndexes((current) => ({ ...current, [gameId]: 0 }));
+    setStatusMessage(kind ? `Custom ${kind} artwork reset.` : "Custom artwork reset.");
+  }
+
+  const enrichedSelectedGame = selectedGame;
 
   return (
     <div className="library-steam-shell h-full min-h-0 overflow-hidden border-x-0 border-black bg-[#fbf4e7] text-[#171411] sm:border-x-4">
@@ -1802,8 +2306,8 @@ export function LibraryPage() {
             SIDEBAR PANEL
             ==================================================== */}
         <LibrarySidebar
-          games={installedGames}
-          filteredGames={filteredGames}
+          games={libraryGroups}
+          filteredGames={filteredGroups}
           searchQuery={searchQuery}
           setSearchQuery={setSearchQuery}
           sortOption={sortOption}
@@ -1822,8 +2326,8 @@ export function LibraryPage() {
           onResetFilters={resetAdvancedFilters}
           groupOption={"none"}
           groupedGames={{}}
-          selectedGame={selectedGame}
-          setSelectedGame={setSelectedGame}
+          selectedGroup={selectedGroup}
+          setSelectedGroup={(group) => setSelectedGroupId(group.id)}
           favorites={favorites}
           fallbackMockGames={fallbackMockGames}
           listScrollRef={gameListScrollRef}
@@ -2301,8 +2805,15 @@ export function LibraryPage() {
           enrichedSelectedGame={enrichedSelectedGame}
           shouldShowLibraryLoading={shouldShowLibraryLoading}
           handlePlay={handlePlay}
+          onInstallFromProvider={handleInstallFromProvider}
+          hasInstallableVariants={Boolean(selectedGroup?.variants.some(isInstallableGame))}
+          handleCaptureScreenshot={handleCaptureScreenshot}
           handleSyncAchievements={handleSyncAchievements}
-          isSyncingAchievements={syncingAchievementGameId === selectedGame?.id}
+          isSyncingAchievements={Boolean(
+            syncingAchievementGameId
+            && selectedGroup?.variants.some((game) => game.id === syncingAchievementGameId),
+          )}
+          gameVariants={selectedGroup?.variants ?? []}
           logoCandidateIndexes={logoCandidateIndexes}
           loadedLogoUrls={loadedLogoUrls}
           handleLogoLoad={handleLogoLoad}
@@ -2324,6 +2835,10 @@ export function LibraryPage() {
           discoveryMessage={discoveryMessage}
           moveGame={moveGame}
           runAutomaticLibrarySync={runAutomaticLibrarySync}
+          customArtwork={selectedPrimaryGame ? customArtwork[selectedPrimaryGame.id] ?? null : null}
+          artworkGameId={selectedPrimaryGame?.id}
+          onSelectCustomArtwork={handleSelectCustomArtwork}
+          onResetCustomArtwork={handleResetCustomArtwork}
         />
       </div>
 
@@ -2418,6 +2933,70 @@ export function LibraryPage() {
               </div>
             </div>
           </form>
+        </div>
+      ) : null}
+
+      {providerPicker ? (
+        <div className="fixed inset-0 z-[85] grid place-items-center bg-black/50 px-4">
+          <div className="w-full max-w-[560px] border-4 border-black bg-[#fbf4e7] shadow-[8px_8px_0_#171411]">
+            <div className="flex items-center justify-between gap-3 border-b-4 border-black bg-[#b7102a] px-4 py-3 text-white">
+              <div className="min-w-0">
+                <p className="neo-copy text-[10px] font-black uppercase tracking-[0.14em]">
+                  {providerPicker.mode === "play" ? "Choose launch platform" : "Choose install platform"}
+                </p>
+                <h2 className="neo-title truncate text-2xl uppercase leading-none">
+                  {providerPicker.title}
+                </h2>
+              </div>
+              <button
+                type="button"
+                className="grid h-8 w-8 shrink-0 place-items-center border-2 border-black bg-[#fbf4e7] text-[#171411] shadow-[2px_2px_0_#171411]"
+                onClick={() => setProviderPicker(null)}
+                aria-label="Close provider picker"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="space-y-2 p-4">
+              {providerPicker.variants.map((variant) => {
+                const source = getGameSource(variant);
+                const isPlayMode = providerPicker.mode === "play";
+                const ActionIcon = isPlayMode ? Play : Download;
+
+                return (
+                  <button
+                    key={variant.id}
+                    type="button"
+                    className="grid w-full grid-cols-[36px_minmax(0,1fr)_auto] items-center gap-3 border-4 border-black bg-[#f4ead8] p-3 text-left shadow-[3px_3px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#efe3cf]"
+                    onClick={() => {
+                      setProviderPicker(null);
+                      void handlePlayVariant(variant);
+                    }}
+                  >
+                    <span className="grid h-9 w-9 place-items-center border-2 border-black bg-[#fbf4e7]">
+                      <PlatformSourceIcon game={variant} className="h-5 w-5" />
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block truncate text-[14px] font-black uppercase leading-tight">
+                        {source}
+                      </span>
+                      <span className="neo-copy mt-1 flex flex-wrap gap-2 text-[10px] font-bold uppercase text-[#55504a]">
+                        <span>{variant.status.replace("_", " ")}</span>
+                        <span>{formatPlayTime(variant.playtimeMinutes)}</span>
+                      </span>
+                    </span>
+                    <span className={`flex h-10 items-center gap-2 border-2 border-black px-3 text-[11px] font-black uppercase shadow-[2px_2px_0_#171411] ${
+                      isPlayMode ? "bg-[#169b83] text-white" : "bg-[#b7102a] text-white"
+                    }`}>
+                      <ActionIcon className="h-4 w-4" />
+                      {isPlayMode ? "Play" : "Install"}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
         </div>
       ) : null}
 

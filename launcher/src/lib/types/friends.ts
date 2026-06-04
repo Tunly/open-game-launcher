@@ -1,0 +1,114 @@
+// Universal Friends System types
+
+export type PlatformType = "steam" | "epic" | "gog" | "ea" | "xbox" | "battlenet" | "ubisoft";
+export type MatchMethod = "linked_account" | "heuristic" | "manual";
+export type MergeSuggestionStatus = "pending" | "accepted" | "rejected";
+export type ActivityType = "game_start" | "game_stop" | "achievement_unlocked" | "screenshot_taken";
+export type InviteFeasibility = "possible" | "uncertain" | "impossible";
+
+export interface PlatformAccount {
+  id: string;
+  userId: string;
+  platform: PlatformType;
+  platformUserId: string;
+  platformUsername: string | null;
+  platformAvatarUrl: string | null;
+  metadata: Record<string, unknown>;
+  linkedAt: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PlatformFriend {
+  platform: PlatformType;
+  platformId: string;
+  displayName: string;
+  avatarUrl: string | null;
+  onlineStatus: "online" | "offline" | "away" | "busy" | "unknown";
+}
+
+export interface FriendLink {
+  id: string;
+  ownerId: string;
+  platform: PlatformType;
+  platformFriendId: string;
+  platformFriendName: string | null;
+  platformFriendAvatar: string | null;
+  matchedUserId: string | null;
+  matchMethod: MatchMethod | null;
+  dismissed: boolean;
+  mergeGroupId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface FriendMergeSuggestion {
+  id: string;
+  userId: string;
+  friendLinkA: string;
+  friendLinkB: string | null;
+  suggestedUserId: string | null;
+  confidence: number;
+  reason: string | null;
+  status: MergeSuggestionStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ActivityFeedItem {
+  id: string;
+  userId: string;
+  type: ActivityType;
+  gameId: string | null;
+  gameTitle: string | null;
+  achievementName: string | null;
+  screenshotUrl: string | null;
+  metadata: Record<string, unknown>;
+  visibility: "public" | "friends_only" | "private";
+  createdAt: string;
+}
+
+export interface GroupChat {
+  id: string;
+  name: string | null;
+  type: "group";
+  createdBy: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface GroupChatMember {
+  roomId: string;
+  userId: string;
+  role: "owner" | "admin" | "member";
+  joinedAt: string;
+}
+
+export interface CrossPlatformInvite {
+  id: string;
+  senderId: string;
+  receiverId: string;
+  gameId: string | null;
+  gameTitle: string;
+  platform: PlatformType | null;
+  launchUri: string | null;
+  message: string | null;
+  feasibility: InviteFeasibility;
+  status: "pending" | "accepted" | "declined" | "cancelled" | "expired";
+  expiresAt: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface PlatformPresenceInfo {
+  platform: PlatformType;
+  status: "online" | "offline" | "away" | "busy" | "unknown";
+  currentGame: string | null;
+}
+
+export interface AggregatedPresence {
+  userId: string;
+  bestStatus: "online" | "away" | "busy" | "offline";
+  platforms: PlatformPresenceInfo[];
+  currentGame: string | null;
+}

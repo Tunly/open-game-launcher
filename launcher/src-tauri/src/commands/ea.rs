@@ -122,8 +122,8 @@ pub fn load_ea_token() -> Option<EaToken> {
 }
 
 fn save_ea_token(token: &EaToken) -> Result<(), String> {
-    let json = serde_json::to_string(token)
-        .map_err(|e| format!("Failed to serialize EA token: {e}"))?;
+    let json =
+        serde_json::to_string(token).map_err(|e| format!("Failed to serialize EA token: {e}"))?;
     secure_store::set_secret("ea", &json)
 }
 

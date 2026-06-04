@@ -126,6 +126,25 @@ export interface DownloadItem {
   canCancel?: boolean;
   external?: boolean;
   lastUpdatedAt?: number;
+  provider?: string;
+  rawStatus?: string;
+  progressSource?: string;
+  error?: string | null;
+}
+
+export interface ProviderHealthStatus {
+  provider: string;
+  installed: boolean;
+  dataReadable: boolean;
+  details: string;
+  manifestsCount: number;
+}
+
+export interface ReconciliationResult {
+  installedRemoved: string[];
+  activeRestored: string[];
+  staleCleaned: string[];
+  errors: string[];
 }
 
 export interface SystemInfo {
@@ -176,14 +195,14 @@ export interface LocalSyncStatus {
 }
 
 export interface LocalEntityPayload {
-  kind: "games" | "downloads";
+  kind: "games" | "downloads" | "mod_install_queue" | "mod_installs";
   id: string;
   entity: Record<string, unknown>;
   updatedAt: number;
 }
 
 export interface LocalEntityKey {
-  kind: "games" | "downloads";
+  kind: "games" | "downloads" | "mod_install_queue" | "mod_installs";
   id: string;
 }
 
@@ -193,6 +212,84 @@ export interface UninstallGameResponse {
   removedFromLibrary: boolean;
   game?: Game | null;
   message: string;
+}
+
+export interface SyncGameSavesResponse {
+  gameId: string;
+  success: boolean;
+  game: Game;
+  syncedFiles: string[];
+  missingFiles: string[];
+  syncRoot: string;
+  message: string;
+}
+
+export interface UploadGameSavesToCloudResponse {
+  gameId: string;
+  success: boolean;
+  game: Game;
+  uploadedFiles: string[];
+  missingFiles: string[];
+  failedFiles: string[];
+  message: string;
+}
+
+export interface DownloadGameSavesFromCloudResponse {
+  gameId: string;
+  success: boolean;
+  restoreRoot: string;
+  downloadedFiles: string[];
+  failedFiles: string[];
+  message: string;
+}
+
+export interface RestoreGameSavesFromCloudResponse {
+  gameId: string;
+  success: boolean;
+  restoredFiles: string[];
+  backedUpFiles: string[];
+  skippedFiles: string[];
+  failedFiles: string[];
+  message: string;
+}
+
+export type CloudSyncMode = "manual" | "on_launch" | "on_exit" | "scheduled";
+
+export const CLOUD_SYNC_MODES: readonly CloudSyncMode[] = [
+  "manual",
+  "on_launch",
+  "on_exit",
+  "scheduled",
+] as const;
+
+export interface CloudSaveSet {
+  id: string;
+  userId: string;
+  localGameKey: string;
+  launcher: string;
+  externalId: string | null;
+  title: string;
+  platform: string;
+  syncMode: CloudSyncMode;
+  lastSyncedAt: string | null;
+  metadata: Record<string, unknown>;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CloudSaveFile {
+  id: string;
+  saveSetId: string;
+  userId: string;
+  label: string | null;
+  localPath: string;
+  storageObjectPath: string | null;
+  checksumSha256: string | null;
+  sizeBytes: number | null;
+  modifiedAt: string | null;
+  syncedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export type * from "./types/profile";

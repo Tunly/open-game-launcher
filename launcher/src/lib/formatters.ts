@@ -155,3 +155,22 @@ export function getFallbackBannerClass(game: Game): string {
   }
   return `library-source-art library-source-art-${getGameSource(game)}`;
 }
+
+const KNOWN_BANNER_SOURCES: Record<string, string> = {
+  steam: "steam-game-banner-hero",
+  xbox: "xbox-game-banner-hero",
+  epic: "epic-game-banner-hero",
+  gog: "gog-game-banner-hero",
+  ubisoft: "ubisoft-game-banner-hero",
+  battlenet: "battlenet-game-banner-hero",
+  ea: "ea-game-banner-hero",
+  manual: "manual-game-banner-hero",
+  unknown: "unknown-game-banner-hero",
+  windows: "windows-game-banner-hero",
+  macos: "macos-game-banner-hero",
+  linux: "linux-game-banner-hero",
+};
+
+export function getPlatformBannerClass(game: Game): string {
+  return KNOWN_BANNER_SOURCES[getGameSource(game)] ?? "steam-game-banner-hero";
+}

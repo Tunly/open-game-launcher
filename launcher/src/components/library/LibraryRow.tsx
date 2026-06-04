@@ -1,23 +1,24 @@
 import { memo, useState, useEffect } from "react";
 import { Heart } from "lucide-react";
-import type { Game } from "../../lib/types";
+import type { GameGroup } from "../../lib/game-groups";
 import { getGameAssetUrl } from "../../lib/assets";
-import { getGameIconCandidates } from "../../lib/formatters";
+import { getGameIconCandidates, getGameSource } from "../../lib/formatters";
 import { PlatformIcon, PlatformSourceIcon } from "./PlatformIcons";
 
 type LibraryRowProps = {
-  game: Game;
+  group: GameGroup;
   selected?: boolean;
-  onSelect: (game: Game) => void;
+  onSelect: (group: GameGroup) => void;
   isFavorite?: boolean;
 };
 
 function LibraryRowBase({
-  game,
+  group,
   selected,
   onSelect,
   isFavorite,
 }: LibraryRowProps) {
+  const game = group.primaryGame;
   const [iconCandidateIndex, setIconCandidateIndex] = useState(0);
   const iconCandidates = getGameIconCandidates(game);
   const iconUrl = getGameAssetUrl(iconCandidates[iconCandidateIndex]);
@@ -34,7 +35,7 @@ function LibraryRowBase({
           : "border-transparent text-[#171411] hover:bg-[#dfd4c1]"
       }`}
       type="button"
-      onClick={() => onSelect(game)}
+      onClick={() => onSelect(group)}
     >
       <span
         className={`grid h-[22px] w-[22px] shrink-0 place-items-center overflow-hidden border border-black text-[10px] leading-none ${
@@ -61,16 +62,43 @@ function LibraryRowBase({
       </span>
       <span className="min-w-0 flex-1 flex flex-col justify-center">
         <span className="block truncate text-[14px] font-black leading-none">
-          {game.title}
+          {group.title}
         </span>
-        {game.id.startsWith("gamepass-") && (
-          <span className="text-[9px] font-bold uppercase text-[#139a82] mt-0.5 tracking-wider">
+        {group.variants.length > 1 ? (
+          <span className={`text-[9px] font-bold uppercase mt-0.5 tracking-wider ${
+            selected ? "text-[#f4ead8]" : "text-[#139a82]"
+          }`}>
+            {group.variants.length} Anbieter
+          </span>
+        ) : game.id.startsWith("gamepass-") ? (
+          <span className="mt-0.5 text-[9px] font-bold uppercase tracking-wider text-[#139a82]">
             Game Pass
           </span>
-        )}
+        ) : null}
       </span>
 
-      <PlatformSourceIcon game={game} className="h-3.5 w-3.5 shrink-0" />
+      <span className="flex max-w-[72px] shrink-0 items-center justify-end gap-0.5 overflow-hidden">
+        {(() => {
+          const seen = new Set<string>();
+          const uniqueVariants = group.variants.filter((variant) => {
+            const source = getGameSource(variant);
+            if (seen.has(source)) return false;
+            seen.add(source);
+            return true;
+          });
+          return uniqueVariants.slice(0, 4).map((variant) => (
+            <span
+              key={variant.id}
+              className={`grid h-5 w-5 place-items-center border border-black ${
+                selected ? "bg-[#fbf4e7] text-[#171411]" : "bg-[#efe3cf] text-[#171411]"
+              }`}
+              title={variant.launcher ?? variant.title}
+            >
+              <PlatformSourceIcon game={variant} className="h-3 w-3 shrink-0" />
+            </span>
+          ));
+        })()}
+      </span>
 
       {isFavorite && (
         <Heart className="h-3 w-3 fill-[#b7102a] text-[#b7102a] shrink-0" />

@@ -23,7 +23,10 @@ pub async fn create_stripe_checkout_session(
     user_id: String,
 ) -> Result<CheckoutSessionResponse, String> {
     let client = reqwest::Client::new();
-    let url = format!("{}/functions/v1/stripe-create-checkout", supabase_url.trim_end_matches('/'));
+    let url = format!(
+        "{}/functions/v1/stripe-create-checkout",
+        supabase_url.trim_end_matches('/')
+    );
 
     let body = serde_json::json!({
         "line_items": line_items.iter().map(|li| serde_json::json!({

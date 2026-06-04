@@ -40,6 +40,15 @@ body {
   background-size: 34px 34px;
 }
 
+html.floating-overlay-runtime,
+html.floating-overlay-runtime body,
+html.floating-overlay-runtime #root,
+body.floating-overlay-runtime {
+  background: transparent !important;
+  min-height: 100%;
+  overflow: hidden;
+}
+
 button,
 input {
   font: inherit;
@@ -135,6 +144,29 @@ a:focus-visible {
 }
 
 .steam-game-banner-hero {
+  aspect-ratio: 1920 / 620;
+  height: auto;
+  min-height: 220px;
+  width: 100%;
+}
+
+.xbox-game-banner-hero {
+  aspect-ratio: 460 / 215;
+  height: auto;
+  min-height: 0;
+  width: 100%;
+}
+
+.epic-game-banner-hero,
+.gog-game-banner-hero,
+.ubisoft-game-banner-hero,
+.battlenet-game-banner-hero,
+.ea-game-banner-hero,
+.manual-game-banner-hero,
+.unknown-game-banner-hero,
+.windows-game-banner-hero,
+.macos-game-banner-hero,
+.linux-game-banner-hero {
   aspect-ratio: 1920 / 620;
   height: auto;
   min-height: 220px;

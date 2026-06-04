@@ -880,6 +880,14 @@ export function declineFriendRequest(friendshipId: string) {
   return updateFriendshipStatus(friendshipId, "declined");
 }
 
+export function cancelFriendRequest(friendshipId: string) {
+  return updateFriendshipStatus(friendshipId, "cancelled");
+}
+
+export function removeFriend(friendshipId: string) {
+  return updateFriendshipStatus(friendshipId, "cancelled");
+}
+
 async function updateFriendshipStatus(friendshipId: string, status: Friendship["status"]) {
   const client = getSupabaseClient();
   const { data, error } = await client
@@ -901,6 +909,63 @@ export async function blockUser(userId: string) {
   handleError(error);
 }
 
+export async function unblockUser(userId: string) {
+  const client = getSupabaseClient();
+  const currentUserId = await getCurrentUserId();
+  const { error } = await client
+    .from("user_blocks")
+    .delete()
+    .eq("blocker_id", currentUserId)
+    .eq("blocked_id", userId);
+  handleError(error);
+}
+
+export async function getMyBlocks(): Promise<{ blockedId: string }[]> {
+  const client = getSupabaseClient();
+  const currentUserId = await getCurrentUserId();
+  const { data, error } = await client
+    .from("user_blocks")
+    .select("blocked_id")
+    .eq("blocker_id", currentUserId);
+  handleError(error);
+  return (data ?? []).map((row) => ({ blockedId: rowString(row as UnknownRecord, "blocked_id") }));
+}
+
+async function getProfilesByIds(ids: string[]) {
+  if (ids.length === 0) {
+    return [] as Profile[];
+  }
+  const client = getSupabaseClient();
+  const initial = await client
+    .from("profiles")
+    .select(profileSelect)
+    .in("id", ids);
+  let data: unknown = initial.data;
+  let error = initial.error;
+
+  if (isMissingSchemaError(error)) {
+    const retry = await client
+      .from("profiles")
+      .select(baseProfileSelect)
+      .in("id", ids);
+    data = retry.data;
+    error = retry.error;
+  }
+
+  handleError(error);
+  return (Array.isArray(data) ? data : []).map((row) => toProfile(row as UnknownRecord));
+}
+
+function toFriendPreview(profile: Profile): NonNullable<Friendship["profile"]> {
+  return {
+    id: profile.id,
+    username: profile.username,
+    displayName: profile.displayName,
+    avatarUrl: profile.avatarUrl,
+    profileVisibility: profile.profileVisibility,
+  };
+}
+
 export async function getFriends(userId: string) {
   const client = getSupabaseClient();
   const { data, error } = await client
@@ -909,7 +974,17 @@ export async function getFriends(userId: string) {
     .or(`requester_id.eq.${userId},addressee_id.eq.${userId}`)
     .eq("status", "accepted");
   handleError(error);
-  return (data ?? []).map((row) => toFriendship(row as UnknownRecord));
+  const rows = (data ?? []).map((row) => toFriendship(row as UnknownRecord));
+  const otherIds = Array.from(
+    new Set(rows.map((row) => (row.requesterId === userId ? row.addresseeId : row.requesterId))),
+  );
+  const profiles = await getProfilesByIds(otherIds);
+  const profileById = new Map(profiles.map((profile) => [profile.id, profile]));
+  return rows.map((row) => {
+    const otherId = row.requesterId === userId ? row.addresseeId : row.requesterId;
+    const profile = profileById.get(otherId) ?? null;
+    return { ...row, profile: profile ? toFriendPreview(profile) : null };
+  });
 }
 
 export async function getMyFriendRequests(): Promise<FriendRequest[]> {
@@ -921,7 +996,31 @@ export async function getMyFriendRequests(): Promise<FriendRequest[]> {
     .or(`requester_id.eq.${userId},addressee_id.eq.${userId}`)
     .eq("status", "pending");
   handleError(error);
-  return (data ?? []).map((row) => toFriendship(row as UnknownRecord));
+  const rows = (data ?? []).map((row) => toFriendship(row as UnknownRecord));
+  const otherIds = Array.from(
+    new Set(
+      rows.flatMap((row) =>
+        row.requesterId === userId ? [row.addresseeId, row.requesterId] : [row.requesterId, row.addresseeId],
+      ),
+    ),
+  );
+  const profiles = await getProfilesByIds(otherIds);
+  const profileById = new Map(profiles.map((profile) => [profile.id, profile]));
+  return rows.map((row) => ({
+    ...row,
+    requesterProfile: profileById.get(row.requesterId)
+      ? toFriendPreview(profileById.get(row.requesterId)!)
+      : undefined,
+    addresseeProfile: profileById.get(row.addresseeId)
+      ? toFriendPreview(profileById.get(row.addresseeId)!)
+      : undefined,
+  }));
+}
+
+export async function getProfilesForUsers(userIds: string[]) {
+  const unique = Array.from(new Set(userIds.filter((id) => Boolean(id))));
+  const profiles = await getProfilesByIds(unique);
+  return new Map(profiles.map((profile) => [profile.id, profile]));
 }
 
 function toFriendship(row: UnknownRecord): Friendship {

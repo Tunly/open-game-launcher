@@ -4,7 +4,7 @@ use std::collections::HashMap;
 #[derive(Debug, Clone, Serialize)]
 pub struct DeepLinkEvent {
     pub raw_url: String,
-    pub action: String,       // "join", "open", "install"
+    pub action: String, // "join", "open", "install"
     pub params: HashMap<String, String>,
 }
 
@@ -26,7 +26,8 @@ pub fn register_protocol_handler() {
         class.set_value("URL Protocol", &"")?;
         let (icon, _) = hkcu.create_subkey(r"Software\Classes\universallauncher\DefaultIcon")?;
         icon.set_value("", &icon_path)?;
-        let (cmd, _) = hkcu.create_subkey(r"Software\Classes\universallauncher\shell\open\command")?;
+        let (cmd, _) =
+            hkcu.create_subkey(r"Software\Classes\universallauncher\shell\open\command")?;
         cmd.set_value("", &open_cmd)?;
         Ok(())
     })();
@@ -63,10 +64,7 @@ fn parse_deep_link(raw: &str) -> DeepLinkEvent {
             let mut kv = pair.splitn(2, '=');
             if let (Some(k), Some(v)) = (kv.next(), kv.next()) {
                 if !k.is_empty() {
-                    params.insert(
-                        urlencoding_decode(k),
-                        urlencoding_decode(v),
-                    );
+                    params.insert(urlencoding_decode(k), urlencoding_decode(v));
                 }
             }
         }
@@ -115,9 +113,14 @@ mod tests {
 
     #[test]
     fn parse_join_link() {
-        let ev = parse_deep_link("universallauncher://join?game=elden-ring&platform=steam&invite=abc123");
+        let ev = parse_deep_link(
+            "universallauncher://join?game=elden-ring&platform=steam&invite=abc123",
+        );
         assert_eq!(ev.action, "join");
-        assert_eq!(ev.params.get("game").map(String::as_str), Some("elden-ring"));
+        assert_eq!(
+            ev.params.get("game").map(String::as_str),
+            Some("elden-ring")
+        );
         assert_eq!(ev.params.get("platform").map(String::as_str), Some("steam"));
         assert_eq!(ev.params.get("invite").map(String::as_str), Some("abc123"));
     }
@@ -125,7 +128,10 @@ mod tests {
     #[test]
     fn parse_url_encoded() {
         let ev = parse_deep_link("universallauncher://open?title=Dark+Souls&id=abc%20123");
-        assert_eq!(ev.params.get("title").map(String::as_str), Some("Dark Souls"));
+        assert_eq!(
+            ev.params.get("title").map(String::as_str),
+            Some("Dark Souls")
+        );
         assert_eq!(ev.params.get("id").map(String::as_str), Some("abc 123"));
     }
 
