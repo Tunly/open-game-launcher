@@ -26,7 +26,7 @@ reqwest = { version = "0.12", features = ["blocking", "json", "stream"] }
 rusqlite = { version = "0.32", features = ["bundled"] }
 tungstenite = "0.24"
 tokio = { version = "1", features = ["full"] }
-sysinfo = { version = "0.31", features = ["serde"] }
+sysinfo = { version = "0.39", features = ["serde"] }
 futures-util = "0.3"
 notify = "6"
 zip = "4.2.0"
