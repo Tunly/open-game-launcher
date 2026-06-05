@@ -176,6 +176,11 @@ function GameRow({ row }: { row: GameAchievementRow }) {
                 <span className="neo-copy border-2 border-black bg-[#fbf4e7] px-2 py-0.5 text-[9px] font-black uppercase">
                   {group.variants.length} variant{group.variants.length === 1 ? "" : "s"}
                 </span>
+                {group.achievementBasisSource ? (
+                  <span className="neo-copy border-2 border-black bg-[#171411] px-2 py-0.5 text-[9px] font-black uppercase text-[#fbf4e7]">
+                    Basis: {group.achievementBasisSource}
+                  </span>
+                ) : null}
               </div>
             </div>
           </div>
@@ -292,6 +297,7 @@ export function AchievementsPage() {
   const [activeTab, setActiveTab] = useState<GameTab>("all");
   const [sortMode, setSortMode] = useState<GameSort>("completion");
   const [searchQuery, setSearchQuery] = useState("");
+  const [sourceFilter, setSourceFilter] = useState("all");
 
   useEffect(() => {
     let mounted = true;
@@ -327,6 +333,14 @@ export function AchievementsPage() {
     return { total, unlocked, perfect, pct };
   }, [rows]);
 
+  const sourceFilters = useMemo(
+    () =>
+      Array.from(
+        new Set(rows.flatMap((row) => row.group.achievements.flatMap((a) => a.sourceLabels))),
+      ).sort(),
+    [rows],
+  );
+
   const tabCounts = useMemo(
     () => ({
       recent: rows.filter((row) => parseTime(row.group.lastPlayedAt) > Number.NEGATIVE_INFINITY)
@@ -340,6 +354,14 @@ export function AchievementsPage() {
 
   const visibleRows = useMemo(() => {
     let next = rows.filter((row) => gameMatchesSearch(row, searchQuery));
+
+    if (sourceFilter !== "all") {
+      next = next.filter((row) =>
+        row.group.achievements.some((achievement) =>
+          achievement.sourceLabels.includes(sourceFilter),
+        ),
+      );
+    }
 
     if (activeTab === "recent") {
       next = next.filter((row) => parseTime(row.group.lastPlayedAt) > Number.NEGATIVE_INFINITY);
@@ -367,7 +389,7 @@ export function AchievementsPage() {
     }
 
     return next;
-  }, [activeTab, rows, searchQuery, sortMode]);
+  }, [activeTab, rows, searchQuery, sortMode, sourceFilter]);
 
   if (error) {
     return (
@@ -448,6 +470,23 @@ export function AchievementsPage() {
                 }`}
               >
                 {sort.label}
+              </button>
+            ))}
+          </div>
+          <div className="flex flex-wrap items-center gap-2 md:col-span-2">
+            <span className="neo-copy text-[10px] font-black uppercase text-[#5b403f]">Source</span>
+            {["all", ...sourceFilters].map((source) => (
+              <button
+                key={source}
+                type="button"
+                onClick={() => setSourceFilter(source)}
+                className={`neo-copy border-2 border-black px-2 py-1 text-[10px] font-black uppercase shadow-[2px_2px_0_#171411] ${
+                  sourceFilter === source
+                    ? "bg-[#b7102a] text-white"
+                    : "bg-[#fbf4e7] text-[#171411]"
+                }`}
+              >
+                {source}
               </button>
             ))}
           </div>

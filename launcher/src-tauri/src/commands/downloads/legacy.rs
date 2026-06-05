@@ -7,7 +7,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tauri::Emitter;
 use tokio::sync::watch;
 
-use super::http::shared_http_client;
+use crate::commands::http::shared_http_client;
 
 use crate::commands::games::{
     extract_og_zip_package, find_launch_executable, installed_game, is_file_executable,
@@ -246,7 +246,6 @@ fn now_unix_secs() -> u64 {
         .unwrap_or(0)
 }
 
-#[tauri::command]
 pub fn get_download_queue() -> Result<Vec<DownloadItemPayload>, String> {
     let mut queue_by_game_id: HashMap<String, DownloadItemPayload> = load_download_history()
         .into_iter()
@@ -292,7 +291,6 @@ pub fn get_download_queue() -> Result<Vec<DownloadItemPayload>, String> {
     Ok(queue)
 }
 
-#[tauri::command]
 pub fn pause_download(app: tauri::AppHandle, game_id: String) -> Result<(), String> {
     let game_id = normalize_game_id(game_id)?;
 
@@ -331,7 +329,6 @@ pub fn pause_download(app: tauri::AppHandle, game_id: String) -> Result<(), Stri
     Ok(())
 }
 
-#[tauri::command]
 pub fn cancel_download(app: tauri::AppHandle, game_id: String) -> Result<(), String> {
     let game_id = normalize_game_id(game_id)?;
 
@@ -365,7 +362,6 @@ pub fn cancel_download(app: tauri::AppHandle, game_id: String) -> Result<(), Str
     Ok(())
 }
 
-#[tauri::command]
 pub fn archive_download(game_id: String) -> Result<(), String> {
     let game_id = normalize_game_id(game_id)?;
     remove_download_history_item(&game_id);
@@ -384,7 +380,6 @@ pub fn archive_download(game_id: String) -> Result<(), String> {
     Ok(())
 }
 
-#[tauri::command]
 pub async fn start_download(
     app: tauri::AppHandle,
     game_id: String,
@@ -403,7 +398,7 @@ pub async fn start_download(
         return crate::commands::gog::gog_start_download(app, gog_id.to_string(), None).await;
     }
     if game_id.starts_with("gog-") {
-        // Already installed GOG game — shouldn't be downloading, but handle gracefully
+        // Already installed GOG game; shouldn't be downloading, but handle gracefully
         let gog_id = game_id.strip_prefix("gog-").unwrap_or(&game_id);
         return crate::commands::gog::gog_start_download(app, gog_id.to_string(), None).await;
     }
@@ -1625,7 +1620,7 @@ fn remember_download_item(mut item: DownloadItemPayload) {
     save_download_history(&items);
 }
 
-pub(crate) fn record_download_item(item: DownloadItemPayload) {
+pub fn record_download_item(item: DownloadItemPayload) {
     remember_download_item(item);
 }
 
@@ -2784,7 +2779,7 @@ fn steam_downloading_dir_for_manifest(
     Some(manifest_path.parent()?.join("downloading").join(app_id))
 }
 
-// ── Provider Health Check ──────────────────────────────────────────────────────
+// Provider Health Check
 
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -2796,7 +2791,6 @@ pub struct ProviderHealthStatus {
     pub manifests_count: u32,
 }
 
-#[tauri::command]
 pub fn check_provider_health() -> Result<Vec<ProviderHealthStatus>, String> {
     let mut results = Vec::new();
 
@@ -2923,7 +2917,7 @@ fn check_battlenet_health() -> ProviderHealthStatus {
     }
 }
 
-// ── Download Reconciliation ────────────────────────────────────────────────────
+// Download Reconciliation
 
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -2934,7 +2928,6 @@ pub struct ReconciliationResult {
     pub errors: Vec<String>,
 }
 
-#[tauri::command]
 pub fn reconcile_downloads(app: tauri::AppHandle) -> Result<ReconciliationResult, String> {
     let mut result = ReconciliationResult {
         installed_removed: Vec::new(),

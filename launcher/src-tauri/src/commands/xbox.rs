@@ -914,12 +914,15 @@ pub async fn sync_xbox_achievements(
         };
 
         unified.push(crate::commands::games::types::UnifiedAchievement {
-            id: ach.id,
+            id: ach.id.clone(),
             name: ach.name,
             description: ach.description,
             icon_url,
             unlocked_at,
             rarity: ach.rarity.map(|r| r.currentPercentage),
+            source: Some("xbox".to_string()),
+            source_achievement_id: Some(ach.id),
+            provider_confidence: Some("official".to_string()),
         });
     }
 

@@ -17,7 +17,7 @@
 | 4 | Performance-Monitor Frontend | Mittel | 🟡 Overlay-Tab + Rust-Polling + GPU/NVML fertig | ~65% | PerfHistoryPage, Recharts, Session-Persistierung |
 | 5 | Cloud-Save E2E Integration | Hoch | 🟡 Crypto + Panel + Settings + AutoSync fertig | ~90% | Konflikt-UI, Sync-Status-Details |
 | 6 | Categories/Tags + Screenshots + Prices UIs | Mittel | 🟡 DB + Layer + NewsPage fertig | ~40% | CategoryChips, ScreenshotGallery, PriceChart |
-| 7 | Controller-Support | Niedrig | ❌ Nicht begonnen | 0% | Erkennung (gilrs), Re-Mapping, Community-Layouts |
+| 7 | Controller-Support | Niedrig | 🟡 gilrs-Erkennung + Layout-UI + DB fertig | ~65% | Runtime-Input-Translation, ViGEm/DS4Windows-Bridge, Community-Layout-Bewertungen |
 | 8 | Mod-Management | Mittel | 🟡 Vollständige Engine + UI + DB fertig | ~85% | Steam Workshop, CurseForge/Mod.io native APIs |
 | 9 | DSGVO/Privacy | Hoch | 🟡 Privacy-Settings-UI + Formular fertig | ~60% | Datenexport (JSON), Account-Löschung (30-Tage) |
 | 10 | Echtzeit-Presence | Mittel | 🟡 Supabase-Realtime + Overlay-Tab + Hook fertig | ~80% | Plattform-Polling (Edge Function), Plattform in Freundesliste |
@@ -241,20 +241,18 @@ Aktuell Mock-Daten → muss auf `listPublishedProducts()` umgestellt werden.
 
 > Kein Sub-Plan. Konzept aus Feature-Plan Section 3.6.
 
-### Erkennung
-- **Xbox:** Native `XInput` (Windows)
-- **PS4/PS5:** `ViGEmBus`-Treiber oder DS4Windows
-- **Switch Pro:** `ViGEmBus` oder Bluetooth-HID
-- **Generisch:** `gilrs` Crate (plattformübergreifend)
-- Rust-Modul `controller.rs` mit `gilrs`, Tauri-Command `list_controllers()`
+### Bereits implementiert
+- ✅ Rust-Modul `controller.rs` mit `gilrs`, Tauri-Command `list_controllers()`
+- ✅ Controller-Hub `/controllers` mit Geräte-Scan, globalen Defaults und Layout-Editor
+- ✅ Spieldetailseite: Steam-Input-artiges Controller-Layout-Panel pro Spiel
+- ✅ Button-Re-Mapping pro Spiel+Controller-Typ, Templates, Gyro-/Haptik-Flags
+- ✅ Supabase `controller_layouts` mit RLS für eigene und Community-Layouts
 
-### Button-Re-Mapping pro Spiel
-- Spieldetailseite: "Controller-Layout" Sektion
-- Jeder Button → anderer Button
-- Layouts pro Spiel+Controller-Typ (Supabase `controller_mappings`)
-
-### Community-Layouts / Gyro / Haptik / Desktop-Mode
-- Späterer Scope
+### Offene Tasks
+- Runtime-Input-Translation/Emulation beim Spielstart aktivieren
+- Windows-Bridge für ViGEmBus/DS4Windows und XInput-spezifische Features
+- Community-Layouts mit Bewertungen, Downloads und Moderation
+- Gyro/Haptik real an unterstützte Controller-Treiber anbinden
 
 ---
 

@@ -233,8 +233,7 @@ pub async fn process_battlenet_games_payload(
                     .map(str::trim)
                     .filter(|value| !value.is_empty())
                     .map(str::to_string);
-                let assets =
-                    crate::commands::games::detect::get_rawg_battlenet_assets(i, n);
+                let assets = crate::commands::games::detect::get_rawg_battlenet_assets(i, n);
                 let (fallback_cover, fallback_logo, fallback_icon) =
                     crate::commands::games::detect::get_battlenet_assets(i, n);
                 let cover_url = api_cover_url

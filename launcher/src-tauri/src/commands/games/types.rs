@@ -77,6 +77,15 @@ pub struct UnifiedAchievement {
     pub unlocked_at: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub rarity: Option<f64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub source: Option<String>,
+    #[serde(
+        rename = "sourceAchievementId",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub source_achievement_id: Option<String>,
+    #[serde(rename = "providerConfidence", skip_serializing_if = "Option::is_none")]
+    pub provider_confidence: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

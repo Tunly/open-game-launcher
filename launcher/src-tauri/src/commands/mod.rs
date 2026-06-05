@@ -1,6 +1,7 @@
 pub mod anti_cheat;
 pub mod battlenet;
 pub mod cloud_crypto;
+pub mod controller;
 pub mod crossplay;
 pub mod deeplink;
 pub mod downloads;

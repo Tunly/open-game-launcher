@@ -59,7 +59,7 @@ This project uses the [DCO](https://developercertificate.org/). By contributing 
 ## Project conventions
 
 - See `AGENTS.md` for the **Retro Manga Launcher** visual system rules.
-- See `ROADMAP.md` for the current backlog and phase status.
+- See `FEATURE_PLAN.md` for the backlog of missing features and implementation progress.
 - See `docs/PROJECT_DESIGN.md` for the canonical design language.
 
 ## Reporting issues

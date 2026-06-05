@@ -38,9 +38,7 @@ pub fn copy_family_invite(invite_code: String) -> Result<String, String> {
             .wait()
             .map_err(|e| format!("Could not wait for clip.exe: {e}"))?;
         if !status.success() {
-            return Err(format!(
-                "clip.exe exited with non-zero status: {status}"
-            ));
+            return Err(format!("clip.exe exited with non-zero status: {status}"));
         }
     }
 
@@ -49,7 +47,11 @@ pub fn copy_family_invite(invite_code: String) -> Result<String, String> {
         // On non-Windows hosts we cannot use clip.exe. Use the platform
         // clipboard via `pbcopy` (mac) / `xclip` / `xsel` (linux). We avoid
         // the shell by spawning the binary directly with stdin.
-        let bin = if cfg!(target_os = "macos") { "pbcopy" } else { "xclip" };
+        let bin = if cfg!(target_os = "macos") {
+            "pbcopy"
+        } else {
+            "xclip"
+        };
         let mut child = Command::new(bin);
         if bin == "xclip" {
             child.args(["-selection", "clipboard"]);

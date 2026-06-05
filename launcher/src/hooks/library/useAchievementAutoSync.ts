@@ -1,54 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 
-import { syncGameAchievements } from "../../lib/launcher";
+import { achievementProviderForGame } from "../../lib/achievement-providers";
 import { supportedAchievementSyncGames, type GameGroup } from "../../lib/game-groups";
-import { getErrorMessage, getGameSource } from "../../lib/formatters";
-import { STORAGE_KEYS } from "../../lib/storage-keys";
+import { getErrorMessage } from "../../lib/formatters";
 import { useActivityLogger } from "../useActivityLogger";
 import type { Game } from "../../lib/types";
 
 const ACHIEVEMENT_SYNC_COOLDOWN_MS = 30_000;
-
-function readLocalStorageString(key: string) {
-  const raw = localStorage.getItem(key);
-  if (!raw) {
-    return "";
-  }
-
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    return typeof parsed === "string" ? parsed : "";
-  } catch {
-    const trimmed = raw.trim();
-    if (trimmed.length >= 2) {
-      const first = trimmed[0];
-      const last = trimmed[trimmed.length - 1];
-      if ((first === '"' && last === '"') || (first === "'" && last === "'")) {
-        return trimmed.slice(1, -1);
-      }
-    }
-    return trimmed;
-  }
-}
-
-function getSteamAppId(game: Game) {
-  if (game.launcher === "steam" && game.externalId && /^\d+$/.test(game.externalId)) {
-    return game.externalId;
-  }
-
-  for (const prefix of ["steam-owned-", "steam-"]) {
-    if (game.id.startsWith(prefix)) {
-      const appId = game.id.slice(prefix.length);
-      if (/^\d+$/.test(appId)) {
-        return appId;
-      }
-    }
-  }
-
-  const launchUriAppId = game.launchUri?.match(/^steam:\/\/rungameid\/(\d+)$/)?.[1];
-  return launchUriAppId ?? null;
-}
 
 export interface UseAchievementAutoSyncOptions {
   selectedGroup: GameGroup | null;
@@ -77,25 +36,12 @@ export function useAchievementAutoSync({
 
   const syncAchievementsForGame = useCallback(
     async (game: Game, options: { silent?: boolean; force?: boolean } = {}) => {
-      let steamId: string | null = null;
-      const syncSource = getGameSource(game);
-
-      if (syncSource !== "xbox") {
-        const hasSteamAppId = Boolean(getSteamAppId(game));
-        if (!hasSteamAppId) {
-          if (!options.silent) {
-            setStatusMessage(`${game.title} does not expose a Steam AppID for achievement sync.`);
-          }
-          return;
+      const provider = achievementProviderForGame(game);
+      if (!provider.isAvailable(game)) {
+        if (!options.silent) {
+          setStatusMessage(provider.message);
         }
-
-        steamId = readLocalStorageString(STORAGE_KEYS.STEAM_ID);
-        if (!steamId) {
-          if (!options.silent) {
-            setStatusMessage("Steam achievement sync needs a connected Steam account in Settings.");
-          }
-          return;
-        }
+        return;
       }
 
       if (!options.silent && !options.force) {
@@ -109,7 +55,7 @@ export function useAchievementAutoSync({
         lastManualAchievementSyncRef.current.set(game.id, Date.now());
       }
 
-      const syncTarget = syncSource === "xbox" ? "Xbox" : "Steam";
+      const syncTarget = provider.provider.toUpperCase();
 
       if (!options.silent) {
         setStatusMessage(`Syncing ${syncTarget} achievements...`);
@@ -117,7 +63,7 @@ export function useAchievementAutoSync({
       setSyncingAchievementGameId(game.id);
 
       try {
-        const response = await syncGameAchievements(game, steamId || undefined);
+        const response = await provider.sync(game);
 
         setInstalledGames((current) => {
           const previous = current.find((g) => g.id === response.game.id);
@@ -163,7 +109,7 @@ export function useAchievementAutoSync({
 
     const candidates = supportedAchievementSyncGames(selectedGroup);
     if (candidates.length === 0) {
-      setStatusMessage("No Steam or Xbox variant is available for achievement sync.");
+      setStatusMessage("No connected achievement provider is available for this game.");
       return;
     }
 
@@ -186,10 +132,6 @@ export function useAchievementAutoSync({
 
     for (const game of candidates) {
       if (autoAchievementSyncAttemptedRef.current.has(game.id)) {
-        continue;
-      }
-
-      if (getGameSource(game) === "steam" && !readLocalStorageString(STORAGE_KEYS.STEAM_ID)) {
         continue;
       }
 

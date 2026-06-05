@@ -4,13 +4,10 @@ import type { ModInstallQueueItem, ModInstallStatus } from "../lib/types/mods";
 import {
   isActiveModInstallItem,
   isTerminalModInstallItem,
-<<<<<<< HEAD
   selectActiveModInstallCount,
   selectCompletedModInstallCount,
   selectDelegatedModInstallCount,
   selectModInstallTotalProgress,
-=======
->>>>>>> feature/phase-3-librarypage-refactor
   useModInstallStore,
 } from "./modInstallStore";
 
@@ -40,15 +37,9 @@ describe("useModInstallStore", () => {
 
   it("upserts a new item and normalises unknown statuses to failed", () => {
     act(() => {
-<<<<<<< HEAD
       useModInstallStore
         .getState()
         .upsertItem(makeItem({ status: "garbage" as unknown as ModInstallStatus }));
-=======
-      useModInstallStore.getState().upsertItem(
-        makeItem({ status: "garbage" as unknown as ModInstallStatus }),
-      );
->>>>>>> feature/phase-3-librarypage-refactor
     });
     expect(useModInstallStore.getState().items[0].status).toBe("failed");
   });
@@ -62,18 +53,13 @@ describe("useModInstallStore", () => {
     act(() => {
       useModInstallStore.getState().upsertItem(makeItem({ installId: "i2", progress: 250 }));
     });
-<<<<<<< HEAD
     expect(useModInstallStore.getState().items.find((i) => i.installId === "i2")!.progress).toBe(
       100,
     );
-=======
-    expect(useModInstallStore.getState().items.find((i) => i.installId === "i2")!.progress).toBe(100);
->>>>>>> feature/phase-3-librarypage-refactor
   });
 
   it("sorts items by status rank on every mutation", () => {
     act(() => {
-<<<<<<< HEAD
       useModInstallStore
         .getState()
         .setItems([
@@ -81,13 +67,6 @@ describe("useModInstallStore", () => {
           makeItem({ installId: "downloading", status: "downloading" }),
           makeItem({ installId: "failed-a", status: "failed" }),
         ]);
-=======
-      useModInstallStore.getState().setItems([
-        makeItem({ installId: "completed-a", status: "completed" }),
-        makeItem({ installId: "downloading", status: "downloading" }),
-        makeItem({ installId: "failed-a", status: "failed" }),
-      ]);
->>>>>>> feature/phase-3-librarypage-refactor
     });
     const ids = useModInstallStore.getState().items.map((i) => i.installId);
     // Status rank: active (0) < delegated (1) < failed (2) < cancelled (3) < completed (4).
@@ -98,16 +77,9 @@ describe("useModInstallStore", () => {
 
   it("removes items by installId", () => {
     act(() => {
-<<<<<<< HEAD
       useModInstallStore
         .getState()
         .setItems([makeItem({ installId: "a" }), makeItem({ installId: "b" })]);
-=======
-      useModInstallStore.getState().setItems([
-        makeItem({ installId: "a" }),
-        makeItem({ installId: "b" }),
-      ]);
->>>>>>> feature/phase-3-librarypage-refactor
       useModInstallStore.getState().removeItem("a");
     });
     expect(useModInstallStore.getState().items.map((i) => i.installId)).toEqual(["b"]);
@@ -116,13 +88,9 @@ describe("useModInstallStore", () => {
   it("merges updates for an existing installId", () => {
     act(() => {
       useModInstallStore.getState().upsertItem(makeItem({ installId: "x", progress: 10 }));
-<<<<<<< HEAD
       useModInstallStore
         .getState()
         .upsertItem(makeItem({ installId: "x", progress: 70, status: "installing" }));
-=======
-      useModInstallStore.getState().upsertItem(makeItem({ installId: "x", progress: 70, status: "installing" }));
->>>>>>> feature/phase-3-librarypage-refactor
     });
     const items = useModInstallStore.getState().items;
     expect(items).toHaveLength(1);
@@ -138,7 +106,6 @@ describe("modInstallStore derived counts", () => {
 
   it("counts active, delegated, and completed items", () => {
     act(() => {
-<<<<<<< HEAD
       useModInstallStore
         .getState()
         .setItems([
@@ -153,25 +120,10 @@ describe("modInstallStore derived counts", () => {
     expect(selectActiveModInstallCount(state)).toBe(2);
     expect(selectDelegatedModInstallCount(state)).toBe(1);
     expect(selectCompletedModInstallCount(state)).toBe(1);
-=======
-      useModInstallStore.getState().setItems([
-        makeItem({ installId: "d1", status: "downloading" }),
-        makeItem({ installId: "d2", status: "installing" }),
-        makeItem({ installId: "g1", status: "delegated" }),
-        makeItem({ installId: "c1", status: "completed" }),
-        makeItem({ installId: "f1", status: "failed" }),
-      ]);
-    });
-    const state = useModInstallStore.getState();
-    expect(state.activeCount()).toBe(2);
-    expect(state.delegatedCount()).toBe(1);
-    expect(state.completedCount()).toBe(1);
->>>>>>> feature/phase-3-librarypage-refactor
   });
 
   it("totalProgress averages active + delegated items, falls back to 100 with completed only", () => {
     act(() => {
-<<<<<<< HEAD
       useModInstallStore
         .getState()
         .setItems([
@@ -180,23 +132,11 @@ describe("modInstallStore derived counts", () => {
         ]);
     });
     expect(selectModInstallTotalProgress(useModInstallStore.getState())).toBe(30);
-=======
-      useModInstallStore.getState().setItems([
-        makeItem({ installId: "a", progress: 20, status: "downloading" }),
-        makeItem({ installId: "b", progress: 40, status: "delegated" }),
-      ]);
-    });
-    expect(useModInstallStore.getState().totalProgress()).toBe(30);
->>>>>>> feature/phase-3-librarypage-refactor
 
     act(() => {
       useModInstallStore.getState().setItems([makeItem({ installId: "c", status: "completed" })]);
     });
-<<<<<<< HEAD
     expect(selectModInstallTotalProgress(useModInstallStore.getState())).toBe(100);
-=======
-    expect(useModInstallStore.getState().totalProgress()).toBe(100);
->>>>>>> feature/phase-3-librarypage-refactor
   });
 });
 

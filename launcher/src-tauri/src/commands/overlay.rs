@@ -48,11 +48,7 @@ pub fn toggle_in_game_overlay(app: tauri::AppHandle) -> Result<bool, String> {
         let logical_width = size.width as f64 / scale_factor;
         let logical_height = size.height as f64 / scale_factor;
 
-        let window = WebviewWindowBuilder::new(
-            &app,
-            label,
-            floating_window_url(&app, "overlay"),
-        )
+        let window = WebviewWindowBuilder::new(&app, label, floating_window_url(&app, "overlay"))
             .title("OGL Overlay")
             .position(logical_x, logical_y)
             .inner_size(logical_width, logical_height)
@@ -87,11 +83,7 @@ pub fn toggle_fps_hud(app: tauri::AppHandle) -> Result<bool, String> {
         let x = (size.width as f64) - w - 12.0;
         let y = 12.0;
 
-        let window = WebviewWindowBuilder::new(
-            &app,
-            label,
-            floating_window_url(&app, "fps-hud"),
-        )
+        let window = WebviewWindowBuilder::new(&app, label, floating_window_url(&app, "fps-hud"))
             .title("OGL FPS")
             .inner_size(w, h)
             .position(x, y)
@@ -126,9 +118,17 @@ fn install_floating_window_guard(window: &tauri::WebviewWindow, label: &'static 
         tokio::time::sleep(std::time::Duration::from_millis(1600)).await;
         let escaped_label = label.replace('\'', "\\'");
         let is_overlay = label == "Overlay";
-        let page_background = if is_overlay { "rgba(0,0,0,.68)" } else { "#fbf8ef" };
+        let page_background = if is_overlay {
+            "rgba(0,0,0,.68)"
+        } else {
+            "#fbf8ef"
+        };
         let page_color = if is_overlay { "#fff9ed" } else { "#171411" };
-        let panel_background = if is_overlay { "rgba(23,20,17,.82)" } else { "#fff9ed" };
+        let panel_background = if is_overlay {
+            "rgba(23,20,17,.82)"
+        } else {
+            "#fff9ed"
+        };
         let panel_shadow = if is_overlay { "#000" } else { "#1f1c0f" };
         let _ = window.eval(&format!(
             r#"

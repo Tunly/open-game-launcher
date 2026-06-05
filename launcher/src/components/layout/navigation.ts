@@ -3,6 +3,7 @@ import type { PageKey } from "./Sidebar";
 const pagePaths: Record<PageKey, string> = {
   achievements: "/achievements",
   community: "/community",
+  controllers: "/controllers",
   downloads: "/downloads",
   family: "/family",
   developer: "/developer",

@@ -300,8 +300,8 @@ pub fn open_external_url(url: String) -> Result<(), String> {
         return Err("External URL is empty.".to_string());
     }
 
-    let parsed = reqwest::Url::parse(url)
-        .map_err(|error| format!("External URL is invalid: {error}"))?;
+    let parsed =
+        reqwest::Url::parse(url).map_err(|error| format!("External URL is invalid: {error}"))?;
     match parsed.scheme() {
         "http" | "https" => open_uri(parsed.as_str()),
         scheme => Err(format!("External URL scheme is not allowed: {scheme}")),
@@ -1633,11 +1633,7 @@ pub async fn fetch_steam_news(app_id: String) -> Result<serde_json::Value, Strin
 
     let response = crate::commands::http::shared_http_client()
         .get("https://api.steampowered.com/ISteamNews/GetNewsForApp/v2/")
-        .query(&[
-            ("appid", app_id),
-            ("count", "20"),
-            ("maxlength", "600"),
-        ])
+        .query(&[("appid", app_id), ("count", "20"), ("maxlength", "600")])
         .header("User-Agent", "Open Game Launcher Steam news resolver")
         .send()
         .await

@@ -23,13 +23,13 @@ Include as much of the following as you can:
 
 We aim to acknowledge new reports within **3 business days** and ship a fix or mitigation within **30 days** for high-severity issues, longer for low-severity reports coordinated with the reporter.
 
-## Hardening scope (in progress)
+## Hardening scope
 
-See `ROADMAP.md` → **Phase 1 — Security & RLS Hardening** for the current backlog:
+Security & RLS Hardening has been successfully completed:
 
-- Stripe checkout: enforce caller JWT, derive `user_id` from claims, correct column.
-- RLS: add missing `SELECT` on `price_history`, write policies on `store_orders` / `store_order_items` / `store_builds` / `store_licenses`, block self-publish in `store_products`.
-- Rust: eliminate shell / PowerShell / path-traversal injection vectors, replace plaintext-token JSON fallback with OS keychain, swap `Mutex::lock().unwrap()` for poisoned-lock-aware variants.
+- **Stripe checkout**: Enforced caller JWT, derived `user_id` from claims, and corrected the target column.
+- **RLS**: Added missing `SELECT` policy on `price_history`, implemented access policies on `store_orders`, `store_order_items`, `store_builds`, and `store_licenses`, and blocked self-publishing in `store_products`.
+- **Rust backend**: Eliminated shell, PowerShell, and path-traversal injection vectors, replaced plaintext-token JSON fallback with the OS keychain, and swapped `Mutex::lock().unwrap()` for poisoned-lock-aware variants to prevent lock poisoning.
 
 ## Best practices for contributors
 

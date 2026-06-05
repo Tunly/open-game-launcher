@@ -10,6 +10,9 @@ const AuthPage = lazy(() =>
 const CommunityPage = lazy(() =>
   import("../pages/CommunityPage").then((page) => ({ default: page.CommunityPage })),
 );
+const ControllersPage = lazy(() =>
+  import("../pages/ControllersPage").then((page) => ({ default: page.ControllersPage })),
+);
 const DownloadsPage = lazy(() =>
   import("../pages/DownloadsPage").then((page) => ({ default: page.DownloadsPage })),
 );
@@ -100,6 +103,7 @@ export const router = createBrowserRouter([
       { path: "/library", element: page(<LibraryPage />) },
       { path: "/store", element: page(<StorePage />) },
       { path: "/community", element: page(<CommunityPage />) },
+      { path: "/controllers", element: page(<ControllersPage />) },
       { path: "/downloads", element: page(<DownloadsPage />) },
       { path: "/achievements", element: page(<AchievementsPage />) },
       { path: "/mods", element: page(<ModsPage />) },

@@ -31,6 +31,9 @@ interface UnifiedAchievement {
   iconUrl?: string;
   unlockedAt?: string | null;
   rarity?: number | null;
+  source?: string;
+  sourceAchievementId?: string;
+  providerConfidence?: "official" | "unofficial" | "local";
 }
 
 export type { UnifiedAchievement };
@@ -85,6 +88,14 @@ export interface Game {
   rating?: number | null;
   achievements?: UnifiedAchievement[];
   achievementsSyncedAt?: string | null;
+  achievementBasisSource?: string | null;
+  achievementBasisGameId?: string | null;
+  achievementProviderStatuses?: Array<{
+    source: string;
+    status: "available" | "not_connected" | "no_api" | "private" | "failed" | "unsupported";
+    stability: "official" | "unofficial" | "local";
+    message: string;
+  }>;
   saveFiles?: SaveFile[];
   friendsPlaying?: string[];
 }
@@ -200,6 +211,17 @@ export interface LocalEntityPayload {
 export interface LocalEntityKey {
   kind: "games" | "downloads" | "mod_install_queue" | "mod_installs";
   id: string;
+}
+
+export interface PlaySession {
+  id: string;
+  gameId: string;
+  startedAt: number;
+  endedAt: number;
+  durationMinutes: number;
+  platform: "windows" | "linux" | "macos" | "web" | "unknown";
+  launcherDeviceId: string;
+  syncedAt?: number | null;
 }
 
 export interface UninstallGameResponse {

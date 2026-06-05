@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
     env, fs,
@@ -22,19 +24,22 @@ use winreg::{
 #[cfg(windows)]
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
-use super::core::{
+use super::super::core::{
     apply_battlenet_assets, current_unix_timestamp, env_path, epic_catalog_asset_cache_path,
     get_dir_last_modified, installed_game, is_ignored_game_directory, local_drive_roots,
     path_to_string, rawg_asset_cache_path, unix_timestamp_to_iso,
 };
-use super::types::*;
+use super::super::types::*;
 
-fn normalize_scanned_launcher(launcher: &str) -> String {
-    super::core::launcher_key_from_source(launcher).to_string()
+const RAWG_ASSET_HIT_CACHE_MAX_AGE_SECS: u64 = 30 * 24 * 60 * 60;
+const RAWG_ASSET_MISS_CACHE_MAX_AGE_SECS: u64 = 7 * 24 * 60 * 60;
+
+pub(super) fn normalize_scanned_launcher(launcher: &str) -> String {
+    super::super::core::launcher_key_from_source(launcher).to_string()
 }
 
 fn launcher_scan_priority(game: &InstalledGame) -> u8 {
-    match super::core::launcher_key_from_source(&game.launcher) {
+    match super::super::core::launcher_key_from_source(&game.launcher) {
         "manual" => 100,
         "ea" => 90,
         "epic" => 85,
@@ -115,8 +120,8 @@ pub fn scan_installed_games() -> Vec<InstalledGame> {
     let mut path_index = HashMap::<PathBuf, String>::new();
 
     // Spawn threads for parallel scanning
-    let handle_steam = thread::spawn(|| scan_steam_games());
-    let handle_epic = thread::spawn(|| scan_epic_games());
+    let handle_steam = thread::spawn(super::steam::scan_steam_games);
+    let handle_epic = thread::spawn(super::epic::scan_epic_games);
     let handle_gog = thread::spawn(|| scan_gog_games());
     let handle_ubisoft = thread::spawn(|| scan_ubisoft_games());
     let handle_xbox = thread::spawn(|| scan_xbox_games());
@@ -234,7 +239,7 @@ pub fn scan_steam_games() -> Vec<InstalledGame> {
                 let game_id = app_id
                     .as_ref()
                     .map(|id| format!("steam-{id}"))
-                    .unwrap_or_else(|| format!("steam-{}", super::core::slugify(&title)));
+                    .unwrap_or_else(|| format!("steam-{}", super::super::core::slugify(&title)));
                 let mut game = installed_game(
                     &game_id,
                     title,
@@ -1326,37 +1331,231 @@ pub fn get_battlenet_assets(
 }
 
 pub fn get_rawg_game_assets(platform: &str, id: &str, search_title: &str) -> Option<RawgAssets> {
-    let cache_key = format!(
-        "{}:{}:{}",
-        platform.to_lowercase(),
-        id.trim().to_lowercase(),
-        search_title.trim().to_lowercase()
-    );
+    let normalized_title = normalize_rawg_asset_title(search_title);
+    if normalized_title.is_empty() {
+        return None;
+    }
+    let cache_key = rawg_asset_cache_key(platform, id, &normalized_title);
     if let Ok(cache) = rawg_asset_cache_store().lock() {
-        if let Some(cached_assets) = cache.entries.get(&cache_key) {
-            return Some(cached_assets.clone());
+        if let Some(cached_assets) = cache.entries.get(&cache_key).or_else(|| {
+            cache
+                .entries
+                .get(&rawg_asset_title_cache_key(&normalized_title))
+        }) {
+            if rawg_asset_cache_entry_is_fresh(cached_assets) {
+                return rawg_assets_if_hit(cached_assets);
+            }
         }
     }
 
-    let assets = fetch_rawg_assets_via_supabase(search_title).or_else(|| {
-        let api_key = env::var("RAWG_API_KEY")
-            .or_else(|_| env::var("OG_RAWG_API_KEY"))
-            .ok()
-            .map(|value| value.trim().to_string())
-            .filter(|value| !value.is_empty())?;
+    let _fetch_guard = match claim_rawg_asset_fetch(&normalized_title) {
+        RawgAssetFetchClaim::Owned(guard) => guard,
+        RawgAssetFetchClaim::Cached(assets) => return rawg_assets_if_hit(&assets),
+    };
 
-        fetch_rawg_assets(&api_key, search_title)
-    })?;
+    let assets = fetch_rawg_assets_from_supabase_cache(&normalized_title)
+        .or_else(|| fetch_rawg_assets_via_supabase(search_title))
+        .or_else(|| {
+            let api_key = env::var("RAWG_API_KEY")
+                .or_else(|_| env::var("OG_RAWG_API_KEY"))
+                .ok()
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty())?;
 
-    if assets.cover_url.is_some() || assets.logo_url.is_some() || assets.icon_url.is_some() {
-        if let Ok(mut cache) = rawg_asset_cache_store().lock() {
-            cache.entries.insert(cache_key, assets.clone());
-            write_rawg_asset_cache(&cache);
-        }
-        return Some(assets);
+            fetch_rawg_assets(&api_key, search_title)
+        })
+        .unwrap_or_else(|| rawg_asset_miss(current_unix_timestamp()));
+
+    if let Ok(mut cache) = rawg_asset_cache_store().lock() {
+        cache.entries.insert(cache_key, assets.clone());
+        cache.entries.insert(
+            rawg_asset_title_cache_key(&normalized_title),
+            assets.clone(),
+        );
+        write_rawg_asset_cache(&cache);
     }
 
-    None
+    rawg_assets_if_hit(&assets)
+}
+
+enum RawgAssetFetchClaim {
+    Owned(RawgAssetFetchGuard),
+    Cached(RawgAssets),
+}
+
+struct RawgAssetFetchGuard {
+    normalized_title: String,
+}
+
+impl Drop for RawgAssetFetchGuard {
+    fn drop(&mut self) {
+        if let Ok(mut in_flight) = rawg_asset_fetches_in_flight().lock() {
+            in_flight.remove(&self.normalized_title);
+        }
+    }
+}
+
+fn rawg_asset_fetches_in_flight() -> &'static Mutex<HashSet<String>> {
+    static IN_FLIGHT: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
+    IN_FLIGHT.get_or_init(|| Mutex::new(HashSet::new()))
+}
+
+fn claim_rawg_asset_fetch(normalized_title: &str) -> RawgAssetFetchClaim {
+    loop {
+        if let Ok(cache) = rawg_asset_cache_store().lock() {
+            if let Some(cached_assets) = cache
+                .entries
+                .get(&rawg_asset_title_cache_key(normalized_title))
+            {
+                if rawg_asset_cache_entry_is_fresh(cached_assets) {
+                    return RawgAssetFetchClaim::Cached(cached_assets.clone());
+                }
+            }
+        }
+
+        if let Ok(mut in_flight) = rawg_asset_fetches_in_flight().lock() {
+            if in_flight.insert(normalized_title.to_string()) {
+                return RawgAssetFetchClaim::Owned(RawgAssetFetchGuard {
+                    normalized_title: normalized_title.to_string(),
+                });
+            }
+        }
+
+        thread::sleep(Duration::from_millis(50));
+    }
+}
+
+fn rawg_asset_cache_key(platform: &str, id: &str, normalized_title: &str) -> String {
+    format!(
+        "{}:{}:{}",
+        platform.trim().to_lowercase(),
+        id.trim().to_lowercase(),
+        normalized_title
+    )
+}
+
+fn rawg_asset_title_cache_key(normalized_title: &str) -> String {
+    format!("title:{normalized_title}")
+}
+
+fn rawg_asset_cache_entry_is_fresh(assets: &RawgAssets) -> bool {
+    let max_age = if rawg_assets_have_any_url(assets) {
+        RAWG_ASSET_HIT_CACHE_MAX_AGE_SECS
+    } else {
+        RAWG_ASSET_MISS_CACHE_MAX_AGE_SECS
+    };
+
+    current_unix_timestamp().saturating_sub(assets.fetched_at) <= max_age
+}
+
+fn rawg_assets_have_any_url(assets: &RawgAssets) -> bool {
+    assets.cover_url.is_some() || assets.logo_url.is_some() || assets.icon_url.is_some()
+}
+
+fn rawg_assets_if_hit(assets: &RawgAssets) -> Option<RawgAssets> {
+    if rawg_assets_have_any_url(assets) {
+        Some(assets.clone())
+    } else {
+        None
+    }
+}
+
+fn rawg_asset_miss(fetched_at: u64) -> RawgAssets {
+    RawgAssets {
+        cover_url: None,
+        logo_url: None,
+        icon_url: None,
+        fetched_at,
+    }
+}
+
+fn normalize_rawg_asset_title(title: &str) -> String {
+    let mut normalized = String::new();
+    let mut last_was_space = true;
+
+    for ch in title.trim().to_lowercase().chars() {
+        if ch.is_ascii_alphanumeric() {
+            normalized.push(ch);
+            last_was_space = false;
+        } else if !last_was_space && !matches!(ch, '\'' | '`') {
+            normalized.push(' ');
+            last_was_space = true;
+        }
+    }
+
+    normalized.trim().to_string()
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
+struct RawgAssetCacheApiRow {
+    cover_url: Option<String>,
+    logo_url: Option<String>,
+    icon_url: Option<String>,
+    status: String,
+    fetched_at: String,
+}
+
+fn fetch_rawg_assets_from_supabase_cache(normalized_title: &str) -> Option<RawgAssets> {
+    let supabase_url = env::var("VITE_SUPABASE_URL")
+        .or_else(|_| env::var("SUPABASE_URL"))
+        .ok()
+        .map(|value| value.trim().trim_end_matches('/').to_string())
+        .filter(|value| !value.is_empty())?;
+    let supabase_key = env::var("VITE_SUPABASE_ANON_KEY")
+        .or_else(|_| env::var("VITE_SUPABASE_PUBLISHABLE_KEY"))
+        .or_else(|_| env::var("SUPABASE_ANON_KEY"))
+        .or_else(|_| env::var("SUPABASE_PUBLISHABLE_KEY"))
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())?;
+
+    let url = format!(
+        "{}/rest/v1/rawg_asset_cache?normalized_title=eq.{}&select=cover_url,logo_url,icon_url,status,fetched_at&limit=1",
+        supabase_url,
+        percent_encode_query_component(normalized_title)
+    );
+
+    use std::io::Read;
+    let response = ureq::get(&url)
+        .header("apikey", &supabase_key)
+        .header("Authorization", &format!("Bearer {}", supabase_key))
+        .header("Accept", "application/json")
+        .call()
+        .ok()?;
+
+    let mut reader = response.into_body().into_reader();
+    let mut text = String::new();
+    reader.read_to_string(&mut text).ok()?;
+    let mut rows = serde_json::from_str::<Vec<RawgAssetCacheApiRow>>(&text).ok()?;
+    let row = rows.pop()?;
+    let fetched_at = chrono::DateTime::parse_from_rfc3339(&row.fetched_at)
+        .ok()
+        .map(|value| value.timestamp().max(0) as u64)?;
+    let assets = if row.status == "miss" {
+        rawg_asset_miss(fetched_at)
+    } else {
+        RawgAssets {
+            cover_url: row.cover_url,
+            logo_url: row.logo_url,
+            icon_url: row.icon_url,
+            fetched_at,
+        }
+    };
+
+    rawg_asset_cache_entry_is_fresh(&assets).then_some(assets)
+}
+
+fn percent_encode_query_component(value: &str) -> String {
+    let mut encoded = String::new();
+    for byte in value.bytes() {
+        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'~') {
+            encoded.push(byte as char);
+        } else {
+            encoded.push_str(&format!("%{byte:02X}"));
+        }
+    }
+    encoded
 }
 
 pub fn get_rawg_battlenet_assets(uid: &str, title: &str) -> Option<RawgAssets> {
@@ -1842,7 +2041,8 @@ fn fetch_rawg_assets_via_supabase(title: &str) -> Option<RawgAssets> {
         .map(|value| value.trim().to_string())
         .filter(|value| !value.is_empty())?;
 
-    let bearer_token = super::core::read_supabase_access_token().unwrap_or(supabase_key.clone());
+    let bearer_token =
+        super::super::core::read_supabase_access_token().unwrap_or(supabase_key.clone());
     let url = format!("{supabase_url}/functions/v1/rawg-assets");
 
     use std::io::Read;
@@ -4334,7 +4534,7 @@ pub async fn search_steam_appid(title: &str) -> Option<u32> {
 }
 
 pub fn steam_app_id_for_game(game: &InstalledGame) -> Option<u32> {
-    if super::core::launcher_key_from_source(&game.launcher) == "steam" {
+    if super::super::core::launcher_key_from_source(&game.launcher) == "steam" {
         if let Some(external_id) = game.external_id.as_deref() {
             if let Ok(appid) = external_id.parse::<u32>() {
                 return Some(appid);
@@ -4769,7 +4969,7 @@ pub async fn sync_game_metadata(mut game: InstalledGame) -> InstalledGame {
         return game;
     }
 
-    if super::core::launcher_key_from_source(&game.launcher) != "steam" {
+    if super::super::core::launcher_key_from_source(&game.launcher) != "steam" {
         return game;
     }
 
@@ -4953,7 +5153,7 @@ mod tests {
     }
 
     #[test]
-    fn merge_scanned_games_uses_path_priority_index() {
+    fn merge_scanned_games_keeps_distinct_launcher_variants() {
         let install_path = Some("C:/Games/Same Install".to_string());
         let steam = installed_game(
             "steam-1",
@@ -4983,8 +5183,10 @@ mod tests {
         merge_scanned_game(&mut games, &mut path_index, epic);
         merge_scanned_game(&mut games, &mut path_index, lower_priority_steam);
 
-        assert_eq!(games.len(), 1);
+        assert_eq!(games.len(), 3);
+        assert!(games.contains_key("steam-1"));
         assert!(games.contains_key("epic-1"));
+        assert!(games.contains_key("steam-2"));
     }
 
     fn temp_test_dir(name: &str) -> PathBuf {

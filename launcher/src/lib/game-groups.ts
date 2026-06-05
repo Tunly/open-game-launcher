@@ -1,3 +1,7 @@
+import {
+  achievementProviderStatusForGame,
+  syncableAchievementGames,
+} from "./achievement-providers";
 import { getGameSource } from "./formatters";
 import type { Game, UnifiedAchievement } from "./types";
 
@@ -22,12 +26,27 @@ export interface GroupedAchievementSource {
   source: string;
   unlockedAt?: string | null;
   rarity?: number | null;
+  sourceAchievementId?: string | null;
+  providerConfidence?: UnifiedAchievement["providerConfidence"] | null;
 }
 
 export interface GroupedAchievement extends UnifiedAchievement {
   sources: GroupedAchievementSource[];
   sourceLabels: string[];
+  sourceIds: string[];
+  canonicalSource: string;
+  canonicalAchievementId: string;
+  matchKey: string;
+  matchConfidence: "exact" | "name_description" | "name" | "additional";
+  isAdditional: boolean;
   latestUnlockedAt?: string | null;
+}
+
+export interface AchievementProviderStatus {
+  source: string;
+  status: "available" | "not_connected" | "no_api" | "private" | "failed" | "unsupported";
+  stability: "official" | "unofficial" | "local";
+  message: string;
 }
 
 export interface GameGroup {
@@ -42,6 +61,9 @@ export interface GameGroup {
   playtimeMinutes: number;
   lastPlayedAt?: string | null;
   achievements: GroupedAchievement[];
+  achievementBasisSource?: string | null;
+  achievementBasisGameId?: string | null;
+  achievementProviderStatuses?: AchievementProviderStatus[];
 }
 
 function normalizeToken(value: string | null | undefined): string {
@@ -131,10 +153,20 @@ function shouldGroupTogether(left: Game, right: Game): boolean {
   return true;
 }
 
-function achievementKey(achievement: UnifiedAchievement): string {
+function achievementNameDescriptionKey(achievement: UnifiedAchievement): string {
   const name = normalizeToken(achievement.name);
   const description = normalizeToken(achievement.description);
   return `${name}|${description}`;
+}
+
+function achievementNameKey(achievement: UnifiedAchievement): string {
+  return normalizeToken(achievement.name);
+}
+
+function achievementExactKey(game: Game, achievement: UnifiedAchievement): string {
+  const source = achievement.source ?? getGameSource(game);
+  const sourceAchievementId = achievement.sourceAchievementId ?? achievement.id;
+  return `${source}:${normalizeToken(sourceAchievementId)}`;
 }
 
 function latestIso(values: Array<string | null | undefined>): string | null {
@@ -151,54 +183,187 @@ function latestIso(values: Array<string | null | undefined>): string | null {
   return latest;
 }
 
+function compareAchievementBasis(left: Game, right: Game): number {
+  const leftCount = left.achievements?.length ?? 0;
+  const rightCount = right.achievements?.length ?? 0;
+  return rightCount - leftCount || sourcePriority(left) - sourcePriority(right);
+}
+
+function achievementSourceEntry(
+  game: Game,
+  achievement: UnifiedAchievement,
+): GroupedAchievementSource {
+  const source = achievement.source ?? getGameSource(game);
+  return {
+    achievementId: achievement.id,
+    gameId: game.id,
+    gameTitle: game.title,
+    source,
+    unlockedAt: achievement.unlockedAt,
+    rarity: achievement.rarity,
+    sourceAchievementId: achievement.sourceAchievementId ?? achievement.id,
+    providerConfidence: achievement.providerConfidence ?? null,
+  };
+}
+
+function createGroupedAchievement(
+  game: Game,
+  achievement: UnifiedAchievement,
+  options: {
+    matchKey: string;
+    matchConfidence: GroupedAchievement["matchConfidence"];
+    isAdditional: boolean;
+  },
+): GroupedAchievement {
+  const source = achievement.source ?? getGameSource(game);
+  const sourceAchievementId = achievement.sourceAchievementId ?? achievement.id;
+  return {
+    ...achievement,
+    id: `grouped-${options.matchKey}`,
+    source,
+    sourceAchievementId,
+    canonicalSource: source,
+    canonicalAchievementId: sourceAchievementId,
+    matchKey: options.matchKey,
+    matchConfidence: options.matchConfidence,
+    isAdditional: options.isAdditional,
+    sources: [achievementSourceEntry(game, achievement)],
+    sourceLabels: [source],
+    sourceIds: [`${source}:${sourceAchievementId}`],
+    latestUnlockedAt: achievement.unlockedAt ?? null,
+  };
+}
+
+function mergeGroupedAchievement(
+  current: GroupedAchievement,
+  game: Game,
+  achievement: UnifiedAchievement,
+  matchConfidence: GroupedAchievement["matchConfidence"],
+) {
+  const source = achievement.source ?? getGameSource(game);
+  const sourceAchievementId = achievement.sourceAchievementId ?? achievement.id;
+  current.sources.push(achievementSourceEntry(game, achievement));
+  const sourceId = `${source}:${sourceAchievementId}`;
+  if (!current.sourceIds.includes(sourceId)) {
+    current.sourceIds.push(sourceId);
+  }
+  if (!current.sourceLabels.includes(source)) {
+    current.sourceLabels.push(source);
+  }
+  current.sourceLabels.sort(
+    (left, right) => sourceLabelPriority(left) - sourceLabelPriority(right),
+  );
+  current.unlockedAt = latestIso([current.unlockedAt, achievement.unlockedAt]);
+  current.latestUnlockedAt = current.unlockedAt;
+  if (typeof achievement.rarity === "number") {
+    current.rarity =
+      typeof current.rarity === "number"
+        ? Math.min(current.rarity, achievement.rarity)
+        : achievement.rarity;
+  }
+  current.iconUrl = current.iconUrl ?? achievement.iconUrl;
+  current.description = current.description ?? achievement.description;
+  if (current.matchConfidence !== "additional" && matchConfidence !== "exact") {
+    current.matchConfidence =
+      current.matchConfidence === "name" || matchConfidence === "name"
+        ? "name"
+        : "name_description";
+  }
+}
+
+function registerAchievementKeys(
+  grouped: GroupedAchievement,
+  achievement: UnifiedAchievement,
+  byExactKey: Map<string, GroupedAchievement>,
+  byNameDescriptionKey: Map<string, GroupedAchievement>,
+  byNameKey: Map<string, GroupedAchievement>,
+  game: Game,
+) {
+  const exactKey = achievementExactKey(game, achievement);
+  const nameDescriptionKey = achievementNameDescriptionKey(achievement);
+  const nameKey = achievementNameKey(achievement);
+
+  byExactKey.set(exactKey, grouped);
+  if (nameDescriptionKey !== "|") byNameDescriptionKey.set(nameDescriptionKey, grouped);
+  if (nameKey) byNameKey.set(nameKey, grouped);
+}
+
+export function achievementBasisGame(games: Game[]): Game | null {
+  return (
+    [...games]
+      .filter((game) => (game.achievements?.length ?? 0) > 0)
+      .sort(compareAchievementBasis)[0] ?? null
+  );
+}
+
 export function aggregateAchievements(games: Game[]): GroupedAchievement[] {
-  const byKey = new Map<string, GroupedAchievement>();
+  const basisGame = achievementBasisGame(games);
+  if (!basisGame) return [];
+
+  const byExactKey = new Map<string, GroupedAchievement>();
+  const byNameDescriptionKey = new Map<string, GroupedAchievement>();
+  const byNameKey = new Map<string, GroupedAchievement>();
+  const results: GroupedAchievement[] = [];
+
+  for (const achievement of basisGame.achievements ?? []) {
+    const grouped = createGroupedAchievement(basisGame, achievement, {
+      matchKey: achievementExactKey(basisGame, achievement),
+      matchConfidence: "exact",
+      isAdditional: false,
+    });
+    results.push(grouped);
+    registerAchievementKeys(
+      grouped,
+      achievement,
+      byExactKey,
+      byNameDescriptionKey,
+      byNameKey,
+      basisGame,
+    );
+  }
 
   for (const game of games) {
-    const source = getGameSource(game);
-    for (const achievement of game.achievements ?? []) {
-      const key = achievementKey(achievement);
-      const current = byKey.get(key);
-      const sourceEntry: GroupedAchievementSource = {
-        achievementId: achievement.id,
-        gameId: game.id,
-        gameTitle: game.title,
-        source,
-        unlockedAt: achievement.unlockedAt,
-        rarity: achievement.rarity,
-      };
+    if (game.id === basisGame.id) continue;
 
-      if (!current) {
-        byKey.set(key, {
-          ...achievement,
-          id: `grouped-${key}`,
-          sources: [sourceEntry],
-          sourceLabels: [source],
-          latestUnlockedAt: achievement.unlockedAt ?? null,
-        });
+    for (const achievement of game.achievements ?? []) {
+      const exactKey = achievementExactKey(game, achievement);
+      const nameDescriptionKey = achievementNameDescriptionKey(achievement);
+      const nameKey = achievementNameKey(achievement);
+      let matchConfidence: GroupedAchievement["matchConfidence"] = "exact";
+      let current = byExactKey.get(exactKey);
+
+      if (!current && nameDescriptionKey !== "|") {
+        current = byNameDescriptionKey.get(nameDescriptionKey);
+        matchConfidence = "name_description";
+      }
+      if (!current && nameKey) {
+        current = byNameKey.get(nameKey);
+        matchConfidence = "name";
+      }
+
+      if (current) {
+        mergeGroupedAchievement(current, game, achievement, matchConfidence);
         continue;
       }
 
-      current.sources.push(sourceEntry);
-      if (!current.sourceLabels.includes(source)) {
-        current.sourceLabels.push(source);
-      }
-      current.sourceLabels.sort(
-        (left, right) => sourceLabelPriority(left) - sourceLabelPriority(right),
+      const additional = createGroupedAchievement(game, achievement, {
+        matchKey: `additional:${exactKey || nameDescriptionKey || nameKey}`,
+        matchConfidence: "additional",
+        isAdditional: true,
+      });
+      results.push(additional);
+      registerAchievementKeys(
+        additional,
+        achievement,
+        byExactKey,
+        byNameDescriptionKey,
+        byNameKey,
+        game,
       );
-      current.unlockedAt = latestIso([current.unlockedAt, achievement.unlockedAt]);
-      current.latestUnlockedAt = current.unlockedAt;
-      if (typeof achievement.rarity === "number") {
-        current.rarity =
-          typeof current.rarity === "number"
-            ? Math.min(current.rarity, achievement.rarity)
-            : achievement.rarity;
-      }
-      current.iconUrl = current.iconUrl ?? achievement.iconUrl;
     }
   }
 
-  return Array.from(byKey.values());
+  return results;
 }
 
 function aggregateStatus(games: Game[]): GameStatus {
@@ -222,6 +387,7 @@ function groupIdentity(primaryGame: Game): string {
 export function aggregateGameGroup(variants: Game[]): GameGroup {
   const sortedVariants = [...variants].sort(comparePrimaryGames);
   const primaryGame = sortedVariants[0];
+  const basisGame = achievementBasisGame(sortedVariants);
   const sources = sourceLabels(sortedVariants);
   const playtimeMinutes = sortedVariants.reduce(
     (total, game) => total + (game.playtimeMinutes ?? 0),
@@ -231,6 +397,17 @@ export function aggregateGameGroup(variants: Game[]): GameGroup {
     sortedVariants.map((game) => game.lastPlayedAt ?? game.lastPlayed),
   );
   const achievements = aggregateAchievements(sortedVariants);
+  const achievementProviderStatuses = sources.map((source) => {
+    const variantsForSource = sortedVariants.filter((game) => getGameSource(game) === source);
+    const hasAchievements = variantsForSource.some((game) => (game.achievements?.length ?? 0) > 0);
+    const providerStatus = achievementProviderStatusForGame(variantsForSource[0]);
+    return {
+      source,
+      status: hasAchievements ? ("available" as const) : providerStatus.status,
+      stability: providerStatus.stability,
+      message: hasAchievements ? "Achievement data available" : providerStatus.message,
+    };
+  });
   const status = aggregateStatus(sortedVariants);
   const key = groupIdentity(primaryGame);
   const id = `group:${key}`;
@@ -243,6 +420,9 @@ export function aggregateGameGroup(variants: Game[]): GameGroup {
     lastPlayed: lastPlayedAt ?? primaryGame.lastPlayed,
     achievements,
     achievementsSyncedAt: latestAchievementSyncAt(sortedVariants),
+    achievementBasisSource: basisGame ? getGameSource(basisGame) : null,
+    achievementBasisGameId: basisGame?.id ?? null,
+    achievementProviderStatuses,
     sizeGb:
       sortedVariants.reduce((total, game) => total + (game.sizeGb ?? 0), 0) || primaryGame.sizeGb,
   };
@@ -259,6 +439,9 @@ export function aggregateGameGroup(variants: Game[]): GameGroup {
     playtimeMinutes,
     lastPlayedAt,
     achievements,
+    achievementBasisSource: basisGame ? getGameSource(basisGame) : null,
+    achievementBasisGameId: basisGame?.id ?? null,
+    achievementProviderStatuses,
   };
 }
 
@@ -288,16 +471,5 @@ export function isPlayableGame(game: Game): boolean {
 }
 
 export function supportedAchievementSyncGames(group: GameGroup): Game[] {
-  return group.variants.filter((game) => {
-    const source = getGameSource(game);
-    if (source === "xbox") {
-      return Boolean(game.externalId);
-    }
-    if (source !== "steam") {
-      return false;
-    }
-    return Boolean(
-      game.externalId || game.launchUri?.startsWith("steam://") || game.id.startsWith("steam-"),
-    );
-  });
+  return syncableAchievementGames(group.variants);
 }

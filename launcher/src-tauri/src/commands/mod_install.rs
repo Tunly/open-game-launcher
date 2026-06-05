@@ -1113,9 +1113,7 @@ fn delegated_url_for_provider(input: &ModInstallRequest) -> Option<String> {
             })
             .or_else(|| source.map(ToOwned::to_owned))
         }
-        ModProvider::Modio | ModProvider::Curseforge => {
-            source.map(ToOwned::to_owned)
-        }
+        ModProvider::Modio | ModProvider::Curseforge => source.map(ToOwned::to_owned),
         ModProvider::DirectUrl | ModProvider::LocalArchive | ModProvider::LocalFolder => None,
     }
 }

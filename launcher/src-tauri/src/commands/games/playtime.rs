@@ -33,6 +33,7 @@ pub fn start_playtime_poller(app_handle: AppHandle) {
             // Collect running process identities once per poll. Games can be
             // identified by path, executable path, or launcher-provided names.
             let mut running_processes = Vec::new();
+            #[allow(clippy::for_kv_map)]
             for (_pid, process) in sys.processes() {
                 let process_name = normalize_process_name(&process.name().to_string_lossy());
                 if let Some(exe_path) = process.exe() {
@@ -192,14 +193,16 @@ pub fn record_game_play_session_when_finished(app: AppHandle, game_id: String, m
     });
 }
 
+#[allow(clippy::question_mark)]
 pub fn update_cached_game_activity(
     game_id: &str,
     last_played: Option<u64>,
     add_playtime_minutes: Option<u32>,
 ) -> Option<GameActivityUpdate> {
     let mut games = read_installed_games_cache().unwrap_or_default();
-    let Some(game) = games.iter_mut().find(|game| game.id == game_id) else {
-        return None;
+    let game = match games.iter_mut().find(|game| game.id == game_id) {
+        Some(game) => game,
+        None => return None,
     };
 
     if let Some(timestamp) = last_played {

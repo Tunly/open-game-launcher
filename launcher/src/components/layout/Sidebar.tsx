@@ -1,5 +1,6 @@
 import {
   Gamepad2,
+  Joystick,
   HardDriveDownload,
   MessageSquareMore,
   PackagePlus,
@@ -15,6 +16,7 @@ export type PageKey =
   | "library"
   | "store"
   | "community"
+  | "controllers"
   | "downloads"
   | "mods"
   | "achievements"
@@ -41,6 +43,7 @@ interface SidebarProps {
 const navItems: NavItem[] = [
   { key: "library", label: "Library", icon: Gamepad2 },
   { key: "achievements", label: "Achievements", icon: Trophy },
+  { key: "controllers", label: "Controllers", icon: Joystick },
   { key: "downloads", label: "Downloads", icon: HardDriveDownload },
   { key: "mods", label: "Mods", icon: PackagePlus },
   { key: "store", label: "Store", icon: Store },

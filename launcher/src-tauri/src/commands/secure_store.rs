@@ -1,6 +1,6 @@
 use aes_gcm::aead::{Aead, KeyInit};
 use aes_gcm::{Aes256Gcm, Key, Nonce};
-use argon2::{Argon2, Algorithm, Params, Version};
+use argon2::{Algorithm, Argon2, Params, Version};
 use keyring::Entry;
 use rand::{rngs::OsRng, RngCore};
 use serde::{Deserialize, Serialize};
@@ -21,11 +21,10 @@ const FALLBACK_DERIVATION_SALT: &[u8] = b"OG-Launcher/fallback-store/v1";
 
 /// `Argon2id` is the recommended PHC winner. Tuned to take ~250ms on a
 /// modern desktop CPU, which is acceptable for a once-per-write cost.
-const ARGON2_PARAMS: Params =
-    match Params::new(19_456, 2, 1, Some(32)) {
-        Ok(p) => p,
-        Err(_) => panic!("hardcoded argon2 params are valid"),
-    };
+const ARGON2_PARAMS: Params = match Params::new(19_456, 2, 1, Some(32)) {
+    Ok(p) => p,
+    Err(_) => panic!("hardcoded argon2 params are valid"),
+};
 
 #[derive(Debug, Serialize, Deserialize, Default)]
 struct FallbackMap {
@@ -97,11 +96,7 @@ fn derive_fallback_key() -> [u8; 32] {
     );
     let mut out = [0u8; 32];
     argon
-        .hash_password_into(
-            machine_string.as_bytes(),
-            salt_b64.as_bytes(),
-            &mut out,
-        )
+        .hash_password_into(machine_string.as_bytes(), salt_b64.as_bytes(), &mut out)
         .expect("argon2 derive");
     let mut hashed = [0u8; 32];
     {
@@ -135,11 +130,9 @@ fn encrypt(plaintext: &[u8]) -> Result<String, String> {
 }
 
 fn decrypt(blob: &str) -> Result<Vec<u8>, String> {
-    let combined = base64::Engine::decode(
-        &base64::engine::general_purpose::STANDARD,
-        blob.as_bytes(),
-    )
-    .map_err(|e| format!("Decode fallback: {e}"))?;
+    let combined =
+        base64::Engine::decode(&base64::engine::general_purpose::STANDARD, blob.as_bytes())
+            .map_err(|e| format!("Decode fallback: {e}"))?;
     if combined.len() < 12 {
         return Err("Decrypt fallback: blob too short".to_string());
     }
@@ -221,7 +214,10 @@ fn write_fallback_map(map: &mut FallbackMap) -> Result<(), String> {
     let keys: Vec<String> = map.entries.keys().cloned().collect();
     for k in keys {
         if let Some(v) = map.entries.remove(&k) {
-            blobs.insert(k.clone(), encrypt(&v).map_err(|e| format!("Encrypt {k}: {e}"))?);
+            blobs.insert(
+                k.clone(),
+                encrypt(&v).map_err(|e| format!("Encrypt {k}: {e}"))?,
+            );
         }
     }
     let blob = FallbackBlob {

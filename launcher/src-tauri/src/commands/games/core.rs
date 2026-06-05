@@ -564,10 +564,7 @@ pub fn uninstall_game(game_id: String) -> Result<UninstallGameResponse, String> 
         // we cannot smuggle PowerShell metacharacters (`"`, `$`, backtick)
         // into the `-Command` string below.
         let pfn = raw_pfn.split('_').next().unwrap_or(raw_pfn);
-        if pfn.is_empty()
-            || pfn.len() > 128
-            || !pfn.chars().all(|c| c.is_ascii_alphanumeric())
-        {
+        if pfn.is_empty() || pfn.len() > 128 || !pfn.chars().all(|c| c.is_ascii_alphanumeric()) {
             return Err(format!(
                 "Refusing to launch uninstall: package family name '{pfn}' is not a safe identifier."
             ));
@@ -1215,6 +1212,35 @@ pub fn write_installed_games_cache(games: &[InstalledGame]) {
     let _ = crate::commands::local_db::write_collection("games", &repaired_games, |game| &game.id);
 }
 
+/// Manually overwrite a game's cached `playtime_minutes` (FEATURE_PLAN §14
+/// "Manuelle Korrektur"). Returns the resulting `GameActivityUpdate` so the
+/// frontend can refresh and the Supabase sync listener can react.
+#[tauri::command]
+pub fn set_cached_game_playtime(
+    app: AppHandle,
+    game_id: String,
+    playtime_minutes: u32,
+) -> Result<GameActivityUpdate, String> {
+    use tauri::Emitter;
+
+    let mut games = read_installed_games_cache().unwrap_or_default();
+    let Some(game) = games.iter_mut().find(|game| game.id == game_id) else {
+        return Err(format!("Game not found in local cache: {game_id}"));
+    };
+
+    game.playtime_minutes = Some(playtime_minutes);
+    game.last_played_at = Some(unix_timestamp_to_iso(current_unix_timestamp()));
+
+    let update = GameActivityUpdate {
+        game_id: game_id.clone(),
+        last_played: game.last_played_at.clone(),
+        playtime_minutes: game.playtime_minutes,
+    };
+    write_installed_games_cache(&games);
+    let _ = app.emit("game_activity_updated", &update);
+    Ok(update)
+}
+
 pub fn repair_cached_game_assets(mut game: InstalledGame) -> InstalledGame {
     if game.slug.is_empty() {
         game.slug = slugify(&game.title);
@@ -1749,12 +1775,12 @@ pub fn ensure_path_inside_root(path: &Path, root: &Path) -> Result<(), String> {
     // caller pass `..\..\Windows\System32\config\SAM` and have it accepted
     // because `Path::starts_with` was compared against an un-canonicalized
     // root.
-    let normalized_root = root
-        .canonicalize()
-        .map_err(|e| format!("Refusing to write outside the OG save-sync folder: root is not resolvable ({e})."))?;
-    let normalized_path = path
-        .canonicalize()
-        .map_err(|e| format!("Refusing to write outside the OG save-sync folder: path is not resolvable ({e})."))?;
+    let normalized_root = root.canonicalize().map_err(|e| {
+        format!("Refusing to write outside the OG save-sync folder: root is not resolvable ({e}).")
+    })?;
+    let normalized_path = path.canonicalize().map_err(|e| {
+        format!("Refusing to write outside the OG save-sync folder: path is not resolvable ({e}).")
+    })?;
 
     // Reject any `..` components in the raw input up front as a defence in
     // depth — canonicalize should already have collapsed them, but a path
@@ -1783,7 +1809,9 @@ pub fn ensure_path_inside_root(path: &Path, root: &Path) -> Result<(), String> {
     // `Foo` and `foo` are the same directory on NTFS and we want them to
     // match. Use case-insensitive comparison on Windows only.
     let same_root = if cfg!(windows) {
-        normalized_path.to_string_lossy().to_lowercase()
+        normalized_path
+            .to_string_lossy()
+            .to_lowercase()
             .starts_with(&normalized_root.to_string_lossy().to_lowercase())
     } else {
         normalized_path.starts_with(&normalized_root)

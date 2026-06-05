@@ -9,6 +9,7 @@ import {
   PackagePlus,
   CircleHelp,
   Award,
+  Trophy,
   LockKeyhole,
   LockKeyholeOpen,
   Camera,
@@ -39,7 +40,7 @@ import {
   getPlatformBannerClass,
 } from "../../lib/formatters";
 import { getGameAssetUrl, getGameBannerStyle } from "../../lib/assets";
-import { uninstallGame } from "../../lib/launcher";
+import { listControllers, uninstallGame } from "../../lib/launcher";
 import { isLiveDownloadItem, useDownloadStore } from "../../stores/downloadStore";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { CrossPlayBadge } from "./CrossPlayBadge";
@@ -47,19 +48,28 @@ import { getCrossPlayPlatforms } from "../../lib/supabase/crossplay";
 import type { CrossPlayPlatform } from "../../lib/types/crossplay";
 import { CloudSavesPanel } from "./GameDetails/CloudSavesPanel";
 import { GameUpdateFeed } from "./GameUpdateFeed";
+import { ControllerLayoutEditor } from "../controllers/ControllerLayoutEditor";
+import type { ControllerDevice } from "../../lib/types/controllers";
 
 type AchievementWithSources = UnifiedAchievement & {
   sourceLabels?: string[];
+  canonicalSource?: string;
+  matchConfidence?: string;
+  isAdditional?: boolean;
 };
 
 function filterAndSortAchievements(
   achievements: UnifiedAchievement[],
-  filter: "all" | "locked" | "unlocked",
+  filter: string,
   sort: "rarity" | "name" | "date",
 ): UnifiedAchievement[] {
   const filtered = achievements.filter((achievement) => {
     if (filter === "locked") return !achievement.unlockedAt;
     if (filter === "unlocked") return Boolean(achievement.unlockedAt);
+    if (filter.startsWith("source:")) {
+      const source = filter.slice("source:".length);
+      return ((achievement as AchievementWithSources).sourceLabels ?? []).includes(source);
+    }
     return true;
   });
   const sorted = [...filtered];
@@ -189,12 +199,35 @@ export function GameDetails({
   const [isUninstallDialogOpen, setIsUninstallDialogOpen] = useState(false);
   const [isUninstalling, setIsUninstalling] = useState(false);
   const [uninstallError, setUninstallError] = useState<string | null>(null);
-  const [achievementFilter, setAchievementFilter] = useState<"all" | "locked" | "unlocked">("all");
+  const [achievementFilter, setAchievementFilter] = useState("all");
   const [achievementSort, setAchievementSort] = useState<"rarity" | "name" | "date">("rarity");
   const coverArtworkInputRef = useRef<HTMLInputElement>(null);
   const iconArtworkInputRef = useRef<HTMLInputElement>(null);
   const logoArtworkInputRef = useRef<HTMLInputElement>(null);
   const achievements = enrichedSelectedGame?.achievements ?? [];
+  const achievementBasisSource =
+    (enrichedSelectedGame as (Game & { achievementBasisSource?: string | null }) | null)
+      ?.achievementBasisSource ?? null;
+  const achievementProviderStatuses =
+    (
+      enrichedSelectedGame as
+        | (Game & {
+            achievementProviderStatuses?: Array<{
+              source: string;
+              status: string;
+              stability: string;
+              message: string;
+            }>;
+          })
+        | null
+    )?.achievementProviderStatuses ?? [];
+  const achievementSourceFilters = Array.from(
+    new Set(
+      achievements.flatMap(
+        (achievement) => (achievement as AchievementWithSources).sourceLabels ?? [],
+      ),
+    ),
+  );
   const variantsForActions =
     gameVariants.length > 0 ? gameVariants : enrichedSelectedGame ? [enrichedSelectedGame] : [];
   const variantIds = variantsForActions.map((game) => game.id);
@@ -214,6 +247,8 @@ export function GameDetails({
 
   const navigate = useNavigate();
   const [crossPlayPlatforms, setCrossPlayPlatforms] = useState<CrossPlayPlatform[]>([]);
+  const [isControllerPanelOpen, setIsControllerPanelOpen] = useState(false);
+  const [controllerDevices, setControllerDevices] = useState<ControllerDevice[]>([]);
 
   useEffect(() => {
     if (!enrichedSelectedGame?.id) {
@@ -248,6 +283,7 @@ export function GameDetails({
     setUninstallError(null);
     setAchievementFilter("all");
     setAchievementSort("rarity");
+    setIsControllerPanelOpen(false);
   }, [selectedGame?.id]);
 
   function handleArtworkFileChange(kind: CustomArtworkKind, fileList: FileList | null) {
@@ -799,12 +835,18 @@ export function GameDetails({
                   </button>
 
                   <button
-                    className="grid h-10 w-10 place-items-center border-4 border-black bg-[#fbf4e7] transition hover:bg-[#efe3cf]"
+                    className={`grid h-10 w-10 place-items-center border-4 border-black transition hover:bg-[#efe3cf] ${
+                      isControllerPanelOpen ? "bg-[#8cf5e4]" : "bg-[#fbf4e7]"
+                    }`}
                     type="button"
-                    aria-label="Controller compatibility"
-                    onClick={() =>
-                      alert(`Controller: ${enrichedSelectedGame.title} hat vollen Gamepad-Support.`)
-                    }
+                    aria-label="Controller layouts"
+                    title="Controller layouts"
+                    onClick={() => {
+                      setIsControllerPanelOpen((open) => !open);
+                      void listControllers()
+                        .then(setControllerDevices)
+                        .catch(() => setControllerDevices([]));
+                    }}
                   >
                     <Gamepad2 className="h-6 w-6" />
                   </button>
@@ -845,6 +887,17 @@ export function GameDetails({
                 </div>
               </section>
 
+              {isControllerPanelOpen ? (
+                <section className="border-b-4 border-black bg-[#efe3cf] p-3 sm:p-4">
+                  <ControllerLayoutEditor
+                    compact
+                    devices={controllerDevices}
+                    gameId={enrichedSelectedGame.id}
+                    gameTitle={enrichedSelectedGame.title}
+                  />
+                </section>
+              ) : null}
+
               {/* Game Metadata & Activity Grid */}
               <section className="px-3 py-3 sm:px-4">
                 {statusMessage ? (
@@ -873,6 +926,26 @@ export function GameDetails({
                         <h2 className="text-[15px] font-black uppercase leading-none">
                           Achievements
                         </h2>
+                        {achievementBasisSource ? (
+                          <span className="neo-copy border-2 border-black bg-[#fbf4e7] px-2 py-0.5 text-[9px] font-black uppercase text-[#55504a]">
+                            Basis: {achievementBasisSource}
+                          </span>
+                        ) : null}
+                        <button
+                          className="grid h-8 w-8 place-items-center border-2 border-black bg-[#fbf4e7] text-[#171411] shadow-[2px_2px_0_#171411] disabled:opacity-60"
+                          type="button"
+                          aria-label="Sync achievements"
+                          title="Sync achievements"
+                          disabled={isSyncingAchievements}
+                          onClick={() => {
+                            setStatusMessage("Syncing achievement providers...");
+                            void handleSyncAchievements();
+                          }}
+                        >
+                          <Trophy
+                            className={`h-4 w-4 ${isSyncingAchievements ? "animate-pulse" : ""}`}
+                          />
+                        </button>
                         <span className="neo-copy border-2 border-black bg-[#e8c843] px-2 py-0.5 text-[10px] font-black uppercase">
                           {unlockedAchievementCount}/{achievements.length} ·{" "}
                           {achievementProgressPercent}%
@@ -881,6 +954,25 @@ export function GameDetails({
 
                       {achievements.length > 0 ? (
                         <>
+                          {achievementProviderStatuses.length > 0 ? (
+                            <div className="flex flex-wrap gap-1 border-b-2 border-black bg-[#efe6d4] px-2 py-1.5">
+                              {achievementProviderStatuses.map((provider) => (
+                                <span
+                                  key={provider.source}
+                                  className={`neo-copy border-2 border-black px-1.5 py-0.5 text-[8px] font-black uppercase ${
+                                    provider.status === "available"
+                                      ? "bg-[#087d6d] text-white"
+                                      : provider.stability === "unofficial"
+                                        ? "bg-[#e8c843] text-[#171411]"
+                                        : "bg-[#fbf4e7] text-[#55504a]"
+                                  }`}
+                                  title={provider.message}
+                                >
+                                  {provider.source}: {provider.status}
+                                </span>
+                              ))}
+                            </div>
+                          ) : null}
                           <div className="border-b-2 border-black bg-[#f3e8d7] px-3 py-1.5">
                             <div className="h-2 border border-black bg-[#fbf4e7]">
                               <div
@@ -890,7 +982,12 @@ export function GameDetails({
                             </div>
                           </div>
                           <div className="flex flex-wrap items-center gap-1.5 border-b-2 border-black bg-[#f3e8d7] px-2 py-1.5">
-                            {(["all", "unlocked", "locked"] as const).map((key) => (
+                            {[
+                              "all",
+                              "unlocked",
+                              "locked",
+                              ...achievementSourceFilters.map((source) => `source:${source}`),
+                            ].map((key) => (
                               <button
                                 key={key}
                                 type="button"
@@ -901,7 +998,7 @@ export function GameDetails({
                                     : "bg-[#fbf4e7] text-[#171411] hover:bg-[#efe3cf]"
                                 }`}
                               >
-                                {key}
+                                {key.startsWith("source:") ? key.slice("source:".length) : key}
                               </button>
                             ))}
                             <div className="ml-auto flex items-center gap-1">
@@ -934,8 +1031,8 @@ export function GameDetails({
                               achievementSort,
                             ).map((achievement) => {
                               const isUnlocked = Boolean(achievement.unlockedAt);
-                              const achievementSources =
-                                (achievement as AchievementWithSources).sourceLabels ?? [];
+                              const achievementMeta = achievement as AchievementWithSources;
+                              const achievementSources = achievementMeta.sourceLabels ?? [];
 
                               return (
                                 <article
@@ -986,6 +1083,16 @@ export function GameDetails({
                                             {source}
                                           </span>
                                         ))}
+                                        {achievementMeta.isAdditional ? (
+                                          <span className="neo-copy border border-black bg-[#e8c843] px-1 py-0.5 text-[8px] font-black uppercase text-[#171411]">
+                                            extra
+                                          </span>
+                                        ) : null}
+                                        {achievementMeta.matchConfidence ? (
+                                          <span className="neo-copy border border-black bg-[#171411] px-1 py-0.5 text-[8px] font-black uppercase text-[#fbf4e7]">
+                                            {achievementMeta.matchConfidence}
+                                          </span>
+                                        ) : null}
                                       </div>
                                     ) : null}
                                   </div>
