@@ -211,6 +211,32 @@ pub fn update_game_metadata(input: UpdateGameMetadataRequest) -> Result<Installe
     Ok(updated_game)
 }
 
+fn upsert_achievement_provider_status(game: &mut InstalledGame, status: AchievementProviderStatus) {
+    game.achievement_provider_statuses
+        .retain(|existing| existing.source != status.source);
+    game.achievement_provider_statuses.push(status);
+}
+
+#[tauri::command]
+pub fn update_achievement_provider_status(
+    input: UpdateAchievementProviderStatusRequest,
+) -> Result<InstalledGame, String> {
+    let game_id = normalize_game_id(input.game_id)?;
+    let mut games = read_installed_games_cache().unwrap_or_default();
+
+    let game = games
+        .iter_mut()
+        .find(|game| game.id == game_id)
+        .ok_or_else(|| format!("Game '{game_id}' was not found in the local library cache."))?;
+
+    upsert_achievement_provider_status(game, input.status);
+
+    let updated_game = game.clone();
+    write_installed_games_cache(&games);
+
+    Ok(updated_game)
+}
+
 #[tauri::command]
 pub fn import_library_snapshot(games: Vec<InstalledGame>) -> Result<Vec<InstalledGame>, String> {
     let mut imported_games = Vec::new();
@@ -1184,6 +1210,9 @@ pub fn merge_cached_game_activity(game: &mut InstalledGame, cached_game: &Instal
     if game.achievements.is_empty() {
         game.achievements = cached_game.achievements.clone();
     }
+    if game.achievement_provider_statuses.is_empty() {
+        game.achievement_provider_statuses = cached_game.achievement_provider_statuses.clone();
+    }
     if game.save_files.is_empty() {
         game.save_files = cached_game.save_files.clone();
     }
@@ -1356,6 +1385,7 @@ pub fn installed_game(
         rating: None,
         achievements: Vec::new(),
         achievements_synced_at: None,
+        achievement_provider_statuses: Vec::new(),
         save_files: Vec::new(),
         friends_playing: Vec::new(),
     }
@@ -1846,5 +1876,133 @@ fn collect_path_size(path: &Path, size: &mut u64) {
         } else if let Ok(metadata) = fs::metadata(entry_path) {
             *size = size.saturating_add(metadata.len());
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn upserts_achievement_provider_status_by_source() {
+        let mut game = installed_game(
+            "game-1",
+            "Game".to_string(),
+            "steam".to_string(),
+            None,
+            None,
+        );
+        game.achievement_provider_statuses
+            .push(AchievementProviderStatus {
+                source: "steam".to_string(),
+                status: "failed".to_string(),
+                stability: "official".to_string(),
+                message: "previous failure".to_string(),
+            });
+        game.achievement_provider_statuses
+            .push(AchievementProviderStatus {
+                source: "xbox".to_string(),
+                status: "available".to_string(),
+                stability: "official".to_string(),
+                message: "xbox synced".to_string(),
+            });
+
+        upsert_achievement_provider_status(
+            &mut game,
+            AchievementProviderStatus {
+                source: "steam".to_string(),
+                status: "available".to_string(),
+                stability: "official".to_string(),
+                message: "steam synced".to_string(),
+            },
+        );
+
+        assert_eq!(game.achievement_provider_statuses.len(), 2);
+        assert!(game.achievement_provider_statuses.iter().any(|status| {
+            status.source == "steam"
+                && status.status == "available"
+                && status.message == "steam synced"
+        }));
+        assert!(game.achievement_provider_statuses.iter().any(|status| {
+            status.source == "xbox"
+                && status.status == "available"
+                && status.message == "xbox synced"
+        }));
+    }
+
+    #[test]
+    fn merge_cached_game_activity_preserves_achievement_provider_statuses() {
+        let mut scanned_game = installed_game(
+            "game-1",
+            "Game".to_string(),
+            "steam".to_string(),
+            None,
+            None,
+        );
+        let mut cached_game = installed_game(
+            "game-1",
+            "Game".to_string(),
+            "steam".to_string(),
+            None,
+            None,
+        );
+        cached_game
+            .achievement_provider_statuses
+            .push(AchievementProviderStatus {
+                source: "steam".to_string(),
+                status: "available".to_string(),
+                stability: "official".to_string(),
+                message: "steam synced".to_string(),
+            });
+
+        merge_cached_game_activity(&mut scanned_game, &cached_game);
+
+        assert_eq!(scanned_game.achievement_provider_statuses.len(), 1);
+        assert_eq!(
+            scanned_game.achievement_provider_statuses[0].message,
+            "steam synced"
+        );
+    }
+
+    #[test]
+    fn merge_cached_game_activity_keeps_fresh_provider_statuses() {
+        let mut scanned_game = installed_game(
+            "game-1",
+            "Game".to_string(),
+            "steam".to_string(),
+            None,
+            None,
+        );
+        scanned_game
+            .achievement_provider_statuses
+            .push(AchievementProviderStatus {
+                source: "steam".to_string(),
+                status: "failed".to_string(),
+                stability: "official".to_string(),
+                message: "fresh failure".to_string(),
+            });
+        let mut cached_game = installed_game(
+            "game-1",
+            "Game".to_string(),
+            "steam".to_string(),
+            None,
+            None,
+        );
+        cached_game
+            .achievement_provider_statuses
+            .push(AchievementProviderStatus {
+                source: "steam".to_string(),
+                status: "available".to_string(),
+                stability: "official".to_string(),
+                message: "cached success".to_string(),
+            });
+
+        merge_cached_game_activity(&mut scanned_game, &cached_game);
+
+        assert_eq!(scanned_game.achievement_provider_statuses.len(), 1);
+        assert_eq!(
+            scanned_game.achievement_provider_statuses[0].message,
+            "fresh failure"
+        );
     }
 }

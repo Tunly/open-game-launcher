@@ -145,7 +145,7 @@ export interface GameDetailsProps {
   setManualCollections: React.Dispatch<React.SetStateAction<Record<string, string[]>>>;
   setActivePlatformFilter: (platform: "all" | "windows" | "macos" | "linux") => void;
   clearCollectionSelection: () => void;
-  detailScrollRef: React.RefObject<HTMLElement>;
+  detailScrollRef: React.RefObject<HTMLElement | null>;
   isDiscoveringGames: boolean;
   discoveryMessage: string | null;
   moveGame: (opts: { gameId: string; newPath: string }) => Promise<void>;
@@ -407,8 +407,8 @@ export function GameDetails({
               })()}
 
               {/* Game Control Section */}
-              <section className="flex flex-wrap items-start gap-3 border-b-4 border-black bg-[#f3e8d7] p-3">
-                <div className="flex min-w-[220px] flex-1 sm:flex-none">
+              <section className="grid items-start gap-3 border-b-4 border-black bg-[#f3e8d7] p-3 xl:grid-cols-[205px_minmax(0,1fr)]">
+                <div className="flex min-w-[205px] flex-1 sm:flex-none">
                   {activeDownload ? (
                     <div className="flex min-w-0 flex-1 flex-col gap-2 sm:min-w-[205px] sm:flex-none">
                       <div className="flex items-center justify-between gap-2">
@@ -435,7 +435,7 @@ export function GameDetails({
                     </div>
                   ) : enrichedSelectedGame.status === "not_installed" ? (
                     <button
-                      className="flex h-[64px] min-w-0 flex-1 items-center justify-center gap-3 border-4 border-black bg-[#b7102a] px-5 text-[22px] font-black uppercase text-white shadow-[3px_3px_0_#171411] transition-colors hover:bg-[#990a20] sm:min-w-[205px] sm:flex-none sm:text-[26px]"
+                      className="flex h-[64px] min-w-0 flex-1 items-center justify-center gap-3 border-4 border-black bg-[#b7102a] px-5 text-[22px] font-black uppercase text-white shadow-[3px_3px_0_#171411] transition-colors hover:bg-[#990a20] xl:w-[205px] xl:flex-none xl:text-[26px]"
                       type="button"
                       onClick={() => void handlePlay()}
                     >
@@ -500,7 +500,7 @@ export function GameDetails({
                   ) : null}
                 </div>
 
-                <div className="grid min-w-[260px] flex-[999_1_420px] gap-3 sm:grid-cols-2 2xl:grid-cols-[repeat(4,minmax(130px,1fr))]">
+                <div className="grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-4">
                   <Metric
                     icon={<Cloud className="h-7 w-7 fill-black text-black" />}
                     title="Cloud"
@@ -576,6 +576,76 @@ export function GameDetails({
                         <h4 className="mb-2 border-b border-black pb-1 text-[12px] font-black uppercase">
                           Options: {enrichedSelectedGame.title}
                         </h4>
+
+                        {/* QUICK ACTIONS */}
+                        <div className="mb-3 grid gap-1.5 border-b border-black pb-3">
+                          <button
+                            className="flex w-full items-center justify-start gap-2 border-2 border-black bg-[#ded3c1] px-2 py-1.5 text-[10px] font-black uppercase transition hover:bg-[#d5c7b1] disabled:cursor-not-allowed disabled:opacity-55"
+                            type="button"
+                            disabled={isSyncingAchievements}
+                            onClick={() => {
+                              setStatusMessage("Syncing platform achievements...");
+                              void handleSyncAchievements();
+                            }}
+                          >
+                            <Award
+                              className={`h-4 w-4 ${isSyncingAchievements ? "animate-pulse" : ""}`}
+                            />
+                            Sync Achievements
+                          </button>
+
+                          <button
+                            className={`flex w-full items-center justify-start gap-2 border-2 border-black px-2 py-1.5 text-[10px] font-black uppercase transition hover:bg-[#d5c7b1] ${
+                              isControllerPanelOpen ? "bg-[#8cf5e4]" : "bg-[#ded3c1]"
+                            }`}
+                            type="button"
+                            onClick={() => {
+                              setIsControllerPanelOpen((open) => !open);
+                              setIsSettingsPopoverOpen(false);
+                              void listControllers()
+                                .then(setControllerDevices)
+                                .catch(() => setControllerDevices([]));
+                            }}
+                          >
+                            <Gamepad2 className="h-4 w-4" />
+                            Controller Layouts
+                          </button>
+
+                          <button
+                            className="flex w-full items-center justify-start gap-2 border-2 border-black bg-[#ded3c1] px-2 py-1.5 text-[10px] font-black uppercase transition hover:bg-[#d5c7b1]"
+                            type="button"
+                            onClick={() =>
+                              alert(
+                                `Support: Visit the support page for ${enrichedSelectedGame.title}.`,
+                              )
+                            }
+                          >
+                            <CircleHelp className="h-4 w-4" />
+                            Support / Help
+                          </button>
+
+                          <button
+                            onClick={() => {
+                              const nextFavorite = !isGroupFavorite;
+                              setFavorites((prev) => {
+                                const next = { ...prev };
+                                variantIds.forEach((id) => {
+                                  next[id] = nextFavorite;
+                                });
+                                return next;
+                              });
+                            }}
+                            className={`flex w-full items-center justify-start gap-2 border-2 border-black px-2 py-1.5 text-[10px] font-black uppercase transition ${
+                              isGroupFavorite
+                                ? "bg-[#b7102a] text-white shadow-[1px_1px_0_#000]"
+                                : "bg-[#ded3c1] text-[#171411] hover:bg-[#d5c7b1]"
+                            }`}
+                            type="button"
+                          >
+                            <Heart className={`h-4 w-4 ${isGroupFavorite ? "fill-current" : ""}`} />
+                            {isGroupFavorite ? "Favorited" : "Favorite Game"}
+                          </button>
+                        </div>
 
                         {/* HIDE GAME TOGGLE */}
                         <div className="mb-3">
@@ -819,71 +889,6 @@ export function GameDetails({
                       </div>
                     ) : null}
                   </div>
-
-                  <button
-                    className="grid h-10 w-10 place-items-center border-4 border-black bg-[#fbf4e7] transition hover:bg-[#efe3cf] disabled:cursor-not-allowed disabled:opacity-55"
-                    type="button"
-                    aria-label="Sync achievements"
-                    title="Sync achievements"
-                    disabled={isSyncingAchievements}
-                    onClick={() => {
-                      setStatusMessage("Syncing platform achievements...");
-                      void handleSyncAchievements();
-                    }}
-                  >
-                    <Award className={`h-6 w-6 ${isSyncingAchievements ? "animate-pulse" : ""}`} />
-                  </button>
-
-                  <button
-                    className={`grid h-10 w-10 place-items-center border-4 border-black transition hover:bg-[#efe3cf] ${
-                      isControllerPanelOpen ? "bg-[#8cf5e4]" : "bg-[#fbf4e7]"
-                    }`}
-                    type="button"
-                    aria-label="Controller layouts"
-                    title="Controller layouts"
-                    onClick={() => {
-                      setIsControllerPanelOpen((open) => !open);
-                      void listControllers()
-                        .then(setControllerDevices)
-                        .catch(() => setControllerDevices([]));
-                    }}
-                  >
-                    <Gamepad2 className="h-6 w-6" />
-                  </button>
-
-                  <button
-                    className="grid h-10 w-10 place-items-center border-4 border-black bg-[#fbf4e7] transition hover:bg-[#efe3cf]"
-                    type="button"
-                    aria-label="Information help"
-                    onClick={() =>
-                      alert(`Support: Visit the support page for ${enrichedSelectedGame.title}.`)
-                    }
-                  >
-                    <CircleHelp className="h-6 w-6" />
-                  </button>
-
-                  {/* FAVORITES HEART BUTTON */}
-                  <button
-                    onClick={() => {
-                      const nextFavorite = !isGroupFavorite;
-                      setFavorites((prev) => {
-                        const next = { ...prev };
-                        variantIds.forEach((id) => {
-                          next[id] = nextFavorite;
-                        });
-                        return next;
-                      });
-                    }}
-                    className={`grid h-10 w-10 place-items-center border-4 border-black transition ${
-                      isGroupFavorite
-                        ? "border-[#b7102a] bg-[#b7102a] text-white"
-                        : "bg-[#fbf4e7] text-[#171411] hover:bg-[#efe3cf]"
-                    }`}
-                    type="button"
-                    aria-label="Mark as favorite"
-                  >
-                    <Heart className={`h-6 w-6 ${isGroupFavorite ? "fill-current" : ""}`} />
-                  </button>
                 </div>
               </section>
 

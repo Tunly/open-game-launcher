@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { Game } from "../../types";
+import type { Game, PlaySession } from "../../types";
 
 const mocks = vi.hoisted(() => {
   const from = vi.fn();
@@ -133,6 +133,7 @@ const game: Game = {
 
 describe("listGameSessions", () => {
   beforeEach(() => {
+    vi.resetModules();
     mocks.from.mockReset();
     mocks.authGetUser.mockReset();
     mocks.authGetUser.mockResolvedValue({ data: { user: { id: "user-1" } } });
@@ -171,6 +172,7 @@ describe("listGameSessions", () => {
 
 describe("updateGameSession", () => {
   beforeEach(() => {
+    vi.resetModules();
     mocks.from.mockReset();
     mocks.authGetUser.mockReset();
     mocks.authGetUser.mockResolvedValue({ data: { user: { id: "user-1" } } });
@@ -215,6 +217,7 @@ describe("updateGameSession", () => {
 
 describe("updateUserGamePlaytime", () => {
   beforeEach(() => {
+    vi.resetModules();
     mocks.from.mockReset();
   });
 
@@ -242,5 +245,66 @@ describe("updateUserGamePlaytime", () => {
     const { updateUserGamePlaytime } = await import("../playtime");
     await updateUserGamePlaytime("user-1", "game-1", -10);
     expect(upsert.mock.calls[0][0].playtime_minutes).toBe(0);
+  });
+});
+
+describe("syncGameSessions", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    mocks.from.mockReset();
+    mocks.authGetUser.mockReset();
+    mocks.authGetUser.mockResolvedValue({ data: { user: { id: "user-1" } } });
+  });
+
+  it("resolves each game once and upserts sessions in one batch", async () => {
+    const upsert = vi.fn().mockResolvedValue(makeQueryResult([], null));
+    mocks.from.mockImplementation((table: string) => {
+      if (table === "games") {
+        return makeCatalogThenSessionsHandler({
+          sessions: [],
+          total: 0,
+          catalogFound: true,
+        })(table);
+      }
+      if (table === "game_sessions") {
+        return { upsert };
+      }
+      return {};
+    });
+
+    const sessions: PlaySession[] = [
+      {
+        durationMinutes: 30,
+        endedAt: 1_735_729_200,
+        gameId: "steam-owned-440",
+        id: "session-1",
+        launcherDeviceId: "device-1",
+        platform: "windows",
+        startedAt: 1_735_727_400,
+      },
+      {
+        durationMinutes: 45,
+        endedAt: 1_735_733_000,
+        gameId: "steam-owned-440",
+        id: "session-2",
+        launcherDeviceId: "device-1",
+        platform: "windows",
+        startedAt: 1_735_730_300,
+      },
+    ];
+
+    const { syncGameSessions } = await import("../playtime");
+    const result = await syncGameSessions(sessions);
+
+    expect(upsert).toHaveBeenCalledTimes(1);
+    expect(upsert.mock.calls[0][0]).toHaveLength(2);
+    expect(upsert.mock.calls[0][1]).toEqual({ onConflict: "id" });
+    expect(result).toEqual({
+      pushed: 2,
+      pushedIds: ["session-1", "session-2"],
+      skipped: 0,
+      failed: 0,
+    });
+    expect(mocks.from.mock.calls.filter(([table]) => table === "games")).toHaveLength(1);
   });
 });

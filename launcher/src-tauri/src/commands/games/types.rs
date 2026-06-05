@@ -59,6 +59,8 @@ pub struct InstalledGame {
     )]
     pub achievements_synced_at: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub achievement_provider_statuses: Vec<AchievementProviderStatus>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub save_files: Vec<SaveFile>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub friends_playing: Vec<String>,
@@ -86,6 +88,15 @@ pub struct UnifiedAchievement {
     pub source_achievement_id: Option<String>,
     #[serde(rename = "providerConfidence", skip_serializing_if = "Option::is_none")]
     pub provider_confidence: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct AchievementProviderStatus {
+    pub source: String,
+    pub status: String,
+    pub stability: String,
+    pub message: String,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -339,6 +350,13 @@ pub struct UpdateGameMetadataRequest {
     pub achievements: Option<Vec<UnifiedAchievement>>,
     pub save_files: Option<Vec<SaveFile>>,
     pub friends_playing: Option<Vec<String>>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpdateAchievementProviderStatusRequest {
+    pub game_id: String,
+    pub status: AchievementProviderStatus,
 }
 
 #[derive(Debug, Serialize, Deserialize, Default)]

@@ -592,14 +592,7 @@ pub async fn fetch_xbox_owned_games(code: String) -> Result<XboxFetchResult, Str
             .name
             .clone()
             .unwrap_or_else(|| "Unknown Xbox Game".to_string());
-        // Clean name like Playnite does
-        let clean_name = raw_name
-            .replace("(PC)", "")
-            .replace("(Windows)", "")
-            .replace("for Windows 10", "")
-            .replace("- Windows 10", "")
-            .trim()
-            .to_string();
+        let clean_name = clean_xbox_title_name(&raw_name);
 
         let last_played = title.title_history.and_then(|th| th.last_time_played);
 
@@ -839,6 +832,154 @@ struct XboxAchievementRarity {
     currentPercentage: f64,
 }
 
+fn clean_xbox_title_name(name: &str) -> String {
+    name.replace("(PC)", "")
+        .replace("(Windows)", "")
+        .replace("for Windows 10", "")
+        .replace("- Windows 10", "")
+        .trim()
+        .to_string()
+}
+
+fn normalize_title_match(value: &str) -> String {
+    value
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric())
+        .flat_map(|c| c.to_lowercase())
+        .collect()
+}
+
+fn title_matches_local_hint(title: &Title, hints: &HashSet<String>) -> bool {
+    if hints.contains(&title.title_id.to_lowercase()) {
+        return true;
+    }
+
+    if let Some(pfn) = &title.pfn {
+        let pfn = pfn.to_lowercase();
+        if hints.iter().any(|hint| hint.contains(&pfn)) {
+            return true;
+        }
+    }
+
+    if let Some(name) = &title.name {
+        let clean_name = normalize_title_match(&clean_xbox_title_name(name));
+        if !clean_name.is_empty()
+            && hints
+                .iter()
+                .map(|hint| normalize_title_match(hint))
+                .any(|hint| hint == clean_name)
+        {
+            return true;
+        }
+    }
+
+    false
+}
+
+async fn fetch_xbox_title_history(
+    client: &reqwest::Client,
+    auth_header: &str,
+    xid: &str,
+) -> Result<TitleHistoryResponse, String> {
+    let url = format!(
+        "https://titlehub.xboxlive.com/users/xuid({})/titles/titlehistory/decoration/detail,stat,achievement",
+        xid
+    );
+
+    let mut headers = HeaderMap::new();
+    headers.insert("x-xbl-contract-version", HeaderValue::from_static("2"));
+    headers.insert(
+        AUTHORIZATION,
+        HeaderValue::from_str(auth_header).map_err(|e| e.to_string())?,
+    );
+    headers.insert(ACCEPT_LANGUAGE, HeaderValue::from_static("en-US"));
+
+    let res = client
+        .get(&url)
+        .headers(headers)
+        .send()
+        .await
+        .map_err(|e| format!("Titlehub request failed: {}", e))?;
+
+    if !res.status().is_success() {
+        return Err(format!("Titlehub error: {}", res.status()));
+    }
+
+    res.json()
+        .await
+        .map_err(|e| format!("Failed to parse title history: {}", e))
+}
+
+async fn resolve_xbox_title_id(
+    client: &reqwest::Client,
+    auth_header: &str,
+    xid: &str,
+    game_id: &str,
+    title_hint: &str,
+) -> Result<String, String> {
+    let title_hint = title_hint.trim();
+    if !title_hint.is_empty() && title_hint.chars().all(|c| c.is_ascii_digit()) {
+        return Ok(title_hint.to_string());
+    }
+
+    let games = crate::commands::games::core::read_installed_games_cache().unwrap_or_default();
+    let game = games.iter().find(|game| game.id == game_id);
+    let mut hints: HashSet<String> = HashSet::new();
+
+    if !title_hint.is_empty() {
+        hints.insert(title_hint.to_lowercase());
+    }
+
+    if let Some(game) = game {
+        hints.insert(game.id.to_lowercase());
+        hints.insert(game.title.to_lowercase());
+        if !game.slug.is_empty() {
+            hints.insert(game.slug.to_lowercase());
+        }
+        if let Some(external_id) = &game.external_id {
+            let external_id = external_id.trim();
+            if external_id.chars().all(|c| c.is_ascii_digit()) {
+                return Ok(external_id.to_string());
+            }
+            if !external_id.is_empty() {
+                hints.insert(external_id.to_lowercase());
+            }
+        }
+        if let Some(launch_uri) = &game.launch_uri {
+            hints.insert(launch_uri.to_lowercase());
+        }
+    }
+
+    let history = fetch_xbox_title_history(client, auth_header, xid).await?;
+    for title in history.titles {
+        if title.item_type.as_deref() != Some("Game") {
+            continue;
+        }
+
+        let is_pc = title
+            .devices
+            .as_ref()
+            .is_some_and(|devices| devices.iter().any(|d| d.eq_ignore_ascii_case("PC")));
+
+        if !is_pc {
+            continue;
+        }
+
+        if title_matches_local_hint(&title, &hints) {
+            return Ok(title.title_id);
+        }
+    }
+
+    let label = game
+        .map(|game| game.title.as_str())
+        .filter(|title| !title.is_empty())
+        .unwrap_or(game_id);
+    Err(format!(
+        "Xbox achievement sync could not resolve a numeric TitleId for {}. Refresh the Xbox library or import the game from Xbox owned games first.",
+        label
+    ))
+}
+
 #[tauri::command]
 pub async fn sync_xbox_achievements(
     game_id: String,
@@ -867,6 +1008,8 @@ pub async fn sync_xbox_achievements(
     let auth_header = format!("XBL3.0 x={};{}", uhs, xsts_auth.token);
 
     let client = crate::commands::http::shared_http_client();
+    let title_id =
+        resolve_xbox_title_id(&client, &auth_header, &xid, &game_id, title_id.trim()).await?;
     let url = format!(
         "https://achievements.xboxlive.com/users/xuid({})/achievements?titleId={}&maxItems=1000",
         xid, title_id
@@ -956,4 +1099,90 @@ pub async fn sync_xbox_achievements(
             ),
         },
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_title(title_id: &str, pfn: Option<&str>, name: Option<&str>) -> Title {
+        Title {
+            title_id: title_id.to_string(),
+            pfn: pfn.map(str::to_string),
+            name: name.map(str::to_string),
+            item_type: Some("Game".to_string()),
+            devices: Some(vec!["PC".to_string()]),
+            title_history: None,
+            stats: None,
+        }
+    }
+
+    fn hints(values: &[&str]) -> HashSet<String> {
+        values.iter().map(|value| value.to_lowercase()).collect()
+    }
+
+    #[test]
+    fn cleans_xbox_title_suffixes_for_matching() {
+        assert_eq!(
+            clean_xbox_title_name("Forza Horizon 5 (PC)"),
+            "Forza Horizon 5"
+        );
+        assert_eq!(
+            clean_xbox_title_name("Halo Infinite - Windows 10"),
+            "Halo Infinite"
+        );
+        assert_eq!(
+            clean_xbox_title_name("Psychonauts 2 for Windows 10"),
+            "Psychonauts 2"
+        );
+    }
+
+    #[test]
+    fn title_hint_matches_numeric_title_id() {
+        let title = test_title(
+            "123456789",
+            Some("Microsoft.Test_8wekyb3d8bbwe"),
+            Some("Test"),
+        );
+
+        assert!(title_matches_local_hint(&title, &hints(&["123456789"])));
+    }
+
+    #[test]
+    fn title_hint_matches_package_family_name_inside_local_id() {
+        let title = test_title(
+            "123456789",
+            Some("Microsoft.ForzaHorizon5_8wekyb3d8bbwe"),
+            Some("Forza Horizon 5"),
+        );
+
+        assert!(title_matches_local_hint(
+            &title,
+            &hints(&["xbox-microsoft.forzahorizon5_8wekyb3d8bbwe"])
+        ));
+    }
+
+    #[test]
+    fn title_hint_matches_cleaned_game_name() {
+        let title = test_title("123456789", None, Some("Forza Horizon 5 (PC)"));
+
+        assert!(title_matches_local_hint(
+            &title,
+            &hints(&["Forza Horizon 5"])
+        ));
+    }
+
+    #[test]
+    fn title_hint_rejects_unrelated_game() {
+        let title = test_title(
+            "123456789",
+            Some("Microsoft.ForzaHorizon5_8wekyb3d8bbwe"),
+            Some("Forza Horizon 5"),
+        );
+
+        assert!(!title_matches_local_hint(
+            &title,
+            &hints(&["Halo Infinite"])
+        ));
+    }
 }

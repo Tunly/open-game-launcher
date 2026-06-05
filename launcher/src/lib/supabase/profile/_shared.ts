@@ -1,7 +1,6 @@
-import { getSupabaseClient } from "../client";
+import { requireCurrentSupabaseUser } from "../client";
 import type { HardwareInput } from "../../validation/profile";
 import type { UserHardware } from "../../types/profile";
-import { handleError } from "../helpers";
 import { STORAGE_KEYS } from "../../storage-keys";
 
 // ---------------------------------------------------------------------------
@@ -127,11 +126,7 @@ export function saveHardwareFallback(userId: string, input: HardwareInput) {
 // ---------------------------------------------------------------------------
 
 export async function getCurrentUser() {
-  const client = getSupabaseClient();
-  const { data, error } = await client.auth.getUser();
-  handleError(error);
-  if (!data.user) throw new Error("You must be signed in.");
-  return data.user;
+  return requireCurrentSupabaseUser();
 }
 
 export async function getCurrentUserId() {

@@ -4,13 +4,16 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    enabled: false
 
   - package-ecosystem: npm
     directory: /launcher
     schedule:
       interval: weekly
+    enabled: false
 
   - package-ecosystem: cargo
     directory: /launcher/src-tauri
     schedule:
       interval: weekly
+    enabled: false

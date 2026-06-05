@@ -125,6 +125,7 @@ pub fn run() {
             commands::controller::get_controller_runtime_status,
             commands::games::add_manual_game,
             commands::games::update_game_metadata,
+            commands::games::update_achievement_provider_status,
             commands::games::import_library_snapshot,
             commands::games::move_game,
             commands::games::list_installed_games,

@@ -30,7 +30,7 @@ const AC_SIGNATURES: &[(&str, &str, bool)] = &[
 #[tauri::command]
 pub fn detect_anti_cheat_processes() -> Vec<AntiCheatDetection> {
     let mut s = System::new();
-    s.refresh_processes(ProcessesToUpdate::All);
+    s.refresh_processes(ProcessesToUpdate::All, true);
 
     let mut found = Vec::new();
     let mut seen_names = HashSet::new();

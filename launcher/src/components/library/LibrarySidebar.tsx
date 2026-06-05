@@ -31,7 +31,7 @@ export interface LibrarySidebarProps {
   setSelectedGroup: (group: GameGroup) => void;
   favorites: Record<string, boolean>;
   fallbackMockGames: Game[];
-  listScrollRef: RefObject<HTMLDivElement>;
+  listScrollRef: RefObject<HTMLDivElement | null>;
   setIsAddGameOpen: (open: boolean) => void;
   setAddGameError?: (err: string | null) => void;
 }

@@ -134,7 +134,7 @@ function filterSessionsByRange(
 }
 
 function sessionMinutes(session: UserPlaySession): number {
-  return session.durationMinutes ?? 0;
+  return sessionMinutes(session);
 }
 
 function aggregateChart(

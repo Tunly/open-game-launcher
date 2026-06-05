@@ -12,7 +12,7 @@ type LibraryScrollbarState = {
   visible: boolean;
 };
 
-function useLibraryScrollbar(targetRef: RefObject<HTMLElement>) {
+function useLibraryScrollbar(targetRef: RefObject<HTMLElement | null>) {
   const [scrollbarState, setScrollbarState] = useState<LibraryScrollbarState>({
     height: 0,
     top: 0,
@@ -98,7 +98,11 @@ function useLibraryScrollbar(targetRef: RefObject<HTMLElement>) {
   };
 }
 
-export function LibraryCustomScrollbar({ targetRef }: { targetRef: RefObject<HTMLElement> }) {
+export function LibraryCustomScrollbar({
+  targetRef,
+}: {
+  targetRef: RefObject<HTMLElement | null>;
+}) {
   const { scrollbarState, updateScrollbar } = useLibraryScrollbar(targetRef);
 
   const scrollToThumbPosition = useCallback(

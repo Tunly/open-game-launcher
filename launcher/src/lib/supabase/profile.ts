@@ -1,4 +1,4 @@
-import { getSupabaseClient } from "./client";
+import { getSupabaseClient, requireCurrentSupabaseUser } from "./client";
 import type { User } from "@supabase/supabase-js";
 import {
   commentSchema,
@@ -48,6 +48,26 @@ import { STORAGE_KEYS } from "../storage-keys";
 
 const hardwareFallbackStorageKey = STORAGE_KEYS.HARDWARE_FALLBACK;
 const hardwareFallbackCache = new Map<string, UserHardware>();
+const profilePageCacheTtlMs = 20_000;
+
+const profilePageDataCache = new Map<string, { data: ProfilePageData | null; expiresAt: number }>();
+const profilePageDataRequests = new Map<string, Promise<ProfilePageData | null>>();
+
+function isFresh(expiresAt: number) {
+  return expiresAt > Date.now();
+}
+
+function cacheKey(value: string) {
+  return value.trim().toLowerCase();
+}
+
+function clearProfilePageCacheForUser(userId: string) {
+  for (const [key, entry] of profilePageDataCache) {
+    if (entry.data?.profile.id === userId) {
+      profilePageDataCache.delete(key);
+    }
+  }
+}
 
 const profileSelect = `
   id,
@@ -167,15 +187,7 @@ function saveHardwareFallback(userId: string, input: HardwareInput) {
 }
 
 async function getCurrentUser() {
-  const client = getSupabaseClient();
-  const { data, error } = await client.auth.getUser();
-  handleError(error);
-
-  if (!data.user) {
-    throw new Error("You must be signed in.");
-  }
-
-  return data.user;
+  return requireCurrentSupabaseUser();
 }
 
 async function getCurrentUserId() {
@@ -563,6 +575,30 @@ function buildUsernameCandidate(value: string) {
 }
 
 export async function getProfilePageData(username: string): Promise<ProfilePageData | null> {
+  const key = cacheKey(username);
+  const cached = profilePageDataCache.get(key);
+  if (cached && isFresh(cached.expiresAt)) {
+    return cached.data;
+  }
+
+  const pending = profilePageDataRequests.get(key);
+  if (pending) {
+    return pending;
+  }
+
+  const request = loadProfilePageData(username);
+  profilePageDataRequests.set(key, request);
+
+  try {
+    const data = await request;
+    profilePageDataCache.set(key, { data, expiresAt: Date.now() + profilePageCacheTtlMs });
+    return data;
+  } finally {
+    profilePageDataRequests.delete(key);
+  }
+}
+
+async function loadProfilePageData(username: string): Promise<ProfilePageData | null> {
   const profile = await getProfileByUsername(username);
   if (!profile) {
     return null;
@@ -639,7 +675,9 @@ export async function updateMyProfile(input: UpdateProfileInput) {
 
   handleError(error);
 
-  return toProfile(data as UnknownRecord);
+  const profile = toProfile(data as UnknownRecord);
+  clearProfilePageCacheForUser(userId);
+  return profile;
 }
 
 export async function updateMyProfilePrivacy(input: UpdatePrivacyInput) {
@@ -662,7 +700,9 @@ export async function updateMyProfilePrivacy(input: UpdatePrivacyInput) {
     .single();
   handleError(error);
 
-  return toProfile(data as UnknownRecord);
+  const profile = toProfile(data as UnknownRecord);
+  clearProfilePageCacheForUser(userId);
+  return profile;
 }
 
 export async function updateMyProfileTheme(themeId: string | null) {
@@ -682,7 +722,9 @@ export async function updateMyProfileTheme(themeId: string | null) {
   }
   handleError(error);
 
-  return toProfile(data as UnknownRecord);
+  const profile = toProfile(data as UnknownRecord);
+  clearProfilePageCacheForUser(userId);
+  return profile;
 }
 
 async function uploadProfileAsset(bucket: "avatars" | "profile-banners", file: File) {
@@ -792,7 +834,9 @@ export async function updateShowcases(showcases: ProfileShowcase[]) {
     .order("sort_order");
   handleError(error);
 
-  return (data ?? []).map((row) => toShowcase(row as UnknownRecord));
+  const updated = (data ?? []).map((row) => toShowcase(row as UnknownRecord));
+  clearProfilePageCacheForUser(userId);
+  return updated;
 }
 
 export async function createShowcase(input: CreateShowcaseInput) {
@@ -814,7 +858,9 @@ export async function createShowcase(input: CreateShowcaseInput) {
     .single();
   handleError(error);
 
-  return toShowcase(data as UnknownRecord);
+  const showcase = toShowcase(data as UnknownRecord);
+  clearProfilePageCacheForUser(userId);
+  return showcase;
 }
 
 export async function ensureMyHardwareShowcase(visibility: ProfileShowcase["visibility"]) {
@@ -878,7 +924,9 @@ async function updateShowcase(id: string, input: UpdateShowcaseInput) {
     .single();
   handleError(error);
 
-  return toShowcase(data as UnknownRecord);
+  const showcase = toShowcase(data as UnknownRecord);
+  clearProfilePageCacheForUser(userId);
+  return showcase;
 }
 
 export async function sendFriendRequest(userId: string) {
@@ -1078,13 +1126,16 @@ export async function addProfileComment(profileUserId: string, body: string) {
     .select("*")
     .single();
   handleError(error);
-  return toComment(data as UnknownRecord);
+  const comment = toComment(data as UnknownRecord);
+  clearProfilePageCacheForUser(profileUserId);
+  return comment;
 }
 
 export async function deleteProfileComment(commentId: string) {
   const client = getSupabaseClient();
   const { error } = await client.from("profile_comments").delete().eq("id", commentId);
   handleError(error);
+  profilePageDataCache.clear();
 }
 
 async function getUserBadges(userId: string) {
@@ -1121,7 +1172,7 @@ async function getUserLibraryPreview(userId: string): Promise<LibraryPreviewItem
   const client = getSupabaseClient();
   const { data, error } = await client
     .from("user_library")
-    .select("id, game_id")
+    .select("id, game_id, games(title, cover_url)")
     .eq("user_id", userId)
     .limit(6);
   if (isMissingSchemaError(error)) {
@@ -1133,25 +1184,6 @@ async function getUserLibraryPreview(userId: string): Promise<LibraryPreviewItem
   const gameIds = Array.from(
     new Set(libraryItems.map((row) => rowString(row, "game_id")).filter(Boolean)),
   );
-
-  let gamesById = new Map<string, UnknownRecord>();
-  if (gameIds.length > 0) {
-    const { data: gamesData, error: gamesError } = await client
-      .from("games")
-      .select("id, title, cover_url")
-      .in("id", gameIds);
-    if (isMissingSchemaError(gamesError)) {
-      return [];
-    }
-    handleError(gamesError);
-
-    gamesById = new Map(
-      (gamesData ?? []).map((row) => {
-        const record = row as UnknownRecord;
-        return [rowString(record, "id"), record];
-      }),
-    );
-  }
 
   let statsByGameId = new Map<string, UnknownRecord>();
   if (gameIds.length > 0) {
@@ -1174,7 +1206,7 @@ async function getUserLibraryPreview(userId: string): Promise<LibraryPreviewItem
 
   return libraryItems.map((record) => {
     const gameId = rowString(record, "game_id");
-    const game = gamesById.get(gameId) ?? null;
+    const game = record.games as UnknownRecord | null;
     const stats = statsByGameId.get(gameId) ?? {};
 
     return {
@@ -1192,7 +1224,9 @@ async function getUserAchievementPreview(userId: string): Promise<AchievementPre
   const client = getSupabaseClient();
   const { data, error } = await client
     .from("user_achievements")
-    .select("id, achievement_id, game_id, unlocked_at")
+    .select(
+      "id, achievement_id, game_id, unlocked_at, achievements(name, description, icon_url, rarity), games(title)",
+    )
     .eq("user_id", userId)
     .order("unlocked_at", { ascending: false })
     .limit(8);
@@ -1202,56 +1236,12 @@ async function getUserAchievementPreview(userId: string): Promise<AchievementPre
   handleError(error);
 
   const achievementUnlocks = (data ?? []).map((row) => row as UnknownRecord);
-  const achievementIds = Array.from(
-    new Set(achievementUnlocks.map((row) => rowString(row, "achievement_id")).filter(Boolean)),
-  );
-  const gameIds = Array.from(
-    new Set(achievementUnlocks.map((row) => rowString(row, "game_id")).filter(Boolean)),
-  );
-
-  let achievementsById = new Map<string, UnknownRecord>();
-  if (achievementIds.length > 0) {
-    const { data: achievementsData, error: achievementsError } = await client
-      .from("achievements")
-      .select("id, name, description, icon_url, rarity")
-      .in("id", achievementIds);
-    if (isMissingSchemaError(achievementsError)) {
-      return [];
-    }
-    handleError(achievementsError);
-
-    achievementsById = new Map(
-      (achievementsData ?? []).map((row) => {
-        const record = row as UnknownRecord;
-        return [rowString(record, "id"), record];
-      }),
-    );
-  }
-
-  let gamesById = new Map<string, UnknownRecord>();
-  if (gameIds.length > 0) {
-    const { data: gamesData, error: gamesError } = await client
-      .from("games")
-      .select("id, title")
-      .in("id", gameIds);
-    if (isMissingSchemaError(gamesError)) {
-      return [];
-    }
-    handleError(gamesError);
-
-    gamesById = new Map(
-      (gamesData ?? []).map((row) => {
-        const record = row as UnknownRecord;
-        return [rowString(record, "id"), record];
-      }),
-    );
-  }
 
   return achievementUnlocks.map((record) => {
     const achievementId = rowString(record, "achievement_id");
     const gameId = rowString(record, "game_id");
-    const achievement = achievementsById.get(achievementId) ?? null;
-    const game = gamesById.get(gameId) ?? null;
+    const achievement = record.achievements as UnknownRecord | null;
+    const game = record.games as UnknownRecord | null;
 
     return {
       id: rowString(record, "id"),
@@ -1316,10 +1306,14 @@ export async function updateMyHardware(input: HardwareInput) {
     .select("*")
     .single();
   if (isMissingSchemaError(error)) {
-    return saveHardwareFallback(userId, parsed);
+    const hardware = saveHardwareFallback(userId, parsed);
+    clearProfilePageCacheForUser(userId);
+    return hardware;
   }
   handleError(error);
-  return toHardware(data as UnknownRecord);
+  const hardware = toHardware(data as UnknownRecord);
+  clearProfilePageCacheForUser(userId);
+  return hardware;
 }
 
 function toHardwarePayload(input: HardwareInput) {
@@ -1366,6 +1360,7 @@ export async function updateMySocialLinks(links: SocialLinksInput) {
   handleError(deleteError);
 
   if (parsed.length === 0) {
+    clearProfilePageCacheForUser(userId);
     return [];
   }
 
@@ -1383,7 +1378,9 @@ export async function updateMySocialLinks(links: SocialLinksInput) {
     .select("*")
     .order("sort_order");
   handleError(error);
-  return (data ?? []).map((row) => toSocialLink(row as UnknownRecord));
+  const socialLinks = (data ?? []).map((row) => toSocialLink(row as UnknownRecord));
+  clearProfilePageCacheForUser(userId);
+  return socialLinks;
 }
 
 // TODO: Move writes for badges, XP, entitlements, playtime, and achievements to

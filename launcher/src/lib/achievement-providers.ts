@@ -64,6 +64,13 @@ export function getSteamAppId(game: Game) {
   return launchUriAppId ?? null;
 }
 
+export function getXboxTitleHint(game: Game) {
+  if (game.launcher !== "xbox") {
+    return null;
+  }
+  return game.externalId?.trim() || game.id || game.title || null;
+}
+
 function unavailableProvider(
   provider: string,
   stability: AchievementProviderKind,
@@ -103,9 +110,9 @@ const steamProvider: AchievementProvider = {
 const xboxProvider: AchievementProvider = {
   provider: "xbox",
   stability: "official",
-  status: "available",
+  status: "unsupported",
   message: "Xbox achievement sync available",
-  isAvailable: (game) => getGameSource(game) === "xbox" && Boolean(game.externalId),
+  isAvailable: (game) => getGameSource(game) === "xbox" && Boolean(getXboxTitleHint(game)),
   sync: (game) => syncGameAchievements(game),
 };
 
@@ -184,7 +191,9 @@ export function achievementProviderStatusForGame(game: Game): AchievementProvide
         ? `${game.title} does not expose a Steam AppID for achievement sync.`
         : provider.provider === "steam" && !readLocalStorageString(STORAGE_KEYS.STEAM_ID)
           ? "Steam achievement sync needs a connected Steam account in Settings."
-          : provider.message,
+          : provider.provider === "xbox" && !getXboxTitleHint(game)
+            ? `${game.title} does not expose an Xbox identity hint for achievement sync.`
+            : provider.message,
   };
 }
 

@@ -1,5 +1,5 @@
 import type { Game, PlaySession } from "../types";
-import { getSupabaseClient, isSupabaseConfigured } from "./client";
+import { getCurrentSessionUserId, getSupabaseClient, isSupabaseConfigured } from "./client";
 import {
   handleError,
   isMissingSchemaError,
@@ -15,6 +15,14 @@ type PlaytimeSyncInput = {
   lastPlayedAt?: string | null;
   countSessionStart?: boolean;
 };
+
+const catalogGameCacheTtlMs = 5 * 60_000;
+const catalogGameIdCache = new Map<string, { catalogGameId: string | null; expiresAt: number }>();
+const catalogGameIdRequests = new Map<string, Promise<string | null>>();
+
+function isFresh(expiresAt: number) {
+  return expiresAt > Date.now();
+}
 
 function slugifyTitle(title: string) {
   return title
@@ -41,7 +49,22 @@ function externalIdKey(game: Game) {
   return null;
 }
 
-async function resolveCatalogGameId(game: Game): Promise<string | null> {
+function catalogGameCacheKey(game: Game) {
+  const external = externalIdKey(game);
+  if (external) {
+    return `external:${external.launcher}:${external.id}`;
+  }
+
+  const slug = game.slug || slugifyTitle(game.title);
+  if (slug) {
+    return `slug:${slug}`;
+  }
+
+  const title = game.title.trim().toLowerCase();
+  return title ? `title:${title}` : null;
+}
+
+async function loadCatalogGameId(game: Game): Promise<string | null> {
   const client = getSupabaseClient();
   const external = externalIdKey(game);
 
@@ -84,6 +107,10 @@ async function resolveCatalogGameId(game: Game): Promise<string | null> {
     }
   }
 
+  if (!game.title.trim()) {
+    return null;
+  }
+
   const { data, error } = await client
     .from("games")
     .select("id, title")
@@ -99,6 +126,42 @@ async function resolveCatalogGameId(game: Game): Promise<string | null> {
   return data ? rowNullableString(data as UnknownRecord, "id") : null;
 }
 
+async function resolveCatalogGameId(game: Game): Promise<string | null> {
+  const key = catalogGameCacheKey(game);
+  if (!key) {
+    return null;
+  }
+
+  const cached = catalogGameIdCache.get(key);
+  if (cached && isFresh(cached.expiresAt)) {
+    return cached.catalogGameId;
+  }
+
+  const pending = catalogGameIdRequests.get(key);
+  if (pending) {
+    return pending;
+  }
+
+  const request = loadCatalogGameId(game);
+  catalogGameIdRequests.set(key, request);
+
+  try {
+    const catalogGameId = await request;
+    catalogGameIdCache.set(key, {
+      catalogGameId,
+      expiresAt: Date.now() + catalogGameCacheTtlMs,
+    });
+    return catalogGameId;
+  } finally {
+    catalogGameIdRequests.delete(key);
+  }
+}
+
+export function clearPlaytimeSupabaseCaches() {
+  catalogGameIdCache.clear();
+  catalogGameIdRequests.clear();
+}
+
 export { resolveCatalogGameId };
 
 export async function syncGamePlaytimeStats(input: PlaytimeSyncInput) {
@@ -107,8 +170,8 @@ export async function syncGamePlaytimeStats(input: PlaytimeSyncInput) {
   }
 
   const client = getSupabaseClient();
-  const { data: userData, error: userError } = await client.auth.getUser();
-  if (userError || !userData.user) {
+  const userId = await getCurrentSessionUserId();
+  if (!userId) {
     return;
   }
 
@@ -120,7 +183,7 @@ export async function syncGamePlaytimeStats(input: PlaytimeSyncInput) {
   const { data: existingData, error: existingError } = await client
     .from("user_game_stats")
     .select("playtime_minutes, total_sessions, first_played_at")
-    .eq("user_id", userData.user.id)
+    .eq("user_id", userId)
     .eq("game_id", catalogGameId)
     .maybeSingle();
 
@@ -138,7 +201,7 @@ export async function syncGamePlaytimeStats(input: PlaytimeSyncInput) {
     input.lastPlayedAt ?? input.game.lastPlayedAt ?? input.game.lastPlayed ?? null;
   const firstPlayedAt = rowNullableString(existing, "first_played_at") ?? lastPlayedAt;
   const row = {
-    user_id: userData.user.id,
+    user_id: userId,
     game_id: catalogGameId,
     playtime_minutes: nextPlaytime,
     last_played_at: lastPlayedAt,
@@ -230,8 +293,8 @@ export async function listGameSessions(
     return { sessions: [], total: 0 };
   }
   const client = getSupabaseClient();
-  const { data: userData, error: userError } = await client.auth.getUser();
-  if (userError || !userData.user) {
+  const userId = await getCurrentSessionUserId();
+  if (!userId) {
     return { sessions: [], total: 0 };
   }
 
@@ -247,14 +310,14 @@ export async function listGameSessions(
     client
       .from("game_sessions")
       .select("id, game_id, launcher_device_id, started_at, ended_at, duration_minutes, platform")
-      .eq("user_id", userData.user.id)
+      .eq("user_id", userId)
       .eq("game_id", catalogGameId)
       .order("started_at", { ascending: false })
       .range(from, to),
     client
       .from("game_sessions")
       .select("id", { count: "exact", head: true })
-      .eq("user_id", userData.user.id)
+      .eq("user_id", userId)
       .eq("game_id", catalogGameId),
   ]);
 
@@ -290,8 +353,8 @@ export async function updateGameSession(id: string, patch: GameSessionPatch): Pr
     return false;
   }
   const client = getSupabaseClient();
-  const { data: userData, error: userError } = await client.auth.getUser();
-  if (userError || !userData.user) {
+  const userId = await getCurrentSessionUserId();
+  if (!userId) {
     return false;
   }
 
@@ -306,7 +369,7 @@ export async function updateGameSession(id: string, patch: GameSessionPatch): Pr
     .from("game_sessions")
     .update(update as never)
     .eq("id", id)
-    .eq("user_id", userData.user.id);
+    .eq("user_id", userId);
 
   if (isMissingSchemaError(error)) return false;
   handleError(error);
@@ -349,13 +412,13 @@ export async function getUserPlaySessions(
 ): Promise<UserPlaySession[]> {
   if (!isSupabaseConfigured) return [];
   const client = getSupabaseClient();
-  const { data: userData, error: userError } = await client.auth.getUser();
-  if (userError || !userData.user) return [];
+  const userId = await getCurrentSessionUserId();
+  if (!userId) return [];
 
   let query = client
     .from("game_sessions")
     .select("id, game_id, launcher_device_id, started_at, ended_at, duration_minutes, platform")
-    .eq("user_id", userData.user.id)
+    .eq("user_id", userId)
     .order("started_at", { ascending: false });
 
   if (options.since) {
@@ -381,9 +444,33 @@ export async function getUserPlaySessions(
 
 export type GameSessionsSyncOutcome = {
   pushed: number;
+  pushedIds: string[];
   skipped: number;
   failed: number;
 };
+
+function gameLookupFromSession(session: PlaySession): Game {
+  const launcherPrefixes: Array<[NonNullable<Game["launcher"]>, string]> = [
+    ["steam", "steam-owned-"],
+    ["epic", "epic-owned-"],
+    ["ubisoft", "ubisoft-owned-"],
+    ["ea", "ea-owned-"],
+    ["battlenet", "battlenet-owned-"],
+    ["gog", "gog-owned-"],
+    ["xbox", "xbox-owned-"],
+  ];
+  const launcher = launcherPrefixes.find(([, prefix]) => session.gameId.startsWith(prefix))?.[0];
+
+  return {
+    description: "",
+    id: session.gameId,
+    launcher,
+    platform: "windows",
+    status: "installed",
+    title: "",
+    version: "",
+  };
+}
 
 /**
  * Pushes a batch of locally-stored play sessions to the Supabase
@@ -392,7 +479,7 @@ export type GameSessionsSyncOutcome = {
  * afterwards via the Rust Tauri command.
  */
 export async function syncGameSessions(sessions: PlaySession[]): Promise<GameSessionsSyncOutcome> {
-  const outcome: GameSessionsSyncOutcome = { pushed: 0, skipped: 0, failed: 0 };
+  const outcome: GameSessionsSyncOutcome = { pushed: 0, pushedIds: [], skipped: 0, failed: 0 };
 
   if (!isSupabaseConfigured) {
     return { ...outcome, skipped: sessions.length };
@@ -402,24 +489,32 @@ export async function syncGameSessions(sessions: PlaySession[]): Promise<GameSes
   }
 
   const client = getSupabaseClient();
-  const { data: userData, error: userError } = await client.auth.getUser();
-  if (userError || !userData.user) {
+  const userId = await getCurrentSessionUserId();
+  if (!userId) {
     return { ...outcome, skipped: sessions.length };
   }
-  const userId = userData.user.id;
 
+  const uniqueGameIds = Array.from(new Set(sessions.map((session) => session.gameId)));
+  const catalogGameIds = new Map<string, string | null>();
+  await Promise.all(
+    uniqueGameIds.map(async (gameId) => {
+      const session = sessions.find((candidate) => candidate.gameId === gameId);
+      catalogGameIds.set(
+        gameId,
+        session ? await resolveCatalogGameId(gameLookupFromSession(session)) : null,
+      );
+    }),
+  );
+
+  const rows = [];
   for (const session of sessions) {
-    const catalogGameId = await resolveCatalogGameId({
-      id: session.gameId,
-      title: "",
-      description: "",
-      version: "",
-    } as Game);
+    const catalogGameId = catalogGameIds.get(session.gameId) ?? null;
     if (!catalogGameId) {
       outcome.skipped += 1;
       continue;
     }
-    const row = {
+
+    rows.push({
       id: session.id,
       user_id: userId,
       game_id: catalogGameId,
@@ -428,19 +523,24 @@ export async function syncGameSessions(sessions: PlaySession[]): Promise<GameSes
       duration_minutes: session.durationMinutes,
       platform: session.platform,
       launcher_device_id: session.launcherDeviceId,
-    };
-    const { error } = await client.from("game_sessions").upsert(row, { onConflict: "id" });
-    if (error) {
-      if (isMissingSchemaError(error)) {
-        outcome.skipped += 1;
-        continue;
-      }
-      handleError(error);
-      outcome.failed += 1;
-      continue;
-    }
-    outcome.pushed += 1;
+    });
   }
+
+  if (rows.length === 0) {
+    return outcome;
+  }
+
+  const { error } = await client.from("game_sessions").upsert(rows, { onConflict: "id" });
+  if (error) {
+    if (isMissingSchemaError(error)) {
+      return { ...outcome, skipped: outcome.skipped + rows.length };
+    }
+    handleError(error);
+    return { ...outcome, failed: outcome.failed + rows.length };
+  }
+
+  outcome.pushed = rows.length;
+  outcome.pushedIds = rows.map((row) => row.id);
   return outcome;
 }
 
@@ -452,14 +552,10 @@ export async function deleteGameSession(id: string): Promise<boolean> {
   if (!isSupabaseConfigured) return false;
   if (!id) return false;
   const client = getSupabaseClient();
-  const { data: userData, error: userError } = await client.auth.getUser();
-  if (userError || !userData.user) return false;
+  const userId = await getCurrentSessionUserId();
+  if (!userId) return false;
 
-  const { error } = await client
-    .from("game_sessions")
-    .delete()
-    .eq("id", id)
-    .eq("user_id", userData.user.id);
+  const { error } = await client.from("game_sessions").delete().eq("id", id).eq("user_id", userId);
 
   if (isMissingSchemaError(error)) return false;
   handleError(error);

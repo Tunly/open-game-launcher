@@ -50,6 +50,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           if (!isMounted) {
             return;
           }
+          module.clearSupabaseAuthCache();
           setSession(nextSession);
           setIsLoading(false);
         });
@@ -158,6 +159,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (signOutError) {
           throw signOutError;
         }
+        module.clearSupabaseAuthCache();
       },
     }),
     [error, isLoading, session],

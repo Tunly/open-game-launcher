@@ -2054,7 +2054,11 @@ fn is_steam_process_running() -> bool {
     use sysinfo::{ProcessRefreshKind, ProcessesToUpdate, System};
 
     let mut system = System::new_all();
-    system.refresh_processes_specifics(ProcessesToUpdate::All, ProcessRefreshKind::new());
+    system.refresh_processes_specifics(
+        ProcessesToUpdate::All,
+        true,
+        ProcessRefreshKind::everything(),
+    );
     system.processes().values().any(|process| {
         let name = process.name().to_string_lossy().to_ascii_lowercase();
         matches!(

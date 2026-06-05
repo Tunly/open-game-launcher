@@ -90,6 +90,13 @@ export function refreshInstalledGames(): Promise<Game[]> {
   return invokeCommand<Game[]>("refresh_installed_games");
 }
 
+export function updateAchievementProviderStatus(input: {
+  gameId: string;
+  status: NonNullable<Game["achievementProviderStatuses"]>[number];
+}): Promise<Game> {
+  return invokeCommand<Game>("update_achievement_provider_status", { input });
+}
+
 export function addManualGame(input: { title: string; installPath: string }): Promise<Game> {
   return invokeCommand<Game>("add_manual_game", { input });
 }
@@ -147,10 +154,11 @@ export function syncGameAchievements(
   steamId?: string,
 ): Promise<SyncGameAchievementsResponse> {
   if (game.launcher === "xbox") {
+    const titleId = game.externalId?.trim() || game.id || game.title;
     // Xbox uses its own sync command
     return invokeCommand<SyncGameAchievementsResponse>("sync_xbox_achievements", {
       gameId: game.id,
-      titleId: game.externalId || "",
+      titleId,
     });
   }
   return invokeCommand<SyncGameAchievementsResponse>("sync_game_achievements", {

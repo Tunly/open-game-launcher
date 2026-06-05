@@ -1,6 +1,6 @@
 import type { RealtimeChannel } from "@supabase/supabase-js";
 
-import { getSupabaseClient, supabase } from "./client";
+import { getCurrentSessionUserId, getSupabaseClient, supabase } from "./client";
 import type { UserPresence } from "../types/profile";
 export type { UserPresence };
 import { isMissingSchemaError, rowNullableString, rowString, type UnknownRecord } from "./helpers";
@@ -25,16 +25,12 @@ function toPresence(row: UnknownRecord): UserPresence {
 }
 
 async function getCurrentUserId() {
-  const client = getSupabaseClient();
-  const { data, error } = await client.auth.getUser();
-  if (error) {
-    throw new Error(error.message);
-  }
-  if (!data.user) {
+  const userId = await getCurrentSessionUserId();
+  if (!userId) {
     throw new Error("You must be signed in.");
   }
 
-  return data.user.id;
+  return userId;
 }
 
 export async function setLauncherPresence(input: PresenceUpdateInput = {}) {
@@ -63,11 +59,7 @@ export async function setLauncherPresence(input: PresenceUpdateInput = {}) {
     payload.current_game_title = input.currentGameTitle;
   }
 
-  const { data, error } = await client
-    .from("user_presence")
-    .upsert(payload, { onConflict: "user_id" })
-    .select("*")
-    .single();
+  const { error } = await client.from("user_presence").upsert(payload, { onConflict: "user_id" });
   if (isMissingSchemaError(error)) {
     return null;
   }
@@ -75,7 +67,7 @@ export async function setLauncherPresence(input: PresenceUpdateInput = {}) {
     throw new Error(error.message);
   }
 
-  return toPresence(data as UnknownRecord);
+  return null;
 }
 
 export function clearLauncherPresence() {
@@ -92,8 +84,12 @@ export async function getVisiblePresence(userIds: string[]) {
     return [];
   }
 
+  const uniqueUserIds = Array.from(new Set(userIds));
   const client = getSupabaseClient();
-  const { data, error } = await client.from("user_presence").select("*").in("user_id", userIds);
+  const { data, error } = await client
+    .from("user_presence")
+    .select("*")
+    .in("user_id", uniqueUserIds);
   if (isMissingSchemaError(error)) {
     return [];
   }

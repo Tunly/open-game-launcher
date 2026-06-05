@@ -122,4 +122,51 @@ describe("aggregateGameGroup achievements", () => {
     expect(group.achievements).toHaveLength(1);
     expect(group.achievements[0].matchConfidence).toBe("name");
   });
+
+  it("preserves explicit provider statuses on grouped games", () => {
+    const steam = makeGame({
+      id: "steam-1",
+      launcher: "steam",
+      achievements: [achievement({ id: "S1", name: "Story Start" })],
+      achievementProviderStatuses: [
+        {
+          source: "steam",
+          status: "available",
+          stability: "official",
+          message: "Steam synced",
+        },
+      ],
+    });
+    const xbox = makeGame({
+      id: "xbox-1",
+      launcher: "xbox",
+      achievements: [achievement({ id: "X1", name: "Xbox Cached" })],
+      achievementProviderStatuses: [
+        {
+          source: "xbox",
+          status: "failed",
+          stability: "official",
+          message: "Xbox TitleId could not be resolved",
+        },
+      ],
+    });
+
+    const group = aggregateGameGroup([steam, xbox]);
+
+    expect(group.achievementProviderStatuses).toContainEqual({
+      source: "steam",
+      status: "available",
+      stability: "official",
+      message: "Steam synced",
+    });
+    expect(group.achievementProviderStatuses).toContainEqual({
+      source: "xbox",
+      status: "failed",
+      stability: "official",
+      message: "Xbox TitleId could not be resolved",
+    });
+    expect(group.displayGame.achievementProviderStatuses).toEqual(
+      group.achievementProviderStatuses,
+    );
+  });
 });

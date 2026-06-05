@@ -22,7 +22,8 @@ pub fn start_playtime_poller(app_handle: AppHandle) {
             // Refresh processes (just executables/paths to be fast)
             sys.refresh_processes_specifics(
                 sysinfo::ProcessesToUpdate::All,
-                sysinfo::ProcessRefreshKind::new().with_exe(sysinfo::UpdateKind::Always),
+                true,
+                sysinfo::ProcessRefreshKind::nothing().with_exe(sysinfo::UpdateKind::Always),
             );
 
             let cached_games = read_installed_games_cache().unwrap_or_default();

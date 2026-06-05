@@ -30,9 +30,7 @@ export function usePlaySessionSync(): void {
         const sessions = await getUnsyncedPlaySessions();
         if (!isMounted || sessions.length === 0) return;
         const outcome = await syncGameSessions(sessions);
-        const syncedIds = sessions
-          .slice(0, outcome.pushed)
-          .map((session: PlaySession) => session.id);
+        const syncedIds = outcome.pushedIds;
         if (syncedIds.length > 0) {
           await markPlaySessionsSynced(syncedIds);
         }

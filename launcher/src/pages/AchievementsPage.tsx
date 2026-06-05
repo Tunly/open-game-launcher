@@ -116,6 +116,44 @@ function SourceBadges({ group }: { group: GameGroup }) {
   );
 }
 
+function providerStatusClass(status: string, stability: string) {
+  if (status === "available") {
+    return "bg-[#087d6d] text-white";
+  }
+  if (stability === "unofficial") {
+    return "bg-[#e8c843] text-[#171411]";
+  }
+  if (status === "failed" || status === "private") {
+    return "bg-[#b7102a] text-white";
+  }
+  return "bg-[#fbf4e7] text-[#55504a]";
+}
+
+function ProviderStatusBadges({ group }: { group: GameGroup }) {
+  const statuses = group.achievementProviderStatuses ?? [];
+  if (statuses.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="mt-2 flex flex-wrap items-center gap-1">
+      <span className="neo-copy text-[9px] font-black uppercase text-[#5b403f]">Providers</span>
+      {statuses.map((provider) => (
+        <span
+          key={provider.source}
+          className={`neo-copy border-2 border-black px-1.5 py-0.5 text-[8px] font-black uppercase ${providerStatusClass(
+            provider.status,
+            provider.stability,
+          )}`}
+          title={provider.message}
+        >
+          {provider.source}: {provider.status}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 function ArtworkPanel({ group }: { group: GameGroup }) {
   const iconCandidate = getGameIconCandidates(group.primaryGame).map(getGameAssetUrl).find(Boolean);
 
@@ -182,6 +220,7 @@ function GameRow({ row }: { row: GameAchievementRow }) {
                   </span>
                 ) : null}
               </div>
+              <ProviderStatusBadges group={group} />
             </div>
           </div>
 

@@ -376,6 +376,27 @@ function latestAchievementSyncAt(games: Game[]): string | null {
   return latestIso(games.map((game) => game.achievementsSyncedAt));
 }
 
+function achievementProviderStatusForSource(
+  source: string,
+  variantsForSource: Game[],
+): AchievementProviderStatus {
+  const explicitStatus = variantsForSource
+    .flatMap((game) => game.achievementProviderStatuses ?? [])
+    .find((status) => status.source === source);
+  if (explicitStatus) {
+    return explicitStatus;
+  }
+
+  const hasAchievements = variantsForSource.some((game) => (game.achievements?.length ?? 0) > 0);
+  const providerStatus = achievementProviderStatusForGame(variantsForSource[0]);
+  return {
+    source,
+    status: hasAchievements ? "available" : providerStatus.status,
+    stability: providerStatus.stability,
+    message: hasAchievements ? "Achievement data available" : providerStatus.message,
+  };
+}
+
 function groupIdentity(primaryGame: Game): string {
   const key = normalizeToken(primaryGame.title);
   const category = primaryGame.productCategory || "game";
@@ -397,17 +418,12 @@ export function aggregateGameGroup(variants: Game[]): GameGroup {
     sortedVariants.map((game) => game.lastPlayedAt ?? game.lastPlayed),
   );
   const achievements = aggregateAchievements(sortedVariants);
-  const achievementProviderStatuses = sources.map((source) => {
-    const variantsForSource = sortedVariants.filter((game) => getGameSource(game) === source);
-    const hasAchievements = variantsForSource.some((game) => (game.achievements?.length ?? 0) > 0);
-    const providerStatus = achievementProviderStatusForGame(variantsForSource[0]);
-    return {
+  const achievementProviderStatuses = sources.map((source) =>
+    achievementProviderStatusForSource(
       source,
-      status: hasAchievements ? ("available" as const) : providerStatus.status,
-      stability: providerStatus.stability,
-      message: hasAchievements ? "Achievement data available" : providerStatus.message,
-    };
-  });
+      sortedVariants.filter((game) => getGameSource(game) === source),
+    ),
+  );
   const status = aggregateStatus(sortedVariants);
   const key = groupIdentity(primaryGame);
   const id = `group:${key}`;
