@@ -29,7 +29,7 @@ tokio = { version = "1", features = ["full"] }
 sysinfo = { version = "0.39", features = ["serde"] }
 futures-util = "0.3"
 notify = "6"
-zip = "4.2.0"
+zip = "8.6.0"
 ureq = { version = "3.2.1", features = ["json"] }
 keyring = "3"
 aes-gcm = "0.10"
