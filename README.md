@@ -21,7 +21,7 @@ Not production-ready. Store commerce, entitlements, CDN delivery, real patching,
 | Local DB sync | SQLite-backed local-first entity sync with dirty tracking and remote conflict resolution |
 | Store | Mock data |
 | Auth/Profile/Social | Supabase Auth, profile pages, friends, customization, privacy, blocks, comments, showcases, badges, social links, hardware |
-| Tests | Minimal Rust coverage; frontend/Supabase/RLS tests needed |
+| Tests | 269+ automated tests across UI, hooks, stores, and Supabase database helpers |
 | Releases | Tauri bundling exists; no release automation |
 
 ## Tech Stack
@@ -375,7 +375,7 @@ supabase gen types typescript --local > launcher/src/lib/database.types.ts
 - Platform tokens rely on localStorage
 - Xbox integration is Windows-focused
 - Epic depends on Legendary CLI
-- No automated tests, no CI/CD
+- No automated release deployment (CI lint, typecheck, and tests are automated via GitHub Actions)
 - Chat/invites schema exists but frontend integration is minimal
 - Local DB sync commands exist but full offline-first flow is incomplete
 
@@ -397,7 +397,8 @@ Open Game Launcher is a working desktop application. This section describes what
 - Local DB sync: SQLite-backed entity sync with dirty tracking and remote conflict resolution
 - Auth/Profile/Social: Supabase Auth, profile pages, friends, customization, privacy, blocks, comments, showcases, badges, social links, hardware
 - 9 Profile showcase panels (About, Activity, Stats, ...)
-- Mod-Management route (UI scaffolded, backend minimal)
+- Mod-Management (full mod installer engine supporting direct URL, local archive, and folder sources, enable/disable, and provider delegation)
+- Controller support (device detection via `gilrs`, re-mapping editor, configuration templates, and haptics/gyro flags)
 - RAWG artwork via Edge Function proxy
 
 ## Open Work
@@ -434,7 +435,7 @@ Features described in [`FEATURE_PLAN.md`](./FEATURE_PLAN.md) that are not yet im
 - Screenshots & Capture
 - In-Game Overlay (always-on-top Tauri window for windowed/borderless games)
 - Performance-Monitor (FPS, CPU, GPU live)
-- Controller-Support + Re-Mapping
+- Runtime controller input translation / emulation
 - Anti-Cheat-Kompatibilitäts-DB
 - Backup/Restore (lokal)
 - Remote Play, Mobile App

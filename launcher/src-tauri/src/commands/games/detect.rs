@@ -70,9 +70,8 @@ fn merge_scanned_game(
         .filter(|path| !path.is_empty())
     {
         if let Some(candidate_canon) = canonical_install_path(install_path) {
-            // Note: Disable path-based merging for different platforms to allow
-            // Steam & Ubisoft variants to both exist in the library.
-            /*
+            // Same install path: dedupe by launcher-scan priority (Epic/EA/Gog
+            // win over Steam when both detect the same folder).
             if let Some(existing_id) = path_index.get(&candidate_canon).cloned() {
                 if let Some(existing) = games.get(&existing_id) {
                     if launcher_scan_priority(&candidate) > launcher_scan_priority(existing) {
@@ -82,7 +81,6 @@ fn merge_scanned_game(
                     }
                 }
             }
-            */
 
             candidate_canonical_path = Some(candidate_canon);
         }
@@ -115,13 +113,13 @@ pub fn scan_installed_games() -> Vec<InstalledGame> {
     let mut path_index = HashMap::<PathBuf, String>::new();
 
     // Spawn threads for parallel scanning
-    let handle_steam = thread::spawn(|| scan_steam_games());
-    let handle_epic = thread::spawn(|| scan_epic_games());
-    let handle_gog = thread::spawn(|| scan_gog_games());
-    let handle_ubisoft = thread::spawn(|| scan_ubisoft_games());
-    let handle_xbox = thread::spawn(|| scan_xbox_games());
-    let handle_battlenet = thread::spawn(|| scan_battlenet_games());
-    let handle_ea = thread::spawn(|| scan_ea_games());
+    let handle_steam = thread::spawn(scan_steam_games);
+    let handle_epic = thread::spawn(scan_epic_games);
+    let handle_gog = thread::spawn(scan_gog_games);
+    let handle_ubisoft = thread::spawn(scan_ubisoft_games);
+    let handle_xbox = thread::spawn(scan_xbox_games);
+    let handle_battlenet = thread::spawn(scan_battlenet_games);
+    let handle_ea = thread::spawn(scan_ea_games);
 
     // Join and merge results (EA/Epic/etc. win over Steam for the same install folder)
     if let Ok(steam_games) = handle_steam.join() {
@@ -530,7 +528,7 @@ fn is_epic_unreal_asset_manifest(manifest: &serde_json::Value, title: &str) -> b
         || title.contains("stylized")
         || title.contains("low poly");
 
-    (unreal_marker && asset_marker) || (unreal_marker && asset_title_marker)
+    unreal_marker && (asset_marker || asset_title_marker)
 }
 
 #[derive(Clone, Default)]
@@ -1058,8 +1056,7 @@ pub fn read_gog_registry_installs() -> Vec<GogRegistryInstall> {
         let game_id = first_line
             .split('\\')
             .flat_map(|s| s.split('/'))
-            .filter(|s| !s.is_empty())
-            .last()
+            .rfind(|s| !s.is_empty())
             .map(|s| s.trim().to_string())
             .filter(|s| s.chars().all(|c| c.is_numeric()));
 
@@ -2957,9 +2954,9 @@ fn extract_arg(input: &str, arg_name: &str) -> Option<String> {
     let start = idx + needle.len();
     let remaining = &input[start..];
 
-    if remaining.starts_with('"') {
-        let end_quote = remaining[1..].find('"')?;
-        Some(remaining[1..end_quote + 1].to_string())
+    if let Some(quoted) = remaining.strip_prefix('"') {
+        let end_quote = quoted.find('"')?;
+        Some(quoted[..end_quote].to_string())
     } else {
         let end = remaining.find(' ').unwrap_or(remaining.len());
         Some(remaining[..end].to_string())
@@ -3120,7 +3117,7 @@ fn find_ubisoft_config_asset(
     install_id: &str,
 ) -> Option<String> {
     keys.iter()
-        .filter_map(|key| find_yaml_like_value(&config_segment, key))
+        .filter_map(|key| find_yaml_like_value(config_segment, key))
         .filter_map(|file_name| find_ubisoft_cached_asset_for_install(&file_name, install_id))
         .next()
 }

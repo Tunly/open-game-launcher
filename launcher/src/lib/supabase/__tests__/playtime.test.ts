@@ -95,10 +95,7 @@ function makeCatalogThenSessionsHandler(options: {
     }
     if (table === "game_sessions") {
       return {
-        select: (
-          _columns: string,
-          opts?: { count?: string; head?: boolean },
-        ): unknown => {
+        select: (_columns: string, opts?: { count?: string; head?: boolean }): unknown => {
           if (opts?.head) {
             return {
               eq: () => ({
@@ -110,8 +107,7 @@ function makeCatalogThenSessionsHandler(options: {
             eq: () => ({
               eq: () => ({
                 order: () => ({
-                  range: () =>
-                    Promise.resolve(makeQueryResult(options.sessions, null)),
+                  range: () => Promise.resolve(makeQueryResult(options.sessions, null)),
                 }),
               }),
             }),

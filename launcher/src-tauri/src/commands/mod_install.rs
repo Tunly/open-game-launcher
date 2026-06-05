@@ -661,7 +661,7 @@ fn remember_mod_queue_item(item: ModInstallQueueItem) {
     } else {
         queue.push(item);
     }
-    queue.sort_by(|left, right| left.last_updated_at.cmp(&right.last_updated_at));
+    queue.sort_by_key(|left| left.last_updated_at);
     if queue.len() > 100 {
         queue.drain(0..queue.len() - 100);
     }

@@ -1,6 +1,10 @@
 import { Gamepad2, RefreshCw, Save, Share2, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { deleteControllerLayout, listControllerLayouts, saveControllerLayout } from "../../lib/supabase/controllers";
+import {
+  deleteControllerLayout,
+  listControllerLayouts,
+  saveControllerLayout,
+} from "../../lib/supabase/controllers";
 import type {
   ControllerDevice,
   ControllerLayout,
@@ -8,13 +12,21 @@ import type {
   ControllerTemplate,
   ControllerType,
 } from "../../lib/types/controllers";
-import { CONTROLLER_INPUTS, DEFAULT_CONTROLLER_BINDINGS } from "../../lib/types/controllers";
+import { CONTROLLER_OUTPUTS, DEFAULT_CONTROLLER_BINDINGS } from "../../lib/types/controllers";
 
 const controllerTypes: ControllerType[] = ["xbox", "playstation", "switch", "steam", "generic"];
 const templates: Array<{ value: ControllerTemplate; label: string; description: string }> = [
   { value: "gamepad", label: "Gamepad", description: "Standard pad to pad mapping." },
-  { value: "gamepadGyro", label: "Gamepad + Gyro", description: "Pad mapping with gyro intent saved." },
-  { value: "keyboardMouse", label: "Keyboard/Mouse", description: "Steam-like profile for games without native pad support." },
+  {
+    value: "gamepadGyro",
+    label: "Gamepad + Gyro",
+    description: "Pad mapping with gyro intent saved.",
+  },
+  {
+    value: "keyboardMouse",
+    label: "Keyboard/Mouse",
+    description: "Steam-like profile for games without native pad support.",
+  },
   { value: "disabled", label: "Disabled", description: "Per-game opt-out." },
 ];
 
@@ -33,14 +45,21 @@ function cloneBindings(bindings: ControllerMappingBinding[]) {
   return bindings.map((binding) => ({ ...binding }));
 }
 
-export function ControllerLayoutEditor({ gameId = null, gameTitle, devices = [], compact = false }: ControllerLayoutEditorProps) {
+export function ControllerLayoutEditor({
+  gameId = null,
+  gameTitle,
+  devices = [],
+  compact = false,
+}: ControllerLayoutEditorProps) {
   const detectedType = devices.find((device) => device.isConnected)?.controllerType ?? "xbox";
   const [controllerType, setControllerType] = useState<ControllerType>(detectedType);
   const [layouts, setLayouts] = useState<ControllerLayout[]>([]);
   const [selectedLayoutId, setSelectedLayoutId] = useState<string>("new");
   const [name, setName] = useState(makeDefaultName(gameTitle, detectedType));
   const [template, setTemplate] = useState<ControllerTemplate>("gamepad");
-  const [bindings, setBindings] = useState<ControllerMappingBinding[]>(cloneBindings(DEFAULT_CONTROLLER_BINDINGS));
+  const [bindings, setBindings] = useState<ControllerMappingBinding[]>(
+    cloneBindings(DEFAULT_CONTROLLER_BINDINGS),
+  );
   const [gyroEnabled, setGyroEnabled] = useState(false);
   const [hapticsEnabled, setHapticsEnabled] = useState(true);
   const [isCommunity, setIsCommunity] = useState(false);
@@ -58,9 +77,14 @@ export function ControllerLayoutEditor({ gameId = null, gameTitle, devices = [],
     setIsLoading(true);
     setError(null);
     try {
-      const rows = await listControllerLayouts({ gameId, controllerType: nextType, includeGlobal: Boolean(gameId) });
+      const rows = await listControllerLayouts({
+        gameId,
+        controllerType: nextType,
+        includeGlobal: Boolean(gameId),
+      });
       setLayouts(rows);
-      const preferred = rows.find((layout) => layout.gameId === gameId && layout.isDefault) ?? rows[0] ?? null;
+      const preferred =
+        rows.find((layout) => layout.gameId === gameId && layout.isDefault) ?? rows[0] ?? null;
       if (preferred) {
         setSelectedLayoutId(preferred.id);
         loadLayout(preferred);
@@ -78,7 +102,11 @@ export function ControllerLayoutEditor({ gameId = null, gameTitle, devices = [],
     setName(layout.name);
     setControllerType(layout.controllerType);
     setTemplate(layout.template);
-    setBindings(layout.bindings.length > 0 ? cloneBindings(layout.bindings) : cloneBindings(DEFAULT_CONTROLLER_BINDINGS));
+    setBindings(
+      layout.bindings.length > 0
+        ? cloneBindings(layout.bindings)
+        : cloneBindings(DEFAULT_CONTROLLER_BINDINGS),
+    );
     setGyroEnabled(layout.gyroEnabled);
     setHapticsEnabled(layout.hapticsEnabled);
     setIsCommunity(layout.isCommunity);
@@ -120,7 +148,9 @@ export function ControllerLayoutEditor({ gameId = null, gameTitle, devices = [],
         isCommunity,
         isDefault,
       });
-      setMessage(isCommunity ? "Layout saved and shared with the community." : "Controller layout saved.");
+      setMessage(
+        isCommunity ? "Layout saved and shared with the community." : "Controller layout saved.",
+      );
       setSelectedLayoutId(saved.id);
       await refreshLayouts(controllerType);
     } catch (err) {
@@ -147,19 +177,24 @@ export function ControllerLayoutEditor({ gameId = null, gameTitle, devices = [],
   }
 
   function updateBinding(index: number, output: string) {
-    setBindings((current) => current.map((binding, i) => (i === index ? { ...binding, output } : binding)));
+    setBindings((current) =>
+      current.map((binding, i) => (i === index ? { ...binding, output } : binding)),
+    );
   }
 
   return (
     <section className="border-4 border-black bg-[#fbf4e7] p-4 shadow-[6px_6px_0_#171411]">
       <div className="flex flex-wrap items-start justify-between gap-3 border-b-4 border-black pb-3">
         <div>
-          <p className="neo-copy text-[10px] font-black uppercase tracking-[0.22em] text-[#b7102a]">Steam Input Style</p>
+          <p className="neo-copy text-[10px] font-black uppercase tracking-[0.22em] text-[#b7102a]">
+            Steam Input Style
+          </p>
           <h2 className="neo-title mt-1 flex items-center gap-2 text-3xl uppercase text-[#171411]">
             <Gamepad2 className="h-8 w-8" /> Controller Layouts
           </h2>
           <p className="neo-copy mt-2 max-w-2xl text-xs font-bold uppercase leading-5 text-[#5f574d]">
-            Detect pads, choose per-game layouts, remap buttons, save global defaults and publish community presets.
+            Detect pads, choose per-game layouts, remap buttons, save global defaults and publish
+            community presets.
           </p>
         </div>
         <button
@@ -175,10 +210,16 @@ export function ControllerLayoutEditor({ gameId = null, gameTitle, devices = [],
       {devices.length > 0 ? (
         <div className="mt-4 grid gap-2 md:grid-cols-2">
           {devices.map((device) => (
-            <div key={device.id} className="border-2 border-black bg-[#f4ead8] p-3 shadow-[3px_3px_0_#171411]">
-              <p className="neo-copy text-[11px] font-black uppercase text-[#171411]">{device.name}</p>
+            <div
+              key={device.id}
+              className="border-2 border-black bg-[#f4ead8] p-3 shadow-[3px_3px_0_#171411]"
+            >
+              <p className="neo-copy text-[11px] font-black uppercase text-[#171411]">
+                {device.name}
+              </p>
               <p className="neo-copy mt-1 text-[10px] font-bold uppercase text-[#5f574d]">
-                {device.controllerType} · {device.source} · {device.isConnected ? "connected" : "offline"}
+                {device.controllerType} · {device.source} ·{" "}
+                {device.isConnected ? "connected" : "offline"}
               </p>
             </div>
           ))}
@@ -205,7 +246,9 @@ export function ControllerLayoutEditor({ gameId = null, gameTitle, devices = [],
               }}
             >
               {controllerTypes.map((type) => (
-                <option key={type} value={type}>{type}</option>
+                <option key={type} value={type}>
+                  {type}
+                </option>
               ))}
             </select>
           </label>
@@ -231,7 +274,8 @@ export function ControllerLayoutEditor({ gameId = null, gameTitle, devices = [],
               <option value="new">New layout</option>
               {layouts.map((layout) => (
                 <option key={layout.id} value={layout.id}>
-                  {layout.name}{layout.isCommunity ? " · community" : layout.gameId ? " · game" : " · global"}
+                  {layout.name}
+                  {layout.isCommunity ? " · community" : layout.gameId ? " · game" : " · global"}
                 </option>
               ))}
             </select>
@@ -254,8 +298,12 @@ export function ControllerLayoutEditor({ gameId = null, gameTitle, devices = [],
                 className={`border-2 border-black p-3 text-left shadow-[3px_3px_0_#171411] ${template === item.value ? "bg-[#087d6d] text-white" : "bg-[#f4ead8] text-[#171411] hover:bg-[#8cf5e4]"}`}
                 onClick={() => setTemplate(item.value)}
               >
-                <span className="neo-copy block text-[11px] font-black uppercase">{item.label}</span>
-                <span className="neo-copy mt-1 block text-[10px] font-bold uppercase opacity-80">{item.description}</span>
+                <span className="neo-copy block text-[11px] font-black uppercase">
+                  {item.label}
+                </span>
+                <span className="neo-copy mt-1 block text-[10px] font-bold uppercase opacity-80">
+                  {item.description}
+                </span>
               </button>
             ))}
           </div>
@@ -263,21 +311,40 @@ export function ControllerLayoutEditor({ gameId = null, gameTitle, devices = [],
 
         <div>
           <div className="grid gap-2 md:grid-cols-2">
-            <button type="button" className={`neo-copy border-2 border-black px-3 py-2 text-[11px] font-black uppercase shadow-[3px_3px_0_#171411] ${gyroEnabled ? "bg-[#087d6d] text-white" : "bg-[#efe3cf]"}`} onClick={() => setGyroEnabled((value) => !value)}>
+            <button
+              type="button"
+              className={`neo-copy border-2 border-black px-3 py-2 text-[11px] font-black uppercase shadow-[3px_3px_0_#171411] ${gyroEnabled ? "bg-[#087d6d] text-white" : "bg-[#efe3cf]"}`}
+              onClick={() => setGyroEnabled((value) => !value)}
+            >
               Gyro {gyroEnabled ? "On" : "Off"}
             </button>
-            <button type="button" className={`neo-copy border-2 border-black px-3 py-2 text-[11px] font-black uppercase shadow-[3px_3px_0_#171411] ${hapticsEnabled ? "bg-[#087d6d] text-white" : "bg-[#efe3cf]"}`} onClick={() => setHapticsEnabled((value) => !value)}>
+            <button
+              type="button"
+              className={`neo-copy border-2 border-black px-3 py-2 text-[11px] font-black uppercase shadow-[3px_3px_0_#171411] ${hapticsEnabled ? "bg-[#087d6d] text-white" : "bg-[#efe3cf]"}`}
+              onClick={() => setHapticsEnabled((value) => !value)}
+            >
               Haptics {hapticsEnabled ? "On" : "Off"}
             </button>
           </div>
 
           <div className="mt-4 grid gap-2 md:grid-cols-2">
             {bindings.map((binding, index) => (
-              <label key={binding.input} className="grid gap-1 border-2 border-black bg-[#f4ead8] p-2">
-                <span className="neo-copy text-[10px] font-black uppercase text-[#5f574d]">{binding.input}</span>
-                <select className="neo-copy h-9 border-2 border-black bg-[#fff9ed] px-2 text-[11px] font-bold uppercase" value={binding.output} onChange={(event) => updateBinding(index, event.target.value)}>
-                  {CONTROLLER_INPUTS.map((input) => (
-                    <option key={input} value={input}>{input}</option>
+              <label
+                key={binding.input}
+                className="grid gap-1 border-2 border-black bg-[#f4ead8] p-2"
+              >
+                <span className="neo-copy text-[10px] font-black uppercase text-[#5f574d]">
+                  {binding.input}
+                </span>
+                <select
+                  className="neo-copy h-9 border-2 border-black bg-[#fff9ed] px-2 text-[11px] font-bold uppercase"
+                  value={binding.output}
+                  onChange={(event) => updateBinding(index, event.target.value)}
+                >
+                  {CONTROLLER_OUTPUTS.map((input) => (
+                    <option key={input} value={input}>
+                      {input}
+                    </option>
                   ))}
                 </select>
               </label>
@@ -285,22 +352,48 @@ export function ControllerLayoutEditor({ gameId = null, gameTitle, devices = [],
           </div>
 
           <div className="mt-4 flex flex-wrap gap-2">
-            <button type="button" className={`neo-copy flex items-center gap-2 border-2 border-black px-3 py-2 text-[11px] font-black uppercase shadow-[3px_3px_0_#171411] ${isDefault ? "bg-[#e8c843]" : "bg-[#efe3cf]"}`} onClick={() => setIsDefault((value) => !value)}>
+            <button
+              type="button"
+              className={`neo-copy flex items-center gap-2 border-2 border-black px-3 py-2 text-[11px] font-black uppercase shadow-[3px_3px_0_#171411] ${isDefault ? "bg-[#e8c843]" : "bg-[#efe3cf]"}`}
+              onClick={() => setIsDefault((value) => !value)}
+            >
               Default {isDefault ? "On" : "Off"}
             </button>
-            <button type="button" className={`neo-copy flex items-center gap-2 border-2 border-black px-3 py-2 text-[11px] font-black uppercase shadow-[3px_3px_0_#171411] ${isCommunity ? "bg-[#8cf5e4]" : "bg-[#efe3cf]"}`} onClick={() => setIsCommunity((value) => !value)}>
+            <button
+              type="button"
+              className={`neo-copy flex items-center gap-2 border-2 border-black px-3 py-2 text-[11px] font-black uppercase shadow-[3px_3px_0_#171411] ${isCommunity ? "bg-[#8cf5e4]" : "bg-[#efe3cf]"}`}
+              onClick={() => setIsCommunity((value) => !value)}
+            >
               <Share2 className="h-4 w-4" /> Community
             </button>
-            <button type="button" className="neo-copy flex items-center gap-2 border-2 border-black bg-[#087d6d] px-4 py-2 text-[11px] font-black uppercase text-white shadow-[3px_3px_0_#171411]" onClick={() => void handleSave()} disabled={isLoading}>
+            <button
+              type="button"
+              className="neo-copy flex items-center gap-2 border-2 border-black bg-[#087d6d] px-4 py-2 text-[11px] font-black uppercase text-white shadow-[3px_3px_0_#171411]"
+              onClick={() => void handleSave()}
+              disabled={isLoading}
+            >
               <Save className="h-4 w-4" /> Save Layout
             </button>
-            <button type="button" className="neo-copy flex items-center gap-2 border-2 border-black bg-[#b7102a] px-3 py-2 text-[11px] font-black uppercase text-white shadow-[3px_3px_0_#171411] disabled:opacity-45" onClick={() => void handleDelete()} disabled={!selectedLayout || selectedLayout.isCommunity || isLoading}>
+            <button
+              type="button"
+              className="neo-copy flex items-center gap-2 border-2 border-black bg-[#b7102a] px-3 py-2 text-[11px] font-black uppercase text-white shadow-[3px_3px_0_#171411] disabled:opacity-45"
+              onClick={() => void handleDelete()}
+              disabled={!selectedLayout || selectedLayout.isCommunity || isLoading}
+            >
               <Trash2 className="h-4 w-4" /> Delete
             </button>
           </div>
 
-          {message ? <p className="neo-copy mt-3 border-2 border-black bg-[#8cf5e4] p-2 text-[11px] font-black uppercase">{message}</p> : null}
-          {error ? <p className="neo-copy mt-3 border-2 border-black bg-[#b7102a] p-2 text-[11px] font-black uppercase text-white">{error}</p> : null}
+          {message ? (
+            <p className="neo-copy mt-3 border-2 border-black bg-[#8cf5e4] p-2 text-[11px] font-black uppercase">
+              {message}
+            </p>
+          ) : null}
+          {error ? (
+            <p className="neo-copy mt-3 border-2 border-black bg-[#b7102a] p-2 text-[11px] font-black uppercase text-white">
+              {error}
+            </p>
+          ) : null}
         </div>
       </div>
     </section>

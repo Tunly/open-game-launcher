@@ -246,9 +246,7 @@ export async function listGameSessions(
   const [rowsResult, countResult] = await Promise.all([
     client
       .from("game_sessions")
-      .select(
-        "id, game_id, launcher_device_id, started_at, ended_at, duration_minutes, platform",
-      )
+      .select("id, game_id, launcher_device_id, started_at, ended_at, duration_minutes, platform")
       .eq("user_id", userData.user.id)
       .eq("game_id", catalogGameId)
       .order("started_at", { ascending: false })
@@ -279,10 +277,7 @@ export async function listGameSessions(
  * short-circuit to `true` (no network call) so the UI can call this
  * unconditionally.
  */
-export async function updateGameSession(
-  id: string,
-  patch: GameSessionPatch,
-): Promise<boolean> {
+export async function updateGameSession(id: string, patch: GameSessionPatch): Promise<boolean> {
   if (
     !patch ||
     (patch.startedAt === undefined &&
@@ -359,9 +354,7 @@ export async function getUserPlaySessions(
 
   let query = client
     .from("game_sessions")
-    .select(
-      "id, game_id, launcher_device_id, started_at, ended_at, duration_minutes, platform",
-    )
+    .select("id, game_id, launcher_device_id, started_at, ended_at, duration_minutes, platform")
     .eq("user_id", userData.user.id)
     .order("started_at", { ascending: false });
 
@@ -398,9 +391,7 @@ export type GameSessionsSyncOutcome = {
  * progress. The caller is responsible for marking the local rows as synced
  * afterwards via the Rust Tauri command.
  */
-export async function syncGameSessions(
-  sessions: PlaySession[],
-): Promise<GameSessionsSyncOutcome> {
+export async function syncGameSessions(sessions: PlaySession[]): Promise<GameSessionsSyncOutcome> {
   const outcome: GameSessionsSyncOutcome = { pushed: 0, skipped: 0, failed: 0 };
 
   if (!isSupabaseConfigured) {

@@ -183,10 +183,7 @@ fn start_xbox_callback_server(app: tauri::AppHandle) {
                 if let Some(pos) = request.find("code=") {
                     let start_idx = pos + "code=".len();
                     let rest = &request[start_idx..];
-                    let code = rest
-                        .split(|c| c == ' ' || c == '&' || c == '\r' || c == '\n')
-                        .next()
-                        .unwrap_or("");
+                    let code = rest.split([' ', '&', '\r', '\n']).next().unwrap_or("");
                     if !code.is_empty() {
                         println!("[Xbox Login] Extracted Xbox Code: {}", code);
 
@@ -577,9 +574,10 @@ pub async fn fetch_xbox_owned_games(code: String) -> Result<XboxFetchResult, Str
             continue;
         }
 
-        let is_pc = title.devices.as_ref().map_or(false, |devices| {
-            devices.iter().any(|d| d.eq_ignore_ascii_case("PC"))
-        });
+        let is_pc = title
+            .devices
+            .as_ref()
+            .is_some_and(|devices| devices.iter().any(|d| d.eq_ignore_ascii_case("PC")));
 
         if !is_pc {
             continue;

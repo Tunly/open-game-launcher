@@ -93,10 +93,7 @@ pub fn poll_performance_metrics() -> Result<RealtimeMetrics, String> {
 fn poll_gpu_metrics() -> (Option<f64>, Option<f64>, Option<f64>) {
     #[cfg(target_os = "windows")]
     {
-        match try_nvidia_gpu() {
-            Some(metrics) => metrics,
-            None => (None, None, None),
-        }
+        try_nvidia_gpu().unwrap_or_default()
     }
     #[cfg(not(target_os = "windows"))]
     {

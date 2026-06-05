@@ -1,9 +1,6 @@
 import { listen } from "@tauri-apps/api/event";
 import { useEffect, useRef } from "react";
-import {
-  getUnsyncedPlaySessions,
-  markPlaySessionsSynced,
-} from "../../lib/launcher";
+import { getUnsyncedPlaySessions, markPlaySessionsSynced } from "../../lib/launcher";
 import { syncGameSessions } from "../../lib/supabase/playtime";
 import type { PlaySession } from "../../lib/types";
 

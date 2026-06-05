@@ -657,17 +657,13 @@ pub fn start_library_inventory_watcher(app_handle: AppHandle) {
             eprintln!("[open-game-launcher] Library inventory watcher has no paths to watch.");
         }
 
-        loop {
-            let Ok(result) = rx.recv() else {
-                break;
-            };
-
+        while let Ok(result) = rx.recv() {
             if let Err(error) = result {
                 eprintln!("[open-game-launcher] Library watcher event error: {error}");
                 continue;
             }
 
-            while matches!(rx.recv_timeout(Duration::from_secs(2)), Ok(_)) {}
+            while rx.recv_timeout(Duration::from_secs(2)).is_ok() {}
 
             match tokio::runtime::Builder::new_current_thread()
                 .enable_all()

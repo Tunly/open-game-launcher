@@ -20,7 +20,11 @@ import type {
   DownloadGameSavesFromCloudResponse,
   RestoreGameSavesFromCloudResponse,
 } from "./types";
-import type { ControllerDevice } from "./types/controllers";
+import type {
+  ControllerDevice,
+  ControllerLayout,
+  ControllerRuntimeStatus,
+} from "./types/controllers";
 
 export type { Game };
 
@@ -94,8 +98,48 @@ export function moveGame(input: { gameId: string; newPath: string }): Promise<vo
   return invokeCommand<void>("move_game", { input });
 }
 
-export function launchGame(gameId: string): Promise<LaunchGameResponse> {
+export async function launchGame(gameId: string): Promise<LaunchGameResponse> {
+  await activateBestControllerLayoutForGame(gameId);
   return invokeCommand<LaunchGameResponse>("launch_game", { gameId });
+}
+
+export function applyControllerLayout(input: {
+  gameId: string;
+  layout: ControllerLayout;
+}): Promise<ControllerRuntimeStatus> {
+  return invokeCommand<ControllerRuntimeStatus>("apply_controller_layout", { input });
+}
+
+export function clearControllerLayout(): Promise<ControllerRuntimeStatus> {
+  return invokeCommand<ControllerRuntimeStatus>("clear_controller_layout");
+}
+
+export function getControllerRuntimeStatus(): Promise<ControllerRuntimeStatus> {
+  return invokeCommand<ControllerRuntimeStatus>("get_controller_runtime_status");
+}
+
+async function activateBestControllerLayoutForGame(gameId: string): Promise<void> {
+  try {
+    const { listControllerLayouts } = await import("./supabase/controllers");
+    const layouts = await listControllerLayouts({
+      gameId,
+      controllerType: "all",
+      includeGlobal: true,
+    });
+    const layout =
+      layouts.find((candidate) => candidate.gameId === gameId && candidate.isDefault) ??
+      layouts.find((candidate) => candidate.gameId === gameId) ??
+      layouts.find((candidate) => candidate.gameId === null && candidate.isDefault) ??
+      layouts.find((candidate) => candidate.gameId === null);
+
+    if (layout) {
+      await applyControllerLayout({ gameId, layout });
+    } else {
+      await clearControllerLayout();
+    }
+  } catch (error) {
+    console.warn("Controller layout activation skipped", error);
+  }
 }
 
 export function syncGameAchievements(
@@ -552,10 +596,7 @@ export function getPlaySession(id: string): Promise<PlaySession | null> {
   return invokeCommand<PlaySession | null>("get_play_session", { id });
 }
 
-export function setCachedGamePlaytime(
-  gameId: string,
-  playtimeMinutes: number,
-): Promise<void> {
+export function setCachedGamePlaytime(gameId: string, playtimeMinutes: number): Promise<void> {
   return invokeCommand<void>("set_cached_game_playtime", {
     gameId,
     playtimeMinutes,

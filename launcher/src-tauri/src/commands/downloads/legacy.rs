@@ -1142,7 +1142,7 @@ async fn download_internal_game_file(
         match download_internal_game_file_once(
             app,
             game_id,
-            &client,
+            client,
             &source.url,
             &part_path,
             &final_path,
@@ -1536,7 +1536,7 @@ fn installed_game_matches_download_keys(
         return false;
     }
 
-    lookup_keys.iter().any(|key| game.id == *key)
+    lookup_keys.contains(&game.id)
         || game
             .external_id
             .as_deref()
@@ -2152,7 +2152,7 @@ fn steam_cef_targets() -> Result<Vec<SteamCefTarget>, String> {
         }));
     }
 
-    targets.sort_by(|a, b| steam_cef_target_score(b).cmp(&steam_cef_target_score(a)));
+    targets.sort_by_key(|target| std::cmp::Reverse(steam_cef_target_score(target)));
     Ok(targets)
 }
 
@@ -2792,16 +2792,12 @@ pub struct ProviderHealthStatus {
 }
 
 pub fn check_provider_health() -> Result<Vec<ProviderHealthStatus>, String> {
-    let mut results = Vec::new();
-
-    // Steam
-    results.push(check_steam_health());
-    // Epic
-    results.push(check_epic_health());
-    // EA
-    results.push(check_ea_health());
-    // Battle.net
-    results.push(check_battlenet_health());
+    let results = vec![
+        check_steam_health(),
+        check_epic_health(),
+        check_ea_health(),
+        check_battlenet_health(),
+    ];
 
     Ok(results)
 }
@@ -3008,17 +3004,17 @@ pub fn reconcile_downloads(app: tauri::AppHandle) -> Result<ReconciliationResult
 
         // Check for Steam downloads that are active but were paused/interrupted
         if let Some(app_id) = steam_app_id_from_download_id(&item.game_id) {
-            if is_terminal_download_status(&item.status) || item.status == DOWNLOAD_STATUS_PAUSED {
-                if steam_download_work_exists(app_id) {
-                    // Steam is actively downloading this but we had it as paused/terminal
-                    item.status = DOWNLOAD_STATUS_DOWNLOADING.to_string();
-                    item.speed = "Steam".to_string();
-                    item.phase = "external".to_string();
-                    item.external = true;
-                    item.can_pause = true;
-                    item.last_updated_at = now;
-                    result.active_restored.push(item.game_id.clone());
-                }
+            if (is_terminal_download_status(&item.status) || item.status == DOWNLOAD_STATUS_PAUSED)
+                && steam_download_work_exists(app_id)
+            {
+                // Steam is actively downloading this but we had it as paused/terminal
+                item.status = DOWNLOAD_STATUS_DOWNLOADING.to_string();
+                item.speed = "Steam".to_string();
+                item.phase = "external".to_string();
+                item.external = true;
+                item.can_pause = true;
+                item.last_updated_at = now;
+                result.active_restored.push(item.game_id.clone());
             }
         }
 

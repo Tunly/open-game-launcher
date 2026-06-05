@@ -1,14 +1,6 @@
 import { useMemo, useState } from "react";
 import { BarChart3, Hourglass, Loader2, Sparkles, Trophy } from "lucide-react";
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
+import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 
 import { useUserPlaySessions } from "../../hooks/useUserPlaySessions";
 import type { UserPlaySession } from "../../lib/supabase/playtime";
@@ -118,14 +110,8 @@ function getRangeWindow(range: ActivityRange, now: Date): { since: Date; until: 
     const until = addDays(startOfLocalDay(now), 1);
     return { since, until };
   }
-  const since = addMonths(
-    new Date(now.getFullYear(), now.getMonth(), 1),
-    -11,
-  );
-  const until = addMonths(
-    new Date(now.getFullYear(), now.getMonth(), 1),
-    1,
-  );
+  const since = addMonths(new Date(now.getFullYear(), now.getMonth(), 1), -11);
+  const until = addMonths(new Date(now.getFullYear(), now.getMonth(), 1), 1);
   return { since, until };
 }
 
@@ -148,7 +134,7 @@ function filterSessionsByRange(
 }
 
 function sessionMinutes(session: UserPlaySession): number {
-  return sessionMinutes(session);
+  return session.durationMinutes ?? 0;
 }
 
 function aggregateChart(
@@ -342,7 +328,12 @@ function ActivityBarChart({ data, range, totalMinutes }: ActivityBarChartProps) 
     >
       <ResponsiveContainer height="100%" width="100%">
         <BarChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 4 }}>
-          <CartesianGrid stroke="#171411" strokeDasharray="2 4" strokeOpacity={0.18} vertical={false} />
+          <CartesianGrid
+            stroke="#171411"
+            strokeDasharray="2 4"
+            strokeOpacity={0.18}
+            vertical={false}
+          />
           <XAxis
             dataKey="label"
             interval={range === "month" ? 2 : 0}
@@ -432,11 +423,7 @@ export function ActivitySection() {
     [sessionsInRange, range, now],
   );
   const totalMinutes = useMemo(
-    () =>
-      sessionsInRange.reduce(
-        (sum, session) => sum + sessionMinutes(session),
-        0,
-      ),
+    () => sessionsInRange.reduce((sum, session) => sum + sessionMinutes(session), 0),
     [sessionsInRange],
   );
   const topGames = useMemo(() => topGamesForSessions(sessionsInRange, 5), [sessionsInRange]);
@@ -455,11 +442,7 @@ export function ActivitySection() {
       </div>
 
       <div className="space-y-5 p-5">
-        <div
-          aria-label="Activity range"
-          className="flex flex-wrap gap-2"
-          role="group"
-        >
+        <div aria-label="Activity range" className="flex flex-wrap gap-2" role="group">
           {RANGE_BUTTONS.map((button) => {
             const isActive = range === button.id;
             return (
@@ -516,8 +499,8 @@ export function ActivitySection() {
                   No play sessions recorded yet
                 </p>
                 <p className="neo-copy mt-2 text-[10px] font-bold uppercase leading-relaxed text-[#55504a]">
-                  Launch a game to start filling this dashboard. Synced sessions will appear here
-                  as soon as your Rust poller flushes them to Supabase.
+                  Launch a game to start filling this dashboard. Synced sessions will appear here as
+                  soon as your Rust poller flushes them to Supabase.
                 </p>
               </div>
             </div>

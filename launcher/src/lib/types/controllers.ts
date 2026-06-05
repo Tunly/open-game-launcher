@@ -17,6 +17,17 @@ export interface ControllerMappingBinding {
   output: string;
 }
 
+export interface ControllerRuntimeStatus {
+  activeGameId?: string | null;
+  activeLayoutName?: string | null;
+  activeTemplate?: ControllerTemplate | null;
+  nativePassthroughReady: boolean;
+  keyboardMouseEmulationReady: boolean;
+  vigemBusDetected: boolean;
+  driverMessage: string;
+  configPath?: string | null;
+}
+
 export interface ControllerLayout {
   id: string;
   userId: string;
@@ -53,7 +64,29 @@ export const CONTROLLER_INPUTS = [
   "View / Select",
 ] as const;
 
-export const DEFAULT_CONTROLLER_BINDINGS: ControllerMappingBinding[] = CONTROLLER_INPUTS.map((input) => ({
-  input,
-  output: input,
-}));
+export const CONTROLLER_OUTPUTS = [
+  ...CONTROLLER_INPUTS,
+  "W",
+  "A",
+  "S",
+  "D",
+  "Space",
+  "Left Shift",
+  "Left Ctrl",
+  "E",
+  "F",
+  "R",
+  "Tab",
+  "Escape",
+  "Enter",
+  "Mouse Left",
+  "Mouse Right",
+  "Mouse Middle",
+] as const;
+
+export const DEFAULT_CONTROLLER_BINDINGS: ControllerMappingBinding[] = CONTROLLER_INPUTS.map(
+  (input) => ({
+    input,
+    output: input,
+  }),
+);

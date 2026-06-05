@@ -604,7 +604,7 @@ pub async fn upload_game_saves_to_cloud(
             let object_path_meta = format!("{}/{}", object_prefix, rel_meta);
 
             let enc_result = upload_bytes_to_supabase_storage(
-                &client,
+                client,
                 &input.supabase_url,
                 &input.api_key,
                 &input.access_token,
@@ -614,7 +614,7 @@ pub async fn upload_game_saves_to_cloud(
             )
             .await;
             let meta_result = upload_bytes_to_supabase_storage(
-                &client,
+                client,
                 &input.supabase_url,
                 &input.api_key,
                 &input.access_token,
@@ -689,7 +689,7 @@ pub async fn download_game_saves_from_cloud(
     // List all .enc objects under the prefix
     let mut enc_objects = Vec::new();
     list_supabase_storage_objects_recursive_e2e(
-        &client,
+        client,
         &input.supabase_url,
         &input.api_key,
         &input.access_token,
@@ -707,7 +707,7 @@ pub async fn download_game_saves_from_cloud(
         }
         let meta_path = object_path.replace(".enc", ".meta.json");
         let ciphertext = match download_supabase_storage_object(
-            &client,
+            client,
             &input.supabase_url,
             &input.api_key,
             &input.access_token,
@@ -723,7 +723,7 @@ pub async fn download_game_saves_from_cloud(
             }
         };
         let meta_bytes = match download_supabase_storage_object(
-            &client,
+            client,
             &input.supabase_url,
             &input.api_key,
             &input.access_token,
@@ -824,7 +824,7 @@ pub async fn restore_game_saves_from_cloud(
     let mut object_paths = Vec::new();
 
     list_supabase_storage_objects_recursive_e2e(
-        &client,
+        client,
         &input.supabase_url,
         &input.api_key,
         &input.access_token,
@@ -881,7 +881,7 @@ pub async fn restore_game_saves_from_cloud(
         let meta_path = object_path.replace(".enc", ".meta.json");
 
         let ciphertext = match download_supabase_storage_object(
-            &client,
+            client,
             &input.supabase_url,
             &input.api_key,
             &input.access_token,
@@ -898,7 +898,7 @@ pub async fn restore_game_saves_from_cloud(
         };
 
         let meta_bytes = match download_supabase_storage_object(
-            &client,
+            client,
             &input.supabase_url,
             &input.api_key,
             &input.access_token,

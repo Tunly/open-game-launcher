@@ -130,7 +130,7 @@ fn install_floating_window_guard(window: &tauri::WebviewWindow, label: &'static 
             "#fff9ed"
         };
         let panel_shadow = if is_overlay { "#000" } else { "#1f1c0f" };
-        let _ = window.eval(&format!(
+        let _ = window.eval(format!(
             r#"
             (() => {{
               const root = document.getElementById('root');

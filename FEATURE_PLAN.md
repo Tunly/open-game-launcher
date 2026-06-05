@@ -17,7 +17,7 @@
 | 4 | Performance-Monitor Frontend | Mittel | 🟡 Overlay-Tab + Rust-Polling + GPU/NVML fertig | ~65% | PerfHistoryPage, Recharts, Session-Persistierung |
 | 5 | Cloud-Save E2E Integration | Hoch | 🟡 Crypto + Panel + Settings + AutoSync fertig | ~90% | Konflikt-UI, Sync-Status-Details |
 | 6 | Categories/Tags + Screenshots + Prices UIs | Mittel | 🟡 DB + Layer + NewsPage fertig | ~40% | CategoryChips, ScreenshotGallery, PriceChart |
-| 7 | Controller-Support | Niedrig | 🟡 gilrs-Erkennung + Layout-UI + DB fertig | ~65% | Runtime-Input-Translation, ViGEm/DS4Windows-Bridge, Community-Layout-Bewertungen |
+| 7 | Controller-Support | Niedrig | ✅ Fertig im Launcher-Scope | 100% | Optional: Kernel-Level Virtual-Gamepad-Treiber wie Steam Input |
 | 8 | Mod-Management | Mittel | 🟡 Vollständige Engine + UI + DB fertig | ~85% | Steam Workshop, CurseForge/Mod.io native APIs |
 | 9 | DSGVO/Privacy | Hoch | 🟡 Privacy-Settings-UI + Formular fertig | ~60% | Datenexport (JSON), Account-Löschung (30-Tage) |
 | 10 | Echtzeit-Presence | Mittel | 🟡 Supabase-Realtime + Overlay-Tab + Hook fertig | ~80% | Plattform-Polling (Edge Function), Plattform in Freundesliste |
@@ -247,10 +247,13 @@ Aktuell Mock-Daten → muss auf `listPublishedProducts()` umgestellt werden.
 - ✅ Spieldetailseite: Steam-Input-artiges Controller-Layout-Panel pro Spiel
 - ✅ Button-Re-Mapping pro Spiel+Controller-Typ, Templates, Gyro-/Haptik-Flags
 - ✅ Supabase `controller_layouts` mit RLS für eigene und Community-Layouts
+- ✅ Launch-Runtime: bestes Layout wird vor `launchGame()` aktiviert und lokal pro Spiel abgelegt
+- ✅ Runtime-Status im Controller-Hub inklusive ViGEmBus-Erkennung
+- ✅ Keyboard/Mouse-Templates senden echte Windows-Eingaben via `SendInput`
+- ✅ Laufender `gilrs`-Adapter für Button-Press/Release → Tastatur/Maus
 
-### Offene Tasks
-- Runtime-Input-Translation/Emulation beim Spielstart aktivieren
-- Windows-Bridge für ViGEmBus/DS4Windows und XInput-spezifische Features
+### Optionaler späterer Scope
+- Kernel-Level Virtual-Gamepad-Treiber wie Steam Input/ViGEm für Anti-Cheat-/Raw-Input-Sonderfälle
 - Community-Layouts mit Bewertungen, Downloads und Moderation
 - Gyro/Haptik real an unterstützte Controller-Treiber anbinden
 

@@ -329,7 +329,7 @@ fn is_unreal_catalog_asset(item: &serde_json::Value) -> bool {
         || title.contains("stylized")
         || title.contains("low poly");
 
-    (unreal_marker && asset_marker) || (unreal_marker && asset_title_marker)
+    unreal_marker && (asset_marker || asset_title_marker)
 }
 
 #[derive(Clone)]

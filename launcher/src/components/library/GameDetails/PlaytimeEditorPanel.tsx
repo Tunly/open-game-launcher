@@ -1,10 +1,4 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ChevronLeft,
   ChevronRight,
@@ -123,9 +117,7 @@ export function PlaytimeEditorPanel({
   const [catalogError, setCatalogError] = useState<string | null>(null);
 
   const [isEditTotalOpen, setIsEditTotalOpen] = useState(false);
-  const [editTotalValue, setEditTotalValue] = useState<string>(
-    String(game.playtimeMinutes ?? 0),
-  );
+  const [editTotalValue, setEditTotalValue] = useState<string>(String(game.playtimeMinutes ?? 0));
   const [isSavingTotal, setIsSavingTotal] = useState(false);
   const [editTotalError, setEditTotalError] = useState<string | null>(null);
 
@@ -238,21 +230,16 @@ export function PlaytimeEditorPanel({
         setIsSavingTotal(false);
       }
     }
-  }, [
-    catalogGameId,
-    editTotalValue,
-    game.id,
-    onPlaytimeChanged,
-    onStatusMessage,
-    userId,
-  ]);
+  }, [catalogGameId, editTotalValue, game.id, onPlaytimeChanged, onStatusMessage, userId]);
 
   const openEditSession = useCallback((session: GameSessionRow) => {
     setEditingSession(session);
     setSessionEditStartedAt(isoToDatetimeLocal(session.startedAt));
     setSessionEditEndedAt(isoToDatetimeLocal(session.endedAt));
     setSessionEditDuration(
-      session.durationMinutes == null ? "" : String(Math.max(0, Math.floor(session.durationMinutes))),
+      session.durationMinutes == null
+        ? ""
+        : String(Math.max(0, Math.floor(session.durationMinutes))),
     );
     setSessionEditError(null);
   }, []);
@@ -267,10 +254,12 @@ export function PlaytimeEditorPanel({
     if (!editingSession) return;
     const startedIso = datetimeLocalToIso(sessionEditStartedAt);
     const endedIso = datetimeLocalToIso(sessionEditEndedAt);
-    const durationParsed = sessionEditDuration.trim() === ""
-      ? null
-      : Number.parseInt(sessionEditDuration, 10);
-    if (sessionEditDuration.trim() !== "" && (!Number.isFinite(durationParsed) || (durationParsed ?? 0) < 0)) {
+    const durationParsed =
+      sessionEditDuration.trim() === "" ? null : Number.parseInt(sessionEditDuration, 10);
+    if (
+      sessionEditDuration.trim() !== "" &&
+      (!Number.isFinite(durationParsed) || (durationParsed ?? 0) < 0)
+    ) {
       setSessionEditError("Duration must be a non-negative whole number of minutes.");
       return;
     }
@@ -345,10 +334,7 @@ export function PlaytimeEditorPanel({
     }
   }, [onStatusMessage, page, pendingDelete, refreshSessions, sessions.length]);
 
-  const totalPages = useMemo(
-    () => Math.max(1, Math.ceil(total / PAGE_SIZE)),
-    [total],
-  );
+  const totalPages = useMemo(() => Math.max(1, Math.ceil(total / PAGE_SIZE)), [total]);
 
   return (
     <section className="border-2 border-black bg-[#fff9ed] shadow-[3px_3px_0_#1f1c0f]">
@@ -430,8 +416,7 @@ export function PlaytimeEditorPanel({
             </p>
           ) : catalogError && !catalogGameId ? (
             <p className="border-2 border-black bg-[#f6edd8] p-2 text-[10px] font-bold uppercase text-[#655f58]">
-              {catalogError} Sessions are not editable until the catalog row
-              exists.
+              {catalogError} Sessions are not editable until the catalog row exists.
             </p>
           ) : sessions.length === 0 ? (
             <p className="neo-copy py-2 text-[11px] font-bold uppercase text-[#5b403f]">
@@ -508,9 +493,7 @@ export function PlaytimeEditorPanel({
             }}
           >
             <div className="flex items-center justify-between border-b-2 border-black bg-[#171411] px-4 py-3 text-white">
-              <h3 className="neo-title text-lg uppercase leading-none">
-                Edit Total Playtime
-              </h3>
+              <h3 className="neo-title text-lg uppercase leading-none">Edit Total Playtime</h3>
               <button
                 aria-label="Close dialog"
                 className="grid h-7 w-7 place-items-center border-2 border-black bg-[#fbf4e7] text-[#171411]"
@@ -538,8 +521,8 @@ export function PlaytimeEditorPanel({
                 />
               </label>
               <p className="neo-copy text-[10px] font-bold uppercase text-[#5b403f]">
-                Updates both the local cache and the Supabase aggregate
-                ({formatHours(Number(editTotalValue) || 0)}).
+                Updates both the local cache and the Supabase aggregate (
+                {formatHours(Number(editTotalValue) || 0)}).
               </p>
               {editTotalError ? (
                 <p className="neo-copy border-2 border-black bg-[#fbd6dc] px-3 py-2 text-[11px] font-black uppercase text-[#7a0918]">
@@ -582,9 +565,7 @@ export function PlaytimeEditorPanel({
             }}
           >
             <div className="flex items-center justify-between border-b-2 border-black bg-[#171411] px-4 py-3 text-white">
-              <h3 className="neo-title text-lg uppercase leading-none">
-                Edit Session
-              </h3>
+              <h3 className="neo-title text-lg uppercase leading-none">Edit Session</h3>
               <button
                 aria-label="Close dialog"
                 className="grid h-7 w-7 place-items-center border-2 border-black bg-[#fbf4e7] text-[#171411]"
@@ -670,11 +651,7 @@ export function PlaytimeEditorPanel({
         cancelLabel="Cancel"
         confirmLabel={isDeletingSession ? "Deleting…" : "Delete"}
         destructive
-        message={
-          deleteError
-            ? deleteError
-            : "This will remove the play session permanently."
-        }
+        message={deleteError ? deleteError : "This will remove the play session permanently."}
         open={pendingDelete !== null}
         title="Delete session?"
         onCancel={() => {

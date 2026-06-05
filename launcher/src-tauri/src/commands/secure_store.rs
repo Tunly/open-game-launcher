@@ -294,10 +294,8 @@ pub fn migrate_legacy_tokens() {
         let legacy_path = launcher_dir.join(filename);
         if let Ok(contents) = fs::read_to_string(&legacy_path) {
             let trimmed = contents.trim();
-            if !trimmed.is_empty() {
-                if set_secret(domain, &contents).is_ok() {
-                    let _ = fs::rename(&legacy_path, legacy_path.with_extension("json.migrated"));
-                }
+            if !trimmed.is_empty() && set_secret(domain, &contents).is_ok() {
+                let _ = fs::rename(&legacy_path, legacy_path.with_extension("json.migrated"));
             }
         }
     }

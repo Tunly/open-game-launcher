@@ -2,7 +2,7 @@ use super::secure_store;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tauri::Emitter;
@@ -493,7 +493,7 @@ async fn fetch_gog_owned_games_from_catalog(
         page += 1;
     }
 
-    games.sort_by(|left, right| left.title.to_lowercase().cmp(&right.title.to_lowercase()));
+    games.sort_by_key(|left| left.title.to_lowercase());
     games.dedup_by(|left, right| left.id == right.id);
 
     Ok(games)
@@ -643,7 +643,7 @@ pub async fn gog_get_download_info(
     let mut token =
         load_gog_token().ok_or_else(|| "No GOG token found. Please login first.".to_string())?;
     let client = Client::new();
-    let platform = platform.unwrap_or_else(|| detect_platform());
+    let platform = platform.unwrap_or_else(detect_platform);
 
     // Step 1: Get available builds
     let builds_url = format!("{GOG_EMBED_BASE}/games/{gog_id}/builds?os={platform}");
@@ -690,18 +690,18 @@ pub async fn gog_get_download_info(
         .installers
         .iter()
         .find(|i| i.os.eq_ignore_ascii_case(&platform))
-        .or_else(|| installers_data.installers.iter().next())
+        .or_else(|| installers_data.installers.first())
         .ok_or_else(|| "No matching installer found.".to_string())?;
 
     // Step 3: Get download URL for the first file
-    let download_url = installer.files.first().and_then(|f| {
+    let download_url = installer.files.first().map(|f| {
         let file_id = &f.id;
         let url = format!(
             "{GOG_EMBED_BASE}/games/{gog_id}/builds/{build_id}/installers/{installer_id}/{file_id}",
             build_id = latest_build.build_id,
             installer_id = installer.id
         );
-        Some(url)
+        url
     });
 
     let files_payload: Vec<GogInstallerFilePayload> = installer
@@ -952,7 +952,7 @@ async fn download_gog_game_files(
     app: &tauri::AppHandle,
     game_id: &str,
     title: &str,
-    install_dir: &PathBuf,
+    install_dir: &Path,
     download_info: &GogDownloadInfoPayload,
     token: &mut GogToken,
     pause_rx: &watch::Receiver<bool>,
@@ -1340,7 +1340,7 @@ pub(crate) fn emit_gog_download_progress(
 // Installed Games Cache Update
 // ============================================================================
 
-fn update_installed_games_cache(game_id: &str, title: &str, install_dir: &PathBuf) {
+fn update_installed_games_cache(game_id: &str, title: &str, install_dir: &Path) {
     let mut games = crate::commands::games::core::read_installed_games_cache().unwrap_or_default();
     let install_path = install_dir.to_string_lossy().to_string();
 
