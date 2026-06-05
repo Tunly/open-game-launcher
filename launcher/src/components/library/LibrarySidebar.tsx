@@ -5,6 +5,7 @@ import type { Game } from "../../lib/types";
 import type { GameGroup } from "../../lib/game-groups";
 import type { LibraryAdvancedFilters } from "../../lib/library-filters";
 import type { LibrarySortOption } from "../../lib/library-sort";
+import type { CustomArtworkKind } from "../../lib/custom-artwork";
 import { LibraryRow } from "./LibraryRow";
 import { LibraryCustomScrollbar } from "./LibraryCustomScrollbar";
 
@@ -34,6 +35,7 @@ export interface LibrarySidebarProps {
   listScrollRef: RefObject<HTMLDivElement | null>;
   setIsAddGameOpen: (open: boolean) => void;
   setAddGameError?: (err: string | null) => void;
+  onArtworkDrop?: (gameId: string, kind: CustomArtworkKind, file: File) => void;
 }
 
 export function LibrarySidebar({
@@ -58,6 +60,7 @@ export function LibrarySidebar({
   listScrollRef,
   setIsAddGameOpen,
   setAddGameError,
+  onArtworkDrop,
 }: LibrarySidebarProps) {
   const clearAddGameError = setAddGameError ?? (() => undefined);
 
@@ -156,6 +159,7 @@ export function LibrarySidebar({
       selected={selectedGroup?.id === group.id}
       onSelect={setSelectedGroup}
       isFavorite={group.variants.some((game) => favorites[game.id] === true)}
+      onArtworkDrop={onArtworkDrop}
     />
   );
 

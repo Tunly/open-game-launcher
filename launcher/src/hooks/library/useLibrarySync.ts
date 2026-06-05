@@ -15,6 +15,7 @@ import {
   type CustomArtworkKind,
   type CustomArtworkMap,
 } from "../../lib/custom-artwork";
+import { compressAndReadImage, isAllowedImageType } from "../../lib/image-compress";
 import { getGameLogoCandidates } from "../../lib/formatters";
 import { syncGamePlaytimeStats } from "../../lib/supabase/playtime";
 import { getProviderErrorMessage, readLocalStorageString } from "../../lib/library-providers";
@@ -86,20 +87,7 @@ function readCustomArtworkMap(): CustomArtworkMap {
   }
 }
 
-function readImageAsDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error("Could not read selected artwork file."));
-    reader.onload = () => {
-      if (typeof reader.result === "string") {
-        resolve(reader.result);
-        return;
-      }
-      reject(new Error("Selected artwork file could not be converted."));
-    };
-    reader.readAsDataURL(file);
-  });
-}
+
 
 export interface UseLibrarySyncOptions {
   setStatusMessage: GameStatusSetter;
@@ -126,7 +114,14 @@ export interface UseLibrarySyncResult {
   handleLogoError: (game: Game) => void;
   customArtwork: CustomArtworkMap;
   handleSelectCustomArtwork: (gameId: string, kind: CustomArtworkKind, file: File) => Promise<void>;
+  handleArtworkDrop: (gameId: string, kind: CustomArtworkKind, file: File) => Promise<void>;
+  handleConfirmArtwork: (dataUrl: string, kind: CustomArtworkKind) => void;
   handleResetCustomArtwork: (gameId: string, kind?: CustomArtworkKind) => void;
+  pendingArtworkFile: File | null;
+  pendingArtworkKind: CustomArtworkKind;
+  pendingArtworkGameId: string | null;
+  openArtworkPreview: (gameId: string, kind: CustomArtworkKind, file: File) => void;
+  closeArtworkPreview: () => void;
 }
 
 const PROVIDER_PIPELINE: ProviderMerger[] = [
@@ -151,6 +146,9 @@ export function useLibrarySync({ setStatusMessage }: UseLibrarySyncOptions): Use
   );
   const [loadedLogoUrls, setLoadedLogoUrls] = useState<Set<string>>(() => new Set());
   const [customArtwork, setCustomArtwork] = useState<CustomArtworkMap>(readCustomArtworkMap);
+  const [pendingArtworkFile, setPendingArtworkFile] = useState<File | null>(null);
+  const [pendingArtworkKind, setPendingArtworkKind] = useState<CustomArtworkKind>("cover");
+  const [pendingArtworkGameId, setPendingArtworkGameId] = useState<string | null>(null);
   const automaticSyncInFlightRef = useRef(false);
   const lastFocusSyncAtRef = useRef(0);
 
@@ -495,13 +493,13 @@ export function useLibrarySync({ setStatusMessage }: UseLibrarySyncOptions): Use
   }
 
   async function handleSelectCustomArtwork(gameId: string, kind: CustomArtworkKind, file: File) {
-    if (!file.type.startsWith("image/")) {
-      setStatusMessage("Only image files can be used as custom artwork.");
+    if (!isAllowedImageType(file)) {
+      setStatusMessage("Only JPG, PNG, and WebP images can be used as custom artwork.");
       return;
     }
 
     try {
-      const dataUrl = await readImageAsDataUrl(file);
+      const dataUrl = await compressAndReadImage(file, kind);
       setCustomArtwork((current) => ({
         ...current,
         [gameId]: {
@@ -515,6 +513,37 @@ export function useLibrarySync({ setStatusMessage }: UseLibrarySyncOptions): Use
     } catch (error) {
       setStatusMessage(getProviderErrorMessage(error));
     }
+  }
+
+  async function handleArtworkDrop(gameId: string, kind: CustomArtworkKind, file: File) {
+    await handleSelectCustomArtwork(gameId, kind, file);
+  }
+
+  function openArtworkPreview(gameId: string, kind: CustomArtworkKind, file: File) {
+    setPendingArtworkGameId(gameId);
+    setPendingArtworkKind(kind);
+    setPendingArtworkFile(file);
+  }
+
+  function closeArtworkPreview() {
+    setPendingArtworkFile(null);
+    setPendingArtworkGameId(null);
+  }
+
+  function handleConfirmArtwork(dataUrl: string, kind: CustomArtworkKind) {
+    if (!pendingArtworkGameId) return;
+
+    setCustomArtwork((current) => ({
+      ...current,
+      [pendingArtworkGameId]: {
+        ...current[pendingArtworkGameId],
+        [`${kind}Url`]: dataUrl,
+        updatedAt: Date.now(),
+      },
+    }));
+    setLogoCandidateIndexes((current) => ({ ...current, [pendingArtworkGameId]: 0 }));
+    setStatusMessage(`Custom ${kind} artwork saved.`);
+    closeArtworkPreview();
   }
 
   function handleResetCustomArtwork(gameId: string, kind?: CustomArtworkKind) {
@@ -577,6 +606,13 @@ export function useLibrarySync({ setStatusMessage }: UseLibrarySyncOptions): Use
     handleLogoError,
     customArtwork,
     handleSelectCustomArtwork,
+    handleArtworkDrop,
+    handleConfirmArtwork,
     handleResetCustomArtwork,
+    pendingArtworkFile,
+    pendingArtworkKind,
+    pendingArtworkGameId,
+    openArtworkPreview,
+    closeArtworkPreview,
   };
 }

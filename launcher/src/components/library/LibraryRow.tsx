@@ -1,6 +1,7 @@
 import { memo, useState, useEffect } from "react";
 import { Heart } from "lucide-react";
 import type { GameGroup } from "../../lib/game-groups";
+import type { CustomArtworkKind } from "../../lib/custom-artwork";
 import { getGameAssetUrl } from "../../lib/assets";
 import { getGameIconCandidates, getGameSource } from "../../lib/formatters";
 import { PlatformIcon, PlatformSourceIcon } from "./PlatformIcons";
@@ -10,11 +11,13 @@ type LibraryRowProps = {
   selected?: boolean;
   onSelect: (group: GameGroup) => void;
   isFavorite?: boolean;
+  onArtworkDrop?: (gameId: string, kind: CustomArtworkKind, file: File) => void;
 };
 
-function LibraryRowBase({ group, selected, onSelect, isFavorite }: LibraryRowProps) {
+function LibraryRowBase({ group, selected, onSelect, isFavorite, onArtworkDrop }: LibraryRowProps) {
   const game = group.primaryGame;
   const [iconCandidateIndex, setIconCandidateIndex] = useState(0);
+  const [isDragOver, setIsDragOver] = useState(false);
   const iconCandidates = getGameIconCandidates(game);
   const iconUrl = getGameAssetUrl(iconCandidates[iconCandidateIndex]);
 
@@ -22,15 +25,39 @@ function LibraryRowBase({ group, selected, onSelect, isFavorite }: LibraryRowPro
     setIconCandidateIndex(0);
   }, [game.id, game.iconUrl, game.iconUrls]);
 
+  function handleDragOver(event: React.DragEvent) {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+    setIsDragOver(true);
+  }
+
+  function handleDragLeave() {
+    setIsDragOver(false);
+  }
+
+  function handleDrop(event: React.DragEvent) {
+    event.preventDefault();
+    setIsDragOver(false);
+    const file = event.dataTransfer.files[0];
+    if (file && onArtworkDrop) {
+      onArtworkDrop(game.id, "icon", file);
+    }
+  }
+
   return (
     <button
       className={`flex min-h-[52px] w-full min-w-0 items-center gap-2 border-2 px-3 py-2 text-left transition ${
         selected
           ? "border-black bg-[#139a82] text-[#fffaf0]"
-          : "border-transparent text-[#171411] hover:bg-[#dfd4c1]"
+          : isDragOver
+            ? "border-[#169b83] bg-[#169b83]/10 text-[#171411]"
+            : "border-transparent text-[#171411] hover:bg-[#dfd4c1]"
       }`}
       type="button"
       onClick={() => onSelect(group)}
+      onDragOver={onArtworkDrop ? handleDragOver : undefined}
+      onDragLeave={onArtworkDrop ? handleDragLeave : undefined}
+      onDrop={onArtworkDrop ? handleDrop : undefined}
     >
       <span
         className={`grid h-[22px] w-[22px] shrink-0 place-items-center overflow-hidden border border-black text-[10px] leading-none ${

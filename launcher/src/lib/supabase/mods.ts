@@ -12,9 +12,7 @@ import type {
 // The Database type lags behind migrations for the mod catalog and
 // user_mod_installs tables. Until those tables are added to the generated
 // database.types.ts, this module relies on locally defined row shapes and
-// narrows the client to an untyped variant at the call site. The disable
-// below is intentionally scoped to this file.
-/* eslint-disable @typescript-eslint/no-explicit-any */
+// narrows the client to an untyped variant at the call site.
 
 const MOD_SELECT = `id, user_id, game_id, game_title, name, source, source_url, author,
   description, category, enabled, load_order, profile_id, current_version_id,
@@ -320,7 +318,8 @@ export async function listModCatalogEntries(filters?: {
   provider?: ModProvider | "all";
   gameId?: string;
   search?: string;
-}): Promise<ModCatalogEntry[]> {
+  }): Promise<ModCatalogEntry[]> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- mod_catalog_entries not yet in Database types
   const client = getSupabaseClient() as any;
   if (!client) return [];
   let query = client
@@ -388,6 +387,7 @@ interface UserModInstallRow {
 }
 
 export async function recordUserModInstall(install: InstalledModInfo): Promise<void> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- user_mod_installs not yet in Database types
   const client = getSupabaseClient() as any;
   if (!client) return;
   const {

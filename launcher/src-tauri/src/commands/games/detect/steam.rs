@@ -16,7 +16,7 @@ use super::super::core::{
     unix_timestamp_to_iso,
 };
 use super::super::types::*;
-use super::legacy::{is_ea_install_directory, normalize_scanned_launcher};
+use super::{is_ea_install_directory, normalize_scanned_launcher};
 
 pub fn scan_steam_games() -> Vec<InstalledGame> {
     let Some(steam_dir) = find_steam_dir() else {

@@ -139,6 +139,7 @@ export function LibraryPage() {
             fallbackMockGames={filters.fallbackMockGames}
             listScrollRef={gameListScrollRef}
             setIsAddGameOpen={setIsAddGameOpen}
+            onArtworkDrop={sync.handleArtworkDrop}
           />
           <LibraryFilters
             isOpen={filters.isFilterPopupOpen}

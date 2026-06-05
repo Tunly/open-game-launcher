@@ -81,7 +81,14 @@ export function GameDetailPanel() {
       }
       artworkGameId={selectedGroup?.primaryGame?.id}
       onSelectCustomArtwork={ctx.sync.handleSelectCustomArtwork}
+      onArtworkDrop={ctx.sync.handleArtworkDrop}
+      onConfirmArtwork={ctx.sync.handleConfirmArtwork}
       onResetCustomArtwork={ctx.sync.handleResetCustomArtwork}
+      pendingArtworkFile={ctx.sync.pendingArtworkFile}
+      pendingArtworkKind={ctx.sync.pendingArtworkKind}
+      pendingArtworkGameId={ctx.sync.pendingArtworkGameId}
+      openArtworkPreview={ctx.sync.openArtworkPreview}
+      closeArtworkPreview={ctx.sync.closeArtworkPreview}
     />
   );
 }

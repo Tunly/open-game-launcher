@@ -10,7 +10,7 @@
 | 1   | Security & RLS Hardening  | High     | 1-2 days | Completed   | Close Stripe/RLS/path-traversal/injection holes                     |
 | 2   | Quick-Wins Tooling        | Low      | 1 day    | Completed   | Editorconfig, Prettier, Husky, tsconfig strictness, .gitignore gaps |
 | 3   | LibraryPage Decomposition | High     | 3-5 days | Completed   | Split 2749-LOC god-component into hooks + subcomponents             |
-| 4   | Architecture Polish       | Medium   | 3-4 days | In Progress | Zustand selectors, error helpers, subscription hooks, any→types, Rust file splits |
+| 4   | Architecture Polish       | Medium   | 3-4 days | Completed   | Zustand selectors, error helpers, subscription hooks, any→types, Rust file splits |
 | 5   | CI/CD Hardening           | Medium   | 1-2 days | Backlog     | Windows runner, Rust checks, coverage thresholds in CI              |
 
 See `docs/IMPROVEMENTS_FINDINGS.md` for the raw audit.

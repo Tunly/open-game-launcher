@@ -50,6 +50,7 @@ import { CloudSavesPanel } from "./GameDetails/CloudSavesPanel";
 import { GameUpdateFeed } from "./GameUpdateFeed";
 import { ControllerLayoutEditor } from "../controllers/ControllerLayoutEditor";
 import type { ControllerDevice } from "../../lib/types/controllers";
+import { ArtworkPreviewModal } from "./ArtworkPreviewModal";
 
 type AchievementWithSources = UnifiedAchievement & {
   sourceLabels?: string[];
@@ -153,7 +154,14 @@ export interface GameDetailsProps {
   customArtwork: GameCustomArtwork | null;
   artworkGameId?: string;
   onSelectCustomArtwork: (gameId: string, kind: CustomArtworkKind, file: File) => void;
+  onArtworkDrop: (gameId: string, kind: CustomArtworkKind, file: File) => void;
+  onConfirmArtwork: (dataUrl: string, kind: CustomArtworkKind) => void;
   onResetCustomArtwork: (gameId: string, kind?: CustomArtworkKind) => void;
+  pendingArtworkFile: File | null;
+  pendingArtworkKind: CustomArtworkKind;
+  pendingArtworkGameId: string | null;
+  openArtworkPreview: (gameId: string, kind: CustomArtworkKind, file: File) => void;
+  closeArtworkPreview: () => void;
 }
 
 export function GameDetails({
@@ -190,8 +198,13 @@ export function GameDetails({
   runAutomaticLibrarySync,
   customArtwork,
   artworkGameId,
-  onSelectCustomArtwork,
+  onArtworkDrop,
+  onConfirmArtwork,
   onResetCustomArtwork,
+  pendingArtworkFile,
+  pendingArtworkKind,
+  openArtworkPreview,
+  closeArtworkPreview,
 }: GameDetailsProps) {
   // Local state that was originally in LibraryPage
   const [isSettingsPopoverOpen, setIsSettingsPopoverOpen] = useState(false);
@@ -249,6 +262,26 @@ export function GameDetails({
   const [crossPlayPlatforms, setCrossPlayPlatforms] = useState<CrossPlayPlatform[]>([]);
   const [isControllerPanelOpen, setIsControllerPanelOpen] = useState(false);
   const [controllerDevices, setControllerDevices] = useState<ControllerDevice[]>([]);
+  const [isBannerDragOver, setIsBannerDragOver] = useState(false);
+
+  function handleBannerDragOver(event: React.DragEvent) {
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+    setIsBannerDragOver(true);
+  }
+
+  function handleBannerDragLeave() {
+    setIsBannerDragOver(false);
+  }
+
+  function handleBannerDrop(event: React.DragEvent) {
+    event.preventDefault();
+    setIsBannerDragOver(false);
+    const file = event.dataTransfer.files[0];
+    if (file && primaryArtworkGameId) {
+      onArtworkDrop(primaryArtworkGameId, "cover", file);
+    }
+  }
 
   useEffect(() => {
     if (!enrichedSelectedGame?.id) {
@@ -292,7 +325,7 @@ export function GameDetails({
       return;
     }
 
-    onSelectCustomArtwork(primaryArtworkGameId, kind, file);
+    openArtworkPreview(primaryArtworkGameId, kind, file);
   }
 
   function openArtworkPicker(kind: CustomArtworkKind) {
@@ -374,12 +407,24 @@ export function GameDetails({
                 return (
                   <section className="border-b-4 border-black bg-[#171411]">
                     <div
-                      className={`${getPlatformBannerClass(enrichedSelectedGame)} relative overflow-hidden bg-[#0f141b] ${getFallbackBannerClass(enrichedSelectedGame)}`}
+                      role="region"
+                      aria-label="Drop zone for cover artwork"
+                      className={`${getPlatformBannerClass(enrichedSelectedGame)} relative overflow-hidden bg-[#0f141b] ${getFallbackBannerClass(enrichedSelectedGame)} ${isBannerDragOver ? "ring-4 ring-[#169b83] ring-inset" : ""}`}
                       style={getGameBannerStyle(enrichedSelectedGame.coverUrl, {
                         backgroundPosition: gameSource === "epic" ? "center 24%" : undefined,
                       })}
+                      onDragOver={handleBannerDragOver}
+                      onDragLeave={handleBannerDragLeave}
+                      onDrop={handleBannerDrop}
                     >
                       <div className="absolute inset-0 bg-[radial-gradient(circle,rgba(255,255,255,0.025)_1px,transparent_1px)] bg-[length:9px_9px]" />
+                      {isBannerDragOver && (
+                        <div className="absolute inset-0 z-20 flex items-center justify-center bg-[#169b83]/30 backdrop-blur-sm">
+                          <span className="border-2 border-black bg-[#fbf4e7] px-4 py-2 text-[12px] font-black uppercase text-[#171411] shadow-[3px_3px_0_#171411]">
+                            Drop for cover
+                          </span>
+                        </div>
+                      )}
                       {shouldShowTextFallback ? (
                         <h1 className="absolute left-1/2 top-1/2 max-w-[min(62%,720px)] -translate-x-1/2 -translate-y-1/2 text-center text-[clamp(2.4rem,7vw,5.4rem)] font-black uppercase leading-none tracking-normal text-white drop-shadow-[0_7px_14px_rgba(0,0,0,0.75)]">
                           {enrichedSelectedGame.title}
@@ -1402,6 +1447,13 @@ export function GameDetails({
           setUninstallError(null);
         }}
         onConfirm={handleUninstallConfirm}
+      />
+      <ArtworkPreviewModal
+        isOpen={pendingArtworkFile !== null}
+        file={pendingArtworkFile}
+        initialKind={pendingArtworkKind}
+        onClose={closeArtworkPreview}
+        onConfirm={onConfirmArtwork}
       />
     </>
   );

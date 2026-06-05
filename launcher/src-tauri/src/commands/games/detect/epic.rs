@@ -8,7 +8,7 @@ use super::super::core::{
     path_to_string, unix_timestamp_to_iso,
 };
 use super::super::types::*;
-use super::legacy::{
+use super::{
     find_local_banner_asset, find_local_icon_asset, find_local_logo_asset, get_rawg_epic_assets,
 };
 

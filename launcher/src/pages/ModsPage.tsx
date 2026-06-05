@@ -18,6 +18,7 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
+import { useShallow } from "zustand/react/shallow";
 
 import {
   cancelModInstall,
@@ -106,9 +107,14 @@ export function ModsPage() {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [expandedQueue, setExpandedQueue] = useState(false);
   const items = useModInstallStore((state) => state.items);
-  const setQueueItems = useModInstallStore((state) => state.setItems);
-  const upsertQueueItem = useModInstallStore((state) => state.upsertItem);
-  const removeQueueItem = useModInstallStore((state) => state.removeItem);
+  const { setItems: setQueueItems, upsertItem: upsertQueueItem, removeItem: removeQueueItem } =
+    useModInstallStore(
+      useShallow((state) => ({
+        setItems: state.setItems,
+        upsertItem: state.upsertItem,
+        removeItem: state.removeItem,
+      })),
+    );
   const activeCount = useModInstallStore(selectActiveModInstallCount);
   const delegatedCount = useModInstallStore(selectDelegatedModInstallCount);
   const completedCount = useModInstallStore(selectCompletedModInstallCount);
