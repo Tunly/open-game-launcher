@@ -1,2 +1,3 @@
 #!/usr/bin/env sh
-# disabled
+# Pre-commit hook intentionally disabled. See README "Automation" section.
+# To re-enable, install `husky` + `lint-staged` wiring and re-add commands here.

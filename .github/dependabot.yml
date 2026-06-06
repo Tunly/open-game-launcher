@@ -1,3 +1,5 @@
+# Dependabot is intentionally disabled. See README "Automation" section.
+# To re-enable, set `enabled: true` per ecosystem and re-add a schedule.
 version: 2
 updates:
   - package-ecosystem: github-actions

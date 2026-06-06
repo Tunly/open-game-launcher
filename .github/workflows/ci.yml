@@ -1,10 +1,10 @@
+# CI is intentionally disabled for now (manual `workflow_dispatch` only).
+# See README "Automation" section. To re-enable, switch `on` back to
+# `push` + `pull_request` and remove the `if: ${{ false }}` guard.
 name: CI
 
 on:
-  push:
-    branches: [main]
-  pull_request:
-    branches: [main]
+  workflow_dispatch:
 
 jobs:
   build:

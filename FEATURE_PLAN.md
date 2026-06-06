@@ -11,20 +11,72 @@
 
 | # | Feature | Priorität | Status | Gesamtfortschritt | Offene Aufgaben |
 |---|---------|-----------|--------|-------------------|-----------------|
-| 1 | Smart-Join-UI | Hoch | 🟡 CrossPlayBadge + Rust-Command + DB fertig | ~60% | Smart-Join-Button in Freundesliste |
-| 2 | Store-Backend Frontend | Hoch | 🟡 Backend + Stripe + DeveloperPortal fertig | ~55% | StorePage auf echte Daten, Checkout, Reviews, Preischart |
-| 3 | In-Game Overlay vollständig | Mittel | 🟡 Tabs + Hotkey + AC + Screenshot + FPS-HUD fertig | ~85% | Echte FPS-Werte, Recharts, Screenshot-Speicherort |
-| 4 | Performance-Monitor Frontend | Mittel | 🟡 Overlay-Tab + Rust-Polling + GPU/NVML fertig | ~65% | PerfHistoryPage, Recharts, Session-Persistierung |
-| 5 | Cloud-Save E2E Integration | Hoch | 🟡 Crypto + Panel + Settings + AutoSync fertig | ~90% | Konflikt-UI, Sync-Status-Details |
+| 0 | Embedded Client-Manager | Hoch | 🟡 URI-Start + Plattform-Detection + Login-Flow fertig | ~30% | Client-Health-Poll, Status-Indikatoren, Silent-Install, Auto-Updates, Client-Modifikation |
+| 2 | Store-Backend Frontend | Hoch | 🟡 Backend + Stripe + DeveloperPortal fertig | ~50% | StorePage auf echte Daten, Checkout, Reviews, Preischart |
+| 3 | In-Game Overlay vollständig | Mittel | 🟡 Tabs + Hotkey + AC + Screenshot + FPS/GPU fertig | ~90% | Recharts statt SVG-Sparkline |
+| 4 | Performance-Monitor Frontend | Mittel | 🟡 Overlay-Tab + Rust-Polling + GPU/NVML fertig | ~50% | PerfHistoryPage-Route fehlt, Recharts-ActivitySection tot, Session-Persistierung |
+| 5 | Cloud-Save E2E Integration | Hoch | 🟡 Crypto + Panel + Settings + AutoSync fertig | ~80% | Konflikt-UI, Sync-Status-Details |
 | 6 | Categories/Tags + Screenshots + Prices UIs | Mittel | 🟡 DB + Layer + NewsPage fertig | ~40% | CategoryChips, ScreenshotGallery, PriceChart |
-| 7 | Controller-Support | Niedrig | ✅ Fertig im Launcher-Scope | 100% | Optional: Kernel-Level Virtual-Gamepad-Treiber wie Steam Input |
-| 8 | Mod-Management | Mittel | 🟡 Vollständige Engine + UI + DB fertig | ~85% | Steam Workshop, CurseForge/Mod.io native APIs |
-| 9 | DSGVO/Privacy | Hoch | 🟡 Privacy-Settings-UI + Formular fertig | ~60% | Datenexport (JSON), Account-Löschung (30-Tage) |
-| 10 | Echtzeit-Presence | Mittel | 🟡 Supabase-Realtime + Overlay-Tab + Hook fertig | ~80% | Plattform-Polling (Edge Function), Plattform in Freundesliste |
-| 11 | Custom Artwork | Niedrig | 🟡 rawg-assets EF + Rust-Cache + custom-artwork.ts fertig | ~50% | Upload per Spiel, Auto-Download in GameDetails |
+| 7 | Mod-Management | Mittel | 🟡 Vollständige Engine + UI + DB + Steam-Workshop fertig | ~90% | CurseForge/Mod.io native APIs |
+| 9 | DSGVO/Privacy | Hoch | 🟡 Privacy-Settings-UI + Formular fertig | ~45% | Datenexport (JSON), Account-Löschung (30-Tage) |
+| 10 | Echtzeit-Presence | Mittel | 🟡 Supabase-Realtime + Overlay-Tab + Hook fertig | ~75% | Plattform-Polling (Edge Function), echte Plattform in Freundesliste |
+| 11 | Custom Artwork | Niedrig | 🟡 rawg-assets EF + Rust-Cache + Drag-Drop-Upload fertig | ~70% | Auto-Download in GameDetails (Steam-Header, Epic-Caps) |
 | 12 | Backup & Restore | Niedrig | ❌ Nicht begonnen | 0% | Externes Laufwerk, inkrementell |
 | 13 | Remote Play & Downloads | Niedrig | ❌ Nicht begonnen | 0% | Delegation an Steam/Epic, Mobile/Web |
-| 14 | Spielzeit-Tracking erweitert | Niedrig | 🟡 playtime.rs (Background-Poller) + Supabase-Sync fertig | ~60% | Idle-Erkennung, Session-Charts, Manuelle Korrektur |
+| 14 | Spielzeit-Tracking erweitert | Niedrig | 🟡 playtime.rs + idle.rs + Sessions + Editor fertig | ~75% | Session-Charts (ActivitySection tot) |
+
+---
+## 0. Embedded Client-Manager
+
+> Ziel: Open Game Launcher ist ein vollwertiger Client-Manager für alle unterstützten Plattformen — nicht nur ein Aggregator. Erkennung laufender Clients, Status-Polling, Silent-Install, Auto-Updates und Client-Modifikationen (Pfad-Overlays, Asset-Cache, Mod-Wurzelverzeichnisse) sind im Scope. Client-Start erfolgt über die offiziellen URI-Protokolle der jeweiligen Plattformen.
+
+### Bereits implementiert
+
+- ✅ Client-Start via offizielles URI-Protokoll (Steam `steam://`, Epic `com.epicgames.launcher://`, GOG `goggalaxy://`, Xbox `xbox://`, Ubisoft `uplay://`, Battle.net `battle.net://`, EA `origin2://`)
+- ✅ Plattform-spezifische Game-Detection in `commands/games/detect/{epic,steam}.rs` (Windows Registry, macOS Plist, Linux .desktop/.config)
+- ✅ Library listet installierte Spiele mit Launcher-Source (Steam, GOG, Epic, Xbox, Ubisoft, Battle.net, EA)
+- ✅ Login + Owned-Games-Flow für 7 Plattformen
+- ✅ Cross-Plattform Source-Tracking über `game_external_ids` Tabelle
+
+### Offene Tasks
+
+#### 7-Plattform Client-Detection
+- Pro Plattform: Installationspfad, Version, Running-State, Update-Verfügbarkeit
+- Detection-Layer aus `detect/{epic,steam}.rs` auf alle 7 Plattformen erweitern
+- Konfigurierbares Poll-Intervall (Default 30s)
+
+#### Process-Status-Polling
+- `ClientInfo` Model mit Live-Updates: PID, Window-Handle, last-input, uptime
+- Plattform-spezifische Prozess-Detection (Steam = `steam.exe`, Epic = `EpicGamesLauncher.exe`, GOG = `GalaxyClient.exe`, etc.)
+- Events: `client_started`, `client_stopped`, `game_started`, `game_stopped`
+- Integration in `useLibrarySync` für Live-Refresh
+
+#### Library-Status-Indikatoren
+- "Steam läuft nicht" / "Steam starten"-Button in `GameRow`
+- "Spiel läuft"-Badge mit PID/Window-Handle
+- Cross-Plattform-Konsolidierung: Wenn ein Spiel auf Steam läuft, in Epic-Library als „läuft über Steam" markieren
+
+#### Silent-Install
+- Unterstützte Plattform-Clients silent installieren, wo lizenzrechtlich + technisch möglich
+- Voraussetzung: User-Consent + Capability-Check (Admin-Rechte, freier Speicher, .NET-Runtime etc.)
+- Eigenes Installationsmanifest pro Plattform
+- UI: „Plattform fehlt → Installieren"-Flow in der Library
+
+#### Auto-Updates
+- Versions-Polling pro Plattform (24h)
+- Auto-Download von Client-Updates (konfigurierbar: manuell / auto-download / auto-apply)
+- Update-History pro Client
+
+#### Client-Modifikation
+- Pfad-Overlays: Launcher kann alternative Asset-/Mod-Pfade pro Client verwalten
+- Asset-Cache-Pflege: gemeinsamer Cache über alle Clients, konfliktfreie Lookup-Tabelle
+- Mod-Wurzelverzeichnisse pro Client: Steam `steamapps/workshop`, GOG `Galaxy-2.0-Plugins-Storage`, Epic `Mods/`, etc.
+- Schutz vor versehentlicher Modifikation: Read-Only-Mount für fremde Verzeichnisse
+
+#### Tests + Telemetrie
+- Plattform-Health-Score (Detection-Erfolgsrate, Login-Status, Update-Verfügbarkeit)
+- Anonyme Nutzungsstatistik pro Plattform (nur lokal, opt-in)
+- E2E-Tests mit gemockten Prozessen
 
 ---
 ## 15. Cross-Platform Achievements
@@ -46,55 +98,21 @@
 - Zusatz-Achievements aus Nicht-Basisplattformen bleiben erhalten.
 - Steam und Xbox haben echte Sync-Pfade ueber Nutzerkonto/lokale Titelhinweise.
 - GOG, Epic, EA, Ubisoft und Battle.net haben sichtbare Provider-Statuspfade.
+- GOG hat einen Login-basierten Sync ueber die Galaxy-Gameplay-Achievement-Route; der lokale Importer bleibt Fallback.
+- Epic versucht Legendary-Login-Metadaten (`legendary info --json`) vor lokalem Import und oeffentlichem Store-Fallback.
 - Lokaler best-effort Importer fuer JSON-Caches: `achievement-cache/<provider>/<game-id>.json`.
+- Der lokale Importer prueft zusaetzlich bekannte Client-Cache-Wurzeln fuer GOG, Epic, EA, Ubisoft und Battle.net und sucht dort begrenzt nach plausiblen Achievement-/Stats-JSONs.
 - Sidecar-Import aus Spielordnern: `og-achievements.json`, `achievements.json`, `<provider>-achievements.json` und `.og-launcher/*`.
+- Sidecar-/Scraper-Format dokumentiert in `docs/references/achievement-sidecars.md`.
 - Installierte best-effort Provider versuchen den lokalen Importer auch ohne Login, damit Sidecars nicht uebersehen werden.
 - Epic Public-Fallback: Definitions/Rarity werden best-effort von oeffentlichen Epic Achievement-Seiten gelesen und lokal gecacht, ohne API-Key.
 
 ### Offene Tasks
 
-- GOG: lokale Galaxy-Clientdaten nach Achievement-/Stats-Cache untersuchen und in den lokalen JSON-Importer schreiben.
-- Epic: lokale Unlocks aus Epic/Legendary/EOS-Clientdaten finden und mit den oeffentlichen Definitionen mergen.
-- EA/Ubisoft/Battle.net: lokale Clientdaten oder Web-/Client-Caches in den lokalen JSON-Importer schreiben.
+- GOG: lokale Galaxy-Clientdaten zusaetzlich zum Login-Sync nach Achievement-/Stats-Cache untersuchen.
+- Epic: echte lokale Unlocks aus Epic/EOS-Clientdaten finden und mit Legendary-/Store-Definitionen mergen.
+- EA/Ubisoft/Battle.net: konkrete Achievement-Cacheformate je Client identifizieren; Importpfad prueft bereits bekannte lokale Cache-Wurzeln plus begrenzte JSON-Discovery.
 - Remote/Supabase-Sync fuer aggregierte Achievements spaeter nachziehen.
-
----
-## 1. Smart-Join-UI (S1)
-
-> Detaillierter Plan: `docs/plans/01-cross-play-and-smart-join.md`
-> Bereits fertig: Migration `cross_play_schema`, Types, Supabase-Layer, CrossPlayBadge, Tauri-Command `launch_cross_play_join`
-
-### Offene Tasks
-
-#### Smart-Join-Button in der Freundesliste
-
-Wenn ein Freund ein Cross-Play-Spiel spielt und du es auf einer kompatiblen Plattform besitzt, erscheint ein "Spiel beitreten"-Button.
-
-**Flow:**
-1. Freundesliste: "Max spielt Fortnite auf Epic"
-2. Du hast Fortnite auf Steam installiert
-3. Klick → Smart-Join: **Spiel auf Steam starten** (Teal-Button)
-4. Untertitel: "Fortnite unterstützt Cross-Play."
-5. Bei nicht verifiziertem Cross-Play: Gelber Warnhinweis
-
-**Smart-Join-Logik:**
-1. Eingabe: Welches Spiel, welche Plattform?
-2. Lookup: Cross-Play-Kombinationen für das Spiel
-3. Prüfung: Besitz auf kompatibler Plattform? Installiert?
-4. Output: Smart-Join-Button oder "Kaufen"-Hinweis
-
-**Ehrlich-UX:**
-
-| Szenario | Verhalten |
-|---|---|
-| Cross-Play verifiziert | "Smart-Join möglich" (grün) |
-| Gemeldet, nicht verifiziert | "Nicht garantiert" (gelb) |
-| Nicht in DB | Kein Button |
-| Inkompatible Plattform | "Kaufe auf [Plattformen]" |
-| Gleiche Plattform | "Spiel öffnen" |
-| Verknüpfung fehlt | "Verknüpfe [Plattform]" |
-
-**Tech:** Cross-Play-DB lokal gecached, Delta-Sync, O(1)-Lookup, `game_universal_id` Mapping.
 
 ---
 ## 2. Store-Backend Frontend (S3)
@@ -140,14 +158,14 @@ Aktuell Mock-Daten → muss auf `listPublishedProducts()` umgestellt werden.
 ## 3. In-Game Overlay vollständig (S4)
 
 > Detaillierter Plan: `docs/plans/04-in-game-overlay.md`
-> Bereits fertig: Overlay-Fenster mit 4 Tabs (Freunde/Chat/Erfolge/Performance), globaler Hotkey (Shift+Tab), Anti-Cheat-Scanning (13 AC), Screenshot-Capture (GDI BitBlt)
+> Bereits fertig: Overlay-Fenster mit 4 Tabs (Freunde/Chat/Erfolge/Performance), globaler Hotkey (Shift+F1), Anti-Cheat-Scanning (13 AC), Screenshot-Capture (GDI BitBlt + Persistierung), echte FPS-/GPU-Werte (DXGI + NVML)
 
 ### Bereits implementiert
 
 #### Overlay-Fenster & Hotkey
 - ✅ `toggle_in_game_overlay` erzeugt `transparent: true`, `always_on_top: true`, `decorations: false`, `skip_taskbar: true`
 - ✅ Route `/overlay` mit vollständiger `OverlayPage.tsx` (4 Tabs)
-- ✅ `Shift+Tab` via `tauri-plugin-global-shortcut` registriert
+- ✅ `Shift+F1` via `tauri-plugin-global-shortcut` registriert
 - Fullscreen: Nicht nutzbar → Toast-Notifications als Fallback
 
 #### Anti-Cheat-Detection
@@ -159,50 +177,47 @@ Aktuell Mock-Daten → muss auf `listPublishedProducts()` umgestellt werden.
 - **Freunde:** `getVisiblePresence` + `subscribeToPresenceChanges`, Online-Status, aktuelles Spiel
 - **Chat:** Gruppenchats, `subscribeToGroupMessages`, Nachrichten senden
 - **Erfolge:** Installierte Spiele mit Achievement-Progress-Bar
-- **Performance:** CPU%, RAM MB, FPS, Frame-Time, SVG-Sparkline, Uptime
+- **Performance:** CPU%, RAM MB, FPS (DXGI Frame-Pacing), Frame-Time, SVG-Sparkline, Uptime
+
+#### Echte FPS/GPU-Werte
+- ✅ FPS via `report_frame_rendered` in `perf_monitor.rs:33-55` (DXGI Frame-Pacing)
+- ✅ GPU via NVML in `perf_monitor.rs:104-119` (Windows)
+- ✅ `FpsHudPage` zeigt Live-Werte
 
 #### Screenshot-Capture
 - ✅ Windows GDI `BitBlt` (kein DXGI)
-- ✅ Gibt Base64-JPEG zurück
+- ✅ Persistiert in `AppData\OG-Launcher\screenshots\ogl_*.jpg` (`overlay.rs:270-280`)
 
 ### Offene Tasks
 
-#### Echte GPU/FPS-Werte
-- Aktuell: GPU = `None`, FPS = `0.0` (Platzhalter)
-- Nötig: DXGI Frame-Pacing (FPS), `nvidia-smi`/`rocm-smi` (GPU)
-
 #### Recharts statt SVG-Sparkline
-- Custom SVG-Sparkline funktioniert → 4 Recharts `<LineChart>` mit 60 Samples
-
-#### Screenshot-Persistierung
-- Aktuell nur Base64-Ausgabe in Console
-- Speicherort: `%APPDATA%\OG-Launcher\Screenshots\{game}\`
+- Custom SVG-Sparkline funktioniert (`OverlayPage.tsx:1312`) → 4 Recharts `<LineChart>` mit 60 Samples
 
 ---
 ## 4. Performance-Monitor Frontend (S5)
 
 > Detaillierter Plan: `docs/plans/05-performance-monitor.md`
-> Bereits fertig: Migration `performance_metrics`, `perf_monitor.rs` (CPU+RAM), Types, Overlay-PerfTab mit CPU/RAM/FPS/Frame-Time-Metriken + SVG-Sparkline
+> Bereits fertig: Migration `performance_metrics`, `perf_monitor.rs` (CPU+RAM+FPS+NVML-GPU), Types, Overlay-PerfTab mit echten Metriken + SVG-Sparkline
 
 ### Bereits implementiert
 
 #### PerfMonitorTab im Overlay
-- ✅ `poll_performance_metrics` pollt CPU%, RAM MB, FPS, Frame-Time und Uptime (alle 2s im Overlay)
+- ✅ `poll_performance_metrics` pollt CPU%, RAM MB, FPS, Frame-Time, GPU und Uptime (alle 2s im Overlay)
 - ✅ 4 MetricCards in 2×2 Grid: CPU, RAM, FPS, Frame
 - ✅ SVG-Sparkline für CPU-Verlauf (30 Samples)
+- ✅ FPS via DXGI Frame-Pacing, GPU via NVML (Windows)
 
 ### Offene Tasks
 
 #### PerfHistoryPage in Settings
-- Route `/settings/performance` mit Sessions-Übersicht
+- Route `/settings/performance` fehlt komplett (kein Eintrag in `router.tsx:90-122`)
 - Vergangene Sessions: Dauer, Avg-FPS, Peak-RAM
 - Recharts-Charts über Zeit
 - Filter: 7 Tage / 30 Tage / Alle
 
-#### GPU/FPS (echte Werte)
-- Aktuell: GPU = `None`, FPS = `0.0` (Platzhalter)
-- **FPS:** DXGI Frame-Pacing (Windows)
-- **GPU:** `sysinfo` oder `nvidia-smi`/`rocm-smi` Fallback
+#### ActivitySection ist Dead-Code
+- `launcher/src/components/settings/ActivitySection.tsx` (~412 LOC, Recharts BarChart) ist gebaut, wird aber **nirgends importiert**.
+- Aktion: Entweder in SettingsPage mounten oder löschen.
 
 #### Recharts statt SVG-Sparkline
 - Custom SVG funktioniert → 4 Recharts `<LineChart>` mit 60 Samples
@@ -269,28 +284,6 @@ Aktuell Mock-Daten → muss auf `listPublishedProducts()` umgestellt werden.
 - Edge Function `notify-price-drop`
 
 ---
-## 7. Controller-Support
-
-> Kein Sub-Plan. Konzept aus Feature-Plan Section 3.6.
-
-### Bereits implementiert
-- ✅ Rust-Modul `controller.rs` mit `gilrs`, Tauri-Command `list_controllers()`
-- ✅ Controller-Hub `/controllers` mit Geräte-Scan, globalen Defaults und Layout-Editor
-- ✅ Spieldetailseite: Steam-Input-artiges Controller-Layout-Panel pro Spiel
-- ✅ Button-Re-Mapping pro Spiel+Controller-Typ, Templates, Gyro-/Haptik-Flags
-- ✅ Supabase `controller_layouts` mit RLS für eigene und Community-Layouts
-- ✅ Launch-Runtime: bestes Layout wird vor `launchGame()` aktiviert und lokal pro Spiel abgelegt
-- ✅ Runtime-Status im Controller-Hub inklusive ViGEmBus-Erkennung
-- ✅ Keyboard/Mouse-Templates senden echte Windows-Eingaben via `SendInput`
-- ✅ Laufender `gilrs`-Adapter für Button-Press/Release → Tastatur/Maus
-
-### Optionaler späterer Scope
-- Kernel-Level Virtual-Gamepad-Treiber wie Steam Input/ViGEm für Anti-Cheat-/Raw-Input-Sonderfälle
-- Community-Layouts mit Bewertungen, Downloads und Moderation
-- Gyro/Haptik real an unterstützte Controller-Treiber anbinden
-
----
-
 ## 8. Mod-Management
 
 > Detaillierter Plan: `docs/plans/09-mod-management.md`
@@ -320,8 +313,8 @@ Aktuell Mock-Daten → muss auf `listPublishedProducts()` umgestellt werden.
 ### Offene Tasks
 
 #### Steam Workshop
-- Items abonnieren/verwalten via Steam-Content-System
-- Mod-Liste in Spieldetailseite
+- ✅ `extract_steam_workshop_id` + `install_path.join("workshop")` in `mod_install.rs:1046-1083` ist real
+- ✅ Workshop-Items werden mit korrektem Pfad und ID-Extraction installiert
 
 #### CurseForge / Mod.io
 - Overwolf-Integration (CurseForge)
@@ -386,17 +379,19 @@ Aktuell Mock-Daten → muss auf `listPublishedProducts()` umgestellt werden.
 ---
 ## 11. Custom Artwork
 
-> Bereits fertig: rawg-assets Edge Function für RAWG-API-Integration
+> Bereits fertig: rawg-assets Edge Function, Rust-Cache, Drag-Drop-Upload in GameDetails
 
 ### Bereits implementiert
 
 - ✅ `supabase/functions/rawg-assets/index.ts`: Ruft Cover-Art von RAWG-API ab
 - ✅ Asset-Caching in Rust-Backend (`rawg_asset_cache_path`)
+- ✅ `lib/custom-artwork.ts`: Custom-Artwork-Logik
+- ✅ Drag-Drop-Upload in `GameDetails.tsx:282` + Handler in `useLibrarySync.ts:518`
+- ✅ `ArtworkPreviewModal`: Vorschau vor Übernahme
 
 ### Offene Tasks
 
-- Cover/Header/Logo Upload pro Spiel (Supabase Storage `game-artwork`)
-- Auto-Download in Spieldetailseite (Steam Headerimages, Epic Caps)
+- Auto-Download in Spieldetailseite (Steam Headerimages, Epic Caps) — RAWG-Edge-Function gibt Cover, aber kein Auto-Apply
 - Community-Artwork mit Voting (Späterer Scope)
 
 ---
@@ -434,20 +429,16 @@ Aktuell Mock-Daten → muss auf `listPublishedProducts()` umgestellt werden.
 
 - ✅ `playtime.rs` (Rust): Basis-Spielzeit-Erfassung
 - ✅ `game_sessions` Tabelle in Supabase
+- ✅ `idle.rs` (Windows `GetLastInputInfo`, Linux `xprintidle`, macOS-Stub): Plattform-spezifische Idle-Erkennung
+- ✅ `useUserPlaySessions` Hook: Sessions abrufen
+- ✅ `PlaytimeEditorPanel`: Manuelle Korrektur von Spielzeit
 
 ### Offene Tasks
 
-#### Idle-Erkennung (15 Min)
-- Alle 5s: Input-Aktivität prüfen (Tastatur/Maus)
-- 15 Min kein Input → Pause
-- Windows: `GetLastInputInfo`, macOS/Linux: `xprintidle`-Äquivalent
-
 #### Session-Historie Charts
-- SettingsPage: Tages-/Wochen-/Monats-/Jahresübersicht
-- Recharts: Balken (Spielzeit pro Spiel/Tag), Liniendiagramm (Trend)
-
-#### Manuelle Korrektur
-- Spielzeit editierbar, Sessions verschieben/löschen
+- `launcher/src/components/settings/ActivitySection.tsx` ist gebaut (Recharts BarChart), wird aber **nirgends importiert**.
+- Aktion: In SettingsPage mounten oder löschen.
+- Filter: Tages-/Wochen-/Monats-/Jahresübersicht
 
 ---
 ## Spätere Erweiterungen
@@ -468,6 +459,9 @@ Aktuell Mock-Daten → muss auf `listPublishedProducts()` umgestellt werden.
 | **AI-Empfehlungen** | Konzept | Mood-basiert, Backlog-Priorisierung |
 | **Broadcasting** | Konzept | Twitch/YouTube-Integration |
 | **LAN-Transfer** | Später | Netzwerk-Kopie zwischen PCs |
+| **Kernel-Level Virtual-Gamepad** | Später | Virtual-Gamepad-Treiber wie Steam Input/ViGEm für Anti-Cheat-/Raw-Input-Sonderfälle |
+| **Controller Community-Layouts** | Später | Community-Layouts mit Bewertungen, Downloads und Moderation |
+| **Controller Gyro/Haptik** | Später | Gyro/Haptik real an unterstützte Controller-Treiber anbinden |
 
 ---
 

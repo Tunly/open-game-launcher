@@ -10,17 +10,24 @@ Not production-ready. Store commerce, entitlements, CDN delivery, real patching,
 | --- | --- |
 | Desktop shell | Tauri 2, custom title bar, frameless window, window-bounds guard |
 | Visual system | Retro Manga Launcher (`docs/PROJECT_DESIGN.md`) |
-| Library | Installed-game scan, cache, manual add, move, launch, favorites, hidden, collections |
+| Library | Installed-game scan, cache, manual add, move, launch, favorites, hidden, collections, custom categories, dynamic collections |
 | Unified game model | Cross-platform type with launcher source, external id, install path, metadata, playtime, artwork, achievements, saves |
 | External libraries | Steam, GOG, Epic (Legendary), Xbox, Game Pass, Ubisoft, Battle.net, EA |
 | Downloads | Persistent queue, resumable HTTP jobs, optional SHA-256 verification, GOG chunk-verified downloads, external launcher tracking |
-| Cloud saves | Supabase Storage per-game upload/download/restore + library snapshots |
-| Achievements | Xbox + Steam sync |
-| Presence | Supabase Realtime |
-| Chat & invites | Direct messages, group chat rooms, game invites via Supabase Realtime |
+| Cloud saves | Supabase Storage per-game upload/download/restore + library snapshots + AES-256-GCM E2E encryption with Argon2id key derivation |
+| Achievements | Xbox + Steam + cross-platform aggregation; provider-status display for GOG/Epic/EA/Ubisoft/Battle.net; local JSON sidecar import; Epic public-fallback scraping |
+| Cross-Play | `game_universal_id` mapping, CrossPlayBadge, Smart-Join button in friends list, `launch_cross_play_join` command |
+| Presence | Supabase Realtime, platform hooks, overlay friends tab |
+| Chat & invites | Direct messages, group chat rooms, game invites, universal-friends links via Supabase Realtime |
 | Local DB sync | SQLite-backed local-first entity sync with dirty tracking and remote conflict resolution |
-| Store | Mock data |
-| Auth/Profile/Social | Supabase Auth, profile pages, friends, customization, privacy, blocks, comments, showcases, badges, social links, hardware |
+| Store | Backend: Stripe checkout EF, store schema, Developer Portal. Frontend: `StorePage` is still mock data with "Coming Soon" overlay |
+| Mods | Full installer engine (URL/Archive/Folder, Steam-Workshop extractor), enable/disable, queue, pause/cancel, provider delegation |
+| Controller | `gilrs` device detection, re-mapping editor, per-game layouts, templates, runtime translation, ViGEmBus detection |
+| In-Game Overlay | Transparent Tauri window, 4 tabs (Freunde/Chat/Erfolge/Performance), Shift+F1 hotkey, anti-cheat banner, GDI screenshots persisted to AppData, DXGI FPS + NVML GPU |
+| Performance-Monitor | Overlay tab + `FpsHudPage` with real CPU/RAM/FPS/GPU, DXGI frame-pacing, NVML |
+| Auth/Profile/Social | Supabase Auth, profile pages, friends, customization, privacy, blocks, comments, showcases, badges, social links, hardware, family sharing |
+| Custom Artwork | Drag-Drop-Upload in GameDetails + RAWG-Edge-Function proxy + asset cache |
+| Deep Links | `universallauncher://` URI handler (`useDeepLink` hook) |
 | Tests | 269+ automated tests across UI, hooks, stores, and Supabase database helpers |
 | Releases | Tauri bundling exists; no release automation |
 
@@ -97,19 +104,26 @@ Run from `launcher/`:
 | Route | Purpose |
 | --- | --- |
 | `/` | Redirects to `/library` |
-| `/store` | Store discovery |
 | `/home` | Launcher home |
 | `/library` | Game library |
-| `/mods` | Mods browser |
+| `/store` | Store discovery (mock data) |
 | `/community` | Community hub |
+| `/news` | News feed |
+| `/mods` | Mods browser + install queue |
 | `/downloads` | Download queue |
-| `/friends` | Friends, requests, search, blocks |
+| `/friends` | Friends, requests, search, blocks, smart-join |
+| `/family` | Family sharing + invites |
+| `/controllers` | Controller hub (detection + layout editor) |
+| `/achievements` | Achievements dashboard |
 | `/auth` | Sign in/sign up |
 | `/u/:username` | Public profile |
 | `/settings` | Launcher settings |
 | `/settings/profile` | Edit profile |
 | `/settings/profile/customize` | Theme/showcase customization |
 | `/settings/privacy` | Visibility controls |
+| `/developer` | Developer Portal (store management) |
+| `/overlay` | In-Game Overlay window (friends/chat/achievements/perf) |
+| `/fps-hud` | Standalone FPS HUD |
 | `*` | 404 not found |
 
 ## Repository Structure
@@ -166,13 +180,49 @@ Run from `launcher/`:
 │           │       ├── detect.rs      # Game detection helpers
 │           │       ├── playtime.rs    # Playtime tracking
 │           │       └── types.rs       # Game types
-│           ├── lib.rs                 # Command registration
-│           └── main.rs
+│       └── src-tauri/
+│           └── src/
+│               ├── commands/
+│               │   ├── system.rs          # System, hardware, Steam login/scrape
+│               │   ├── gog.rs             # GOG OAuth, library, downloads, cloud saves
+│               │   ├── epic.rs            # Epic (Legendary) auth + library
+│               │   ├── xbox.rs            # Xbox login, library, Game Pass, achievements
+│               │   ├── battlenet.rs       # Battle.net login + game scraping
+│               │   ├── ea.rs              # EA token management + library
+│               │   ├── ubisoft.rs         # Ubisoft local config parsing
+│               │   ├── downloads.rs       # Download queue management
+│               │   ├── http.rs            # Generic HTTP download worker
+│               │   ├── local_db.rs        # Local SQLite entity sync
+│               │   ├── crossplay.rs       # Cross-Play + Smart-Join command
+│               │   ├── controller.rs      # `gilrs` device detection
+│               │   ├── mod_install.rs     # Mod installer engine (URL/Archive/Folder/Steam Workshop)
+│               │   ├── family.rs          # Family sharing + invite codes
+│               │   ├── friends.rs         # Friend merge + universal-friends
+│               │   ├── deeplink.rs        # `universallauncher://` URI handler
+│               │   ├── overlay.rs         # In-Game Overlay window + GDI screenshots
+│               │   ├── anti_cheat.rs      # AC process scanning
+│               │   ├── perf_monitor.rs    # CPU/RAM/FPS/DXGI/NVML polling
+│               │   ├── cloud_crypto.rs    # AES-256-GCM + Argon2id for cloud saves
+│               │   ├── secure_store.rs    # OS keychain wrapper
+│               │   ├── stripe.rs          # Stripe checkout wrapper
+│               │   └── games/
+│               │       ├── core.rs             # Game CRUD, launch, uninstall
+│               │       ├── verify.rs           # File verification + repair
+│               │       ├── sync.rs             # Cloud save sync
+│               │       ├── detect/             # Game detection (epic, steam, mod)
+│               │       ├── playtime.rs         # Playtime tracking
+│               │       ├── idle.rs             # Platform-specific idle detection
+│               │       ├── play_sessions.rs    # Session persistence
+│               │       ├── device_id.rs        # Stable device fingerprint
+│               │       └── types.rs            # Game types
+│               ├── lib.rs                 # Command registration
+│               └── main.rs
 ├── supabase/
-│   ├── migrations/                    # 7 migrations (schema, RLS, realtime, chat, local entities)
+│   ├── migrations/                    # 26+ migrations (schema, RLS, realtime, chat, local entities, cross-play, store, mods, family, controller, achievements)
 │   ├── seed.sql
 │   └── functions/
-│       └── rawg-assets/               # RAWG API artwork proxy
+│       ├── rawg-assets/               # RAWG API artwork proxy
+│       └── stripe-create-checkout/    # Stripe checkout session EF
 ├── LICENSE                            # AGPL-3.0
 └── README.md
 ```
@@ -308,29 +358,102 @@ Accessed through `launcher/src/lib/launcher.ts`. Do not call `invoke()` directly
 | `get_local_database_path()` | Filesystem path to local SQLite DB |
 | `get_local_sync_status()` | Pending change count + last sync timestamp |
 
+### Cross-Play & Smart-Join
+
+| Command | Behavior |
+| --- | --- |
+| `get_cross_play_platforms(universalGameId)` | Lookup cross-play combinations |
+| `launch_cross_play_join(universalGameId, platform)` | Launch game on compatible platform |
+
+### Controller
+
+| Command | Behavior |
+| --- | --- |
+| `list_controllers()` | Enumerate `gilrs`-detected gamepads |
+| `set_controller_layout(layout)` | Persist per-game layout |
+| `activate_controller_layout(gameId)` | Apply best layout before launch |
+| `detect_vigembus()` | Check ViGEmBus driver presence |
+
+### Mods
+
+| Command | Behavior |
+| --- | --- |
+| `install_mod_from_url(input)` | Download + SHA-256 + extract mod archive |
+| `scan_mod_directory(path)` | Scan folder for installed mods |
+| `scan_game_mods(gameId)` | Detect installed mods for a game |
+| `enable_mod(modId)` / `disable_mod(modId)` | Toggle mod activation |
+| `uninstall_mod(modId)` | Remove mod + cleanup |
+| `set_mod_provider_secret(provider, secret)` | Store API key for Nexus/CurseForge |
+
+### Family Sharing
+
+| Command | Behavior |
+| --- | --- |
+| `create_family_invite()` | Generate invite code |
+| `join_family(inviteCode)` | Accept invite |
+| `list_family_members()` | Enumerate current family |
+| `leave_family()` | Remove self from family |
+
+### In-Game Overlay
+
+| Command | Behavior |
+| --- | --- |
+| `toggle_in_game_overlay()` | Show/hide transparent overlay window |
+| `is_overlay_blocked_by_anti_cheat()` | Scan running processes for AC |
+| `capture_screenshot()` | GDI `BitBlt` → JPEG, persist to AppData |
+| `poll_performance_metrics()` | CPU/RAM/FPS/GPU/Frame-Time sample |
+| `report_frame_rendered()` | DXGI frame-pacing tick |
+
+### Cloud Save Crypto
+
+| Command | Behavior |
+| --- | --- |
+| `generate_cloud_key()` | Create AES-256-GCM master key in OS keychain |
+| `rotate_cloud_key()` | Replace master key, re-encrypt |
+| `is_cloud_key_present()` | Check keychain for key |
+| `encrypt_file(path)` | AES-256-GCM + Argon2id → `${user_id}/${game_id}/...enc` |
+| `decrypt_file(path)` | Decrypt + verify meta |
+
+### Store / Stripe
+
+| Command | Behavior |
+| --- | --- |
+| `create_stripe_checkout(items)` | Start Stripe checkout session via EF |
+| `validate_license(token)` | Offline license token check (30-day, device limit) |
+
 ## Supabase
 
 Migrations cover account, profile, social, chat, and game data. Auth owns user id; `handle_new_user()` trigger creates profile/settings/rows.
 
-### Tables (33)
+### Tables
 
 Profiles & accounts: `profiles`, `profile_private`, `user_settings`.
 
 Profile system: `profile_themes`, `user_profile_cosmetics`, `profile_showcases`, `profile_comments`, `user_badges`, `user_social_links`, `user_hardware`.
 
-Game catalog: `games`, `achievements`.
+Game catalog: `games`, `game_external_ids`, `achievements`.
 
-Social & presence: `user_presence`, `friendships`, `user_blocks`.
+Social & presence: `user_presence`, `friendships`, `user_blocks`, `friend_merge_groups`.
 
-Library & stats: `user_library`, `user_game_stats`, `game_sessions`, `user_achievements`, `achievement_progress`, `user_wishlist`, `user_reviews`.
+Library & stats: `user_library`, `user_game_stats`, `game_sessions`, `user_achievements`, `achievement_progress`, `user_wishlist`, `user_reviews`, `user_playtime_stats_writes`.
 
 Activity & collections: `user_devices`, `user_notifications`, `user_activity`, `user_game_collections`, `user_game_collection_items`.
 
 Cloud sync: `user_library_snapshots`, `user_cloud_save_sets`, `user_cloud_save_files`.
 
-Chat & invites: `chat_rooms`, `chat_room_members`, `chat_messages`, `game_invites`.
+Chat & invites: `chat_rooms`, `chat_room_members`, `chat_messages`, `game_invites`, `share_tokens` (universal-friends).
 
 Local entity sync: `launcher_local_entities`.
+
+Cross-Play: `game_universal_ids`, `cross_play_combinations`.
+
+Mods: `managed_mods`, `mod_profiles`, `mod_catalog`, `mod_catalog_versions`, `mod_catalog_user_installs`, `mod_catalog_dependencies`.
+
+Store: `products`, `orders`, `cart_items`, `licenses`, `store_reviews`, `price_history`.
+
+Family: `families`, `family_members`, `family_invites`.
+
+Controller: `controller_layouts`.
 
 ### RLS Helpers
 
@@ -338,11 +461,15 @@ Local entity sync: `launcher_local_entities`.
 
 ### Storage Buckets
 
-`avatars`, `profile-banners`, `profile-showcases`, `screenshots` (public). `game-saves` (private).
+`avatars`, `profile-banners`, `profile-showcases`, `screenshots`, `game-artwork` (public). `game-saves` (private).
 
 ### Realtime
 
 `user_presence`, `chat_messages`, `game_invites` are on the `supabase_realtime` publication.
+
+### Edge Functions
+
+`rawg-assets` (RAWG artwork proxy), `stripe-create-checkout` (Stripe checkout session).
 
 Run locally:
 
@@ -369,15 +496,20 @@ supabase gen types typescript --local > launcher/src/lib/database.types.ts
 ## Known Gaps
 
 - No native folder picker yet
-- Store catalog is mock data
+- `StorePage` still uses mock data; backend (products, orders, Stripe) is real but not wired to UI
 - Store/CDN delivery still needs real catalog download URLs
 - Verify/repair don't check real manifests
 - Platform tokens rely on localStorage
 - Xbox integration is Windows-focused
 - Epic depends on Legendary CLI
 - No automated release deployment (CI lint, typecheck, and tests are automated via GitHub Actions)
-- Chat/invites schema exists but frontend integration is minimal
-- Local DB sync commands exist but full offline-first flow is incomplete
+- DSGVO: data export (JSON) and 30-day account deletion not implemented
+- Cloud-Save Conflict-UI missing (no diff/merge view; sync is last-write-wins)
+- `ActivitySection` (Recharts session-history) is built but not mounted in SettingsPage
+- `PerfHistoryPage` route does not exist; per-session perf persistence not implemented
+- Real platform polling for presence (Steam/Epic/Xbox) not implemented
+- Backup/Restore and Remote Play/Downloads not started
+- CurseForge/Mod.io mod providers have config but no native API integration
 
 ## Current State
 
@@ -386,76 +518,122 @@ Open Game Launcher is a working desktop application. This section describes what
 ### What works today
 - Desktop shell (Tauri 2, custom title bar, frameless window, window-bounds guard)
 - Visual system: **Retro Manga Launcher** ([`docs/PROJECT_DESIGN.md`](./docs/PROJECT_DESIGN.md)) — aged paper, halftone, red/teal, sharp corners
-- Library: Installed-game scan, cache, manual add, move, launch, favorites, hidden, collections
+- Library: Installed-game scan, cache, manual add, move, launch, favorites, hidden, collections, custom categories, dynamic collections
 - Unified game model with cross-platform type, launcher source, external id, install path, metadata, playtime, artwork, achievements, saves
 - External libraries: **Steam, GOG, Epic (Legendary), Xbox, Game Pass, Ubisoft, Battle.net, EA**
 - Downloads: Persistent queue, resumable HTTP jobs, optional SHA-256 verification, GOG chunk-verified downloads, external launcher tracking
-- Cloud saves: Supabase Storage per-game upload/download/restore + library snapshots
-- Achievements: Xbox + Steam sync via Web/Live APIs
+- Cloud saves: Supabase Storage per-game upload/download/restore + library snapshots + **AES-256-GCM E2E encryption** with Argon2id key derivation (OS keychain master key)
+- Achievements: Xbox + Steam sync via Web/Live APIs; cross-platform aggregation with provider-status display for GOG/Epic/EA/Ubisoft/Battle.net; local JSON sidecar import; Epic public-fallback scraping
+- Cross-Play: `game_universal_id` mapping, CrossPlayBadge, **Smart-Join button in friends list**
 - Presence: Supabase Realtime
-- Chat & invites: Direct messages, group chat rooms, game invites via Supabase Realtime
+- Chat & invites: Direct messages, group chat rooms, game invites, universal-friends links
 - Local DB sync: SQLite-backed entity sync with dirty tracking and remote conflict resolution
-- Auth/Profile/Social: Supabase Auth, profile pages, friends, customization, privacy, blocks, comments, showcases, badges, social links, hardware
+- Auth/Profile/Social: Supabase Auth, profile pages, friends, customization, privacy, blocks, comments, showcases, badges, social links, hardware, **family sharing**
 - 9 Profile showcase panels (About, Activity, Stats, ...)
-- Mod-Management (full mod installer engine supporting direct URL, local archive, and folder sources, enable/disable, and provider delegation)
-- Controller support (device detection via `gilrs`, re-mapping editor, configuration templates, and haptics/gyro flags)
+- **Mod-Management**: full installer engine (URL/Archive/Folder), Steam-Workshop extractor, enable/disable, queue, pause/cancel, provider delegation
+- **Controller support**: `gilrs` device detection, re-mapping editor, per-game layouts, templates, runtime translation, ViGEmBus detection
+- **In-Game Overlay**: transparent Tauri window, 4 tabs, Shift+F1 hotkey, anti-cheat banner, GDI screenshots persisted to AppData, real DXGI FPS + NVML GPU
+- **Performance-Monitor**: Overlay tab + `FpsHudPage` with CPU/RAM/FPS/GPU
 - RAWG artwork via Edge Function proxy
+- Custom Artwork: Drag-Drop-Upload in GameDetails
+- Deep Links: `universallauncher://` URI handler
+- Store backend: Stripe checkout EF, Developer Portal, store schema with products/orders/cart/licenses/reviews/price-history
+- News feed page (`/news`)
+- 26+ Supabase migrations (schema, RLS, realtime, chat, local entities, cross-play, store, mods, family, controller)
 
 ## Open Work
 
 Features described in [`FEATURE_PLAN.md`](./FEATURE_PLAN.md) that are not yet implemented or only partially implemented.
 
-### Embedded Mode (Light Version)
-- Client-Detection for all 7 platforms (currently: login + owned-games flow only)
-- Process-Status-Polling for running clients (`ClientInfo` model)
-- "Steam läuft nicht" / "Steam starten"-Status indicators in the Library
-- See [FEATURE_PLAN.md Sektion 0](./FEATURE_PLAN.md) for the full Light Version design
+### Embedded Client-Manager
+- Full scope, Bereits-implementiert-Status und Offene Tasks: siehe [FEATURE_PLAN.md §0](./FEATURE_PLAN.md)
+- Kurzfassung: 7-Plattform-Client-Detection, Process-Status-Polling, Library-Status-Indikatoren, Silent-Install, Auto-Updates, Client-Modifikation (Pfad-Overlays, Asset-Cache, Mod-Wurzelverzeichnisse)
+- Client-Start weiterhin via offizielles URI-Protokoll
 
-### Cross-Platform-Gameplay-Erkennung
-- `CrossPlaySupport` data in `games.metadata.cross_play_platforms` JSONB
-- IGDB API integration for initial data population
-- Smart-Join UI in friends list ("Spiel auf deiner Plattform starten")
-- Honest UX: verified vs. reported vs. not supported
+### Real Store Frontend
+- `StorePage` is mock data; needs `listPublishedProducts()` wiring
+- Product page: cover, description, price, reviews, sysreq
+- Cart drawer + checkout flow
+- Reviews (verified-purchase, 1-5 stars, abuse protection, developer replies)
+- Wishlist + Price-Tracker (`PriceChart` over `price_history`, `notify-price-drop` EF)
+- Order history + `validate_license` command (offline token 30 days, device limit)
+- `Coming Soon` overlay needs to be removed once products land
 
-### Custom-Link Invites
-- `universallauncher://` URI-handler in Tauri
-- JWT-based share tokens (separate `share_tokens` table)
-- Web fallback page for users without the launcher installed
-- Cross-platform invite flow with platform-native fallback
+### Custom-Link Invites (Partial)
+- `universallauncher://` URI handler is wired (Tauri deeplink, `useDeepLink` hook)
+- Universal-friends migration (`share_tokens`) is deployed
+- Missing: JWT-based share tokens, web fallback page, cross-platform invite flow
 
-### Real Store
-- Backend catalog (currently mock data in `lib/mock-data.ts`)
-- Stripe/PayPal integration via Edge Functions
-- DRM, License-Management
-- Developer Portal
-- Wishlist + Price-Tracker
-- Reviews + Ratings
+### Cloud-Save Conflict-UI
+- Currently last-write-wins (local or cloud overrides)
+- Need: diff/merge view, manual "Lokal vs. Cloud" selection, conflict counter
+
+### Performance History
+- `PerfHistoryPage` route does not exist
+- `ActivitySection` (Recharts session-history) is built but not mounted in SettingsPage
+- Per-session perf persistence (300-sample buffer → `savePerfSession()` bulk-insert)
+
+### Real Presence Platform Polling
+- 60s polling per platform (Steam/Epic/Xbox) via Edge Function
+- Real per-platform display in friends list (currently hardcoded `"steam"`)
+- Friend activity feed enrichment
+
+### Cross-Platform Achievements
+- GOG local client scraper
+- Epic local client data + Unlocks merge
+- EA/Ubisoft/Battle.net local client caches
+- Remote/Supabase sync for aggregated achievements
+
+### DSGVO Compliance Gaps
+- JSON data export (profile, friends, playtime, achievements, orders)
+- 30-day account deletion (reactivation window + hard delete)
+
+### Backup/Restore (lokal)
+- External drive, ZIP/tar.gz compression
+- Incremental diff-based backups
+- Single-game or full restore
+
+### Remote Play & Downloads
+- Steam Remote Play / Epic EOS delegation
+- Web dashboard `app.og-launcher.com` for remote install triggers
 
 ### Additional Open Features
-- Screenshots & Capture
-- In-Game Overlay (always-on-top Tauri window for windowed/borderless games)
-- Performance-Monitor (FPS, CPU, GPU live)
-- Runtime controller input translation / emulation
-- Anti-Cheat-Kompatibilitäts-DB
-- Backup/Restore (lokal)
-- Remote Play, Mobile App
-- Family Sharing
-- Real Mod-Management (Steam Workshop, Nexus, ...)
-- News-Feed, Preis-Tracker
-- Cloud-Save-Sync mit Save-Pfad-Community-DB
-- Smart Install (Mirror-Selection, price-comparison)
-- One-Click Setup (new PC onboarding)
+- CurseForge/Mod.io native API integration (provider config exists, no API)
+- Real manifests for `verify_game_files()`/`repair_game_files()`
+- Real platform native folder picker
+- IGDB API integration for Cross-Play data population
 - Game Activity Dashboard (Spotify-Wrapped-style)
-- Plugin-System, Themes, LAN-Transfer, Broadcasting
+- Plugin-System, Themes, LAN-Transfer, Broadcasting, Mobile App
+- Kernel-Level Virtual-Gamepad driver (Steam Input/ViGEm)
+- Controller Community-Layouts with voting/moderation
+- Real Gyro/Haptik driver integration
 
 ## Architectural Decisions
 
 - **Cloud-first** (Supabase) mit Local-Cache (SQLite `launcher_local_entities`) für Offline-Resilienz
 - **AGPL-3.0 Open-Source** Lizenz
 - **Retro Manga Launcher** als fixes Design-System (siehe [`docs/PROJECT_DESIGN.md`](./docs/PROJECT_DESIGN.md))
-- **Embedded Mode Light Version** als Default: Open Game Launcher ist ein Aggregator, kein Client-Manager. Kein Silent-Install, keine Auto-Updates, keine Client-Modifikation. Client-Start via offizielles URI-Protokoll.
+- **Embedded Client-Manager** als Default: Open Game Launcher ist ein vollwertiger Client-Manager für alle unterstützten Plattformen. Erkennung laufender Clients, Silent-Install (wo lizenzrechtlich zulässig), Auto-Updates und Client-Modifikationen (Pfad-Overlays, Asset-Cache, Mod-Wurzelverzeichnisse) sind im Scope. Client-Start erfolgt über die offiziellen URI-Protokolle der jeweiligen Plattformen.
 - **Tauri 2 + React 18 + TypeScript 5.7 + Rust 1.77+** als Stack
 - **Supabase** für Auth, DB, Storage, Realtime
+
+## Automation
+
+All bot-style automation is **intentionally disabled** in this repository. This section documents what is off and how to re-enable it, so future contributors do not turn it on by accident.
+
+| Bot | State | Where | How to re-enable |
+| --- | --- | --- | --- |
+| Dependabot (GitHub Actions) | Disabled | `.github/dependabot.yml` | Set `enabled: true` and re-add `schedule.interval` |
+| Dependabot (npm) | Disabled | `.github/dependabot.yml` | Same as above |
+| Dependabot (cargo) | Disabled | `.github/dependabot.yml` | Same as above |
+| GitHub Actions CI | Manual only (`workflow_dispatch`) | `.github/workflows/ci.yml` | Switch `on` back to `push` + `pull_request` and remove the `if: ${{ false }}` guard on the `build` job |
+| Husky pre-commit hook | Empty stub (does nothing) | `.husky/pre-commit` | Add commands to the file; `husky` and `lint-staged` deps have been removed from `launcher/package.json` so they need to be re-added too |
+| `lint-staged` | Removed from `package.json` | n/a | Re-add the `lint-staged` block in `launcher/package.json` and the dev dep |
+| `prepare: husky` script | Removed from `package.json` | n/a | Re-add `"prepare": "husky || true"` to `launcher/package.json` |
+
+**Why off for now:** the project is in heavy architectural flux. Auto-bots fight the work-in-progress, churn PRs, and waste CI minutes. Re-enable when the codebase stabilizes.
+
+**Manual checks** are still expected before pushing (see the "Checks" section below).
 
 ## Checks
 

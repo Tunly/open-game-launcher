@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+### Changed
+- **Architectural pivot**: Open Game Launcher is now positioned as a full **Embedded Client-Manager**, not a pure aggregator. Silent-Install (where licensable), Auto-Updates, and Client-Modifications (path overlays, asset caches, mod roots) are in scope. Client launch continues via official URI protocols. See README "Architectural Decisions".
+
 ### Added
 - Tooling: `.editorconfig`, `.gitattributes`, Prettier config, Husky pre-commit + lint-staged.
 - Docs: `CONTRIBUTING.md`, `CHANGELOG.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`.

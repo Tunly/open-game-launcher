@@ -20,8 +20,7 @@
     "format:check": "prettier --check \"src/**/*.{ts,tsx,css,md,json}\" \"*.{ts,tsx,js,json,md}\"",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:cov": "vitest run --coverage",
-    "prepare": "husky || true"
+    "test:cov": "vitest run --coverage"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.106.1",
@@ -52,9 +51,7 @@
     "eslint-plugin-react-hooks": "^5.1.0",
     "eslint-plugin-react-refresh": "^0.4.16",
     "globals": "^15.14.0",
-    "husky": "^9.1.7",
     "jsdom": "^25.0.1",
-    "lint-staged": "^15.3.0",
     "postcss": "^8.4.49",
     "prettier": "^3.4.2",
     "prettier-plugin-tailwindcss": "^0.8.0",
@@ -64,14 +61,5 @@
     "typescript-eslint": "^8.18.2",
     "vite": "^6.0.5",
     "vitest": "3.0.0"
-  },
-  "lint-staged": {
-    "*.{ts,tsx,js,jsx}": [
-      "eslint --max-warnings=0 --fix",
-      "prettier --write"
-    ],
-    "*.{json,md,css}": [
-      "prettier --write"
-    ]
   }
 }
