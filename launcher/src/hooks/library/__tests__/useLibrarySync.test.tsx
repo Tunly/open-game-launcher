@@ -21,6 +21,8 @@ const mocks = vi.hoisted(() => {
   const normalizeSteamOwnedGames = vi.fn();
   const syncGamePlaytimeStats = vi.fn();
   const listenMock = vi.fn(() => Promise.resolve(() => undefined));
+  const compressAndReadImage = vi.fn();
+  const isAllowedImageType = vi.fn();
   return {
     listInstalledGames,
     refreshInstalledGames,
@@ -38,6 +40,8 @@ const mocks = vi.hoisted(() => {
     normalizeSteamOwnedGames,
     syncGamePlaytimeStats,
     listenMock,
+    compressAndReadImage,
+    isAllowedImageType,
   };
 });
 
@@ -82,6 +86,13 @@ vi.mock("@tauri-apps/api/event", () => ({
   listen: (...args: unknown[]) =>
     mocks.listenMock(...(args as Parameters<typeof mocks.listenMock>)),
   emit: vi.fn(),
+}));
+
+vi.mock("../../../lib/image-compress", () => ({
+  compressAndReadImage: (...args: unknown[]) =>
+    mocks.compressAndReadImage(...(args as Parameters<typeof mocks.compressAndReadImage>)),
+  isAllowedImageType: (...args: unknown[]) =>
+    mocks.isAllowedImageType(...(args as Parameters<typeof mocks.isAllowedImageType>)),
 }));
 
 function makeGame(overrides: Partial<Game> = {}): Game {
@@ -131,6 +142,8 @@ function setupDefaultMocks() {
   mocks.syncGamePlaytimeStats.mockReset();
   mocks.listenMock.mockReset();
   mocks.listenMock.mockImplementation(() => Promise.resolve(() => undefined));
+  mocks.compressAndReadImage.mockReset();
+  mocks.isAllowedImageType.mockReset();
 
   mocks.listInstalledGames.mockResolvedValue([]);
   mocks.refreshInstalledGames.mockResolvedValue([]);
@@ -148,6 +161,12 @@ function setupDefaultMocks() {
   );
   mocks.openSteamScraperWindow.mockResolvedValue(undefined);
   mocks.syncGamePlaytimeStats.mockResolvedValue(undefined);
+  mocks.compressAndReadImage.mockResolvedValue("");
+  mocks.isAllowedImageType.mockImplementation(
+    (file: { type?: string }) =>
+      typeof file?.type === "string" &&
+      ["image/jpeg", "image/png", "image/webp"].includes(file.type),
+  );
 }
 
 describe("useLibrarySync", () => {
@@ -333,7 +352,7 @@ describe("useLibrarySync", () => {
       await result.current.sync.handleSelectCustomArtwork("steam-1", "cover", fakeFile);
     });
 
-    expect(result.current.msg).toBe("Only image files can be used as custom artwork.");
+    expect(result.current.msg).toBe("Only JPG, PNG, and WebP images can be used as custom artwork.");
     expect(result.current.sync.customArtwork["steam-1"]).toBeUndefined();
   });
 
@@ -346,35 +365,18 @@ describe("useLibrarySync", () => {
 
     const dataUrl = "data:image/png;base64,AAAA";
     const fakeFile = { type: "image/png" } as File;
-    const fileReader = {
-      onload: null as null | (() => void),
-      onerror: null as null | (() => void),
-      result: dataUrl,
-      readAsDataURL: vi.fn(),
-    };
-    const fileReaderSpy = vi
-      .spyOn(window, "FileReader")
-      .mockImplementation(() => fileReader as unknown as FileReader);
+    mocks.compressAndReadImage.mockResolvedValue(dataUrl);
 
-    let promise: Promise<void> = Promise.resolve();
-    act(() => {
-      promise = result.current.sync.handleSelectCustomArtwork("steam-1", "cover", fakeFile);
-    });
-    act(() => {
-      (fileReader.onload as () => void)();
-    });
     await act(async () => {
-      await promise;
+      await result.current.sync.handleSelectCustomArtwork("steam-1", "cover", fakeFile);
     });
 
     expect(result.current.sync.customArtwork["steam-1"]?.coverUrl).toBe(dataUrl);
     expect(result.current.sync.logoCandidateIndexes["steam-1"]).toBe(0);
     expect(result.current.msg).toBe("Custom cover artwork saved.");
-
-    fileReaderSpy.mockRestore();
   });
 
-  it("shouldShowLibraryLoading is true when discovering and there are no games yet", () => {
+  it("shouldShowLibraryLoading is true when discovering and there are no games yet", async () => {
     mocks.listInstalledGames.mockImplementation(
       () =>
         new Promise<Game[]>(() => {
@@ -383,6 +385,10 @@ describe("useLibrarySync", () => {
     );
     const { result } = renderLibrarySync();
 
-    expect(result.current.shouldShowLibraryLoading).toBe(true);
+    await waitFor(() => {
+      expect(result.current).not.toBeNull();
+    });
+
+    expect(result.current?.shouldShowLibraryLoading).toBe(true);
   });
 });
