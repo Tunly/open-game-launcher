@@ -46,6 +46,69 @@ function readLocalStorageString(key: string) {
   }
 }
 
+function hasJsonAccessToken(key: string) {
+  const raw = localStorage.getItem(key);
+  if (!raw) {
+    return false;
+  }
+
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return Boolean(
+      parsed &&
+      typeof parsed === "object" &&
+      "accessToken" in parsed &&
+      typeof parsed.accessToken === "string" &&
+      parsed.accessToken.trim(),
+    );
+  } catch {
+    return false;
+  }
+}
+
+function hasNonEmptyJsonArray(key: string) {
+  const raw = localStorage.getItem(key);
+  if (!raw) {
+    return false;
+  }
+
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    return Array.isArray(parsed) && parsed.length > 0;
+  } catch {
+    return false;
+  }
+}
+
+function canTryLocalImport(game: Game) {
+  return game.status === "installed" || game.status === "update_available";
+}
+
+function bestEffortAvailabilityMessage(provider: string, game: Game) {
+  if (provider === "gog" && hasNonEmptyJsonArray(STORAGE_KEYS.GOG_OWNED_GAMES_CACHE)) {
+    return "GOG local library cache found; achievement sync will try local cache, sidecar, and client best-effort sources.";
+  }
+  if (provider === "gog" && hasJsonAccessToken(STORAGE_KEYS.GOG_TOKEN)) {
+    return "GOG account connected; achievement sync will try local cache, sidecar, and client best-effort sources.";
+  }
+  if (provider === "epic" && hasNonEmptyJsonArray(STORAGE_KEYS.EPIC_OWNED_GAMES_CACHE)) {
+    return "Epic local library cache found; achievement sync will try local cache, sidecar, and public Store fallback sources.";
+  }
+  if (provider === "epic" && hasJsonAccessToken(STORAGE_KEYS.EPIC_TOKEN)) {
+    return "Epic account connected; achievement sync will try local cache, sidecar, and public Store fallback sources.";
+  }
+  if (provider === "ea" && hasJsonAccessToken(STORAGE_KEYS.EA_TOKEN)) {
+    return "EA account connected; achievement sync will try local cache and sidecar best-effort sources.";
+  }
+  if (provider === "battlenet" && hasNonEmptyJsonArray(STORAGE_KEYS.BATTLENET_GAMES_CACHE)) {
+    return "Battle.net library cache found; achievement sync will try local cache and sidecar best-effort sources.";
+  }
+  if (["gog", "epic", "ea", "ubisoft", "battlenet"].includes(provider) && canTryLocalImport(game)) {
+    return `${game.title} is installed; achievement sync will try local cache and sidecar best-effort sources.`;
+  }
+  return null;
+}
+
 export function getSteamAppId(game: Game) {
   if (game.launcher === "steam" && game.externalId && /^\d+$/.test(game.externalId)) {
     return game.externalId;
@@ -116,38 +179,75 @@ const xboxProvider: AchievementProvider = {
   sync: (game) => syncGameAchievements(game),
 };
 
+const gogProvider: AchievementProvider = {
+  provider: "gog",
+  stability: "unofficial",
+  status: "not_connected",
+  message: "GOG achievement sync needs a connected GOG account or readable local Galaxy data.",
+  isAvailable: () => false,
+  sync: async () => {
+    throw new Error("GOG local/client achievement sync is not implemented yet.");
+  },
+};
+
+const epicProvider: AchievementProvider = {
+  provider: "epic",
+  stability: "unofficial",
+  status: "not_connected",
+  message: "Epic achievement sync needs a connected Epic account or readable local client data.",
+  isAvailable: () => false,
+  sync: async () => {
+    throw new Error("Epic local/client achievement sync is not implemented yet.");
+  },
+};
+
+function localCacheProvider(
+  provider: "gog" | "epic" | "ea" | "ubisoft" | "battlenet",
+  message: string,
+  available: () => boolean,
+): AchievementProvider {
+  return {
+    provider,
+    stability: "unofficial",
+    status: "not_connected",
+    message,
+    isAvailable: (game) =>
+      getGameSource(game) === provider && (available() || canTryLocalImport(game)),
+    sync: (game) => syncGameAchievements(game),
+  };
+}
+
 const PROVIDERS: Record<string, AchievementProvider> = {
   steam: steamProvider,
   xbox: xboxProvider,
-  gog: unavailableProvider(
+  gog: localCacheProvider(
     "gog",
-    "unofficial",
-    "no_api",
-    "GOG achievements need Galaxy/API credentials before sync can run.",
+    gogProvider.message,
+    () =>
+      hasNonEmptyJsonArray(STORAGE_KEYS.GOG_OWNED_GAMES_CACHE) ||
+      hasJsonAccessToken(STORAGE_KEYS.GOG_TOKEN),
   ),
-  epic: unavailableProvider(
+  epic: localCacheProvider(
     "epic",
-    "official",
-    "not_connected",
-    "Epic achievements need EOS product credentials before sync can run.",
+    epicProvider.message,
+    () =>
+      hasNonEmptyJsonArray(STORAGE_KEYS.EPIC_OWNED_GAMES_CACHE) ||
+      hasJsonAccessToken(STORAGE_KEYS.EPIC_TOKEN),
   ),
-  ubisoft: unavailableProvider(
+  ubisoft: localCacheProvider(
     "ubisoft",
-    "unofficial",
-    "no_api",
     "Ubisoft achievements are best-effort and no local achievement cache was found.",
+    () => false,
   ),
-  ea: unavailableProvider(
+  ea: localCacheProvider(
     "ea",
-    "unofficial",
-    "no_api",
-    "EA achievements are best-effort and no stable player achievement API is configured.",
+    "EA achievement sync needs a connected EA account before best-effort checks can run.",
+    () => hasJsonAccessToken(STORAGE_KEYS.EA_TOKEN),
   ),
-  battlenet: unavailableProvider(
+  battlenet: localCacheProvider(
     "battlenet",
-    "unofficial",
-    "no_api",
-    "Battle.net achievement data is game-specific and no compatible source is configured.",
+    "Battle.net achievement checks need local Battle.net library data before best-effort checks can run.",
+    () => hasNonEmptyJsonArray(STORAGE_KEYS.BATTLENET_GAMES_CACHE),
   ),
   manual: unavailableProvider(
     "manual",
@@ -174,7 +274,7 @@ export function achievementProviderStatusForGame(game: Game): AchievementProvide
       provider: provider.provider,
       status: "available",
       stability: provider.stability,
-      message: provider.message,
+      message: bestEffortAvailabilityMessage(provider.provider, game) ?? provider.message,
     };
   }
   return {
@@ -184,7 +284,21 @@ export function achievementProviderStatusForGame(game: Game): AchievementProvide
       getSteamAppId(game) &&
       !readLocalStorageString(STORAGE_KEYS.STEAM_ID)
         ? "not_connected"
-        : provider.status,
+        : provider.provider === "gog" && hasNonEmptyJsonArray(STORAGE_KEYS.GOG_OWNED_GAMES_CACHE)
+          ? "no_api"
+          : provider.provider === "gog" && hasJsonAccessToken(STORAGE_KEYS.GOG_TOKEN)
+            ? "no_api"
+            : provider.provider === "epic" &&
+                hasNonEmptyJsonArray(STORAGE_KEYS.EPIC_OWNED_GAMES_CACHE)
+              ? "no_api"
+              : provider.provider === "epic" && hasJsonAccessToken(STORAGE_KEYS.EPIC_TOKEN)
+                ? "no_api"
+                : provider.provider === "ea" && hasJsonAccessToken(STORAGE_KEYS.EA_TOKEN)
+                  ? "no_api"
+                  : provider.provider === "battlenet" &&
+                      hasNonEmptyJsonArray(STORAGE_KEYS.BATTLENET_GAMES_CACHE)
+                    ? "no_api"
+                    : provider.status,
     stability: provider.stability,
     message:
       provider.provider === "steam" && !getSteamAppId(game)
@@ -193,7 +307,22 @@ export function achievementProviderStatusForGame(game: Game): AchievementProvide
           ? "Steam achievement sync needs a connected Steam account in Settings."
           : provider.provider === "xbox" && !getXboxTitleHint(game)
             ? `${game.title} does not expose an Xbox identity hint for achievement sync.`
-            : provider.message,
+            : provider.provider === "gog" &&
+                hasNonEmptyJsonArray(STORAGE_KEYS.GOG_OWNED_GAMES_CACHE)
+              ? "GOG local library cache found; achievement sync will use client best-effort sources when available."
+              : provider.provider === "gog" && hasJsonAccessToken(STORAGE_KEYS.GOG_TOKEN)
+                ? "GOG account connected; achievement sync will use local/client best-effort sources when available."
+                : provider.provider === "epic" &&
+                    hasNonEmptyJsonArray(STORAGE_KEYS.EPIC_OWNED_GAMES_CACHE)
+                  ? "Epic local library cache found; achievement sync will use client best-effort sources when available."
+                  : provider.provider === "epic" && hasJsonAccessToken(STORAGE_KEYS.EPIC_TOKEN)
+                    ? "Epic account connected; achievement sync will use local/client best-effort sources when available."
+                    : provider.provider === "ea" && hasJsonAccessToken(STORAGE_KEYS.EA_TOKEN)
+                      ? "EA account connected; achievement sync remains best-effort because no stable player achievement API is configured."
+                      : provider.provider === "battlenet" &&
+                          hasNonEmptyJsonArray(STORAGE_KEYS.BATTLENET_GAMES_CACHE)
+                        ? "Battle.net library cache found; achievement sync remains best-effort because achievement data is game-specific."
+                        : provider.message,
   };
 }
 

@@ -3,7 +3,9 @@ export const STORAGE_KEYS = {
 
   EA_TOKEN: "launcher.eaToken",
   EPIC_TOKEN: "launcher.epicToken",
+  EPIC_OWNED_GAMES_CACHE: "launcher.epicOwnedGamesCache",
   GOG_TOKEN: "launcher.gogToken",
+  GOG_OWNED_GAMES_CACHE: "launcher.gogOwnedGamesCache",
 
   HARDWARE_FALLBACK: "og-launcher:profile-hardware:v1",
 

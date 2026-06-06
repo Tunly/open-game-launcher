@@ -161,6 +161,12 @@ export function syncGameAchievements(
       titleId,
     });
   }
+  if (["gog", "epic", "ea", "ubisoft", "battlenet"].includes(game.launcher ?? "")) {
+    return invokeCommand<SyncGameAchievementsResponse>("sync_local_game_achievements", {
+      gameId: game.id,
+      provider: game.launcher,
+    });
+  }
   return invokeCommand<SyncGameAchievementsResponse>("sync_game_achievements", {
     gameId: game.id,
     steamId,

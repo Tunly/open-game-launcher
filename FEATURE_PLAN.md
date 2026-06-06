@@ -27,6 +27,38 @@
 | 14 | Spielzeit-Tracking erweitert | Niedrig | 🟡 playtime.rs (Background-Poller) + Supabase-Sync fertig | ~60% | Idle-Erkennung, Session-Charts, Manuelle Korrektur |
 
 ---
+## 15. Cross-Platform Achievements
+
+> Ziel: Achievements pro Spielgruppe kombinieren. Wenn ein Spiel auf mehreren Plattformen vorhanden ist, ist die Variante mit den meisten Achievement-Definitionen die Basis; Unlocks, Rarity, Icons und Zusatz-Achievements aus anderen Plattformen werden darauf gemappt.
+
+### Verbindliche Provider-Policy
+
+- Keine Developer-API-Keys oder game-spezifischen SDK-Credentials als Nutzer-Voraussetzung.
+- Erlaubt sind nur Nutzer-Anmeldung, vorhandene lokale Clientdaten, lokal gecachte Daten und best-effort Scraping/Parsing.
+- Provider, die ohne Developer-Key keine generische Achievement-Liste liefern, bleiben sichtbar, aber werden als `unofficial`/best-effort oder `no_api` markiert.
+- Bekannte Unlocks werden nie geloescht, wenn ein Provider privat, offline, leer oder nicht auslesbar antwortet.
+
+### Bereits implementiert
+
+- Kanonische Aggregation in `launcher/src/lib/game-groups.ts`.
+- Basisvariante = Plattformvariante mit den meisten Achievement-Definitionen.
+- Matching nach exaktem Source/API-Key, Name+Beschreibung, dann schwachem Name-only Match.
+- Zusatz-Achievements aus Nicht-Basisplattformen bleiben erhalten.
+- Steam und Xbox haben echte Sync-Pfade ueber Nutzerkonto/lokale Titelhinweise.
+- GOG, Epic, EA, Ubisoft und Battle.net haben sichtbare Provider-Statuspfade.
+- Lokaler best-effort Importer fuer JSON-Caches: `achievement-cache/<provider>/<game-id>.json`.
+- Sidecar-Import aus Spielordnern: `og-achievements.json`, `achievements.json`, `<provider>-achievements.json` und `.og-launcher/*`.
+- Installierte best-effort Provider versuchen den lokalen Importer auch ohne Login, damit Sidecars nicht uebersehen werden.
+- Epic Public-Fallback: Definitions/Rarity werden best-effort von oeffentlichen Epic Achievement-Seiten gelesen und lokal gecacht, ohne API-Key.
+
+### Offene Tasks
+
+- GOG: lokale Galaxy-Clientdaten nach Achievement-/Stats-Cache untersuchen und in den lokalen JSON-Importer schreiben.
+- Epic: lokale Unlocks aus Epic/Legendary/EOS-Clientdaten finden und mit den oeffentlichen Definitionen mergen.
+- EA/Ubisoft/Battle.net: lokale Clientdaten oder Web-/Client-Caches in den lokalen JSON-Importer schreiben.
+- Remote/Supabase-Sync fuer aggregierte Achievements spaeter nachziehen.
+
+---
 ## 1. Smart-Join-UI (S1)
 
 > Detaillierter Plan: `docs/plans/01-cross-play-and-smart-join.md`
@@ -471,4 +503,3 @@ Aktuell Mock-Daten → muss auf `listPublishedProducts()` umgestellt werden.
 ---
 
 > Letztes Update: Siehe Git-Log. Nächste Schritte in `docs/plans/00-master-plan-missing-features.md`.
-

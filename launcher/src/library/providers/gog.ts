@@ -36,6 +36,7 @@ export async function mergeGogOwned(games: Game[], context: MergeContext): Promi
     }
 
     const ownedRaw = await fetchGogOwnedGames();
+    localStorage.setItem(STORAGE_KEYS.GOG_OWNED_GAMES_CACHE, JSON.stringify(ownedRaw));
     const ownedGogGames = ownedRaw.map(ownedGameToGame);
     if (ownedGogGames.length === 0) {
       return { games, warnings, statusMessage };

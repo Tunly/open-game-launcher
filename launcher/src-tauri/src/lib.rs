@@ -140,6 +140,7 @@ pub fn run() {
             commands::games::download_game_saves_from_cloud,
             commands::games::restore_game_saves_from_cloud,
             commands::games::sync_game_achievements,
+            commands::games::sync_local_game_achievements,
             commands::games::uninstall_game,
             commands::games::set_cached_game_playtime,
             commands::downloads::start_download,

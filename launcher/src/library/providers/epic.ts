@@ -24,6 +24,7 @@ export async function mergeEpicOwned(
     }
 
     const ownedRaw = await fetchEpicOwnedGames();
+    localStorage.setItem(STORAGE_KEYS.EPIC_OWNED_GAMES_CACHE, JSON.stringify(ownedRaw));
     const ownedEpicGames = ownedRaw.map(ownedGameToGame);
     if (ownedEpicGames.length === 0) {
       return { games, warnings, statusMessage };

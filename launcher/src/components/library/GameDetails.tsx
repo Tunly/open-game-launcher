@@ -409,7 +409,7 @@ export function GameDetails({
                     <div
                       role="region"
                       aria-label="Drop zone for cover artwork"
-                      className={`${getPlatformBannerClass(enrichedSelectedGame)} relative overflow-hidden bg-[#0f141b] ${getFallbackBannerClass(enrichedSelectedGame)} ${isBannerDragOver ? "ring-4 ring-[#169b83] ring-inset" : ""}`}
+                      className={`${getPlatformBannerClass(enrichedSelectedGame)} relative overflow-hidden bg-[#0f141b] ${getFallbackBannerClass(enrichedSelectedGame)} ${isBannerDragOver ? "ring-4 ring-inset ring-[#169b83]" : ""}`}
                       style={getGameBannerStyle(enrichedSelectedGame.coverUrl, {
                         backgroundPosition: gameSource === "epic" ? "center 24%" : undefined,
                       })}
@@ -1002,27 +1002,28 @@ export function GameDetails({
                         </span>
                       </div>
 
+                      {achievementProviderStatuses.length > 0 ? (
+                        <div className="flex flex-wrap gap-1 border-b-2 border-black bg-[#efe6d4] px-2 py-1.5">
+                          {achievementProviderStatuses.map((provider) => (
+                            <span
+                              key={provider.source}
+                              className={`neo-copy border-2 border-black px-1.5 py-0.5 text-[8px] font-black uppercase ${
+                                provider.status === "available"
+                                  ? "bg-[#087d6d] text-white"
+                                  : provider.stability === "unofficial"
+                                    ? "bg-[#e8c843] text-[#171411]"
+                                    : "bg-[#fbf4e7] text-[#55504a]"
+                              }`}
+                              title={provider.message}
+                            >
+                              {provider.source}: {provider.status}
+                            </span>
+                          ))}
+                        </div>
+                      ) : null}
+
                       {achievements.length > 0 ? (
                         <>
-                          {achievementProviderStatuses.length > 0 ? (
-                            <div className="flex flex-wrap gap-1 border-b-2 border-black bg-[#efe6d4] px-2 py-1.5">
-                              {achievementProviderStatuses.map((provider) => (
-                                <span
-                                  key={provider.source}
-                                  className={`neo-copy border-2 border-black px-1.5 py-0.5 text-[8px] font-black uppercase ${
-                                    provider.status === "available"
-                                      ? "bg-[#087d6d] text-white"
-                                      : provider.stability === "unofficial"
-                                        ? "bg-[#e8c843] text-[#171411]"
-                                        : "bg-[#fbf4e7] text-[#55504a]"
-                                  }`}
-                                  title={provider.message}
-                                >
-                                  {provider.source}: {provider.status}
-                                </span>
-                              ))}
-                            </div>
-                          ) : null}
                           <div className="border-b-2 border-black bg-[#f3e8d7] px-3 py-1.5">
                             <div className="h-2 border border-black bg-[#fbf4e7]">
                               <div

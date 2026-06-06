@@ -105,6 +105,128 @@ describe("aggregateGameGroup achievements", () => {
     expect(merged.matchConfidence).toBe("name_description");
   });
 
+  it("prefers exact source achievement ids over weaker name matches", () => {
+    const basis = makeGame({
+      id: "steam-installed",
+      launcher: "steam",
+      achievements: [
+        achievement({
+          id: "S1",
+          source: "steam",
+          sourceAchievementId: "story_start",
+          name: "Story Start",
+          description: "Begin the campaign",
+        }),
+        achievement({
+          id: "S2",
+          source: "steam",
+          sourceAchievementId: "collector",
+          name: "Collector",
+          description: "Find all relics",
+        }),
+      ],
+    });
+    const duplicateSteamVariant = makeGame({
+      id: "steam-owned",
+      launcher: "steam",
+      achievements: [
+        achievement({
+          id: "S2-cache",
+          source: "steam",
+          sourceAchievementId: "collector",
+          name: "Story Start",
+          description: "Begin the campaign",
+          unlockedAt: "2026-01-02T00:00:00.000Z",
+        }),
+      ],
+    });
+
+    const group = aggregateGameGroup([basis, duplicateSteamVariant]);
+    const storyStart = group.achievements.find(
+      (item) => item.canonicalAchievementId === "story_start",
+    );
+    const collector = group.achievements.find(
+      (item) => item.canonicalAchievementId === "collector",
+    );
+
+    expect(group.achievements).toHaveLength(2);
+    expect(storyStart?.sources).toHaveLength(1);
+    expect(collector?.sources).toHaveLength(2);
+    expect(collector?.unlockedAt).toBe("2026-01-02T00:00:00.000Z");
+    expect(collector?.matchConfidence).toBe("exact");
+  });
+
+  it("does not exact-match identical achievement ids across different platforms", () => {
+    const steam = makeGame({
+      id: "steam-1",
+      launcher: "steam",
+      achievements: [
+        achievement({
+          id: "ACH_WIN",
+          sourceAchievementId: "ACH_WIN",
+          name: "Winner",
+          description: "Win once",
+        }),
+      ],
+    });
+    const gog = makeGame({
+      id: "gog-1",
+      launcher: "gog",
+      achievements: [
+        achievement({
+          id: "ACH_WIN",
+          sourceAchievementId: "ACH_WIN",
+          name: "Winner",
+          description: "Win once",
+          unlockedAt: "2026-01-05T00:00:00.000Z",
+        }),
+      ],
+    });
+
+    const group = aggregateGameGroup([steam, gog]);
+    const merged = group.achievements[0];
+
+    expect(group.achievements).toHaveLength(1);
+    expect(merged.matchConfidence).toBe("name_description");
+    expect(merged.sourceIds).toEqual(["steam:ACH_WIN", "gog:ACH_WIN"]);
+  });
+
+  it("uses the game source for exact matching when achievements omit source", () => {
+    const installedGog = makeGame({
+      id: "gog-installed",
+      launcher: "gog",
+      achievements: [
+        achievement({
+          id: "local-id",
+          sourceAchievementId: "same-provider-id",
+          name: "Collector",
+          description: "Find all items",
+        }),
+      ],
+    });
+    const cachedGog = makeGame({
+      id: "gog-owned",
+      launcher: "gog",
+      achievements: [
+        achievement({
+          id: "public-id",
+          sourceAchievementId: "same-provider-id",
+          name: "Different Localized Name",
+          description: "Different localized description",
+          unlockedAt: "2026-01-06T00:00:00.000Z",
+        }),
+      ],
+    });
+
+    const group = aggregateGameGroup([installedGog, cachedGog]);
+    const merged = group.achievements[0];
+
+    expect(group.achievements).toHaveLength(1);
+    expect(merged.matchConfidence).toBe("exact");
+    expect(merged.unlockedAt).toBe("2026-01-06T00:00:00.000Z");
+    expect(merged.sourceIds).toEqual(["gog:same-provider-id"]);
+  });
+
   it("uses name-only matching with lower confidence", () => {
     const steam = makeGame({
       id: "steam-1",

@@ -78,9 +78,163 @@ describe("achievement providers", () => {
 
     expect(achievementProviderStatusForGame(ubisoftGame)).toMatchObject({
       provider: "ubisoft",
-      status: "no_api",
+      status: "available",
       stability: "unofficial",
     });
-    expect(syncableAchievementGames([ubisoftGame])).toEqual([]);
+    expect(syncableAchievementGames([ubisoftGame])).toEqual([ubisoftGame]);
+  });
+
+  it("allows installed best-effort providers to try local sidecar imports", () => {
+    const gogGame = game({
+      id: "gog-game",
+      title: "GOG Game",
+      launcher: "gog",
+    });
+
+    expect(achievementProviderStatusForGame(gogGame)).toMatchObject({
+      provider: "gog",
+      status: "available",
+      stability: "unofficial",
+    });
+    expect(achievementProviderStatusForGame(gogGame).message).toMatch(/sidecar/i);
+    expect(syncableAchievementGames([gogGame])).toEqual([gogGame]);
+  });
+
+  it("keeps uninstalled best-effort providers unavailable until login or cache evidence exists", () => {
+    const gogGame = game({
+      id: "gog-game",
+      title: "GOG Game",
+      launcher: "gog",
+      status: "not_installed",
+    });
+
+    expect(achievementProviderStatusForGame(gogGame)).toMatchObject({
+      provider: "gog",
+      status: "not_connected",
+      stability: "unofficial",
+    });
+    expect(syncableAchievementGames([gogGame])).toEqual([]);
+
+    window.localStorage.setItem(STORAGE_KEYS.GOG_TOKEN, JSON.stringify({ accessToken: "gog" }));
+
+    expect(achievementProviderStatusForGame(gogGame)).toMatchObject({
+      provider: "gog",
+      status: "available",
+      stability: "unofficial",
+    });
+    expect(syncableAchievementGames([gogGame])).toEqual([gogGame]);
+  });
+
+  it("uses cached GOG library data as local best-effort evidence", () => {
+    const gogGame = game({
+      id: "gog-game",
+      title: "GOG Game",
+      launcher: "gog",
+    });
+
+    window.localStorage.setItem(
+      STORAGE_KEYS.GOG_OWNED_GAMES_CACHE,
+      JSON.stringify([{ id: "gog-owned-1", title: "GOG Game" }]),
+    );
+
+    expect(achievementProviderStatusForGame(gogGame)).toMatchObject({
+      provider: "gog",
+      status: "available",
+      stability: "unofficial",
+    });
+    expect(syncableAchievementGames([gogGame])).toEqual([gogGame]);
+  });
+
+  it("distinguishes connected Epic from missing local achievement source data", () => {
+    const epicGame = game({
+      id: "epic-game",
+      title: "Epic Game",
+      launcher: "epic",
+    });
+
+    expect(achievementProviderStatusForGame(epicGame)).toMatchObject({
+      provider: "epic",
+      status: "available",
+      stability: "unofficial",
+    });
+
+    window.localStorage.setItem(STORAGE_KEYS.EPIC_TOKEN, JSON.stringify({ accessToken: "epic" }));
+
+    expect(achievementProviderStatusForGame(epicGame)).toMatchObject({
+      provider: "epic",
+      status: "available",
+      stability: "unofficial",
+    });
+    expect(achievementProviderStatusForGame(epicGame).message).toMatch(/public Store fallback/i);
+    expect(syncableAchievementGames([epicGame])).toEqual([epicGame]);
+  });
+
+  it("uses cached Epic library data as local best-effort evidence", () => {
+    const epicGame = game({
+      id: "epic-game",
+      title: "Epic Game",
+      launcher: "epic",
+    });
+
+    window.localStorage.setItem(
+      STORAGE_KEYS.EPIC_OWNED_GAMES_CACHE,
+      JSON.stringify([{ id: "epic-owned-game", title: "Epic Game" }]),
+    );
+
+    expect(achievementProviderStatusForGame(epicGame)).toMatchObject({
+      provider: "epic",
+      status: "available",
+      stability: "unofficial",
+    });
+    expect(syncableAchievementGames([epicGame])).toEqual([epicGame]);
+  });
+
+  it("distinguishes connected EA from missing stable achievement API support", () => {
+    const eaGame = game({
+      id: "ea-game",
+      title: "EA Game",
+      launcher: "ea",
+    });
+
+    expect(achievementProviderStatusForGame(eaGame)).toMatchObject({
+      provider: "ea",
+      status: "available",
+      stability: "unofficial",
+    });
+
+    window.localStorage.setItem(STORAGE_KEYS.EA_TOKEN, JSON.stringify({ accessToken: "ea" }));
+
+    expect(achievementProviderStatusForGame(eaGame)).toMatchObject({
+      provider: "ea",
+      status: "available",
+      stability: "unofficial",
+    });
+    expect(syncableAchievementGames([eaGame])).toEqual([eaGame]);
+  });
+
+  it("distinguishes Battle.net library cache from missing local source data", () => {
+    const battlenetGame = game({
+      id: "battlenet-game",
+      title: "Battle.net Game",
+      launcher: "battlenet",
+    });
+
+    expect(achievementProviderStatusForGame(battlenetGame)).toMatchObject({
+      provider: "battlenet",
+      status: "available",
+      stability: "unofficial",
+    });
+
+    window.localStorage.setItem(
+      STORAGE_KEYS.BATTLENET_GAMES_CACHE,
+      JSON.stringify([{ id: "battlenet-game", title: "Battle.net Game" }]),
+    );
+
+    expect(achievementProviderStatusForGame(battlenetGame)).toMatchObject({
+      provider: "battlenet",
+      status: "available",
+      stability: "unofficial",
+    });
+    expect(syncableAchievementGames([battlenetGame])).toEqual([battlenetGame]);
   });
 });

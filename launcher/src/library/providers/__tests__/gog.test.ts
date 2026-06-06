@@ -98,6 +98,12 @@ describe("mergeGogOwned", () => {
     expect(result.games).toHaveLength(2);
     expect(result.games[0]).toBe(installed);
     expect(result.games[1].id).toBe("gog-owned-2");
+    expect(JSON.parse(localStorage.getItem(STORAGE_KEYS.GOG_OWNED_GAMES_CACHE) ?? "[]")).toEqual(
+      toOwnedGame([
+        { id: "gog-owned-1", title: "The Witcher 3" },
+        { id: "gog-owned-2", title: "Hades" },
+      ]),
+    );
   });
 
   it("matches GOG-owned games by externalId when present", async () => {

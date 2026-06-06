@@ -500,22 +500,568 @@ pub async fn sync_game_achievements(
     })
 }
 
+#[tauri::command]
+pub async fn sync_local_game_achievements(
+    game_id: String,
+    provider: String,
+) -> Result<SyncGameAchievementsResponse, String> {
+    let game_id = normalize_game_id(game_id)?;
+    let provider = normalize_local_achievement_provider(&provider)?;
+    println!(
+        "[open-game-launcher] sync_local_game_achievements requested for {game_id} via {provider}"
+    );
+
+    let mut games = read_installed_games_cache().unwrap_or_default();
+    let game_index = games
+        .iter()
+        .position(|game| game.id == game_id)
+        .ok_or_else(|| format!("Game '{game_id}' was not found in the local library cache."))?;
+
+    let mut game = games[game_index].clone();
+    let achievements = match read_local_achievement_cache(&provider, &game) {
+        Ok(achievements) => achievements,
+        Err(local_error) if provider == "epic" => fetch_epic_public_achievements(&game)
+            .await
+            .map_err(|epic_error| {
+                format!("{local_error} Epic public fallback failed: {epic_error}")
+            })?,
+        Err(error) => return Err(error),
+    };
+    if achievements.is_empty() {
+        return Err(format!(
+            "Local {provider} achievement cache did not contain readable achievements for {}.",
+            game.title
+        ));
+    }
+
+    let unlocked_achievements = achievements
+        .iter()
+        .filter(|achievement| achievement.unlocked_at.is_some())
+        .count();
+    let synced_achievements = achievements.len();
+    game.achievements = preserve_known_unlocks(achievements, &game.achievements);
+    game.achievements_synced_at = Some(unix_timestamp_to_iso(current_unix_timestamp()));
+
+    games[game_index] = game.clone();
+    write_installed_games_cache(&games);
+
+    Ok(SyncGameAchievementsResponse {
+        game_id,
+        success: true,
+        game: game.clone(),
+        synced_achievements,
+        unlocked_achievements,
+        message: format!(
+            "{} local {provider} achievements imported: {unlocked_achievements}/{synced_achievements} unlocked.",
+            game.title
+        ),
+    })
+}
+
+fn read_local_achievement_cache(
+    provider: &str,
+    game: &InstalledGame,
+) -> Result<Vec<UnifiedAchievement>, String> {
+    let cache_path = local_achievement_cache_candidates(provider, game)
+        .into_iter()
+        .find(|path| path.is_file())
+        .ok_or_else(|| {
+            format!(
+                "No local {provider} achievement cache found for {}. Expected JSON under achievement-cache/{provider}/ or as a game folder sidecar.",
+                game.title
+            )
+        })?;
+
+    let contents = fs::read_to_string(&cache_path)
+        .map_err(|error| format!("Could not read local achievement cache: {error}"))?;
+    let value: serde_json::Value = serde_json::from_str(&contents)
+        .map_err(|error| format!("Could not parse local achievement cache JSON: {error}"))?;
+    parse_local_achievement_cache(&value, provider)
+}
+
+fn normalize_local_achievement_provider(provider: &str) -> Result<String, String> {
+    let normalized = provider.trim().to_lowercase();
+    match normalized.as_str() {
+        "gog" | "epic" | "ea" | "ubisoft" | "battlenet" => Ok(normalized),
+        _ => Err(format!(
+            "Local achievement import is not configured for provider '{provider}'."
+        )),
+    }
+}
+
+fn local_achievement_cache_candidates(provider: &str, game: &InstalledGame) -> Vec<PathBuf> {
+    let mut keys = vec![game.id.clone(), slugify(&game.title)];
+    if let Some(external_id) = game.external_id.as_ref().filter(|value| !value.is_empty()) {
+        keys.push(external_id.clone());
+        keys.push(slugify(external_id));
+    }
+
+    let mut candidates = Vec::new();
+
+    if let Some(root) =
+        open_game_launcher_data_dir().map(|data_dir| data_dir.join("achievement-cache"))
+    {
+        for scoped_root in [root.join(provider), root.join("local")] {
+            for key in &keys {
+                let safe_key = slugify(key);
+                for candidate in [key.clone(), safe_key] {
+                    push_unique_path(
+                        &mut candidates,
+                        scoped_root.join(format!("{candidate}.json")),
+                    );
+                }
+            }
+        }
+    }
+
+    if let Some(install_path) = game.install_path.as_ref().filter(|value| !value.is_empty()) {
+        let install_root = PathBuf::from(install_path);
+        for filename in [
+            "og-achievements.json".to_string(),
+            "achievements.json".to_string(),
+            format!("{provider}-achievements.json"),
+        ] {
+            push_unique_path(&mut candidates, install_root.join(&filename));
+            push_unique_path(
+                &mut candidates,
+                install_root.join(".og-launcher").join(&filename),
+            );
+        }
+    }
+
+    candidates
+}
+
+fn push_unique_path(paths: &mut Vec<PathBuf>, path: PathBuf) {
+    if !paths.contains(&path) {
+        paths.push(path);
+    }
+}
+
+async fn fetch_epic_public_achievements(
+    game: &InstalledGame,
+) -> Result<Vec<UnifiedAchievement>, String> {
+    let client = reqwest::Client::builder()
+        .user_agent("OG-Launcher achievement sync")
+        .build()
+        .map_err(|error| format!("Could not create Epic achievements client: {error}"))?;
+
+    let mut errors = Vec::new();
+    for slug in epic_achievement_slug_candidates(game) {
+        let url = format!("https://store.epicgames.com/achievements/{slug}?lang=en-US");
+        match client.get(&url).send().await {
+            Ok(response) if response.status().is_success() => {
+                let html = response
+                    .text()
+                    .await
+                    .map_err(|error| format!("Could not read Epic achievements page: {error}"))?;
+                let achievements = parse_epic_public_achievement_html(&html);
+                if !achievements.is_empty() {
+                    cache_epic_public_achievements(game, &achievements);
+                    return Ok(achievements);
+                }
+                errors.push(format!("{slug}: no readable achievements in page"));
+            }
+            Ok(response) => {
+                errors.push(format!("{slug}: HTTP {}", response.status()));
+            }
+            Err(error) => {
+                errors.push(format!("{slug}: {error}"));
+            }
+        }
+    }
+
+    Err(format!(
+        "No public Epic achievement page matched {}. {}",
+        game.title,
+        errors.join("; ")
+    ))
+}
+
+fn cache_epic_public_achievements(game: &InstalledGame, achievements: &[UnifiedAchievement]) {
+    let Some(root) = open_game_launcher_data_dir()
+        .map(|data_dir| data_dir.join("achievement-cache").join("epic"))
+    else {
+        return;
+    };
+    if let Err(error) = fs::create_dir_all(&root) {
+        eprintln!("[open-game-launcher] Could not create Epic achievement cache: {error}");
+        return;
+    }
+
+    let payload = serde_json::json!({
+        "source": "epic-public",
+        "gameId": game.id,
+        "externalId": game.external_id,
+        "fetchedAt": unix_timestamp_to_iso(current_unix_timestamp()),
+        "achievements": achievements,
+    });
+    let Ok(contents) = serde_json::to_string_pretty(&payload) else {
+        return;
+    };
+
+    let mut keys = vec![game.id.clone(), slugify(&game.title)];
+    if let Some(external_id) = game.external_id.as_ref().filter(|value| !value.is_empty()) {
+        keys.push(external_id.clone());
+        keys.push(slugify(external_id));
+    }
+
+    for key in keys {
+        let safe_key = slugify(&key);
+        if safe_key.is_empty() {
+            continue;
+        }
+        let path = root.join(format!("{safe_key}.json"));
+        if let Err(error) = fs::write(&path, &contents) {
+            eprintln!(
+                "[open-game-launcher] Could not write Epic achievement cache {}: {error}",
+                path.display()
+            );
+        }
+    }
+}
+
+fn epic_achievement_slug_candidates(game: &InstalledGame) -> Vec<String> {
+    let mut candidates = Vec::new();
+    for value in [
+        game.slug.as_str(),
+        game.external_id.as_deref().unwrap_or_default(),
+        game.id
+            .strip_prefix("epic-owned-")
+            .or_else(|| game.id.strip_prefix("epic-"))
+            .unwrap_or_default(),
+        game.title.as_str(),
+    ] {
+        let slug = slugify(value);
+        if !slug.is_empty() && !candidates.contains(&slug) {
+            candidates.push(slug);
+        }
+    }
+    candidates
+}
+
+fn parse_epic_public_achievement_html(html: &str) -> Vec<UnifiedAchievement> {
+    let lines = html_to_text_lines(html);
+    let mut achievements = Vec::new();
+
+    for index in 3..lines.len() {
+        let Some(rarity) = epic_unlock_percent(&lines[index]) else {
+            continue;
+        };
+        if !lines[index - 1].ends_with(" XP") {
+            continue;
+        }
+
+        let title = lines[index - 3].trim();
+        let description = lines[index - 2].trim();
+        if title.is_empty()
+            || description.is_empty()
+            || title.eq_ignore_ascii_case("achievements")
+            || title.eq_ignore_ascii_case("alphabetical")
+        {
+            continue;
+        }
+
+        let id = slugify(title);
+        if achievements
+            .iter()
+            .any(|achievement: &UnifiedAchievement| achievement.id == id)
+        {
+            continue;
+        }
+
+        achievements.push(UnifiedAchievement {
+            id: id.clone(),
+            name: title.to_string(),
+            description: Some(description.to_string()),
+            icon_url: None,
+            unlocked_at: None,
+            rarity: Some(rarity),
+            source: Some("epic".to_string()),
+            source_achievement_id: Some(id),
+            provider_confidence: Some("unofficial".to_string()),
+        });
+    }
+
+    achievements
+}
+
+fn html_to_text_lines(html: &str) -> Vec<String> {
+    let mut text = String::with_capacity(html.len());
+    let mut in_tag = false;
+    let mut entity = String::new();
+    let mut in_entity = false;
+
+    for character in html.chars() {
+        if in_tag {
+            if character == '>' {
+                in_tag = false;
+                text.push('\n');
+            }
+            continue;
+        }
+
+        if in_entity {
+            if character == ';' {
+                text.push_str(&decode_html_entity(&entity));
+                entity.clear();
+                in_entity = false;
+            } else if entity.len() < 16 {
+                entity.push(character);
+            } else {
+                text.push('&');
+                text.push_str(&entity);
+                entity.clear();
+                in_entity = false;
+            }
+            continue;
+        }
+
+        match character {
+            '<' => in_tag = true,
+            '&' => in_entity = true,
+            _ => text.push(character),
+        }
+    }
+
+    text.lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(ToOwned::to_owned)
+        .collect()
+}
+
+fn decode_html_entity(entity: &str) -> String {
+    match entity {
+        "amp" => "&".to_string(),
+        "quot" => "\"".to_string(),
+        "apos" | "#39" => "'".to_string(),
+        "lt" => "<".to_string(),
+        "gt" => ">".to_string(),
+        "nbsp" => " ".to_string(),
+        _ if entity.starts_with("#x") => u32::from_str_radix(&entity[2..], 16)
+            .ok()
+            .and_then(char::from_u32)
+            .map(|character| character.to_string())
+            .unwrap_or_default(),
+        _ if entity.starts_with('#') => entity[1..]
+            .parse::<u32>()
+            .ok()
+            .and_then(char::from_u32)
+            .map(|character| character.to_string())
+            .unwrap_or_default(),
+        _ => String::new(),
+    }
+}
+
+fn epic_unlock_percent(line: &str) -> Option<f64> {
+    let trimmed = line.trim();
+    let percent = trimmed.strip_suffix("% of players unlock")?.trim();
+    percent.parse::<f64>().ok()
+}
+
+fn parse_local_achievement_cache(
+    value: &serde_json::Value,
+    provider: &str,
+) -> Result<Vec<UnifiedAchievement>, String> {
+    let achievements = value
+        .as_array()
+        .or_else(|| {
+            value
+                .get("achievements")
+                .and_then(serde_json::Value::as_array)
+        })
+        .or_else(|| value.get("items").and_then(serde_json::Value::as_array))
+        .ok_or_else(|| {
+            "Local achievement cache must be an array or contain an achievements/items array."
+                .to_string()
+        })?;
+
+    Ok(achievements
+        .iter()
+        .filter_map(|achievement| local_json_to_achievement(achievement, provider))
+        .collect())
+}
+
+fn local_json_to_achievement(
+    value: &serde_json::Value,
+    provider: &str,
+) -> Option<UnifiedAchievement> {
+    let id = json_string_at(
+        value,
+        &[
+            &["id"][..],
+            &["key"][..],
+            &["apiKey"][..],
+            &["achievementId"][..],
+            &["sourceAchievementId"][..],
+            &["source_achievement_id"][..],
+            &["name"][..],
+        ],
+    )?;
+    let name = json_string_at(
+        value,
+        &[
+            &["displayName"][..],
+            &["display_name"][..],
+            &["title"][..],
+            &["name"][..],
+            &["localizedName"][..],
+            &["localized_name"][..],
+        ],
+    )
+    .unwrap_or_else(|| id.clone());
+    let unlocked_at = json_string_at(
+        value,
+        &[
+            &["unlockedAt"][..],
+            &["unlocked_at"][..],
+            &["unlockTime"][..],
+            &["unlock_time"][..],
+        ],
+    )
+    .or_else(|| {
+        json_unix_timestamp_at(
+            value,
+            &[
+                &["unlockTimestamp"][..],
+                &["unlock_timestamp"][..],
+                &["dateUnlocked"][..],
+                &["date_unlocked"][..],
+            ],
+        )
+    })
+    .or_else(|| {
+        json_bool_at(
+            value,
+            &[&["unlocked"][..], &["achieved"][..], &["completed"][..]],
+        )
+        .filter(|unlocked| *unlocked)
+        .map(|_| unix_timestamp_to_iso(current_unix_timestamp()))
+    });
+
+    Some(UnifiedAchievement {
+        id: id.clone(),
+        name,
+        description: json_string_at(
+            value,
+            &[
+                &["description"][..],
+                &["desc"][..],
+                &["localizedDescription"][..],
+                &["localized_description"][..],
+            ],
+        ),
+        icon_url: json_string_at(
+            value,
+            &[
+                &["iconUrl"][..],
+                &["icon_url"][..],
+                &["icon"][..],
+                &["imageUrl"][..],
+                &["image_url"][..],
+                &["unlockedIconUrl"][..],
+                &["unlocked_icon_url"][..],
+            ],
+        ),
+        unlocked_at,
+        rarity: json_number_at(
+            value,
+            &[
+                &["rarity"][..],
+                &["percent"][..],
+                &["unlockPercentage"][..],
+                &["unlock_percentage"][..],
+            ],
+        ),
+        source: json_string_at(value, &[&["source"][..]]).or_else(|| Some(provider.to_string())),
+        source_achievement_id: json_string_at(
+            value,
+            &[&["sourceAchievementId"][..], &["source_achievement_id"][..]],
+        )
+        .or_else(|| Some(id)),
+        provider_confidence: json_string_at(
+            value,
+            &[&["providerConfidence"][..], &["provider_confidence"][..]],
+        )
+        .or_else(|| Some("unofficial".to_string())),
+    })
+}
+
+fn json_string_at(value: &serde_json::Value, paths: &[&[&str]]) -> Option<String> {
+    paths.iter().find_map(|path| {
+        let mut current = value;
+        for key in *path {
+            current = current.get(*key)?;
+        }
+        match current {
+            serde_json::Value::String(value) => Some(value.trim().to_string()),
+            serde_json::Value::Number(value) => Some(value.to_string()),
+            _ => None,
+        }
+        .filter(|value| !value.is_empty())
+    })
+}
+
+fn json_bool_at(value: &serde_json::Value, paths: &[&[&str]]) -> Option<bool> {
+    paths.iter().find_map(|path| {
+        let mut current = value;
+        for key in *path {
+            current = current.get(*key)?;
+        }
+        current.as_bool()
+    })
+}
+
+fn json_number_at(value: &serde_json::Value, paths: &[&[&str]]) -> Option<f64> {
+    paths.iter().find_map(|path| {
+        let mut current = value;
+        for key in *path {
+            current = current.get(*key)?;
+        }
+        current
+            .as_f64()
+            .or_else(|| current.as_str()?.trim_end_matches('%').parse::<f64>().ok())
+    })
+}
+
+fn json_unix_timestamp_at(value: &serde_json::Value, paths: &[&[&str]]) -> Option<String> {
+    json_number_at(value, paths).and_then(|timestamp| {
+        if timestamp.is_finite() && timestamp > 0.0 {
+            Some(unix_timestamp_to_iso(timestamp as u64))
+        } else {
+            None
+        }
+    })
+}
+
 pub(crate) fn preserve_known_unlocks(
     new_achievements: Vec<UnifiedAchievement>,
     previous: &[UnifiedAchievement],
 ) -> Vec<UnifiedAchievement> {
-    let previous_unlocks: HashMap<String, String> = previous
+    let mut previous_unlocks: HashMap<String, String> = HashMap::new();
+    for achievement in previous {
+        let Some(unlocked_at) = achievement.unlocked_at.as_ref() else {
+            continue;
+        };
+        for key in achievement_identity_keys(achievement) {
+            previous_unlocks.insert(key, unlocked_at.clone());
+        }
+    }
+    let new_keys: HashSet<String> = new_achievements
         .iter()
-        .filter_map(|a| a.unlocked_at.clone().map(|u| (a.id.clone(), u)))
+        .flat_map(achievement_identity_keys)
         .collect();
-    let new_ids: HashSet<String> = new_achievements.iter().map(|a| a.id.clone()).collect();
 
     let mut result: Vec<UnifiedAchievement> = new_achievements
         .into_iter()
         .map(|mut ach| {
             if ach.unlocked_at.is_none() {
-                if let Some(prev_unlock) = previous_unlocks.get(&ach.id) {
-                    ach.unlocked_at = Some(prev_unlock.clone());
+                for key in achievement_identity_keys(&ach) {
+                    if let Some(prev_unlock) = previous_unlocks.get(&key) {
+                        ach.unlocked_at = Some(prev_unlock.clone());
+                        break;
+                    }
                 }
             }
             ach
@@ -524,12 +1070,43 @@ pub(crate) fn preserve_known_unlocks(
 
     // Keep any previous achievement the new fetch is missing (transient API gaps, dropped IDs).
     for prev in previous {
-        if !new_ids.contains(&prev.id) {
+        if !achievement_identity_keys(prev)
+            .iter()
+            .any(|key| new_keys.contains(key))
+        {
             result.push(prev.clone());
         }
     }
 
     result
+}
+
+fn achievement_identity_keys(achievement: &UnifiedAchievement) -> Vec<String> {
+    let mut keys = vec![achievement.id.clone()];
+    if let Some(source) = achievement
+        .source
+        .as_ref()
+        .filter(|value| !value.is_empty())
+    {
+        keys.push(format!("{source}:{}", achievement.id));
+        if let Some(source_id) = achievement
+            .source_achievement_id
+            .as_ref()
+            .filter(|value| !value.is_empty())
+        {
+            keys.push(format!("{source}:{source_id}"));
+        }
+    }
+    if let Some(source_id) = achievement
+        .source_achievement_id
+        .as_ref()
+        .filter(|value| !value.is_empty() && *value != &achievement.id)
+    {
+        keys.push(source_id.clone());
+    }
+    keys.sort();
+    keys.dedup();
+    keys
 }
 
 #[tauri::command]
@@ -2003,6 +2580,285 @@ mod tests {
         assert_eq!(
             scanned_game.achievement_provider_statuses[0].message,
             "fresh failure"
+        );
+    }
+
+    #[test]
+    fn parses_local_achievement_cache_array() {
+        let value = serde_json::json!([
+            {
+                "id": "ACH_WIN",
+                "displayName": "Winner",
+                "description": "Win once",
+                "unlocked": true,
+                "rarity": "12.5%"
+            },
+            {
+                "key": "ACH_LOCKED",
+                "title": "Locked",
+                "desc": "Not yet"
+            }
+        ]);
+
+        let achievements = parse_local_achievement_cache(&value, "epic").unwrap();
+
+        assert_eq!(achievements.len(), 2);
+        assert_eq!(achievements[0].id, "ACH_WIN");
+        assert_eq!(achievements[0].name, "Winner");
+        assert_eq!(achievements[0].description.as_deref(), Some("Win once"));
+        assert!(achievements[0].unlocked_at.is_some());
+        assert_eq!(achievements[0].rarity, Some(12.5));
+        assert_eq!(achievements[0].source.as_deref(), Some("epic"));
+        assert_eq!(
+            achievements[0].provider_confidence.as_deref(),
+            Some("unofficial")
+        );
+        assert_eq!(achievements[1].id, "ACH_LOCKED");
+        assert!(achievements[1].unlocked_at.is_none());
+    }
+
+    #[test]
+    fn parses_local_achievement_cache_object() {
+        let value = serde_json::json!({
+            "achievements": [
+                {
+                    "achievementId": "first_steps",
+                    "name": "First Steps",
+                    "unlockTimestamp": 1767225600
+                }
+            ]
+        });
+
+        let achievements = parse_local_achievement_cache(&value, "gog").unwrap();
+
+        assert_eq!(achievements.len(), 1);
+        assert_eq!(
+            achievements[0].source_achievement_id.as_deref(),
+            Some("first_steps")
+        );
+        assert_eq!(
+            achievements[0].unlocked_at.as_deref(),
+            Some("2026-01-01T00:00:00Z")
+        );
+    }
+
+    #[test]
+    fn parses_local_achievement_cache_snake_case_aliases() {
+        let value = serde_json::json!({
+            "items": [
+                {
+                    "id": "local-id",
+                    "display_name": "Snake Case",
+                    "localized_description": "Imported by a script",
+                    "icon_url": "https://example.test/icon.png",
+                    "unlocked_at": "2026-01-04T00:00:00Z",
+                    "unlock_percentage": "7.5%",
+                    "source": "gog",
+                    "source_achievement_id": "snake_case",
+                    "provider_confidence": "local"
+                }
+            ]
+        });
+
+        let achievements = parse_local_achievement_cache(&value, "gog").unwrap();
+
+        assert_eq!(achievements.len(), 1);
+        assert_eq!(achievements[0].name, "Snake Case");
+        assert_eq!(
+            achievements[0].description.as_deref(),
+            Some("Imported by a script")
+        );
+        assert_eq!(
+            achievements[0].icon_url.as_deref(),
+            Some("https://example.test/icon.png")
+        );
+        assert_eq!(
+            achievements[0].unlocked_at.as_deref(),
+            Some("2026-01-04T00:00:00Z")
+        );
+        assert_eq!(achievements[0].rarity, Some(7.5));
+        assert_eq!(
+            achievements[0].source_achievement_id.as_deref(),
+            Some("snake_case")
+        );
+        assert_eq!(
+            achievements[0].provider_confidence.as_deref(),
+            Some("local")
+        );
+    }
+
+    #[test]
+    fn local_achievement_candidates_include_install_sidecars() {
+        let mut game = installed_game(
+            "epic-game-1",
+            "Epic Game".to_string(),
+            "epic".to_string(),
+            Some(r"C:\Games\Epic Game".to_string()),
+            None,
+        );
+        game.external_id = Some("epic-app".to_string());
+
+        let candidates = local_achievement_cache_candidates("epic", &game);
+
+        assert!(candidates
+            .iter()
+            .any(|path| path.ends_with(r"C:\Games\Epic Game\og-achievements.json")));
+        assert!(candidates
+            .iter()
+            .any(|path| path.ends_with(r"C:\Games\Epic Game\epic-achievements.json")));
+        assert!(candidates
+            .iter()
+            .any(|path| path.ends_with(r"C:\Games\Epic Game\.og-launcher\achievements.json")));
+        assert!(candidates.iter().any(|path| path
+            .ends_with("achievement-cache\\epic\\epic-app.json")
+            || path.ends_with("achievement-cache/epic/epic-app.json")));
+    }
+
+    #[test]
+    fn epic_slug_candidates_use_slug_external_id_and_title() {
+        let mut game = installed_game(
+            "epic-owned-legendary-app",
+            "Mass Effect Legendary Edition".to_string(),
+            "epic".to_string(),
+            None,
+            None,
+        );
+        game.slug = "mass-effect-legendary-edition".to_string();
+        game.external_id = Some("legendary-app".to_string());
+
+        let candidates = epic_achievement_slug_candidates(&game);
+
+        assert_eq!(
+            candidates,
+            vec![
+                "mass-effect-legendary-edition".to_string(),
+                "legendary-app".to_string()
+            ]
+        );
+    }
+
+    #[test]
+    fn parses_epic_public_achievement_html() {
+        let html = r#"
+            <html><body>
+              <h1>Achievements</h1>
+              <img alt="Achievement icon" />
+              <div>A House Divided</div>
+              <div>ME2: Hack a geth collective</div>
+              <div>10 XP</div>
+              <div>28% of players unlock</div>
+              <div>A Personal Touch</div>
+              <div>ME3: Modify a weapon.</div>
+              <div>10 XP</div>
+              <div>31% of players unlock</div>
+            </body></html>
+        "#;
+
+        let achievements = parse_epic_public_achievement_html(html);
+
+        assert_eq!(achievements.len(), 2);
+        assert_eq!(achievements[0].id, "a-house-divided");
+        assert_eq!(achievements[0].name, "A House Divided");
+        assert_eq!(
+            achievements[0].description.as_deref(),
+            Some("ME2: Hack a geth collective")
+        );
+        assert_eq!(achievements[0].rarity, Some(28.0));
+        assert_eq!(achievements[0].source.as_deref(), Some("epic"));
+        assert!(achievements[0].unlocked_at.is_none());
+    }
+
+    #[test]
+    fn epic_public_cache_payload_roundtrips_through_local_parser() {
+        let achievements = parse_epic_public_achievement_html(
+            r#"
+            <div>A House Divided</div>
+            <div>ME2: Hack a geth collective</div>
+            <div>10 XP</div>
+            <div>28% of players unlock</div>
+        "#,
+        );
+        let payload = serde_json::json!({
+            "source": "epic-public",
+            "gameId": "epic-game",
+            "achievements": achievements,
+        });
+
+        let parsed = parse_local_achievement_cache(&payload, "epic").unwrap();
+
+        assert_eq!(parsed.len(), 1);
+        assert_eq!(parsed[0].id, "a-house-divided");
+        assert_eq!(parsed[0].rarity, Some(28.0));
+        assert_eq!(parsed[0].provider_confidence.as_deref(), Some("unofficial"));
+    }
+
+    #[test]
+    fn preserve_known_unlocks_matches_source_achievement_id() {
+        let previous = vec![UnifiedAchievement {
+            id: "old-public-id".to_string(),
+            name: "Collector".to_string(),
+            description: None,
+            icon_url: None,
+            unlocked_at: Some("2026-01-02T00:00:00Z".to_string()),
+            rarity: None,
+            source: Some("epic".to_string()),
+            source_achievement_id: Some("collector".to_string()),
+            provider_confidence: Some("unofficial".to_string()),
+        }];
+        let new = vec![UnifiedAchievement {
+            id: "new-local-id".to_string(),
+            name: "Collector".to_string(),
+            description: None,
+            icon_url: None,
+            unlocked_at: None,
+            rarity: Some(12.0),
+            source: Some("epic".to_string()),
+            source_achievement_id: Some("collector".to_string()),
+            provider_confidence: Some("unofficial".to_string()),
+        }];
+
+        let merged = preserve_known_unlocks(new, &previous);
+
+        assert_eq!(merged.len(), 1);
+        assert_eq!(
+            merged[0].unlocked_at.as_deref(),
+            Some("2026-01-02T00:00:00Z")
+        );
+        assert_eq!(merged[0].id, "new-local-id");
+    }
+
+    #[test]
+    fn preserve_known_unlocks_keeps_missing_previous_only_once() {
+        let previous = vec![UnifiedAchievement {
+            id: "same-id".to_string(),
+            name: "Story".to_string(),
+            description: None,
+            icon_url: None,
+            unlocked_at: Some("2026-01-03T00:00:00Z".to_string()),
+            rarity: None,
+            source: Some("gog".to_string()),
+            source_achievement_id: Some("story".to_string()),
+            provider_confidence: Some("unofficial".to_string()),
+        }];
+        let new = vec![UnifiedAchievement {
+            id: "other-id".to_string(),
+            name: "Story".to_string(),
+            description: None,
+            icon_url: None,
+            unlocked_at: None,
+            rarity: None,
+            source: Some("gog".to_string()),
+            source_achievement_id: Some("story".to_string()),
+            provider_confidence: Some("unofficial".to_string()),
+        }];
+
+        let merged = preserve_known_unlocks(new, &previous);
+
+        assert_eq!(merged.len(), 1);
+        assert_eq!(merged[0].id, "other-id");
+        assert_eq!(
+            merged[0].unlocked_at.as_deref(),
+            Some("2026-01-03T00:00:00Z")
         );
     }
 }
