@@ -50,7 +50,7 @@ pub fn check_deep_link_on_startup() -> Option<DeepLinkEvent> {
     None
 }
 
-fn parse_deep_link(raw: &str) -> DeepLinkEvent {
+pub fn parse_deep_link(raw: &str) -> DeepLinkEvent {
     let rest = raw.strip_prefix("universallauncher://").unwrap_or(raw);
     // Find the action before ? or end
     let (action, query) = if let Some(idx) = rest.find('?') {

@@ -4,6 +4,7 @@ use futures_util::{stream, StreamExt};
 
 use super::games::core::open_game_launcher_data_dir;
 use super::games::detect::{self, EpicLauncherAssets};
+use super::games::types::UnifiedAchievement;
 use super::system::OwnedGame;
 
 // For now let's just copy what we need or reference them cleanly.
@@ -198,6 +199,162 @@ pub async fn fetch_epic_owned_games() -> Result<Vec<OwnedGame>, String> {
     .await;
 
     Ok(games)
+}
+
+pub async fn fetch_epic_legendary_achievements(
+    app_name: &str,
+) -> Result<Vec<UnifiedAchievement>, String> {
+    let app_name = app_name.trim();
+    if app_name.is_empty() {
+        return Err("Epic app name is empty.".to_string());
+    }
+
+    let legendary = ensure_legendary_binary().await?;
+    let output = Command::new(&legendary)
+        .arg("info")
+        .arg(app_name)
+        .arg("--json")
+        .output()
+        .map_err(|e| format!("Failed to run legendary info: {e}"))?;
+
+    if !output.status.success() {
+        return Err(format!(
+            "Legendary info failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        ));
+    }
+
+    let data: serde_json::Value = serde_json::from_slice(&output.stdout)
+        .map_err(|e| format!("Failed to parse legendary info json: {e}"))?;
+    let achievements = parse_epic_legendary_achievements(&data);
+    if achievements.is_empty() {
+        return Err(format!(
+            "Legendary info did not expose achievement metadata for {app_name}."
+        ));
+    }
+
+    Ok(achievements)
+}
+
+fn parse_epic_legendary_achievements(value: &serde_json::Value) -> Vec<UnifiedAchievement> {
+    let mut achievements = Vec::new();
+    collect_epic_achievement_arrays(value, &mut achievements, false);
+    achievements
+}
+
+fn collect_epic_achievement_arrays(
+    value: &serde_json::Value,
+    achievements: &mut Vec<UnifiedAchievement>,
+    in_achievement_context: bool,
+) {
+    match value {
+        serde_json::Value::Array(items) => {
+            let parsed = if in_achievement_context {
+                items
+                    .iter()
+                    .filter_map(epic_json_achievement_to_unified)
+                    .collect::<Vec<_>>()
+            } else {
+                Vec::new()
+            };
+            if !parsed.is_empty() {
+                for achievement in parsed {
+                    if !achievements
+                        .iter()
+                        .any(|existing| existing.id == achievement.id)
+                    {
+                        achievements.push(achievement);
+                    }
+                }
+            } else {
+                for item in items {
+                    collect_epic_achievement_arrays(item, achievements, in_achievement_context);
+                }
+            }
+        }
+        serde_json::Value::Object(object) => {
+            for (key, child) in object {
+                let child_is_achievement_context =
+                    in_achievement_context || key.to_lowercase().contains("achievement");
+                collect_epic_achievement_arrays(child, achievements, child_is_achievement_context);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn epic_json_achievement_to_unified(value: &serde_json::Value) -> Option<UnifiedAchievement> {
+    let id = epic_json_string(
+        value,
+        &[
+            &["achievementId"][..],
+            &["achievement_id"][..],
+            &["id"][..],
+            &["name"][..],
+            &["title"][..],
+        ],
+    )?;
+    let name = epic_json_string(
+        value,
+        &[
+            &["displayName"][..],
+            &["display_name"][..],
+            &["title"][..],
+            &["name"][..],
+        ],
+    )?;
+    let description = epic_json_string(
+        value,
+        &[
+            &["description"][..],
+            &["desc"][..],
+            &["lockedDescription"][..],
+            &["locked_description"][..],
+        ],
+    );
+    let unlocked_at = epic_json_string(
+        value,
+        &[
+            &["unlockedAt"][..],
+            &["unlocked_at"][..],
+            &["unlockTime"][..],
+            &["unlock_time"][..],
+            &["dateUnlocked"][..],
+            &["date_unlocked"][..],
+        ],
+    );
+    let icon_url = epic_json_string(
+        value,
+        &[
+            &["iconUrl"][..],
+            &["icon_url"][..],
+            &["unlockedIconUrl"][..],
+            &["unlocked_icon_url"][..],
+            &["imageUrl"][..],
+            &["image_url"][..],
+        ],
+    );
+    let rarity = epic_json_number(
+        value,
+        &[
+            &["rarity"][..],
+            &["unlockPercentage"][..],
+            &["unlock_percentage"][..],
+            &["percent"][..],
+        ],
+    );
+
+    Some(UnifiedAchievement {
+        id: format!("epic-{}", normalize_epic_achievement_id(&id)),
+        name,
+        description,
+        icon_url,
+        unlocked_at,
+        rarity,
+        source: Some("epic".to_string()),
+        source_achievement_id: Some(id),
+        provider_confidence: Some("unofficial".to_string()),
+    })
 }
 
 fn is_unreal_catalog_asset(item: &serde_json::Value) -> bool {
@@ -487,4 +644,118 @@ fn epic_json_string(value: &serde_json::Value, paths: &[&[&str]]) -> Option<Stri
             .filter(|value| !value.is_empty())
             .map(ToOwned::to_owned)
     })
+}
+
+fn epic_json_number(value: &serde_json::Value, paths: &[&[&str]]) -> Option<f64> {
+    paths.iter().find_map(|path| {
+        let mut current = value;
+        for key in *path {
+            current = current.get(*key)?;
+        }
+        if let Some(number) = current.as_f64() {
+            return Some(number);
+        }
+        current
+            .as_str()
+            .map(|value| value.trim().trim_end_matches('%').replace(',', "."))
+            .and_then(|value| value.parse::<f64>().ok())
+    })
+}
+
+fn normalize_epic_achievement_id(value: &str) -> String {
+    let mut normalized = String::new();
+    let mut last_was_dash = false;
+
+    for character in value.chars().flat_map(char::to_lowercase) {
+        if character.is_ascii_alphanumeric() {
+            normalized.push(character);
+            last_was_dash = false;
+        } else if !last_was_dash {
+            normalized.push('-');
+            last_was_dash = true;
+        }
+    }
+
+    normalized.trim_matches('-').to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_nested_legendary_achievement_metadata() {
+        let value = serde_json::json!({
+            "metadata": {
+                "achievements": {
+                    "definitions": [
+                        {
+                            "achievementId": "A_HOUSE_DIVIDED",
+                            "displayName": "A House Divided",
+                            "description": "Hack a geth collective",
+                            "unlockPercentage": "28%",
+                            "unlockedAt": "2026-06-07T01:20:00Z",
+                            "iconUrl": "https://example.com/icon.png"
+                        },
+                        {
+                            "achievement_id": "PERSONAL_TOUCH",
+                            "title": "A Personal Touch",
+                            "desc": "Modify a weapon.",
+                            "rarity": 31
+                        }
+                    ]
+                }
+            }
+        });
+
+        let achievements = parse_epic_legendary_achievements(&value);
+
+        assert_eq!(achievements.len(), 2);
+        assert_eq!(achievements[0].id, "epic-a-house-divided");
+        assert_eq!(achievements[0].name, "A House Divided");
+        assert_eq!(
+            achievements[0].description.as_deref(),
+            Some("Hack a geth collective")
+        );
+        assert_eq!(achievements[0].rarity, Some(28.0));
+        assert_eq!(
+            achievements[0].unlocked_at.as_deref(),
+            Some("2026-06-07T01:20:00Z")
+        );
+        assert_eq!(achievements[0].source.as_deref(), Some("epic"));
+        assert_eq!(
+            achievements[0].provider_confidence.as_deref(),
+            Some("unofficial")
+        );
+        assert_eq!(
+            achievements[1].source_achievement_id.as_deref(),
+            Some("PERSONAL_TOUCH")
+        );
+    }
+
+    #[test]
+    fn ignores_non_achievement_arrays_in_legendary_metadata() {
+        let value = serde_json::json!({
+            "metadata": {
+                "categories": [
+                    { "path": "games" },
+                    { "path": "applications" }
+                ],
+                "achievementStatus": {
+                    "items": [
+                        {
+                            "id": "first_win",
+                            "name": "First Win"
+                        }
+                    ]
+                }
+            }
+        });
+
+        let achievements = parse_epic_legendary_achievements(&value);
+
+        assert_eq!(achievements.len(), 1);
+        assert_eq!(achievements[0].id, "epic-first-win");
+        assert_eq!(achievements[0].name, "First Win");
+    }
 }

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   Award,
   ChevronDown,
+  FolderOpen,
   Gamepad2,
   Loader2,
   MoreHorizontal,
@@ -11,9 +12,14 @@ import {
 } from "lucide-react";
 
 import { getGameAssetUrl, getGameBannerStyle } from "../lib/assets";
-import { getGameIconCandidates, formatLastPlayed, formatPlayTime } from "../lib/formatters";
+import {
+  getErrorMessage,
+  getGameIconCandidates,
+  formatLastPlayed,
+  formatPlayTime,
+} from "../lib/formatters";
 import { groupGames, type GameGroup, type GroupedAchievement } from "../lib/game-groups";
-import { listInstalledGames } from "../lib/launcher";
+import { listInstalledGames, openAchievementCacheFolder } from "../lib/launcher";
 import type { Game } from "../lib/types";
 import { PlatformSourceIcon } from "../components/library/PlatformIcons";
 
@@ -337,6 +343,7 @@ export function AchievementsPage() {
   const [sortMode, setSortMode] = useState<GameSort>("completion");
   const [searchQuery, setSearchQuery] = useState("");
   const [sourceFilter, setSourceFilter] = useState("all");
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -430,6 +437,15 @@ export function AchievementsPage() {
     return next;
   }, [activeTab, rows, searchQuery, sortMode, sourceFilter]);
 
+  const handleOpenAchievementCacheFolder = async () => {
+    try {
+      const folder = await openAchievementCacheFolder();
+      setStatusMessage(`Achievement cache folder opened: ${folder}`);
+    } catch (err) {
+      setStatusMessage(`Could not open achievement cache folder: ${getErrorMessage(err)}`);
+    }
+  };
+
   if (error) {
     return (
       <section className="neo-dots space-y-6">
@@ -456,12 +472,29 @@ export function AchievementsPage() {
             </h1>
           </div>
           <div className="ml-auto flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => {
+                void handleOpenAchievementCacheFolder();
+              }}
+              className="neo-copy inline-flex items-center gap-2 border-[3px] border-black bg-[#fbf4e7] px-3 py-2 text-[10px] font-black uppercase text-[#171411] shadow-[3px_3px_0_#000] transition hover:-translate-y-0.5"
+              title="Open achievement cache folder"
+            >
+              <FolderOpen className="h-4 w-4" />
+              Cache Folder
+            </button>
             <StatCard label="Total" value={stats.total} tone="paper" />
             <StatCard label="Unlocked" value={stats.unlocked} tone="teal" />
             <StatCard label="Perfect" value={stats.perfect} tone="red" />
             <StatCard label="Complete" value={`${stats.pct}%`} tone="ink" />
           </div>
         </div>
+
+        {statusMessage ? (
+          <div className="neo-copy border-b-4 border-black bg-[#e8c843] px-4 py-2 text-[10px] font-black uppercase text-[#171411]">
+            {statusMessage}
+          </div>
+        ) : null}
 
         <div className="border-b-4 border-black bg-[#f6edd8] px-4 pt-3">
           <div className="flex flex-wrap gap-4">

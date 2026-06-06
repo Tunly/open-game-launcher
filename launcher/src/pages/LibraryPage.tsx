@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 
 import { LibrarySidebar } from "../components/library/LibrarySidebar";
 import { LibraryFilters } from "../components/library/LibraryFilters";
@@ -8,6 +9,7 @@ import { GameDetailPanel } from "../components/library/GameDetailPanel";
 import { useCloudAutoSync } from "../hooks/useCloudAutoSync";
 import { useDownloadStore, selectCompletedCount } from "../stores/downloadStore";
 import { LibraryProvider } from "../context/LibraryProvider";
+import { launchCrossPlayJoin } from "../lib/launcher";
 
 import { useLibrarySync } from "../hooks/library/useLibrarySync";
 import { useLibraryFilters } from "../hooks/library/useLibraryFilters";
@@ -20,6 +22,7 @@ export function LibraryPage() {
   const gameListScrollRef = useRef<HTMLDivElement>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [isAddGameOpen, setIsAddGameOpen] = useState(false);
+  const [searchParams, setSearchParams] = useSearchParams();
   const downloadCount = useDownloadStore((s) => s.items.length);
   const completedDownloadCount = useDownloadStore(selectCompletedCount);
 
@@ -58,6 +61,66 @@ export function LibraryPage() {
     setStatusMessage,
     maybeAutoSyncOnLaunch,
   });
+
+  // Deep-link `?join=...&platform=...&invite=...` from a universallauncher://join URL.
+  // The Rust deep-link handler navigates here, but this is where we actually trigger
+  // the cross-play launch and tidy up the URL so a reload doesn't re-fire it.
+  useEffect(() => {
+    const joinSlug = searchParams.get("join");
+    if (!joinSlug) return;
+
+    const platform = searchParams.get("platform") ?? "";
+    const invite = searchParams.get("invite") ?? "";
+    const wanted = joinSlug.toLowerCase();
+
+    const match = sync.installedGames.find((game) => {
+      const candidates = [game.slug, game.id, game.externalId, game.title]
+        .filter((value): value is string => typeof value === "string" && value.length > 0)
+        .map((value) => value.toLowerCase());
+      return candidates.includes(wanted);
+    });
+
+    if (!match) {
+      setStatusMessage(
+        `Could not join "${joinSlug}" — game is not installed yet. Install it first.`,
+      );
+      const next = new URLSearchParams(searchParams);
+      next.delete("join");
+      next.delete("platform");
+      next.delete("invite");
+      setSearchParams(next, { replace: true });
+      return;
+    }
+
+    const gameSlug = match.slug || match.id;
+    if (!platform) {
+      setStatusMessage(`Could not join "${match.title}" — missing platform parameter.`);
+      const next = new URLSearchParams(searchParams);
+      next.delete("join");
+      next.delete("platform");
+      next.delete("invite");
+      setSearchParams(next, { replace: true });
+      return;
+    }
+
+    launchCrossPlayJoin(platform, gameSlug)
+      .then((uri) => {
+        const inviteSuffix = invite ? ` (invite ${invite})` : "";
+        setStatusMessage(`Joining ${match.title} on ${platform}${inviteSuffix}…`);
+        console.info("[deep-link] launched", uri);
+      })
+      .catch((error: unknown) => {
+        const message = error instanceof Error ? error.message : String(error);
+        setStatusMessage(`Could not join ${match.title}: ${message}`);
+      })
+      .finally(() => {
+        const next = new URLSearchParams(searchParams);
+        next.delete("join");
+        next.delete("platform");
+        next.delete("invite");
+        setSearchParams(next, { replace: true });
+      });
+  }, [searchParams, setSearchParams, sync.installedGames, setStatusMessage]);
 
   useEffect(() => {
     if (!statusMessage) {

@@ -15,6 +15,7 @@ import {
   Camera,
   ImagePlus,
   RotateCcw,
+  FolderOpen,
 } from "lucide-react";
 import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
@@ -40,7 +41,7 @@ import {
   getPlatformBannerClass,
 } from "../../lib/formatters";
 import { getGameAssetUrl, getGameBannerStyle } from "../../lib/assets";
-import { listControllers, uninstallGame } from "../../lib/launcher";
+import { listControllers, openAchievementCacheFolder, uninstallGame } from "../../lib/launcher";
 import { isLiveDownloadItem, useDownloadStore } from "../../stores/downloadStore";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { CrossPlayBadge } from "./CrossPlayBadge";
@@ -318,6 +319,16 @@ export function GameDetails({
     setAchievementSort("rarity");
     setIsControllerPanelOpen(false);
   }, [selectedGame?.id]);
+
+  const handleOpenAchievementCacheFolder = async () => {
+    const provider = achievementBasisSource ?? enrichedSelectedGame?.launcher ?? undefined;
+    try {
+      const folder = await openAchievementCacheFolder(provider);
+      setStatusMessage(`Achievement cache folder opened: ${folder}`);
+    } catch (error) {
+      setStatusMessage(`Could not open achievement cache folder: ${getErrorMessage(error)}`);
+    }
+  };
 
   function handleArtworkFileChange(kind: CustomArtworkKind, fileList: FileList | null) {
     const file = fileList?.[0];
@@ -981,6 +992,17 @@ export function GameDetails({
                             Basis: {achievementBasisSource}
                           </span>
                         ) : null}
+                        <button
+                          className="grid h-8 w-8 place-items-center border-2 border-black bg-[#fbf4e7] text-[#171411] shadow-[2px_2px_0_#171411]"
+                          type="button"
+                          aria-label="Open achievement cache folder"
+                          title="Open achievement cache folder"
+                          onClick={() => {
+                            void handleOpenAchievementCacheFolder();
+                          }}
+                        >
+                          <FolderOpen className="h-4 w-4" />
+                        </button>
                         <button
                           className="grid h-8 w-8 place-items-center border-2 border-black bg-[#fbf4e7] text-[#171411] shadow-[2px_2px_0_#171411] disabled:opacity-60"
                           type="button"

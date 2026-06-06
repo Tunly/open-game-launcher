@@ -8,6 +8,18 @@ pub fn run() {
     load_local_env_files();
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+            for arg in args {
+                if arg.starts_with("universallauncher://") {
+                    let link = commands::deeplink::parse_deep_link(&arg);
+                    if let Some(window) = app.get_webview_window("main") {
+                        let _ = window.emit("deep-link", link);
+                        let _ = window.show();
+                        let _ = window.set_focus();
+                    }
+                }
+            }
+        }))
         .plugin(
             tauri_plugin_global_shortcut::Builder::new()
                 .with_handler(|app, _shortcut, event| {
@@ -141,6 +153,7 @@ pub fn run() {
             commands::games::restore_game_saves_from_cloud,
             commands::games::sync_game_achievements,
             commands::games::sync_local_game_achievements,
+            commands::games::open_achievement_cache_folder,
             commands::games::uninstall_game,
             commands::games::set_cached_game_playtime,
             commands::downloads::start_download,

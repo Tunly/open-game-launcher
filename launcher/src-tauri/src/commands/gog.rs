@@ -1,3 +1,4 @@
+use super::games::types::UnifiedAchievement;
 use super::secure_store;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
@@ -27,6 +28,7 @@ pub fn gog_auth_url() -> String {
 const GOG_TOKEN_URL: &str = "https://auth.gog.com/token";
 const GOG_EMBED_BASE: &str = "https://embed.gog.com";
 const GOG_API_BASE: &str = "https://api.gog.com";
+const GOG_GAMEPLAY_BASE: &str = "https://gameplay.gog.com";
 
 // ============================================================================
 // Token Types
@@ -207,6 +209,32 @@ struct GogInstaller {
     files: Vec<GogInstallerFile>,
 }
 
+#[derive(Debug, Deserialize)]
+struct GogAchievementsResponse {
+    #[serde(default)]
+    items: Vec<GogAchievementItem>,
+}
+
+#[derive(Debug, Deserialize)]
+struct GogAchievementItem {
+    #[serde(default)]
+    achievement_id: Option<String>,
+    #[serde(default)]
+    achievement_key: Option<String>,
+    #[serde(default)]
+    visible: bool,
+    #[serde(default)]
+    name: Option<String>,
+    #[serde(default)]
+    description: Option<String>,
+    #[serde(default)]
+    image_url_unlocked: Option<String>,
+    #[serde(default)]
+    image_url_locked: Option<String>,
+    #[serde(default)]
+    date_unlocked: Option<String>,
+}
+
 // ============================================================================
 // Token Storage
 // ============================================================================
@@ -316,6 +344,88 @@ async fn gog_api_get(
     }
 
     Ok(resp)
+}
+
+pub async fn fetch_gog_achievements(gog_id: &str) -> Result<Vec<UnifiedAchievement>, String> {
+    let mut token =
+        load_gog_token().ok_or_else(|| "No GOG token found. Please login first.".to_string())?;
+    let client = Client::new();
+    let url = format!(
+        "{GOG_GAMEPLAY_BASE}/clients/{}/users/{}/achievements?limit=1000",
+        gog_id.trim(),
+        token.user_id
+    );
+    let resp = gog_api_get(&client, &mut token, &url).await?;
+    if !resp.status().is_success() {
+        return Err(format!(
+            "GOG achievements request failed with HTTP {}.",
+            resp.status()
+        ));
+    }
+
+    let payload = resp
+        .json::<GogAchievementsResponse>()
+        .await
+        .map_err(|error| format!("Could not parse GOG achievements response: {error}"))?;
+
+    Ok(parse_gog_achievements(payload))
+}
+
+fn parse_gog_achievements(payload: GogAchievementsResponse) -> Vec<UnifiedAchievement> {
+    payload
+        .items
+        .into_iter()
+        .filter_map(gog_achievement_to_unified)
+        .collect()
+}
+
+fn gog_achievement_to_unified(achievement: GogAchievementItem) -> Option<UnifiedAchievement> {
+    let key = achievement
+        .achievement_key
+        .as_deref()
+        .or(achievement.achievement_id.as_deref())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())?;
+    let fallback_name = if achievement.visible {
+        key.to_string()
+    } else {
+        "Secret Achievement".to_string()
+    };
+    let name = achievement
+        .name
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .unwrap_or(&fallback_name)
+        .to_string();
+    let unlocked_at = achievement
+        .date_unlocked
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    let icon_url = if unlocked_at.is_some() {
+        achievement
+            .image_url_unlocked
+            .or(achievement.image_url_locked)
+    } else {
+        achievement
+            .image_url_locked
+            .or(achievement.image_url_unlocked)
+    };
+
+    Some(UnifiedAchievement {
+        id: format!("gog-{key}"),
+        name,
+        description: achievement
+            .description
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty()),
+        icon_url,
+        unlocked_at,
+        rarity: None,
+        source: Some("gog".to_string()),
+        source_achievement_id: Some(key.to_string()),
+        provider_confidence: Some("official".to_string()),
+    })
 }
 
 fn extract_oauth_code_from_url(url: &str) -> Option<String> {
@@ -1428,4 +1538,71 @@ pub async fn gog_get_cloud_saves(gog_id: String) -> Result<GogCloudSaveInfo, Str
         game_id: gog_id,
         files,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_gog_achievement_response() {
+        let achievements = parse_gog_achievements(GogAchievementsResponse {
+            items: vec![GogAchievementItem {
+                achievement_id: Some("48497841707623054".to_string()),
+                achievement_key: Some("ACHIEVEMENT_NODEATH1".to_string()),
+                visible: true,
+                name: Some("Early Bird".to_string()),
+                description: Some("Complete level 1 without dying".to_string()),
+                image_url_unlocked: Some("https://images.gog.com/unlocked.jpg".to_string()),
+                image_url_locked: Some("https://images.gog.com/locked.jpg".to_string()),
+                date_unlocked: Some("2026-06-07T01:10:00+00:00".to_string()),
+            }],
+        });
+
+        assert_eq!(achievements.len(), 1);
+        assert_eq!(achievements[0].id, "gog-ACHIEVEMENT_NODEATH1");
+        assert_eq!(achievements[0].name, "Early Bird");
+        assert_eq!(achievements[0].source.as_deref(), Some("gog"));
+        assert_eq!(
+            achievements[0].source_achievement_id.as_deref(),
+            Some("ACHIEVEMENT_NODEATH1")
+        );
+        assert_eq!(
+            achievements[0].provider_confidence.as_deref(),
+            Some("official")
+        );
+        assert_eq!(
+            achievements[0].unlocked_at.as_deref(),
+            Some("2026-06-07T01:10:00+00:00")
+        );
+        assert_eq!(
+            achievements[0].icon_url.as_deref(),
+            Some("https://images.gog.com/unlocked.jpg")
+        );
+    }
+
+    #[test]
+    fn parses_hidden_gog_achievement_with_secret_fallback() {
+        let achievements = parse_gog_achievements(GogAchievementsResponse {
+            items: vec![GogAchievementItem {
+                achievement_id: Some("48225958150521213".to_string()),
+                achievement_key: None,
+                visible: false,
+                name: None,
+                description: None,
+                image_url_unlocked: Some("https://images.gog.com/unlocked.jpg".to_string()),
+                image_url_locked: Some("https://images.gog.com/locked.jpg".to_string()),
+                date_unlocked: None,
+            }],
+        });
+
+        assert_eq!(achievements.len(), 1);
+        assert_eq!(achievements[0].id, "gog-48225958150521213");
+        assert_eq!(achievements[0].name, "Secret Achievement");
+        assert_eq!(
+            achievements[0].icon_url.as_deref(),
+            Some("https://images.gog.com/locked.jpg")
+        );
+        assert!(achievements[0].unlocked_at.is_none());
+    }
 }

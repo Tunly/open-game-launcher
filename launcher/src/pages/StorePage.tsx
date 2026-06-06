@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import { CheckCircle2, Heart, Play, ReceiptText, ShoppingCart, Tags, Trash2 } from "lucide-react";
 
 import { StoreGameCard } from "../components/launcher/StoreGameCard";
@@ -72,6 +73,7 @@ export function StorePage() {
   const [orders, setOrders] = useState<StoreOrder[]>(readOrders);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [selectedProductId, setSelectedProductId] = useState(storeGames[0]?.id ?? null);
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const wishlistGames = useMemo(
     () => storeGames.filter((game) => wishlistIds.has(game.id)),
@@ -109,6 +111,44 @@ export function StorePage() {
   useEffect(() => {
     localStorage.setItem(ordersKey, JSON.stringify(orders));
   }, [orders]);
+
+  // Deep-link `?slug=...&install=1` from a universallauncher://open or
+  // universallauncher://install URL. Selects the matching store product and, if
+  // `install=1` is set, surfaces a prompt so the user can install it immediately.
+  // The store is mock-data only, so unknown slugs are reported via statusMessage.
+  useEffect(() => {
+    const slug = searchParams.get("slug");
+    if (!slug) return;
+
+    const wantsInstall = searchParams.get("install") === "1";
+    const wanted = slug.toLowerCase();
+    const match = storeGames.find(
+      (game) => game.id.toLowerCase() === wanted || game.title.toLowerCase() === wanted,
+    );
+
+    if (!match) {
+      setStatusMessage(
+        `Store link "${slug}" did not match a known product. Browse the store manually.`,
+      );
+      const next = new URLSearchParams(searchParams);
+      next.delete("slug");
+      next.delete("install");
+      setSearchParams(next, { replace: true });
+      return;
+    }
+
+    setSelectedProductId(match.id);
+    setStatusMessage(
+      wantsInstall
+        ? `Opening ${match.title}. Click "Install" to add it to your library.`
+        : `Opened ${match.title} from a shared link.`,
+    );
+
+    const next = new URLSearchParams(searchParams);
+    next.delete("slug");
+    next.delete("install");
+    setSearchParams(next, { replace: true });
+  }, [searchParams, setSearchParams, setStatusMessage]);
 
   function toggleWishlist(gameId: string) {
     setWishlistIds((current) => {

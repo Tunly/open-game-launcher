@@ -97,6 +97,10 @@ export function updateAchievementProviderStatus(input: {
   return invokeCommand<Game>("update_achievement_provider_status", { input });
 }
 
+export function openAchievementCacheFolder(provider?: string): Promise<string> {
+  return invokeCommand<string>("open_achievement_cache_folder", { provider });
+}
+
 export function addManualGame(input: { title: string; installPath: string }): Promise<Game> {
   return invokeCommand<Game>("add_manual_game", { input });
 }

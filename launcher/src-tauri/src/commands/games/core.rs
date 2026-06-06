@@ -29,6 +29,9 @@ use super::types::*;
 
 pub const OG_MANAGED_LATEST_VERSION: &str = "1.1.0";
 pub const OG_MANAGED_MANIFEST_FILE: &str = "og-manifest.json";
+const ACHIEVEMENT_CLIENT_CACHE_MAX_DEPTH: usize = 4;
+const ACHIEVEMENT_CLIENT_CACHE_MAX_DISCOVERED_FILES: usize = 64;
+const ACHIEVEMENT_CLIENT_CACHE_MAX_FILE_BYTES: u64 = 2 * 1024 * 1024;
 
 #[derive(Debug, Serialize, Deserialize, Clone, Default)]
 #[serde(rename_all = "camelCase")]
@@ -109,6 +112,28 @@ pub async fn refresh_installed_games() -> Result<Vec<InstalledGame>, String> {
     write_installed_games_cache(&games);
 
     Ok(games)
+}
+
+#[tauri::command]
+pub fn open_achievement_cache_folder(provider: Option<String>) -> Result<String, String> {
+    let base_dir = open_game_launcher_data_dir()
+        .ok_or_else(|| "Could not resolve OG-Launcher data directory.".to_string())?
+        .join("achievement-cache");
+
+    let folder = provider
+        .map(|value| value.trim().to_lowercase())
+        .filter(|value| !value.is_empty() && value.chars().all(|c| c.is_ascii_alphanumeric()))
+        .map(|value| base_dir.join(value))
+        .unwrap_or(base_dir);
+
+    fs::create_dir_all(&folder)
+        .map_err(|error| format!("Could not create achievement cache folder: {error}"))?;
+
+    let folder_text = path_to_string(folder);
+    open_uri(&folder_text)
+        .map_err(|error| format!("Could not open achievement cache folder: {error}"))?;
+
+    Ok(folder_text)
 }
 
 #[tauri::command]
@@ -518,15 +543,7 @@ pub async fn sync_local_game_achievements(
         .ok_or_else(|| format!("Game '{game_id}' was not found in the local library cache."))?;
 
     let mut game = games[game_index].clone();
-    let achievements = match read_local_achievement_cache(&provider, &game) {
-        Ok(achievements) => achievements,
-        Err(local_error) if provider == "epic" => fetch_epic_public_achievements(&game)
-            .await
-            .map_err(|epic_error| {
-                format!("{local_error} Epic public fallback failed: {epic_error}")
-            })?,
-        Err(error) => return Err(error),
-    };
+    let achievements = sync_best_effort_achievements(&provider, &game).await?;
     if achievements.is_empty() {
         return Err(format!(
             "Local {provider} achievement cache did not contain readable achievements for {}.",
@@ -558,17 +575,81 @@ pub async fn sync_local_game_achievements(
     })
 }
 
+async fn sync_best_effort_achievements(
+    provider: &str,
+    game: &InstalledGame,
+) -> Result<Vec<UnifiedAchievement>, String> {
+    if provider == "gog" {
+        if let Some(gog_id) = game
+            .external_id
+            .as_deref()
+            .filter(|value| !value.is_empty())
+        {
+            match crate::commands::gog::fetch_gog_achievements(gog_id).await {
+                Ok(achievements) if !achievements.is_empty() => return Ok(achievements),
+                Ok(_) => {
+                    eprintln!(
+                        "[open-game-launcher] GOG achievements API returned no achievements for {}. Trying local cache.",
+                        game.title
+                    );
+                }
+                Err(error) => {
+                    eprintln!(
+                        "[open-game-launcher] GOG achievements API failed for {}: {error}. Trying local cache.",
+                        game.title
+                    );
+                }
+            }
+        }
+    }
+    if provider == "epic" {
+        if let Some(app_name) = game
+            .external_id
+            .as_deref()
+            .filter(|value| !value.is_empty())
+        {
+            match crate::commands::epic::fetch_epic_legendary_achievements(app_name).await {
+                Ok(achievements) if !achievements.is_empty() => return Ok(achievements),
+                Ok(_) => {
+                    eprintln!(
+                        "[open-game-launcher] Legendary info returned no achievements for {}. Trying local cache.",
+                        game.title
+                    );
+                }
+                Err(error) => {
+                    eprintln!(
+                        "[open-game-launcher] Legendary achievement metadata failed for {}: {error}. Trying local cache.",
+                        game.title
+                    );
+                }
+            }
+        }
+    }
+
+    match read_local_achievement_cache(provider, game) {
+        Ok(achievements) => Ok(achievements),
+        Err(local_error) if provider == "epic" => fetch_epic_public_achievements(game)
+            .await
+            .map_err(|epic_error| {
+                format!("{local_error} Epic public fallback failed: {epic_error}")
+            }),
+        Err(error) => Err(error),
+    }
+}
+
 fn read_local_achievement_cache(
     provider: &str,
     game: &InstalledGame,
 ) -> Result<Vec<UnifiedAchievement>, String> {
-    let cache_path = local_achievement_cache_candidates(provider, game)
-        .into_iter()
+    let candidates = local_achievement_cache_candidates(provider, game);
+    let cache_path = candidates
+        .iter()
         .find(|path| path.is_file())
         .ok_or_else(|| {
             format!(
-                "No local {provider} achievement cache found for {}. Expected JSON under achievement-cache/{provider}/ or as a game folder sidecar.",
-                game.title
+                "No local {provider} achievement cache found for {}. Checked: {}",
+                game.title,
+                local_achievement_candidate_summary(&candidates)
             )
         })?;
 
@@ -614,6 +695,29 @@ fn local_achievement_cache_candidates(provider: &str, game: &InstalledGame) -> V
         }
     }
 
+    for root in local_achievement_client_cache_roots(provider) {
+        for key in &keys {
+            let safe_key = slugify(key);
+            for candidate in [key.clone(), safe_key] {
+                push_unique_path(&mut candidates, root.join(format!("{candidate}.json")));
+                push_unique_path(
+                    &mut candidates,
+                    root.join(&candidate).join("achievements.json"),
+                );
+                push_unique_path(
+                    &mut candidates,
+                    root.join(&candidate)
+                        .join(format!("{provider}-achievements.json")),
+                );
+                push_unique_path(
+                    &mut candidates,
+                    root.join("achievements").join(format!("{candidate}.json")),
+                );
+            }
+        }
+        discover_local_achievement_cache_files(&root, &keys, &mut candidates);
+    }
+
     if let Some(install_path) = game.install_path.as_ref().filter(|value| !value.is_empty()) {
         let install_root = PathBuf::from(install_path);
         for filename in [
@@ -632,10 +736,237 @@ fn local_achievement_cache_candidates(provider: &str, game: &InstalledGame) -> V
     candidates
 }
 
+fn local_achievement_client_cache_roots(provider: &str) -> Vec<PathBuf> {
+    let mut roots = Vec::new();
+
+    if let Some(data_dir) = open_game_launcher_data_dir() {
+        roots.push(data_dir.join("client-cache").join(provider));
+    }
+
+    match provider {
+        "ea" => {
+            if let Some(local_app_data) = env_path("LOCALAPPDATA") {
+                roots.push(local_app_data.join("Electronic Arts").join("EA Desktop"));
+                roots.push(
+                    local_app_data
+                        .join("Electronic Arts")
+                        .join("EA Desktop")
+                        .join("cache"),
+                );
+                roots.push(local_app_data.join("Origin"));
+            }
+            if let Some(program_data) = env_path("ProgramData") {
+                roots.push(program_data.join("EA Desktop"));
+                roots.push(program_data.join("Electronic Arts").join("EA Desktop"));
+                roots.push(program_data.join("Origin"));
+            }
+        }
+        "ubisoft" => {
+            if let Some(local_app_data) = env_path("LOCALAPPDATA") {
+                roots.push(
+                    local_app_data
+                        .join("Ubisoft")
+                        .join("Ubisoft Game Launcher")
+                        .join("cache"),
+                );
+                roots.push(local_app_data.join("Ubisoft Game Launcher").join("cache"));
+            }
+            if let Some(program_data) = env_path("ProgramData") {
+                roots.push(
+                    program_data
+                        .join("Ubisoft")
+                        .join("Ubisoft Game Launcher")
+                        .join("cache"),
+                );
+            }
+        }
+        "battlenet" => {
+            if let Some(program_data) = env_path("ProgramData") {
+                roots.push(program_data.join("Battle.net"));
+                roots.push(
+                    program_data
+                        .join("Blizzard Entertainment")
+                        .join("Battle.net"),
+                );
+            }
+            if let Some(local_app_data) = env_path("LOCALAPPDATA") {
+                roots.push(local_app_data.join("Battle.net"));
+                roots.push(
+                    local_app_data
+                        .join("Blizzard Entertainment")
+                        .join("Battle.net"),
+                );
+            }
+            if let Some(app_data) = env_path("APPDATA") {
+                roots.push(app_data.join("Battle.net"));
+            }
+        }
+        "gog" => {
+            if let Some(program_data) = env_path("ProgramData") {
+                roots.push(program_data.join("GOG.com").join("Galaxy").join("webcache"));
+            }
+            if let Some(local_app_data) = env_path("LOCALAPPDATA") {
+                roots.push(
+                    local_app_data
+                        .join("GOG.com")
+                        .join("Galaxy")
+                        .join("webcache"),
+                );
+            }
+        }
+        "epic" => {
+            if let Some(program_data) = env_path("ProgramData") {
+                roots.push(
+                    program_data
+                        .join("Epic")
+                        .join("EpicGamesLauncher")
+                        .join("Data"),
+                );
+            }
+            if let Some(local_app_data) = env_path("LOCALAPPDATA") {
+                roots.push(local_app_data.join("EpicGamesLauncher").join("Saved"));
+            }
+        }
+        _ => {}
+    }
+
+    roots
+}
+
+fn discover_local_achievement_cache_files(
+    root: &Path,
+    keys: &[String],
+    candidates: &mut Vec<PathBuf>,
+) {
+    if !root.is_dir() {
+        return;
+    }
+
+    let key_tokens = keys
+        .iter()
+        .flat_map(|key| [key.to_lowercase(), slugify(key)])
+        .filter(|key| !key.is_empty())
+        .collect::<HashSet<_>>();
+    if key_tokens.is_empty() {
+        return;
+    }
+
+    let mut discovered = 0usize;
+    discover_local_achievement_cache_files_inner(root, &key_tokens, candidates, 0, &mut discovered);
+}
+
+fn discover_local_achievement_cache_files_inner(
+    dir: &Path,
+    key_tokens: &HashSet<String>,
+    candidates: &mut Vec<PathBuf>,
+    depth: usize,
+    discovered: &mut usize,
+) {
+    if depth > ACHIEVEMENT_CLIENT_CACHE_MAX_DEPTH
+        || *discovered >= ACHIEVEMENT_CLIENT_CACHE_MAX_DISCOVERED_FILES
+    {
+        return;
+    }
+
+    let Ok(entries) = fs::read_dir(dir) else {
+        return;
+    };
+
+    for entry in entries.flatten() {
+        if *discovered >= ACHIEVEMENT_CLIENT_CACHE_MAX_DISCOVERED_FILES {
+            return;
+        }
+
+        let path = entry.path();
+        let Ok(file_type) = entry.file_type() else {
+            continue;
+        };
+
+        if file_type.is_dir() {
+            let dir_name = path
+                .file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or_default()
+                .to_lowercase();
+            if depth == 0 || local_achievement_cache_name_matches(&dir_name, key_tokens) {
+                discover_local_achievement_cache_files_inner(
+                    &path,
+                    key_tokens,
+                    candidates,
+                    depth + 1,
+                    discovered,
+                );
+            }
+            continue;
+        }
+
+        if !file_type.is_file() || !is_local_achievement_cache_file_candidate(&path, key_tokens) {
+            continue;
+        }
+
+        if let Ok(metadata) = entry.metadata() {
+            if metadata.len() > ACHIEVEMENT_CLIENT_CACHE_MAX_FILE_BYTES {
+                continue;
+            }
+        }
+
+        push_unique_path(candidates, path);
+        *discovered += 1;
+    }
+}
+
+fn is_local_achievement_cache_file_candidate(path: &Path, key_tokens: &HashSet<String>) -> bool {
+    if !path
+        .extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("json"))
+    {
+        return false;
+    }
+
+    let Some(file_name) = path.file_name().and_then(|name| name.to_str()) else {
+        return false;
+    };
+
+    local_achievement_cache_name_matches(&file_name.to_lowercase(), key_tokens)
+}
+
+fn local_achievement_cache_name_matches(name: &str, key_tokens: &HashSet<String>) -> bool {
+    let achievement_hint = name.contains("achievement")
+        || name.contains("achievements")
+        || name.contains("trophy")
+        || name.contains("trophies")
+        || name.contains("stat")
+        || name.contains("stats")
+        || name.contains("progress");
+
+    achievement_hint || key_tokens.iter().any(|key| name.contains(key))
+}
+
 fn push_unique_path(paths: &mut Vec<PathBuf>, path: PathBuf) {
     if !paths.contains(&path) {
         paths.push(path);
     }
+}
+
+fn local_achievement_candidate_summary(candidates: &[PathBuf]) -> String {
+    if candidates.is_empty() {
+        return "no candidate paths could be built".to_string();
+    }
+
+    const MAX_PATHS: usize = 8;
+    let mut summary = candidates
+        .iter()
+        .take(MAX_PATHS)
+        .map(|path| path.display().to_string())
+        .collect::<Vec<_>>()
+        .join("; ");
+
+    if candidates.len() > MAX_PATHS {
+        summary.push_str(&format!("; +{} more", candidates.len() - MAX_PATHS));
+    }
+
+    summary
 }
 
 async fn fetch_epic_public_achievements(
@@ -864,23 +1195,60 @@ fn parse_local_achievement_cache(
     value: &serde_json::Value,
     provider: &str,
 ) -> Result<Vec<UnifiedAchievement>, String> {
-    let achievements = value
-        .as_array()
-        .or_else(|| {
-            value
-                .get("achievements")
-                .and_then(serde_json::Value::as_array)
-        })
-        .or_else(|| value.get("items").and_then(serde_json::Value::as_array))
-        .ok_or_else(|| {
-            "Local achievement cache must be an array or contain an achievements/items array."
-                .to_string()
-        })?;
+    if let Some(achievements) = value.as_array() {
+        return Ok(achievements
+            .iter()
+            .filter_map(|achievement| local_json_to_achievement(achievement, provider))
+            .collect());
+    }
 
-    Ok(achievements
+    for key in ["achievements", "items"] {
+        if let Some(achievements) = value.get(key).and_then(serde_json::Value::as_array) {
+            return Ok(achievements
+                .iter()
+                .filter_map(|achievement| local_json_to_achievement(achievement, provider))
+                .collect());
+        }
+        if let Some(achievement_map) = value.get(key).and_then(serde_json::Value::as_object) {
+            return Ok(local_achievement_map_to_achievements(
+                achievement_map,
+                provider,
+            ));
+        }
+    }
+
+    if let Some(achievement_map) = value.as_object() {
+        return Ok(local_achievement_map_to_achievements(
+            achievement_map,
+            provider,
+        ));
+    }
+
+    Err(
+        "Local achievement cache must be an array, an achievement object map, or contain achievements/items."
+            .to_string(),
+    )
+}
+
+fn local_achievement_map_to_achievements(
+    achievement_map: &serde_json::Map<String, serde_json::Value>,
+    provider: &str,
+) -> Vec<UnifiedAchievement> {
+    achievement_map
         .iter()
-        .filter_map(|achievement| local_json_to_achievement(achievement, provider))
-        .collect())
+        .filter_map(|(key, value)| {
+            let mut achievement = value.clone();
+            if let Some(object) = achievement.as_object_mut() {
+                object
+                    .entry("id".to_string())
+                    .or_insert_with(|| serde_json::Value::String(key.clone()));
+                object
+                    .entry("sourceAchievementId".to_string())
+                    .or_insert_with(|| serde_json::Value::String(key.clone()));
+            }
+            local_json_to_achievement(&achievement, provider)
+        })
+        .collect()
 }
 
 fn local_json_to_achievement(
@@ -2688,6 +3056,60 @@ mod tests {
     }
 
     #[test]
+    fn parses_local_achievement_cache_map_format() {
+        let value = serde_json::json!({
+            "ACH_WIN": {
+                "displayName": "Winner",
+                "description": "Win once",
+                "unlocked": true
+            },
+            "ACH_LOCKED": {
+                "title": "Locked",
+                "desc": "Not yet"
+            }
+        });
+
+        let achievements = parse_local_achievement_cache(&value, "ubisoft").unwrap();
+
+        assert_eq!(achievements.len(), 2);
+        assert!(achievements.iter().any(|achievement| {
+            achievement.id == "ACH_WIN"
+                && achievement.source_achievement_id.as_deref() == Some("ACH_WIN")
+                && achievement.unlocked_at.is_some()
+        }));
+        assert!(achievements.iter().any(|achievement| {
+            achievement.id == "ACH_LOCKED"
+                && achievement.name == "Locked"
+                && achievement.unlocked_at.is_none()
+        }));
+    }
+
+    #[test]
+    fn parses_nested_local_achievement_cache_map_format() {
+        let value = serde_json::json!({
+            "achievements": {
+                "story_start": {
+                    "name": "Story Start",
+                    "provider_confidence": "local"
+                }
+            }
+        });
+
+        let achievements = parse_local_achievement_cache(&value, "ea").unwrap();
+
+        assert_eq!(achievements.len(), 1);
+        assert_eq!(achievements[0].id, "story_start");
+        assert_eq!(
+            achievements[0].source_achievement_id.as_deref(),
+            Some("story_start")
+        );
+        assert_eq!(
+            achievements[0].provider_confidence.as_deref(),
+            Some("local")
+        );
+    }
+
+    #[test]
     fn local_achievement_candidates_include_install_sidecars() {
         let mut game = installed_game(
             "epic-game-1",
@@ -2712,6 +3134,119 @@ mod tests {
         assert!(candidates.iter().any(|path| path
             .ends_with("achievement-cache\\epic\\epic-app.json")
             || path.ends_with("achievement-cache/epic/epic-app.json")));
+    }
+
+    #[test]
+    fn local_achievement_candidates_include_client_cache_roots() {
+        let mut game = installed_game(
+            "ea-owned-offer-123",
+            "EA Test Game".to_string(),
+            "EA App".to_string(),
+            None,
+            None,
+        );
+        game.launcher = "ea".to_string();
+        game.external_id = Some("offer-123".to_string());
+
+        let candidates = local_achievement_cache_candidates("ea", &game);
+
+        assert!(candidates.iter().any(|path| {
+            let text = path.to_string_lossy();
+            text.contains("client-cache\\ea\\offer-123.json")
+                || text.contains("client-cache/ea/offer-123.json")
+        }));
+        assert!(candidates
+            .iter()
+            .any(|path| path.to_string_lossy().contains("EA Desktop")));
+    }
+
+    #[test]
+    fn local_achievement_client_cache_roots_cover_unofficial_providers() {
+        assert!(local_achievement_client_cache_roots("ubisoft")
+            .iter()
+            .any(|path| path.to_string_lossy().contains("Ubisoft Game Launcher")));
+        assert!(local_achievement_client_cache_roots("battlenet")
+            .iter()
+            .any(|path| path.to_string_lossy().contains("Battle.net")));
+        assert!(local_achievement_client_cache_roots("gog")
+            .iter()
+            .any(|path| path.to_string_lossy().contains("Galaxy")));
+        assert!(local_achievement_client_cache_roots("epic")
+            .iter()
+            .any(|path| path.to_string_lossy().contains("EpicGamesLauncher")));
+    }
+
+    #[test]
+    fn discovers_bounded_client_cache_json_candidates() {
+        let root = std::env::temp_dir().join(format!(
+            "ogl-achievement-cache-test-{}",
+            current_unix_timestamp()
+        ));
+        let game_dir = root.join("offer-123").join("nested");
+        fs::create_dir_all(&game_dir).unwrap();
+        fs::write(game_dir.join("achievements.json"), "{}").unwrap();
+        fs::write(game_dir.join("notes.txt"), "{}").unwrap();
+        fs::write(root.join("unrelated.json"), "{}").unwrap();
+
+        let mut candidates = Vec::new();
+        discover_local_achievement_cache_files(
+            &root,
+            &["offer-123".to_string(), "EA Test Game".to_string()],
+            &mut candidates,
+        );
+
+        assert!(candidates
+            .iter()
+            .any(|path| path.ends_with("achievements.json")));
+        assert!(!candidates.iter().any(|path| path.ends_with("notes.txt")));
+        assert!(!candidates
+            .iter()
+            .any(|path| path.ends_with("unrelated.json")));
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn discovered_client_cache_candidates_skip_large_files() {
+        let root = std::env::temp_dir().join(format!(
+            "ogl-achievement-cache-large-test-{}",
+            current_unix_timestamp()
+        ));
+        fs::create_dir_all(&root).unwrap();
+        fs::write(
+            root.join("offer-123-achievements.json"),
+            vec![b' '; (ACHIEVEMENT_CLIENT_CACHE_MAX_FILE_BYTES + 1) as usize],
+        )
+        .unwrap();
+
+        let mut candidates = Vec::new();
+        discover_local_achievement_cache_files(&root, &["offer-123".to_string()], &mut candidates);
+
+        assert!(candidates.is_empty());
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn local_achievement_candidate_summary_handles_empty_candidates() {
+        assert_eq!(
+            local_achievement_candidate_summary(&[]),
+            "no candidate paths could be built"
+        );
+    }
+
+    #[test]
+    fn local_achievement_candidate_summary_limits_long_lists() {
+        let candidates = (0..10)
+            .map(|index| PathBuf::from(format!("candidate-{index}.json")))
+            .collect::<Vec<_>>();
+
+        let summary = local_achievement_candidate_summary(&candidates);
+
+        assert!(summary.contains("candidate-0.json"));
+        assert!(summary.contains("candidate-7.json"));
+        assert!(!summary.contains("candidate-8.json"));
+        assert!(summary.ends_with("+2 more"));
     }
 
     #[test]
