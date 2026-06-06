@@ -39,7 +39,7 @@ rand = "0.8"
 base64 = "0.22"
 uuid = { version = "1", features = ["v4"] }
 chrono = "0.4"
-nvml-wrapper = "0.10"
+nvml-wrapper = "0.12"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
 gilrs = "0.11"
 
