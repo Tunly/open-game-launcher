@@ -19,6 +19,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 ### Removed
 - **Husky pre-commit + lint-staged**: bots disabled per user request (see README "Automation"). Replaced with empty `.husky/pre-commit` stub.
 
+### Fixed
+- `useLibrarySync` test suite: three pre-existing failures aligned with the refactored hook. The hook now uses `compressAndReadImage` (canvas + Image) instead of a raw `FileReader`, and the rejection message is more specific. Tests now mock `image-compress` directly and `waitFor` the first render before asserting. 288/288 tests pass.
+
 ### Dependabot merge results
 
 Merged:
