@@ -40,6 +40,11 @@ Reverted (breaking changes, require code migration):
 Not merged (would require code migration before being useful):
 - `reqwest` 0.12 → 0.13.3 (Cargo). 0.13 removes `.form()` and `.query()` from `RequestBuilder` behind separate feature flags; ~5 call sites in `commands/` need updates. Branch is left open in `origin/dependabot/cargo/launcher/src-tauri/reqwest-0.13.3`.
 
+### Follow-up: reqwest 0.12 → 0.13 migration completed
+- `Cargo.toml`: enabled reqwest features `form` and `query`; added `Win32_UI_Input` and `Win32_UI_Input_KeyboardAndMouse` to `windows-sys` (the transitive `0.60 → 0.61` bump that reqwest 0.13 pulls in split that module behind its own gate).
+- No call-site changes needed: all 8 `.form()` / `.query()` sites in `commands/gog.rs`, `commands/games/detect/steam.rs`, `commands/xbox.rs`, `commands/system.rs` work as-is once the right features are on.
+- Merge commit: `f26886c`. Feature gate fix commit: `fb2e9ff`.
+
 ### Changed
 - TypeScript: enabled `noImplicitOverride` and `noFallthroughCasesInSwitch`.
 - `tsconfig.json` (Phase 2 / Tooling quick-wins).
