@@ -1,4 +1,5 @@
 mod control;
+mod external_dispatch;
 mod health;
 mod history;
 mod install;
@@ -11,6 +12,8 @@ mod steam_state;
 mod types;
 mod utils;
 mod watcher;
+
+pub use external_dispatch::ExternalDispatch;
 
 pub use health::ProviderHealthStatus;
 pub use history::record_download_item;

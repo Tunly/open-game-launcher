@@ -15,19 +15,18 @@ use crate::commands::downloads::steam_state::{
     steam_phase, steam_progress_bytes, steam_status_label,
 };
 use crate::commands::downloads::types::{
-    cancellable_sleep, get_download_manager, is_download_control_pending,
-    is_terminal_download_status, pause_hold_feedback, update_download_metrics,
-    update_download_status, ActiveDownload, DownloadStartStatus, InternalDownloadSource,
-    StartDownloadResponse, DOWNLOAD_STATUS_CANCELLED, DOWNLOAD_STATUS_DOWNLOADING,
-    DOWNLOAD_STATUS_PAUSED, DOWNLOAD_STATUS_STARTING,
+    cancellable_sleep, emit_download_progress, get_download_manager, is_download_control_pending,
+    is_terminal_download_status, payload_from_active_download, pause_hold_feedback,
+    update_download_metrics, update_download_status, ActiveDownload, DownloadStartStatus,
+    InternalDownloadSource, StartDownloadResponse, DOWNLOAD_STATUS_CANCELLED,
+    DOWNLOAD_STATUS_DOWNLOADING, DOWNLOAD_STATUS_PAUSED, DOWNLOAD_STATUS_STARTING,
 };
-use crate::commands::downloads::types::{emit_download_progress, payload_from_active_download};
 use crate::commands::downloads::utils::{
     default_install_dir, get_dir_size, get_platform_from_game_id, is_download_game_installed,
     is_external_tracker_game_id, normalize_game_id, steam_app_id_from_download_id,
 };
 use crate::commands::games::read_installed_games_cache;
-use crate::commands::uri_safety::validate_slug;
+use crate::commands::downloads::external_dispatch;
 
 pub async fn start_download(
     app: AppHandle,
@@ -50,94 +49,13 @@ pub async fn start_download(
         return crate::commands::gog::gog_start_download(app, gog_id.to_string(), None).await;
     }
 
-    let mut epic_tracker_id = None;
-    let mut steam_tracker_id = None;
-    let mut external_message = String::new();
-    let mut is_external_download = false;
+    let external_dispatch::ExternalDispatch {
+        steam_tracker_id: mut steam_tracker_id,
+        epic_tracker_id: mut epic_tracker_id,
+        is_external_download: mut is_external_download,
+        external_message: mut external_message,
+    } = external_dispatch::dispatch_external_launcher(&game_id);
 
-    if game_id.starts_with("steam-owned-") || game_id.starts_with("steam-") {
-        let steam_app_id = game_id
-            .strip_prefix("steam-owned-")
-            .or_else(|| game_id.strip_prefix("steam-"))
-            .unwrap_or(&game_id);
-        // SECURITY: the AppID is interpolated into a URI. Validate before
-        // building the URI so a malicious `game_id` like
-        // `"steam-123 & calc.exe"` cannot smuggle a command into the
-        // shell.
-        let safe_steam_id = match validate_slug(steam_app_id) {
-            Ok(id) => id.to_string(),
-            Err(error) => {
-                external_message = format!("Steam install link rejected: {error}");
-                is_external_download = false;
-                String::new()
-            }
-        };
-        if !safe_steam_id.is_empty() {
-            let uri = format!("steam://install/{safe_steam_id}");
-            let _ = crate::commands::system::open_uri(&uri);
-            steam_tracker_id = Some(safe_steam_id);
-            is_external_download = true;
-            external_message =
-                "Installation started in Steam. Check Steam for download progress.".to_string();
-        }
-    } else if game_id.starts_with("epic-owned-") {
-        let epic_id = game_id
-            .strip_prefix("epic-owned-")
-            .unwrap_or(&game_id)
-            .to_string();
-        epic_tracker_id = Some(epic_id);
-        is_external_download = true;
-        external_message =
-            "Installation started via Epic Games (Legendary). Check Legendary for progress."
-                .to_string();
-    } else if game_id.starts_with("ea-owned-") {
-        let ea_id = game_id.strip_prefix("ea-owned-").unwrap_or(&game_id);
-        // SECURITY: validate before URI construction.
-        match validate_slug(ea_id) {
-            Ok(safe_ea_id) => {
-                let uri = format!("origin2://game/launch?offerIds={safe_ea_id}&autoDownload=true");
-                let _ = crate::commands::system::open_uri(&uri);
-                is_external_download = true;
-                external_message =
-                    "Installation started via EA App. Check EA App for progress.".to_string();
-            }
-            Err(error) => {
-                external_message = format!("EA install link rejected: {error}");
-            }
-        }
-    } else if game_id.starts_with("ubisoft-owned-") {
-        let uplay_id = game_id.strip_prefix("ubisoft-owned-").unwrap_or(&game_id);
-        // SECURITY: validate before URI construction.
-        match validate_slug(uplay_id) {
-            Ok(safe_uplay_id) => {
-                let uri = format!("uplay://install/{safe_uplay_id}");
-                let _ = crate::commands::system::open_uri(&uri);
-                is_external_download = true;
-                external_message =
-                    "Installation started in Ubisoft Connect. Check Ubisoft Connect for progress."
-                        .to_string();
-            }
-            Err(error) => {
-                external_message = format!("Ubisoft install link rejected: {error}");
-            }
-        }
-    } else if game_id.starts_with("battlenet-owned-") {
-        let bnet_id = game_id.strip_prefix("battlenet-owned-").unwrap_or(&game_id);
-        // SECURITY: validate before URI construction.
-        match validate_slug(bnet_id) {
-            Ok(safe_bnet_id) => {
-                let uri = format!("battlenet://{safe_bnet_id}");
-                let _ = crate::commands::system::open_uri(&uri);
-                is_external_download = true;
-                external_message =
-                    "Installation started in Battle.net. Check Battle.net for download progress."
-                        .to_string();
-            }
-            Err(error) => {
-                external_message = format!("Battle.net install link rejected: {error}");
-            }
-        }
-    }
     let mut title = game_title
         .clone()
         .unwrap_or_else(|| "Unknown Game".to_string());
