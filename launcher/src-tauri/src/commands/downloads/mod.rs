@@ -1,3 +1,4 @@
+mod history;
 mod legacy;
 mod types;
 mod utils;
