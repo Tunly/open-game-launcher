@@ -3,13 +3,15 @@ mod history;
 mod install;
 mod internal_download;
 mod legacy;
+mod reconcile;
 mod steam_cef;
 mod steam_state;
 mod types;
 mod utils;
 
 pub use health::ProviderHealthStatus;
-pub use legacy::{record_download_item, start_global_download_watcher, ReconciliationResult};
+pub use legacy::{record_download_item, start_global_download_watcher};
+pub use reconcile::ReconciliationResult;
 pub use types::{DownloadItemPayload, DownloadStartStatus, StartDownloadResponse};
 
 #[tauri::command]
@@ -50,5 +52,5 @@ pub fn check_provider_health() -> Result<Vec<ProviderHealthStatus>, String> {
 
 #[tauri::command]
 pub fn reconcile_downloads(app: tauri::AppHandle) -> Result<ReconciliationResult, String> {
-    legacy::reconcile_downloads(app)
+    reconcile::reconcile_downloads(app)
 }

@@ -980,7 +980,7 @@ fn is_stale_installed_download(item: &DownloadItemPayload) -> bool {
     is_download_game_installed(&item.game_id) && !has_active_download_work(item)
 }
 
-fn load_download_history() -> Vec<DownloadItemPayload> {
+pub(crate) fn load_download_history() -> Vec<DownloadItemPayload> {
     let items = crate::commands::local_db::read_collection::<DownloadItemPayload>("downloads")
         .unwrap_or_default();
     let original_len = items.len();
@@ -1339,133 +1339,6 @@ pub fn start_global_download_watcher(app: tauri::AppHandle) {
 // Provider Health Check
 
 
-// Download Reconciliation
-
-#[derive(Debug, Serialize, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct ReconciliationResult {
-    pub installed_removed: Vec<String>,
-    pub active_restored: Vec<String>,
-    pub stale_cleaned: Vec<String>,
-    pub errors: Vec<String>,
-}
-
-pub fn reconcile_downloads(app: tauri::AppHandle) -> Result<ReconciliationResult, String> {
-    let mut result = ReconciliationResult {
-        installed_removed: Vec::new(),
-        active_restored: Vec::new(),
-        stale_cleaned: Vec::new(),
-        errors: Vec::new(),
-    };
-
-    let history = load_download_history();
-    let mut updated_items: Vec<DownloadItemPayload> = Vec::new();
-    let now = now_unix_secs();
-    let stale_threshold = 7 * 24 * 60 * 60; // 7 days
-
-    // Pre-scan installed games for each provider
-    let epic_installed: std::collections::HashSet<String> = {
-        crate::commands::games::detect::scan_epic_games()
-            .into_iter()
-            .map(|g| g.id)
-            .collect()
-    };
-    let ea_installed: std::collections::HashSet<String> = {
-        crate::commands::games::detect::scan_ea_games()
-            .into_iter()
-            .map(|g| g.id)
-            .collect()
-    };
-    let battlenet_installed: std::collections::HashSet<String> = {
-        crate::commands::games::detect::scan_battlenet_games()
-            .into_iter()
-            .map(|g| g.id)
-            .collect()
-    };
-
-    for mut item in history {
-        let is_terminal = is_terminal_download_status(&item.status);
-
-        // Check if a non-terminal item is actually installed now
-        if !is_terminal {
-            let is_now_installed = is_download_game_installed(&item.game_id);
-
-            if is_now_installed && !has_active_download_work(&item) {
-                // Game is installed and no active download work -> mark completed
-                item.status = DOWNLOAD_STATUS_COMPLETED.to_string();
-                item.progress = 100;
-                item.speed = "Reconciled".to_string();
-                item.phase = "completed".to_string();
-                item.can_pause = false;
-                item.can_cancel = false;
-                item.last_updated_at = now;
-                result.installed_removed.push(item.game_id.clone());
-            }
-        }
-
-        // Check for stale entries: non-terminal, old last_updated_at, no provider confirmation
-        if !is_terminal && !is_terminal_download_status(&item.status) {
-            let age = now.saturating_sub(item.last_updated_at);
-            if item.last_updated_at > 0 && age > stale_threshold {
-                // Check if provider confirms it's still active
-                let provider_confirms =
-                    if let Some(app_id) = steam_app_id_from_download_id(&item.game_id) {
-                        steam_download_work_exists(app_id)
-                    } else if item.game_id.starts_with("epic-") {
-                        epic_installed.contains(&item.game_id)
-                    } else if item.game_id.starts_with("ea-") {
-                        ea_installed.contains(&item.game_id)
-                    } else if item.game_id.starts_with("battlenet-") {
-                        battlenet_installed.contains(&item.game_id)
-                    } else {
-                        false
-                    };
-
-                if !provider_confirms {
-                    result.stale_cleaned.push(item.game_id.clone());
-                    continue; // Drop this item from the history
-                }
-            }
-        }
-
-        // Check for Steam downloads that are active but were paused/interrupted
-        if let Some(app_id) = steam_app_id_from_download_id(&item.game_id) {
-            if (is_terminal_download_status(&item.status) || item.status == DOWNLOAD_STATUS_PAUSED)
-                && steam_download_work_exists(app_id)
-            {
-                // Steam is actively downloading this but we had it as paused/terminal
-                item.status = DOWNLOAD_STATUS_DOWNLOADING.to_string();
-                item.speed = "Steam".to_string();
-                item.phase = "external".to_string();
-                item.external = true;
-                item.can_pause = true;
-                item.last_updated_at = now;
-                result.active_restored.push(item.game_id.clone());
-            }
-        }
-
-        updated_items.push(item);
-    }
-
-    // Save the reconciled history
-    save_download_history(&updated_items);
-
-    // Emit library change event if anything changed
-    if !result.installed_removed.is_empty()
-        || !result.active_restored.is_empty()
-        || !result.stale_cleaned.is_empty()
-    {
-        let _ = app.emit(
-            "library_inventory_changed",
-            serde_json::json!({
-                "reason": "reconciliation",
-                "gameCount": updated_items.len()
-            }),
-        );
-    }
-
-    Ok(result)
-}
 
 #[cfg(test)]
 mod tests {
