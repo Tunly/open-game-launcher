@@ -59,7 +59,9 @@ pub fn encrypt_file(
     let derived_key = derive_key(master_key, &salt)?;
     let cipher = Aes256Gcm::new_from_slice(&derived_key).map_err(|e| format!("Key init: {e}"))?;
     let mut nonce_bytes = [0u8; NONCE_SIZE];
-    SysRng.try_fill_bytes(&mut nonce_bytes).expect("OS RNG failed");
+    SysRng
+        .try_fill_bytes(&mut nonce_bytes)
+        .expect("OS RNG failed");
     let nonce = Nonce::from_slice(&nonce_bytes);
     let ciphertext = cipher
         .encrypt(nonce, plaintext)

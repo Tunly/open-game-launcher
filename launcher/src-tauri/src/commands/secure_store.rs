@@ -115,7 +115,9 @@ fn cipher() -> Aes256Gcm {
 
 fn encrypt(plaintext: &[u8]) -> Result<String, String> {
     let mut nonce_bytes = [0u8; 12];
-    SysRng.try_fill_bytes(&mut nonce_bytes).expect("OS RNG failed");
+    SysRng
+        .try_fill_bytes(&mut nonce_bytes)
+        .expect("OS RNG failed");
     let nonce = Nonce::from_slice(&nonce_bytes);
     let ct = cipher()
         .encrypt(nonce, plaintext)

@@ -153,10 +153,7 @@ pub(crate) fn calculate_steam_progress(
     None
 }
 
-pub(crate) fn steam_phase(
-    state: &SteamDownloadState,
-    downloading_dir_size: u64,
-) -> &'static str {
+pub(crate) fn steam_phase(state: &SteamDownloadState, downloading_dir_size: u64) -> &'static str {
     if state.bytes_to_download > 0 {
         if steam_downloaded_bytes(state, downloading_dir_size) < state.bytes_to_download {
             "download"
@@ -225,10 +222,7 @@ pub(crate) fn steam_combined_progress_bytes(
     Some((downloaded.saturating_add(staged).min(total), total))
 }
 
-pub(crate) fn steam_downloaded_bytes(
-    state: &SteamDownloadState,
-    downloading_dir_size: u64,
-) -> u64 {
+pub(crate) fn steam_downloaded_bytes(state: &SteamDownloadState, downloading_dir_size: u64) -> u64 {
     if state.bytes_downloaded > 0 {
         state.bytes_downloaded.min(state.bytes_to_download)
     } else {

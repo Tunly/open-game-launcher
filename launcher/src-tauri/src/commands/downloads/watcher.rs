@@ -7,9 +7,8 @@ use crate::commands::downloads::steam_state::{
     steam_progress_bytes, steam_status_label,
 };
 use crate::commands::downloads::types::{
-    emit_download_progress, get_download_manager, is_download_control_pending,
-    payload_from_active_download, pause_hold_feedback, update_download_metrics,
-    update_download_status, ActiveDownload,
+    emit_download_progress, get_download_manager, is_download_control_pending, pause_hold_feedback,
+    payload_from_active_download, update_download_metrics, update_download_status, ActiveDownload,
 };
 use crate::commands::downloads::utils::get_dir_size;
 

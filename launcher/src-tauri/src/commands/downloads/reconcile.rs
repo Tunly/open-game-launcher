@@ -3,10 +3,12 @@ use tauri::AppHandle;
 use tauri::Emitter;
 
 use crate::commands::downloads::history::{load_download_history, save_download_history};
-use crate::commands::downloads::steam_state::{has_active_download_work, steam_download_work_exists};
+use crate::commands::downloads::steam_state::{
+    has_active_download_work, steam_download_work_exists,
+};
 use crate::commands::downloads::types::{
-    is_terminal_download_status, now_unix_secs, DownloadItemPayload,
-    DOWNLOAD_STATUS_COMPLETED, DOWNLOAD_STATUS_DOWNLOADING, DOWNLOAD_STATUS_PAUSED,
+    is_terminal_download_status, now_unix_secs, DownloadItemPayload, DOWNLOAD_STATUS_COMPLETED,
+    DOWNLOAD_STATUS_DOWNLOADING, DOWNLOAD_STATUS_PAUSED,
 };
 use crate::commands::downloads::utils::{
     is_download_game_installed, steam_app_id_from_download_id,
@@ -41,12 +43,8 @@ pub fn reconcile_downloads(app: AppHandle) -> Result<ReconciliationResult, Strin
             .map(|g| g.id)
             .collect()
     };
-    let ea_installed: std::collections::HashSet<String> = {
-        detect::scan_ea_games()
-            .into_iter()
-            .map(|g| g.id)
-            .collect()
-    };
+    let ea_installed: std::collections::HashSet<String> =
+        { detect::scan_ea_games().into_iter().map(|g| g.id).collect() };
     let battlenet_installed: std::collections::HashSet<String> = {
         detect::scan_battlenet_games()
             .into_iter()

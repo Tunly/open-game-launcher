@@ -72,8 +72,7 @@ fn check_steam_health() -> ProviderHealthStatus {
 }
 
 fn check_epic_health() -> ProviderHealthStatus {
-    let manifest_dir =
-        PathBuf::from(r"C:\ProgramData\Epic\EpicGamesLauncher\Data\Manifests");
+    let manifest_dir = PathBuf::from(r"C:\ProgramData\Epic\EpicGamesLauncher\Data\Manifests");
     if !manifest_dir.exists() {
         return ProviderHealthStatus {
             provider: "epic".to_string(),

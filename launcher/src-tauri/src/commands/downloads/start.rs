@@ -13,12 +13,8 @@ use crate::commands::downloads::install::{
     install_downloaded_game_package, update_installed_games_cache_for_download,
     write_downloaded_game_manifest,
 };
-use crate::commands::uri_safety::validate_slug;
 use crate::commands::downloads::internal_download::download_internal_game_file;
 use crate::commands::downloads::steam_cef::toggle_steam_download_pause;
-use crate::commands::downloads::types::{
-    emit_download_progress, normalize_queue_payload, payload_from_active_download,
-};
 use crate::commands::downloads::steam_state::{
     calculate_steam_progress, parse_steam_download_state, steam_downloading_dir_for_manifest,
     steam_phase, steam_progress_bytes, steam_status_label,
@@ -30,11 +26,15 @@ use crate::commands::downloads::types::{
     InternalDownloadSource, StartDownloadResponse, DOWNLOAD_STATUS_CANCELLED,
     DOWNLOAD_STATUS_DOWNLOADING, DOWNLOAD_STATUS_PAUSED, DOWNLOAD_STATUS_STARTING,
 };
+use crate::commands::downloads::types::{
+    emit_download_progress, normalize_queue_payload, payload_from_active_download,
+};
 use crate::commands::downloads::utils::{
     default_install_dir, get_dir_size, get_platform_from_game_id, is_download_game_installed,
     is_external_tracker_game_id, normalize_game_id, steam_app_id_from_download_id,
 };
 use crate::commands::games::read_installed_games_cache;
+use crate::commands::uri_safety::validate_slug;
 
 pub fn get_download_queue() -> Result<Vec<DownloadItemPayload>, String> {
     let mut queue_by_game_id: HashMap<String, DownloadItemPayload> = load_download_history()
