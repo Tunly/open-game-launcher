@@ -1,14 +1,25 @@
-# CI is intentionally disabled for now (manual `workflow_dispatch` only).
-# See README "Automation" section. To re-enable, switch `on` back to
-# `push` + `pull_request` and remove the `if: ${{ false }}` guard.
 name: CI
 
 on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
+# Cancel in-flight runs for the same ref when a new commit lands.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
+
 jobs:
-  build:
-    if: ${{ false }}
+  # ---------- Frontend ----------
+  frontend:
+    name: Frontend (typecheck / lint / test / build)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -23,11 +34,140 @@ jobs:
           node-version: 20
           cache: pnpm
           cache-dependency-path: launcher/pnpm-lock.yaml
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm typecheck
-      - run: pnpm lint
-      - run: pnpm test
-      - run: pnpm build
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Format check
+        run: pnpm format:check
+      - name: Typecheck
+        run: pnpm typecheck
+      - name: Lint
+        run: pnpm lint
+      - name: Test
+        run: pnpm test
+      - name: Build
+        run: pnpm build
         env:
           VITE_SUPABASE_URL: https://example.supabase.co
           VITE_SUPABASE_ANON_KEY: dummy
+
+  # ---------- Rust: formatting ----------
+  rust-fmt:
+    name: Rust (cargo fmt --check)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: Install cached target
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: launcher/src-tauri -> target
+      - name: Format check
+        working-directory: launcher/src-tauri
+        run: cargo fmt --all -- --check
+
+  # ---------- Rust: clippy ----------
+  rust-clippy:
+    name: Rust (cargo clippy -D warnings)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: launcher/src-tauri -> target
+      - name: Clippy (lib)
+        working-directory: launcher/src-tauri
+        run: cargo clippy --lib --all-targets -- -D warnings
+      - name: Clippy (binaries)
+        working-directory: launcher/src-tauri
+        run: cargo clippy --bins -- -D warnings
+
+  # ---------- Rust: tests ----------
+  rust-test:
+    name: Rust (cargo test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: launcher/src-tauri -> target
+      - name: Test
+        working-directory: launcher/src-tauri
+        run: cargo test --lib
+
+  # ---------- Rust: Windows build ----------
+  rust-build-windows:
+    name: Rust (cargo check --target x86_64-pc-windows-msvc)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: launcher/src-tauri -> target
+      - name: Check (Windows MSVC)
+        working-directory: launcher/src-tauri
+        run: cargo check --lib --target x86_64-pc-windows-msvc
+
+  # ---------- Supabase: db lint ----------
+  # Runs only on push to main and on pull_request, because it spins up a
+  # Postgres container and the cold-start is ~30s.
+  supabase-db-lint:
+    name: Supabase (db lint)
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    steps:
+      - uses: actions/checkout@v6
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - name: Start Postgres
+        run: |
+          # `supabase db lint` needs a live database. We start one via
+          # the Supabase CLI in test mode (no auth/realtime/storage).
+          supabase start --workdir . --no-api
+      - name: Lint migrations
+        working-directory: .
+        run: supabase db lint --workdir .
+      - name: Stop Supabase
+        if: always()
+        run: supabase stop --workdir . --no-api || true
+
+  # ---------- Coverage (informational) ----------
+  # Coverage runs as a separate job because it doubles test time and the
+  # threshold enforcement needs stakeholder sign-off on the chosen
+  # baseline. This job currently uploads the report as an artifact;
+  # gating on thresholds is a follow-up.
+  coverage:
+    name: Coverage (vitest, informational)
+    runs-on: ubuntu-latest
+    needs: frontend
+    defaults:
+      run:
+        working-directory: launcher
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 9.15.4
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 20
+          cache: pnpm
+          cache-dependency-path: launcher/pnpm-lock.yaml
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Run tests with coverage
+        run: pnpm test:cov
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: vitest-coverage
+          path: launcher/coverage/
+          retention-days: 14
