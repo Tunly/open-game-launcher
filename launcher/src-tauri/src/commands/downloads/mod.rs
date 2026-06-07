@@ -1,3 +1,4 @@
+mod health;
 mod history;
 mod install;
 mod internal_download;
@@ -7,10 +8,8 @@ mod steam_state;
 mod types;
 mod utils;
 
-pub use legacy::{
-    record_download_item, start_global_download_watcher, ProviderHealthStatus,
-    ReconciliationResult,
-};
+pub use health::ProviderHealthStatus;
+pub use legacy::{record_download_item, start_global_download_watcher, ReconciliationResult};
 pub use types::{DownloadItemPayload, DownloadStartStatus, StartDownloadResponse};
 
 #[tauri::command]
@@ -46,7 +45,7 @@ pub async fn start_download(
 
 #[tauri::command]
 pub fn check_provider_health() -> Result<Vec<ProviderHealthStatus>, String> {
-    legacy::check_provider_health()
+    health::check_provider_health()
 }
 
 #[tauri::command]
