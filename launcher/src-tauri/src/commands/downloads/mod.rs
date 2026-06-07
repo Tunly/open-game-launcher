@@ -1,5 +1,6 @@
 mod legacy;
 mod types;
+mod utils;
 
 pub use legacy::{
     record_download_item, start_global_download_watcher, ProviderHealthStatus,

@@ -29,6 +29,13 @@ use crate::commands::downloads::types::{
     phase_from_status_and_speed, update_download_metrics, update_download_status,
     validated_download_status,
 };
+use crate::commands::downloads::utils::{
+    calculate_active_progress, default_install_dir, download_file_name, get_dir_size,
+    get_platform_from_game_id, is_download_game_installed, is_external_tracker_game_id,
+    is_steam_tracker_game_id, normalize_game_id, progress_source_from_game_id,
+    provider_key_from_game_id, sanitize_download_file_name, steam_app_id_from_download_id,
+    verify_sha256,
+};
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -1227,74 +1234,6 @@ fn find_steam_app_manifest(app_id: &str) -> Option<PathBuf> {
         .find(|path| path.exists())
 }
 
-fn is_download_game_installed(game_id: &str) -> bool {
-    let lookup_keys = download_lookup_keys(game_id);
-
-    if read_installed_games_cache()
-        .unwrap_or_default()
-        .iter()
-        .any(|game| installed_game_matches_download_keys(game, &lookup_keys))
-    {
-        return true;
-    }
-
-    let scanned_games = if game_id.starts_with("steam-") {
-        Some(crate::commands::games::detect::scan_steam_games())
-    } else if game_id.starts_with("epic-") {
-        Some(crate::commands::games::detect::scan_epic_games())
-    } else if game_id.starts_with("ea-") {
-        Some(crate::commands::games::detect::scan_ea_games())
-    } else if game_id.starts_with("ubisoft-") {
-        Some(crate::commands::games::detect::scan_ubisoft_games())
-    } else if game_id.starts_with("battlenet-") {
-        Some(crate::commands::games::detect::scan_battlenet_games())
-    } else if game_id.starts_with("xbox-") {
-        Some(crate::commands::games::detect::scan_xbox_games())
-    } else {
-        None
-    };
-
-    scanned_games.is_some_and(|games| {
-        games
-            .iter()
-            .any(|game| installed_game_matches_download_keys(game, &lookup_keys))
-    })
-}
-
-fn installed_game_matches_download_keys(
-    game: &crate::commands::games::InstalledGame,
-    lookup_keys: &[String],
-) -> bool {
-    if !matches!(&game.status, GameStatus::Installed) {
-        return false;
-    }
-
-    lookup_keys.contains(&game.id)
-        || game
-            .external_id
-            .as_deref()
-            .is_some_and(|external_id| lookup_keys.iter().any(|key| key == external_id))
-}
-
-fn download_lookup_keys(game_id: &str) -> Vec<String> {
-    let mut keys = vec![game_id.to_string(), game_id.replace("-owned-", "-")];
-
-    if let Some((launcher, external_id)) = game_id.split_once("-owned-") {
-        keys.push(external_id.to_string());
-        keys.push(format!("{launcher}-{external_id}"));
-    }
-
-    for prefix in ["steam-", "epic-", "ea-", "ubisoft-", "battlenet-", "xbox-"] {
-        if let Some(external_id) = game_id.strip_prefix(prefix) {
-            keys.push(external_id.to_string());
-        }
-    }
-
-    keys.sort();
-    keys.dedup();
-    keys
-}
-
 fn load_download_history() -> Vec<DownloadItemPayload> {
     let items = crate::commands::local_db::read_collection::<DownloadItemPayload>("downloads")
         .unwrap_or_default();
@@ -1430,31 +1369,6 @@ fn terminal_sort_rank(status: &str) -> u8 {
     } else {
         0
     }
-}
-
-fn is_external_tracker_game_id(game_id: &str) -> bool {
-    game_id.starts_with("steam-")
-        || game_id.starts_with("epic-owned-")
-        || game_id.starts_with("ea-owned-")
-        || game_id.starts_with("ubisoft-owned-")
-        || game_id.starts_with("battlenet-owned-")
-        || game_id.starts_with("xbox-")
-}
-
-fn is_steam_tracker_game_id(game_id: &str) -> bool {
-    steam_app_id_from_download_id(game_id).is_some()
-}
-
-fn steam_app_id_from_download_id(game_id: &str) -> Option<&str> {
-    let app_id = game_id
-        .strip_prefix("steam-owned-")
-        .or_else(|| game_id.strip_prefix("steam-"))?;
-
-    if app_id.is_empty() || !app_id.chars().all(|ch| ch.is_ascii_digit()) {
-        return None;
-    }
-
-    Some(app_id)
 }
 
 fn toggle_steam_download_pause(
@@ -2281,15 +2195,6 @@ fn extract_vdf_number(line: &str) -> Option<u64> {
     }
 }
 
-fn calculate_active_progress(downloaded: u64, total: u64) -> u32 {
-    if total == 0 {
-        return 0;
-    }
-
-    let progress = ((downloaded.min(total) as f64 / total as f64) * 100.0).round() as u32;
-    progress.min(99)
-}
-
 #[derive(Default)]
 struct SteamDownloadState {
     bytes_downloaded: u64,
@@ -2801,17 +2706,6 @@ mod tests {
     }
 
     #[test]
-    fn steam_app_id_is_extracted_from_download_ids() {
-        assert_eq!(
-            steam_app_id_from_download_id("steam-owned-12345"),
-            Some("12345")
-        );
-        assert_eq!(steam_app_id_from_download_id("steam-12345"), Some("12345"));
-        assert_eq!(steam_app_id_from_download_id("steam-owned-beta"), None);
-        assert_eq!(steam_app_id_from_download_id("epic-owned-12345"), None);
-    }
-
-    #[test]
     fn normalize_queue_payload_allows_steam_external_pause_only() {
         let steam_item = normalize_queue_payload(DownloadItemPayload {
             id: "download-steam-owned-12345".to_string(),
@@ -2975,74 +2869,6 @@ mod tests {
     }
 }
 
-fn default_install_dir(game_id: &str) -> Option<PathBuf> {
-    dirs::data_local_dir()
-        .or_else(dirs::data_dir)
-        .map(|dir| dir.join("open-game-launcher").join("games").join(game_id))
-}
-
-fn download_file_name(url: &reqwest::Url, game_id: &str) -> String {
-    let from_url = url
-        .path_segments()
-        .and_then(|mut segments| segments.next_back())
-        .map(str::trim)
-        .filter(|segment| !segment.is_empty())
-        .unwrap_or("package.bin");
-    let sanitized = sanitize_download_file_name(from_url);
-    if sanitized.is_empty() {
-        format!("{}.bin", sanitize_download_file_name(game_id))
-    } else {
-        sanitized
-    }
-}
-
-fn sanitize_download_file_name(value: &str) -> String {
-    value
-        .chars()
-        .map(|ch| match ch {
-            '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*' => '_',
-            ch if ch.is_control() => '_',
-            ch => ch,
-        })
-        .collect::<String>()
-        .trim_matches('.')
-        .trim()
-        .to_string()
-}
-
-fn verify_sha256(path: &PathBuf, expected: &str) -> Result<(), String> {
-    use sha2::{Digest, Sha256};
-    use std::io::Read;
-
-    let expected = expected.trim().to_ascii_lowercase();
-    if expected.len() != 64 || !expected.chars().all(|ch| ch.is_ascii_hexdigit()) {
-        return Err("Configured SHA-256 checksum is invalid.".to_string());
-    }
-
-    let mut file = std::fs::File::open(path)
-        .map_err(|error| format!("Could not open downloaded file for verification: {error}"))?;
-    let mut hasher = Sha256::new();
-    let mut buffer = [0u8; 64 * 1024];
-    loop {
-        let read = file
-            .read(&mut buffer)
-            .map_err(|error| format!("Could not read downloaded file for verification: {error}"))?;
-        if read == 0 {
-            break;
-        }
-        hasher.update(&buffer[..read]);
-    }
-
-    let actual = format!("{:x}", hasher.finalize());
-    if actual != expected {
-        return Err(format!(
-            "SHA-256 verification failed: expected {expected}, got {actual}."
-        ));
-    }
-
-    Ok(())
-}
-
 struct InstalledDownloadPackage {
     files: Vec<crate::commands::games::OgManagedManifestFile>,
     executable_path: PathBuf,
@@ -3189,84 +3015,3 @@ fn extract_vdf_string(contents: &str, key: &str) -> Option<String> {
     None
 }
 
-fn get_platform_from_game_id(game_id: &str) -> String {
-    if game_id.starts_with("steam-") {
-        "Steam".to_string()
-    } else if game_id.starts_with("epic-") {
-        "Epic Games".to_string()
-    } else if game_id.starts_with("gog-") {
-        "GOG Galaxy".to_string()
-    } else if game_id.starts_with("ea-") {
-        "EA App".to_string()
-    } else if game_id.starts_with("ubisoft-") {
-        "Ubisoft Connect".to_string()
-    } else if game_id.starts_with("xbox-") {
-        "Xbox Game Pass".to_string()
-    } else if game_id.starts_with("battlenet-") {
-        "Battle.net".to_string()
-    } else {
-        "OG Store".to_string()
-    }
-}
-
-fn provider_key_from_game_id(game_id: &str) -> String {
-    if game_id.starts_with("steam-") {
-        "steam".to_string()
-    } else if game_id.starts_with("epic-") {
-        "epic".to_string()
-    } else if game_id.starts_with("gog-") {
-        "gog".to_string()
-    } else if game_id.starts_with("ea-") {
-        "ea".to_string()
-    } else if game_id.starts_with("ubisoft-") {
-        "ubisoft".to_string()
-    } else if game_id.starts_with("xbox-") {
-        "xbox".to_string()
-    } else if game_id.starts_with("battlenet-") {
-        "battlenet".to_string()
-    } else {
-        "internal".to_string()
-    }
-}
-
-fn progress_source_from_game_id(game_id: &str) -> String {
-    if game_id.starts_with("steam-") {
-        "steam_acf".to_string()
-    } else if game_id.starts_with("epic-") {
-        "epic_stderr".to_string()
-    } else if game_id.starts_with("gog-") {
-        "gog_api".to_string()
-    } else if game_id.starts_with("ea-")
-        || game_id.starts_with("ubisoft-")
-        || game_id.starts_with("battlenet-")
-        || game_id.starts_with("xbox-")
-    {
-        "external_tracker".to_string()
-    } else {
-        "http_range".to_string()
-    }
-}
-
-fn normalize_game_id(game_id: String) -> Result<String, String> {
-    let normalized = game_id.trim().to_string();
-    if normalized.is_empty() {
-        return Err("game_id must not be empty.".to_string());
-    }
-    Ok(normalized)
-}
-
-fn get_dir_size<P: AsRef<std::path::Path>>(path: P) -> u64 {
-    let mut size = 0;
-    if let Ok(entries) = std::fs::read_dir(path) {
-        for entry in entries.flatten() {
-            if let Ok(meta) = entry.metadata() {
-                if meta.is_dir() {
-                    size += get_dir_size(entry.path());
-                } else {
-                    size += meta.len();
-                }
-            }
-        }
-    }
-    size
-}
