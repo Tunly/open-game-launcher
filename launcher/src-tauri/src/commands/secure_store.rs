@@ -2,7 +2,7 @@ use aes_gcm::aead::{Aead, KeyInit};
 use aes_gcm::{Aes256Gcm, Key, Nonce};
 use argon2::{Algorithm, Argon2, Params, Version};
 use keyring::Entry;
-use rand::{rngs::OsRng, RngCore};
+use rand::{rngs::SysRng, TryRng};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
@@ -115,7 +115,7 @@ fn cipher() -> Aes256Gcm {
 
 fn encrypt(plaintext: &[u8]) -> Result<String, String> {
     let mut nonce_bytes = [0u8; 12];
-    OsRng.fill_bytes(&mut nonce_bytes);
+    SysRng.try_fill_bytes(&mut nonce_bytes).expect("OS RNG failed");
     let nonce = Nonce::from_slice(&nonce_bytes);
     let ct = cipher()
         .encrypt(nonce, plaintext)

@@ -1,7 +1,8 @@
-use aes_gcm::aead::{Aead, KeyInit, OsRng};
+use aes_gcm::aead::{Aead, KeyInit};
 use aes_gcm::{Aes256Gcm, Nonce};
 use argon2::{Algorithm, Argon2, Params, Version};
-use rand::RngCore;
+use rand::rngs::SysRng;
+use rand::TryRng;
 use serde::{Deserialize, Serialize};
 
 const KEY_VERSION: u8 = 1;
@@ -34,7 +35,7 @@ pub fn get_or_create_user_keyring_key(user_id: &str) -> Result<Vec<u8>, String> 
     }
     // Generate new random key
     let mut key = [0u8; KEY_SIZE];
-    OsRng.fill_bytes(&mut key);
+    SysRng.try_fill_bytes(&mut key).expect("OS RNG failed");
     let key_hex = hex_encode(&key);
     super::secure_store::set_secret(&domain, &key_hex)?;
     Ok(key.to_vec())
@@ -54,11 +55,11 @@ pub fn encrypt_file(
         ));
     }
     let mut salt = [0u8; SALT_SIZE];
-    OsRng.fill_bytes(&mut salt);
+    SysRng.try_fill_bytes(&mut salt).expect("OS RNG failed");
     let derived_key = derive_key(master_key, &salt)?;
     let cipher = Aes256Gcm::new_from_slice(&derived_key).map_err(|e| format!("Key init: {e}"))?;
     let mut nonce_bytes = [0u8; NONCE_SIZE];
-    OsRng.fill_bytes(&mut nonce_bytes);
+    SysRng.try_fill_bytes(&mut nonce_bytes).expect("OS RNG failed");
     let nonce = Nonce::from_slice(&nonce_bytes);
     let ciphertext = cipher
         .encrypt(nonce, plaintext)
@@ -163,7 +164,7 @@ pub fn is_cloud_key_present(user_id: String) -> bool {
 pub fn generate_cloud_key(user_id: String) -> Result<String, String> {
     let domain = keychain_domain(&user_id);
     let mut key = [0u8; KEY_SIZE];
-    OsRng.fill_bytes(&mut key);
+    SysRng.try_fill_bytes(&mut key).expect("OS RNG failed");
     let key_hex = hex_encode(&key);
     super::secure_store::set_secret(&domain, &key_hex)?;
     Ok(key_hex)
@@ -173,7 +174,7 @@ pub fn generate_cloud_key(user_id: String) -> Result<String, String> {
 pub fn rotate_cloud_key(user_id: String) -> Result<String, String> {
     let domain = keychain_domain(&user_id);
     let mut key = [0u8; KEY_SIZE];
-    OsRng.fill_bytes(&mut key);
+    SysRng.try_fill_bytes(&mut key).expect("OS RNG failed");
     let key_hex = hex_encode(&key);
     super::secure_store::set_secret(&domain, &key_hex)?;
     Ok(key_hex)
