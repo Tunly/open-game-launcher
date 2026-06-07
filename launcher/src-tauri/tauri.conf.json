@@ -27,10 +27,21 @@
       }
     ],
     "security": {
-      "csp": null,
+      "csp": "default-src 'self'; img-src 'self' data: blob: asset: https:; connect-src 'self' ipc: http://ipc.localhost https://*.supabase.co; style-src 'self' 'unsafe-inline'; font-src 'self' data:; script-src 'self'; frame-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'",
       "assetProtocol": {
         "enable": true,
-        "scope": ["**"]
+        "scope": {
+          "allow": [
+            "$APPDATA/**/*",
+            "$APPLOCALDATA/**/*",
+            "$APPCACHE/**/*",
+            "$HOME/**/*",
+            "C:\\Program Files (x86)\\Steam\\appcache\\librarycache\\**/*",
+            "C:\\Program Files\\Steam\\appcache\\librarycache\\**/*",
+            "C:\\Program Files (x86)\\Steam\\steam\\games\\**/*",
+            "C:\\Program Files\\Steam\\steam\\games\\**/*"
+          ]
+        }
       }
     }
   },
