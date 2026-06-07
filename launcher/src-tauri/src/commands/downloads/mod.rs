@@ -1,4 +1,5 @@
 mod history;
+mod internal_download;
 mod legacy;
 mod steam_cef;
 mod steam_state;
