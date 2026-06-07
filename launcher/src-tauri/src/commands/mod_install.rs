@@ -437,24 +437,12 @@ pub async fn install_mod_from_url(
 }
 
 /// Compatibility wrapper for the original directory scan command.
-#[tauri::command]
-pub fn scan_mod_directory(path: String) -> Result<Vec<String>, String> {
-    let dir = PathBuf::from(&path);
-    if !dir.is_dir() {
-        return Ok(vec![]);
-    }
-    let mut mods = Vec::new();
-    for entry in fs::read_dir(&dir).map_err(|error| format!("Could not scan directory: {error}"))? {
-        let entry = entry.map_err(|error| format!("Could not read directory entry: {error}"))?;
-        let sub = entry.path();
-        if sub.is_dir() && (sub.join("info.json").is_file() || sub.join("mod.config").is_file()) {
-            if let Some(name) = sub.file_name().and_then(|value| value.to_str()) {
-                mods.push(name.to_string());
-            }
-        }
-    }
-    Ok(mods)
-}
+// (removed: scan_mod_directory had a path-traversal sink because the
+// renderer-controlled `path` was passed to `fs::read_dir` without an
+// allow-root check. The frontend never calls this command —
+// `scan_game_mods` is the supported path — so the function has been
+// removed entirely. If a future feature needs free-form directory
+// scanning, add an allow-list helper alongside the new entry point.)
 
 async fn run_mod_install_worker(
     app: tauri::AppHandle,

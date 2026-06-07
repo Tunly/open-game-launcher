@@ -2395,18 +2395,14 @@ pub fn launch_installed_game(game: &InstalledGame) -> Result<Option<Child>, Stri
 }
 
 pub fn open_uri(uri: &str) -> std::io::Result<()> {
-    if cfg!(target_os = "windows") {
-        Command::new("cmd").args(["/C", "start", "", uri]).spawn()?;
-        return Ok(());
-    }
-
-    if cfg!(target_os = "macos") {
-        Command::new("open").arg(uri).spawn()?;
-        return Ok(());
-    }
-
-    Command::new("xdg-open").arg(uri).spawn()?;
-    Ok(())
+    // Centralised through `uri_safety::open_uri_safely` so the same
+    // scheme allowlist and shell-free executor are used everywhere.
+    // The historical `cmd /C start "" <uri>` was a command-injection
+    // sink and is no longer reachable from this binary.
+    let _ = crate::commands::uri_safety::validate_uri_scheme(uri)
+        .map_err(std::io::Error::other)?;
+    crate::commands::uri_safety::open_uri_safely(uri)
+        .map_err(std::io::Error::other)
 }
 
 pub fn is_file_executable(path: &Path) -> bool {

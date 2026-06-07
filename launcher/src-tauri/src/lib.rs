@@ -107,7 +107,6 @@ pub fn run() {
             commands::anti_cheat::detect_anti_cheat_processes,
             commands::anti_cheat::is_overlay_blocked_by_anti_cheat,
             commands::mod_install::install_mod_from_url,
-            commands::mod_install::scan_mod_directory,
             commands::mod_install::start_mod_install,
             commands::mod_install::get_mod_queue,
             commands::mod_install::pause_mod_install,

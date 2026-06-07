@@ -13,6 +13,7 @@ use crate::commands::downloads::install::{
     install_downloaded_game_package, update_installed_games_cache_for_download,
     write_downloaded_game_manifest,
 };
+use crate::commands::uri_safety::validate_slug;
 use crate::commands::downloads::internal_download::download_internal_game_file;
 use crate::commands::downloads::steam_cef::toggle_steam_download_pause;
 use crate::commands::downloads::types::{
@@ -196,12 +197,26 @@ pub async fn start_download(
             .strip_prefix("steam-owned-")
             .or_else(|| game_id.strip_prefix("steam-"))
             .unwrap_or(&game_id);
-        let uri = format!("steam://install/{steam_app_id}");
-        let _ = crate::commands::system::open_uri(&uri);
-        steam_tracker_id = Some(steam_app_id.to_string());
-        is_external_download = true;
-        external_message =
-            "Installation started in Steam. Check Steam for download progress.".to_string();
+        // SECURITY: the AppID is interpolated into a URI. Validate before
+        // building the URI so a malicious `game_id` like
+        // `"steam-123 & calc.exe"` cannot smuggle a command into the
+        // shell.
+        let safe_steam_id = match validate_slug(steam_app_id) {
+            Ok(id) => id.to_string(),
+            Err(error) => {
+                external_message = format!("Steam install link rejected: {error}");
+                is_external_download = false;
+                String::new()
+            }
+        };
+        if !safe_steam_id.is_empty() {
+            let uri = format!("steam://install/{safe_steam_id}");
+            let _ = crate::commands::system::open_uri(&uri);
+            steam_tracker_id = Some(safe_steam_id);
+            is_external_download = true;
+            external_message =
+                "Installation started in Steam. Check Steam for download progress.".to_string();
+        }
     } else if game_id.starts_with("epic-owned-") {
         let epic_id = game_id
             .strip_prefix("epic-owned-")
@@ -214,27 +229,52 @@ pub async fn start_download(
                 .to_string();
     } else if game_id.starts_with("ea-owned-") {
         let ea_id = game_id.strip_prefix("ea-owned-").unwrap_or(&game_id);
-        let uri = format!("origin2://game/launch?offerIds={ea_id}&autoDownload=true");
-        let _ = crate::commands::system::open_uri(&uri);
-        is_external_download = true;
-        external_message = "Installation started in EA App. Check EA App for progress.".to_string();
+        // SECURITY: validate before URI construction.
+        match validate_slug(ea_id) {
+            Ok(safe_ea_id) => {
+                let uri = format!("origin2://game/launch?offerIds={safe_ea_id}&autoDownload=true");
+                let _ = crate::commands::system::open_uri(&uri);
+                is_external_download = true;
+                external_message =
+                    "Installation started via EA App. Check EA App for progress.".to_string();
+            }
+            Err(error) => {
+                external_message = format!("EA install link rejected: {error}");
+            }
+        }
     } else if game_id.starts_with("ubisoft-owned-") {
         let uplay_id = game_id.strip_prefix("ubisoft-owned-").unwrap_or(&game_id);
-        let uri = format!("uplay://install/{uplay_id}");
-        let _ = crate::commands::system::open_uri(&uri);
-        is_external_download = true;
-        external_message =
-            "Installation started in Ubisoft Connect. Check Ubisoft Connect for progress."
-                .to_string();
+        // SECURITY: validate before URI construction.
+        match validate_slug(uplay_id) {
+            Ok(safe_uplay_id) => {
+                let uri = format!("uplay://install/{safe_uplay_id}");
+                let _ = crate::commands::system::open_uri(&uri);
+                is_external_download = true;
+                external_message =
+                    "Installation started in Ubisoft Connect. Check Ubisoft Connect for progress."
+                        .to_string();
+            }
+            Err(error) => {
+                external_message = format!("Ubisoft install link rejected: {error}");
+            }
+        }
     } else if game_id.starts_with("battlenet-owned-") {
         let bnet_id = game_id.strip_prefix("battlenet-owned-").unwrap_or(&game_id);
-        let uri = format!("battlenet://{bnet_id}");
-        let _ = crate::commands::system::open_uri(&uri);
-        is_external_download = true;
-        external_message =
-            "Installation started in Battle.net. Check Battle.net for progress.".to_string();
+        // SECURITY: validate before URI construction.
+        match validate_slug(bnet_id) {
+            Ok(safe_bnet_id) => {
+                let uri = format!("battlenet://{safe_bnet_id}");
+                let _ = crate::commands::system::open_uri(&uri);
+                is_external_download = true;
+                external_message =
+                    "Installation started in Battle.net. Check Battle.net for download progress."
+                        .to_string();
+            }
+            Err(error) => {
+                external_message = format!("Battle.net install link rejected: {error}");
+            }
+        }
     }
-
     let mut title = game_title
         .clone()
         .unwrap_or_else(|| "Unknown Game".to_string());

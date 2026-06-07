@@ -354,9 +354,58 @@ pub fn list_screenshots(app: tauri::AppHandle) -> Result<Vec<ScreenshotMeta>, St
     Ok(out)
 }
 
+/// Resolve the absolute screenshots directory once per call.
+/// Used as the canonical allow-root for [`delete_screenshot`] and friends.
+fn screenshots_root(app: &tauri::AppHandle) -> Result<std::path::PathBuf, String> {
+    app.path()
+        .resolve("screenshots", tauri::path::BaseDirectory::AppData)
+        .map_err(|e| e.to_string())
+}
+
+/// Verify that `path` is an existing file that lives directly inside the
+/// screenshots allow-root. Rejects symlinks, relative paths, and anything
+/// outside the canonical screenshots directory.
+pub(super) fn ensure_path_within_screenshots(
+    root: &std::path::Path,
+    path: &str,
+) -> Result<std::path::PathBuf, String> {
+    if path.is_empty() {
+        return Err("Screenshot path is empty.".to_string());
+    }
+    let candidate = std::path::Path::new(path);
+    // Reject relative paths early — canonicalize() would happily resolve them
+    // against the current working directory of the launcher process.
+    if !candidate.is_absolute() {
+        return Err("Screenshot path must be absolute.".to_string());
+    }
+    let canonical_root = std::fs::canonicalize(root)
+        .map_err(|error| format!("Could not resolve screenshots root: {error}"))?;
+    let canonical_path = std::fs::canonicalize(candidate).map_err(|error| {
+        // Canonicalize fails for non-existent files. We still want a clean
+        // message; the file-not-found case is the only legitimate outcome here.
+        if error.kind() == std::io::ErrorKind::NotFound {
+            "Screenshot file no longer exists.".to_string()
+        } else {
+            format!("Could not resolve screenshot path: {error}")
+        }
+    })?;
+    if !canonical_path.is_file() {
+        return Err("Screenshot path is not a regular file.".to_string());
+    }
+    if !canonical_path.starts_with(&canonical_root) {
+        return Err("Screenshot path is outside the screenshots directory.".to_string());
+    }
+    Ok(canonical_path)
+}
+
 #[tauri::command]
-pub fn delete_screenshot(path: String) -> Result<(), String> {
-    std::fs::remove_file(&path).map_err(|e| e.to_string())
+pub fn delete_screenshot(
+    app: tauri::AppHandle,
+    path: String,
+) -> Result<(), String> {
+    let root = screenshots_root(&app)?;
+    let safe_path = ensure_path_within_screenshots(&root, &path)?;
+    std::fs::remove_file(&safe_path).map_err(|e| e.to_string())
 }
 
 // ─── Overlay Settings ───
@@ -412,4 +461,105 @@ pub fn emit_achievement_popup(
 ) -> Result<(), String> {
     let _ = app.emit("achievement-unlocked", payload);
     Ok(())
+}
+
+#[cfg(test)]
+mod path_traversal_tests {
+    use super::ensure_path_within_screenshots;
+    use std::fs;
+
+    /// RAII temp dir. Cleans up on Drop.
+    struct Tempdir(std::path::PathBuf);
+
+    impl Tempdir {
+        fn new() -> Self {
+            let unique = format!(
+                "og-launcher-overlay-test-{}-{}",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_nanos())
+                    .unwrap_or(0)
+            );
+            let path = std::env::temp_dir().join(unique);
+            fs::create_dir_all(&path).unwrap();
+            Tempdir(path)
+        }
+
+        fn path(&self) -> &std::path::Path {
+            &self.0
+        }
+    }
+
+    impl Drop for Tempdir {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    fn build_screenshot_zoo() -> (Tempdir, std::path::PathBuf) {
+        let dir = Tempdir::new();
+        let valid = dir.path().join("ogl_abc.jpg");
+        fs::write(&valid, b"jpeg-bytes").unwrap();
+        (dir, valid)
+    }
+
+    #[test]
+    fn accepts_file_inside_root() {
+        let (dir, valid) = build_screenshot_zoo();
+        let resolved =
+            ensure_path_within_screenshots(dir.path(), valid.to_str().unwrap()).unwrap();
+        assert_eq!(
+            fs::canonicalize(&resolved).unwrap(),
+            fs::canonicalize(&valid).unwrap()
+        );
+    }
+
+    #[test]
+    fn rejects_relative_path() {
+        let (dir, _) = build_screenshot_zoo();
+        let result = ensure_path_within_screenshots(dir.path(), "ogl_abc.jpg");
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("absolute"));
+    }
+
+    #[test]
+    fn rejects_empty_string() {
+        let (dir, _) = build_screenshot_zoo();
+        let result = ensure_path_within_screenshots(dir.path(), "");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn rejects_path_outside_root() {
+        let dir = Tempdir::new();
+        let sibling = Tempdir::new();
+        let evil_path = sibling.path().join("ogl_evil.jpg");
+        fs::write(&evil_path, b"jpeg-bytes").unwrap();
+
+        let result = ensure_path_within_screenshots(dir.path(), evil_path.to_str().unwrap());
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("outside"));
+    }
+
+    #[test]
+    fn rejects_traversal_via_dotdot() {
+        let dir = Tempdir::new();
+        let root = dir.path().join("root");
+        fs::create_dir_all(&root).unwrap();
+        let escape = dir.path().join("escape.jpg");
+        fs::write(&escape, b"jpeg-bytes").unwrap();
+
+        let traversal = root.join("..").join("escape.jpg");
+        let result = ensure_path_within_screenshots(&root, traversal.to_str().unwrap());
+        assert!(result.is_err(), "traversal must be rejected");
+    }
+
+    #[test]
+    fn rejects_nonexistent_file() {
+        let (dir, _) = build_screenshot_zoo();
+        let ghost = dir.path().join("ogl_ghost.jpg");
+        let result = ensure_path_within_screenshots(dir.path(), ghost.to_str().unwrap());
+        assert!(result.is_err());
+    }
 }

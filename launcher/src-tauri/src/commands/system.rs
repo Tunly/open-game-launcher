@@ -268,29 +268,17 @@ fn clean_line(value: &str) -> Option<String> {
     }
 }
 
+use crate::commands::uri_safety::{open_uri_safely, validate_uri_scheme};
+
 pub fn open_uri(uri: &str) -> Result<(), String> {
-    #[cfg(target_os = "windows")]
-    {
-        Command::new("cmd")
-            .args(["/C", "start", "", uri])
-            .spawn()
-            .map_err(|e| format!("Failed to open browser: {e}"))?;
-    }
-    #[cfg(target_os = "macos")]
-    {
-        Command::new("open")
-            .arg(uri)
-            .spawn()
-            .map_err(|e| format!("Failed to open browser: {e}"))?;
-    }
-    #[cfg(target_os = "linux")]
-    {
-        Command::new("xdg-open")
-            .arg(uri)
-            .spawn()
-            .map_err(|e| format!("Failed to open browser: {e}"))?;
-    }
-    Ok(())
+    // Forward to the centralised safe opener. The historical
+    // `cmd /C start "" <uri>` implementation has been removed because it
+    // parsed the URI through cmd.exe, which made any `&` in the URI a
+    // command separator. The replacement goes via `rundll32 url.dll,
+    // FileProtocolHandler` (Windows) / `open` (macOS) / `xdg-open`
+    // (Linux) and validates the URI scheme first.
+    let safe_uri = validate_uri_scheme(uri)?;
+    open_uri_safely(safe_uri)
 }
 
 #[tauri::command]
