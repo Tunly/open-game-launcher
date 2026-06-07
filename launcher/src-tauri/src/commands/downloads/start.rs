@@ -16,17 +16,17 @@ use crate::commands::downloads::steam_state::{
 };
 use crate::commands::downloads::types::{
     cancellable_sleep, emit_download_progress, get_download_manager, is_download_control_pending,
-    is_terminal_download_status, payload_from_active_download, pause_hold_feedback,
-    update_download_metrics, update_download_status, ActiveDownload, DownloadStartStatus,
-    InternalDownloadSource, StartDownloadResponse, DOWNLOAD_STATUS_CANCELLED,
-    DOWNLOAD_STATUS_DOWNLOADING, DOWNLOAD_STATUS_PAUSED, DOWNLOAD_STATUS_STARTING,
+    payload_from_active_download, pause_hold_feedback, update_download_metrics,
+    update_download_status, ActiveDownload, DownloadStartStatus, InternalDownloadSource,
+    StartDownloadResponse,
 };
 use crate::commands::downloads::utils::{
     default_install_dir, get_dir_size, get_platform_from_game_id, is_download_game_installed,
-    is_external_tracker_game_id, normalize_game_id, steam_app_id_from_download_id,
+    normalize_game_id,
 };
 use crate::commands::games::read_installed_games_cache;
 use crate::commands::downloads::external_dispatch;
+use crate::commands::downloads::lifecycle::{DownloadLifecycle, ExternalTracker};
 
 pub async fn start_download(
     app: AppHandle,
@@ -101,32 +101,46 @@ pub async fn start_download(
 
     let (pause_tx, pause_rx) = watch::channel(false);
     let (cancel_tx, cancel_rx) = watch::channel(false);
-    let is_steam_external_download = steam_tracker_id.is_some();
+
+    // Build the lifecycle enum from the external-dispatch result and
+    // the optional internal-download URL. This is the single source of
+    // truth for "what kind of download is this" for the rest of the
+    // function. It replaces the `is_external_download` bool and the
+    // two `tracker_id` Options as the dispatch input for both the
+    // `ActiveDownload` builder below and the `tokio::spawn` body.
+    let internal_download_source = download_url
+        .filter(|url| !url.trim().is_empty())
+        .map(|url| InternalDownloadSource {
+            url,
+            sha256: download_sha256.filter(|value| !value.trim().is_empty()),
+        });
+    let lifecycle = if is_external_download {
+        if let Some(steam_id) = steam_tracker_id.take() {
+            DownloadLifecycle::External(ExternalTracker::Steam(steam_id))
+        } else if let Some(epic_id) = epic_tracker_id.take() {
+            DownloadLifecycle::External(ExternalTracker::Epic(epic_id))
+        } else {
+            let platform = get_platform_from_game_id(&game_id).to_string();
+            DownloadLifecycle::External(ExternalTracker::Other { platform })
+        }
+    } else {
+        DownloadLifecycle::Internal {
+            source: internal_download_source.clone(),
+        }
+    };
 
     let active = ActiveDownload {
         title: title.clone(),
         progress: 0,
-        speed: if is_external_download {
-            "Starting external launcher...".to_string()
-        } else {
-            "Waiting...".to_string()
-        },
-        status: if is_external_download {
-            DOWNLOAD_STATUS_STARTING.to_string()
-        } else {
-            DOWNLOAD_STATUS_DOWNLOADING.to_string()
-        },
+        speed: lifecycle.initial_speed().to_string(),
+        status: lifecycle.initial_status().to_string(),
         eta: 0,
-        phase: if is_external_download {
-            "external".to_string()
-        } else {
-            "download".to_string()
-        },
+        phase: lifecycle.phase().to_string(),
         bytes_downloaded: None,
         bytes_total: None,
-        can_pause: !is_external_download || is_steam_external_download,
-        can_cancel: !is_external_download,
-        external: is_external_download,
+        can_pause: lifecycle.can_pause(),
+        can_cancel: lifecycle.can_cancel(),
+        external: lifecycle.external_flag(),
         paused: false,
         cancelled: false,
         pause_tx,
@@ -142,12 +156,6 @@ pub async fn start_download(
     let app_clone = app.clone();
     let game_id_clone = game_id.clone();
     let title_clone = title.clone();
-    let internal_download_source = download_url
-        .filter(|url| !url.trim().is_empty())
-        .map(|url| InternalDownloadSource {
-            url,
-            sha256: download_sha256.filter(|value| !value.trim().is_empty()),
-        });
 
     tokio::spawn(async move {
         let cancel_rx = cancel_rx;

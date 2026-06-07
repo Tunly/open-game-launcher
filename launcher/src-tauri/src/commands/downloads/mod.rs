@@ -4,6 +4,7 @@ mod health;
 mod history;
 mod install;
 mod internal_download;
+mod lifecycle;
 mod queue;
 mod reconcile;
 mod start;
@@ -14,6 +15,7 @@ mod utils;
 mod watcher;
 
 pub use external_dispatch::ExternalDispatch;
+pub use lifecycle::{DownloadLifecycle, ExternalTracker};
 
 pub use health::ProviderHealthStatus;
 pub use history::record_download_item;
