@@ -38,32 +38,32 @@ export function CommunityPage() {
     <div className="relative min-h-[600px]">
       {/* Centered Coming Soon Overlay */}
       <div className="absolute inset-0 z-20 flex items-center justify-center p-4">
-        <div className="max-w-md rotate-[-3deg] border-[6px] border-black bg-[#f2c14e] p-8 text-center shadow-[12px_12px_0_#171411] transition duration-300 hover:rotate-[0deg] hover:scale-105 md:p-12">
-          <h2 className="neo-title text-5xl uppercase leading-none tracking-tight text-[#171411] md:text-7xl">
+        <div className="max-w-md rotate-[-3deg] border-[6px] border-black bg-[#f2c14e] p-8 text-center shadow-[12px_12px_0_#171411] transition duration-300 hover:scale-105 hover:rotate-[0deg] md:p-12">
+          <h2 className="neo-title text-5xl leading-none tracking-tight text-[#171411] uppercase md:text-7xl">
             Coming
           </h2>
-          <h2 className="neo-title mt-1 text-5xl uppercase leading-none tracking-tight text-[#171411] md:text-7xl">
+          <h2 className="neo-title mt-1 text-5xl leading-none tracking-tight text-[#171411] uppercase md:text-7xl">
             Soon
           </h2>
-          <p className="neo-copy mt-5 border-t-2 border-black pt-4 text-[11px] font-black uppercase tracking-[0.2em] text-[#171411]">
+          <p className="neo-copy mt-5 border-t-2 border-black pt-4 text-[11px] font-black tracking-[0.2em] text-[#171411] uppercase">
             Official Community slice
           </p>
         </div>
       </div>
 
       {/* Blurred Community Content */}
-      <div className="pointer-events-none select-none opacity-75 blur-[6px]">
+      <div className="pointer-events-none opacity-75 blur-[6px] select-none">
         <section>
           <div className="mb-8 border-b-4 border-black pb-4">
             <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
               <div className="min-w-0">
-                <span className="neo-copy inline-flex border-2 border-black bg-[#c20b2f] px-3 py-1 text-xs font-bold uppercase text-white shadow-[3px_3px_0_#171411]">
+                <span className="neo-copy inline-flex border-2 border-black bg-[#c20b2f] px-3 py-1 text-xs font-bold text-white uppercase shadow-[3px_3px_0_#171411]">
                   Netzwerk online
                 </span>
                 <h1 className="neo-title mt-2 max-w-[680px] text-[clamp(3.5rem,15vw,6rem)] leading-[0.82] text-[#171411]">
                   Community Hub
                 </h1>
-                <p className="neo-copy mt-3 text-xs font-bold uppercase text-[#55504a]">
+                <p className="neo-copy mt-3 text-xs font-bold text-[#55504a] uppercase">
                   128 players online // 14 active groups // 3 live events
                 </p>
               </div>
@@ -91,12 +91,12 @@ export function CommunityPage() {
                     className="border-4 border-black bg-[#f5eedf] p-4 shadow-[4px_4px_0_#171411]"
                   >
                     <div className="flex items-center justify-between gap-3">
-                      <p className="neo-copy text-xs font-bold uppercase text-[#55504a]">
+                      <p className="neo-copy text-xs font-bold text-[#55504a] uppercase">
                         {label as string}
                       </p>
                       <Icon className="h-5 w-5 text-[#c20b2f]" />
                     </div>
-                    <p className="mt-2 text-5xl font-black leading-none text-[#171411]">
+                    <p className="mt-2 text-5xl leading-none font-black text-[#171411]">
                       {value as string}
                     </p>
                   </div>
@@ -105,8 +105,8 @@ export function CommunityPage() {
 
               <div className="border-4 border-black bg-[#f5eedf] shadow-[4px_4px_0_#171411]">
                 <div className="flex items-center justify-between border-b-4 border-black p-4">
-                  <h2 className="text-3xl font-black uppercase text-[#171411]">Live Feed</h2>
-                  <span className="neo-copy text-xs font-bold uppercase text-[#55504a]">
+                  <h2 className="text-3xl font-black text-[#171411] uppercase">Live Feed</h2>
+                  <span className="neo-copy text-xs font-bold text-[#55504a] uppercase">
                     Echtzeit
                   </span>
                 </div>
@@ -125,10 +125,10 @@ export function CommunityPage() {
                         >
                           {item.channel}
                         </span>
-                        <h3 className="mt-3 text-[clamp(1.35rem,7vw,1.5rem)] font-black uppercase leading-tight text-[#171411]">
+                        <h3 className="mt-3 text-[clamp(1.35rem,7vw,1.5rem)] leading-tight font-black text-[#171411] uppercase">
                           {item.headline}
                         </h3>
-                        <p className="neo-copy mt-2 text-[10px] font-bold uppercase text-[#55504a]">
+                        <p className="neo-copy mt-2 text-[10px] font-bold text-[#55504a] uppercase">
                           {item.meta}
                         </p>
                       </div>
@@ -169,7 +169,7 @@ export function CommunityPage() {
                   {squads.map(([name, online, genre]) => (
                     <div key={name} className="p-4">
                       <h3 className="text-xl font-black uppercase">{name}</h3>
-                      <p className="neo-copy mt-2 text-[10px] font-bold uppercase text-[#55504a]">
+                      <p className="neo-copy mt-2 text-[10px] font-bold text-[#55504a] uppercase">
                         {online} // {genre}
                       </p>
                     </div>

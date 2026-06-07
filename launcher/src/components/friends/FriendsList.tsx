@@ -57,7 +57,7 @@ export function FriendsList({
                       {displayName ?? "Unknown player"}
                     </p>
                     {username ? (
-                      <p className="neo-copy mt-1 truncate text-[10px] font-black uppercase tracking-[0.12em] text-[#5b403f]">
+                      <p className="neo-copy mt-1 truncate text-[10px] font-black tracking-[0.12em] text-[#5b403f] uppercase">
                         @{username}
                       </p>
                     ) : null}
@@ -71,13 +71,13 @@ export function FriendsList({
                 </div>
                 {presence?.currentGameTitle ? (
                   <div className="mt-3 flex items-center gap-2">
-                    <p className="neo-copy inline-flex max-w-full items-center gap-2 border-2 border-black bg-[#fff9ed] px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-[#171411] shadow-[2px_2px_0_#171411]">
+                    <p className="neo-copy inline-flex max-w-full items-center gap-2 border-2 border-black bg-[#fff9ed] px-3 py-2 text-[10px] font-black tracking-[0.12em] text-[#171411] uppercase shadow-[2px_2px_0_#171411]">
                       <Gamepad2 className="h-4 w-4 shrink-0 text-[#b7102a]" />
                       <span className="truncate">Playing {presence.currentGameTitle}</span>
                     </p>
                     {onJoinGame && presence?.currentGameId ? (
                       <button
-                        className="neo-copy inline-flex items-center gap-1 border-2 border-black bg-[#087d6d] px-2 py-1 text-[10px] font-black uppercase text-white shadow-[2px_2px_0_#171411] transition hover:bg-[#065e53]"
+                        className="neo-copy inline-flex items-center gap-1 border-2 border-black bg-[#087d6d] px-2 py-1 text-[10px] font-black text-white uppercase shadow-[2px_2px_0_#171411] transition hover:bg-[#065e53]"
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
@@ -94,7 +94,7 @@ export function FriendsList({
               <div className="flex items-center justify-end gap-2 border-t-2 border-black bg-[#efe6d4] px-3 py-2">
                 {username ? (
                   <Link
-                    className="neo-copy inline-flex items-center gap-1 border-2 border-black bg-[#fff9ed] px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-[#171411] shadow-[1px_1px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#8cf5e4]"
+                    className="neo-copy inline-flex items-center gap-1 border-2 border-black bg-[#fff9ed] px-2 py-1 text-[10px] font-black tracking-[0.12em] text-[#171411] uppercase shadow-[1px_1px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#8cf5e4]"
                     to={`/u/${username}`}
                   >
                     <UserRound className="h-3 w-3" />
@@ -103,7 +103,7 @@ export function FriendsList({
                 ) : null}
                 {onRemove ? (
                   <button
-                    className="neo-copy inline-flex items-center gap-1 border-2 border-black bg-[#fff9ed] px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-[#b7102a] shadow-[1px_1px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#f3c3c9] disabled:opacity-60"
+                    className="neo-copy inline-flex items-center gap-1 border-2 border-black bg-[#fff9ed] px-2 py-1 text-[10px] font-black tracking-[0.12em] text-[#b7102a] uppercase shadow-[1px_1px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#f3c3c9] disabled:opacity-60"
                     disabled={!onRemove}
                     type="button"
                     onClick={() => onRemove(friendship)}
@@ -117,7 +117,7 @@ export function FriendsList({
           );
         })
       ) : (
-        <p className="neo-copy border-2 border-dashed border-black bg-[#f6edd8] p-3 text-[12px] font-bold uppercase leading-5 text-[#655f58]">
+        <p className="neo-copy border-2 border-dashed border-black bg-[#f6edd8] p-3 text-[12px] leading-5 font-bold text-[#655f58] uppercase">
           No friends yet.
         </p>
       )}
@@ -145,7 +145,7 @@ function Avatar({
     );
   }
   return (
-    <div className="grid h-12 w-12 shrink-0 place-items-center border-2 border-black bg-[#007166] text-[12px] font-black uppercase text-white shadow-[2px_2px_0_#171411]">
+    <div className="grid h-12 w-12 shrink-0 place-items-center border-2 border-black bg-[#007166] text-[12px] font-black text-white uppercase shadow-[2px_2px_0_#171411]">
       {initials}
     </div>
   );

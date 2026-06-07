@@ -7,7 +7,7 @@ export function ProfileThemePreview({ theme }: { theme: ProfileTheme }) {
       style={{ background: theme.backgroundValue ?? "#f6edd8" }}
     >
       <p className="neo-title text-3xl leading-none text-[#171411]">{theme.name}</p>
-      <p className="mt-2 text-sm font-semibold leading-6 text-[#5b403f]">{theme.description}</p>
+      <p className="mt-2 text-sm leading-6 font-semibold text-[#5b403f]">{theme.description}</p>
     </div>
   );
 }

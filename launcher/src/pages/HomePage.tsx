@@ -7,10 +7,10 @@ export function HomePage() {
       <section className="overflow-hidden border border-white/10 bg-[#111827]">
         <div className="grid gap-8 p-6 lg:grid-cols-[1fr_360px] lg:p-10">
           <div>
-            <span className="inline-flex border border-sky-300/20 bg-sky-400/10 px-3 py-2 text-xs font-bold uppercase text-sky-100">
+            <span className="inline-flex border border-sky-300/20 bg-sky-400/10 px-3 py-2 text-xs font-bold text-sky-100 uppercase">
               Profile System MVP
             </span>
-            <h1 className="mt-5 max-w-3xl text-5xl font-black leading-none text-white sm:text-7xl">
+            <h1 className="mt-5 max-w-3xl text-5xl leading-none font-black text-white sm:text-7xl">
               Build the player room behind the launcher.
             </h1>
             <p className="mt-5 max-w-2xl text-base leading-7 text-slate-300">

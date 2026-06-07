@@ -18,7 +18,7 @@ export function ProfileBanner({
       className="relative z-0 min-h-72 overflow-hidden border-b-4 border-black bg-cover bg-center"
       style={{ background }}
     >
-      <div className="absolute bottom-0 left-0 right-0 z-0 h-8 border-t-4 border-black bg-[repeating-linear-gradient(90deg,#171411_0_12px,#fff9ed_12px_24px)]" />
+      <div className="absolute right-0 bottom-0 left-0 z-0 h-8 border-t-4 border-black bg-[repeating-linear-gradient(90deg,#171411_0_12px,#fff9ed_12px_24px)]" />
     </div>
   );
 }

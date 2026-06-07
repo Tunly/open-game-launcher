@@ -369,7 +369,7 @@ function TopGamesList({ games, totalMinutes }: TopGamesListProps) {
   if (games.length === 0) {
     return (
       <div className="border-2 border-black bg-[#fff9ed] p-4 shadow-[3px_3px_0_#1f1c0f]">
-        <p className="neo-copy text-[10px] font-bold uppercase text-[#55504a]">
+        <p className="neo-copy text-[10px] font-bold text-[#55504a] uppercase">
           No top games for this range yet.
         </p>
       </div>
@@ -388,7 +388,7 @@ function TopGamesList({ games, totalMinutes }: TopGamesListProps) {
               {index + 1}
             </span>
             <div className="min-w-0">
-              <span className="block truncate text-sm font-black uppercase text-[#171411]">
+              <span className="block truncate text-sm font-black text-[#171411] uppercase">
                 {game.gameTitle}
               </span>
               <div className="mt-1 h-3 w-full border border-black bg-[#efe6d4]">
@@ -399,7 +399,7 @@ function TopGamesList({ games, totalMinutes }: TopGamesListProps) {
                 />
               </div>
             </div>
-            <span className="neo-copy text-right text-[11px] font-black uppercase text-[#171411]">
+            <span className="neo-copy text-right text-[11px] font-black text-[#171411] uppercase">
               {formatPlayTimeMinutes(game.minutes)}
             </span>
           </li>
@@ -435,8 +435,8 @@ export function ActivitySection() {
     >
       <div className="flex items-center justify-between border-b-4 border-black p-5">
         <div>
-          <p className="neo-copy text-[10px] font-bold uppercase text-[#55504a]">Session History</p>
-          <h2 className="text-3xl font-black uppercase text-[#171411]">Activity</h2>
+          <p className="neo-copy text-[10px] font-bold text-[#55504a] uppercase">Session History</p>
+          <h2 className="text-3xl font-black text-[#171411] uppercase">Activity</h2>
         </div>
         <BarChart3 aria-hidden="true" className="h-10 w-10 text-[#087d6d]" />
       </div>
@@ -469,10 +469,10 @@ export function ActivitySection() {
             <Hourglass aria-hidden="true" className="h-4 w-4" />
           </span>
           <div className="min-w-0 flex-1">
-            <p className="neo-copy text-[10px] font-bold uppercase text-[#55504a]">
+            <p className="neo-copy text-[10px] font-bold text-[#55504a] uppercase">
               Total // {describeRange(range)}
             </p>
-            <p className="neo-copy mt-1 truncate text-xl font-black uppercase text-[#171411]">
+            <p className="neo-copy mt-1 truncate text-xl font-black text-[#171411] uppercase">
               {formatPlayTimeMinutes(totalMinutes)} across {sessionsInRange.length} session
               {sessionsInRange.length === 1 ? "" : "s"}
             </p>
@@ -481,24 +481,24 @@ export function ActivitySection() {
 
         {isLoading ? (
           <div className="border-2 border-black bg-[#fff9ed] p-6 shadow-[3px_3px_0_#1f1c0f]">
-            <p className="neo-copy inline-flex items-center gap-2 text-xs font-bold uppercase text-[#55504a]">
+            <p className="neo-copy inline-flex items-center gap-2 text-xs font-bold text-[#55504a] uppercase">
               <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
               Loading activity...
             </p>
           </div>
         ) : error ? (
           <div className="border-2 border-black bg-[#fbd6dc] p-4 shadow-[3px_3px_0_#1f1c0f]">
-            <p className="neo-copy text-[11px] font-black uppercase text-[#7a0918]">{error}</p>
+            <p className="neo-copy text-[11px] font-black text-[#7a0918] uppercase">{error}</p>
           </div>
         ) : sessionsInRange.length === 0 ? (
           <div className="border-2 border-black bg-[#fff9ed] p-6 shadow-[3px_3px_0_#1f1c0f]">
             <div className="flex items-start gap-3">
               <Sparkles aria-hidden="true" className="h-5 w-5 shrink-0 text-[#087d6d]" />
               <div>
-                <p className="text-sm font-black uppercase text-[#171411]">
+                <p className="text-sm font-black text-[#171411] uppercase">
                   No play sessions recorded yet
                 </p>
-                <p className="neo-copy mt-2 text-[10px] font-bold uppercase leading-relaxed text-[#55504a]">
+                <p className="neo-copy mt-2 text-[10px] leading-relaxed font-bold text-[#55504a] uppercase">
                   Launch a game to start filling this dashboard. Synced sessions will appear here as
                   soon as your Rust poller flushes them to Supabase.
                 </p>
@@ -511,7 +511,7 @@ export function ActivitySection() {
             <div>
               <div className="mb-2 flex items-center gap-2">
                 <Trophy aria-hidden="true" className="h-4 w-4 text-[#c20b2f]" />
-                <h3 className="neo-copy text-[11px] font-black uppercase text-[#171411]">
+                <h3 className="neo-copy text-[11px] font-black text-[#171411] uppercase">
                   Top 5 Games // {describeRange(range)}
                 </h3>
               </div>

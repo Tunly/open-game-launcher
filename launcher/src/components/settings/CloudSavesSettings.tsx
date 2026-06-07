@@ -109,8 +109,8 @@ export function CloudSavesSettings() {
     <div className="border-4 border-black bg-[#f5eedf] shadow-[4px_4px_0_#171411]">
       <div className="flex items-center justify-between border-b-4 border-black p-5">
         <div>
-          <p className="neo-copy text-[10px] font-bold uppercase text-[#55504a]">Cloud Sync</p>
-          <h2 className="text-3xl font-black uppercase text-[#171411]">Cloud Saves</h2>
+          <p className="neo-copy text-[10px] font-bold text-[#55504a] uppercase">Cloud Sync</p>
+          <h2 className="text-3xl font-black text-[#171411] uppercase">Cloud Saves</h2>
         </div>
         <Cloud className="h-10 w-10 text-[#087d6d]" />
       </div>
@@ -120,20 +120,20 @@ export function CloudSavesSettings() {
           <div className="border-2 border-black bg-[#efe6d4] p-4 shadow-[2px_2px_0_#171411]">
             <div className="mb-2 flex items-center gap-2">
               <KeyRound className="h-4 w-4 text-[#171411]" />
-              <span className="text-xs font-black uppercase text-[#171411]">Master Key</span>
+              <span className="text-xs font-black text-[#171411] uppercase">Master Key</span>
               <span
                 className={`neo-copy ml-auto border-2 border-black px-2 py-0.5 text-[9px] font-black uppercase ${keyBadge.className}`}
               >
                 {keyBadge.label}
               </span>
             </div>
-            <p className="neo-copy text-[10px] font-bold uppercase text-[#55504a]">
+            <p className="neo-copy text-[10px] font-bold text-[#55504a] uppercase">
               Stored in the OS keychain (Windows Credential Manager / macOS Keychain / Linux Secret
               Service). Encrypts every save before upload.
             </p>
             <div className="mt-3 flex flex-wrap gap-2">
               <button
-                className="neo-copy flex h-9 items-center justify-center gap-1 border-2 border-black bg-[#087d6d] px-3 text-[10px] font-black uppercase text-white shadow-[2px_2px_0_#171411] disabled:cursor-not-allowed disabled:opacity-55"
+                className="neo-copy flex h-9 items-center justify-center gap-1 border-2 border-black bg-[#087d6d] px-3 text-[10px] font-black text-white uppercase shadow-[2px_2px_0_#171411] disabled:cursor-not-allowed disabled:opacity-55"
                 disabled={!userId || actionBusy !== null || keyState === "present"}
                 type="button"
                 onClick={() => void handleGenerate()}
@@ -146,7 +146,7 @@ export function CloudSavesSettings() {
                 Generate
               </button>
               <button
-                className="neo-copy flex h-9 items-center justify-center gap-1 border-2 border-black bg-[#b7102a] px-3 text-[10px] font-black uppercase text-white shadow-[2px_2px_0_#171411] disabled:cursor-not-allowed disabled:opacity-55"
+                className="neo-copy flex h-9 items-center justify-center gap-1 border-2 border-black bg-[#b7102a] px-3 text-[10px] font-black text-white uppercase shadow-[2px_2px_0_#171411] disabled:cursor-not-allowed disabled:opacity-55"
                 disabled={!userId || actionBusy !== null || keyState !== "present"}
                 type="button"
                 onClick={() => setConfirmRotate(true)}
@@ -159,7 +159,7 @@ export function CloudSavesSettings() {
                 Rotate
               </button>
               <button
-                className="neo-copy flex h-9 items-center justify-center gap-1 border-2 border-black bg-[#fbf4e7] px-3 text-[10px] font-black uppercase text-[#171411] shadow-[2px_2px_0_#171411] disabled:cursor-not-allowed disabled:opacity-55"
+                className="neo-copy flex h-9 items-center justify-center gap-1 border-2 border-black bg-[#fbf4e7] px-3 text-[10px] font-black text-[#171411] uppercase shadow-[2px_2px_0_#171411] disabled:cursor-not-allowed disabled:opacity-55"
                 disabled={actionBusy !== null}
                 type="button"
                 onClick={() => void refreshAll()}
@@ -177,7 +177,7 @@ export function CloudSavesSettings() {
           <div className="border-2 border-black bg-[#efe6d4] p-4 shadow-[2px_2px_0_#171411]">
             <div className="mb-2 flex items-center gap-2">
               <Cloud className="h-4 w-4 text-[#171411]" />
-              <span className="text-xs font-black uppercase text-[#171411]">Storage Usage</span>
+              <span className="text-xs font-black text-[#171411] uppercase">Storage Usage</span>
             </div>
             {usage ? (
               <dl className="space-y-1 text-[11px] font-black uppercase">
@@ -195,7 +195,7 @@ export function CloudSavesSettings() {
                 </div>
               </dl>
             ) : (
-              <p className="neo-copy text-[10px] font-bold uppercase text-[#55504a]">
+              <p className="neo-copy text-[10px] font-bold text-[#55504a] uppercase">
                 Sign in and run the cloud setup script to see usage.
               </p>
             )}
@@ -203,32 +203,32 @@ export function CloudSavesSettings() {
         </div>
 
         {infoMessage ? (
-          <div className="border-2 border-black bg-[#d4f1ea] p-3 text-[10px] font-black uppercase text-[#06685a]">
+          <div className="border-2 border-black bg-[#d4f1ea] p-3 text-[10px] font-black text-[#06685a] uppercase">
             {infoMessage}
           </div>
         ) : null}
         {errorMessage ? (
-          <div className="border-2 border-black bg-[#fbd6dc] p-3 text-[10px] font-black uppercase text-[#7a0918]">
+          <div className="border-2 border-black bg-[#fbd6dc] p-3 text-[10px] font-black text-[#7a0918] uppercase">
             {errorMessage}
           </div>
         ) : null}
 
         {confirmRotate ? (
-          <div className="flex flex-col gap-2 border-2 border-black bg-[#fbd6dc] p-3 text-[11px] font-black uppercase text-[#7a0918]">
+          <div className="flex flex-col gap-2 border-2 border-black bg-[#fbd6dc] p-3 text-[11px] font-black text-[#7a0918] uppercase">
             <div className="flex items-center gap-2">
               <AlertTriangle className="h-4 w-4" />
               <span>Rotating invalidates all existing cloud saves. Continue?</span>
             </div>
             <div className="flex flex-wrap gap-2">
               <button
-                className="border-2 border-black bg-[#b7102a] px-3 py-1 text-[10px] font-black uppercase text-white shadow-[1px_1px_0_#000] hover:bg-[#990a20]"
+                className="border-2 border-black bg-[#b7102a] px-3 py-1 text-[10px] font-black text-white uppercase shadow-[1px_1px_0_#000] hover:bg-[#990a20]"
                 type="button"
                 onClick={() => void handleRotate()}
               >
                 Yes, rotate key
               </button>
               <button
-                className="border-2 border-black bg-[#fbf4e7] px-3 py-1 text-[10px] font-black uppercase text-[#171411] shadow-[1px_1px_0_#000] hover:bg-[#efe3cf]"
+                className="border-2 border-black bg-[#fbf4e7] px-3 py-1 text-[10px] font-black text-[#171411] uppercase shadow-[1px_1px_0_#000] hover:bg-[#efe3cf]"
                 type="button"
                 onClick={() => setConfirmRotate(false)}
               >
@@ -238,7 +238,7 @@ export function CloudSavesSettings() {
           </div>
         ) : null}
 
-        <p className="neo-copy text-[10px] font-bold uppercase text-[#55504a]">
+        <p className="neo-copy text-[10px] font-bold text-[#55504a] uppercase">
           Tip: Run <code className="bg-[#efe6d4] px-1">pnpm setup:cloud</code> once to ensure the
           private <code className="bg-[#efe6d4] px-1">game-saves</code> bucket and RLS policies
           exist in your Supabase project.

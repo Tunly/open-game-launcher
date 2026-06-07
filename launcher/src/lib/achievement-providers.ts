@@ -186,7 +186,9 @@ const gogProvider: AchievementProvider = {
   message: "GOG achievement sync needs a connected GOG account or readable local achievement data.",
   isAvailable: () => false,
   sync: async () => {
-    throw new Error("GOG achievement sync needs a connected GOG account or local achievement cache.");
+    throw new Error(
+      "GOG achievement sync needs a connected GOG account or local achievement cache.",
+    );
   },
 };
 
@@ -197,7 +199,9 @@ const epicProvider: AchievementProvider = {
   message: "Epic achievement sync needs a connected Epic account or readable local client data.",
   isAvailable: () => false,
   sync: async () => {
-    throw new Error("Epic achievement sync needs Legendary login, local achievement cache, or public Store metadata.");
+    throw new Error(
+      "Epic achievement sync needs Legendary login, local achievement cache, or public Store metadata.",
+    );
   },
 };
 

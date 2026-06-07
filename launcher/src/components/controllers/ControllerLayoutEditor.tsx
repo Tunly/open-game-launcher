@@ -186,13 +186,13 @@ export function ControllerLayoutEditor({
     <section className="border-4 border-black bg-[#fbf4e7] p-4 shadow-[6px_6px_0_#171411]">
       <div className="flex flex-wrap items-start justify-between gap-3 border-b-4 border-black pb-3">
         <div>
-          <p className="neo-copy text-[10px] font-black uppercase tracking-[0.22em] text-[#b7102a]">
+          <p className="neo-copy text-[10px] font-black tracking-[0.22em] text-[#b7102a] uppercase">
             Steam Input Style
           </p>
-          <h2 className="neo-title mt-1 flex items-center gap-2 text-3xl uppercase text-[#171411]">
+          <h2 className="neo-title mt-1 flex items-center gap-2 text-3xl text-[#171411] uppercase">
             <Gamepad2 className="h-8 w-8" /> Controller Layouts
           </h2>
-          <p className="neo-copy mt-2 max-w-2xl text-xs font-bold uppercase leading-5 text-[#5f574d]">
+          <p className="neo-copy mt-2 max-w-2xl text-xs leading-5 font-bold text-[#5f574d] uppercase">
             Detect pads, choose per-game layouts, remap buttons, save global defaults and publish
             community presets.
           </p>
@@ -214,10 +214,10 @@ export function ControllerLayoutEditor({
               key={device.id}
               className="border-2 border-black bg-[#f4ead8] p-3 shadow-[3px_3px_0_#171411]"
             >
-              <p className="neo-copy text-[11px] font-black uppercase text-[#171411]">
+              <p className="neo-copy text-[11px] font-black text-[#171411] uppercase">
                 {device.name}
               </p>
-              <p className="neo-copy mt-1 text-[10px] font-bold uppercase text-[#5f574d]">
+              <p className="neo-copy mt-1 text-[10px] font-bold text-[#5f574d] uppercase">
                 {device.controllerType} · {device.source} ·{" "}
                 {device.isConnected ? "connected" : "offline"}
               </p>
@@ -226,7 +226,7 @@ export function ControllerLayoutEditor({
         </div>
       ) : (
         <div className="mt-4 border-2 border-black bg-[#efe3cf] p-3">
-          <p className="neo-copy text-[11px] font-black uppercase text-[#5f574d]">
+          <p className="neo-copy text-[11px] font-black text-[#5f574d] uppercase">
             No controller detected. You can still prepare layouts like Steam does.
           </p>
         </div>
@@ -333,7 +333,7 @@ export function ControllerLayoutEditor({
                 key={binding.input}
                 className="grid gap-1 border-2 border-black bg-[#f4ead8] p-2"
               >
-                <span className="neo-copy text-[10px] font-black uppercase text-[#5f574d]">
+                <span className="neo-copy text-[10px] font-black text-[#5f574d] uppercase">
                   {binding.input}
                 </span>
                 <select
@@ -368,7 +368,7 @@ export function ControllerLayoutEditor({
             </button>
             <button
               type="button"
-              className="neo-copy flex items-center gap-2 border-2 border-black bg-[#087d6d] px-4 py-2 text-[11px] font-black uppercase text-white shadow-[3px_3px_0_#171411]"
+              className="neo-copy flex items-center gap-2 border-2 border-black bg-[#087d6d] px-4 py-2 text-[11px] font-black text-white uppercase shadow-[3px_3px_0_#171411]"
               onClick={() => void handleSave()}
               disabled={isLoading}
             >
@@ -376,7 +376,7 @@ export function ControllerLayoutEditor({
             </button>
             <button
               type="button"
-              className="neo-copy flex items-center gap-2 border-2 border-black bg-[#b7102a] px-3 py-2 text-[11px] font-black uppercase text-white shadow-[3px_3px_0_#171411] disabled:opacity-45"
+              className="neo-copy flex items-center gap-2 border-2 border-black bg-[#b7102a] px-3 py-2 text-[11px] font-black text-white uppercase shadow-[3px_3px_0_#171411] disabled:opacity-45"
               onClick={() => void handleDelete()}
               disabled={!selectedLayout || selectedLayout.isCommunity || isLoading}
             >
@@ -390,7 +390,7 @@ export function ControllerLayoutEditor({
             </p>
           ) : null}
           {error ? (
-            <p className="neo-copy mt-3 border-2 border-black bg-[#b7102a] p-2 text-[11px] font-black uppercase text-white">
+            <p className="neo-copy mt-3 border-2 border-black bg-[#b7102a] p-2 text-[11px] font-black text-white uppercase">
               {error}
             </p>
           ) : null}

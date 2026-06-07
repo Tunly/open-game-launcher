@@ -20,7 +20,7 @@ export function ProfileCustomizeForm({
         >
           <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_180px_auto] sm:items-center">
             <label className="min-w-0">
-              <span className="neo-copy text-[10px] font-black uppercase tracking-[0.12em] text-[#b7102a]">
+              <span className="neo-copy text-[10px] font-black tracking-[0.12em] text-[#b7102a] uppercase">
                 {showcase.type.replace(/_/g, " ")}
               </span>
               <input
@@ -32,11 +32,11 @@ export function ProfileCustomizeForm({
               />
             </label>
             <label>
-              <span className="neo-copy text-[10px] font-black uppercase tracking-[0.12em] text-[#5b403f]">
+              <span className="neo-copy text-[10px] font-black tracking-[0.12em] text-[#5b403f] uppercase">
                 Visibility
               </span>
               <select
-                className="neo-copy mt-1 h-10 w-full border-2 border-black bg-[#f6edd8] px-3 text-[11px] font-black uppercase tracking-[0.08em] text-[#171411] shadow-[2px_2px_0_#1f1c0f] outline-none focus:bg-[#8cf5e4]"
+                className="neo-copy mt-1 h-10 w-full border-2 border-black bg-[#f6edd8] px-3 text-[11px] font-black tracking-[0.08em] text-[#171411] uppercase shadow-[2px_2px_0_#1f1c0f] outline-none focus:bg-[#8cf5e4]"
                 value={showcase.visibility}
                 onChange={(event) =>
                   onChange(showcase.id, {
@@ -51,7 +51,7 @@ export function ProfileCustomizeForm({
                 ))}
               </select>
             </label>
-            <label className="neo-copy flex items-center gap-2 pt-5 text-[11px] font-black uppercase tracking-[0.1em] text-[#171411]">
+            <label className="neo-copy flex items-center gap-2 pt-5 text-[11px] font-black tracking-[0.1em] text-[#171411] uppercase">
               <input
                 checked={showcase.isEnabled}
                 type="checkbox"
@@ -62,14 +62,14 @@ export function ProfileCustomizeForm({
           </div>
           <div className="flex gap-2">
             <button
-              className="neo-copy border-2 border-black bg-[#fff9ed] px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-[#171411] shadow-[2px_2px_0_#1f1c0f] transition hover:-translate-y-0.5 hover:bg-[#8cf5e4]"
+              className="neo-copy border-2 border-black bg-[#fff9ed] px-3 py-2 text-[10px] font-black tracking-[0.12em] text-[#171411] uppercase shadow-[2px_2px_0_#1f1c0f] transition hover:-translate-y-0.5 hover:bg-[#8cf5e4]"
               type="button"
               onClick={() => onMove(showcase.id, "up")}
             >
               Up
             </button>
             <button
-              className="neo-copy border-2 border-black bg-[#fff9ed] px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-[#171411] shadow-[2px_2px_0_#1f1c0f] transition hover:-translate-y-0.5 hover:bg-[#8cf5e4]"
+              className="neo-copy border-2 border-black bg-[#fff9ed] px-3 py-2 text-[10px] font-black tracking-[0.12em] text-[#171411] uppercase shadow-[2px_2px_0_#1f1c0f] transition hover:-translate-y-0.5 hover:bg-[#8cf5e4]"
               type="button"
               onClick={() => onMove(showcase.id, "down")}
             >

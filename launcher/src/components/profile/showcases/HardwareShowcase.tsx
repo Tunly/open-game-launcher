@@ -21,7 +21,7 @@ export function HardwareShowcase({ hardware }: { hardware: UserHardware | null }
         {entries.length > 0 ? (
           entries.map(([label, value]) => (
             <div key={label} className="border-[3px] border-black bg-[#f6edd8] p-3">
-              <p className="neo-copy text-[10px] font-black uppercase tracking-[0.12em] text-[#b7102a]">
+              <p className="neo-copy text-[10px] font-black tracking-[0.12em] text-[#b7102a] uppercase">
                 {label}
               </p>
               <p className="mt-1 text-sm font-black text-[#171411]">{value}</p>

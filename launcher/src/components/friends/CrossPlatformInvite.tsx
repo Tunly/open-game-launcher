@@ -15,21 +15,21 @@ function FeasibilityBadge({ feasibility }: { feasibility: InviteFeasibility }) {
   switch (feasibility) {
     case "possible":
       return (
-        <span className="inline-flex items-center gap-1 border border-black bg-[#087d6d] px-2 py-0.5 text-[8px] font-black uppercase text-white">
+        <span className="inline-flex items-center gap-1 border border-black bg-[#087d6d] px-2 py-0.5 text-[8px] font-black text-white uppercase">
           <CheckCircle className="h-2.5 w-2.5" />
           Cross-Play OK
         </span>
       );
     case "uncertain":
       return (
-        <span className="inline-flex items-center gap-1 border border-black bg-[#f56c2d] px-2 py-0.5 text-[8px] font-black uppercase text-white">
+        <span className="inline-flex items-center gap-1 border border-black bg-[#f56c2d] px-2 py-0.5 text-[8px] font-black text-white uppercase">
           <HelpCircle className="h-2.5 w-2.5" />
           Uncertain
         </span>
       );
     case "impossible":
       return (
-        <span className="inline-flex items-center gap-1 border border-black bg-[#b7102a] px-2 py-0.5 text-[8px] font-black uppercase text-white">
+        <span className="inline-flex items-center gap-1 border border-black bg-[#b7102a] px-2 py-0.5 text-[8px] font-black text-white uppercase">
           <AlertTriangle className="h-2.5 w-2.5" />
           Not Supported
         </span>
@@ -86,7 +86,7 @@ export function CrossPlatformInvite({
     <div className="space-y-3">
       <div className="flex items-center gap-2 border-b-2 border-black pb-2">
         <Send className="h-4 w-4 text-[#b7102a]" />
-        <p className="neo-copy text-[10px] font-black uppercase tracking-[0.12em] text-[#171411]">
+        <p className="neo-copy text-[10px] font-black tracking-[0.12em] text-[#171411] uppercase">
           Cross-Platform Invite
         </p>
       </div>
@@ -107,7 +107,7 @@ export function CrossPlatformInvite({
 
         <div className="flex gap-2">
           <button
-            className="neo-copy h-8 border-2 border-black bg-[#efe6d4] px-3 text-[9px] font-black uppercase text-[#171411] shadow-[1px_1px_0_#171411] disabled:opacity-50"
+            className="neo-copy h-8 border-2 border-black bg-[#efe6d4] px-3 text-[9px] font-black text-[#171411] uppercase shadow-[1px_1px_0_#171411] disabled:opacity-50"
             disabled={!gameTitle.trim() || checking}
             type="button"
             onClick={() => void handleCheckFeasibility()}
@@ -115,7 +115,7 @@ export function CrossPlatformInvite({
             {checking ? "Checking..." : "Check Feasibility"}
           </button>
           <button
-            className="neo-copy h-8 border-2 border-black bg-[#087d6d] px-3 text-[9px] font-black uppercase text-white shadow-[1px_1px_0_#171411] disabled:opacity-50"
+            className="neo-copy h-8 border-2 border-black bg-[#087d6d] px-3 text-[9px] font-black text-white uppercase shadow-[1px_1px_0_#171411] disabled:opacity-50"
             disabled={!selectedFriendId || !gameTitle.trim()}
             type="button"
             onClick={() => void handleSend()}
@@ -141,12 +141,12 @@ export function CrossPlatformInvite({
         )}
 
         {sent && (
-          <p className="neo-copy border-2 border-black bg-[#087d6d] p-2 text-[10px] font-bold uppercase text-white">
+          <p className="neo-copy border-2 border-black bg-[#087d6d] p-2 text-[10px] font-bold text-white uppercase">
             Invite sent!
           </p>
         )}
         {error && (
-          <p className="neo-copy border-2 border-black bg-[#b7102a] p-2 text-[10px] font-bold uppercase text-white">
+          <p className="neo-copy border-2 border-black bg-[#b7102a] p-2 text-[10px] font-bold text-white uppercase">
             {error}
           </p>
         )}

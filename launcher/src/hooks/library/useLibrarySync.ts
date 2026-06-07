@@ -87,8 +87,6 @@ function readCustomArtworkMap(): CustomArtworkMap {
   }
 }
 
-
-
 export interface UseLibrarySyncOptions {
   setStatusMessage: GameStatusSetter;
 }

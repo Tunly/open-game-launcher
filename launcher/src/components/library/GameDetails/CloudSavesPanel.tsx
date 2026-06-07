@@ -304,7 +304,7 @@ export function CloudSavesPanel({ game, onStatusMessage }: CloudSavesPanelProps)
       style={{ fontFamily: '"Arial Narrow", Impact, sans-serif' }}
     >
       <div className="flex items-center justify-between gap-2 border-b-2 border-black px-3 py-2">
-        <h2 className="text-[15px] font-black uppercase leading-none">Cloud Saves</h2>
+        <h2 className="text-[15px] leading-none font-black uppercase">Cloud Saves</h2>
         <span
           className={`neo-copy border-2 border-black px-2 py-0.5 text-[10px] font-black uppercase ${statusColor[status]}`}
         >
@@ -314,26 +314,26 @@ export function CloudSavesPanel({ game, onStatusMessage }: CloudSavesPanelProps)
 
       <div className="space-y-3 p-3 text-[12px] font-bold">
         {!isConfigured ? (
-          <p className="text-[10px] font-black uppercase text-[#b7102a]">
+          <p className="text-[10px] font-black text-[#b7102a] uppercase">
             Supabase is not configured. Set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.
           </p>
         ) : !isSignedIn ? (
-          <p className="text-[10px] font-black uppercase text-[#55504a]">
+          <p className="text-[10px] font-black text-[#55504a] uppercase">
             Sign in to enable cloud save sync.
           </p>
         ) : null}
 
         <div className="space-y-1">
-          <div className="flex items-center justify-between text-[10px] font-black uppercase text-[#55504a]">
+          <div className="flex items-center justify-between text-[10px] font-black text-[#55504a] uppercase">
             <span>Tracked Save Paths</span>
             <span>{paths.length}</span>
           </div>
           {isLoadingSet ? (
-            <div className="flex items-center gap-2 text-[10px] font-bold uppercase text-[#55504a]">
+            <div className="flex items-center gap-2 text-[10px] font-bold text-[#55504a] uppercase">
               <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading…
             </div>
           ) : paths.length === 0 ? (
-            <p className="text-[10px] font-bold uppercase text-[#55504a]">
+            <p className="text-[10px] font-bold text-[#55504a] uppercase">
               No paths tracked. Add a directory containing your save files.
             </p>
           ) : (
@@ -388,7 +388,7 @@ export function CloudSavesPanel({ game, onStatusMessage }: CloudSavesPanelProps)
 
         <div className="grid grid-cols-3 gap-1.5">
           <button
-            className="flex h-9 items-center justify-center gap-1 border-2 border-black bg-[#087d6d] text-[10px] font-black uppercase text-white shadow-[1px_1px_0_#000] disabled:cursor-not-allowed disabled:opacity-55"
+            className="flex h-9 items-center justify-center gap-1 border-2 border-black bg-[#087d6d] text-[10px] font-black text-white uppercase shadow-[1px_1px_0_#000] disabled:cursor-not-allowed disabled:opacity-55"
             disabled={!isSignedIn || actionBusy !== null}
             type="button"
             onClick={() => void handleUpload()}
@@ -401,7 +401,7 @@ export function CloudSavesPanel({ game, onStatusMessage }: CloudSavesPanelProps)
             Upload
           </button>
           <button
-            className="flex h-9 items-center justify-center gap-1 border-2 border-black bg-[#fbf4e7] text-[10px] font-black uppercase text-[#171411] shadow-[1px_1px_0_#000] disabled:cursor-not-allowed disabled:opacity-55"
+            className="flex h-9 items-center justify-center gap-1 border-2 border-black bg-[#fbf4e7] text-[10px] font-black text-[#171411] uppercase shadow-[1px_1px_0_#000] disabled:cursor-not-allowed disabled:opacity-55"
             disabled={!isSignedIn || actionBusy !== null}
             type="button"
             onClick={() => void handleDownload()}
@@ -414,7 +414,7 @@ export function CloudSavesPanel({ game, onStatusMessage }: CloudSavesPanelProps)
             Download
           </button>
           <button
-            className="flex h-9 items-center justify-center gap-1 border-2 border-black bg-[#b7102a] text-[10px] font-black uppercase text-white shadow-[1px_1px_0_#000] disabled:cursor-not-allowed disabled:opacity-55"
+            className="flex h-9 items-center justify-center gap-1 border-2 border-black bg-[#b7102a] text-[10px] font-black text-white uppercase shadow-[1px_1px_0_#000] disabled:cursor-not-allowed disabled:opacity-55"
             disabled={!isSignedIn || actionBusy !== null}
             type="button"
             onClick={() => void handleRestore()}
@@ -429,7 +429,7 @@ export function CloudSavesPanel({ game, onStatusMessage }: CloudSavesPanelProps)
         </div>
 
         <div>
-          <span className="mb-1 block text-[10px] font-black uppercase text-[#55504a]">
+          <span className="mb-1 block text-[10px] font-black text-[#55504a] uppercase">
             Sync Mode
           </span>
           <div className="grid grid-cols-2 gap-1">
@@ -454,7 +454,7 @@ export function CloudSavesPanel({ game, onStatusMessage }: CloudSavesPanelProps)
           </div>
         </div>
 
-        <div className="flex items-center justify-between border-t border-black/10 pt-2 text-[10px] font-bold uppercase text-[#55504a]">
+        <div className="flex items-center justify-between border-t border-black/10 pt-2 text-[10px] font-bold text-[#55504a] uppercase">
           <span className="flex items-center gap-1">
             <History className="h-3 w-3" /> Last Sync
           </span>
@@ -462,17 +462,17 @@ export function CloudSavesPanel({ game, onStatusMessage }: CloudSavesPanelProps)
         </div>
 
         {errorMessage ? (
-          <div className="border-2 border-black bg-[#fbd6dc] p-2 text-[10px] font-black uppercase text-[#7a0918]">
+          <div className="border-2 border-black bg-[#fbd6dc] p-2 text-[10px] font-black text-[#7a0918] uppercase">
             {errorMessage}
           </div>
         ) : null}
         {infoMessage && !errorMessage ? (
-          <div className="border-2 border-black bg-[#d4f1ea] p-2 text-[10px] font-black uppercase text-[#06685a]">
+          <div className="border-2 border-black bg-[#d4f1ea] p-2 text-[10px] font-black text-[#06685a] uppercase">
             {infoMessage}
           </div>
         ) : null}
         {paths.length > 0 ? (
-          <div className="flex items-center gap-1 text-[9px] font-bold uppercase text-[#55504a]">
+          <div className="flex items-center gap-1 text-[9px] font-bold text-[#55504a] uppercase">
             <Cloud className="h-3 w-3" />
             Tracking {paths.length} path{paths.length === 1 ? "" : "s"}
           </div>

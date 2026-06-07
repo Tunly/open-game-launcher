@@ -118,7 +118,7 @@ export function ProfilePage() {
   return (
     <ProfileShell>
       {state.isMock ? (
-        <div className="neo-copy mb-4 border-[3px] border-black bg-[#f6edd8] p-4 text-[11px] font-black uppercase tracking-[0.08em] text-[#5b403f] shadow-[4px_4px_0_#1f1c0f]">
+        <div className="neo-copy mb-4 border-[3px] border-black bg-[#f6edd8] p-4 text-[11px] font-black tracking-[0.08em] text-[#5b403f] uppercase shadow-[4px_4px_0_#1f1c0f]">
           Supabase env vars are missing, so this route is showing MVP fallback profile data.
         </div>
       ) : null}
@@ -157,7 +157,7 @@ export function ProfilePage() {
                     {state.data.socialLinks.map((link) => (
                       <a
                         key={link.id}
-                        className="neo-copy flex items-center justify-between gap-3 border-[3px] border-black bg-[#f6edd8] px-3 py-2 text-[11px] font-black uppercase tracking-[0.08em] text-[#171411] shadow-[3px_3px_0_#1f1c0f] transition hover:-translate-y-0.5 hover:bg-[#8cf5e4]"
+                        className="neo-copy flex items-center justify-between gap-3 border-[3px] border-black bg-[#f6edd8] px-3 py-2 text-[11px] font-black tracking-[0.08em] text-[#171411] uppercase shadow-[3px_3px_0_#1f1c0f] transition hover:-translate-y-0.5 hover:bg-[#8cf5e4]"
                         href={link.url}
                         rel="noreferrer"
                         target="_blank"
@@ -168,7 +168,7 @@ export function ProfilePage() {
                     ))}
                   </div>
                 ) : (
-                  <p className="neo-copy border-2 border-dashed border-black bg-[#f6edd8] p-3 text-[12px] font-bold uppercase leading-5 text-[#655f58]">
+                  <p className="neo-copy border-2 border-dashed border-black bg-[#f6edd8] p-3 text-[12px] leading-5 font-bold text-[#655f58] uppercase">
                     No public social links yet.
                   </p>
                 )}
@@ -187,7 +187,7 @@ export function ProfilePage() {
             />
           ) : (
             <ProfileSidePanel title="Guestbook">
-              <p className="neo-copy border-2 border-dashed border-black bg-[#f6edd8] p-3 text-[12px] font-bold uppercase leading-5 text-[#655f58]">
+              <p className="neo-copy border-2 border-dashed border-black bg-[#f6edd8] p-3 text-[12px] leading-5 font-bold text-[#655f58] uppercase">
                 Comments are private for this profile.
               </p>
             </ProfileSidePanel>
@@ -210,7 +210,7 @@ function EmptyPanel({ body, icon, title }: { body: string; icon: ReactNode; titl
           {icon}
         </div>
         <h1 className="neo-title mt-5 text-5xl leading-none text-[#171411]">{title}</h1>
-        <p className="mt-3 text-sm font-semibold leading-6 text-[#5b403f]">{body}</p>
+        <p className="mt-3 text-sm leading-6 font-semibold text-[#5b403f]">{body}</p>
       </div>
     </div>
   );
@@ -226,13 +226,13 @@ function PrivateProfileState({ data }: { data: ProfilePageData }) {
             {data.profile.username.slice(0, 2).toUpperCase()}
           </div>
           <div>
-            <p className="neo-copy inline-block border-2 border-black bg-[#f6edd8] px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-[#171411]">
+            <p className="neo-copy inline-block border-2 border-black bg-[#f6edd8] px-2 py-1 text-[10px] font-black tracking-[0.12em] text-[#171411] uppercase">
               @{data.profile.username}
             </p>
             <h1 className="neo-title mt-2 text-5xl leading-none text-[#171411]">Private Profile</h1>
           </div>
         </div>
-        <p className="mt-5 max-w-xl text-sm font-semibold leading-6 text-[#5b403f]">
+        <p className="mt-5 max-w-xl text-sm leading-6 font-semibold text-[#5b403f]">
           This player keeps their room private. Library, activity, achievements, and comments are
           hidden by profile visibility rules.
         </p>
@@ -256,7 +256,7 @@ function FeaturedText({ body, title }: { body: string; title: string }) {
   return (
     <div>
       <p className="neo-title text-2xl leading-none text-[#171411]">{title}</p>
-      <p className="mt-2 text-sm font-semibold leading-6 text-[#5b403f]">{body}</p>
+      <p className="mt-2 text-sm leading-6 font-semibold text-[#5b403f]">{body}</p>
     </div>
   );
 }

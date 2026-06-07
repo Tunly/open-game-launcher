@@ -51,7 +51,7 @@ export function CrossPlayBadge({ platforms, className = "" }: Props) {
       className={`inline-flex flex-wrap items-center gap-1 border-2 border-black bg-[#fff9ed] px-2 py-1 shadow-[2px_2px_0_#1f1c0f] ${className}`}
       title={`Cross-Play with ${platforms.map((p) => PLATFORM_LABEL[p]).join(", ")}`}
     >
-      <span className="text-[10px] font-bold uppercase tracking-wider">Cross-Play</span>
+      <span className="text-[10px] font-bold tracking-wider uppercase">Cross-Play</span>
       {shown.map((p) => {
         const Icon = PLATFORM_ICON[p];
         return (

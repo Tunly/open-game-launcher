@@ -176,7 +176,7 @@ export function ProfileCustomizePage() {
         <section className="border-4 border-black bg-[#fff9ed] p-5 shadow-[6px_6px_0_#171411]">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <p className="neo-copy inline-block border-2 border-black bg-[#b7102a] px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-white shadow-[2px_2px_0_#171411]">
+              <p className="neo-copy inline-block border-2 border-black bg-[#b7102a] px-2 py-1 text-[10px] font-black tracking-[0.12em] text-white uppercase shadow-[2px_2px_0_#171411]">
                 Panels
               </p>
               <h2 className="neo-title mt-2 text-4xl leading-none text-[#171411]">Showcases</h2>
@@ -187,7 +187,7 @@ export function ProfileCustomizePage() {
             <div className="flex flex-wrap gap-2">
               {!hasHardwareShowcase ? (
                 <button
-                  className="neo-copy inline-flex h-10 items-center gap-2 border-2 border-black bg-[#007166] px-3 text-[10px] font-black uppercase tracking-[0.12em] text-white shadow-[3px_3px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#b7102a]"
+                  className="neo-copy inline-flex h-10 items-center gap-2 border-2 border-black bg-[#007166] px-3 text-[10px] font-black tracking-[0.12em] text-white uppercase shadow-[3px_3px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#b7102a]"
                   disabled={isSaving}
                   type="button"
                   onClick={() => void handleCreateHardwareShowcase()}
@@ -197,7 +197,7 @@ export function ProfileCustomizePage() {
                 </button>
               ) : null}
               <button
-                className="neo-copy inline-flex h-10 items-center gap-2 border-2 border-black bg-[#fff9ed] px-3 text-[10px] font-black uppercase tracking-[0.12em] text-[#171411] shadow-[3px_3px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#8cf5e4]"
+                className="neo-copy inline-flex h-10 items-center gap-2 border-2 border-black bg-[#fff9ed] px-3 text-[10px] font-black tracking-[0.12em] text-[#171411] uppercase shadow-[3px_3px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#8cf5e4]"
                 disabled={isSaving}
                 type="button"
                 onClick={() => void handleCreateCustomText()}
@@ -225,12 +225,12 @@ export function ProfileCustomizePage() {
 
         <aside className="space-y-5">
           <section className="border-4 border-black bg-[#fff9ed] p-5 shadow-[6px_6px_0_#171411]">
-            <p className="neo-copy inline-block border-2 border-black bg-[#171411] px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-[#fff9ed]">
+            <p className="neo-copy inline-block border-2 border-black bg-[#171411] px-2 py-1 text-[10px] font-black tracking-[0.12em] text-[#fff9ed] uppercase">
               Cosmetic
             </p>
             <h2 className="neo-title mt-2 text-4xl leading-none text-[#171411]">Theme</h2>
             <select
-              className="neo-copy mt-4 h-11 w-full border-2 border-black bg-[#f6edd8] px-3 text-xs font-black uppercase tracking-[0.08em] text-[#171411] shadow-[2px_2px_0_#171411] outline-none focus:bg-[#8cf5e4]"
+              className="neo-copy mt-4 h-11 w-full border-2 border-black bg-[#f6edd8] px-3 text-xs font-black tracking-[0.08em] text-[#171411] uppercase shadow-[2px_2px_0_#171411] outline-none focus:bg-[#8cf5e4]"
               value={selectedThemeId}
               onChange={(event) => setSelectedThemeId(event.target.value)}
             >
@@ -255,7 +255,7 @@ export function ProfileCustomizePage() {
           {errorMessage ? <Status tone="error" message={errorMessage} /> : null}
           {message ? <Status tone="success" message={message} /> : null}
           <button
-            className="neo-copy flex h-12 w-full items-center justify-center gap-2 border-[3px] border-black bg-[#b7102a] px-4 text-[12px] font-black uppercase tracking-[0.16em] text-white shadow-[5px_5px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#007166] disabled:opacity-60"
+            className="neo-copy flex h-12 w-full items-center justify-center gap-2 border-[3px] border-black bg-[#b7102a] px-4 text-[12px] font-black tracking-[0.16em] text-white uppercase shadow-[5px_5px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#007166] disabled:opacity-60"
             disabled={isSaving}
             type="button"
             onClick={() => void handleSave()}
@@ -282,7 +282,7 @@ function Frame({
     <div className="mx-auto w-full max-w-[1220px] px-0 py-2">
       <div className="mb-7 border-b-4 border-black pb-5">
         {eyebrow ? (
-          <p className="neo-copy inline-flex border-2 border-black bg-[#b7102a] px-3 py-1 text-[11px] font-black uppercase tracking-[0.14em] text-white shadow-[3px_3px_0_#171411]">
+          <p className="neo-copy inline-flex border-2 border-black bg-[#b7102a] px-3 py-1 text-[11px] font-black tracking-[0.14em] text-white uppercase shadow-[3px_3px_0_#171411]">
             {eyebrow}
           </p>
         ) : null}
@@ -307,7 +307,7 @@ function Notice({ body, title }: { body: string; title: string }) {
   return (
     <div className="border-[3px] border-black bg-[#f6edd8] p-4 shadow-[3px_3px_0_#171411]">
       <h3 className="neo-title text-3xl leading-none text-[#171411]">{title}</h3>
-      <p className="mt-2 text-sm font-semibold leading-6 text-[#5b403f]">{body}</p>
+      <p className="mt-2 text-sm leading-6 font-semibold text-[#5b403f]">{body}</p>
     </div>
   );
 }
@@ -317,8 +317,8 @@ function Status({ message, tone }: { message: string; tone: "error" | "success" 
     <div
       className={
         tone === "error"
-          ? "neo-copy border-2 border-black bg-[#b7102a] p-4 text-[11px] font-black uppercase tracking-[0.1em] text-white shadow-[3px_3px_0_#171411]"
-          : "neo-copy border-2 border-black bg-[#007166] p-4 text-[11px] font-black uppercase tracking-[0.1em] text-white shadow-[3px_3px_0_#171411]"
+          ? "neo-copy border-2 border-black bg-[#b7102a] p-4 text-[11px] font-black tracking-[0.1em] text-white uppercase shadow-[3px_3px_0_#171411]"
+          : "neo-copy border-2 border-black bg-[#007166] p-4 text-[11px] font-black tracking-[0.1em] text-white uppercase shadow-[3px_3px_0_#171411]"
       }
     >
       {message}

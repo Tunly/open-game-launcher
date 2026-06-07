@@ -318,7 +318,7 @@ export async function listModCatalogEntries(filters?: {
   provider?: ModProvider | "all";
   gameId?: string;
   search?: string;
-  }): Promise<ModCatalogEntry[]> {
+}): Promise<ModCatalogEntry[]> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- mod_catalog_entries not yet in Database types
   const client = getSupabaseClient() as any;
   if (!client) return [];

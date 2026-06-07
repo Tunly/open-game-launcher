@@ -12,7 +12,7 @@ export function FavoriteGamesShowcase({ games }: { games: LibraryPreviewItem[] }
               className="border-[3px] border-black bg-[#f6edd8] p-3 shadow-[3px_3px_0_#1f1c0f]"
             >
               <p className="neo-title text-2xl leading-none text-[#171411]">{game.title}</p>
-              <p className="neo-copy mt-2 text-[11px] font-black uppercase text-[#5b403f]">
+              <p className="neo-copy mt-2 text-[11px] font-black text-[#5b403f] uppercase">
                 {Math.floor(game.playtimeMinutes / 60)}h played
               </p>
             </div>

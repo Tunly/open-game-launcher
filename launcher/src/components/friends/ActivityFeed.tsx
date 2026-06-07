@@ -88,7 +88,7 @@ export function ActivityFeed({ friendIds }: ActivityFeedProps) {
 
   if (items.length === 0) {
     return (
-      <p className="neo-copy border-2 border-dashed border-black bg-[#f6edd8] p-4 text-center text-[11px] font-bold uppercase text-[#655f58]">
+      <p className="neo-copy border-2 border-dashed border-black bg-[#f6edd8] p-4 text-center text-[11px] font-bold text-[#655f58] uppercase">
         No recent activity from friends.
       </p>
     );
@@ -105,10 +105,10 @@ export function ActivityFeed({ friendIds }: ActivityFeedProps) {
             <ActivityIcon type={item.type} />
           </div>
           <div className="min-w-0 flex-1">
-            <p className="neo-copy text-[11px] font-bold leading-5 text-[#171411]">
+            <p className="neo-copy text-[11px] leading-5 font-bold text-[#171411]">
               {activityDescription(item)}
             </p>
-            <p className="neo-copy mt-0.5 text-[9px] font-bold uppercase text-[#55504a]">
+            <p className="neo-copy mt-0.5 text-[9px] font-bold text-[#55504a] uppercase">
               {timeAgo(item.createdAt)}
             </p>
             {item.screenshotUrl && (

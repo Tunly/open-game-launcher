@@ -5,7 +5,7 @@ export function WishlistShowcase({ items }: { items: WishlistPreviewItem[] }) {
   return (
     <ShowcasePanel kicker="Wishlist" title="Wanted Games">
       {items.length > 0 ? (
-        <p className="neo-copy text-[12px] font-black uppercase leading-5 text-[#171411]">
+        <p className="neo-copy text-[12px] leading-5 font-black text-[#171411] uppercase">
           {items.length} public wishlist games.
         </p>
       ) : (

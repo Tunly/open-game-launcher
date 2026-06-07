@@ -83,7 +83,7 @@ export function DeduplicationPanel({ autoLoad = false, onChange }: Deduplication
   if (!open) {
     return (
       <button
-        className="neo-copy flex h-10 items-center gap-2 border-2 border-black bg-[#efe6d4] px-4 text-[10px] font-black uppercase text-[#171411] shadow-[2px_2px_0_#171411] transition hover:-translate-y-0.5"
+        className="neo-copy flex h-10 items-center gap-2 border-2 border-black bg-[#efe6d4] px-4 text-[10px] font-black text-[#171411] uppercase shadow-[2px_2px_0_#171411] transition hover:-translate-y-0.5"
         type="button"
         onClick={() => setOpen(true)}
       >
@@ -98,12 +98,12 @@ export function DeduplicationPanel({ autoLoad = false, onChange }: Deduplication
       <div className="flex items-center justify-between border-b-2 border-black pb-2">
         <div className="flex items-center gap-2">
           <Sparkles className="h-3.5 w-3.5 text-[#b7102a]" />
-          <p className="neo-copy text-[10px] font-black uppercase tracking-[0.12em] text-[#171411]">
+          <p className="neo-copy text-[10px] font-black tracking-[0.12em] text-[#171411] uppercase">
             Deduplication
           </p>
         </div>
         <button
-          className="neo-copy h-7 border-2 border-black bg-[#f56c2d] px-3 text-[9px] font-black uppercase text-white shadow-[1px_1px_0_#171411] disabled:opacity-50"
+          className="neo-copy h-7 border-2 border-black bg-[#f56c2d] px-3 text-[9px] font-black text-white uppercase shadow-[1px_1px_0_#171411] disabled:opacity-50"
           disabled={running}
           type="button"
           onClick={() => void runHeuristics()}
@@ -113,15 +113,15 @@ export function DeduplicationPanel({ autoLoad = false, onChange }: Deduplication
       </div>
 
       {loading ? (
-        <p className="neo-copy mt-3 text-[10px] font-bold uppercase text-[#55504a]">Loading...</p>
+        <p className="neo-copy mt-3 text-[10px] font-bold text-[#55504a] uppercase">Loading...</p>
       ) : (
-        <p className="neo-copy mt-3 text-[10px] font-bold uppercase text-[#55504a]">
+        <p className="neo-copy mt-3 text-[10px] font-bold text-[#55504a] uppercase">
           Unmatched: {unmatchedLinks.length} • Pending suggestions: {suggestions.length}
         </p>
       )}
 
       {error && (
-        <p className="neo-copy mt-2 border-2 border-black bg-[#efe6d4] p-2 text-[9px] font-bold uppercase text-[#5b403f]">
+        <p className="neo-copy mt-2 border-2 border-black bg-[#efe6d4] p-2 text-[9px] font-bold text-[#5b403f] uppercase">
           {error}
         </p>
       )}
@@ -137,14 +137,14 @@ export function DeduplicationPanel({ autoLoad = false, onChange }: Deduplication
           </p>
           <div className="mt-2 flex gap-2">
             <button
-              className="neo-copy h-7 border-2 border-black bg-[#087d6d] px-3 text-[9px] font-black uppercase text-white"
+              className="neo-copy h-7 border-2 border-black bg-[#087d6d] px-3 text-[9px] font-black text-white uppercase"
               type="button"
               onClick={() => void handleAccept(sug.id)}
             >
               Accept
             </button>
             <button
-              className="neo-copy h-7 border-2 border-black bg-[#b7102a] px-3 text-[9px] font-black uppercase text-white"
+              className="neo-copy h-7 border-2 border-black bg-[#b7102a] px-3 text-[9px] font-black text-white uppercase"
               type="button"
               onClick={() => void handleReject(sug.id)}
             >
@@ -156,7 +156,7 @@ export function DeduplicationPanel({ autoLoad = false, onChange }: Deduplication
 
       {unmatchedLinks.length > 0 && (
         <div className="mt-3 space-y-2">
-          <p className="neo-copy text-[10px] font-black uppercase text-[#171411]">
+          <p className="neo-copy text-[10px] font-black text-[#171411] uppercase">
             Unmatched Platform Friends
           </p>
           {unmatchedLinks.slice(0, 15).map((link) => (
@@ -168,12 +168,12 @@ export function DeduplicationPanel({ autoLoad = false, onChange }: Deduplication
                 <span className="neo-copy text-[10px] font-bold text-[#171411]">
                   {link.platformFriendName ?? link.platformFriendId}
                 </span>
-                <span className="neo-copy ml-2 text-[9px] uppercase text-[#55504a]">
+                <span className="neo-copy ml-2 text-[9px] text-[#55504a] uppercase">
                   ({link.platform})
                 </span>
               </div>
               <button
-                className="neo-copy h-6 border border-black bg-[#efe6d4] px-2 text-[8px] font-bold uppercase text-[#55504a]"
+                className="neo-copy h-6 border border-black bg-[#efe6d4] px-2 text-[8px] font-bold text-[#55504a] uppercase"
                 type="button"
                 onClick={() => void handleDismiss(link.id)}
               >

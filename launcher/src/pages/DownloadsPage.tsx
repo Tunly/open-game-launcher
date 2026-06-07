@@ -245,15 +245,15 @@ export function DownloadsPage() {
       <div className="flex flex-col items-center gap-4 border-4 border-black bg-[#efe6d4] p-4 shadow-[4px_4px_0_#171411] md:flex-row md:justify-end">
         <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
           <div className="flex flex-col border-l-2 border-black pl-3 md:pl-4">
-            <span className="neo-copy text-[9px] font-bold uppercase text-[#5b403f]">NETWORK</span>
+            <span className="neo-copy text-[9px] font-bold text-[#5b403f] uppercase">NETWORK</span>
             <span className="text-xl font-extrabold text-[#171411]">{activeSpeedStr}</span>
           </div>
           <div className="flex flex-col border-l-2 border-black pl-3 md:pl-4">
-            <span className="neo-copy text-[9px] font-bold uppercase text-[#5b403f]">PEAK</span>
+            <span className="neo-copy text-[9px] font-bold text-[#5b403f] uppercase">PEAK</span>
             <span className="text-xl font-extrabold text-[#171411]">{peakSpeedStr}</span>
           </div>
           <div className="flex flex-col border-l-2 border-black pl-3 md:pl-4">
-            <span className="neo-copy text-[9px] font-bold uppercase text-[#5b403f]">
+            <span className="neo-copy text-[9px] font-bold text-[#5b403f] uppercase">
               DISK USAGE
             </span>
             <span className="text-xl font-extrabold text-[#171411]">{diskUsageStr}</span>
@@ -274,7 +274,7 @@ export function DownloadsPage() {
         {/* Total Load Panel */}
         <div className="max-w-md flex-1">
           <div className="flex items-center justify-between gap-2">
-            <span className="neo-copy text-xs font-bold uppercase text-[#55504a]">
+            <span className="neo-copy text-xs font-bold text-[#55504a] uppercase">
               Total Progress // {totalProgress}%
             </span>
           </div>
@@ -311,7 +311,7 @@ export function DownloadsPage() {
       </div>
 
       {commandError ? (
-        <div className="neo-copy border-4 border-black bg-[#c20b2f] p-4 text-xs font-bold uppercase text-white shadow-[4px_4px_0_#171411]">
+        <div className="neo-copy border-4 border-black bg-[#c20b2f] p-4 text-xs font-bold text-white uppercase shadow-[4px_4px_0_#171411]">
           {commandError}
         </div>
       ) : null}
@@ -322,7 +322,7 @@ export function DownloadsPage() {
         {(filter === "all" || filter === "active") && (
           <div>
             <div className="mb-3 flex items-center justify-between border-b-2 border-black pb-1.5">
-              <h3 className="neo-title text-base font-black uppercase tracking-wider text-[#171411]">
+              <h3 className="neo-title text-base font-black tracking-wider text-[#171411] uppercase">
                 Up Next ({activeItems.length})
               </h3>
             </div>
@@ -343,7 +343,7 @@ export function DownloadsPage() {
                 ))}
               </div>
             ) : (
-              <div className="neo-copy border-2 border-dashed border-black bg-[#efe6d4]/40 p-6 text-center text-xs font-bold uppercase text-[#55504a]">
+              <div className="neo-copy border-2 border-dashed border-black bg-[#efe6d4]/40 p-6 text-center text-xs font-bold text-[#55504a] uppercase">
                 There are no downloads in the queue
               </div>
             )}
@@ -354,7 +354,7 @@ export function DownloadsPage() {
         {(filter === "all" || filter === "paused") && (
           <div>
             <div className="mb-3 flex items-center justify-between border-b-2 border-black pb-1.5">
-              <h3 className="neo-title text-base font-black uppercase tracking-wider text-[#171411]">
+              <h3 className="neo-title text-base font-black tracking-wider text-[#171411] uppercase">
                 Unscheduled ({unscheduledItems.length})
               </h3>
             </div>
@@ -375,7 +375,7 @@ export function DownloadsPage() {
                 ))}
               </div>
             ) : filter !== "all" ? (
-              <div className="neo-copy border-2 border-dashed border-black bg-[#efe6d4]/40 p-6 text-center text-xs font-bold uppercase text-[#55504a]">
+              <div className="neo-copy border-2 border-dashed border-black bg-[#efe6d4]/40 p-6 text-center text-xs font-bold text-[#55504a] uppercase">
                 No unscheduled downloads
               </div>
             ) : null}
@@ -386,13 +386,13 @@ export function DownloadsPage() {
         {(filter === "all" || filter === "done") && (
           <div>
             <div className="mb-3 flex items-center justify-between border-b-2 border-black pb-1.5">
-              <h3 className="neo-title text-base font-black uppercase tracking-wider text-[#171411]">
+              <h3 className="neo-title text-base font-black tracking-wider text-[#171411] uppercase">
                 Completed ({completedItems.length})
               </h3>
               {completedItems.length > 0 && (
                 <button
                   onClick={handleClearAllCompleted}
-                  className="neo-copy flex items-center gap-1.5 border-2 border-black bg-[#efe6d4] px-2.5 py-1 text-[10px] font-bold uppercase text-[#171411] shadow-[2px_2px_0_#171411] hover:bg-[#e2d8c3] active:translate-x-[1px] active:translate-y-[1px] active:shadow-[1px_1px_0_#171411]"
+                  className="neo-copy flex items-center gap-1.5 border-2 border-black bg-[#efe6d4] px-2.5 py-1 text-[10px] font-bold text-[#171411] uppercase shadow-[2px_2px_0_#171411] hover:bg-[#e2d8c3] active:translate-x-[1px] active:translate-y-[1px] active:shadow-[1px_1px_0_#171411]"
                   type="button"
                 >
                   <Trash2 className="h-3.5 w-3.5" />
@@ -418,7 +418,7 @@ export function DownloadsPage() {
                 ))}
               </div>
             ) : filter !== "all" ? (
-              <div className="neo-copy border-2 border-dashed border-black bg-[#efe6d4]/40 p-6 text-center text-xs font-bold uppercase text-[#55504a]">
+              <div className="neo-copy border-2 border-dashed border-black bg-[#efe6d4]/40 p-6 text-center text-xs font-bold text-[#55504a] uppercase">
                 No completed downloads in history
               </div>
             ) : null}

@@ -84,7 +84,7 @@ export function FriendImport({ onImported }: FriendImportProps) {
         {PLATFORMS.map(({ key, label, color }) => (
           <button
             key={key}
-            className={`neo-copy flex h-12 items-center justify-center gap-2 border-2 border-black ${color} text-[10px] font-black uppercase text-white shadow-[2px_2px_0_#171411] transition hover:-translate-y-0.5 disabled:opacity-50`}
+            className={`neo-copy flex h-12 items-center justify-center gap-2 border-2 border-black ${color} text-[10px] font-black text-white uppercase shadow-[2px_2px_0_#171411] transition hover:-translate-y-0.5 disabled:opacity-50`}
             disabled={loading !== null}
             type="button"
             onClick={() => void handleImport(key)}
@@ -100,12 +100,12 @@ export function FriendImport({ onImported }: FriendImportProps) {
       </div>
 
       {message && (
-        <div className="neo-copy border-2 border-black bg-[#087d6d] p-3 text-[11px] font-bold uppercase text-white shadow-[2px_2px_0_#171411]">
+        <div className="neo-copy border-2 border-black bg-[#087d6d] p-3 text-[11px] font-bold text-white uppercase shadow-[2px_2px_0_#171411]">
           {message}
         </div>
       )}
       {error && (
-        <div className="neo-copy border-2 border-black bg-[#b7102a] p-3 text-[11px] font-bold uppercase text-white shadow-[2px_2px_0_#171411]">
+        <div className="neo-copy border-2 border-black bg-[#b7102a] p-3 text-[11px] font-bold text-white uppercase shadow-[2px_2px_0_#171411]">
           {error}
         </div>
       )}

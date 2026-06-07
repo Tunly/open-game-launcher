@@ -54,10 +54,7 @@ function readAsDataUrl(file: File): Promise<string> {
   });
 }
 
-export async function compressAndReadImage(
-  file: File,
-  kind: CustomArtworkKind,
-): Promise<string> {
+export async function compressAndReadImage(file: File, kind: CustomArtworkKind): Promise<string> {
   const dataUrl = await readAsDataUrl(file);
   const { width: maxW, height: maxH } = MAX_DIMENSIONS[kind];
 

@@ -267,7 +267,7 @@ export function OverlayPage() {
 
       {isChromeVisible && (
         <>
-          <div className="neo-copy absolute left-6 top-5 z-20 text-[11px] font-black uppercase leading-5 text-[#fff9ed] drop-shadow-[2px_2px_0_#171411]">
+          <div className="neo-copy absolute top-5 left-6 z-20 text-[11px] leading-5 font-black text-[#fff9ed] uppercase drop-shadow-[2px_2px_0_#171411]">
             <div className="text-lg leading-none">
               {now.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}
             </div>
@@ -277,19 +277,19 @@ export function OverlayPage() {
             <div>{formatSessionTime(sessionSeconds)} session</div>
           </div>
 
-          <div className="absolute left-1/2 top-5 z-20 -translate-x-1/2 text-center">
+          <div className="absolute top-5 left-1/2 z-20 -translate-x-1/2 text-center">
             <div className="mx-auto mb-1 grid h-10 w-10 place-items-center border-[3px] border-[#171411] bg-[#b7102a] text-[#fff9ed] shadow-[4px_4px_0_#1f1c0f]">
               <Gamepad2 size={22} />
             </div>
-            <div className="neo-title text-lg font-bold uppercase text-[#fff9ed] drop-shadow-[3px_3px_0_#171411]">
+            <div className="neo-title text-lg font-bold text-[#fff9ed] uppercase drop-shadow-[3px_3px_0_#171411]">
               OG-Launcher
             </div>
           </div>
 
-          <div className="absolute right-6 top-5 z-20 flex items-center gap-2">
+          <div className="absolute top-5 right-6 z-20 flex items-center gap-2">
             <button
               onClick={closeOverlay}
-              className="neo-copy border-2 border-[#fff9ed] bg-[#171411]/70 px-3 py-1.5 text-[11px] font-black uppercase text-[#fff9ed] shadow-[3px_3px_0_#000] hover:-translate-y-0.5 hover:bg-[#087d6d]"
+              className="neo-copy border-2 border-[#fff9ed] bg-[#171411]/70 px-3 py-1.5 text-[11px] font-black text-[#fff9ed] uppercase shadow-[3px_3px_0_#000] hover:-translate-y-0.5 hover:bg-[#087d6d]"
             >
               Back to Game
             </button>
@@ -306,7 +306,7 @@ export function OverlayPage() {
 
       {isChromeVisible && (blocked || acList.length > 0) && (
         <div
-          className={`neo-copy absolute left-1/2 top-24 z-20 flex max-w-[min(760px,calc(100vw-32px))] -translate-x-1/2 items-center gap-2 border-[3px] border-[#171411] px-3 py-2 text-[11px] font-black uppercase text-white shadow-[4px_4px_0_#000] ${blocked ? "bg-[#b7102a]" : "bg-[#087d6d]"}`}
+          className={`neo-copy absolute top-24 left-1/2 z-20 flex max-w-[min(760px,calc(100vw-32px))] -translate-x-1/2 items-center gap-2 border-[3px] border-[#171411] px-3 py-2 text-[11px] font-black text-white uppercase shadow-[4px_4px_0_#000] ${blocked ? "bg-[#b7102a]" : "bg-[#087d6d]"}`}
         >
           <ShieldAlert size={15} />
           {blocked
@@ -503,7 +503,7 @@ function OverlayPanelShell({
       }}
     >
       <header
-        className="flex cursor-move select-none items-center justify-between gap-3 border-b-[3px] border-[#171411] bg-[#fff9ed] px-3 py-2"
+        className="flex cursor-move items-center justify-between gap-3 border-b-[3px] border-[#171411] bg-[#fff9ed] px-3 py-2 select-none"
         onPointerDown={startDrag}
         onPointerMove={moveDrag}
         onPointerUp={stopDrag}
@@ -511,7 +511,7 @@ function OverlayPanelShell({
       >
         <div className="flex min-w-0 items-center gap-2">
           <Grip size={16} className="shrink-0 text-[#655f58]" />
-          <h2 className="neo-title truncate text-lg font-bold uppercase text-[#b7102a]">{title}</h2>
+          <h2 className="neo-title truncate text-lg font-bold text-[#b7102a] uppercase">{title}</h2>
         </div>
         <div className="flex shrink-0 items-center gap-1">
           <button
@@ -652,7 +652,7 @@ function OverlaySettingsPanel({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="w-full border-[3px] border-[#171411] bg-[#f6edd8] p-3 shadow-[4px_4px_0_#1f1c0f]">
-      <div className="neo-title mb-2 border-b-[3px] border-[#171411] pb-1 text-[11px] font-black uppercase text-[#b7102a]">
+      <div className="neo-title mb-2 border-b-[3px] border-[#171411] pb-1 text-[11px] font-black text-[#b7102a] uppercase">
         Overlay Settings
       </div>
       <div className="space-y-2">
@@ -694,7 +694,7 @@ function OverlaySettingsPanel({ onClose }: { onClose: () => void }) {
         <div className="flex justify-end pt-1">
           <button
             onClick={onClose}
-            className="neo-copy border-2 border-[#171411] bg-[#087d6d] px-2 py-1 text-[10px] font-black uppercase text-white shadow-[2px_2px_0_#1f1c0f] hover:translate-y-[-1px]"
+            className="neo-copy border-2 border-[#171411] bg-[#087d6d] px-2 py-1 text-[10px] font-black text-white uppercase shadow-[2px_2px_0_#1f1c0f] hover:translate-y-[-1px]"
           >
             Done
           </button>
@@ -728,9 +728,9 @@ function OverlayEmptyState({
           <div className="flex h-8 w-8 shrink-0 items-center justify-center border-2 border-[#171411] bg-[#b7102a] text-white shadow-[2px_2px_0_#1f1c0f]">
             <Icon size={16} />
           </div>
-          <div className="neo-title text-sm font-bold uppercase text-[#171411]">{title}</div>
+          <div className="neo-title text-sm font-bold text-[#171411] uppercase">{title}</div>
         </div>
-        <p className="neo-copy text-[11px] font-bold leading-5 text-[#655f58]">{copy}</p>
+        <p className="neo-copy text-[11px] leading-5 font-bold text-[#655f58]">{copy}</p>
       </div>
     </div>
   );
@@ -878,7 +878,7 @@ function OverlayFriendsTab() {
                 <button
                   onClick={() => handleJoin(link.matchedUserId!, p.currentGameTitle)}
                   disabled={!!joining}
-                  className="neo-copy flex items-center gap-1 border-2 border-[#171411] bg-[#087d6d] px-1.5 py-0.5 text-[10px] font-black uppercase text-white shadow-[2px_2px_0_#1f1c0f] hover:translate-y-[-1px] disabled:opacity-50"
+                  className="neo-copy flex items-center gap-1 border-2 border-[#171411] bg-[#087d6d] px-1.5 py-0.5 text-[10px] font-black text-white uppercase shadow-[2px_2px_0_#1f1c0f] hover:translate-y-[-1px] disabled:opacity-50"
                   title="Join"
                 >
                   <Swords size={10} />
@@ -888,7 +888,7 @@ function OverlayFriendsTab() {
               <button
                 onClick={() => handleInvite(link.matchedUserId!)}
                 disabled={!!inviting}
-                className="neo-copy flex items-center gap-1 border-2 border-[#171411] bg-[#b7102a] px-1.5 py-0.5 text-[10px] font-black uppercase text-white shadow-[2px_2px_0_#1f1c0f] hover:translate-y-[-1px] disabled:opacity-50"
+                className="neo-copy flex items-center gap-1 border-2 border-[#171411] bg-[#b7102a] px-1.5 py-0.5 text-[10px] font-black text-white uppercase shadow-[2px_2px_0_#1f1c0f] hover:translate-y-[-1px] disabled:opacity-50"
                 title="Invite"
               >
                 <Gamepad2 size={10} />
@@ -1015,7 +1015,7 @@ function OverlayChatTab() {
         )}
         {messages.map((msg) => (
           <div key={msg.id} className="flex flex-col">
-            <span className="neo-copy text-[9px] font-black uppercase text-[#b7102a]">
+            <span className="neo-copy text-[9px] font-black text-[#b7102a] uppercase">
               {msg.senderId === user?.id ? "You" : msg.senderId.slice(0, 8)}
             </span>
             <span className="text-[#171411]">{msg.content}</span>
@@ -1100,7 +1100,7 @@ function OverlayAchievementsTab() {
             >
               <div className="min-w-0">
                 <span className="block text-[12px] font-bold text-[#171411]">{game.title}</span>
-                <span className="neo-copy text-[10px] font-black uppercase text-[#b7102a]">
+                <span className="neo-copy text-[10px] font-black text-[#b7102a] uppercase">
                   {unlocked} / {total} achievements
                 </span>
               </div>
@@ -1167,7 +1167,7 @@ function AchievementRow({ achievement }: { achievement: UnifiedAchievement }) {
           <p className="neo-copy text-[10px] text-[#655f58]">{achievement.description}</p>
         )}
         {isUnlocked && achievement.unlockedAt && (
-          <p className="neo-copy text-[9px] font-black uppercase text-[#087d6d]">
+          <p className="neo-copy text-[9px] font-black text-[#087d6d] uppercase">
             Unlocked: {new Date(achievement.unlockedAt).toLocaleDateString("en-US")}
           </p>
         )}
@@ -1267,14 +1267,14 @@ function OverlayPerfTab() {
         )}
       </div>
       <div className="border-2 border-[#171411] bg-[#fff9ed] p-2 shadow-[2px_2px_0_#1f1c0f]">
-        <div className="neo-copy mb-1 text-[10px] font-black uppercase text-[#655f58]">
+        <div className="neo-copy mb-1 text-[10px] font-black text-[#655f58] uppercase">
           CPU history
         </div>
         <Sparkline data={history.map((h) => h.cpuPercent)} color="#087d6d" />
       </div>
       {latest.gpuPercent != null && (
         <div className="border-2 border-[#171411] bg-[#fff9ed] p-2 shadow-[2px_2px_0_#1f1c0f]">
-          <div className="neo-copy mb-1 text-[10px] font-black uppercase text-[#655f58]">
+          <div className="neo-copy mb-1 text-[10px] font-black text-[#655f58] uppercase">
             GPU history
           </div>
           <Sparkline data={history.map((h) => h.gpuPercent ?? 0)} color="#087d6d" />
@@ -1300,7 +1300,7 @@ function MetricCard({
     <div className="flex items-center gap-2 border-2 border-[#171411] bg-[#fff9ed] p-2 shadow-[2px_2px_0_#1f1c0f]">
       <Icon size={16} className="shrink-0" style={{ color }} />
       <div>
-        <div className="neo-copy text-[9px] font-black uppercase text-[#655f58]">{label}</div>
+        <div className="neo-copy text-[9px] font-black text-[#655f58] uppercase">{label}</div>
         <div className="text-[13px] font-bold text-[#171411]" style={{ color }}>
           {value}
         </div>
@@ -1400,7 +1400,7 @@ function OverlayScreenshotsTab() {
 
   return (
     <div className="space-y-3">
-      <div className="neo-copy text-[10px] font-black uppercase text-[#655f58]">
+      <div className="neo-copy text-[10px] font-black text-[#655f58] uppercase">
         Local ({localShots.length})
       </div>
       <div className="grid grid-cols-3 gap-2">
@@ -1452,7 +1452,7 @@ function OverlayScreenshotsTab() {
 
       {cloudShots.length > 0 && (
         <>
-          <div className="neo-copy text-[10px] font-black uppercase text-[#655f58]">
+          <div className="neo-copy text-[10px] font-black text-[#655f58] uppercase">
             Cloud ({cloudShots.length})
           </div>
           <div className="grid grid-cols-3 gap-2">

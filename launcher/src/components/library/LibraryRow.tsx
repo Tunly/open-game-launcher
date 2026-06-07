@@ -83,17 +83,17 @@ function LibraryRowBase({ group, selected, onSelect, isFavorite, onArtworkDrop }
         )}
       </span>
       <span className="flex min-w-0 flex-1 flex-col justify-center">
-        <span className="block truncate text-[14px] font-black leading-none">{group.title}</span>
+        <span className="block truncate text-[14px] leading-none font-black">{group.title}</span>
         {group.variants.length > 1 ? (
           <span
-            className={`mt-0.5 text-[9px] font-bold uppercase tracking-wider ${
+            className={`mt-0.5 text-[9px] font-bold tracking-wider uppercase ${
               selected ? "text-[#f4ead8]" : "text-[#139a82]"
             }`}
           >
             {group.variants.length} Anbieter
           </span>
         ) : game.id.startsWith("gamepass-") ? (
-          <span className="mt-0.5 text-[9px] font-bold uppercase tracking-wider text-[#139a82]">
+          <span className="mt-0.5 text-[9px] font-bold tracking-wider text-[#139a82] uppercase">
             Game Pass
           </span>
         ) : null}

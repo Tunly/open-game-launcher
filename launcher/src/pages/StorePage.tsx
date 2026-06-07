@@ -234,25 +234,25 @@ export function StorePage() {
     <div className="relative min-h-[600px]">
       {/* Centered Coming Soon Overlay */}
       <div className="absolute inset-0 z-20 flex items-center justify-center p-4">
-        <div className="max-w-md rotate-[-3deg] border-[6px] border-black bg-[#f2c14e] p-8 text-center shadow-[12px_12px_0_#171411] transition duration-300 hover:rotate-[0deg] hover:scale-105 md:p-12">
-          <h2 className="neo-title text-5xl uppercase leading-none tracking-tight text-[#171411] md:text-7xl">
+        <div className="max-w-md rotate-[-3deg] border-[6px] border-black bg-[#f2c14e] p-8 text-center shadow-[12px_12px_0_#171411] transition duration-300 hover:scale-105 hover:rotate-[0deg] md:p-12">
+          <h2 className="neo-title text-5xl leading-none tracking-tight text-[#171411] uppercase md:text-7xl">
             Coming
           </h2>
-          <h2 className="neo-title mt-1 text-5xl uppercase leading-none tracking-tight text-[#171411] md:text-7xl">
+          <h2 className="neo-title mt-1 text-5xl leading-none tracking-tight text-[#171411] uppercase md:text-7xl">
             Soon
           </h2>
-          <p className="neo-copy mt-5 border-t-2 border-black pt-4 text-[11px] font-black uppercase tracking-[0.2em] text-[#171411]">
+          <p className="neo-copy mt-5 border-t-2 border-black pt-4 text-[11px] font-black tracking-[0.2em] text-[#171411] uppercase">
             Official Game Store slice
           </p>
         </div>
       </div>
 
       {/* Blurred Store Content */}
-      <div className="pointer-events-none select-none opacity-75 blur-[6px]">
+      <div className="pointer-events-none opacity-75 blur-[6px] select-none">
         <section className="space-y-7">
           <div className="hero-art relative min-h-[420px] overflow-hidden border-4 border-black shadow-[5px_5px_0_#171411] sm:min-h-[340px] sm:shadow-[6px_6px_0_#171411]">
             <div className="absolute inset-x-0 top-0 h-24 bg-black/35" />
-            <div className="bg-black/62 relative m-4 flex min-h-[330px] items-center border-l-4 border-[#c20b2f] p-5 sm:m-6 sm:min-h-[280px] sm:p-9">
+            <div className="relative m-4 flex min-h-[330px] items-center border-l-4 border-[#c20b2f] bg-black/62 p-5 sm:m-6 sm:min-h-[280px] sm:p-9">
               <div className="max-w-[590px]">
                 <div className="neo-copy flex flex-wrap gap-2 text-[11px] font-bold uppercase">
                   <span className="border-2 border-[#c20b2f] px-3 py-1 text-[#c20b2f]">
@@ -269,7 +269,7 @@ export function StorePage() {
                 </p>
                 <div className="mt-8 grid gap-3 sm:flex sm:flex-wrap sm:items-center sm:gap-5">
                   <button
-                    className="neo-copy flex h-12 items-center justify-center gap-3 border-2 border-black bg-[#c20b2f] px-5 text-xs font-bold uppercase text-[#fffaf0] shadow-[4px_4px_0_#171411] sm:px-7"
+                    className="neo-copy flex h-12 items-center justify-center gap-3 border-2 border-black bg-[#c20b2f] px-5 text-xs font-bold text-[#fffaf0] uppercase shadow-[4px_4px_0_#171411] sm:px-7"
                     type="button"
                     onClick={() =>
                       setStatusMessage(
@@ -281,7 +281,7 @@ export function StorePage() {
                     Buy Now - 49.99 EUR
                   </button>
                   <button
-                    className="neo-copy h-12 border-2 border-[#fffaf0] bg-black/35 px-5 text-xs font-bold uppercase text-[#fffaf0]"
+                    className="neo-copy h-12 border-2 border-[#fffaf0] bg-black/35 px-5 text-xs font-bold text-[#fffaf0] uppercase"
                     type="button"
                     onClick={() =>
                       setStatusMessage("Trailer playback is queued for the media feature slice.")
@@ -295,7 +295,7 @@ export function StorePage() {
           </div>
 
           {statusMessage ? (
-            <div className="neo-copy border-[3px] border-black bg-[#8cf5e4] p-3 text-[11px] font-black uppercase tracking-[0.12em] text-[#171411] shadow-[4px_4px_0_#171411]">
+            <div className="neo-copy border-[3px] border-black bg-[#8cf5e4] p-3 text-[11px] font-black tracking-[0.12em] text-[#171411] uppercase shadow-[4px_4px_0_#171411]">
               {statusMessage}
             </div>
           ) : null}
@@ -326,7 +326,7 @@ export function StorePage() {
           {activePriceAlertHits.length > 0 ? (
             <div className="border-4 border-black bg-[#f2c14e] p-4 shadow-[5px_5px_0_#171411]">
               <h2 className="neo-title text-3xl leading-none text-[#171411]">Price Alerts</h2>
-              <p className="neo-copy mt-2 text-[11px] font-black uppercase leading-5 text-[#171411]">
+              <p className="neo-copy mt-2 text-[11px] leading-5 font-black text-[#171411] uppercase">
                 {activePriceAlertHits.map((game) => game.title).join(", ")} reached your target
                 price.
               </p>
@@ -421,7 +421,7 @@ function StoreMetric({
 }) {
   return (
     <div className="border-[3px] border-black bg-[#fff9ed] p-4 shadow-[4px_4px_0_#171411]">
-      <div className="neo-copy flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.12em] text-[#b7102a]">
+      <div className="neo-copy flex items-center gap-2 text-[10px] font-black tracking-[0.12em] text-[#b7102a] uppercase">
         {icon}
         {label}
       </div>
@@ -447,10 +447,10 @@ function ProductDetailPanel({
 }) {
   return (
     <section className="grid overflow-hidden border-4 border-black bg-[#fff9ed] shadow-[6px_6px_0_#171411] lg:grid-cols-[minmax(0,1fr)_360px]">
-      <div className="min-h-72 border-b-4 border-black bg-[repeating-linear-gradient(112deg,#171411_0_14px,#302c25_14px_28px,#b7102a_28px_32px,#007166_32px_36px)] p-5 lg:border-b-0 lg:border-r-4">
+      <div className="min-h-72 border-b-4 border-black bg-[repeating-linear-gradient(112deg,#171411_0_14px,#302c25_14px_28px,#b7102a_28px_32px,#007166_32px_36px)] p-5 lg:border-r-4 lg:border-b-0">
         <div className="flex h-full min-h-64 items-end border-4 border-black bg-black/45 p-5 shadow-[5px_5px_0_#171411]">
           <div>
-            <p className="neo-copy inline-flex border-2 border-black bg-[#8cf5e4] px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-[#171411]">
+            <p className="neo-copy inline-flex border-2 border-black bg-[#8cf5e4] px-2 py-1 text-[10px] font-black tracking-[0.12em] text-[#171411] uppercase">
               Product Page
             </p>
             <h2 className="neo-title mt-3 text-[clamp(3rem,10vw,5rem)] leading-none text-[#fff9ed]">
@@ -461,15 +461,15 @@ function ProductDetailPanel({
       </div>
       <aside className="p-5">
         <div className="border-b-[3px] border-black pb-4">
-          <p className="neo-copy text-[10px] font-black uppercase tracking-[0.12em] text-[#b7102a]">
+          <p className="neo-copy text-[10px] font-black tracking-[0.12em] text-[#b7102a] uppercase">
             {game.developer ?? "Independent Developer"}
           </p>
-          <p className="mt-3 text-sm font-bold leading-6 text-[#5b403f]">
+          <p className="mt-3 text-sm leading-6 font-bold text-[#5b403f]">
             {game.tagLine}. Built for players who want quick installs, launcher-native ownership,
             wishlist tracking, and clean library handoff after purchase.
           </p>
         </div>
-        <div className="my-4 grid gap-2 text-[11px] font-black uppercase tracking-[0.08em]">
+        <div className="my-4 grid gap-2 text-[11px] font-black tracking-[0.08em] uppercase">
           <ProductFact label="Release" value={game.releaseDate ?? "TBA"} />
           <ProductFact label="Platforms" value={game.platform.join(", ")} />
           <ProductFact label="Genres" value={(game.genres ?? [game.tagLine]).join(", ")} />
@@ -477,7 +477,7 @@ function ProductDetailPanel({
         </div>
         <div className="grid gap-2">
           <button
-            className="neo-copy h-11 border-2 border-black bg-[#b7102a] text-[11px] font-black uppercase tracking-[0.12em] text-white shadow-[3px_3px_0_#171411] disabled:opacity-50"
+            className="neo-copy h-11 border-2 border-black bg-[#b7102a] text-[11px] font-black tracking-[0.12em] text-white uppercase shadow-[3px_3px_0_#171411] disabled:opacity-50"
             disabled={isOwned}
             type="button"
             onClick={() => onBuyNow(game.id)}
@@ -485,7 +485,7 @@ function ProductDetailPanel({
             {isOwned ? "Owned" : game.isFree ? "Claim" : "Buy Now"}
           </button>
           <button
-            className="neo-copy h-11 border-2 border-black bg-[#007166] text-[11px] font-black uppercase tracking-[0.12em] text-white shadow-[3px_3px_0_#171411] disabled:opacity-50"
+            className="neo-copy h-11 border-2 border-black bg-[#007166] text-[11px] font-black tracking-[0.12em] text-white uppercase shadow-[3px_3px_0_#171411] disabled:opacity-50"
             disabled={isOwned}
             type="button"
             onClick={() => onAddToCart(game.id)}
@@ -493,7 +493,7 @@ function ProductDetailPanel({
             Add To Cart
           </button>
           <button
-            className={`neo-copy h-11 border-2 border-black text-[11px] font-black uppercase tracking-[0.12em] shadow-[3px_3px_0_#171411] ${
+            className={`neo-copy h-11 border-2 border-black text-[11px] font-black tracking-[0.12em] uppercase shadow-[3px_3px_0_#171411] ${
               isWishlisted ? "bg-[#f2c14e] text-[#171411]" : "bg-[#fff9ed] text-[#171411]"
             }`}
             type="button"
@@ -541,7 +541,7 @@ function CartPanel({
           >
             <div>
               <p className="neo-title text-2xl leading-none text-[#171411]">{game.title}</p>
-              <p className="neo-copy mt-1 text-[10px] font-black uppercase tracking-[0.12em] text-[#655f58]">
+              <p className="neo-copy mt-1 text-[10px] font-black tracking-[0.12em] text-[#655f58] uppercase">
                 {game.tagLine}
               </p>
             </div>
@@ -565,7 +565,7 @@ function CartPanel({
         <h3 className="neo-title border-b-[3px] border-black pb-3 text-3xl leading-none text-[#171411]">
           Checkout
         </h3>
-        <p className="neo-copy mt-4 text-[10px] font-black uppercase tracking-[0.12em] text-[#655f58]">
+        <p className="neo-copy mt-4 text-[10px] font-black tracking-[0.12em] text-[#655f58] uppercase">
           Local order simulation until Stripe/PayPal Edge Functions are connected.
         </p>
         <div className="my-4 flex justify-between border-y-2 border-black py-3 text-xl font-black">
@@ -573,7 +573,7 @@ function CartPanel({
           <span>{formatCurrency(total)}</span>
         </div>
         <button
-          className="neo-copy h-12 w-full border-2 border-black bg-[#b7102a] text-[11px] font-black uppercase tracking-[0.12em] text-white shadow-[3px_3px_0_#171411]"
+          className="neo-copy h-12 w-full border-2 border-black bg-[#b7102a] text-[11px] font-black tracking-[0.12em] text-white uppercase shadow-[3px_3px_0_#171411]"
           type="button"
           onClick={onCheckout}
         >
@@ -601,7 +601,7 @@ function OrderPanel({ orders }: { orders: StoreOrder[] }) {
               <p className="neo-title text-2xl leading-none text-[#171411]">
                 Order {order.id.slice(0, 8)}
               </p>
-              <p className="neo-copy mt-1 text-[10px] font-black uppercase tracking-[0.12em] text-[#655f58]">
+              <p className="neo-copy mt-1 text-[10px] font-black tracking-[0.12em] text-[#655f58] uppercase">
                 {new Date(order.createdAt).toLocaleString()}
               </p>
             </div>
@@ -613,7 +613,7 @@ function OrderPanel({ orders }: { orders: StoreOrder[] }) {
               return (
                 <span
                   key={gameId}
-                  className="neo-copy inline-flex items-center gap-2 border-2 border-black bg-[#8cf5e4] px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-[#171411]"
+                  className="neo-copy inline-flex items-center gap-2 border-2 border-black bg-[#8cf5e4] px-2 py-1 text-[10px] font-black tracking-[0.12em] text-[#171411] uppercase"
                 >
                   <CheckCircle2 className="h-3.5 w-3.5" />
                   {game?.title ?? gameId}
@@ -629,7 +629,7 @@ function OrderPanel({ orders }: { orders: StoreOrder[] }) {
 
 function EmptyStorePanel({ label }: { label: string }) {
   return (
-    <div className="neo-copy border-[3px] border-dashed border-black bg-[#f5eedf] p-6 text-center text-[12px] font-black uppercase tracking-[0.12em] text-[#655f58]">
+    <div className="neo-copy border-[3px] border-dashed border-black bg-[#f5eedf] p-6 text-center text-[12px] font-black tracking-[0.12em] text-[#655f58] uppercase">
       {label}
     </div>
   );

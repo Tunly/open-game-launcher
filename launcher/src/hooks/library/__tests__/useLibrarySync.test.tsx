@@ -352,7 +352,9 @@ describe("useLibrarySync", () => {
       await result.current.sync.handleSelectCustomArtwork("steam-1", "cover", fakeFile);
     });
 
-    expect(result.current.msg).toBe("Only JPG, PNG, and WebP images can be used as custom artwork.");
+    expect(result.current.msg).toBe(
+      "Only JPG, PNG, and WebP images can be used as custom artwork.",
+    );
     expect(result.current.sync.customArtwork["steam-1"]).toBeUndefined();
   });
 

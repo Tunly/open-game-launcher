@@ -71,7 +71,7 @@ export function ProfileComments({
   return (
     <section className="border-4 border-black bg-[#fff9ed] p-5 shadow-[6px_6px_0_#1f1c0f]">
       <div className="flex flex-wrap items-center gap-3 border-b-[3px] border-black pb-3">
-        <span className="neo-copy border-2 border-black bg-[#007166] px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-white">
+        <span className="neo-copy border-2 border-black bg-[#007166] px-2 py-1 text-[10px] font-black tracking-[0.12em] text-white uppercase">
           Community
         </span>
         <h2 className="neo-title text-3xl leading-none text-[#171411]">Guestbook</h2>
@@ -85,10 +85,10 @@ export function ProfileComments({
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="neo-copy text-[10px] font-black uppercase tracking-[0.12em] text-[#b7102a]">
+                  <p className="neo-copy text-[10px] font-black tracking-[0.12em] text-[#b7102a] uppercase">
                     Player {comment.authorId.slice(0, 8)}
                   </p>
-                  <p className="mt-2 text-sm font-semibold leading-6 text-[#5b403f]">
+                  <p className="mt-2 text-sm leading-6 font-semibold text-[#5b403f]">
                     {comment.body}
                   </p>
                 </div>
@@ -107,7 +107,7 @@ export function ProfileComments({
             </article>
           ))
         ) : (
-          <p className="neo-copy border-2 border-dashed border-black bg-[#f6edd8] p-3 text-[12px] font-bold uppercase leading-5 text-[#655f58]">
+          <p className="neo-copy border-2 border-dashed border-black bg-[#f6edd8] p-3 text-[12px] leading-5 font-bold text-[#655f58] uppercase">
             No public comments yet.
           </p>
         )}
@@ -115,7 +115,7 @@ export function ProfileComments({
       {canWrite ? (
         <form className="mt-4 flex flex-col gap-3" onSubmit={submitComment}>
           <textarea
-            className="neo-copy min-h-24 resize-none border-[3px] border-black bg-[#f6edd8] p-3 text-[12px] font-bold uppercase leading-5 text-[#171411] outline-none placeholder:text-[#655f58]"
+            className="neo-copy min-h-24 resize-none border-[3px] border-black bg-[#f6edd8] p-3 text-[12px] leading-5 font-bold text-[#171411] uppercase outline-none placeholder:text-[#655f58]"
             disabled={isSubmitting || isMock}
             maxLength={1000}
             placeholder="Leave a public guestbook comment..."
@@ -123,7 +123,7 @@ export function ProfileComments({
             onChange={(event) => setBody(event.target.value)}
           />
           <button
-            className="neo-copy inline-flex h-11 items-center justify-center gap-2 border-2 border-black bg-[#007166] px-4 text-[11px] font-black uppercase tracking-[0.12em] text-white shadow-[3px_3px_0_#1f1c0f] transition hover:-translate-y-0.5 disabled:opacity-50"
+            className="neo-copy inline-flex h-11 items-center justify-center gap-2 border-2 border-black bg-[#007166] px-4 text-[11px] font-black tracking-[0.12em] text-white uppercase shadow-[3px_3px_0_#1f1c0f] transition hover:-translate-y-0.5 disabled:opacity-50"
             disabled={!body.trim() || isSubmitting || isMock}
             type="submit"
           >
@@ -132,17 +132,17 @@ export function ProfileComments({
           </button>
         </form>
       ) : (
-        <p className="neo-copy mt-4 border-2 border-dashed border-black bg-[#efe6d4] p-3 text-[11px] font-black uppercase leading-5 text-[#655f58]">
+        <p className="neo-copy mt-4 border-2 border-dashed border-black bg-[#efe6d4] p-3 text-[11px] leading-5 font-black text-[#655f58] uppercase">
           Sign in to leave a guestbook comment.
         </p>
       )}
       {message ? (
-        <p className="neo-copy mt-3 border-2 border-black bg-[#007166] p-3 text-[10px] font-black uppercase tracking-[0.12em] text-white">
+        <p className="neo-copy mt-3 border-2 border-black bg-[#007166] p-3 text-[10px] font-black tracking-[0.12em] text-white uppercase">
           {message}
         </p>
       ) : null}
       {errorMessage ? (
-        <p className="neo-copy mt-3 border-2 border-black bg-[#b7102a] p-3 text-[10px] font-black uppercase tracking-[0.12em] text-white">
+        <p className="neo-copy mt-3 border-2 border-black bg-[#b7102a] p-3 text-[10px] font-black tracking-[0.12em] text-white uppercase">
           {errorMessage}
         </p>
       ) : null}

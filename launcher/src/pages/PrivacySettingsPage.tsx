@@ -69,7 +69,7 @@ export function PrivacySettingsPage() {
 
   return (
     <div className="mx-auto w-full max-w-4xl px-4 py-6 sm:px-6 lg:px-8">
-      <p className="text-sm font-bold uppercase text-sky-200">Settings</p>
+      <p className="text-sm font-bold text-sky-200 uppercase">Settings</p>
       <h1 className="mb-6 text-4xl font-black text-white">Privacy</h1>
 
       {isAuthLoading || isLoading ? (

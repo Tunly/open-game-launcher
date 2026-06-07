@@ -91,7 +91,7 @@ function AchievementPopupLayer() {
   if (popups.length === 0) return null;
 
   return (
-    <div className="fixed right-4 top-4 z-[9999] flex flex-col gap-2">
+    <div className="fixed top-4 right-4 z-[9999] flex flex-col gap-2">
       {popups.map((p, i) => (
         <div
           key={`${p.achievement_name}-${i}`}
@@ -101,7 +101,7 @@ function AchievementPopupLayer() {
             <Trophy size={20} className="text-white" />
           </div>
           <div className="min-w-0">
-            <div className="neo-copy text-[9px] font-black uppercase text-[#b7102a]">
+            <div className="neo-copy text-[9px] font-black text-[#b7102a] uppercase">
               Achievement unlocked
             </div>
             <div className="truncate text-[12px] font-bold text-[#171411]">
@@ -135,7 +135,7 @@ export default function App() {
           <Suspense
             fallback={
               <div className="grid h-screen w-screen place-items-center bg-black/70">
-                <div className="neo-copy border-[3px] border-[#171411] bg-[#171411]/80 px-4 py-3 text-sm font-black uppercase text-[#fff9ed] shadow-[4px_4px_0_#000]">
+                <div className="neo-copy border-[3px] border-[#171411] bg-[#171411]/80 px-4 py-3 text-sm font-black text-[#fff9ed] uppercase shadow-[4px_4px_0_#000]">
                   Loading overlay...
                 </div>
               </div>

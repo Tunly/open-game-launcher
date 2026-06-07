@@ -107,14 +107,17 @@ export function ModsPage() {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [expandedQueue, setExpandedQueue] = useState(false);
   const items = useModInstallStore((state) => state.items);
-  const { setItems: setQueueItems, upsertItem: upsertQueueItem, removeItem: removeQueueItem } =
-    useModInstallStore(
-      useShallow((state) => ({
-        setItems: state.setItems,
-        upsertItem: state.upsertItem,
-        removeItem: state.removeItem,
-      })),
-    );
+  const {
+    setItems: setQueueItems,
+    upsertItem: upsertQueueItem,
+    removeItem: removeQueueItem,
+  } = useModInstallStore(
+    useShallow((state) => ({
+      setItems: state.setItems,
+      upsertItem: state.upsertItem,
+      removeItem: state.removeItem,
+    })),
+  );
   const activeCount = useModInstallStore(selectActiveModInstallCount);
   const delegatedCount = useModInstallStore(selectDelegatedModInstallCount);
   const completedCount = useModInstallStore(selectCompletedModInstallCount);
@@ -358,13 +361,13 @@ export function ModsPage() {
       <div className="border-b-4 border-black pb-4">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
           <div className="min-w-0">
-            <span className="neo-copy inline-flex border-2 border-black bg-[#007166] px-3 py-1 text-[10px] font-black uppercase text-white shadow-[3px_3px_0_#171411]">
+            <span className="neo-copy inline-flex border-2 border-black bg-[#007166] px-3 py-1 text-[10px] font-black text-white uppercase shadow-[3px_3px_0_#171411]">
               Provider deck online
             </span>
             <h1 className="neo-title mt-2 text-[clamp(3.2rem,14vw,6rem)] leading-[0.84] text-[#171411]">
               Mod Manager
             </h1>
-            <p className="neo-copy mt-3 max-w-[760px] text-xs font-black uppercase text-[#5b403f]">
+            <p className="neo-copy mt-3 max-w-[760px] text-xs font-black text-[#5b403f] uppercase">
               Steam Workshop // mod.io // CurseForge // local archive
             </p>
           </div>
@@ -379,9 +382,9 @@ export function ModsPage() {
 
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
         <label className="relative flex-1">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2" />
+          <Search className="pointer-events-none absolute top-1/2 left-3 h-5 w-5 -translate-y-1/2" />
           <input
-            className="neo-copy h-14 w-full border-4 border-black bg-[#fff9ed] pl-11 pr-4 text-[13px] font-black uppercase shadow-[4px_4px_0_#171411] outline-none"
+            className="neo-copy h-14 w-full border-4 border-black bg-[#fff9ed] pr-4 pl-11 text-[13px] font-black uppercase shadow-[4px_4px_0_#171411] outline-none"
             placeholder="Search mods for selected game"
             value={searchQuery}
             onChange={(event) => setSearchQuery(event.target.value)}
@@ -398,12 +401,12 @@ export function ModsPage() {
       </div>
 
       {error ? (
-        <div className="neo-copy border-4 border-black bg-[#b7102a] p-3 text-xs font-black uppercase text-white shadow-[4px_4px_0_#171411]">
+        <div className="neo-copy border-4 border-black bg-[#b7102a] p-3 text-xs font-black text-white uppercase shadow-[4px_4px_0_#171411]">
           {error}
         </div>
       ) : null}
       {statusMessage ? (
-        <div className="neo-copy border-4 border-black bg-[#007166] p-3 text-xs font-black uppercase text-white shadow-[4px_4px_0_#171411]">
+        <div className="neo-copy border-4 border-black bg-[#007166] p-3 text-xs font-black text-white uppercase shadow-[4px_4px_0_#171411]">
           {statusMessage}
         </div>
       ) : null}
@@ -411,7 +414,7 @@ export function ModsPage() {
       <div className="grid gap-4 xl:grid-cols-[320px_minmax(0,1fr)]">
         <aside className="space-y-4">
           <Panel title="Game Target" icon={<PackagePlus className="h-4 w-4" />}>
-            <label className="neo-copy block text-[10px] font-black uppercase text-[#5b403f]">
+            <label className="neo-copy block text-[10px] font-black text-[#5b403f] uppercase">
               Local Library
               <select
                 className="mt-2 h-11 w-full border-4 border-black bg-[#fff9ed] px-2 text-[12px] font-black text-[#171411] shadow-[3px_3px_0_#171411] outline-none"
@@ -431,7 +434,7 @@ export function ModsPage() {
             </label>
 
             {showAdvanced && (
-              <label className="neo-copy mt-4 block text-[10px] font-black uppercase text-[#5b403f]">
+              <label className="neo-copy mt-4 block text-[10px] font-black text-[#5b403f] uppercase">
                 Target Policy
                 <select
                   className="mt-2 h-10 w-full border-2 border-black bg-[#f6edd8] px-2 text-[11px] font-black outline-none"
@@ -449,10 +452,10 @@ export function ModsPage() {
 
             <div className="mt-4 border-2 border-black bg-[#1f1c0f] p-3 text-[#fff9ed]">
               <p className="neo-copy text-[10px] font-black uppercase">Selected</p>
-              <h2 className="mt-1 text-xl font-black uppercase leading-none">
+              <h2 className="mt-1 text-xl leading-none font-black uppercase">
                 {selectedGame?.title ?? "No target"}
               </h2>
-              <p className="neo-copy mt-2 break-all text-[10px] font-bold uppercase text-[#f5eedf]">
+              <p className="neo-copy mt-2 text-[10px] font-bold break-all text-[#f5eedf] uppercase">
                 {selectedGame?.installPath ?? "Install path missing"}
               </p>
             </div>
@@ -473,7 +476,7 @@ export function ModsPage() {
                   ))}
                 </select>
                 <button
-                  className="neo-copy border-2 border-black bg-[#007166] px-3 text-[10px] font-black uppercase text-white shadow-[2px_2px_0_#171411]"
+                  className="neo-copy border-2 border-black bg-[#007166] px-3 text-[10px] font-black text-white uppercase shadow-[2px_2px_0_#171411]"
                   type="button"
                   onClick={() => void handleSaveSecret()}
                 >
@@ -487,7 +490,7 @@ export function ModsPage() {
                 value={secretValue}
                 onChange={(event) => setSecretValue(event.target.value)}
               />
-              <p className="neo-copy mt-2 text-[10px] font-bold uppercase text-[#5b403f]">
+              <p className="neo-copy mt-2 text-[10px] font-bold text-[#5b403f] uppercase">
                 Stored locally through the OS keychain. No provider key is written to Supabase.
               </p>
             </Panel>
@@ -512,7 +515,7 @@ export function ModsPage() {
                 </div>
               ) : (
                 <button
-                  className="w-full border-2 border-black bg-[#fff9ed] p-3 text-center text-[10px] font-black uppercase text-[#5b403f] shadow-[2px_2px_0_#171411] transition-transform active:translate-x-[2px] active:translate-y-[2px] active:shadow-none"
+                  className="w-full border-2 border-black bg-[#fff9ed] p-3 text-center text-[10px] font-black text-[#5b403f] uppercase shadow-[2px_2px_0_#171411] transition-transform active:translate-x-[2px] active:translate-y-[2px] active:shadow-none"
                   onClick={() => setExpandedQueue(true)}
                   type="button"
                 >
@@ -571,7 +574,7 @@ export function ModsPage() {
             {showAdvanced && (
               <Panel title="Manual Install" icon={<FileArchive className="h-4 w-4" />}>
                 <div className="space-y-3">
-                  <label className="neo-copy block text-[10px] font-black uppercase text-[#5b403f]">
+                  <label className="neo-copy block text-[10px] font-black text-[#5b403f] uppercase">
                     Provider
                     <select
                       className="mt-1 h-10 w-full border-2 border-black bg-[#f6edd8] px-2 text-[11px] font-black uppercase outline-none"
@@ -612,7 +615,7 @@ export function ModsPage() {
                     onChange={setManualSha256}
                   />
                   <button
-                    className="neo-copy flex h-11 w-full items-center justify-center gap-2 border-4 border-black bg-[#b7102a] text-[11px] font-black uppercase text-white shadow-[3px_3px_0_#171411] disabled:cursor-not-allowed disabled:opacity-50"
+                    className="neo-copy flex h-11 w-full items-center justify-center gap-2 border-4 border-black bg-[#b7102a] text-[11px] font-black text-white uppercase shadow-[3px_3px_0_#171411] disabled:cursor-not-allowed disabled:opacity-50"
                     disabled={!selectedGame || !manualTitle.trim()}
                     type="button"
                     onClick={() => void handleManualInstall()}
@@ -627,7 +630,7 @@ export function ModsPage() {
 
           <Panel title="Installed Mods" icon={<CheckCircle2 className="h-4 w-4" />}>
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-              <p className="neo-copy text-[10px] font-black uppercase text-[#5b403f]">
+              <p className="neo-copy text-[10px] font-black text-[#5b403f] uppercase">
                 {installedMods.length} tracked mods for selected game
               </p>
               <button
@@ -665,7 +668,7 @@ function Panel({ children, icon, title }: { children: ReactNode; icon: ReactNode
     <section className="border-4 border-black bg-[#f5eedf] shadow-[5px_5px_0_#171411]">
       <div className="flex items-center gap-2 border-b-4 border-black bg-[#171411] px-3 py-2 text-[#fff9ed]">
         {icon}
-        <h2 className="neo-copy text-[11px] font-black uppercase tracking-normal">{title}</h2>
+        <h2 className="neo-copy text-[11px] font-black tracking-normal uppercase">{title}</h2>
       </div>
       <div className="p-4">{children}</div>
     </section>
@@ -674,8 +677,8 @@ function Panel({ children, icon, title }: { children: ReactNode; icon: ReactNode
 
 function Readout({ label, value }: { label: string; value: number }) {
   return (
-    <div className="not-last:border-r min-w-[92px] border-[#fff9ed] p-3">
-      <p className="text-3xl font-black leading-none">{value}</p>
+    <div className="min-w-[92px] border-[#fff9ed] p-3 not-last:border-r">
+      <p className="text-3xl leading-none font-black">{value}</p>
       <p className="neo-copy mt-1 text-[10px] font-black uppercase">{label}</p>
     </div>
   );
@@ -692,14 +695,14 @@ function QueueRow({ item, onCancel }: { item: ModInstallQueueItem; onCancel: () 
           >
             {item.status}
           </span>
-          <span className="neo-copy text-[10px] font-black uppercase text-[#5b403f]">
+          <span className="neo-copy text-[10px] font-black text-[#5b403f] uppercase">
             {providerLabel(item.provider)} // {item.phase}
           </span>
         </div>
-        <h3 className="mt-1 truncate text-lg font-black uppercase leading-none">{item.title}</h3>
+        <h3 className="mt-1 truncate text-lg leading-none font-black uppercase">{item.title}</h3>
         {item.delegatedUrl ? (
           <a
-            className="neo-copy mt-1 inline-flex items-center gap-1 text-[10px] font-black uppercase text-[#007166] underline"
+            className="neo-copy mt-1 inline-flex items-center gap-1 text-[10px] font-black text-[#007166] uppercase underline"
             href={item.delegatedUrl}
             rel="noreferrer"
             target="_blank"
@@ -710,7 +713,7 @@ function QueueRow({ item, onCancel }: { item: ModInstallQueueItem; onCancel: () 
         ) : null}
       </div>
       <div>
-        <p className="neo-copy mb-1 text-[10px] font-black uppercase text-[#5b403f]">
+        <p className="neo-copy mb-1 text-[10px] font-black text-[#5b403f] uppercase">
           {item.progress}% // {item.speed}
         </p>
         <div className="h-3 border-2 border-black bg-[#efe6d4]">
@@ -746,15 +749,15 @@ function CatalogCard({
       <div className={`h-16 border-b-4 border-black ${providerArt(entry.provider)}`} />
       <div className="flex flex-1 flex-col p-3">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="neo-copy border-2 border-black bg-[#007166] px-2 py-0.5 text-[9px] font-black uppercase text-white">
+          <span className="neo-copy border-2 border-black bg-[#007166] px-2 py-0.5 text-[9px] font-black text-white uppercase">
             {providerLabel(entry.provider)}
           </span>
-          <span className="neo-copy border-2 border-black bg-[#f6edd8] px-2 py-0.5 text-[9px] font-black uppercase text-[#171411]">
+          <span className="neo-copy border-2 border-black bg-[#f6edd8] px-2 py-0.5 text-[9px] font-black text-[#171411] uppercase">
             {direct ? "direct" : "delegated"}
           </span>
         </div>
-        <h3 className="mt-2 text-xl font-black uppercase leading-none">{entry.name}</h3>
-        <p className="mt-2 line-clamp-2 text-sm font-bold leading-5 text-[#5b403f]">
+        <h3 className="mt-2 text-xl leading-none font-black uppercase">{entry.name}</h3>
+        <p className="mt-2 line-clamp-2 text-sm leading-5 font-bold text-[#5b403f]">
           {entry.summary ?? entry.description ?? "Provider catalog entry."}
         </p>
         <div className="mt-3 flex flex-wrap gap-1">
@@ -768,7 +771,7 @@ function CatalogCard({
           ))}
         </div>
         <button
-          className="neo-copy mt-auto flex h-10 items-center justify-center gap-2 border-2 border-black bg-[#b7102a] px-3 text-[10px] font-black uppercase text-white shadow-[2px_2px_0_#171411] transition-transform active:translate-x-[2px] active:translate-y-[2px] active:shadow-none disabled:cursor-not-allowed disabled:opacity-50"
+          className="neo-copy mt-auto flex h-10 items-center justify-center gap-2 border-2 border-black bg-[#b7102a] px-3 text-[10px] font-black text-white uppercase shadow-[2px_2px_0_#171411] transition-transform active:translate-x-[2px] active:translate-y-[2px] active:shadow-none disabled:cursor-not-allowed disabled:opacity-50"
           disabled={disabled}
           type="button"
           onClick={onInstall}
@@ -801,12 +804,12 @@ function InstalledModRow({
           >
             {mod.enabled ? "enabled" : "disabled"}
           </span>
-          <span className="neo-copy text-[10px] font-black uppercase text-[#5b403f]">
+          <span className="neo-copy text-[10px] font-black text-[#5b403f] uppercase">
             {providerLabel(mod.provider)} // {mod.installedFiles.length} files
           </span>
         </div>
-        <h3 className="mt-1 truncate text-lg font-black uppercase leading-none">{mod.title}</h3>
-        <p className="neo-copy mt-1 break-all text-[10px] font-bold uppercase text-[#5b403f]">
+        <h3 className="mt-1 truncate text-lg leading-none font-black uppercase">{mod.title}</h3>
+        <p className="neo-copy mt-1 text-[10px] font-bold break-all text-[#5b403f] uppercase">
           {mod.targetPath}
         </p>
       </div>
@@ -819,7 +822,7 @@ function InstalledModRow({
         {mod.enabled ? "Disable" : "Enable"}
       </button>
       <button
-        className="neo-copy flex h-9 items-center justify-center gap-2 border-2 border-black bg-[#b7102a] px-3 text-[10px] font-black uppercase text-white shadow-[2px_2px_0_#171411]"
+        className="neo-copy flex h-9 items-center justify-center gap-2 border-2 border-black bg-[#b7102a] px-3 text-[10px] font-black text-white uppercase shadow-[2px_2px_0_#171411]"
         type="button"
         onClick={onUninstall}
       >
@@ -842,7 +845,7 @@ function TextInput({
   value: string;
 }) {
   return (
-    <label className="neo-copy block text-[10px] font-black uppercase text-[#5b403f]">
+    <label className="neo-copy block text-[10px] font-black text-[#5b403f] uppercase">
       {label}
       <input
         className="mt-1 h-10 w-full border-2 border-black bg-[#fff9ed] px-2 text-[11px] font-bold outline-none"
@@ -856,7 +859,7 @@ function TextInput({
 
 function EmptyState({ label }: { label: string }) {
   return (
-    <div className="neo-copy border-2 border-dashed border-black bg-[#fff9ed] p-5 text-center text-[10px] font-black uppercase text-[#5b403f]">
+    <div className="neo-copy border-2 border-dashed border-black bg-[#fff9ed] p-5 text-center text-[10px] font-black text-[#5b403f] uppercase">
       {label}
     </div>
   );

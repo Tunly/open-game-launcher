@@ -37,12 +37,12 @@ export function ControllersPage() {
       <section className="mb-5 border-4 border-black bg-[#f6edd8] p-5 shadow-[8px_8px_0_#171411]">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <p className="neo-copy text-[11px] font-black uppercase tracking-[0.25em] text-[#b7102a]">
+            <p className="neo-copy text-[11px] font-black tracking-[0.25em] text-[#b7102a] uppercase">
               OG-Launcher Input
             </p>
-            <h1 className="neo-title mt-2 text-5xl uppercase leading-none">Controller Support</h1>
+            <h1 className="neo-title mt-2 text-5xl leading-none uppercase">Controller Support</h1>
             <div className="neo-dots mt-3 h-2 w-16 bg-black" />
-            <p className="neo-copy mt-4 max-w-3xl text-sm font-bold uppercase leading-6 text-[#5f574d]">
+            <p className="neo-copy mt-4 max-w-3xl text-sm leading-6 font-bold text-[#5f574d] uppercase">
               Steam-like controller hub: device detection, global defaults, per-game profiles,
               community layouts, gyro and haptics flags.
             </p>
@@ -57,7 +57,7 @@ export function ControllersPage() {
           </button>
         </div>
         {error ? (
-          <p className="neo-copy mt-4 border-2 border-black bg-[#b7102a] p-3 text-xs font-black uppercase text-white">
+          <p className="neo-copy mt-4 border-2 border-black bg-[#b7102a] p-3 text-xs font-black text-white uppercase">
             {error}
           </p>
         ) : null}
@@ -66,7 +66,7 @@ export function ControllersPage() {
       {runtimeStatus ? (
         <section className="mb-5 grid gap-3 border-4 border-black bg-[#fbf4e7] p-4 shadow-[6px_6px_0_#171411] md:grid-cols-3">
           <div>
-            <p className="neo-copy text-[10px] font-black uppercase text-[#5f574d]">
+            <p className="neo-copy text-[10px] font-black text-[#5f574d] uppercase">
               Active Layout
             </p>
             <p className="neo-title mt-1 text-2xl uppercase">
@@ -74,13 +74,13 @@ export function ControllersPage() {
             </p>
           </div>
           <div>
-            <p className="neo-copy text-[10px] font-black uppercase text-[#5f574d]">Runtime</p>
+            <p className="neo-copy text-[10px] font-black text-[#5f574d] uppercase">Runtime</p>
             <p className="neo-copy mt-1 text-xs font-black uppercase">
               {runtimeStatus.activeTemplate ?? "Idle"} · ViGEm{" "}
               {runtimeStatus.vigemBusDetected ? "Ready" : "Missing"}
             </p>
           </div>
-          <p className="neo-copy border-2 border-black bg-[#efe3cf] p-2 text-[10px] font-bold uppercase leading-5 text-[#5f574d] md:col-span-1">
+          <p className="neo-copy border-2 border-black bg-[#efe3cf] p-2 text-[10px] leading-5 font-bold text-[#5f574d] uppercase md:col-span-1">
             {runtimeStatus.driverMessage}
           </p>
         </section>
