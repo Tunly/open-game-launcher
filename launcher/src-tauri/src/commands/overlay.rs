@@ -399,10 +399,7 @@ pub(super) fn ensure_path_within_screenshots(
 }
 
 #[tauri::command]
-pub fn delete_screenshot(
-    app: tauri::AppHandle,
-    path: String,
-) -> Result<(), String> {
+pub fn delete_screenshot(app: tauri::AppHandle, path: String) -> Result<(), String> {
     let root = screenshots_root(&app)?;
     let safe_path = ensure_path_within_screenshots(&root, &path)?;
     std::fs::remove_file(&safe_path).map_err(|e| e.to_string())
@@ -507,8 +504,7 @@ mod path_traversal_tests {
     #[test]
     fn accepts_file_inside_root() {
         let (dir, valid) = build_screenshot_zoo();
-        let resolved =
-            ensure_path_within_screenshots(dir.path(), valid.to_str().unwrap()).unwrap();
+        let resolved = ensure_path_within_screenshots(dir.path(), valid.to_str().unwrap()).unwrap();
         assert_eq!(
             fs::canonicalize(&resolved).unwrap(),
             fs::canonicalize(&valid).unwrap()

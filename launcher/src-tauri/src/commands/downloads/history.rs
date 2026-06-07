@@ -1,9 +1,9 @@
+use crate::commands::downloads::steam_state::has_active_download_work;
 use crate::commands::downloads::types::{
     is_restart_interrupted_download_status, is_terminal_download_status, normalize_queue_payload,
     now_unix_secs, DownloadItemPayload, DOWNLOAD_STATUS_PAUSED,
 };
 use crate::commands::downloads::utils::is_download_game_installed;
-use crate::commands::downloads::steam_state::has_active_download_work;
 use crate::commands::local_db::{read_collection, remove_item, write_collection};
 
 pub(crate) const MAX_DOWNLOAD_HISTORY_ITEMS: usize = 200;

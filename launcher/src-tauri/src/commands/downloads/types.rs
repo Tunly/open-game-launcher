@@ -6,7 +6,7 @@ use tauri::Emitter;
 use tokio::sync::watch;
 
 use crate::commands::downloads::history::{
-    is_stale_installed_download, remove_download_history_item, remember_download_item,
+    is_stale_installed_download, remember_download_item, remove_download_history_item,
 };
 use crate::commands::downloads::utils::{
     get_platform_from_game_id, is_external_tracker_game_id, is_steam_tracker_game_id,
@@ -355,7 +355,10 @@ pub(crate) fn normalize_progress(progress: u32, status: &str) -> u32 {
     }
 }
 
-pub(crate) async fn cancellable_sleep(cancel_rx: &watch::Receiver<bool>, duration: Duration) -> bool {
+pub(crate) async fn cancellable_sleep(
+    cancel_rx: &watch::Receiver<bool>,
+    duration: Duration,
+) -> bool {
     let start = Instant::now();
     while start.elapsed() < duration {
         if *cancel_rx.borrow() {
@@ -407,7 +410,10 @@ pub(crate) fn emit_download_progress(
     let _ = app.emit("download_progress", payload);
 }
 
-pub(crate) fn payload_from_active_download(game_id: &str, dl: &ActiveDownload) -> DownloadItemPayload {
+pub(crate) fn payload_from_active_download(
+    game_id: &str,
+    dl: &ActiveDownload,
+) -> DownloadItemPayload {
     normalize_queue_payload(DownloadItemPayload {
         id: format!("download-{game_id}"),
         game_id: game_id.to_string(),

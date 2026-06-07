@@ -65,10 +65,7 @@ pub async fn launch_cross_play_join(
 
     let uri = match platform.as_str() {
         "steam" => format!("steam://run/{}", safe_slug),
-        "epic" => format!(
-            "com.epicgames.launcher://apps/{}?action=launch",
-            safe_slug
-        ),
+        "epic" => format!("com.epicgames.launcher://apps/{}?action=launch", safe_slug),
         "gog" => format!("goggalaxy://openGameView/{}", safe_slug),
         "xbox" => format!(
             "ms-xbl-38966778-3f57-4f6e-a6e9-3b81c79fbb3f://launch/{}",

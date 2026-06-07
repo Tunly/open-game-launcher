@@ -2399,10 +2399,8 @@ pub fn open_uri(uri: &str) -> std::io::Result<()> {
     // scheme allowlist and shell-free executor are used everywhere.
     // The historical `cmd /C start "" <uri>` was a command-injection
     // sink and is no longer reachable from this binary.
-    let _ = crate::commands::uri_safety::validate_uri_scheme(uri)
-        .map_err(std::io::Error::other)?;
-    crate::commands::uri_safety::open_uri_safely(uri)
-        .map_err(std::io::Error::other)
+    let _ = crate::commands::uri_safety::validate_uri_scheme(uri).map_err(std::io::Error::other)?;
+    crate::commands::uri_safety::open_uri_safely(uri).map_err(std::io::Error::other)
 }
 
 pub fn is_file_executable(path: &Path) -> bool {

@@ -1,8 +1,6 @@
 use std::path::PathBuf;
 
-use crate::commands::games::{
-    detect, read_installed_games_cache, GameStatus, InstalledGame,
-};
+use crate::commands::games::{detect, read_installed_games_cache, GameStatus, InstalledGame};
 
 pub(crate) fn is_external_tracker_game_id(game_id: &str) -> bool {
     game_id.starts_with("steam-")

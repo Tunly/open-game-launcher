@@ -1,3 +1,4 @@
+mod control;
 mod health;
 mod history;
 mod install;
@@ -24,17 +25,17 @@ pub fn get_download_queue() -> Result<Vec<DownloadItemPayload>, String> {
 
 #[tauri::command]
 pub fn pause_download(app: tauri::AppHandle, game_id: String) -> Result<(), String> {
-    start::pause_download(app, game_id)
+    control::pause_download(app, game_id)
 }
 
 #[tauri::command]
 pub fn cancel_download(app: tauri::AppHandle, game_id: String) -> Result<(), String> {
-    start::cancel_download(app, game_id)
+    control::cancel_download(app, game_id)
 }
 
 #[tauri::command]
 pub fn archive_download(game_id: String) -> Result<(), String> {
-    start::archive_download(game_id)
+    control::archive_download(game_id)
 }
 
 #[tauri::command]
