@@ -37,6 +37,12 @@ use crate::commands::downloads::utils::{
     verify_sha256,
 };
 use crate::commands::downloads::history::{save_download_history, terminal_sort_rank};
+use crate::commands::downloads::steam_state::{
+    calculate_steam_progress, extract_vdf_string, has_active_download_work,
+    parse_steam_download_state, steam_download_work_exists,
+    steam_downloading_dir_for_manifest, steam_phase, steam_progress_bytes,
+    steam_status_label,
+};
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -1193,48 +1199,6 @@ fn is_stale_installed_download(item: &DownloadItemPayload) -> bool {
     is_download_game_installed(&item.game_id) && !has_active_download_work(item)
 }
 
-fn has_active_download_work(item: &DownloadItemPayload) -> bool {
-    if let Some(app_id) = steam_app_id_from_download_id(&item.game_id) {
-        return steam_download_work_exists(app_id);
-    }
-
-    false
-}
-
-fn steam_download_work_exists(app_id: &str) -> bool {
-    let Some(manifest_path) = find_steam_app_manifest(app_id) else {
-        return false;
-    };
-    let Ok(contents) = std::fs::read_to_string(&manifest_path) else {
-        return false;
-    };
-    let state = parse_steam_download_state(&contents);
-    let downloading_dir_size = steam_downloading_dir_for_manifest(&manifest_path, app_id)
-        .map(get_dir_size)
-        .unwrap_or(0);
-
-    state.has_active_work(downloading_dir_size)
-}
-
-fn find_steam_app_manifest(app_id: &str) -> Option<PathBuf> {
-    let steam_path = crate::commands::games::detect::find_steam_dir()?;
-    let main_path = steam_path
-        .join("steamapps")
-        .join(format!("appmanifest_{app_id}.acf"));
-    if main_path.exists() {
-        return Some(main_path);
-    }
-
-    crate::commands::games::detect::read_steam_library_folders(&steam_path)
-        .into_iter()
-        .map(|library| {
-            library
-                .join("steamapps")
-                .join(format!("appmanifest_{app_id}.acf"))
-        })
-        .find(|path| path.exists())
-}
-
 fn load_download_history() -> Vec<DownloadItemPayload> {
     let items = crate::commands::local_db::read_collection::<DownloadItemPayload>("downloads")
         .unwrap_or_default();
@@ -2119,171 +2083,6 @@ pub fn start_global_download_watcher(app: tauri::AppHandle) {
     });
 }
 
-fn extract_vdf_number(line: &str) -> Option<u64> {
-    let parts: Vec<&str> = line.split('"').collect();
-    if parts.len() >= 4 {
-        parts[3].parse::<u64>().ok()
-    } else {
-        None
-    }
-}
-
-#[derive(Default)]
-struct SteamDownloadState {
-    bytes_downloaded: u64,
-    bytes_to_download: u64,
-    bytes_staged: u64,
-    bytes_to_stage: u64,
-    size_on_disk: u64,
-    state_flags: u64,
-}
-
-impl SteamDownloadState {
-    fn is_fully_installed(&self, downloading_dir_size: u64) -> bool {
-        (self.state_flags & STEAM_STATE_FULLY_INSTALLED) != 0
-            && (self.state_flags & STEAM_STATE_UPDATE_REQUIRED) == 0
-            && downloading_dir_size == 0
-    }
-
-    fn has_active_work(&self, downloading_dir_size: u64) -> bool {
-        !self.is_fully_installed(downloading_dir_size)
-            && (downloading_dir_size > 0
-                || self.bytes_to_download > 0
-                || self.bytes_to_stage > 0
-                || (self.state_flags & STEAM_STATE_UPDATE_REQUIRED) != 0)
-    }
-}
-
-fn parse_steam_download_state(contents: &str) -> SteamDownloadState {
-    let mut state = SteamDownloadState::default();
-
-    for line in contents.lines() {
-        if line.contains("\"BytesDownloaded\"") {
-            if let Some(value) = extract_vdf_number(line) {
-                state.bytes_downloaded = value;
-            }
-        } else if line.contains("\"BytesToDownload\"") {
-            if let Some(value) = extract_vdf_number(line) {
-                state.bytes_to_download = value;
-            }
-        } else if line.contains("\"BytesStaged\"") {
-            if let Some(value) = extract_vdf_number(line) {
-                state.bytes_staged = value;
-            }
-        } else if line.contains("\"BytesToStage\"") {
-            if let Some(value) = extract_vdf_number(line) {
-                state.bytes_to_stage = value;
-            }
-        } else if line.contains("\"SizeOnDisk\"") {
-            if let Some(value) = extract_vdf_number(line) {
-                state.size_on_disk = value;
-            }
-        } else if line.contains("\"StateFlags\"") {
-            if let Some(value) = extract_vdf_number(line) {
-                state.state_flags = value;
-            }
-        }
-    }
-
-    state
-}
-
-fn calculate_steam_progress(state: &SteamDownloadState, downloading_dir_size: u64) -> Option<u32> {
-    if let Some((done, total)) = steam_combined_progress_bytes(state, downloading_dir_size) {
-        return Some(calculate_active_progress(done, total));
-    }
-
-    if state.size_on_disk > 0 && downloading_dir_size > 0 {
-        return Some(calculate_active_progress(
-            downloading_dir_size,
-            state.size_on_disk,
-        ));
-    }
-
-    None
-}
-
-fn steam_phase(state: &SteamDownloadState, downloading_dir_size: u64) -> &'static str {
-    if state.bytes_to_download > 0 {
-        if steam_downloaded_bytes(state, downloading_dir_size) < state.bytes_to_download {
-            "download"
-        } else if state.bytes_to_stage > 0 {
-            "installing"
-        } else {
-            "download"
-        }
-    } else if state.bytes_to_stage > 0 {
-        "installing"
-    } else {
-        "external"
-    }
-}
-
-fn steam_status_label(state: &SteamDownloadState, downloading_dir_size: u64) -> &'static str {
-    if state.bytes_to_download > 0 {
-        if steam_downloaded_bytes(state, downloading_dir_size) < state.bytes_to_download {
-            "Steam Downloading"
-        } else if state.bytes_to_stage > 0 {
-            "Steam Installing"
-        } else {
-            "Steam Downloading"
-        }
-    } else if state.bytes_to_stage > 0 {
-        "Steam Installing"
-    } else {
-        "Steam"
-    }
-}
-
-fn steam_progress_bytes(
-    state: &SteamDownloadState,
-    downloading_dir_size: u64,
-) -> (Option<u64>, Option<u64>) {
-    if let Some((done, total)) = steam_combined_progress_bytes(state, downloading_dir_size) {
-        return (Some(done), Some(total));
-    }
-
-    if state.size_on_disk > 0 && downloading_dir_size > 0 {
-        return (
-            Some(downloading_dir_size.min(state.size_on_disk)),
-            Some(state.size_on_disk),
-        );
-    }
-
-    (None, None)
-}
-
-fn steam_combined_progress_bytes(
-    state: &SteamDownloadState,
-    downloading_dir_size: u64,
-) -> Option<(u64, u64)> {
-    let download_total = state.bytes_to_download;
-    let stage_total = state.bytes_to_stage;
-    let total = download_total.saturating_add(stage_total);
-    if total == 0 {
-        return None;
-    }
-
-    let downloaded = steam_downloaded_bytes(state, downloading_dir_size);
-    let staged = state.bytes_staged.min(stage_total);
-    Some((downloaded.saturating_add(staged).min(total), total))
-}
-
-fn steam_downloaded_bytes(state: &SteamDownloadState, downloading_dir_size: u64) -> u64 {
-    if state.bytes_downloaded > 0 {
-        state.bytes_downloaded.min(state.bytes_to_download)
-    } else {
-        downloading_dir_size.min(state.bytes_to_download)
-    }
-}
-
-fn steam_downloading_dir_for_manifest(
-    manifest_path: &std::path::Path,
-    app_id: &str,
-) -> Option<std::path::PathBuf> {
-    Some(manifest_path.parent()?.join("downloading").join(app_id))
-}
-
 // Provider Health Check
 
 #[derive(Debug, Serialize, Clone)]
@@ -2549,94 +2348,6 @@ pub fn reconcile_downloads(app: tauri::AppHandle) -> Result<ReconciliationResult
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn steam_progress_combines_download_and_stage_bytes() {
-        let state = SteamDownloadState {
-            bytes_downloaded: 50,
-            bytes_to_download: 100,
-            bytes_staged: 25,
-            bytes_to_stage: 100,
-            ..Default::default()
-        };
-
-        assert_eq!(calculate_steam_progress(&state, 0), Some(38));
-        assert_eq!(steam_progress_bytes(&state, 0), (Some(75), Some(200)));
-        assert_eq!(steam_phase(&state, 0), "download");
-        assert_eq!(steam_status_label(&state, 0), "Steam Downloading");
-    }
-
-    #[test]
-    fn steam_progress_uses_downloading_directory_when_manifest_bytes_lag() {
-        let state = SteamDownloadState {
-            bytes_downloaded: 0,
-            bytes_to_download: 1_000,
-            ..Default::default()
-        };
-
-        assert_eq!(calculate_steam_progress(&state, 250), Some(25));
-        assert_eq!(steam_progress_bytes(&state, 250), (Some(250), Some(1_000)));
-    }
-
-    #[test]
-    fn steam_progress_switches_to_install_phase_after_download_bytes_complete() {
-        let state = SteamDownloadState {
-            bytes_downloaded: 100,
-            bytes_to_download: 100,
-            bytes_staged: 50,
-            bytes_to_stage: 100,
-            ..Default::default()
-        };
-
-        assert_eq!(calculate_steam_progress(&state, 0), Some(75));
-        assert_eq!(steam_phase(&state, 0), "installing");
-        assert_eq!(steam_status_label(&state, 0), "Steam Installing");
-    }
-
-    #[test]
-    fn steam_fully_installed_requires_no_update_work_or_downloading_files() {
-        let installed = SteamDownloadState {
-            state_flags: 4,
-            ..Default::default()
-        };
-        let update_required = SteamDownloadState {
-            state_flags: 6,
-            ..Default::default()
-        };
-        let stale_manifest_bytes = SteamDownloadState {
-            state_flags: 4,
-            bytes_to_download: 100,
-            ..Default::default()
-        };
-
-        assert!(installed.is_fully_installed(0));
-        assert!(!installed.is_fully_installed(1));
-        assert!(!update_required.is_fully_installed(0));
-        assert!(stale_manifest_bytes.is_fully_installed(0));
-        assert!(!stale_manifest_bytes.is_fully_installed(1));
-    }
-
-    #[test]
-    fn steam_active_work_keeps_installed_updates_in_queue() {
-        let installed = SteamDownloadState {
-            state_flags: 4,
-            bytes_to_download: 100,
-            ..Default::default()
-        };
-        let update_required = SteamDownloadState {
-            state_flags: 6,
-            ..Default::default()
-        };
-        let install_download = SteamDownloadState {
-            bytes_to_download: 100,
-            ..Default::default()
-        };
-
-        assert!(!installed.has_active_work(0));
-        assert!(installed.has_active_work(1));
-        assert!(update_required.has_active_work(0));
-        assert!(install_download.has_active_work(0));
-    }
 
     #[test]
     fn normalize_queue_payload_allows_steam_external_pause_only() {
@@ -2931,20 +2642,3 @@ fn update_installed_games_cache_for_download(
 
     write_installed_games_cache(&games);
 }
-
-/// Extract a string value from VDF content by key name.
-/// VDF format: `"key"\t\t"value"`
-fn extract_vdf_string(contents: &str, key: &str) -> Option<String> {
-    let search = format!("\"{}\"", key);
-    for line in contents.lines() {
-        let trimmed = line.trim();
-        if trimmed.starts_with(&search) {
-            let parts: Vec<&str> = trimmed.split('"').collect();
-            if parts.len() >= 4 {
-                return Some(parts[3].to_string());
-            }
-        }
-    }
-    None
-}
-

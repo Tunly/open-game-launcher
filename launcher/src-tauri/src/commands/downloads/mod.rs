@@ -1,5 +1,6 @@
 mod history;
 mod legacy;
+mod steam_state;
 mod types;
 mod utils;
 
