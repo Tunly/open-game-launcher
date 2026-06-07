@@ -8,7 +8,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ### Changed
 - **Architectural pivot**: Open Game Launcher is now positioned as a full **Embedded Client-Manager**, not a pure aggregator. Silent-Install (where licensable), Auto-Updates, and Client-Modifications (path overlays, asset caches, mod roots) are in scope. Client launch continues via official URI protocols. See README "Architectural Decisions".
-- **Dependency updates (Dependabot merge batch)**: merged 10 Dependabot branches. Reverted 3 due to breaking API changes; details below.
 
 ### Added
 - Tooling: `.editorconfig`, `.gitattributes`, Prettier config, Husky pre-commit + lint-staged.
@@ -18,11 +17,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ### Removed
 - **Husky pre-commit + lint-staged**: bots disabled per user request (see README "Automation"). Replaced with empty `.husky/pre-commit` stub.
+- **Dependabot**: bot disabled (see README "Automation"). All remaining Dependabot branches deleted; in-repo `.github/dependabot.yml` was removed earlier. GitHub-side toggle must be flipped manually in `Settings → Code security and analysis`.
 
 ### Fixed
 - `useLibrarySync` test suite: three pre-existing failures aligned with the refactored hook. The hook now uses `compressAndReadImage` (canvas + Image) instead of a raw `FileReader`, and the rejection message is more specific. Tests now mock `image-compress` directly and `waitFor` the first render before asserting. 288/288 tests pass.
 
-### Dependabot merge results
+## Historical / Disabled
+
+This section records bot-driven work that has been turned off. It stays here for context, but **Dependabot is no longer running** on this repository.
+
+### Dependabot merge results (historical)
 
 Merged:
 - `dirs` 5.0.1 → 6.0.0 (Cargo).
@@ -34,11 +38,11 @@ Merged:
 
 Reverted (breaking changes, require code migration):
 - `keyring` 3.6.3 → 4.0.1 (Cargo). The 4.x release renames `Entry` and the platform store crates; the existing `commands/*` call sites need migration. See commit `8a6d364`.
-- `rand` 0.8.6 → 0.10.1 (Cargo). 0.10 hides `RngCore` / `OsRng` behind a different path; `fill_bytes` now needs the trait in scope. See commit `d5f729c`.
+- `rand` 0.8.6 → 0.10.1 (Cargo). 0.10 hides `RngCore` / `OsRng` behind a different path; `fill_bytes` now needs the trait in scope. See commit `d5f729c`. Migration completed in `f273ef1` — see "Follow-up" below.
 - `eslint-plugin-react-hooks` 5.x → 7.1.1 (npm). 7.x adds a new `react-hooks/set-state-in-effect` rule that fails on 53 existing useEffect → setState sites. Migrating all of them is a separate refactor; for now we keep the 5.x plugin. See commit `12985ec`.
 
 Not merged (would require code migration before being useful):
-- `reqwest` 0.12 → 0.13.3 (Cargo). 0.13 removes `.form()` and `.query()` from `RequestBuilder` behind separate feature flags; ~5 call sites in `commands/` need updates. Branch is left open in `origin/dependabot/cargo/launcher/src-tauri/reqwest-0.13.3`.
+- `reqwest` 0.12 → 0.13.3 (Cargo). 0.13 removes `.form()` and `.query()` from `RequestBuilder` behind separate feature flags; ~5 call sites in `commands/` need updates. Migration completed in `f26886c` — see "Follow-up" below.
 
 ### Follow-up: reqwest 0.12 → 0.13 migration completed
 - `Cargo.toml`: enabled reqwest features `form` and `query`; added `Win32_UI_Input` and `Win32_UI_Input_KeyboardAndMouse` to `windows-sys` (the transitive `0.60 → 0.61` bump that reqwest 0.13 pulls in split that module behind its own gate).
