@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use std::time::Instant;
 
 use tauri::AppHandle;
@@ -6,8 +5,7 @@ use tauri::Emitter;
 use tokio::sync::watch;
 
 use crate::commands::downloads::history::{
-    is_stale_installed_download, load_download_history, remember_download_item,
-    remove_download_history_item, terminal_sort_rank,
+    remember_download_item, remove_download_history_item,
 };
 use crate::commands::downloads::install::{
     install_downloaded_game_package, update_installed_games_cache_for_download,
@@ -17,7 +15,7 @@ use crate::commands::uri_safety::validate_slug;
 use crate::commands::downloads::internal_download::download_internal_game_file;
 use crate::commands::downloads::steam_cef::toggle_steam_download_pause;
 use crate::commands::downloads::types::{
-    emit_download_progress, normalize_queue_payload, payload_from_active_download,
+    emit_download_progress, payload_from_active_download,
 };
 use crate::commands::downloads::steam_state::{
     calculate_steam_progress, parse_steam_download_state, steam_downloading_dir_for_manifest,
@@ -26,7 +24,7 @@ use crate::commands::downloads::steam_state::{
 use crate::commands::downloads::types::{
     cancellable_sleep, get_download_manager, is_download_control_pending,
     is_terminal_download_status, pause_hold_feedback, update_download_metrics,
-    update_download_status, ActiveDownload, DownloadItemPayload, DownloadStartStatus,
+    update_download_status, ActiveDownload, DownloadStartStatus,
     InternalDownloadSource, StartDownloadResponse, DOWNLOAD_STATUS_CANCELLED,
     DOWNLOAD_STATUS_DOWNLOADING, DOWNLOAD_STATUS_PAUSED, DOWNLOAD_STATUS_STARTING,
 };
@@ -35,49 +33,6 @@ use crate::commands::downloads::utils::{
     is_external_tracker_game_id, normalize_game_id, steam_app_id_from_download_id,
 };
 use crate::commands::games::read_installed_games_cache;
-
-pub fn get_download_queue() -> Result<Vec<DownloadItemPayload>, String> {
-    let mut queue_by_game_id: HashMap<String, DownloadItemPayload> = load_download_history()
-        .into_iter()
-        .map(|item| (item.game_id.clone(), normalize_queue_payload(item)))
-        .collect();
-
-    {
-        let map = get_download_manager()
-            .lock()
-            .map_err(|error| format!("Download manager lock poisoned: {error}"))?;
-        let active_items = map
-            .iter()
-            .map(|(game_id, dl)| payload_from_active_download(game_id, dl))
-            .collect::<Vec<_>>();
-        drop(map);
-
-        for item in active_items {
-            if is_stale_installed_download(&item) {
-                remove_download_history_item(&item.game_id);
-                continue;
-            }
-            queue_by_game_id.insert(item.game_id.clone(), item);
-        }
-    }
-
-    {
-        if let Ok(gog_queue) = crate::commands::gog::get_gog_download_queue() {
-            for item in gog_queue {
-                queue_by_game_id.insert(item.game_id.clone(), normalize_queue_payload(item));
-            }
-        }
-    }
-
-    let mut queue: Vec<DownloadItemPayload> = queue_by_game_id.into_values().collect();
-    queue.sort_by(|a, b| {
-        terminal_sort_rank(&a.status)
-            .cmp(&terminal_sort_rank(&b.status))
-            .then_with(|| a.title.cmp(&b.title))
-    });
-
-    Ok(queue)
-}
 
 pub fn pause_download(app: AppHandle, game_id: String) -> Result<(), String> {
     let game_id = normalize_game_id(game_id)?;

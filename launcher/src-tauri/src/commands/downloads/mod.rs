@@ -2,6 +2,7 @@ mod health;
 mod history;
 mod install;
 mod internal_download;
+mod queue;
 mod reconcile;
 mod start;
 mod steam_cef;
@@ -18,7 +19,7 @@ pub use watcher::start_global_download_watcher;
 
 #[tauri::command]
 pub fn get_download_queue() -> Result<Vec<DownloadItemPayload>, String> {
-    start::get_download_queue()
+    queue::get_download_queue()
 }
 
 #[tauri::command]
