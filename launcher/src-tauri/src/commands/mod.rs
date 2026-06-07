@@ -20,4 +20,5 @@ pub mod secure_store;
 pub mod stripe;
 pub mod system;
 pub mod ubisoft;
+pub mod uri_safety;
 pub mod xbox;

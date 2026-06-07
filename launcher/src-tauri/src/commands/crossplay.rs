@@ -1,6 +1,7 @@
 use std::process::Command;
 
 use crate::commands::games::core::read_installed_games_cache;
+use crate::commands::uri_safety::{open_uri_safely, validate_slug, validate_uri_scheme};
 
 fn is_uuid(value: &str) -> bool {
     value.len() == 36
@@ -55,32 +56,48 @@ pub async fn launch_cross_play_join(
     // Resolve UUID → external slug (e.g. Steam AppID)
     let resolved_slug = resolve_game_external_id(game_slug.clone(), platform.clone())?;
 
+    // SECURITY: the slug is interpolated into a URI and then handed to the
+    // OS, so it must match a tight allowlist before we trust it. The
+    // resolved slug ultimately comes from the install-cache or the
+    // renderer, so we re-validate here even if the renderer tried to send
+    // `"123 & calc.exe"`.
+    let safe_slug = validate_slug(&resolved_slug)?.to_string();
+
     let uri = match platform.as_str() {
-        "steam" => format!("steam://run/{}", resolved_slug),
+        "steam" => format!("steam://run/{}", safe_slug),
         "epic" => format!(
             "com.epicgames.launcher://apps/{}?action=launch",
-            resolved_slug
+            safe_slug
         ),
-        "gog" => format!("goggalaxy://openGameView/{}", resolved_slug),
+        "gog" => format!("goggalaxy://openGameView/{}", safe_slug),
         "xbox" => format!(
             "ms-xbl-38966778-3f57-4f6e-a6e9-3b81c79fbb3f://launch/{}",
-            resolved_slug
+            safe_slug
         ),
-        "battlenet" => format!("battlenet://{}", resolved_slug),
-        "origin" | "ea" => format!("origin2://game/launch?offerIds={}", resolved_slug),
-        "uplay" | "ubisoft" => format!("uplay://launch/{}", resolved_slug),
-        "playstation" => format!("psjoin://{}", resolved_slug),
-        "switch" => format!("switchgame://{}", resolved_slug),
+        "battlenet" => format!("battlenet://{}", safe_slug),
+        "origin" | "ea" => format!("origin2://game/launch?offerIds={}", safe_slug),
+        "uplay" | "ubisoft" => format!("uplay://launch/{}", safe_slug),
+        "playstation" => format!("psjoin://{}", safe_slug),
+        "switch" => format!("switchgame://{}", safe_slug),
         other => return Err(format!("Unsupported platform for smart-join: {other}")),
     };
-    open_uri(&uri)?;
+    // Defense-in-depth: even though the platform arms above produce a
+    // scheme from ALLOWED_URI_SCHEMES, run the URI through the scheme
+    // whitelist before handing it to the OS.
+    let _ = validate_uri_scheme(&uri)?;
+    open_uri_safely(&uri)?;
     Ok(uri)
 }
 
 #[cfg(target_os = "windows")]
 fn open_uri(uri: &str) -> Result<(), String> {
-    Command::new("cmd")
-        .args(["/C", "start", "", uri])
+    use std::os::windows::process::CommandExt;
+    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+    // Replaced the historical `cmd /C start "" <uri>` which let
+    // shell metacharacters in `uri` become command separators.
+    Command::new("rundll32")
+        .args(["url.dll,FileProtocolHandler", uri])
+        .creation_flags(CREATE_NO_WINDOW)
         .spawn()
         .map_err(|e| format!("Could not open URI: {e}"))?;
     Ok(())
