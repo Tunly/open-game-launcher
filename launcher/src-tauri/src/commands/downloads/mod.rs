@@ -1,9 +1,11 @@
 mod legacy;
+mod types;
 
 pub use legacy::{
-    record_download_item, start_global_download_watcher, DownloadItemPayload, DownloadStartStatus,
-    ProviderHealthStatus, ReconciliationResult, StartDownloadResponse,
+    record_download_item, start_global_download_watcher, ProviderHealthStatus,
+    ReconciliationResult,
 };
+pub use types::{DownloadItemPayload, DownloadStartStatus, StartDownloadResponse};
 
 #[tauri::command]
 pub fn get_download_queue() -> Result<Vec<DownloadItemPayload>, String> {

@@ -2,8 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::{Arc, Mutex, OnceLock};
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant};
 use tauri::Emitter;
 use tokio::sync::watch;
 
@@ -16,101 +15,20 @@ use crate::commands::games::{
     GameStatus, OgManagedManifest,
 };
 
-#[derive(Debug, Serialize, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct StartDownloadResponse {
-    pub game_id: String,
-    pub download_id: String,
-    pub status: DownloadStartStatus,
-    pub message: String,
-}
-
-#[derive(Debug, Serialize, Clone)]
-#[serde(rename_all = "snake_case")]
-pub enum DownloadStartStatus {
-    Started,
-    AlreadyInstalled,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct DownloadItemPayload {
-    pub id: String,
-    pub game_id: String,
-    pub title: String,
-    pub progress: u32,
-    pub speed: String,
-    pub status: String,
-    pub eta: u32,
-    pub platform: String,
-    #[serde(default)]
-    pub phase: String,
-    #[serde(default)]
-    pub bytes_downloaded: Option<u64>,
-    #[serde(default)]
-    pub bytes_total: Option<u64>,
-    #[serde(default)]
-    pub can_pause: bool,
-    #[serde(default)]
-    pub can_cancel: bool,
-    #[serde(default)]
-    pub external: bool,
-    #[serde(default)]
-    pub last_updated_at: u64,
-    #[serde(default)]
-    pub provider: String,
-    #[serde(default)]
-    pub raw_status: String,
-    #[serde(default)]
-    pub progress_source: String,
-    #[serde(default)]
-    pub error: Option<String>,
-}
-
-#[derive(Debug, Serialize, Clone)]
-#[serde(rename_all = "camelCase")]
-struct DownloadCommandErrorPayload {
-    game_id: String,
-    message: String,
-}
-
-#[derive(Debug, Serialize, Clone)]
-#[serde(rename_all = "camelCase")]
-struct DownloadRemovedPayload {
-    game_id: String,
-}
-
-struct ActiveDownload {
-    title: String,
-    progress: u32,
-    speed: String,
-    status: String,
-    eta: u32,
-    phase: String,
-    bytes_downloaded: Option<u64>,
-    bytes_total: Option<u64>,
-    can_pause: bool,
-    can_cancel: bool,
-    external: bool,
-    paused: bool,
-    cancelled: bool,
-    pause_tx: watch::Sender<bool>,
-    cancel_tx: watch::Sender<bool>,
-    raw_status: String,
-    error: Option<String>,
-}
-
-#[derive(Debug, Clone)]
-struct InternalDownloadSource {
-    url: String,
-    sha256: Option<String>,
-}
-
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-enum SteamDownloadControlAction {
-    Pause,
-    Resume,
-}
+use crate::commands::downloads::types::{
+    ActiveDownload, DownloadItemPayload, DownloadStartStatus, DownloadStatusKind,
+    InternalDownloadSource, StartDownloadResponse, SteamDownloadControlAction,
+    DOWNLOAD_STATUS_CANCELLED, DOWNLOAD_STATUS_COMPLETED, DOWNLOAD_STATUS_DOWNLOADING,
+    DOWNLOAD_STATUS_FAILED, DOWNLOAD_STATUS_INSTALLING, DOWNLOAD_STATUS_PAUSED,
+    DOWNLOAD_STATUS_PAUSING, DOWNLOAD_STATUS_RESUMING, DOWNLOAD_STATUS_STARTING,
+    STEAM_STATE_FULLY_INSTALLED, STEAM_STATE_UPDATE_REQUIRED, cancellable_sleep,
+    emit_download_command_error, emit_download_removed, get_download_manager,
+    is_download_control_pending, is_pause_toggle_status,
+    is_restart_interrupted_download_status, is_steam_control_pending_status,
+    is_terminal_download_status, normalize_progress, now_unix_secs, pause_hold_feedback,
+    phase_from_status_and_speed, update_download_metrics, update_download_status,
+    validated_download_status,
+};
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -123,128 +41,7 @@ struct SteamCefTarget {
     web_socket_debugger_url: Option<String>,
 }
 
-type DownloadMap = Arc<Mutex<HashMap<String, ActiveDownload>>>;
-const STEAM_STATE_UPDATE_REQUIRED: u64 = 2;
-const STEAM_STATE_FULLY_INSTALLED: u64 = 4;
-const DOWNLOAD_STATUS_DOWNLOADING: &str = "downloading";
-const DOWNLOAD_STATUS_PAUSED: &str = "paused";
-const DOWNLOAD_STATUS_COMPLETED: &str = "completed";
-const DOWNLOAD_STATUS_FAILED: &str = "failed";
-const DOWNLOAD_STATUS_CANCELLED: &str = "cancelled";
-const DOWNLOAD_STATUS_ERROR: &str = "error";
-const DOWNLOAD_STATUS_QUEUED: &str = "queued";
-const DOWNLOAD_STATUS_STARTING: &str = "starting";
-const DOWNLOAD_STATUS_PAUSING: &str = "pausing";
-const DOWNLOAD_STATUS_RESUMING: &str = "resuming";
-const DOWNLOAD_STATUS_INSTALLING: &str = "installing";
 const STEAM_CONTROL_TIMEOUT: Duration = Duration::from_secs(8);
-
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
-enum DownloadStatusKind {
-    Queued,
-    Starting,
-    Downloading,
-    Pausing,
-    Paused,
-    Resuming,
-    Installing,
-    Completed,
-    Failed,
-    Cancelled,
-    Error,
-}
-
-impl DownloadStatusKind {
-    fn parse(status: &str) -> Option<Self> {
-        match status {
-            DOWNLOAD_STATUS_QUEUED => Some(Self::Queued),
-            DOWNLOAD_STATUS_STARTING => Some(Self::Starting),
-            DOWNLOAD_STATUS_DOWNLOADING => Some(Self::Downloading),
-            DOWNLOAD_STATUS_PAUSING => Some(Self::Pausing),
-            DOWNLOAD_STATUS_PAUSED => Some(Self::Paused),
-            DOWNLOAD_STATUS_RESUMING => Some(Self::Resuming),
-            DOWNLOAD_STATUS_INSTALLING => Some(Self::Installing),
-            DOWNLOAD_STATUS_COMPLETED => Some(Self::Completed),
-            DOWNLOAD_STATUS_FAILED => Some(Self::Failed),
-            DOWNLOAD_STATUS_CANCELLED => Some(Self::Cancelled),
-            DOWNLOAD_STATUS_ERROR => Some(Self::Error),
-            _ => None,
-        }
-    }
-
-    fn as_str(self) -> &'static str {
-        match self {
-            Self::Queued => DOWNLOAD_STATUS_QUEUED,
-            Self::Starting => DOWNLOAD_STATUS_STARTING,
-            Self::Downloading => DOWNLOAD_STATUS_DOWNLOADING,
-            Self::Pausing => DOWNLOAD_STATUS_PAUSING,
-            Self::Paused => DOWNLOAD_STATUS_PAUSED,
-            Self::Resuming => DOWNLOAD_STATUS_RESUMING,
-            Self::Installing => DOWNLOAD_STATUS_INSTALLING,
-            Self::Completed => DOWNLOAD_STATUS_COMPLETED,
-            Self::Failed => DOWNLOAD_STATUS_FAILED,
-            Self::Cancelled => DOWNLOAD_STATUS_CANCELLED,
-            Self::Error => DOWNLOAD_STATUS_ERROR,
-        }
-    }
-
-    fn is_terminal(self) -> bool {
-        matches!(
-            self,
-            Self::Completed | Self::Failed | Self::Cancelled | Self::Error
-        )
-    }
-
-    fn is_restart_interrupted(self) -> bool {
-        matches!(
-            self,
-            Self::Downloading
-                | Self::Queued
-                | Self::Starting
-                | Self::Pausing
-                | Self::Resuming
-                | Self::Installing
-        )
-    }
-
-    fn is_pause_toggle(self) -> bool {
-        matches!(self, Self::Downloading | Self::Paused)
-    }
-
-    fn is_steam_control_pending(self) -> bool {
-        matches!(self, Self::Pausing | Self::Resuming)
-    }
-}
-
-fn validated_download_status(status: &str) -> &'static str {
-    DownloadStatusKind::parse(status)
-        .unwrap_or(DownloadStatusKind::Failed)
-        .as_str()
-}
-
-fn get_download_manager() -> &'static DownloadMap {
-    static MANAGER: OnceLock<DownloadMap> = OnceLock::new();
-    MANAGER.get_or_init(|| Arc::new(Mutex::new(HashMap::new())))
-}
-
-async fn cancellable_sleep(cancel_rx: &watch::Receiver<bool>, duration: Duration) -> bool {
-    let start = Instant::now();
-    while start.elapsed() < duration {
-        if *cancel_rx.borrow() {
-            return true;
-        }
-        let remaining = duration.saturating_sub(start.elapsed());
-        tokio::time::sleep(remaining.min(Duration::from_millis(200))).await;
-    }
-    false
-}
-
-fn now_unix_secs() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0)
-}
 
 pub fn get_download_queue() -> Result<Vec<DownloadItemPayload>, String> {
     let mut queue_by_game_id: HashMap<String, DownloadItemPayload> = load_download_history()
@@ -1048,70 +845,6 @@ pub async fn start_download(
     })
 }
 
-pub(crate) fn update_download_status(
-    game_id: &str,
-    status: &str,
-    speed: &str,
-    progress: u32,
-    eta: u32,
-) {
-    let status = validated_download_status(status);
-    let Ok(mut guard) = get_download_manager().lock() else {
-        return;
-    };
-    if let Some(dl) = guard.get_mut(game_id) {
-        dl.status = status.to_string();
-        dl.speed = speed.to_string();
-        dl.progress = normalize_progress(progress, status);
-        dl.eta = eta;
-        dl.phase = phase_from_status_and_speed(status, speed);
-    }
-}
-
-fn update_download_metrics(
-    game_id: &str,
-    phase: &str,
-    bytes_downloaded: Option<u64>,
-    bytes_total: Option<u64>,
-) {
-    let Ok(mut guard) = get_download_manager().lock() else {
-        return;
-    };
-    if let Some(dl) = guard.get_mut(game_id) {
-        dl.phase = phase.to_string();
-        dl.bytes_downloaded = bytes_downloaded;
-        dl.bytes_total = bytes_total;
-    }
-}
-
-fn pause_hold_feedback(game_id: &str, default_speed: &str) -> (String, String, u32) {
-    if let Ok(guard) = get_download_manager().lock() {
-        if let Some(dl) = guard.get(game_id) {
-            if dl.status == DOWNLOAD_STATUS_PAUSING {
-                return (dl.status.clone(), dl.speed.clone(), dl.eta);
-            }
-        }
-    }
-
-    (
-        DOWNLOAD_STATUS_PAUSED.to_string(),
-        default_speed.to_string(),
-        0,
-    )
-}
-
-fn is_download_control_pending(game_id: &str) -> bool {
-    get_download_manager()
-        .lock()
-        .ok()
-        .and_then(|guard| {
-            guard
-                .get(game_id)
-                .map(|dl| is_steam_control_pending_status(&dl.status))
-        })
-        .unwrap_or(false)
-}
-
 async fn download_internal_game_file(
     app: &tauri::AppHandle,
     game_id: &str,
@@ -1699,22 +1432,6 @@ fn terminal_sort_rank(status: &str) -> u8 {
     }
 }
 
-fn is_terminal_download_status(status: &str) -> bool {
-    DownloadStatusKind::parse(status).is_some_and(DownloadStatusKind::is_terminal)
-}
-
-fn is_restart_interrupted_download_status(status: &str) -> bool {
-    DownloadStatusKind::parse(status).is_some_and(DownloadStatusKind::is_restart_interrupted)
-}
-
-fn is_pause_toggle_status(status: &str) -> bool {
-    DownloadStatusKind::parse(status).is_some_and(DownloadStatusKind::is_pause_toggle)
-}
-
-fn is_steam_control_pending_status(status: &str) -> bool {
-    DownloadStatusKind::parse(status).is_some_and(DownloadStatusKind::is_steam_control_pending)
-}
-
 fn is_external_tracker_game_id(game_id: &str) -> bool {
     game_id.starts_with("steam-")
         || game_id.starts_with("epic-owned-")
@@ -1916,25 +1633,6 @@ fn steam_control_failed_speed(action: &str, error_message: Option<&str>) -> Stri
         message.push_str("...");
     }
     format!("Steam {action} failed: {message}")
-}
-
-fn emit_download_command_error(app: &tauri::AppHandle, game_id: &str, message: &str) {
-    let _ = app.emit(
-        "download_command_error",
-        DownloadCommandErrorPayload {
-            game_id: game_id.to_string(),
-            message: message.to_string(),
-        },
-    );
-}
-
-fn emit_download_removed(app: &tauri::AppHandle, game_id: &str) {
-    let _ = app.emit(
-        "download_removed",
-        DownloadRemovedPayload {
-            game_id: game_id.to_string(),
-        },
-    );
 }
 
 fn try_control_steam_download(
@@ -2286,41 +1984,6 @@ fn cdp_message(value: &serde_json::Value) -> String {
         .or_else(|| value.get("value").and_then(|message| message.as_str()))
         .unwrap_or("unknown Steam CDP error")
         .to_string()
-}
-
-fn phase_from_status_and_speed(status: &str, speed: &str) -> String {
-    if is_terminal_download_status(status) {
-        return status.to_string();
-    }
-    if status == DOWNLOAD_STATUS_PAUSED || status == DOWNLOAD_STATUS_PAUSING {
-        return "paused".to_string();
-    }
-    if status == DOWNLOAD_STATUS_RESUMING
-        || status == DOWNLOAD_STATUS_STARTING
-        || status == DOWNLOAD_STATUS_QUEUED
-    {
-        return "external".to_string();
-    }
-    if status == DOWNLOAD_STATUS_INSTALLING {
-        return "installing".to_string();
-    }
-    if speed.contains("Staging") || speed.contains("Installing") {
-        return "installing".to_string();
-    }
-    if speed.contains("Downloading") {
-        return "download".to_string();
-    }
-    if speed.contains("External")
-        || speed.contains("Steam")
-        || speed.contains("Epic")
-        || speed.contains("EA App")
-        || speed.contains("Ubisoft")
-        || speed.contains("Battle.net")
-        || speed.contains("Xbox")
-    {
-        return "external".to_string();
-    }
-    "download".to_string()
 }
 
 pub fn start_global_download_watcher(app: tauri::AppHandle) {
@@ -3508,14 +3171,6 @@ fn update_installed_games_cache_for_download(
     }
 
     write_installed_games_cache(&games);
-}
-
-fn normalize_progress(progress: u32, status: &str) -> u32 {
-    if status == DOWNLOAD_STATUS_COMPLETED {
-        100
-    } else {
-        progress.min(99)
-    }
 }
 
 /// Extract a string value from VDF content by key name.
