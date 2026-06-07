@@ -852,7 +852,14 @@ fn discover_local_achievement_cache_files(
     }
 
     let mut discovered = 0usize;
-    discover_local_achievement_cache_files_inner(root, &key_tokens, candidates, 0, &mut discovered);
+    discover_local_achievement_cache_files_inner(
+        root,
+        &key_tokens,
+        candidates,
+        0,
+        &mut discovered,
+        false,
+    );
 }
 
 fn discover_local_achievement_cache_files_inner(
@@ -861,6 +868,7 @@ fn discover_local_achievement_cache_files_inner(
     candidates: &mut Vec<PathBuf>,
     depth: usize,
     discovered: &mut usize,
+    descended_from_matching_key_dir: bool,
 ) {
     if depth > ACHIEVEMENT_CLIENT_CACHE_MAX_DEPTH
         || *discovered >= ACHIEVEMENT_CLIENT_CACHE_MAX_DISCOVERED_FILES
@@ -888,13 +896,15 @@ fn discover_local_achievement_cache_files_inner(
                 .and_then(|name| name.to_str())
                 .unwrap_or_default()
                 .to_lowercase();
-            if depth == 0 || local_achievement_cache_name_matches(&dir_name, key_tokens) {
+            let dir_matches_key = local_achievement_cache_name_matches(&dir_name, key_tokens);
+            if depth == 0 || descended_from_matching_key_dir || dir_matches_key {
                 discover_local_achievement_cache_files_inner(
                     &path,
                     key_tokens,
                     candidates,
                     depth + 1,
                     discovered,
+                    descended_from_matching_key_dir || dir_matches_key,
                 );
             }
             continue;
