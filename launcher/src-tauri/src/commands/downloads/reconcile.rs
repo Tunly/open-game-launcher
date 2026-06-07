@@ -2,8 +2,7 @@ use serde::Serialize;
 use tauri::AppHandle;
 use tauri::Emitter;
 
-use crate::commands::downloads::history::save_download_history;
-use crate::commands::downloads::legacy::load_download_history;
+use crate::commands::downloads::history::{load_download_history, save_download_history};
 use crate::commands::downloads::steam_state::{has_active_download_work, steam_download_work_exists};
 use crate::commands::downloads::types::{
     is_terminal_download_status, now_unix_secs, DownloadItemPayload,

@@ -3,9 +3,9 @@ use std::time::Instant;
 
 use tokio::sync::watch;
 
-use crate::commands::downloads::legacy::emit_download_progress;
 use crate::commands::downloads::types::{
-    cancellable_sleep, update_download_metrics, update_download_status, InternalDownloadSource,
+    cancellable_sleep, emit_download_progress, update_download_metrics, update_download_status,
+    InternalDownloadSource,
 };
 use crate::commands::downloads::utils::{
     calculate_active_progress, download_file_name, verify_sha256,

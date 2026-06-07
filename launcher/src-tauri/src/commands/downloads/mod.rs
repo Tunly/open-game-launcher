@@ -2,7 +2,6 @@ mod health;
 mod history;
 mod install;
 mod internal_download;
-mod legacy;
 mod reconcile;
 mod start;
 mod steam_cef;
@@ -12,7 +11,7 @@ mod utils;
 mod watcher;
 
 pub use health::ProviderHealthStatus;
-pub use legacy::record_download_item;
+pub use history::record_download_item;
 pub use reconcile::ReconciliationResult;
 pub use types::{DownloadItemPayload, DownloadStartStatus, StartDownloadResponse};
 pub use watcher::start_global_download_watcher;

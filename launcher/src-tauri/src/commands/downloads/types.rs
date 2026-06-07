@@ -5,6 +5,14 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tauri::Emitter;
 use tokio::sync::watch;
 
+use crate::commands::downloads::history::{
+    is_stale_installed_download, remove_download_history_item, remember_download_item,
+};
+use crate::commands::downloads::utils::{
+    get_platform_from_game_id, is_external_tracker_game_id, is_steam_tracker_game_id,
+    progress_source_from_game_id, provider_key_from_game_id,
+};
+
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct StartDownloadResponse {
@@ -364,4 +372,288 @@ pub(crate) fn now_unix_secs() -> u64 {
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0)
+}
+
+pub(crate) fn emit_download_progress(
+    app: &tauri::AppHandle,
+    game_id: &str,
+    progress: u32,
+    speed: &str,
+    status: &str,
+    eta: u32,
+) {
+    let status = validated_download_status(status);
+    let mut payload = get_download_manager()
+        .lock()
+        .ok()
+        .and_then(|guard| {
+            guard
+                .get(game_id)
+                .map(|dl| payload_from_active_download(game_id, dl))
+        })
+        .unwrap_or_else(|| default_download_payload(game_id, ""));
+    payload.progress = normalize_progress(progress, status);
+    payload.speed = speed.to_string();
+    payload.status = status.to_string();
+    payload.eta = eta;
+    payload.phase = phase_from_status_and_speed(status, speed);
+    payload = normalize_queue_payload(payload);
+    if is_stale_installed_download(&payload) {
+        remove_download_history_item(game_id);
+        emit_download_removed(app, game_id);
+        return;
+    }
+    remember_download_item(payload.clone());
+    let _ = app.emit("download_progress", payload);
+}
+
+pub(crate) fn payload_from_active_download(game_id: &str, dl: &ActiveDownload) -> DownloadItemPayload {
+    normalize_queue_payload(DownloadItemPayload {
+        id: format!("download-{game_id}"),
+        game_id: game_id.to_string(),
+        title: dl.title.clone(),
+        progress: dl.progress,
+        speed: dl.speed.clone(),
+        status: dl.status.clone(),
+        eta: dl.eta,
+        platform: get_platform_from_game_id(game_id),
+        phase: dl.phase.clone(),
+        bytes_downloaded: dl.bytes_downloaded,
+        bytes_total: dl.bytes_total,
+        can_pause: dl.can_pause,
+        can_cancel: dl.can_cancel,
+        external: dl.external,
+        last_updated_at: 0,
+        provider: provider_key_from_game_id(game_id),
+        raw_status: dl.raw_status.clone(),
+        progress_source: progress_source_from_game_id(game_id),
+        error: dl.error.clone(),
+    })
+}
+
+fn default_download_payload(game_id: &str, title: &str) -> DownloadItemPayload {
+    normalize_queue_payload(DownloadItemPayload {
+        id: format!("download-{game_id}"),
+        game_id: game_id.to_string(),
+        title: title.to_string(),
+        progress: 0,
+        speed: "Waiting...".to_string(),
+        status: "downloading".to_string(),
+        eta: 0,
+        platform: get_platform_from_game_id(game_id),
+        phase: "download".to_string(),
+        bytes_downloaded: None,
+        bytes_total: None,
+        can_pause: true,
+        can_cancel: true,
+        external: false,
+        last_updated_at: 0,
+        provider: provider_key_from_game_id(game_id),
+        raw_status: String::new(),
+        progress_source: progress_source_from_game_id(game_id),
+        error: None,
+    })
+}
+
+pub(crate) fn normalize_queue_payload(mut item: DownloadItemPayload) -> DownloadItemPayload {
+    item.status = validated_download_status(&item.status).to_string();
+    if item.id.trim().is_empty() {
+        item.id = format!("download-{}", item.game_id);
+    }
+    if item.platform.trim().is_empty() {
+        item.platform = get_platform_from_game_id(&item.game_id);
+    }
+    if item.phase.trim().is_empty() {
+        item.phase = phase_from_status_and_speed(&item.status, &item.speed);
+    }
+    if item.provider.trim().is_empty() {
+        item.provider = provider_key_from_game_id(&item.game_id);
+    }
+    if item.progress_source.trim().is_empty() {
+        item.progress_source = progress_source_from_game_id(&item.game_id);
+    }
+    if item.raw_status.trim().is_empty() {
+        item.raw_status = item.status.clone();
+    }
+
+    let is_terminal = is_terminal_download_status(&item.status);
+    let external = item.external || is_external_tracker_game_id(&item.game_id);
+    let supports_external_pause = is_steam_tracker_game_id(&item.game_id);
+    item.external = external;
+    item.progress = normalize_progress(item.progress, &item.status);
+    item.can_pause = item.can_pause
+        && is_pause_toggle_status(&item.status)
+        && (!external || supports_external_pause)
+        && !is_terminal;
+    item.can_cancel = item.can_cancel && !external && !is_terminal;
+
+    item
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn normalize_queue_payload_allows_steam_external_pause_only() {
+        let steam_item = normalize_queue_payload(DownloadItemPayload {
+            id: "download-steam-owned-12345".to_string(),
+            game_id: "steam-owned-12345".to_string(),
+            title: "Steam Game".to_string(),
+            progress: 50,
+            speed: "Steam Downloading".to_string(),
+            status: "downloading".to_string(),
+            eta: 999,
+            platform: "Steam".to_string(),
+            phase: "external".to_string(),
+            bytes_downloaded: None,
+            bytes_total: None,
+            can_pause: true,
+            can_cancel: true,
+            external: true,
+            last_updated_at: 0,
+            provider: String::new(),
+            raw_status: String::new(),
+            progress_source: String::new(),
+            error: None,
+        });
+
+        let epic_item = normalize_queue_payload(DownloadItemPayload {
+            id: "download-epic-owned-game".to_string(),
+            game_id: "epic-owned-game".to_string(),
+            title: "Epic Game".to_string(),
+            progress: 0,
+            speed: "Epic Games (External)".to_string(),
+            status: "downloading".to_string(),
+            eta: 999,
+            platform: "Epic Games".to_string(),
+            phase: "external".to_string(),
+            bytes_downloaded: None,
+            bytes_total: None,
+            can_pause: true,
+            can_cancel: true,
+            external: true,
+            last_updated_at: 0,
+            provider: String::new(),
+            raw_status: String::new(),
+            progress_source: String::new(),
+            error: None,
+        });
+
+        assert!(steam_item.can_pause);
+        assert!(!steam_item.can_cancel);
+        assert!(!epic_item.can_pause);
+        assert!(!epic_item.can_cancel);
+    }
+
+    #[test]
+    fn normalize_queue_payload_blocks_pause_while_steam_control_is_pending() {
+        let pausing_item = normalize_queue_payload(DownloadItemPayload {
+            id: "download-steam-owned-12345".to_string(),
+            game_id: "steam-owned-12345".to_string(),
+            title: "Steam Game".to_string(),
+            progress: 50,
+            speed: "Steam Pausing...".to_string(),
+            status: DOWNLOAD_STATUS_PAUSING.to_string(),
+            eta: 0,
+            platform: "Steam".to_string(),
+            phase: "paused".to_string(),
+            bytes_downloaded: None,
+            bytes_total: None,
+            can_pause: true,
+            can_cancel: false,
+            external: true,
+            last_updated_at: 0,
+            provider: String::new(),
+            raw_status: String::new(),
+            progress_source: String::new(),
+            error: None,
+        });
+
+        let paused_item = normalize_queue_payload(DownloadItemPayload {
+            status: DOWNLOAD_STATUS_PAUSED.to_string(),
+            speed: "Steam Paused".to_string(),
+            can_pause: true,
+            ..pausing_item.clone()
+        });
+
+        assert!(!pausing_item.can_pause);
+        assert!(paused_item.can_pause);
+    }
+
+    #[test]
+    fn restart_interrupted_statuses_are_not_loaded_as_active() {
+        assert!(is_restart_interrupted_download_status(
+            DOWNLOAD_STATUS_DOWNLOADING
+        ));
+        assert!(is_restart_interrupted_download_status(
+            DOWNLOAD_STATUS_STARTING
+        ));
+        assert!(is_restart_interrupted_download_status(
+            DOWNLOAD_STATUS_INSTALLING
+        ));
+        assert!(!is_restart_interrupted_download_status(
+            DOWNLOAD_STATUS_PAUSED
+        ));
+        assert!(!is_restart_interrupted_download_status(
+            DOWNLOAD_STATUS_COMPLETED
+        ));
+    }
+
+    #[test]
+    fn download_status_state_machine_validates_unknown_values() {
+        assert_eq!(
+            validated_download_status(DOWNLOAD_STATUS_DOWNLOADING),
+            DOWNLOAD_STATUS_DOWNLOADING
+        );
+        assert_eq!(validated_download_status("mystery"), DOWNLOAD_STATUS_FAILED);
+        assert!(DownloadStatusKind::parse(DOWNLOAD_STATUS_PAUSING)
+            .is_some_and(DownloadStatusKind::is_steam_control_pending));
+        assert!(DownloadStatusKind::parse(DOWNLOAD_STATUS_RESUMING)
+            .is_some_and(DownloadStatusKind::is_steam_control_pending));
+        assert!(!DownloadStatusKind::parse(DOWNLOAD_STATUS_INSTALLING)
+            .is_some_and(DownloadStatusKind::is_pause_toggle));
+    }
+
+    #[test]
+    fn normalize_queue_payload_converts_unknown_status_to_failed() {
+        let item = normalize_queue_payload(DownloadItemPayload {
+            id: "download-manual-test".to_string(),
+            game_id: "manual-test".to_string(),
+            title: "Manual Test".to_string(),
+            progress: 77,
+            speed: "Unknown".to_string(),
+            status: "weird".to_string(),
+            eta: 999,
+            platform: "OG Store".to_string(),
+            phase: String::new(),
+            bytes_downloaded: None,
+            bytes_total: None,
+            can_pause: true,
+            can_cancel: true,
+            external: false,
+            last_updated_at: 0,
+            provider: String::new(),
+            raw_status: String::new(),
+            progress_source: String::new(),
+            error: None,
+        });
+
+        assert_eq!(item.status, DOWNLOAD_STATUS_FAILED);
+        assert_eq!(item.progress, 77);
+        assert!(!item.can_pause);
+        assert!(!item.can_cancel);
+    }
+
+    #[test]
+    fn external_tracker_phase_stays_external_without_fake_progress() {
+        assert_eq!(
+            phase_from_status_and_speed("downloading", "Xbox Game Pass (External)"),
+            "external"
+        );
+        assert_eq!(
+            phase_from_status_and_speed("downloading", "EA App (External)"),
+            "external"
+        );
+    }
 }

@@ -1,9 +1,8 @@
 use std::path::{Path, PathBuf};
 
-use crate::commands::downloads::legacy::emit_download_progress;
 use crate::commands::downloads::types::{
-    update_download_metrics, update_download_status, InternalDownloadSource,
-    DOWNLOAD_STATUS_INSTALLING,
+    emit_download_progress, update_download_metrics, update_download_status,
+    InternalDownloadSource, DOWNLOAD_STATUS_INSTALLING,
 };
 use crate::commands::games::{
     extract_og_zip_package, find_launch_executable, installed_game, is_file_executable,

@@ -1,16 +1,15 @@
 use tauri::AppHandle;
 use tauri::Emitter;
 
-use crate::commands::downloads::legacy::{
-    emit_download_progress, payload_from_active_download, remember_download_item,
-};
+use crate::commands::downloads::history::remember_download_item;
 use crate::commands::downloads::steam_state::{
     calculate_steam_progress, extract_vdf_string, parse_steam_download_state, steam_phase,
     steam_progress_bytes, steam_status_label,
 };
 use crate::commands::downloads::types::{
-    get_download_manager, is_download_control_pending, pause_hold_feedback,
-    update_download_metrics, update_download_status, ActiveDownload,
+    emit_download_progress, get_download_manager, is_download_control_pending,
+    payload_from_active_download, pause_hold_feedback, update_download_metrics,
+    update_download_status, ActiveDownload,
 };
 use crate::commands::downloads::utils::get_dir_size;
 

@@ -5,11 +5,10 @@ use std::time::Duration;
 use serde::Deserialize;
 use tauri::AppHandle;
 
-use crate::commands::downloads::legacy::emit_download_progress;
 use crate::commands::downloads::types::{
-    emit_download_command_error, get_download_manager, is_steam_control_pending_status,
-    SteamDownloadControlAction, DOWNLOAD_STATUS_DOWNLOADING, DOWNLOAD_STATUS_PAUSED,
-    DOWNLOAD_STATUS_PAUSING, DOWNLOAD_STATUS_RESUMING,
+    emit_download_command_error, emit_download_progress, get_download_manager,
+    is_steam_control_pending_status, SteamDownloadControlAction, DOWNLOAD_STATUS_DOWNLOADING,
+    DOWNLOAD_STATUS_PAUSED, DOWNLOAD_STATUS_PAUSING, DOWNLOAD_STATUS_RESUMING,
 };
 
 #[derive(Deserialize)]

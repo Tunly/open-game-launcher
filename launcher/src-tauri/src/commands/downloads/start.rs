@@ -5,18 +5,19 @@ use tauri::AppHandle;
 use tauri::Emitter;
 use tokio::sync::watch;
 
-use crate::commands::downloads::history::terminal_sort_rank;
+use crate::commands::downloads::history::{
+    is_stale_installed_download, load_download_history, remember_download_item,
+    remove_download_history_item, terminal_sort_rank,
+};
 use crate::commands::downloads::install::{
     install_downloaded_game_package, update_installed_games_cache_for_download,
     write_downloaded_game_manifest,
 };
 use crate::commands::downloads::internal_download::download_internal_game_file;
-use crate::commands::downloads::legacy::{
-    emit_download_progress, is_stale_installed_download, load_download_history,
-    normalize_queue_payload, payload_from_active_download, remember_download_item,
-    remove_download_history_item,
-};
 use crate::commands::downloads::steam_cef::toggle_steam_download_pause;
+use crate::commands::downloads::types::{
+    emit_download_progress, normalize_queue_payload, payload_from_active_download,
+};
 use crate::commands::downloads::steam_state::{
     calculate_steam_progress, parse_steam_download_state, steam_downloading_dir_for_manifest,
     steam_phase, steam_progress_bytes, steam_status_label,
