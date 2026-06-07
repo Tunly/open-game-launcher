@@ -45,6 +45,12 @@ Not merged (would require code migration before being useful):
 - No call-site changes needed: all 8 `.form()` / `.query()` sites in `commands/gog.rs`, `commands/games/detect/steam.rs`, `commands/xbox.rs`, `commands/system.rs` work as-is once the right features are on.
 - Merge commit: `f26886c`. Feature gate fix commit: `fb2e9ff`.
 
+### Follow-up: rand 0.8 → 0.10 migration completed
+- `Cargo.toml`: `rand = "0.8"` → `rand = "0.10"`.
+- `OsRng` is gone in 0.10; replaced with `rand::rngs::SysRng`, which implements `TryRng` (the new fallible trait) instead of `Rng`. The 6 call sites in `commands/cloud_crypto.rs` and `commands/secure_store.rs` now use `SysRng.try_fill_bytes(buf).expect("OS RNG failed")` — explicit error handling is the right call for crypto paths.
+- Dropped the `aes_gcm::aead::OsRng` re-export from `cloud_crypto.rs`: that path resolves to the rand 0.8 type (aes-gcm 0.10 transitively depends on rand 0.8), so mixing the two APIs in one function was a footgun. We use `rand::rngs::SysRng` directly now.
+- Migration commit: `f273ef1`.
+
 ### Changed
 - TypeScript: enabled `noImplicitOverride` and `noFallthroughCasesInSwitch`.
 - `tsconfig.json` (Phase 2 / Tooling quick-wins).
