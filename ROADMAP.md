@@ -7,13 +7,38 @@
 
 | #   | Phase                     | Priority | Effort   | Status      | Goal                                                                |
 | --- | ------------------------- | -------- | -------- | ----------- | ------------------------------------------------------------------- |
-| 1   | Security & RLS Hardening  | High     | 1-2 days | Completed   | Close Stripe/RLS/path-traversal/injection holes                     |
+| 1   | Security & RLS Hardening  | High     | 1-2 days | In Progress | Close Stripe/RLS/path-traversal/injection holes (see status below)  |
 | 2   | Quick-Wins Tooling        | Low      | 1 day    | Completed   | Editorconfig, Prettier, Husky, tsconfig strictness, .gitignore gaps |
 | 3   | LibraryPage Decomposition | High     | 3-5 days | Completed   | Split 2749-LOC god-component into hooks + subcomponents             |
 | 4   | Architecture Polish       | Medium   | 3-4 days | In Progress | Zustand selectors, error helpers, subscription hooks, any→types, Rust file splits |
 | 5   | CI/CD Hardening           | Medium   | 1-2 days | Backlog     | Windows runner, Rust checks, coverage thresholds in CI              |
 
 See `docs/IMPROVEMENTS_FINDINGS.md` for the raw audit.
+
+---
+
+## Phase 1 — Security & RLS Hardening (status)
+
+Phase 1 was originally marked Completed in the table above. That was
+**premature**. The sub-areas are tracked separately here so the
+remaining work is visible.
+
+### Closed in branch `security/hot-spots-a-b-c` (3 commits)
+
+| Commit  | Area             | Fix                                                                                                |
+| ------- | ---------------- | -------------------------------------------------------------------------------------------------- |
+| df11a4b | Path traversal   | `delete_screenshot` constrained to canonical screenshots dir; legacy `scan_mod_directory` removed. |
+| 1743813 | Command injection | New `commands/uri_safety` module with `validate_slug` + `validate_uri_scheme` + `open_uri_safely`. `cmd /C start ""` removed from all three `open_uri` call sites (Windows now uses `rundll32 url.dll,FileProtocolHandler`). |
+| acb71fc | WebView attack surface | `tauri.conf.json`: `assetProtocol.scope` tightened to `$APPDATA/**`, `$APPLOCALDATA/**`, `$APPCACHE/**`, `$HOME/**`, plus four explicit Steam library-cache paths. `csp: null` replaced with a strict policy. |
+| (this)  | Documentation   | ROADMAP/CHANGELOG brought in line with reality.                                                    |
+
+### Open
+
+| Sub-area | Issue                                                                                                              |
+| -------- | ------------------------------------------------------------------------------------------------------------------ |
+| D-1      | Stripe edge functions silently fall back to empty-string secrets. `_shared/stripe.ts:3` and `_shared/supabase-admin.ts:24` should hard-fail when `STRIPE_SECRET_KEY` is unset, returning a `500 Missing Secret` so misconfiguration is loud. |
+| D-2      | No `stripe-webhook` handler exists. If real Stripe webhooks are wired up later, the handler must verify the `Stripe-Signature` header. |
+| D-3      | Audit of RLS coverage was done in `docs/IMPROVEMENTS_FINDINGS.md` (76/76 public tables, 200+ policies). Re-verify on every migration. |
 
 ---
 
@@ -64,7 +89,7 @@ Inventur ergab 11 klare Modulgrenzen in `legacy.rs` (3617 LOC):
 
 **Already in place (b97aee5)**
 
-- GitHub Actions Ubuntu CI workflow (lint, typecheck, test, build).
+- GitHub Actions Ubuntu CI workflow (lint, typecheck, test, build) — **defined, not running**. The job-level `if: ${{ false }}` guard means the steps exist but never execute. Restoring CI is the first sub-task of Phase 5.
 
 ---
 

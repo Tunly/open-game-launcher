@@ -6,8 +6,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+### Fixed
+- `useLibrarySync` test suite: three pre-existing failures aligned with the refactored hook. The hook now uses `compressAndReadImage` (canvas + Image) instead of a raw `FileReader`, and the rejection message is more specific. Tests now mock `image-compress` directly and `waitFor` the first render before asserting. 288/288 tests pass.
+- **Security (path-traversal)**: `commands/overlay.rs::delete_screenshot` now canonicalises the path and rejects anything outside the screenshots allow-root (`df11a4b`). The legacy `commands/mod_install.rs::scan_mod_directory` `#[tauri::command]` was removed (no callers; would have been a path-traversal sink).
+- **Security (command-injection)**: New `commands/uri_safety` module centralises `validate_slug`, `validate_uri_scheme`, and `open_uri_safely` (`1743813`). The historical `cmd /C start "" <uri>` shell-out — which let any `&` in a URI become a command separator — has been removed from `crossplay.rs`, `system.rs`, and `games/core.rs::open_uri`. Windows now uses `rundll32 url.dll,FileProtocolHandler`, which doesn't parse the URI through a shell. The four `format!`-based URI builders in `commands/downloads/start.rs` (Steam/EA/Ubisoft/Battle.net) validate the slug before any string concatenation.
+- **Security (WebView surface)**: `tauri.conf.json`'s `assetProtocol.scope` is no longer `["**"]` (`acb71fc`). It now allowlists `$APPDATA/**`, `$APPLOCALDATA/**`, `$APPCACHE/**`, `$HOME/**`, plus four explicit Steam library-cache paths. The `csp: null` setting has been replaced with a strict policy (`default-src 'self'`, `script-src 'self'`, `connect-src 'self' ipc: https://*.supabase.co`, `frame-src 'none'`, `object-src 'none'`, `form-action 'none'`).
+
 ### Changed
-- **Architectural pivot**: Open Game Launcher is now positioned as a full **Embedded Client-Manager**, not a pure aggregator. Silent-Install (where licensable), Auto-Updates, and Client-Modifications (path overlays, asset caches, mod roots) are in scope. Client launch continues via official URI protocols. See README "Architectural Decisions".
+- Documentation: ROADMAP/CHANGELOG no longer claim "Phase 1 Security — Completed" or "CI workflow in place". The actual sub-areas closed in this release (path-traversal, command-injection, asset-scope/CSP) and the open sub-areas (Stripe secret handling, missing webhook handler) are tracked in `ROADMAP.md` under "Phase 1 — status".
+
+### Tests
+- `commands/overlay::path_traversal_tests` — 6 cases (legitimate path, parent traversal, non-existent file, file outside root, symlink-inside-allowed, exact reject logic).
+- `commands::uri_safety::tests` — 8 cases (typical platform IDs, shell-meta rejection, path-separator rejection, oversize rejection, known-scheme acceptance, unknown-scheme rejection).
+- Total: 84/84 cargo lib tests pass, 288/288 vitest tests pass.
 
 ### Added
 - Tooling: `.editorconfig`, `.gitattributes`, Prettier config, Husky pre-commit + lint-staged.
