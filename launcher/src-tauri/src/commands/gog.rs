@@ -1058,6 +1058,7 @@ pub async fn gog_start_download(
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn download_gog_game_files(
     app: &tauri::AppHandle,
     game_id: &str,

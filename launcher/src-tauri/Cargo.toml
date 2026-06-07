@@ -5,7 +5,7 @@ description = "A cross-platform desktop game launcher MVP."
 authors = ["Open Game Launcher"]
 license = "AGPL-3.0-only"
 edition = "2021"
-rust-version = "1.77"
+rust-version = "1.82"
 
 [lib]
 name = "open_game_launcher_lib"

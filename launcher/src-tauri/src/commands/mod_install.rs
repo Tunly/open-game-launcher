@@ -436,7 +436,6 @@ pub async fn install_mod_from_url(
     ))
 }
 
-/// Compatibility wrapper for the original directory scan command.
 // (removed: scan_mod_directory had a path-traversal sink because the
 // renderer-controlled `path` was passed to `fs::read_dir` without an
 // allow-root check. The frontend never calls this command —
@@ -1121,13 +1120,6 @@ fn extract_steam_workshop_id(value: &str) -> Option<String> {
         .filter(|character| character.is_ascii_digit())
         .collect::<String>();
     (!digits.is_empty()).then_some(digits)
-}
-
-fn provider_secret_exists(provider: ModProvider) -> bool {
-    secure_store::get_secret(&provider_secret_domain(provider))
-        .ok()
-        .flatten()
-        .is_some_and(|value| !value.trim().is_empty())
 }
 
 fn provider_secret_domain(provider: ModProvider) -> String {

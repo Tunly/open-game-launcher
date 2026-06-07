@@ -653,7 +653,7 @@ fn read_local_achievement_cache(
             )
         })?;
 
-    let contents = fs::read_to_string(&cache_path)
+    let contents = fs::read_to_string(cache_path)
         .map_err(|error| format!("Could not read local achievement cache: {error}"))?;
     let value: serde_json::Value = serde_json::from_str(&contents)
         .map_err(|error| format!("Could not parse local achievement cache JSON: {error}"))?;
@@ -1352,12 +1352,12 @@ fn local_json_to_achievement(
                 &["unlock_percentage"][..],
             ],
         ),
-        source: json_string_at(value, &[&["source"][..]]).or_else(|| Some(provider.to_string())),
+        source: json_string_at(value, &[&["source"][..]]).or(Some(provider.to_string())),
         source_achievement_id: json_string_at(
             value,
             &[&["sourceAchievementId"][..], &["source_achievement_id"][..]],
         )
-        .or_else(|| Some(id)),
+        .or(Some(id)),
         provider_confidence: json_string_at(
             value,
             &[&["providerConfidence"][..], &["provider_confidence"][..]],

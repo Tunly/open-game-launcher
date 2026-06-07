@@ -274,21 +274,6 @@ pub struct RestoreGameSavesFromCloudRequest {
     pub user_id: String,
 }
 
-#[derive(Debug)]
-pub struct SaveUploadSource {
-    pub source_path: std::path::PathBuf,
-    pub object_path: String,
-}
-
-#[derive(Debug, Deserialize)]
-pub struct StorageListObject {
-    pub name: String,
-    #[serde(default)]
-    pub id: Option<String>,
-    #[serde(default)]
-    pub metadata: Option<serde_json::Value>,
-}
-
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SyncGameAchievementsResponse {

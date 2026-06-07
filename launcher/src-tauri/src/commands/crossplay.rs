@@ -1,5 +1,3 @@
-use std::process::Command;
-
 use crate::commands::games::core::read_installed_games_cache;
 use crate::commands::uri_safety::{open_uri_safely, validate_slug, validate_uri_scheme};
 
@@ -84,36 +82,4 @@ pub async fn launch_cross_play_join(
     let _ = validate_uri_scheme(&uri)?;
     open_uri_safely(&uri)?;
     Ok(uri)
-}
-
-#[cfg(target_os = "windows")]
-fn open_uri(uri: &str) -> Result<(), String> {
-    use std::os::windows::process::CommandExt;
-    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-    // Replaced the historical `cmd /C start "" <uri>` which let
-    // shell metacharacters in `uri` become command separators.
-    Command::new("rundll32")
-        .args(["url.dll,FileProtocolHandler", uri])
-        .creation_flags(CREATE_NO_WINDOW)
-        .spawn()
-        .map_err(|e| format!("Could not open URI: {e}"))?;
-    Ok(())
-}
-
-#[cfg(target_os = "macos")]
-fn open_uri(uri: &str) -> Result<(), String> {
-    Command::new("open")
-        .arg(uri)
-        .spawn()
-        .map_err(|e| format!("Could not open URI: {e}"))?;
-    Ok(())
-}
-
-#[cfg(target_os = "linux")]
-fn open_uri(uri: &str) -> Result<(), String> {
-    Command::new("xdg-open")
-        .arg(uri)
-        .spawn()
-        .map_err(|e| format!("Could not open URI: {e}"))?;
-    Ok(())
 }

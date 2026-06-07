@@ -1009,7 +1009,7 @@ pub async fn sync_xbox_achievements(
 
     let client = crate::commands::http::shared_http_client();
     let title_id =
-        resolve_xbox_title_id(&client, &auth_header, &xid, &game_id, title_id.trim()).await?;
+        resolve_xbox_title_id(client, &auth_header, &xid, &game_id, title_id.trim()).await?;
     let url = format!(
         "https://achievements.xboxlive.com/users/xuid({})/achievements?titleId={}&maxItems=1000",
         xid, title_id

@@ -78,6 +78,7 @@ pub(crate) async fn download_internal_game_file(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn download_internal_game_file_once(
     app: &tauri::AppHandle,
     game_id: &str,

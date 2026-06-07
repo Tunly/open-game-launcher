@@ -268,7 +268,7 @@ fn is_epic_unreal_asset_manifest(manifest: &serde_json::Value, title: &str) -> b
         || title.contains("stylized")
         || title.contains("low poly");
 
-    (unreal_marker && asset_marker) || (unreal_marker && asset_title_marker)
+    unreal_marker && (asset_marker || asset_title_marker)
 }
 
 #[derive(Clone, Default)]
