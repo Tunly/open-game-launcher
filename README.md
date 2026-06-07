@@ -623,9 +623,7 @@ All bot-style automation is **intentionally disabled** in this repository. This 
 
 | Bot | State | Where | How to re-enable |
 | --- | --- | --- | --- |
-| Dependabot (GitHub Actions) | Disabled | `.github/dependabot.yml` | Set `enabled: true` and re-add `schedule.interval` |
-| Dependabot (npm) | Disabled | `.github/dependabot.yml` | Same as above |
-| Dependabot (cargo) | Disabled | `.github/dependabot.yml` | Same as above |
+| Dependabot | Removed | n/a | Recreate `.github/dependabot.yml` with the three ecosystems (GitHub Actions, npm at `/launcher`, cargo at `/launcher/src-tauri`) and set `enabled: true` |
 | GitHub Actions CI | Manual only (`workflow_dispatch`) | `.github/workflows/ci.yml` | Switch `on` back to `push` + `pull_request` and remove the `if: ${{ false }}` guard on the `build` job |
 | Husky pre-commit hook | Empty stub (does nothing) | `.husky/pre-commit` | Add commands to the file; `husky` and `lint-staged` deps have been removed from `launcher/package.json` so they need to be re-added too |
 | `lint-staged` | Removed from `package.json` | n/a | Re-add the `lint-staged` block in `launcher/package.json` and the dev dep |

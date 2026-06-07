@@ -64,7 +64,6 @@ Inventur ergab 11 klare Modulgrenzen in `legacy.rs` (3617 LOC):
 
 **Already in place (b97aee5)**
 
-- Dependabot config at `.github/dependabot.yml` (weekly NPM, Cargo, GitHub Actions updates).
 - GitHub Actions Ubuntu CI workflow (lint, typecheck, test, build).
 
 ---
