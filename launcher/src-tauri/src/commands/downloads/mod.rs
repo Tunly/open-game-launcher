@@ -8,11 +8,13 @@ mod steam_cef;
 mod steam_state;
 mod types;
 mod utils;
+mod watcher;
 
 pub use health::ProviderHealthStatus;
-pub use legacy::{record_download_item, start_global_download_watcher};
+pub use legacy::record_download_item;
 pub use reconcile::ReconciliationResult;
 pub use types::{DownloadItemPayload, DownloadStartStatus, StartDownloadResponse};
+pub use watcher::start_global_download_watcher;
 
 #[tauri::command]
 pub fn get_download_queue() -> Result<Vec<DownloadItemPayload>, String> {
