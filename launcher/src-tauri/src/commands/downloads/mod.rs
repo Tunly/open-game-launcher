@@ -1,7 +1,13 @@
+mod control;
+mod external_dispatch;
+mod external_download;
 mod health;
 mod history;
 mod install;
 mod internal_download;
+mod internal_lifecycle;
+mod lifecycle;
+mod queue;
 mod reconcile;
 mod start;
 mod steam_cef;
@@ -18,22 +24,22 @@ pub use watcher::start_global_download_watcher;
 
 #[tauri::command]
 pub fn get_download_queue() -> Result<Vec<DownloadItemPayload>, String> {
-    start::get_download_queue()
+    queue::get_download_queue()
 }
 
 #[tauri::command]
 pub fn pause_download(app: tauri::AppHandle, game_id: String) -> Result<(), String> {
-    start::pause_download(app, game_id)
+    control::pause_download(app, game_id)
 }
 
 #[tauri::command]
 pub fn cancel_download(app: tauri::AppHandle, game_id: String) -> Result<(), String> {
-    start::cancel_download(app, game_id)
+    control::cancel_download(app, game_id)
 }
 
 #[tauri::command]
 pub fn archive_download(game_id: String) -> Result<(), String> {
-    start::archive_download(game_id)
+    control::archive_download(game_id)
 }
 
 #[tauri::command]
