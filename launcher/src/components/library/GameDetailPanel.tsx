@@ -3,7 +3,7 @@ import { useRef } from "react";
 import { GameDetails } from "./GameDetails";
 import { useLibraryContext } from "../../context/useLibraryContext";
 import { useActivityLogger } from "../../hooks/useActivityLogger";
-import { captureScreenshot } from "../../lib/launcher";
+import { captureScreenshot, moveGame } from "../../lib/launcher";
 
 export function GameDetailPanel() {
   const ctx = useLibraryContext();
@@ -70,9 +70,7 @@ export function GameDetailPanel() {
       detailScrollRef={detailScrollRef}
       isDiscoveringGames={ctx.sync.isDiscoveringGames}
       discoveryMessage={ctx.sync.discoveryMessage}
-      moveGame={async () => {
-        throw new Error("moveGame is not implemented in the refactored library page.");
-      }}
+      moveGame={moveGame}
       runAutomaticLibrarySync={ctx.sync.runAutomaticLibrarySync}
       customArtwork={
         selectedGroup?.primaryGame
