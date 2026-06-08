@@ -37,7 +37,7 @@ remaining work is visible.
 | Sub-area | Issue                                                                                                              |
 | -------- | ------------------------------------------------------------------------------------------------------------------ |
 | D-1      | ✅ **Done** (PR #27). Stripe edge functions now use `requireEnv()` and throw `500 Missing required environment variable: STRIPE_SECRET_KEY` when the secret is unset. |
-| D-2      | No `stripe-webhook` handler exists. If real Stripe webhooks are wired up later, the handler must verify the `Stripe-Signature` header. |
+| D-2      | ✅ **Done** (PR #28). `stripe-webhook/index.ts` verifies `Stripe-Signature` via `constructEvent()`, handles `checkout.session.completed`, upserts into `orders`. |
 | D-3      | Audit of RLS coverage was done in `docs/IMPROVEMENTS_FINDINGS.md` (76/76 public tables, 200+ policies). Re-verify on every migration. |
 
 ---
