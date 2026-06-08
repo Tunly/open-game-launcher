@@ -36,7 +36,7 @@ remaining work is visible.
 
 | Sub-area | Issue                                                                                                              |
 | -------- | ------------------------------------------------------------------------------------------------------------------ |
-| D-1      | Stripe edge functions silently fall back to empty-string secrets. `_shared/stripe.ts:3` and `_shared/supabase-admin.ts:24` should hard-fail when `STRIPE_SECRET_KEY` is unset, returning a `500 Missing Secret` so misconfiguration is loud. |
+| D-1      | ✅ **Done** (PR #27). Stripe edge functions now use `requireEnv()` and throw `500 Missing required environment variable: STRIPE_SECRET_KEY` when the secret is unset. |
 | D-2      | No `stripe-webhook` handler exists. If real Stripe webhooks are wired up later, the handler must verify the `Stripe-Signature` header. |
 | D-3      | Audit of RLS coverage was done in `docs/IMPROVEMENTS_FINDINGS.md` (76/76 public tables, 200+ policies). Re-verify on every migration. |
 
