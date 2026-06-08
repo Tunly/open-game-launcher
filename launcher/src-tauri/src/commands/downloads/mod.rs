@@ -1,9 +1,11 @@
 mod control;
 mod external_dispatch;
+mod external_download;
 mod health;
 mod history;
 mod install;
 mod internal_download;
+mod internal_lifecycle;
 mod lifecycle;
 mod queue;
 mod reconcile;
@@ -14,7 +16,6 @@ mod types;
 mod utils;
 mod watcher;
 
-pub use external_dispatch::ExternalDispatch;
 pub use lifecycle::{DownloadLifecycle, ExternalTracker};
 
 pub use health::ProviderHealthStatus;
