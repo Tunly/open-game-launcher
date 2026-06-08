@@ -8,7 +8,7 @@ pub struct DeepLinkEvent {
     pub params: HashMap<String, String>,
 }
 
-/// Register the universallauncher:// protocol handler in the OS.
+/// Register the oglauncher:// protocol handler in the OS.
 #[cfg(target_os = "windows")]
 pub fn register_protocol_handler() {
     use winreg::enums::*;
@@ -21,13 +21,13 @@ pub fn register_protocol_handler() {
     let open_cmd = format!("\"{}\" \"%1\"", exe_path);
 
     let _ = (|| -> Result<(), Box<dyn std::error::Error>> {
-        let (class, _) = hkcu.create_subkey(r"Software\Classes\universallauncher")?;
+        let (class, _) = hkcu.create_subkey(r"Software\Classes\oglauncher")?;
         class.set_value("", &"URL: Open Game Launcher Protocol")?;
         class.set_value("URL Protocol", &"")?;
-        let (icon, _) = hkcu.create_subkey(r"Software\Classes\universallauncher\DefaultIcon")?;
+        let (icon, _) = hkcu.create_subkey(r"Software\Classes\oglauncher\DefaultIcon")?;
         icon.set_value("", &icon_path)?;
         let (cmd, _) =
-            hkcu.create_subkey(r"Software\Classes\universallauncher\shell\open\command")?;
+            hkcu.create_subkey(r"Software\Classes\oglauncher\shell\open\command")?;
         cmd.set_value("", &open_cmd)?;
         Ok(())
     })();
@@ -39,11 +39,11 @@ pub fn register_protocol_handler() {
     // For now, best-effort noop on non-Windows
 }
 
-/// Parse any command-line argument that starts with universallauncher://
+/// Parse any command-line argument that starts with oglauncher://
 pub fn check_deep_link_on_startup() -> Option<DeepLinkEvent> {
     let args: Vec<String> = std::env::args().collect();
     for arg in args.iter().skip(1) {
-        if arg.starts_with("universallauncher://") {
+        if arg.starts_with("oglauncher://") {
             return Some(parse_deep_link(arg));
         }
     }
@@ -51,7 +51,7 @@ pub fn check_deep_link_on_startup() -> Option<DeepLinkEvent> {
 }
 
 pub fn parse_deep_link(raw: &str) -> DeepLinkEvent {
-    let rest = raw.strip_prefix("universallauncher://").unwrap_or(raw);
+    let rest = raw.strip_prefix("oglauncher://").unwrap_or(raw);
     // Find the action before ? or end
     let (action, query) = if let Some(idx) = rest.find('?') {
         (&rest[..idx], Some(&rest[idx + 1..]))
@@ -114,7 +114,7 @@ mod tests {
     #[test]
     fn parse_join_link() {
         let ev = parse_deep_link(
-            "universallauncher://join?game=elden-ring&platform=steam&invite=abc123",
+            "oglauncher://join?game=elden-ring&platform=steam&invite=abc123",
         );
         assert_eq!(ev.action, "join");
         assert_eq!(
@@ -127,7 +127,7 @@ mod tests {
 
     #[test]
     fn parse_url_encoded() {
-        let ev = parse_deep_link("universallauncher://open?title=Dark+Souls&id=abc%20123");
+        let ev = parse_deep_link("oglauncher://open?title=Dark+Souls&id=abc%20123");
         assert_eq!(
             ev.params.get("title").map(String::as_str),
             Some("Dark Souls")
@@ -137,7 +137,7 @@ mod tests {
 
     #[test]
     fn no_query_params() {
-        let ev = parse_deep_link("universallauncher://open");
+        let ev = parse_deep_link("oglauncher://open");
         assert_eq!(ev.action, "open");
         assert!(ev.params.is_empty());
     }
