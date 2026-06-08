@@ -35,25 +35,8 @@ const leaderboard = [
 
 export function CommunityPage() {
   return (
-    <div className="relative min-h-[600px]">
-      {/* Centered Coming Soon Overlay */}
-      <div className="absolute inset-0 z-20 flex items-center justify-center p-4">
-        <div className="max-w-md rotate-[-3deg] border-[6px] border-black bg-[#f2c14e] p-8 text-center shadow-[12px_12px_0_#171411] transition duration-300 hover:scale-105 hover:rotate-[0deg] md:p-12">
-          <h2 className="neo-title text-5xl leading-none tracking-tight text-[#171411] uppercase md:text-7xl">
-            Coming
-          </h2>
-          <h2 className="neo-title mt-1 text-5xl leading-none tracking-tight text-[#171411] uppercase md:text-7xl">
-            Soon
-          </h2>
-          <p className="neo-copy mt-5 border-t-2 border-black pt-4 text-[11px] font-black tracking-[0.2em] text-[#171411] uppercase">
-            Official Community slice
-          </p>
-        </div>
-      </div>
-
-      {/* Blurred Community Content */}
-      <div className="pointer-events-none opacity-75 blur-[6px] select-none">
-        <section>
+    <div className="min-h-[600px]">
+      <section>
           <div className="mb-8 border-b-4 border-black pb-4">
             <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
               <div className="min-w-0">
@@ -179,7 +162,6 @@ export function CommunityPage() {
             </aside>
           </div>
         </section>
-      </div>
     </div>
   );
 }
