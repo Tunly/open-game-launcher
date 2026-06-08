@@ -1392,6 +1392,7 @@ export function GameDetails({
                       <button
                         className="block w-full border-t-2 border-black px-3 py-2 text-right text-[11px] font-black uppercase"
                         type="button"
+                        onClick={() => navigate("/controllers")}
                       >
                         View controller settings
                       </button>
