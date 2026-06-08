@@ -11,7 +11,7 @@
 | 2   | Quick-Wins Tooling        | Low      | 1 day    | Completed | Editorconfig, Prettier, Husky, tsconfig strictness, .gitignore gaps |
 | 3   | LibraryPage Decomposition | High     | 3-5 days | Completed | Split 2749-LOC god-component into hooks + subcomponents             |
 | 4   | Architecture Polish       | Medium   | 3-4 days | Completed | Zustand selectors, error helpers, subscription hooks, Rust splits   |
-| 5   | CI/CD Hardening           | Medium   | 1-2 days | Completed | 7 parallel jobs, Windows runner, Rust checks, coverage thresholds   |
+| 5   | CI/CD Hardening           | Medium   | 1-2 days | Completed | 7 parallel jobs, Windows runner, Rust checks, coverage, build-upload, deep-link |
 
 See `docs/IMPROVEMENTS_FINDINGS.md` for the raw audit.
 
@@ -68,6 +68,8 @@ See `docs/IMPROVEMENTS_FINDINGS.md` for the raw audit.
 - ✅ `supabase db lint`
 - ✅ Coverage thresholds (per-pattern in `vitest.config.ts`)
 - ✅ Workflow reactivated: `if: ${{ false }}` guard removed (PR #25)
+- ✅ Build & Upload job: 3-platform release builds on `v*` tags, auto GitHub Release
+- ✅ Deep-link: `oglauncher://` scheme registered (Windows registry + Tauri plugin + single-instance handler)
 
 ---
 

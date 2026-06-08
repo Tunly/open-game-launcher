@@ -8,9 +8,10 @@ pub fn run() {
     load_local_env_files();
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
             for arg in args {
-                if arg.starts_with("universallauncher://") {
+                if arg.starts_with("oglauncher://") {
                     let link = commands::deeplink::parse_deep_link(&arg);
                     if let Some(window) = app.get_webview_window("main") {
                         let _ = window.emit("deep-link", link);
