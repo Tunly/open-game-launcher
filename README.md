@@ -2,8 +2,6 @@
 
 Desktop game launcher built with Tauri 2, React, TypeScript, Tailwind CSS, Rust, and Supabase. Native game library, store discovery, downloads, cloud saves, achievements, profiles, friends, chat, and launcher settings.
 
-Not production-ready. Store commerce, entitlements, CDN delivery, real patching, and production-grade download/install services are still future work.
-
 ## Status
 
 | Area | Status |
@@ -20,16 +18,16 @@ Not production-ready. Store commerce, entitlements, CDN delivery, real patching,
 | Presence | Supabase Realtime, platform hooks, overlay friends tab |
 | Chat & invites | Direct messages, group chat rooms, game invites, universal-friends links via Supabase Realtime |
 | Local DB sync | SQLite-backed local-first entity sync with dirty tracking and remote conflict resolution |
-| Store | Backend: Stripe checkout EF, store schema, Developer Portal. Frontend: `StorePage` is still mock data with "Coming Soon" overlay |
+| Store | Backend: Stripe checkout EF, store schema, Developer Portal, webhook handler. Frontend: `StorePage` wire-up is deferred. |
 | Mods | Full installer engine (URL/Archive/Folder, Steam-Workshop extractor), enable/disable, queue, pause/cancel, provider delegation |
 | Controller | `gilrs` device detection, re-mapping editor, per-game layouts, templates, runtime translation, ViGEmBus detection |
 | In-Game Overlay | Transparent Tauri window, 4 tabs (Freunde/Chat/Erfolge/Performance), Shift+F1 hotkey, anti-cheat banner, GDI screenshots persisted to AppData, DXGI FPS + NVML GPU |
 | Performance-Monitor | Overlay tab + `FpsHudPage` with real CPU/RAM/FPS/GPU, DXGI frame-pacing, NVML |
 | Auth/Profile/Social | Supabase Auth, profile pages, friends, customization, privacy, blocks, comments, showcases, badges, social links, hardware, family sharing |
 | Custom Artwork | Drag-Drop-Upload in GameDetails + RAWG-Edge-Function proxy + asset cache |
-| Deep Links | `universallauncher://` URI handler (`useDeepLink` hook) |
-| Tests | 269+ automated tests across UI, hooks, stores, and Supabase database helpers |
-| Releases | Tauri bundling exists; no release automation |
+| Deep Links | `oglauncher://` URI handler (`useDeepLink` hook) |
+| Tests | 288 frontend + 84 Rust = 372 automated tests |
+| Releases | Tauri bundling + automated GitHub Release on `v*` tags |
 
 ## Tech Stack
 
@@ -40,7 +38,7 @@ Not production-ready. Store commerce, entitlements, CDN delivery, real patching,
 | Routing | React Router DOM 7 |
 | State | Zustand 5 |
 | Styling | Tailwind CSS 3.4, Retro Manga design tokens |
-| Native | Rust 1.77+ (edition 2021) |
+| Native | Rust 1.82+ (edition 2021) |
 | Backend | Supabase Auth, Database, Storage, Realtime |
 | Validation | Zod 4 |
 | Icons | Lucide React |
@@ -180,43 +178,8 @@ Run from `launcher/`:
 │           │       ├── detect.rs      # Game detection helpers
 │           │       ├── playtime.rs    # Playtime tracking
 │           │       └── types.rs       # Game types
-│       └── src-tauri/
-│           └── src/
-│               ├── commands/
-│               │   ├── system.rs          # System, hardware, Steam login/scrape
-│               │   ├── gog.rs             # GOG OAuth, library, downloads, cloud saves
-│               │   ├── epic.rs            # Epic (Legendary) auth + library
-│               │   ├── xbox.rs            # Xbox login, library, Game Pass, achievements
-│               │   ├── battlenet.rs       # Battle.net login + game scraping
-│               │   ├── ea.rs              # EA token management + library
-│               │   ├── ubisoft.rs         # Ubisoft local config parsing
-│               │   ├── downloads.rs       # Download queue management
-│               │   ├── http.rs            # Generic HTTP download worker
-│               │   ├── local_db.rs        # Local SQLite entity sync
-│               │   ├── crossplay.rs       # Cross-Play + Smart-Join command
-│               │   ├── controller.rs      # `gilrs` device detection
-│               │   ├── mod_install.rs     # Mod installer engine (URL/Archive/Folder/Steam Workshop)
-│               │   ├── family.rs          # Family sharing + invite codes
-│               │   ├── friends.rs         # Friend merge + universal-friends
-│               │   ├── deeplink.rs        # `universallauncher://` URI handler
-│               │   ├── overlay.rs         # In-Game Overlay window + GDI screenshots
-│               │   ├── anti_cheat.rs      # AC process scanning
-│               │   ├── perf_monitor.rs    # CPU/RAM/FPS/DXGI/NVML polling
-│               │   ├── cloud_crypto.rs    # AES-256-GCM + Argon2id for cloud saves
-│               │   ├── secure_store.rs    # OS keychain wrapper
-│               │   ├── stripe.rs          # Stripe checkout wrapper
-│               │   └── games/
-│               │       ├── core.rs             # Game CRUD, launch, uninstall
-│               │       ├── verify.rs           # File verification + repair
-│               │       ├── sync.rs             # Cloud save sync
-│               │       ├── detect/             # Game detection (epic, steam, mod)
-│               │       ├── playtime.rs         # Playtime tracking
-│               │       ├── idle.rs             # Platform-specific idle detection
-│               │       ├── play_sessions.rs    # Session persistence
-│               │       ├── device_id.rs        # Stable device fingerprint
-│               │       └── types.rs            # Game types
-│               ├── lib.rs                 # Command registration
-│               └── main.rs
+│           ├── lib.rs                 # Command registration
+│           └── main.rs
 ├── supabase/
 │   ├── migrations/                    # 26+ migrations (schema, RLS, realtime, chat, local entities, cross-play, store, mods, family, controller, achievements)
 │   ├── seed.sql
@@ -469,7 +432,7 @@ Controller: `controller_layouts`.
 
 ### Edge Functions
 
-`rawg-assets` (RAWG artwork proxy), `stripe-create-checkout` (Stripe checkout session).
+`rawg-assets` (RAWG artwork proxy), `stripe-create-checkout` (Stripe checkout session), `stripe-webhook` (Stripe event handler).
 
 Run locally:
 
@@ -495,9 +458,8 @@ supabase gen types typescript --local > launcher/src/lib/database.types.ts
 
 ## Known Gaps
 
-- No native folder picker yet
-- `StorePage` still uses mock data; backend (products, orders, Stripe) is real but not wired to UI
-- Store/CDN delivery still needs real catalog download URLs
+- `StorePage` UI is not yet wired to the Stripe backend (checkout EF + webhook handler exist)
+- `stripe-webhook/index.ts` has a `TODO(D-2)` for the `orders` table schema — deferred until Store wire-up
 - Verify/repair don't check real manifests
 - Platform tokens rely on localStorage
 - Xbox integration is Windows-focused
