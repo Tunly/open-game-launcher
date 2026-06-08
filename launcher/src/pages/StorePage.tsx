@@ -6,14 +6,45 @@ import { StoreGameCard } from "../components/launcher/StoreGameCard";
 import { storeGames } from "../lib/mock-data";
 import { getSupabaseClient } from "../lib/supabase/client";
 import { STORAGE_KEYS } from "../lib/storage-keys";
+import type { Platform } from "../lib/types";
 
 type StoreTab = "browse" | "wishlist" | "cart" | "orders";
 
+interface Product {
+  id: string;
+  title: string;
+  description: string;
+  price: number;
+  image_url: string | null;
+  developer: string | null;
+  publisher: string | null;
+  tags: string[] | null;
+  release_date: string | null;
+  platforms: string[] | null;
+}
+
 interface StoreOrder {
   id: string;
-  gameIds: string[];
+  user_id: string;
+  status: string;
+  stripe_session_id: string | null;
   total: number;
-  createdAt: string;
+  game_ids: string[];
+  created_at: string;
+}
+
+function mapProductToStoreGame(product: Product) {
+  return {
+    id: product.id,
+    title: product.title,
+    description: product.description,
+    price: product.price,
+    platform: (product.platforms ?? []) as Platform[],
+    developer: product.developer ?? undefined,
+    releaseDate: product.release_date ?? undefined,
+    genres: product.tags ?? undefined,
+    tagLine: (product.tags ?? [product.description]).slice(0, 2).join(" / "),
+  };
 }
 
 const ownedKey = STORAGE_KEYS.STORE_OWNED;
@@ -46,7 +77,7 @@ function readPriceAlerts() {
   }
 }
 
-function readOrders() {
+function readLocalOrders() {
   try {
     const value = localStorage.getItem(ordersKey);
     const parsed = value ? JSON.parse(value) : [];
@@ -71,28 +102,108 @@ export function StorePage() {
   );
   const [cartIds, setCartIds] = useState<Set<string>>(() => new Set(readStringArray(cartKey)));
   const [priceAlerts, setPriceAlerts] = useState<Record<string, number>>(readPriceAlerts);
-  const [orders] = useState<StoreOrder[]>(readOrders);
+  const [orders, setOrders] = useState<StoreOrder[]>(readLocalOrders);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
-  const [selectedProductId, setSelectedProductId] = useState(storeGames[0]?.id ?? null);
   const [searchParams, setSearchParams] = useSearchParams();
   const [isProcessing, setIsProcessing] = useState(false);
+  const [products, setProducts] = useState(storeGames);
+  const [ordersLoading, setOrdersLoading] = useState(true);
+  const [selectedProductId, setSelectedProductId] = useState(storeGames[0]?.id ?? null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadProducts() {
+      try {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { data, error } = await (getSupabaseClient() as any)
+          .from("products")
+          .select("*");
+
+        if (cancelled) return;
+
+        if (error || !data || data.length === 0) {
+          setProducts(storeGames);
+        } else {
+          const mapped = (data as Product[]).map(mapProductToStoreGame);
+          setProducts(mapped);
+          if (!cancelled && selectedProductId === null && mapped.length > 0) {
+            setSelectedProductId(mapped[0].id);
+          }
+        }
+      } catch {
+        if (!cancelled) setProducts(storeGames);
+      }
+    }
+
+    loadProducts();
+    return () => { cancelled = true; };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps -- selectedProductId set inside causes loop
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadOrders() {
+      setOrdersLoading(true);
+      try {
+        const { data: { user } } = await getSupabaseClient().auth.getUser();
+        if (cancelled) return;
+
+        if (!user) {
+          if (!cancelled) setOrders(readLocalOrders());
+          return;
+        }
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const { data, error } = await (getSupabaseClient() as any)
+          .from("orders")
+          .select("*")
+          .eq("user_id", user.id)
+          .order("created_at", { ascending: false });
+
+        if (cancelled) return;
+
+        if (error || !data || data.length === 0) {
+          setOrders(readLocalOrders());
+        } else {
+          const mapped: StoreOrder[] = (data as Record<string, unknown>[]).map((row) => ({
+            id: row.id as string,
+            user_id: row.user_id as string,
+            status: (row.status as string) ?? "completed",
+            stripe_session_id: (row.stripe_session_id as string) ?? null,
+            total: (row.total as number) ?? 0,
+            game_ids: Array.isArray(row.game_ids) ? (row.game_ids as string[]) : [],
+            created_at: (row.created_at as string) ?? new Date().toISOString(),
+          }));
+          setOrders(mapped);
+        }
+      } catch {
+        if (!cancelled) setOrders(readLocalOrders());
+      } finally {
+        if (!cancelled) setOrdersLoading(false);
+      }
+    }
+
+    loadOrders();
+    return () => { cancelled = true; };
+  }, []);
 
   const wishlistGames = useMemo(
-    () => storeGames.filter((game) => wishlistIds.has(game.id)),
-    [wishlistIds],
+    () => products.filter((game) => wishlistIds.has(game.id)),
+    [wishlistIds, products],
   );
   const cartGames = useMemo(
-    () => storeGames.filter((game) => cartIds.has(game.id) && !ownedIds.has(game.id)),
-    [cartIds, ownedIds],
+    () => products.filter((game) => cartIds.has(game.id) && !ownedIds.has(game.id)),
+    [cartIds, ownedIds, products],
   );
   const cartTotal = cartGames.reduce((total, game) => total + game.price, 0);
-  const activeGames = activeTab === "wishlist" ? wishlistGames : storeGames;
-  const activePriceAlertHits = storeGames.filter((game) => {
+  const activeGames = activeTab === "wishlist" ? wishlistGames : products;
+  const activePriceAlertHits = products.filter((game) => {
     const alertPrice = priceAlerts[game.id];
     return typeof alertPrice === "number" && game.price <= alertPrice;
   });
   const selectedProduct =
-    storeGames.find((game) => game.id === selectedProductId) ?? storeGames[0] ?? null;
+    products.find((game) => game.id === selectedProductId) ?? products[0] ?? null;
 
   useEffect(() => {
     localStorage.setItem(ownedKey, JSON.stringify([...ownedIds]));
@@ -114,17 +225,13 @@ export function StorePage() {
     localStorage.setItem(ordersKey, JSON.stringify(orders));
   }, [orders]);
 
-  // Deep-link `?slug=...&install=1` from a universallauncher://open or
-  // universallauncher://install URL. Selects the matching store product and, if
-  // `install=1` is set, surfaces a prompt so the user can install it immediately.
-  // The store is mock-data only, so unknown slugs are reported via statusMessage.
   useEffect(() => {
     const slug = searchParams.get("slug");
     if (!slug) return;
 
     const wantsInstall = searchParams.get("install") === "1";
     const wanted = slug.toLowerCase();
-    const match = storeGames.find(
+    const match = products.find(
       (game) => game.id.toLowerCase() === wanted || game.title.toLowerCase() === wanted,
     );
 
@@ -150,7 +257,7 @@ export function StorePage() {
     next.delete("slug");
     next.delete("install");
     setSearchParams(next, { replace: true });
-  }, [searchParams, setSearchParams, setStatusMessage]);
+  }, [searchParams, setSearchParams, setStatusMessage, products]);
 
   function toggleWishlist(gameId: string) {
     setWishlistIds((current) => {
@@ -182,7 +289,7 @@ export function StorePage() {
       return;
     }
 
-    const game = storeGames.find((g) => g.id === gameId);
+    const game = products.find((g) => g.id === gameId);
     if (!game) {
       setStatusMessage("Game not found.");
       return;
@@ -232,7 +339,7 @@ export function StorePage() {
       return;
     }
 
-    const purchasableGames = storeGames.filter((game) => purchasableIds.includes(game.id));
+    const purchasableGames = products.filter((game) => purchasableIds.includes(game.id));
     const lineItems = purchasableGames.map((game) => ({
       price_data: {
         currency: "eur",
@@ -310,7 +417,7 @@ export function StorePage() {
                   type="button"
                   disabled={isProcessing}
                   onClick={() => {
-                    const heroGame = storeGames[0];
+                    const heroGame = products[0];
                     if (heroGame) buyNow(heroGame.id);
                   }}
                 >
@@ -341,7 +448,7 @@ export function StorePage() {
           <StoreMetric
             icon={<Tags className="h-4 w-4" />}
             label="Deals"
-            value={storeGames.filter((game) => game.discountPercent).length}
+            value={products.filter((game) => game.discountPercent).length}
           />
           <StoreMetric
             icon={<Heart className="h-4 w-4" />}
@@ -420,7 +527,7 @@ export function StorePage() {
               }}
             />
           ) : activeTab === "orders" ? (
-            <OrderPanel orders={orders} />
+            <OrderPanel orders={orders} games={products} loading={ordersLoading} />
           ) : activeGames.length > 0 ? (
             <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
               {activeGames.map((game) => (
@@ -627,7 +734,23 @@ function CartPanel({
   );
 }
 
-function OrderPanel({ orders }: { orders: StoreOrder[] }) {
+function OrderPanel({
+  orders,
+  games,
+  loading,
+}: {
+  orders: StoreOrder[];
+  games: typeof storeGames;
+  loading: boolean;
+}) {
+  if (loading) {
+    return (
+      <div className="neo-copy border-[3px] border-dashed border-black bg-[#f5eedf] p-6 text-center text-[12px] font-black tracking-[0.12em] text-[#655f58] uppercase">
+        Loading orders...
+      </div>
+    );
+  }
+
   if (orders.length === 0) {
     return <EmptyStorePanel label="No orders yet." />;
   }
@@ -645,14 +768,26 @@ function OrderPanel({ orders }: { orders: StoreOrder[] }) {
                 Order {order.id.slice(0, 8)}
               </p>
               <p className="neo-copy mt-1 text-[10px] font-black tracking-[0.12em] text-[#655f58] uppercase">
-                {new Date(order.createdAt).toLocaleString()}
+                {new Date(order.created_at).toLocaleString()}
               </p>
             </div>
-            <p className="text-2xl font-black text-[#171411]">{formatCurrency(order.total)}</p>
+            <div className="flex items-center gap-3">
+              <span
+                className={`neo-copy inline-flex items-center gap-1 border-2 border-black px-2 py-1 text-[10px] font-black tracking-[0.12em] uppercase ${
+                  order.status === "completed"
+                    ? "bg-[#8cf5e4] text-[#171411]"
+                    : "bg-[#f2c14e] text-[#171411]"
+                }`}
+              >
+                <CheckCircle2 className="h-3 w-3" />
+                {order.status}
+              </span>
+              <p className="text-2xl font-black text-[#171411]">{formatCurrency(order.total)}</p>
+            </div>
           </div>
           <div className="mt-3 flex flex-wrap gap-2">
-            {order.gameIds.map((gameId) => {
-              const game = storeGames.find((item) => item.id === gameId);
+            {order.game_ids.map((gameId) => {
+              const game = games.find((item) => item.id === gameId);
               return (
                 <span
                   key={gameId}
