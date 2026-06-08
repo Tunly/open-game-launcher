@@ -11,7 +11,7 @@
 | 2   | Quick-Wins Tooling        | Low      | 1 day    | Completed   | Editorconfig, Prettier, Husky, tsconfig strictness, .gitignore gaps |
 | 3   | LibraryPage Decomposition | High     | 3-5 days | Completed   | Split 2749-LOC god-component into hooks + subcomponents             |
 | 4   | Architecture Polish       | Medium   | 3-4 days | In Progress | Zustand selectors, error helpers, subscription hooks, any→types, Rust file splits |
-| 5   | CI/CD Hardening           | Medium   | 1-2 days | Backlog     | Windows runner, Rust checks, coverage thresholds in CI              |
+| 5   | CI/CD Hardening           | Medium   | 1-2 days | In Progress | Windows runner, Rust checks, coverage thresholds in CI (PR #25) |
 
 See `docs/IMPROVEMENTS_FINDINGS.md` for the raw audit.
 
@@ -59,37 +59,35 @@ remaining work is visible.
 
 **Decision: Phase 4 closed.** Die einzige verbliebene substantielle Arbeit (Downloads-Split) ist ein mechanischer Refactor, der als eigene Phase 4.5 / 6 in den Backlog wandert.
 
-### Backlog: Downloads Split (`commands/downloads/legacy.rs`)
+### Backlog → Done: Downloads Split (Phase 1 + 2)
 
-Inventur ergab 11 klare Modulgrenzen in `legacy.rs` (3617 LOC):
+**Phase 1** (`legacy.rs` → 11 Sub-Module) was completed via PR #19
+(`refactor/downloads-split`, commits `beb3e95…6d04a24`).
+`commands/downloads/legacy.rs` no longer exists.
 
-| Sub-Modul | LOC ca. | Inhalt |
-|---|---|---|
-| `downloads/types.rs` | 250 | `StartDownloadResponse`, `DownloadItemPayload`, `DownloadStatusKind`, Status-Konstanten, `ActiveDownload`, `InternalDownloadSource`, `SteamCefTarget`, `SteamDownloadControlAction` |
-| `downloads/history.rs` | 250 | `load/save/trim_download_history`, `terminal_sort_rank`, `is_*_status` Helfer, `MAX_HISTORY`/`TTL` Konsts |
-| `downloads/steam_cef.rs` | 700 | CEF/CDP-Download-Steuerung (Targets, Expressions, Launch mit Debugging) |
-| `downloads/steam_state.rs` | 200 | `SteamDownloadState` Parsing, `calculate_steam_progress`, VDF-Extraktion |
-| `downloads/internal_download.rs` | 250 | `download_internal_game_file(_once)` |
-| `downloads/reconcile.rs` | 400 | `reconcile_downloads`, `ReconciliationResult` |
-| `downloads/health.rs` | 140 | `check_provider_health` + 4 Plattform-Health-Checks |
-| `downloads/install.rs` | 200 | `install_downloaded_game_package`, Manifest-Write, Cache-Update |
-| `downloads/utils.rs` | 150 | `normalize_game_id`, Plattform/Provider-Lookup, `verify_sha256`, `get_dir_size` |
-| `downloads/watcher.rs` | 300 | `start_global_download_watcher` |
-| `downloads/start.rs` | 700 | `start_download` als Top-Level-Command, intern ggf. weiter in Phasen zerlegbar |
+**Phase 2** (`start.rs` → 3 new sub-modules) was completed in branch
+`refactor/downloads-split-phase-2`:
 
-**Migration:** Sub-Module eins nach dem anderen, jeder mit Re-Export in `downloads::` Shims bis alle migriert sind, dann `legacy.rs` löschen. Jeder Sub-PR per Modul, `cargo check` + `cargo test` dazwischen. Geschätzter Aufwand: 1-2 Tage, verteilt auf 10+ kleine PRs.
+- `queue.rs` — `get_download_queue`
+- `control.rs` — `pause_download`, `cancel_download`, `archive_download`
+- `external_dispatch.rs` — Steam/Epic/EA/Ubisoft/Battle.net URI dispatch
+- `lifecycle.rs` — `DownloadLifecycle` enum (External/Internal dispatch)
+- `external_download.rs` — external-launcher tracking loop
+- `internal_lifecycle.rs` — internal HTTP(S) download → install lifecycle
+
+`start.rs` is now 173 LOC of pure orchestration (down from 856).
 
 ### Phase 5 — CI/CD
 
-- Add Windows + macOS runners
-- Add `cargo fmt --check`, `cargo clippy -D warnings`, `cargo test` jobs
-- Add Supabase migration check (`supabase db lint`)
-- Parallel jobs (typecheck/lint/test/rust-check)
-- Coverage thresholds in CI
+- Add Windows + macOS runners ✅ PR #25 (phase-5-ci-hardening) reactivates CI with 7 parallel jobs
+- Add `cargo fmt --check`, `cargo clippy -D warnings`, `cargo test` jobs ✅ (3 Rust jobs)
+- Add Supabase migration check (`supabase db lint`) ✅
+- Parallel jobs (typecheck/lint/test/rust-check) ✅
+- Coverage thresholds in CI ✅ (per-pattern thresholds in vitest.config.ts)
 
-**Already in place (b97aee5)**
+**Already in place**
 
-- GitHub Actions Ubuntu CI workflow (lint, typecheck, test, build) — **defined, not running**. The job-level `if: ${{ false }}` guard means the steps exist but never execute. Restoring CI is the first sub-task of Phase 5.
+- PR #25 is open and merges into main. The old `if: ${{ false }}` guard has been removed; the workflow now runs on `push` + `pull_request` + `workflow_dispatch`.
 
 ---
 
