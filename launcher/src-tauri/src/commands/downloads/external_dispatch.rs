@@ -2,10 +2,6 @@ use crate::commands::uri_safety::validate_slug;
 
 /// Result of dispatching a download request to an external launcher
 /// (Steam, Epic, EA, Ubisoft, Battle.net).
-///
-/// `external_message` is empty when the prefix does not match any
-/// known external launcher (i.e. it is a regular internal or GOG
-/// download).
 pub struct ExternalDispatch {
     pub steam_tracker_id: Option<String>,
     pub epic_tracker_id: Option<String>,

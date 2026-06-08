@@ -37,10 +37,10 @@ pub async fn start_download(
     }
 
     let external_dispatch::ExternalDispatch {
-        steam_tracker_id: mut steam_tracker_id,
-        epic_tracker_id: mut epic_tracker_id,
-        is_external_download: mut is_external_download,
-        external_message: mut external_message,
+        mut steam_tracker_id,
+        mut epic_tracker_id,
+        is_external_download,
+        external_message,
     } = external_dispatch::dispatch_external_launcher(&game_id);
 
     let mut title = game_title

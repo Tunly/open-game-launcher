@@ -16,8 +16,6 @@ mod types;
 mod utils;
 mod watcher;
 
-pub use lifecycle::{DownloadLifecycle, ExternalTracker};
-
 pub use health::ProviderHealthStatus;
 pub use history::record_download_item;
 pub use reconcile::ReconciliationResult;

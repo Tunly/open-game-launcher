@@ -40,6 +40,7 @@ pub enum ExternalTracker {
     /// Progress is detected by polling the relevant
     /// `scan_*_games` and counting consecutive "installed"
     /// observations (>= 2 with at least 10 seconds elapsed).
+    #[allow(dead_code)]
     Other { platform: String },
 }
 
