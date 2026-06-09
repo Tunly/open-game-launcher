@@ -93,7 +93,7 @@ export function usePlatformPresence(friendIds: string[]) {
       if (ogP) {
         statuses.push(ogP.status);
         platforms.push({
-          platform: "steam" as PlatformType, // placeholder — OG presence isn't tied to a specific platform
+          platform: "og" as PlatformType,
           status: ogP.status as PlatformPresenceInfo["status"],
           currentGame: ogP.currentGameTitle,
         });
