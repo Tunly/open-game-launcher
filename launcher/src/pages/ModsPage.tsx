@@ -3,14 +3,10 @@ import {
   Archive,
   CheckCircle2,
   ExternalLink,
-  FileArchive,
   KeyRound,
-  ListFilter,
   PackagePlus,
-  PlugZap,
   Power,
   RefreshCcw,
-  Search,
   Settings2,
   Trash2,
   XCircle,
@@ -32,11 +28,10 @@ import {
   uninstallMod,
 } from "../lib/launcher";
 import { getErrorMessage } from "../lib/formatters";
-import { listModCatalogEntries, recordUserModInstall } from "../lib/supabase/mods";
+import { recordUserModInstall } from "../lib/supabase/mods";
 import type { Game } from "../lib/types";
 import type {
   InstalledModInfo,
-  ModCatalogEntry,
   ModInstallQueueItem,
   ModProvider,
 } from "../lib/types/mods";
@@ -49,8 +44,6 @@ import {
   selectModInstallTotalProgress,
   useModInstallStore,
 } from "../stores/modInstallStore";
-
-type ProviderFilter = ModProvider | "all";
 
 const PROVIDERS: Array<{
   key: ModProvider;
@@ -66,46 +59,34 @@ const PROVIDERS: Array<{
   { key: "curseforge", label: "CurseForge", short: "Forge", mode: "hybrid" },
 ];
 
-const TARGET_POLICIES = [
-  { id: "", label: "Auto Preset" },
-  { id: "game_mods", label: "Game /mods" },
-  { id: "creation_data", label: "Creation Data" },
-  { id: "bepinex_plugins", label: "BepInEx Plugins" },
-  { id: "minecraft_mods", label: "Minecraft Mods" },
-  { id: "root", label: "Game Root" },
-];
+function detectProvider(source: string): ModProvider {
+  const lower = source.toLowerCase();
+  if (lower.endsWith(".zip") || lower.endsWith(".rar") || lower.endsWith(".7z")) {
+    return "local_archive";
+  }
+  if (lower.includes("steamcommunity.com") || lower.startsWith("steam://")) {
+    return "steam_workshop";
+  }
+  if (lower.includes("mod.io")) return "modio";
+  if (lower.includes("curseforge.com") || lower.includes("edgeforge")) return "curseforge";
+  return "direct_url";
+}
 
-const FALLBACK_CATALOG: ModCatalogEntry[] = [
-  {
-    id: "demo-steam-workshop",
-    slug: "steam-workshop-launch",
-    name: "Workshop Subscription Relay",
-    author: "Steam Community",
-    summary: "Opens the official Steam Workshop item and tracks the delegated install.",
-    description: "Delegates Workshop installation to Steam, then scans local content.",
-    provider: "steam_workshop",
-    sourceUrl: "steam://openurl/https://steamcommunity.com/workshop/",
-    externalId: "workshop",
-    categories: ["Workshop"],
-    tags: ["delegated", "official"],
-    status: "published",
-    latestVersion: {
-      id: "demo-steam-workshop-v1",
-      catalogModId: "demo-steam-workshop",
-      version: "external",
-      fileSizeBytes: 0,
-      installStrategy: "external",
-      isLatest: true,
-      status: "published",
-      createdAt: new Date(0).toISOString(),
-    },
-  },
-];
+function providerLabel(provider: ModProvider) {
+  return PROVIDERS.find((item) => item.key === provider)?.label ?? provider;
+}
+
+function statusTone(status: ModInstallQueueItem["status"]) {
+  if (status === "completed") return "bg-[#007166] text-white";
+  if (status === "failed" || status === "cancelled") return "bg-[#171411] text-white";
+  if (status === "delegated") return "bg-[#f6edd8] text-[#171411]";
+  return "bg-[#b7102a] text-white";
+}
 
 export function ModsPage() {
   const [searchParams] = useSearchParams();
-  const [showAdvanced, setShowAdvanced] = useState(false);
   const [expandedQueue, setExpandedQueue] = useState(false);
+  const [showSecretsModal, setShowSecretsModal] = useState(false);
   const items = useModInstallStore((state) => state.items);
   const {
     setItems: setQueueItems,
@@ -125,19 +106,12 @@ export function ModsPage() {
 
   const [games, setGames] = useState<Game[]>([]);
   const [selectedGameId, setSelectedGameId] = useState(searchParams.get("gameId") ?? "");
-  const [catalog, setCatalog] = useState<ModCatalogEntry[]>([]);
   const [installedMods, setInstalledMods] = useState<InstalledModInfo[]>([]);
-  const [providerFilter, setProviderFilter] = useState<ProviderFilter>("all");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [targetPolicyId, setTargetPolicyId] = useState("");
-  const [manualProvider, setManualProvider] = useState<ModProvider>("direct_url");
-  const [manualTitle, setManualTitle] = useState("");
-  const [manualSource, setManualSource] = useState("");
-  const [manualSha256, setManualSha256] = useState("");
+  const [addSource, setAddSource] = useState("");
+  const [addTitle, setAddTitle] = useState("");
   const [secretProvider, setSecretProvider] = useState<ModProvider>("modio");
   const [secretValue, setSecretValue] = useState("");
   const [loading, setLoading] = useState(true);
-  const [catalogLoading, setCatalogLoading] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -145,23 +119,6 @@ export function ModsPage() {
     () => games.find((game) => game.id === selectedGameId) ?? null,
     [games, selectedGameId],
   );
-
-  const visibleCatalog = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase();
-    return catalog.filter((entry) => {
-      if (providerFilter !== "all" && entry.provider !== providerFilter) {
-        return false;
-      }
-      if (!query) return true;
-      return [
-        entry.name,
-        entry.author ?? "",
-        entry.summary ?? "",
-        entry.tags.join(" "),
-        entry.categories.join(" "),
-      ].some((value) => value.toLowerCase().includes(query));
-    });
-  }, [catalog, providerFilter, searchQuery]);
 
   useEffect(() => {
     let active = true;
@@ -207,27 +164,6 @@ export function ModsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  useEffect(() => {
-    void loadCatalog();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [providerFilter, selectedGameId]);
-
-  async function loadCatalog() {
-    try {
-      setCatalogLoading(true);
-      const entries = await listModCatalogEntries({
-        provider: providerFilter,
-        gameId: selectedGameId || undefined,
-        search: searchQuery,
-      });
-      setCatalog(entries.length > 0 ? entries : FALLBACK_CATALOG);
-    } catch {
-      setCatalog(FALLBACK_CATALOG);
-    } finally {
-      setCatalogLoading(false);
-    }
-  }
-
   async function loadInstalledMods(gameId: string) {
     try {
       const mods = await scanGameMods(gameId);
@@ -238,62 +174,25 @@ export function ModsPage() {
     }
   }
 
-  async function handleInstallCatalog(entry: ModCatalogEntry) {
-    if (!selectedGame) return;
-    try {
-      setError(null);
-      setStatusMessage(null);
-      const result = await startModInstall({
-        gameId: selectedGame.id,
-        provider: entry.provider,
-        catalogItemId: entry.id,
-        versionId: entry.latestVersion?.id,
-        sourceUrl: entry.latestVersion?.downloadUrl ?? entry.sourceUrl ?? undefined,
-        targetPolicyId: targetPolicyId || undefined,
-        title: entry.name,
-        sha256: entry.latestVersion?.sha256 ?? undefined,
-      });
-      setStatusMessage(result.message);
-      const queue = await getModQueue();
-      setQueueItems(queue);
-    } catch (err) {
-      setError(getErrorMessage(err));
-    }
-  }
-
-  async function handleManualInstall() {
-    if (!selectedGame || !manualTitle.trim()) return;
-    const source = manualSource.trim();
-    if (manualProvider !== "local_folder" && manualProvider !== "local_archive" && !source) {
-      setError("Source URL is required for this provider.");
-      return;
-    }
-    if ((manualProvider === "local_folder" || manualProvider === "local_archive") && !source) {
-      setError("Local path is required for local mod sources.");
-      return;
-    }
+  async function handleAddMod() {
+    if (!selectedGame || !addSource.trim()) return;
+    const source = addSource.trim();
+    const title = addTitle.trim() || source.split("/").pop() || "Untitled Mod";
+    const provider = detectProvider(source);
+    const isLocal = provider === "local_archive" || provider === "local_folder";
 
     try {
       setError(null);
       const result = await startModInstall({
         gameId: selectedGame.id,
-        provider: manualProvider,
-        sourceUrl:
-          manualProvider === "local_archive" || manualProvider === "local_folder"
-            ? undefined
-            : source,
-        localPath:
-          manualProvider === "local_archive" || manualProvider === "local_folder"
-            ? source
-            : undefined,
-        targetPolicyId: targetPolicyId || undefined,
-        title: manualTitle.trim(),
-        sha256: manualSha256.trim() || undefined,
+        provider,
+        sourceUrl: isLocal ? undefined : source,
+        localPath: isLocal ? source : undefined,
+        title,
       });
       setStatusMessage(result.message);
-      setManualTitle("");
-      setManualSource("");
-      setManualSha256("");
+      setAddSource("");
+      setAddTitle("");
       setQueueItems(await getModQueue());
     } catch (err) {
       setError(getErrorMessage(err));
@@ -358,6 +257,7 @@ export function ModsPage() {
 
   return (
     <section className="space-y-5">
+      {/* 1. Header Row */}
       <div className="border-b-4 border-black pb-4">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
           <div className="min-w-0">
@@ -372,32 +272,44 @@ export function ModsPage() {
             </p>
           </div>
 
-          <div className="grid grid-cols-3 border-4 border-black bg-[#171411] text-center text-[#fff9ed] shadow-[5px_5px_0_#171411]">
-            <Readout label="Active" value={activeCount} />
-            <Readout label="External" value={delegatedCount} />
-            <Readout label="Ready" value={completedCount} />
+          <div className="flex items-center gap-3">
+            <div className="grid grid-cols-3 border-4 border-black bg-[#171411] text-center text-[#fff9ed] shadow-[5px_5px_0_#171411]">
+              <Readout label="Active" value={activeCount} />
+              <Readout label="External" value={delegatedCount} />
+              <Readout label="Ready" value={completedCount} />
+            </div>
+            <button
+              className="neo-copy flex h-12 items-center gap-2 border-4 border-black bg-[#f5eedf] px-3 text-[11px] font-black uppercase shadow-[4px_4px_0_#171411] transition-colors hover:bg-[#efe6d4]"
+              title="Provider Keys"
+              type="button"
+              onClick={() => setShowSecretsModal(true)}
+            >
+              <Settings2 className="h-5 w-5" />
+            </button>
           </div>
         </div>
       </div>
 
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
-        <label className="relative flex-1">
-          <Search className="pointer-events-none absolute top-1/2 left-3 h-5 w-5 -translate-y-1/2" />
-          <input
-            className="neo-copy h-14 w-full border-4 border-black bg-[#fff9ed] pr-4 pl-11 text-[13px] font-black uppercase shadow-[4px_4px_0_#171411] outline-none"
-            placeholder="Search mods for selected game"
-            value={searchQuery}
-            onChange={(event) => setSearchQuery(event.target.value)}
-          />
+      {/* 2. Game Selector */}
+      <div className="border-4 border-black bg-[#f5eedf] px-4 py-3 shadow-[5px_5px_0_#171411]">
+        <label className="neo-copy block text-[10px] font-black text-[#5b403f] uppercase">
+          Target Game
+          <select
+            className="ml-3 h-11 w-full border-4 border-black bg-[#fff9ed] px-2 text-[12px] font-black text-[#171411] shadow-[3px_3px_0_#171411] outline-none lg:w-auto lg:min-w-[260px]"
+            value={selectedGameId}
+            onChange={(event) => {
+              setSelectedGameId(event.target.value);
+              void loadInstalledMods(event.target.value);
+            }}
+          >
+            {games.length === 0 ? <option value="">No installed games detected</option> : null}
+            {games.map((game) => (
+              <option key={game.id} value={game.id}>
+                {game.title}
+              </option>
+            ))}
+          </select>
         </label>
-        <button
-          className={`neo-copy flex h-14 items-center gap-2 border-4 border-black px-5 text-[13px] font-black uppercase shadow-[4px_4px_0_#171411] transition-colors ${showAdvanced ? "bg-[#b7102a] text-white" : "bg-[#f5eedf]"}`}
-          type="button"
-          onClick={() => setShowAdvanced((s) => !s)}
-        >
-          <Settings2 className="h-5 w-5" />
-          Advanced
-        </button>
       </div>
 
       {error ? (
@@ -411,61 +323,130 @@ export function ModsPage() {
         </div>
       ) : null}
 
-      <div className="grid gap-4 xl:grid-cols-[320px_minmax(0,1fr)]">
-        <aside className="space-y-4">
-          <Panel title="Game Target" icon={<PackagePlus className="h-4 w-4" />}>
-            <label className="neo-copy block text-[10px] font-black text-[#5b403f] uppercase">
-              Local Library
-              <select
-                className="mt-2 h-11 w-full border-4 border-black bg-[#fff9ed] px-2 text-[12px] font-black text-[#171411] shadow-[3px_3px_0_#171411] outline-none"
-                value={selectedGameId}
-                onChange={(event) => {
-                  setSelectedGameId(event.target.value);
-                  void loadInstalledMods(event.target.value);
-                }}
-              >
-                {games.length === 0 ? <option value="">No installed games detected</option> : null}
-                {games.map((game) => (
-                  <option key={game.id} value={game.id}>
-                    {game.title}
-                  </option>
-                ))}
-              </select>
-            </label>
+      {/* 3. Installed Mods (primary view) */}
+      <Panel title="Installed Mods" icon={<CheckCircle2 className="h-4 w-4" />}>
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <p className="neo-copy text-[10px] font-black text-[#5b403f] uppercase">
+            {installedMods.length} tracked mods for selected game
+          </p>
+          <button
+            className="neo-copy flex h-9 items-center gap-2 border-2 border-black bg-[#f6edd8] px-3 text-[10px] font-black uppercase shadow-[2px_2px_0_#171411]"
+            type="button"
+            onClick={() => selectedGameId && void loadInstalledMods(selectedGameId)}
+          >
+            <RefreshCcw className="h-3.5 w-3.5" />
+            Scan
+          </button>
+        </div>
+        {installedMods.length > 0 ? (
+          <div className="grid gap-2">
+            {installedMods.map((mod) => (
+              <InstalledModRow
+                key={mod.installId}
+                mod={mod}
+                onToggle={() => void handleToggleMod(mod)}
+                onUninstall={() => void handleUninstallMod(mod)}
+              />
+            ))}
+          </div>
+        ) : (
+          <EmptyState label="No mods installed for this game. Add one below." />
+        )}
+      </Panel>
 
-            {showAdvanced && (
-              <label className="neo-copy mt-4 block text-[10px] font-black text-[#5b403f] uppercase">
-                Target Policy
-                <select
-                  className="mt-2 h-10 w-full border-2 border-black bg-[#f6edd8] px-2 text-[11px] font-black outline-none"
-                  value={targetPolicyId}
-                  onChange={(event) => setTargetPolicyId(event.target.value)}
-                >
-                  {TARGET_POLICIES.map((policy) => (
-                    <option key={policy.id} value={policy.id}>
-                      {policy.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            )}
+      {/* 4. Add Mod */}
+      <Panel title="Add Mod" icon={<PackagePlus className="h-4 w-4" />}>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+          <label className="flex-1 neo-copy block text-[10px] font-black text-[#5b403f] uppercase">
+            URL or Local Path
+            <input
+              className="mt-1 h-11 w-full border-4 border-black bg-[#fff9ed] px-3 text-[12px] font-black shadow-[3px_3px_0_#171411] outline-none"
+              placeholder="https://.../mod.zip or C:/Mods/file.zip"
+              value={addSource}
+              onChange={(event) => {
+                setAddSource(event.target.value);
+                if (!addTitle) {
+                  const slug = event.target.value.split("/").pop()?.split(".")[0] ?? "";
+                  setAddTitle(slug.replace(/[_-]/g, " "));
+                }
+              }}
+            />
+          </label>
+          <label className="sm:w-52 neo-copy block text-[10px] font-black text-[#5b403f] uppercase">
+            Name (optional)
+            <input
+              className="mt-1 h-11 w-full border-4 border-black bg-[#fff9ed] px-3 text-[12px] font-black shadow-[3px_3px_0_#171411] outline-none"
+              placeholder="Auto-filled from URL"
+              value={addTitle}
+              onChange={(event) => setAddTitle(event.target.value)}
+            />
+          </label>
+          <button
+            className="neo-copy flex h-11 items-center justify-center gap-2 border-4 border-black bg-[#b7102a] px-5 text-[11px] font-black text-white uppercase shadow-[3px_3px_0_#171411] disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={!selectedGame || !addSource.trim()}
+            type="button"
+            onClick={() => void handleAddMod()}
+          >
+            <PackagePlus className="h-4 w-4" />
+            Install Mod
+          </button>
+        </div>
+      </Panel>
 
-            <div className="mt-4 border-2 border-black bg-[#1f1c0f] p-3 text-[#fff9ed]">
-              <p className="neo-copy text-[10px] font-black uppercase">Selected</p>
-              <h2 className="mt-1 text-xl leading-none font-black uppercase">
-                {selectedGame?.title ?? "No target"}
-              </h2>
-              <p className="neo-copy mt-2 text-[10px] font-bold break-all text-[#f5eedf] uppercase">
-                {selectedGame?.installPath ?? "Install path missing"}
-              </p>
+      {/* 5. Queue Bar (bottom strip) */}
+      <Panel title="Install Queue" icon={<Archive className="h-4 w-4" />}>
+        <div className="mb-3 h-4 border-2 border-black bg-[#efe6d4]">
+          <div className="h-full bg-[#b7102a]" style={{ width: `${totalProgress}%` }} />
+        </div>
+        {items.length > 0 ? (
+          expandedQueue ? (
+            <div className="grid gap-2">
+              {items.map((item) => (
+                <QueueRow
+                  key={item.installId}
+                  item={item}
+                  onCancel={() => void handleCancel(item)}
+                />
+              ))}
             </div>
-          </Panel>
+          ) : (
+            <button
+              className="w-full border-2 border-black bg-[#fff9ed] p-3 text-center text-[10px] font-black text-[#5b403f] uppercase shadow-[2px_2px_0_#171411] transition-transform active:translate-x-[2px] active:translate-y-[2px] active:shadow-none"
+              onClick={() => setExpandedQueue(true)}
+              type="button"
+            >
+              Installing {activeCount} mods... (Click for details)
+            </button>
+          )
+        ) : (
+          <EmptyState label="No mod installs queued." />
+        )}
+      </Panel>
 
-          {showAdvanced && (
-            <Panel title="Provider Keys" icon={<KeyRound className="h-4 w-4" />}>
-              <div className="grid grid-cols-[1fr_auto] gap-2">
+      {/* 6. Provider Keys Modal */}
+      {showSecretsModal ? (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/50">
+          <div className="mx-4 w-full max-w-md border-4 border-black bg-[#f5eedf] shadow-[6px_6px_0_#171411]">
+            <div className="flex items-center justify-between border-b-4 border-black bg-[#171411] px-4 py-3 text-[#fff9ed]">
+              <div className="flex items-center gap-2">
+                <KeyRound className="h-4 w-4" />
+                <h2 className="neo-copy text-[12px] font-black tracking-normal uppercase">
+                  Provider Keys
+                </h2>
+              </div>
+              <button
+                className="neo-copy flex h-8 items-center justify-center border-2 border-black bg-[#b7102a] px-2 text-[10px] font-black text-white uppercase"
+                type="button"
+                onClick={() => setShowSecretsModal(false)}
+              >
+                <XCircle className="h-4 w-4" />
+              </button>
+            </div>
+            <div className="space-y-4 p-4">
+              <label className="neo-copy block text-[10px] font-black text-[#5b403f] uppercase">
+                Provider
                 <select
-                  className="neo-copy h-10 border-2 border-black bg-[#f6edd8] px-2 text-[11px] font-black uppercase"
+                  className="mt-1 h-10 w-full border-2 border-black bg-[#f6edd8] px-2 text-[11px] font-black uppercase outline-none"
                   value={secretProvider}
                   onChange={(event) => setSecretProvider(event.target.value as ModProvider)}
                 >
@@ -475,190 +456,31 @@ export function ModsPage() {
                     </option>
                   ))}
                 </select>
-                <button
-                  className="neo-copy border-2 border-black bg-[#007166] px-3 text-[10px] font-black text-white uppercase shadow-[2px_2px_0_#171411]"
-                  type="button"
-                  onClick={() => void handleSaveSecret()}
-                >
-                  Save
-                </button>
-              </div>
-              <input
-                className="neo-copy mt-2 h-10 w-full border-2 border-black bg-[#fff9ed] px-2 text-[11px] font-bold outline-none"
-                placeholder="API key / OAuth token"
-                type="password"
-                value={secretValue}
-                onChange={(event) => setSecretValue(event.target.value)}
-              />
-              <p className="neo-copy mt-2 text-[10px] font-bold text-[#5b403f] uppercase">
+              </label>
+              <label className="neo-copy block text-[10px] font-black text-[#5b403f] uppercase">
+                API Key / OAuth Token
+                <input
+                  className="mt-1 h-10 w-full border-2 border-black bg-[#fff9ed] px-2 text-[11px] font-bold outline-none"
+                  placeholder="Paste your key here"
+                  type="password"
+                  value={secretValue}
+                  onChange={(event) => setSecretValue(event.target.value)}
+                />
+              </label>
+              <p className="neo-copy text-[10px] font-bold text-[#5b403f] uppercase">
                 Stored locally through the OS keychain. No provider key is written to Supabase.
               </p>
-            </Panel>
-          )}
-        </aside>
-
-        <div className="space-y-4">
-          <Panel title="Install Queue" icon={<Archive className="h-4 w-4" />}>
-            <div className="mb-3 h-4 border-2 border-black bg-[#efe6d4]">
-              <div className="h-full bg-[#b7102a]" style={{ width: `${totalProgress}%` }} />
-            </div>
-            {items.length > 0 ? (
-              showAdvanced || expandedQueue ? (
-                <div className="grid gap-2">
-                  {items.slice(0, 5).map((item) => (
-                    <QueueRow
-                      key={item.installId}
-                      item={item}
-                      onCancel={() => void handleCancel(item)}
-                    />
-                  ))}
-                </div>
-              ) : (
-                <button
-                  className="w-full border-2 border-black bg-[#fff9ed] p-3 text-center text-[10px] font-black text-[#5b403f] uppercase shadow-[2px_2px_0_#171411] transition-transform active:translate-x-[2px] active:translate-y-[2px] active:shadow-none"
-                  onClick={() => setExpandedQueue(true)}
-                  type="button"
-                >
-                  Installing {activeCount} mods... (Click for details)
-                </button>
-              )
-            ) : (
-              <EmptyState label="No mod installs queued." />
-            )}
-          </Panel>
-
-          <div
-            className={`grid gap-4 ${showAdvanced ? "2xl:grid-cols-[minmax(0,1fr)_360px]" : ""}`}
-          >
-            <Panel title="Provider Catalog" icon={<PlugZap className="h-4 w-4" />}>
-              {showAdvanced && (
-                <div className="mb-4 flex justify-end">
-                  <div className="grid w-full max-w-[240px] grid-cols-[40px_minmax(0,1fr)] border-2 border-black bg-[#f6edd8]">
-                    <span className="grid place-items-center border-r-2 border-black">
-                      <ListFilter className="h-4 w-4" />
-                    </span>
-                    <select
-                      className="neo-copy h-10 bg-transparent px-2 text-[11px] font-black uppercase outline-none"
-                      value={providerFilter}
-                      onChange={(event) => setProviderFilter(event.target.value as ProviderFilter)}
-                    >
-                      <option value="all">All providers</option>
-                      {PROVIDERS.map((provider) => (
-                        <option key={provider.key} value={provider.key}>
-                          {provider.label}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-              )}
-
-              <div className="grid gap-3 lg:grid-cols-2">
-                {catalogLoading ? (
-                  <EmptyState label="Catalog sync running." />
-                ) : visibleCatalog.length > 0 ? (
-                  visibleCatalog.map((entry) => (
-                    <CatalogCard
-                      key={entry.id}
-                      entry={entry}
-                      disabled={!selectedGame}
-                      onInstall={() => void handleInstallCatalog(entry)}
-                    />
-                  ))
-                ) : (
-                  <EmptyState label="No catalog entries match this filter." />
-                )}
-              </div>
-            </Panel>
-
-            {showAdvanced && (
-              <Panel title="Manual Install" icon={<FileArchive className="h-4 w-4" />}>
-                <div className="space-y-3">
-                  <label className="neo-copy block text-[10px] font-black text-[#5b403f] uppercase">
-                    Provider
-                    <select
-                      className="mt-1 h-10 w-full border-2 border-black bg-[#f6edd8] px-2 text-[11px] font-black uppercase outline-none"
-                      value={manualProvider}
-                      onChange={(event) => setManualProvider(event.target.value as ModProvider)}
-                    >
-                      {PROVIDERS.map((provider) => (
-                        <option key={provider.key} value={provider.key}>
-                          {provider.label}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <TextInput
-                    label="Mod title"
-                    placeholder="HD texture pack"
-                    value={manualTitle}
-                    onChange={setManualTitle}
-                  />
-                  <TextInput
-                    label={
-                      manualProvider === "local_archive" || manualProvider === "local_folder"
-                        ? "Local path"
-                        : "Source URL"
-                    }
-                    placeholder={
-                      manualProvider === "local_archive" || manualProvider === "local_folder"
-                        ? "C:/Mods/package.zip"
-                        : "https://.../download.zip"
-                    }
-                    value={manualSource}
-                    onChange={setManualSource}
-                  />
-                  <TextInput
-                    label="SHA-256 optional"
-                    placeholder="64 hex chars"
-                    value={manualSha256}
-                    onChange={setManualSha256}
-                  />
-                  <button
-                    className="neo-copy flex h-11 w-full items-center justify-center gap-2 border-4 border-black bg-[#b7102a] text-[11px] font-black text-white uppercase shadow-[3px_3px_0_#171411] disabled:cursor-not-allowed disabled:opacity-50"
-                    disabled={!selectedGame || !manualTitle.trim()}
-                    type="button"
-                    onClick={() => void handleManualInstall()}
-                  >
-                    <PackagePlus className="h-4 w-4" />
-                    Install / Delegate
-                  </button>
-                </div>
-              </Panel>
-            )}
-          </div>
-
-          <Panel title="Installed Mods" icon={<CheckCircle2 className="h-4 w-4" />}>
-            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-              <p className="neo-copy text-[10px] font-black text-[#5b403f] uppercase">
-                {installedMods.length} tracked mods for selected game
-              </p>
               <button
-                className="neo-copy flex h-9 items-center gap-2 border-2 border-black bg-[#f6edd8] px-3 text-[10px] font-black uppercase shadow-[2px_2px_0_#171411]"
+                className="neo-copy flex h-10 w-full items-center justify-center gap-2 border-2 border-black bg-[#007166] text-[10px] font-black text-white uppercase shadow-[2px_2px_0_#171411]"
                 type="button"
-                onClick={() => selectedGameId && void loadInstalledMods(selectedGameId)}
+                onClick={() => void handleSaveSecret()}
               >
-                <RefreshCcw className="h-3.5 w-3.5" />
-                Scan
+                Save Key
               </button>
             </div>
-            {installedMods.length > 0 ? (
-              <div className="grid gap-2">
-                {installedMods.map((mod) => (
-                  <InstalledModRow
-                    key={mod.installId}
-                    mod={mod}
-                    onToggle={() => void handleToggleMod(mod)}
-                    onUninstall={() => void handleUninstallMod(mod)}
-                  />
-                ))}
-              </div>
-            ) : (
-              <EmptyState label="No installed mods found. Install or scan after provider handoff." />
-            )}
-          </Panel>
+          </div>
         </div>
-      </div>
+      ) : null}
     </section>
   );
 }
@@ -733,57 +555,6 @@ function QueueRow({ item, onCancel }: { item: ModInstallQueueItem; onCancel: () 
   );
 }
 
-function CatalogCard({
-  disabled,
-  entry,
-  onInstall,
-}: {
-  disabled: boolean;
-  entry: ModCatalogEntry;
-  onInstall: () => void;
-}) {
-  const installStrategy = entry.latestVersion?.installStrategy ?? "external";
-  const direct = installStrategy !== "external" || entry.provider === "direct_url";
-  return (
-    <article className="flex min-h-[190px] flex-col border-4 border-black bg-[#fff9ed] shadow-[4px_4px_0_#171411]">
-      <div className={`h-16 border-b-4 border-black ${providerArt(entry.provider)}`} />
-      <div className="flex flex-1 flex-col p-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="neo-copy border-2 border-black bg-[#007166] px-2 py-0.5 text-[9px] font-black text-white uppercase">
-            {providerLabel(entry.provider)}
-          </span>
-          <span className="neo-copy border-2 border-black bg-[#f6edd8] px-2 py-0.5 text-[9px] font-black text-[#171411] uppercase">
-            {direct ? "direct" : "delegated"}
-          </span>
-        </div>
-        <h3 className="mt-2 text-xl leading-none font-black uppercase">{entry.name}</h3>
-        <p className="mt-2 line-clamp-2 text-sm leading-5 font-bold text-[#5b403f]">
-          {entry.summary ?? entry.description ?? "Provider catalog entry."}
-        </p>
-        <div className="mt-3 flex flex-wrap gap-1">
-          {[...entry.categories, ...entry.tags].slice(0, 4).map((tag) => (
-            <span
-              key={tag}
-              className="neo-copy border border-black bg-[#efe6d4] px-1.5 py-0.5 text-[8px] font-black uppercase"
-            >
-              {tag}
-            </span>
-          ))}
-        </div>
-        <button
-          className="neo-copy mt-auto flex h-10 items-center justify-center gap-2 border-2 border-black bg-[#b7102a] px-3 text-[10px] font-black text-white uppercase shadow-[2px_2px_0_#171411] transition-transform active:translate-x-[2px] active:translate-y-[2px] active:shadow-none disabled:cursor-not-allowed disabled:opacity-50"
-          disabled={disabled}
-          type="button"
-          onClick={onInstall}
-        >
-          <PackagePlus className="h-4 w-4" />
-          {resolveInstallLabel(entry)}
-        </button>
-      </div>
-    </article>
-  );
-}
-
 function InstalledModRow({
   mod,
   onToggle,
@@ -833,59 +604,10 @@ function InstalledModRow({
   );
 }
 
-function TextInput({
-  label,
-  onChange,
-  placeholder,
-  value,
-}: {
-  label: string;
-  onChange: (value: string) => void;
-  placeholder: string;
-  value: string;
-}) {
-  return (
-    <label className="neo-copy block text-[10px] font-black text-[#5b403f] uppercase">
-      {label}
-      <input
-        className="mt-1 h-10 w-full border-2 border-black bg-[#fff9ed] px-2 text-[11px] font-bold outline-none"
-        placeholder={placeholder}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-      />
-    </label>
-  );
-}
-
 function EmptyState({ label }: { label: string }) {
   return (
     <div className="neo-copy border-2 border-dashed border-black bg-[#fff9ed] p-5 text-center text-[10px] font-black text-[#5b403f] uppercase">
       {label}
     </div>
   );
-}
-
-function providerLabel(provider: ModProvider) {
-  return PROVIDERS.find((item) => item.key === provider)?.label ?? provider;
-}
-
-function statusTone(status: ModInstallQueueItem["status"]) {
-  if (status === "completed") return "bg-[#007166] text-white";
-  if (status === "failed" || status === "cancelled") return "bg-[#171411] text-white";
-  if (status === "delegated") return "bg-[#f6edd8] text-[#171411]";
-  return "bg-[#b7102a] text-white";
-}
-
-function providerArt(provider: ModProvider) {
-  if (provider === "steam_workshop") return "library-source-art library-source-art-steam";
-  if (provider === "modio") return "library-source-art library-source-art-gog";
-  if (provider === "curseforge") return "library-source-art library-source-art-epic";
-  if (provider === "local_archive") return "library-source-art library-source-art-linux";
-  if (provider === "local_folder") return "library-source-art library-source-art-macos";
-  return "library-source-art library-source-art-battlenet";
-}
-
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-function resolveInstallLabel(_entry: ModCatalogEntry) {
-  return "Install";
 }
