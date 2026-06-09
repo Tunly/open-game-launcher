@@ -179,6 +179,7 @@ pub fn run() {
             commands::friends::fetch_gog_friends,
             commands::friends::fetch_epic_friends,
             commands::friends::fetch_xbox_friends,
+            commands::nexus_scraper::scrape_nexus_mod_info,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Open Game Launcher");

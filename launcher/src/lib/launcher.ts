@@ -35,6 +35,7 @@ import type {
   ModInstallRequest,
   ModInstallResult,
   ModProvider,
+  NexusModInfo,
 } from "./types/mods";
 
 type CommandArgs = Record<string, unknown>;
@@ -554,6 +555,10 @@ export function uninstallMod(installId: string): Promise<void> {
 
 export function setModProviderSecret(provider: ModProvider, secret: string): Promise<void> {
   return invokeCommand<void>("set_mod_provider_secret", { provider, secret });
+}
+
+export function scrapeNexusModInfo(url: string): Promise<NexusModInfo> {
+  return invokeCommand<NexusModInfo>("scrape_nexus_mod_info", { url });
 }
 
 export function getLocalDatabasePath(): Promise<string> {

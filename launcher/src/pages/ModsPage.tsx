@@ -14,12 +14,11 @@ import type { ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
 
 import {
-  cancelModInstall,
   disableMod,
   enableMod,
-  getModQueue,
   listInstalledGames,
   scanGameMods,
+  scrapeNexusModInfo,
   setModProviderSecret,
   startModInstall,
   uninstallMod,
@@ -30,16 +29,13 @@ import type { Game } from "../lib/types";
 import type {
   InstalledModInfo,
   ModCatalogEntry,
-  ModInstallQueueItem,
   ModProvider,
+  NexusModInfo,
 } from "../lib/types/mods";
 import {
-  isActiveModInstallItem,
-  isTerminalModInstallItem,
   selectActiveModInstallCount,
   selectCompletedModInstallCount,
   selectDelegatedModInstallCount,
-  selectModInstallTotalProgress,
   useModInstallStore,
 } from "../stores/modInstallStore";
 
@@ -96,6 +92,9 @@ export function ModsPage() {
   const [catalogLoading, setCatalogLoading] = useState(false);
   const [catalogError, setCatalogError] = useState<string | null>(null);
 
+  const [nexusLoading, setNexusLoading] = useState(false);
+  const [nexusInfo, setNexusInfo] = useState<NexusModInfo | null>(null);
+
   const selectedGame = useMemo(
     () => games.find((game) => game.id === selectedGameId) ?? null,
     [games, selectedGameId],
@@ -104,8 +103,8 @@ export function ModsPage() {
   useEffect(() => {
     let active = true;
 
-    Promise.all([listInstalledGames(), getModQueue()])
-      .then(([libraryGames, queue]) => {
+    Promise.all([listInstalledGames()])
+      .then(([libraryGames]) => {
         if (!active) return;
         setGames(libraryGames);
         const requested = searchParams.get("gameId");
@@ -137,6 +136,43 @@ export function ModsPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedGameId, loading]);
+
+  useEffect(() => {
+    const lower = addSource.toLowerCase();
+    if (!lower.includes("nexusmods.com")) {
+      setNexusInfo(null);
+      return;
+    }
+
+    const controller = new AbortController();
+    let cancelled = false;
+
+    async function scrape() {
+      setNexusLoading(true);
+      setNexusInfo(null);
+      try {
+        const info = await scrapeNexusModInfo(addSource.trim());
+        if (!cancelled && !controller.signal.aborted) {
+          setNexusInfo(info);
+          setAddTitle(info.name);
+        }
+      } catch {
+        if (!cancelled && !controller.signal.aborted) {
+          setNexusInfo(null);
+        }
+      } finally {
+        if (!cancelled && !controller.signal.aborted) {
+          setNexusLoading(false);
+        }
+      }
+    }
+
+    void scrape();
+    return () => {
+      cancelled = true;
+      controller.abort();
+    };
+  }, [addSource]);
 
   async function loadInstalledMods(gameId: string) {
     try {
@@ -409,18 +445,25 @@ export function ModsPage() {
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
           <label className="flex-1 neo-copy block text-[10px] font-black text-[#5b403f] uppercase">
             URL or Local Path
-            <input
-              className="mt-1 h-11 w-full border-4 border-black bg-[#fff9ed] px-3 text-[12px] font-black shadow-[3px_3px_0_#171411] outline-none"
-              placeholder="https://.../mod.zip or C:/Mods/file.zip"
-              value={addSource}
-              onChange={(event) => {
-                setAddSource(event.target.value);
-                if (!addTitle) {
-                  const slug = event.target.value.split("/").pop()?.split(".")[0] ?? "";
-                  setAddTitle(slug.replace(/[_-]/g, " "));
-                }
-              }}
-            />
+            <div className="relative">
+              <input
+                className="mt-1 h-11 w-full border-4 border-black bg-[#fff9ed] px-3 text-[12px] font-black shadow-[3px_3px_0_#171411] outline-none"
+                placeholder="https://.../mod.zip or C:/Mods/file.zip"
+                value={addSource}
+                onChange={(event) => {
+                  setAddSource(event.target.value);
+                  if (!addTitle) {
+                    const slug = event.target.value.split("/").pop()?.split(".")[0] ?? "";
+                    setAddTitle(slug.replace(/[_-]/g, " "));
+                  }
+                }}
+              />
+              {nexusLoading ? (
+                <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2">
+                  <RefreshCcw className="h-4 w-4 animate-spin text-[#007166]" />
+                </div>
+              ) : null}
+            </div>
           </label>
           <label className="sm:w-52 neo-copy block text-[10px] font-black text-[#5b403f] uppercase">
             Name (optional)
@@ -433,7 +476,7 @@ export function ModsPage() {
           </label>
           <button
             className="neo-copy flex h-11 items-center justify-center gap-2 border-4 border-black bg-[#b7102a] px-5 text-[11px] font-black text-white uppercase shadow-[3px_3px_0_#171411] disabled:cursor-not-allowed disabled:opacity-50"
-            disabled={!selectedGame || !addSource.trim()}
+            disabled={!selectedGame || !addSource.trim() || nexusLoading}
             type="button"
             onClick={() => void handleAddMod()}
           >
@@ -441,6 +484,27 @@ export function ModsPage() {
             Install Mod
           </button>
         </div>
+        {nexusInfo ? (
+          <div className="mt-3 flex items-center gap-3 border-2 border-black bg-[#fff9ed] p-3 shadow-[2px_2px_0_#171411]">
+            {nexusInfo.iconUrl ? (
+              <img
+                src={nexusInfo.iconUrl}
+                alt=""
+                className="h-10 w-10 border-2 border-black object-cover"
+              />
+            ) : null}
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-black uppercase">{nexusInfo.name}</p>
+              <p className="neo-copy text-[10px] font-bold text-[#5b403f] uppercase">
+                by {nexusInfo.author} // {nexusInfo.gameName}
+                {nexusInfo.downloadsCount ? ` // ${nexusInfo.downloadsCount} downloads` : ""}
+              </p>
+            </div>
+            <span className="neo-copy border-2 border-black bg-[#007166] px-2 py-0.5 text-[9px] font-black text-white uppercase">
+              Nexus Mods
+            </span>
+          </div>
+        ) : null}
       </Panel>
 
       {/* 5. Provider Keys Modal */}

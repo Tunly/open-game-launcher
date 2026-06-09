@@ -14,6 +14,7 @@ pub mod gog;
 pub mod http;
 pub mod local_db;
 pub mod mod_install;
+pub mod nexus_scraper;
 pub mod overlay;
 pub mod perf_monitor;
 pub mod secure_store;

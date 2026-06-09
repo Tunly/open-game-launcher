@@ -182,3 +182,12 @@ export interface ModCatalogVersion {
   status: "draft" | "published" | "delisted";
   createdAt: string;
 }
+
+export interface NexusModInfo {
+  name: string;
+  author: string;
+  summary: string;
+  iconUrl: string | null;
+  downloadsCount: string | null;
+  gameName: string;
+}
