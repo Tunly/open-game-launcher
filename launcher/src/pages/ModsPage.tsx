@@ -1,8 +1,5 @@
-import { listen } from "@tauri-apps/api/event";
 import {
-  Archive,
   CheckCircle2,
-  ExternalLink,
   KeyRound,
   PackagePlus,
   Power,
@@ -14,7 +11,6 @@ import {
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
-import { useShallow } from "zustand/react/shallow";
 
 import {
   cancelModInstall,
@@ -76,33 +72,12 @@ function providerLabel(provider: ModProvider) {
   return PROVIDERS.find((item) => item.key === provider)?.label ?? provider;
 }
 
-function statusTone(status: ModInstallQueueItem["status"]) {
-  if (status === "completed") return "bg-[#007166] text-white";
-  if (status === "failed" || status === "cancelled") return "bg-[#171411] text-white";
-  if (status === "delegated") return "bg-[#f6edd8] text-[#171411]";
-  return "bg-[#b7102a] text-white";
-}
-
 export function ModsPage() {
   const [searchParams] = useSearchParams();
-  const [expandedQueue, setExpandedQueue] = useState(false);
   const [showSecretsModal, setShowSecretsModal] = useState(false);
-  const items = useModInstallStore((state) => state.items);
-  const {
-    setItems: setQueueItems,
-    upsertItem: upsertQueueItem,
-    removeItem: removeQueueItem,
-  } = useModInstallStore(
-    useShallow((state) => ({
-      setItems: state.setItems,
-      upsertItem: state.upsertItem,
-      removeItem: state.removeItem,
-    })),
-  );
   const activeCount = useModInstallStore(selectActiveModInstallCount);
   const delegatedCount = useModInstallStore(selectDelegatedModInstallCount);
   const completedCount = useModInstallStore(selectCompletedModInstallCount);
-  const totalProgress = useModInstallStore(selectModInstallTotalProgress);
 
   const [games, setGames] = useState<Game[]>([]);
   const [selectedGameId, setSelectedGameId] = useState(searchParams.get("gameId") ?? "");
@@ -123,23 +98,10 @@ export function ModsPage() {
   useEffect(() => {
     let active = true;
 
-    const unlistenPromise = listen<ModInstallQueueItem>("mod_install_progress", (event) => {
-      if (!active) return;
-      upsertQueueItem(event.payload);
-      if (
-        selectedGameId &&
-        event.payload.gameId === selectedGameId &&
-        isTerminalModInstallItem(event.payload)
-      ) {
-        void loadInstalledMods(selectedGameId);
-      }
-    });
-
     Promise.all([listInstalledGames(), getModQueue()])
       .then(([libraryGames, queue]) => {
         if (!active) return;
         setGames(libraryGames);
-        setQueueItems(queue);
         const requested = searchParams.get("gameId");
         const nextSelected =
           requested && libraryGames.some((game) => game.id === requested)
@@ -159,7 +121,6 @@ export function ModsPage() {
 
     return () => {
       active = false;
-      void unlistenPromise.then((unlisten) => unlisten());
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -193,17 +154,6 @@ export function ModsPage() {
       setStatusMessage(result.message);
       setAddSource("");
       setAddTitle("");
-      setQueueItems(await getModQueue());
-    } catch (err) {
-      setError(getErrorMessage(err));
-    }
-  }
-
-  async function handleCancel(item: ModInstallQueueItem) {
-    try {
-      setError(null);
-      await cancelModInstall(item.installId);
-      removeQueueItem(item.installId);
     } catch (err) {
       setError(getErrorMessage(err));
     }
@@ -393,37 +343,7 @@ export function ModsPage() {
         </div>
       </Panel>
 
-      {/* 5. Queue Bar (bottom strip) */}
-      <Panel title="Install Queue" icon={<Archive className="h-4 w-4" />}>
-        <div className="mb-3 h-4 border-2 border-black bg-[#efe6d4]">
-          <div className="h-full bg-[#b7102a]" style={{ width: `${totalProgress}%` }} />
-        </div>
-        {items.length > 0 ? (
-          expandedQueue ? (
-            <div className="grid gap-2">
-              {items.map((item) => (
-                <QueueRow
-                  key={item.installId}
-                  item={item}
-                  onCancel={() => void handleCancel(item)}
-                />
-              ))}
-            </div>
-          ) : (
-            <button
-              className="w-full border-2 border-black bg-[#fff9ed] p-3 text-center text-[10px] font-black text-[#5b403f] uppercase shadow-[2px_2px_0_#171411] transition-transform active:translate-x-[2px] active:translate-y-[2px] active:shadow-none"
-              onClick={() => setExpandedQueue(true)}
-              type="button"
-            >
-              Installing {activeCount} mods... (Click for details)
-            </button>
-          )
-        ) : (
-          <EmptyState label="No mod installs queued." />
-        )}
-      </Panel>
-
-      {/* 6. Provider Keys Modal */}
+      {/* 5. Provider Keys Modal */}
       {showSecretsModal ? (
         <div className="fixed inset-0 z-50 grid place-items-center bg-black/50">
           <div className="mx-4 w-full max-w-md border-4 border-black bg-[#f5eedf] shadow-[6px_6px_0_#171411]">
@@ -503,55 +423,6 @@ function Readout({ label, value }: { label: string; value: number }) {
       <p className="text-3xl leading-none font-black">{value}</p>
       <p className="neo-copy mt-1 text-[10px] font-black uppercase">{label}</p>
     </div>
-  );
-}
-
-function QueueRow({ item, onCancel }: { item: ModInstallQueueItem; onCancel: () => void }) {
-  const active = isActiveModInstallItem(item);
-  return (
-    <article className="grid gap-3 border-2 border-black bg-[#fff9ed] p-3 shadow-[2px_2px_0_#171411] lg:grid-cols-[1fr_120px_auto] lg:items-center">
-      <div className="min-w-0">
-        <div className="flex flex-wrap items-center gap-2">
-          <span
-            className={`neo-copy border-2 border-black px-2 py-0.5 text-[9px] font-black uppercase ${statusTone(item.status)}`}
-          >
-            {item.status}
-          </span>
-          <span className="neo-copy text-[10px] font-black text-[#5b403f] uppercase">
-            {providerLabel(item.provider)} // {item.phase}
-          </span>
-        </div>
-        <h3 className="mt-1 truncate text-lg leading-none font-black uppercase">{item.title}</h3>
-        {item.delegatedUrl ? (
-          <a
-            className="neo-copy mt-1 inline-flex items-center gap-1 text-[10px] font-black text-[#007166] uppercase underline"
-            href={item.delegatedUrl}
-            rel="noreferrer"
-            target="_blank"
-          >
-            <ExternalLink className="h-3 w-3" />
-            External provider
-          </a>
-        ) : null}
-      </div>
-      <div>
-        <p className="neo-copy mb-1 text-[10px] font-black text-[#5b403f] uppercase">
-          {item.progress}% // {item.speed}
-        </p>
-        <div className="h-3 border-2 border-black bg-[#efe6d4]">
-          <div className="h-full bg-[#b7102a]" style={{ width: `${item.progress}%` }} />
-        </div>
-      </div>
-      <button
-        className="neo-copy flex h-9 items-center justify-center gap-2 border-2 border-black bg-[#f6edd8] px-3 text-[10px] font-black uppercase shadow-[2px_2px_0_#171411] disabled:cursor-not-allowed disabled:opacity-50"
-        disabled={!active || !item.canCancel}
-        type="button"
-        onClick={onCancel}
-      >
-        <XCircle className="h-4 w-4" />
-        Cancel
-      </button>
-    </article>
   );
 }
 

@@ -1,13 +1,15 @@
-import { ListFilter, Settings, Trash2 } from "lucide-react";
+import { ListFilter, Settings, Trash2, XCircle } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { useNavigate } from "react-router-dom";
 
 import { DownloadCard } from "../components/launcher/DownloadCard";
 import type { DownloadItem, Game } from "../lib/types";
+import type { ModInstallQueueItem } from "../lib/types/mods";
 import {
   archiveDownload,
   cancelDownload,
+  cancelModInstall,
   getDownloadQueue,
   pauseDownload,
   listInstalledGames,
@@ -72,6 +74,7 @@ export function DownloadsPage() {
 
   // Load games database to fetch cover artwork for download items
   const [games, setGames] = useState<Game[]>([]);
+  const [modItems, setModItems] = useState<ModInstallQueueItem[]>([]);
   const [sessionPeakBytes, setSessionPeakBytes] = useState(0);
 
   useEffect(() => {
@@ -114,6 +117,14 @@ export function DownloadsPage() {
       if (!active) return;
       useDownloadStore.getState().removeItem(event.payload.gameId);
     });
+    const unlistenModPromise = listen<ModInstallQueueItem>("mod_install_progress", (event) => {
+      if (!active) return;
+      setModItems((prev) => {
+        const next = prev.filter((m) => m.installId !== event.payload.installId);
+        next.push(event.payload);
+        return next;
+      });
+    });
 
     getDownloadQueue()
       .then((queue) => {
@@ -130,6 +141,7 @@ export function DownloadsPage() {
       void unlistenPromise.then((unlisten) => unlisten());
       void unlistenErrorPromise.then((unlisten) => unlisten());
       void unlistenRemovedPromise.then((unlisten) => unlisten());
+      void unlistenModPromise.then((unlisten) => unlisten());
     };
   }, []);
 
@@ -152,6 +164,12 @@ export function DownloadsPage() {
   const completedItems = useMemo(() => {
     return items.filter((item) => item.status === "completed");
   }, [items]);
+
+  const activeModItems = useMemo(() => {
+    return modItems.filter(
+      (item) => item.status !== "completed" && item.status !== "failed" && item.status !== "cancelled",
+    );
+  }, [modItems]);
 
   // Aggregate download speed and peak tracking
   const totalSpeedBytes = useMemo(() => {
@@ -236,6 +254,16 @@ export function DownloadsPage() {
       } catch (err) {
         console.error("Failed to clear completed item:", err);
       }
+    }
+  }
+
+  async function handleModCancel(item: ModInstallQueueItem) {
+    try {
+      setCommandError(null);
+      await cancelModInstall(item.installId);
+      setModItems((prev) => prev.filter((m) => m.installId !== item.installId));
+    } catch (err) {
+      setCommandError(getErrorMessage(err));
     }
   }
 
@@ -425,6 +453,63 @@ export function DownloadsPage() {
           </div>
         )}
       </div>
+
+      {/* Mod Installs Section */}
+      {activeModItems.length > 0 && (
+        <div className="mt-6">
+          <div className="mb-3 flex items-center justify-between border-b-2 border-black pb-1.5">
+            <h3 className="neo-title text-base font-black tracking-wider text-[#171411] uppercase">
+              Mod Installs ({activeModItems.length})
+            </h3>
+          </div>
+          <div className="space-y-3">
+            {activeModItems.map((item) => (
+              <article
+                key={item.installId}
+                className="grid gap-3 border-4 border-black bg-[#f5eedf] p-3 shadow-[4px_4px_0_#171411] lg:grid-cols-[1fr_140px_auto] lg:items-center"
+              >
+                <div className="min-w-0">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="neo-copy border-2 border-black bg-[#087d6d] px-2 py-0.5 text-[9px] font-black text-white uppercase">
+                      {item.provider}
+                    </span>
+                    <span className="neo-copy text-[10px] font-black text-[#55504a] uppercase">
+                      {item.phase}
+                    </span>
+                  </div>
+                  <h3 className="mt-1 truncate text-lg leading-none font-black text-[#171411] uppercase">
+                    {item.title}
+                  </h3>
+                  <p className="neo-copy mt-1 text-[10px] font-black text-[#5b403f] uppercase">
+                    {gamesMap.get(item.gameId)?.title ?? item.gameId}
+                  </p>
+                </div>
+                <div>
+                  <p className="neo-copy mb-1 text-[10px] font-black text-[#55504a] uppercase">
+                    {item.progress}% {item.speed ? `// ${item.speed}` : ""}
+                  </p>
+                  <div className="h-3 border-2 border-black bg-[#efe6d4]">
+                    <div
+                      className="h-full bg-[#c20b2f]"
+                      style={{ width: `${item.progress}%` }}
+                    />
+                  </div>
+                </div>
+                {item.canCancel && (
+                  <button
+                    className="neo-copy flex h-9 items-center justify-center gap-2 border-2 border-black bg-[#f6edd8] px-3 text-[10px] font-black uppercase shadow-[2px_2px_0_#171411]"
+                    type="button"
+                    onClick={() => void handleModCancel(item)}
+                  >
+                    <XCircle className="h-4 w-4" />
+                    Cancel
+                  </button>
+                )}
+              </article>
+            ))}
+          </div>
+        </div>
+      )}
     </section>
   );
 }
