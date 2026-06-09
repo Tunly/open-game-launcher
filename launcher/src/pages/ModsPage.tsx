@@ -1,5 +1,6 @@
 import {
   CheckCircle2,
+  Download,
   KeyRound,
   PackagePlus,
   Power,
@@ -24,10 +25,11 @@ import {
   uninstallMod,
 } from "../lib/launcher";
 import { getErrorMessage } from "../lib/formatters";
-import { recordUserModInstall } from "../lib/supabase/mods";
+import { listModCatalogEntries, recordUserModInstall } from "../lib/supabase/mods";
 import type { Game } from "../lib/types";
 import type {
   InstalledModInfo,
+  ModCatalogEntry,
   ModInstallQueueItem,
   ModProvider,
 } from "../lib/types/mods";
@@ -90,6 +92,10 @@ export function ModsPage() {
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
+  const [catalogEntries, setCatalogEntries] = useState<ModCatalogEntry[]>([]);
+  const [catalogLoading, setCatalogLoading] = useState(false);
+  const [catalogError, setCatalogError] = useState<string | null>(null);
+
   const selectedGame = useMemo(
     () => games.find((game) => game.id === selectedGameId) ?? null,
     [games, selectedGameId],
@@ -125,11 +131,55 @@ export function ModsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    if (!loading) {
+      void loadCatalog();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedGameId, loading]);
+
   async function loadInstalledMods(gameId: string) {
     try {
       const mods = await scanGameMods(gameId);
       setInstalledMods(mods);
       await Promise.allSettled(mods.map((mod) => recordUserModInstall(mod)));
+    } catch (err) {
+      setError(getErrorMessage(err));
+    }
+  }
+
+  async function loadCatalog() {
+    try {
+      setCatalogLoading(true);
+      setCatalogError(null);
+      const entries = await listModCatalogEntries({
+        gameId: selectedGameId || undefined,
+      });
+      setCatalogEntries(entries);
+    } catch (err) {
+      setCatalogError(getErrorMessage(err));
+    } finally {
+      setCatalogLoading(false);
+    }
+  }
+
+  async function handleCatalogInstall(entry: ModCatalogEntry) {
+    if (!selectedGame) return;
+    try {
+      setError(null);
+      const isLocal = entry.provider === "local_archive" || entry.provider === "local_folder";
+      const downloadUrl = entry.latestVersion?.downloadUrl ?? entry.sourceUrl ?? undefined;
+      const result = await startModInstall({
+        gameId: selectedGame.id,
+        provider: entry.provider,
+        catalogItemId: entry.id,
+        versionId: entry.latestVersion?.id,
+        sourceUrl: isLocal ? undefined : downloadUrl,
+        localPath: isLocal ? downloadUrl : undefined,
+        title: entry.name,
+        sha256: entry.latestVersion?.sha256 ?? undefined,
+      });
+      setStatusMessage(result.message);
     } catch (err) {
       setError(getErrorMessage(err));
     }
@@ -261,6 +311,56 @@ export function ModsPage() {
           </select>
         </label>
       </div>
+
+      {/* 2.5. Browse Mods Catalog */}
+      <Panel title="Browse Mods" icon={<Download className="h-4 w-4" />}>
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <p className="neo-copy text-[10px] font-black text-[#5b403f] uppercase">
+            {catalogEntries.length} mods available in catalog
+          </p>
+          <button
+            className="neo-copy flex h-9 items-center gap-2 border-2 border-black bg-[#f6edd8] px-3 text-[10px] font-black uppercase shadow-[2px_2px_0_#171411]"
+            type="button"
+            onClick={() => void loadCatalog()}
+            disabled={catalogLoading}
+          >
+            <RefreshCcw className={`h-3.5 w-3.5 ${catalogLoading ? "animate-spin" : ""}`} />
+            Refresh
+          </button>
+        </div>
+        {catalogLoading ? (
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div
+                key={i}
+                className="border-4 border-black bg-[#efe6d4] p-4 shadow-[3px_3px_0_#171411]"
+              >
+                <div className="mb-2 h-4 w-3/4 animate-pulse bg-[#d6cdb4]" />
+                <div className="mb-1 h-3 w-1/2 animate-pulse bg-[#d6cdb4]" />
+                <div className="mb-2 h-3 w-full animate-pulse bg-[#d6cdb4]" />
+                <div className="h-9 w-full animate-pulse bg-[#d6cdb4]" />
+              </div>
+            ))}
+          </div>
+        ) : catalogError ? (
+          <div className="neo-copy border-2 border-black bg-[#b7102a] p-3 text-[10px] font-black text-white uppercase shadow-[2px_2px_0_#171411]">
+            {catalogError}
+          </div>
+        ) : catalogEntries.length > 0 ? (
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {catalogEntries.map((entry) => (
+              <CatalogCard
+                key={entry.id}
+                entry={entry}
+                onInstall={() => void handleCatalogInstall(entry)}
+                disabled={!selectedGame}
+              />
+            ))}
+          </div>
+        ) : (
+          <EmptyState label="No mods found in catalog" />
+        )}
+      </Panel>
 
       {error ? (
         <div className="neo-copy border-4 border-black bg-[#b7102a] p-3 text-xs font-black text-white uppercase shadow-[4px_4px_0_#171411]">
@@ -470,6 +570,46 @@ function InstalledModRow({
       >
         <Trash2 className="h-4 w-4" />
         Remove
+      </button>
+    </article>
+  );
+}
+
+function CatalogCard({
+  entry,
+  onInstall,
+  disabled,
+}: {
+  entry: ModCatalogEntry;
+  onInstall: () => void;
+  disabled: boolean;
+}) {
+  return (
+    <article className="flex flex-col gap-2 border-4 border-black bg-[#fff9ed] p-3 shadow-[3px_3px_0_#171411]">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="neo-copy border-2 border-black bg-[#171411] px-2 py-0.5 text-[9px] font-black text-white uppercase">
+          {providerLabel(entry.provider)}
+        </span>
+        {entry.author ? (
+          <span className="neo-copy text-[9px] font-black text-[#5b403f] uppercase">
+            {entry.author}
+          </span>
+        ) : null}
+      </div>
+      <h3 className="truncate text-sm leading-tight font-black uppercase">{entry.name}</h3>
+      {entry.summary ? (
+        <p className="neo-copy truncate text-[10px] font-bold text-[#5b403f] uppercase">
+          {entry.summary}
+        </p>
+      ) : null}
+      <button
+        className="neo-copy mt-auto flex h-9 items-center justify-center gap-2 border-2 border-black bg-[#007166] px-3 text-[10px] font-black text-white uppercase shadow-[2px_2px_0_#171411] disabled:cursor-not-allowed disabled:opacity-50"
+        type="button"
+        onClick={onInstall}
+        disabled={disabled}
+      >
+        <Download className="h-3.5 w-3.5" />
+        Install
       </button>
     </article>
   );
