@@ -13,14 +13,21 @@ type StoreTab = "browse" | "wishlist" | "cart" | "orders";
 interface Product {
   id: string;
   title: string;
+  slug: string;
   description: string;
-  price: number;
-  image_url: string | null;
-  developer: string | null;
+  short_description: string | null;
+  developer_id: string | null;
   publisher: string | null;
-  tags: string[] | null;
   release_date: string | null;
+  genres: string[] | null;
+  tags: string[] | null;
   platforms: string[] | null;
+  price_cents: number;
+  discount_percent: number | null;
+  cover_image_url: string | null;
+  screenshots: string[] | null;
+  rating: number | null;
+  status: string;
 }
 
 interface StoreOrder {
@@ -28,8 +35,12 @@ interface StoreOrder {
   user_id: string;
   status: string;
   stripe_session_id: string | null;
-  total: number;
-  game_ids: string[];
+  total_cents: number;
+  subtotal_cents: number;
+  tax_cents: number;
+  currency: string;
+  payment_method: string | null;
+  paid_at: string | null;
   created_at: string;
 }
 
@@ -38,11 +49,12 @@ function mapProductToStoreGame(product: Product) {
     id: product.id,
     title: product.title,
     description: product.description,
-    price: product.price,
+    price: (product.price_cents ?? 0) / 100,
+    imageUrl: product.cover_image_url ?? undefined,
     platform: (product.platforms ?? []) as Platform[],
-    developer: product.developer ?? undefined,
+    developer: product.publisher ?? undefined,
     releaseDate: product.release_date ?? undefined,
-    genres: product.tags ?? undefined,
+    genres: product.genres ?? undefined,
     tagLine: (product.tags ?? [product.description]).slice(0, 2).join(" / "),
   };
 }
@@ -117,8 +129,9 @@ export function StorePage() {
       try {
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const { data, error } = await (getSupabaseClient() as any)
-          .from("products")
-          .select("*");
+          .from("store_products")
+          .select("*")
+          .eq("status", "published");
 
         if (cancelled) return;
 
@@ -156,7 +169,7 @@ export function StorePage() {
 
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const { data, error } = await (getSupabaseClient() as any)
-          .from("orders")
+          .from("store_orders")
           .select("*")
           .eq("user_id", user.id)
           .order("created_at", { ascending: false });
@@ -169,10 +182,14 @@ export function StorePage() {
           const mapped: StoreOrder[] = (data as Record<string, unknown>[]).map((row) => ({
             id: row.id as string,
             user_id: row.user_id as string,
-            status: (row.status as string) ?? "completed",
+            status: (row.status as string) ?? "pending",
             stripe_session_id: (row.stripe_session_id as string) ?? null,
-            total: (row.total as number) ?? 0,
-            game_ids: Array.isArray(row.game_ids) ? (row.game_ids as string[]) : [],
+            total_cents: (row.total_cents as number) ?? 0,
+            subtotal_cents: (row.subtotal_cents as number) ?? 0,
+            tax_cents: (row.tax_cents as number) ?? 0,
+            currency: (row.currency as string) ?? "eur",
+            payment_method: (row.payment_method as string) ?? null,
+            paid_at: (row.paid_at as string) ?? null,
             created_at: (row.created_at as string) ?? new Date().toISOString(),
           }));
           setOrders(mapped);
@@ -527,7 +544,7 @@ export function StorePage() {
               }}
             />
           ) : activeTab === "orders" ? (
-            <OrderPanel orders={orders} games={products} loading={ordersLoading} />
+            <OrderPanel orders={orders} loading={ordersLoading} />
           ) : activeGames.length > 0 ? (
             <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
               {activeGames.map((game) => (
@@ -736,11 +753,9 @@ function CartPanel({
 
 function OrderPanel({
   orders,
-  games,
   loading,
 }: {
   orders: StoreOrder[];
-  games: typeof storeGames;
   loading: boolean;
 }) {
   if (loading) {
@@ -774,7 +789,7 @@ function OrderPanel({
             <div className="flex items-center gap-3">
               <span
                 className={`neo-copy inline-flex items-center gap-1 border-2 border-black px-2 py-1 text-[10px] font-black tracking-[0.12em] uppercase ${
-                  order.status === "completed"
+                  order.status === "paid" || order.status === "fulfilled"
                     ? "bg-[#8cf5e4] text-[#171411]"
                     : "bg-[#f2c14e] text-[#171411]"
                 }`}
@@ -782,22 +797,8 @@ function OrderPanel({
                 <CheckCircle2 className="h-3 w-3" />
                 {order.status}
               </span>
-              <p className="text-2xl font-black text-[#171411]">{formatCurrency(order.total)}</p>
+              <p className="text-2xl font-black text-[#171411]">{formatCurrency((order.total_cents ?? 0) / 100)}</p>
             </div>
-          </div>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {order.game_ids.map((gameId) => {
-              const game = games.find((item) => item.id === gameId);
-              return (
-                <span
-                  key={gameId}
-                  className="neo-copy inline-flex items-center gap-2 border-2 border-black bg-[#8cf5e4] px-2 py-1 text-[10px] font-black tracking-[0.12em] text-[#171411] uppercase"
-                >
-                  <CheckCircle2 className="h-3.5 w-3.5" />
-                  {game?.title ?? gameId}
-                </span>
-              );
-            })}
           </div>
         </article>
       ))}
