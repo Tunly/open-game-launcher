@@ -1,15 +1,17 @@
 import {
   CheckCircle2,
   Download,
+  ExternalLink,
   KeyRound,
   PackagePlus,
   Power,
   RefreshCcw,
+  Search,
   Settings2,
   Trash2,
   XCircle,
 } from "lucide-react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
 
@@ -19,6 +21,7 @@ import {
   listInstalledGames,
   scanGameMods,
   scrapeNexusModInfo,
+  searchNexusMods,
   setModProviderSecret,
   startModInstall,
   uninstallMod,
@@ -31,6 +34,7 @@ import type {
   ModCatalogEntry,
   ModProvider,
   NexusModInfo,
+  NexusSearchResult,
 } from "../lib/types/mods";
 import {
   selectActiveModInstallCount,
@@ -95,6 +99,14 @@ export function ModsPage() {
   const [nexusLoading, setNexusLoading] = useState(false);
   const [nexusInfo, setNexusInfo] = useState<NexusModInfo | null>(null);
 
+  const [activeTab, setActiveTab] = useState<"installed" | "browse">("installed");
+  const [nexusQuery, setNexusQuery] = useState("");
+  const [nexusGameSlug, setNexusGameSlug] = useState("");
+  const [nexusResults, setNexusResults] = useState<NexusSearchResult[]>([]);
+  const [nexusSearchLoading, setNexusSearchLoading] = useState(false);
+  const [nexusSearchError, setNexusSearchError] = useState<string | null>(null);
+  const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const selectedGame = useMemo(
     () => games.find((game) => game.id === selectedGameId) ?? null,
     [games, selectedGameId],
@@ -136,6 +148,20 @@ export function ModsPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedGameId, loading]);
+
+  useEffect(() => {
+    if (selectedGame && !nexusGameSlug) {
+      setNexusGameSlug(selectedGame.title.toLowerCase().replace(/[^a-z0-9]/g, ""));
+    }
+  }, [selectedGame, nexusGameSlug]);
+
+  useEffect(() => {
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     const lower = addSource.toLowerCase();
@@ -196,6 +222,38 @@ export function ModsPage() {
       setCatalogError(getErrorMessage(err));
     } finally {
       setCatalogLoading(false);
+    }
+  }
+
+  async function handleNexusSearch(query: string, gameSlug: string) {
+    if (!query.trim() || !gameSlug.trim()) {
+      setNexusResults([]);
+      return;
+    }
+    try {
+      setNexusSearchLoading(true);
+      setNexusSearchError(null);
+      const results = await searchNexusMods(gameSlug.trim(), query.trim());
+      setNexusResults(results);
+    } catch (err) {
+      setNexusSearchError(getErrorMessage(err));
+      setNexusResults([]);
+    } finally {
+      setNexusSearchLoading(false);
+    }
+  }
+
+  function handleSearchInputChange(value: string) {
+    setNexusQuery(value);
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+    if (value.trim() && nexusGameSlug.trim()) {
+      searchTimeoutRef.current = setTimeout(() => {
+        void handleNexusSearch(value, nexusGameSlug);
+      }, 500);
+    } else {
+      setNexusResults([]);
     }
   }
 
@@ -348,55 +406,37 @@ export function ModsPage() {
         </label>
       </div>
 
-      {/* 2.5. Browse Mods Catalog */}
-      <Panel title="Browse Mods" icon={<Download className="h-4 w-4" />}>
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <p className="neo-copy text-[10px] font-black text-[#5b403f] uppercase">
-            {catalogEntries.length} mods available in catalog
-          </p>
-          <button
-            className="neo-copy flex h-9 items-center gap-2 border-2 border-black bg-[#f6edd8] px-3 text-[10px] font-black uppercase shadow-[2px_2px_0_#171411]"
-            type="button"
-            onClick={() => void loadCatalog()}
-            disabled={catalogLoading}
-          >
-            <RefreshCcw className={`h-3.5 w-3.5 ${catalogLoading ? "animate-spin" : ""}`} />
-            Refresh
-          </button>
-        </div>
-        {catalogLoading ? (
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {Array.from({ length: 6 }).map((_, i) => (
-              <div
-                key={i}
-                className="border-4 border-black bg-[#efe6d4] p-4 shadow-[3px_3px_0_#171411]"
-              >
-                <div className="mb-2 h-4 w-3/4 animate-pulse bg-[#d6cdb4]" />
-                <div className="mb-1 h-3 w-1/2 animate-pulse bg-[#d6cdb4]" />
-                <div className="mb-2 h-3 w-full animate-pulse bg-[#d6cdb4]" />
-                <div className="h-9 w-full animate-pulse bg-[#d6cdb4]" />
-              </div>
-            ))}
-          </div>
-        ) : catalogError ? (
-          <div className="neo-copy border-2 border-black bg-[#b7102a] p-3 text-[10px] font-black text-white uppercase shadow-[2px_2px_0_#171411]">
-            {catalogError}
-          </div>
-        ) : catalogEntries.length > 0 ? (
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            {catalogEntries.map((entry) => (
-              <CatalogCard
-                key={entry.id}
-                entry={entry}
-                onInstall={() => void handleCatalogInstall(entry)}
-                disabled={!selectedGame}
-              />
-            ))}
-          </div>
-        ) : (
-          <EmptyState label="No mods found in catalog" />
-        )}
-      </Panel>
+      {/* 2.5. Tab Bar */}
+      <div className="flex border-4 border-b-0 border-black bg-[#171411] shadow-[5px_5px_0_#171411]">
+        <button
+          className={`neo-copy flex-1 px-4 py-3 text-[11px] font-black uppercase transition-colors ${
+            activeTab === "installed"
+              ? "bg-[#f5eedf] text-[#171411]"
+              : "text-[#fff9ed] hover:bg-[#2a2520]"
+          }`}
+          type="button"
+          onClick={() => setActiveTab("installed")}
+        >
+          <span className="flex items-center justify-center gap-2">
+            <CheckCircle2 className="h-4 w-4" />
+            Installed ({installedMods.length})
+          </span>
+        </button>
+        <button
+          className={`neo-copy flex-1 px-4 py-3 text-[11px] font-black uppercase transition-colors ${
+            activeTab === "browse"
+              ? "bg-[#f5eedf] text-[#171411]"
+              : "text-[#fff9ed] hover:bg-[#2a2520]"
+          }`}
+          type="button"
+          onClick={() => setActiveTab("browse")}
+        >
+          <span className="flex items-center justify-center gap-2">
+            <Search className="h-4 w-4" />
+            Browse Nexus
+          </span>
+        </button>
+      </div>
 
       {error ? (
         <div className="neo-copy border-4 border-black bg-[#b7102a] p-3 text-xs font-black text-white uppercase shadow-[4px_4px_0_#171411]">
@@ -409,103 +449,252 @@ export function ModsPage() {
         </div>
       ) : null}
 
-      {/* 3. Installed Mods (primary view) */}
-      <Panel title="Installed Mods" icon={<CheckCircle2 className="h-4 w-4" />}>
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <p className="neo-copy text-[10px] font-black text-[#5b403f] uppercase">
-            {installedMods.length} tracked mods for selected game
-          </p>
-          <button
-            className="neo-copy flex h-9 items-center gap-2 border-2 border-black bg-[#f6edd8] px-3 text-[10px] font-black uppercase shadow-[2px_2px_0_#171411]"
-            type="button"
-            onClick={() => selectedGameId && void loadInstalledMods(selectedGameId)}
-          >
-            <RefreshCcw className="h-3.5 w-3.5" />
-            Scan
-          </button>
-        </div>
-        {installedMods.length > 0 ? (
-          <div className="grid gap-2">
-            {installedMods.map((mod) => (
-              <InstalledModRow
-                key={mod.installId}
-                mod={mod}
-                onToggle={() => void handleToggleMod(mod)}
-                onUninstall={() => void handleUninstallMod(mod)}
-              />
-            ))}
-          </div>
-        ) : (
-          <EmptyState label="No mods installed for this game. Add one below." />
-        )}
-      </Panel>
-
-      {/* 4. Add Mod */}
-      <Panel title="Add Mod" icon={<PackagePlus className="h-4 w-4" />}>
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-          <label className="flex-1 neo-copy block text-[10px] font-black text-[#5b403f] uppercase">
-            URL or Local Path
-            <div className="relative">
-              <input
-                className="mt-1 h-11 w-full border-4 border-black bg-[#fff9ed] px-3 text-[12px] font-black shadow-[3px_3px_0_#171411] outline-none"
-                placeholder="https://.../mod.zip or C:/Mods/file.zip"
-                value={addSource}
-                onChange={(event) => {
-                  setAddSource(event.target.value);
-                  if (!addTitle) {
-                    const slug = event.target.value.split("/").pop()?.split(".")[0] ?? "";
-                    setAddTitle(slug.replace(/[_-]/g, " "));
-                  }
-                }}
-              />
-              {nexusLoading ? (
-                <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2">
-                  <RefreshCcw className="h-4 w-4 animate-spin text-[#007166]" />
-                </div>
-              ) : null}
-            </div>
-          </label>
-          <label className="sm:w-52 neo-copy block text-[10px] font-black text-[#5b403f] uppercase">
-            Name (optional)
-            <input
-              className="mt-1 h-11 w-full border-4 border-black bg-[#fff9ed] px-3 text-[12px] font-black shadow-[3px_3px_0_#171411] outline-none"
-              placeholder="Auto-filled from URL"
-              value={addTitle}
-              onChange={(event) => setAddTitle(event.target.value)}
-            />
-          </label>
-          <button
-            className="neo-copy flex h-11 items-center justify-center gap-2 border-4 border-black bg-[#b7102a] px-5 text-[11px] font-black text-white uppercase shadow-[3px_3px_0_#171411] disabled:cursor-not-allowed disabled:opacity-50"
-            disabled={!selectedGame || !addSource.trim() || nexusLoading}
-            type="button"
-            onClick={() => void handleAddMod()}
-          >
-            <PackagePlus className="h-4 w-4" />
-            Install Mod
-          </button>
-        </div>
-        {nexusInfo ? (
-          <div className="mt-3 flex items-center gap-3 border-2 border-black bg-[#fff9ed] p-3 shadow-[2px_2px_0_#171411]">
-            {nexusInfo.iconUrl ? (
-              <img
-                src={nexusInfo.iconUrl}
-                alt=""
-                className="h-10 w-10 border-2 border-black object-cover"
-              />
-            ) : null}
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-black uppercase">{nexusInfo.name}</p>
-              <p className="neo-copy text-[10px] font-bold text-[#5b403f] uppercase">
-                by {nexusInfo.author} // {nexusInfo.gameName}
-                {nexusInfo.downloadsCount ? ` // ${nexusInfo.downloadsCount} downloads` : ""}
+      {/* TAB CONTENT */}
+      {activeTab === "installed" && (
+        <>
+          {/* Installed Mods */}
+          <Panel title="Installed Mods" icon={<CheckCircle2 className="h-4 w-4" />}>
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <p className="neo-copy text-[10px] font-black text-[#5b403f] uppercase">
+                {installedMods.length} tracked mods for selected game
               </p>
+              <button
+                className="neo-copy flex h-9 items-center gap-2 border-2 border-black bg-[#f6edd8] px-3 text-[10px] font-black uppercase shadow-[2px_2px_0_#171411]"
+                type="button"
+                onClick={() => selectedGameId && void loadInstalledMods(selectedGameId)}
+              >
+                <RefreshCcw className="h-3.5 w-3.5" />
+                Scan
+              </button>
             </div>
-            <span className="neo-copy border-2 border-black bg-[#007166] px-2 py-0.5 text-[9px] font-black text-white uppercase">
-              Nexus Mods
-            </span>
-          </div>
-        ) : null}
-      </Panel>
+            {installedMods.length > 0 ? (
+              <div className="grid gap-2">
+                {installedMods.map((mod) => (
+                  <InstalledModRow
+                    key={mod.installId}
+                    mod={mod}
+                    onToggle={() => void handleToggleMod(mod)}
+                    onUninstall={() => void handleUninstallMod(mod)}
+                  />
+                ))}
+              </div>
+            ) : (
+              <EmptyState label="No mods installed for this game. Add one below." />
+            )}
+          </Panel>
+
+          {/* Add Mod */}
+          <Panel title="Add Mod" icon={<PackagePlus className="h-4 w-4" />}>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+              <label className="flex-1 neo-copy block text-[10px] font-black text-[#5b403f] uppercase">
+                URL or Local Path
+                <div className="relative">
+                  <input
+                    className="mt-1 h-11 w-full border-4 border-black bg-[#fff9ed] px-3 text-[12px] font-black shadow-[3px_3px_0_#171411] outline-none"
+                    placeholder="https://.../mod.zip or C:/Mods/file.zip"
+                    value={addSource}
+                    onChange={(event) => {
+                      setAddSource(event.target.value);
+                      if (!addTitle) {
+                        const slug = event.target.value.split("/").pop()?.split(".")[0] ?? "";
+                        setAddTitle(slug.replace(/[_-]/g, " "));
+                      }
+                    }}
+                  />
+                  {nexusLoading ? (
+                    <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2">
+                      <RefreshCcw className="h-4 w-4 animate-spin text-[#007166]" />
+                    </div>
+                  ) : null}
+                </div>
+              </label>
+              <label className="sm:w-52 neo-copy block text-[10px] font-black text-[#5b403f] uppercase">
+                Name (optional)
+                <input
+                  className="mt-1 h-11 w-full border-4 border-black bg-[#fff9ed] px-3 text-[12px] font-black shadow-[3px_3px_0_#171411] outline-none"
+                  placeholder="Auto-filled from URL"
+                  value={addTitle}
+                  onChange={(event) => setAddTitle(event.target.value)}
+                />
+              </label>
+              <button
+                className="neo-copy flex h-11 items-center justify-center gap-2 border-4 border-black bg-[#b7102a] px-5 text-[11px] font-black text-white uppercase shadow-[3px_3px_0_#171411] disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={!selectedGame || !addSource.trim() || nexusLoading}
+                type="button"
+                onClick={() => void handleAddMod()}
+              >
+                <PackagePlus className="h-4 w-4" />
+                Install Mod
+              </button>
+            </div>
+            {nexusInfo ? (
+              <div className="mt-3 flex items-center gap-3 border-2 border-black bg-[#fff9ed] p-3 shadow-[2px_2px_0_#171411]">
+                {nexusInfo.iconUrl ? (
+                  <img
+                    src={nexusInfo.iconUrl}
+                    alt=""
+                    className="h-10 w-10 border-2 border-black object-cover"
+                  />
+                ) : null}
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-black uppercase">{nexusInfo.name}</p>
+                  <p className="neo-copy text-[10px] font-bold text-[#5b403f] uppercase">
+                    by {nexusInfo.author} // {nexusInfo.gameName}
+                    {nexusInfo.downloadsCount ? ` // ${nexusInfo.downloadsCount} downloads` : ""}
+                  </p>
+                </div>
+                <span className="neo-copy border-2 border-black bg-[#007166] px-2 py-0.5 text-[9px] font-black text-white uppercase">
+                  Nexus Mods
+                </span>
+              </div>
+            ) : null}
+          </Panel>
+        </>
+      )}
+
+      {activeTab === "browse" && (
+        <>
+          {/* Nexus Search */}
+          <Panel title="Search Nexus Mods" icon={<Search className="h-4 w-4" />}>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+              <label className="flex-1 neo-copy block text-[10px] font-black text-[#5b403f] uppercase">
+                Game Slug
+                <input
+                  className="mt-1 h-11 w-full border-4 border-black bg-[#fff9ed] px-3 text-[12px] font-black shadow-[3px_3px_0_#171411] outline-none"
+                  placeholder="e.g. skyrimspecialedition, cyberpunk2077"
+                  value={nexusGameSlug}
+                  onChange={(event) => setNexusGameSlug(event.target.value)}
+                />
+              </label>
+              <label className="flex-[2] neo-copy block text-[10px] font-black text-[#5b403f] uppercase">
+                Search Query
+                <div className="relative">
+                  <input
+                    className="mt-1 h-11 w-full border-4 border-black bg-[#fff9ed] px-3 pr-10 text-[12px] font-black shadow-[3px_3px_0_#171411] outline-none"
+                    placeholder="Search for mods..."
+                    value={nexusQuery}
+                    onChange={(event) => handleSearchInputChange(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" && nexusQuery.trim() && nexusGameSlug.trim()) {
+                        void handleNexusSearch(nexusQuery, nexusGameSlug);
+                      }
+                    }}
+                  />
+                  {nexusSearchLoading ? (
+                    <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2">
+                      <RefreshCcw className="h-4 w-4 animate-spin text-[#007166]" />
+                    </div>
+                  ) : (
+                    <Search className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 text-[#5b403f] -translate-y-1/2" />
+                  )}
+                </div>
+              </label>
+              <button
+                className="neo-copy flex h-11 items-center justify-center gap-2 border-4 border-black bg-[#007166] px-5 text-[11px] font-black text-white uppercase shadow-[3px_3px_0_#171411] disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={!nexusQuery.trim() || !nexusGameSlug.trim() || nexusSearchLoading}
+                type="button"
+                onClick={() => void handleNexusSearch(nexusQuery, nexusGameSlug)}
+              >
+                <Search className="h-4 w-4" />
+                Search
+              </button>
+            </div>
+          </Panel>
+
+          {nexusSearchError ? (
+            <div className="neo-copy border-4 border-black bg-[#b7102a] p-3 text-xs font-black text-white uppercase shadow-[4px_4px_0_#171411]">
+              {nexusSearchError}
+            </div>
+          ) : null}
+
+          {/* Search Results */}
+          <Panel
+            title={`Results${nexusResults.length > 0 ? ` (${nexusResults.length})` : ""}`}
+            icon={<Download className="h-4 w-4" />}
+          >
+            {nexusSearchLoading ? (
+              <div className="grid gap-3 sm:grid-cols-2">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <div
+                    key={i}
+                    className="border-4 border-black bg-[#efe6d4] p-4 shadow-[3px_3px_0_#171411]"
+                  >
+                    <div className="mb-2 flex gap-3">
+                      <div className="h-12 w-12 shrink-0 animate-pulse bg-[#d6cdb4]" />
+                      <div className="flex-1">
+                        <div className="mb-1 h-4 w-3/4 animate-pulse bg-[#d6cdb4]" />
+                        <div className="h-3 w-1/2 animate-pulse bg-[#d6cdb4]" />
+                      </div>
+                    </div>
+                    <div className="mb-1 h-3 w-full animate-pulse bg-[#d6cdb4]" />
+                    <div className="h-3 w-2/3 animate-pulse bg-[#d6cdb4]" />
+                  </div>
+                ))}
+              </div>
+            ) : nexusResults.length > 0 ? (
+              <div className="grid gap-3 sm:grid-cols-2">
+                {nexusResults.map((result, idx) => (
+                  <NexusSearchCard key={`${result.url}-${idx}`} result={result} />
+                ))}
+              </div>
+            ) : nexusQuery.trim() ? (
+              <EmptyState label="No results found. Try a different query." />
+            ) : (
+              <EmptyState label="Search Nexus Mods for any game" />
+            )}
+          </Panel>
+
+          {/* Catalog Section */}
+          <Panel title="Catalog" icon={<Download className="h-4 w-4" />}>
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <p className="neo-copy text-[10px] font-black text-[#5b403f] uppercase">
+                {catalogEntries.length} mods available in catalog
+              </p>
+              <button
+                className="neo-copy flex h-9 items-center gap-2 border-2 border-black bg-[#f6edd8] px-3 text-[10px] font-black uppercase shadow-[2px_2px_0_#171411]"
+                type="button"
+                onClick={() => void loadCatalog()}
+                disabled={catalogLoading}
+              >
+                <RefreshCcw className={`h-3.5 w-3.5 ${catalogLoading ? "animate-spin" : ""}`} />
+                Refresh
+              </button>
+            </div>
+            {catalogLoading ? (
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <div
+                    key={i}
+                    className="border-4 border-black bg-[#efe6d4] p-4 shadow-[3px_3px_0_#171411]"
+                  >
+                    <div className="mb-2 h-4 w-3/4 animate-pulse bg-[#d6cdb4]" />
+                    <div className="mb-1 h-3 w-1/2 animate-pulse bg-[#d6cdb4]" />
+                    <div className="mb-2 h-3 w-full animate-pulse bg-[#d6cdb4]" />
+                    <div className="h-9 w-full animate-pulse bg-[#d6cdb4]" />
+                  </div>
+                ))}
+              </div>
+            ) : catalogError ? (
+              <div className="neo-copy border-2 border-black bg-[#b7102a] p-3 text-[10px] font-black text-white uppercase shadow-[2px_2px_0_#171411]">
+                {catalogError}
+              </div>
+            ) : catalogEntries.length > 0 ? (
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                {catalogEntries.map((entry) => (
+                  <CatalogCard
+                    key={entry.id}
+                    entry={entry}
+                    onInstall={() => void handleCatalogInstall(entry)}
+                    disabled={!selectedGame}
+                  />
+                ))}
+              </div>
+            ) : (
+              <EmptyState label="No mods found in catalog" />
+            )}
+          </Panel>
+        </>
+      )}
 
       {/* 5. Provider Keys Modal */}
       {showSecretsModal ? (
@@ -674,6 +863,61 @@ function CatalogCard({
       >
         <Download className="h-3.5 w-3.5" />
         Install
+      </button>
+    </article>
+  );
+}
+
+function NexusSearchCard({ result }: { result: NexusSearchResult }) {
+  function openInBrowser() {
+    window.open(result.url, "_blank", "noopener,noreferrer");
+  }
+
+  return (
+    <article className="flex flex-col gap-2 border-4 border-black bg-[#fff9ed] p-3 shadow-[3px_3px_0_#171411]">
+      <div className="flex gap-3">
+        {result.iconUrl ? (
+          <img
+            src={result.iconUrl}
+            alt=""
+            className="h-12 w-12 shrink-0 border-2 border-black object-cover"
+          />
+        ) : (
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center border-2 border-black bg-[#efe6d4]">
+            <Download className="h-5 w-5 text-[#5b403f]" />
+          </div>
+        )}
+        <div className="min-w-0 flex-1">
+          <h3 className="truncate text-sm leading-tight font-black uppercase">{result.name}</h3>
+          <p className="neo-copy text-[9px] font-black text-[#5b403f] uppercase">
+            by {result.author}
+          </p>
+        </div>
+      </div>
+      {result.summary ? (
+        <p className="neo-copy line-clamp-2 text-[10px] font-bold text-[#5b403f] uppercase">
+          {result.summary}
+        </p>
+      ) : null}
+      <div className="flex flex-wrap items-center gap-2">
+        {result.downloads ? (
+          <span className="neo-copy border-2 border-black bg-[#171411] px-2 py-0.5 text-[8px] font-black text-[#fff9ed] uppercase">
+            {result.downloads} downloads
+          </span>
+        ) : null}
+        {result.endorsements ? (
+          <span className="neo-copy border-2 border-black bg-[#007166] px-2 py-0.5 text-[8px] font-black text-white uppercase">
+            {result.endorsements} endorsements
+          </span>
+        ) : null}
+      </div>
+      <button
+        className="neo-copy mt-auto flex h-9 items-center justify-center gap-2 border-2 border-black bg-[#b7102a] px-3 text-[10px] font-black text-white uppercase shadow-[2px_2px_0_#171411]"
+        type="button"
+        onClick={openInBrowser}
+      >
+        <ExternalLink className="h-3.5 w-3.5" />
+        View on Nexus
       </button>
     </article>
   );

@@ -191,3 +191,13 @@ export interface NexusModInfo {
   downloadsCount: string | null;
   gameName: string;
 }
+
+export interface NexusSearchResult {
+  name: string;
+  author: string;
+  summary: string;
+  url: string;
+  iconUrl: string | null;
+  downloads: string | null;
+  endorsements: string | null;
+}

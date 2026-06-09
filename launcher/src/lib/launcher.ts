@@ -36,6 +36,7 @@ import type {
   ModInstallResult,
   ModProvider,
   NexusModInfo,
+  NexusSearchResult,
 } from "./types/mods";
 
 type CommandArgs = Record<string, unknown>;
@@ -559,6 +560,10 @@ export function setModProviderSecret(provider: ModProvider, secret: string): Pro
 
 export function scrapeNexusModInfo(url: string): Promise<NexusModInfo> {
   return invokeCommand<NexusModInfo>("scrape_nexus_mod_info", { url });
+}
+
+export function searchNexusMods(game: string, query: string, page?: number): Promise<NexusSearchResult[]> {
+  return invokeCommand<NexusSearchResult[]>("search_nexus_mods", { game, query, page: page ?? 1 });
 }
 
 export function getLocalDatabasePath(): Promise<string> {
