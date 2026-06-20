@@ -207,6 +207,12 @@ unstaged whitespace and patch metadata errors are covered by the same
 deterministic local gate. On this Linux host, the gate logs the Rust Windows
 target check as skipped with an explicit `windows-2025` CI handoff; the same gate runs the real
 `cargo check --target x86_64-pc-windows-msvc` command on Windows.
+After a successful local run, `completion:gate:local` also writes the gitignored
+`.codex/completion-gate-local-latest.json` receipt. That receipt is local
+operator context only: it records the local command, platform, check IDs, and
+platform-scoped skips with `releaseProof: false` and
+`externalEvidenceCollected: false`; it never replaces fresh command output or
+external release evidence.
 
 ## External Evidence Still Required
 

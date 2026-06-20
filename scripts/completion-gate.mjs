@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
-import { dirname } from "node:path";
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import {
@@ -11,6 +12,8 @@ import { missingRequiredEnv as missingHostedDeployEnv } from "./hosted-deploy-ga
 import { statusReport as externalEvidenceStatusReport } from "./external-evidence-check.mjs";
 
 export const repoRoot = dirname(dirname(fileURLToPath(import.meta.url)));
+export const localCompletionReceiptRelativePath =
+  ".codex/completion-gate-local-latest.json";
 
 export const completionLocalChecks = Object.freeze([
   {
@@ -322,9 +325,87 @@ function platformSkippedChecks(checksSummaryResult) {
     .map(({ id, label, platformNote }) => ({ id, label, platformNote }));
 }
 
+export function localCompletionReceiptPath(root = repoRoot) {
+  return join(root, localCompletionReceiptRelativePath);
+}
+
+function localCompletionReceiptSummary(root = repoRoot) {
+  const path = localCompletionReceiptPath(root);
+  if (!existsSync(path)) {
+    return {
+      path: localCompletionReceiptRelativePath,
+      present: false,
+      releaseProof: false,
+    };
+  }
+
+  try {
+    const receipt = JSON.parse(readFileSync(path, "utf8"));
+    const checkIds = Array.isArray(receipt.checkIds) ? receipt.checkIds : [];
+    const skippedOnThisPlatform = Array.isArray(receipt.skippedOnThisPlatform)
+      ? receipt.skippedOnThisPlatform
+      : [];
+    const valid =
+      receipt?.version === 1 &&
+      receipt.action === "local" &&
+      receipt.command === "pnpm completion:gate:local" &&
+      receipt.result === "passed" &&
+      typeof receipt.recordedAt === "string" &&
+      typeof receipt.platform === "string";
+
+    return {
+      action: valid ? receipt.action : null,
+      checkCount: valid ? checkIds.length : 0,
+      command: valid ? receipt.command : null,
+      externalEvidenceCollected: false,
+      path: localCompletionReceiptRelativePath,
+      platform: valid ? receipt.platform : null,
+      present: true,
+      recordedAt: valid ? receipt.recordedAt : null,
+      releaseProof: false,
+      result: valid ? receipt.result : "unreadable",
+      skippedOnThisPlatformCount: valid ? skippedOnThisPlatform.length : 0,
+      valid,
+    };
+  } catch {
+    return {
+      externalEvidenceCollected: false,
+      path: localCompletionReceiptRelativePath,
+      present: true,
+      releaseProof: false,
+      result: "unreadable",
+      valid: false,
+    };
+  }
+}
+
+function writeLocalCompletionReceipt({ platform, root, skippedChecks }) {
+  const receipt = {
+    action: "local",
+    checkIds: completionLocalChecks.map((check) => check.id),
+    command: "pnpm completion:gate:local",
+    externalEvidenceCollected: false,
+    platform,
+    recordedAt: new Date().toISOString(),
+    releaseProof: false,
+    result: "passed",
+    skippedOnThisPlatform: skippedChecks.map(({ id, label, platformNote }) => ({
+      id,
+      label,
+      platformNote: platformNote ?? null,
+    })),
+    version: 1,
+  };
+  const path = localCompletionReceiptPath(root);
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, `${JSON.stringify(receipt, null, 2)}\n`, "utf8");
+  return receipt;
+}
+
 export function completionStatusReport({
   env = process.env,
   platform = process.platform,
+  root = repoRoot,
 } = {}) {
   const externalBoundaryEnv = releaseBoundaryEnv(env);
   const hostedDeployMissingEnv = {
@@ -385,6 +466,7 @@ export function completionStatusReport({
       command: "pnpm completion:gate:local",
       deterministic: true,
       evaluated: false,
+      latestReceipt: localCompletionReceiptSummary(root),
       ready: null,
       skippedOnThisPlatform: skippedLocalChecks,
       skippedOnThisPlatformCount: skippedLocalChecks.length,
@@ -395,8 +477,12 @@ export function completionStatusReport({
   };
 }
 
-export function renderStatus(env = process.env, platform = process.platform) {
-  return JSON.stringify(completionStatusReport({ env, platform }), null, 2);
+export function renderStatus(
+  env = process.env,
+  platform = process.platform,
+  root = repoRoot,
+) {
+  return JSON.stringify(completionStatusReport({ env, platform, root }), null, 2);
 }
 
 export function renderPlan() {
@@ -471,7 +557,7 @@ export function runCompletionGate({
     return 0;
   }
   if (action === "status") {
-    logger.log(renderStatus(env, platform));
+    logger.log(renderStatus(env, platform, root));
     return 0;
   }
 
@@ -501,6 +587,10 @@ export function runCompletionGate({
   if (failures.length > 0) {
     logger.error(`Completion gate failed: ${failures.join(", ")}.`);
     return 1;
+  }
+
+  if (action === "local") {
+    writeLocalCompletionReceipt({ platform, root, skippedChecks });
   }
 
   logger.log(renderSuccessMessage(action, { platform, skippedChecks }));

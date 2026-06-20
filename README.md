@@ -853,13 +853,18 @@ wrapper starts the local database when needed, redacts local Supabase
 credentials from CLI output, and stops only a database instance it started
 itself. The Tauri debug bundle smoke is local only; tag release builds still
 produce the full Windows/macOS/Linux artifact matrix after the external
-release-boundary gate passes.
+release-boundary gate passes. A successful local run writes a gitignored
+`.codex/completion-gate-local-latest.json` receipt with check IDs, platform,
+skipped platform-scoped checks, and an explicit `releaseProof: false` /
+`externalEvidenceCollected: false` boundary so operators can see the last local
+run without treating it as external release evidence.
 
 `pnpm completion:gate:status` prints a redacted prerequisite/status inventory
 without running checks or printing secret values. In status mode,
 `local.ready`, `external.ready`, and `external.liveEvidence.ready` stay `null`,
 `external.readySource` is `notEvaluated`, and `releaseReady` stays `false`;
-use `external.statusPrerequisites` for env/artifact readiness and
+use `local.latestReceipt` for the optional local-only receipt,
+`external.statusPrerequisites` for env/artifact readiness, and
 `pnpm completion:gate` for release-boundary evaluation.
 
 `pnpm completion:gate` runs the local deterministic checks plus hosted deploy

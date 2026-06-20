@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { Buffer } from "node:buffer";
-import { readFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 
 import {
@@ -8,6 +10,7 @@ import {
   completionStatusReport,
   completionExternalChecks,
   completionLocalChecks,
+  localCompletionReceiptPath,
   parseArgs,
   releaseBoundaryEnv,
   renderStatus,
@@ -602,6 +605,66 @@ test("status action prints JSON without executing completion checks", () => {
   assert.equal(parsed.external.readySource, "notEvaluated");
   assert.ok(Array.isArray(parsed.external.hostedCron.missingEnv));
   assert.ok(Array.isArray(parsed.external.hostedDeploy.missingEnv.preflight));
+});
+
+test("local action writes a local-only completion receipt without release-proof semantics", () => {
+  const root = mkdtempSync(join(tmpdir(), "ogl-completion-gate-"));
+  try {
+    const { logger } = captureLogger();
+    const executedCommands = [];
+    const status = runCompletionGate({
+      action: "local",
+      logger,
+      platform: "linux",
+      root,
+      runCommand(command, args) {
+        executedCommands.push([command, ...args].join(" "));
+        return { status: 0 };
+      },
+    });
+
+    assert.equal(status, 0);
+    const windowsCheck = findCheckById(
+      completionLocalChecks,
+      "rust-windows-check",
+      "local",
+    );
+    assert.equal(
+      executedCommands.includes(commandLine(windowsCheck)),
+      false,
+    );
+    assert.equal(executedCommands.length, completionLocalChecks.length - 1);
+
+    const receiptPath = localCompletionReceiptPath(root);
+    assert.equal(existsSync(receiptPath), true);
+    const receipt = JSON.parse(readFileSync(receiptPath, "utf8"));
+    assert.equal(receipt.action, "local");
+    assert.equal(receipt.command, "pnpm completion:gate:local");
+    assert.equal(receipt.result, "passed");
+    assert.equal(receipt.releaseProof, false);
+    assert.equal(receipt.externalEvidenceCollected, false);
+    assert.equal(receipt.checkIds.length, completionLocalChecks.length);
+    assert.deepEqual(receipt.skippedOnThisPlatform, [
+      {
+        id: "rust-windows-check",
+        label: "Rust Windows target check",
+        platformNote:
+          "requires the Windows MSVC toolchain; GitHub Actions runs this on windows-2025",
+      },
+    ]);
+
+    const report = completionStatusReport({ env: {}, platform: "linux", root });
+    assert.equal(report.local.evaluated, false);
+    assert.equal(report.local.ready, null);
+    assert.equal(report.local.latestReceipt.present, true);
+    assert.equal(report.local.latestReceipt.valid, true);
+    assert.equal(report.local.latestReceipt.releaseProof, false);
+    assert.equal(report.local.latestReceipt.externalEvidenceCollected, false);
+    assert.equal(report.local.latestReceipt.checkCount, completionLocalChecks.length);
+    assert.equal(report.releaseReady, false);
+  } finally {
+    rmSync(root, { force: true, recursive: true });
+  }
 });
 
 test("status report ignores scoped evidence env at the release boundary", () => {
