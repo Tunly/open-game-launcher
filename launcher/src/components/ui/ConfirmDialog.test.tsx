@@ -24,6 +24,16 @@ describe("ConfirmDialog", () => {
     expect(screen.getByRole("button", { name: "Cancel" })).toBeInTheDocument();
   });
 
+  it("uses the Retro Manga ink halftone backdrop", () => {
+    render(<ConfirmDialog {...baseProps} open />);
+
+    const backdrop = screen.getByRole("dialog", { name: "Confirm action" });
+    expect(backdrop.className).toContain("neo-dots-ink");
+    expect(backdrop.className).not.toContain("backdrop-blur");
+    expect(backdrop.className).not.toContain("bg-black/45");
+    expect(backdrop.className).not.toContain("bg-black/50");
+  });
+
   it("uses the destructive variant button label and icon when destructive", () => {
     render(<ConfirmDialog {...baseProps} confirmLabel="Delete" destructive open />);
 

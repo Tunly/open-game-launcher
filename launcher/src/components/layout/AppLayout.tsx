@@ -2,6 +2,7 @@ import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { Outlet, useLocation, useNavigate } from "react-router-dom";
 
 import { useCurrentUser } from "../../hooks/useCurrentUser";
+import { notifyAppShellSkinChanged, writeAppShellSkinId } from "../../lib/app-shell-skins";
 import { AppShell } from "./AppShell";
 import type { PageKey } from "./Sidebar";
 import { getPathForPage } from "./navigation";
@@ -16,7 +17,9 @@ function getActivePage(pathname: string): PageKey {
   if (pathname.startsWith("/store")) return "store";
   if (pathname.startsWith("/library")) return "library";
   if (pathname.startsWith("/community")) return "community";
+  if (pathname.startsWith("/news")) return "community";
   if (pathname.startsWith("/downloads")) return "downloads";
+  if (pathname.startsWith("/activity")) return "activity";
   if (pathname.startsWith("/mods")) return "mods";
   if (pathname.startsWith("/achievements")) return "achievements";
   if (pathname.startsWith("/friends")) return "friends";
@@ -65,6 +68,10 @@ export function AppLayout() {
       .then(({ getMyProfile }) => getMyProfile())
       .then((profile) => {
         if (!isMounted) return;
+        if (profile.appShellSkinId) {
+          const shellSkinId = writeAppShellSkinId(profile.appShellSkinId);
+          notifyAppShellSkinChanged(shellSkinId);
+        }
         setProfileUsername(profile.username);
       })
       .catch(() => {

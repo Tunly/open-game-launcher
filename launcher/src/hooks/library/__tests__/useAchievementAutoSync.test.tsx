@@ -8,6 +8,7 @@ import type { Game, SyncGameAchievementsResponse } from "../../../lib/types";
 import { useAchievementAutoSync } from "../useAchievementAutoSync";
 
 const providerState = vi.hoisted(() => ({
+  ingestTrustedAchievements: vi.fn(),
   syncByProvider: new Map<string, ReturnType<typeof vi.fn>>(),
   updateAchievementProviderStatus: vi.fn(),
 }));
@@ -44,6 +45,11 @@ vi.mock("../../../lib/achievement-providers", () => ({
 vi.mock("../../../lib/launcher", () => ({
   updateAchievementProviderStatus: (...args: unknown[]) =>
     providerState.updateAchievementProviderStatus(...args),
+}));
+
+vi.mock("../../../lib/supabase/achievements", () => ({
+  ingestTrustedAchievements: (...args: unknown[]) =>
+    providerState.ingestTrustedAchievements(...args),
 }));
 
 function game(overrides: Partial<Game>): Game {
@@ -124,6 +130,15 @@ function renderSyncHook(selectedGroup: GameGroup, initialGames: Game[]) {
 
 describe("useAchievementAutoSync", () => {
   beforeEach(() => {
+    providerState.ingestTrustedAchievements.mockReset();
+    providerState.ingestTrustedAchievements.mockResolvedValue({
+      achievementsSynced: 0,
+      newUnlocks: 0,
+      ok: false,
+      skipped: true,
+      unlockedCount: 0,
+      xpDelta: 0,
+    });
     providerState.syncByProvider.clear();
     providerState.updateAchievementProviderStatus.mockReset();
     providerState.updateAchievementProviderStatus.mockResolvedValue(undefined);
@@ -203,6 +218,62 @@ describe("useAchievementAutoSync", () => {
     expect(
       hook.result.current.games.find((game) => game.id === "steam-1")?.achievements,
     ).toHaveLength(1);
+  });
+
+  it("submits successful provider sync results to trusted achievement ingestion", async () => {
+    const steamGame = game({
+      id: "steam-1",
+      title: "Steam Game",
+      launcher: "steam",
+      achievements: [syncedAchievement()],
+    });
+    providerState.syncByProvider.set("steam", vi.fn().mockResolvedValue(syncResponse(steamGame)));
+
+    const { hook } = renderSyncHook(group([steamGame]), [steamGame]);
+
+    await act(async () => {
+      await hook.result.current.sync.handleSyncAchievements();
+    });
+
+    await waitFor(() => {
+      expect(providerState.ingestTrustedAchievements).toHaveBeenCalledTimes(1);
+    });
+    expect(providerState.ingestTrustedAchievements).toHaveBeenCalledWith({
+      game: expect.objectContaining({
+        achievements: [
+          {
+            id: "ach-1",
+            name: "First Win",
+            unlockedAt: "2026-01-01T00:00:00.000Z",
+          },
+        ],
+        id: "steam-1",
+      }),
+      provider: "steam",
+      providerConfidence: "official",
+      syncedAt: null,
+    });
+  });
+
+  it("does not submit trusted achievement ingestion when provider sync fails", async () => {
+    const steamGame = game({
+      id: "steam-1",
+      title: "Steam Game",
+      launcher: "steam",
+      achievements: [syncedAchievement()],
+    });
+    providerState.syncByProvider.set(
+      "steam",
+      vi.fn().mockRejectedValue(new Error("Steam profile is private")),
+    );
+
+    const { hook } = renderSyncHook(group([steamGame]), [steamGame]);
+
+    await act(async () => {
+      await hook.result.current.sync.handleSyncAchievements();
+    });
+
+    expect(providerState.ingestTrustedAchievements).not.toHaveBeenCalled();
   });
 
   it("auto-syncs providers that are missing achievements even when the group has other achievements", async () => {

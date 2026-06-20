@@ -5,7 +5,7 @@ description = "A cross-platform desktop game launcher MVP."
 authors = ["Open Game Launcher"]
 license = "AGPL-3.0-only"
 edition = "2021"
-rust-version = "1.82"
+rust-version = "1.95"
 
 [lib]
 name = "open_game_launcher_lib"
@@ -38,16 +38,21 @@ aes-gcm = "0.10"
 argon2 = "0.5"
 rand = "0.10"
 base64 = "0.22"
+ed25519-dalek = "2"
 uuid = { version = "1", features = ["v4"] }
 chrono = "0.4"
 nvml-wrapper = "0.12"
 image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
 gilrs = "0.11"
+tauri-plugin-dialog = "2"
 
 
 [target.'cfg(target_os = "windows")'.dependencies]
 winreg = "0.55"
 windows-sys = { version = "0.61", features = ["Win32_UI_Shell", "Win32_Graphics_Gdi", "Win32_Foundation", "Win32_UI_WindowsAndMessaging", "Win32_UI_Input", "Win32_UI_Input_KeyboardAndMouse"] }
+
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
+tauri-plugin-autostart = "2"
 
 [profile.dev]
 incremental = true

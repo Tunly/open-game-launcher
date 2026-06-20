@@ -2,12 +2,22 @@ mod commands;
 
 use std::{env, fs, path::PathBuf};
 use tauri::{Emitter, Manager, PhysicalPosition, WebviewWindow, WindowEvent};
-use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
+use tauri_plugin_global_shortcut::ShortcutState;
+
+pub fn run_headless_backup_scheduler_from_args() -> Option<i32> {
+    commands::backup::run_headless_backup_scheduler_from_args()
+}
+
+pub fn run_headless_client_update_scheduler_from_args() -> Option<i32> {
+    commands::client_manager::run_headless_client_update_scheduler_from_args()
+}
 
 pub fn run() {
     load_local_env_files();
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_autostart::Builder::new().build())
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
             for arg in args {
@@ -45,6 +55,7 @@ pub fn run() {
 
             // Start the background process poller for tracking playtime
             commands::games::start_playtime_poller(app.handle().clone());
+            commands::client_manager::start_platform_client_event_poller(app.handle().clone());
             commands::games::start_library_inventory_watcher(app.handle().clone());
             commands::downloads::start_global_download_watcher(app.handle().clone());
 
@@ -61,11 +72,8 @@ pub fn run() {
                 let _ = handle.emit("deep-link", link);
             }
 
-            // Register global overlay hotkey (Shift+Tab)
-            let shortcut_manager = app.global_shortcut();
-            if !shortcut_manager.is_registered("Shift+F1") {
-                let _ = shortcut_manager.register("Shift+F1");
-            }
+            // Register the saved global overlay hotkey; defaults to Shift+F1.
+            let _ = commands::overlay::register_configured_overlay_hotkey(app.handle(), None);
 
             Ok(())
         })
@@ -79,6 +87,52 @@ pub fn run() {
             commands::system::fetch_steam_profile_name,
             commands::system::fetch_steam_news,
             commands::system::open_external_url,
+            commands::backup::preview_backup_plan,
+            commands::backup::run_backup_plan,
+            commands::backup::prove_backup_external_drive_write,
+            commands::backup::prove_backup_external_drive_eject_safety,
+            commands::backup::eject_backup_external_drive,
+            commands::backup::preview_restore_plan,
+            commands::backup::restore_backup,
+            commands::backup::get_latest_backup_status,
+            commands::backup::get_backup_scheduler_status,
+            commands::backup::save_backup_scheduler_config,
+            commands::backup::install_backup_scheduler,
+            commands::backup::uninstall_backup_scheduler,
+            commands::backup::run_backup_scheduler_now,
+            commands::broadcast::get_broadcast_stream_key_vault_status,
+            commands::broadcast::set_broadcast_stream_key_secret,
+            commands::broadcast::clear_broadcast_stream_key_secret,
+            commands::cross_store_save::apply_cross_store_save_copy,
+            commands::cross_store_save::rollback_cross_store_save_copy,
+            commands::cross_store_save::prove_cross_store_save_local_e2e,
+            commands::games::prove_cross_store_save_supabase_keychain_staging,
+            commands::client_manager::poll_platform_client_health,
+            commands::client_manager::launch_platform_client,
+            commands::client_manager::get_platform_client_installer_metadata,
+            commands::client_manager::preview_platform_client_install,
+            commands::client_manager::get_platform_client_modification_config,
+            commands::client_manager::save_platform_client_modification_config,
+            commands::client_manager::get_platform_client_asset_cache_lookup,
+            commands::client_manager::get_platform_client_polling_settings,
+            commands::client_manager::save_platform_client_polling_settings,
+            commands::client_manager::get_platform_client_update_status,
+            commands::client_manager::preview_platform_client_auto_apply,
+            commands::client_manager::preview_client_manager_auto_apply_capabilities,
+            commands::client_manager::prove_client_manager_mount_apply_sandbox,
+            commands::client_manager::check_platform_client_update,
+            commands::client_manager::run_scheduled_platform_client_update_checks,
+            commands::client_manager::get_platform_client_update_scheduler_status,
+            commands::client_manager::install_platform_client_update_scheduler,
+            commands::client_manager::uninstall_platform_client_update_scheduler,
+            commands::client_manager::run_platform_client_update_scheduler_now,
+            commands::client_manager::open_platform_client_installer,
+            commands::client_manager::open_platform_client_updater,
+            commands::remote_companion::save_remote_companion_device_secret,
+            commands::remote_companion::get_remote_companion_device_secret_status,
+            commands::remote_companion::clear_remote_companion_device_secret,
+            commands::remote_companion::remote_companion_poll_once,
+            commands::remote_play::start_remote_play,
             commands::gog::open_gog_login_window,
             commands::epic::open_epic_login_window,
             commands::epic::authenticate_epic_legendary,
@@ -95,6 +149,8 @@ pub fn run() {
             commands::crossplay::resolve_game_external_id,
             commands::family::copy_family_invite,
             commands::stripe::create_stripe_checkout_session,
+            commands::stripe::get_license_device_id,
+            commands::stripe::validate_license,
             commands::perf_monitor::poll_performance_metrics,
             commands::overlay::toggle_in_game_overlay,
             commands::overlay::toggle_fps_hud,
@@ -107,6 +163,13 @@ pub fn run() {
             commands::perf_monitor::report_frame_rendered,
             commands::anti_cheat::detect_anti_cheat_processes,
             commands::anti_cheat::is_overlay_blocked_by_anti_cheat,
+            commands::plugin_system::scan_local_plugin_manifests,
+            commands::plugin_system::stage_signed_plugin_package,
+            commands::plugin_system::audit_staged_plugin_registry,
+            commands::plugin_system::prove_plugin_runtime_sandbox,
+            commands::plugin_system::review_plugin_activation_plan,
+            commands::plugin_system::review_plugin_marketplace_update_index_trust,
+            commands::plugin_system::review_plugin_update_signing_envelope,
             commands::mod_install::install_mod_from_url,
             commands::mod_install::start_mod_install,
             commands::mod_install::get_mod_queue,
@@ -117,6 +180,8 @@ pub fn run() {
             commands::mod_install::disable_mod,
             commands::mod_install::uninstall_mod,
             commands::mod_install::set_mod_provider_secret,
+            commands::mod_install::search_native_mods,
+            commands::mod_install::run_mod_provider_staging_probe,
             commands::battlenet::open_battlenet_login_window,
             commands::battlenet::process_battlenet_games_payload,
             commands::ea::open_ea_login_window,
@@ -128,6 +193,7 @@ pub fn run() {
             commands::gog::gog_get_cloud_saves,
             commands::games::cache_supabase_access_token,
             commands::games::read_cached_supabase_access_token,
+            commands::games::get_launcher_device_id,
             commands::cloud_crypto::is_cloud_key_present,
             commands::cloud_crypto::generate_cloud_key,
             commands::cloud_crypto::rotate_cloud_key,
@@ -151,6 +217,7 @@ pub fn run() {
             commands::games::upload_game_saves_to_cloud,
             commands::games::download_game_saves_from_cloud,
             commands::games::restore_game_saves_from_cloud,
+            commands::games::check_game_save_conflicts,
             commands::games::sync_game_achievements,
             commands::games::sync_local_game_achievements,
             commands::games::open_achievement_cache_folder,
@@ -163,6 +230,15 @@ pub fn run() {
             commands::downloads::get_download_queue,
             commands::downloads::check_provider_health,
             commands::downloads::reconcile_downloads,
+            commands::downloads::preview_lan_transfer_copy,
+            commands::downloads::preview_lan_transfer_resume_cancel_ledger,
+            commands::downloads::preview_lan_transfer_peer_discovery_preflight,
+            commands::downloads::get_lan_transfer_copy_jobs,
+            commands::downloads::start_lan_transfer_copy_job,
+            commands::downloads::cancel_lan_transfer_copy_job,
+            commands::downloads::run_lan_transfer_copy,
+            commands::downloads::run_lan_transfer_resume_copy,
+            commands::downloads::run_lan_transfer_cleanup_candidates,
             commands::local_db::apply_remote_local_entities,
             commands::local_db::get_all_local_entities,
             commands::local_db::get_local_database_path,

@@ -7,6 +7,8 @@ import type { CrossPlatformInvite, InviteFeasibility, PlatformType } from "../ty
 import {
   handleError as baseHandleError,
   isMissingSchemaError,
+  rowBoolean,
+  rowNumber,
   rowNullableString,
   rowString,
   type UnknownRecord,
@@ -24,6 +26,47 @@ export type GameInviteInput = {
   message?: string | null;
   receiverId: string;
 };
+
+export interface GameInviteShareToken {
+  expiresAt: string;
+  gameTitle: string;
+  platform: PlatformType | null;
+  token: string;
+  tokenHint: string;
+}
+
+export interface ResolvedShareToken {
+  expiresAt: string;
+  gameInviteId: string;
+  gameTitle: string;
+  platform: PlatformType | null;
+}
+
+export interface RedeemedShareToken {
+  acceptedAt: string;
+  gameInviteId: string;
+  gameTitle: string;
+  platform: PlatformType | null;
+  status: string;
+}
+
+export interface InviteHostedReplayProof {
+  checkedAt: string;
+  deploymentScope: "hosted-staging";
+  gameInviteId: string;
+  gameTitle: string;
+  guards: string[];
+  inviteStatus: string;
+  maxUses: number | null;
+  origin: string;
+  originVerified: boolean;
+  platform: PlatformType | null;
+  replayDenied: boolean;
+  replayError: string;
+  tokenHint: string;
+  usedAt: string | null;
+  usesCount: number;
+}
 
 function handleError(error: { code?: string; message: string } | null) {
   if (isMissingSchemaError(error)) {
@@ -66,7 +109,7 @@ function toInvite(row: UnknownRecord): GameInvite {
     id: rowString(row, "id"),
     launchUri: rowNullableString(row, "launch_uri"),
     message: rowNullableString(row, "message"),
-    receiverId: rowString(row, "receiver_id"),
+    receiverId: rowNullableString(row, "receiver_id"),
     senderId: rowString(row, "sender_id"),
     status: rowString(row, "status", "pending") as GameInvite["status"],
     updatedAt: rowString(row, "updated_at"),
@@ -488,7 +531,7 @@ function toCrossPlatformInvite(row: UnknownRecord): CrossPlatformInvite {
   return {
     id: rowString(row, "id"),
     senderId: rowString(row, "sender_id"),
-    receiverId: rowString(row, "receiver_id"),
+    receiverId: rowNullableString(row, "receiver_id"),
     gameId: rowNullableString(row, "game_id"),
     gameTitle: rowString(row, "game_title"),
     platform: rowNullableString(row, "platform") as PlatformType | null,
@@ -503,7 +546,7 @@ function toCrossPlatformInvite(row: UnknownRecord): CrossPlatformInvite {
 }
 
 export async function sendCrossplatformInvite(
-  receiverId: string,
+  receiverId: string | null,
   gameTitle: string,
   platform: PlatformType | null,
   launchUri: string | null,
@@ -533,6 +576,157 @@ export async function sendCrossplatformInvite(
   // Return as CrossPlatformInvite with additional computed fields
   const invite = toCrossPlatformInvite(data as UnknownRecord);
   return { ...invite, platform, feasibility };
+}
+
+function toGameInviteShareToken(row: UnknownRecord): GameInviteShareToken {
+  return {
+    expiresAt: rowString(row, "expires_at"),
+    gameTitle: rowString(row, "game_title"),
+    platform: rowNullableString(row, "platform") as PlatformType | null,
+    token: rowString(row, "token"),
+    tokenHint: rowString(row, "token_hint"),
+  };
+}
+
+function toResolvedShareToken(row: UnknownRecord): ResolvedShareToken {
+  return {
+    expiresAt: rowString(row, "expires_at"),
+    gameInviteId: rowString(row, "game_invite_id"),
+    gameTitle: rowString(row, "game_title"),
+    platform: rowNullableString(row, "platform") as PlatformType | null,
+  };
+}
+
+function toRedeemedShareToken(row: UnknownRecord): RedeemedShareToken {
+  return {
+    acceptedAt: rowString(row, "accepted_at"),
+    gameInviteId: rowString(row, "game_invite_id"),
+    gameTitle: rowString(row, "game_title"),
+    platform: rowNullableString(row, "platform") as PlatformType | null,
+    status: rowString(row, "status"),
+  };
+}
+
+function toInviteHostedReplayProof(row: UnknownRecord): InviteHostedReplayProof {
+  const guards = Array.isArray(row.guards)
+    ? row.guards.filter((guard): guard is string => typeof guard === "string")
+    : [];
+
+  return {
+    checkedAt: rowString(row, "checkedAt"),
+    deploymentScope: "hosted-staging",
+    gameInviteId: rowString(row, "gameInviteId"),
+    gameTitle: rowString(row, "gameTitle"),
+    guards,
+    inviteStatus: rowString(row, "inviteStatus"),
+    maxUses: typeof row.maxUses === "number" ? row.maxUses : null,
+    origin: rowString(row, "origin"),
+    originVerified: rowBoolean(row, "originVerified"),
+    platform: rowNullableString(row, "platform") as PlatformType | null,
+    replayDenied: rowBoolean(row, "replayDenied"),
+    replayError: rowString(row, "replayError"),
+    tokenHint: rowString(row, "tokenHint"),
+    usedAt: rowNullableString(row, "usedAt"),
+    usesCount: rowNumber(row, "usesCount"),
+  };
+}
+
+export async function createGameInviteShareToken(
+  inviteId: string,
+  platform: PlatformType | null,
+  ttlSeconds = 1800,
+): Promise<GameInviteShareToken | null> {
+  const client = getSupabaseClient();
+  const { data, error } = await client
+    .rpc("create_game_invite_share_token", {
+      invite_id_input: inviteId,
+      platform_input: platform ?? undefined,
+      ttl_seconds_input: ttlSeconds,
+    })
+    .maybeSingle();
+
+  if (isMissingSchemaError(error)) return null;
+  baseHandleError(error);
+  if (!data) return null;
+
+  return toGameInviteShareToken(data as UnknownRecord);
+}
+
+export async function resolveShareToken(token: string): Promise<ResolvedShareToken | null> {
+  const trimmed = token.trim();
+  if (!trimmed) return null;
+
+  const client = getSupabaseClient();
+  const { data, error } = await client
+    .rpc("resolve_share_token", { token_input: trimmed })
+    .maybeSingle();
+
+  if (isMissingSchemaError(error)) return null;
+  baseHandleError(error);
+  if (!data) return null;
+
+  return toResolvedShareToken(data as UnknownRecord);
+}
+
+export async function redeemShareToken(token: string): Promise<RedeemedShareToken | null> {
+  const trimmed = token.trim();
+  if (!trimmed) return null;
+
+  const client = getSupabaseClient();
+  const { data, error } = await client
+    .rpc("redeem_share_token", { token_input: trimmed })
+    .maybeSingle();
+
+  if (isMissingSchemaError(error)) return null;
+  baseHandleError(error);
+  if (!data) return null;
+
+  return toRedeemedShareToken(data as UnknownRecord);
+}
+
+export async function proveInviteHostedReplay(
+  token: string,
+): Promise<InviteHostedReplayProof | null> {
+  const trimmed = token.trim();
+  if (!trimmed) return null;
+
+  const client = getSupabaseClient();
+  const { data, error } = await client.functions.invoke<UnknownRecord>("invite-hosted-proof", {
+    body: { token: trimmed },
+  });
+
+  if (isInviteHostedProofUnavailable(error)) return null;
+  if (error) {
+    throw new Error(error.message);
+  }
+  if (!data) return null;
+  if (typeof data.error === "string") {
+    throw new Error(data.error);
+  }
+
+  return toInviteHostedReplayProof(data);
+}
+
+function isInviteHostedProofUnavailable(error: unknown) {
+  const typedError = (error ?? {}) as {
+    context?: { status?: number | null };
+    message?: string;
+    name?: string;
+    status?: number | null;
+  };
+  const status = typedError.status ?? typedError.context?.status ?? null;
+  const message = String(typedError.message ?? "").toLowerCase();
+  const name = String(typedError.name ?? "").toLowerCase();
+
+  return (
+    status === 404 ||
+    status === 503 ||
+    name.includes("fetch") ||
+    message.includes("failed to fetch") ||
+    message.includes("function not found") ||
+    message.includes("not found") ||
+    message.includes("networkerror")
+  );
 }
 
 /**

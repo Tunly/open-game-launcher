@@ -149,6 +149,20 @@ describe("gamePassesAdvancedFilters", () => {
     const filters = { ...defaults, categories: ["speedrun"] };
     expect(gamePassesAdvancedFilters(makeGame(), filters, taggedContext)).toBe(true);
   });
+
+  it("matches structured categories and tag labels", () => {
+    const game = makeGame({
+      categoryLabels: ["Arcade"],
+      tagLabels: ["Boss Rush"],
+    });
+
+    expect(gamePassesAdvancedFilters(game, { ...defaults, categories: ["arcade"] }, context)).toBe(
+      true,
+    );
+    expect(
+      gamePassesAdvancedFilters(game, { ...defaults, categories: ["boss rush"] }, context),
+    ).toBe(true);
+  });
 });
 
 describe("countActiveAdvancedFilters", () => {

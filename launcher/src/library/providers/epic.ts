@@ -12,17 +12,12 @@ export async function mergeEpicOwned(
   const warnings: string[] = [];
   const statusMessage: string | null = null;
 
-  const epicTokenStr = localStorage.getItem(STORAGE_KEYS.EPIC_TOKEN);
-  if (!epicTokenStr) {
+  const epicSession = localStorage.getItem(STORAGE_KEYS.EPIC_SESSION_MARKER);
+  if (!epicSession) {
     return { games, warnings, statusMessage };
   }
 
   try {
-    const tokenObj = JSON.parse(epicTokenStr);
-    if (!tokenObj || !tokenObj.accessToken) {
-      return { games, warnings, statusMessage };
-    }
-
     const ownedRaw = await fetchEpicOwnedGames();
     localStorage.setItem(STORAGE_KEYS.EPIC_OWNED_GAMES_CACHE, JSON.stringify(ownedRaw));
     const ownedEpicGames = ownedRaw.map(ownedGameToGame);

@@ -10,6 +10,7 @@ import {
   startDownload,
 } from "../../lib/launcher";
 import { syncGamePlaytimeStats } from "../../lib/supabase/playtime";
+import { writeActivePerformanceGameContext } from "../../lib/performance-context";
 import { isInstallableGame, isPlayableGame, type GameGroup } from "../../lib/game-groups";
 import { getErrorMessage } from "../../lib/formatters";
 import { useActivityLogger } from "../useActivityLogger";
@@ -29,6 +30,14 @@ function trackPlaySessionStart(game: Game) {
     countSessionStart: true,
   }).catch((error) => {
     console.warn("Failed to sync play session start:", error);
+  });
+}
+
+function trackActivePerformanceGame(game: Game) {
+  writeActivePerformanceGameContext({
+    gameId: game.id,
+    gameTitle: game.title,
+    launcher: game.launcher ?? null,
   });
 }
 
@@ -86,6 +95,7 @@ export function useProviderPicking({
         const pfn = game.id.replace("xbox-", "");
         await launchXboxGame(pfn);
         setStatusMessage("Launching Xbox game...");
+        trackActivePerformanceGame(game);
         void logGameStart(game.id, game.title, { launcher: "xbox" });
         void trackPlaySessionStart(game);
         return;
@@ -117,6 +127,7 @@ export function useProviderPicking({
       ) {
         const response = await launchGame(game.id);
         setStatusMessage(response.message);
+        trackActivePerformanceGame(game);
         void logGameStart(game.id, game.title, { launcher: game.launcher });
         void trackPlaySessionStart(game);
         void maybeAutoSyncOnLaunch();
@@ -126,6 +137,7 @@ export function useProviderPicking({
       if (game.status === "installed") {
         const response = await launchGame(game.id);
         setStatusMessage(response.message);
+        trackActivePerformanceGame(game);
         void logGameStart(game.id, game.title, { launcher: game.launcher });
         void trackPlaySessionStart(game);
         void maybeAutoSyncOnLaunch();

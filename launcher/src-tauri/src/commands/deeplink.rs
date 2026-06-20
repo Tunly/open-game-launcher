@@ -26,8 +26,7 @@ pub fn register_protocol_handler() {
         class.set_value("URL Protocol", &"")?;
         let (icon, _) = hkcu.create_subkey(r"Software\Classes\oglauncher\DefaultIcon")?;
         icon.set_value("", &icon_path)?;
-        let (cmd, _) =
-            hkcu.create_subkey(r"Software\Classes\oglauncher\shell\open\command")?;
+        let (cmd, _) = hkcu.create_subkey(r"Software\Classes\oglauncher\shell\open\command")?;
         cmd.set_value("", &open_cmd)?;
         Ok(())
     })();
@@ -113,16 +112,20 @@ mod tests {
 
     #[test]
     fn parse_join_link() {
-        let ev = parse_deep_link(
-            "oglauncher://join?game=elden-ring&platform=steam&invite=abc123",
-        );
+        let share_token = "ogl_header.payload.signature";
+        let ev = parse_deep_link(&format!(
+            "oglauncher://join?game=elden-ring&platform=steam&invite={share_token}"
+        ));
         assert_eq!(ev.action, "join");
         assert_eq!(
             ev.params.get("game").map(String::as_str),
             Some("elden-ring")
         );
         assert_eq!(ev.params.get("platform").map(String::as_str), Some("steam"));
-        assert_eq!(ev.params.get("invite").map(String::as_str), Some("abc123"));
+        assert_eq!(
+            ev.params.get("invite").map(String::as_str),
+            Some(share_token)
+        );
     }
 
     #[test]

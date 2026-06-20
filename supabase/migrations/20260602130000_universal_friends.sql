@@ -18,7 +18,7 @@ create table if not exists public.platform_accounts (
   updated_at timestamptz not null default now(),
   unique (user_id, platform),
   unique (platform, platform_user_id),
-  check (platform in ('steam', 'epic', 'gog', 'ea', 'xbox', 'battlenet', 'ubisoft'))
+  check (platform in ('steam', 'epic', 'gog', 'ea', 'xbox', 'battlenet', 'ubisoft', 'og'))
 );
 
 comment on table public.platform_accounts is 'Links an OG Launcher user to their gaming platform identities for friend import and cross-platform features.';
@@ -70,7 +70,7 @@ create table if not exists public.friend_links (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   unique (owner_id, platform, platform_friend_id),
-  check (platform in ('steam', 'epic', 'gog', 'ea', 'xbox', 'battlenet', 'ubisoft')),
+  check (platform in ('steam', 'epic', 'gog', 'ea', 'xbox', 'battlenet', 'ubisoft', 'og')),
   check (match_method is null or match_method in ('linked_account', 'heuristic', 'manual'))
 );
 

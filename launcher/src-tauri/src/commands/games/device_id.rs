@@ -32,6 +32,11 @@ pub fn load_or_create_device_id() -> String {
     fresh
 }
 
+#[tauri::command]
+pub fn get_launcher_device_id() -> String {
+    load_or_create_device_id()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

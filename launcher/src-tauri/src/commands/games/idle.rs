@@ -9,8 +9,6 @@
 //! as "definitely not idle"). Errors degrade gracefully to `0` to keep the
 //! poller resilient — a broken idle probe must never stall playtime tracking.
 
-pub const IDLE_DETECTION_UNAVAILABLE: u64 = 0;
-
 pub fn seconds_since_last_input() -> u64 {
     #[cfg(target_os = "windows")]
     {
@@ -26,11 +24,12 @@ pub fn seconds_since_last_input() -> u64 {
     }
     #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
     {
-        IDLE_DETECTION_UNAVAILABLE
+        0
     }
 }
 
 /// Returns `true` when the user has been idle for at least `threshold` seconds.
+#[allow(dead_code)]
 pub fn is_idle(threshold_seconds: u64) -> bool {
     seconds_since_last_input() >= threshold_seconds
 }

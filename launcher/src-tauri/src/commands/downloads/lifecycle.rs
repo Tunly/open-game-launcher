@@ -1,4 +1,17 @@
 use crate::commands::downloads::types::InternalDownloadSource;
+use std::future::Future;
+use std::pin::Pin;
+use std::sync::Arc;
+
+#[derive(Debug, Clone)]
+pub struct InternalDownloadTerminalEvent {
+    pub status: String,
+    pub message: String,
+}
+
+pub type InternalDownloadTerminalHook = Arc<
+    dyn Fn(InternalDownloadTerminalEvent) -> Pin<Box<dyn Future<Output = ()> + Send>> + Send + Sync,
+>;
 
 /// The kind of launcher that will provide a download for this
 /// game. `External` covers Steam, Epic, EA App, Ubisoft Connect,

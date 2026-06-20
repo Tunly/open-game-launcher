@@ -9,7 +9,7 @@ export function ActivityShowcase({ activity }: { activity: UserActivity[] }) {
           activity.map((item) => (
             <div
               key={item.id}
-              className="neo-copy border-l-[6px] border-[#007166] bg-[#f6edd8] px-3 py-2 text-[12px] font-black text-[#171411] uppercase"
+              className="neo-copy border-l-[6px] border-[#007166] bg-[#f6edd8] px-3 py-2 text-[12px] font-black uppercase text-[#171411]"
             >
               {item.type.replace(/_/g, " ")}
             </div>

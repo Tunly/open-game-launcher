@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "react-router-dom";
 import {
   Award,
   ChevronDown,
@@ -12,14 +13,19 @@ import {
 } from "lucide-react";
 
 import { getGameAssetUrl, getGameBannerStyle } from "../lib/assets";
+import { AchievementCacheReadinessPanel } from "../components/achievements/AchievementCacheReadinessPanel";
+import { AchievementHostedHydrationContractPanel } from "../components/achievements/AchievementHostedHydrationContractPanel";
 import {
   getErrorMessage,
   getGameIconCandidates,
   formatLastPlayed,
   formatPlayTime,
 } from "../lib/formatters";
+import { createVerifyAchievementCacheReadiness } from "../lib/achievement-cache-readiness";
+import { createVerifyAchievementHostedHydrationContract } from "../lib/achievement-hosted-hydration-contract";
 import { groupGames, type GameGroup, type GroupedAchievement } from "../lib/game-groups";
 import { listInstalledGames, openAchievementCacheFolder } from "../lib/launcher";
+import { hydrateGamesWithRemoteAchievements } from "../lib/supabase/achievements";
 import type { Game } from "../lib/types";
 import { PlatformSourceIcon } from "../components/library/PlatformIcons";
 
@@ -127,7 +133,7 @@ function providerStatusClass(status: string, stability: string) {
     return "bg-[#087d6d] text-white";
   }
   if (stability === "unofficial") {
-    return "bg-[#e8c843] text-[#171411]";
+    return "bg-[#fbf4e7] text-[#b7102a]";
   }
   if (status === "failed" || status === "private") {
     return "bg-[#b7102a] text-white";
@@ -143,7 +149,7 @@ function ProviderStatusBadges({ group }: { group: GameGroup }) {
 
   return (
     <div className="mt-2 flex flex-wrap items-center gap-1">
-      <span className="neo-copy text-[9px] font-black text-[#5b403f] uppercase">Providers</span>
+      <span className="neo-copy text-[9px] font-black uppercase text-[#5b403f]">Providers</span>
       {statuses.map((provider) => (
         <span
           key={provider.source}
@@ -177,8 +183,8 @@ function ArtworkPanel({ group }: { group: GameGroup }) {
           )}
         </div>
       ) : null}
-      <div className="absolute inset-0 bg-[radial-gradient(circle,rgba(255,249,237,0.16)_1px,transparent_1px)] bg-[length:8px_8px]" />
-      <div className="absolute right-0 bottom-0 left-0 border-t-2 border-black bg-[#171411]/80 px-2 py-1">
+      <div className="neo-dots absolute inset-0 opacity-20" />
+      <div className="absolute bottom-0 left-0 right-0 border-t-2 border-black bg-[#171411]/80 px-2 py-1">
         <SourceBadges group={group} />
       </div>
     </div>
@@ -208,12 +214,12 @@ function GameRow({ row }: { row: GameAchievementRow }) {
         <div className="min-w-0 py-1">
           <div className="flex min-w-0 items-start justify-between gap-2">
             <div className="min-w-0">
-              <h2 className="truncate text-[18px] leading-tight font-black text-[#171411]">
+              <h2 className="truncate text-[18px] font-black leading-tight text-[#171411]">
                 {group.title}
               </h2>
               <div className="mt-1 flex flex-wrap items-center gap-1.5">
                 {isPerfect ? (
-                  <span className="neo-copy border-2 border-black bg-[#e8c843] px-2 py-0.5 text-[9px] font-black uppercase shadow-[1px_1px_0_#171411]">
+                  <span className="neo-copy border-2 border-black bg-[#087d6d] px-2 py-0.5 text-[9px] font-black uppercase text-white shadow-[1px_1px_0_#171411]">
                     Perfect
                   </span>
                 ) : null}
@@ -221,7 +227,7 @@ function GameRow({ row }: { row: GameAchievementRow }) {
                   {group.variants.length} variant{group.variants.length === 1 ? "" : "s"}
                 </span>
                 {group.achievementBasisSource ? (
-                  <span className="neo-copy border-2 border-black bg-[#171411] px-2 py-0.5 text-[9px] font-black text-[#fbf4e7] uppercase">
+                  <span className="neo-copy border-2 border-black bg-[#171411] px-2 py-0.5 text-[9px] font-black uppercase text-[#fbf4e7]">
                     Basis: {group.achievementBasisSource}
                   </span>
                 ) : null}
@@ -232,7 +238,7 @@ function GameRow({ row }: { row: GameAchievementRow }) {
 
           <div className="mt-3 grid gap-3 md:grid-cols-[90px_90px_minmax(160px,1fr)]">
             <div>
-              <p className="neo-copy text-[10px] font-black text-[#5b403f] uppercase">
+              <p className="neo-copy text-[10px] font-black uppercase text-[#5b403f]">
                 Total Played
               </p>
               <p className="text-[12px] font-black text-[#171411]">
@@ -240,7 +246,7 @@ function GameRow({ row }: { row: GameAchievementRow }) {
               </p>
             </div>
             <div>
-              <p className="neo-copy text-[10px] font-black text-[#5b403f] uppercase">
+              <p className="neo-copy text-[10px] font-black uppercase text-[#5b403f]">
                 Last Played
               </p>
               <p className="text-[12px] font-black text-[#171411]">
@@ -253,10 +259,10 @@ function GameRow({ row }: { row: GameAchievementRow }) {
             </div>
             <div className="min-w-0">
               <div className="mb-1 flex items-center justify-between gap-2">
-                <p className="neo-copy text-[10px] font-black text-[#5b403f] uppercase">
+                <p className="neo-copy text-[10px] font-black uppercase text-[#5b403f]">
                   Achievements
                 </p>
-                <p className="neo-copy text-[10px] font-black text-[#171411] uppercase">
+                <p className="neo-copy text-[10px] font-black uppercase text-[#171411]">
                   {unlocked}/{total}
                 </p>
               </div>
@@ -266,14 +272,14 @@ function GameRow({ row }: { row: GameAchievementRow }) {
 
           <div className="mt-3 flex flex-wrap gap-2">
             <button
-              className="neo-copy inline-flex h-8 items-center gap-2 border-2 border-black bg-[#171411] px-3 text-[10px] font-black text-[#fbf4e7] uppercase shadow-[2px_2px_0_#171411]"
+              className="neo-copy inline-flex h-8 items-center gap-2 border-2 border-black bg-[#171411] px-3 text-[10px] font-black uppercase text-[#fbf4e7] shadow-[2px_2px_0_#171411]"
               type="button"
             >
               My Game Stats
               <ChevronDown className="h-3.5 w-3.5" />
             </button>
             <button
-              className="neo-copy inline-flex h-8 items-center gap-2 border-2 border-black bg-[#fbf4e7] px-3 text-[10px] font-black text-[#171411] uppercase shadow-[2px_2px_0_#171411]"
+              className="neo-copy inline-flex h-8 items-center gap-2 border-2 border-black bg-[#fbf4e7] px-3 text-[10px] font-black uppercase text-[#171411] shadow-[2px_2px_0_#171411]"
               type="button"
             >
               My Game Content
@@ -330,12 +336,19 @@ function StatCard({
       className={`min-w-[92px] border-[3px] border-black p-3 shadow-[3px_3px_0_#171411] ${toneClass}`}
     >
       <p className="neo-title text-2xl leading-none">{value}</p>
-      <p className="neo-copy mt-1 text-[9px] font-black tracking-[0.12em] uppercase">{label}</p>
+      <p className="neo-copy mt-1 text-[9px] font-black uppercase tracking-[0.12em]">{label}</p>
     </div>
   );
 }
 
 export function AchievementsPage() {
+  const [searchParams] = useSearchParams();
+  const verifyMode = searchParams.get("verify");
+  const isAchievementCacheReadinessVerify = verifyMode === "achievement-cache-readiness";
+  const isAchievementHostedHydrationContractVerify =
+    verifyMode === "achievement-hosted-hydration-contract";
+  const shouldSkipRemoteHydration =
+    isAchievementCacheReadinessVerify || isAchievementHostedHydrationContractVerify;
   const [games, setGames] = useState<Game[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -348,20 +361,32 @@ export function AchievementsPage() {
   useEffect(() => {
     let mounted = true;
     setIsLoading(true);
-    listInstalledGames()
-      .then((allGames) => {
-        if (mounted) setGames(allGames);
-      })
-      .catch((err) => {
+    void (async () => {
+      try {
+        const allGames = await listInstalledGames().catch((err) => {
+          if (shouldSkipRemoteHydration) {
+            console.warn("[OG-Launcher] Achievement verify route using empty local list:", err);
+            return [];
+          }
+          throw err;
+        });
+        const hydratedGames = shouldSkipRemoteHydration
+          ? allGames
+          : await hydrateGamesWithRemoteAchievements(allGames).catch((err) => {
+              console.warn("[OG-Launcher] Remote achievement hydration skipped:", err);
+              return allGames;
+            });
+        if (mounted) setGames(hydratedGames);
+      } catch (err) {
         if (mounted) setError(err instanceof Error ? err.message : String(err));
-      })
-      .finally(() => {
+      } finally {
         if (mounted) setIsLoading(false);
-      });
+      }
+    })();
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [shouldSkipRemoteHydration]);
 
   const rows = useMemo(
     () =>
@@ -460,15 +485,15 @@ export function AchievementsPage() {
     <section className="neo-dots space-y-5">
       <div className="mx-auto max-w-[980px] border-4 border-black bg-[#fbf4e7] shadow-[6px_6px_0_#171411]">
         <div className="flex flex-wrap items-center gap-4 border-b-4 border-black bg-[#171411] px-4 py-3 text-[#fbf4e7]">
-          <div className="grid h-14 w-14 place-items-center border-[3px] border-black bg-[#e8c843] text-[#171411] shadow-[3px_3px_0_#000]">
+          <div className="grid h-14 w-14 place-items-center border-[3px] border-black bg-[#c20b2f] text-white shadow-[3px_3px_0_#000]">
             <Trophy className="h-8 w-8" />
           </div>
           <div className="min-w-0">
-            <p className="neo-copy text-[10px] font-black tracking-[0.14em] text-[#8cf5e4] uppercase">
+            <p className="neo-copy text-[10px] font-black uppercase tracking-[0.14em] text-[#8cf5e4]">
               Player Archive
             </p>
             <h1 className="neo-title truncate text-4xl leading-none">
-              Daniel <span className="text-xl text-[#e8c843]">/ Games</span>
+              Daniel <span className="text-xl text-[#8cf5e4]">/ Games</span>
             </h1>
           </div>
           <div className="ml-auto flex flex-wrap gap-2">
@@ -477,7 +502,7 @@ export function AchievementsPage() {
               onClick={() => {
                 void handleOpenAchievementCacheFolder();
               }}
-              className="neo-copy inline-flex items-center gap-2 border-[3px] border-black bg-[#fbf4e7] px-3 py-2 text-[10px] font-black text-[#171411] uppercase shadow-[3px_3px_0_#000] transition hover:-translate-y-0.5"
+              className="neo-copy inline-flex items-center gap-2 border-[3px] border-black bg-[#fbf4e7] px-3 py-2 text-[10px] font-black uppercase text-[#171411] shadow-[3px_3px_0_#000] transition hover:-translate-y-0.5"
               title="Open achievement cache folder"
             >
               <FolderOpen className="h-4 w-4" />
@@ -491,7 +516,7 @@ export function AchievementsPage() {
         </div>
 
         {statusMessage ? (
-          <div className="neo-copy border-b-4 border-black bg-[#e8c843] px-4 py-2 text-[10px] font-black text-[#171411] uppercase">
+          <div className="neo-copy border-b-4 border-black bg-[#087d6d] px-4 py-2 text-[10px] font-black uppercase text-white">
             {statusMessage}
           </div>
         ) : null}
@@ -522,7 +547,7 @@ export function AchievementsPage() {
           <label className="flex h-10 min-w-0 items-center gap-2 border-[3px] border-black bg-[#fbf4e7] px-3 shadow-[2px_2px_0_#171411]">
             <Search className="h-4 w-4 text-[#5b403f]" />
             <input
-              className="neo-copy min-w-0 flex-1 bg-transparent text-[12px] font-black text-[#171411] uppercase outline-none placeholder:text-[#655f58]"
+              className="neo-copy min-w-0 flex-1 bg-transparent text-[12px] font-black uppercase text-[#171411] outline-none placeholder:text-[#655f58]"
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
               placeholder="Find a game"
@@ -546,7 +571,7 @@ export function AchievementsPage() {
             ))}
           </div>
           <div className="flex flex-wrap items-center gap-2 md:col-span-2">
-            <span className="neo-copy text-[10px] font-black text-[#5b403f] uppercase">Source</span>
+            <span className="neo-copy text-[10px] font-black uppercase text-[#5b403f]">Source</span>
             {["all", ...sourceFilters].map((source) => (
               <button
                 key={source}
@@ -565,6 +590,16 @@ export function AchievementsPage() {
         </div>
       </div>
 
+      {isAchievementCacheReadinessVerify ? (
+        <AchievementCacheReadinessPanel readiness={createVerifyAchievementCacheReadiness()} />
+      ) : null}
+
+      {isAchievementHostedHydrationContractVerify ? (
+        <AchievementHostedHydrationContractPanel
+          contract={createVerifyAchievementHostedHydrationContract()}
+        />
+      ) : null}
+
       <div className="mx-auto max-w-[980px] space-y-3">
         {isLoading ? (
           <div className="grid min-h-[260px] place-items-center border-4 border-black bg-[#fbf4e7] shadow-[5px_5px_0_#171411]">
@@ -574,7 +609,7 @@ export function AchievementsPage() {
           <div className="grid min-h-[260px] place-items-center border-4 border-black bg-[#fbf4e7] p-6 text-center shadow-[5px_5px_0_#171411]">
             <div>
               <Trophy className="mx-auto h-14 w-14 text-[#5b403f]" />
-              <p className="neo-copy mt-3 text-[13px] font-black text-[#5b403f] uppercase">
+              <p className="neo-copy mt-3 text-[13px] font-black uppercase text-[#5b403f]">
                 {rows.length === 0
                   ? "No achievement-enabled games found."
                   : "No games match this filter."}

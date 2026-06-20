@@ -341,28 +341,28 @@ export function PlaytimeEditorPanel({
       <header className="flex flex-wrap items-center justify-between gap-2 border-b-2 border-black bg-[#fbf4e7] px-3 py-2">
         <div className="flex items-center gap-2">
           <Clock3 className="h-4 w-4 text-[#087d6d]" />
-          <h2 className="neo-title text-[15px] leading-none text-[#171411] uppercase">
+          <h2 className="neo-title text-[15px] uppercase leading-none text-[#171411]">
             Play Time Correction
           </h2>
         </div>
-        <span className="neo-copy border-2 border-black bg-[#f3e8d7] px-2 py-0.5 text-[10px] font-black text-[#55504a] uppercase">
+        <span className="neo-copy border-2 border-black bg-[#f3e8d7] px-2 py-0.5 text-[10px] font-black uppercase text-[#55504a]">
           {formatHours(game.playtimeMinutes)}
         </span>
       </header>
 
-      <div className="space-y-3 p-3 text-[12px] leading-4 font-bold">
+      <div className="space-y-3 p-3 text-[12px] font-bold leading-4">
         <div className="flex flex-wrap items-end justify-between gap-2">
           <div>
-            <p className="neo-copy text-[10px] font-black text-[#5b403f] uppercase">
+            <p className="neo-copy text-[10px] font-black uppercase text-[#5b403f]">
               Current Total
             </p>
-            <p className="neo-title text-2xl leading-none text-[#171411] uppercase">
+            <p className="neo-title text-2xl uppercase leading-none text-[#171411]">
               {formatHours(game.playtimeMinutes)}
             </p>
           </div>
           <button
             aria-label="Edit total playtime"
-            className="flex h-8 items-center gap-1.5 border-2 border-black bg-[#b7102a] px-3 text-[11px] font-black text-white uppercase shadow-[2px_2px_0_#171411] hover:bg-[#990a20] disabled:cursor-not-allowed disabled:opacity-50"
+            className="flex h-8 items-center gap-1.5 border-2 border-black bg-[#b7102a] px-3 text-[11px] font-black uppercase text-white shadow-[2px_2px_0_#171411] hover:bg-[#990a20] disabled:cursor-not-allowed disabled:opacity-50"
             disabled={!isSignedIn}
             type="button"
             onClick={openEditTotal}
@@ -374,7 +374,7 @@ export function PlaytimeEditorPanel({
 
         <div className="space-y-2 border-t-2 border-black/10 pt-3">
           <div className="flex items-center justify-between">
-            <p className="neo-copy text-[10px] font-black text-[#5b403f] uppercase">
+            <p className="neo-copy text-[10px] font-black uppercase text-[#5b403f]">
               <History className="mr-1 inline h-3 w-3" />
               Sessions ({total})
             </p>
@@ -389,7 +389,7 @@ export function PlaytimeEditorPanel({
                 >
                   <ChevronLeft className="h-3.5 w-3.5" />
                 </button>
-                <span className="neo-copy text-[10px] font-black text-[#55504a] uppercase">
+                <span className="neo-copy text-[10px] font-black uppercase text-[#55504a]">
                   {page + 1}/{totalPages}
                 </span>
                 <button
@@ -406,20 +406,20 @@ export function PlaytimeEditorPanel({
           </div>
 
           {isLoadingSessions ? (
-            <div className="flex items-center gap-2 py-2 text-[10px] font-bold text-[#55504a] uppercase">
+            <div className="flex items-center gap-2 py-2 text-[10px] font-bold uppercase text-[#55504a]">
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
               Loading sessions…
             </div>
           ) : sessionsError ? (
-            <p className="border-2 border-black bg-[#fbd6dc] p-2 text-[10px] font-black text-[#7a0918] uppercase">
+            <p className="border-2 border-black bg-[#fbd6dc] p-2 text-[10px] font-black uppercase text-[#7a0918]">
               {sessionsError}
             </p>
           ) : catalogError && !catalogGameId ? (
-            <p className="border-2 border-black bg-[#f6edd8] p-2 text-[10px] font-bold text-[#655f58] uppercase">
+            <p className="border-2 border-black bg-[#f6edd8] p-2 text-[10px] font-bold uppercase text-[#655f58]">
               {catalogError} Sessions are not editable until the catalog row exists.
             </p>
           ) : sessions.length === 0 ? (
-            <p className="neo-copy py-2 text-[11px] font-bold text-[#5b403f] uppercase">
+            <p className="neo-copy py-2 text-[11px] font-bold uppercase text-[#5b403f]">
               No sessions recorded yet
             </p>
           ) : (
@@ -431,7 +431,7 @@ export function PlaytimeEditorPanel({
                 >
                   <div className="min-w-0">
                     <p
-                      className="neo-copy truncate text-[10px] font-black text-[#5b403f] uppercase"
+                      className="neo-copy truncate text-[10px] font-black uppercase text-[#5b403f]"
                       title={session.id}
                     >
                       #{maskGameId(session.id)}
@@ -440,11 +440,11 @@ export function PlaytimeEditorPanel({
                       {formatSessionTimeRange(session)}
                     </p>
                     <div className="mt-1 flex flex-wrap items-center gap-1.5">
-                      <span className="neo-copy border-2 border-black bg-[#fbf4e7] px-1.5 py-0.5 text-[9px] font-black text-[#171411] uppercase">
+                      <span className="neo-copy border-2 border-black bg-[#fbf4e7] px-1.5 py-0.5 text-[9px] font-black uppercase text-[#171411]">
                         {formatDurationLabel(session.durationMinutes)}
                       </span>
                       {session.platform ? (
-                        <span className="neo-copy border border-black bg-[#087d6d] px-1.5 py-0.5 text-[9px] font-black text-white uppercase">
+                        <span className="neo-copy border border-black bg-[#087d6d] px-1.5 py-0.5 text-[9px] font-black uppercase text-white">
                           {session.platform}
                         </span>
                       ) : null}
@@ -482,7 +482,7 @@ export function PlaytimeEditorPanel({
         <div
           aria-label="Edit total playtime"
           aria-modal="true"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-[#171411]/90 bg-[radial-gradient(circle,rgba(255,249,237,0.14)_1px,transparent_1px)] bg-[length:10px_10px] p-4"
           role="dialog"
         >
           <form
@@ -493,7 +493,7 @@ export function PlaytimeEditorPanel({
             }}
           >
             <div className="flex items-center justify-between border-b-2 border-black bg-[#171411] px-4 py-3 text-white">
-              <h3 className="neo-title text-lg leading-none uppercase">Edit Total Playtime</h3>
+              <h3 className="neo-title text-lg uppercase leading-none">Edit Total Playtime</h3>
               <button
                 aria-label="Close dialog"
                 className="grid h-7 w-7 place-items-center border-2 border-black bg-[#fbf4e7] text-[#171411]"
@@ -505,7 +505,7 @@ export function PlaytimeEditorPanel({
             </div>
             <div className="space-y-3 p-4">
               <label className="block">
-                <span className="neo-copy block text-[11px] font-black text-[#55504a] uppercase">
+                <span className="neo-copy block text-[11px] font-black uppercase text-[#55504a]">
                   Minutes
                 </span>
                 <input
@@ -520,25 +520,25 @@ export function PlaytimeEditorPanel({
                   }}
                 />
               </label>
-              <p className="neo-copy text-[10px] font-bold text-[#5b403f] uppercase">
+              <p className="neo-copy text-[10px] font-bold uppercase text-[#5b403f]">
                 Updates both the local cache and the Supabase aggregate (
                 {formatHours(Number(editTotalValue) || 0)}).
               </p>
               {editTotalError ? (
-                <p className="neo-copy border-2 border-black bg-[#fbd6dc] px-3 py-2 text-[11px] font-black text-[#7a0918] uppercase">
+                <p className="neo-copy border-2 border-black bg-[#fbd6dc] px-3 py-2 text-[11px] font-black uppercase text-[#7a0918]">
                   {editTotalError}
                 </p>
               ) : null}
               <div className="flex justify-end gap-2 border-t-2 border-black pt-3">
                 <button
-                  className="border-2 border-black bg-[#fbf4e7] px-4 py-2 text-[12px] font-black text-[#171411] uppercase shadow-[2px_2px_0_#171411] hover:bg-[#f5eedf]"
+                  className="border-2 border-black bg-[#fbf4e7] px-4 py-2 text-[12px] font-black uppercase text-[#171411] shadow-[2px_2px_0_#171411] hover:bg-[#f5eedf]"
                   type="button"
                   onClick={closeEditTotal}
                 >
                   Cancel
                 </button>
                 <button
-                  className="border-2 border-black bg-[#087d6d] px-4 py-2 text-[12px] font-black text-white uppercase shadow-[2px_2px_0_#171411] hover:bg-[#06685a] disabled:cursor-not-allowed disabled:opacity-50"
+                  className="border-2 border-black bg-[#087d6d] px-4 py-2 text-[12px] font-black uppercase text-white shadow-[2px_2px_0_#171411] hover:bg-[#06685a] disabled:cursor-not-allowed disabled:opacity-50"
                   disabled={isSavingTotal}
                   type="submit"
                 >
@@ -554,7 +554,7 @@ export function PlaytimeEditorPanel({
         <div
           aria-label="Edit play session"
           aria-modal="true"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-[#171411]/90 bg-[radial-gradient(circle,rgba(255,249,237,0.14)_1px,transparent_1px)] bg-[length:10px_10px] p-4"
           role="dialog"
         >
           <form
@@ -565,7 +565,7 @@ export function PlaytimeEditorPanel({
             }}
           >
             <div className="flex items-center justify-between border-b-2 border-black bg-[#171411] px-4 py-3 text-white">
-              <h3 className="neo-title text-lg leading-none uppercase">Edit Session</h3>
+              <h3 className="neo-title text-lg uppercase leading-none">Edit Session</h3>
               <button
                 aria-label="Close dialog"
                 className="grid h-7 w-7 place-items-center border-2 border-black bg-[#fbf4e7] text-[#171411]"
@@ -577,7 +577,7 @@ export function PlaytimeEditorPanel({
             </div>
             <div className="space-y-3 p-4">
               <label className="block">
-                <span className="neo-copy block text-[11px] font-black text-[#55504a] uppercase">
+                <span className="neo-copy block text-[11px] font-black uppercase text-[#55504a]">
                   Started At
                 </span>
                 <input
@@ -592,7 +592,7 @@ export function PlaytimeEditorPanel({
                 />
               </label>
               <label className="block">
-                <span className="neo-copy block text-[11px] font-black text-[#55504a] uppercase">
+                <span className="neo-copy block text-[11px] font-black uppercase text-[#55504a]">
                   Ended At
                 </span>
                 <input
@@ -606,7 +606,7 @@ export function PlaytimeEditorPanel({
                 />
               </label>
               <label className="block">
-                <span className="neo-copy block text-[11px] font-black text-[#55504a] uppercase">
+                <span className="neo-copy block text-[11px] font-black uppercase text-[#55504a]">
                   Duration (minutes)
                 </span>
                 <input
@@ -622,20 +622,20 @@ export function PlaytimeEditorPanel({
                 />
               </label>
               {sessionEditError ? (
-                <p className="neo-copy border-2 border-black bg-[#fbd6dc] px-3 py-2 text-[11px] font-black text-[#7a0918] uppercase">
+                <p className="neo-copy border-2 border-black bg-[#fbd6dc] px-3 py-2 text-[11px] font-black uppercase text-[#7a0918]">
                   {sessionEditError}
                 </p>
               ) : null}
               <div className="flex justify-end gap-2 border-t-2 border-black pt-3">
                 <button
-                  className="border-2 border-black bg-[#fbf4e7] px-4 py-2 text-[12px] font-black text-[#171411] uppercase shadow-[2px_2px_0_#171411] hover:bg-[#f5eedf]"
+                  className="border-2 border-black bg-[#fbf4e7] px-4 py-2 text-[12px] font-black uppercase text-[#171411] shadow-[2px_2px_0_#171411] hover:bg-[#f5eedf]"
                   type="button"
                   onClick={closeEditSession}
                 >
                   Cancel
                 </button>
                 <button
-                  className="border-2 border-black bg-[#087d6d] px-4 py-2 text-[12px] font-black text-white uppercase shadow-[2px_2px_0_#171411] hover:bg-[#06685a] disabled:cursor-not-allowed disabled:opacity-50"
+                  className="border-2 border-black bg-[#087d6d] px-4 py-2 text-[12px] font-black uppercase text-white shadow-[2px_2px_0_#171411] hover:bg-[#06685a] disabled:cursor-not-allowed disabled:opacity-50"
                   disabled={isSavingSession}
                   type="submit"
                 >

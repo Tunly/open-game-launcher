@@ -1,3 +1,5 @@
+import type { PlatformType } from "./friends";
+
 export type ProfileVisibility = "public" | "friends_only" | "private";
 
 type ShowcaseType =
@@ -21,6 +23,8 @@ type BadgeRarity = "common" | "uncommon" | "rare" | "epic" | "legendary";
 
 export interface Profile {
   id: string;
+  appShellSkinId: string | null;
+  customTheme: ProfileTheme | null;
   username: string;
   displayName: string | null;
   avatarUrl: string | null;
@@ -120,6 +124,10 @@ export interface UserPresence {
   currentGameId: string | null;
   currentGameTitle: string | null;
   lastHeartbeatAt: string | null;
+  platform: PlatformType | null;
+  platformGameId: string | null;
+  platformLastPolledAt: string | null;
+  platformSource: string | null;
   updatedAt: string;
 }
 
@@ -145,7 +153,7 @@ export interface ChatMessage {
 export interface GameInvite {
   id: string;
   senderId: string;
-  receiverId: string;
+  receiverId: string | null;
   gameId: string | null;
   gameTitle: string;
   launchUri: string | null;
@@ -175,6 +183,7 @@ export interface UserSocialLink {
   label: string | null;
   url: string;
   sortOrder: number;
+  visibility: ProfileVisibility;
   createdAt: string;
   updatedAt: string;
 }

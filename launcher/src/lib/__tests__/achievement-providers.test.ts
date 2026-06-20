@@ -115,7 +115,10 @@ describe("achievement providers", () => {
     });
     expect(syncableAchievementGames([gogGame])).toEqual([]);
 
-    window.localStorage.setItem(STORAGE_KEYS.GOG_TOKEN, JSON.stringify({ accessToken: "gog" }));
+    window.localStorage.setItem(
+      STORAGE_KEYS.GOG_OWNED_GAMES_CACHE,
+      JSON.stringify([{ id: "gog-owned-1", title: "GOG Game" }]),
+    );
 
     expect(achievementProviderStatusForGame(gogGame)).toMatchObject({
       provider: "gog",
@@ -158,7 +161,7 @@ describe("achievement providers", () => {
       stability: "unofficial",
     });
 
-    window.localStorage.setItem(STORAGE_KEYS.EPIC_TOKEN, JSON.stringify({ accessToken: "epic" }));
+    window.localStorage.setItem(STORAGE_KEYS.EPIC_SESSION_MARKER, "Epic User");
 
     expect(achievementProviderStatusForGame(epicGame)).toMatchObject({
       provider: "epic",
@@ -189,7 +192,7 @@ describe("achievement providers", () => {
     expect(syncableAchievementGames([epicGame])).toEqual([epicGame]);
   });
 
-  it("distinguishes connected EA from missing stable achievement API support", () => {
+  it("uses installed EA games for best-effort checks without trusting legacy token JSON", () => {
     const eaGame = game({
       id: "ea-game",
       title: "EA Game",
@@ -202,14 +205,30 @@ describe("achievement providers", () => {
       stability: "unofficial",
     });
 
-    window.localStorage.setItem(STORAGE_KEYS.EA_TOKEN, JSON.stringify({ accessToken: "ea" }));
-
     expect(achievementProviderStatusForGame(eaGame)).toMatchObject({
       provider: "ea",
       status: "available",
       stability: "unofficial",
     });
     expect(syncableAchievementGames([eaGame])).toEqual([eaGame]);
+  });
+
+  it("does not treat legacy EA token JSON as achievement availability evidence", () => {
+    const eaGame = game({
+      id: "ea-game",
+      title: "EA Game",
+      launcher: "ea",
+      status: "not_installed",
+    });
+
+    window.localStorage.setItem(STORAGE_KEYS.EA_TOKEN, JSON.stringify({ accessToken: "ea" }));
+
+    expect(achievementProviderStatusForGame(eaGame)).toMatchObject({
+      provider: "ea",
+      status: "not_connected",
+      stability: "unofficial",
+    });
+    expect(syncableAchievementGames([eaGame])).toEqual([]);
   });
 
   it("distinguishes Battle.net library cache from missing local source data", () => {

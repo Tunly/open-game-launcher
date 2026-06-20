@@ -1,7 +1,13 @@
 use tauri::AppHandle;
 use tokio::sync::watch;
 
+use crate::commands::downloads::external_dispatch;
+use crate::commands::downloads::external_download;
 use crate::commands::downloads::history::remember_download_item;
+use crate::commands::downloads::internal_lifecycle;
+use crate::commands::downloads::lifecycle::{
+    DownloadLifecycle, ExternalTracker, InternalDownloadTerminalHook,
+};
 use crate::commands::downloads::types::{
     get_download_manager, payload_from_active_download, ActiveDownload, DownloadStartStatus,
     InternalDownloadSource, StartDownloadResponse,
@@ -10,10 +16,6 @@ use crate::commands::downloads::utils::{
     get_platform_from_game_id, is_download_game_installed, normalize_game_id,
 };
 use crate::commands::games::read_installed_games_cache;
-use crate::commands::downloads::external_dispatch;
-use crate::commands::downloads::external_download;
-use crate::commands::downloads::internal_lifecycle;
-use crate::commands::downloads::lifecycle::{DownloadLifecycle, ExternalTracker};
 
 pub async fn start_download(
     app: AppHandle,
@@ -21,6 +23,8 @@ pub async fn start_download(
     game_title: Option<String>,
     download_url: Option<String>,
     download_sha256: Option<String>,
+    install_manifest_url: Option<String>,
+    install_manifest_sha256: Option<String>,
 ) -> Result<StartDownloadResponse, String> {
     let game_id = normalize_game_id(game_id)?;
     let download_id = format!("download-{game_id}");
@@ -43,6 +47,80 @@ pub async fn start_download(
         external_message,
     } = external_dispatch::dispatch_external_launcher(&game_id);
 
+    let title = resolve_download_title(&game_id, game_title);
+
+    if is_external_download && is_download_game_installed(&game_id) {
+        return Ok(StartDownloadResponse {
+            game_id,
+            download_id,
+            status: DownloadStartStatus::AlreadyInstalled,
+            message: "Game is already installed and was not added to Downloads.".to_string(),
+        });
+    }
+
+    let internal_download_source = download_url
+        .filter(|url| !url.trim().is_empty())
+        .map(|url| {
+            InternalDownloadSource::direct_url(
+                url,
+                download_sha256.filter(|value| !value.trim().is_empty()),
+                install_manifest_url.filter(|value| !value.trim().is_empty()),
+                install_manifest_sha256.filter(|value| !value.trim().is_empty()),
+            )
+        });
+    let lifecycle = if is_external_download {
+        if let Some(steam_id) = steam_tracker_id.take() {
+            DownloadLifecycle::External(ExternalTracker::Steam(steam_id))
+        } else if let Some(epic_id) = epic_tracker_id.take() {
+            DownloadLifecycle::External(ExternalTracker::Epic(epic_id))
+        } else {
+            let platform = get_platform_from_game_id(&game_id).to_string();
+            DownloadLifecycle::External(ExternalTracker::Other { platform })
+        }
+    } else {
+        DownloadLifecycle::Internal {
+            source: internal_download_source.clone(),
+        }
+    };
+
+    start_download_lifecycle(
+        app,
+        game_id,
+        title,
+        lifecycle,
+        None,
+        if is_external_download {
+            external_message
+        } else {
+            "Download started.".to_string()
+        },
+    )
+    .await
+}
+
+pub(crate) async fn start_trusted_internal_download(
+    app: AppHandle,
+    game_id: String,
+    game_title: Option<String>,
+    source: InternalDownloadSource,
+    terminal_hook: Option<InternalDownloadTerminalHook>,
+) -> Result<StartDownloadResponse, String> {
+    let game_id = normalize_game_id(game_id)?;
+    let title = resolve_download_title(&game_id, game_title);
+    start_download_lifecycle(
+        app,
+        game_id,
+        title,
+        DownloadLifecycle::Internal {
+            source: Some(source),
+        },
+        terminal_hook,
+        "Download started.".to_string(),
+    )
+    .await
+}
+
+fn resolve_download_title(game_id: &str, game_title: Option<String>) -> String {
     let mut title = game_title
         .clone()
         .unwrap_or_else(|| "Unknown Game".to_string());
@@ -59,19 +137,22 @@ pub async fn start_download(
         }
     }
 
-    if !has_game {
-        title = game_id.replace("-", " ");
+    if has_game {
+        title
+    } else {
+        game_id.replace("-", " ")
     }
+}
 
-    if is_external_download && is_download_game_installed(&game_id) {
-        return Ok(StartDownloadResponse {
-            game_id,
-            download_id,
-            status: DownloadStartStatus::AlreadyInstalled,
-            message: "Game is already installed and was not added to Downloads.".to_string(),
-        });
-    }
-
+async fn start_download_lifecycle(
+    app: AppHandle,
+    game_id: String,
+    title: String,
+    lifecycle: DownloadLifecycle,
+    terminal_hook: Option<InternalDownloadTerminalHook>,
+    message: String,
+) -> Result<StartDownloadResponse, String> {
+    let download_id = format!("download-{game_id}");
     let map = get_download_manager();
     let mut guard = map
         .lock()
@@ -81,40 +162,13 @@ pub async fn start_download(
         return Ok(StartDownloadResponse {
             game_id: game_id.clone(),
             download_id: download_id.clone(),
-            status: DownloadStartStatus::Started,
+            status: DownloadStartStatus::AlreadyQueued,
             message: "Download is already queued.".to_string(),
         });
     }
 
     let (pause_tx, pause_rx) = watch::channel(false);
     let (cancel_tx, cancel_rx) = watch::channel(false);
-
-    // Build the lifecycle enum from the external-dispatch result and
-    // the optional internal-download URL. This is the single source of
-    // truth for "what kind of download is this" for the rest of the
-    // function. It replaces the `is_external_download` bool and the
-    // two `tracker_id` Options as the dispatch input for both the
-    // `ActiveDownload` builder below and the `tokio::spawn` body.
-    let internal_download_source = download_url
-        .filter(|url| !url.trim().is_empty())
-        .map(|url| InternalDownloadSource {
-            url,
-            sha256: download_sha256.filter(|value| !value.trim().is_empty()),
-        });
-    let lifecycle = if is_external_download {
-        if let Some(steam_id) = steam_tracker_id.take() {
-            DownloadLifecycle::External(ExternalTracker::Steam(steam_id))
-        } else if let Some(epic_id) = epic_tracker_id.take() {
-            DownloadLifecycle::External(ExternalTracker::Epic(epic_id))
-        } else {
-            let platform = get_platform_from_game_id(&game_id).to_string();
-            DownloadLifecycle::External(ExternalTracker::Other { platform })
-        }
-    } else {
-        DownloadLifecycle::Internal {
-            source: internal_download_source.clone(),
-        }
-    };
 
     let active = ActiveDownload {
         title: title.clone(),
@@ -167,6 +221,7 @@ pub async fn start_download(
                     source,
                     pause_rx,
                     cancel_rx,
+                    terminal_hook,
                 )
                 .await;
             }
@@ -177,10 +232,6 @@ pub async fn start_download(
         game_id,
         download_id,
         status: DownloadStartStatus::Started,
-        message: if is_external_download {
-            external_message
-        } else {
-            "Download started.".to_string()
-        },
+        message,
     })
 }

@@ -1,9 +1,13 @@
-use base64::Engine;
 use serde::{Deserialize, Serialize};
-use std::ffi::c_void;
+use std::path::PathBuf;
 use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri_plugin_global_shortcut::GlobalShortcutExt;
 
 // Windows-specific GDI imports
+#[cfg(target_os = "windows")]
+use base64::Engine;
+#[cfg(target_os = "windows")]
+use std::ffi::c_void;
 #[cfg(target_os = "windows")]
 use windows_sys::Win32::Foundation::{HGLOBAL, HWND};
 #[cfg(target_os = "windows")]
@@ -27,6 +31,51 @@ pub struct ScreenshotMeta {
     pub width: i32,
     pub height: i32,
     pub size_bytes: u64,
+}
+
+#[cfg(test)]
+mod overlay_settings_tests {
+    use super::{normalize_overlay_settings, OverlaySettingsPayload};
+
+    fn payload() -> OverlaySettingsPayload {
+        OverlaySettingsPayload {
+            is_enabled: Some(true),
+            hotkey: Some(" Control + Shift + F9 ".to_string()),
+            position: Some("top_left".to_string()),
+            opacity: Some(1.3),
+            fps_hud_enabled: Some(true),
+            show_gpu: Some(false),
+        }
+    }
+
+    #[test]
+    fn normalizes_hotkey_position_and_opacity() {
+        let settings = normalize_overlay_settings(payload()).unwrap();
+
+        assert_eq!(settings.hotkey.as_deref(), Some("Control+Shift+F9"));
+        assert_eq!(settings.position.as_deref(), Some("top_left"));
+        assert_eq!(settings.opacity, Some(1.0));
+        assert_eq!(settings.fps_hud_enabled, Some(true));
+        assert_eq!(settings.show_gpu, Some(false));
+    }
+
+    #[test]
+    fn rejects_empty_hotkey() {
+        let mut input = payload();
+        input.hotkey = Some(" + ".to_string());
+
+        let error = normalize_overlay_settings(input).unwrap_err();
+        assert!(error.contains("cannot be empty"));
+    }
+
+    #[test]
+    fn rejects_unknown_position() {
+        let mut input = payload();
+        input.position = Some("center".to_string());
+
+        let error = normalize_overlay_settings(input).unwrap_err();
+        assert!(error.contains("Unsupported overlay position"));
+    }
 }
 
 #[tauri::command]
@@ -99,9 +148,9 @@ pub fn toggle_fps_hud(app: tauri::AppHandle) -> Result<bool, String> {
     }
 }
 
-fn floating_window_url(app: &tauri::AppHandle, view: &str) -> WebviewUrl {
+fn floating_window_url(_app: &tauri::AppHandle, view: &str) -> WebviewUrl {
     #[cfg(debug_assertions)]
-    if let Some(dev_url) = app.config().build.dev_url.as_ref() {
+    if let Some(dev_url) = _app.config().build.dev_url.as_ref() {
         let mut url = dev_url.clone();
         url.set_path("/");
         url.set_query(None);
@@ -166,6 +215,7 @@ pub fn capture_screenshot(app: tauri::AppHandle) -> Result<ScreenshotMeta, Strin
     }
     #[cfg(not(target_os = "windows"))]
     {
+        let _ = app;
         Err("Screenshot capture not yet implemented for this OS".to_string())
     }
 }
@@ -418,25 +468,158 @@ pub struct OverlaySettingsPayload {
     pub show_gpu: Option<bool>,
 }
 
+const DEFAULT_OVERLAY_HOTKEY: &str = "Shift+F1";
+const DEFAULT_OVERLAY_POSITION: &str = "bottom_right";
+const OVERLAY_SETTINGS_FILE: &str = "overlay-settings.json";
+
 #[tauri::command]
 pub fn get_overlay_settings() -> Result<OverlaySettingsPayload, String> {
-    // Returns hardcoded defaults for now; persisted via Supabase in frontend.
-    Ok(OverlaySettingsPayload {
-        is_enabled: Some(true),
-        hotkey: Some("Shift+F1".into()),
-        position: Some("bottom_right".into()),
-        opacity: Some(0.95),
-        fps_hud_enabled: Some(false),
-        show_gpu: Some(true),
-    })
+    read_overlay_settings()
 }
 
 #[tauri::command]
 pub fn save_overlay_settings(
+    app: tauri::AppHandle,
     settings: OverlaySettingsPayload,
 ) -> Result<OverlaySettingsPayload, String> {
-    // In a full implementation this would write to local config file.
-    Ok(settings)
+    let previous = read_overlay_settings().unwrap_or_else(|_| default_overlay_settings());
+    let normalized = normalize_overlay_settings(settings)?;
+    write_overlay_settings(&normalized)?;
+    register_configured_overlay_hotkey(&app, previous.hotkey.as_deref())?;
+    Ok(normalized)
+}
+
+pub fn register_configured_overlay_hotkey(
+    app: &tauri::AppHandle,
+    previous_hotkey: Option<&str>,
+) -> Result<String, String> {
+    let settings = read_overlay_settings().unwrap_or_else(|_| default_overlay_settings());
+    let hotkey = settings
+        .hotkey
+        .clone()
+        .unwrap_or_else(|| DEFAULT_OVERLAY_HOTKEY.to_string());
+    let shortcut_manager = app.global_shortcut();
+
+    if let Some(previous) = previous_hotkey {
+        if previous != hotkey && shortcut_manager.is_registered(previous) {
+            let _ = shortcut_manager.unregister(previous);
+        }
+    }
+
+    if !settings.is_enabled.unwrap_or(true) {
+        if shortcut_manager.is_registered(hotkey.as_str()) {
+            let _ = shortcut_manager.unregister(hotkey.as_str());
+        }
+        return Ok(hotkey);
+    }
+
+    if !shortcut_manager.is_registered(hotkey.as_str()) {
+        shortcut_manager
+            .register(hotkey.as_str())
+            .map_err(|error| format!("Could not register overlay hotkey '{hotkey}': {error}"))?;
+    }
+
+    Ok(hotkey)
+}
+
+fn default_overlay_settings() -> OverlaySettingsPayload {
+    OverlaySettingsPayload {
+        is_enabled: Some(true),
+        hotkey: Some(DEFAULT_OVERLAY_HOTKEY.into()),
+        position: Some(DEFAULT_OVERLAY_POSITION.into()),
+        opacity: Some(0.95),
+        fps_hud_enabled: Some(false),
+        show_gpu: Some(true),
+    }
+}
+
+fn normalize_overlay_settings(
+    input: OverlaySettingsPayload,
+) -> Result<OverlaySettingsPayload, String> {
+    let defaults = default_overlay_settings();
+    let hotkey = normalize_overlay_hotkey(input.hotkey.or(defaults.hotkey))?;
+    let position = normalize_overlay_position(input.position.or(defaults.position))?;
+    let opacity = input
+        .opacity
+        .or(defaults.opacity)
+        .unwrap_or(0.95)
+        .clamp(0.5, 1.0);
+
+    Ok(OverlaySettingsPayload {
+        is_enabled: Some(input.is_enabled.or(defaults.is_enabled).unwrap_or(true)),
+        hotkey: Some(hotkey),
+        position: Some(position),
+        opacity: Some(opacity),
+        fps_hud_enabled: Some(
+            input
+                .fps_hud_enabled
+                .or(defaults.fps_hud_enabled)
+                .unwrap_or(false),
+        ),
+        show_gpu: Some(input.show_gpu.or(defaults.show_gpu).unwrap_or(true)),
+    })
+}
+
+fn normalize_overlay_hotkey(value: Option<String>) -> Result<String, String> {
+    let raw = value.unwrap_or_else(|| DEFAULT_OVERLAY_HOTKEY.to_string());
+    let parts: Vec<String> = raw
+        .split('+')
+        .map(|part| part.trim())
+        .filter(|part| !part.is_empty())
+        .map(ToString::to_string)
+        .collect();
+    if parts.is_empty() {
+        return Err("Overlay hotkey cannot be empty.".to_string());
+    }
+    let normalized = parts.join("+");
+    if normalized.len() > 64 {
+        return Err("Overlay hotkey is too long.".to_string());
+    }
+    if !normalized
+        .chars()
+        .all(|ch| ch.is_ascii_alphanumeric() || matches!(ch, '+' | '-' | '_'))
+    {
+        return Err("Overlay hotkey contains unsupported characters.".to_string());
+    }
+    Ok(normalized)
+}
+
+fn normalize_overlay_position(value: Option<String>) -> Result<String, String> {
+    let position = value.unwrap_or_else(|| DEFAULT_OVERLAY_POSITION.to_string());
+    match position.as_str() {
+        "top_left" | "top_right" | "bottom_left" | "bottom_right" => Ok(position),
+        _ => Err(format!("Unsupported overlay position '{position}'.")),
+    }
+}
+
+fn overlay_settings_path() -> Result<PathBuf, String> {
+    super::games::core::open_game_launcher_data_dir()
+        .map(|path| path.join(OVERLAY_SETTINGS_FILE))
+        .ok_or_else(|| "Could not resolve Open Game Launcher data directory.".to_string())
+}
+
+fn read_overlay_settings() -> Result<OverlaySettingsPayload, String> {
+    let path = overlay_settings_path()?;
+    if !path.exists() {
+        return Ok(default_overlay_settings());
+    }
+    let contents = std::fs::read_to_string(&path)
+        .map_err(|error| format!("Could not read overlay settings: {error}"))?;
+    let parsed = serde_json::from_str::<OverlaySettingsPayload>(&contents)
+        .map_err(|error| format!("Could not parse overlay settings: {error}"))?;
+    normalize_overlay_settings(parsed)
+}
+
+fn write_overlay_settings(settings: &OverlaySettingsPayload) -> Result<(), String> {
+    let path = overlay_settings_path()?;
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|error| format!("Could not create overlay settings folder: {error}"))?;
+    }
+    let contents = serde_json::to_string_pretty(settings)
+        .map_err(|error| format!("Could not serialize overlay settings: {error}"))?;
+    std::fs::write(path, contents)
+        .map_err(|error| format!("Could not write overlay settings: {error}"))
 }
 
 // ─── Achievement Popup Emitter ───

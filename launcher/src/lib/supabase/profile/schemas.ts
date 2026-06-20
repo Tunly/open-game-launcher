@@ -17,10 +17,13 @@ import type {
   UserSocialLink,
 } from "../../types/profile";
 import type { UpdateProfileInput } from "../../validation/profile";
+import { parseProfileThemeExchangeValue } from "../../profile-theme-exchange";
 
 export function toProfile(row: UnknownRecord): Profile {
   return {
     id: rowString(row, "id"),
+    appShellSkinId: rowNullableString(row, "app_shell_skin"),
+    customTheme: parseProfileThemeExchangeValue(rowConfig(row, "custom_theme_json")),
     username: rowString(row, "username"),
     displayName: rowNullableString(row, "display_name"),
     avatarUrl: rowNullableString(row, "avatar_url"),
@@ -85,11 +88,11 @@ export function toTheme(row: UnknownRecord | null): ProfileTheme | null {
     key: rowString(row, "key"),
     name: rowString(row, "name"),
     description: rowNullableString(row, "description"),
-    backgroundType: rowString(row, "background_type", "gradient") as ProfileTheme["backgroundType"],
+    backgroundType: rowString(row, "background_type", "solid") as ProfileTheme["backgroundType"],
     backgroundValue: rowNullableString(row, "background_value"),
     accentColor: rowNullableString(row, "accent_color"),
     textColor: rowNullableString(row, "text_color"),
-    cardStyle: rowString(row, "card_style", "glass") as ProfileTheme["cardStyle"],
+    cardStyle: rowString(row, "card_style", "pixel") as ProfileTheme["cardStyle"],
     isPremium: rowBoolean(row, "is_premium"),
     isActive: rowBoolean(row, "is_active", true),
     createdAt: rowString(row, "created_at"),
@@ -133,6 +136,7 @@ export function toSocialLink(row: UnknownRecord): UserSocialLink {
     label: rowNullableString(row, "label"),
     url: rowString(row, "url"),
     sortOrder: rowNumber(row, "sort_order"),
+    visibility: rowString(row, "visibility", "public") as UserSocialLink["visibility"],
     createdAt: rowString(row, "created_at"),
     updatedAt: rowString(row, "updated_at"),
   };

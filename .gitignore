@@ -1,4 +1,6 @@
 # Local config / secrets
+.codex/
+supabase/.branches/
 supabase/.temp/
 supabase/functions/.env
 supabase/functions/.env.local
@@ -44,7 +46,9 @@ node_modules/
 
 # Test runners / tooling
 .qoder/
+.playwright-mcp/
 .husky/_
+deno.lock
 
 # Stray helper scripts
 _*.ps1

@@ -385,6 +385,57 @@ deno_version = 2
 # [edge_runtime.secrets]
 # secret_key = "env(SECRET_VALUE)"
 
+[functions.cancel-account-deletion]
+verify_jwt = true
+
+[functions.community-artwork-moderation]
+verify_jwt = true
+
+[functions.export-user-data]
+verify_jwt = true
+
+[functions.ingest-achievements]
+verify_jwt = true
+
+[functions.ingest-playtime]
+verify_jwt = true
+
+[functions.invite-hosted-proof]
+verify_jwt = true
+
+[functions.mobile-push-registration]
+verify_jwt = true
+
+[functions.notify-price-drop]
+verify_jwt = false
+
+[functions.poll-platform-presence]
+verify_jwt = false
+
+[functions.process-account-deletions]
+verify_jwt = false
+
+[functions.rawg-assets]
+verify_jwt = true
+
+[functions.remote-companion-relay]
+verify_jwt = true
+
+[functions.request-account-deletion]
+verify_jwt = true
+
+[functions.store-download-build]
+verify_jwt = true
+
+[functions.store-order-support]
+verify_jwt = true
+
+[functions.stripe-create-checkout]
+verify_jwt = true
+
+[functions.stripe-webhook]
+verify_jwt = false
+
 [analytics]
 enabled = true
 port = 54327

@@ -1,4 +1,5 @@
 import { listen } from "@tauri-apps/api/event";
+import { isTauri } from "@tauri-apps/api/core";
 import { useEffect, useRef } from "react";
 import { getUnsyncedPlaySessions, markPlaySessionsSynced } from "../../lib/launcher";
 import { syncGameSessions } from "../../lib/supabase/playtime";
@@ -51,23 +52,25 @@ export function usePlaySessionSync(): void {
       void drain();
     }, 60_000);
 
-    const unlistenPromise = listen<PlaySession>("play_session_recorded", async (event) => {
-      if (!isMounted) return;
-      const session = event.payload;
-      try {
-        const outcome = await syncGameSessions([session]);
-        if (outcome.pushed > 0) {
-          await markPlaySessionsSynced([session.id]);
-        }
-      } catch (error) {
-        console.warn("[usePlaySessionSync] event push failed:", error);
-      }
-    });
+    const unlistenPromise = isTauri()
+      ? listen<PlaySession>("play_session_recorded", async (event) => {
+          if (!isMounted) return;
+          const session = event.payload;
+          try {
+            const outcome = await syncGameSessions([session]);
+            if (outcome.pushed > 0) {
+              await markPlaySessionsSynced([session.id]);
+            }
+          } catch (error) {
+            console.warn("[usePlaySessionSync] event push failed:", error);
+          }
+        })
+      : null;
 
     return () => {
       isMounted = false;
       window.clearInterval(interval);
-      void unlistenPromise.then((unlisten) => unlisten());
+      void unlistenPromise?.then((unlisten) => unlisten());
     };
   }, []);
 }

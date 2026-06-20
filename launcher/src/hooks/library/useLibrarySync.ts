@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Dispatch, RefObject, SetStateAction } from "react";
+import { isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 
 import {
@@ -20,7 +21,13 @@ import { getGameLogoCandidates } from "../../lib/formatters";
 import { syncGamePlaytimeStats } from "../../lib/supabase/playtime";
 import { getProviderErrorMessage, readLocalStorageString } from "../../lib/library-providers";
 import { STEAM_OWNED_GAMES_CACHE_VERSION, STORAGE_KEYS } from "../../lib/storage-keys";
-import type { Game } from "../../lib/types";
+import type {
+  Game,
+  GameLifecycleEvent,
+  GameRuntimeStatus,
+  GameRuntimeUpdate,
+  PlatformClientLifecycleEvent,
+} from "../../lib/types";
 import {
   mergeBattlenetOwned,
   mergeEaOwned,
@@ -95,6 +102,8 @@ export interface UseLibrarySyncResult {
   installedGames: Game[];
   setInstalledGames: Dispatch<SetStateAction<Game[]>>;
   installedGamesRef: RefObject<Game[]>;
+  runningGameIds: Set<string>;
+  gameRuntimeById: Record<string, GameRuntimeStatus>;
   isDiscoveringGames: boolean;
   discoveryMessage: string | null;
   initialLibrarySnapshot: Game[];
@@ -113,6 +122,12 @@ export interface UseLibrarySyncResult {
   customArtwork: CustomArtworkMap;
   handleSelectCustomArtwork: (gameId: string, kind: CustomArtworkKind, file: File) => Promise<void>;
   handleArtworkDrop: (gameId: string, kind: CustomArtworkKind, file: File) => Promise<void>;
+  handleApplyCustomArtworkUrl: (
+    gameId: string,
+    kind: CustomArtworkKind,
+    url: string,
+    sourceLabel: string,
+  ) => void;
   handleConfirmArtwork: (dataUrl: string, kind: CustomArtworkKind) => void;
   handleResetCustomArtwork: (gameId: string, kind?: CustomArtworkKind) => void;
   pendingArtworkFile: File | null;
@@ -137,6 +152,10 @@ export function useLibrarySync({ setStatusMessage }: UseLibrarySyncOptions): Use
   const [initialLibrarySnapshot] = useState(readLibrarySnapshot);
   const installedGamesRef = useRef<Game[]>(initialLibrarySnapshot);
   const [installedGames, setInstalledGames] = useState<Game[]>(initialLibrarySnapshot);
+  const [runningGameIds, setRunningGameIds] = useState<Set<string>>(() => new Set());
+  const [gameRuntimeById, setGameRuntimeById] = useState<Record<string, GameRuntimeStatus>>(
+    () => ({}),
+  );
   const [isDiscoveringGames, setIsDiscoveringGames] = useState(initialLibrarySnapshot.length === 0);
   const [discoveryMessage, setDiscoveryMessage] = useState<string | null>(null);
   const [logoCandidateIndexes, setLogoCandidateIndexes] = useState<Record<string, number>>(
@@ -216,7 +235,9 @@ export function useLibrarySync({ setStatusMessage }: UseLibrarySyncOptions): Use
 
       setInstalledGames((current) => (areGameListsEqual(current, games) ? current : games));
       setDiscoveryMessage(
-        games.length > 0 ? null : "No installed Steam, Epic, or GOG games found. Demo mode loaded.",
+        games.length > 0
+          ? null
+          : "No installed Steam, Epic, or GOG games found. Local preview shelf loaded.",
       );
     } catch {
       if (!shouldApplyResult()) {
@@ -226,8 +247,8 @@ export function useLibrarySync({ setStatusMessage }: UseLibrarySyncOptions): Use
       setInstalledGames([]);
       setDiscoveryMessage(
         forceRefresh
-          ? "Automatic sync not available. Showing mock library."
-          : "Saved library not available. Showing mock library.",
+          ? "Automatic sync is unavailable in this session. Showing the local preview shelf."
+          : "Saved library is unavailable in this session. Showing the local preview shelf.",
       );
     } finally {
       if (showLoading && shouldApplyResult()) {
@@ -345,14 +366,17 @@ export function useLibrarySync({ setStatusMessage }: UseLibrarySyncOptions): Use
   }, [initialLibrarySnapshot.length, runAutomaticLibrarySync]);
 
   useEffect(() => {
+    if (!isTauri()) {
+      return;
+    }
+
     let isMounted = true;
 
-    const unlistenPromise = listen<GameActivityUpdate>("game_activity_updated", (event) => {
+    const applyGameActivityUpdate = (update: GameActivityUpdate) => {
       if (!isMounted) {
         return;
       }
 
-      const update = event.payload;
       const applyUpdate = (game: Game): Game =>
         game.id === update.gameId
           ? {
@@ -376,36 +400,150 @@ export function useLibrarySync({ setStatusMessage }: UseLibrarySyncOptions): Use
           console.warn("Failed to sync playtime stats:", error);
         });
       }
+    };
+
+    const upsertGameRuntime = (update: GameRuntimeUpdate) => {
+      setRunningGameIds((current) => {
+        const next = new Set(current);
+        if (update.running) {
+          next.add(update.gameId);
+        } else {
+          next.delete(update.gameId);
+        }
+        return next;
+      });
+      setGameRuntimeById((current) => {
+        if (!update.running) {
+          const next = { ...current };
+          delete next[update.gameId];
+          return next;
+        }
+        return {
+          ...current,
+          [update.gameId]: {
+            gameId: update.gameId,
+            launcher: update.launcher,
+            occurredAt: update.occurredAt,
+            pid: update.pid ?? null,
+            processName: update.processName ?? null,
+            running: update.running,
+            title: update.title,
+            uptimeSeconds: update.uptimeSeconds ?? null,
+            lastInputSeconds: update.lastInputSeconds ?? null,
+            windowHandle: update.windowHandle ?? null,
+            windowTitle: update.windowTitle ?? null,
+          },
+        };
+      });
+    };
+
+    const handleGameRuntimeUpdate = (update: GameRuntimeUpdate) => {
+      if (!isMounted) {
+        return;
+      }
+
+      upsertGameRuntime(update);
+    };
+
+    const handleGameLifecycleEvent = (update: GameLifecycleEvent) => {
+      if (!isMounted) {
+        return;
+      }
+
+      upsertGameRuntime(update);
+      applyGameActivityUpdate({
+        gameId: update.gameId,
+        lastPlayed: update.lastPlayed ?? update.occurredAt,
+        playtimeMinutes: update.playtimeMinutes ?? null,
+      });
+      setStatusMessage(
+        update.event === "game_started"
+          ? `${update.title} is now running.`
+          : `${update.title} stopped.`,
+      );
+    };
+
+    const handleClientLifecycleEvent = (update: PlatformClientLifecycleEvent) => {
+      if (!isMounted) {
+        return;
+      }
+
+      setStatusMessage(
+        update.event === "client_started"
+          ? `${update.displayName} client is running.`
+          : `${update.displayName} client stopped.`,
+      );
+    };
+
+    const unlistenPromise = listen<GameActivityUpdate>("game_activity_updated", (event) => {
+      applyGameActivityUpdate(event.payload);
     });
+    const unlistenGameStarted = listen<GameLifecycleEvent>("game_started", (event) => {
+      handleGameLifecycleEvent(event.payload);
+    });
+    const unlistenGameStopped = listen<GameLifecycleEvent>("game_stopped", (event) => {
+      handleGameLifecycleEvent(event.payload);
+    });
+    const unlistenGameRuntimeUpdated = listen<GameRuntimeUpdate>(
+      "game_runtime_updated",
+      (event) => {
+        handleGameRuntimeUpdate(event.payload);
+      },
+    );
+    const unlistenClientStarted = listen<PlatformClientLifecycleEvent>(
+      "client_started",
+      (event) => {
+        handleClientLifecycleEvent(event.payload);
+      },
+    );
+    const unlistenClientStopped = listen<PlatformClientLifecycleEvent>(
+      "client_stopped",
+      (event) => {
+        handleClientLifecycleEvent(event.payload);
+      },
+    );
 
     return () => {
       isMounted = false;
       void unlistenPromise.then((unlisten) => unlisten());
+      void unlistenGameStarted.then((unlisten) => unlisten());
+      void unlistenGameStopped.then((unlisten) => unlisten());
+      void unlistenGameRuntimeUpdated.then((unlisten) => unlisten());
+      void unlistenClientStarted.then((unlisten) => unlisten());
+      void unlistenClientStopped.then((unlisten) => unlisten());
     };
-  }, []);
+  }, [setStatusMessage]);
 
   useEffect(() => {
     let isMounted = true;
 
-    const unlistenInventory = listen<LibraryInventoryChanged>("library_inventory_changed", () => {
-      if (!isMounted) return;
-      void runAutomaticLibrarySync(false);
-    });
+    const unlistenInventory = isTauri()
+      ? listen<LibraryInventoryChanged>("library_inventory_changed", () => {
+          if (!isMounted) return;
+          void runAutomaticLibrarySync(false);
+        })
+      : null;
 
-    const unlistenSteam = listen<string>("steam_login_success", () => {
-      if (!isMounted) return;
-      void runAutomaticLibrarySync(false);
-    });
+    const unlistenSteam = isTauri()
+      ? listen<string>("steam_login_success", () => {
+          if (!isMounted) return;
+          void runAutomaticLibrarySync(false);
+        })
+      : null;
 
-    const unlistenGog = listen<string>("gog_login_code", () => {
-      if (!isMounted) return;
-      void runAutomaticLibrarySync(true);
-    });
+    const unlistenGog = isTauri()
+      ? listen<string>("gog_login_code", () => {
+          if (!isMounted) return;
+          void runAutomaticLibrarySync(true);
+        })
+      : null;
 
-    const unlistenEa = listen("ea_login_success", () => {
-      if (!isMounted) return;
-      void runAutomaticLibrarySync(true);
-    });
+    const unlistenEa = isTauri()
+      ? listen("ea_login_success", () => {
+          if (!isMounted) return;
+          void runAutomaticLibrarySync(true);
+        })
+      : null;
 
     const handleBattlenetUpdated = () => {
       if (!isMounted) return;
@@ -413,32 +551,36 @@ export function useLibrarySync({ setStatusMessage }: UseLibrarySyncOptions): Use
     };
     window.addEventListener("battlenet_library_updated", handleBattlenetUpdated);
 
-    const unlistenScrapedSuccess = listen<unknown[]>("steam_scraped_games_success", (event) => {
-      if (!isMounted) return;
-      const ownedGames = normalizeSteamOwnedGames(event.payload);
-      localStorage.setItem(STORAGE_KEYS.STEAM_OWNED_GAMES_CACHE, JSON.stringify(ownedGames));
-      localStorage.setItem(
-        STORAGE_KEYS.STEAM_OWNED_GAMES_CACHE_VERSION,
-        STEAM_OWNED_GAMES_CACHE_VERSION,
-      );
-      void runAutomaticLibrarySync(false);
-    });
+    const unlistenScrapedSuccess = isTauri()
+      ? listen<unknown[]>("steam_scraped_games_success", (event) => {
+          if (!isMounted) return;
+          const ownedGames = normalizeSteamOwnedGames(event.payload);
+          localStorage.setItem(STORAGE_KEYS.STEAM_OWNED_GAMES_CACHE, JSON.stringify(ownedGames));
+          localStorage.setItem(
+            STORAGE_KEYS.STEAM_OWNED_GAMES_CACHE_VERSION,
+            STEAM_OWNED_GAMES_CACHE_VERSION,
+          );
+          void runAutomaticLibrarySync(false);
+        })
+      : null;
 
-    const unlistenScrapedError = listen<string>("steam_scraped_games_error", (event) => {
-      if (!isMounted) return;
-      console.warn("[OG-Launcher] Silent scraper failed:", event.payload);
-      setStatusMessage(`Warning: Steam: ${event.payload}`);
-    });
+    const unlistenScrapedError = isTauri()
+      ? listen<string>("steam_scraped_games_error", (event) => {
+          if (!isMounted) return;
+          console.warn("[OG-Launcher] Silent scraper failed:", event.payload);
+          setStatusMessage(`Warning: Steam: ${event.payload}`);
+        })
+      : null;
 
     return () => {
       isMounted = false;
-      void unlistenInventory.then((u) => u());
-      void unlistenSteam.then((u) => u());
-      void unlistenGog.then((u) => u());
-      void unlistenEa.then((u) => u());
+      void unlistenInventory?.then((u) => u());
+      void unlistenSteam?.then((u) => u());
+      void unlistenGog?.then((u) => u());
+      void unlistenEa?.then((u) => u());
       window.removeEventListener("battlenet_library_updated", handleBattlenetUpdated);
-      void unlistenScrapedSuccess.then((u) => u());
-      void unlistenScrapedError.then((u) => u());
+      void unlistenScrapedSuccess?.then((u) => u());
+      void unlistenScrapedError?.then((u) => u());
     };
   }, [setStatusMessage, runAutomaticLibrarySync]);
 
@@ -517,6 +659,30 @@ export function useLibrarySync({ setStatusMessage }: UseLibrarySyncOptions): Use
     await handleSelectCustomArtwork(gameId, kind, file);
   }
 
+  function handleApplyCustomArtworkUrl(
+    gameId: string,
+    kind: CustomArtworkKind,
+    url: string,
+    sourceLabel: string,
+  ) {
+    const trimmedUrl = url.trim();
+    if (!trimmedUrl) {
+      setStatusMessage("Artwork candidate is missing a URL.");
+      return;
+    }
+
+    setCustomArtwork((current) => ({
+      ...current,
+      [gameId]: {
+        ...current[gameId],
+        [`${kind}Url`]: trimmedUrl,
+        updatedAt: Date.now(),
+      },
+    }));
+    setLogoCandidateIndexes((current) => ({ ...current, [gameId]: 0 }));
+    setStatusMessage(`${sourceLabel} ${kind} artwork applied.`);
+  }
+
   function openArtworkPreview(gameId: string, kind: CustomArtworkKind, file: File) {
     setPendingArtworkGameId(gameId);
     setPendingArtworkKind(kind);
@@ -591,6 +757,8 @@ export function useLibrarySync({ setStatusMessage }: UseLibrarySyncOptions): Use
     installedGames,
     setInstalledGames,
     installedGamesRef,
+    runningGameIds,
+    gameRuntimeById,
     isDiscoveringGames,
     discoveryMessage,
     initialLibrarySnapshot,
@@ -605,6 +773,7 @@ export function useLibrarySync({ setStatusMessage }: UseLibrarySyncOptions): Use
     customArtwork,
     handleSelectCustomArtwork,
     handleArtworkDrop,
+    handleApplyCustomArtworkUrl,
     handleConfirmArtwork,
     handleResetCustomArtwork,
     pendingArtworkFile,

@@ -66,6 +66,10 @@ fn validate_domain(domain: &str) -> Result<(), String> {
 }
 
 fn fallback_path() -> Option<PathBuf> {
+    #[cfg(test)]
+    if let Some(dir) = std::env::var_os("OGL_TEST_KEYRING_FALLBACK_DIR") {
+        return Some(PathBuf::from(dir).join(KEYRING_FALLBACK_FILE));
+    }
     dirs::config_dir().map(|dir| dir.join(KEYRING_FALLBACK_DIR).join(KEYRING_FALLBACK_FILE))
 }
 
@@ -148,6 +152,7 @@ fn decrypt(blob: &str) -> Result<Vec<u8>, String> {
 /// Stores a secret for a given domain in OS keychain.
 /// Falls back to an encrypted local file if keychain is unavailable.
 pub fn set_secret(domain: &str, value: &str) -> Result<(), String> {
+    validate_domain(domain)?;
     match entry(domain) {
         Ok(e) => match e.set_password(value) {
             Ok(()) => Ok(()),
@@ -160,6 +165,7 @@ pub fn set_secret(domain: &str, value: &str) -> Result<(), String> {
 /// Retrieves a secret for a given domain from OS keychain.
 /// Falls back to local file if keychain is unavailable.
 pub fn get_secret(domain: &str) -> Result<Option<String>, String> {
+    validate_domain(domain)?;
     match entry(domain) {
         Ok(e) => match e.get_password() {
             Ok(value) => Ok(Some(value)),
@@ -172,6 +178,7 @@ pub fn get_secret(domain: &str) -> Result<Option<String>, String> {
 
 /// Deletes a secret for a given domain from OS keychain and fallback.
 pub fn delete_secret(domain: &str) -> Result<(), String> {
+    validate_domain(domain)?;
     if let Ok(e) = entry(domain) {
         let _ = e.delete_credential();
     }
@@ -250,6 +257,7 @@ fn write_fallback_map(map: &mut FallbackMap) -> Result<(), String> {
 }
 
 fn write_fallback(domain: &str, value: &str) -> Result<(), String> {
+    validate_domain(domain)?;
     let mut map = read_fallback_map();
     map.entries
         .insert(domain.to_string(), value.as_bytes().to_vec());
@@ -257,6 +265,7 @@ fn write_fallback(domain: &str, value: &str) -> Result<(), String> {
 }
 
 fn read_fallback(domain: &str) -> Result<Option<String>, String> {
+    validate_domain(domain)?;
     let map = read_fallback_map();
     Ok(map
         .entries
@@ -265,6 +274,9 @@ fn read_fallback(domain: &str) -> Result<Option<String>, String> {
 }
 
 fn delete_fallback(domain: &str) {
+    if validate_domain(domain).is_err() {
+        return;
+    }
     let mut map = read_fallback_map();
     if map.entries.remove(domain).is_some() {
         let _ = write_fallback_map(&mut map);
@@ -306,6 +318,55 @@ pub fn migrate_legacy_tokens() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::ffi::OsString;
+    use std::sync::{Mutex, MutexGuard, OnceLock};
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    static FALLBACK_TEST_ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+    struct FallbackTestGuard {
+        _lock: MutexGuard<'static, ()>,
+        old_override: Option<OsString>,
+        root: PathBuf,
+    }
+
+    impl Drop for FallbackTestGuard {
+        fn drop(&mut self) {
+            if let Some(value) = self.old_override.take() {
+                std::env::set_var("OGL_TEST_KEYRING_FALLBACK_DIR", value);
+            } else {
+                std::env::remove_var("OGL_TEST_KEYRING_FALLBACK_DIR");
+            }
+            let _ = fs::remove_dir_all(&self.root);
+        }
+    }
+
+    fn fallback_test_guard(name: &str) -> FallbackTestGuard {
+        let lock = FALLBACK_TEST_ENV_LOCK
+            .get_or_init(|| Mutex::new(()))
+            .lock()
+            .expect("fallback test env lock");
+        let old_override = std::env::var_os("OGL_TEST_KEYRING_FALLBACK_DIR");
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("system time")
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "ogl-secure-store-{name}-{}-{unique}",
+            std::process::id()
+        ));
+        fs::create_dir_all(&root).expect("create fallback test root");
+        std::env::set_var("OGL_TEST_KEYRING_FALLBACK_DIR", &root);
+        FallbackTestGuard {
+            _lock: lock,
+            old_override,
+            root,
+        }
+    }
+
+    fn fallback_file_path() -> PathBuf {
+        fallback_path().expect("test fallback path")
+    }
 
     #[test]
     fn validate_domain_accepts_normal() {
@@ -349,5 +410,70 @@ mod tests {
         let a = encrypt(b"x").unwrap();
         let b = encrypt(b"x").unwrap();
         assert_ne!(a, b);
+    }
+
+    #[test]
+    fn fallback_ignores_corrupt_json_and_old_versions() {
+        let _guard = fallback_test_guard("corrupt-old");
+        let path = fallback_file_path();
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+
+        fs::write(&path, b"not-json").unwrap();
+        assert!(read_fallback_map().entries.is_empty());
+
+        let mut blobs = HashMap::new();
+        blobs.insert("gog".to_string(), encrypt(b"legacy-secret").unwrap());
+        fs::write(
+            &path,
+            serde_json::to_vec(&FallbackBlob { v: 0, blobs }).unwrap(),
+        )
+        .unwrap();
+        assert!(read_fallback_map().entries.is_empty());
+    }
+
+    #[test]
+    fn fallback_writes_ciphertext_without_plaintext() {
+        let _guard = fallback_test_guard("ciphertext");
+
+        write_fallback("epic", "super-secret-token").unwrap();
+
+        let raw = fs::read_to_string(fallback_file_path()).unwrap();
+        assert!(raw.contains("\"epic\""));
+        assert!(!raw.contains("super-secret-token"));
+        assert_eq!(
+            read_fallback("epic").unwrap(),
+            Some("super-secret-token".to_string())
+        );
+    }
+
+    #[test]
+    fn fallback_delete_rewrites_without_removed_domain() {
+        let _guard = fallback_test_guard("delete");
+
+        write_fallback("gog", "gog-secret").unwrap();
+        write_fallback("steam", "steam-secret").unwrap();
+        delete_fallback("gog");
+
+        assert_eq!(read_fallback("gog").unwrap(), None);
+        assert_eq!(
+            read_fallback("steam").unwrap(),
+            Some("steam-secret".to_string())
+        );
+        let raw = fs::read_to_string(fallback_file_path()).unwrap();
+        assert!(!raw.contains("\"gog\""));
+        assert!(!raw.contains("gog-secret"));
+        assert!(raw.contains("\"steam\""));
+        assert!(!raw.contains("steam-secret"));
+    }
+
+    #[test]
+    fn invalid_domains_do_not_create_fallback_file() {
+        let _guard = fallback_test_guard("invalid-domain");
+
+        assert!(set_secret("bad/domain", "should-not-write").is_err());
+        assert!(read_fallback("bad/domain").is_err());
+        delete_fallback("bad/domain");
+
+        assert!(!fallback_file_path().exists());
     }
 }

@@ -9,6 +9,8 @@ import { STORAGE_KEYS } from "../../storage-keys";
 
 export const profileSelect = `
   id,
+  app_shell_skin,
+  custom_theme_json,
   username,
   display_name,
   avatar_url,

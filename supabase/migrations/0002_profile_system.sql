@@ -29,16 +29,16 @@ create table if not exists public.profile_themes (
   key text unique not null,
   name text not null,
   description text,
-  background_type text not null default 'gradient',
+  background_type text not null default 'solid',
   background_value text,
   accent_color text,
   text_color text,
-  card_style text not null default 'glass',
+  card_style text not null default 'solid',
   is_premium boolean not null default false,
   is_active boolean not null default true,
   created_at timestamptz not null default now(),
-  constraint profile_themes_background_type_check check (background_type in ('solid', 'gradient', 'image', 'animated')),
-  constraint profile_themes_card_style_check check (card_style in ('default', 'glass', 'solid', 'neon', 'pixel', 'minimal'))
+  constraint profile_themes_background_type_check check (background_type in ('solid', 'image', 'animated')),
+  constraint profile_themes_card_style_check check (card_style in ('default', 'solid', 'neon', 'pixel', 'minimal'))
 );
 
 create table if not exists public.profiles (

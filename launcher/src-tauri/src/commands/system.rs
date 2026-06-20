@@ -36,6 +36,9 @@ pub struct DiskInfo {
     total_space: u64,
     available_space: u64,
     file_system: String,
+    kind: String,
+    is_removable: bool,
+    is_read_only: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -101,6 +104,9 @@ pub fn get_disk_info() -> Vec<DiskInfo> {
             total_space: disk.total_space(),
             available_space: disk.available_space(),
             file_system: disk.file_system().to_string_lossy().into_owned(),
+            kind: disk.kind().to_string(),
+            is_removable: disk.is_removable(),
+            is_read_only: disk.is_read_only(),
         })
         .collect()
 }

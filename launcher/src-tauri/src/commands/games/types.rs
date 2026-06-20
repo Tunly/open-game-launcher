@@ -167,6 +167,7 @@ pub struct VerifyGameFilesResponse {
     pub game_id: String,
     pub checked_files: u32,
     pub missing_files: Vec<String>,
+    pub manifest_trust: ManifestTrustStatus,
     pub status: VerificationStatus,
 }
 
@@ -216,6 +217,7 @@ pub struct UploadGameSavesToCloudResponse {
     pub success: bool,
     pub game: InstalledGame,
     pub uploaded_files: Vec<String>,
+    pub deleted_cloud_files: Vec<String>,
     pub missing_files: Vec<String>,
     pub failed_files: Vec<String>,
     pub message: String,
@@ -229,6 +231,12 @@ pub struct UploadGameSavesToCloudRequest {
     pub api_key: String,
     pub access_token: String,
     pub user_id: String,
+    #[serde(default)]
+    pub save_paths: Vec<String>,
+    #[serde(default)]
+    pub selected_relative_paths: Option<Vec<String>>,
+    #[serde(default)]
+    pub delete_cloud_relative_paths: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -259,6 +267,7 @@ pub struct RestoreGameSavesFromCloudResponse {
     pub success: bool,
     pub restored_files: Vec<String>,
     pub backed_up_files: Vec<String>,
+    pub deleted_local_files: Vec<String>,
     pub skipped_files: Vec<String>,
     pub failed_files: Vec<String>,
     pub message: String,
@@ -272,6 +281,65 @@ pub struct RestoreGameSavesFromCloudRequest {
     pub api_key: String,
     pub access_token: String,
     pub user_id: String,
+    #[serde(default)]
+    pub save_paths: Vec<String>,
+    #[serde(default)]
+    pub selected_relative_paths: Option<Vec<String>>,
+    #[serde(default)]
+    pub delete_local_paths: Vec<String>,
+}
+
+#[derive(Clone, Debug, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum CloudSaveConflictStatus {
+    Matching,
+    LocalNewer,
+    CloudNewer,
+    Different,
+    LocalMissing,
+    CloudMissing,
+    Unknown,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CloudSaveConflictFile {
+    pub path: String,
+    pub relative_path: String,
+    pub status: CloudSaveConflictStatus,
+    pub local_size_bytes: Option<u64>,
+    pub cloud_size_bytes: Option<u64>,
+    pub local_modified_at: Option<String>,
+    pub cloud_created_at: Option<String>,
+    pub local_sha256: Option<String>,
+    pub cloud_sha256: Option<String>,
+    pub message: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CheckGameSaveConflictsResponse {
+    pub game_id: String,
+    pub success: bool,
+    pub checked_files: usize,
+    pub conflict_count: usize,
+    pub matching_count: usize,
+    pub missing_local_count: usize,
+    pub missing_cloud_count: usize,
+    pub files: Vec<CloudSaveConflictFile>,
+    pub message: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CheckGameSaveConflictsRequest {
+    pub game_id: String,
+    pub supabase_url: String,
+    pub api_key: String,
+    pub access_token: String,
+    pub user_id: String,
+    #[serde(default)]
+    pub save_paths: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -305,6 +373,41 @@ pub struct GameActivityUpdate {
 
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
+pub struct GameLifecycleEvent {
+    pub event: String,
+    pub game_id: String,
+    pub title: String,
+    pub launcher: String,
+    pub running: bool,
+    pub pid: Option<u32>,
+    pub process_name: Option<String>,
+    pub uptime_seconds: Option<u64>,
+    pub last_input_seconds: Option<u64>,
+    pub window_handle: Option<String>,
+    pub window_title: Option<String>,
+    pub last_played: Option<String>,
+    pub playtime_minutes: Option<u32>,
+    pub occurred_at: String,
+}
+
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct GameRuntimeUpdate {
+    pub game_id: String,
+    pub title: String,
+    pub launcher: String,
+    pub running: bool,
+    pub pid: Option<u32>,
+    pub process_name: Option<String>,
+    pub uptime_seconds: Option<u64>,
+    pub last_input_seconds: Option<u64>,
+    pub window_handle: Option<String>,
+    pub window_title: Option<String>,
+    pub occurred_at: String,
+}
+
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct LibraryInventoryChanged {
     pub reason: String,
     pub game_count: usize,
@@ -315,6 +418,15 @@ pub struct LibraryInventoryChanged {
 pub enum VerificationStatus {
     Verified,
     RepairRequired,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ManifestTrustStatus {
+    Missing,
+    Unsigned,
+    Signed,
+    Invalid,
 }
 
 #[derive(Debug, Deserialize)]

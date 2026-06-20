@@ -82,8 +82,7 @@ pub async fn run_external_download(
             return;
         }
         while *pause_rx.borrow() {
-            let (pause_status, pause_speed, pause_eta) =
-                pause_hold_feedback(&game_id, "Paused");
+            let (pause_status, pause_speed, pause_eta) = pause_hold_feedback(&game_id, "Paused");
             update_download_status(&game_id, &pause_status, &pause_speed, progress, pause_eta);
             emit_download_progress(
                 &app,
@@ -169,9 +168,7 @@ pub async fn run_external_download(
                         steam_manifest_path = Some(main_path);
                     } else {
                         let libraries =
-                            crate::commands::games::detect::read_steam_library_folders(
-                                &steam_path,
-                            );
+                            crate::commands::games::detect::read_steam_library_folders(&steam_path);
                         for lib in libraries {
                             let path = lib
                                 .join("steamapps")
@@ -190,10 +187,9 @@ pub async fn run_external_download(
                 if let Ok(contents) = std::fs::read_to_string(path) {
                     let steam_state = parse_steam_download_state(&contents);
 
-                    let downloading_dir_size =
-                        steam_downloading_dir_for_manifest(path, appid)
-                            .map(get_dir_size)
-                            .unwrap_or(0);
+                    let downloading_dir_size = steam_downloading_dir_for_manifest(path, appid)
+                        .map(get_dir_size)
+                        .unwrap_or(0);
 
                     if steam_state.is_fully_installed(downloading_dir_size) {
                         break;
@@ -203,8 +199,7 @@ pub async fn run_external_download(
                         calculate_steam_progress(&steam_state, downloading_dir_size)
                     {
                         progress = next_progress;
-                        let speed_str =
-                            steam_status_label(&steam_state, downloading_dir_size);
+                        let speed_str = steam_status_label(&steam_state, downloading_dir_size);
                         let (bytes_downloaded, bytes_total) =
                             steam_progress_bytes(&steam_state, downloading_dir_size);
                         update_download_metrics(
@@ -213,13 +208,7 @@ pub async fn run_external_download(
                             bytes_downloaded,
                             bytes_total,
                         );
-                        update_download_status(
-                            &game_id,
-                            "downloading",
-                            speed_str,
-                            progress,
-                            999,
-                        );
+                        update_download_status(&game_id, "downloading", speed_str, progress, 999);
                         emit_download_progress(
                             &app,
                             &game_id,
@@ -230,13 +219,7 @@ pub async fn run_external_download(
                         );
                     } else {
                         let speed_str = "Steam (Initializing...)";
-                        update_download_status(
-                            &game_id,
-                            "downloading",
-                            speed_str,
-                            progress,
-                            999,
-                        );
+                        update_download_status(&game_id, "downloading", speed_str, progress, 999);
                         emit_download_progress(
                             &app,
                             &game_id,
@@ -248,46 +231,18 @@ pub async fn run_external_download(
                     }
                 } else {
                     let speed_str = "Steam (Connecting...)";
-                    update_download_status(
-                        &game_id,
-                        "downloading",
-                        speed_str,
-                        progress,
-                        999,
-                    );
-                    emit_download_progress(
-                        &app,
-                        &game_id,
-                        progress,
-                        speed_str,
-                        "downloading",
-                        999,
-                    );
+                    update_download_status(&game_id, "downloading", speed_str, progress, 999);
+                    emit_download_progress(&app, &game_id, progress, speed_str, "downloading", 999);
                 }
             } else {
                 let speed_str = "Steam (Starting...)";
-                update_download_status(
-                    &game_id,
-                    "downloading",
-                    speed_str,
-                    progress,
-                    999,
-                );
-                emit_download_progress(
-                    &app,
-                    &game_id,
-                    progress,
-                    speed_str,
-                    "downloading",
-                    999,
-                );
+                update_download_status(&game_id, "downloading", speed_str, progress, 999);
+                emit_download_progress(&app, &game_id, progress, speed_str, "downloading", 999);
             }
             tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
         } else {
             let clean_id = game_id.replace("-owned-", "-");
-            let platform = crate::commands::downloads::utils::get_platform_from_game_id(
-                &game_id,
-            );
+            let platform = crate::commands::downloads::utils::get_platform_from_game_id(&game_id);
 
             let is_installed = match platform.as_str() {
                 "EA App" => crate::commands::games::detect::scan_ea_games()
@@ -306,8 +261,7 @@ pub async fn run_external_download(
             };
 
             if is_installed && external_started_at.elapsed().as_secs() >= 10 {
-                external_installed_seen_count =
-                    external_installed_seen_count.saturating_add(1);
+                external_installed_seen_count = external_installed_seen_count.saturating_add(1);
             } else {
                 external_installed_seen_count = 0;
             }
@@ -323,21 +277,8 @@ pub async fn run_external_download(
             progress = 0;
             let speed_str = format!("{platform} (External)");
             update_download_metrics(&game_id, "external", None, None);
-            update_download_status(
-                &game_id,
-                "downloading",
-                &speed_str,
-                progress,
-                999,
-            );
-            emit_download_progress(
-                &app,
-                &game_id,
-                progress,
-                &speed_str,
-                "downloading",
-                999,
-            );
+            update_download_status(&game_id, "downloading", &speed_str, progress, 999);
+            emit_download_progress(&app, &game_id, progress, &speed_str, "downloading", 999);
             tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
         }
     }

@@ -32,6 +32,11 @@ import type {
   UserSocialLink,
   WishlistPreviewItem,
 } from "../types/profile";
+import { resolveAppShellSkinId, type AppShellSkinId } from "../app-shell-skins";
+import {
+  createProfileThemeExchangePayload,
+  parseProfileThemeExchangeValue,
+} from "../profile-theme-exchange";
 import {
   assertSingle,
   handleError,
@@ -44,6 +49,7 @@ import {
   rowString,
   type UnknownRecord,
 } from "./helpers";
+import type { Json } from "./database.types";
 import { STORAGE_KEYS } from "../storage-keys";
 
 const hardwareFallbackStorageKey = STORAGE_KEYS.HARDWARE_FALLBACK;
@@ -71,6 +77,7 @@ function clearProfilePageCacheForUser(userId: string) {
 
 const profileSelect = `
   id,
+  app_shell_skin,
   username,
   display_name,
   avatar_url,
@@ -86,6 +93,7 @@ const profileSelect = `
   library_visibility,
   wishlist_visibility,
   comments_visibility,
+  custom_theme_json,
   profile_theme_id,
   featured_badge_id,
   featured_game_id,
@@ -197,6 +205,8 @@ async function getCurrentUserId() {
 function toProfile(row: UnknownRecord): Profile {
   return {
     id: rowString(row, "id"),
+    appShellSkinId: rowNullableString(row, "app_shell_skin"),
+    customTheme: parseProfileThemeExchangeValue(rowConfig(row, "custom_theme_json")),
     username: rowString(row, "username"),
     displayName: rowNullableString(row, "display_name"),
     avatarUrl: rowNullableString(row, "avatar_url"),
@@ -264,11 +274,11 @@ function toTheme(row: UnknownRecord | null): ProfileTheme | null {
     key: rowString(row, "key"),
     name: rowString(row, "name"),
     description: rowNullableString(row, "description"),
-    backgroundType: rowString(row, "background_type", "gradient") as ProfileTheme["backgroundType"],
+    backgroundType: rowString(row, "background_type", "solid") as ProfileTheme["backgroundType"],
     backgroundValue: rowNullableString(row, "background_value"),
     accentColor: rowNullableString(row, "accent_color"),
     textColor: rowNullableString(row, "text_color"),
-    cardStyle: rowString(row, "card_style", "glass") as ProfileTheme["cardStyle"],
+    cardStyle: rowString(row, "card_style", "solid") as ProfileTheme["cardStyle"],
     isPremium: rowBoolean(row, "is_premium"),
     isActive: rowBoolean(row, "is_active", true),
     createdAt: rowString(row, "created_at"),
@@ -312,6 +322,7 @@ function toSocialLink(row: UnknownRecord): UserSocialLink {
     label: rowNullableString(row, "label"),
     url: rowString(row, "url"),
     sortOrder: rowNumber(row, "sort_order"),
+    visibility: rowString(row, "visibility", "public") as UserSocialLink["visibility"],
     createdAt: rowString(row, "created_at"),
     updatedAt: rowString(row, "updated_at"),
   };
@@ -616,7 +627,11 @@ async function loadProfilePageData(username: string): Promise<ProfilePageData | 
     achievementPreview,
     wishlistPreview,
   ] = await Promise.all([
-    profile.profileThemeId ? getProfileTheme(profile.profileThemeId) : Promise.resolve(null),
+    profile.customTheme
+      ? Promise.resolve(profile.customTheme)
+      : profile.profileThemeId
+        ? getProfileTheme(profile.profileThemeId)
+        : Promise.resolve(null),
     getUserBadges(profile.id),
     getUserSocialLinks(profile.id),
     getUserHardware(profile.id),
@@ -711,6 +726,57 @@ export async function updateMyProfileTheme(themeId: string | null) {
   const { data, error } = await client
     .from("profiles")
     .update({ profile_theme_id: themeId })
+    .eq("id", userId)
+    .select(profileSelect)
+    .single();
+  if (isMissingSchemaError(error)) {
+    return assertSingle(
+      await getProfileByUserId(userId),
+      "Profile was not found for the current user.",
+    );
+  }
+  handleError(error);
+
+  const profile = toProfile(data as UnknownRecord);
+  clearProfilePageCacheForUser(userId);
+  return profile;
+}
+
+export async function updateMyAppShellSkin(skinId: AppShellSkinId | null) {
+  const client = getSupabaseClient();
+  const userId = await getCurrentUserId();
+  const appShellSkin = skinId === null ? null : resolveAppShellSkinId(skinId);
+  const { data, error } = await client
+    .from("profiles")
+    .update({ app_shell_skin: appShellSkin })
+    .eq("id", userId)
+    .select(profileSelect)
+    .single();
+  if (isMissingSchemaError(error)) {
+    return assertSingle(
+      await getProfileByUserId(userId),
+      "Profile was not found for the current user.",
+    );
+  }
+  handleError(error);
+
+  const profile = toProfile(data as UnknownRecord);
+  clearProfilePageCacheForUser(userId);
+  return profile;
+}
+
+export async function updateMyCustomTheme(theme: ProfileTheme | null) {
+  const client = getSupabaseClient();
+  const userId = await getCurrentUserId();
+  const payload = theme
+    ? ({
+        custom_theme_json: createProfileThemeExchangePayload(theme) as unknown as Json,
+        profile_theme_id: null,
+      } satisfies { custom_theme_json: Json | null; profile_theme_id: null })
+    : ({ custom_theme_json: null } satisfies { custom_theme_json: Json | null });
+  const { data, error } = await client
+    .from("profiles")
+    .update(payload)
     .eq("id", userId)
     .select(profileSelect)
     .single();
@@ -1373,6 +1439,7 @@ export async function updateMySocialLinks(links: SocialLinksInput) {
         label: link.label,
         url: link.url,
         sort_order: link.sortOrder ?? index,
+        visibility: link.visibility ?? "public",
       })),
     )
     .select("*")
@@ -1383,6 +1450,5 @@ export async function updateMySocialLinks(links: SocialLinksInput) {
   return socialLinks;
 }
 
-// TODO: Move writes for badges, XP, entitlements, playtime, and achievements to
-// a secure backend/service_role API before production. This client only reads
-// those surfaces under Supabase RLS.
+// Progression surfaces stay read-only in the profile client. Trusted ingestion
+// Edge Functions own badge, XP, entitlement, playtime, and achievement writes.

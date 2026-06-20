@@ -75,6 +75,7 @@ export const socialLinksSchema = z.array(
     label: z.string().max(64).nullable().optional(),
     url: z.string().url(),
     sortOrder: z.number().int().min(0).optional(),
+    visibility: visibilitySchema.optional(),
   }),
 );
 

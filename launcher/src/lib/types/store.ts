@@ -3,6 +3,23 @@ export type OrderStatus = "pending" | "paid" | "fulfilled" | "refunded" | "faile
 export type BuildPlatform = "windows" | "macos" | "linux";
 export type BuildArch = "x86_64" | "aarch64";
 export type DevApplicationStatus = "pending" | "approved" | "rejected";
+export type StoreReviewReportReason =
+  | "spam"
+  | "harassment"
+  | "hate_or_abuse"
+  | "spoilers"
+  | "off_topic"
+  | "fraud"
+  | "other";
+export type StoreReviewReportStatus = "active" | "dismissed" | "withdrawn";
+export type StoreRefundRequestStatus =
+  | "requested"
+  | "reviewing"
+  | "approved"
+  | "rejected"
+  | "cancelled"
+  | "processed";
+export type StoreInvoiceStatus = "pending" | "available" | "unavailable" | "void";
 
 export interface StoreProduct {
   id: string;
@@ -32,12 +49,41 @@ export interface StoreProduct {
   updatedAt: string;
 }
 
+export interface StorePricePoint {
+  id: string;
+  gameId: string;
+  platform: string;
+  priceCents: number;
+  discountPercent: number;
+  recordedAt: string;
+}
+
+export type StorePriceHistory = StorePricePoint[];
+
 export interface StoreCartItem {
   id: string;
   userId: string;
   productId: string;
   quantity: number;
   addedAt: string;
+}
+
+export interface StoreWishlistItem {
+  id: string;
+  userId: string;
+  productId: string;
+  addedAt: string;
+}
+
+export interface StorePriceAlert {
+  id: string;
+  userId: string;
+  productId: string;
+  targetPriceCents: number;
+  isActive: boolean;
+  lastNotifiedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface StoreOrder {
@@ -81,6 +127,13 @@ export interface StoreBuild {
   createdAt: string;
 }
 
+export interface StoreBuildDownloadTicket {
+  build: StoreBuild;
+  expiresAt: string;
+  licenseId: string;
+  url: string;
+}
+
 export interface StoreLicense {
   id: string;
   userId: string;
@@ -93,6 +146,108 @@ export interface StoreLicense {
   expiresAt: string | null;
   isRevoked: boolean;
   createdAt: string;
+}
+
+export interface StoreLicenseValidationResult {
+  valid: boolean;
+  reason: string;
+  productId: string | null;
+  platform: string | null;
+  deviceId: string | null;
+  expiresAt: string | null;
+  remainingDays: number | null;
+}
+
+export interface StoreReview {
+  id: string;
+  productId: string;
+  userId: string;
+  rating: number;
+  title: string | null;
+  body: string | null;
+  isPublished: boolean;
+  isHiddenByReports: boolean;
+  hiddenByReportsAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface StoreReviewReply {
+  id: string;
+  reviewId: string;
+  productId: string;
+  developerUserId: string;
+  body: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface StoreReviewInput {
+  rating: number;
+  title?: string | null;
+  body?: string | null;
+}
+
+export interface StoreReviewReplyInput {
+  body: string;
+}
+
+export interface StoreReviewReport {
+  id: string;
+  reviewId: string;
+  reporterUserId: string;
+  reason: StoreReviewReportReason;
+  details: string | null;
+  status: StoreReviewReportStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface StoreReviewReportInput {
+  reason: StoreReviewReportReason;
+  details?: string | null;
+}
+
+export interface StoreRefundRequest {
+  id: string;
+  orderId: string;
+  userId: string;
+  reason: string;
+  details: string | null;
+  status: StoreRefundRequestStatus;
+  provider: string;
+  providerRefundId: string | null;
+  providerRefundStatus: string | null;
+  refundAmountCents: number | null;
+  failureReason: string | null;
+  metadata: Record<string, unknown>;
+  requestedAt: string;
+  reviewedAt: string | null;
+  processedAt: string | null;
+  cancelledAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface StoreRefundRequestInput {
+  reason: string;
+  details?: string | null;
+}
+
+export interface StoreOrderInvoice {
+  id: string;
+  orderId: string;
+  userId: string;
+  provider: string;
+  providerInvoiceId: string | null;
+  invoiceNumber: string | null;
+  status: StoreInvoiceStatus;
+  hostedInvoiceUrl: string | null;
+  pdfUrl: string | null;
+  metadata: Record<string, unknown>;
+  issuedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface DeveloperApplication {

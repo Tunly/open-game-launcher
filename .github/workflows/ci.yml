@@ -3,9 +3,43 @@ name: CI
 on:
   push:
     branches: [main]
+    tags:
+      - "v*"
   pull_request:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      hosted_deploy_gate:
+        description: Run the manual Supabase hosted deploy gate
+        required: false
+        type: boolean
+        default: false
+      hosted_deploy_dry_run:
+        description: Print hosted deploy commands without deploying
+        required: false
+        type: boolean
+        default: false
+      hosted_environment:
+        description: GitHub Environment that supplies hosted deploy secrets
+        required: false
+        type: choice
+        options:
+          - hosted-staging
+          - hosted-production
+        default: hosted-staging
+      hosted_deploy_action:
+        description: Hosted gate action
+        required: false
+        type: choice
+        options:
+          - preflight
+          - deploy
+          - smoke
+          - all
+        default: preflight
+
+permissions:
+  contents: read
 
 # Cancel in-flight runs for the same ref when a new commit lands.
 concurrency:
@@ -20,18 +54,18 @@ jobs:
   # ---------- Frontend ----------
   frontend:
     name: Frontend (typecheck / lint / test / build)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: launcher
     steps:
-      - uses: actions/checkout@v6
-      - uses: pnpm/action-setup@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: pnpm/action-setup@b0f76dfb45f55f8421693e4803ac7bb65143bd34 # v6
         with:
           version: 9.15.4
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
-          node-version: 20
+          node-version-file: .node-version
           cache: pnpm
           cache-dependency-path: launcher/pnpm-lock.yaml
       - name: Install dependencies
@@ -53,14 +87,14 @@ jobs:
   # ---------- Rust: formatting ----------
   rust-fmt:
     name: Rust (cargo fmt --check)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v6
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
         with:
           components: rustfmt
       - name: Install cached target
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@42dc69e1aa15d09112580998cf2ef0119e2e91ae # v2
         with:
           workspaces: launcher/src-tauri -> target
       - name: Format check
@@ -70,13 +104,13 @@ jobs:
   # ---------- Rust: clippy ----------
   rust-clippy:
     name: Rust (cargo clippy -D warnings)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v6
-      - uses: dtolnay/rust-toolchain@stable
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
         with:
           components: clippy
-      - uses: Swatinem/rust-cache@v2
+      - uses: Swatinem/rust-cache@42dc69e1aa15d09112580998cf2ef0119e2e91ae # v2
         with:
           workspaces: launcher/src-tauri -> target
       - name: Clippy (lib)
@@ -89,25 +123,25 @@ jobs:
   # ---------- Rust: tests ----------
   rust-test:
     name: Rust (cargo test)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v6
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+      - uses: Swatinem/rust-cache@42dc69e1aa15d09112580998cf2ef0119e2e91ae # v2
         with:
           workspaces: launcher/src-tauri -> target
       - name: Test
         working-directory: launcher/src-tauri
-        run: cargo test --lib
+        run: cargo test
 
   # ---------- Rust: Windows build ----------
   rust-build-windows:
     name: Rust (cargo check --target x86_64-pc-windows-msvc)
-    runs-on: windows-latest
+    runs-on: windows-2025
     steps:
-      - uses: actions/checkout@v6
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+      - uses: Swatinem/rust-cache@42dc69e1aa15d09112580998cf2ef0119e2e91ae # v2
         with:
           workspaces: launcher/src-tauri -> target
       - name: Check (Windows MSVC)
@@ -115,17 +149,17 @@ jobs:
         run: cargo check --lib --target x86_64-pc-windows-msvc
 
   # ---------- Supabase: db lint ----------
-  # Runs only on push to main and on pull_request, because it spins up a
-  # Postgres container and the cold-start is ~30s.
+  # Runs on push/PR and the manual hosted-deploy gate path, because it spins up
+  # a Postgres container and the cold-start is ~30s.
   supabase-db-lint:
     name: Supabase (db lint)
-    runs-on: ubuntu-latest
-    if: github.event_name == 'push' || github.event_name == 'pull_request'
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'push' || github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.hosted_deploy_gate)
     steps:
-      - uses: actions/checkout@v6
-      - uses: supabase/setup-cli@v1
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: supabase/setup-cli@ab058987d8d6c725971f6cf9d0b5c98467e30bd1 # v1
         with:
-          version: latest
+          version: 2.104.0
       - name: Start Postgres
         run: |
           # `supabase db lint` needs a live database. We start one via
@@ -133,10 +167,78 @@ jobs:
           supabase start --workdir . --no-api
       - name: Lint migrations
         working-directory: .
-        run: supabase db lint --workdir .
+        run: supabase db lint --workdir . --local --fail-on error
       - name: Stop Supabase
         if: always()
         run: supabase stop --workdir . --no-api || true
+
+  # ---------- Supabase: Edge Function contracts ----------
+  supabase-edge-contracts:
+    name: Supabase (Edge contracts)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@b0f76dfb45f55f8421693e4803ac7bb65143bd34 # v6
+        with:
+          version: 9.15.4
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version-file: .node-version
+      - uses: denoland/setup-deno@667a34cdef165d8d2b2e98dde39547c9daac7282 # v2
+        with:
+          deno-version: v2.8.3
+      - name: Validate hosted deploy gate script
+        run: node --test scripts/hosted-deploy-gate.test.mjs
+      - name: Validate external completion evidence script
+        run: node --test scripts/external-evidence-check.test.mjs
+      - name: Validate hosted cron evidence script
+        run: node --test scripts/hosted-cron-evidence.test.mjs
+      - name: Validate completion gate script
+        run: node --test scripts/completion-gate.test.mjs
+      - name: Validate release tracking script
+        run: node --test scripts/release-tracking-check.test.mjs
+      - name: Validate release tag script
+        run: node --test scripts/release-tag-check.test.mjs
+      - name: Validate UI evidence guard
+        run: node --test scripts/ui-evidence-check.test.mjs
+      - name: Check UI screenshot evidence for changed UI files
+        env:
+          BASE_REF_NAME: ${{ github.base_ref }}
+          BEFORE_SHA: ${{ github.event.before }}
+          EVENT_NAME: ${{ github.event_name }}
+        run: |
+          git fetch --no-tags origin main
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            BASE_RANGE="origin/${BASE_REF_NAME}...HEAD"
+          elif [ -n "$BEFORE_SHA" ] && [ "$BEFORE_SHA" != "0000000000000000000000000000000000000000" ]; then
+            BASE_RANGE="${BEFORE_SHA}...HEAD"
+          else
+            BASE_RANGE="origin/main...HEAD"
+          fi
+          node scripts/ui-evidence-check.mjs --base "$BASE_RANGE"
+      - name: Validate Supabase DB lint wrapper
+        run: node --test scripts/supabase-db-lint.test.mjs
+      - name: Smoke external evidence helper output
+        run: |
+          node scripts/completion-gate.mjs plan
+          node scripts/completion-gate.mjs status | tee completion-gate-status.json
+          node -e "const fs = require('fs'); const status = JSON.parse(fs.readFileSync('completion-gate-status.json', 'utf8')); if (status.releaseReady !== false) throw new Error('completion status smoke must not claim release readiness without external proof');"
+          node scripts/hosted-deploy-gate.mjs plan
+          node scripts/external-evidence-check.mjs plan
+          node scripts/hosted-cron-evidence.mjs plan
+          node scripts/release-tracking-check.mjs
+      - name: Validate Supabase functions test runner
+        run: node --test scripts/supabase-functions-test.test.mjs
+      - name: Check Supabase Edge Function sources
+        run: pnpm supabase:functions:check
+      - name: Validate verify route inventory
+        run: node --test scripts/verify-route-inventory.test.mjs
+      - name: Smoke verify route inventory CLI
+        run: node scripts/verify-route-inventory.mjs
+      - name: Test Supabase Edge contracts
+        run: node scripts/supabase-functions-test.mjs
 
   # ---------- Coverage (informational) ----------
   # Coverage runs as a separate job because it doubles test time and the
@@ -145,19 +247,19 @@ jobs:
   # gating on thresholds is a follow-up.
   coverage:
     name: Coverage (vitest, informational)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: frontend
     defaults:
       run:
         working-directory: launcher
     steps:
-      - uses: actions/checkout@v6
-      - uses: pnpm/action-setup@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: pnpm/action-setup@b0f76dfb45f55f8421693e4803ac7bb65143bd34 # v6
         with:
           version: 9.15.4
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
-          node-version: 20
+          node-version-file: .node-version
           cache: pnpm
           cache-dependency-path: launcher/pnpm-lock.yaml
       - name: Install dependencies
@@ -166,42 +268,114 @@ jobs:
         run: pnpm test:cov
       - name: Upload coverage report
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: coverage-report
           path: launcher/coverage/
 
   # ---------- Build & Upload (release tags only) ----------
+  release-boundary-gate:
+    name: Release boundary gate (external evidence)
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    environment: hosted-production
+    needs:
+      [
+        frontend,
+        rust-fmt,
+        rust-clippy,
+        rust-test,
+        rust-build-windows,
+        supabase-db-lint,
+        supabase-edge-contracts,
+      ]
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          fetch-depth: 0
+      - uses: pnpm/action-setup@b0f76dfb45f55f8421693e4803ac7bb65143bd34 # v6
+        with:
+          version: 9.15.4
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+          cache-dependency-path: launcher/pnpm-lock.yaml
+      - name: Validate release tag version
+        run: node scripts/release-tag-check.mjs "$GITHUB_REF_NAME"
+      - name: Validate release tag source
+        run: |
+          git fetch --no-tags origin main
+          HEAD_SHA="$(git rev-parse HEAD)"
+          MAIN_SHA="$(git rev-parse origin/main)"
+          if [ "$HEAD_SHA" != "$MAIN_SHA" ]; then
+            echo "release tags must point at the current origin/main commit." >&2
+            exit 1
+          fi
+      - name: Install launcher dependencies
+        run: pnpm --dir launcher install --frozen-lockfile
+      - name: Run external release boundary gate
+        run: pnpm completion:gate:external
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_FUNCTIONS_URL: ${{ secrets.SUPABASE_FUNCTIONS_URL }}
+          SUPABASE_REST_URL: ${{ secrets.SUPABASE_REST_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_AUTH_JWT: ${{ secrets.SUPABASE_AUTH_JWT }}
+          ACCOUNT_DELETION_PROCESSOR_SECRET: ${{ secrets.ACCOUNT_DELETION_PROCESSOR_SECRET }}
+          PRICE_DROP_NOTIFY_SECRET: ${{ secrets.PRICE_DROP_NOTIFY_SECRET }}
+          PRESENCE_POLL_SECRET: ${{ secrets.PRESENCE_POLL_SECRET }}
+          STRIPE_SECRET_KEY: ${{ secrets.STRIPE_SECRET_KEY }}
+          STRIPE_WEBHOOK_SECRET: ${{ secrets.STRIPE_WEBHOOK_SECRET }}
+          STEAM_WEB_API_KEY: ${{ secrets.STEAM_WEB_API_KEY }}
+          PRESENCE_PROVIDER_TOKEN: ${{ secrets.PRESENCE_PROVIDER_TOKEN }}
+          MOD_IO_API_KEY: ${{ secrets.MOD_IO_API_KEY }}
+          CURSEFORGE_API_KEY: ${{ secrets.CURSEFORGE_API_KEY }}
+          OGL_HOSTED_SMOKE_ORIGIN: ${{ vars.OGL_HOSTED_SMOKE_ORIGIN }}
+
   build-upload:
     name: Build & Upload (${{ matrix.os }})
-    if: startsWith(github.ref, 'refs/tags/')
+    if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ${{ matrix.os }}
-    needs: [frontend, rust-clippy, rust-test, supabase-db-lint]
+    needs:
+      [
+        frontend,
+        rust-fmt,
+        rust-clippy,
+        rust-test,
+        rust-build-windows,
+        supabase-db-lint,
+        supabase-edge-contracts,
+        release-boundary-gate,
+      ]
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: ubuntu-latest
+          - os: ubuntu-24.04
             target: x86_64-unknown-linux-gnu
             artifact: open-game-launcher_${{ github.ref_name }}_amd64.AppImage
-          - os: windows-latest
+          - os: windows-2025
             target: x86_64-pc-windows-msvc
             artifact: open-game-launcher_${{ github.ref_name }}_x64.msi
-          - os: macos-latest
+          - os: macos-15
             target: aarch64-apple-darwin
             artifact: open-game-launcher_${{ github.ref_name }}_aarch64.dmg
     steps:
-      - uses: actions/checkout@v6
-      - uses: pnpm/action-setup@v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: pnpm/action-setup@b0f76dfb45f55f8421693e4803ac7bb65143bd34 # v6
         with:
           version: 9.15.4
-      - uses: actions/setup-node@v6
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
-          node-version: 20
+          node-version-file: .node-version
           cache: pnpm
           cache-dependency-path: launcher/pnpm-lock.yaml
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+      - uses: Swatinem/rust-cache@42dc69e1aa15d09112580998cf2ef0119e2e91ae # v2
         with:
           workspaces: launcher/src-tauri -> target
       - name: Install frontend deps
@@ -216,15 +390,129 @@ jobs:
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          # linuxdeploy's bundled strip does not understand RELR sections in
+          # current Ubuntu/rolling-release shared libraries.
+          APPIMAGE_EXTRACT_AND_RUN: ${{ runner.os == 'Linux' && '1' || '' }}
+          NO_STRIP: ${{ runner.os == 'Linux' && '1' || '' }}
       - name: Upload artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: ${{ matrix.artifact }}
-          path: launcher/src-tauri/target/${{ matrix.target }}/release/bundle/
+          path: |
+            launcher/src-tauri/target/${{ matrix.target }}/release/bundle/**/*.AppImage
+            launcher/src-tauri/target/${{ matrix.target }}/release/bundle/**/*.deb
+            launcher/src-tauri/target/${{ matrix.target }}/release/bundle/**/*.rpm
+            launcher/src-tauri/target/${{ matrix.target }}/release/bundle/**/*.msi
+            launcher/src-tauri/target/${{ matrix.target }}/release/bundle/**/*.exe
+            launcher/src-tauri/target/${{ matrix.target }}/release/bundle/**/*.dmg
+            launcher/src-tauri/target/${{ matrix.target }}/release/bundle/**/*.app.tar.gz
+
+  create-draft-release:
+    name: Create Draft Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    needs: [build-upload]
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          path: release-artifacts
+          merge-multiple: true
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
-          files: launcher/src-tauri/target/${{ matrix.target }}/release/bundle/*
+          files: release-artifacts/**
           draft: true
           generate_release_notes: true
+
+  # ---------- Supabase: manual hosted deploy gate ----------
+  # This workflow_dispatch-only job is not part of automatic push/PR CI. It is
+  # the explicit hosted deployment handoff after local/contract CI has passed.
+  hosted-deploy-gate:
+    name: Supabase (hosted deploy gate)
+    runs-on: ubuntu-24.04
+    if: github.event_name == 'workflow_dispatch' && inputs.hosted_deploy_gate
+    environment: ${{ inputs.hosted_environment }}
+    needs:
+      [
+        frontend,
+        rust-fmt,
+        rust-clippy,
+        rust-test,
+        rust-build-windows,
+        supabase-db-lint,
+        supabase-edge-contracts,
+      ]
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          fetch-depth: 0
+      - name: Validate hosted production source
+        if: inputs.hosted_environment == 'hosted-production' && (inputs.hosted_deploy_action == 'deploy' || inputs.hosted_deploy_action == 'smoke' || inputs.hosted_deploy_action == 'all')
+        run: |
+          if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+            echo "hosted-production deploy and smoke runs must use refs/heads/main." >&2
+            exit 1
+          fi
+          git fetch --no-tags origin main
+          HEAD_SHA="$(git rev-parse HEAD)"
+          MAIN_SHA="$(git rev-parse origin/main)"
+          if [ "$HEAD_SHA" != "$MAIN_SHA" ]; then
+            echo "hosted-production deploy and smoke runs must use the current origin/main commit." >&2
+            exit 1
+          fi
+      - uses: pnpm/action-setup@b0f76dfb45f55f8421693e4803ac7bb65143bd34 # v6
+        with:
+          version: 9.15.4
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+          cache-dependency-path: launcher/pnpm-lock.yaml
+      - uses: supabase/setup-cli@ab058987d8d6c725971f6cf9d0b5c98467e30bd1 # v1
+        with:
+          version: 2.104.0
+      - name: Install launcher dependencies
+        run: pnpm --dir launcher install --frozen-lockfile
+      - name: Validate hosted deploy gate script
+        run: pnpm hosted:deploy-gate:test
+      - name: Hosted deploy gate preflight
+        if: inputs.hosted_deploy_action == 'preflight' || inputs.hosted_deploy_action == 'deploy' || inputs.hosted_deploy_action == 'all' || (inputs.hosted_environment == 'hosted-production' && inputs.hosted_deploy_action == 'smoke')
+        run: pnpm hosted:deploy-gate preflight
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_FUNCTIONS_URL: ${{ secrets.SUPABASE_FUNCTIONS_URL }}
+          ACCOUNT_DELETION_PROCESSOR_SECRET: ${{ secrets.ACCOUNT_DELETION_PROCESSOR_SECRET }}
+          PRICE_DROP_NOTIFY_SECRET: ${{ secrets.PRICE_DROP_NOTIFY_SECRET }}
+          PRESENCE_POLL_SECRET: ${{ secrets.PRESENCE_POLL_SECRET }}
+          OGL_HOSTED_DEPLOY_FUNCTIONS: ${{ vars.OGL_HOSTED_DEPLOY_FUNCTIONS }}
+          OGL_HOSTED_SMOKE_ORIGIN: ${{ vars.OGL_HOSTED_SMOKE_ORIGIN }}
+      - name: Deploy hosted Supabase functions
+        if: inputs.hosted_deploy_action == 'deploy' || inputs.hosted_deploy_action == 'all'
+        run: |
+          if [ "$HOSTED_DEPLOY_DRY_RUN" = "true" ]; then
+            pnpm hosted:deploy-gate deploy --dry-run
+          else
+            pnpm hosted:deploy-gate deploy
+          fi
+        env:
+          HOSTED_DEPLOY_DRY_RUN: ${{ inputs.hosted_deploy_dry_run }}
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          OGL_HOSTED_DEPLOY_FUNCTIONS: ${{ vars.OGL_HOSTED_DEPLOY_FUNCTIONS }}
+      - name: Smoke hosted Supabase functions
+        if: ${{ inputs.hosted_deploy_action == 'smoke' || (inputs.hosted_deploy_action == 'all' && !inputs.hosted_deploy_dry_run) }}
+        run: pnpm hosted:deploy-gate smoke
+        env:
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_FUNCTIONS_URL: ${{ secrets.SUPABASE_FUNCTIONS_URL }}
+          ACCOUNT_DELETION_PROCESSOR_SECRET: ${{ secrets.ACCOUNT_DELETION_PROCESSOR_SECRET }}
+          PRICE_DROP_NOTIFY_SECRET: ${{ secrets.PRICE_DROP_NOTIFY_SECRET }}
+          PRESENCE_POLL_SECRET: ${{ secrets.PRESENCE_POLL_SECRET }}
+          OGL_HOSTED_SMOKE_ORIGIN: ${{ vars.OGL_HOSTED_SMOKE_ORIGIN }}

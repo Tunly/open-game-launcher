@@ -1,4 +1,5 @@
-import { getSupabaseClient } from "./client";
+import { getSupabaseClient, isSupabaseConfigured } from "./client";
+import { isMissingSchemaError } from "./helpers";
 import type {
   InstalledModInfo,
   ManagedMod,
@@ -7,6 +8,7 @@ import type {
   ModProfile,
   ModProvider,
   ModSource,
+  SharedModProviderGameMapping,
 } from "../types/mods";
 
 // The Database type lags behind migrations for the mod catalog and
@@ -24,6 +26,8 @@ const CATALOG_SELECT = `id, slug, local_game_id, game_id, name, author, summary,
   banner_url, status, created_at, updated_at`;
 const VERSION_SELECT = `id, catalog_mod_id, version, changelog, file_size_bytes,
   sha256, download_url, storage_path, install_strategy, is_latest, status, created_at`;
+const PROVIDER_GAME_MAPPING_SELECT = `id, local_game_id, game_id, game_title, provider,
+  provider_game_id, source, confidence, status, created_by, verified_at, metadata, created_at, updated_at`;
 
 interface ModRow {
   id: string;
@@ -93,6 +97,23 @@ interface CatalogVersionRow {
   is_latest: boolean | null;
   status: string | null;
   created_at: string;
+}
+
+interface ProviderGameMappingRow {
+  id: string;
+  local_game_id: string;
+  game_id: string | null;
+  game_title: string | null;
+  provider: string;
+  provider_game_id: string;
+  source: string;
+  confidence: string;
+  status: string;
+  created_by: string | null;
+  verified_at: string | null;
+  metadata: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string;
 }
 
 interface ModUpdateDb {
@@ -176,6 +197,25 @@ function rowToCatalogEntry(
     bannerUrl: row.banner_url,
     status: (row.status ?? "published") as ModCatalogEntry["status"],
     latestVersion,
+  };
+}
+
+function rowToSharedProviderGameMapping(row: ProviderGameMappingRow): SharedModProviderGameMapping {
+  return {
+    id: row.id,
+    localGameId: row.local_game_id,
+    gameId: row.game_id,
+    gameTitle: row.game_title,
+    provider: row.provider as Extract<ModProvider, "modio" | "curseforge">,
+    providerGameId: row.provider_game_id,
+    source: row.source as SharedModProviderGameMapping["source"],
+    confidence: row.confidence as SharedModProviderGameMapping["confidence"],
+    status: row.status as SharedModProviderGameMapping["status"],
+    createdBy: row.created_by,
+    verifiedAt: row.verified_at,
+    metadata: row.metadata,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
   };
 }
 
@@ -417,4 +457,88 @@ export async function recordUserModInstall(install: InstalledModInfo): Promise<v
     .from("user_mod_installs")
     .upsert(payload, { onConflict: "user_id,local_install_id" });
   if (error) throw new Error(error.message);
+}
+
+export async function listSharedModProviderGameMappings(
+  filters: {
+    localGameId?: string;
+    provider?: Extract<ModProvider, "modio" | "curseforge">;
+  } = {},
+): Promise<SharedModProviderGameMapping[]> {
+  if (!isSupabaseConfigured) return [];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- mod_provider_game_mappings not yet in Database types
+  const client = getSupabaseClient() as any;
+  let query = client
+    .from("mod_provider_game_mappings")
+    .select(PROVIDER_GAME_MAPPING_SELECT)
+    .eq("status", "active")
+    .order("verified_at", { ascending: false, nullsFirst: false })
+    .order("confidence", { ascending: false })
+    .order("updated_at", { ascending: false });
+
+  if (filters.localGameId?.trim()) {
+    query = query.eq("local_game_id", filters.localGameId.trim());
+  }
+  if (filters.provider) {
+    query = query.eq("provider", filters.provider);
+  }
+
+  const { data, error } = await query.limit(80);
+  if (isMissingSchemaError(error)) return [];
+  if (error) throw new Error(error.message);
+
+  return ((data ?? []) as ProviderGameMappingRow[]).map(rowToSharedProviderGameMapping);
+}
+
+export async function upsertSharedModProviderGameMapping(input: {
+  gameId?: string | null;
+  gameTitle?: string | null;
+  localGameId: string;
+  metadata?: Record<string, unknown>;
+  provider: Extract<ModProvider, "modio" | "curseforge">;
+  providerGameId: string;
+  source?: Extract<
+    SharedModProviderGameMapping["source"],
+    "manual" | "local_hint" | "provider_api"
+  >;
+}): Promise<SharedModProviderGameMapping | null> {
+  if (!isSupabaseConfigured) return null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- mod_provider_game_mappings not yet in Database types
+  const client = getSupabaseClient() as any;
+  const {
+    data: { user },
+  } = await client.auth.getUser();
+  if (!user) return null;
+
+  const payload = {
+    created_by: user.id,
+    confidence: getSharedProviderMappingConfidence(input.source ?? "manual"),
+    game_id: input.gameId ?? null,
+    game_title: input.gameTitle?.slice(0, 240) ?? null,
+    local_game_id: input.localGameId,
+    metadata: input.metadata ?? {},
+    provider: input.provider,
+    provider_game_id: input.providerGameId,
+    source: input.source ?? "manual",
+    status: "active",
+    verified_at: null,
+  };
+
+  const { data, error } = await client
+    .from("mod_provider_game_mappings")
+    .upsert(payload, { onConflict: "provider,local_game_id,provider_game_id" })
+    .select(PROVIDER_GAME_MAPPING_SELECT)
+    .single();
+  if (isMissingSchemaError(error)) return null;
+  if (error) throw new Error(error.message);
+
+  return rowToSharedProviderGameMapping(data as ProviderGameMappingRow);
+}
+
+function getSharedProviderMappingConfidence(
+  source: Extract<SharedModProviderGameMapping["source"], "manual" | "local_hint" | "provider_api">,
+): Extract<SharedModProviderGameMapping["confidence"], "manual" | "low" | "high"> {
+  if (source === "provider_api") return "high";
+  if (source === "local_hint") return "low";
+  return "manual";
 }

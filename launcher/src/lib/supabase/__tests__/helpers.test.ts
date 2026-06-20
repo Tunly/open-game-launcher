@@ -110,6 +110,13 @@ describe("isMissingSchemaError", () => {
     expect(isMissingSchemaError({ code: "42P01", message: "relation does not exist" })).toBe(true);
   });
 
+  it("returns true for missing function errors", () => {
+    expect(isMissingSchemaError({ code: "42883", message: "function does not exist" })).toBe(true);
+    expect(isMissingSchemaError({ code: "PGRST202", message: "Could not find the function" })).toBe(
+      true,
+    );
+  });
+
   it("returns true when the message contains 'schema cache'", () => {
     expect(isMissingSchemaError({ message: "Could not find the table in the schema cache" })).toBe(
       true,

@@ -1,12 +1,15 @@
-import { Circle, Gamepad2, LogIn, Trash2, UserRound } from "lucide-react";
+import { Circle, Gamepad2, LogIn, MessageSquare, Send, Trash2, UserRound } from "lucide-react";
 import { Link } from "react-router-dom";
 
+import { getPresenceGameLine, getPresencePlatformLabel } from "../../lib/supabase/presence";
 import type { Friendship, UserPresence } from "../../lib/types/profile";
 
 export function FriendsList({
   currentUserId,
   friends,
   onRemove,
+  onOpenChat,
+  onOpenInvite,
   onSelectFriend,
   onJoinGame,
   presenceByUserId = {},
@@ -15,6 +18,8 @@ export function FriendsList({
   currentUserId: string;
   friends: Friendship[];
   onRemove?: (friendship: Friendship) => void;
+  onOpenChat?: (friendId: string) => void;
+  onOpenInvite?: (friendId: string) => void;
   onSelectFriend?: (friendId: string) => void;
   onJoinGame?: (gameId: string) => void;
   presenceByUserId?: Record<string, UserPresence>;
@@ -30,6 +35,10 @@ export function FriendsList({
               : friendship.requesterId;
           const presence = presenceByUserId[friendId];
           const status = presence?.status ?? "offline";
+          const gameLine = presence ? getPresenceGameLine(presence) : null;
+          const platformLabel = presence
+            ? getPresencePlatformLabel(presence.platform, presence.platformSource)
+            : null;
           const isSelected = selectedFriendId === friendId;
           const displayName = friendship.profile?.displayName ?? friendship.profile?.username;
           const username = friendship.profile?.username;
@@ -57,7 +66,7 @@ export function FriendsList({
                       {displayName ?? "Unknown player"}
                     </p>
                     {username ? (
-                      <p className="neo-copy mt-1 truncate text-[10px] font-black tracking-[0.12em] text-[#5b403f] uppercase">
+                      <p className="neo-copy mt-1 truncate text-[10px] font-black uppercase tracking-[0.12em] text-[#5b403f]">
                         @{username}
                       </p>
                     ) : null}
@@ -69,41 +78,61 @@ export function FriendsList({
                     </div>
                   </div>
                 </div>
-                {presence?.currentGameTitle ? (
-                  <div className="mt-3 flex items-center gap-2">
-                    <p className="neo-copy inline-flex max-w-full items-center gap-2 border-2 border-black bg-[#fff9ed] px-3 py-2 text-[10px] font-black tracking-[0.12em] text-[#171411] uppercase shadow-[2px_2px_0_#171411]">
-                      <Gamepad2 className="h-4 w-4 shrink-0 text-[#b7102a]" />
-                      <span className="truncate">Playing {presence.currentGameTitle}</span>
-                    </p>
-                    {onJoinGame && presence?.currentGameId ? (
-                      <button
-                        className="neo-copy inline-flex items-center gap-1 border-2 border-black bg-[#087d6d] px-2 py-1 text-[10px] font-black text-white uppercase shadow-[2px_2px_0_#171411] transition hover:bg-[#065e53]"
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onJoinGame(presence.currentGameId!);
-                        }}
-                      >
-                        <LogIn className="h-3 w-3" />
-                        Beitreten
-                      </button>
-                    ) : null}
-                  </div>
-                ) : null}
               </button>
-              <div className="flex items-center justify-end gap-2 border-t-2 border-black bg-[#efe6d4] px-3 py-2">
+              {gameLine ? (
+                <div className="flex flex-wrap items-center gap-2 px-4 pb-4">
+                  <p className="neo-copy inline-flex max-w-full items-center gap-2 border-2 border-black bg-[#fff9ed] px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-[#171411] shadow-[2px_2px_0_#171411]">
+                    <Gamepad2 className="h-4 w-4 shrink-0 text-[#b7102a]" />
+                    <span className="truncate">{gameLine}</span>
+                  </p>
+                  <span className={platformBadgeClassName(Boolean(platformLabel))}>
+                    {platformLabel ?? "Source unknown"}
+                  </span>
+                  {onJoinGame && presence?.currentGameId ? (
+                    <button
+                      className="neo-copy inline-flex items-center gap-1 border-2 border-black bg-[#087d6d] px-2 py-1 text-[10px] font-black uppercase text-white shadow-[2px_2px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#065e53]"
+                      type="button"
+                      onClick={() => onJoinGame(presence.currentGameId!)}
+                    >
+                      <LogIn className="h-3 w-3" />
+                      Smart Join
+                    </button>
+                  ) : null}
+                </div>
+              ) : null}
+              <div className="flex flex-wrap items-center justify-end gap-2 border-t-2 border-black bg-[#efe6d4] px-3 py-2">
                 {username ? (
                   <Link
-                    className="neo-copy inline-flex items-center gap-1 border-2 border-black bg-[#fff9ed] px-2 py-1 text-[10px] font-black tracking-[0.12em] text-[#171411] uppercase shadow-[1px_1px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#8cf5e4]"
+                    className="neo-copy inline-flex items-center gap-1 border-2 border-black bg-[#fff9ed] px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-[#171411] shadow-[1px_1px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#8cf5e4]"
                     to={`/u/${username}`}
                   >
                     <UserRound className="h-3 w-3" />
                     Profile
                   </Link>
                 ) : null}
+                {onOpenChat ? (
+                  <button
+                    className="neo-copy inline-flex items-center gap-1 border-2 border-black bg-[#fff9ed] px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-[#171411] shadow-[1px_1px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#8cf5e4]"
+                    type="button"
+                    onClick={() => onOpenChat(friendId)}
+                  >
+                    <MessageSquare className="h-3 w-3" />
+                    Chat
+                  </button>
+                ) : null}
+                {onOpenInvite ? (
+                  <button
+                    className="neo-copy inline-flex items-center gap-1 border-2 border-black bg-[#fff9ed] px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-[#171411] shadow-[1px_1px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#8cf5e4]"
+                    type="button"
+                    onClick={() => onOpenInvite(friendId)}
+                  >
+                    <Send className="h-3 w-3" />
+                    Invite
+                  </button>
+                ) : null}
                 {onRemove ? (
                   <button
-                    className="neo-copy inline-flex items-center gap-1 border-2 border-black bg-[#fff9ed] px-2 py-1 text-[10px] font-black tracking-[0.12em] text-[#b7102a] uppercase shadow-[1px_1px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#f3c3c9] disabled:opacity-60"
+                    className="neo-copy inline-flex items-center gap-1 border-2 border-black bg-[#fff9ed] px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-[#b7102a] shadow-[1px_1px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#f3c3c9] disabled:opacity-60"
                     disabled={!onRemove}
                     type="button"
                     onClick={() => onRemove(friendship)}
@@ -117,7 +146,7 @@ export function FriendsList({
           );
         })
       ) : (
-        <p className="neo-copy border-2 border-dashed border-black bg-[#f6edd8] p-3 text-[12px] leading-5 font-bold text-[#655f58] uppercase">
+        <p className="neo-copy border-2 border-dashed border-black bg-[#f6edd8] p-3 text-[12px] font-bold uppercase leading-5 text-[#655f58]">
           No friends yet.
         </p>
       )}
@@ -145,7 +174,7 @@ function Avatar({
     );
   }
   return (
-    <div className="grid h-12 w-12 shrink-0 place-items-center border-2 border-black bg-[#007166] text-[12px] font-black text-white uppercase shadow-[2px_2px_0_#171411]">
+    <div className="grid h-12 w-12 shrink-0 place-items-center border-2 border-black bg-[#007166] text-[12px] font-black uppercase text-white shadow-[2px_2px_0_#171411]">
       {initials}
     </div>
   );
@@ -159,8 +188,17 @@ function statusBadgeClassName(status: UserPresence["status"]) {
     return `${baseClassName} bg-[#007166] text-white`;
   }
   if (status === "away" || status === "busy") {
-    return `${baseClassName} bg-[#f2c14e] text-[#171411]`;
+    return `${baseClassName} bg-[#8cf5e4] text-[#171411]`;
   }
 
   return `${baseClassName} bg-[#e3d5ba] text-[#5b403f]`;
+}
+
+function platformBadgeClassName(hasPlatform: boolean) {
+  const baseClassName =
+    "neo-copy inline-flex items-center border-2 border-black px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] shadow-[2px_2px_0_#171411]";
+
+  return hasPlatform
+    ? `${baseClassName} bg-[#8cf5e4] text-[#171411]`
+    : `${baseClassName} bg-[#efe6d4] text-[#5b403f]`;
 }

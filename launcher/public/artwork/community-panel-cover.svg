@@ -1,0 +1,29 @@
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  viewBox="0 0 640 360"
+  role="img"
+  aria-labelledby="title desc"
+>
+  <title id="title">Community panel cover</title>
+  <desc id="desc">Retro manga community cover with halftone paper, red panel, and teal speed lines.</desc>
+  <rect width="640" height="360" fill="#fff9ed" />
+  <path d="M0 0h640v360H0z" fill="none" stroke="#171411" stroke-width="24" />
+  <path d="M44 44h250v112H44z" fill="#b7102a" stroke="#171411" stroke-width="10" />
+  <path d="M86 248 236 96l88 86 58-52 186 118z" fill="#171411" stroke="#171411" stroke-width="8" />
+  <path d="M350 66h218M326 108h248M382 274h182" stroke="#169b83" stroke-width="16" />
+  <path d="M70 72h176M70 108h138" stroke="#fff9ed" stroke-width="18" />
+  <g fill="#171411" opacity=".22">
+    <circle cx="84" cy="190" r="5" />
+    <circle cx="118" cy="190" r="5" />
+    <circle cx="152" cy="190" r="5" />
+    <circle cx="186" cy="190" r="5" />
+    <circle cx="220" cy="190" r="5" />
+    <circle cx="254" cy="190" r="5" />
+    <circle cx="84" cy="224" r="5" />
+    <circle cx="118" cy="224" r="5" />
+    <circle cx="152" cy="224" r="5" />
+    <circle cx="186" cy="224" r="5" />
+    <circle cx="220" cy="224" r="5" />
+    <circle cx="254" cy="224" r="5" />
+  </g>
+</svg>
