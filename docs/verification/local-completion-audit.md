@@ -1,11 +1,12 @@
-# Local Completion Audit - 2026-06-18
+# Local Completion Audit - 2026-06-21
 
 This audit defines the local completion boundary for this checkout. It is a
 release-readiness boundary, not a claim that external provider, hardware, or
 hosted production systems have been exercised.
-Last refreshed: 2026-06-20 for completion-gate, external evidence, and hosted
-cron evidence helper semantics. The full local completion gate was last recorded
-separately; no live external evidence was collected in this workspace.
+Last refreshed: 2026-06-21 for completion-gate status, external evidence, hosted
+cron evidence helper semantics, and the current Plugin Runtime Sandbox local
+boundary. The full local completion gate was last recorded separately; no live
+external evidence was collected in this workspace.
 
 ## Local Completion Boundary
 
@@ -178,9 +179,16 @@ separately; no live external evidence was collected in this workspace.
 - Performance polling is locally gated: active game attribution polls native
   metrics at 1Hz, while standalone/idle overlay attribution uses local preview
   without native polling.
+- Plugin Runtime Sandbox local evidence is still an admission dry-run: it
+  re-audits disabled signed packages, denies entrypoints before code load, keeps
+  `codeExecuted false`, and does not prove third-party plugin execution. The
+  next local implementation slice is the proof-process design path; release
+  completion still requires explicit design approval plus later implementation
+  evidence before this can move beyond dry-run language.
 - Latest focused operational verification commands:
 
 ```bash
+pnpm completion:gate:status # passed as no-run status; latest local receipt present/valid, releaseReady false, external evidence 0/5
 pnpm completion:gate:local # passed
 git diff --check HEAD # passed via completion:gate:local
 pnpm completion:gate:external # fails until hosted deploy, hosted cron, and external proof artifacts pass preflight
