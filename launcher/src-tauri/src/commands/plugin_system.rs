@@ -25,8 +25,12 @@ const MAX_UPDATE_CHANNEL_CHARS: usize = 96;
 const MAX_VERSION_CHARS: usize = 64;
 const MAX_LIST_ITEM_CHARS: usize = 96;
 const PLUGIN_TRUSTED_KEYS_ENV: &str = "OG_PLUGIN_TRUSTED_KEYS";
+#[allow(dead_code)]
 const PLUGIN_RUNTIME_SANDBOX_DRY_RUN_OPERATION: &str = "prove_plugin_runtime_sandbox_dry_run";
-const PLUGIN_ACTIVATION_PLAN_REVIEW_OPERATION_PREFIX: &str = "review_plugin_activation_plan";
+pub(crate) const PLUGIN_RUNTIME_SANDBOX_PROCESS_PROOF_OPERATION: &str =
+    "prove_plugin_runtime_sandbox_process_proof";
+pub(crate) const PLUGIN_ACTIVATION_PLAN_REVIEW_OPERATION_PREFIX: &str =
+    "review_plugin_activation_plan";
 const PLUGIN_MARKETPLACE_UPDATE_INDEX_REVIEW_OPERATION: &str =
     "review_plugin_marketplace_update_index_trust";
 const PLUGIN_UPDATE_SIGNING_ENVELOPE_REVIEW_OPERATION: &str =
@@ -408,9 +412,9 @@ struct SignedPluginUpdateEnvelopeSignature {
 }
 
 #[derive(Debug, Clone)]
-struct TrustedPluginSigningKey {
-    id: String,
-    verifying_key: VerifyingKey,
+pub(crate) struct TrustedPluginSigningKey {
+    pub(crate) id: String,
+    pub(crate) verifying_key: VerifyingKey,
 }
 
 #[derive(Debug, Clone)]
@@ -709,7 +713,7 @@ fn normalize_string_list(values: Option<Vec<String>>) -> Option<Vec<String>> {
     Some(normalized)
 }
 
-fn unix_timestamp_millis() -> u128 {
+pub(crate) fn unix_timestamp_millis() -> u128 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_millis())
@@ -832,7 +836,7 @@ fn stage_signed_plugin_package_from_path(
     })
 }
 
-fn audit_staged_plugin_registry_from_path(
+pub(crate) fn audit_staged_plugin_registry_from_path(
     registry_root: &Path,
     trusted_keys: &[TrustedPluginSigningKey],
 ) -> Result<StagedPluginRegistryAuditResult, String> {
@@ -928,56 +932,28 @@ fn prove_plugin_runtime_sandbox_from_path(
     trusted_keys: &[TrustedPluginSigningKey],
     consent_operation: Option<&str>,
 ) -> Result<PluginRuntimeSandboxProofResult, String> {
-    if consent_operation != Some(PLUGIN_RUNTIME_SANDBOX_DRY_RUN_OPERATION) {
-        return Err(format!(
-            "Plugin runtime sandbox dry-run requires consent operation {PLUGIN_RUNTIME_SANDBOX_DRY_RUN_OPERATION}."
-        ));
-    }
-
-    let audit = audit_staged_plugin_registry_from_path(registry_root, trusted_keys)?;
-    if audit.failed_count > 0 {
-        return Err(format!(
-            "Plugin runtime sandbox dry-run requires a clean disabled registry audit; {} entr{} blocked.",
-            audit.failed_count,
-            if audit.failed_count == 1 { "y is" } else { "ies are" }
-        ));
-    }
-
-    let entries = audit
-        .entries
-        .iter()
-        .filter(|entry| entry.status == "disabled-audited")
-        .map(|entry| PluginRuntimeSandboxProofEntry {
-            deny_reason:
-                "Process sandbox runtime is not implemented; plugin entrypoint denied before code load."
-                    .to_string(),
-            entrypoint: entry.entrypoint.clone(),
-            issues: Vec::new(),
-            plugin_id: entry.plugin_id.clone(),
-            registry_path: entry.registry_path.clone(),
-            status: "runtime-blocked".to_string(),
-            version: entry.version.clone(),
+    let operation = consent_operation.unwrap_or_default().to_string();
+    #[cfg(test)]
+    let probe = crate::commands::plugin_runtime_sandbox::InProcessOwnedProbe;
+    #[cfg(not(test))]
+    let probe = crate::commands::plugin_runtime_sandbox::DesktopOwnedProbe::from_current_exe()
+        .map_err(|error| error.to_string())?;
+    let sandbox = crate::commands::plugin_runtime_sandbox::PluginRuntimeSandbox::from_parts(
+        registry_root.to_path_buf(),
+        trusted_keys.to_vec(),
+        probe,
+    );
+    sandbox
+        .prove_process(PluginRuntimeSandboxProofRequest {
+            consent: PluginRuntimeSandboxProofConsent {
+                accepted: !operation.is_empty(),
+                operation,
+            },
         })
-        .collect::<Vec<_>>();
-
-    Ok(PluginRuntimeSandboxProofResult {
-        allowed_execution_count: 0,
-        audit_failed_count: audit.failed_count,
-        audit_passed_count: audit.passed_count,
-        code_executed: false,
-        denied_entrypoint_count: entries.len(),
-        entries,
-        escape_attempts: plugin_runtime_sandbox_escape_attempts(),
-        ipc_allowlist_ready: false,
-        permission_grant_ready: false,
-        process_boundary_ready: false,
-        proved_at: unix_timestamp_millis().to_string(),
-        registry_path: audit.registry_path,
-        source_label: "Desktop runtime sandbox dry-run".to_string(),
-    })
+        .map_err(|error| error.to_string())
 }
 
-fn plugin_runtime_sandbox_escape_attempts() -> Vec<PluginRuntimeSandboxEscapeAttempt> {
+pub(crate) fn plugin_runtime_sandbox_escape_attempts() -> Vec<PluginRuntimeSandboxEscapeAttempt> {
     vec![
         PluginRuntimeSandboxEscapeAttempt {
             blocked_by: "entrypoint path containment".to_string(),
@@ -1053,145 +1029,27 @@ fn review_plugin_activation_plan_from_path(
     version: &str,
     consent_operation: Option<&str>,
 ) -> Result<PluginActivationPlanReviewResult, String> {
-    let plugin_id = plugin_id.trim();
-    let version = version.trim();
-    if plugin_id.is_empty() || !is_safe_identifier(plugin_id) {
-        return Err("Plugin activation plan plugin id must be a safe identifier.".to_string());
-    }
-    if version.is_empty() || !is_safe_version(version) {
-        return Err("Plugin activation plan version must be safe.".to_string());
-    }
-
-    let expected_consent =
-        format!("{PLUGIN_ACTIVATION_PLAN_REVIEW_OPERATION_PREFIX}:{plugin_id}@{version}");
-    if consent_operation != Some(expected_consent.as_str()) {
-        return Err(format!(
-            "Plugin activation plan review requires consent operation {expected_consent}."
-        ));
-    }
-
-    let audit = audit_staged_plugin_registry_from_path(registry_root, trusted_keys)?;
-    let matching_entry = audit
-        .entries
-        .iter()
-        .find(|entry| entry.plugin_id == plugin_id && entry.version == version);
-    let mut checks = vec![
-        PluginActivationPlanReviewCheck {
-            id: "registry-audit".to_string(),
-            label: "Disabled Registry Audit".to_string(),
-            status: if audit.failed_count == 0 { "pass" } else { "blocked" }.to_string(),
-            detail: format!(
-                "{} disabled registry entr{} passed; {} failed.",
-                audit.passed_count,
-                if audit.passed_count == 1 { "y" } else { "ies" },
-                audit.failed_count
-            ),
-        },
-        PluginActivationPlanReviewCheck {
-            id: "activation-consent".to_string(),
-            label: "Activation Consent".to_string(),
-            status: "pass".to_string(),
-            detail: format!("Consent operation {expected_consent} accepted for review only."),
-        },
-        PluginActivationPlanReviewCheck {
-            id: "execution-denied".to_string(),
-            label: "Entrypoint Execution".to_string(),
-            status: "pass".to_string(),
-            detail: "Plugin entrypoint is denied before code load; no process is spawned."
-                .to_string(),
-        },
-        PluginActivationPlanReviewCheck {
-            id: "download-install-denied".to_string(),
-            label: "Download + Install".to_string(),
-            status: "pass".to_string(),
-            detail: "Activation review never downloads packages and never applies installs."
-                .to_string(),
-        },
-        PluginActivationPlanReviewCheck {
-            id: "permission-grants-denied".to_string(),
-            label: "Permission Grants".to_string(),
-            status: "pass".to_string(),
-            detail: "No permission grants, network access, IPC allowlist, or process boundary is marked ready."
-                .to_string(),
-        },
-    ];
-
-    let (status, registry_path, entrypoint, manifest_hash) = match matching_entry {
-        Some(entry) if entry.status == "disabled-audited" && entry.issues.is_empty() => {
-            let manifest_hash = fs::read(Path::new(&entry.registry_path).join("og-plugin.json"))
-                .map(|bytes| format!("sha256:{}", sha256_hex(&bytes)))
-                .map_err(|error| {
-                    format!("Could not read staged plugin manifest for activation review: {error}")
-                })?;
-            checks.push(PluginActivationPlanReviewCheck {
-                id: "target-package".to_string(),
-                label: "Target Package".to_string(),
-                status: "pass".to_string(),
-                detail: format!(
-                    "{}@{} matched a clean disabled staged package.",
-                    entry.plugin_id, entry.version
-                ),
-            });
-            (
-                "blocked-production-sandbox".to_string(),
-                entry.registry_path.clone(),
-                entry.entrypoint.clone(),
-                manifest_hash,
-            )
-        }
-        Some(entry) => {
-            checks.push(PluginActivationPlanReviewCheck {
-                id: "target-package".to_string(),
-                label: "Target Package".to_string(),
-                status: "blocked".to_string(),
-                detail: format!(
-                    "{}@{} is not a clean disabled staged package: {}",
-                    entry.plugin_id,
-                    entry.version,
-                    entry.issues.join("; ")
-                ),
-            });
-            (
-                "blocked-untrusted".to_string(),
-                entry.registry_path.clone(),
-                entry.entrypoint.clone(),
-                String::new(),
-            )
-        }
-        None => {
-            checks.push(PluginActivationPlanReviewCheck {
-                id: "target-package".to_string(),
-                label: "Target Package".to_string(),
-                status: "blocked".to_string(),
-                detail: format!("{plugin_id}@{version} is missing from the disabled registry."),
-            });
-            (
-                "blocked-untrusted".to_string(),
-                audit.registry_path.clone(),
-                String::new(),
-                String::new(),
-            )
-        }
-    };
-
-    Ok(PluginActivationPlanReviewResult {
-        plugin_id: plugin_id.to_string(),
-        version: version.to_string(),
-        status,
-        registry_path,
-        entrypoint,
-        manifest_hash,
-        code_executed: false,
-        download_attempted: false,
-        install_applied: false,
-        auto_install_allowed: false,
-        permission_grants_persisted: false,
-        process_boundary_ready: false,
-        network_allowed: false,
-        checks,
-        reviewed_at: unix_timestamp_millis().to_string(),
-        source_label: "Desktop plugin activation plan review".to_string(),
-    })
+    let operation = consent_operation.unwrap_or_default().to_string();
+    #[cfg(test)]
+    let probe = crate::commands::plugin_runtime_sandbox::InProcessOwnedProbe;
+    #[cfg(not(test))]
+    let probe = crate::commands::plugin_runtime_sandbox::DesktopOwnedProbe::from_current_exe()
+        .map_err(|error| error.to_string())?;
+    let sandbox = crate::commands::plugin_runtime_sandbox::PluginRuntimeSandbox::from_parts(
+        registry_root.to_path_buf(),
+        trusted_keys.to_vec(),
+        probe,
+    );
+    sandbox
+        .review_activation_plan_blocked(PluginActivationPlanReviewRequest {
+            plugin_id: plugin_id.to_string(),
+            version: version.to_string(),
+            consent: PluginActivationPlanReviewConsent {
+                accepted: !operation.is_empty(),
+                operation,
+            },
+        })
+        .map_err(|error| error.to_string())
 }
 
 fn review_plugin_marketplace_update_index_trust_from_path(
@@ -2451,21 +2309,21 @@ fn reject_existing_symlink_components(path: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn is_safe_identifier(value: &str) -> bool {
+pub(crate) fn is_safe_identifier(value: &str) -> bool {
     value.len() <= MAX_ID_CHARS
         && value.chars().all(|character| {
             character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.')
         })
 }
 
-fn is_safe_version(value: &str) -> bool {
+pub(crate) fn is_safe_version(value: &str) -> bool {
     value.len() <= MAX_VERSION_CHARS
         && value.chars().all(|character| {
             character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.')
         })
 }
 
-fn sha256_hex(bytes: &[u8]) -> String {
+pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
     let digest = Sha256::digest(bytes);
     digest.iter().map(|byte| format!("{byte:02x}")).collect()
 }
@@ -3504,7 +3362,7 @@ mod tests {
         let error = prove_plugin_runtime_sandbox_from_path(
             &registry_root,
             &[trusted_key],
-            Some("prove_plugin_runtime_sandbox_dry_run"),
+            Some("prove_plugin_runtime_sandbox_process_proof"),
         )
         .unwrap_err();
 
@@ -3546,7 +3404,7 @@ mod tests {
         let error = prove_plugin_runtime_sandbox_from_path(
             &registry_root,
             &[trusted_key],
-            Some("prove_plugin_runtime_sandbox_dry_run"),
+            Some("prove_plugin_runtime_sandbox_process_proof"),
         )
         .unwrap_err();
 

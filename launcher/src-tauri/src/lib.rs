@@ -12,6 +12,10 @@ pub fn run_headless_client_update_scheduler_from_args() -> Option<i32> {
     commands::client_manager::run_headless_client_update_scheduler_from_args()
 }
 
+pub fn run_headless_plugin_runtime_sandbox_probe_from_args() -> Option<i32> {
+    commands::plugin_runtime_sandbox::run_headless_plugin_runtime_sandbox_probe_from_args()
+}
+
 pub fn run() {
     load_local_env_files();
 
