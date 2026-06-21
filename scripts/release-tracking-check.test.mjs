@@ -52,9 +52,50 @@ test("releaseTrackingReport passes when required files and directories are track
   });
 
   assert.equal(report.ready, true);
+  assert.deepEqual(report.changedRequiredPaths, []);
   assert.deepEqual(report.untrackedRequiredPaths, []);
   assert.deepEqual(report.missingTrackedFiles, []);
   assert.deepEqual(report.emptyTrackedDirectories, []);
+});
+
+test("releaseTrackingReport rejects changed required artifacts", () => {
+  const report = releaseTrackingReport({
+    exists,
+    specs,
+    statusEntries: parseGitStatus(
+      [
+        " M package.json",
+        "M  scripts/release-tracking-check.mjs",
+        "D  docs/verification/screenshots/settings.png",
+        " M scratch-notes.txt",
+      ].join("\n"),
+    ),
+    trackedFiles: [
+      "package.json",
+      "scripts/release-tracking-check.mjs",
+      "docs/verification/screenshots/settings.png",
+    ],
+  });
+
+  assert.equal(report.ready, false);
+  assert.deepEqual(report.changedRequiredPaths, [
+    "docs/verification/screenshots/settings.png",
+    "package.json",
+    "scripts/release-tracking-check.mjs",
+  ]);
+  assert.deepEqual(report.changedRequiredRoots, [
+    "docs/verification/screenshots",
+    "package.json",
+    "scripts",
+  ]);
+  assert.match(
+    renderReleaseTrackingReport(report),
+    /Changed required file examples/,
+  );
+  assert.doesNotMatch(
+    renderReleaseTrackingReport(report),
+    /scratch-notes\.txt/,
+  );
 });
 
 test("releaseTrackingReport rejects untracked required artifacts", () => {

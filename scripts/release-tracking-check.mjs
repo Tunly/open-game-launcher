@@ -89,6 +89,27 @@ function trackedFilesForSpec(trackedFiles, spec) {
   return trackedFiles.filter((file) => pathMatchesSpec(file, spec));
 }
 
+function statusPathsMatchingSpecs(statusEntries, specs, predicate) {
+  return [
+    ...new Set(
+      statusEntries
+        .filter(predicate)
+        .map((entry) => entry.path)
+        .filter((path) => pathIsInSpecs(path, specs)),
+    ),
+  ].sort();
+}
+
+function statusRootsForPaths(paths, specs) {
+  return [
+    ...new Set(
+      paths
+        .map((path) => specs.find((spec) => pathMatchesSpec(path, spec))?.path)
+        .filter(Boolean),
+    ),
+  ].sort();
+}
+
 export function parseGitStatus(output) {
   return String(output ?? "")
     .split(/\r?\n/)
@@ -110,18 +131,24 @@ export function releaseTrackingReport({
   const missingRequiredPaths = specs
     .filter((spec) => !exists(spec.path))
     .map((spec) => spec.path);
-  const untrackedRequiredPaths = statusEntries
-    .filter((entry) => entry.code === "??")
-    .map((entry) => entry.path)
-    .filter((path) => pathIsInSpecs(path, specs));
-  const untrackedSet = new Set(untrackedRequiredPaths);
-  const untrackedRequiredPathList = [...untrackedSet].sort();
-  const untrackedPrefixes = new Set(
-    untrackedRequiredPathList
-      .map((path) => specs.find((spec) => pathMatchesSpec(path, spec))?.path)
-      .filter(Boolean),
+  const changedRequiredPathList = statusPathsMatchingSpecs(
+    statusEntries,
+    specs,
+    (entry) => entry.code !== "??",
   );
-  const untrackedRequiredRoots = [...untrackedPrefixes].sort();
+  const untrackedRequiredPathList = statusPathsMatchingSpecs(
+    statusEntries,
+    specs,
+    (entry) => entry.code === "??",
+  );
+  const changedRequiredRoots = statusRootsForPaths(
+    changedRequiredPathList,
+    specs,
+  );
+  const untrackedRequiredRoots = statusRootsForPaths(
+    untrackedRequiredPathList,
+    specs,
+  );
   const missingTrackedFiles = specs
     .filter((spec) => spec.type === "file")
     .filter(
@@ -137,11 +164,15 @@ export function releaseTrackingReport({
 
   const ready =
     missingRequiredPaths.length === 0 &&
+    changedRequiredPathList.length === 0 &&
     untrackedRequiredPathList.length === 0 &&
     missingTrackedFiles.length === 0 &&
     emptyTrackedDirectories.length === 0;
 
   return {
+    changedRequiredPathCount: changedRequiredPathList.length,
+    changedRequiredPaths: changedRequiredPathList,
+    changedRequiredRoots,
     emptyTrackedDirectories,
     missingRequiredPaths,
     missingTrackedFiles,
@@ -199,11 +230,16 @@ function formatList(label, values, limit = 30) {
 }
 
 export function renderReleaseTrackingReport(report) {
+  const changedRequiredPaths = report.changedRequiredPaths ?? [];
+  const changedRequiredRoots = report.changedRequiredRoots ?? [];
+  const changedRequiredPathCount =
+    report.changedRequiredPathCount ?? changedRequiredPaths.length;
   const lines = [
     "Release artifact tracking check",
     "",
     `Required path groups: ${report.requiredPathCount}`,
     `Tracked files in required groups: ${report.trackedFileCount}`,
+    `Changed required files: ${changedRequiredPathCount}`,
     `Untracked required files: ${report.untrackedRequiredPathCount}`,
   ];
   if (report.ready) {
@@ -225,6 +261,12 @@ export function renderReleaseTrackingReport(report) {
       "Required directories with no tracked files",
       report.emptyTrackedDirectories,
     ),
+  );
+  lines.push(
+    ...formatList("Changed required roots", changedRequiredRoots),
+  );
+  lines.push(
+    ...formatList("Changed required file examples", changedRequiredPaths),
   );
   lines.push(
     ...formatList("Untracked required roots", report.untrackedRequiredRoots),
