@@ -28,6 +28,7 @@ import {
 const expectedLocalCompletionCheckIds = Object.freeze([
   "git-diff-check",
   "release-tracking-check",
+  "launcher-prepare-hook-test",
   "frontend-format",
   "frontend-typecheck",
   "frontend-lint",
@@ -96,6 +97,7 @@ const serviceRoleJwt = syntheticSupabaseJwt({ role: "service_role" });
 
 const requiredLocalCompletionCheckIds = Object.freeze([
   "release-tracking-check",
+  "launcher-prepare-hook-test",
   "frontend-coverage",
   "tauri-debug-bundle",
   "rust-active-toolchain",
@@ -382,6 +384,14 @@ test("local lane includes coverage, Tauri bundle smoke, Supabase DB lint, and Wi
   assert.match(
     ciWorkflow,
     /run: node --test scripts\/release-tracking-check\.test\.mjs/,
+  );
+  const launcherPrepareHookTest = commandLine(
+    findCheckById(completionLocalChecks, "launcher-prepare-hook-test", "local"),
+  );
+  assert.equal(launcherPrepareHookTest, "pnpm launcher:prepare-hook:test");
+  assert.match(
+    ciWorkflow,
+    /run: node --test scripts\/launcher-prepare-hook\.test\.mjs/,
   );
   const releaseWorkflowTest = commandLine(
     findCheckById(completionLocalChecks, "release-workflow-test", "local"),

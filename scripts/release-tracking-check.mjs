@@ -10,6 +10,7 @@ export const releaseTrackedPathSpecs = Object.freeze([
   { path: ".github", type: "dir" },
   { path: ".github/workflows/ci.yml", type: "file" },
   { path: ".node-version", type: "file" },
+  { path: "deno.lock", type: "file" },
   { path: "package.json", type: "file" },
   { path: "launcher/.env.example", type: "file" },
   { path: "launcher/eslint.config.js", type: "file" },

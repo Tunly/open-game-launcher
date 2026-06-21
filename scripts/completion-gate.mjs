@@ -32,6 +32,12 @@ export const completionLocalChecks = Object.freeze([
     label: "Release artifact tracking check",
   },
   {
+    args: ["launcher:prepare-hook:test"],
+    command: "pnpm",
+    id: "launcher-prepare-hook-test",
+    label: "Launcher prepare hook tests",
+  },
+  {
     args: ["--dir", "launcher", "format:check"],
     command: "pnpm",
     id: "frontend-format",

@@ -12,7 +12,7 @@
     "dev": "vite --host 127.0.0.1 --port 1420",
     "build": "tsc -b && vite build",
     "preview": "vite preview",
-    "prepare": "cd .. && launcher/node_modules/.bin/husky",
+    "prepare": "node scripts/prepare-husky.mjs",
     "tauri": "tauri",
     "supabase": "supabase --workdir ..",
     "supabase:migration:list": "supabase --workdir .. migration list",

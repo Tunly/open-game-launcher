@@ -51,7 +51,8 @@ export function buildDenoArgs(testFiles) {
   return [
     "test",
     "--no-prompt",
-    "--no-lock",
+    "--lock=deno.lock",
+    "--frozen=true",
     "--node-modules-dir=auto",
     "--allow-env=SUPABASE_URL,SUPABASE_ANON_KEY,SUPABASE_SERVICE_ROLE_KEY,STRIPE_SECRET_KEY,OGL_LICENSE_SIGNING_KEY,OGL_LICENSE_ALLOW_UNSIGNED_FALLBACK",
     "--allow-read=supabase",
@@ -60,7 +61,13 @@ export function buildDenoArgs(testFiles) {
 }
 
 export function buildDenoCheckArgs(checkFiles) {
-  return ["check", "--no-lock", "--node-modules-dir=auto", ...checkFiles];
+  return [
+    "check",
+    "--lock=deno.lock",
+    "--frozen=true",
+    "--node-modules-dir=auto",
+    ...checkFiles,
+  ];
 }
 
 export function run(

@@ -34,6 +34,7 @@ const ciWorkflow = readFileSync(
   new URL("../.github/workflows/ci.yml", import.meta.url),
   "utf8",
 );
+const gitignore = readFileSync(new URL("../.gitignore", import.meta.url), "utf8");
 
 function tempRepo() {
   const root = mkdtempSync(join(tmpdir(), "ogl-supabase-functions-test-"));
@@ -93,7 +94,9 @@ test("buildDenoArgs pins permissions and appends discovered tests", () => {
 
   assert.equal(args[0], "test");
   assert.ok(args.includes("--no-prompt"));
-  assert.ok(args.includes("--no-lock"));
+  assert.ok(args.includes("--lock=deno.lock"));
+  assert.ok(args.includes("--frozen=true"));
+  assert.equal(args.includes("--no-lock"), false);
   assert.ok(args.includes("--node-modules-dir=auto"));
   assert.ok(args.includes("--allow-read=supabase"));
   assert.ok(
@@ -109,11 +112,13 @@ test("buildDenoArgs pins permissions and appends discovered tests", () => {
     buildDenoCheckArgs(["supabase/functions/example/index.ts"]),
     [
       "check",
-      "--no-lock",
+      "--lock=deno.lock",
+      "--frozen=true",
       "--node-modules-dir=auto",
       "supabase/functions/example/index.ts",
     ],
   );
+  assert.doesNotMatch(gitignore, /^deno\.lock$/m);
   assert.match(functionsEnvExample, /^PRESENCE_POLL_TIMEOUT_MS=8000$/m);
   assert.doesNotMatch(
     functionsEnvExample,

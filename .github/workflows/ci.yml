@@ -199,6 +199,8 @@ jobs:
         run: node --test scripts/completion-gate.test.mjs
       - name: Validate release tracking script
         run: node --test scripts/release-tracking-check.test.mjs
+      - name: Validate launcher prepare hook
+        run: node --test scripts/launcher-prepare-hook.test.mjs
       - name: Validate release tag script
         run: node --test scripts/release-tag-check.test.mjs
       - name: Validate release workflow contract

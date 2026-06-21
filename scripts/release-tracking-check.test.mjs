@@ -108,6 +108,7 @@ test("releaseTrackingReport rejects missing paths and untracked required files",
 test("default release specs cover source and release-critical roots", () => {
   const requiredSpecs = [
     [".github", "dir"],
+    ["deno.lock", "file"],
     ["launcher/.env.example", "file"],
     ["launcher/eslint.config.js", "file"],
     ["launcher/index.html", "file"],

@@ -48,7 +48,6 @@ node_modules/
 .qoder/
 .playwright-mcp/
 .husky/_
-deno.lock
 
 # Stray helper scripts
 _*.ps1
