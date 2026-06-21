@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { Buffer } from "node:buffer";
 import { spawnSync } from "node:child_process";
-import { readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
@@ -34,6 +34,7 @@ const functionsEnvExample = readFileSync(
 const evidenceScriptPath = fileURLToPath(
   new URL("./hosted-cron-evidence.mjs", import.meta.url),
 );
+const migrationsDir = new URL("../supabase/migrations/", import.meta.url);
 
 const projectRef = "awebfvfyqzwapcgixdfj";
 const otherProjectRef = "bbbbbbbbbbbbbbbbbbbb";
@@ -89,6 +90,13 @@ const env = {
   SUPABASE_URL: `${supabaseUrl}/`,
 };
 
+function allMigrationSql() {
+  return readdirSync(migrationsDir)
+    .filter((fileName) => fileName.endsWith(".sql"))
+    .map((fileName) => readFileSync(new URL(fileName, migrationsDir), "utf8"))
+    .join("\n");
+}
+
 function summaryDefaults(check) {
   if (check.id === "price-drop") {
     return {
@@ -142,6 +150,30 @@ function completedRow(check, overrides = {}) {
     ...overrides,
   };
 }
+
+test("hosted cron evidence migrations index latest completed scheduled runs", () => {
+  const migrations = allMigrationSql();
+
+  for (const [tableName, indexName] of [
+    [
+      "store_price_drop_notification_runs",
+      "store_price_drop_notification_runs_trigger_completed_at_idx",
+    ],
+    ["presence_poll_runs", "presence_poll_runs_trigger_source_completed_at_idx"],
+    [
+      "account_deletion_processor_runs",
+      "account_deletion_processor_runs_trigger_completed_at_idx",
+    ],
+  ]) {
+    assert.match(
+      migrations,
+      new RegExp(
+        `create index if not exists ${indexName}\\s+on public\\.${tableName}\\s*\\(trigger_source, completed_at desc\\)`,
+        "i",
+      ),
+    );
+  }
+});
 
 test("parseArgs accepts plan, check, artifact-hints, and packet only", () => {
   assert.deepEqual(parseArgs([]), { action: "check", checks: "" });

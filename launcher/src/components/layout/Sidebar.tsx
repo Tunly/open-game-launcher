@@ -14,6 +14,7 @@ import { cn } from "../../lib/utils";
 export type PageKey =
   | "home"
   | "library"
+  | "controllers"
   | "store"
   | "community"
   | "downloads"
@@ -42,6 +43,7 @@ interface SidebarProps {
 
 const navItems: NavItem[] = [
   { key: "library", label: "Library", icon: Gamepad2 },
+  { key: "controllers", label: "Controllers", icon: Gamepad2 },
   { key: "achievements", label: "Achievements", icon: Trophy },
   { key: "activity", label: "Activity", icon: Activity },
   { key: "downloads", label: "Downloads", icon: HardDriveDownload },

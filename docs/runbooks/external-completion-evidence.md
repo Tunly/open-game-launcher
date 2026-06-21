@@ -35,9 +35,10 @@ hosted deploy smoke, hosted cron evidence collector, and this external evidence
 preflight. It must fail until the real external artifacts and required
 environment values below are present. Cross-platform signoff comes from the
 configured CI runners, but GitHub Actions does not mirror the local gate
-exactly: coverage runs as a separate informational artifact job, and no CI
-Tauri debug-bundle smoke exists. The `v*` tag path uses the frontend, Rust, and
-Supabase CI jobs plus an unscoped `pnpm completion:gate:external` tag job in the
+exactly: coverage runs as a separate threshold-enforcing CI job, and no CI
+Tauri debug-bundle smoke exists. The release tag path waits for coverage before
+the external completion gate, then uses the frontend, Rust, Supabase CI jobs,
+and an unscoped `pnpm completion:gate:external` tag job in the
 `hosted-production` Environment before any draft-release artifacts are created.
 That tag job validates launcher/Tauri version alignment and rejects semver-valid
 `v*` tags whose checked-out commit is not the current `origin/main` commit.

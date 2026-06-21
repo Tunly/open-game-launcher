@@ -228,6 +228,7 @@ export function releaseWorkflowReport({ content, root = repoRoot } = {}) {
     );
     for (const requiredNeed of [
       "frontend",
+      "coverage",
       "rust-fmt",
       "rust-clippy",
       "rust-test",
@@ -280,6 +281,9 @@ export function releaseWorkflowReport({ content, root = repoRoot } = {}) {
     );
     if (!hasJobNeed(buildUpload, "release-boundary-gate")) {
       errors.push("build-upload must depend on release-boundary-gate");
+    }
+    if (!hasJobNeed(buildUpload, "coverage")) {
+      errors.push("build-upload must depend on coverage");
     }
     const matrixRows = buildUploadMatrixRows(buildUpload);
     for (const matrixEntry of [

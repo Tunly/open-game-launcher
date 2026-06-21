@@ -119,6 +119,10 @@ const cargoToml = readFileSync(
   "utf8",
 );
 const readme = readFileSync(new URL("../README.md", import.meta.url), "utf8");
+const externalEvidenceRunbook = readFileSync(
+  new URL("../docs/runbooks/external-completion-evidence.md", import.meta.url),
+  "utf8",
+);
 
 const expectedCiActionRefs = Object.freeze({
   "Swatinem/rust-cache": {
@@ -1095,6 +1099,21 @@ test("release tags require external evidence gate before draft artifacts", () =>
   assert.match(
     createDraftReleaseJob,
     /softprops\/action-gh-release@[0-9a-f]{40}/,
+  );
+});
+
+test("external evidence runbook documents release-gated coverage", () => {
+  assert.match(
+    externalEvidenceRunbook,
+    /coverage runs as a separate threshold-enforcing CI job/i,
+  );
+  assert.match(
+    externalEvidenceRunbook,
+    /release tag path waits for coverage before\s+the external completion gate/i,
+  );
+  assert.doesNotMatch(
+    externalEvidenceRunbook,
+    /coverage runs as a separate informational artifact job/i,
   );
 });
 

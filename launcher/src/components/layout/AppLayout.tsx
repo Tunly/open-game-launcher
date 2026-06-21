@@ -16,6 +16,7 @@ const UsernamePromptModal = lazy(() =>
 function getActivePage(pathname: string): PageKey {
   if (pathname.startsWith("/store")) return "store";
   if (pathname.startsWith("/library")) return "library";
+  if (pathname.startsWith("/controllers")) return "controllers";
   if (pathname.startsWith("/community")) return "community";
   if (pathname.startsWith("/news")) return "community";
   if (pathname.startsWith("/downloads")) return "downloads";

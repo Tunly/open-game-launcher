@@ -58,7 +58,7 @@ describe("AppShell browser-local shell skins", () => {
 
     const header = screen.getByRole("banner");
     expect(within(header).getByRole("button", { name: "OG-Launcher" })).toBeInTheDocument();
-    for (const label of ["Store", "Library", "Community", "Downloads"]) {
+    for (const label of ["Store", "Library", "Community", "Downloads", "Controllers"]) {
       expect(within(header).getByRole("button", { name: label })).toBeInTheDocument();
     }
   });

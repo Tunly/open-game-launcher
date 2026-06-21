@@ -242,13 +242,12 @@ jobs:
       - name: Test Supabase Edge contracts
         run: node scripts/supabase-functions-test.mjs
 
-  # ---------- Coverage (informational) ----------
-  # Coverage runs as a separate job because it doubles test time and the
-  # threshold enforcement needs stakeholder sign-off on the chosen
-  # baseline. This job currently uploads the report as an artifact;
-  # gating on thresholds is a follow-up.
+  # ---------- Coverage (release-gated) ----------
+  # Coverage runs as a separate job because it doubles test time. Release tags
+  # wait for this threshold-enforcing job before the external boundary gate can
+  # package draft artifacts.
   coverage:
-    name: Coverage (vitest, informational)
+    name: Coverage (vitest, release-gated)
     runs-on: ubuntu-24.04
     needs: frontend
     defaults:
@@ -284,6 +283,7 @@ jobs:
     needs:
       [
         frontend,
+        coverage,
         rust-fmt,
         rust-clippy,
         rust-test,
@@ -345,6 +345,7 @@ jobs:
     needs:
       [
         frontend,
+        coverage,
         rust-fmt,
         rust-clippy,
         rust-test,

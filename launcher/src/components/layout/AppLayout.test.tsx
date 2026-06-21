@@ -22,7 +22,9 @@ vi.mock("../../lib/supabase/profile", () => ({
 }));
 
 vi.mock("./AppShell", () => ({
-  AppShell: ({ children }: { children: ReactNode }) => <div>{children}</div>,
+  AppShell: ({ activePage, children }: { activePage: string; children: ReactNode }) => (
+    <div data-active-page={activePage}>{children}</div>
+  ),
 }));
 
 import { AppLayout } from "./AppLayout";
@@ -67,5 +69,29 @@ describe("AppLayout hosted shell skin hydration", () => {
     });
 
     window.removeEventListener(APP_SHELL_SKIN_CHANGED_EVENT, eventSpy);
+  });
+
+  it("marks the controllers route as the active primary page", () => {
+    mocks.useCurrentUser.mockReturnValue({
+      isConfigured: false,
+      isLoading: false,
+      signOut: vi.fn(),
+      user: null,
+    });
+
+    const { container } = render(
+      <MemoryRouter initialEntries={["/controllers"]}>
+        <Routes>
+          <Route element={<AppLayout />}>
+            <Route path="/controllers" element={<div>Controllers</div>} />
+          </Route>
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(container.querySelector("[data-active-page]")).toHaveAttribute(
+      "data-active-page",
+      "controllers",
+    );
   });
 });

@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import {
@@ -6,6 +7,11 @@ import {
   runSupabaseDbLint,
   supabaseArgs,
 } from "./supabase-db-lint.mjs";
+
+const supabaseConfig = readFileSync(
+  new URL("../supabase/config.toml", import.meta.url),
+  "utf8",
+);
 
 function fakeRunner(results, calls) {
   return (command, args) => {
@@ -24,6 +30,11 @@ test("supabaseArgs uses the launcher-pinned Supabase CLI", () => {
     "db",
     "lint",
   ]);
+});
+
+test("supabase config explicitly matches hosted Data API exposure defaults", () => {
+  assert.match(supabaseConfig, /^auto_expose_new_tables = false$/m);
+  assert.doesNotMatch(supabaseConfig, /Leave unset today|2026-05-30/);
 });
 
 test("redactSupabaseOutput removes local Supabase credentials and database URLs", () => {

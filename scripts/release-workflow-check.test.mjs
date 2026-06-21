@@ -99,6 +99,15 @@ test("release workflow contract requires build-upload to depend on release bound
   ]);
 });
 
+test("release workflow contract requires release tags to wait for coverage", () => {
+  const broken = ciWorkflow.replaceAll("        coverage,\n", "");
+
+  assert.deepEqual(errorsFor(broken), [
+    "release-boundary-gate must depend on coverage",
+    "build-upload must depend on coverage",
+  ]);
+});
+
 test("release workflow contract keeps the packaged platform matrix pinned", () => {
   const broken = ciWorkflow.replace(
     "          - os: windows-2025",
