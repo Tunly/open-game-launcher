@@ -70,6 +70,7 @@ function hasJobNeed(jobBlock, need) {
 function buildUploadMatrixRows(jobBlock) {
   const rows = [];
   let currentRow = null;
+  let blockProperty = null;
   let inIncludeBlock = false;
 
   for (const line of jobBlock.split("\n")) {
@@ -84,35 +85,75 @@ function buildUploadMatrixRows(jobBlock) {
     if (os) {
       if (currentRow) rows.push(currentRow);
       currentRow = { os: os.trim() };
+      blockProperty = null;
       continue;
     }
 
     if (!currentRow) continue;
 
-    const target = line.match(/^            target:\s*(?<value>.+)\s*$/)?.groups
-      ?.value;
-    if (target) {
-      currentRow.target = target.trim();
+    if (blockProperty) {
+      const blockValue = line.match(/^              (?<value>.*)$/)?.groups
+        ?.value;
+      if (blockValue !== undefined) {
+        const value = blockValue.trim();
+        if (value) currentRow[blockProperty].push(value);
+        continue;
+      }
+      blockProperty = null;
+    }
+
+    const blockPropertyMatch = line.match(
+      /^            (?<key>[A-Za-z0-9_-]+):\s*\|\s*$/,
+    );
+    if (blockPropertyMatch) {
+      blockProperty = blockPropertyMatch.groups.key;
+      currentRow[blockProperty] = [];
       continue;
     }
 
-    const artifact = line.match(/^            artifact:\s*(?<value>.+)\s*$/)
-      ?.groups?.value;
-    if (artifact) currentRow.artifact = artifact.trim();
+    const property = line.match(
+      /^            (?<key>[A-Za-z0-9_-]+):\s*(?<value>.+)\s*$/,
+    )?.groups;
+    if (property) currentRow[property.key] = property.value.trim();
   }
 
   if (currentRow) rows.push(currentRow);
   return rows;
 }
 
-function hasMatrixEntry(rows, [os, target, artifactSuffix]) {
-  return rows.some(
+function findMatrixRow(rows, { os, target, artifactSuffix }) {
+  return rows.find(
     (row) =>
       row.os === os &&
       row.target === target &&
       row.artifact?.endsWith(artifactSuffix),
   );
 }
+
+function targetScopedBundlePattern(target, extension) {
+  return `launcher/src-tauri/target/${target}/release/bundle/**/*.${extension}`;
+}
+
+const buildUploadArtifactContracts = [
+  {
+    os: "ubuntu-24.04",
+    target: "x86_64-unknown-linux-gnu",
+    artifactSuffix: "_amd64.AppImage",
+    extensions: ["AppImage", "deb", "rpm"],
+  },
+  {
+    os: "windows-2025",
+    target: "x86_64-pc-windows-msvc",
+    artifactSuffix: "_x64.msi",
+    extensions: ["msi", "exe"],
+  },
+  {
+    os: "macos-15",
+    target: "aarch64-apple-darwin",
+    artifactSuffix: "_aarch64.dmg",
+    extensions: ["dmg", "app.tar.gz"],
+  },
+];
 
 function pushMissing(errors, block, value, message) {
   if (!block.includes(value)) errors.push(message);
@@ -143,6 +184,22 @@ function workflowStepWithRun(jobBlock, command) {
     workflowStepBlocks(jobBlock).find((block) => runLinePattern.test(block)) ??
     ""
   );
+}
+
+function workflowStepWithName(jobBlock, name) {
+  const namePattern = new RegExp(
+    `^      - name:\\s*${escapeRegex(name)}\\s*(?:#.*)?$`,
+    "m",
+  );
+  return workflowStepBlocks(jobBlock).find((block) => namePattern.test(block));
+}
+
+function workflowStepWithUse(jobBlock, actionPrefix) {
+  const usePattern = new RegExp(
+    `^        uses:\\s*${escapeRegex(actionPrefix)}`,
+    "m",
+  );
+  return workflowStepBlocks(jobBlock).find((block) => usePattern.test(block));
 }
 
 function hasSecretEnvAssignment(stepBlock, secretName) {
@@ -286,15 +343,30 @@ export function releaseWorkflowReport({ content, root = repoRoot } = {}) {
       errors.push("build-upload must depend on coverage");
     }
     const matrixRows = buildUploadMatrixRows(buildUpload);
-    for (const matrixEntry of [
-      ["ubuntu-24.04", "x86_64-unknown-linux-gnu", "_amd64.AppImage"],
-      ["windows-2025", "x86_64-pc-windows-msvc", "_x64.msi"],
-      ["macos-15", "aarch64-apple-darwin", "_aarch64.dmg"],
-    ]) {
-      if (!hasMatrixEntry(matrixRows, matrixEntry)) {
+    for (const contract of buildUploadArtifactContracts) {
+      const matrixEntry = [
+        contract.os,
+        contract.target,
+        contract.artifactSuffix,
+      ];
+      const row = findMatrixRow(matrixRows, contract);
+      if (!row) {
         errors.push(
           `build-upload matrix must include ${matrixEntry[0]} ${matrixEntry[1]} ${matrixEntry[2]}`,
         );
+        continue;
+      }
+      const artifacts = row.artifacts ?? [];
+      for (const extension of contract.extensions) {
+        const artifactPath = targetScopedBundlePattern(
+          contract.target,
+          extension,
+        );
+        if (!artifacts.includes(artifactPath)) {
+          errors.push(
+            `build-upload matrix must contract ${contract.os} ${contract.target} ${extension} artifact path`,
+          );
+        }
       }
     }
     pushMissing(
@@ -327,23 +399,69 @@ export function releaseWorkflowReport({ content, root = repoRoot } = {}) {
     }
     if (buildUpload.includes("launcher/src-tauri/target/release/bundle/")) {
       errors.push(
-        "build-upload artifact globs must not use unscoped target/release paths",
+        "build-upload artifact contract must not use unscoped target/release paths",
       );
     }
-    for (const extension of [
-      "AppImage",
-      "deb",
-      "rpm",
-      "msi",
-      "exe",
-      "dmg",
-      "app.tar.gz",
-    ]) {
+    const artifactInventoryStep = workflowStepWithName(
+      buildUpload,
+      "Validate release artifact inventory",
+    );
+    const uploadArtifactStep = workflowStepWithUse(
+      buildUpload,
+      "actions/upload-artifact@",
+    );
+    if (!artifactInventoryStep) {
+      errors.push("build-upload must validate release artifact inventory");
+    } else {
       pushMissing(
         errors,
-        buildUpload,
-        `launcher/src-tauri/target/\${{ matrix.target }}/release/bundle/**/*.${extension}`,
-        `build-upload must upload target-scoped ${extension} bundles`,
+        artifactInventoryStep,
+        "shopt -s globstar nullglob",
+        "build-upload artifact inventory validation must enable recursive null globs",
+      );
+      pushMissing(
+        errors,
+        artifactInventoryStep,
+        "No release artifact matched contract path",
+        "build-upload artifact inventory validation must fail missing contract paths",
+      );
+      pushMissing(
+        errors,
+        artifactInventoryStep,
+        "${{ matrix.artifacts }}",
+        "build-upload artifact inventory validation must read matrix artifacts",
+      );
+    }
+    if (!uploadArtifactStep) {
+      errors.push("build-upload must upload release artifacts");
+    } else {
+      pushMissing(
+        errors,
+        uploadArtifactStep,
+        "name: ${{ matrix.artifact }}",
+        "build-upload artifact upload must use the matrix artifact name",
+      );
+      pushMissing(
+        errors,
+        uploadArtifactStep,
+        "path: ${{ matrix.artifacts }}",
+        "build-upload artifact upload must use the matrix artifact contract",
+      );
+      pushMissing(
+        errors,
+        uploadArtifactStep,
+        "if-no-files-found: error",
+        "build-upload artifact upload must fail when contract paths match no files",
+      );
+    }
+    if (
+      artifactInventoryStep &&
+      uploadArtifactStep &&
+      buildUpload.indexOf(artifactInventoryStep) >
+        buildUpload.indexOf(uploadArtifactStep)
+    ) {
+      errors.push(
+        "build-upload must validate release artifact inventory before upload",
       );
     }
   }

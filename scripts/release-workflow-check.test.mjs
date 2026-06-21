@@ -165,13 +165,43 @@ test("release workflow contract preserves signing and Linux bundle env", () => {
 
 test("release workflow contract rejects unscoped bundle upload globs", () => {
   const broken = ciWorkflow.replace(
-    "launcher/src-tauri/target/${{ matrix.target }}/release/bundle/**/*.AppImage",
+    "launcher/src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/**/*.AppImage",
     "launcher/src-tauri/target/release/bundle/**/*.AppImage",
   );
 
   assert.deepEqual(errorsFor(broken), [
-    "build-upload artifact globs must not use unscoped target/release paths",
-    "build-upload must upload target-scoped AppImage bundles",
+    "build-upload matrix must contract ubuntu-24.04 x86_64-unknown-linux-gnu AppImage artifact path",
+    "build-upload artifact contract must not use unscoped target/release paths",
+  ]);
+});
+
+test("release workflow contract requires platform artifact inventory rows", () => {
+  const broken = ciWorkflow.replace(
+    "              launcher/src-tauri/target/x86_64-unknown-linux-gnu/release/bundle/**/*.rpm\n",
+    "",
+  );
+
+  assert.deepEqual(errorsFor(broken), [
+    "build-upload matrix must contract ubuntu-24.04 x86_64-unknown-linux-gnu rpm artifact path",
+  ]);
+});
+
+test("release workflow contract requires upload to use matrix artifact inventory", () => {
+  const broken = ciWorkflow.replace(
+    "          path: ${{ matrix.artifacts }}",
+    "          path: launcher/src-tauri/target/${{ matrix.target }}/release/bundle/**/*.AppImage",
+  );
+
+  assert.deepEqual(errorsFor(broken), [
+    "build-upload artifact upload must use the matrix artifact contract",
+  ]);
+});
+
+test("release workflow contract requires missing upload files to fail", () => {
+  const broken = ciWorkflow.replace("          if-no-files-found: error\n", "");
+
+  assert.deepEqual(errorsFor(broken), [
+    "build-upload artifact upload must fail when contract paths match no files",
   ]);
 });
 
