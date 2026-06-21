@@ -163,7 +163,10 @@ external evidence was collected in this workspace.
   Store/Stripe price-drop evidence can focus `price-drop` with
   `OGL_HOSTED_CRON_EVIDENCE_CHECKS=price-drop`; it does not call Edge Functions,
   create schedules, write rows, print REST/auth values, check proof rows, or
-  prove scheduler ownership.
+  prove scheduler ownership. When using anon-plus-caller REST auth,
+  `SUPABASE_ANON_KEY` must carry role `anon` and `SUPABASE_AUTH_JWT` must carry
+  role `authenticated`; copied anon-role caller JWTs are rejected before REST
+  fetches.
 - Hosted deploy gate packet output is local handoff only: it reports missing
   GitHub Environment env names, required Supabase runtime secret names, deploy
   function `verify_jwt` flags, dry-run/OPTIONS smoke plans, scheduler handoff
@@ -243,10 +246,11 @@ commit is the current `origin/main` commit, and ignores scoped external-evidence
 env vars so a tag cannot shrink the proof lane set or release from an unrelated
 branch tip.
 
-- Store/Stripe (`store-stripe-live`): real Stripe webhook signature delivery, Stripe Dashboard
-  tax/invoice configuration, and real hosted price-drop scheduler execution
-  across `docs/verification/external/store-stripe-live-staging.md` and
-  `docs/verification/external/store-price-drop-scheduler-live.md`.
+- Store/Stripe (`store-stripe-live`): real Stripe webhook signature delivery,
+  Stripe Dashboard tax/invoice configuration, production license signing key
+  custody with live license issuance, and real hosted price-drop scheduler
+  execution across `docs/verification/external/store-stripe-live-staging.md`
+  and `docs/verification/external/store-price-drop-scheduler-live.md`.
 - Hosted Supabase cron (`hosted-supabase-cron`): trusted scheduled runs for price-drop notifications,
   account deletion processing, and platform presence polling with real secrets,
   fresh evidence rows, and zero failure counts where aggregate rows expose

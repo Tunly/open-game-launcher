@@ -585,7 +585,7 @@ GitHub Actions exposes a manual `hosted_deploy_gate` workflow_dispatch path that
 | `SUPABASE_REST_URL`                   | Optional explicit hosted REST base URL for cron evidence collection              |
 | `SUPABASE_SERVICE_ROLE_KEY`           | Preferred hosted REST auth for release-boundary cron evidence                    |
 | `SUPABASE_ANON_KEY`                   | Hosted REST anon key when paired with `SUPABASE_AUTH_JWT`                        |
-| `SUPABASE_AUTH_JWT`                   | Hosted REST caller JWT when paired with `SUPABASE_ANON_KEY`                      |
+| `SUPABASE_AUTH_JWT`                   | Hosted REST authenticated caller JWT when paired with `SUPABASE_ANON_KEY`        |
 
 Deploy trusted Edge Functions after setting secrets:
 

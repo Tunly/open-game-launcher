@@ -35,8 +35,9 @@ query strings, or fragments before auth headers are sent.
 REST auth values must be JWT-shaped Supabase tokens before any fetch:
 `SUPABASE_SERVICE_ROLE_KEY` must carry role `service_role`,
 `SUPABASE_ANON_KEY` must carry role `anon`, and `SUPABASE_AUTH_JWT` must carry
-a plausible hosted Supabase project identity. Weak placeholders such as
-`configured-*`, `anon-real`, or `jwt-real` are rejected by env name only.
+role `authenticated` for the same plausible hosted Supabase project identity.
+Weak placeholders such as `configured-*`, `anon-real`, or `jwt-real` are
+rejected by env name only.
 
 Do not paste secret values into reports. The local `plan` output redacts the
 REST base URL to a configured/not-configured state.

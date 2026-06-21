@@ -112,6 +112,12 @@ function gateSpecificEvidenceDetails(gate) {
       if (field === "Supabase function log run ID") {
         return "- Supabase function log run ID: https://supabase.com/dashboard/project/awebfvfyqzwapcgixdfj/functions/logs/run-12345";
       }
+      if (field === "License key custody evidence") {
+        return "- License key custody evidence: license-key-custody workflow-123";
+      }
+      if (field === "Live license issuance evidence") {
+        return "- Live license issuance evidence: live-license-issuance workflow-123";
+      }
       if (field === "OS/title/client matrix") {
         return "- OS/title/client matrix: os-title-client matrix Windows macOS Linux workflow-123";
       }
@@ -131,6 +137,8 @@ function proofEvidenceValueForProof(proof, fallback) {
     return "run-stripe-webhook-signature-123";
   if (proof.includes("Stripe Tax and invoice"))
     return "run-stripe-dashboard-tax-invoice-123";
+  if (proof.includes("Production license signing key custody"))
+    return "run-license-key-custody-live-license-issuance-123";
   if (proof.includes("poll-platform-presence"))
     return "workflow-presence-poll-123";
   if (proof.includes("notify-price-drop")) return "workflow-price-drop-123";
@@ -141,11 +149,11 @@ function proofEvidenceValueForProof(proof, fallback) {
   if (proof.includes("mod.io and CurseForge"))
     return "run-provider-modio-curseforge-probe-123";
   if (proof.includes("Non-Steam presence"))
-    return "run-provider-presence-bridge-123";
+    return "run-non-steam-presence-bridge-provider-123";
   if (proof.includes("Provider-approved catalog/cloud"))
-    return "run-provider-catalog-cloud-transfer-123";
+    return "run-provider-approved-catalog-cloud-transfer-123";
   if (proof.includes("Achievement/provider cache"))
-    return "run-achievement-provider-cache-e2e-123";
+    return "run-achievement-provider-cache-real-client-e2e-123";
   if (proof.includes("Fullscreen/anti-cheat overlay"))
     return "run-fullscreen-anticheat-overlay-session-123";
   if (proof.includes("Long native overlay sessions"))
@@ -153,15 +161,15 @@ function proofEvidenceValueForProof(proof, fallback) {
   if (proof.includes("External-drive backup/restore"))
     return "run-external-drive-backup-restore-Windows-macOS-Linux-e2e-123";
   if (proof.includes("Real client mount/apply"))
-    return "run-client-mount-apply-provider-123";
+    return "run-client-mount-apply-provider-client-123";
   if (proof.includes("Hosted community artwork/screenshots"))
     return "run-community-artwork-screenshot-rollout-123";
   if (proof.includes("Production controller layout"))
     return "run-controller-layout-profile-sync-123";
   if (proof.includes("Plugin marketplace"))
-    return "run-plugin-marketplace-update-review-123";
+    return "run-plugin-marketplace-execution-update-review-123";
   if (proof.includes("Native mobile apps"))
-    return "run-mobile-push-store-distribution-123";
+    return "run-mobile-push-provider-store-distribution-123";
   if (proof.includes("Hosted production deployment"))
     return "hosted-deploy workflow-123";
   return fallback;
@@ -810,6 +818,33 @@ test("rollout track evidence fields cover community and controller rollout lanes
     "Push-provider evidence",
     "Hosted deploy evidence",
   ]);
+});
+
+test("Store Stripe gate requires license key custody and live issuance evidence", () => {
+  const gate = evidenceGates.find((item) => item.id === "store-stripe-live");
+  assert.ok(gate);
+  const stagingArtifact =
+    "docs/verification/external/store-stripe-live-staging.md";
+  const proof =
+    "Production license signing key custody and live license issuance are verified.";
+
+  assert.ok(gate.requiredProofs.includes(proof));
+  assert.ok(
+    gate.artifactProofs
+      ?.find((item) => item.path === stagingArtifact)
+      ?.requiredProofs.includes(proof),
+  );
+  assert.deepEqual(
+    gate.artifactEvidenceFields?.find((item) => item.path === stagingArtifact)
+      ?.requiredFields,
+    [
+      "Stripe webhook event ID",
+      "Stripe Dashboard evidence",
+      "Supabase function log run ID",
+      "License key custody evidence",
+      "Live license issuance evidence",
+    ],
+  );
 });
 
 test("gate selection can focus one or more external lanes", () => {
@@ -2060,6 +2095,119 @@ test("preflight status requires hardware OS proof and matrix to name every OS la
   assert.deepEqual(allOsStatus.missingEvidenceDetails, []);
 });
 
+test("preflight status requires compound hardware overlay proof terms", () => {
+  const gate = evidenceGates.find((item) => item.id === "hardware-os-e2e");
+  assert.ok(gate);
+  const artifactPath = "docs/verification/external/hardware-os-e2e.md";
+  const overlayProof =
+    "Fullscreen/anti-cheat overlay evidence is captured on real titles.";
+
+  const contentWithOverlayProofEvidence = (value) =>
+    [
+      ...gate.requiredProofs.map((proof) => `- [x] ${proof}`),
+      ...gate.requiredProofs.map(
+        (proof, index) =>
+          `- Evidence for ${proof}: ${
+            proof === overlayProof
+              ? value
+              : proofEvidenceValueForProof(
+                  proof,
+                  `run-hardware-os-${index + 1}`,
+                )
+          }`,
+      ),
+      gateSpecificEvidenceDetails(gate),
+      capturedEvidenceDetails(),
+    ].join("\n");
+
+  const overlayOnlyStatus = gateStatus(
+    gate,
+    configuredEnv,
+    fakeExists(gate.artifactPaths),
+    fakeRead({
+      [artifactPath]: contentWithOverlayProofEvidence("workflow-overlay-123"),
+    }),
+  );
+
+  assert.equal(overlayOnlyStatus.ready, false);
+  assert.deepEqual(overlayOnlyStatus.missingProofs, []);
+  assert.deepEqual(overlayOnlyStatus.missingEvidenceDetails, [
+    {
+      field: `Evidence for ${overlayProof}`,
+      path: artifactPath,
+    },
+  ]);
+
+  const fullOverlayStatus = gateStatus(
+    gate,
+    configuredEnv,
+    fakeExists(gate.artifactPaths),
+    fakeRead({
+      [artifactPath]: contentWithOverlayProofEvidence(
+        "workflow-fullscreen-anti-cheat-overlay-123",
+      ),
+    }),
+  );
+
+  assert.equal(fullOverlayStatus.ready, true);
+  assert.deepEqual(fullOverlayStatus.missingEvidenceDetails, []);
+});
+
+test("preflight status requires compound mobile rollout proof terms", () => {
+  const gate = evidenceGates.find((item) => item.id === "rollout-tracks");
+  assert.ok(gate);
+  const artifactPath = "docs/verification/external/rollout-tracks.md";
+  const mobileProof =
+    "Native mobile apps, push-provider delivery, and store distribution are verified.";
+
+  const contentWithMobileProofEvidence = (value) =>
+    [
+      ...gate.requiredProofs.map((proof) => `- [x] ${proof}`),
+      ...gate.requiredProofs.map(
+        (proof, index) =>
+          `- Evidence for ${proof}: ${
+            proof === mobileProof
+              ? value
+              : proofEvidenceValueForProof(proof, `run-rollout-${index + 1}`)
+          }`,
+      ),
+      gateSpecificEvidenceDetails(gate),
+      capturedEvidenceDetails(),
+    ].join("\n");
+
+  const mobileOnlyStatus = gateStatus(
+    gate,
+    configuredEnv,
+    fakeExists(gate.artifactPaths),
+    fakeRead({
+      [artifactPath]: contentWithMobileProofEvidence("workflow-mobile-123"),
+    }),
+  );
+
+  assert.equal(mobileOnlyStatus.ready, false);
+  assert.deepEqual(mobileOnlyStatus.missingProofs, []);
+  assert.deepEqual(mobileOnlyStatus.missingEvidenceDetails, [
+    {
+      field: `Evidence for ${mobileProof}`,
+      path: artifactPath,
+    },
+  ]);
+
+  const fullMobileStatus = gateStatus(
+    gate,
+    configuredEnv,
+    fakeExists(gate.artifactPaths),
+    fakeRead({
+      [artifactPath]: contentWithMobileProofEvidence(
+        "workflow-mobile-push-provider-store-distribution-123",
+      ),
+    }),
+  );
+
+  assert.equal(fullMobileStatus.ready, true);
+  assert.deepEqual(fullMobileStatus.missingEvidenceDetails, []);
+});
+
 test("preflight status rejects weak proof-specific run IDs without digits", () => {
   const gate = evidenceGates.find((item) => item.id === "hardware-os-e2e");
   assert.ok(gate);
@@ -3155,6 +3303,8 @@ test("preflight status rejects Stripe event IDs with appended local or unapprove
       `- Stripe webhook event ID: ${eventId}`,
       "- Stripe Dashboard evidence: https://dashboard.stripe.com/events/evt_1234567890abcdef",
       "- Supabase function log run ID: https://supabase.com/dashboard/project/awebfvfyqzwapcgixdfj/functions/logs/run-12345",
+      "- License key custody evidence: license-key-custody workflow-123",
+      "- Live license issuance evidence: live-license-issuance workflow-123",
     ].join("\n");
     const status = gateStatus(
       gate,
@@ -3204,14 +3354,26 @@ test("preflight status accepts a bare Stripe event id for webhook proof mapping"
     fakeRead({
       [stagingPath]: [
         ...stagingProofs.map((proof) => `- [x] ${proof}`),
-        `- Evidence for ${stripeWebhookProof}: evt_1234567890abcdef`,
-        `- Evidence for ${stripeTaxProof}: run-stripe-dashboard-tax-invoice-123`,
+        ...stagingProofs.map((proof) => {
+          if (proof === stripeWebhookProof) {
+            return `- Evidence for ${proof}: evt_1234567890abcdef`;
+          }
+          if (proof === stripeTaxProof) {
+            return `- Evidence for ${proof}: run-stripe-dashboard-tax-invoice-123`;
+          }
+          return `- Evidence for ${proof}: ${proofEvidenceValueForProof(
+            proof,
+            "run-store-stripe-live-123",
+          )}`;
+        }),
         capturedEvidenceDetails({
           locator: "https://dashboard.stripe.com/events/evt_1234567890abcdef",
         }),
         "- Stripe webhook event ID: evt_1234567890abcdef",
         "- Stripe Dashboard evidence: https://dashboard.stripe.com/events/evt_1234567890abcdef",
         "- Supabase function log run ID: https://supabase.com/dashboard/project/awebfvfyqzwapcgixdfj/functions/logs/run-12345",
+        "- License key custody evidence: license-key-custody workflow-123",
+        "- Live license issuance evidence: live-license-issuance workflow-123",
       ].join("\n"),
       [schedulerPath]: [
         ...schedulerProofs.map((proof) => `- [x] ${proof}`),

@@ -52,6 +52,8 @@ const stripeLiveEvidenceFields = Object.freeze([
   "Stripe webhook event ID",
   "Stripe Dashboard evidence",
   "Supabase function log run ID",
+  "License key custody evidence",
+  "Live license issuance evidence",
 ]);
 
 const providerEvidenceFields = Object.freeze([
@@ -113,6 +115,7 @@ export const evidenceGates = Object.freeze([
         requiredProofs: [
           "Stripe webhook signature delivery reaches stripe-webhook.",
           "Stripe Tax and invoice settings are verified in Dashboard.",
+          "Production license signing key custody and live license issuance are verified.",
         ],
       },
       {
@@ -141,6 +144,7 @@ export const evidenceGates = Object.freeze([
     requiredProofs: [
       "Stripe webhook signature delivery reaches stripe-webhook.",
       "Stripe Tax and invoice settings are verified in Dashboard.",
+      "Production license signing key custody and live license issuance are verified.",
       "Hosted price-drop scheduler writes fresh run evidence.",
     ],
     captureHandoffs: {
@@ -154,6 +158,12 @@ export const evidenceGates = Object.freeze([
           "Capture redacted Stripe live Dashboard evidence for Tax, invoice creation, and billing settings used by the release checkout lane.",
         terms: ["stripe-tax-invoice", "dashboard"],
       },
+      "Production license signing key custody and live license issuance are verified.":
+        {
+          capture:
+            "Capture redacted hosted runtime-secret custody evidence for the production license signing key, then issue a live license through the Stripe webhook fulfillment path and attach the redacted license/order/function locator without exposing the signing key.",
+          terms: ["license-key-custody", "live-license-issuance"],
+        },
       "Hosted price-drop scheduler writes fresh run evidence.": {
         capture:
           "Run `pnpm hosted:deploy-gate:scheduler-packet`, capture redacted scheduler dashboard/config proof, then run the price-drop scheduled lane and collect `OGL_HOSTED_CRON_EVIDENCE_CHECKS=price-drop pnpm hosted:cron-evidence:artifact-hints` for the redacted `store_price_drop_notification_runs` row with `notify-price-drop`, `scheduled`, `dry_run=false`, and `completed`; artifact hints fill Gate-Specific Evidence only and do not satisfy the proof row by themselves.",
@@ -1080,8 +1090,16 @@ const fieldSpecificEvidenceValidators = Object.freeze({
   "Hosted deploy evidence": hostedDeployWorkflowEvidenceValueIsSpecific,
   "Hardware profile": (value) =>
     evidenceIdentifierValueMatches(value, [/hardware/i, /profile/i]),
+  "License key custody evidence": (value) =>
+    evidenceIdentifierValueMatchesAll(value, [/license/i, /key/i, /custody/i]),
   "Live probe run ID": (value) =>
     evidenceIdentifierValueMatches(value, [/live/i, /probe/i]),
+  "Live license issuance evidence": (value) =>
+    evidenceIdentifierValueMatchesAll(value, [
+      /live/i,
+      /license/i,
+      /issuance/i,
+    ]),
   "Marketplace evidence": (value) =>
     evidenceIdentifierValueMatches(value, [/marketplace/i, /plugin/i]),
   "Mobile distribution evidence": (value) =>
@@ -1478,6 +1496,9 @@ function expectedProofEvidenceValuePatterns(proof) {
       /(?:stripe[-_\s]?(?:tax|invoice)|dashboard[-_\s]?(?:tax|invoice)|tax[-_\s]?invoice|dashboard\.stripe\.com\/(?:accts?\/[^/]+\/)?(?:settings|invoices|tax))/i,
     ];
   }
+  if (/license signing key custody/.test(normalizedProof)) {
+    return [/license/i, /key/i, /custody/i, /live/i, /issuance/i];
+  }
   if (/(?:price-drop|notify-price-drop)/.test(normalizedProof)) {
     return [
       /(?:price[-_\s]?drop|notify[-_\s]?price[-_\s]?drop|store_price_drop_notification_runs)/i,
@@ -1497,22 +1518,21 @@ function expectedProofEvidenceValuePatterns(proof) {
     return [/mod[._\s-]?io/i, /curseforge/i];
   }
   if (/non-steam presence/.test(normalizedProof)) {
-    return [
-      /(?:non[-_\s]?steam|presence[-_\s]?bridge|presence[-_\s]?provider)/i,
-    ];
+    return [/non[-_\s]?steam/i, /presence/i, /bridge/i, /provider/i];
   }
   if (/provider-approved catalog\/cloud/.test(normalizedProof)) {
-    return [/(?:provider[-_\s]?approved|catalog|cloud[-_\s]?transfer)/i];
+    return [/provider[-_\s]?approved/i, /catalog/i, /cloud[-_\s]?transfer/i];
   }
   if (/achievement\/provider cache/.test(normalizedProof)) {
-    return [/(?:achievement|provider[-_\s]?cache|real[-_\s]?client)/i];
+    return [/achievement/i, /provider[-_\s]?cache/i, /real[-_\s]?client/i];
   }
   if (/fullscreen\/anti-cheat overlay/.test(normalizedProof)) {
-    return [/(?:fullscreen|anti[-_\s]?cheat|overlay)/i];
+    return [/fullscreen/i, /anti[-_\s]?cheat/i, /overlay/i];
   }
   if (/long native overlay sessions/.test(normalizedProof)) {
     return [
-      /(?:native[-_\s]?overlay|long[-_\s]?session|runtime[-_\s]?session)/i,
+      /native[-_\s]?overlay/i,
+      /(?:long[-_\s]?session|runtime[-_\s]?session)/i,
     ];
   }
   if (/external-drive backup\/restore/.test(normalizedProof)) {
@@ -1525,24 +1545,26 @@ function expectedProofEvidenceValuePatterns(proof) {
   }
   if (/real client mount\/apply/.test(normalizedProof)) {
     return [
-      /(?:client[-_\s]?mount|mount[-_\s]?apply|provider[-_\s]?clients?)/i,
+      /client[-_\s]?mount/i,
+      /mount[-_\s]?apply/i,
+      /provider[-_\s]?clients?/i,
     ];
   }
   if (/hosted community artwork\/screenshots/.test(normalizedProof)) {
-    return [
-      /(?:community[-_\s]?(?:artwork|screenshots?)|screenshot[-_\s]?rollout)/i,
-    ];
+    return [/community/i, /artwork/i, /screenshots?/i, /rollout/i];
   }
   if (/production controller layout/.test(normalizedProof)) {
-    return [/(?:controller[-_\s]?layout|profile[-_\s]?sync)/i];
+    return [/controller[-_\s]?layout/i, /profile[-_\s]?sync/i];
   }
   if (/plugin marketplace/.test(normalizedProof)) {
     return [
-      /(?:plugin[-_\s]?marketplace|marketplace[-_\s]?(?:execution|update)|plugin[-_\s]?update)/i,
+      /plugin[-_\s]?marketplace/i,
+      /marketplace[-_\s]?execution/i,
+      /(?:marketplace[-_\s]?update|plugin[-_\s]?update|execution[-_\s]?update)/i,
     ];
   }
   if (/native mobile apps/.test(normalizedProof)) {
-    return [/(?:mobile|push[-_\s]?provider|store[-_\s]?distribution)/i];
+    return [/mobile/i, /push[-_\s]?provider/i, /store[-_\s]?distribution/i];
   }
   if (/hosted production deployment/.test(normalizedProof)) {
     return [
@@ -1903,7 +1925,7 @@ export function artifactTemplate(gate, artifactPath) {
     "## Proof Evidence Mapping",
     "",
     "When a proof row is checked, fill the matching evidence line with a specific redacted run ID, dashboard link, external artifact locator, workflow ID, signed log, or `sha256:<64-hex>` reference. Accepted dashboard URL hosts are Supabase, Stripe live Dashboard, GitHub Actions/releases/deployments, Vercel, Netlify, Cloudflare, App Store Connect, Google Play Console, Firebase, and OneSignal; otherwise use `run:`/`artifact:`/`sha256:` style locators. Generic text such as `redacted`, `see above`, local files, localhost URLs, and example URLs do not satisfy preflight.",
-    "Proof evidence values must name the proof lane they support, for example `stripe-webhook`, `stripe-tax-invoice`, `price-drop`, `presence-poll`, `account-deletion`, `mod.io/CurseForge`, `presence-bridge`, `catalog-cloud-transfer`, `achievement-cache`, `overlay`, `backup-restore`, `client-mount-apply`, `community-rollout`, `controller-profile-sync`, `plugin-marketplace`, `mobile-push`, or `hosted-deploy`; bare `evt_...` values are accepted only for the Stripe webhook signature proof. Syntactically specific but generic IDs such as `run-generic-1` stay blocked. Compound proof values must include every required term in the same value: mod-provider evidence includes both `mod.io` and `CurseForge`; external-drive backup/restore proof evidence and hardware matrix evidence include `Windows`, `macOS`, and `Linux`.",
+    "Proof evidence values must name the proof lane they support, for example `stripe-webhook`, `stripe-tax-invoice`, `license-key-custody-live-license-issuance`, `price-drop`, `presence-poll`, `account-deletion`, `mod.io/CurseForge`, `non-steam-presence-bridge-provider`, `provider-approved-catalog-cloud-transfer`, `achievement-provider-cache-real-client`, `fullscreen-anti-cheat-overlay`, `backup-restore`, `client-mount-apply-provider-client`, `community-artwork-screenshot-rollout`, `controller-layout-profile-sync`, `plugin-marketplace-execution-update`, `mobile-push-provider-store-distribution`, or `hosted-deploy`; bare `evt_...` values are accepted only for the Stripe webhook signature proof. Syntactically specific but generic IDs such as `run-generic-1` stay blocked. Compound proof values must include every required term in the same value: mod-provider evidence includes both `mod.io` and `CurseForge`; external-drive backup/restore proof evidence and hardware matrix evidence include `Windows`, `macOS`, and `Linux`.",
     "",
     ...requiredProofs.map((proof) => `- Evidence for ${proof}:`),
     "",

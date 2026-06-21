@@ -73,6 +73,8 @@ const stripeLiveEvidenceFields = [
   "Stripe webhook event ID",
   "Stripe Dashboard evidence",
   "Supabase function log run ID",
+  "License key custody evidence",
+  "Live license issuance evidence",
 ] as const;
 
 const providerEvidenceFields = [
@@ -275,6 +277,7 @@ export const EXTERNAL_COMPLETION_EVIDENCE_GATE_INPUTS: ExternalCompletionEvidenc
         requiredProofs: [
           "Stripe webhook signature delivery reaches stripe-webhook.",
           "Stripe Tax and invoice settings are verified in Dashboard.",
+          "Production license signing key custody and live license issuance are verified.",
         ],
       },
       {
@@ -299,6 +302,7 @@ export const EXTERNAL_COMPLETION_EVIDENCE_GATE_INPUTS: ExternalCompletionEvidenc
     proofRequirements: [
       "Stripe webhook signature delivery reaches stripe-webhook.",
       "Stripe Tax and invoice settings are verified in Dashboard.",
+      "Production license signing key custody and live license issuance are verified.",
       "Hosted price-drop scheduler writes fresh run evidence.",
     ],
     requiredEnv: [
@@ -1429,7 +1433,11 @@ const fieldSpecificEvidenceValidators: Partial<Record<string, EvidenceDetailFiel
     evidenceIdentifierValueMatches(value, [/controller/i, /layout/i, /profile/i, /sync/i]),
   "Hosted deploy evidence": hostedDeployWorkflowEvidenceValueIsSpecific,
   "Hardware profile": (value) => evidenceIdentifierValueMatches(value, [/hardware/i, /profile/i]),
+  "License key custody evidence": (value) =>
+    evidenceIdentifierValueMatchesAll(value, [/license/i, /key/i, /custody/i]),
   "Live probe run ID": (value) => evidenceIdentifierValueMatches(value, [/live/i, /probe/i]),
+  "Live license issuance evidence": (value) =>
+    evidenceIdentifierValueMatchesAll(value, [/live/i, /license/i, /issuance/i]),
   "Marketplace evidence": (value) =>
     evidenceIdentifierValueMatches(value, [/marketplace/i, /plugin/i]),
   "Mobile distribution evidence": (value) =>
@@ -1545,6 +1553,9 @@ function expectedProofEvidenceValuePattern(proof: string) {
   if (/stripe tax and invoice/.test(normalizedProof)) {
     return /(?:stripe[-_\s]?(?:tax|invoice)|dashboard[-_\s]?(?:tax|invoice)|tax[-_\s]?invoice|dashboard\.stripe\.com\/(?:accts?\/[^/]+\/)?(?:settings|invoices|tax))/i;
   }
+  if (/license signing key custody/.test(normalizedProof)) {
+    return [/license/i, /key/i, /custody/i, /live/i, /issuance/i];
+  }
   if (/(?:price-drop|notify-price-drop)/.test(normalizedProof)) {
     return /(?:price[-_\s]?drop|notify[-_\s]?price[-_\s]?drop|store_price_drop_notification_runs)/i;
   }
@@ -1558,37 +1569,41 @@ function expectedProofEvidenceValuePattern(proof: string) {
     return [/mod[._\s-]?io/i, /curseforge/i];
   }
   if (/non-steam presence/.test(normalizedProof)) {
-    return /(?:non[-_\s]?steam|presence[-_\s]?bridge|presence[-_\s]?provider)/i;
+    return [/non[-_\s]?steam/i, /presence/i, /bridge/i, /provider/i];
   }
   if (/provider-approved catalog\/cloud/.test(normalizedProof)) {
-    return /(?:provider[-_\s]?approved|catalog|cloud[-_\s]?transfer)/i;
+    return [/provider[-_\s]?approved/i, /catalog/i, /cloud[-_\s]?transfer/i];
   }
   if (/achievement\/provider cache/.test(normalizedProof)) {
-    return /(?:achievement|provider[-_\s]?cache|real[-_\s]?client)/i;
+    return [/achievement/i, /provider[-_\s]?cache/i, /real[-_\s]?client/i];
   }
   if (/fullscreen\/anti-cheat overlay/.test(normalizedProof)) {
-    return /(?:fullscreen|anti[-_\s]?cheat|overlay)/i;
+    return [/fullscreen/i, /anti[-_\s]?cheat/i, /overlay/i];
   }
   if (/long native overlay sessions/.test(normalizedProof)) {
-    return /(?:native[-_\s]?overlay|long[-_\s]?session|runtime[-_\s]?session)/i;
+    return [/native[-_\s]?overlay/i, /(?:long[-_\s]?session|runtime[-_\s]?session)/i];
   }
   if (/external-drive backup\/restore/.test(normalizedProof)) {
     return [/(?:external[-_\s]?drive|backup[-_\s]?restore)/i, /windows/i, /mac\s?os/i, /linux/i];
   }
   if (/real client mount\/apply/.test(normalizedProof)) {
-    return /(?:client[-_\s]?mount|mount[-_\s]?apply|provider[-_\s]?clients?)/i;
+    return [/client[-_\s]?mount/i, /mount[-_\s]?apply/i, /provider[-_\s]?clients?/i];
   }
   if (/hosted community artwork\/screenshots/.test(normalizedProof)) {
-    return /(?:community[-_\s]?(?:artwork|screenshots?)|screenshot[-_\s]?rollout)/i;
+    return [/community/i, /artwork/i, /screenshots?/i, /rollout/i];
   }
   if (/production controller layout/.test(normalizedProof)) {
-    return /(?:controller[-_\s]?layout|profile[-_\s]?sync)/i;
+    return [/controller[-_\s]?layout/i, /profile[-_\s]?sync/i];
   }
   if (/plugin marketplace/.test(normalizedProof)) {
-    return /(?:plugin[-_\s]?marketplace|marketplace[-_\s]?(?:execution|update)|plugin[-_\s]?update)/i;
+    return [
+      /plugin[-_\s]?marketplace/i,
+      /marketplace[-_\s]?execution/i,
+      /(?:marketplace[-_\s]?update|plugin[-_\s]?update|execution[-_\s]?update)/i,
+    ];
   }
   if (/native mobile apps/.test(normalizedProof)) {
-    return /(?:mobile|push[-_\s]?provider|store[-_\s]?distribution)/i;
+    return [/mobile/i, /push[-_\s]?provider/i, /store[-_\s]?distribution/i];
   }
   if (/hosted production deployment/.test(normalizedProof)) {
     return /(?:hosted[-_\s]?(?:production[-_\s]?)?deploy|production[-_\s]?deployment|deployment)/i;

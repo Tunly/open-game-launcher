@@ -241,6 +241,7 @@ Proof required:
 
 - Stripe webhook signature delivery reaches stripe-webhook.
 - Stripe Tax and invoice settings are verified in Dashboard.
+- Production license signing key custody and live license issuance are verified.
 - Hosted price-drop scheduler writes fresh run evidence.
 
 Evidence rows by artifact. The Stripe artifact uses flat dashboard/webhook
@@ -254,6 +255,10 @@ from the price-drop-only hosted cron artifact hints:
   Stripe Dashboard evidence.
 - `docs/verification/external/store-stripe-live-staging.md`:
   Supabase function log run ID.
+- `docs/verification/external/store-stripe-live-staging.md`:
+  License key custody evidence.
+- `docs/verification/external/store-stripe-live-staging.md`:
+  Live license issuance evidence.
 - `docs/verification/external/store-price-drop-scheduler-live.md`:
   Hosted cron table.
 - `docs/verification/external/store-price-drop-scheduler-live.md`: Function.

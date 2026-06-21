@@ -56,11 +56,14 @@ function validStoreArtifactEvidence(gate: ExternalCompletionEvidenceGateInput) {
         "Stripe Dashboard evidence": "https://dashboard.stripe.com/events/evt_redacted",
         "Stripe webhook event ID": "evt_oglauncherlive123",
         "Supabase function log run ID": "run-supabase-stripe-webhook-123",
+        "License key custody evidence": "license-key-custody workflow-123",
+        "Live license issuance evidence": "live-license-issuance workflow-123",
       },
       path: checkoutArtifact.path,
       proofEvidence: {
         [checkoutArtifact.requiredProofs[0]]: "run-stripe-webhook-live-123",
         [checkoutArtifact.requiredProofs[1]]: "run-stripe-dashboard-tax-123",
+        [checkoutArtifact.requiredProofs[2]]: "run-license-key-custody-live-license-issuance-123",
       },
       readable: true,
     },
@@ -129,10 +132,10 @@ describe("ExternalCompletionEvidenceSummaryPanel", () => {
       within(artifactSnapshot).getByRole("article", { name: "Artifact Ready: 0/6" }),
     ).toBeVisible();
     expect(
-      within(artifactSnapshot).getByRole("article", { name: "Proof Rows Missing: 19" }),
+      within(artifactSnapshot).getByRole("article", { name: "Proof Rows Missing: 20" }),
     ).toBeVisible();
     expect(
-      within(artifactSnapshot).getByRole("article", { name: "Details Missing: 81" }),
+      within(artifactSnapshot).getByRole("article", { name: "Details Missing: 83" }),
     ).toBeVisible();
     expect(within(artifactSnapshot).getAllByText("Yes")).toHaveLength(6);
     expect(within(artifactSnapshot).getAllByText("blocked").length).toBeGreaterThan(0);

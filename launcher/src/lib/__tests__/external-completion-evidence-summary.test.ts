@@ -68,11 +68,14 @@ function validStoreArtifactEvidence(
         "Stripe Dashboard evidence": "https://dashboard.stripe.com/events/evt_redacted",
         "Stripe webhook event ID": "evt_oglauncherlive123",
         "Supabase function log run ID": "run-supabase-stripe-webhook-123",
+        "License key custody evidence": "license-key-custody workflow-123",
+        "Live license issuance evidence": "live-license-issuance workflow-123",
       },
       path: checkoutArtifact.path,
       proofEvidence: {
         [checkoutArtifact.requiredProofs[0]]: "run-stripe-webhook-live-123",
         [checkoutArtifact.requiredProofs[1]]: "run-stripe-dashboard-tax-123",
+        [checkoutArtifact.requiredProofs[2]]: "run-license-key-custody-live-license-issuance-123",
       },
       readable: true,
     },
@@ -147,13 +150,20 @@ function hostedCronProofEvidenceFor(proof: string) {
 function externalProofEvidenceFor(proof: string, fallback = "run-external-evidence-123") {
   if (proof.includes("Stripe webhook signature")) return "run-stripe-webhook-signature-123";
   if (proof.includes("Stripe Tax and invoice")) return "run-stripe-dashboard-tax-invoice-123";
+  if (proof.includes("Production license signing key custody")) {
+    return "run-license-key-custody-live-license-issuance-123";
+  }
   if (proof.includes("Hosted price-drop scheduler")) return "workflow-price-drop-live-123";
   if (proof.includes("mod.io and CurseForge")) return "run-provider-mod.io-curseforge-probe-123";
-  if (proof.includes("Non-Steam presence")) return "run-provider-presence-bridge-123";
-  if (proof.includes("Provider-approved catalog/cloud")) {
-    return "run-provider-catalog-cloud-transfer-123";
+  if (proof.includes("Non-Steam presence")) {
+    return "run-non-steam-presence-bridge-provider-123";
   }
-  if (proof.includes("Achievement/provider cache")) return "run-achievement-provider-cache-e2e-123";
+  if (proof.includes("Provider-approved catalog/cloud")) {
+    return "run-provider-approved-catalog-cloud-transfer-123";
+  }
+  if (proof.includes("Achievement/provider cache")) {
+    return "run-achievement-provider-cache-real-client-123";
+  }
   if (proof.includes("Fullscreen/anti-cheat overlay")) {
     return "run-fullscreen-anticheat-overlay-session-123";
   }
@@ -162,7 +172,7 @@ function externalProofEvidenceFor(proof: string, fallback = "run-external-eviden
     return "run-external-drive-backup-restore-windows-macos-linux-e2e-123";
   }
   if (proof.includes("Real client mount/apply")) {
-    return "run-client-mount-apply-provider-123";
+    return "run-client-mount-apply-provider-client-123";
   }
   if (proof.includes("Hosted community artwork/screenshots")) {
     return "run-community-artwork-screenshot-rollout-123";
@@ -170,8 +180,9 @@ function externalProofEvidenceFor(proof: string, fallback = "run-external-eviden
   if (proof.includes("Production controller layout")) {
     return "run-controller-layout-profile-sync-123";
   }
-  if (proof.includes("Plugin marketplace")) return "run-plugin-marketplace-update-review-123";
-  if (proof.includes("Native mobile apps")) return "run-mobile-push-store-distribution-123";
+  if (proof.includes("Plugin marketplace")) return "run-plugin-marketplace-execution-update-123";
+  if (proof.includes("Native mobile apps"))
+    return "run-mobile-push-provider-store-distribution-123";
   if (proof.includes("Hosted production deployment")) return "hosted-deploy workflow-123";
   return fallback;
 }
@@ -331,7 +342,7 @@ describe("external completion evidence summary", () => {
       expect.arrayContaining([
         "4 missing, placeholder, or malformed environment value(s)",
         "2 unreadable artifact file(s)",
-        "3 missing checked proof row(s)",
+        `${storeGate.proofRequirements.length} missing checked proof row(s)`,
       ]),
     );
     expect(summary.gates[0].warnings.join(" ")).toMatch(/are not evidence/i);
@@ -1064,7 +1075,7 @@ describe("external completion evidence summary", () => {
     });
 
     expect(summary.gates[0]).toMatchObject({
-      missingProofEvidenceCount: 2,
+      missingProofEvidenceCount: storeGate.artifactProofs![0].requiredProofs.length,
       status: "blocked",
     });
     expect(

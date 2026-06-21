@@ -316,6 +316,12 @@ test("hostedCronEvidencePacket reports missing env and incomplete rows without r
   ]) {
     assert.match(functionsEnvExample, new RegExp(`^${name}=`, "m"));
   }
+  const hostedCronEnvExample = functionsEnvExample.match(
+    /# --- Hosted cron evidence collector[\s\S]*# --- External completion evidence preflight/,
+  )?.[0];
+  assert.ok(hostedCronEnvExample);
+  assert.match(hostedCronEnvExample, /^SUPABASE_AUTH_JWT=/m);
+  assert.match(hostedCronEnvExample, /authenticated caller JWT/i);
 });
 
 test("hostedCronEvidencePacket and artifact hints can focus one cron lane", () => {
@@ -913,6 +919,7 @@ test("runbook documents lane-specific external preflight", () => {
   assert.match(runbook, /JWT-shaped/i);
   assert.match(runbook, /service_role/);
   assert.match(runbook, /role `anon`/);
+  assert.match(runbook, /SUPABASE_AUTH_JWT[\s\S]*role `authenticated`/);
   assert.match(runbook, /skipped_summary\.inactive = 0/);
   assert.match(runbook, /pnpm hosted:cron-evidence:artifact-hints/);
   assert.match(
