@@ -2,6 +2,8 @@ use std::{
     fmt, fs,
     path::{Path, PathBuf},
     process::{Command, Stdio},
+    thread,
+    time::{Duration, Instant},
 };
 
 use serde::{Deserialize, Serialize};
@@ -91,10 +93,15 @@ pub(crate) trait OwnedSandboxProbe: Clone {
     ) -> Result<OwnedProbeReport, PluginRuntimeSandboxError>;
 }
 
+const DESKTOP_OWNED_PROBE_TIMEOUT: Duration = Duration::from_secs(5);
+const DESKTOP_OWNED_PROBE_WAIT_INTERVAL: Duration = Duration::from_millis(10);
+const PROBE_OUTPUT_SNIPPET_LIMIT: usize = 512;
+
 #[derive(Debug, Clone)]
 #[cfg_attr(test, allow(dead_code))]
 pub(crate) struct DesktopOwnedProbe {
     exe_path: PathBuf,
+    probe_timeout: Duration,
 }
 
 #[cfg_attr(test, allow(dead_code))]
@@ -105,7 +112,10 @@ impl DesktopOwnedProbe {
                 "Could not resolve launcher executable: {error}"
             ))
         })?;
-        Ok(Self { exe_path })
+        Ok(Self {
+            exe_path,
+            probe_timeout: DESKTOP_OWNED_PROBE_TIMEOUT,
+        })
     }
 }
 
@@ -128,27 +138,59 @@ impl OwnedSandboxProbe for DesktopOwnedProbe {
             ));
         }
 
-        let output = Command::new(&self.exe_path)
+        let mut child = Command::new(&self.exe_path)
             .arg("--og-plugin-runtime-sandbox-probe")
             .arg("--deny-all-policy-v1")
             .env_clear()
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
-            .output()
+            .spawn()
             .map_err(|error| {
                 PluginRuntimeSandboxError::new(format!(
                     "Could not run plugin sandbox probe: {error}"
                 ))
             })?;
+        let started_at = Instant::now();
+        loop {
+            match child.try_wait().map_err(|error| {
+                PluginRuntimeSandboxError::new(format!(
+                    "Could not wait for plugin sandbox probe: {error}"
+                ))
+            })? {
+                Some(_) => break,
+                None if started_at.elapsed() >= self.probe_timeout => {
+                    let _ = child.kill();
+                    let output = child.wait_with_output().map_err(|error| {
+                        PluginRuntimeSandboxError::new(format!(
+                            "Could not collect timed out plugin sandbox probe output: {error}"
+                        ))
+                    })?;
+                    return Err(PluginRuntimeSandboxError::new(format!(
+                        "Plugin sandbox probe timed out after {}ms.{}",
+                        self.probe_timeout.as_millis(),
+                        format_probe_output_snippets(&output.stdout, &output.stderr)
+                    )));
+                }
+                None => thread::sleep(DESKTOP_OWNED_PROBE_WAIT_INTERVAL),
+            }
+        }
+
+        let output = child.wait_with_output().map_err(|error| {
+            PluginRuntimeSandboxError::new(format!(
+                "Could not collect plugin sandbox probe output: {error}"
+            ))
+        })?;
         if !output.status.success() {
-            return Err(PluginRuntimeSandboxError::new(
-                "Plugin sandbox probe process exited unsuccessfully.",
-            ));
+            return Err(PluginRuntimeSandboxError::new(format!(
+                "Plugin sandbox probe process exited unsuccessfully.{}",
+                format_probe_output_snippets(&output.stdout, &output.stderr)
+            )));
         }
         serde_json::from_slice::<OwnedProbeReport>(&output.stdout).map_err(|error| {
             PluginRuntimeSandboxError::new(format!(
-                "Plugin sandbox probe returned invalid JSON: {error}"
+                "Plugin sandbox probe returned invalid JSON: {error}.{}",
+                format_probe_output_snippets(&output.stdout, &output.stderr)
             ))
         })
     }
@@ -239,6 +281,7 @@ where
             audited_package_count: audit.passed_count,
             plugin_entrypoints: Vec::new(),
         })?;
+        let report = validate_deny_all_probe_report(report)?;
         let entries = audit
             .entries
             .iter()
@@ -266,7 +309,7 @@ where
             escape_attempts: blocked_by_admission_escape_attempts(),
             ipc_allowlist_ready: report.ipc_allowlist_ready,
             permission_grant_ready: report.permission_grant_ready,
-            process_boundary_ready: proof_boundary_semantics_pass(&report),
+            process_boundary_ready: report.process_boundary_ready,
             proved_at: unix_timestamp_millis().to_string(),
             registry_path: audit.registry_path,
             source_label: format!(
@@ -313,17 +356,19 @@ where
         let clean_matching_entry = matching_entry
             .filter(|entry| entry.status == "disabled-audited" && entry.issues.is_empty());
         let process_boundary_report = if clean_matching_entry.is_some() && audit.failed_count == 0 {
-            Some(self.probe.prove(OwnedProbeRequest {
-                policy: SandboxPolicy::deny_all(),
-                audited_package_count: audit.passed_count,
-                plugin_entrypoints: Vec::new(),
-            })?)
+            Some(validate_deny_all_probe_report(self.probe.prove(
+                OwnedProbeRequest {
+                    policy: SandboxPolicy::deny_all(),
+                    audited_package_count: audit.passed_count,
+                    plugin_entrypoints: Vec::new(),
+                },
+            )?)?)
         } else {
             None
         };
         let process_boundary_ready = process_boundary_report
             .as_ref()
-            .is_some_and(proof_boundary_semantics_pass);
+            .is_some_and(|report| report.process_boundary_ready);
         let mut checks = vec![
             PluginActivationPlanReviewCheck {
                 id: "registry-audit".to_string(),
@@ -468,12 +513,42 @@ where
     }
 }
 
-fn proof_boundary_semantics_pass(report: &OwnedProbeReport) -> bool {
-    report.allowed_execution_count == 0
+fn validate_deny_all_probe_report(
+    report: OwnedProbeReport,
+) -> Result<OwnedProbeReport, PluginRuntimeSandboxError> {
+    if report.allowed_execution_count == 0
         && !report.code_executed
         && report.ipc_allowlist_ready
         && !report.permission_grant_ready
         && report.process_boundary_ready
+    {
+        Ok(report)
+    } else {
+        Err(PluginRuntimeSandboxError::new(format!(
+            "Plugin sandbox probe returned invalid deny-all semantics: allowedExecutionCount={}, codeExecuted={}, ipcAllowlistReady={}, permissionGrantReady={}, processBoundaryReady={}.",
+            report.allowed_execution_count,
+            report.code_executed,
+            report.ipc_allowlist_ready,
+            report.permission_grant_ready,
+            report.process_boundary_ready
+        )))
+    }
+}
+
+fn format_probe_output_snippets(stdout: &[u8], stderr: &[u8]) -> String {
+    let stdout = bounded_lossy_snippet(stdout);
+    let stderr = bounded_lossy_snippet(stderr);
+    match (stdout.is_empty(), stderr.is_empty()) {
+        (true, true) => String::new(),
+        (false, true) => format!(" stdout: {stdout}"),
+        (true, false) => format!(" stderr: {stderr}"),
+        (false, false) => format!(" stdout: {stdout}; stderr: {stderr}"),
+    }
+}
+
+fn bounded_lossy_snippet(bytes: &[u8]) -> String {
+    String::from_utf8_lossy(&bytes[..bytes.len().min(PROBE_OUTPUT_SNIPPET_LIMIT)])
+        .replace('\n', "\\n")
 }
 
 fn blocked_by_admission_escape_attempts() -> Vec<PluginRuntimeSandboxEscapeAttempt> {
@@ -516,7 +591,10 @@ pub(crate) fn run_headless_plugin_runtime_sandbox_probe_from_args_for_test(
     let mut iter = args.iter().skip(1);
     let mode = iter.next()?;
     let policy = iter.next()?;
-    if mode != "--og-plugin-runtime-sandbox-probe" || policy != "--deny-all-policy-v1" {
+    if iter.next().is_some()
+        || mode != "--og-plugin-runtime-sandbox-probe"
+        || policy != "--deny-all-policy-v1"
+    {
         return None;
     }
     Some(OwnedProbeReport {
@@ -528,7 +606,6 @@ pub(crate) fn run_headless_plugin_runtime_sandbox_probe_from_args_for_test(
         probe_label: "owned-deny-all-process-probe-v1".to_string(),
     })
 }
-
 #[cfg(test)]
 mod tests {
     use std::{
@@ -536,14 +613,15 @@ mod tests {
         fs,
         path::{Path, PathBuf},
         rc::Rc,
+        time::Duration,
     };
 
     use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
     use ed25519_dalek::{Signer, SigningKey};
 
     use super::{
-        OwnedProbeReport, OwnedProbeRequest, OwnedSandboxProbe, PluginRuntimeSandbox,
-        PluginRuntimeSandboxError,
+        DesktopOwnedProbe, OwnedProbeReport, OwnedProbeRequest, OwnedSandboxProbe,
+        PluginRuntimeSandbox, PluginRuntimeSandboxError, SandboxPolicy,
     };
     use crate::commands::plugin_system::{
         sha256_hex, unix_timestamp_millis, PluginActivationPlanReviewConsent,
@@ -651,6 +729,31 @@ mod tests {
     }
 
     #[test]
+    fn prove_process_rejects_inconsistent_probe_report() {
+        let root = test_dir("module-proof-invalid-report");
+        let registry_root = root.join("registry");
+        let signing_key = test_signing_key();
+        let trusted_key = test_trusted_key(&signing_key);
+        write_staged_plugin_registry(&registry_root, &signing_key, "local-trusted");
+        let mut probe = RecordingProbe::new();
+        probe.report.allowed_execution_count = 1;
+        probe.report.code_executed = true;
+
+        let error = PluginRuntimeSandbox::from_parts(&registry_root, vec![trusted_key], probe)
+            .prove_process(PluginRuntimeSandboxProofRequest {
+                consent: PluginRuntimeSandboxProofConsent {
+                    accepted: true,
+                    operation: PLUGIN_RUNTIME_SANDBOX_PROCESS_PROOF_OPERATION.to_string(),
+                },
+            })
+            .unwrap_err();
+
+        assert!(error.to_string().contains("invalid deny-all semantics"));
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn review_activation_plan_includes_process_boundary_proof_and_remains_blocked() {
         let root = test_dir("module-activation-review");
         let registry_root = root.join("registry");
@@ -693,6 +796,33 @@ mod tests {
     }
 
     #[test]
+    fn review_activation_plan_rejects_inconsistent_probe_report() {
+        let root = test_dir("module-activation-review-invalid-report");
+        let registry_root = root.join("registry");
+        let signing_key = test_signing_key();
+        let trusted_key = test_trusted_key(&signing_key);
+        write_staged_plugin_registry(&registry_root, &signing_key, "local-trusted");
+        let mut probe = RecordingProbe::new();
+        probe.report.allowed_execution_count = 1;
+
+        let error = PluginRuntimeSandbox::from_parts(&registry_root, vec![trusted_key], probe)
+            .review_activation_plan_blocked(PluginActivationPlanReviewRequest {
+                plugin_id: "library-tags-exporter".to_string(),
+                version: "1.0.0".to_string(),
+                consent: PluginActivationPlanReviewConsent {
+                    accepted: true,
+                    operation: "review_plugin_activation_plan:library-tags-exporter@1.0.0"
+                        .to_string(),
+                },
+            })
+            .unwrap_err();
+
+        assert!(error.to_string().contains("invalid deny-all semantics"));
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn headless_probe_returns_success_for_deny_all_policy() {
         let args = vec![
             "open-game-launcher".to_string(),
@@ -722,6 +852,106 @@ mod tests {
         );
     }
 
+    #[test]
+    fn headless_probe_rejects_trailing_args() {
+        let args = vec![
+            "open-game-launcher".to_string(),
+            "--og-plugin-runtime-sandbox-probe".to_string(),
+            "--deny-all-policy-v1".to_string(),
+            "dist/main.js".to_string(),
+        ];
+
+        assert!(
+            super::run_headless_plugin_runtime_sandbox_probe_from_args_for_test(args).is_none()
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn desktop_owned_probe_uses_fixed_args_clears_env_and_parses_json() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let root = test_dir("desktop-probe-success");
+        fs::create_dir_all(&root).unwrap();
+        let script = root.join("probe.sh");
+        fs::write(
+            &script,
+            r#"#!/bin/sh
+if [ "$#" -ne 2 ]; then
+  echo "expected exactly 2 args, got $#" >&2
+  exit 10
+fi
+if [ "$1" != "--og-plugin-runtime-sandbox-probe" ]; then
+  echo "unexpected first arg: $1" >&2
+  exit 11
+fi
+if [ "$2" != "--deny-all-policy-v1" ]; then
+  echo "unexpected second arg: $2" >&2
+  exit 12
+fi
+if [ -n "${HOME+x}" ]; then
+  echo "HOME leaked into probe environment" >&2
+  exit 13
+fi
+printf '%s\n' '{"allowedExecutionCount":0,"codeExecuted":false,"ipcAllowlistReady":true,"permissionGrantReady":false,"processBoundaryReady":true,"probeLabel":"script-proof"}'
+"#,
+        )
+        .unwrap();
+        let mut permissions = fs::metadata(&script).unwrap().permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&script, permissions).unwrap();
+
+        let report = DesktopOwnedProbe {
+            exe_path: script,
+            probe_timeout: Duration::from_secs(1),
+        }
+        .prove(deny_all_probe_request())
+        .unwrap();
+
+        assert_eq!(report.probe_label, "script-proof");
+        assert_eq!(report.allowed_execution_count, 0);
+        assert!(!report.code_executed);
+        assert!(report.ipc_allowlist_ready);
+        assert!(!report.permission_grant_ready);
+        assert!(report.process_boundary_ready);
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn desktop_owned_probe_kills_timed_out_process() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let root = test_dir("desktop-probe-timeout");
+        fs::create_dir_all(&root).unwrap();
+        let script = root.join("probe.sh");
+        fs::write(
+            &script,
+            r#"#!/bin/sh
+echo "probe started" >&2
+/bin/sleep 1
+printf '%s\n' '{"allowedExecutionCount":0,"codeExecuted":false,"ipcAllowlistReady":true,"permissionGrantReady":false,"processBoundaryReady":true,"probeLabel":"slow-proof"}'
+"#,
+        )
+        .unwrap();
+        let mut permissions = fs::metadata(&script).unwrap().permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&script, permissions).unwrap();
+
+        let error = DesktopOwnedProbe {
+            exe_path: script,
+            probe_timeout: Duration::from_millis(20),
+        }
+        .prove(deny_all_probe_request())
+        .unwrap_err();
+
+        assert!(error.to_string().contains("timed out"));
+        assert!(error.to_string().contains("probe started"));
+
+        let _ = fs::remove_dir_all(root);
+    }
+
     fn test_dir(label: &str) -> PathBuf {
         let root = std::env::temp_dir().join(format!(
             "og-plugin-runtime-sandbox-{label}-{}-{}",
@@ -730,6 +960,14 @@ mod tests {
         ));
         let _ = fs::remove_dir_all(&root);
         root
+    }
+
+    fn deny_all_probe_request() -> OwnedProbeRequest {
+        OwnedProbeRequest {
+            policy: SandboxPolicy::deny_all(),
+            audited_package_count: 1,
+            plugin_entrypoints: Vec::new(),
+        }
     }
 
     fn test_signing_key() -> SigningKey {
