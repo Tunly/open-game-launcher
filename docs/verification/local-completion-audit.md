@@ -75,10 +75,15 @@ external evidence was collected in this workspace.
   handoff desktop/mobile evidence, and no-horizontal-overflow DOM checks for
   explicitly recorded screenshot sweep routes.
 - UI screenshot evidence is locally gated for dirty worktrees and CI diffs: when
-  `launcher/src/**/*.tsx`, `launcher/src/index.css`, or visible UI
-  configuration files such as `launcher/src/components/layout/navigation.ts`,
-  `launcher/src/lib/app-shell-skins.ts`, or
-  `launcher/src/lib/theme-skin-readiness.ts` change, every changed
+  `launcher/src/**/*.tsx`, `launcher/src/index.css`,
+  `launcher/tailwind.config.ts`, or visible UI configuration/data files such as
+  `launcher/src/components/layout/navigation.ts`,
+  `launcher/src/components/**/*.helpers.ts`, `launcher/src/lib/mock-data.ts`,
+  `launcher/src/lib/app-shell-skins.ts`,
+  `launcher/src/lib/external-completion-evidence-summary.ts`, or local
+  audit/candidates/console/contract/evidence/fixtures/handoff/panel/planner/
+  policy/preview/proof/readiness/recap/recommendations/stats/status/summary
+  modules change, every changed
   `docs/verification/screenshots/*.png` artifact must have a
   `docs/verification/README.md` entry with route/state, local/mock/env-gated/live
   evidence boundary, and Retro Manga/OG-Launcher or overflow/wrapping language;

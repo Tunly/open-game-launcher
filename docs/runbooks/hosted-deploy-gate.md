@@ -19,6 +19,12 @@ Create `hosted-staging` and `hosted-production` environments with:
 - `ACCOUNT_DELETION_PROCESSOR_SECRET`
 - `PRESENCE_POLL_SECRET`
 
+`SUPABASE_URL` stays in this required workflow secret set for workflow consistency.
+It keeps runtime secrets, status packets, and operator handoffs aligned.
+The hosted Functions base URL can still derive from
+`SUPABASE_PROJECT_REF` or a directly configured `SUPABASE_FUNCTIONS_URL`;
+whichever values are present must point at the same hosted Supabase project.
+
 Optional GitHub Environment variables:
 
 - `OGL_HOSTED_DEPLOY_FUNCTIONS`: comma-separated subset for targeted deploy/smoke runs

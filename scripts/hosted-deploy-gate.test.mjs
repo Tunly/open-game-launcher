@@ -684,6 +684,13 @@ test("runbook lists hosted cron secrets and required environment variables", () 
   ]);
 });
 
+test("runbook clarifies hosted Functions URL derivation options", () => {
+  assert.match(
+    runbook,
+    /`SUPABASE_URL` stays in this required workflow secret set for workflow consistency\.[\s\S]*The hosted Functions base URL can still derive from[\s\S]*`SUPABASE_PROJECT_REF`[\s\S]*`SUPABASE_FUNCTIONS_URL`[\s\S]*same hosted Supabase project\./,
+  );
+});
+
 test("runbook documents hosted smoke CORS origin override", () => {
   assert.match(runbook, /OGL_HOSTED_SMOKE_ORIGIN/);
   assert.match(runbook, /Access-Control-Allow-Origin/i);

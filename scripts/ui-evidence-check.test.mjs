@@ -160,6 +160,30 @@ test("uiEvidenceReport rejects visible readiness data module changes without scr
   );
 });
 
+test("uiEvidenceReport rejects visible helper and local evidence data modules without screenshot evidence", () => {
+  const root = fixtureRoot();
+  const report = uiEvidenceReport({
+    changedPaths: [
+      "launcher/src/components/settings/PlatformHealthPanel.helpers.ts",
+      "launcher/src/lib/mock-data.ts",
+      "launcher/src/lib/smart-install-local-mirror-audit.ts",
+    ],
+    readmeText: "",
+    root,
+  });
+
+  assert.equal(report.ready, false);
+  assert.deepEqual(report.uiChanges, [
+    "launcher/src/components/settings/PlatformHealthPanel.helpers.ts",
+    "launcher/src/lib/mock-data.ts",
+    "launcher/src/lib/smart-install-local-mirror-audit.ts",
+  ]);
+  assert.match(
+    report.findings.join("\n"),
+    /no changed docs\/verification\/screenshots/,
+  );
+});
+
 test("uiEvidenceReport accepts documented watchlisted UI TypeScript evidence", () => {
   const root = fixtureRoot();
   writePngFixture(root);

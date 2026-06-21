@@ -8,8 +8,12 @@ export const repoRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 
 const uiSourcePattern =
   /^launcher\/src\/(?:.*\/)?[^/]+\.tsx$|^launcher\/src\/index\.css$|^launcher\/tailwind\.config\.ts$/;
-const uiTsWatchlistPattern =
-  /^launcher\/src\/(?:components\/layout\/navigation|lib\/(?:app-shell-skins|external-completion-evidence-summary|[^/]+-readiness))\.ts$/;
+const uiTsWatchlistPatterns = Object.freeze([
+  /^launcher\/src\/components\/layout\/navigation\.ts$/,
+  /^launcher\/src\/components\/(?:.*\/)?[^/]+\.helpers\.ts$/,
+  /^launcher\/src\/lib\/(?:app-shell-skins|external-completion-evidence-summary|mock-data)\.ts$/,
+  /^launcher\/src\/lib\/[^/]+-(?:audit|candidates|console|contract|evidence|fixtures|handoff|panel|planner|policy|preview|proof|readiness|recap|recommendations|stats|status|summary)\.ts$/,
+]);
 const ignoredSourcePattern =
   /(?:^|\/)__tests__\/|(?:^|\/)[^/]+\.(?:test|spec)\.[cm]?[tj]sx?$|^launcher\/src\/(?:vite-env\.d\.ts|.*\.d\.ts|lib\/types(?:\.ts|\/.*\.ts))$/;
 const screenshotPattern = /^docs\/verification\/screenshots\/[^/]+\.png$/;
@@ -177,7 +181,8 @@ export function uiEvidenceReport({
   const uiChanges = paths.filter(
     (path) =>
       !ignoredSourcePattern.test(path) &&
-      (uiSourcePattern.test(path) || uiTsWatchlistPattern.test(path)),
+      (uiSourcePattern.test(path) ||
+        uiTsWatchlistPatterns.some((pattern) => pattern.test(path))),
   );
   const screenshotChanges = paths.filter((path) =>
     screenshotPattern.test(path),
