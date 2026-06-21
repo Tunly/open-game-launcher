@@ -792,13 +792,20 @@ function PluginRuntimeSandboxProofLedger({
 }) {
   const entries = proof?.entries ?? [];
   const escapeAttempts = proof?.escapeAttempts ?? [];
+  const isProcessProof = Boolean(
+    proof?.processBoundaryReady &&
+    proof.ipcAllowlistReady === true &&
+    proof.permissionGrantReady === false,
+  );
 
   return (
     <div className="min-w-0 max-w-full border-2 border-black bg-[#fff9ed] p-3 shadow-[3px_3px_0_#171411]">
       <div className="flex items-center justify-between gap-3">
         <p className="neo-copy flex items-center gap-2 text-[9px] font-black uppercase tracking-[0.12em] text-[#b7102a]">
           <ShieldCheck className="h-4 w-4" />
-          Native Runtime Sandbox Dry-Run
+          {isProcessProof
+            ? "Native Runtime Sandbox Process Proof"
+            : "Native Runtime Sandbox Dry-Run"}
         </p>
         <span className="neo-copy border-2 border-black bg-[#8cf5e4] px-2 py-1 text-[8px] font-black uppercase text-[#171411]">
           {proof
@@ -807,9 +814,9 @@ function PluginRuntimeSandboxProofLedger({
         </span>
       </div>
       <p className="neo-copy mt-2 border-2 border-black bg-[#efe6d4] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#171411]">
-        Process Boundary proof is an admission dry-run only: disabled registry entries are
-        re-audited, entrypoints and escape fixtures are denied before code load, permissions stay
-        denied, and codeExecuted false.
+        {isProcessProof
+          ? "Owned process boundary is proved for the local admission lane: disabled registry entries are re-audited, entrypoints remain blocked, deny-all IPC is enforced, permissions stay denied, and codeExecuted false."
+          : "Process Boundary proof is an admission dry-run only: disabled registry entries are re-audited, entrypoints and escape fixtures are denied before code load, permissions stay denied, and codeExecuted false."}
       </p>
       {proof ? (
         <div className="mt-3 grid gap-2">
@@ -818,7 +825,7 @@ function PluginRuntimeSandboxProofLedger({
               Process Boundary: {proof.processBoundaryReady ? "ready" : "not production-ready"}
             </p>
             <p className="neo-copy border-2 border-black bg-[#f5eedf] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#171411]">
-              IPC Allowlist: {proof.ipcAllowlistReady ? "ready" : "deny all"}
+              IPC Allowlist: {proof.ipcAllowlistReady ? "deny-all proof" : "deny all"}
             </p>
             <p className="neo-copy border-2 border-black bg-[#f5eedf] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#171411]">
               Permission Grants: {proof.permissionGrantReady ? "ready" : "none"}

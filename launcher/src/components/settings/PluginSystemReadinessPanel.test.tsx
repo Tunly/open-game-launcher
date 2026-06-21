@@ -29,7 +29,7 @@ describe("PluginSystemReadinessPanel", () => {
     expect(within(panel).getByText("Deny-by-default permissions")).toBeInTheDocument();
     expect(within(panel).getByText("No plugin execution")).toBeInTheDocument();
     expect(within(panel).getByText("Native disabled registry audit")).toBeInTheDocument();
-    expect(within(panel).getByText("Native runtime admission dry-run")).toBeInTheDocument();
+    expect(within(panel).getByText("Native runtime admission proof")).toBeInTheDocument();
     expect(within(panel).getByText("Signed package stages disabled")).toBeInTheDocument();
     expect(within(panel).getByText("No permission grant persisted")).toBeInTheDocument();
     expect(within(panel).getByText("No marketplace publish")).toBeInTheDocument();
@@ -81,9 +81,9 @@ describe("PluginSystemReadinessPanel", () => {
     render(<PluginSystemReadinessPanel readiness={createVerifyPluginRuntimeSandboxReadiness()} />);
 
     const panel = screen.getByRole("region", { name: /plugin system readiness/i });
-    expect(within(panel).getByText("Native Runtime Sandbox Dry-Run")).toBeInTheDocument();
-    expect(within(panel).getByText(/Process Boundary: not production-ready/i)).toBeInTheDocument();
-    expect(within(panel).getByText(/IPC Allowlist: deny all/i)).toBeInTheDocument();
+    expect(within(panel).getByText("Native Runtime Sandbox Process Proof")).toBeInTheDocument();
+    expect(within(panel).getByText(/Process Boundary: ready/i)).toBeInTheDocument();
+    expect(within(panel).getByText(/IPC Allowlist: deny-all proof/i)).toBeInTheDocument();
     expect(within(panel).getByText(/Permission Grants: none/i)).toBeInTheDocument();
     expect(within(panel).getAllByText(/codeExecuted false/i).length).toBeGreaterThan(0);
     expect(within(panel).getByText("Escape Fixture Matrix")).toBeInTheDocument();
@@ -97,13 +97,11 @@ describe("PluginSystemReadinessPanel", () => {
     expect(within(panel).getByText(/Payload: \.\.\/secrets\/token\.txt/i)).toBeInTheDocument();
     expect(within(panel).getByText(/Payload: plugins\/\.\.\/manifest\.json/i)).toBeInTheDocument();
     expect(within(panel).getByText(/Payload: process:spawn/i)).toBeInTheDocument();
-    expect(within(panel).getAllByText(/Result: blocked-before-code-load/i)).toHaveLength(8);
-    expect(
-      within(panel).getAllByText(/entrypoint denied before code load/i).length,
-    ).toBeGreaterThan(0);
+    expect(within(panel).getAllByText(/Result: blocked-by-admission/i)).toHaveLength(8);
+    expect(within(panel).getAllByText(/owned process boundary proved/i).length).toBeGreaterThan(0);
     expect(within(panel).getByText(/staged package remains disabled/i)).toBeInTheDocument();
     expect(panel).not.toHaveTextContent(
-      /plugin executed true|permission granted|marketplace live|auto-update installed|runtime ready/i,
+      /plugin executed true|permission granted|marketplace live|auto-update installed|runtime ready|production sandbox ready/i,
     );
   });
 

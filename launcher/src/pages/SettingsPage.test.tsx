@@ -39,7 +39,7 @@ const launcherMocks = vi.hoisted(() => ({
       entries: [
         {
           denyReason:
-            "Process sandbox runtime is not implemented; plugin entrypoint denied before code load.",
+            "Owned process boundary proved; plugin entrypoint remains denied until the production runtime grants model exists.",
           entrypoint: "dist/main.js",
           issues: [],
           pluginId: "local-import-demo",
@@ -55,7 +55,7 @@ const launcherMocks = vi.hoisted(() => ({
           id: "path-traversal-entrypoint",
           label: "Path Traversal Entrypoint",
           payload: "../secrets/token.txt",
-          result: "blocked-before-code-load",
+          result: "blocked-by-admission",
         },
         {
           blockedBy: "deny-all IPC allowlist",
@@ -63,7 +63,7 @@ const launcherMocks = vi.hoisted(() => ({
           id: "ipc-open-shell",
           label: "Deny-All IPC Invoke",
           payload: "tauri.invoke('open_shell')",
-          result: "blocked-before-code-load",
+          result: "blocked-by-admission",
         },
         {
           blockedBy: "no environment grants",
@@ -71,7 +71,7 @@ const launcherMocks = vi.hoisted(() => ({
           id: "environment-secret-read",
           label: "Environment Secret Read",
           payload: "process.env.OG_SECRET",
-          result: "blocked-before-code-load",
+          result: "blocked-by-admission",
         },
         {
           blockedBy: "disabled registry read-only containment",
@@ -79,7 +79,31 @@ const launcherMocks = vi.hoisted(() => ({
           id: "filesystem-host-write",
           label: "Filesystem Host Write",
           payload: "/etc/hosts",
-          result: "blocked-before-code-load",
+          result: "blocked-by-admission",
+        },
+        {
+          blockedBy: "registry symlink ancestor rejection",
+          boundary: "filesystem",
+          id: "filesystem-symlink-entrypoint",
+          label: "Symlink Entrypoint Escape",
+          payload: "dist/linked-main.js -> /tmp/escape.js",
+          result: "blocked-by-admission",
+        },
+        {
+          blockedBy: "manifest path normalization",
+          boundary: "path",
+          id: "manifest-nested-path-escape",
+          label: "Nested Manifest Path Escape",
+          payload: "plugins/../manifest.json",
+          result: "blocked-by-admission",
+        },
+        {
+          blockedBy: "network IPC allowlist is empty",
+          boundary: "ipc",
+          id: "ipc-network-fetch",
+          label: "Network IPC Fetch",
+          payload: "tauri.invoke('fetch_url', 'https://plugins.example')",
+          result: "blocked-by-admission",
         },
         {
           blockedBy: "deny-by-default permission ledger",
@@ -87,15 +111,15 @@ const launcherMocks = vi.hoisted(() => ({
           id: "permission-process-spawn",
           label: "Permission Escalation",
           payload: "process:spawn",
-          result: "blocked-before-code-load",
+          result: "blocked-by-admission",
         },
       ],
-      ipcAllowlistReady: false,
+      ipcAllowlistReady: true,
       permissionGrantReady: false,
-      processBoundaryReady: false,
+      processBoundaryReady: true,
       provedAt: "2026-06-15T00:02:00.000Z",
       registryPath: "app-data/plugins/staged",
-      sourceLabel: "Native runtime sandbox dry-run",
+      sourceLabel: "Native runtime sandbox proof-process",
     }),
   ),
   reviewPluginActivationPlan: vi.fn(() =>
@@ -947,7 +971,7 @@ describe("SettingsPage One-Click Setup E2E readiness", () => {
     expect(launcherMocks.provePluginRuntimeSandbox).toHaveBeenCalledWith({
       consent: {
         accepted: true,
-        operation: "prove_plugin_runtime_sandbox_dry_run",
+        operation: "prove_plugin_runtime_sandbox_process_proof",
       },
     });
   });

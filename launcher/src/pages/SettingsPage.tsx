@@ -1209,7 +1209,7 @@ export function SettingsPage() {
   async function handleProvePluginRuntimeSandbox() {
     if (!isDesktopRuntime) {
       setPluginPackageStagingMessage(
-        "Native runtime sandbox dry-run is desktop-only; browser rows stay display cache and no plugin code is loaded.",
+        "Native runtime sandbox process proof is desktop-only; browser rows stay display cache and no plugin code is loaded.",
       );
       return;
     }
@@ -1220,12 +1220,12 @@ export function SettingsPage() {
       const proof = await provePluginRuntimeSandbox({
         consent: {
           accepted: true,
-          operation: "prove_plugin_runtime_sandbox_dry_run",
+          operation: "prove_plugin_runtime_sandbox_process_proof",
         },
       });
       setPluginRuntimeSandboxProof(proof);
       setPluginPackageStagingMessage(
-        `Runtime sandbox dry-run complete: ${proof.deniedEntrypointCount} denied, ${proof.allowedExecutionCount} allowed, codeExecuted ${String(
+        `Runtime sandbox process proof complete: ${proof.deniedEntrypointCount} denied, ${proof.allowedExecutionCount} allowed, codeExecuted ${String(
           proof.codeExecuted,
         )}, ${proof.escapeAttempts.length} escape fixtures blocked.`,
       );

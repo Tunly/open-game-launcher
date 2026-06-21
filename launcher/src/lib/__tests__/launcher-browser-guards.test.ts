@@ -124,7 +124,7 @@ describe("launcher browser guards", () => {
       provePluginRuntimeSandbox({
         consent: {
           accepted: true,
-          operation: "prove_plugin_runtime_sandbox_dry_run",
+          operation: "prove_plugin_runtime_sandbox_process_proof",
         },
       }),
     ).rejects.toThrow("desktop app");
