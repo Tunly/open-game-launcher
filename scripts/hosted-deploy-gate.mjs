@@ -383,6 +383,12 @@ function safeFunctionsBaseUrl(value) {
 }
 
 export function parseArgs(argv) {
+  for (const arg of argv) {
+    if (arg.startsWith("-") && arg !== "--dry-run") {
+      throw new Error("Unknown hosted deploy gate flag.");
+    }
+  }
+
   const action = argv.find((arg) => !arg.startsWith("-")) ?? "plan";
   if (!actions.has(action)) {
     throw new Error(
@@ -420,7 +426,7 @@ export function getDeployFunctions(env = process.env) {
   if (!requested) return [...deployFunctions];
 
   const known = new Map(deployFunctions.map((fn) => [fn.name, fn]));
-  return requested
+  const functions = requested
     .split(",")
     .map((value) => value.trim())
     .filter(Boolean)
@@ -431,6 +437,12 @@ export function getDeployFunctions(env = process.env) {
       }
       return item;
     });
+  if (functions.length === 0) {
+    throw new Error(
+      "OGL_HOSTED_DEPLOY_FUNCTIONS must include at least one function.",
+    );
+  }
+  return functions;
 }
 
 function requiredEnvForAction(action) {
@@ -456,7 +468,8 @@ function requiredEnvValueIsValid(name, value) {
     return Boolean(safeSupabaseAccessToken(value));
   }
   if (name === "SUPABASE_PROJECT_REF") return Boolean(safeProjectRef(value));
-  if (cronSmokeSecretEnvNames.has(name)) return Boolean(safeCronSmokeSecret(value));
+  if (cronSmokeSecretEnvNames.has(name))
+    return Boolean(safeCronSmokeSecret(value));
   return envValueIsConfigured(value);
 }
 
@@ -822,7 +835,9 @@ function validateOptionsSmokeCorsHeaders(headers, expectedOrigin) {
   if (!allowOrigin) {
     errors.push("Access-Control-Allow-Origin must be present.");
   } else if (allowOrigin !== "*" && allowOrigin !== expectedOrigin) {
-    errors.push("Access-Control-Allow-Origin must be * or OGL_HOSTED_SMOKE_ORIGIN.");
+    errors.push(
+      "Access-Control-Allow-Origin must be * or OGL_HOSTED_SMOKE_ORIGIN.",
+    );
   }
 
   const allowMethods = clean(headers.get("access-control-allow-methods"));

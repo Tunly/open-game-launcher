@@ -180,6 +180,20 @@ test("parseArgs rejects unknown actions without echoing them", () => {
   );
 });
 
+test("parseArgs rejects unknown flags without converting dry-run typos to live deploys", () => {
+  for (const flag of ["--dryrun", "--dry_run", "--dry-run=true"]) {
+    assert.throws(
+      () => parseArgs(["deploy", flag]),
+      (error) => {
+        assert.match(error.message, /Unknown hosted deploy gate flag/);
+        assert.equal(error.message.includes(flag), false);
+        return true;
+      },
+      flag,
+    );
+  }
+});
+
 test("CI workflow exposes hosted deploy dry-run dispatch input", () => {
   const block = workflowInputBlock("hosted_deploy_dry_run");
 
@@ -1274,6 +1288,17 @@ test("deploy function override rejects unknown function names", () => {
     (error) => {
       assert.match(error.message, /Unknown function/);
       assert.equal(error.message.includes("eyJsecret_should_not_echo"), false);
+      return true;
+    },
+  );
+});
+
+test("deploy function override rejects an explicit empty function selection", () => {
+  assert.throws(
+    () => getDeployFunctions({ OGL_HOSTED_DEPLOY_FUNCTIONS: "," }),
+    (error) => {
+      assert.match(error.message, /OGL_HOSTED_DEPLOY_FUNCTIONS/);
+      assert.match(error.message, /at least one function/);
       return true;
     },
   );

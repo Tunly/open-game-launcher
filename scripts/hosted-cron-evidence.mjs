@@ -262,8 +262,7 @@ function safeProjectBaseUrl(value) {
 function projectRefFromSafeHostedUrl(value) {
   try {
     return (
-      new URL(value).hostname.match(/^([a-z0-9]{20})\.supabase\.co$/)?.[1] ??
-      ""
+      new URL(value).hostname.match(/^([a-z0-9]{20})\.supabase\.co$/)?.[1] ?? ""
     );
   } catch {
     return "";
@@ -323,10 +322,21 @@ function parseCheckIds(value) {
 
 function checkIdsFromArgs(argv) {
   const equalsArg = argv.find((arg) => arg.startsWith("--checks="));
-  if (equalsArg) return equalsArg.slice("--checks=".length);
+  if (equalsArg) {
+    const value = equalsArg.slice("--checks=".length);
+    if (!clean(value))
+      throw new Error("Missing hosted cron evidence check list.");
+    return value;
+  }
 
   const flagIndex = argv.indexOf("--checks");
-  if (flagIndex >= 0) return argv[flagIndex + 1] ?? "";
+  if (flagIndex >= 0) {
+    const value = argv[flagIndex + 1] ?? "";
+    if (!clean(value) || value.startsWith("-")) {
+      throw new Error("Missing hosted cron evidence check list.");
+    }
+    return value;
+  }
 
   return "";
 }
@@ -349,7 +359,13 @@ function actionFromArgs(argv) {
 }
 
 export function selectedCronEvidenceChecks(env = process.env, requested = "") {
-  const ids = parseCheckIds(requested || env.OGL_HOSTED_CRON_EVIDENCE_CHECKS);
+  const source = requested || env.OGL_HOSTED_CRON_EVIDENCE_CHECKS;
+  const ids = parseCheckIds(source);
+  if (clean(source) && ids.length === 0) {
+    throw new Error(
+      "OGL_HOSTED_CRON_EVIDENCE_CHECKS must include at least one check.",
+    );
+  }
   if (ids.length === 0) return [...cronEvidenceChecks];
 
   const known = new Map(cronEvidenceChecks.map((check) => [check.id, check]));
@@ -427,7 +443,9 @@ export function restAuth(env = process.env) {
   const anonKey = safeSupabaseJwtDetails(env.SUPABASE_ANON_KEY, {
     requiredRole: "anon",
   });
-  const authJwt = safeSupabaseJwtDetails(env.SUPABASE_AUTH_JWT);
+  const authJwt = safeSupabaseJwtDetails(env.SUPABASE_AUTH_JWT, {
+    requiredRole: "authenticated",
+  });
   if (anonKey && authJwt) {
     return {
       apiKey: anonKey.jwt,
@@ -1045,7 +1063,8 @@ export function planSummary(
 ) {
   const freshness = clean(env.OGL_HOSTED_CRON_FRESHNESS_HOURS);
   const freshnessValue = freshness ? Number(freshness) : 1;
-  const freshnessIsValid = Number.isFinite(freshnessValue) && freshnessValue > 0;
+  const freshnessIsValid =
+    Number.isFinite(freshnessValue) && freshnessValue > 0;
   return {
     freshnessHours: freshnessIsValid
       ? checks

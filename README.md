@@ -29,7 +29,7 @@ Desktop game launcher built with Tauri 2, React, TypeScript, Tailwind CSS, Rust,
 | Auth/Profile/Social | Supabase Auth, profile pages, public profile privacy guard/RLS lane contracts, friends, customization, privacy, blocks, comments, showcases, badges, social links, hardware, family sharing with browser-local relay fallback when Supabase is unavailable                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 | Custom Artwork      | Drag-Drop-Upload in GameDetails + RAWG Edge Function proxy contract with source-policy evidence and HTTP handler coverage + asset cache + Auto-Artwork-Kandidaten mit Apply/Replace und Steam-CDN/App-ID-Policy + lokale Community-Artwork-Import-Galerie mit browser-lokalem Vote-Ledger plus Hosted/Supabase staging schema, RLS, approved-feed helper, upload/moderation UI, service-role review RPC contract, private moderator allowlist, trusted moderation Edge Function handler coverage, moderator console preview, provider scan policy, and audit ledger evidence; production deployment/community rollout proof remains external                                                          |
 | Deep Links          | `oglauncher://` URI handler (`useDeepLink` hook)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| Tests               | Local frontend, frontend coverage, Rust, Deno Edge, Node operational, screenshot-inventory, DOM, static-class, and current-platform Tauri debug-bundle smoke gates are covered by `pnpm completion:gate:local`; fresh command output is the source of truth for mutable counts                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| Tests               | Local frontend, frontend coverage, Rust, Deno Edge, Node operational, screenshot-inventory, DOM, static-class, and current-platform Tauri debug-bundle smoke gates are covered by `pnpm completion:gate:local`; fresh command output is the source of truth for mutable counts                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | Releases            | Tauri bundling + draft GitHub Releases on `v*` tags only after the `hosted-production` external release-boundary gate passes                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 
 Local completion boundary: this checkout is locally verified against the
@@ -820,13 +820,13 @@ CI and local pre-commit automation are active in this repository. Dependency
 updates are tracked through Dependabot and still require normal PR review before
 merge.
 
-| Automation              | State                                                 | Where                      | Notes                                                                                                                                                                                                                 |
-| ----------------------- | ----------------------------------------------------- | -------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Automation              | State                                                 | Where                      | Notes                                                                                                                                                                                                                                                                                                             |
+| ----------------------- | ----------------------------------------------------- | -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | GitHub Actions CI       | Active on `push`, `pull_request`, and manual dispatch | `.github/workflows/ci.yml` | Push/PR runs format, typecheck, lint, tests, frontend build, Rust checks, migration lint, external-evidence script tests/plan smoke, and Edge Function Deno contracts; manual dispatch can run the hosted deploy gate; coverage runs as a separate informational artifact job; CI has no Tauri debug-bundle smoke |
-| Dependabot              | Active weekly                                         | `.github/dependabot.yml`   | Tracks GitHub Actions, npm at `/launcher`, and Cargo at `/launcher/src-tauri`; dependency PRs still need review and the local/external gate policy below                                                              |
-| Husky pre-commit hook   | Active                                                | `.husky/pre-commit`        | Runs the staged-file launcher guard through `pnpm --dir launcher lint-staged`                                                                                                                                         |
-| `lint-staged`           | Active                                                | `lint-staged.config.mjs`   | For staged launcher source/config files, runs the existing launcher `format:check` and `lint` commands without introducing repo-wide formatting churn                                                                 |
-| `prepare: husky` script | Active                                                | `launcher/package.json`    | Installs the root `.husky` hook path from the launcher package after dependency install                                                                                                                               |
+| Dependabot              | Active weekly                                         | `.github/dependabot.yml`   | Tracks GitHub Actions, npm at `/launcher`, and Cargo at `/launcher/src-tauri`; dependency PRs still need review and the local/external gate policy below                                                                                                                                                          |
+| Husky pre-commit hook   | Active                                                | `.husky/pre-commit`        | Runs the staged-file launcher guard through `pnpm --dir launcher lint-staged`                                                                                                                                                                                                                                     |
+| `lint-staged`           | Active                                                | `lint-staged.config.mjs`   | For staged launcher source/config files, runs the existing launcher `format:check` and `lint` commands without introducing repo-wide formatting churn                                                                                                                                                             |
+| `prepare: husky` script | Active                                                | `launcher/package.json`    | Installs the root `.husky` hook path from the launcher package after dependency install                                                                                                                                                                                                                           |
 
 **Manual checks** are still expected before pushing (see the "Checks" section below).
 
@@ -882,9 +882,10 @@ requirements, evidence fields, and commands only, without printing secrets or
 checking proof rows. Use `pnpm external:evidence:runbook` when the operator
 needs the same boundary as a sequenced capture runbook, and
 `pnpm external:evidence:worklist` when the operator needs it grouped by artifact
-path, missing proof labels, complete missing detail field names, and blocker
-labels before filling redacted evidence. Rollout-track handoffs include hosted
-deploy packet/plan commands without treating them as external proof.
+path, missing proof labels, capture handoffs, complete missing detail field
+names, and blocker labels before filling redacted evidence. Rollout-track
+handoffs include hosted deploy packet/plan commands without treating them as
+external proof.
 
 Feature verification:
 
@@ -906,7 +907,8 @@ cargo test
 Supabase:
 
 ```bash
-pnpm supabase db reset
+pnpm supabase:db:lint:test
+pnpm supabase:db:lint
 ```
 
 ## License

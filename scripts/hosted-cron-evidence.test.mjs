@@ -171,10 +171,25 @@ test("parseArgs accepts plan, check, artifact-hints, and packet only", () => {
     checks: "price-drop",
   });
   assert.throws(
+    () => parseArgs(["check", "--checks"]),
+    (error) => {
+      assert.match(error.message, /Missing hosted cron evidence check list/);
+      return true;
+    },
+  );
+  assert.throws(
     () => parseArgs(["deploy"]),
     (error) => {
       assert.match(error.message, /Unknown hosted cron evidence action/);
       assert.equal(error.message.includes("deploy"), false);
+      return true;
+    },
+  );
+  assert.throws(
+    () => selectedCronEvidenceChecks({ OGL_HOSTED_CRON_EVIDENCE_CHECKS: "," }),
+    (error) => {
+      assert.match(error.message, /OGL_HOSTED_CRON_EVIDENCE_CHECKS/);
+      assert.match(error.message, /at least one check/);
       return true;
     },
   );
@@ -190,6 +205,13 @@ test("selectedCronEvidenceChecks filters checks without echoing unknown input", 
   assert.deepEqual(
     selectedCronEvidenceChecks({}, "account-deletion").map((check) => check.id),
     ["account-deletion"],
+  );
+  assert.throws(
+    () => selectedCronEvidenceChecks({}, ","),
+    (error) => {
+      assert.match(error.message, /at least one check/);
+      return true;
+    },
   );
   assert.throws(
     () =>
@@ -367,7 +389,10 @@ test("hostedCronEvidencePacket maps full cron lane packets to the hosted cron ex
   );
   assert.match(packet, /Ready rows: 3\/3/);
   assert.match(packet, /External Artifact Paste Targets/);
-  assert.match(packet, /docs\/verification\/external\/hosted-supabase-cron\.md/);
+  assert.match(
+    packet,
+    /docs\/verification\/external\/hosted-supabase-cron\.md/,
+  );
   assert.match(packet, /`### price-drop`/);
   assert.match(packet, /`### presence-poll`/);
   assert.match(packet, /`### account-deletion`/);
@@ -667,6 +692,14 @@ test("missingRequiredEnv reports names only", () => {
   );
   assert.deepEqual(
     missingRequiredEnv({
+      SUPABASE_ANON_KEY: anonJwt,
+      SUPABASE_AUTH_JWT: anonJwt,
+      SUPABASE_URL: supabaseUrl,
+    }),
+    ["SUPABASE_SERVICE_ROLE_KEY or SUPABASE_ANON_KEY + SUPABASE_AUTH_JWT"],
+  );
+  assert.deepEqual(
+    missingRequiredEnv({
       SUPABASE_PROJECT_REF: "abc123",
       SUPABASE_SERVICE_ROLE_KEY: serviceRoleJwt,
     }),
@@ -886,7 +919,10 @@ test("runbook documents lane-specific external preflight", () => {
     runbook,
     /OGL_HOSTED_CRON_EVIDENCE_CHECKS=price-drop pnpm hosted:cron-evidence:artifact-hints/,
   );
-  assert.match(runbook, /pnpm hosted:cron-evidence:artifact-hints --checks=price-drop/);
+  assert.match(
+    runbook,
+    /pnpm hosted:cron-evidence:artifact-hints --checks=price-drop/,
+  );
   assert.match(runbook, /does not check proof rows/i);
 });
 
