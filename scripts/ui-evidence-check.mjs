@@ -9,7 +9,7 @@ export const repoRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const uiSourcePattern =
   /^launcher\/src\/(?:.*\/)?[^/]+\.tsx$|^launcher\/src\/index\.css$/;
 const uiTsWatchlistPattern =
-  /^launcher\/src\/(?:components\/layout\/navigation|lib\/(?:app-shell-skins|theme-skin-readiness))\.ts$/;
+  /^launcher\/src\/(?:components\/layout\/navigation|lib\/(?:app-shell-skins|external-completion-evidence-summary|[^/]+-readiness))\.ts$/;
 const ignoredSourcePattern =
   /(?:^|\/)__tests__\/|(?:^|\/)[^/]+\.(?:test|spec)\.[cm]?[tj]sx?$|^launcher\/src\/(?:vite-env\.d\.ts|.*\.d\.ts|lib\/types(?:\.ts|\/.*\.ts))$/;
 const screenshotPattern = /^docs\/verification\/screenshots\/[^/]+\.png$/;

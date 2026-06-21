@@ -857,7 +857,8 @@ function PluginRuntimeSandboxProofLedger({
             <p className="neo-copy mt-2 border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#171411]">
               Deterministic local fixtures cover path traversal, symlink entrypoints, nested
               manifest escapes, deny-all IPC, blocked network IPC, environment reads, filesystem
-              writes, and permission escalation; each payload is blocked before code load.
+              writes, and permission escalation; each payload is blocked by admission before code
+              load.
             </p>
             <div className="mt-2 grid gap-2 sm:grid-cols-2">
               {escapeAttempts.map((attempt) => (

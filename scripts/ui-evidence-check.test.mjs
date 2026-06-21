@@ -122,6 +122,28 @@ test("uiEvidenceReport rejects watchlisted UI TypeScript changes without screens
   );
 });
 
+test("uiEvidenceReport rejects visible readiness data module changes without screenshot evidence", () => {
+  const root = fixtureRoot();
+  const report = uiEvidenceReport({
+    changedPaths: [
+      "launcher/src/lib/plugin-system-readiness.ts",
+      "launcher/src/lib/external-completion-evidence-summary.ts",
+    ],
+    readmeText: "",
+    root,
+  });
+
+  assert.equal(report.ready, false);
+  assert.deepEqual(report.uiChanges, [
+    "launcher/src/lib/plugin-system-readiness.ts",
+    "launcher/src/lib/external-completion-evidence-summary.ts",
+  ]);
+  assert.match(
+    report.findings.join("\n"),
+    /no changed docs\/verification\/screenshots/,
+  );
+});
+
 test("uiEvidenceReport accepts documented watchlisted UI TypeScript evidence", () => {
   const root = fixtureRoot();
   writePngFixture(root);
