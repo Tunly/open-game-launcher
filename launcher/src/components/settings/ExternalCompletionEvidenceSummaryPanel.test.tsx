@@ -151,6 +151,17 @@ describe("ExternalCompletionEvidenceSummaryPanel", () => {
       within(panel).getAllByText("docs/verification/external/store-price-drop-scheduler-live.md")
         .length,
     ).toBeGreaterThan(0);
+    expect(within(panel).getAllByText("Next Operator Action")).toHaveLength(5);
+    expect(
+      within(panel).getByText(
+        "Set 4 non-placeholder environment value(s), then rerun OGL_EXTERNAL_EVIDENCE_GATES=store-stripe-live pnpm external:evidence:status.",
+      ),
+    ).toBeVisible();
+    expect(
+      within(panel).getByText(
+        "Create or refresh 1 external artifact file(s) with OGL_EXTERNAL_EVIDENCE_GATES=hardware-os-e2e pnpm external:evidence:template.",
+      ),
+    ).toBeVisible();
     expect(
       within(panel).getAllByText("Hosted price-drop scheduler writes fresh run evidence.").length,
     ).toBeGreaterThan(0);
@@ -234,5 +245,10 @@ describe("ExternalCompletionEvidenceSummaryPanel", () => {
     expect(within(panel).getByText("Evidence Packet Pass")).toBeVisible();
     expect(within(panel).queryByText("No external proof claim")).not.toBeInTheDocument();
     expect(within(panel).getByText("External proof stays attached by reference")).toBeVisible();
+    expect(
+      within(panel).getByText(
+        "Run OGL_EXTERNAL_EVIDENCE_GATES=store-stripe-live pnpm external:evidence:preflight, then use pnpm completion:gate:external at the release boundary.",
+      ),
+    ).toBeVisible();
   });
 });

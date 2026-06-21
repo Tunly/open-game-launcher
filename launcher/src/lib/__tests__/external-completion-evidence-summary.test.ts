@@ -202,6 +202,12 @@ describe("external completion evidence summary", () => {
         "OGL_EXTERNAL_EVIDENCE_GATES=store-stripe-live pnpm external:evidence:preflight",
       ]),
     );
+    expect(summary.gates[0].nextAction).toBe(
+      "Set 4 non-placeholder environment value(s), then rerun OGL_EXTERNAL_EVIDENCE_GATES=store-stripe-live pnpm external:evidence:status.",
+    );
+    expect(summary.gates.find((gate) => gate.id === "hardware-os-e2e")?.nextAction).toBe(
+      "Create or refresh 1 external artifact file(s) with OGL_EXTERNAL_EVIDENCE_GATES=hardware-os-e2e pnpm external:evidence:template.",
+    );
     expect(
       summary.gates.find((gate) => gate.id === "hosted-supabase-cron")?.recommendedCommands,
     ).toEqual(
@@ -256,6 +262,36 @@ describe("external completion evidence summary", () => {
       ]),
     );
     expect(summary.gates[0].warnings.join(" ")).toMatch(/are not evidence/i);
+  });
+
+  it("prioritizes proof rows after env and artifact evidence are present", () => {
+    const [storeGate] = EXTERNAL_COMPLETION_EVIDENCE_GATE_INPUTS;
+    const summary = buildExternalCompletionEvidenceSummary({
+      createdAt: "2026-06-16T00:00:00.000Z",
+      gates: [
+        {
+          ...storeGate,
+          artifactEvidence: storeGate.artifactPaths.map((path) => ({
+            content: "# External artifact\n",
+            path,
+            readable: true,
+          })),
+          envEvidence: envEvidenceFor(storeGate),
+        },
+      ],
+      packetId: "external-evidence-next-action-proof-test",
+      validationNow,
+    });
+
+    expect(summary.gates[0]).toMatchObject({
+      missingArtifactCount: 0,
+      missingEnvCount: 0,
+      missingProofCount: storeGate.proofRequirements.length,
+      status: "blocked",
+    });
+    expect(summary.gates[0].nextAction).toBe(
+      "Capture real external proof, then check the assigned artifact row(s) only after evidence is attached.",
+    );
   });
 
   it("passes a gate only with CLI-like structured evidence", () => {

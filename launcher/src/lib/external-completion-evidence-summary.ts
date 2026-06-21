@@ -212,6 +212,7 @@ export interface ExternalCompletionEvidenceGate {
   missingEnvCount: number;
   missingProofEvidenceCount: number;
   missingProofCount: number;
+  nextAction: string;
   proofEvidenceFindings: ExternalCompletionEvidenceProofEvidenceFinding[];
   proofRequirements: string[];
   recommendedCommands: string[];
@@ -594,6 +595,19 @@ function buildExternalCompletionEvidenceGate(
     unreadableArtifactCount;
   const status: ExternalCompletionEvidenceStatus =
     blockerCount > 0 ? "blocked" : warnings.length > 0 ? "review" : "pass";
+  const nextAction = buildNextAction({
+    gate,
+    missingArtifactCount,
+    missingArtifactProofCount,
+    missingEvidenceDetailCount,
+    missingEnvCount,
+    missingProofCount,
+    missingProofEvidenceCount,
+    secretFindingCount,
+    templateOnlyFindingCount,
+    unreadableArtifactCount,
+    warningCount: warnings.length,
+  });
 
   return {
     artifactPaths: [...gate.artifactPaths],
@@ -610,6 +624,7 @@ function buildExternalCompletionEvidenceGate(
     missingEnvCount,
     missingProofEvidenceCount,
     missingProofCount,
+    nextAction,
     proofEvidenceFindings,
     proofRequirements: [...gate.proofRequirements],
     recommendedCommands: recommendedCommandsForGate(gate, {
@@ -1714,6 +1729,65 @@ function buildBlockers({
       ? `${templateOnlyFindingCount} blocked template-only banner(s)`
       : null,
   ].filter((value): value is string => Boolean(value));
+}
+
+function buildNextAction({
+  gate,
+  missingArtifactCount,
+  missingArtifactProofCount,
+  missingEvidenceDetailCount,
+  missingEnvCount,
+  missingProofCount,
+  missingProofEvidenceCount,
+  secretFindingCount,
+  templateOnlyFindingCount,
+  unreadableArtifactCount,
+  warningCount,
+}: {
+  gate: ExternalCompletionEvidenceGateInput;
+  missingArtifactCount: number;
+  missingArtifactProofCount: number;
+  missingEvidenceDetailCount: number;
+  missingEnvCount: number;
+  missingProofCount: number;
+  missingProofEvidenceCount: number;
+  secretFindingCount: number;
+  templateOnlyFindingCount: number;
+  unreadableArtifactCount: number;
+  warningCount: number;
+}) {
+  const scopedStatusCommand = `OGL_EXTERNAL_EVIDENCE_GATES=${gate.id} pnpm external:evidence:status`;
+  const scopedTemplateCommand = `OGL_EXTERNAL_EVIDENCE_GATES=${gate.id} pnpm external:evidence:template`;
+  const scopedPreflightCommand = `OGL_EXTERNAL_EVIDENCE_GATES=${gate.id} pnpm external:evidence:preflight`;
+
+  if (missingEnvCount > 0) {
+    return `Set ${missingEnvCount} non-placeholder environment value(s), then rerun ${scopedStatusCommand}.`;
+  }
+  if (missingArtifactCount > 0) {
+    return `Create or refresh ${missingArtifactCount} external artifact file(s) with ${scopedTemplateCommand}.`;
+  }
+  if (unreadableArtifactCount > 0) {
+    return `Make ${unreadableArtifactCount} artifact file(s) readable before filling proof rows or detail fields.`;
+  }
+  if (missingProofCount > 0 || missingArtifactProofCount > 0) {
+    return `Capture real external proof, then check the assigned artifact row(s) only after evidence is attached.`;
+  }
+  if (missingProofEvidenceCount > 0) {
+    return `Add proof-specific Evidence for mapping(s) with accepted run, dashboard, artifact, or sha256 locators.`;
+  }
+  if (missingEvidenceDetailCount > 0) {
+    return `Fill ${missingEvidenceDetailCount} Evidence Captured or Gate-Specific Evidence detail field(s) with specific external locators.`;
+  }
+  if (secretFindingCount > 0) {
+    return `Redact ${secretFindingCount} raw secret finding(s), then rerun ${scopedPreflightCommand}.`;
+  }
+  if (templateOnlyFindingCount > 0) {
+    return `Remove template-only banner(s) from filled artifacts, then rerun ${scopedPreflightCommand}.`;
+  }
+  if (warningCount > 0) {
+    return `Replace labels-only evidence with concrete artifact rows, env values, and checked proof mappings.`;
+  }
+  return `Run ${scopedPreflightCommand}, then use pnpm completion:gate:external at the release boundary.`;
 }
 
 function buildLabelOnlyWarnings({

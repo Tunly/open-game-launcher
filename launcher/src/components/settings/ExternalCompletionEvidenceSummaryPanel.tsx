@@ -1,4 +1,4 @@
-import { ClipboardList, FileWarning, ShieldCheck, Terminal } from "lucide-react";
+import { ClipboardList, FileWarning, ListChecks, ShieldCheck, Terminal } from "lucide-react";
 
 import type {
   ExternalCompletionEvidenceArtifactProofSummary,
@@ -207,6 +207,19 @@ function EvidenceGateCard({ gate }: { gate: ExternalCompletionEvidenceGate }) {
           ) : null}
         </div>
       ) : null}
+
+      <div
+        aria-label={`${gate.label} next operator action`}
+        className="mt-2 border-2 border-black bg-[#171411] px-2 py-1 text-[#fff9ed] shadow-[2px_2px_0_#007166]"
+      >
+        <p className="neo-copy flex items-center gap-2 text-[8px] font-black uppercase text-[#8cf5e4]">
+          <ListChecks aria-hidden="true" className="h-3.5 w-3.5" />
+          Next Operator Action
+        </p>
+        <p className="neo-copy mt-1 break-words text-[8px] font-black uppercase leading-4">
+          {gate.nextAction}
+        </p>
+      </div>
 
       <div className="mt-2 border-2 border-black bg-[#efe3cf] px-2 py-1">
         <p className="neo-copy text-[8px] font-black uppercase text-[#b7102a]">Operator Commands</p>

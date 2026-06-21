@@ -1416,6 +1416,17 @@ describe("SettingsPage external completion evidence summary", () => {
       ),
     ).toBeInTheDocument();
     expect(within(panel).getAllByText("Artifact Proof Map").length).toBeGreaterThan(0);
+    expect(within(panel).getAllByText("Next Operator Action").length).toBe(5);
+    expect(
+      within(panel).getByText(
+        "Set 4 non-placeholder environment value(s), then rerun OGL_EXTERNAL_EVIDENCE_GATES=store-stripe-live pnpm external:evidence:status.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      within(panel).getByText(
+        "Create or refresh 1 external artifact file(s) with OGL_EXTERNAL_EVIDENCE_GATES=hardware-os-e2e pnpm external:evidence:template.",
+      ),
+    ).toBeInTheDocument();
     expect(within(panel).getAllByText("Secret Scan").length).toBeGreaterThan(0);
     expect(within(panel).getByText("Not checked: 2 missing/unreadable")).toBeInTheDocument();
     expect(
