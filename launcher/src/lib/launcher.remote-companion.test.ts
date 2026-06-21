@@ -74,6 +74,51 @@ describe("remote companion desktop vault wrappers", () => {
     expect(mocks.invoke).not.toHaveBeenCalled();
   });
 
+  it("clears the desktop device secret through a desktop command", async () => {
+    mocks.isTauri.mockReturnValue(true);
+    mocks.invoke.mockResolvedValue({
+      deviceId: null,
+      deviceSecretHint: null,
+      hasSecret: false,
+      updatedAtEpochMs: null,
+    });
+
+    const { clearRemoteCompanionDeviceSecret } = await import("./launcher");
+    await expect(clearRemoteCompanionDeviceSecret()).resolves.toEqual({
+      deviceId: null,
+      deviceSecretHint: null,
+      hasSecret: false,
+      updatedAtEpochMs: null,
+    });
+
+    expect(mocks.invoke).toHaveBeenCalledWith("clear_remote_companion_device_secret", undefined);
+  });
+
+  it("returns a redacted browser fallback for clear without opening IPC", async () => {
+    mocks.isTauri.mockReturnValue(false);
+
+    const { clearRemoteCompanionDeviceSecret } = await import("./launcher");
+    await expect(clearRemoteCompanionDeviceSecret()).resolves.toEqual({
+      deviceId: null,
+      deviceSecretHint: null,
+      hasSecret: false,
+      updatedAtEpochMs: null,
+    });
+
+    expect(mocks.invoke).not.toHaveBeenCalled();
+  });
+
+  it("propagates desktop clear errors without exposing secret-shaped values", async () => {
+    mocks.isTauri.mockReturnValue(true);
+    mocks.invoke.mockRejectedValue(new Error("Vault unavailable for device [redacted]."));
+
+    const { clearRemoteCompanionDeviceSecret } = await import("./launcher");
+    await clearRemoteCompanionDeviceSecret().catch((error: unknown) => {
+      expect(String(error)).toMatch(/vault unavailable/i);
+      expect(String(error)).not.toMatch(/ogd_|token=|signed url/i);
+    });
+  });
+
   it("rejects browser saves before a secret can leave web runtime memory", async () => {
     mocks.isTauri.mockReturnValue(false);
 

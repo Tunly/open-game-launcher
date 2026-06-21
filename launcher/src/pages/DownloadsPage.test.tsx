@@ -7,6 +7,14 @@ const launcherMocks = vi.hoisted(() => ({
   cancelLanTransferCopyJob: vi.fn(),
   cancelDownload: vi.fn(() => Promise.resolve()),
   cancelModInstall: vi.fn(() => Promise.resolve()),
+  clearRemoteCompanionDeviceSecret: vi.fn(() =>
+    Promise.resolve({
+      deviceId: null as string | null,
+      deviceSecretHint: null as string | null,
+      hasSecret: false,
+      updatedAtEpochMs: null as number | null,
+    }),
+  ),
   getDownloadQueue: vi.fn(() => Promise.resolve([])),
   getRemoteCompanionDeviceSecretStatus: vi.fn(() =>
     Promise.resolve({
@@ -44,6 +52,7 @@ vi.mock("../lib/launcher", async (importOriginal) => {
     cancelLanTransferCopyJob: launcherMocks.cancelLanTransferCopyJob,
     cancelDownload: launcherMocks.cancelDownload,
     cancelModInstall: launcherMocks.cancelModInstall,
+    clearRemoteCompanionDeviceSecret: launcherMocks.clearRemoteCompanionDeviceSecret,
     getDownloadQueue: launcherMocks.getDownloadQueue,
     getRemoteCompanionDeviceSecretStatus: launcherMocks.getRemoteCompanionDeviceSecretStatus,
     launchGame: launcherMocks.launchGame,
@@ -65,6 +74,7 @@ import {
   DownloadsPage,
   LanTransferNativeCopyConsole,
   LanTransferPlannerPanel,
+  RemoteCompanionDesktopVaultPanel,
   RemoteDownloadReadinessPanel,
   RemoteInstallHandoffBanner,
   RemoteInstallHandoffLedger,
@@ -93,10 +103,31 @@ function renderDownloadsRoute(initialEntry: string) {
   );
 }
 
+const emptyDesktopVaultStatus = {
+  deviceId: null,
+  deviceSecretHint: null,
+  hasSecret: false,
+  updatedAtEpochMs: null,
+};
+
+const readyDesktopVaultStatus = {
+  deviceId: "11111111-1111-4111-8111-111111111111",
+  deviceSecretHint: "ogd_pair...7890",
+  hasSecret: true,
+  updatedAtEpochMs: Date.UTC(2026, 5, 16, 12, 0, 0),
+};
+
 afterEach(() => {
   vi.unstubAllEnvs();
   launcherMocks.getRemoteCompanionDeviceSecretStatus.mockReset();
   launcherMocks.getRemoteCompanionDeviceSecretStatus.mockResolvedValue({
+    deviceId: null,
+    deviceSecretHint: null,
+    hasSecret: false,
+    updatedAtEpochMs: null,
+  });
+  launcherMocks.clearRemoteCompanionDeviceSecret.mockReset();
+  launcherMocks.clearRemoteCompanionDeviceSecret.mockResolvedValue({
     deviceId: null,
     deviceSecretHint: null,
     hasSecret: false,
@@ -128,7 +159,10 @@ describe("RemoteDownloadReadinessPanel", () => {
       <RemoteDownloadReadinessPanel
         alwaysOnConfigured
         companionHandshake={summarizeRemoteCompanionHandshake(null)}
+        desktopVaultStatus={readyDesktopVaultStatus}
+        isDesktopApp
         onAlwaysOnConfiguredChange={onAlwaysOnConfiguredChange}
+        onClearDesktopVault={vi.fn()}
         onClearCompanionPairing={vi.fn()}
         onCreateCompanionPairing={vi.fn()}
         onRecordCompanionPing={vi.fn()}
@@ -156,7 +190,10 @@ describe("RemoteDownloadReadinessPanel", () => {
       <RemoteDownloadReadinessPanel
         alwaysOnConfigured={false}
         companionHandshake={summarizeRemoteCompanionHandshake(null)}
+        desktopVaultStatus={emptyDesktopVaultStatus}
+        isDesktopApp
         onAlwaysOnConfiguredChange={vi.fn()}
+        onClearDesktopVault={vi.fn()}
         onClearCompanionPairing={vi.fn()}
         onCreateCompanionPairing={vi.fn()}
         onRecordCompanionPing={vi.fn()}
@@ -170,6 +207,7 @@ describe("RemoteDownloadReadinessPanel", () => {
 
   it("renders companion pairing evidence and forwards handshake actions", () => {
     const onClear = vi.fn();
+    const onClearVault = vi.fn();
     const onCreate = vi.fn();
     const onPing = vi.fn();
     const onPoll = vi.fn();
@@ -194,7 +232,11 @@ describe("RemoteDownloadReadinessPanel", () => {
       <RemoteDownloadReadinessPanel
         alwaysOnConfigured
         companionHandshake={summarizeRemoteCompanionHandshake(record, 1_780_000_060_000)}
+        desktopVaultMessage="Desktop companion vault record is present."
+        desktopVaultStatus={readyDesktopVaultStatus}
+        isDesktopApp
         onAlwaysOnConfiguredChange={vi.fn()}
+        onClearDesktopVault={onClearVault}
         onClearCompanionPairing={onClear}
         onCreateCompanionPairing={onCreate}
         onPollRemoteJobs={onPoll}
@@ -213,16 +255,56 @@ describe("RemoteDownloadReadinessPanel", () => {
     expect(screen.getAllByText("linked").length).toBeGreaterThan(0);
     expect(screen.getByText("1 started")).toBeInTheDocument();
     expect(screen.getByText("1 remote job started.")).toBeInTheDocument();
+    const vault = screen.getByRole("region", { name: /remote companion desktop vault/i });
+    expect(within(vault).getByText("Desktop Vault")).toBeInTheDocument();
+    expect(within(vault).getByText("Ready")).toBeInTheDocument();
+    expect(within(vault).getByText("11111111...1111")).toBeInTheDocument();
+    expect(within(vault).getByText("ogd_pair...7890")).toBeInTheDocument();
+    expect(within(vault).getByText("2026-06-16 12:00 UTC")).toBeInTheDocument();
+    expect(vault).not.toHaveTextContent(
+      /desktop_secret|token=|signed url|production hosted deployment ready/i,
+    );
 
     fireEvent.click(screen.getByRole("button", { name: /Generate Code/i }));
     fireEvent.click(screen.getByRole("button", { name: /Record Ping/i }));
     fireEvent.click(screen.getByRole("button", { name: /Claim Jobs/i }));
+    fireEvent.click(within(vault).getByRole("button", { name: /Clear Vault/i }));
     fireEvent.click(screen.getByRole("button", { name: /Reset/i }));
 
     expect(onCreate).toHaveBeenCalled();
     expect(onPing).toHaveBeenCalled();
     expect(onPoll).toHaveBeenCalled();
+    expect(onClearVault).toHaveBeenCalled();
     expect(onClear).toHaveBeenCalled();
+  });
+
+  it("redacts raw desktop vault secrets, tokens, signed links, and package URLs", () => {
+    render(
+      <RemoteCompanionDesktopVaultPanel
+        isDesktopApp
+        message={[
+          "Failed token=relay-secret sig=relay-signature",
+          "https://relay.og-launcher.test/packages/live.zip",
+          "ogd_desktop_secret_once_abcdefghijklmnopqrstuvwxyz",
+        ].join(" ")}
+        onClear={vi.fn()}
+        status={{
+          deviceId: "22222222-2222-4222-8222-222222222222",
+          deviceSecretHint: "ogd_desktop_secret_once_abcdefghijklmnopqrstuvwxyz",
+          hasSecret: true,
+          updatedAtEpochMs: Date.UTC(2026, 5, 16, 12, 0, 0),
+        }}
+      />,
+    );
+
+    const vault = screen.getByRole("region", { name: /remote companion desktop vault/i });
+    expect(vault).toHaveTextContent("[device-secret-redacted]");
+    expect(vault).toHaveTextContent("token=[secret-redacted]");
+    expect(vault).toHaveTextContent("sig=[secret-redacted]");
+    expect(vault).toHaveTextContent("[link-redacted]");
+    expect(vault).not.toHaveTextContent(
+      /relay-secret|relay-signature|https:\/\/relay|ogd_desktop_secret_once/i,
+    );
   });
 });
 
@@ -846,7 +928,10 @@ describe("remote companion poll status", () => {
       <RemoteDownloadReadinessPanel
         alwaysOnConfigured
         companionHandshake={handshake}
+        desktopVaultStatus={readyDesktopVaultStatus}
+        isDesktopApp
         onAlwaysOnConfiguredChange={vi.fn()}
+        onClearDesktopVault={vi.fn()}
         onClearCompanionPairing={vi.fn()}
         onCreateCompanionPairing={vi.fn()}
         onPollRemoteJobs={vi.fn()}
@@ -986,6 +1071,94 @@ describe("DownloadsPage remote hosted contract verify route", () => {
     expect(within(panel).getByText("100%")).toBeInTheDocument();
     expect(within(panel).getAllByText("ready").length).toBeGreaterThanOrEqual(7);
     expect(panel).not.toHaveTextContent(/token=|sig=|signed url|raw package url/i);
+  });
+});
+
+describe("DownloadsPage remote companion desktop vault", () => {
+  it("keeps browser fallback non-authoritative with clear disabled", async () => {
+    launcherMocks.getDownloadQueue.mockResolvedValue([]);
+    launcherMocks.listInstalledGames.mockResolvedValue([]);
+
+    renderDownloadsRoute("/downloads");
+
+    const vault = await screen.findByRole("region", {
+      name: /remote companion desktop vault/i,
+    });
+
+    await waitFor(() => expect(within(vault).getByText("Browser Fallback")).toBeInTheDocument());
+    expect(within(vault).getByText("Not linked")).toBeInTheDocument();
+    expect(within(vault).getByRole("button", { name: /Clear Vault/i })).toBeDisabled();
+    expect(launcherMocks.clearRemoteCompanionDeviceSecret).not.toHaveBeenCalled();
+    expect(vault).not.toHaveTextContent(/desktop_secret|token=|sig=|signed url|raw package url/i);
+  });
+
+  it("mounts a local-only desktop vault reset fixture on the verify route", async () => {
+    launcherMocks.getDownloadQueue.mockResolvedValue([]);
+    launcherMocks.listInstalledGames.mockResolvedValue([]);
+
+    renderDownloadsRoute("/downloads?verify=remote-companion-vault-reset-local");
+
+    const vault = await screen.findByRole("region", {
+      name: /remote companion desktop vault/i,
+    });
+
+    expect(within(vault).getByText("Desktop Vault")).toBeInTheDocument();
+    expect(within(vault).getByText("Ready")).toBeInTheDocument();
+    expect(within(vault).getByText("11111111...1111")).toBeInTheDocument();
+    expect(within(vault).getByText("ogd_pair...7890")).toBeInTheDocument();
+    expect(within(vault).getByText("2026-06-16 12:00 UTC")).toBeInTheDocument();
+    expect(vault).toHaveTextContent("no hosted deployment proof");
+    expect(vault).not.toHaveTextContent(/desktop_secret|token=|signed url|hosted deploy ready/i);
+
+    fireEvent.click(within(vault).getByRole("button", { name: /Clear Vault/i }));
+
+    expect(launcherMocks.clearRemoteCompanionDeviceSecret).not.toHaveBeenCalled();
+    await waitFor(() =>
+      expect(
+        within(vault).getByText(
+          "Local verify reset cleared the staged vault record; no hosted deploy proof was written.",
+        ),
+      ).toBeInTheDocument(),
+    );
+    expect(within(vault).getByText("Missing")).toBeInTheDocument();
+    expect(within(vault).getByText("Not linked")).toBeInTheDocument();
+    expect(within(vault).getByText("Not stored")).toBeInTheDocument();
+
+    fireEvent.click(within(vault).getByRole("button", { name: /Stage Fixture/i }));
+
+    expect(launcherMocks.clearRemoteCompanionDeviceSecret).not.toHaveBeenCalled();
+    await waitFor(() => expect(within(vault).getByText("Ready")).toBeInTheDocument());
+    expect(within(vault).getByText("11111111...1111")).toBeInTheDocument();
+    expect(within(vault).getByText("ogd_pair...7890")).toBeInTheDocument();
+    expect(
+      within(vault).getByText(
+        "Local verify fixture restaged the desktop vault record without hosted deployment proof.",
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it("clears a staged vault record and refreshes the local readiness state", async () => {
+    vi.stubGlobal("__TAURI_INTERNALS__", {});
+    launcherMocks.getDownloadQueue.mockResolvedValue([]);
+    launcherMocks.listInstalledGames.mockResolvedValue([]);
+    launcherMocks.getRemoteCompanionDeviceSecretStatus.mockResolvedValue(readyDesktopVaultStatus);
+    launcherMocks.clearRemoteCompanionDeviceSecret.mockResolvedValue(emptyDesktopVaultStatus);
+
+    renderDownloadsRoute("/downloads");
+
+    const vault = await screen.findByRole("region", {
+      name: /remote companion desktop vault/i,
+    });
+
+    await waitFor(() => expect(within(vault).getByText("Ready")).toBeInTheDocument());
+
+    fireEvent.click(within(vault).getByRole("button", { name: /Clear Vault/i }));
+
+    await waitFor(() => expect(launcherMocks.clearRemoteCompanionDeviceSecret).toHaveBeenCalled());
+    expect(within(vault).getByText("Desktop companion vault cleared.")).toBeInTheDocument();
+    expect(within(vault).getByText("Browser Fallback")).toBeInTheDocument();
+    expect(within(vault).getByText("Not linked")).toBeInTheDocument();
+    expect(vault).not.toHaveTextContent(/desktop_secret|token=|signed url/i);
   });
 });
 

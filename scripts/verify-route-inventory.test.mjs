@@ -330,14 +330,14 @@ test("verifyRouteInventory allows legacy aliases only when canonical route is do
 test("current verify route inventory is documented with explicit legacy aliases", () => {
   const result = verifyRouteInventory();
 
-  assert.equal(result.sourceFlags.size, 69);
+  assert.equal(result.sourceFlags.size, 70);
   assert.deepEqual(result.errors, []);
   assert.equal(
     result.documentedScreenshots.size,
     result.existingScreenshots.size,
   );
-  assert.equal(result.existingScreenshots.size, 384);
-  assert.equal(result.screenshotIntegrity.size, 384);
+  assert.equal(result.existingScreenshots.size, 387);
+  assert.equal(result.screenshotIntegrity.size, 387);
   assert.equal(
     [...result.screenshotIntegrity.values()].every(
       (inspection) =>

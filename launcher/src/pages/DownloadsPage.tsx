@@ -46,6 +46,7 @@ import {
   cancelLanTransferCopyJob,
   cancelDownload,
   cancelModInstall,
+  clearRemoteCompanionDeviceSecret,
   getDownloadQueue,
   getRemoteCompanionDeviceSecretStatus,
   pauseDownload,
@@ -59,6 +60,7 @@ import {
   runLanTransferResumeCopy,
   startLanTransferCopyJob,
 } from "../lib/launcher";
+import type { RemoteCompanionDeviceSecretStatus } from "../lib/launcher";
 import { getErrorMessage } from "../lib/formatters";
 import {
   refreshDownloadQueueForRemotePoll,
@@ -138,6 +140,13 @@ const LAN_RESUME_COPY_CONSENT_OPERATION = "lan_native_resume_copy_verify_manifes
 const LAN_CLEANUP_CANDIDATES_CONSENT_OPERATION = "lan_native_cleanup_candidates_delete" as const;
 const LAN_PEER_DISCOVERY_PREFLIGHT_OPERATION = "lan_peer_discovery_preflight_review" as const;
 const REMOTE_COMPANION_POLL_REDACTION_VERIFY = "remote-companion-poll-redaction";
+const REMOTE_COMPANION_VAULT_RESET_VERIFY = "remote-companion-vault-reset-local";
+const EMPTY_REMOTE_COMPANION_DESKTOP_VAULT_STATUS: RemoteCompanionDeviceSecretStatus = {
+  deviceId: null,
+  deviceSecretHint: null,
+  hasSecret: false,
+  updatedAtEpochMs: null,
+};
 const REMOTE_COMPANION_POLL_REDACTION_VERIFY_NOW = Date.UTC(2026, 5, 15, 10, 0, 0);
 
 interface DownloadCommandError {
@@ -255,8 +264,12 @@ export function DownloadsPage() {
   const [remoteCompanionPollBusy, setRemoteCompanionPollBusy] = useState(false);
   const [remoteCompanionPollStatus, setRemoteCompanionPollStatus] =
     useState<RemoteCompanionPollUiState>(REMOTE_COMPANION_POLL_IDLE);
-  const [hasRemoteCompanionDesktopSecretVault, setHasRemoteCompanionDesktopSecretVault] =
-    useState(false);
+  const [remoteCompanionDesktopSecretStatus, setRemoteCompanionDesktopSecretStatus] =
+    useState<RemoteCompanionDeviceSecretStatus>(EMPTY_REMOTE_COMPANION_DESKTOP_VAULT_STATUS);
+  const [remoteCompanionDesktopVaultBusy, setRemoteCompanionDesktopVaultBusy] = useState(false);
+  const [remoteCompanionDesktopVaultMessage, setRemoteCompanionDesktopVaultMessage] = useState(
+    "Checking desktop companion vault status.",
+  );
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const remoteHandoffSearch = searchParams.toString();
@@ -386,6 +399,7 @@ export function DownloadsPage() {
   const diskUsageStr = totalSpeedBytes > 0 ? formatBytesPerSecond(totalSpeedBytes * 1.15) : "0 B/s";
   const isRemoteCompanionPollRedactionVerify =
     verifyMode === REMOTE_COMPANION_POLL_REDACTION_VERIFY;
+  const isRemoteCompanionVaultResetVerify = verifyMode === REMOTE_COMPANION_VAULT_RESET_VERIFY;
   const localRemoteCompanionSummary = useMemo(
     () => summarizeRemoteCompanionHandshake(remoteCompanionHandshake),
     [remoteCompanionHandshake],
@@ -404,6 +418,11 @@ export function DownloadsPage() {
     ? remoteCompanionPollRedactionVerifyState.pollStatus
     : remoteCompanionPollStatus;
   const effectiveRemoteCompanionLinked = remoteCompanionSummary.isLinked;
+  const effectiveRemoteCompanionDesktopSecretStatus = isRemoteCompanionVaultResetVerify
+    ? remoteCompanionDesktopSecretStatus
+    : remoteCompanionDesktopSecretStatus;
+  const hasRemoteCompanionDesktopSecretVault =
+    effectiveRemoteCompanionDesktopSecretStatus.hasSecret;
   const isLanTransferVerify = verifyMode === "lan-transfer";
   const isLanTransferReadinessVerify = verifyMode === "lan-transfer-readiness";
   const isMobileAppReadinessVerify = verifyMode === "mobile-app-readiness";
@@ -519,22 +538,40 @@ export function DownloadsPage() {
   useEffect(() => {
     let active = true;
 
+    if (isRemoteCompanionVaultResetVerify) {
+      setRemoteCompanionDesktopSecretStatus(createRemoteCompanionVaultResetVerifyStatus());
+      setRemoteCompanionDesktopVaultMessage(
+        "Local verify fixture: desktop vault record is staged without hosted deployment proof.",
+      );
+      return () => {
+        active = false;
+      };
+    }
+
     getRemoteCompanionDeviceSecretStatus()
       .then((status) => {
         if (active) {
-          setHasRemoteCompanionDesktopSecretVault(status.hasSecret);
+          setRemoteCompanionDesktopSecretStatus(status);
+          setRemoteCompanionDesktopVaultMessage(
+            status.hasSecret
+              ? "Desktop companion vault record is present."
+              : isTauri()
+                ? "Desktop companion vault is empty."
+                : "Desktop companion vault is available only in the desktop app.",
+          );
         }
       })
       .catch(() => {
         if (active) {
-          setHasRemoteCompanionDesktopSecretVault(false);
+          setRemoteCompanionDesktopSecretStatus(EMPTY_REMOTE_COMPANION_DESKTOP_VAULT_STATUS);
+          setRemoteCompanionDesktopVaultMessage("Desktop companion vault status check failed.");
         }
       });
 
     return () => {
       active = false;
     };
-  }, []);
+  }, [isRemoteCompanionVaultResetVerify]);
 
   async function handlePauseToggle(id: string) {
     const item = items.find((x) => x.id === id);
@@ -630,6 +667,47 @@ export function DownloadsPage() {
     setRemoteCompanionHandshake(null);
   }
 
+  async function handleClearRemoteCompanionDesktopVault() {
+    if (remoteCompanionDesktopVaultBusy) return;
+
+    if (isRemoteCompanionVaultResetVerify) {
+      setRemoteCompanionDesktopSecretStatus(EMPTY_REMOTE_COMPANION_DESKTOP_VAULT_STATUS);
+      setRemoteCompanionDesktopVaultMessage(
+        "Local verify reset cleared the staged vault record; no hosted deploy proof was written.",
+      );
+      return;
+    }
+
+    setRemoteCompanionDesktopVaultBusy(true);
+    setRemoteCompanionDesktopVaultMessage("Clearing desktop companion vault record.");
+    try {
+      const status = await clearRemoteCompanionDeviceSecret();
+      setRemoteCompanionDesktopSecretStatus(status);
+      setRemoteCompanionDesktopVaultMessage(
+        status.hasSecret
+          ? "Desktop companion vault still reports a staged record."
+          : "Desktop companion vault cleared.",
+      );
+    } catch (err) {
+      const message = sanitizeRemoteCompanionVaultText(
+        getErrorMessage(err),
+        "Desktop companion vault command failed.",
+      );
+      setRemoteCompanionDesktopVaultMessage(message);
+      setCommandError(message);
+    } finally {
+      setRemoteCompanionDesktopVaultBusy(false);
+    }
+  }
+
+  function handleStageRemoteCompanionDesktopVaultVerifyFixture() {
+    if (!isRemoteCompanionVaultResetVerify) return;
+    setRemoteCompanionDesktopSecretStatus(createRemoteCompanionVaultResetVerifyStatus());
+    setRemoteCompanionDesktopVaultMessage(
+      "Local verify fixture restaged the desktop vault record without hosted deployment proof.",
+    );
+  }
+
   async function handlePollRemoteCompanionJobs() {
     if (remoteCompanionPollBusy) return;
 
@@ -707,11 +785,21 @@ export function DownloadsPage() {
         readiness={remoteDownloadReadiness}
         alwaysOnConfigured={effectiveRemoteAlwaysOnConfigured}
         companionHandshake={remoteCompanionSummary}
+        desktopVaultBusy={remoteCompanionDesktopVaultBusy}
+        desktopVaultMessage={remoteCompanionDesktopVaultMessage}
+        desktopVaultStatus={effectiveRemoteCompanionDesktopSecretStatus}
+        isDesktopApp={isRemoteCompanionVaultResetVerify || isTauri()}
+        onStageVerifyDesktopVault={
+          isRemoteCompanionVaultResetVerify
+            ? handleStageRemoteCompanionDesktopVaultVerifyFixture
+            : undefined
+        }
         onAlwaysOnConfiguredChange={
           isRemoteCompanionPollRedactionVerify
             ? noopRemoteCompanionVerifyToggle
             : setRemoteAlwaysOnConfigured
         }
+        onClearDesktopVault={handleClearRemoteCompanionDesktopVault}
         onClearCompanionPairing={
           isRemoteCompanionPollRedactionVerify
             ? noopRemoteCompanionVerifyAction
@@ -2061,14 +2149,56 @@ function formatRemoteHandoffLedgerTime(timestamp: number) {
   }).format(new Date(timestamp));
 }
 
+function createRemoteCompanionVaultResetVerifyStatus(): RemoteCompanionDeviceSecretStatus {
+  return {
+    deviceId: "11111111-1111-4111-8111-111111111111",
+    deviceSecretHint: "ogd_pair...7890",
+    hasSecret: true,
+    updatedAtEpochMs: Date.UTC(2026, 5, 16, 12, 0, 0),
+  };
+}
+
+function formatRemoteCompanionVaultDeviceId(deviceId: string | null) {
+  if (!deviceId) return "Not linked";
+  const normalized = deviceId.trim();
+  if (normalized.length <= 12) return normalized;
+  return `${normalized.slice(0, 8)}...${normalized.slice(-4)}`;
+}
+
+function formatRemoteCompanionVaultUpdatedAt(updatedAtEpochMs: number | null) {
+  if (!updatedAtEpochMs || !Number.isFinite(updatedAtEpochMs)) return "Never";
+  return new Date(updatedAtEpochMs).toISOString().slice(0, 16).replace("T", " ") + " UTC";
+}
+
+function sanitizeRemoteCompanionVaultText(value: string | null | undefined, fallback: string) {
+  const cleaned = value?.trim() ?? "";
+  if (!cleaned) return fallback;
+  return cleaned
+    .replace(/\bhttps?:\/\/[^\s<>)\]]+/gi, "[link-redacted]")
+    .replace(
+      /\b(?:token|sig|signature|deviceSecret|device_secret|secret)=([^\s<>)\]]+)/gi,
+      (match) => `${match.split("=")[0]}=[secret-redacted]`,
+    )
+    .replace(/\bogd_[a-z0-9._-]{12,}\b/gi, (match) =>
+      match.includes("...") ? match : "[device-secret-redacted]",
+    )
+    .replace(/\beyJ[a-zA-Z0-9_-]{8,}\.[a-zA-Z0-9_-]{8,}\.[a-zA-Z0-9_-]{8,}\b/g, "[jwt-redacted]");
+}
+
 interface RemoteDownloadReadinessPanelProps {
   alwaysOnConfigured: boolean;
   companionHandshake: RemoteCompanionHandshakeSummary;
+  desktopVaultBusy?: boolean;
+  desktopVaultMessage?: string;
+  desktopVaultStatus: RemoteCompanionDeviceSecretStatus;
+  isDesktopApp: boolean;
   onAlwaysOnConfiguredChange: (value: boolean) => void;
+  onClearDesktopVault: () => void;
   onClearCompanionPairing: () => void;
   onCreateCompanionPairing: () => void;
   onPollRemoteJobs?: () => void;
   onRecordCompanionPing: () => void;
+  onStageVerifyDesktopVault?: () => void;
   readiness: RemoteDownloadReadiness;
   remotePollBusy?: boolean;
   remotePollStatus?: RemoteCompanionPollUiState;
@@ -2077,11 +2207,17 @@ interface RemoteDownloadReadinessPanelProps {
 export function RemoteDownloadReadinessPanel({
   alwaysOnConfigured,
   companionHandshake,
+  desktopVaultBusy = false,
+  desktopVaultMessage,
+  desktopVaultStatus,
+  isDesktopApp,
   onAlwaysOnConfiguredChange,
+  onClearDesktopVault,
   onClearCompanionPairing,
   onCreateCompanionPairing,
   onPollRemoteJobs,
   onRecordCompanionPing,
+  onStageVerifyDesktopVault,
   readiness,
   remotePollBusy,
   remotePollStatus = REMOTE_COMPANION_POLL_IDLE,
@@ -2150,6 +2286,14 @@ export function RemoteDownloadReadinessPanel({
               onLabel="Ready"
             />
           </div>
+          <RemoteCompanionDesktopVaultPanel
+            busy={desktopVaultBusy}
+            isDesktopApp={isDesktopApp}
+            message={desktopVaultMessage}
+            onClear={onClearDesktopVault}
+            onStageVerify={onStageVerifyDesktopVault}
+            status={desktopVaultStatus}
+          />
           <RemoteCompanionHandshakePanel
             handshake={companionHandshake}
             onClear={onClearCompanionPairing}
@@ -2166,6 +2310,103 @@ export function RemoteDownloadReadinessPanel({
             <RemoteDownloadReadinessRowCard key={row.id} row={row} />
           ))}
         </div>
+      </div>
+    </section>
+  );
+}
+
+export function RemoteCompanionDesktopVaultPanel({
+  busy = false,
+  isDesktopApp,
+  message,
+  onClear,
+  onStageVerify,
+  status,
+}: {
+  busy?: boolean;
+  isDesktopApp: boolean;
+  message?: string;
+  onClear: () => void;
+  onStageVerify?: () => void;
+  status: RemoteCompanionDeviceSecretStatus;
+}) {
+  const statusLabel = status.hasSecret ? "Ready" : isDesktopApp ? "Missing" : "Browser Fallback";
+  const statusClass = status.hasSecret
+    ? "bg-[#087d6d] text-white"
+    : isDesktopApp
+      ? "bg-[#b7102a] text-white"
+      : "bg-[#fff9ed] text-[#171411]";
+  const statusDetail = status.hasSecret
+    ? "Local desktop vault record is staged for companion job claims."
+    : isDesktopApp
+      ? "No keychain-backed companion device secret is staged."
+      : "Browser preview cannot read or clear the desktop keychain vault.";
+
+  return (
+    <section
+      aria-label="Remote companion desktop vault"
+      className="mt-4 border-2 border-black bg-[#efe6d4] p-3 shadow-[3px_3px_0_#171411]"
+    >
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
+          <span className="neo-copy inline-flex items-center gap-1 border-2 border-black bg-[#171411] px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-white">
+            <KeyRound className="h-3 w-3" />
+            Desktop Vault
+          </span>
+          <p className="neo-copy mt-2 text-[10px] font-black uppercase leading-relaxed text-[#5b403f]">
+            {statusDetail} Local vault metadata only; no hosted deployment proof or raw device
+            secret is rendered.
+          </p>
+        </div>
+        <span
+          className={`neo-copy border-2 border-black px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] shadow-[2px_2px_0_#171411] ${statusClass}`}
+        >
+          {statusLabel}
+        </span>
+      </div>
+
+      <div className="mt-3 grid gap-2 sm:grid-cols-3">
+        <RemoteCompanionHandshakeStamp
+          label="Device"
+          value={formatRemoteCompanionVaultDeviceId(status.deviceId)}
+        />
+        <RemoteCompanionHandshakeStamp
+          label="Secret Hint"
+          value={sanitizeRemoteCompanionVaultText(status.deviceSecretHint, "Not stored")}
+        />
+        <RemoteCompanionHandshakeStamp
+          label="Updated"
+          value={formatRemoteCompanionVaultUpdatedAt(status.updatedAtEpochMs)}
+        />
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <button
+          className="neo-copy flex h-9 items-center gap-1.5 border-2 border-black bg-[#fff9ed] px-3 text-[10px] font-black uppercase text-[#171411] shadow-[2px_2px_0_#171411] transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60"
+          disabled={busy || !status.hasSecret}
+          type="button"
+          onClick={onClear}
+        >
+          <RotateCcw className={`h-3.5 w-3.5 ${busy ? "animate-spin" : ""}`} />
+          {busy ? "Clearing" : "Clear Vault"}
+        </button>
+        {onStageVerify ? (
+          <button
+            className="neo-copy flex h-9 items-center gap-1.5 border-2 border-black bg-[#087d6d] px-3 text-[10px] font-black uppercase text-white shadow-[2px_2px_0_#171411] transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-60"
+            disabled={busy || status.hasSecret}
+            type="button"
+            onClick={onStageVerify}
+          >
+            <KeyRound className="h-3.5 w-3.5" />
+            Stage Fixture
+          </button>
+        ) : null}
+        <p className="neo-copy min-w-0 flex-1 break-words border-2 border-black bg-[#fff9ed] px-2 py-1 text-[9px] font-black uppercase leading-relaxed text-[#5b403f]">
+          {sanitizeRemoteCompanionVaultText(
+            message,
+            "Desktop companion vault status is local-only evidence.",
+          )}
+        </p>
       </div>
     </section>
   );
