@@ -1,8 +1,10 @@
 # Local Completion Audit - 2026-06-21
 
 This audit defines the local completion boundary for this checkout. It is a
-release-readiness boundary, not a claim that external provider, hardware, or
-hosted production systems have been exercised.
+local deterministic completion boundary, not a release-readiness boundary or a
+claim that external provider, hardware, or hosted production systems have been
+exercised. Full release readiness still requires the real external evidence
+artifacts and a successful full `pnpm completion:gate` release-boundary run.
 Last refreshed: 2026-06-21 for completion-gate status, external evidence, hosted
 cron evidence helper semantics, and the current Plugin Runtime Sandbox local
 boundary. The full local completion gate was last recorded separately; no live

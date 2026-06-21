@@ -629,15 +629,23 @@ function normalizeEvidenceUrl(rawUrl) {
   return rawUrl.replace(/[.,;:'"]+$/g, "");
 }
 
+function normalizeEvidenceLocatorPathSeparators(value) {
+  return value.replace(/\\/g, "/");
+}
+
 function evidenceLocatorContainsBlockedLocalPath(value) {
+  const normalizedPathSeparators =
+    normalizeEvidenceLocatorPathSeparators(value);
   return /(?:^|[\s([<])(?:\.{1,2}\/[^\s,;)>]+|~\/[^\s,;)>]+|\/[^\s,;)>]+|[a-z]:[\\/][^\s,;)>]+|(?:docs|scripts|launcher|supabase|\.github|\.husky)\/[^\s,;)>]+)(?=$|[\s,;)>])/i.test(
-    value,
+    normalizedPathSeparators,
   );
 }
 
 function evidenceLocatorContainsLocalVerificationPath(value) {
+  const normalizedPathSeparators =
+    normalizeEvidenceLocatorPathSeparators(value);
   return /(?:^|[\s([<])(?:\.{1,2}\/)?docs\/verification\/screenshots\//i.test(
-    value,
+    normalizedPathSeparators,
   );
 }
 

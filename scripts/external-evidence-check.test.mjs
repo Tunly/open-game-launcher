@@ -2673,6 +2673,8 @@ test("preflight status rejects duplicate evidence rows when any value is invalid
   const firstProof = gate.requiredProofs[0];
   const localScreenshotPath =
     "docs/verification/screenshots/settings-external-completion-evidence-summary-local.png";
+  const windowsLocalScreenshotPath =
+    "docs\\verification\\screenshots\\settings-external-completion-evidence-summary-local.png";
 
   const duplicateDetailStatus = gateStatus(
     gate,
@@ -2738,6 +2740,38 @@ test("preflight status rejects duplicate evidence rows when any value is invalid
       reason: "local_path",
     },
   ]);
+
+  const duplicateWindowsProofStatus = gateStatus(
+    gate,
+    configuredEnv,
+    fakeExists(gate.artifactPaths),
+    fakeRead({
+      [artifactPath]: proofContent(
+        gate,
+        [
+          capturedEvidenceDetails(),
+          `- Evidence for ${firstProof}: run-fullscreen-anticheat-overlay-123 ${windowsLocalScreenshotPath}`,
+        ].join("\n"),
+      ),
+    }),
+  );
+
+  assert.equal(duplicateWindowsProofStatus.ready, false);
+  assert.deepEqual(duplicateWindowsProofStatus.missingProofs, []);
+  assert.deepEqual(duplicateWindowsProofStatus.missingEvidenceDetails, [
+    {
+      field: `Evidence for ${firstProof}`,
+      path: artifactPath,
+    },
+  ]);
+  assert.deepEqual(duplicateWindowsProofStatus.proofEvidenceFindings, [
+    {
+      field: `Evidence for ${firstProof}`,
+      path: artifactPath,
+      proof: firstProof,
+      reason: "local_path",
+    },
+  ]);
 });
 
 test("preflight status rejects unapproved URL and local path evidence locators", () => {
@@ -2746,10 +2780,15 @@ test("preflight status rejects unapproved URL and local path evidence locators",
 
   for (const locator of [
     "run-123 docs/verification/screenshots/settings-external-completion-evidence-summary-local.png",
+    "run-123 docs\\verification\\screenshots\\settings-external-completion-evidence-summary-local.png",
     "./artifact-run-123.log",
+    ".\\artifact-run-123.log",
     "../logs/run-123.log",
+    "..\\logs\\run-123.log",
     "run-123 docs/verification/external/local.md",
     "run-123 scripts/operator-proof.log",
+    "run-123 scripts\\operator-proof.log",
+    "run-123 launcher\\src\\local-proof.log",
     "/tmp/run-123.log",
     "C:\\logs\\run-123.log",
     "https://example.com/proof",
