@@ -66,7 +66,7 @@ proof operation.
 - Modify: `launcher/src-tauri/src/commands/plugin_system.rs`
 - Test: `launcher/src-tauri/src/commands/plugin_system.rs`
 
-- [ ] **Step 1: Update the existing runtime proof test expectations**
+- [x] **Step 1: Update the existing runtime proof test expectations**
 
 In `plugin_system.rs`, update `proves_plugin_runtime_sandbox_preflight_from_audited_disabled_registry_without_executing_entrypoint` to use the new process-proof consent operation and expect process proof evidence:
 
@@ -102,7 +102,7 @@ assert!(proof
 assert!(proof.source_label.contains("proof-process"));
 ```
 
-- [ ] **Step 2: Update the existing activation review test expectations**
+- [x] **Step 2: Update the existing activation review test expectations**
 
 In `plugin_system.rs`, update `review_plugin_activation_plan_blocks_clean_package_until_production_sandbox_exists` to expect a process-boundary proof check while keeping activation blocked:
 
@@ -128,7 +128,7 @@ assert!(check_ids.contains("process-boundary-proof"));
 assert!(check_ids.contains("target-package"));
 ```
 
-- [ ] **Step 3: Run the focused Rust tests and verify failure**
+- [x] **Step 3: Run the focused Rust tests and verify failure**
 
 Run:
 
@@ -139,7 +139,7 @@ cargo test --manifest-path launcher/src-tauri/Cargo.toml plugin_system::tests::r
 
 Expected: FAIL because the current implementation still returns dry-run flags and lacks the `process-boundary-proof` check.
 
-- [ ] **Step 4: Commit the red tests**
+- [x] **Step 4: Commit the red tests**
 
 ```bash
 git add launcher/src-tauri/src/commands/plugin_system.rs
@@ -153,7 +153,7 @@ git commit -m "test(plugin): expect sandbox process proof"
 - Modify: `launcher/src-tauri/src/commands/plugin_runtime_sandbox.rs`
 - Test: `launcher/src-tauri/src/commands/plugin_runtime_sandbox.rs`
 
-- [ ] **Step 1: Expose the minimal plugin-system helpers to the new Module**
+- [x] **Step 1: Expose the minimal plugin-system helpers to the new Module**
 
 In `launcher/src-tauri/src/commands/plugin_system.rs`, change only these declarations from private to `pub(crate)`. Do not rewrite their bodies in this step; the current implementations remain the source of truth.
 
@@ -203,7 +203,7 @@ pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
 
 If a helper has generic parameters, attributes, or a slightly different return type in the current file, preserve the current declaration exactly and only add `pub(crate)`.
 
-- [ ] **Step 2: Implement the Module types and proof mapping**
+- [x] **Step 2: Implement the Module types and proof mapping**
 
 Replace the shell in `launcher/src-tauri/src/commands/plugin_runtime_sandbox.rs` with this structure:
 
@@ -336,7 +336,7 @@ impl<P: OwnedSandboxProbe> PluginRuntimeSandbox<P> {
 
 Then add `prove_process` and `review_activation_plan_blocked` using the current body of `prove_plugin_runtime_sandbox_from_path` and `review_plugin_activation_plan_from_path`, but route the clean-audit path through `self.probe.prove(...)`.
 
-- [ ] **Step 3: Use safe probe request data**
+- [x] **Step 3: Use safe probe request data**
 
 Inside `prove_process`, create the request exactly with empty plugin entrypoints:
 
@@ -350,7 +350,7 @@ let probe_report = self.probe.prove(OwnedProbeRequest {
 
 This is the core security invariant. The probe receives counts and policy only; it never receives staged plugin source paths or entrypoint values.
 
-- [ ] **Step 4: Run Rust tests**
+- [x] **Step 4: Run Rust tests**
 
 Run:
 
@@ -360,7 +360,7 @@ cargo test --manifest-path launcher/src-tauri/Cargo.toml plugin_runtime_sandbox
 
 Expected: PASS or zero matching tests with successful compilation of the new module.
 
-- [ ] **Step 5: Commit the Module implementation**
+- [x] **Step 5: Commit the Module implementation**
 
 ```bash
 git add launcher/src-tauri/src/commands/plugin_system.rs launcher/src-tauri/src/commands/plugin_runtime_sandbox.rs
@@ -375,7 +375,7 @@ git commit -m "feat(plugin): add sandbox process proof module"
 - Modify: `launcher/src-tauri/src/main.rs`
 - Test: `launcher/src-tauri/src/commands/plugin_runtime_sandbox.rs`
 
-- [ ] **Step 1: Add headless probe tests**
+- [x] **Step 1: Add headless probe tests**
 
 Add these tests to `launcher/src-tauri/src/commands/plugin_runtime_sandbox.rs`:
 
@@ -413,7 +413,7 @@ cargo test --manifest-path launcher/src-tauri/Cargo.toml headless_probe
 
 Expected: FAIL because the headless probe functions do not exist yet.
 
-- [ ] **Step 2: Implement headless probe parsing**
+- [x] **Step 2: Implement headless probe parsing**
 
 Add this public function in `plugin_runtime_sandbox.rs`:
 
@@ -457,7 +457,7 @@ pub(crate) fn run_headless_plugin_runtime_sandbox_probe_from_args_for_test(
 }
 ```
 
-- [ ] **Step 3: Implement the desktop probe adapter**
+- [x] **Step 3: Implement the desktop probe adapter**
 
 Add this adapter in `plugin_runtime_sandbox.rs`:
 
@@ -504,7 +504,7 @@ impl OwnedSandboxProbe for DesktopOwnedProbe {
 }
 ```
 
-- [ ] **Step 4: Wire the headless entrypoint**
+- [x] **Step 4: Wire the headless entrypoint**
 
 In `launcher/src-tauri/src/lib.rs`, add:
 
@@ -524,7 +524,7 @@ if let Some(exit_code) =
 }
 ```
 
-- [ ] **Step 5: Run focused Rust tests and commit**
+- [x] **Step 5: Run focused Rust tests and commit**
 
 Run:
 
@@ -547,7 +547,7 @@ git commit -m "feat(plugin): add sandbox probe entrypoint"
 - Modify: `launcher/src-tauri/src/commands/plugin_system.rs`
 - Test: `launcher/src-tauri/src/commands/plugin_system.rs`
 
-- [ ] **Step 1: Re-run the red proof and activation tests from Task 1**
+- [x] **Step 1: Re-run the red proof and activation tests from Task 1**
 
 Run:
 
@@ -558,7 +558,7 @@ cargo test --manifest-path launcher/src-tauri/Cargo.toml plugin_system::tests::r
 
 Expected: FAIL until command delegation is updated.
 
-- [ ] **Step 2: Delegate internal helpers**
+- [x] **Step 2: Delegate internal helpers**
 
 In `plugin_system.rs`, replace `prove_plugin_runtime_sandbox_from_path` with a wrapper that uses `PluginRuntimeSandbox::from_parts` and a desktop probe:
 
@@ -588,7 +588,7 @@ fn prove_plugin_runtime_sandbox_from_path(
 
 Do the same for `review_plugin_activation_plan_from_path`, building a `PluginActivationPlanReviewRequest` from the current arguments and delegating to `review_activation_plan_blocked`.
 
-- [ ] **Step 3: Keep old dirty-registry tests passing**
+- [x] **Step 3: Keep old dirty-registry tests passing**
 
 Run:
 
@@ -599,7 +599,7 @@ cargo test --manifest-path launcher/src-tauri/Cargo.toml rejects_plugin_runtime_
 
 Expected: PASS. The probe must not run when audit fails.
 
-- [ ] **Step 4: Run Rust suite and commit**
+- [x] **Step 4: Run Rust suite and commit**
 
 Run:
 
@@ -623,7 +623,7 @@ git commit -m "refactor(plugin): route sandbox commands through module"
 - Modify: `launcher/src/lib/plugin-system-readiness.ts`
 - Modify: `launcher/src/lib/__tests__/plugin-system-readiness.test.ts`
 
-- [ ] **Step 1: Add failing proof-process readiness tests**
+- [x] **Step 1: Add failing proof-process readiness tests**
 
 Add this helper to `plugin-system-readiness.test.ts`:
 
@@ -692,7 +692,7 @@ pnpm --dir launcher test src/lib/__tests__/plugin-system-readiness.test.ts
 
 Expected: FAIL because proof-process evidence is still considered unsafe.
 
-- [ ] **Step 2: Add explicit readiness predicates**
+- [x] **Step 2: Add explicit readiness predicates**
 
 In `plugin-system-readiness.ts`, split the runtime proof validation:
 
@@ -732,7 +732,7 @@ function isRuntimeSandboxProofReady(proof: PluginRuntimeSandboxProofEvidence | n
 
 Extract the existing shared count, `codeExecuted`, entry, and escape-fixture checks into `hasCommonRuntimeSandboxProofShape`.
 
-- [ ] **Step 3: Update runtime check copy**
+- [x] **Step 3: Update runtime check copy**
 
 Change the runtime check action and detail strings so unsafe copy drops "dry-run" and process proof gets a specific detail:
 
@@ -749,7 +749,7 @@ Use this detail when `runtimeSandboxProcessProofReady` is true:
 } remain blocked; owned process boundary and deny-all IPC proof passed; codeExecuted false, persistent permissions denied, plugin execution blocked.`
 ```
 
-- [ ] **Step 4: Run focused frontend tests and commit**
+- [x] **Step 4: Run focused frontend tests and commit**
 
 Run:
 
@@ -775,7 +775,7 @@ git commit -m "feat(plugin): accept sandbox process proof"
 - Modify: `launcher/src/pages/SettingsPage.test.tsx`
 - Modify: `launcher/src/lib/__tests__/launcher-browser-guards.test.ts`
 
-- [ ] **Step 1: Add failing UI tests for process-proof copy**
+- [x] **Step 1: Add failing UI tests for process-proof copy**
 
 In `PluginSystemReadinessPanel.test.tsx`, update the runtime sandbox test to expect:
 
@@ -811,7 +811,7 @@ pnpm --dir launcher test src/components/settings/PluginSystemReadinessPanel.test
 
 Expected: FAIL until copy and operation are updated.
 
-- [ ] **Step 2: Update proof ledger rendering**
+- [x] **Step 2: Update proof ledger rendering**
 
 In `PluginRuntimeSandboxProofLedger`, compute:
 
@@ -850,7 +850,7 @@ re-audited, entrypoints remain blocked, deny-all IPC is enforced, permissions st
 and codeExecuted false.
 ```
 
-- [ ] **Step 3: Update SettingsPage native operation**
+- [x] **Step 3: Update SettingsPage native operation**
 
 In `SettingsPage.tsx`, replace `"prove_plugin_runtime_sandbox_dry_run"` with:
 
@@ -860,7 +860,7 @@ In `SettingsPage.tsx`, replace `"prove_plugin_runtime_sandbox_dry_run"` with:
 
 Update nearby user-facing copy from "dry-run" to "process proof" while preserving the guard that no plugin code is loaded.
 
-- [ ] **Step 4: Run focused UI tests and commit**
+- [x] **Step 4: Run focused UI tests and commit**
 
 Run:
 
@@ -884,7 +884,7 @@ git commit -m "feat(plugin): show sandbox process proof"
 - Replace: `docs/verification/screenshots/settings-plugin-system-runtime-sandbox-process-boundary-local.png`
 - Replace: `docs/verification/screenshots/settings-plugin-system-runtime-sandbox-process-boundary-mobile.png`
 
-- [ ] **Step 1: Start the dev server**
+- [x] **Step 1: Start the dev server**
 
 Run:
 
@@ -894,7 +894,7 @@ pnpm --dir launcher dev
 
 Expected: Vite serves `http://127.0.0.1:1420/`.
 
-- [ ] **Step 2: Capture desktop screenshot with Playwright**
+- [x] **Step 2: Capture desktop screenshot with Playwright**
 
 Open:
 
@@ -916,7 +916,7 @@ Verify the image shows:
 - "Process Boundary: ready".
 - no "runtime ready" or "production sandbox ready" claim.
 
-- [ ] **Step 3: Capture mobile screenshot with Playwright**
+- [x] **Step 3: Capture mobile screenshot with Playwright**
 
 Use the same URL with viewport `390x1200`. Save the full-page screenshot as:
 
@@ -926,7 +926,7 @@ docs/verification/screenshots/settings-plugin-system-runtime-sandbox-process-bou
 
 Verify the mobile image has no horizontal overflow and keeps the proof ledger readable.
 
-- [ ] **Step 4: Update verification README entries**
+- [x] **Step 4: Update verification README entries**
 
 Update the two screenshot entries in `docs/verification/README.md`:
 
@@ -935,7 +935,7 @@ Update the two screenshot entries in `docs/verification/README.md`:
 - `screenshots/settings-plugin-system-runtime-sandbox-process-boundary-mobile.png` - Mobile `/settings?verify=plugin-runtime-sandbox-process-boundary` Native Runtime Sandbox Process Proof ledger stacked at 390px with denied/allowed counts, ready process-boundary proof, blocked escape-fixture evidence, disabled package evidence, no runtime-ready claim, and no horizontal overflow.
 ```
 
-- [ ] **Step 5: Run UI evidence checks and commit**
+- [x] **Step 5: Run UI evidence checks and commit**
 
 Run:
 
@@ -957,7 +957,7 @@ git commit -m "docs(plugin): refresh sandbox proof evidence"
 **Files:**
 - Verify all touched files.
 
-- [ ] **Step 1: Run focused checks**
+- [x] **Step 1: Run focused checks**
 
 Run:
 
@@ -970,7 +970,7 @@ pnpm verify:ui-evidence
 
 Expected: all commands PASS.
 
-- [ ] **Step 2: Run format and lint checks**
+- [x] **Step 2: Run format and lint checks**
 
 Run:
 
@@ -983,7 +983,7 @@ pnpm --dir launcher lint
 
 Expected: all commands PASS.
 
-- [ ] **Step 3: Run local completion gate**
+- [x] **Step 3: Run local completion gate**
 
 Run:
 
@@ -993,7 +993,7 @@ pnpm completion:gate:local
 
 Expected: PASS on the current platform, with the Windows Rust target skipped on Linux and handed off to `windows-2025` as before.
 
-- [ ] **Step 4: Update local completion audit if gate output changes the boundary**
+- [x] **Step 4: Update local completion audit if gate output changes the boundary**
 
 If the local gate passes and the Plugin Runtime Sandbox boundary changed from dry-run to proof-process, update `docs/verification/local-completion-audit.md` with this exact replacement in the Plugin Runtime Sandbox bullet:
 
@@ -1016,7 +1016,7 @@ pnpm completion:tracked
 
 Expected: PASS.
 
-- [ ] **Step 5: Commit final audit updates**
+- [x] **Step 5: Commit final audit updates**
 
 If Task 8 Step 4 changed the audit file:
 
