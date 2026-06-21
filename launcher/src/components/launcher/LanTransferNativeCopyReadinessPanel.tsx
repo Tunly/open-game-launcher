@@ -1,4 +1,4 @@
-import { Copy, RadioTower, Search, ShieldCheck } from "lucide-react";
+import { Copy, KeyRound, RadioTower, Search, ShieldCheck } from "lucide-react";
 
 import type {
   LanTransferFirewallPlatformRule,
@@ -6,6 +6,8 @@ import type {
   LanTransferNativeCopyGate,
   LanTransferNativeCopyReadiness,
   LanTransferNativeCopyStatus,
+  LanTransferPairingTrustCheck,
+  LanTransferPairingTrustEvidence,
   LanTransferPeerDiscoveryCandidate,
   LanTransferPeerDiscoveryPreflight,
 } from "../../lib/lan-transfer-native-copy-readiness";
@@ -66,6 +68,10 @@ export function LanTransferNativeCopyReadinessPanel({
         </div>
 
         <div className="grid gap-3">
+          {readiness.pairingTrustEvidence ? (
+            <LanTransferPairingTrustCard evidence={readiness.pairingTrustEvidence} />
+          ) : null}
+
           {readiness.peerDiscoveryPreflight ? (
             <LanTransferPeerDiscoveryCard evidence={readiness.peerDiscoveryPreflight} />
           ) : null}
@@ -96,6 +102,56 @@ export function LanTransferNativeCopyReadinessPanel({
         </div>
       </div>
     </section>
+  );
+}
+
+function LanTransferPairingTrustCard({ evidence }: { evidence: LanTransferPairingTrustEvidence }) {
+  return (
+    <article className="border-2 border-black bg-[#fff9ed] p-3 shadow-[3px_3px_0_#171411]">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div>
+          <p className="neo-copy text-[9px] font-black uppercase tracking-[0.16em] text-[#b7102a]">
+            Pairing Trust Evidence
+          </p>
+          <h3 className="mt-1 flex items-center gap-1.5 text-base font-black uppercase leading-tight text-[#171411]">
+            <KeyRound aria-hidden="true" className="h-4 w-4 shrink-0" />
+            <span>{evidence.label}</span>
+          </h3>
+        </div>
+        <span className="neo-copy border-2 border-black bg-[#efe3cf] px-2 py-1 text-[8px] font-black uppercase text-[#171411]">
+          {evidence.status}
+        </span>
+      </div>
+      <p className="neo-copy mt-3 text-[10px] font-black uppercase leading-5 text-[#5f574d]">
+        {evidence.summary}
+      </p>
+      <PolicyLine label="Revocation" value={evidence.revocationPolicy} />
+      <div className="mt-3 grid gap-2">
+        {evidence.checks.map((check) => (
+          <LanTransferPairingTrustCheckCard check={check} key={check.id} />
+        ))}
+      </div>
+      <div className="mt-3 grid gap-2">
+        {evidence.guards.map((guard) => (
+          <p
+            className="neo-copy border-2 border-black bg-[#efe3cf] px-3 py-2 text-[9px] font-black uppercase leading-5 text-[#171411]"
+            key={guard}
+          >
+            {guard}
+          </p>
+        ))}
+      </div>
+    </article>
+  );
+}
+
+function LanTransferPairingTrustCheckCard({ check }: { check: LanTransferPairingTrustCheck }) {
+  return (
+    <div className="border-2 border-black bg-[#f5eedf] p-2">
+      <p className="neo-copy text-[9px] font-black uppercase text-[#b7102a]">{check.label}</p>
+      <PolicyLine label="Detail" value={check.detail} />
+      <PolicyLine label="Review" value={check.review} />
+    </div>
   );
 }
 

@@ -1229,6 +1229,9 @@ describe("DownloadsPage LAN transfer native readiness", () => {
 
     expect(within(panel).getByText("Peer Discovery")).toBeInTheDocument();
     expect(within(panel).getByText("Pairing Trust")).toBeInTheDocument();
+    expect(within(panel).getByText("Signed Device Trust")).toBeInTheDocument();
+    expect(within(panel).getByText("No peer secret exchange")).toBeInTheDocument();
+    expect(within(panel).getByText("No copy unlock from unsigned peers")).toBeInTheDocument();
     expect(within(panel).getByText("Copy Engine")).toBeInTheDocument();
     expect(within(panel).getByText("Firewall Handling")).toBeInTheDocument();
     expect(within(panel).getByText("Manifest Verification")).toBeInTheDocument();
@@ -1252,7 +1255,7 @@ describe("DownloadsPage LAN transfer native readiness", () => {
     ).toBeInTheDocument();
     expect(screen.getByRole("region", { name: /lan native copy console/i })).toBeInTheDocument();
     expect(panel).not.toHaveTextContent(
-      /network copy started|peer discovered|peer transfer resumed|peer transfer cancelled|cleanup auto-deleted|firewall configured|post-copy verified/i,
+      /network copy started|peer discovered|trusted pairing established|peer secret exchanged|copy unlocked|peer transfer resumed|peer transfer cancelled|cleanup auto-deleted|firewall configured|post-copy verified/i,
     );
   });
 });

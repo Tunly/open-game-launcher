@@ -19,6 +19,13 @@ describe("LanTransferNativeCopyReadinessPanel", () => {
     expect(within(panel).getByText("LAN Native Copy")).toBeInTheDocument();
     expect(within(panel).getByText("Local Peer Planner")).toBeInTheDocument();
     expect(within(panel).getByText("Pairing Trust")).toBeInTheDocument();
+    expect(within(panel).getByText("Signed Device Trust")).toBeInTheDocument();
+    expect(within(panel).getByText("Device Fingerprint")).toBeInTheDocument();
+    expect(within(panel).getByText("Challenge Packet")).toBeInTheDocument();
+    expect(within(panel).getByText("Revocation Ledger")).toBeInTheDocument();
+    expect(within(panel).getByText("No peer secret exchange")).toBeInTheDocument();
+    expect(within(panel).getByText("No device secret display")).toBeInTheDocument();
+    expect(within(panel).getByText("No auto-trust after discovery")).toBeInTheDocument();
     expect(within(panel).getByText("Peer Discovery")).toBeInTheDocument();
     expect(within(panel).getByText("Copy Engine")).toBeInTheDocument();
     expect(within(panel).getByText("Resume + Cancel")).toBeInTheDocument();
@@ -53,7 +60,7 @@ describe("LanTransferNativeCopyReadinessPanel", () => {
       within(panel).getByText(/writes og-manifest\.json after verification/i),
     ).toBeInTheDocument();
     expect(panel).not.toHaveTextContent(
-      /broadcast sent|relay called|peer selected|share mounted|peer discovery active|trusted pairing established|network copy started|peer transfer resumed|peer transfer cancelled|cleanup auto-deleted|firewall opened|firewall rule applied|manifest verified|copy complete/i,
+      /broadcast sent|relay called|peer selected|share mounted|peer discovery active|trusted pairing established|peer secret exchanged|copy unlocked|network copy started|peer transfer resumed|peer transfer cancelled|cleanup auto-deleted|firewall opened|firewall rule applied|manifest verified|copy complete/i,
     );
   });
 });

@@ -54,6 +54,23 @@ export interface LanTransferPeerDiscoveryPreflight {
   summary: string;
 }
 
+export interface LanTransferPairingTrustCheck {
+  detail: string;
+  id: string;
+  label: string;
+  review: string;
+  status: Extract<LanTransferNativeCopyStatus, "warning">;
+}
+
+export interface LanTransferPairingTrustEvidence {
+  checks: LanTransferPairingTrustCheck[];
+  guards: string[];
+  label: string;
+  revocationPolicy: string;
+  status: Extract<LanTransferNativeCopyStatus, "warning">;
+  summary: string;
+}
+
 export interface LanTransferNativeCopyReadiness {
   blockedCount: number;
   firewallPolicyEvidence: LanTransferFirewallPolicyEvidence | null;
@@ -61,6 +78,7 @@ export interface LanTransferNativeCopyReadiness {
   guardCopy: string;
   guards: string[];
   nextAction: string;
+  pairingTrustEvidence: LanTransferPairingTrustEvidence | null;
   peerDiscoveryPreflight: LanTransferPeerDiscoveryPreflight | null;
   progress: number;
   readyCount: number;
@@ -78,7 +96,48 @@ const LAN_TRANSFER_NATIVE_COPY_GUARDS = [
 ];
 
 const LAN_TRANSFER_NATIVE_COPY_GUARD_COPY =
-  "Desktop LAN local-path copy has scoped native copy, cancellable local copy jobs, resume-copy, manifest hash verification, consent-gated cleanup-candidate deletion from a reviewed ledger, and a local peer-discovery preflight contract. This panel still does not broadcast on the LAN, establish trusted pairing exchange, mount network shares, or handle firewall rules.";
+  "Desktop LAN local-path copy has scoped native copy, cancellable local copy jobs, resume-copy, manifest hash verification, consent-gated cleanup-candidate deletion from a reviewed ledger, a local peer-discovery preflight contract, and signed-device trust review evidence. This panel still does not broadcast on the LAN, establish trusted pairing exchange, mount network shares, or handle firewall rules.";
+
+const LAN_TRANSFER_PAIRING_TRUST_EVIDENCE: LanTransferPairingTrustEvidence = {
+  checks: [
+    {
+      detail:
+        "Desktop identity must be represented by a public fingerprint before any peer copy unlock.",
+      id: "device-fingerprint",
+      label: "Device Fingerprint",
+      review: "Display fingerprint only; no device secret leaves the desktop vault.",
+      status: "warning",
+    },
+    {
+      detail:
+        "Peer requests require a nonce/challenge packet before native discovery can promote a candidate.",
+      id: "challenge-packet",
+      label: "Challenge Packet",
+      review: "Packet is review-only until the signed handshake RPC and desktop verifier exist.",
+      status: "warning",
+    },
+    {
+      detail: "Copy unlock requires a revocation and rotation lane for stale desktop identities.",
+      id: "revocation-ledger",
+      label: "Revocation Ledger",
+      review: "Revoked peers stay blocked; no automatic reconnect is allowed.",
+      status: "warning",
+    },
+  ],
+  guards: [
+    "No peer secret exchange",
+    "No device secret display",
+    "No auto-trust after discovery",
+    "No copy unlock from unsigned peers",
+    "No revocation bypass",
+  ],
+  label: "Signed Device Trust",
+  revocationPolicy:
+    "A paired device must show a fingerprint, challenge packet, and revocation state before native peer copy can leave review.",
+  status: "warning",
+  summary:
+    "Pairing trust is staged as local evidence only: OG-Launcher can show the signed-device review packet, blocked secret sinks, and revocation requirements, but this verify route never exchanges peer secrets or unlocks network copy.",
+};
 
 const LAN_TRANSFER_FIREWALL_POLICY_EVIDENCE: LanTransferFirewallPolicyEvidence = {
   guards: [
@@ -267,6 +326,15 @@ export function buildLanTransferNativeCopyReadiness(
     guardCopy: LAN_TRANSFER_NATIVE_COPY_GUARD_COPY,
     guards: [...LAN_TRANSFER_NATIVE_COPY_GUARDS],
     nextAction: nextGate?.action ?? "LAN Transfer native copy is ready for staged review.",
+    pairingTrustEvidence: input.pairingTrustReady
+      ? {
+          ...LAN_TRANSFER_PAIRING_TRUST_EVIDENCE,
+          checks: LAN_TRANSFER_PAIRING_TRUST_EVIDENCE.checks.map((check) => ({
+            ...check,
+          })),
+          guards: [...LAN_TRANSFER_PAIRING_TRUST_EVIDENCE.guards],
+        }
+      : null,
     peerDiscoveryPreflight: input.peerDiscoveryReady
       ? {
           ...LAN_TRANSFER_PEER_DISCOVERY_PREFLIGHT,

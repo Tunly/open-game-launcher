@@ -24,6 +24,7 @@ describe("buildLanTransferNativeCopyReadiness", () => {
     expect(readiness.guardCopy).toContain("cancellable local copy jobs");
     expect(readiness.guardCopy).toContain("resume-copy");
     expect(readiness.guardCopy).toContain("consent-gated cleanup-candidate deletion");
+    expect(readiness.guardCopy).toContain("signed-device trust review evidence");
     expect(readiness.summary).toContain("peer-discovery preflight");
     expect(readiness.summary).toContain("firewall policy evidence");
     expect(readiness.gates.find((gate) => gate.id === "peer-discovery")?.status).toBe("warning");
@@ -68,6 +69,18 @@ describe("buildLanTransferNativeCopyReadiness", () => {
     expect(readiness.peerDiscoveryPreflight?.summary).not.toMatch(
       /broadcast sent|relay called|peer selected|share mounted/i,
     );
+    expect(readiness.pairingTrustEvidence?.label).toBe("Signed Device Trust");
+    expect(readiness.pairingTrustEvidence?.guards).toContain("No peer secret exchange");
+    expect(readiness.pairingTrustEvidence?.guards).toContain("No device secret display");
+    expect(readiness.pairingTrustEvidence?.guards).toContain("No auto-trust after discovery");
+    expect(readiness.pairingTrustEvidence?.checks.map((check) => check.id)).toEqual([
+      "device-fingerprint",
+      "challenge-packet",
+      "revocation-ledger",
+    ]);
+    expect(JSON.stringify(readiness.pairingTrustEvidence)).not.toMatch(
+      /deviceSecret|peer secret exchanged|copy unlocked|trusted pairing established/i,
+    );
   });
 
   it("blocks every gate when local planner evidence is absent", () => {
@@ -83,6 +96,7 @@ describe("buildLanTransferNativeCopyReadiness", () => {
 
     expect(readiness.blockedCount).toBe(7);
     expect(readiness.firewallPolicyEvidence).toBeNull();
+    expect(readiness.pairingTrustEvidence).toBeNull();
     expect(readiness.peerDiscoveryPreflight).toBeNull();
     expect(readiness.nextAction).toBe(
       "Restore local LAN transfer planning before staging native copy work.",
