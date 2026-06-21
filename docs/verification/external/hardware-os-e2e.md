@@ -18,6 +18,15 @@ Leave each item unchecked until the external run evidence is captured and redact
 - [ ] External-drive backup/restore E2E runs on Windows, macOS, and Linux.
 - [ ] Real client mount/apply behavior is tested against provider clients.
 
+## Capture Handoff
+
+Use these operator handoffs to collect redacted live evidence before checking proof rows. Handoffs are guidance only; they do not execute commands or satisfy preflight by themselves.
+
+- Fullscreen/anti-cheat overlay evidence is captured on real titles.: Capture real-title fullscreen and anti-cheat overlay behavior with redacted title, OS, and session evidence. Evidence cues: `overlay`, `fullscreen`, `anti-cheat`.
+- Long native overlay sessions produce stable runtime/session evidence.: Run long native overlay sessions and attach redacted runtime/session evidence showing stability over the measured window. Evidence cues: `native-overlay`, `long-session`.
+- External-drive backup/restore E2E runs on Windows, macOS, and Linux.: Run external-drive backup and restore E2E on Windows, macOS, and Linux, then attach redacted per-OS run evidence. Evidence cues: `external-drive`, `backup-restore`, `Windows`, `macOS`, `Linux`.
+- Real client mount/apply behavior is tested against provider clients.: Exercise real client mount/apply behavior against provider clients and attach redacted apply, rollback, and provider-client evidence. Evidence cues: `client-mount`, `mount-apply`, `provider-client`.
+
 ## Proof Evidence Mapping
 
 When a proof row is checked, fill the matching evidence line with a specific redacted run ID, dashboard link, external artifact locator, workflow ID, signed log, or `sha256:<64-hex>` reference. Accepted dashboard URL hosts are Supabase, Stripe live Dashboard, GitHub Actions/releases/deployments, Vercel, Netlify, Cloudflare, App Store Connect, Google Play Console, Firebase, and OneSignal; otherwise use `run:`/`artifact:`/`sha256:` style locators. Generic text such as `redacted`, `see above`, local files, localhost URLs, and example URLs do not satisfy preflight.

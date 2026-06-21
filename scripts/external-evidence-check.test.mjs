@@ -389,6 +389,11 @@ test("operator runbook gives sequenced redacted evidence handoff without checkbo
     output,
     /OGL_HOSTED_CRON_EVIDENCE_CHECKS=price-drop pnpm hosted:cron-evidence:packet/,
   );
+  assert.match(output, /Capture handoffs:/);
+  assert.match(
+    output,
+    /OGL_HOSTED_CRON_EVIDENCE_CHECKS=price-drop pnpm hosted:cron-evidence:artifact-hints/,
+  );
   assert.match(output, /pnpm hosted:cron-evidence:packet/);
   assert.match(output, new RegExp(escapeRegExp(hostedCronRestUrlPrerequisite)));
   assert.match(
@@ -441,6 +446,10 @@ test("operator packet report is redacted and preserves external proof boundary",
     output,
     /poll-platform-presence scheduled run writes fresh evidence/,
   );
+  assert.match(output, /Capture handoffs:/);
+  assert.match(output, /pnpm hosted:cron-evidence:artifact-hints/);
+  assert.match(output, /presence_poll_runs/);
+  assert.equal(output.match(/^- Capture handoffs:/gm)?.length, 1);
   assert.match(output, /Missing Evidence Next Steps/);
   assert.match(output, /pnpm hosted:cron-evidence/);
   assert.match(output, new RegExp(escapeRegExp(hostedCronRestUrlPrerequisite)));
@@ -448,7 +457,7 @@ test("operator packet report is redacted and preserves external proof boundary",
     output,
     new RegExp(escapeRegExp(hostedCronRestAuthPrerequisite)),
   );
-  assert.doesNotMatch(output, /\[[xX]\]/);
+  assert.doesNotMatch(output, /\[[xX ]\]/);
   for (const value of Object.values(configuredEnv)) {
     assert.equal(output.includes(value), false);
   }
@@ -515,13 +524,15 @@ test("next steps report prints redacted operator actions without proof checkboxe
   assert.match(output, /pnpm hosted:cron-evidence:plan/);
   assert.match(output, /pnpm hosted:cron-evidence:packet/);
   assert.match(output, /pnpm hosted:cron-evidence:artifact-hints/);
+  assert.match(output, /Capture handoffs:/);
+  assert.match(output, /presence_poll_runs/);
   assert.match(output, new RegExp(escapeRegExp(hostedCronRestUrlPrerequisite)));
   assert.match(
     output,
     new RegExp(escapeRegExp(hostedCronRestAuthPrerequisite)),
   );
   assert.doesNotMatch(output, /OGL_HOSTED_CRON_EVIDENCE_CHECKS=price-drop/);
-  assert.doesNotMatch(output, /\[[xX]\]/);
+  assert.doesNotMatch(output, /\[[xX ]\]/);
   assert.doesNotMatch(output, /docs\/verification\/screenshots/);
   for (const value of Object.values(configuredEnv)) {
     assert.equal(output.includes(value), false);
@@ -622,6 +633,8 @@ test("artifact worklist groups missing artifact tasks without secret values", ()
     output,
     /OGL_HOSTED_CRON_EVIDENCE_CHECKS=price-drop pnpm hosted:cron-evidence:artifact-hints/,
   );
+  assert.match(output, /Capture handoffs:/);
+  assert.match(output, /store_price_drop_notification_runs/);
   assert.match(output, new RegExp(escapeRegExp(hostedCronRestUrlPrerequisite)));
   assert.match(
     output,
@@ -635,7 +648,7 @@ test("artifact worklist groups missing artifact tasks without secret values", ()
   assert.match(output, /dry_run=false; Status/);
   assert.doesNotMatch(output, /Missing detail fields: .*more/);
   assert.match(output, /pnpm external:evidence:preflight/);
-  assert.doesNotMatch(output, /\[[xX]\]/);
+  assert.doesNotMatch(output, /\[[xX ]\]/);
   assert.doesNotMatch(output, /docs\/verification\/screenshots/);
   for (const value of Object.values(configuredEnv)) {
     assert.equal(output.includes(value), false);
@@ -667,7 +680,7 @@ test("rollout worklist includes hosted deploy packet handoff commands", () => {
     output,
     /OGL_EXTERNAL_EVIDENCE_GATES=rollout-tracks pnpm external:evidence:preflight/,
   );
-  assert.doesNotMatch(output, /\[[xX]\]/);
+  assert.doesNotMatch(output, /\[[xX ]\]/);
 });
 
 test("rollout operator packet and runbook name the production hosted deploy proof run", () => {
@@ -696,7 +709,7 @@ test("rollout operator packet and runbook name the production hosted deploy proo
       /Evidence for Hosted production deployment evidence is attached/,
     );
     assert.match(output, /Hosted deploy evidence/);
-    assert.doesNotMatch(output, /\[[xX]\]/);
+    assert.doesNotMatch(output, /\[[xX ]\]/);
   }
 });
 
@@ -3657,6 +3670,29 @@ test("multi-artifact gates assign every required proof exactly once", () => {
   }
 });
 
+test("external evidence capture handoffs cover every required proof exactly once", () => {
+  for (const gate of evidenceGates) {
+    const handoffProofs = Object.keys(gate.captureHandoffs ?? {});
+    assert.deepEqual(
+      handoffProofs.sort(),
+      [...gate.requiredProofs].sort(),
+      `${gate.id} must define one capture handoff for each required proof.`,
+    );
+
+    for (const proof of gate.requiredProofs) {
+      const handoff = gate.captureHandoffs[proof];
+      assert.equal(typeof handoff.capture, "string");
+      assert.ok(handoff.capture.trim().length > 20);
+      assert.ok(Array.isArray(handoff.terms));
+      assert.ok(handoff.terms.length > 0);
+      assert.doesNotMatch(
+        `${handoff.capture} ${handoff.terms.join(" ")}`,
+        /sk_live_[a-z0-9_=-]+|whsec_[a-z0-9_=-]+|bearer\s+[a-z0-9._~+/=-]{12,}|eyJ[a-zA-Z0-9_-]{8,}\.[a-zA-Z0-9_-]{8,}\.[a-zA-Z0-9_-]{8,}/i,
+      );
+    }
+  }
+});
+
 test("artifactTemplate prints required proof checklist rows without secret values", () => {
   const gate = evidenceGates.find(
     (item) => item.id === "provider-live-integrations",
@@ -3671,6 +3707,8 @@ test("artifactTemplate prints required proof checklist rows without secret value
     /Preflight requires non-empty, non-placeholder values/,
   );
   assert.match(template, /UTC ISO-8601 timestamp/);
+  assert.match(template, /^## Capture Handoff$/m);
+  assert.match(template, /Handoffs are guidance only/);
   assert.match(template, /Proof Evidence Mapping/);
   assert.match(template, /Gate-Specific Evidence/);
   assert.match(template, /`sha256:<64-hex>` reference/);
@@ -3691,6 +3729,10 @@ test("artifactTemplate prints required proof checklist rows without secret value
       new RegExp(
         `Evidence for ${proof}`.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
       ),
+    );
+    assert.match(
+      template,
+      new RegExp(`- ${proof}:`.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
     );
   }
   for (const field of requiredEvidenceFieldsForArtifact(
@@ -3715,6 +3757,29 @@ test("artifactTemplate prints required proof checklist rows without secret value
   assert.match(
     schedulerTemplate,
     /Hosted price-drop scheduler writes fresh run evidence\./,
+  );
+  const schedulerCaptureSection = schedulerTemplate.slice(
+    schedulerTemplate.indexOf("## Capture Handoff"),
+    schedulerTemplate.indexOf("## Proof Evidence Mapping"),
+  );
+  assert.match(
+    schedulerCaptureSection,
+    /OGL_HOSTED_CRON_EVIDENCE_CHECKS=price-drop pnpm hosted:cron-evidence:artifact-hints/,
+  );
+  assert.match(
+    schedulerCaptureSection,
+    /pnpm hosted:deploy-gate:scheduler-packet/,
+  );
+  assert.match(schedulerCaptureSection, /scheduler dashboard\/config proof/);
+  assert.match(
+    schedulerCaptureSection,
+    /artifact hints fill Gate-Specific Evidence only/,
+  );
+  assert.match(schedulerCaptureSection, /store_price_drop_notification_runs/);
+  assert.doesNotMatch(schedulerCaptureSection, /presence_poll_runs/);
+  assert.doesNotMatch(
+    schedulerCaptureSection,
+    /account_deletion_processor_runs/,
   );
   assert.match(
     schedulerTemplate,
@@ -3741,6 +3806,28 @@ test("artifactTemplate prints required proof checklist rows without secret value
       new RegExp(`[-*]\\s+${escapeRegExp(field)}:`),
     );
   }
+
+  const rolloutGate = evidenceGates.find(
+    (item) => item.id === "rollout-tracks",
+  );
+  assert.ok(rolloutGate);
+  const rolloutTemplate = artifactTemplate(
+    rolloutGate,
+    "docs/verification/external/rollout-tracks.md",
+  );
+  const rolloutCaptureSection = rolloutTemplate.slice(
+    rolloutTemplate.indexOf("## Capture Handoff"),
+    rolloutTemplate.indexOf("## Proof Evidence Mapping"),
+  );
+  assert.match(rolloutCaptureSection, /pnpm hosted:deploy-gate:packet/);
+  assert.match(rolloutCaptureSection, /GitHub Actions `CI` from `main`/);
+  assert.match(rolloutCaptureSection, /hosted_deploy_gate=true/);
+  assert.match(rolloutCaptureSection, /hosted_environment=hosted-production/);
+  assert.match(rolloutCaptureSection, /hosted_deploy_action=all/);
+  assert.match(rolloutCaptureSection, /hosted_deploy_dry_run=false/);
+  assert.match(rolloutCaptureSection, /Hosted deploy evidence/);
+  assert.match(rolloutCaptureSection, /Handoffs are guidance only/);
+  assert.doesNotMatch(rolloutCaptureSection, /Required lane terms/);
 });
 
 test("required external evidence artifacts exist and cover required structure", () => {
@@ -3763,6 +3850,7 @@ test("required external evidence artifacts exist and cover required structure", 
       for (const section of [
         "Required Environment Names",
         "Required Proof Checklist",
+        "Capture Handoff",
         "Proof Evidence Mapping",
         "Gate-Specific Evidence",
         "Lane-Specific Evidence",
@@ -3794,6 +3882,7 @@ test("required external evidence artifacts exist and cover required structure", 
           artifact,
           new RegExp(`[-*]\\s+\\[[ xX]\\]\\s+${escapeRegExp(proof)}`),
         );
+        assert.match(artifact, new RegExp(`[-*]\\s+${escapeRegExp(proof)}:`));
         assert.match(
           artifact,
           new RegExp(`[-*]\\s+Evidence for ${escapeRegExp(proof)}:`),

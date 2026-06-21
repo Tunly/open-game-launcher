@@ -143,6 +143,23 @@ export const evidenceGates = Object.freeze([
       "Stripe Tax and invoice settings are verified in Dashboard.",
       "Hosted price-drop scheduler writes fresh run evidence.",
     ],
+    captureHandoffs: {
+      "Stripe webhook signature delivery reaches stripe-webhook.": {
+        capture:
+          "Trigger a live Stripe webhook delivery to stripe-webhook, then attach the redacted Stripe event locator and Supabase function log run ID.",
+        terms: ["stripe-webhook", "evt_"],
+      },
+      "Stripe Tax and invoice settings are verified in Dashboard.": {
+        capture:
+          "Capture redacted Stripe live Dashboard evidence for Tax, invoice creation, and billing settings used by the release checkout lane.",
+        terms: ["stripe-tax-invoice", "dashboard"],
+      },
+      "Hosted price-drop scheduler writes fresh run evidence.": {
+        capture:
+          "Run `pnpm hosted:deploy-gate:scheduler-packet`, capture redacted scheduler dashboard/config proof, then run the price-drop scheduled lane and collect `OGL_HOSTED_CRON_EVIDENCE_CHECKS=price-drop pnpm hosted:cron-evidence:artifact-hints` for the redacted `store_price_drop_notification_runs` row with `notify-price-drop`, `scheduled`, `dry_run=false`, and `completed`; artifact hints fill Gate-Specific Evidence only and do not satisfy the proof row by themselves.",
+        terms: ["price-drop", "store_price_drop_notification_runs"],
+      },
+    },
   },
   {
     id: "hosted-supabase-cron",
@@ -165,6 +182,23 @@ export const evidenceGates = Object.freeze([
       "notify-price-drop scheduled run writes fresh evidence.",
       "process-account-deletions scheduled run writes fresh evidence.",
     ],
+    captureHandoffs: {
+      "poll-platform-presence scheduled run writes fresh evidence.": {
+        capture:
+          "Run the presence scheduled lane, collect `pnpm hosted:cron-evidence:artifact-hints`, and paste the reviewed latest non-dry-run `presence_poll_runs` row for `poll-platform-presence`.",
+        terms: ["presence-poll", "presence_poll_runs"],
+      },
+      "notify-price-drop scheduled run writes fresh evidence.": {
+        capture:
+          "Run the price-drop scheduled lane, collect `pnpm hosted:cron-evidence:artifact-hints`, and paste the reviewed latest non-dry-run `store_price_drop_notification_runs` row for `notify-price-drop`.",
+        terms: ["price-drop", "store_price_drop_notification_runs"],
+      },
+      "process-account-deletions scheduled run writes fresh evidence.": {
+        capture:
+          "Run the account-deletion scheduled lane, collect `pnpm hosted:cron-evidence:artifact-hints`, and paste the reviewed latest non-dry-run `account_deletion_processor_runs` row for `process-account-deletions`.",
+        terms: ["account-deletion", "account_deletion_processor_runs"],
+      },
+    },
   },
   {
     id: "provider-live-integrations",
@@ -188,6 +222,28 @@ export const evidenceGates = Object.freeze([
       "Provider-approved catalog/cloud transfer flows are verified.",
       "Achievement/provider cache E2E runs against real client data.",
     ],
+    captureHandoffs: {
+      "mod.io and CurseForge staging probes use real provider keys.": {
+        capture:
+          "Run live staging probes with real mod.io and CurseForge credentials, then attach redacted provider response and rate-limit evidence.",
+        terms: ["mod.io", "CurseForge", "live-probe"],
+      },
+      "Non-Steam presence bridges return redacted live provider evidence.": {
+        capture:
+          "Exercise non-Steam presence bridges against live provider sessions and attach redacted response evidence for the presence bridge lane.",
+        terms: ["non-steam", "presence-bridge", "presence-provider"],
+      },
+      "Provider-approved catalog/cloud transfer flows are verified.": {
+        capture:
+          "Record provider-approved catalog and cloud-transfer review evidence, including the client/provider matrix and approval source.",
+        terms: ["catalog-cloud-transfer", "provider-approved"],
+      },
+      "Achievement/provider cache E2E runs against real client data.": {
+        capture:
+          "Run achievement/provider cache E2E against real client data and attach redacted run evidence from the cache hydration lane.",
+        terms: ["achievement-cache", "provider-cache", "real-client"],
+      },
+    },
   },
   {
     id: "hardware-os-e2e",
@@ -206,6 +262,34 @@ export const evidenceGates = Object.freeze([
       "External-drive backup/restore E2E runs on Windows, macOS, and Linux.",
       "Real client mount/apply behavior is tested against provider clients.",
     ],
+    captureHandoffs: {
+      "Fullscreen/anti-cheat overlay evidence is captured on real titles.": {
+        capture:
+          "Capture real-title fullscreen and anti-cheat overlay behavior with redacted title, OS, and session evidence.",
+        terms: ["overlay", "fullscreen", "anti-cheat"],
+      },
+      "Long native overlay sessions produce stable runtime/session evidence.": {
+        capture:
+          "Run long native overlay sessions and attach redacted runtime/session evidence showing stability over the measured window.",
+        terms: ["native-overlay", "long-session"],
+      },
+      "External-drive backup/restore E2E runs on Windows, macOS, and Linux.": {
+        capture:
+          "Run external-drive backup and restore E2E on Windows, macOS, and Linux, then attach redacted per-OS run evidence.",
+        terms: [
+          "external-drive",
+          "backup-restore",
+          "Windows",
+          "macOS",
+          "Linux",
+        ],
+      },
+      "Real client mount/apply behavior is tested against provider clients.": {
+        capture:
+          "Exercise real client mount/apply behavior against provider clients and attach redacted apply, rollback, and provider-client evidence.",
+        terms: ["client-mount", "mount-apply", "provider-client"],
+      },
+    },
   },
   {
     id: "rollout-tracks",
@@ -225,6 +309,44 @@ export const evidenceGates = Object.freeze([
       "Native mobile apps, push-provider delivery, and store distribution are verified.",
       "Hosted production deployment evidence is attached.",
     ],
+    captureHandoffs: {
+      "Hosted community artwork/screenshots rollout is exercised beyond fixtures.":
+        {
+          capture:
+            "Exercise hosted community artwork and screenshot rollout beyond local fixtures, then attach redacted rollout evidence.",
+          terms: [
+            "community-artwork",
+            "community-screenshots",
+            "screenshot-rollout",
+          ],
+        },
+      "Production controller layout rollout and profile sync are verified.": {
+        capture:
+          "Verify production controller layout rollout and profile sync, then attach redacted sync and rollout evidence.",
+        terms: ["controller-layout", "profile-sync"],
+      },
+      "Plugin marketplace execution/update channels are externally reviewed.": {
+        capture:
+          "Attach external review evidence for plugin marketplace execution and update channels without including raw package secrets.",
+        terms: [
+          "plugin-marketplace",
+          "marketplace-execution",
+          "marketplace-update",
+          "plugin-update",
+        ],
+      },
+      "Native mobile apps, push-provider delivery, and store distribution are verified.":
+        {
+          capture:
+            "Verify native mobile app distribution and push-provider delivery in store consoles, then attach redacted console evidence.",
+          terms: ["mobile", "store-distribution", "push-provider"],
+        },
+      "Hosted production deployment evidence is attached.": {
+        capture:
+          "Run `pnpm hosted:deploy-gate:packet`, then run GitHub Actions `CI` from `main` with `hosted_deploy_gate=true`, `hosted_environment=hosted-production`, `hosted_deploy_action=all`, and `hosted_deploy_dry_run=false`; paste the labelled `hosted-deploy workflow-<id>` locator into both the proof evidence row and `Hosted deploy evidence`.",
+        terms: ["hosted-deploy", "workflow"],
+      },
+    },
   },
 ]);
 
@@ -1770,6 +1892,14 @@ export function artifactTemplate(gate, artifactPath) {
         ]
       : []),
     "",
+    "## Capture Handoff",
+    "",
+    "Use these operator handoffs to collect redacted live evidence before checking proof rows. Handoffs are guidance only; they do not execute commands or satisfy preflight by themselves.",
+    "",
+    ...captureHandoffsForArtifact(gate, artifactPath).map(
+      (handoff) => `- ${formatCaptureHandoff(handoff)}`,
+    ),
+    "",
     "## Proof Evidence Mapping",
     "",
     "When a proof row is checked, fill the matching evidence line with a specific redacted run ID, dashboard link, external artifact locator, workflow ID, signed log, or `sha256:<64-hex>` reference. Accepted dashboard URL hosts are Supabase, Stripe live Dashboard, GitHub Actions/releases/deployments, Vercel, Netlify, Cloudflare, App Store Connect, Google Play Console, Firebase, and OneSignal; otherwise use `run:`/`artifact:`/`sha256:` style locators. Generic text such as `redacted`, `see above`, local files, localhost URLs, and example URLs do not satisfy preflight.",
@@ -1910,6 +2040,43 @@ function pushHostedDeployProofHandoff(lines, gate) {
   );
 }
 
+function captureHandoffForProof(gate, proof) {
+  const handoff = gate.captureHandoffs?.[proof];
+  return {
+    capture:
+      handoff?.capture ??
+      "No capture handoff is configured; update external evidence tooling before release.",
+    proof,
+    terms: handoff?.terms ?? [],
+  };
+}
+
+function captureHandoffsForArtifact(gate, artifactPath) {
+  return requiredProofsForArtifact(gate, artifactPath).map((proof) =>
+    captureHandoffForProof(gate, proof),
+  );
+}
+
+function captureHandoffsForGate(gate) {
+  return gate.artifactPaths.flatMap((artifactPath) =>
+    captureHandoffsForArtifact(gate, artifactPath),
+  );
+}
+
+function formatCaptureHandoff(handoff) {
+  const terms =
+    handoff.terms.length === 0
+      ? ""
+      : ` Evidence cues: ${handoff.terms.map((term) => `\`${term}\``).join(", ")}.`;
+  return `${handoff.proof}: ${handoff.capture}${terms}`;
+}
+
+function pushCaptureHandoffs(lines, handoffs, { indent = "- " } = {}) {
+  for (const handoff of handoffs) {
+    lines.push(`${indent}${formatCaptureHandoff(handoff)}`);
+  }
+}
+
 function recommendedCommandsForGate(gate, status) {
   const commands = new Set([
     `OGL_EXTERNAL_EVIDENCE_GATES=${gate.id} pnpm external:evidence:status`,
@@ -2013,7 +2180,7 @@ export function artifactWorklistReport(
     `Selected gates: ${statuses.length}`,
     `Artifact readiness: ${readyArtifacts}/${totalArtifacts}`,
     "",
-    "This worklist is redacted and non-mutating. It lists artifact paths, missing proof labels, missing detail field names, blocking finding labels, and commands only; it does not print environment values, mark proof rows checked, write artifacts, or assert external success.",
+    "This worklist is redacted and non-mutating. It lists artifact paths, missing proof labels, capture handoffs, missing detail field names, blocking finding labels, and commands only; it does not print environment values, mark proof rows checked, write artifacts, or assert external success.",
     releaseBoundaryReminder,
     "",
   ];
@@ -2073,6 +2240,14 @@ export function artifactWorklistReport(
         `- Proof evidence findings: ${formatInlineList(proofEvidenceFindings)}`,
       );
       lines.push(`- Blockers: ${formatInlineList(compactList(blockers))}`);
+      lines.push("- Capture handoffs:");
+      pushCaptureHandoffs(
+        lines,
+        captureHandoffsForArtifact(gate, artifactPath),
+        {
+          indent: "  - ",
+        },
+      );
       lines.push("");
     }
   }
@@ -2084,6 +2259,7 @@ export function nextStepsReport(
   env = process.env,
   fileExists = existsSync,
   readFile = readFileSync,
+  { includeCaptureHandoffs = true } = {},
 ) {
   const gates = selectedGates(env);
   const statuses = gates.map((gate) => ({
@@ -2180,6 +2356,12 @@ export function nextStepsReport(
         .map((command) => `\`${command}\``)
         .join("; ")}`,
     );
+    if (includeCaptureHandoffs) {
+      lines.push("- Capture handoffs:");
+      pushCaptureHandoffs(lines, captureHandoffsForGate(gate), {
+        indent: "  - ",
+      });
+    }
     pushHostedCronCollectorPrerequisites(lines, gate);
     pushHostedDeployProofHandoff(lines, gate);
     lines.push("");
@@ -2216,7 +2398,7 @@ export function operatorPacketReport(
     `Ready gates: ${readyCount}/${statuses.length}`,
     `External completion: ${completionState}`,
     "",
-    "This packet is redacted and non-mutating. It lists environment names, artifact paths, proof requirements, and commands only; it does not print environment values, mark proof rows checked, or assert external success.",
+    "This packet is redacted and non-mutating. It lists environment names, artifact paths, proof requirements, capture handoffs, and commands only; it does not print environment values, mark proof rows checked, or assert external success.",
     releaseBoundaryReminder,
     "",
     "## Gate Checklist",
@@ -2231,6 +2413,10 @@ export function operatorPacketReport(
     lines.push(
       `- Required proofs: ${formatInlineList(compactList(gate.requiredProofs, 8))}`,
     );
+    lines.push("- Capture handoffs:");
+    pushCaptureHandoffs(lines, captureHandoffsForGate(gate), {
+      indent: "  - ",
+    });
     const detailFields = [
       ...new Set(
         gate.artifactPaths.flatMap((path) => [
@@ -2251,7 +2437,11 @@ export function operatorPacketReport(
   }
 
   lines.push("## Missing Evidence Next Steps", "");
-  lines.push(nextStepsReport(env, fileExists, readFile));
+  lines.push(
+    nextStepsReport(env, fileExists, readFile, {
+      includeCaptureHandoffs: false,
+    }),
+  );
 
   return lines.join("\n").trimEnd();
 }
@@ -2271,7 +2461,7 @@ export function runbookReport(
     "",
     `Selected gates: ${statuses.length}`,
     "",
-    "This runbook is redacted and non-mutating. It gives the capture order, artifact paths, proof labels, detail field names, and commands only; it does not print environment values, include proof checkboxes, write artifacts, or assert external success.",
+    "This runbook is redacted and non-mutating. It gives the capture order, artifact paths, proof labels, capture handoffs, detail field names, and commands only; it does not print environment values, include proof checkboxes, write artifacts, or assert external success.",
     releaseBoundaryReminder,
     "",
     "## 1. Prepare redacted artifacts",
@@ -2314,6 +2504,14 @@ export function runbookReport(
       );
       lines.push(`- Artifact: ${artifactPath}`);
       lines.push(`  Proof labels: ${formatInlineList(proofLabels)}`);
+      lines.push("  Capture handoffs:");
+      pushCaptureHandoffs(
+        lines,
+        captureHandoffsForArtifact(gate, artifactPath),
+        {
+          indent: "  - ",
+        },
+      );
       lines.push(
         `  Detail fields: ${formatInlineList([
           ...detailFields,

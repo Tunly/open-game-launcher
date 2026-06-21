@@ -65,8 +65,9 @@ values.
 Use `pnpm external:evidence:next` when an operator needs a compact
 non-mutating handoff. It prints only non-ready selected gates, missing
 environment names, missing artifacts/proofs/detail fields, missing artifact
-proof coverage, redacted artifact detail/proof-evidence reason codes, blocking
-findings, and existing follow-up commands such as
+proof coverage, per-proof capture handoffs, redacted artifact
+detail/proof-evidence reason codes, blocking findings, and existing follow-up
+commands such as
 `pnpm external:evidence:template`,
 `pnpm external:evidence:status`, `pnpm external:evidence:preflight`,
 `pnpm hosted:deploy-gate:scheduler-packet`, `pnpm hosted:cron-evidence`,
@@ -78,25 +79,32 @@ has succeeded.
 
 Use `pnpm external:evidence:worklist` when an operator needs a per-artifact fill
 list. It groups each selected artifact by readiness state, missing proof labels,
-complete missing detail field names, redacted reason codes for rejected detail
-and proof-evidence rows, blocking finding labels, and the same follow-up
-commands. It is redacted output only: it does not write artifacts, does not
-include proof checkboxes, does not print environment values or artifact values,
-and does not mark external evidence complete.
+per-artifact capture handoffs, complete missing detail field names, redacted
+reason codes for rejected detail and proof-evidence rows, blocking finding
+labels, and the same follow-up commands. It is redacted output only: it does not
+write artifacts, does not include proof checkboxes, does not print environment
+values or artifact values, and does not mark external evidence complete.
 
 Use `pnpm external:evidence:packet` when an operator needs one redacted handoff
 document before a release run. It includes selected gate counts, ready counts,
-required environment names, artifact paths, proof requirements, evidence detail
-fields, per-gate commands, and the same missing-evidence next steps. It is
-non-mutating and does not print environment values, mark proof rows checked, or
-assert external success.
+required environment names, artifact paths, proof requirements, capture
+handoffs, evidence detail fields, per-gate commands, and the same
+missing-evidence next steps. It is non-mutating and does not print environment
+values, mark proof rows checked, or assert external success.
 
 Use `pnpm external:evidence:runbook` when an operator needs a sequenced
 operator runbook instead of a status summary. It groups the selected gates into
 artifact preparation, evidence capture, and release-boundary verification,
-listing artifact paths, proof labels, detail field names, and commands only. It
-does not include proof checkboxes, write artifacts, print environment values, or
-assert external success.
+listing artifact paths, proof labels, per-proof capture handoffs, detail field
+names, and commands only. It does not include proof checkboxes, write artifacts,
+print environment values, or assert external success.
+
+Generated external evidence templates include a `Capture Handoff` section after
+the unchecked proof checklist. Those rows tell operators how to collect redacted
+live evidence for each proof lane before checking proof rows. They are guidance
+only: the preflight still requires checked proof rows, matching
+`Evidence for <proof>:` mappings, accepted external locators, required detail
+fields, fresh release context, and clean secret scans.
 
 For `rollout-tracks`, the generated commands include
 `pnpm hosted:deploy-gate:plan` and `pnpm hosted:deploy-gate:packet` so hosted

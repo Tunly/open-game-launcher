@@ -21,6 +21,15 @@ Leave each item unchecked until the external run evidence is captured and redact
 - [ ] Provider-approved catalog/cloud transfer flows are verified.
 - [ ] Achievement/provider cache E2E runs against real client data.
 
+## Capture Handoff
+
+Use these operator handoffs to collect redacted live evidence before checking proof rows. Handoffs are guidance only; they do not execute commands or satisfy preflight by themselves.
+
+- mod.io and CurseForge staging probes use real provider keys.: Run live staging probes with real mod.io and CurseForge credentials, then attach redacted provider response and rate-limit evidence. Evidence cues: `mod.io`, `CurseForge`, `live-probe`.
+- Non-Steam presence bridges return redacted live provider evidence.: Exercise non-Steam presence bridges against live provider sessions and attach redacted response evidence for the presence bridge lane. Evidence cues: `non-steam`, `presence-bridge`, `presence-provider`.
+- Provider-approved catalog/cloud transfer flows are verified.: Record provider-approved catalog and cloud-transfer review evidence, including the client/provider matrix and approval source. Evidence cues: `catalog-cloud-transfer`, `provider-approved`.
+- Achievement/provider cache E2E runs against real client data.: Run achievement/provider cache E2E against real client data and attach redacted run evidence from the cache hydration lane. Evidence cues: `achievement-cache`, `provider-cache`, `real-client`.
+
 ## Proof Evidence Mapping
 
 When a proof row is checked, fill the matching evidence line with a specific redacted run ID, dashboard link, external artifact locator, workflow ID, signed log, or `sha256:<64-hex>` reference. Accepted dashboard URL hosts are Supabase, Stripe live Dashboard, GitHub Actions/releases/deployments, Vercel, Netlify, Cloudflare, App Store Connect, Google Play Console, Firebase, and OneSignal; otherwise use `run:`/`artifact:`/`sha256:` style locators. Generic text such as `redacted`, `see above`, local files, localhost URLs, and example URLs do not satisfy preflight.

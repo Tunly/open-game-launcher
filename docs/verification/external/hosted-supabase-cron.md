@@ -20,6 +20,14 @@ Leave each item unchecked until the external run evidence is captured and redact
 - [ ] notify-price-drop scheduled run writes fresh evidence.
 - [ ] process-account-deletions scheduled run writes fresh evidence.
 
+## Capture Handoff
+
+Use these operator handoffs to collect redacted live evidence before checking proof rows. Handoffs are guidance only; they do not execute commands or satisfy preflight by themselves.
+
+- poll-platform-presence scheduled run writes fresh evidence.: Run the presence scheduled lane, collect `pnpm hosted:cron-evidence:artifact-hints`, and paste the reviewed latest non-dry-run `presence_poll_runs` row for `poll-platform-presence`. Evidence cues: `presence-poll`, `presence_poll_runs`.
+- notify-price-drop scheduled run writes fresh evidence.: Run the price-drop scheduled lane, collect `pnpm hosted:cron-evidence:artifact-hints`, and paste the reviewed latest non-dry-run `store_price_drop_notification_runs` row for `notify-price-drop`. Evidence cues: `price-drop`, `store_price_drop_notification_runs`.
+- process-account-deletions scheduled run writes fresh evidence.: Run the account-deletion scheduled lane, collect `pnpm hosted:cron-evidence:artifact-hints`, and paste the reviewed latest non-dry-run `account_deletion_processor_runs` row for `process-account-deletions`. Evidence cues: `account-deletion`, `account_deletion_processor_runs`.
+
 ## Proof Evidence Mapping
 
 When a proof row is checked, fill the matching evidence line with a specific redacted run ID, dashboard link, external artifact locator, workflow ID, signed log, or `sha256:<64-hex>` reference. Accepted dashboard URL hosts are Supabase, Stripe live Dashboard, GitHub Actions/releases/deployments, Vercel, Netlify, Cloudflare, App Store Connect, Google Play Console, Firebase, and OneSignal; otherwise use `run:`/`artifact:`/`sha256:` style locators. Generic text such as `redacted`, `see above`, local files, localhost URLs, and example URLs do not satisfy preflight.
