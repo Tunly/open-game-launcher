@@ -1,12 +1,20 @@
 import assert from "node:assert/strict";
 import { Buffer } from "node:buffer";
-import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import {
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 
 import {
   checksForAction,
+  checkoutFingerprintAlgorithm,
   completionStatusReport,
   completionExternalChecks,
   completionLocalChecks,
@@ -221,6 +229,29 @@ function captureLogger() {
     },
     logs,
   };
+}
+
+function runGit(root, args) {
+  const result = spawnSync("git", args, {
+    cwd: root,
+    encoding: "utf8",
+  });
+  assert.equal(
+    result.status,
+    0,
+    `git ${args.join(" ")} failed: ${result.stderr}`,
+  );
+  return result.stdout.trim();
+}
+
+function initializeGitRepo(root) {
+  runGit(root, ["init"]);
+  runGit(root, ["config", "user.email", "completion@example.invalid"]);
+  runGit(root, ["config", "user.name", "Completion Gate Test"]);
+  writeFileSync(join(root, ".gitignore"), ".codex/\n", "utf8");
+  writeFileSync(join(root, "tracked.txt"), "initial\n", "utf8");
+  runGit(root, ["add", ".gitignore", "tracked.txt"]);
+  runGit(root, ["commit", "-m", "initial"]);
 }
 
 function commandLine(check) {
@@ -673,12 +704,194 @@ test("local action writes a local-only completion receipt without release-proof 
     assert.equal(report.local.ready, null);
     assert.equal(report.local.latestReceipt.present, true);
     assert.equal(report.local.latestReceipt.valid, true);
+    assert.equal(report.local.latestReceipt.validationReason, "current");
+    assert.equal(report.local.latestReceipt.checkIdsCurrent, true);
+    assert.equal(report.local.latestReceipt.checkoutCurrent, true);
+    assert.equal(report.local.latestReceipt.checkoutSnapshotAvailable, false);
+    assert.equal(
+      report.local.latestReceipt.checkoutFingerprintAlgorithm,
+      checkoutFingerprintAlgorithm,
+    );
     assert.equal(report.local.latestReceipt.releaseProof, false);
     assert.equal(report.local.latestReceipt.externalEvidenceCollected, false);
     assert.equal(
       report.local.latestReceipt.checkCount,
       completionLocalChecks.length,
     );
+    assert.equal(
+      report.local.latestReceipt.expectedCheckCount,
+      completionLocalChecks.length,
+    );
+    assert.equal(report.releaseReady, false);
+  } finally {
+    rmSync(root, { force: true, recursive: true });
+  }
+});
+
+test("status report marks local receipts stale after tracked checkout changes", () => {
+  const root = mkdtempSync(join(tmpdir(), "ogl-completion-gate-git-"));
+  try {
+    initializeGitRepo(root);
+    const { logger } = captureLogger();
+    const status = runCompletionGate({
+      action: "local",
+      logger,
+      platform: "linux",
+      root,
+      runCommand() {
+        return { status: 0 };
+      },
+    });
+    assert.equal(status, 0);
+
+    const currentReport = completionStatusReport({
+      env: {},
+      platform: "linux",
+      root,
+    });
+    assert.equal(currentReport.local.latestReceipt.valid, true);
+    assert.equal(currentReport.local.latestReceipt.checkoutCurrent, true);
+    assert.equal(
+      currentReport.local.latestReceipt.checkoutSnapshotAvailable,
+      true,
+    );
+    assert.equal(
+      currentReport.local.latestReceipt.checkoutFingerprintAlgorithm,
+      checkoutFingerprintAlgorithm,
+    );
+    assert.match(currentReport.local.latestReceipt.gitHead, /^[a-f0-9]{40}$/);
+    assert.equal(
+      currentReport.local.latestReceipt.gitHead,
+      currentReport.local.latestReceipt.currentGitHead,
+    );
+
+    writeFileSync(join(root, "tracked.txt"), "changed\n", "utf8");
+    const dirtyReport = completionStatusReport({
+      env: {},
+      platform: "linux",
+      root,
+    });
+
+    assert.equal(dirtyReport.local.latestReceipt.valid, false);
+    assert.equal(
+      dirtyReport.local.latestReceipt.validationReason,
+      "stale_checkout",
+    );
+    assert.equal(dirtyReport.local.latestReceipt.checkoutCurrent, false);
+    assert.equal(dirtyReport.local.latestReceipt.checkIdsCurrent, true);
+    assert.equal(dirtyReport.local.latestReceipt.releaseProof, false);
+    assert.equal(dirtyReport.local.ready, null);
+    assert.equal(dirtyReport.releaseReady, false);
+  } finally {
+    rmSync(root, { force: true, recursive: true });
+  }
+});
+
+test("status report marks local receipts stale after new commits", () => {
+  const root = mkdtempSync(join(tmpdir(), "ogl-completion-gate-git-"));
+  try {
+    initializeGitRepo(root);
+    const { logger } = captureLogger();
+    const status = runCompletionGate({
+      action: "local",
+      logger,
+      platform: "linux",
+      root,
+      runCommand() {
+        return { status: 0 };
+      },
+    });
+    assert.equal(status, 0);
+
+    writeFileSync(join(root, "tracked.txt"), "committed change\n", "utf8");
+    runGit(root, ["add", "tracked.txt"]);
+    runGit(root, ["commit", "-m", "change tracked"]);
+
+    const report = completionStatusReport({ env: {}, platform: "linux", root });
+
+    assert.equal(report.local.latestReceipt.valid, false);
+    assert.equal(report.local.latestReceipt.validationReason, "stale_checkout");
+    assert.equal(report.local.latestReceipt.checkoutCurrent, false);
+    assert.notEqual(
+      report.local.latestReceipt.gitHead,
+      report.local.latestReceipt.currentGitHead,
+    );
+    assert.equal(report.local.latestReceipt.releaseProof, false);
+    assert.equal(report.releaseReady, false);
+  } finally {
+    rmSync(root, { force: true, recursive: true });
+  }
+});
+
+test("status report marks local receipts stale after untracked files", () => {
+  const root = mkdtempSync(join(tmpdir(), "ogl-completion-gate-git-"));
+  try {
+    initializeGitRepo(root);
+    const { logger } = captureLogger();
+    const status = runCompletionGate({
+      action: "local",
+      logger,
+      platform: "linux",
+      root,
+      runCommand() {
+        return { status: 0 };
+      },
+    });
+    assert.equal(status, 0);
+
+    writeFileSync(join(root, "operator-proof.log"), "local proof\n", "utf8");
+    const report = completionStatusReport({ env: {}, platform: "linux", root });
+
+    assert.equal(report.local.latestReceipt.valid, false);
+    assert.equal(report.local.latestReceipt.validationReason, "stale_checkout");
+    assert.equal(report.local.latestReceipt.checkoutCurrent, false);
+    assert.equal(report.local.latestReceipt.checkIdsCurrent, true);
+    assert.equal(report.local.latestReceipt.releaseProof, false);
+    assert.equal(report.releaseReady, false);
+  } finally {
+    rmSync(root, { force: true, recursive: true });
+  }
+});
+
+test("status report marks stale local receipts when local check ids changed", () => {
+  const root = mkdtempSync(join(tmpdir(), "ogl-completion-gate-"));
+  try {
+    const { logger } = captureLogger();
+    const status = runCompletionGate({
+      action: "local",
+      logger,
+      platform: "linux",
+      root,
+      runCommand() {
+        return { status: 0 };
+      },
+    });
+    assert.equal(status, 0);
+
+    const receiptPath = localCompletionReceiptPath(root);
+    const receipt = JSON.parse(readFileSync(receiptPath, "utf8"));
+    receipt.checkIds = receipt.checkIds.slice(0, -1);
+    writeFileSync(receiptPath, `${JSON.stringify(receipt, null, 2)}\n`, "utf8");
+
+    const report = completionStatusReport({ env: {}, platform: "linux", root });
+
+    assert.equal(report.local.latestReceipt.present, true);
+    assert.equal(report.local.latestReceipt.valid, false);
+    assert.equal(
+      report.local.latestReceipt.validationReason,
+      "stale_check_ids",
+    );
+    assert.equal(report.local.latestReceipt.checkIdsCurrent, false);
+    assert.equal(
+      report.local.latestReceipt.checkCount,
+      completionLocalChecks.length - 1,
+    );
+    assert.equal(
+      report.local.latestReceipt.expectedCheckCount,
+      completionLocalChecks.length,
+    );
+    assert.equal(report.local.latestReceipt.releaseProof, false);
+    assert.equal(report.local.ready, null);
     assert.equal(report.releaseReady, false);
   } finally {
     rmSync(root, { force: true, recursive: true });

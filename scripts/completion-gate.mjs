@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -14,6 +15,8 @@ import { statusReport as externalEvidenceStatusReport } from "./external-evidenc
 export const repoRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 export const localCompletionReceiptRelativePath =
   ".codex/completion-gate-local-latest.json";
+export const checkoutFingerprintAlgorithm =
+  "git-head-diff-status-untracked-sha256-v1";
 
 export const completionLocalChecks = Object.freeze([
   {
@@ -337,6 +340,72 @@ function platformSkippedChecks(checksSummaryResult) {
     .map(({ id, label, platformNote }) => ({ id, label, platformNote }));
 }
 
+function gitOutput(root, args) {
+  const result = spawnSync("git", args, {
+    cwd: root,
+    maxBuffer: 128 * 1024 * 1024,
+  });
+  if (result.error || result.status !== 0) return null;
+  return result.stdout ?? Buffer.alloc(0);
+}
+
+function splitNulBuffer(buffer) {
+  return buffer
+    .toString("utf8")
+    .split("\0")
+    .map((value) => value.trim())
+    .filter(Boolean);
+}
+
+function checkoutSnapshot(root = repoRoot) {
+  const headOutput = gitOutput(root, ["rev-parse", "--verify", "HEAD"]);
+  const diffOutput = gitOutput(root, [
+    "diff",
+    "--binary",
+    "--full-index",
+    "HEAD",
+    "--",
+  ]);
+  const statusOutput = gitOutput(root, ["status", "--porcelain=v1", "-z"]);
+  const untrackedOutput = gitOutput(root, [
+    "ls-files",
+    "--others",
+    "--exclude-standard",
+    "-z",
+  ]);
+
+  if (!headOutput || !diffOutput || !statusOutput || !untrackedOutput) {
+    return { available: false };
+  }
+
+  const gitHead = headOutput.toString("utf8").trim();
+  const hash = createHash("sha256");
+  hash.update(`${checkoutFingerprintAlgorithm}\0`);
+  hash.update("head\0");
+  hash.update(gitHead);
+  hash.update("\0diff\0");
+  hash.update(diffOutput);
+  hash.update("\0status\0");
+  hash.update(statusOutput);
+
+  for (const relativePath of splitNulBuffer(untrackedOutput).sort()) {
+    hash.update("\0untracked-path\0");
+    hash.update(relativePath);
+    hash.update("\0untracked-content\0");
+    try {
+      hash.update(readFileSync(join(root, relativePath)));
+    } catch {
+      hash.update("unreadable");
+    }
+  }
+
+  return {
+    available: true,
+    checkoutFingerprint: hash.digest("hex"),
+    gitHead,
+  };
+}
+
 export function localCompletionReceiptPath(root = repoRoot) {
   return join(root, localCompletionReceiptRelativePath);
 }
@@ -354,49 +423,99 @@ function localCompletionReceiptSummary(root = repoRoot) {
   try {
     const receipt = JSON.parse(readFileSync(path, "utf8"));
     const checkIds = Array.isArray(receipt.checkIds) ? receipt.checkIds : [];
+    const expectedCheckIds = completionLocalChecks.map((check) => check.id);
+    const currentCheckout = checkoutSnapshot(root);
     const skippedOnThisPlatform = Array.isArray(receipt.skippedOnThisPlatform)
       ? receipt.skippedOnThisPlatform
       : [];
-    const valid =
+    const schemaValid =
       receipt?.version === 1 &&
       receipt.action === "local" &&
       receipt.command === "pnpm completion:gate:local" &&
       receipt.result === "passed" &&
       typeof receipt.recordedAt === "string" &&
       typeof receipt.platform === "string";
+    const checkIdsCurrent =
+      schemaValid &&
+      checkIds.length === expectedCheckIds.length &&
+      checkIds.every((id, index) => id === expectedCheckIds[index]);
+    const checkoutCurrent =
+      schemaValid &&
+      (receipt.checkoutSnapshotAvailable === false
+        ? !currentCheckout.available
+        : receipt.checkoutSnapshotAvailable === true &&
+          currentCheckout.available &&
+          receipt.checkoutFingerprintAlgorithm ===
+            checkoutFingerprintAlgorithm &&
+          receipt.gitHead === currentCheckout.gitHead &&
+          receipt.checkoutFingerprint === currentCheckout.checkoutFingerprint);
+    const valid = schemaValid && checkIdsCurrent && checkoutCurrent;
 
     return {
-      action: valid ? receipt.action : null,
-      checkCount: valid ? checkIds.length : 0,
-      command: valid ? receipt.command : null,
+      action: schemaValid ? receipt.action : null,
+      checkCount: schemaValid ? checkIds.length : 0,
+      checkIdsCurrent,
+      checkoutCurrent,
+      checkoutFingerprintAlgorithm: schemaValid
+        ? (receipt.checkoutFingerprintAlgorithm ?? null)
+        : null,
+      checkoutSnapshotAvailable: schemaValid
+        ? Boolean(receipt.checkoutSnapshotAvailable)
+        : false,
+      command: schemaValid ? receipt.command : null,
+      currentGitHead: currentCheckout.available
+        ? currentCheckout.gitHead
+        : null,
       externalEvidenceCollected: false,
+      expectedCheckCount: expectedCheckIds.length,
+      gitHead: schemaValid ? (receipt.gitHead ?? null) : null,
       path: localCompletionReceiptRelativePath,
-      platform: valid ? receipt.platform : null,
+      platform: schemaValid ? receipt.platform : null,
       present: true,
-      recordedAt: valid ? receipt.recordedAt : null,
+      recordedAt: schemaValid ? receipt.recordedAt : null,
       releaseProof: false,
-      result: valid ? receipt.result : "unreadable",
-      skippedOnThisPlatformCount: valid ? skippedOnThisPlatform.length : 0,
+      result: schemaValid ? receipt.result : "unreadable",
+      skippedOnThisPlatformCount: schemaValid
+        ? skippedOnThisPlatform.length
+        : 0,
       valid,
+      validationReason: valid
+        ? "current"
+        : schemaValid
+          ? checkIdsCurrent
+            ? "stale_checkout"
+            : "stale_check_ids"
+          : "invalid_schema",
     };
   } catch {
     return {
+      checkIdsCurrent: false,
+      checkoutCurrent: false,
+      checkoutFingerprintAlgorithm,
+      checkoutSnapshotAvailable: false,
       externalEvidenceCollected: false,
+      expectedCheckCount: completionLocalChecks.length,
       path: localCompletionReceiptRelativePath,
       present: true,
       releaseProof: false,
       result: "unreadable",
       valid: false,
+      validationReason: "unreadable",
     };
   }
 }
 
 function writeLocalCompletionReceipt({ platform, root, skippedChecks }) {
+  const checkout = checkoutSnapshot(root);
   const receipt = {
     action: "local",
     checkIds: completionLocalChecks.map((check) => check.id),
+    checkoutFingerprint: checkout.checkoutFingerprint ?? null,
+    checkoutFingerprintAlgorithm,
+    checkoutSnapshotAvailable: checkout.available,
     command: "pnpm completion:gate:local",
     externalEvidenceCollected: false,
+    gitHead: checkout.gitHead ?? null,
     platform,
     recordedAt: new Date().toISOString(),
     releaseProof: false,
