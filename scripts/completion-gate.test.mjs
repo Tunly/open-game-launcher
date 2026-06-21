@@ -424,7 +424,7 @@ test("local lane includes coverage, Tauri bundle smoke, Supabase DB lint, and Wi
   assert.equal(tauriDebugBundle, "pnpm tauri:debug-bundle");
   assert.match(
     ciWorkflow,
-    /run: pnpm tauri build --target \$\{\{ matrix\.target \}\}/,
+    /run: pnpm tauri build --target \$\{\{ matrix\.target \}\} -- --locked/,
   );
 
   const tauriDebugBundleTest = commandLine(
@@ -485,7 +485,7 @@ test("Rust toolchain is pinned consistently across local metadata and CI", () =>
   assert.match(rustBuildWindowsJob, /^    runs-on:\s+windows-2025$/m);
   assert.match(
     rustBuildWindowsJob,
-    /^        run: cargo check --lib --target x86_64-pc-windows-msvc$/m,
+    /^        run: cargo check --locked --lib --target x86_64-pc-windows-msvc$/m,
   );
 
   const buildUploadJob = ciJobBlock("build-upload");
@@ -528,7 +528,7 @@ test("plan prints every gate command without running commands", () => {
   assert.match(output, /pnpm tauri:debug-bundle/);
   assert.match(
     output,
-    /cargo test --manifest-path launcher\/src-tauri\/Cargo\.toml/,
+    /cargo test --manifest-path launcher\/src-tauri\/Cargo\.toml --locked/,
   );
   assert.match(output, /rustup show active-toolchain/);
   assert.match(output, /pnpm supabase:functions:check/);

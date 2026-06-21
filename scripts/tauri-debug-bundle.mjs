@@ -20,6 +20,8 @@ export function tauriDebugBundleArgs(platform = process.platform) {
     args.push("--bundles", "deb");
   }
 
+  args.push("--", "--locked");
+
   return args;
 }
 

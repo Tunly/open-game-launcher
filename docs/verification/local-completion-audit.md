@@ -1,14 +1,15 @@
-# Local Completion Audit - 2026-06-21
+# Local Completion Audit - 2026-06-22
 
 This audit defines the local completion boundary for this checkout. It is a
 local deterministic completion boundary, not a release-readiness boundary or a
 claim that external provider, hardware, or hosted production systems have been
 exercised. Full release readiness still requires the real external evidence
 artifacts and a successful full `pnpm completion:gate` release-boundary run.
-Last refreshed: 2026-06-21 for completion-gate status, external evidence, hosted
-cron evidence helper semantics, and the current Plugin Runtime Sandbox local
-boundary. The full local completion gate was last recorded separately; no live
-external evidence was collected in this workspace.
+Last refreshed: 2026-06-22 for completion-gate status, external evidence, hosted
+cron evidence helper semantics, the current Plugin Runtime Sandbox local
+boundary, and locked Cargo/Tauri release checks. The mutable local gate receipt
+is stored outside Git; no live external evidence was collected in this
+workspace.
 
 ## Local Completion Boundary
 
@@ -39,9 +40,10 @@ external evidence was collected in this workspace.
   Node.js `>=22.12 <26`, GitHub Actions reads `.node-version` (`22.12.0`),
   GitHub Actions use verified SHA refs on fixed runner labels, Rust uses
   `rust-toolchain.toml` (`1.95.0`) locally and in CI, Supabase CI uses CLI
-  `2.104.0`, Deno CI and fallback use `v2.8.3`/`deno@2.8.3`, and hosted deploy
-  commands run through the launcher-pinned Supabase CLI instead of an ambient
-  global binary.
+  `2.104.0`, Deno CI and fallback use `v2.8.3`/`deno@2.8.3`, Cargo checks run
+  with `Cargo.lock` frozen, Tauri bundle lanes pass `--locked` to the Cargo
+  runner, and hosted deploy commands run through the launcher-pinned Supabase
+  CLI instead of an ambient global binary.
 - The local Supabase DB lint command is wrapped by `scripts/supabase-db-lint.mjs`
   so fresh machines start the local database before linting, existing local DB
   sessions are not stopped, and Supabase CLI credential output is redacted.
@@ -231,8 +233,9 @@ pnpm verify:routes # passed; see fresh command output for current route and scre
 `completion:gate:local` starts with `git diff --check HEAD`, so staged and
 unstaged whitespace and patch metadata errors are covered by the same
 deterministic local gate. On this Linux host, the gate logs the Rust Windows
-target check as skipped with an explicit `windows-2025` CI handoff; the same gate runs the real
-`cargo check --target x86_64-pc-windows-msvc` command on Windows.
+target check as skipped with an explicit `windows-2025` CI handoff; the same
+gate runs the real `cargo check --locked --target x86_64-pc-windows-msvc`
+command on Windows.
 After a successful local run, `completion:gate:local` also writes the gitignored
 `.codex/completion-gate-local-latest.json` receipt. That receipt is local
 operator context only: it records the local command, platform, check IDs, and

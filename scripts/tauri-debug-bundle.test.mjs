@@ -18,6 +18,8 @@ test("tauri debug bundle uses a Linux deb smoke bundle", () => {
     "--no-sign",
     "--bundles",
     "deb",
+    "--",
+    "--locked",
   ]);
 });
 
@@ -30,6 +32,8 @@ test("tauri debug bundle uses generic current-platform args off Linux", () => {
     "--debug",
     "--ci",
     "--no-sign",
+    "--",
+    "--locked",
   ]);
   assert.deepEqual(tauriDebugBundleArgs("darwin"), [
     "--dir",
@@ -39,6 +43,8 @@ test("tauri debug bundle uses generic current-platform args off Linux", () => {
     "--debug",
     "--ci",
     "--no-sign",
+    "--",
+    "--locked",
   ]);
 });
 

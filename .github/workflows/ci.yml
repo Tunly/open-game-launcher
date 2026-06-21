@@ -115,10 +115,10 @@ jobs:
           workspaces: launcher/src-tauri -> target
       - name: Clippy (lib)
         working-directory: launcher/src-tauri
-        run: cargo clippy --lib --all-targets -- -D warnings
+        run: cargo clippy --locked --lib --all-targets -- -D warnings
       - name: Clippy (binaries)
         working-directory: launcher/src-tauri
-        run: cargo clippy --bins -- -D warnings
+        run: cargo clippy --locked --bins -- -D warnings
 
   # ---------- Rust: tests ----------
   rust-test:
@@ -132,7 +132,7 @@ jobs:
           workspaces: launcher/src-tauri -> target
       - name: Test
         working-directory: launcher/src-tauri
-        run: cargo test
+        run: cargo test --locked
 
   # ---------- Rust: Windows build ----------
   rust-build-windows:
@@ -146,7 +146,7 @@ jobs:
           workspaces: launcher/src-tauri -> target
       - name: Check (Windows MSVC)
         working-directory: launcher/src-tauri
-        run: cargo check --lib --target x86_64-pc-windows-msvc
+        run: cargo check --locked --lib --target x86_64-pc-windows-msvc
 
   # ---------- Supabase: db lint ----------
   # Runs on push/PR and the manual hosted-deploy gate path, because it spins up
@@ -391,7 +391,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libasound2-dev
       - name: Build (Tauri)
         working-directory: launcher
-        run: pnpm tauri build --target ${{ matrix.target }}
+        run: pnpm tauri build --target ${{ matrix.target }} -- --locked
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}

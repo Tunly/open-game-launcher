@@ -300,8 +300,8 @@ export function releaseWorkflowReport({ content, root = repoRoot } = {}) {
     pushMissing(
       errors,
       buildUpload,
-      "pnpm tauri build --target ${{ matrix.target }}",
-      "build-upload must build the matrix target explicitly",
+      "pnpm tauri build --target ${{ matrix.target }} -- --locked",
+      "build-upload must build the matrix target explicitly with Cargo.lock frozen",
     );
     for (const [envName, envAssignment] of [
       [

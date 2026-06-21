@@ -130,6 +130,17 @@ test("release workflow contract keeps each matrix target with its platform row",
   ]);
 });
 
+test("release workflow contract keeps Tauri release builds Cargo-locked", () => {
+  const broken = ciWorkflow.replace(
+    "pnpm tauri build --target ${{ matrix.target }} -- --locked",
+    "pnpm tauri build --target ${{ matrix.target }}",
+  );
+
+  assert.deepEqual(errorsFor(broken), [
+    "build-upload must build the matrix target explicitly with Cargo.lock frozen",
+  ]);
+});
+
 test("release workflow contract reads build-upload needs structurally", () => {
   const broken = ciWorkflow.replace(
     "        release-boundary-gate,\n",
