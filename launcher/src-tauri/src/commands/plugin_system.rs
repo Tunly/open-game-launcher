@@ -2877,13 +2877,13 @@ mod tests {
         let proof = prove_plugin_runtime_sandbox_from_path(
             &registry_root,
             &[trusted_key],
-            Some("prove_plugin_runtime_sandbox_dry_run"),
+            Some("prove_plugin_runtime_sandbox_process_proof"),
         )
         .unwrap();
 
         assert!(!proof.code_executed);
-        assert!(!proof.process_boundary_ready);
-        assert!(!proof.ipc_allowlist_ready);
+        assert!(proof.process_boundary_ready);
+        assert!(proof.ipc_allowlist_ready);
         assert!(!proof.permission_grant_ready);
         assert_eq!(proof.audit_passed_count, 1);
         assert_eq!(proof.audit_failed_count, 0);
@@ -2896,12 +2896,13 @@ mod tests {
         assert!(proof.entries[0].issues.is_empty());
         assert!(proof.entries[0]
             .deny_reason
-            .contains("denied before code load"));
+            .contains("Owned process boundary proved"));
         assert_eq!(proof.escape_attempts.len(), 8);
         assert!(proof
             .escape_attempts
             .iter()
-            .all(|attempt| attempt.result == "blocked-before-code-load"));
+            .all(|attempt| attempt.result == "blocked-by-admission"));
+        assert!(proof.source_label.contains("proof-process"));
         assert!(proof
             .escape_attempts
             .iter()
@@ -3386,10 +3387,11 @@ mod tests {
         assert!(!review.install_applied);
         assert!(!review.auto_install_allowed);
         assert!(!review.permission_grants_persisted);
-        assert!(!review.process_boundary_ready);
+        assert!(review.process_boundary_ready);
         assert!(!review.network_allowed);
         assert!(check_ids.contains("registry-audit"));
         assert!(check_ids.contains("activation-consent"));
+        assert!(check_ids.contains("process-boundary-proof"));
         assert!(check_ids.contains("execution-denied"));
         assert!(check_ids.contains("download-install-denied"));
         assert!(check_ids.contains("permission-grants-denied"));
