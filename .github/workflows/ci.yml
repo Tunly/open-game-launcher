@@ -201,6 +201,8 @@ jobs:
         run: node --test scripts/release-tracking-check.test.mjs
       - name: Validate release tag script
         run: node --test scripts/release-tag-check.test.mjs
+      - name: Validate release workflow contract
+        run: node --test scripts/release-workflow-check.test.mjs
       - name: Validate UI evidence guard
         run: node --test scripts/ui-evidence-check.test.mjs
       - name: Check UI screenshot evidence for changed UI files

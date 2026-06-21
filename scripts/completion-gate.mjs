@@ -165,6 +165,18 @@ export const completionLocalChecks = Object.freeze([
     label: "Release tag script tests",
   },
   {
+    args: ["release:workflow:test"],
+    command: "pnpm",
+    id: "release-workflow-test",
+    label: "Release workflow contract tests",
+  },
+  {
+    args: ["release:workflow"],
+    command: "pnpm",
+    id: "release-workflow-check",
+    label: "Release workflow contract check",
+  },
+  {
     args: ["external:evidence:test"],
     command: "pnpm",
     id: "external-evidence-test",
@@ -482,7 +494,11 @@ export function renderStatus(
   platform = process.platform,
   root = repoRoot,
 ) {
-  return JSON.stringify(completionStatusReport({ env, platform, root }), null, 2);
+  return JSON.stringify(
+    completionStatusReport({ env, platform, root }),
+    null,
+    2,
+  );
 }
 
 export function renderPlan() {

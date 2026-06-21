@@ -88,6 +88,11 @@ external evidence was collected in this workspace.
   toolchain pins, package/CI manifests, lint-staged config, and hosted evidence
   UI summaries must be tracked by Git before `completion:gate:local` can
   represent a clean-checkout-reproducible state.
+- Release workflow structure is locally gated: `pnpm release:workflow:test` and
+  `pnpm release:workflow` verify that `v*` tag packaging still waits for the
+  hosted-production external completion boundary, pinned platform build matrix,
+  target-scoped artifact uploads, signing env names, and draft-release handoff
+  before `completion:gate:local` can pass.
 - AI Recommendations Hosted Eval Contract local evidence is limited to
   `/library?verify=ai-recommendations-hosted-eval-contract` screenshots, DOM
   overflow checks, and contract tests for deterministic baseline fixtures,
@@ -196,6 +201,8 @@ pnpm completion:gate:external # fails until hosted deploy, hosted cron, and exte
 pnpm hosted:deploy-gate:test # passed
 pnpm completion:gate:test # passed
 pnpm release:tag:test # passed
+pnpm release:workflow:test # passed
+pnpm release:workflow # passed
 pnpm tauri:debug-bundle:test # passed
 pnpm tauri:debug-bundle # passed on linux with a debug .deb bundle smoke
 pnpm external:evidence:test # passed

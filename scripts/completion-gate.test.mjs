@@ -37,6 +37,8 @@ const expectedLocalCompletionCheckIds = Object.freeze([
   "hosted-deploy-gate-test",
   "completion-gate-test",
   "release-tag-test",
+  "release-workflow-test",
+  "release-workflow-check",
   "external-evidence-test",
   "hosted-cron-evidence-test",
   "supabase-db-lint-test",
@@ -89,6 +91,7 @@ const requiredLocalCompletionCheckIds = Object.freeze([
   "frontend-coverage",
   "tauri-debug-bundle",
   "rust-active-toolchain",
+  "release-workflow-check",
   "supabase-db-lint-test",
   "supabase-db-lint",
   "supabase-functions-check",
@@ -345,6 +348,18 @@ test("local lane includes coverage, Tauri bundle smoke, Supabase DB lint, and Wi
     ciWorkflow,
     /run: node --test scripts\/release-tracking-check\.test\.mjs/,
   );
+  const releaseWorkflowTest = commandLine(
+    findCheckById(completionLocalChecks, "release-workflow-test", "local"),
+  );
+  assert.equal(releaseWorkflowTest, "pnpm release:workflow:test");
+  assert.match(
+    ciWorkflow,
+    /run: node --test scripts\/release-workflow-check\.test\.mjs/,
+  );
+  const releaseWorkflowCheck = commandLine(
+    findCheckById(completionLocalChecks, "release-workflow-check", "local"),
+  );
+  assert.equal(releaseWorkflowCheck, "pnpm release:workflow");
 
   const supabaseFunctionsCheck = commandLine(
     findCheckById(completionLocalChecks, "supabase-functions-check", "local"),
@@ -362,7 +377,10 @@ test("local lane includes coverage, Tauri bundle smoke, Supabase DB lint, and Wi
     findCheckById(completionLocalChecks, "tauri-debug-bundle", "local"),
   );
   assert.equal(tauriDebugBundle, "pnpm tauri:debug-bundle");
-  assert.match(ciWorkflow, /run: pnpm tauri build --target \$\{\{ matrix\.target \}\}/);
+  assert.match(
+    ciWorkflow,
+    /run: pnpm tauri build --target \$\{\{ matrix\.target \}\}/,
+  );
 
   const tauriDebugBundleTest = commandLine(
     findCheckById(completionLocalChecks, "tauri-debug-bundle-test", "local"),
@@ -629,10 +647,7 @@ test("local action writes a local-only completion receipt without release-proof 
       "rust-windows-check",
       "local",
     );
-    assert.equal(
-      executedCommands.includes(commandLine(windowsCheck)),
-      false,
-    );
+    assert.equal(executedCommands.includes(commandLine(windowsCheck)), false);
     assert.equal(executedCommands.length, completionLocalChecks.length - 1);
 
     const receiptPath = localCompletionReceiptPath(root);
@@ -660,7 +675,10 @@ test("local action writes a local-only completion receipt without release-proof 
     assert.equal(report.local.latestReceipt.valid, true);
     assert.equal(report.local.latestReceipt.releaseProof, false);
     assert.equal(report.local.latestReceipt.externalEvidenceCollected, false);
-    assert.equal(report.local.latestReceipt.checkCount, completionLocalChecks.length);
+    assert.equal(
+      report.local.latestReceipt.checkCount,
+      completionLocalChecks.length,
+    );
     assert.equal(report.releaseReady, false);
   } finally {
     rmSync(root, { force: true, recursive: true });
