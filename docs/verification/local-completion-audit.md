@@ -179,12 +179,13 @@ external evidence was collected in this workspace.
 - Performance polling is locally gated: active game attribution polls native
   metrics at 1Hz, while standalone/idle overlay attribution uses local preview
   without native polling.
-- Plugin Runtime Sandbox local evidence is still an admission dry-run: it
-  re-audits disabled signed packages, denies entrypoints before code load, keeps
-  `codeExecuted false`, and does not prove third-party plugin execution. The
-  next local implementation slice is the proof-process design path; release
-  completion still requires explicit design approval plus later implementation
-  evidence before this can move beyond dry-run language.
+- Plugin Runtime Sandbox local evidence includes an owned proof-process lane: it
+  re-audits disabled signed packages, proves a local child-process boundary,
+  keeps entrypoints blocked, keeps `codeExecuted false`, keeps persistent
+  permission grants denied, and does not prove third-party plugin execution.
+  Release completion still requires external plugin marketplace and production
+  signing/update evidence before plugin execution channels can be treated as
+  externally complete.
 - Latest focused operational verification commands:
 
 ```bash

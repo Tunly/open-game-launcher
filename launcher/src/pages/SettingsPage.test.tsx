@@ -141,7 +141,7 @@ const launcherMocks = vi.hoisted(() => ({
       networkAllowed: false,
       permissionGrantsPersisted: false,
       pluginId: "local-import-demo",
-      processBoundaryReady: false,
+      processBoundaryReady: true,
       registryPath: "app-data/plugins/staged/local-import-demo/1.0.0",
       reviewedAt: "2026-06-15T00:04:00.000Z",
       sourceLabel: "Native activation plan review",

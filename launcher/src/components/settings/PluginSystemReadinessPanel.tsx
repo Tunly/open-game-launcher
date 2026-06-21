@@ -12,6 +12,10 @@ import {
   Upload,
 } from "lucide-react";
 
+import {
+  isRuntimeSandboxProcessProofReady,
+  isRuntimeSandboxProofReady,
+} from "../../lib/plugin-system-readiness";
 import type {
   PluginActivationPlanReviewEvidence,
   PluginDisabledRegistryAuditEvidence,
@@ -522,12 +526,12 @@ function PluginActivationPlanReviewLedger({
       </div>
       <p className="neo-copy mt-2 border-2 border-black bg-[#efe6d4] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#171411]">
         Activation review re-audits the disabled registry and proves the package remains blocked: no
-        download, install, permission grant, network, process boundary, or code execution is allowed
-        from this panel.
+        download, install, permission grant, network access, or code execution is allowed from this
+        panel; process boundary evidence stays review-only.
       </p>
       {review ? (
         <div className="mt-3 grid gap-2">
-          <div className="grid gap-2 sm:grid-cols-3">
+          <div className="grid gap-2 sm:grid-cols-4">
             <p className="neo-copy border-2 border-black bg-[#f5eedf] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#171411]">
               Code Executed: {String(review.codeExecuted)}
             </p>
@@ -536,6 +540,9 @@ function PluginActivationPlanReviewLedger({
             </p>
             <p className="neo-copy border-2 border-black bg-[#f5eedf] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#171411]">
               Install: {review.installApplied ? "applied" : "blocked"}
+            </p>
+            <p className="neo-copy border-2 border-black bg-[#f5eedf] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#171411]">
+              Process Boundary: {review.processBoundaryReady ? "review-only" : "blocked"}
             </p>
           </div>
           <p className="neo-copy break-words border-2 border-black bg-[#f5eedf] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#5b403f]">
@@ -792,11 +799,8 @@ function PluginRuntimeSandboxProofLedger({
 }) {
   const entries = proof?.entries ?? [];
   const escapeAttempts = proof?.escapeAttempts ?? [];
-  const isProcessProof = Boolean(
-    proof?.processBoundaryReady &&
-    proof.ipcAllowlistReady === true &&
-    proof.permissionGrantReady === false,
-  );
+  const isProcessProof = isRuntimeSandboxProcessProofReady(proof);
+  const isReadyProof = isRuntimeSandboxProofReady(proof);
 
   return (
     <div className="min-w-0 max-w-full border-2 border-black bg-[#fff9ed] p-3 shadow-[3px_3px_0_#171411]">
@@ -805,7 +809,9 @@ function PluginRuntimeSandboxProofLedger({
           <ShieldCheck className="h-4 w-4" />
           {isProcessProof
             ? "Native Runtime Sandbox Process Proof"
-            : "Native Runtime Sandbox Dry-Run"}
+            : proof && !isReadyProof
+              ? "Native Runtime Sandbox Proof Blocked"
+              : "Native Runtime Sandbox Dry-Run"}
         </p>
         <span className="neo-copy border-2 border-black bg-[#8cf5e4] px-2 py-1 text-[8px] font-black uppercase text-[#171411]">
           {proof
@@ -814,9 +820,13 @@ function PluginRuntimeSandboxProofLedger({
         </span>
       </div>
       <p className="neo-copy mt-2 border-2 border-black bg-[#efe6d4] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#171411]">
-        {isProcessProof
-          ? "Owned process boundary is proved for the local admission lane: disabled registry entries are re-audited, entrypoints remain blocked, deny-all IPC is enforced, permissions stay denied, and codeExecuted false."
-          : "Process Boundary proof is an admission dry-run only: disabled registry entries are re-audited, entrypoints and escape fixtures are denied before code load, permissions stay denied, and codeExecuted false."}
+        {!proof
+          ? "No native runtime sandbox proof has been run. Runtime admission remains blocked."
+          : isProcessProof
+            ? "Owned process boundary is proved for the local admission lane: disabled registry entries are re-audited, entrypoints remain blocked, deny-all IPC is enforced, permissions stay denied, and codeExecuted false."
+            : isReadyProof
+              ? "Process Boundary proof is an admission dry-run only: disabled registry entries are re-audited, entrypoints and escape fixtures are denied before code load, permissions stay denied, and codeExecuted false."
+              : "Native runtime sandbox evidence is unsafe or incomplete; plugin admission remains blocked until the desktop proof returns deny-all counters with no code execution."}
       </p>
       {proof ? (
         <div className="mt-3 grid gap-2">

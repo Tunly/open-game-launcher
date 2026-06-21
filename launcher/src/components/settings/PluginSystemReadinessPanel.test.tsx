@@ -39,7 +39,9 @@ describe("PluginSystemReadinessPanel", () => {
     expect(within(panel).getByText("Native Disabled Registry Audit")).toBeInTheDocument();
     expect(within(panel).getByText(/stage-record status, hashes, signature/i)).toBeInTheDocument();
     expect(within(panel).getByText("Native Runtime Sandbox Dry-Run")).toBeInTheDocument();
-    expect(within(panel).getByText(/denied before code load/i)).toBeInTheDocument();
+    expect(
+      within(panel).getByText(/No native runtime sandbox proof has been run/i),
+    ).toBeInTheDocument();
     expect(within(panel).getAllByText(/codeExecuted false/i).length).toBeGreaterThan(0);
     expect(within(panel).getByText("Browser Display Cache")).toBeInTheDocument();
     expect(
@@ -102,6 +104,33 @@ describe("PluginSystemReadinessPanel", () => {
     expect(within(panel).getByText(/staged package remains disabled/i)).toBeInTheDocument();
     expect(panel).not.toHaveTextContent(
       /plugin executed true|permission granted|marketplace live|auto-update installed|runtime ready|production sandbox ready/i,
+    );
+  });
+
+  it("does not show process-proof success copy for unsafe process-like evidence", () => {
+    const readiness = createVerifyPluginRuntimeSandboxReadiness();
+    render(
+      <PluginSystemReadinessPanel
+        readiness={{
+          ...readiness,
+          runtimeSandboxProof: {
+            ...readiness.runtimeSandboxProof!,
+            allowedExecutionCount: 1,
+            codeExecuted: true,
+          },
+        }}
+      />,
+    );
+
+    const panel = screen.getByRole("region", { name: /plugin system readiness/i });
+    expect(within(panel).getByText("Native Runtime Sandbox Proof Blocked")).toBeInTheDocument();
+    expect(
+      within(panel).queryByText("Native Runtime Sandbox Process Proof"),
+    ).not.toBeInTheDocument();
+    expect(within(panel).getByText(/unsafe or incomplete/i)).toBeInTheDocument();
+    expect(within(panel).getByText(/codeExecuted true/i)).toBeInTheDocument();
+    expect(panel).not.toHaveTextContent(
+      /Owned process boundary is proved for the local admission lane/i,
     );
   });
 
@@ -241,7 +270,7 @@ describe("PluginSystemReadinessPanel", () => {
       networkAllowed: false,
       permissionGrantsPersisted: false,
       pluginId: "library-tags-exporter",
-      processBoundaryReady: false,
+      processBoundaryReady: true,
       registryPath: "app-data/plugins/staged/library-tags-exporter/0.3.1",
       reviewedAt: "2026-06-15T00:04:00.000Z",
       sourceLabel: "Native activation plan review",
@@ -263,12 +292,13 @@ describe("PluginSystemReadinessPanel", () => {
     expect(within(panel).getByText("blocked-production-sandbox")).toBeInTheDocument();
     expect(
       within(panel).getByText(
-        /no download, install, permission grant, network, process boundary, or code execution/i,
+        /no download, install, permission grant, network access, or code execution/i,
       ),
     ).toBeInTheDocument();
     expect(within(panel).getByText(/Code Executed: false/i)).toBeInTheDocument();
     expect(within(panel).getByText(/Download: blocked/i)).toBeInTheDocument();
     expect(within(panel).getByText(/Install: blocked/i)).toBeInTheDocument();
+    expect(within(panel).getByText(/Process Boundary: review-only/i)).toBeInTheDocument();
     expect(
       within(panel).getByText(
         /Native activation plan review \/\/ library-tags-exporter \/\/ 0\.3\.1 \/\/ 2026-06-15T00:04:00\.000Z/i,

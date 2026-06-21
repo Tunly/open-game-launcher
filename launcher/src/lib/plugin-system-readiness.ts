@@ -191,7 +191,7 @@ export interface PluginActivationPlanReviewEvidence {
   installApplied: false;
   autoInstallAllowed: false;
   permissionGrantsPersisted: false;
-  processBoundaryReady: false;
+  processBoundaryReady: boolean;
   networkAllowed: false;
   checks: PluginActivationPlanReviewCheck[];
   reviewedAt: string;
@@ -978,7 +978,7 @@ function isRuntimeSandboxDryRunProofReady(
   );
 }
 
-function isRuntimeSandboxProcessProofReady(
+export function isRuntimeSandboxProcessProofReady(
   proof: PluginRuntimeSandboxProofEvidence | null,
 ): boolean {
   return Boolean(
@@ -993,7 +993,9 @@ function isRuntimeSandboxProcessProofReady(
   );
 }
 
-function isRuntimeSandboxProofReady(proof: PluginRuntimeSandboxProofEvidence | null): boolean {
+export function isRuntimeSandboxProofReady(
+  proof: PluginRuntimeSandboxProofEvidence | null,
+): boolean {
   return isRuntimeSandboxDryRunProofReady(proof) || isRuntimeSandboxProcessProofReady(proof);
 }
 
