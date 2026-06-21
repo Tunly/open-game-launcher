@@ -136,6 +136,7 @@ const storeMocks = vi.hoisted(() => ({
   removeStorePriceAlert: vi.fn(),
   reportStoreReview: vi.fn(),
   requestStoreOrderRefund: vi.fn(),
+  submitDeveloperApplication: vi.fn(),
   syncStoreOrderInvoice: vi.fn(),
   upsertStorePriceAlert: vi.fn(),
   upsertStoreReview: vi.fn(),
@@ -624,6 +625,7 @@ describe("routed page smoke coverage", () => {
     storeMocks.removeStorePriceAlert.mockResolvedValue(undefined);
     storeMocks.reportStoreReview.mockResolvedValue(undefined);
     storeMocks.requestStoreOrderRefund.mockResolvedValue(undefined);
+    storeMocks.submitDeveloperApplication.mockResolvedValue(null);
     storeMocks.syncStoreOrderInvoice.mockResolvedValue(null);
     storeMocks.upsertStorePriceAlert.mockResolvedValue(undefined);
     storeMocks.upsertStoreReview.mockResolvedValue(null);
@@ -791,6 +793,59 @@ describe("routed page smoke coverage", () => {
 
     expect(screen.getByRole("heading", { name: /developer portal/i })).toBeInTheDocument();
     expect(screen.getByLabelText("Studio Name")).toBeInTheDocument();
+  });
+
+  it("submits the developer portal intake form", async () => {
+    renderRoute(<DeveloperPortalPage />);
+
+    const submitButton = screen.getByRole("button", { name: /submit application/i });
+    expect(submitButton).toBeDisabled();
+
+    fireEvent.change(screen.getByLabelText("Studio Name"), {
+      target: { value: "Redline Studio" },
+    });
+    expect(submitButton).toBeEnabled();
+    fireEvent.change(screen.getByLabelText("Website"), {
+      target: { value: "https://redline.example" },
+    });
+    fireEvent.change(screen.getByLabelText("Description"), {
+      target: { value: "Arcade launch plan" },
+    });
+    fireEvent.click(submitButton);
+
+    await waitFor(() =>
+      expect(storeMocks.submitDeveloperApplication).toHaveBeenCalledWith(
+        "Redline Studio",
+        "https://redline.example",
+        "Arcade launch plan",
+      ),
+    );
+    expect(await screen.findByText("Application queued")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /review pending/i })).toBeInTheDocument();
+    expect(screen.queryByLabelText("Studio Name")).not.toBeInTheDocument();
+  });
+
+  it("keeps developer portal intake form state after submit errors", async () => {
+    storeMocks.submitDeveloperApplication.mockRejectedValueOnce(
+      new Error("Supabase is not configured."),
+    );
+    renderRoute(<DeveloperPortalPage />);
+
+    fireEvent.change(screen.getByLabelText("Studio Name"), {
+      target: { value: "  Redline Studio  " },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /submit application/i }));
+
+    await waitFor(() =>
+      expect(storeMocks.submitDeveloperApplication).toHaveBeenCalledWith(
+        "Redline Studio",
+        null,
+        null,
+      ),
+    );
+    expect(await screen.findByText("Supabase is not configured.")).toBeInTheDocument();
+    expect(screen.getByLabelText("Studio Name")).toHaveValue("  Redline Studio  ");
+    expect(screen.queryByRole("heading", { name: /review pending/i })).not.toBeInTheDocument();
   });
 
   it("renders family sharing after the empty relay load", async () => {
