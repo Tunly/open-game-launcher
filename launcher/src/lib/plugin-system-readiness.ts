@@ -278,7 +278,7 @@ const LOCAL_ONLY_GUARDS = [
   "Deny-by-default permissions",
   "No plugin execution",
   "Native disabled registry audit",
-  "Native runtime admission dry-run",
+  "Native runtime admission proof",
   "Sandbox escape fixtures blocked",
   "Signed package stages disabled",
   "No permission grant persisted",
@@ -290,7 +290,7 @@ const LOCAL_ONLY_GUARDS = [
 ];
 
 const LOCAL_ONLY_GUARD_COPY =
-  "Local only: this panel reviews manifests, permissions, theme hooks, signatures, disabled package staging, runtime admission dry-runs, blocked escape fixtures, update-signing envelopes, and marketplace gates from a static ledger. It does not load, execute, enable, update, install, or sell plugins, and it does not connect to a plugin marketplace.";
+  "Local only: this panel reviews manifests, permissions, theme hooks, signatures, disabled package staging, runtime admission proofs, blocked escape fixtures, update-signing envelopes, and marketplace gates from a static ledger. It does not load, execute, enable, update, install, or sell plugins, and it does not connect to a plugin marketplace.";
 
 const EXPECTED_RUNTIME_SANDBOX_ESCAPE_ATTEMPTS: PluginRuntimeSandboxEscapeAttempt[] = [
   {
@@ -383,6 +383,7 @@ export function buildPluginSystemReadiness(
     disabledRegistryAudit && disabledRegistryAudit.failedCount > 0,
   );
   const runtimeSandboxProofReady = isRuntimeSandboxProofReady(runtimeSandboxProof);
+  const runtimeSandboxProcessProofReady = isRuntimeSandboxProcessProofReady(runtimeSandboxProof);
   const runtimeSandboxProofUnsafe = isRuntimeSandboxProofUnsafe(runtimeSandboxProof);
   const updateSigningReviewReady = isUpdateSigningReviewReady(updateSigningReview);
   const updateSigningReviewUnsafe = isUpdateSigningReviewUnsafe(updateSigningReview);
@@ -488,25 +489,29 @@ export function buildPluginSystemReadiness(
     },
     {
       action: runtimeSandboxProofUnsafe
-        ? "Fix runtime dry-run evidence before any plugin admission work."
+        ? "Fix runtime sandbox evidence before any plugin admission work."
         : runtimeSandboxProofReady
           ? "Treat runtime proof as admission evidence only; production sandbox hardening remains open."
           : input.sandboxPrototypeAvailable
             ? "Run only signed fixtures in the sandbox prototype."
             : "Build a process boundary before loading third-party plugin code.",
       detail: runtimeSandboxProofUnsafe
-        ? "Native runtime sandbox returned unsafe runtime dry-run evidence; plugin admission remains blocked."
-        : runtimeSandboxProofReady
+        ? "Native runtime sandbox returned unsafe runtime proof evidence; plugin admission remains blocked."
+        : runtimeSandboxProcessProofReady
           ? `${runtimeSandboxProof?.deniedEntrypointCount ?? 0} entrypoint${
               runtimeSandboxProof?.deniedEntrypointCount === 1 ? "" : "s"
-            } denied before code load; ${
-              runtimeSandboxProof?.escapeAttempts.length ?? 0
-            } escape fixture${
-              runtimeSandboxProof?.escapeAttempts.length === 1 ? "" : "s"
-            } blocked before code load; codeExecuted false, permissions denied, process boundary not production-ready.`
-          : input.sandboxPrototypeAvailable
-            ? "Sandbox prototype exists, but still needs hardening and escape tests."
-            : "No plugin runtime, WASM host, IPC boundary, or process sandbox is implemented.",
+            } remain blocked; owned process boundary and deny-all IPC proof passed; codeExecuted false, persistent permissions denied, plugin execution blocked.`
+          : runtimeSandboxProofReady
+            ? `${runtimeSandboxProof?.deniedEntrypointCount ?? 0} entrypoint${
+                runtimeSandboxProof?.deniedEntrypointCount === 1 ? "" : "s"
+              } denied before code load; ${
+                runtimeSandboxProof?.escapeAttempts.length ?? 0
+              } escape fixture${
+                runtimeSandboxProof?.escapeAttempts.length === 1 ? "" : "s"
+              } blocked before code load; codeExecuted false, permissions denied, process boundary not production-ready.`
+            : input.sandboxPrototypeAvailable
+              ? "Sandbox prototype exists, but still needs hardening and escape tests."
+              : "No plugin runtime, WASM host, IPC boundary, or process sandbox is implemented.",
       id: "runtime-sandbox",
       label: "Runtime Sandbox",
       status: runtimeSandboxProofUnsafe
@@ -916,6 +921,7 @@ function isDisabledRegistryAuditReady(audit: PluginDisabledRegistryAuditEvidence
 
 function hasExpectedRuntimeSandboxEscapeAttempts(
   attempts: PluginRuntimeSandboxEscapeAttempt[],
+  expectedResult = "blocked-before-code-load",
 ): boolean {
   if (attempts.length !== EXPECTED_RUNTIME_SANDBOX_ESCAPE_ATTEMPTS.length) return false;
 
@@ -929,12 +935,15 @@ function hasExpectedRuntimeSandboxEscapeAttempts(
       actual.boundary === expected.boundary &&
       actual.label === expected.label &&
       actual.payload === expected.payload &&
-      actual.result === expected.result
+      actual.result === expectedResult
     );
   });
 }
 
-function isRuntimeSandboxProofReady(proof: PluginRuntimeSandboxProofEvidence | null): boolean {
+function hasCommonRuntimeSandboxProofShape(
+  proof: PluginRuntimeSandboxProofEvidence | null,
+  expectedEscapeResult: string,
+): proof is PluginRuntimeSandboxProofEvidence {
   return Boolean(
     proof &&
     proof.auditPassedCount > 0 &&
@@ -943,9 +952,6 @@ function isRuntimeSandboxProofReady(proof: PluginRuntimeSandboxProofEvidence | n
     proof.auditPassedCount === proof.deniedEntrypointCount &&
     proof.allowedExecutionCount === 0 &&
     proof.codeExecuted === false &&
-    proof.processBoundaryReady === false &&
-    proof.ipcAllowlistReady === false &&
-    proof.permissionGrantReady === false &&
     proof.entries.length === proof.deniedEntrypointCount &&
     proof.entries.every(
       (entry) =>
@@ -957,8 +963,38 @@ function isRuntimeSandboxProofReady(proof: PluginRuntimeSandboxProofEvidence | n
         Boolean(cleanText(entry.registryPath)) &&
         Boolean(cleanText(entry.version)),
     ) &&
-    hasExpectedRuntimeSandboxEscapeAttempts(proof.escapeAttempts),
+    hasExpectedRuntimeSandboxEscapeAttempts(proof.escapeAttempts, expectedEscapeResult),
   );
+}
+
+function isRuntimeSandboxDryRunProofReady(
+  proof: PluginRuntimeSandboxProofEvidence | null,
+): boolean {
+  return Boolean(
+    hasCommonRuntimeSandboxProofShape(proof, "blocked-before-code-load") &&
+    proof.processBoundaryReady === false &&
+    proof.ipcAllowlistReady === false &&
+    proof.permissionGrantReady === false,
+  );
+}
+
+function isRuntimeSandboxProcessProofReady(
+  proof: PluginRuntimeSandboxProofEvidence | null,
+): boolean {
+  return Boolean(
+    hasCommonRuntimeSandboxProofShape(proof, "blocked-by-admission") &&
+    proof.processBoundaryReady === true &&
+    proof.ipcAllowlistReady === true &&
+    proof.permissionGrantReady === false &&
+    proof.sourceLabel.toLowerCase().includes("proof-process") &&
+    proof.entries.every((entry) =>
+      cleanText(entry.denyReason)?.toLowerCase().includes("owned process boundary proved"),
+    ),
+  );
+}
+
+function isRuntimeSandboxProofReady(proof: PluginRuntimeSandboxProofEvidence | null): boolean {
+  return isRuntimeSandboxDryRunProofReady(proof) || isRuntimeSandboxProcessProofReady(proof);
 }
 
 function isRuntimeSandboxProofUnsafe(proof: PluginRuntimeSandboxProofEvidence | null): boolean {
@@ -1179,7 +1215,7 @@ function createVerifyPluginRuntimeSandboxProof(): PluginRuntimeSandboxProofEvide
     entries: [
       {
         denyReason:
-          "Process sandbox runtime is not implemented; plugin entrypoint denied before code load.",
+          "Owned process boundary proved; plugin entrypoint remains denied until the production runtime grants model exists.",
         entrypoint: "dist/main.js",
         issues: [],
         pluginId: "library-tags-exporter",
@@ -1188,13 +1224,16 @@ function createVerifyPluginRuntimeSandboxProof(): PluginRuntimeSandboxProofEvide
         version: "0.3.1",
       },
     ],
-    escapeAttempts: createVerifyPluginRuntimeSandboxEscapeAttempts(),
-    ipcAllowlistReady: false,
+    escapeAttempts: createVerifyPluginRuntimeSandboxEscapeAttempts().map((attempt) => ({
+      ...attempt,
+      result: "blocked-by-admission",
+    })),
+    ipcAllowlistReady: true,
     permissionGrantReady: false,
-    processBoundaryReady: false,
+    processBoundaryReady: true,
     provedAt: "2026-06-15T00:02:00.000Z",
     registryPath: "app-data/plugins/staged",
-    sourceLabel: "Verification native runtime sandbox dry-run fixture",
+    sourceLabel: "Verification native runtime sandbox proof-process fixture",
   };
 }
 

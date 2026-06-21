@@ -112,6 +112,34 @@ function createRuntimeSandboxProof(
   };
 }
 
+function createRuntimeSandboxProcessProof(
+  overrides: Partial<PluginRuntimeSandboxProofEvidence> = {},
+): PluginRuntimeSandboxProofEvidence {
+  return createRuntimeSandboxProof({
+    entries: [
+      {
+        denyReason:
+          "Owned process boundary proved; plugin entrypoint remains denied until the production runtime grants model exists.",
+        entrypoint: "dist/main.js",
+        issues: [],
+        pluginId: "verified-plugin",
+        registryPath: "app-data/plugins/staged/verified-plugin/1.0.0",
+        status: "runtime-blocked",
+        version: "1.0.0",
+      },
+    ],
+    escapeAttempts: createRuntimeSandboxEscapeAttempts().map((attempt) => ({
+      ...attempt,
+      result: "blocked-by-admission",
+    })),
+    ipcAllowlistReady: true,
+    permissionGrantReady: false,
+    processBoundaryReady: true,
+    sourceLabel: "Desktop runtime sandbox proof-process",
+    ...overrides,
+  });
+}
+
 function buildRuntimeReadinessWithProof(proof: PluginRuntimeSandboxProofEvidence) {
   return buildPluginSystemReadiness({
     hostedMarketplaceConfigured: true,
@@ -138,7 +166,7 @@ describe("buildPluginSystemReadiness", () => {
     expect(readiness.guards).toContain("Deny-by-default permissions");
     expect(readiness.guards).toContain("No plugin execution");
     expect(readiness.guards).toContain("Native disabled registry audit");
-    expect(readiness.guards).toContain("Native runtime admission dry-run");
+    expect(readiness.guards).toContain("Native runtime admission proof");
     expect(readiness.guards).toContain("Sandbox escape fixtures blocked");
     expect(readiness.guards).toContain("Signed package stages disabled");
     expect(readiness.guards).toContain("No permission grant persisted");
@@ -408,6 +436,38 @@ describe("buildPluginSystemReadiness", () => {
     expect(readiness.statusLabel).toBe("Needs hardening");
   });
 
+  it("treats proof-process sandbox evidence as local admission evidence", () => {
+    const readiness = buildRuntimeReadinessWithProof(createRuntimeSandboxProcessProof());
+
+    const runtimeCheck = readiness.checks.find((check) => check.id === "runtime-sandbox");
+    expect(runtimeCheck?.status).toBe("warning");
+    expect(runtimeCheck?.detail).toContain("owned process boundary");
+    expect(runtimeCheck?.detail).toContain("codeExecuted false");
+    expect(runtimeCheck?.detail).toContain("plugin execution blocked");
+    expect(readiness.runtimeSandboxProof?.processBoundaryReady).toBe(true);
+    expect(readiness.runtimeSandboxProof?.ipcAllowlistReady).toBe(true);
+    expect(readiness.runtimeSandboxProof?.permissionGrantReady).toBe(false);
+    expect(readiness.runtimeSandboxProof?.allowedExecutionCount).toBe(0);
+    expect(readiness.runtimeSandboxProof?.escapeAttempts).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "path-traversal-entrypoint",
+          result: "blocked-by-admission",
+        }),
+        expect.objectContaining({
+          id: "ipc-open-shell",
+          result: "blocked-by-admission",
+        }),
+        expect.objectContaining({
+          id: "permission-process-spawn",
+          result: "blocked-by-admission",
+        }),
+      ]),
+    );
+    expect(readiness.blockedCount).toBe(0);
+    expect(readiness.statusLabel).toBe("Needs hardening");
+  });
+
   it("treats update signing review evidence as signature review without auto-install", () => {
     const readiness = buildPluginSystemReadiness({
       disabledRegistryAudit: {
@@ -566,7 +626,8 @@ describe("buildPluginSystemReadiness", () => {
     const runtimeCheck = readiness.checks.find((check) => check.id === "runtime-sandbox");
 
     expect(runtimeCheck?.status).toBe("warning");
-    expect(runtimeCheck?.detail).toContain("8 escape fixtures");
+    expect(runtimeCheck?.detail).toContain("owned process boundary");
+    expect(runtimeCheck?.detail).toContain("plugin execution blocked");
     expect(readiness.runtimeSandboxProof).toEqual(
       expect.objectContaining({
         allowedExecutionCount: 0,
@@ -576,32 +637,32 @@ describe("buildPluginSystemReadiness", () => {
           expect.objectContaining({
             id: "path-traversal-entrypoint",
             payload: "../secrets/token.txt",
-            result: "blocked-before-code-load",
+            result: "blocked-by-admission",
           }),
           expect.objectContaining({
             id: "ipc-open-shell",
             payload: "tauri.invoke('open_shell')",
-            result: "blocked-before-code-load",
+            result: "blocked-by-admission",
           }),
           expect.objectContaining({
             id: "filesystem-symlink-entrypoint",
             payload: "dist/linked-main.js -> /tmp/escape.js",
-            result: "blocked-before-code-load",
+            result: "blocked-by-admission",
           }),
           expect.objectContaining({
             id: "manifest-nested-path-escape",
             payload: "plugins/../manifest.json",
-            result: "blocked-before-code-load",
+            result: "blocked-by-admission",
           }),
           expect.objectContaining({
             id: "ipc-network-fetch",
             payload: "tauri.invoke('fetch_url', 'https://plugins.example')",
-            result: "blocked-before-code-load",
+            result: "blocked-by-admission",
           }),
           expect.objectContaining({
             id: "permission-process-spawn",
             payload: "process:spawn",
-            result: "blocked-before-code-load",
+            result: "blocked-by-admission",
           }),
         ]),
       }),
@@ -814,9 +875,9 @@ describe("buildPluginSystemReadiness", () => {
 
     const runtimeCheck = readiness.checks.find((check) => check.id === "runtime-sandbox");
     expect(runtimeCheck?.status).toBe("blocked");
-    expect(runtimeCheck?.detail).toContain("unsafe runtime dry-run");
+    expect(runtimeCheck?.detail).toContain("unsafe runtime proof");
     expect(readiness.nextAction).toBe(
-      "Fix runtime dry-run evidence before any plugin admission work.",
+      "Fix runtime sandbox evidence before any plugin admission work.",
     );
   });
 
@@ -829,9 +890,9 @@ describe("buildPluginSystemReadiness", () => {
 
     const runtimeCheck = readiness.checks.find((check) => check.id === "runtime-sandbox");
     expect(runtimeCheck?.status).toBe("blocked");
-    expect(runtimeCheck?.detail).toContain("unsafe runtime dry-run");
+    expect(runtimeCheck?.detail).toContain("unsafe runtime proof");
     expect(readiness.nextAction).toBe(
-      "Fix runtime dry-run evidence before any plugin admission work.",
+      "Fix runtime sandbox evidence before any plugin admission work.",
     );
   });
 
@@ -853,7 +914,7 @@ describe("buildPluginSystemReadiness", () => {
 
       expect(runtimeCheck?.status).toBe("blocked");
       expect(readiness.nextAction).toBe(
-        "Fix runtime dry-run evidence before any plugin admission work.",
+        "Fix runtime sandbox evidence before any plugin admission work.",
       );
     }
   });
@@ -868,7 +929,7 @@ describe("buildPluginSystemReadiness", () => {
     const runtimeCheck = readiness.checks.find((check) => check.id === "runtime-sandbox");
     expect(runtimeCheck?.status).toBe("blocked");
     expect(readiness.nextAction).toBe(
-      "Fix runtime dry-run evidence before any plugin admission work.",
+      "Fix runtime sandbox evidence before any plugin admission work.",
     );
   });
 
@@ -884,7 +945,7 @@ describe("buildPluginSystemReadiness", () => {
     const runtimeCheck = readiness.checks.find((check) => check.id === "runtime-sandbox");
     expect(runtimeCheck?.status).toBe("blocked");
     expect(readiness.nextAction).toBe(
-      "Fix runtime dry-run evidence before any plugin admission work.",
+      "Fix runtime sandbox evidence before any plugin admission work.",
     );
   });
 
@@ -904,7 +965,7 @@ describe("buildPluginSystemReadiness", () => {
     const runtimeCheck = readiness.checks.find((check) => check.id === "runtime-sandbox");
     expect(runtimeCheck?.status).toBe("blocked");
     expect(readiness.nextAction).toBe(
-      "Fix runtime dry-run evidence before any plugin admission work.",
+      "Fix runtime sandbox evidence before any plugin admission work.",
     );
   });
 
