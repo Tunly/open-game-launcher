@@ -311,7 +311,6 @@ test("hostedCronEvidencePacket reports missing env and incomplete rows without r
   for (const name of [
     "SUPABASE_REST_URL",
     "SUPABASE_AUTH_JWT",
-    "OGL_HOSTED_CRON_FRESHNESS_HOURS",
     "OGL_HOSTED_CRON_EVIDENCE_CHECKS",
   ]) {
     assert.match(functionsEnvExample, new RegExp(`^${name}=`, "m"));
@@ -322,6 +321,18 @@ test("hostedCronEvidencePacket reports missing env and incomplete rows without r
   assert.ok(hostedCronEnvExample);
   assert.match(hostedCronEnvExample, /^SUPABASE_AUTH_JWT=/m);
   assert.match(hostedCronEnvExample, /authenticated caller JWT/i);
+});
+
+test("functions env example leaves global hosted cron freshness override disabled", () => {
+  const hostedCronEnvExample = functionsEnvExample.match(
+    /# --- Hosted cron evidence collector[\s\S]*# --- External completion evidence preflight/,
+  )?.[0];
+  assert.ok(hostedCronEnvExample);
+  assert.doesNotMatch(
+    hostedCronEnvExample,
+    /^OGL_HOSTED_CRON_FRESHNESS_HOURS=/m,
+  );
+  assert.match(hostedCronEnvExample, /^# OGL_HOSTED_CRON_FRESHNESS_HOURS=/m);
 });
 
 test("hostedCronEvidencePacket and artifact hints can focus one cron lane", () => {
