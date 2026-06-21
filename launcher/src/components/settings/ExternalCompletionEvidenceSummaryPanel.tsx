@@ -67,6 +67,7 @@ export function ExternalCompletionEvidenceSummaryPanel({
             </div>
           </div>
           <ReleaseBoundaryCommands commands={summary.releaseBoundaryCommands} />
+          <CommittedArtifactSnapshot summary={summary} />
         </div>
 
         <div className="grid gap-3 xl:grid-cols-2 2xl:grid-cols-3">
@@ -93,6 +94,76 @@ export function ExternalCompletionEvidenceSummaryPanel({
         </div>
       </div>
     </section>
+  );
+}
+
+function CommittedArtifactSnapshot({ summary }: { summary: ExternalCompletionEvidenceSummary }) {
+  const artifacts = summary.gates.flatMap((gate) =>
+    gate.artifactProofs.map((artifact) => ({
+      artifact,
+      gateLabel: gate.label,
+    })),
+  );
+  const readableCount = artifacts.filter(({ artifact }) => artifact.readable).length;
+  const readyCount = artifacts.filter(({ artifact }) => artifact.status === "pass").length;
+  const missingProofCount = artifacts.reduce(
+    (total, { artifact }) => total + artifact.missingProofs.length,
+    0,
+  );
+  const missingDetailCount = artifacts.reduce(
+    (total, { artifact }) => total + artifact.missingEvidenceDetails.length,
+    0,
+  );
+
+  return (
+    <div
+      aria-label="Committed external artifact snapshot"
+      className="border-2 border-black bg-[#efe3cf] p-3 shadow-[3px_3px_0_#171411]"
+      role="group"
+    >
+      <p className="neo-copy flex items-center gap-2 text-[10px] font-black uppercase text-[#5f574d]">
+        <FileWarning aria-hidden="true" className="h-4 w-4" />
+        Committed Artifact Snapshot
+      </p>
+      <div className="mt-3 grid gap-2">
+        <EvidenceStat label="Readable" value={`${readableCount}/${artifacts.length}`} />
+        <EvidenceStat label="Artifact Ready" value={`${readyCount}/${artifacts.length}`} />
+        <EvidenceStat label="Proof Rows Missing" value={`${missingProofCount}`} />
+        <EvidenceStat label="Details Missing" value={`${missingDetailCount}`} />
+      </div>
+      <div className="mt-3 grid gap-2">
+        {artifacts.map(({ artifact, gateLabel }) => (
+          <article
+            aria-label={`${gateLabel} artifact ${artifact.path}`}
+            className="border-2 border-black bg-[#fff9ed] p-2 shadow-[2px_2px_0_#171411]"
+            key={artifact.path}
+          >
+            <p className="neo-copy text-[8px] font-black uppercase tracking-[0.14em] text-[#b7102a]">
+              {gateLabel}
+            </p>
+            <p className="neo-copy mt-1 break-all text-[8px] font-black uppercase leading-4 text-[#171411]">
+              {artifact.path}
+            </p>
+            <dl className="mt-2 grid gap-1 [grid-template-columns:repeat(auto-fit,minmax(min(100%,6rem),1fr))]">
+              <EvidenceDatum label="Readable" value={artifact.readable ? "Yes" : "No"} />
+              <EvidenceDatum
+                label="State"
+                value={artifact.readable ? artifact.status : "Unreadable"}
+              />
+              <EvidenceDatum label="Proofs" value={`${artifact.missingProofs.length} Missing`} />
+              <EvidenceDatum
+                label="Details"
+                value={`${artifact.missingEvidenceDetails.length} Missing`}
+              />
+            </dl>
+          </article>
+        ))}
+      </div>
+      <p className="neo-copy mt-3 border-2 border-black bg-[#171411] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#fff9ed]">
+        Sanitized committed snapshot only. Readable template paths reduce operator ambiguity, but
+        unchecked proof rows and missing detail fields still block every external gate.
+      </p>
+    </div>
   );
 }
 
@@ -123,7 +194,10 @@ function ReleaseBoundaryCommands({ commands }: { commands: string[] }) {
 
 function EvidenceStat({ label, value }: { label: string; value: string }) {
   return (
-    <article className="border-2 border-black bg-[#fff9ed] p-2 shadow-[2px_2px_0_#171411]">
+    <article
+      aria-label={`${label}: ${value}`}
+      className="border-2 border-black bg-[#fff9ed] p-2 shadow-[2px_2px_0_#171411]"
+    >
       <p className="neo-copy text-[8px] font-black uppercase tracking-[0.14em] text-[#b7102a]">
         {label}
       </p>

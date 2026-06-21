@@ -98,11 +98,11 @@ describe("ExternalCompletionEvidenceSummaryPanel", () => {
 
     expect(within(panel).getByText("External Completion Evidence")).toBeInTheDocument();
     expect(within(panel).getByText("External Evidence Required")).toBeInTheDocument();
-    expect(within(panel).getByText("Store and Stripe live staging")).toBeInTheDocument();
-    expect(within(panel).getByText("Hosted Supabase cron")).toBeInTheDocument();
-    expect(within(panel).getByText("Provider live integrations")).toBeInTheDocument();
-    expect(within(panel).getByText("Hardware and OS E2E")).toBeInTheDocument();
-    expect(within(panel).getByText("Rollout tracks")).toBeInTheDocument();
+    expect(within(panel).getAllByText("Store and Stripe live staging").length).toBeGreaterThan(0);
+    expect(within(panel).getAllByText("Hosted Supabase cron").length).toBeGreaterThan(0);
+    expect(within(panel).getAllByText("Provider live integrations").length).toBeGreaterThan(0);
+    expect(within(panel).getAllByText("Hardware and OS E2E").length).toBeGreaterThan(0);
+    expect(within(panel).getAllByText("Rollout tracks").length).toBeGreaterThan(0);
     expect(within(panel).getByText("STRIPE_WEBHOOK_SECRET")).toBeInTheDocument();
     expect(within(panel).getByText("ACCOUNT_DELETION_PROCESSOR_SECRET")).toBeInTheDocument();
     expect(within(panel).getByText("No external proof claim")).toBeInTheDocument();
@@ -120,6 +120,29 @@ describe("ExternalCompletionEvidenceSummaryPanel", () => {
     expect(within(releaseCommands).getByText("pnpm completion:gate:status")).toBeVisible();
     expect(within(releaseCommands).getByText("pnpm completion:gate:external")).toBeVisible();
     expect(within(panel).getAllByText("pnpm external:evidence:packet")).toHaveLength(1);
+    const artifactSnapshot = within(panel).getByRole("group", {
+      name: /committed external artifact snapshot/i,
+    });
+    expect(within(artifactSnapshot).getByText("Committed Artifact Snapshot")).toBeVisible();
+    expect(within(artifactSnapshot).getByRole("article", { name: "Readable: 6/6" })).toBeVisible();
+    expect(
+      within(artifactSnapshot).getByRole("article", { name: "Artifact Ready: 0/6" }),
+    ).toBeVisible();
+    expect(
+      within(artifactSnapshot).getByRole("article", { name: "Proof Rows Missing: 19" }),
+    ).toBeVisible();
+    expect(
+      within(artifactSnapshot).getByRole("article", { name: "Details Missing: 81" }),
+    ).toBeVisible();
+    expect(within(artifactSnapshot).getAllByText("Yes")).toHaveLength(6);
+    expect(within(artifactSnapshot).getAllByText("blocked").length).toBeGreaterThan(0);
+    const storeArtifact = within(artifactSnapshot).getByRole("article", {
+      name: /store and stripe live staging artifact docs\/verification\/external\/store-stripe-live-staging\.md/i,
+    });
+    expect(
+      within(storeArtifact).getByText("docs/verification/external/store-stripe-live-staging.md"),
+    ).toBeVisible();
+    expect(within(artifactSnapshot).getByText(/Sanitized committed snapshot only/i)).toBeVisible();
     expect(
       within(
         screen.getByRole("article", {
@@ -158,18 +181,18 @@ describe("ExternalCompletionEvidenceSummaryPanel", () => {
       ),
     ).toBeVisible();
     expect(
-      within(panel).getByText(
-        "Create or refresh 1 external artifact file(s) with OGL_EXTERNAL_EVIDENCE_GATES=hardware-os-e2e pnpm external:evidence:template.",
-      ),
-    ).toBeVisible();
+      within(panel).getAllByText(
+        "Capture real external proof, then check the assigned artifact row(s) only after evidence is attached.",
+      ).length,
+    ).toBeGreaterThan(0);
     expect(
       within(panel).getAllByText("Hosted price-drop scheduler writes fresh run evidence.").length,
     ).toBeGreaterThan(0);
     expect(within(panel).getAllByText("Missing checked row").length).toBeGreaterThan(0);
-    expect(
-      within(panel).queryAllByText(/Secret Scan: Clean; no raw secrets rendered/i).length,
-    ).toBe(0);
-    const storeSecretScanStatus = within(panel).getByText("Not checked: 2 missing/unreadable");
+    expect(within(panel).getAllByText(/Secret Scan: Clean; no raw secrets rendered/i).length).toBe(
+      6,
+    );
+    const storeSecretScanStatus = within(panel).getAllByText("Clean")[0];
     expect(storeSecretScanStatus).toBeVisible();
     expect(storeSecretScanStatus).toHaveClass("whitespace-nowrap");
     expect(storeSecretScanStatus.closest("dl")?.className).toContain(
@@ -177,8 +200,9 @@ describe("ExternalCompletionEvidenceSummaryPanel", () => {
     );
     expect(within(panel).getAllByText("4 Missing")[0]).toHaveClass("whitespace-nowrap");
     expect(
-      within(panel).getAllByText(/Secret Scan: Not checked until artifact is readable/i).length,
-    ).toBe(6);
+      within(panel).queryAllByText(/Secret Scan: Not checked until artifact is readable/i).length,
+    ).toBe(0);
+    expect(within(panel).queryByText("Not checked: 2 missing/unreadable")).not.toBeInTheDocument();
     expect(panel).not.toHaveTextContent(
       /(sk_live|whsec_|secret-value|external completion complete|production ready|production deployment verified|scheduler verified|provider approved|dashboard verified|rollout complete)/i,
     );

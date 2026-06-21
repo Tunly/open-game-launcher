@@ -1390,11 +1390,11 @@ describe("SettingsPage external completion evidence summary", () => {
     });
 
     expect(within(panel).getByText("External Completion Evidence")).toBeInTheDocument();
-    expect(within(panel).getByText("Store and Stripe live staging")).toBeInTheDocument();
-    expect(within(panel).getByText("Hosted Supabase cron")).toBeInTheDocument();
-    expect(within(panel).getByText("Provider live integrations")).toBeInTheDocument();
-    expect(within(panel).getByText("Hardware and OS E2E")).toBeInTheDocument();
-    expect(within(panel).getByText("Rollout tracks")).toBeInTheDocument();
+    expect(within(panel).getAllByText("Store and Stripe live staging").length).toBeGreaterThan(0);
+    expect(within(panel).getAllByText("Hosted Supabase cron").length).toBeGreaterThan(0);
+    expect(within(panel).getAllByText("Provider live integrations").length).toBeGreaterThan(0);
+    expect(within(panel).getAllByText("Hardware and OS E2E").length).toBeGreaterThan(0);
+    expect(within(panel).getAllByText("Rollout tracks").length).toBeGreaterThan(0);
     expect(within(panel).getAllByText("Operator Commands").length).toBeGreaterThan(0);
     const releaseCommands = within(panel).getByRole("group", {
       name: /release boundary commands/i,
@@ -1410,6 +1410,13 @@ describe("SettingsPage external completion evidence summary", () => {
     ).toBeInTheDocument();
     expect(within(releaseCommands).getByText("pnpm completion:gate:external")).toBeInTheDocument();
     expect(within(panel).getAllByText("pnpm external:evidence:packet")).toHaveLength(1);
+    const artifactSnapshot = within(panel).getByRole("group", {
+      name: /committed external artifact snapshot/i,
+    });
+    expect(within(artifactSnapshot).getByText("Committed Artifact Snapshot")).toBeInTheDocument();
+    expect(
+      within(artifactSnapshot).getByRole("article", { name: /^Readable:/ }),
+    ).toBeInTheDocument();
     expect(
       within(panel).getByText(
         "OGL_EXTERNAL_EVIDENCE_GATES=store-stripe-live pnpm external:evidence:status",
@@ -1423,15 +1430,18 @@ describe("SettingsPage external completion evidence summary", () => {
       ),
     ).toBeInTheDocument();
     expect(
-      within(panel).getByText(
-        "Create or refresh 1 external artifact file(s) with OGL_EXTERNAL_EVIDENCE_GATES=hardware-os-e2e pnpm external:evidence:template.",
-      ),
-    ).toBeInTheDocument();
-    expect(within(panel).getAllByText("Secret Scan").length).toBeGreaterThan(0);
-    expect(within(panel).getByText("Not checked: 2 missing/unreadable")).toBeInTheDocument();
-    expect(
-      within(panel).getAllByText(/Secret Scan: Not checked until artifact is readable/i).length,
+      within(panel).getAllByText(
+        "Capture real external proof, then check the assigned artifact row(s) only after evidence is attached.",
+      ).length,
     ).toBeGreaterThan(0);
+    expect(within(panel).getAllByText("Secret Scan").length).toBeGreaterThan(0);
+    expect(
+      within(panel).getAllByText(/Secret Scan: Clean; no raw secrets rendered/i).length,
+    ).toBeGreaterThan(0);
+    expect(within(panel).queryByText("Not checked: 2 missing/unreadable")).not.toBeInTheDocument();
+    expect(
+      within(panel).queryAllByText(/Secret Scan: Not checked until artifact is readable/i).length,
+    ).toBe(0);
     expect(within(panel).getByText("No-Write Completion Guard")).toBeInTheDocument();
     expect(within(panel).getByText("No external proof claim")).toBeInTheDocument();
     expect(

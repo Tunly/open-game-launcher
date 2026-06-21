@@ -414,6 +414,19 @@ export const EXTERNAL_COMPLETION_EVIDENCE_GATE_INPUTS: ExternalCompletionEvidenc
   },
 ];
 
+const EXTERNAL_COMPLETION_EVIDENCE_COMMITTED_ARTIFACT_SNAPSHOT_PATHS = [
+  "docs/verification/external/hardware-os-e2e.md",
+  "docs/verification/external/hosted-supabase-cron.md",
+  "docs/verification/external/provider-live-integrations.md",
+  "docs/verification/external/rollout-tracks.md",
+  "docs/verification/external/store-price-drop-scheduler-live.md",
+  "docs/verification/external/store-stripe-live-staging.md",
+] as const;
+
+const externalCompletionEvidenceCommittedArtifactSnapshotPathSet = new Set<string>(
+  EXTERNAL_COMPLETION_EVIDENCE_COMMITTED_ARTIFACT_SNAPSHOT_PATHS,
+);
+
 export function buildExternalCompletionEvidenceSummary({
   createdAt,
   gates,
@@ -457,7 +470,13 @@ export function buildExternalCompletionEvidenceSummary({
 export function createVerifyExternalCompletionEvidenceSummary() {
   return buildExternalCompletionEvidenceSummary({
     createdAt: "2026-06-16T00:00:00.000Z",
-    gates: EXTERNAL_COMPLETION_EVIDENCE_GATE_INPUTS,
+    gates: EXTERNAL_COMPLETION_EVIDENCE_GATE_INPUTS.map((gate) => ({
+      ...gate,
+      artifactEvidence: gate.artifactPaths.map((path) => ({
+        path,
+        readable: externalCompletionEvidenceCommittedArtifactSnapshotPathSet.has(path),
+      })),
+    })),
     packetId: "external-completion-evidence-summary-local-001",
   });
 }

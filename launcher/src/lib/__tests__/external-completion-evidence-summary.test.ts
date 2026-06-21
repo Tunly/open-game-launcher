@@ -10,6 +10,17 @@ import {
 } from "../external-completion-evidence-summary";
 
 const validationNow = "2026-06-17T12:00:00.000Z";
+const committedExternalArtifactTemplates = import.meta.glob(
+  "../../../../docs/verification/external/*.md",
+  {
+    eager: true,
+    import: "default",
+    query: "?raw",
+  },
+) as Record<string, string>;
+const committedExternalArtifactTemplatePaths = Object.keys(committedExternalArtifactTemplates).map(
+  (path) => path.replace("../../../../", ""),
+);
 const evidenceDetails: Record<ExternalCompletionEvidenceDetailField, string> = {
   "Captured at": "2026-06-16T12:00:00.000Z",
   "Commit SHA": "0123456789abcdef0123456789abcdef01234567",
@@ -166,6 +177,28 @@ function externalProofEvidenceFor(proof: string, fallback = "run-external-eviden
 }
 
 describe("external completion evidence summary", () => {
+  it("keeps verify fixture artifact paths backed by committed docs templates", () => {
+    const artifactPaths = [
+      ...new Set(EXTERNAL_COMPLETION_EVIDENCE_GATE_INPUTS.flatMap((gate) => gate.artifactPaths)),
+    ];
+
+    expect(artifactPaths).toHaveLength(6);
+    expect(artifactPaths).toEqual(
+      expect.arrayContaining([
+        "docs/verification/external/hardware-os-e2e.md",
+        "docs/verification/external/hosted-supabase-cron.md",
+        "docs/verification/external/provider-live-integrations.md",
+        "docs/verification/external/rollout-tracks.md",
+        "docs/verification/external/store-price-drop-scheduler-live.md",
+        "docs/verification/external/store-stripe-live-staging.md",
+      ]),
+    );
+    for (const artifactPath of artifactPaths) {
+      expect(committedExternalArtifactTemplatePaths).toContain(artifactPath);
+      expect(committedExternalArtifactTemplates[`../../../../${artifactPath}`]).toMatch(/\S/);
+    }
+  });
+
   it("keeps the verify fixture as an external-gated no-write map", () => {
     const summary = createVerifyExternalCompletionEvidenceSummary();
 
@@ -193,6 +226,12 @@ describe("external completion evidence summary", () => {
       "hardware-os-e2e",
       "rollout-tracks",
     ]);
+    expect(summary.gates.every((gate) => gate.missingArtifactCount === 0)).toBe(true);
+    expect(summary.gates.every((gate) => gate.unreadableArtifactCount === 0)).toBe(true);
+    expect(summary.gates.every((gate) => gate.secretFindingCount === 0)).toBe(true);
+    expect(
+      summary.gates.every((gate) => gate.artifactProofs.every((artifact) => artifact.readable)),
+    ).toBe(true);
     expect(summary.gates[0].recommendedCommands).toEqual(
       expect.arrayContaining([
         "OGL_EXTERNAL_EVIDENCE_GATES=store-stripe-live pnpm external:evidence:status",
@@ -206,8 +245,13 @@ describe("external completion evidence summary", () => {
       "Set 4 non-placeholder environment value(s), then rerun OGL_EXTERNAL_EVIDENCE_GATES=store-stripe-live pnpm external:evidence:status.",
     );
     expect(summary.gates.find((gate) => gate.id === "hardware-os-e2e")?.nextAction).toBe(
-      "Create or refresh 1 external artifact file(s) with OGL_EXTERNAL_EVIDENCE_GATES=hardware-os-e2e pnpm external:evidence:template.",
+      "Capture real external proof, then check the assigned artifact row(s) only after evidence is attached.",
     );
+    expect(summary.gates.find((gate) => gate.id === "hardware-os-e2e")).toMatchObject({
+      missingArtifactCount: 0,
+      missingEvidenceDetailCount: 10,
+      missingProofCount: 4,
+    });
     expect(
       summary.gates.find((gate) => gate.id === "hosted-supabase-cron")?.recommendedCommands,
     ).toEqual(
