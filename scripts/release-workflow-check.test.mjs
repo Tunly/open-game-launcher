@@ -56,6 +56,17 @@ test("release workflow contract requires external gate before packaging", () => 
   ]);
 });
 
+test("release workflow contract ignores commented external gate commands", () => {
+  const broken = ciWorkflow.replace(
+    "      - name: Run external release boundary gate\n        run: pnpm completion:gate:external",
+    "      - name: Run external release boundary gate\n        # run: pnpm completion:gate:external\n        run: pnpm completion:gate:status",
+  );
+
+  assert.deepEqual(errorsFor(broken), [
+    "release-boundary-gate must run external completion gate before packaging",
+  ]);
+});
+
 test("release workflow contract requires build-upload to depend on release boundary", () => {
   const broken = ciWorkflow.replace("        release-boundary-gate,\n", "");
 

@@ -249,6 +249,28 @@ function capturedEvidenceDetails(overrides = {}) {
   ].join("\n");
 }
 
+function completeEvidenceContentForGate(
+  gate,
+  details = capturedEvidenceDetails(),
+) {
+  const extra =
+    gate.id === "hosted-supabase-cron"
+      ? [allHostedCronLaneDetails(), details].join("\n")
+      : details;
+  return proofContent(gate, extra);
+}
+
+function completeEvidenceArtifacts(details = capturedEvidenceDetails()) {
+  return Object.fromEntries(
+    evidenceGates.flatMap((gate) =>
+      gate.artifactPaths.map((artifactPath) => [
+        artifactPath,
+        completeEvidenceContentForGate(gate, details),
+      ]),
+    ),
+  );
+}
+
 function placeholderEvidenceDetails() {
   return [
     "- Captured at: TBD",
@@ -303,6 +325,10 @@ const configuredEnv = Object.freeze({
   STRIPE_SECRET_KEY: "sk_live_51OgLauncherEvidenceAlpha1234567890",
   STRIPE_WEBHOOK_SECRET: "whsec_51OgLauncherEvidenceAlpha1234567890",
   SUPABASE_URL: "https://awebfvfyqzwapcgixdfj.supabase.co",
+});
+const releaseBoundaryContext = Object.freeze({
+  GITHUB_REF_NAME: "v1.2.3",
+  GITHUB_SHA: "0123456789abcdef0123456789abcdef01234567",
 });
 
 test("parseArgs accepts external evidence actions", () => {
@@ -1717,6 +1743,77 @@ test("preflight status does not bind Release ref to non-release GitHub refs", ()
       path: artifactPath,
     },
   ]);
+});
+
+test("unscoped release-boundary status requires release tag and commit context", () => {
+  const artifacts = completeEvidenceArtifacts();
+  const report = statusReport(
+    configuredEnv,
+    fakeExists(Object.keys(artifacts)),
+    fakeRead(artifacts),
+  );
+
+  assert.equal(report.ready, false);
+  assert.equal(report.readyCount, 0);
+  assert.equal(report.totalCount, evidenceGates.length);
+  for (const gate of report.gates) {
+    assert.equal(gate.ready, false, gate.id);
+    assert.ok(
+      gate.evidenceDetailFindings.some(
+        (finding) => finding.reason === "release_ref_context_missing",
+      ),
+      `${gate.id} should require release ref context`,
+    );
+    assert.ok(
+      gate.evidenceDetailFindings.some(
+        (finding) => finding.reason === "commit_sha_context_missing",
+      ),
+      `${gate.id} should require commit SHA context`,
+    );
+  }
+});
+
+test("unscoped release-boundary status accepts matching release tag and commit context", () => {
+  const artifacts = completeEvidenceArtifacts();
+  const report = statusReport(
+    {
+      ...configuredEnv,
+      ...releaseBoundaryContext,
+    },
+    fakeExists(Object.keys(artifacts)),
+    fakeRead(artifacts),
+  );
+
+  assert.equal(report.ready, true);
+  assert.equal(report.readyCount, evidenceGates.length);
+  assert.deepEqual(
+    report.gates.map((gate) => [gate.id, gate.ready]),
+    evidenceGates.map((gate) => [gate.id, true]),
+  );
+});
+
+test("scoped external evidence status remains usable without CI release context", () => {
+  const gate = evidenceGates.find((item) => item.id === "hosted-supabase-cron");
+  assert.ok(gate);
+  const artifactPath = "docs/verification/external/hosted-supabase-cron.md";
+  const report = statusReport(
+    {
+      ...configuredEnv,
+      OGL_EXTERNAL_EVIDENCE_GATES: gate.id,
+    },
+    fakeExists([artifactPath]),
+    fakeRead({
+      [artifactPath]: completeEvidenceContentForGate(gate),
+    }),
+  );
+
+  assert.equal(report.ready, true);
+  assert.equal(report.readyCount, 1);
+  assert.deepEqual(
+    report.gates.map((item) => item.id),
+    [gate.id],
+  );
+  assert.deepEqual(report.gates[0].evidenceDetailFindings, []);
 });
 
 test("preflight status rejects checked proofs without proof-specific evidence mappings", () => {

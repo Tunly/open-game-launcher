@@ -148,6 +148,13 @@ and
 These screenshots are local UI verification artifacts only; they are not
 external completion evidence and do not satisfy any gate.
 
+Scoped `OGL_EXTERNAL_EVIDENCE_GATES=... pnpm external:evidence:preflight`
+runs are preparation checks for a single proof lane. The unscoped
+`pnpm external:evidence:preflight` and release-boundary
+`pnpm completion:gate:external` runs are the final proof checks; they must run
+in a release tag/SHA context through `GITHUB_REF_NAME` or `GITHUB_REF` and
+`GITHUB_SHA`.
+
 `pnpm external:evidence:preflight` requires every selected required environment
 name to hold a non-placeholder value with the expected shape, every selected
 artifact file to exist, per-artifact proof coverage for assigned proof rows,
@@ -183,8 +190,10 @@ codes, treat them as redacted diagnostics for the field named beside the code:
 `missing` means the row or proof-specific `Evidence for ...` mapping is absent;
 `placeholder` and `weak` mean the row still contains generic fill text;
 `malformed_timestamp`, `stale_timestamp`, and `future_timestamp` apply to
-`Captured at`; `release_ref_mismatch` and `commit_sha_mismatch` apply to
-release-boundary rows that do not match CI; `local_path` rejects local files,
+`Captured at`; `release_ref_context_missing` and
+`commit_sha_context_missing` mean an unscoped release-boundary check is missing
+release tag/SHA context; `release_ref_mismatch` and `commit_sha_mismatch` apply
+to release-boundary rows that do not match CI; `local_path` rejects local files,
 workspace paths, and `docs/verification/screenshots/*`; `unapproved_url`
 rejects unsupported hosts, non-HTTPS URLs, query/hash/userinfo URLs, localhost,
 private-network URLs, and example URLs; `malformed_locator` means no accepted

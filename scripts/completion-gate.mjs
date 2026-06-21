@@ -406,6 +406,15 @@ function checkoutSnapshot(root = repoRoot) {
   };
 }
 
+function checkoutSnapshotsMatch(left, right) {
+  if (left.available !== right.available) return false;
+  if (!left.available && !right.available) return true;
+  return (
+    left.gitHead === right.gitHead &&
+    left.checkoutFingerprint === right.checkoutFingerprint
+  );
+}
+
 export function localCompletionReceiptPath(root = repoRoot) {
   return join(root, localCompletionReceiptRelativePath);
 }
@@ -505,8 +514,12 @@ function localCompletionReceiptSummary(root = repoRoot) {
   }
 }
 
-function writeLocalCompletionReceipt({ platform, root, skippedChecks }) {
-  const checkout = checkoutSnapshot(root);
+function writeLocalCompletionReceipt({
+  checkout = checkoutSnapshot(root),
+  platform,
+  root,
+  skippedChecks,
+}) {
   const receipt = {
     action: "local",
     checkIds: completionLocalChecks.map((check) => check.id),
@@ -696,6 +709,10 @@ export function runCompletionGate({
     return 0;
   }
 
+  const requireStableCheckout = action === "check" || action === "local";
+  const startingCheckout = requireStableCheckout
+    ? checkoutSnapshot(root)
+    : null;
   const failures = [];
   const skippedChecks = [];
   for (const check of checksForAction(action)) {
@@ -719,13 +736,30 @@ export function runCompletionGate({
     }
   }
 
+  const endingCheckout = requireStableCheckout ? checkoutSnapshot(root) : null;
+  if (
+    startingCheckout &&
+    endingCheckout &&
+    !checkoutSnapshotsMatch(startingCheckout, endingCheckout)
+  ) {
+    failures.push("Stable checkout");
+    logger.error(
+      "Completion gate failed: checkout changed while checks were running.",
+    );
+  }
+
   if (failures.length > 0) {
     logger.error(`Completion gate failed: ${failures.join(", ")}.`);
     return 1;
   }
 
   if (action === "local") {
-    writeLocalCompletionReceipt({ platform, root, skippedChecks });
+    writeLocalCompletionReceipt({
+      checkout: endingCheckout ?? undefined,
+      platform,
+      root,
+      skippedChecks,
+    });
   }
 
   logger.log(renderSuccessMessage(action, { platform, skippedChecks }));

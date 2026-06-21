@@ -581,10 +581,17 @@ function releaseRefValueIsValid(value, env = {}) {
   return releaseRefIssueReason(value, env) === null;
 }
 
-function releaseRefIssueReason(value, env = {}) {
+function releaseRefIssueReason(
+  value,
+  env = {},
+  { requireReleaseBoundaryIdentity = false } = {},
+) {
   const normalized = normalizedReleaseRef(value);
   if (!releaseTagPattern.test(normalized)) return "malformed";
   const expected = expectedReleaseRef(env);
+  if (!expected && requireReleaseBoundaryIdentity) {
+    return "release_ref_context_missing";
+  }
   if (expected && normalized !== expected) return "release_ref_mismatch";
   return null;
 }
@@ -593,10 +600,17 @@ function commitShaValueIsValid(value, env = {}) {
   return commitShaIssueReason(value, env) === null;
 }
 
-function commitShaIssueReason(value, env = {}) {
+function commitShaIssueReason(
+  value,
+  env = {},
+  { requireReleaseBoundaryIdentity = false } = {},
+) {
   const normalized = clean(value).toLowerCase();
   if (!commitShaPattern.test(normalized)) return "malformed";
   const expected = clean(env.GITHUB_SHA).toLowerCase();
+  if (!expected && requireReleaseBoundaryIdentity) {
+    return "commit_sha_context_missing";
+  }
   if (expected && normalized !== expected) return "commit_sha_mismatch";
   return null;
 }
@@ -1001,6 +1015,7 @@ function evidenceDetailValueIssueReason(
   now = new Date(),
   env = {},
   expected = null,
+  options = {},
 ) {
   const cleaned = clean(value);
   if (!cleaned) return "missing";
@@ -1009,8 +1024,10 @@ function evidenceDetailValueIssueReason(
   if (weakEvidenceDetailValuesByField[field]?.has(normalized)) return "weak";
   if (field === "Captured at")
     return timestampEvidenceIssueReason(cleaned, now);
-  if (field === "Release ref") return releaseRefIssueReason(cleaned, env);
-  if (field === "Commit SHA") return commitShaIssueReason(cleaned, env);
+  if (field === "Release ref")
+    return releaseRefIssueReason(cleaned, env, options);
+  if (field === "Commit SHA")
+    return commitShaIssueReason(cleaned, env, options);
   if (field === "Redaction notes") {
     return redactionNotesValueIsValid(cleaned) ? null : "wrong_expected_value";
   }
@@ -1135,6 +1152,7 @@ function evidenceDetailFindingsFromArtifactContent(
   now,
   expectedValues = {},
   env = {},
+  options = {},
 ) {
   const lines = evidenceMarkdownLines(content);
   return requiredFields.flatMap((field) => {
@@ -1152,7 +1170,14 @@ function evidenceDetailFindingsFromArtifactContent(
 
     const issueReasons = values
       .map((value) =>
-        evidenceDetailValueIssueReason(field, value, now, env, expected),
+        evidenceDetailValueIssueReason(
+          field,
+          value,
+          now,
+          env,
+          expected,
+          options,
+        ),
       )
       .filter(Boolean);
     if (issueReasons.length === 0) {
@@ -1170,6 +1195,7 @@ function missingEvidenceDetailsFromArtifactContent(
   now,
   expectedValues = {},
   env = {},
+  options = {},
 ) {
   return evidenceDetailFindingsFromArtifactContent(
     path,
@@ -1178,6 +1204,7 @@ function missingEvidenceDetailsFromArtifactContent(
     now,
     expectedValues,
     env,
+    options,
   ).map(({ field, path }) => ({ field, path }));
 }
 
@@ -1193,6 +1220,7 @@ function evidenceGroupDetailFindingsFromArtifactContent(
   content,
   groups,
   now,
+  options = {},
 ) {
   return groups.flatMap((group) => {
     const lines = evidenceGroupLines(content, group.heading);
@@ -1213,7 +1241,14 @@ function evidenceGroupDetailFindingsFromArtifactContent(
 
       const issueReasons = values
         .map((value) =>
-          evidenceDetailValueIssueReason(field, value, now, {}, expected),
+          evidenceDetailValueIssueReason(
+            field,
+            value,
+            now,
+            {},
+            expected,
+            options,
+          ),
         )
         .filter(Boolean);
       if (issueReasons.length === 0) {
@@ -1236,12 +1271,14 @@ function missingEvidenceGroupDetailsFromArtifactContent(
   content,
   groups,
   now,
+  options = {},
 ) {
   return evidenceGroupDetailFindingsFromArtifactContent(
     path,
     content,
     groups,
     now,
+    options,
   ).map(({ field, path }) => ({ field, path }));
 }
 
@@ -1512,11 +1549,22 @@ export function selectedGates(env = process.env) {
   });
 }
 
+function hasScopedGateSelection(env = process.env) {
+  return clean(env.OGL_EXTERNAL_EVIDENCE_GATES) !== "";
+}
+
+function statusValidationOptions(env = process.env) {
+  return {
+    requireReleaseBoundaryIdentity: !hasScopedGateSelection(env),
+  };
+}
+
 export function gateStatus(
   gate,
   env = process.env,
   fileExists = existsSync,
   readFile = readFileSync,
+  options = {},
 ) {
   const envFindings = envFindingsForGate(gate, env);
   const missingEnv = envFindings.map((finding) => finding.name);
@@ -1559,6 +1607,7 @@ export function gateStatus(
           now,
           expectedEvidenceValuesForArtifact(gate, path),
           env,
+          options,
         );
       evidenceDetailFindings.push(...artifactEvidenceDetailFindings);
       missingEvidenceDetails.push(
@@ -1573,6 +1622,7 @@ export function gateStatus(
           content,
           requiredEvidenceGroupsForArtifact(gate, path),
           now,
+          options,
         );
       evidenceDetailFindings.push(...artifactEvidenceGroupFindings);
       missingEvidenceDetails.push(
@@ -1651,8 +1701,9 @@ export function collectStatuses(
   fileExists = existsSync,
   readFile = readFileSync,
 ) {
+  const options = statusValidationOptions(env);
   return selectedGates(env).map((gate) =>
-    gateStatus(gate, env, fileExists, readFile),
+    gateStatus(gate, env, fileExists, readFile, options),
   );
 }
 
@@ -1661,8 +1712,9 @@ export function statusReport(
   fileExists = existsSync,
   readFile = readFileSync,
 ) {
+  const options = statusValidationOptions(env);
   const gates = selectedGates(env).map((gate) => {
-    const status = gateStatus(gate, env, fileExists, readFile);
+    const status = gateStatus(gate, env, fileExists, readFile, options);
     return {
       ...status,
       commands: recommendedCommandsForGate(gate, status),

@@ -728,6 +728,37 @@ test("local action writes a local-only completion receipt without release-proof 
   }
 });
 
+test("local action refuses to write a receipt when checkout changes during checks", () => {
+  const root = mkdtempSync(join(tmpdir(), "ogl-completion-gate-git-"));
+  try {
+    initializeGitRepo(root);
+    const { errors, logger } = captureLogger();
+    let mutated = false;
+    const status = runCompletionGate({
+      action: "local",
+      logger,
+      platform: "linux",
+      root,
+      runCommand() {
+        if (!mutated) {
+          writeFileSync(join(root, "tracked.txt"), "changed during gate\n");
+          mutated = true;
+        }
+        return { status: 0 };
+      },
+    });
+
+    assert.equal(status, 1);
+    assert.equal(existsSync(localCompletionReceiptPath(root)), false);
+    assert.match(
+      errors.join("\n"),
+      /checkout changed while checks were running/,
+    );
+  } finally {
+    rmSync(root, { force: true, recursive: true });
+  }
+});
+
 test("status report marks local receipts stale after tracked checkout changes", () => {
   const root = mkdtempSync(join(tmpdir(), "ogl-completion-gate-git-"));
   try {
@@ -1229,6 +1260,40 @@ test("full check success is the only release-boundary success summary", () => {
     output,
     /local deterministic checks and external evidence checks passed/,
   );
+});
+
+test("full check fails when checkout changes during release-boundary checks", () => {
+  const root = mkdtempSync(join(tmpdir(), "ogl-completion-gate-git-"));
+  try {
+    initializeGitRepo(root);
+    const { errors, logger, logs } = captureLogger();
+    let mutated = false;
+    const status = runCompletionGate({
+      action: "check",
+      logger,
+      platform: "linux",
+      root,
+      runCommand() {
+        if (!mutated) {
+          writeFileSync(join(root, "tracked.txt"), "changed during gate\n");
+          mutated = true;
+        }
+        return { status: 0 };
+      },
+    });
+
+    assert.equal(status, 1);
+    assert.match(
+      errors.join("\n"),
+      /checkout changed while checks were running/,
+    );
+    assert.doesNotMatch(
+      logs.join("\n"),
+      /Release-boundary completion gate passed/,
+    );
+  } finally {
+    rmSync(root, { force: true, recursive: true });
+  }
 });
 
 test("full check success with platform-scoped skips is not a cross-platform release claim", () => {

@@ -118,6 +118,15 @@ function pushMissing(errors, block, value, message) {
   if (!block.includes(value)) errors.push(message);
 }
 
+function pushMissingRunLine(errors, block, command, message) {
+  const commandPattern = escapeRegex(command);
+  const runLinePattern = new RegExp(
+    `^        run:\\s*${commandPattern}\\s*(?:#.*)?$`,
+    "m",
+  );
+  if (!runLinePattern.test(block)) errors.push(message);
+}
+
 function releaseWorkflowContent({ content, root }) {
   return (
     content ?? readFileSync(join(root, releaseWorkflowRelativePath), "utf8")
@@ -180,7 +189,7 @@ export function releaseWorkflowReport({ content, root = repoRoot } = {}) {
       "release tags must point at the current origin/main commit.",
       "release-boundary-gate must reject tags that do not point at origin/main",
     );
-    pushMissing(
+    pushMissingRunLine(
       errors,
       releaseBoundaryGate,
       "pnpm completion:gate:external",
