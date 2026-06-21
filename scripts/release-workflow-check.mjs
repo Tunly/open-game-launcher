@@ -127,6 +127,33 @@ function pushMissingRunLine(errors, block, command, message) {
   if (!runLinePattern.test(block)) errors.push(message);
 }
 
+function workflowStepBlocks(jobBlock) {
+  return jobBlock
+    .split(/(?=^      - )/m)
+    .filter((block) => /^      - /.test(block));
+}
+
+function workflowStepWithRun(jobBlock, command) {
+  const commandPattern = escapeRegex(command);
+  const runLinePattern = new RegExp(
+    `^        run:\\s*${commandPattern}\\s*(?:#.*)?$`,
+    "m",
+  );
+  return (
+    workflowStepBlocks(jobBlock).find((block) => runLinePattern.test(block)) ??
+    ""
+  );
+}
+
+function hasSecretEnvAssignment(stepBlock, secretName) {
+  const expected = `${secretName}: \${{ secrets.${secretName} }}`;
+  const envLinePattern = new RegExp(
+    `^          ${escapeRegex(expected)}\\s*(?:#.*)?$`,
+    "m",
+  );
+  return envLinePattern.test(stepBlock);
+}
+
 function releaseWorkflowContent({ content, root }) {
   return (
     content ?? readFileSync(join(root, releaseWorkflowRelativePath), "utf8")
@@ -195,6 +222,10 @@ export function releaseWorkflowReport({ content, root = repoRoot } = {}) {
       "pnpm completion:gate:external",
       "release-boundary-gate must run external completion gate before packaging",
     );
+    const externalGateStep = workflowStepWithRun(
+      releaseBoundaryGate,
+      "pnpm completion:gate:external",
+    );
     for (const requiredNeed of [
       "frontend",
       "rust-fmt",
@@ -208,32 +239,32 @@ export function releaseWorkflowReport({ content, root = repoRoot } = {}) {
         errors.push(`release-boundary-gate must depend on ${requiredNeed}`);
       }
     }
-    for (const secretName of [
-      "SUPABASE_ACCESS_TOKEN",
-      "SUPABASE_PROJECT_REF",
-      "SUPABASE_URL",
-      "SUPABASE_FUNCTIONS_URL",
-      "SUPABASE_REST_URL",
-      "SUPABASE_SERVICE_ROLE_KEY",
-      "SUPABASE_ANON_KEY",
-      "SUPABASE_AUTH_JWT",
-      "ACCOUNT_DELETION_PROCESSOR_SECRET",
-      "PRICE_DROP_NOTIFY_SECRET",
-      "PRESENCE_POLL_SECRET",
-      "STRIPE_SECRET_KEY",
-      "STRIPE_WEBHOOK_SECRET",
-      "STEAM_WEB_API_KEY",
-      "PRESENCE_PROVIDER_TOKEN",
-      "MOD_IO_API_KEY",
-      "CURSEFORGE_API_KEY",
-    ]) {
-      const secretReference = `${secretName}: \${{ secrets.${secretName} }}`;
-      pushMissing(
-        errors,
-        releaseBoundaryGate,
-        secretReference,
-        `release-boundary-gate must pass ${secretName} from secrets`,
-      );
+    if (externalGateStep) {
+      for (const secretName of [
+        "SUPABASE_ACCESS_TOKEN",
+        "SUPABASE_PROJECT_REF",
+        "SUPABASE_URL",
+        "SUPABASE_FUNCTIONS_URL",
+        "SUPABASE_REST_URL",
+        "SUPABASE_SERVICE_ROLE_KEY",
+        "SUPABASE_ANON_KEY",
+        "SUPABASE_AUTH_JWT",
+        "ACCOUNT_DELETION_PROCESSOR_SECRET",
+        "PRICE_DROP_NOTIFY_SECRET",
+        "PRESENCE_POLL_SECRET",
+        "STRIPE_SECRET_KEY",
+        "STRIPE_WEBHOOK_SECRET",
+        "STEAM_WEB_API_KEY",
+        "PRESENCE_PROVIDER_TOKEN",
+        "MOD_IO_API_KEY",
+        "CURSEFORGE_API_KEY",
+      ]) {
+        if (!hasSecretEnvAssignment(externalGateStep, secretName)) {
+          errors.push(
+            `release-boundary-gate must pass ${secretName} from secrets`,
+          );
+        }
+      }
     }
   }
 

@@ -67,6 +67,30 @@ test("release workflow contract ignores commented external gate commands", () =>
   ]);
 });
 
+test("release workflow contract ignores commented release boundary env secrets", () => {
+  const broken = ciWorkflow.replace(
+    "          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}",
+    "          # SUPABASE_URL: ${{ secrets.SUPABASE_URL }}",
+  );
+
+  assert.deepEqual(errorsFor(broken), [
+    "release-boundary-gate must pass SUPABASE_URL from secrets",
+  ]);
+});
+
+test("release workflow contract requires secrets on the external gate step", () => {
+  const broken = ciWorkflow
+    .replace("          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}\n", "")
+    .replace(
+      "      - name: Run external release boundary gate\n",
+      "      - name: Detached release secret fixture\n        env:\n          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}\n        run: node -e \"console.log('not the external gate')\"\n      - name: Run external release boundary gate\n",
+    );
+
+  assert.deepEqual(errorsFor(broken), [
+    "release-boundary-gate must pass SUPABASE_URL from secrets",
+  ]);
+});
+
 test("release workflow contract requires build-upload to depend on release boundary", () => {
   const broken = ciWorkflow.replace("        release-boundary-gate,\n", "");
 
