@@ -127,6 +127,21 @@ function gateSpecificEvidenceDetails(gate) {
       if (field === "Hosted deploy evidence") {
         return "- Hosted deploy evidence: hosted-deploy workflow-123";
       }
+      if (field === "Community rollout evidence") {
+        return "- Community rollout evidence: community artwork screenshot rollout workflow-123";
+      }
+      if (field === "Controller layout/profile sync evidence") {
+        return "- Controller layout/profile sync evidence: controller layout profile sync workflow-123";
+      }
+      if (field === "Marketplace evidence") {
+        return "- Marketplace evidence: plugin marketplace execution update workflow-123";
+      }
+      if (field === "Mobile distribution evidence") {
+        return "- Mobile distribution evidence: mobile store distribution workflow-123";
+      }
+      if (field === "Push-provider evidence") {
+        return "- Push-provider evidence: push provider Firebase workflow-123";
+      }
       return `- ${field}: ${field.toLowerCase()} evidence run-123`;
     })
     .join("\n");
@@ -2476,11 +2491,11 @@ test("preflight status rejects generic gate-specific evidence identifiers", () =
       fields: ["Marketplace evidence", "Hosted deploy evidence"],
       gateId: "rollout-tracks",
       replacements: [
-        "- Community rollout evidence: community-rollout-run-123",
-        "- Controller layout/profile sync evidence: controller-profile-sync-run-123",
+        "- Community rollout evidence: community artwork screenshot rollout run-123",
+        "- Controller layout/profile sync evidence: controller layout profile sync run-123",
         "- Marketplace evidence: run-generic-field-123",
-        "- Mobile distribution evidence: mobile-distribution-run-123",
-        "- Push-provider evidence: push-provider-run-123",
+        "- Mobile distribution evidence: mobile store distribution run-123",
+        "- Push-provider evidence: push provider Firebase run-123",
         "- Hosted deploy evidence: run-generic-field-456",
       ],
     },
@@ -2604,6 +2619,18 @@ test("preflight status rejects weak rollout track evidence detail values", () =>
       path: artifactPath,
     },
     {
+      field: "Marketplace evidence",
+      path: artifactPath,
+    },
+    {
+      field: "Mobile distribution evidence",
+      path: artifactPath,
+    },
+    {
+      field: "Push-provider evidence",
+      path: artifactPath,
+    },
+    {
       field: "Hosted deploy evidence",
       path: artifactPath,
     },
@@ -2616,11 +2643,11 @@ test("preflight status rejects weak rollout track evidence detail values", () =>
     fakeRead({
       [artifactPath]: [
         ...baseContent,
-        "- Community rollout evidence: community-rollout-run-123",
-        "- Controller layout/profile sync evidence: controller-profile-sync-run-123",
-        "- Marketplace evidence: marketplace-run-123",
-        "- Mobile distribution evidence: mobile-distribution-run-123",
-        "- Push-provider evidence: push-provider-run-123",
+        "- Community rollout evidence: community artwork screenshot rollout run-123",
+        "- Controller layout/profile sync evidence: controller layout profile sync run-123",
+        "- Marketplace evidence: plugin marketplace execution update run-123",
+        "- Mobile distribution evidence: mobile store distribution run-123",
+        "- Push-provider evidence: push provider firebase run-123",
         "- Hosted deploy evidence: hosted-deploy workflow-123",
       ].join("\n"),
     }),
@@ -3969,6 +3996,27 @@ test("artifactTemplate prints required proof checklist rows without secret value
     );
   }
 
+  const hostedCronGate = evidenceGates.find(
+    (item) => item.id === "hosted-supabase-cron",
+  );
+  assert.ok(hostedCronGate);
+  const hostedCronTemplate = artifactTemplate(
+    hostedCronGate,
+    "docs/verification/external/hosted-supabase-cron.md",
+  );
+  const hostedCronCaptureSection = hostedCronTemplate.slice(
+    hostedCronTemplate.indexOf("## Capture Handoff"),
+    hostedCronTemplate.indexOf("## Proof Evidence Mapping"),
+  );
+  assert.match(
+    hostedCronCaptureSection,
+    /--checks=presence-poll[\s\S]*interim validation/i,
+  );
+  assert.match(
+    hostedCronCaptureSection,
+    /final hosted-supabase-cron proof needs unscoped grouped `pnpm hosted:cron-evidence:artifact-hints` output/i,
+  );
+
   const rolloutGate = evidenceGates.find(
     (item) => item.id === "rollout-tracks",
   );
@@ -3990,6 +4038,14 @@ test("artifactTemplate prints required proof checklist rows without secret value
   assert.match(rolloutCaptureSection, /Hosted deploy evidence/);
   assert.match(rolloutCaptureSection, /Handoffs are guidance only/);
   assert.doesNotMatch(rolloutCaptureSection, /Required lane terms/);
+  assert.match(
+    rolloutTemplate,
+    /Community rollout evidence must include `community`, `artwork`, `screenshot`, and `rollout`/,
+  );
+  assert.match(
+    rolloutTemplate,
+    /Push-provider evidence must include `push`, `provider`, and either `Firebase` or `OneSignal`/,
+  );
 });
 
 test("required external evidence artifacts exist and cover required structure", () => {
@@ -4165,7 +4221,14 @@ test("runbook documents Store price-drop scheduler artifact as flat gate-specifi
 test("runbook documents proof evidence lane identity", () => {
   assert.match(runbook, /Proof evidence values must name the proof lane/);
   assert.match(runbook, /stripe-webhook/);
-  assert.match(runbook, /controller-profile-sync/);
+  assert.match(runbook, /non-steam-presence-bridge-provider/);
+  assert.match(runbook, /provider-approved-catalog-cloud-transfer/);
+  assert.match(runbook, /achievement-provider-cache-real-client/);
+  assert.match(runbook, /fullscreen-anti-cheat-overlay/);
+  assert.match(runbook, /community-artwork-screenshot-rollout/);
+  assert.match(runbook, /controller-layout-profile-sync/);
+  assert.match(runbook, /plugin-marketplace-execution-update/);
+  assert.match(runbook, /mobile-push-provider-store-distribution/);
 });
 
 test("runbook documents the external evidence next steps mode", () => {

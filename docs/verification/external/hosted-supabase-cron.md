@@ -24,9 +24,9 @@ Leave each item unchecked until the external run evidence is captured and redact
 
 Use these operator handoffs to collect redacted live evidence before checking proof rows. Handoffs are guidance only; they do not execute commands or satisfy preflight by themselves.
 
-- poll-platform-presence scheduled run writes fresh evidence.: Run the presence scheduled lane, collect `pnpm hosted:cron-evidence:artifact-hints`, and paste the reviewed latest non-dry-run `presence_poll_runs` row for `poll-platform-presence`. Evidence cues: `presence-poll`, `presence_poll_runs`.
-- notify-price-drop scheduled run writes fresh evidence.: Run the price-drop scheduled lane, collect `pnpm hosted:cron-evidence:artifact-hints`, and paste the reviewed latest non-dry-run `store_price_drop_notification_runs` row for `notify-price-drop`. Evidence cues: `price-drop`, `store_price_drop_notification_runs`.
-- process-account-deletions scheduled run writes fresh evidence.: Run the account-deletion scheduled lane, collect `pnpm hosted:cron-evidence:artifact-hints`, and paste the reviewed latest non-dry-run `account_deletion_processor_runs` row for `process-account-deletions`. Evidence cues: `account-deletion`, `account_deletion_processor_runs`.
+- poll-platform-presence scheduled run writes fresh evidence.: Run the presence scheduled lane, use `pnpm hosted:cron-evidence:artifact-hints --checks=presence-poll` for interim validation, then remember that the final hosted-supabase-cron proof needs unscoped grouped `pnpm hosted:cron-evidence:artifact-hints` output after all three scheduler lanes are fresh; paste the reviewed latest non-dry-run `presence_poll_runs` row for `poll-platform-presence`. Evidence cues: `presence-poll`, `presence_poll_runs`.
+- notify-price-drop scheduled run writes fresh evidence.: Run the price-drop scheduled lane, use `pnpm hosted:cron-evidence:artifact-hints --checks=price-drop` for interim validation, then remember that the final hosted-supabase-cron proof needs unscoped grouped `pnpm hosted:cron-evidence:artifact-hints` output after all three scheduler lanes are fresh; paste the reviewed latest non-dry-run `store_price_drop_notification_runs` row for `notify-price-drop`. Evidence cues: `price-drop`, `store_price_drop_notification_runs`.
+- process-account-deletions scheduled run writes fresh evidence.: Run the account-deletion scheduled lane, use `pnpm hosted:cron-evidence:artifact-hints --checks=account-deletion` for interim validation, then remember that the final hosted-supabase-cron proof needs unscoped grouped `pnpm hosted:cron-evidence:artifact-hints` output after all three scheduler lanes are fresh; paste the reviewed latest non-dry-run `account_deletion_processor_runs` row for `process-account-deletions`. Evidence cues: `account-deletion`, `account_deletion_processor_runs`.
 
 ## Proof Evidence Mapping
 
@@ -47,6 +47,7 @@ Fill one section per lane with the matching `pnpm hosted:cron-evidence:artifact-
 Expected hosted cron values: `Hosted cron table: store_price_drop_notification_runs`, `Function: notify-price-drop`, `Scheduled: scheduled`, `dry_run=false: false` or `confirmed false`, and `Status: completed` for price-drop; `Hosted cron table: presence_poll_runs`, `Function: poll-platform-presence`, `Scheduled: scheduled`, `dry_run=false: false` or `confirmed false`, and `Status: completed` for presence-poll; `Hosted cron table: account_deletion_processor_runs`, `Function: process-account-deletions`, `Scheduled: scheduled`, `dry_run=false: false` or `confirmed false`, and `Status: completed` for account-deletion.
 
 ### price-drop
+
 - Hosted cron table:
 - Function:
 - Run ID:
@@ -55,6 +56,7 @@ Expected hosted cron values: `Hosted cron table: store_price_drop_notification_r
 - Status:
 
 ### presence-poll
+
 - Hosted cron table:
 - Function:
 - Run ID:
@@ -63,6 +65,7 @@ Expected hosted cron values: `Hosted cron table: store_price_drop_notification_r
 - Status:
 
 ### account-deletion
+
 - Hosted cron table:
 - Function:
 - Run ID:

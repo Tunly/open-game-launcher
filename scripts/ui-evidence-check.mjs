@@ -7,7 +7,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 export const repoRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 
 const uiSourcePattern =
-  /^launcher\/src\/(?:.*\/)?[^/]+\.tsx$|^launcher\/src\/index\.css$/;
+  /^launcher\/src\/(?:.*\/)?[^/]+\.tsx$|^launcher\/src\/index\.css$|^launcher\/tailwind\.config\.ts$/;
 const uiTsWatchlistPattern =
   /^launcher\/src\/(?:components\/layout\/navigation|lib\/(?:app-shell-skins|external-completion-evidence-summary|[^/]+-readiness))\.ts$/;
 const ignoredSourcePattern =

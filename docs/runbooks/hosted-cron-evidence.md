@@ -69,6 +69,11 @@ Without `OGL_HOSTED_CRON_FRESHNESS_HOURS`, lane freshness defaults are:
 - `presence-poll`: `0.25` hours / 15 minutes
 - `account-deletion`: `25` hours
 
+Leave `OGL_HOSTED_CRON_FRESHNESS_HOURS` unset unless a release operator
+intentionally overrides every selected lane. Setting a broad value such as `25`
+hours also applies to `presence-poll` and weakens its 15 minute freshness
+window.
+
 The selected checks read the latest scheduled attempt for each selected table:
 
 - `store_price_drop_notification_runs`

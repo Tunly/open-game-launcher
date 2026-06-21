@@ -195,17 +195,17 @@ export const evidenceGates = Object.freeze([
     captureHandoffs: {
       "poll-platform-presence scheduled run writes fresh evidence.": {
         capture:
-          "Run the presence scheduled lane, collect `pnpm hosted:cron-evidence:artifact-hints`, and paste the reviewed latest non-dry-run `presence_poll_runs` row for `poll-platform-presence`.",
+          "Run the presence scheduled lane, use `pnpm hosted:cron-evidence:artifact-hints --checks=presence-poll` for interim validation, then remember that the final hosted-supabase-cron proof needs unscoped grouped `pnpm hosted:cron-evidence:artifact-hints` output after all three scheduler lanes are fresh; paste the reviewed latest non-dry-run `presence_poll_runs` row for `poll-platform-presence`.",
         terms: ["presence-poll", "presence_poll_runs"],
       },
       "notify-price-drop scheduled run writes fresh evidence.": {
         capture:
-          "Run the price-drop scheduled lane, collect `pnpm hosted:cron-evidence:artifact-hints`, and paste the reviewed latest non-dry-run `store_price_drop_notification_runs` row for `notify-price-drop`.",
+          "Run the price-drop scheduled lane, use `pnpm hosted:cron-evidence:artifact-hints --checks=price-drop` for interim validation, then remember that the final hosted-supabase-cron proof needs unscoped grouped `pnpm hosted:cron-evidence:artifact-hints` output after all three scheduler lanes are fresh; paste the reviewed latest non-dry-run `store_price_drop_notification_runs` row for `notify-price-drop`.",
         terms: ["price-drop", "store_price_drop_notification_runs"],
       },
       "process-account-deletions scheduled run writes fresh evidence.": {
         capture:
-          "Run the account-deletion scheduled lane, collect `pnpm hosted:cron-evidence:artifact-hints`, and paste the reviewed latest non-dry-run `account_deletion_processor_runs` row for `process-account-deletions`.",
+          "Run the account-deletion scheduled lane, use `pnpm hosted:cron-evidence:artifact-hints --checks=account-deletion` for interim validation, then remember that the final hosted-supabase-cron proof needs unscoped grouped `pnpm hosted:cron-evidence:artifact-hints` output after all three scheduler lanes are fresh; paste the reviewed latest non-dry-run `account_deletion_processor_runs` row for `process-account-deletions`.",
         terms: ["account-deletion", "account_deletion_processor_runs"],
       },
     },
@@ -1074,14 +1074,14 @@ function hostedDeployWorkflowEvidenceIssueReason(value) {
 
 const fieldSpecificEvidenceValidators = Object.freeze({
   "Community rollout evidence": (value) =>
-    evidenceIdentifierValueMatches(value, [
+    evidenceIdentifierValueMatchesAll(value, [
       /community/i,
       /artwork/i,
       /screenshot/i,
       /rollout/i,
     ]),
   "Controller layout/profile sync evidence": (value) =>
-    evidenceIdentifierValueMatches(value, [
+    evidenceIdentifierValueMatchesAll(value, [
       /controller/i,
       /layout/i,
       /profile/i,
@@ -1101,9 +1101,13 @@ const fieldSpecificEvidenceValidators = Object.freeze({
       /issuance/i,
     ]),
   "Marketplace evidence": (value) =>
-    evidenceIdentifierValueMatches(value, [/marketplace/i, /plugin/i]),
+    evidenceIdentifierValueMatchesAll(value, [
+      /marketplace/i,
+      /plugin/i,
+      /(?:execution|update)/i,
+    ]),
   "Mobile distribution evidence": (value) =>
-    evidenceIdentifierValueMatches(value, [
+    evidenceIdentifierValueMatchesAll(value, [
       /mobile/i,
       /distribution/i,
       /store/i,
@@ -1126,12 +1130,8 @@ const fieldSpecificEvidenceValidators = Object.freeze({
       /curseforge/i,
     ]),
   "Push-provider evidence": (value) =>
-    evidenceIdentifierValueMatches(value, [
-      /push/i,
-      /provider/i,
-      /firebase/i,
-      /onesignal/i,
-    ]),
+    evidenceIdentifierValueMatchesAll(value, [/push/i, /provider/i]) &&
+    evidenceIdentifierValueMatches(value, [/firebase/i, /onesignal/i]),
   "Run ID": runIdValueIsSpecific,
   "Session/run ID": (value) =>
     evidenceIdentifierValueMatches(value, [/session/i, /run/i, /overlay/i]),
@@ -1939,6 +1939,38 @@ export function artifactTemplate(gate, artifactPath) {
           "Provider/client matrix values must include both `mod.io` and `CurseForge`.",
         ]
       : []),
+    ...(requiredArtifactEvidenceFields.includes("Community rollout evidence")
+      ? [
+          "Community rollout evidence must include `community`, `artwork`, `screenshot`, and `rollout`.",
+        ]
+      : []),
+    ...(requiredArtifactEvidenceFields.includes(
+      "Controller layout/profile sync evidence",
+    )
+      ? [
+          "Controller layout/profile sync evidence must include `controller`, `layout`, `profile`, and `sync`.",
+        ]
+      : []),
+    ...(requiredArtifactEvidenceFields.includes("Marketplace evidence")
+      ? [
+          "Marketplace evidence must include `plugin`, `marketplace`, and either `execution` or `update`.",
+        ]
+      : []),
+    ...(requiredArtifactEvidenceFields.includes("Mobile distribution evidence")
+      ? [
+          "Mobile distribution evidence must include `mobile`, `store`, and `distribution`.",
+        ]
+      : []),
+    ...(requiredArtifactEvidenceFields.includes("Push-provider evidence")
+      ? [
+          "Push-provider evidence must include `push`, `provider`, and either `Firebase` or `OneSignal`.",
+        ]
+      : []),
+    ...(requiredArtifactEvidenceFields.includes("Hosted deploy evidence")
+      ? [
+          "Hosted deploy evidence must include `hosted-deploy` and a GitHub Actions workflow locator.",
+        ]
+      : []),
     ...(requiredArtifactEvidenceFields.includes("OS/title/client matrix")
       ? [
           "OS/title/client matrix values must include `Windows`, `macOS`, and `Linux`.",
@@ -1967,6 +1999,7 @@ export function artifactTemplate(gate, artifactPath) {
     "",
     ...requiredArtifactEvidenceGroups.flatMap((group) => [
       `### ${group.heading}`,
+      "",
       ...group.requiredFields.map((field) => `- ${field}:`),
       "",
     ]),

@@ -212,12 +212,17 @@ syntactically specific but does not name the required proof lane; and
 function, status, `dry_run=false`, or redaction wording does not match.
 
 Proof evidence values must name the proof lane they support: use identifiers
-such as `stripe-webhook`, `stripe-tax-invoice`, `price-drop`, `presence-poll`,
-`account-deletion`, `mod.io/CurseForge`, `presence-bridge`,
-`catalog-cloud-transfer`, `achievement-cache`, `overlay`, `backup-restore`,
-`client-mount-apply`, `community-rollout`, `controller-profile-sync`,
-`plugin-marketplace`, `mobile-push`, or `hosted-deploy`. Bare `evt_...` values
-are accepted only for the Stripe webhook signature proof. Syntactically
+such as `stripe-webhook`, `stripe-tax-invoice`,
+`license-key-custody-live-license-issuance`, `price-drop`, `presence-poll`,
+`account-deletion`, `mod.io/CurseForge`,
+`non-steam-presence-bridge-provider`,
+`provider-approved-catalog-cloud-transfer`,
+`achievement-provider-cache-real-client`, `fullscreen-anti-cheat-overlay`,
+`backup-restore`, `client-mount-apply-provider-client`,
+`community-artwork-screenshot-rollout`, `controller-layout-profile-sync`,
+`plugin-marketplace-execution-update`,
+`mobile-push-provider-store-distribution`, or `hosted-deploy`. Bare `evt_...`
+values are accepted only for the Stripe webhook signature proof. Syntactically
 specific but generic IDs such as `run-generic-1` stay blocked. Compound proof
 values must include every required term in the same value: mod-provider evidence
 includes both `mod.io` and `CurseForge`; external-drive backup/restore proof

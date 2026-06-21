@@ -939,6 +939,11 @@ test("runbook documents lane-specific external preflight", () => {
   );
   assert.match(
     runbook,
+    /Leave `OGL_HOSTED_CRON_FRESHNESS_HOURS` unset unless a release operator[\s\S]*intentionally overrides every selected lane/i,
+  );
+  assert.match(runbook, /presence-poll[\s\S]*15 minute/i);
+  assert.match(
+    runbook,
     /pnpm hosted:cron-evidence:artifact-hints --checks=price-drop/,
   );
   assert.match(runbook, /does not check proof rows/i);

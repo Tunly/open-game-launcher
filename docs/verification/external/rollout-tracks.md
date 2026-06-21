@@ -45,6 +45,12 @@ Proof evidence values must name the proof lane they support, for example `stripe
 ## Gate-Specific Evidence
 
 Fill these rows with concrete external values for this gate. Keep secrets redacted; values must still include a specific accepted locator or ID containing digits, such as `run:...`, `probe-...`, `session-...`, `workflow-...`, `deployment-...`, or `artifact-...`; lane-specific hosted cron collector IDs such as `price-drop-cli-scheduled` are accepted for hosted cron Run ID rows, and Stripe webhook event IDs must be bare `evt_...` values.
+Community rollout evidence must include `community`, `artwork`, `screenshot`, and `rollout`.
+Controller layout/profile sync evidence must include `controller`, `layout`, `profile`, and `sync`.
+Marketplace evidence must include `plugin`, `marketplace`, and either `execution` or `update`.
+Mobile distribution evidence must include `mobile`, `store`, and `distribution`.
+Push-provider evidence must include `push`, `provider`, and either `Firebase` or `OneSignal`.
+Hosted deploy evidence must include `hosted-deploy` and a GitHub Actions workflow locator.
 
 - Community rollout evidence:
 - Controller layout/profile sync evidence:

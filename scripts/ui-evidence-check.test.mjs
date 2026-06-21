@@ -122,6 +122,22 @@ test("uiEvidenceReport rejects watchlisted UI TypeScript changes without screens
   );
 });
 
+test("uiEvidenceReport rejects Tailwind visual system changes without screenshot evidence", () => {
+  const root = fixtureRoot();
+  const report = uiEvidenceReport({
+    changedPaths: ["launcher/tailwind.config.ts"],
+    readmeText: "",
+    root,
+  });
+
+  assert.equal(report.ready, false);
+  assert.deepEqual(report.uiChanges, ["launcher/tailwind.config.ts"]);
+  assert.match(
+    report.findings.join("\n"),
+    /no changed docs\/verification\/screenshots/,
+  );
+});
+
 test("uiEvidenceReport rejects visible readiness data module changes without screenshot evidence", () => {
   const root = fixtureRoot();
   const report = uiEvidenceReport({
