@@ -172,8 +172,37 @@ function externalProofEvidenceFor(proof: string, fallback = "run-external-eviden
   }
   if (proof.includes("Plugin marketplace")) return "run-plugin-marketplace-update-review-123";
   if (proof.includes("Native mobile apps")) return "run-mobile-push-store-distribution-123";
-  if (proof.includes("Hosted production deployment")) return "run-hosted-production-deployment-123";
+  if (proof.includes("Hosted production deployment")) return "hosted-deploy workflow-123";
   return fallback;
+}
+
+function rolloutArtifactContent(
+  gate: ExternalCompletionEvidenceGateInput,
+  hostedDeployLocator: string,
+) {
+  return [
+    ...gate.proofRequirements.map((proof) => `- [x] ${proof}`),
+    "",
+    ...gate.proofRequirements.map((proof, index) => {
+      const value = proof.includes("Hosted production deployment")
+        ? hostedDeployLocator
+        : externalProofEvidenceFor(proof, `run-rollout-proof-${index + 1}`);
+      return `- Evidence for ${proof}: ${value}`;
+    }),
+    "- Captured at: 2026-06-16T12:00:00.000Z",
+    "- Release ref: refs/tags/v0.1.0",
+    "- Commit SHA: 0123456789abcdef0123456789abcdef01234567",
+    "- Operator: Release Ops",
+    "- Environment: hosted staging",
+    "- Redacted run IDs, dashboard links, screenshots, or signed deployment logs: workflow-rollout-123",
+    "- Redaction notes: Raw secrets removed before commit",
+    "- Community rollout evidence: community artwork screenshot rollout workflow-123",
+    "- Controller layout/profile sync evidence: controller layout profile sync workflow-123",
+    "- Marketplace evidence: plugin marketplace execution update workflow-123",
+    "- Mobile distribution evidence: mobile push provider store distribution workflow-123",
+    "- Push-provider evidence: push provider firebase onesignal workflow-123",
+    `- Hosted deploy evidence: ${hostedDeployLocator}`,
+  ].join("\n");
 }
 
 describe("external completion evidence summary", () => {
@@ -445,7 +474,7 @@ describe("external completion evidence summary", () => {
                 ...evidenceDetails,
                 "Community rollout evidence": "community-artwork-screenshot-rollout-run-123",
                 "Controller layout/profile sync evidence": "controller-layout-profile-sync-run-123",
-                "Hosted deploy evidence": "hosted-production-deployment-run-123",
+                "Hosted deploy evidence": "hosted-deploy workflow-123",
                 "Marketplace evidence": "plugin-marketplace-update-run-123",
                 "Mobile distribution evidence": "mobile-store-distribution-run-123",
                 "Push-provider evidence": "firebase-push-provider-run-123",
@@ -732,6 +761,100 @@ describe("external completion evidence summary", () => {
     expect(JSON.stringify(summary)).not.toContain("1970-01-01T00:00:00.000Z");
     expect(JSON.stringify(summary)).not.toContain("docs/verification/screenshots");
     expect(JSON.stringify(summary)).not.toContain(genericProofLocator);
+  });
+
+  it("rejects duplicate detail and proof evidence rows when any value is invalid", () => {
+    const hardwareGate = EXTERNAL_COMPLETION_EVIDENCE_GATE_INPUTS.find(
+      (gate) => gate.id === "hardware-os-e2e",
+    );
+    expect(hardwareGate).toBeDefined();
+    const gate = hardwareGate!;
+    const artifactPath = gate.artifactPaths[0];
+    const firstProof = gate.proofRequirements[0];
+    const localScreenshotPath =
+      "docs/verification/screenshots/settings-external-completion-evidence-summary-local.png";
+    const baseRows = [
+      ...gate.proofRequirements.map((proof) => `- [x] ${proof}`),
+      "",
+      ...gate.proofRequirements.map(
+        (proof, index) =>
+          `- Evidence for ${proof}: ${externalProofEvidenceFor(proof, `run-hardware-proof-${index + 1}`)}`,
+      ),
+      ...Object.entries({
+        ...evidenceDetails,
+        "Hardware profile": "hardware-profile-run-123",
+        "OS/title/client matrix": "os-title-client-matrix-windows-macos-linux-run-123",
+        "Session/run ID": "overlay-session-run-123",
+      }).map(([field, value]) => `- ${field}: ${value}`),
+    ];
+
+    const duplicateDetailSummary = buildExternalCompletionEvidenceSummary({
+      createdAt: "2026-06-16T00:00:00.000Z",
+      gates: [
+        {
+          ...gate,
+          artifactEvidence: [
+            {
+              content: [
+                ...baseRows,
+                `- Redacted run IDs, dashboard links, screenshots, or signed deployment logs: ${localScreenshotPath}`,
+              ].join("\n"),
+              path: artifactPath,
+              readable: true,
+            },
+          ],
+          envEvidence: envEvidenceFor(gate),
+        },
+      ],
+      packetId: "external-evidence-duplicate-detail-row-test",
+      validationNow,
+    });
+
+    expect(duplicateDetailSummary.gates[0]).toMatchObject({
+      missingEvidenceDetailCount: 1,
+      status: "blocked",
+    });
+    expect(duplicateDetailSummary.gates[0].artifactProofs[0].evidenceDetailFindings).toEqual([
+      {
+        field: "Redacted run IDs, dashboard links, screenshots, or signed deployment logs",
+        path: artifactPath,
+        reason: "local_path",
+      },
+    ]);
+
+    const duplicateProofSummary = buildExternalCompletionEvidenceSummary({
+      createdAt: "2026-06-16T00:00:00.000Z",
+      gates: [
+        {
+          ...gate,
+          artifactEvidence: [
+            {
+              content: [...baseRows, `- Evidence for ${firstProof}: ${localScreenshotPath}`].join(
+                "\n",
+              ),
+              path: artifactPath,
+              readable: true,
+            },
+          ],
+          envEvidence: envEvidenceFor(gate),
+        },
+      ],
+      packetId: "external-evidence-duplicate-proof-row-test",
+      validationNow,
+    });
+
+    expect(duplicateProofSummary.gates[0]).toMatchObject({
+      missingProofEvidenceCount: 1,
+      status: "blocked",
+    });
+    expect(duplicateProofSummary.gates[0].artifactProofs[0].proofEvidenceFindings).toEqual([
+      {
+        field: `Evidence for ${firstProof}`,
+        path: artifactPath,
+        proof: firstProof,
+        reason: "local_path",
+      },
+    ]);
   });
 
   it("accepts release-boundary details that match expected CI tag and SHA", () => {
@@ -1265,6 +1388,96 @@ describe("external completion evidence summary", () => {
     ]);
   });
 
+  it("requires hosted deploy workflow evidence instead of PR or commit URLs", () => {
+    const rolloutGate = EXTERNAL_COMPLETION_EVIDENCE_GATE_INPUTS.find(
+      (gate) => gate.id === "rollout-tracks",
+    );
+    expect(rolloutGate).toBeDefined();
+    const gate = rolloutGate!;
+    const artifactPath = gate.artifactPaths[0];
+    const hostedDeployProof = "Hosted production deployment evidence is attached.";
+
+    for (const locator of [
+      "hosted-deploy https://github.com/open-game-collective/open-game-launcher/pull/123",
+      "hosted-deploy workflow-123 https://github.com/open-game-collective/open-game-launcher/pull/123",
+      "hosted-deploy https://github.com/open-game-collective/open-game-launcher/commit/0123456789abcdef0123456789abcdef01234567",
+      "hosted-deploy workflow-123 https://github.com/open-game-collective/open-game-launcher/commit/0123456789abcdef0123456789abcdef01234567",
+    ]) {
+      const summary = buildExternalCompletionEvidenceSummary({
+        createdAt: "2026-06-16T00:00:00.000Z",
+        gates: [
+          {
+            ...gate,
+            artifactEvidence: [
+              {
+                content: rolloutArtifactContent(gate, locator),
+                path: artifactPath,
+                readable: true,
+              },
+            ],
+            envEvidence: envEvidenceFor(gate),
+          },
+        ],
+        packetId: "external-evidence-hosted-deploy-workflow-required-test",
+        validationNow,
+      });
+
+      expect(summary.gates[0]).toMatchObject({
+        missingEvidenceDetailCount: 1,
+        missingProofEvidenceCount: 1,
+        status: "blocked",
+      });
+      expect(summary.gates[0].artifactProofs[0].missingProofEvidenceMappings).toEqual([
+        {
+          path: artifactPath,
+          proof: hostedDeployProof,
+        },
+      ]);
+      expect(summary.gates[0].artifactProofs[0].missingEvidenceDetails).toEqual([
+        {
+          field: "Hosted deploy evidence",
+          path: artifactPath,
+        },
+      ]);
+      expect(summary.gates[0].artifactProofs[0].proofEvidenceFindings).toEqual([
+        {
+          field: `Evidence for ${hostedDeployProof}`,
+          path: artifactPath,
+          proof: hostedDeployProof,
+          reason: "missing_lane_terms",
+        },
+      ]);
+    }
+
+    const validSummary = buildExternalCompletionEvidenceSummary({
+      createdAt: "2026-06-16T00:00:00.000Z",
+      gates: [
+        {
+          ...gate,
+          artifactEvidence: [
+            {
+              content: rolloutArtifactContent(
+                gate,
+                "hosted-deploy workflow: https://github.com/open-game-collective/open-game-launcher/actions/runs/12345",
+              ),
+              path: artifactPath,
+              readable: true,
+            },
+          ],
+          envEvidence: envEvidenceFor(gate),
+        },
+      ],
+      packetId: "external-evidence-hosted-deploy-workflow-valid-test",
+      validationNow,
+    });
+
+    expect(validSummary.gates[0]).toMatchObject({
+      missingEvidenceDetailCount: 0,
+      missingProofEvidenceCount: 0,
+      status: "pass",
+    });
+  });
+
   it("rejects Store price-drop scheduler values that do not match CLI preflight", () => {
     const [storeGate] = EXTERNAL_COMPLETION_EVIDENCE_GATE_INPUTS;
     const artifactEvidence = validStoreArtifactEvidence(storeGate);
@@ -1447,6 +1660,77 @@ describe("external completion evidence summary", () => {
       missingEvidenceDetailCount: 0,
       status: "pass",
     });
+  });
+
+  it("rejects duplicate hosted Supabase cron lane details when any value is invalid", () => {
+    const cronGate = EXTERNAL_COMPLETION_EVIDENCE_GATE_INPUTS.find(
+      (gate) => gate.id === "hosted-supabase-cron",
+    );
+    expect(cronGate).toBeDefined();
+    const artifactPath = cronGate!.artifactPaths[0];
+
+    const summary = buildExternalCompletionEvidenceSummary({
+      createdAt: "2026-06-16T00:00:00.000Z",
+      gates: [
+        {
+          ...cronGate!,
+          artifactEvidence: [
+            {
+              content: [
+                ...cronGate!.proofRequirements.map((proof) => `- [x] ${proof}`),
+                ...cronGate!.proofRequirements.map(
+                  (proof) => `- Evidence for ${proof}: ${hostedCronProofEvidenceFor(proof)}`,
+                ),
+                "- Captured at: 2026-06-16T12:00:00.000Z",
+                "- Release ref: refs/tags/v0.1.0",
+                "- Commit SHA: 0123456789abcdef0123456789abcdef01234567",
+                "- Environment: hosted staging",
+                "- Operator: Release Ops",
+                "- Redacted run IDs, dashboard links, screenshots, or signed deployment logs: run-hosted-cron-nested-123",
+                "- Redaction notes: Raw secrets removed before commit",
+                "## price-drop",
+                "- Hosted cron table: store_price_drop_notification_runs",
+                "- Hosted cron table: wrong_table",
+                "- Function: notify-price-drop",
+                "- Run ID: price-drop-run-nested-123",
+                "- Scheduled: scheduled",
+                "- dry_run=false: confirmed false",
+                "- Status: completed",
+                "## presence-poll",
+                "- Hosted cron table: presence_poll_runs",
+                "- Function: poll-platform-presence",
+                "- Run ID: presence-poll-run-nested-123",
+                "- Scheduled: scheduled",
+                "- dry_run=false: confirmed false",
+                "- Status: completed",
+                "## account-deletion",
+                "- Hosted cron table: account_deletion_processor_runs",
+                "- Function: process-account-deletions",
+                "- Run ID: account-deletion-run-nested-123",
+                "- Scheduled: scheduled",
+                "- dry_run=false: confirmed false",
+                "- Status: completed",
+              ].join("\n"),
+              path: artifactPath,
+            },
+          ],
+          envEvidence: envEvidenceFor(cronGate!),
+        },
+      ],
+      packetId: "external-evidence-duplicate-hosted-cron-lane-test",
+      validationNow,
+    });
+
+    expect(summary.gates[0]).toMatchObject({
+      missingEvidenceDetailCount: 1,
+      status: "blocked",
+    });
+    expect(summary.gates[0].artifactProofs[0].missingEvidenceDetails).toEqual([
+      {
+        field: "price-drop: Hosted cron table",
+        path: artifactPath,
+      },
+    ]);
   });
 
   it("rejects hosted Supabase cron lane values that do not match CLI preflight", () => {
@@ -1832,6 +2116,79 @@ describe("external completion evidence summary", () => {
     expect(summary.gates[0].artifactProofs[0].secretFindingLabels).toEqual(["Stripe secret key"]);
     expect(JSON.stringify(summary)).not.toContain("sk_test_51OgLauncherEvidenceAlpha1234567890");
     expect(JSON.stringify(summary)).not.toContain("rk_live_51OgLauncherEvidenceAlpha1234567890");
+  });
+
+  it("reports GitHub token blockers without exposing raw token values", () => {
+    const rolloutGate = EXTERNAL_COMPLETION_EVIDENCE_GATE_INPUTS.find(
+      (gate) => gate.id === "rollout-tracks",
+    );
+    expect(rolloutGate).toBeDefined();
+    const gate = rolloutGate!;
+    const artifactPath = gate.artifactPaths[0];
+
+    for (const rawGithubToken of [
+      "ghp_abcdefghijklmnopqrstuvwxyz1234567890",
+      "github_pat_11AA22BB03abcdefghijklmnopqrstuvwxyz1234567890",
+      "GITHUB_TOKEN=ghs_abcdefghijklmnopqrstuvwxyz1234567890",
+      "GH_TOKEN=gho_abcdefghijklmnopqrstuvwxyz1234567890",
+      "GITHUB_PAT=ghp_abcdefghijklmnopqrstuvwxyz1234567890",
+    ]) {
+      const summary = buildExternalCompletionEvidenceSummary({
+        createdAt: "2026-06-16T00:00:00.000Z",
+        gates: [
+          {
+            ...gate,
+            artifactEvidence: [
+              {
+                content: [
+                  rolloutArtifactContent(gate, "hosted-deploy workflow-123"),
+                  rawGithubToken,
+                ].join("\n"),
+                path: artifactPath,
+                readable: true,
+              },
+            ],
+            envEvidence: envEvidenceFor(gate),
+          },
+        ],
+        packetId: "external-evidence-github-token-secret-scan-test",
+        validationNow,
+      });
+
+      expect(summary.gates[0].secretFindingCount).toBe(1);
+      expect(summary.gates[0].blockers).toContain("1 blocked secret-scan finding(s)");
+      expect(summary.gates[0].artifactProofs[0].secretFindingLabels).toEqual(["Raw GitHub token"]);
+      expect(JSON.stringify(summary)).not.toContain(rawGithubToken);
+    }
+
+    const redactedSummary = buildExternalCompletionEvidenceSummary({
+      createdAt: "2026-06-16T00:00:00.000Z",
+      gates: [
+        {
+          ...gate,
+          artifactEvidence: [
+            {
+              content: [
+                rolloutArtifactContent(gate, "hosted-deploy workflow-123"),
+                "GITHUB_TOKEN=[redacted]",
+                "GH_TOKEN=<redacted>",
+                "GITHUB_PAT=***",
+              ].join("\n"),
+              path: artifactPath,
+              readable: true,
+            },
+          ],
+          envEvidence: envEvidenceFor(gate),
+        },
+      ],
+      packetId: "external-evidence-github-token-redacted-test",
+      validationNow,
+    });
+
+    expect(redactedSummary.gates[0]).toMatchObject({
+      secretFindingCount: 0,
+      status: "pass",
+    });
   });
 
   it("reports mobile push secret blockers from rollout artifacts", () => {

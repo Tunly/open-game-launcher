@@ -118,6 +118,9 @@ function gateSpecificEvidenceDetails(gate) {
       if (field === "Provider/client matrix") {
         return "- Provider/client matrix: provider-client matrix mod.io CurseForge workflow-123";
       }
+      if (field === "Hosted deploy evidence") {
+        return "- Hosted deploy evidence: hosted-deploy workflow-123";
+      }
       return `- ${field}: ${field.toLowerCase()} evidence run-123`;
     })
     .join("\n");
@@ -160,7 +163,7 @@ function proofEvidenceValueForProof(proof, fallback) {
   if (proof.includes("Native mobile apps"))
     return "run-mobile-push-store-distribution-123";
   if (proof.includes("Hosted production deployment"))
-    return "run-hosted-production-deployment-123";
+    return "hosted-deploy workflow-123";
   return fallback;
 }
 
@@ -1421,6 +1424,31 @@ test("preflight status requires hosted cron details for every scheduler lane", (
 
   assert.equal(completeStatus.ready, true);
   assert.deepEqual(completeStatus.missingEvidenceDetails, []);
+
+  const duplicateInvalidStatus = gateStatus(
+    gate,
+    configuredEnv,
+    fakeExists([artifactPath]),
+    fakeRead({
+      [artifactPath]: [
+        proofContent(gate),
+        hostedCronLaneDetails["price-drop"],
+        "- Hosted cron table: wrong_table",
+        hostedCronLaneDetails["presence-poll"],
+        hostedCronLaneDetails["account-deletion"],
+        capturedEvidenceDetails(),
+      ].join("\n"),
+    }),
+  );
+
+  assert.equal(duplicateInvalidStatus.ready, false);
+  assert.deepEqual(duplicateInvalidStatus.missingProofs, []);
+  assert.deepEqual(duplicateInvalidStatus.missingEvidenceDetails, [
+    {
+      field: "price-drop: Hosted cron table",
+      path: artifactPath,
+    },
+  ]);
 });
 
 test("preflight status rejects unchecked template proof rows", () => {
@@ -2317,6 +2345,10 @@ test("preflight status rejects weak rollout track evidence detail values", () =>
       field: "Controller layout/profile sync evidence",
       path: artifactPath,
     },
+    {
+      field: "Hosted deploy evidence",
+      path: artifactPath,
+    },
   ]);
 
   const specificStatus = gateStatus(
@@ -2331,7 +2363,7 @@ test("preflight status rejects weak rollout track evidence detail values", () =>
         "- Marketplace evidence: marketplace-run-123",
         "- Mobile distribution evidence: mobile-distribution-run-123",
         "- Push-provider evidence: push-provider-run-123",
-        "- Hosted deploy evidence: deployment-run-123",
+        "- Hosted deploy evidence: hosted-deploy workflow-123",
       ].join("\n"),
     }),
   );
@@ -2634,6 +2666,80 @@ test("preflight status rejects local verification screenshot locators as externa
   ]);
 });
 
+test("preflight status rejects duplicate evidence rows when any value is invalid", () => {
+  const gate = evidenceGates.find((item) => item.id === "hardware-os-e2e");
+  assert.ok(gate);
+  const artifactPath = "docs/verification/external/hardware-os-e2e.md";
+  const firstProof = gate.requiredProofs[0];
+  const localScreenshotPath =
+    "docs/verification/screenshots/settings-external-completion-evidence-summary-local.png";
+
+  const duplicateDetailStatus = gateStatus(
+    gate,
+    configuredEnv,
+    fakeExists(gate.artifactPaths),
+    fakeRead({
+      [artifactPath]: proofContent(
+        gate,
+        [
+          capturedEvidenceDetails(),
+          `- Redacted run IDs, dashboard links, screenshots, or signed deployment logs: ${localScreenshotPath}`,
+        ].join("\n"),
+      ),
+    }),
+  );
+
+  assert.equal(duplicateDetailStatus.ready, false);
+  assert.deepEqual(duplicateDetailStatus.missingProofs, []);
+  assert.deepEqual(duplicateDetailStatus.missingEvidenceDetails, [
+    {
+      field:
+        "Redacted run IDs, dashboard links, screenshots, or signed deployment logs",
+      path: artifactPath,
+    },
+  ]);
+  assert.deepEqual(duplicateDetailStatus.evidenceDetailFindings, [
+    {
+      field:
+        "Redacted run IDs, dashboard links, screenshots, or signed deployment logs",
+      path: artifactPath,
+      reason: "local_path",
+    },
+  ]);
+
+  const duplicateProofStatus = gateStatus(
+    gate,
+    configuredEnv,
+    fakeExists(gate.artifactPaths),
+    fakeRead({
+      [artifactPath]: proofContent(
+        gate,
+        [
+          capturedEvidenceDetails(),
+          `- Evidence for ${firstProof}: ${localScreenshotPath}`,
+        ].join("\n"),
+      ),
+    }),
+  );
+
+  assert.equal(duplicateProofStatus.ready, false);
+  assert.deepEqual(duplicateProofStatus.missingProofs, []);
+  assert.deepEqual(duplicateProofStatus.missingEvidenceDetails, [
+    {
+      field: `Evidence for ${firstProof}`,
+      path: artifactPath,
+    },
+  ]);
+  assert.deepEqual(duplicateProofStatus.proofEvidenceFindings, [
+    {
+      field: `Evidence for ${firstProof}`,
+      path: artifactPath,
+      proof: firstProof,
+      reason: "local_path",
+    },
+  ]);
+});
+
 test("preflight status rejects unapproved URL and local path evidence locators", () => {
   const gate = evidenceGates.find((item) => item.id === "hardware-os-e2e");
   assert.ok(gate);
@@ -2719,6 +2825,85 @@ test("preflight status rejects unapproved URL and local path evidence locators",
 
   assert.equal(validStripeStatus.ready, true);
   assert.deepEqual(validStripeStatus.missingEvidenceDetails, []);
+});
+
+function rolloutEvidenceContent(gate, hostedDeployLocator) {
+  return [
+    ...gate.requiredProofs.map((proof) => `- [x] ${proof}`),
+    "",
+    ...gate.requiredProofs.map((proof, index) => {
+      const value = proof.includes("Hosted production deployment")
+        ? hostedDeployLocator
+        : proofEvidenceValueForProof(proof, `run-${gate.id}-${index + 1}`);
+      return `- Evidence for ${proof}: ${value}`;
+    }),
+    capturedEvidenceDetails(),
+    "- Community rollout evidence: community artwork screenshot rollout workflow-123",
+    "- Controller layout/profile sync evidence: controller layout profile sync workflow-123",
+    "- Marketplace evidence: plugin marketplace execution update workflow-123",
+    "- Mobile distribution evidence: mobile push provider store distribution workflow-123",
+    "- Push-provider evidence: push provider firebase onesignal workflow-123",
+    `- Hosted deploy evidence: ${hostedDeployLocator}`,
+  ].join("\n");
+}
+
+test("preflight status requires hosted deploy workflow evidence instead of PR or commit URLs", () => {
+  const gate = evidenceGates.find((item) => item.id === "rollout-tracks");
+  assert.ok(gate);
+  const artifactPath = "docs/verification/external/rollout-tracks.md";
+  const hostedDeployProof =
+    "Hosted production deployment evidence is attached.";
+
+  for (const locator of [
+    "hosted-deploy https://github.com/open-game-collective/open-game-launcher/pull/123",
+    "hosted-deploy workflow-123 https://github.com/open-game-collective/open-game-launcher/pull/123",
+    "hosted-deploy https://github.com/open-game-collective/open-game-launcher/commit/0123456789abcdef0123456789abcdef01234567",
+    "hosted-deploy workflow-123 https://github.com/open-game-collective/open-game-launcher/commit/0123456789abcdef0123456789abcdef01234567",
+  ]) {
+    const status = gateStatus(
+      gate,
+      configuredEnv,
+      fakeExists(gate.artifactPaths),
+      fakeRead({
+        [artifactPath]: rolloutEvidenceContent(gate, locator),
+      }),
+    );
+
+    assert.equal(status.ready, false);
+    assert.deepEqual(status.missingEvidenceDetails, [
+      {
+        field: "Hosted deploy evidence",
+        path: artifactPath,
+      },
+      {
+        field: `Evidence for ${hostedDeployProof}`,
+        path: artifactPath,
+      },
+    ]);
+    assert.deepEqual(status.proofEvidenceFindings, [
+      {
+        field: `Evidence for ${hostedDeployProof}`,
+        path: artifactPath,
+        proof: hostedDeployProof,
+        reason: "missing_lane_terms",
+      },
+    ]);
+  }
+
+  const validStatus = gateStatus(
+    gate,
+    configuredEnv,
+    fakeExists(gate.artifactPaths),
+    fakeRead({
+      [artifactPath]: rolloutEvidenceContent(
+        gate,
+        "hosted-deploy workflow: https://github.com/open-game-collective/open-game-launcher/actions/runs/12345",
+      ),
+    }),
+  );
+
+  assert.equal(validStatus.ready, true);
+  assert.deepEqual(validStatus.missingEvidenceDetails, []);
 });
 
 test("preflight status rejects accepted-host evidence URLs with userinfo query or hash without echoing values", () => {
@@ -3011,6 +3196,59 @@ test("preflight status blocks raw Stripe secret and restricted keys", () => {
     ]);
     assert.equal(JSON.stringify(status).includes(rawStripeKey), false);
   }
+});
+
+test("preflight status blocks raw GitHub token artifact content", () => {
+  const gate = evidenceGates.find((item) => item.id === "rollout-tracks");
+  assert.ok(gate);
+  const artifactPath = "docs/verification/external/rollout-tracks.md";
+
+  for (const rawGithubToken of [
+    "ghp_abcdefghijklmnopqrstuvwxyz1234567890",
+    "github_pat_11AA22BB03abcdefghijklmnopqrstuvwxyz1234567890",
+    "GITHUB_TOKEN=ghs_abcdefghijklmnopqrstuvwxyz1234567890",
+    "GH_TOKEN=gho_abcdefghijklmnopqrstuvwxyz1234567890",
+    "GITHUB_PAT=ghp_abcdefghijklmnopqrstuvwxyz1234567890",
+  ]) {
+    const status = gateStatus(
+      gate,
+      configuredEnv,
+      fakeExists(gate.artifactPaths),
+      fakeRead({
+        [artifactPath]: rolloutEvidenceContent(
+          gate,
+          "hosted-deploy workflow-123",
+        ).concat("\n", rawGithubToken),
+      }),
+    );
+
+    assert.equal(status.ready, false);
+    assert.deepEqual(status.missingProofs, []);
+    assert.deepEqual(status.secretFindings, [
+      {
+        label: "Raw GitHub token",
+        path: artifactPath,
+      },
+    ]);
+    assert.equal(JSON.stringify(status).includes(rawGithubToken), false);
+  }
+
+  const redactedStatus = gateStatus(
+    gate,
+    configuredEnv,
+    fakeExists(gate.artifactPaths),
+    fakeRead({
+      [artifactPath]: [
+        rolloutEvidenceContent(gate, "hosted-deploy workflow-123"),
+        "GITHUB_TOKEN=[redacted]",
+        "GH_TOKEN=<redacted>",
+        "GITHUB_PAT=***",
+      ].join("\n"),
+    }),
+  );
+
+  assert.equal(redactedStatus.ready, true);
+  assert.deepEqual(redactedStatus.secretFindings, []);
 });
 
 test("preflight status blocks raw provider API key artifact content", () => {

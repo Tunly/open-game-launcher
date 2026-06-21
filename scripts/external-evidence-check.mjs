@@ -264,6 +264,19 @@ const forbiddenArtifactPatterns = Object.freeze([
     pattern: /bearer\s+[a-z0-9._~+/=-]{12,}/i,
   },
   {
+    label: "Raw GitHub token",
+    pattern: /\b(?:ghp|gho|ghu|ghs|ghr)_[a-z0-9_]{20,}\b/i,
+  },
+  {
+    label: "Raw GitHub token",
+    pattern: /\bgithub_pat_[a-z0-9_]{20,}\b/i,
+  },
+  {
+    label: "Raw GitHub token",
+    pattern:
+      /\b(?:GITHUB_TOKEN|GH_TOKEN|GITHUB_PAT)\s*[:=]\s*(?!(?:\[?redacted\]?|<redacted>|\*{3,})(?:\s|$))[^\s`"'<>]{8,}/i,
+  },
+  {
     label: "Raw provider API key",
     pattern:
       /\b(?:STEAM_WEB_API_KEY|MOD_IO_API_KEY|CURSEFORGE_API_KEY|PRESENCE_PROVIDER_TOKEN)\s*[:=]\s*(?!(?:\[?redacted\]?|<redacted>|\*{3,})(?:\s|$))[^\s`"'<>]{8,}/i,
@@ -714,6 +727,39 @@ function evidenceLocatorContainsAllowedUrl(value) {
   });
 }
 
+function evidenceLocatorContainsGithubActionsRunUrl(value) {
+  const urls = value.match(/\bhttps:\/\/[^\s<>)\]]+/gi) ?? [];
+  return urls.some((rawUrl) => {
+    try {
+      const url = new URL(normalizeEvidenceUrl(rawUrl));
+      return (
+        evidenceUrlIsAllowed(url) &&
+        /^github\.com$/i.test(url.hostname) &&
+        /^\/[^/\s]+\/[^/\s]+\/actions\/runs\/\d+(?:\/.*)?$/i.test(url.pathname)
+      );
+    } catch {
+      return false;
+    }
+  });
+}
+
+function evidenceLocatorContainsGithubPullOrCommitUrl(value) {
+  const urls = value.match(/\bhttps:\/\/[^\s<>)\]]+/gi) ?? [];
+  return urls.some((rawUrl) => {
+    try {
+      const url = new URL(normalizeEvidenceUrl(rawUrl));
+      return (
+        /^github\.com$/i.test(url.hostname) &&
+        /^\/[^/\s]+\/[^/\s]+\/(?:pull\/\d+|commit\/[a-f0-9]{7,40})(?:\/.*)?$/i.test(
+          url.pathname,
+        )
+      );
+    } catch {
+      return false;
+    }
+  });
+}
+
 function evidenceLocatorValueIsSpecific(value) {
   if (evidenceLocatorIssueReason(value)) return false;
   if (evidenceLocatorContainsAllowedUrl(value)) return true;
@@ -739,7 +785,8 @@ function evidenceLocatorIssueReason(value) {
   ) {
     return "weak";
   }
-  if (evidenceLocatorContainsLocalVerificationPath(cleaned)) return "local_path";
+  if (evidenceLocatorContainsLocalVerificationPath(cleaned))
+    return "local_path";
   if (evidenceLocatorContainsBlockedLocalPath(cleaned)) return "local_path";
   if (/(?:^|[\s([<])file:\/\//i.test(cleaned)) return "local_path";
   if (evidenceLocatorContainsRejectedUrl(cleaned)) return "unapproved_url";
@@ -854,6 +901,23 @@ function stripeDashboardEvidenceValueIsSpecific(value) {
   ]);
 }
 
+function hostedDeployWorkflowEvidenceValueIsSpecific(value) {
+  const cleaned = clean(value);
+  if (evidenceLocatorIssueReason(cleaned)) return false;
+  if (!/\bhosted[-_\s]?deploy\b/i.test(cleaned)) return false;
+  if (evidenceLocatorContainsGithubPullOrCommitUrl(cleaned)) return false;
+  if (evidenceLocatorContainsGithubActionsRunUrl(cleaned)) return true;
+  return /\bworkflow[-_: #]?[a-z0-9][a-z0-9._:-]*\d\b/i.test(cleaned);
+}
+
+function hostedDeployWorkflowEvidenceIssueReason(value) {
+  const locatorReason = evidenceLocatorIssueReason(value);
+  if (locatorReason) return locatorReason;
+  return hostedDeployWorkflowEvidenceValueIsSpecific(value)
+    ? null
+    : "missing_lane_terms";
+}
+
 const fieldSpecificEvidenceValidators = Object.freeze({
   "Community rollout evidence": (value) =>
     evidenceIdentifierValueMatches(value, [
@@ -869,12 +933,7 @@ const fieldSpecificEvidenceValidators = Object.freeze({
       /profile/i,
       /sync/i,
     ]),
-  "Hosted deploy evidence": (value) =>
-    evidenceIdentifierValueMatches(value, [
-      /hosted/i,
-      /deploy/i,
-      /deployment/i,
-    ]),
+  "Hosted deploy evidence": hostedDeployWorkflowEvidenceValueIsSpecific,
   "Hardware profile": (value) =>
     evidenceIdentifierValueMatches(value, [/hardware/i, /profile/i]),
   "Live probe run ID": (value) =>
@@ -940,7 +999,8 @@ function evidenceDetailValueIssueReason(
   const normalized = cleaned.toLowerCase().replace(/[.!]+$/, "");
   if (placeholderEvidenceDetailValues.has(normalized)) return "placeholder";
   if (weakEvidenceDetailValuesByField[field]?.has(normalized)) return "weak";
-  if (field === "Captured at") return timestampEvidenceIssueReason(cleaned, now);
+  if (field === "Captured at")
+    return timestampEvidenceIssueReason(cleaned, now);
   if (field === "Release ref") return releaseRefIssueReason(cleaned, env);
   if (field === "Commit SHA") return commitShaIssueReason(cleaned, env);
   if (field === "Redaction notes") {
@@ -952,7 +1012,7 @@ function evidenceDetailValueIssueReason(
   ) {
     return evidenceLocatorValueIsSpecific(cleaned)
       ? null
-      : evidenceLocatorIssueReason(cleaned) ?? "malformed_locator";
+      : (evidenceLocatorIssueReason(cleaned) ?? "malformed_locator");
   }
   if (field === "dry_run=false") {
     return /^(?:false|confirmed false|dry_run=false)$/i.test(cleaned)
@@ -1078,27 +1138,20 @@ function evidenceDetailFindingsFromArtifactContent(
       .map((line) => clean(line.match(pattern)?.[1]))
       .filter(Boolean);
 
-    if (
-      values.some(
-        (value) =>
-          evidenceDetailValueIssueReason(field, value, now, env, expected) ===
-          null,
+    if (values.length === 0) {
+      return [{ field, path, reason: "missing" }];
+    }
+
+    const issueReasons = values
+      .map((value) =>
+        evidenceDetailValueIssueReason(field, value, now, env, expected),
       )
-    ) {
+      .filter(Boolean);
+    if (issueReasons.length === 0) {
       return [];
     }
 
-    const reason =
-      values.length === 0
-        ? "missing"
-        : evidenceDetailValueIssueReason(
-            field,
-            values[0],
-            now,
-            env,
-            expected,
-          ) ?? "malformed";
-    return [{ field, path, reason }];
+    return [{ field, path, reason: issueReasons[0] ?? "malformed" }];
   });
 }
 
@@ -1144,27 +1197,28 @@ function evidenceGroupDetailFindingsFromArtifactContent(
         .map((line) => clean(line.match(pattern)?.[1]))
         .filter(Boolean);
 
-      if (
-        values.some(
-          (value) =>
-            evidenceDetailValueIssueReason(field, value, now, {}, expected) ===
-            null,
+      if (values.length === 0) {
+        return [
+          { field: `${group.heading}: ${field}`, path, reason: "missing" },
+        ];
+      }
+
+      const issueReasons = values
+        .map((value) =>
+          evidenceDetailValueIssueReason(field, value, now, {}, expected),
         )
-      ) {
+        .filter(Boolean);
+      if (issueReasons.length === 0) {
         return [];
       }
 
-      const reason =
-        values.length === 0
-          ? "missing"
-          : evidenceDetailValueIssueReason(
-              field,
-              values[0],
-              now,
-              {},
-              expected,
-            ) ?? "malformed";
-      return [{ field: `${group.heading}: ${field}`, path, reason }];
+      return [
+        {
+          field: `${group.heading}: ${field}`,
+          path,
+          reason: issueReasons[0] ?? "malformed",
+        },
+      ];
     });
   });
 }
@@ -1342,6 +1396,9 @@ function proofEvidenceValueIssueReasonForProof(proof, value) {
   ) {
     return null;
   }
+  if (/hosted production deployment/i.test(proof)) {
+    return hostedDeployWorkflowEvidenceIssueReason(value);
+  }
   const locatorReason = proofEvidenceValueIssueReason(value);
   if (locatorReason) return locatorReason;
   const expectedPatterns = expectedProofEvidenceValuePatterns(proof);
@@ -1372,19 +1429,26 @@ function proofEvidenceFindingsFromArtifactContent(
     .filter((proof) => verifiedProofs.has(proof))
     .flatMap((proof) => {
       const values = evidenceByProof.get(proof) ?? [];
-      if (
-        values.some(
-          (value) => proofEvidenceValueIssueReasonForProof(proof, value) === null,
-        )
-      ) {
+      if (values.length === 0) {
+        return [
+          { field: `Evidence for ${proof}`, path, proof, reason: "missing" },
+        ];
+      }
+
+      const issueReasons = values
+        .map((value) => proofEvidenceValueIssueReasonForProof(proof, value))
+        .filter(Boolean);
+      if (issueReasons.length === 0) {
         return [];
       }
-      const reason =
-        values.length === 0
-          ? "missing"
-          : proofEvidenceValueIssueReasonForProof(proof, values[0]) ??
-            "malformed_locator";
-      return [{ field: `Evidence for ${proof}`, path, proof, reason }];
+      return [
+        {
+          field: `Evidence for ${proof}`,
+          path,
+          proof,
+          reason: issueReasons[0] ?? "malformed_locator",
+        },
+      ];
     });
 }
 

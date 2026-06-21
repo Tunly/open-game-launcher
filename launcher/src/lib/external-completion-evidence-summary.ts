@@ -729,7 +729,7 @@ function recommendedCommandsForGate(
 interface NormalizedExternalCompletionEvidenceArtifact {
   checkedProofs: Set<string>;
   content: string;
-  evidenceDetails: Map<ExternalCompletionEvidenceDetailField, string>;
+  evidenceDetails: Map<ExternalCompletionEvidenceDetailField, string[]>;
   path: string;
   proofEvidence: Map<string, string[]>;
   readable: boolean;
@@ -748,6 +748,19 @@ const forbiddenArtifactPatterns = [
   {
     label: "Bearer token",
     pattern: /bearer\s+[a-z0-9._~+/=-]{12,}/i,
+  },
+  {
+    label: "Raw GitHub token",
+    pattern: /\b(?:ghp|gho|ghu|ghs|ghr)_[a-z0-9_]{20,}\b/i,
+  },
+  {
+    label: "Raw GitHub token",
+    pattern: /\bgithub_pat_[a-z0-9_]{20,}\b/i,
+  },
+  {
+    label: "Raw GitHub token",
+    pattern:
+      /\b(?:GITHUB_TOKEN|GH_TOKEN|GITHUB_PAT)\s*[:=]\s*(?!(?:\[?redacted\]?|<redacted>|\*{3,})(?:\s|$))[^\s`"'<>]{8,}/i,
   },
   {
     label: "Raw provider API key",
@@ -925,8 +938,19 @@ function checkedProofsFromArtifactContent(content: string) {
     .map((proof) => proof.trim());
 }
 
+function appendEvidenceDetailValue(
+  details: Map<ExternalCompletionEvidenceDetailField, string[]>,
+  field: ExternalCompletionEvidenceDetailField,
+  value: unknown,
+) {
+  const cleanedValue = clean(value);
+  if (!field || !cleanedValue) return;
+  const existing = details.get(field) ?? [];
+  details.set(field, [...existing, cleanedValue]);
+}
+
 function evidenceDetailsFromArtifactContent(content: string) {
-  const details = new Map<ExternalCompletionEvidenceDetailField, string>();
+  const details = new Map<ExternalCompletionEvidenceDetailField, string[]>();
   const lines = evidenceMarkdownLines(content);
   let hostedCronLane: (typeof hostedSupabaseCronLaneIds)[number] | null = null;
   let hostedCronLaneHeadingLevel = 0;
@@ -950,9 +974,9 @@ function evidenceDetailsFromArtifactContent(content: string) {
     const field = match[1].trim();
     const value = clean(match[2]);
     if (!field || !value) continue;
-    details.set(field, value);
+    appendEvidenceDetailValue(details, field, value);
     if (hostedCronLane && isHostedSupabaseCronLaneEvidenceField(field)) {
-      details.set(`${hostedCronLane}: ${field}`, value);
+      appendEvidenceDetailValue(details, `${hostedCronLane}: ${field}`, value);
     }
   }
 
@@ -978,13 +1002,12 @@ function normalizeArtifactEvidence(
   artifact: ExternalCompletionEvidenceArtifactInput,
 ): NormalizedExternalCompletionEvidenceArtifact {
   const checkedProofs = new Set(artifact.checkedProofs ?? []);
-  const evidenceDetails = new Map<ExternalCompletionEvidenceDetailField, string>();
+  const evidenceDetails = new Map<ExternalCompletionEvidenceDetailField, string[]>();
   const proofEvidence = new Map<string, string[]>();
   const content = clean(artifact.content);
 
   for (const [field, value] of Object.entries(artifact.evidenceDetails ?? {})) {
-    const cleanedValue = clean(value);
-    if (field && cleanedValue) evidenceDetails.set(field, cleanedValue);
+    appendEvidenceDetailValue(evidenceDetails, field, value);
   }
 
   for (const [proof, value] of Object.entries(artifact.proofEvidence ?? {})) {
@@ -993,8 +1016,8 @@ function normalizeArtifactEvidence(
 
   if (content) {
     for (const proof of checkedProofsFromArtifactContent(content)) checkedProofs.add(proof);
-    for (const [field, value] of evidenceDetailsFromArtifactContent(content)) {
-      if (!evidenceDetails.has(field)) evidenceDetails.set(field, value);
+    for (const [field, values] of evidenceDetailsFromArtifactContent(content)) {
+      for (const value of values) appendEvidenceDetailValue(evidenceDetails, field, value);
     }
     for (const [proof, values] of proofEvidenceFromArtifactContent(content)) {
       const existing = proofEvidence.get(proof) ?? [];
@@ -1003,7 +1026,7 @@ function normalizeArtifactEvidence(
   }
 
   const structuredEvidenceSecretScanTarget = [
-    ...Array.from(evidenceDetails.values()),
+    ...Array.from(evidenceDetails.values()).flat(),
     ...Array.from(proofEvidence.values()).flat(),
   ].join("\n");
   const artifactSecretScanTarget = [content, structuredEvidenceSecretScanTarget]
@@ -1201,6 +1224,37 @@ function evidenceLocatorContainsAllowedUrl(value: string) {
   });
 }
 
+function evidenceLocatorContainsGithubActionsRunUrl(value: string) {
+  const urls = value.match(/\bhttps:\/\/[^\s<>)\]]+/gi) ?? [];
+  return urls.some((rawUrl) => {
+    try {
+      const url = new URL(normalizeEvidenceUrl(rawUrl));
+      return (
+        evidenceUrlIsAllowed(url) &&
+        /^github\.com$/i.test(url.hostname) &&
+        /^\/[^/\s]+\/[^/\s]+\/actions\/runs\/\d+(?:\/.*)?$/i.test(url.pathname)
+      );
+    } catch {
+      return false;
+    }
+  });
+}
+
+function evidenceLocatorContainsGithubPullOrCommitUrl(value: string) {
+  const urls = value.match(/\bhttps:\/\/[^\s<>)\]]+/gi) ?? [];
+  return urls.some((rawUrl) => {
+    try {
+      const url = new URL(normalizeEvidenceUrl(rawUrl));
+      return (
+        /^github\.com$/i.test(url.hostname) &&
+        /^\/[^/\s]+\/[^/\s]+\/(?:pull\/\d+|commit\/[a-f0-9]{7,40})(?:\/.*)?$/i.test(url.pathname)
+      );
+    } catch {
+      return false;
+    }
+  });
+}
+
 function evidenceLocatorValueIsSpecific(value: string) {
   if (evidenceLocatorIssueReason(value)) return false;
   if (evidenceLocatorContainsAllowedUrl(value)) return true;
@@ -1304,6 +1358,23 @@ function stripeDashboardEvidenceValueIsSpecific(value: string) {
   return evidenceIdentifierValueMatches(cleaned, [/stripe/i, /dashboard/i, /tax/i, /invoice/i]);
 }
 
+function hostedDeployWorkflowEvidenceValueIsSpecific(value: string) {
+  const cleaned = clean(value);
+  if (evidenceLocatorIssueReason(cleaned)) return false;
+  if (!/\bhosted[-_\s]?deploy\b/i.test(cleaned)) return false;
+  if (evidenceLocatorContainsGithubPullOrCommitUrl(cleaned)) return false;
+  if (evidenceLocatorContainsGithubActionsRunUrl(cleaned)) return true;
+  return /\bworkflow[-_: #]?[a-z0-9][a-z0-9._:-]*\d\b/i.test(cleaned);
+}
+
+function hostedDeployWorkflowEvidenceIssueReason(
+  value: string,
+): ExternalCompletionEvidenceFindingReason | null {
+  const locatorReason = evidenceLocatorIssueReason(value);
+  if (locatorReason) return locatorReason;
+  return hostedDeployWorkflowEvidenceValueIsSpecific(value) ? null : "missing_lane_terms";
+}
+
 function normalizedReleaseRef(value?: string) {
   return clean(value).replace(/^refs\/tags\//, "");
 }
@@ -1356,8 +1427,7 @@ const fieldSpecificEvidenceValidators: Partial<Record<string, EvidenceDetailFiel
     evidenceIdentifierValueMatches(value, [/community/i, /artwork/i, /screenshot/i, /rollout/i]),
   "Controller layout/profile sync evidence": (value) =>
     evidenceIdentifierValueMatches(value, [/controller/i, /layout/i, /profile/i, /sync/i]),
-  "Hosted deploy evidence": (value) =>
-    evidenceIdentifierValueMatches(value, [/hosted/i, /deploy/i, /deployment/i]),
+  "Hosted deploy evidence": hostedDeployWorkflowEvidenceValueIsSpecific,
   "Hardware profile": (value) => evidenceIdentifierValueMatches(value, [/hardware/i, /profile/i]),
   "Live probe run ID": (value) => evidenceIdentifierValueMatches(value, [/live/i, /probe/i]),
   "Marketplace evidence": (value) =>
@@ -1537,6 +1607,9 @@ function proofEvidenceValueIssueReasonForProof(
   if (/stripe webhook signature/i.test(proof) && stripeEventIdValueIsSpecific(value)) {
     return null;
   }
+  if (/hosted production deployment/i.test(proof)) {
+    return hostedDeployWorkflowEvidenceIssueReason(value);
+  }
   const locatorReason = proofEvidenceValueIssueReason(value);
   if (locatorReason) return locatorReason;
   const expectedPattern = expectedProofEvidenceValuePattern(proof);
@@ -1548,7 +1621,9 @@ function proofEvidenceValueIssueReasonForProof(
 }
 
 function proofEvidenceValuesAreValid(proof: string, values: string[]) {
-  return values.some((value) => proofEvidenceValueIsValidForProof(proof, value));
+  return (
+    values.length > 0 && values.every((value) => proofEvidenceValueIsValidForProof(proof, value))
+  );
 }
 
 function proofEvidenceFindingReason(
@@ -1556,7 +1631,12 @@ function proofEvidenceFindingReason(
   values: string[],
 ): ExternalCompletionEvidenceFindingReason {
   if (values.length === 0) return "missing";
-  return proofEvidenceValueIssueReasonForProof(proof, values[0]) ?? "malformed_locator";
+  return (
+    values
+      .map((value) => proofEvidenceValueIssueReasonForProof(proof, value))
+      .find((reason): reason is ExternalCompletionEvidenceFindingReason => Boolean(reason)) ??
+    "malformed_locator"
+  );
 }
 
 function supabaseProjectUrlIsConfigured(value: string, allowedPathPattern: RegExp) {
@@ -1625,8 +1705,13 @@ function evidenceDetailFindingsForArtifact(
   releaseBoundaryEnv?: ExternalCompletionEvidenceReleaseBoundaryEnv,
 ) {
   return requiredFields.flatMap((field) => {
-    const value = clean(artifact.evidenceDetails.get(field));
-    const reason = evidenceDetailValueIssueReason(field, value, now, releaseBoundaryEnv);
+    const values = artifact.evidenceDetails.get(field) ?? [];
+    if (values.length === 0) return [{ field, path, reason: "missing" as const }];
+
+    const reason =
+      values
+        .map((value) => evidenceDetailValueIssueReason(field, value, now, releaseBoundaryEnv))
+        .find((item): item is ExternalCompletionEvidenceFindingReason => Boolean(item)) ?? null;
     return reason ? [{ field, path, reason }] : [];
   });
 }
@@ -1644,7 +1729,7 @@ function templateOnlyFindingsForArtifact(
   if (!artifactHasTemplateOnlyBanner(artifact)) return [];
   const hasCheckedProof = requiredProofs.some((proof) => artifact.checkedProofs.has(proof));
   const hasFilledDetail = requiredFields.some((field) =>
-    clean(artifact.evidenceDetails.get(field)),
+    (artifact.evidenceDetails.get(field) ?? []).some((value) => clean(value)),
   );
   return hasCheckedProof || hasFilledDetail ? [{ path }] : [];
 }
