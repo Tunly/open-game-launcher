@@ -96,6 +96,12 @@ describe("ControllersPage local multiplayer hub", () => {
 
     expect(within(hub).getByText("Local Multiplayer Hub")).toBeInTheDocument();
     expect(within(hub).getByText("Native routing")).toBeInTheDocument();
+    expect(within(hub).getAllByText("Co-op Ready")).toHaveLength(2);
+    expect(
+      within(hub).getByText((_, element) => {
+        return element?.textContent === "Minimum 2 ready seats // 0 blockers";
+      }),
+    ).toBeInTheDocument();
     expect(within(hub).getByText("Arcade Stick One")).toBeInTheDocument();
     expect(within(hub).getByText("Keyboard/Mouse Host")).toBeInTheDocument();
     expect(within(hub).getByText("Docked DualSense")).toBeInTheDocument();

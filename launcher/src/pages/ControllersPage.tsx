@@ -1001,16 +1001,25 @@ function LocalMultiplayerHubPanel({ hub }: { hub: LocalMultiplayerHubModel }) {
             before opening a split-screen game.
           </p>
         </div>
-        <span
-          className={`neo-copy border-2 border-black px-3 py-2 text-[10px] font-black uppercase shadow-[3px_3px_0_#171411] ${getBridgeBadgeClass(
-            hub.bridgeStatus,
-          )}`}
-        >
-          {hub.bridgeMode}
-        </span>
+        <div className="flex flex-wrap items-center gap-2">
+          <span
+            className={`neo-copy border-2 border-black px-3 py-2 text-[10px] font-black uppercase shadow-[3px_3px_0_#171411] ${getCoOpBadgeClass(
+              hub.coOpStatus,
+            )}`}
+          >
+            {hub.coOpStatusLabel}
+          </span>
+          <span
+            className={`neo-copy border-2 border-black px-3 py-2 text-[10px] font-black uppercase shadow-[3px_3px_0_#171411] ${getBridgeBadgeClass(
+              hub.bridgeStatus,
+            )}`}
+          >
+            {hub.bridgeMode}
+          </span>
+        </div>
       </div>
 
-      <div className="mt-4 grid gap-3 md:grid-cols-3">
+      <div className="mt-4 grid gap-3 md:grid-cols-4">
         <div className="border-2 border-black bg-[#fff9ed] p-3 shadow-[3px_3px_0_#171411]">
           <p className="neo-copy text-[10px] font-black uppercase text-[#5f574d]">Ready Seats</p>
           <p className="neo-title mt-1 text-4xl uppercase text-[#171411]">
@@ -1020,6 +1029,18 @@ function LocalMultiplayerHubPanel({ hub }: { hub: LocalMultiplayerHubModel }) {
         <div className="border-2 border-black bg-[#fff9ed] p-3 shadow-[3px_3px_0_#171411]">
           <p className="neo-copy text-[10px] font-black uppercase text-[#5f574d]">Standby Pads</p>
           <p className="neo-title mt-1 text-4xl uppercase text-[#171411]">{hub.standbySlots}</p>
+        </div>
+        <div
+          className={`border-2 border-black p-3 shadow-[3px_3px_0_#171411] ${getCoOpCardClass(
+            hub.coOpStatus,
+          )}`}
+        >
+          <p className="neo-copy text-[10px] font-black uppercase text-[#5f574d]">Co-op Status</p>
+          <p className="neo-title mt-1 text-2xl uppercase text-[#171411]">{hub.coOpStatusLabel}</p>
+          <p className="neo-copy mt-2 text-[10px] font-black uppercase leading-5 text-[#5f574d]">
+            Minimum {hub.minimumReadySeats} ready seats // {hub.blockedCount}{" "}
+            {hub.blockedCount === 1 ? "blocker" : "blockers"}
+          </p>
         </div>
         <div className="border-2 border-black bg-[#171411] p-3 text-[#fff9ed] shadow-[3px_3px_0_#b7102a]">
           <p className="neo-copy text-[10px] font-black uppercase text-[#8cf5e4]">Next Move</p>
@@ -1075,6 +1096,18 @@ function getBridgeBadgeClass(status: LocalMultiplayerHubModel["bridgeStatus"]) {
   if (status === "ready") return "bg-[#087d6d] text-white";
   if (status === "setup") return "bg-[#8cf5e4] text-[#171411]";
   return "bg-[#b7102a] text-white";
+}
+
+function getCoOpBadgeClass(status: LocalMultiplayerHubModel["coOpStatus"]) {
+  if (status === "ready") return "bg-[#087d6d] text-white";
+  if (status === "staged") return "bg-[#fff9ed] text-[#171411]";
+  return "bg-[#b7102a] text-white";
+}
+
+function getCoOpCardClass(status: LocalMultiplayerHubModel["coOpStatus"]) {
+  if (status === "ready") return "bg-[#fff9ed]";
+  if (status === "staged") return "bg-[#fff9ed]";
+  return "bg-[#efe3cf]";
 }
 
 function getSlotClass(state: LocalMultiplayerSlot["state"]) {

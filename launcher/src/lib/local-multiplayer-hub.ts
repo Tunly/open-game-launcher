@@ -1,5 +1,6 @@
 import type { ControllerDevice, ControllerRuntimeStatus } from "./types/controllers";
 
+export type LocalMultiplayerCoOpStatus = "blocked" | "ready" | "staged";
 export type LocalMultiplayerSlotState = "empty" | "keyboard" | "ready" | "standby";
 
 export interface LocalMultiplayerSlot {
@@ -12,10 +13,14 @@ export interface LocalMultiplayerSlot {
 }
 
 export interface LocalMultiplayerHubModel {
+  blockedCount: number;
   bridgeMode: string;
   bridgeStatus: "ready" | "setup" | "warning";
   checklist: string[];
+  coOpStatus: LocalMultiplayerCoOpStatus;
+  coOpStatusLabel: string;
   maxPlayers: number;
+  minimumReadySeats: number;
   readySlots: number;
   recommendation: string;
   slots: LocalMultiplayerSlot[];
@@ -23,6 +28,7 @@ export interface LocalMultiplayerHubModel {
 }
 
 const MAX_LOCAL_PLAYERS = 4;
+const MINIMUM_LOCAL_COOP_READY_SEATS = 2;
 
 export function buildLocalMultiplayerHub(
   devices: ControllerDevice[],
@@ -79,17 +85,42 @@ export function buildLocalMultiplayerHub(
   ).length;
   const standbySlots = slots.filter((slot) => slot.state === "standby").length;
   const bridge = getBridgeMode(runtimeStatus);
+  const coOp = getCoOpStatus(readySlots, standbySlots);
 
   return {
+    blockedCount: coOp.blockedCount,
     bridgeMode: bridge.label,
     bridgeStatus: bridge.status,
     checklist: buildChecklist(runtimeStatus, connectedDevices.length, standbyDevices.length),
+    coOpStatus: coOp.status,
+    coOpStatusLabel: coOp.label,
     maxPlayers: MAX_LOCAL_PLAYERS,
+    minimumReadySeats: MINIMUM_LOCAL_COOP_READY_SEATS,
     readySlots,
     recommendation: getRecommendation(readySlots, standbySlots),
     slots,
     standbySlots,
   };
+}
+
+function getCoOpStatus(
+  readySlots: number,
+  standbySlots: number,
+): {
+  blockedCount: number;
+  label: string;
+  status: LocalMultiplayerCoOpStatus;
+} {
+  const blockedCount = Math.max(0, MINIMUM_LOCAL_COOP_READY_SEATS - readySlots);
+  if (readySlots >= MINIMUM_LOCAL_COOP_READY_SEATS) {
+    return { blockedCount, label: "Co-op Ready", status: "ready" };
+  }
+
+  if (readySlots + standbySlots >= MINIMUM_LOCAL_COOP_READY_SEATS) {
+    return { blockedCount, label: "Second Seat Staged", status: "staged" };
+  }
+
+  return { blockedCount, label: "Needs Second Seat", status: "blocked" };
 }
 
 function getBridgeMode(runtimeStatus: ControllerRuntimeStatus | null): {
