@@ -11,7 +11,7 @@ const uiSourcePattern =
 const uiTsWatchlistPatterns = Object.freeze([
   /^launcher\/src\/components\/layout\/navigation\.ts$/,
   /^launcher\/src\/components\/(?:.*\/)?[^/]+\.helpers\.ts$/,
-  /^launcher\/src\/lib\/(?:app-shell-skins|external-completion-evidence-summary|mock-data)\.ts$/,
+  /^launcher\/src\/lib\/(?:achievement-providers|app-shell-skins|assets|external-completion-evidence-summary|formatters|library-filters|mock-data)\.ts$/,
   /^launcher\/src\/lib\/[^/]+-(?:audit|candidates|console|contract|evidence|fixtures|handoff|panel|planner|policy|preview|proof|readiness|recap|recommendations|stats|status|summary)\.ts$/,
 ]);
 const ignoredSourcePattern =
@@ -121,6 +121,105 @@ function readmeLineForScreenshot(readmeText, screenshotPath) {
     .find((line) => line.includes(token) || line.includes(screenshotPath));
 }
 
+const pageRouteTokens = Object.freeze({
+  AchievementsPage: ["/achievements"],
+  AuthPage: ["/auth"],
+  CommunityPage: ["/community"],
+  ControllersPage: ["/controllers"],
+  DeveloperPortalPage: ["/developer"],
+  DownloadsPage: ["/downloads"],
+  EditProfilePage: ["/settings/profile"],
+  FamilyPage: ["/family"],
+  FpsHudPage: ["/fps"],
+  FriendsPage: ["/friends", "/invite/"],
+  GameActivityDashboardPage: ["/activity"],
+  HomePage: ["/home"],
+  InviteFallbackPage: ["/invite/"],
+  LibraryPage: ["/library"],
+  ModsPage: ["/mods"],
+  NewsPage: ["/news"],
+  NotFoundPage: ["404", "unknown-route"],
+  OverlayPage: ["/overlay"],
+  PerfHistoryPage: ["/settings/performance"],
+  PrivacySettingsPage: ["/settings/privacy"],
+  ProfileCustomizePage: ["/settings/profile/customize"],
+  ProfilePage: ["/u/"],
+  RemoteInstallDashboardPage: ["/downloads/remote"],
+  SettingsPage: ["/settings"],
+  StorePage: ["/store"],
+});
+
+function expectedRouteTokensForUiPath(path) {
+  const pageMatch = path.match(/^launcher\/src\/pages\/([^/.]+)\.tsx$/);
+  if (pageMatch) return pageRouteTokens[pageMatch[1]] ?? [];
+
+  if (/^launcher\/src\/components\/profile\//.test(path)) {
+    return ["/u/", "/settings/profile"];
+  }
+  if (/^launcher\/src\/components\/settings\//.test(path)) {
+    return ["/settings"];
+  }
+  if (/^launcher\/src\/components\/community\//.test(path)) {
+    return ["/community"];
+  }
+  if (/^launcher\/src\/components\/library\//.test(path)) {
+    return ["/library"];
+  }
+  if (/^launcher\/src\/components\/launcher\//.test(path)) {
+    return ["/downloads", "/store", "/library"];
+  }
+  if (/^launcher\/src\/components\/friends\//.test(path)) {
+    return ["/friends", "/invite/"];
+  }
+  if (/^launcher\/src\/components\/controllers\//.test(path)) {
+    return ["/controllers"];
+  }
+  if (/^launcher\/src\/components\/mods\//.test(path)) {
+    return ["/mods"];
+  }
+  if (/^launcher\/src\/components\/achievements\//.test(path)) {
+    return ["/achievements"];
+  }
+  if (/^launcher\/src\/hooks\/library\//.test(path)) {
+    return ["/library"];
+  }
+  if (/^launcher\/src\/lib\/(?:achievement|achievements?)-/.test(path)) {
+    return ["/achievements"];
+  }
+  if (/^launcher\/src\/lib\/(?:library-|game-|custom-artwork|provider-)/.test(path)) {
+    return ["/library"];
+  }
+  if (/^launcher\/src\/lib\/(?:broadcast|public-screenshot|community-)/.test(path)) {
+    return ["/community"];
+  }
+  if (/^launcher\/src\/lib\/(?:profile|app-wide-theme|theme-skin)/.test(path)) {
+    return ["/u/", "/settings/profile"];
+  }
+  if (/^launcher\/src\/lib\/(?:store|prices?)/.test(path)) {
+    return ["/store"];
+  }
+  if (/^launcher\/src\/lib\/(?:remote-|lan-|mobile-)/.test(path)) {
+    return ["/downloads"];
+  }
+  if (/^launcher\/src\/lib\/(?:controller|virtual-gamepad)/.test(path)) {
+    return ["/controllers"];
+  }
+  if (/^launcher\/src\/lib\/(?:performance|overlay)/.test(path)) {
+    return ["/settings/performance", "/overlay", "/activity"];
+  }
+  if (/^launcher\/src\/lib\/(?:friend|invite|social|crossplay)/.test(path)) {
+    return ["/friends", "/invite/"];
+  }
+  if (/^launcher\/src\/lib\/mods?/.test(path)) {
+    return ["/mods"];
+  }
+  return [];
+}
+
+function lineMatchesExpectedRoute(line, tokens) {
+  return tokens.some((token) => line.includes(token));
+}
+
 function fileExists(root, path) {
   return (
     statSync(join(root, path), { throwIfNoEntry: false })?.isFile() ?? false
@@ -208,6 +307,7 @@ export function uiEvidenceReport({
       root,
       screenshotPath,
     }),
+    line: readmeLineForScreenshot(readme, screenshotPath),
     path: screenshotPath,
   }));
   const completeScreenshotEntries = screenshotReviews.filter(
@@ -229,6 +329,25 @@ export function uiEvidenceReport({
       "UI changes detected, but one or more changed screenshot artifacts have incomplete README entries with route/state, evidence boundary, and Retro Manga/overflow language.",
     );
     findings.push(...incompleteScreenshotFindings.slice(0, 20));
+  }
+
+  const completeScreenshotLines = completeScreenshotEntries
+    .map((review) => review.line)
+    .filter(Boolean);
+  for (const uiPath of uiChanges) {
+    const expectedRouteTokens = expectedRouteTokensForUiPath(uiPath);
+    if (expectedRouteTokens.length === 0 || completeScreenshotLines.length === 0) {
+      continue;
+    }
+    if (
+      !completeScreenshotLines.some((line) =>
+        lineMatchesExpectedRoute(line, expectedRouteTokens),
+      )
+    ) {
+      findings.push(
+        `UI change '${uiPath}' needs at least one complete screenshot README entry for its affected route family (${expectedRouteTokens.join(" or ")}).`,
+      );
+    }
   }
 
   return {

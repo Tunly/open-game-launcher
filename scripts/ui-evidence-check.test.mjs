@@ -165,6 +165,7 @@ test("uiEvidenceReport rejects visible helper and local evidence data modules wi
   const report = uiEvidenceReport({
     changedPaths: [
       "launcher/src/components/settings/PlatformHealthPanel.helpers.ts",
+      "launcher/src/lib/library-filters.ts",
       "launcher/src/lib/mock-data.ts",
       "launcher/src/lib/smart-install-local-mirror-audit.ts",
     ],
@@ -175,6 +176,7 @@ test("uiEvidenceReport rejects visible helper and local evidence data modules wi
   assert.equal(report.ready, false);
   assert.deepEqual(report.uiChanges, [
     "launcher/src/components/settings/PlatformHealthPanel.helpers.ts",
+    "launcher/src/lib/library-filters.ts",
     "launcher/src/lib/mock-data.ts",
     "launcher/src/lib/smart-install-local-mirror-audit.ts",
   ]);
@@ -206,7 +208,6 @@ test("uiEvidenceReport ignores tests, declarations, types, and non-visual TypeSc
   const report = uiEvidenceReport({
     changedPaths: [
       "launcher/src/lib/types/profile.ts",
-      "launcher/src/lib/library-filters.ts",
       "launcher/src/lib/__tests__/theme-skin-readiness.test.ts",
       "launcher/src/components/ui/ConfirmDialog.test.tsx",
       "launcher/src/vite-env.d.ts",
@@ -272,6 +273,71 @@ test("uiEvidenceReport accepts documented local Retro Manga screenshot evidence"
 
   assert.equal(report.ready, true);
   assert.deepEqual(report.findings, []);
+});
+
+test("uiEvidenceReport requires screenshot route family to match the UI change", () => {
+  const root = fixtureRoot();
+  writePngFixture(root, "docs/verification/screenshots/downloads.png");
+  writePngFixture(root, "docs/verification/screenshots/home.png");
+  writePngFixture(root, "docs/verification/screenshots/settings.png");
+
+  const wrongRouteReport = uiEvidenceReport({
+    changedPaths: [
+      "launcher/src/pages/SettingsPage.tsx",
+      "docs/verification/screenshots/downloads.png",
+    ],
+    readmeText:
+      "- `screenshots/downloads.png` - `/downloads` local Retro Manga panel with OG-Launcher header and no horizontal overflow.",
+    root,
+  });
+
+  assert.equal(wrongRouteReport.ready, false);
+  assert.match(
+    wrongRouteReport.findings.join("\n"),
+    /SettingsPage\.tsx.*affected route family \(\/settings\)/,
+  );
+
+  const matchingRouteReport = uiEvidenceReport({
+    changedPaths: [
+      "launcher/src/pages/SettingsPage.tsx",
+      "docs/verification/screenshots/settings.png",
+    ],
+    readmeText:
+      "- `screenshots/settings.png` - `/settings` local Retro Manga panel with OG-Launcher header and no horizontal overflow.",
+    root,
+  });
+
+  assert.equal(matchingRouteReport.ready, true);
+  assert.deepEqual(matchingRouteReport.findings, []);
+
+  const unrelatedHomeRouteReport = uiEvidenceReport({
+    changedPaths: [
+      "launcher/src/pages/HomePage.tsx",
+      "docs/verification/screenshots/settings.png",
+    ],
+    readmeText:
+      "- `screenshots/settings.png` - `/settings/performance` local Retro Manga panel with OG-Launcher header and no horizontal overflow.",
+    root,
+  });
+
+  assert.equal(unrelatedHomeRouteReport.ready, false);
+  assert.match(
+    unrelatedHomeRouteReport.findings.join("\n"),
+    /HomePage\.tsx.*affected route family \(\/home\)/,
+  );
+
+  const matchingHomeRouteReport = uiEvidenceReport({
+    changedPaths: [
+      "launcher/src/pages/HomePage.tsx",
+      "docs/verification/screenshots/home.png",
+    ],
+    readmeText:
+      "- `screenshots/home.png` - `/home` local Retro Manga launcher panel with OG-Launcher header and no horizontal overflow.",
+    root,
+  });
+
+  assert.equal(matchingHomeRouteReport.ready, true);
+  assert.deepEqual(matchingHomeRouteReport.findings, []);
 });
 
 test("uiEvidenceReport rejects incomplete screenshot entries in a dirty screenshot set", () => {

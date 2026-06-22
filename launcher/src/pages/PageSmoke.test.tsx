@@ -165,6 +165,31 @@ const performanceMocks = vi.hoisted(() => ({
   savePerformanceSnapshotFromMetrics: vi.fn(),
 }));
 
+const friendLinkMocks = vi.hoisted(() => ({
+  getMyFriendLinks: vi.fn(),
+}));
+
+const presenceMocks = vi.hoisted(() => ({
+  getVisiblePresence: vi.fn(),
+  subscribeToPresenceChanges: vi.fn(),
+}));
+
+const socialMocks = vi.hoisted(() => ({
+  getDirectThread: vi.fn(),
+  getMyGameInvites: vi.fn(),
+  getMyGroupChats: vi.fn(),
+  proveInviteHostedReplay: vi.fn(),
+  redeemShareToken: vi.fn(),
+  resolveShareToken: vi.fn(),
+  sendDirectMessage: vi.fn(),
+  sendGameInvite: vi.fn(),
+  sendGroupMessage: vi.fn(),
+  subscribeToGameInvites: vi.fn(),
+  subscribeToGroupMessages: vi.fn(),
+  subscribeToRoomMessages: vi.fn(),
+  updateGameInviteStatus: vi.fn(),
+}));
+
 const noop = vi.fn();
 
 vi.mock("@tauri-apps/api/event", () => ({
@@ -397,9 +422,13 @@ vi.mock("../lib/supabase/client", () => ({
 
 vi.mock("../lib/supabase/family", () => familyMocks);
 
+vi.mock("../lib/supabase/friend-links", () => friendLinkMocks);
+
 vi.mock("../lib/supabase/mods", () => modMocks);
 
 vi.mock("../lib/supabase/news", () => newsMocks);
+
+vi.mock("../lib/supabase/presence", () => presenceMocks);
 
 vi.mock("../lib/mod-provider-search", () => nativeModSearchMocks);
 
@@ -408,6 +437,8 @@ vi.mock("../lib/supabase/performance", () => performanceMocks);
 vi.mock("../lib/supabase/remote-companion", () => remoteCompanionMocks);
 
 vi.mock("../lib/supabase/store", () => storeMocks);
+
+vi.mock("../lib/supabase/social", () => socialMocks);
 
 vi.mock("../stores/downloadStore", () => {
   const state = {
@@ -640,6 +671,32 @@ describe("routed page smoke coverage", () => {
     performanceMocks.listPerformanceSnapshots.mockResolvedValue([]);
     performanceMocks.savePerformanceSession.mockResolvedValue(true);
     performanceMocks.savePerformanceSnapshotFromMetrics.mockResolvedValue(undefined);
+    friendLinkMocks.getMyFriendLinks.mockResolvedValue([]);
+    presenceMocks.getVisiblePresence.mockResolvedValue([]);
+    presenceMocks.subscribeToPresenceChanges.mockReturnValue(() => undefined);
+    socialMocks.getDirectThread.mockResolvedValue({
+      room: {
+        createdAt: "2026-06-22T00:00:00.000Z",
+        createdBy: "user-1",
+        id: "room-1",
+        name: null,
+        type: "dm",
+        updatedAt: "2026-06-22T00:00:00.000Z",
+      },
+      messages: [],
+    });
+    socialMocks.getMyGameInvites.mockResolvedValue([]);
+    socialMocks.getMyGroupChats.mockResolvedValue([]);
+    socialMocks.proveInviteHostedReplay.mockResolvedValue(null);
+    socialMocks.redeemShareToken.mockResolvedValue(null);
+    socialMocks.resolveShareToken.mockResolvedValue(null);
+    socialMocks.sendDirectMessage.mockResolvedValue(null);
+    socialMocks.sendGameInvite.mockResolvedValue(null);
+    socialMocks.sendGroupMessage.mockResolvedValue(null);
+    socialMocks.subscribeToGameInvites.mockReturnValue(() => undefined);
+    socialMocks.subscribeToGroupMessages.mockReturnValue(() => undefined);
+    socialMocks.subscribeToRoomMessages.mockReturnValue(() => undefined);
+    socialMocks.updateGameInviteStatus.mockResolvedValue(null);
     vi.mocked(isTauri).mockReturnValue(false);
     vi.mocked(invoke).mockResolvedValue(metrics);
     vi.stubGlobal(
@@ -652,6 +709,7 @@ describe("routed page smoke coverage", () => {
   afterEach(() => {
     vi.useRealTimers();
     vi.unstubAllGlobals();
+    window.history.replaceState(null, "", "/");
     window.localStorage.clear();
   });
 
@@ -956,6 +1014,94 @@ describe("routed page smoke coverage", () => {
     expect(screen.getByText("OG-Launcher")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Friends" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Screenshots" })).toBeInTheDocument();
+  });
+
+  it("sends overlay friend invites from an inline form without native prompts", async () => {
+    const promptSpy = vi.spyOn(window, "prompt").mockReturnValue("Native Prompt Game");
+    currentUserMock.mockReturnValue({
+      error: null,
+      isConfigured: true,
+      isLoading: false,
+      session: null,
+      signOut: vi.fn(),
+      user: { id: "user-1" },
+    });
+    friendLinkMocks.getMyFriendLinks.mockResolvedValue([
+      {
+        createdAt: "2026-06-22T00:00:00.000Z",
+        dismissed: false,
+        id: "link-1",
+        matchMethod: "manual",
+        matchedUserId: "friend-1",
+        mergeGroupId: null,
+        ownerId: "user-1",
+        platform: "steam",
+        platformFriendAvatar: null,
+        platformFriendId: "steam-friend-1",
+        platformFriendName: "Arcade Rival",
+        updatedAt: "2026-06-22T00:00:00.000Z",
+      },
+    ]);
+    presenceMocks.getVisiblePresence.mockResolvedValue([
+      {
+        customStatus: null,
+        currentGameId: "game-1",
+        currentGameTitle: "Neon Drift",
+        lastHeartbeatAt: "2026-06-22T00:00:00.000Z",
+        platform: "steam",
+        platformGameId: "steam-game-1",
+        platformLastPolledAt: "2026-06-22T00:00:00.000Z",
+        platformSource: "steam",
+        status: "online",
+        updatedAt: "2026-06-22T00:00:00.000Z",
+        userId: "friend-1",
+      },
+    ]);
+
+    renderRoute(<OverlayPage />);
+    fireEvent.click(screen.getByRole("button", { name: "Friends" }));
+
+    expect(await screen.findByText("Arcade Rival")).toBeInTheDocument();
+    fireEvent.click(screen.getByTitle("Invite"));
+
+    expect(promptSpy).not.toHaveBeenCalled();
+    expect(screen.getByRole("form", { name: /overlay game invite/i })).toBeInTheDocument();
+    expect(screen.getByLabelText(/game invite title/i)).toHaveValue("Neon Drift");
+
+    fireEvent.change(screen.getByLabelText(/game invite title/i), {
+      target: { value: "Mecha Signal" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /send invite/i }));
+
+    await waitFor(() =>
+      expect(socialMocks.sendGameInvite).toHaveBeenCalledWith({
+        gameTitle: "Mecha Signal",
+        receiverId: "friend-1",
+      }),
+    );
+    expect(await screen.findByRole("status")).toHaveTextContent("Invite sent for Mecha Signal.");
+  });
+
+  it("keeps the overlay friend invite verify route local-only", async () => {
+    const promptSpy = vi.spyOn(window, "prompt").mockReturnValue("Native Prompt Game");
+    window.history.replaceState(null, "", "/overlay?verify=overlay-friend-invite");
+
+    renderRoute(<OverlayPage />);
+    fireEvent.click(screen.getByRole("button", { name: "Friends" }));
+
+    expect(await screen.findByText("Arcade Rival")).toBeInTheDocument();
+    expect(screen.getByRole("form", { name: /overlay game invite/i })).toBeInTheDocument();
+    expect(screen.getByLabelText(/game invite title/i)).toHaveValue("Neon Drift");
+
+    fireEvent.click(screen.getByRole("button", { name: /send invite/i }));
+
+    await waitFor(() => {
+      expect(screen.getByRole("status")).toHaveTextContent(
+        "Local verify invite preview for Neon Drift. No Supabase invite sent.",
+      );
+    });
+    expect(socialMocks.sendGameInvite).not.toHaveBeenCalled();
+    expect(promptSpy).not.toHaveBeenCalled();
   });
 
   it("polls overlay performance metrics at 1Hz for active game context", async () => {

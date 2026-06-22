@@ -1022,13 +1022,58 @@ function OverlayEmptyState({
 /* ========== FRIENDS TAB ========== */
 function OverlayFriendsTab() {
   const { isConfigured, isLoading: isAuthLoading, user } = useCurrentUser();
+  const verifyMode = new URLSearchParams(window.location.search).get("verify");
+  const isInviteVerify = verifyMode === "overlay-friend-invite";
   const [presence, setPresence] = useState<Record<string, UserPresence>>({});
   const [links, setLinks] = useState<FriendLink[]>([]);
   const [loading, setLoading] = useState(true);
   const [joining, setJoining] = useState<string | null>(null);
   const [inviting, setInviting] = useState<string | null>(null);
+  const [inviteDraftFriendId, setInviteDraftFriendId] = useState<string | null>(null);
+  const [inviteGameTitle, setInviteGameTitle] = useState("");
+  const [inviteMessage, setInviteMessage] = useState<string | null>(null);
 
   useEffect(() => {
+    if (isInviteVerify) {
+      const friendId = "overlay-invite-verify-friend";
+      setLinks([
+        {
+          createdAt: "2026-06-22T00:00:00.000Z",
+          dismissed: false,
+          id: "overlay-invite-verify-link",
+          matchMethod: "manual",
+          matchedUserId: friendId,
+          mergeGroupId: null,
+          ownerId: "overlay-verify-user",
+          platform: "steam",
+          platformFriendAvatar: null,
+          platformFriendId: "steam-overlay-verify-friend",
+          platformFriendName: "Arcade Rival",
+          updatedAt: "2026-06-22T00:00:00.000Z",
+        },
+      ]);
+      setPresence({
+        [friendId]: {
+          customStatus: null,
+          currentGameId: "overlay-verify-game",
+          currentGameTitle: "Neon Drift",
+          lastHeartbeatAt: "2026-06-22T00:00:00.000Z",
+          platform: "steam",
+          platformGameId: "steam-overlay-verify-game",
+          platformLastPolledAt: "2026-06-22T00:00:00.000Z",
+          platformSource: "steam",
+          status: "online",
+          updatedAt: "2026-06-22T00:00:00.000Z",
+          userId: friendId,
+        },
+      });
+      setInviteDraftFriendId(friendId);
+      setInviteGameTitle("Neon Drift");
+      setInviteMessage("Verify route rendered the inline invite form without native prompts.");
+      setLoading(false);
+      return;
+    }
+
     if (!user) {
       setLinks([]);
       setPresence({});
@@ -1077,7 +1122,7 @@ function OverlayFriendsTab() {
       mounted = false;
       unsubscribePresence?.();
     };
-  }, [user]);
+  }, [isInviteVerify, user]);
 
   const handleJoin = async (friendId: string, gameTitle: string | null) => {
     if (!gameTitle) return;
@@ -1091,21 +1136,48 @@ function OverlayFriendsTab() {
     }
   };
 
-  const handleInvite = async (friendId: string) => {
-    const gameTitle = window.prompt("Which game to invite to?");
-    if (!gameTitle) return;
+  const openInviteDraft = (friendId: string, gameTitle: string | null) => {
+    setInviteDraftFriendId(friendId);
+    setInviteGameTitle(gameTitle ?? "");
+    setInviteMessage(null);
+  };
+
+  const closeInviteDraft = () => {
+    setInviteDraftFriendId(null);
+    setInviteGameTitle("");
+    setInviteMessage(null);
+  };
+
+  const handleInvite = async (event: { preventDefault: () => void }, friendId: string) => {
+    event.preventDefault();
+    const gameTitle = inviteGameTitle.trim();
+    if (!gameTitle) {
+      setInviteMessage("Enter a game title before sending the invite.");
+      return;
+    }
+    if (isInviteVerify) {
+      setInviteMessage(`Local verify invite preview for ${gameTitle}. No Supabase invite sent.`);
+      setInviteDraftFriendId(null);
+      setInviteGameTitle("");
+      return;
+    }
     setInviting(friendId);
+    setInviteMessage(null);
     try {
       await sendGameInvite({ receiverId: friendId, gameTitle });
+      setInviteMessage(`Invite sent for ${gameTitle}.`);
+      setInviteDraftFriendId(null);
+      setInviteGameTitle("");
     } catch (err) {
       console.error(err);
+      setInviteMessage(err instanceof Error ? err.message : String(err));
     } finally {
       setInviting(null);
     }
   };
 
   if (isAuthLoading) return <OverlayLoadingState />;
-  if (!isConfigured) {
+  if (!isConfigured && !isInviteVerify) {
     return (
       <OverlayEmptyState
         icon={ShieldAlert}
@@ -1114,7 +1186,7 @@ function OverlayFriendsTab() {
       />
     );
   }
-  if (!user) {
+  if (!user && !isInviteVerify) {
     return (
       <OverlayEmptyState
         icon={Users}
@@ -1132,8 +1204,20 @@ function OverlayFriendsTab() {
 
   return (
     <div className="space-y-2">
+      {inviteMessage ? (
+        <p
+          aria-live="polite"
+          className="neo-copy border-2 border-[#171411] bg-[#8cf5e4] px-2 py-1.5 text-[10px] font-black uppercase leading-4 text-[#171411] shadow-[2px_2px_0_#1f1c0f]"
+          role="status"
+        >
+          {inviteMessage}
+        </p>
+      ) : null}
       {friends.map((link) => {
         const p = link.matchedUserId ? presence[link.matchedUserId] : null;
+        const friendId = link.matchedUserId!;
+        const isInviteDraftOpen = inviteDraftFriendId === friendId;
+        const inviteInputId = `overlay-invite-game-${friendId}`;
         const statusColor =
           p?.status === "online"
             ? "bg-[#087d6d]"
@@ -1141,43 +1225,79 @@ function OverlayFriendsTab() {
               ? "bg-[#f56c2d]"
               : "bg-[#655f58]";
         return (
-          <div
-            key={link.id}
-            className="flex items-center justify-between border-2 border-[#171411] bg-[#fff9ed] px-2 py-1.5 text-[12px] shadow-[2px_2px_0_#1f1c0f]"
-          >
-            <div className="flex min-w-0 items-center gap-2">
-              <div className={`h-2 w-2 shrink-0 border border-[#171411] ${statusColor}`} />
-              <span className="truncate font-semibold text-[#171411]">
-                {link.platformFriendName || link.matchedUserId?.slice(0, 8)}
-              </span>
-              {p?.currentGameTitle && (
-                <span className="neo-copy truncate text-[10px] font-bold text-[#655f58]">
-                  playing {p.currentGameTitle}
+          <div key={link.id} className="space-y-1.5">
+            <div className="flex items-center justify-between border-2 border-[#171411] bg-[#fff9ed] px-2 py-1.5 text-[12px] shadow-[2px_2px_0_#1f1c0f]">
+              <div className="flex min-w-0 items-center gap-2">
+                <div className={`h-2 w-2 shrink-0 border border-[#171411] ${statusColor}`} />
+                <span className="truncate font-semibold text-[#171411]">
+                  {link.platformFriendName || link.matchedUserId?.slice(0, 8)}
                 </span>
-              )}
-            </div>
-            <div className="flex shrink-0 items-center gap-1">
-              {p?.currentGameTitle && (
+                {p?.currentGameTitle && (
+                  <span className="neo-copy truncate text-[10px] font-bold text-[#655f58]">
+                    playing {p.currentGameTitle}
+                  </span>
+                )}
+              </div>
+              <div className="flex shrink-0 items-center gap-1">
+                {p?.currentGameTitle && (
+                  <button
+                    onClick={() => handleJoin(friendId, p.currentGameTitle)}
+                    disabled={!!joining}
+                    className="neo-copy flex items-center gap-1 border-2 border-[#171411] bg-[#087d6d] px-1.5 py-0.5 text-[10px] font-black uppercase text-white shadow-[2px_2px_0_#1f1c0f] hover:translate-y-[-1px] disabled:opacity-50"
+                    title="Join"
+                  >
+                    <Swords size={10} />
+                    {joining === friendId ? "..." : "Join"}
+                  </button>
+                )}
                 <button
-                  onClick={() => handleJoin(link.matchedUserId!, p.currentGameTitle)}
-                  disabled={!!joining}
-                  className="neo-copy flex items-center gap-1 border-2 border-[#171411] bg-[#087d6d] px-1.5 py-0.5 text-[10px] font-black uppercase text-white shadow-[2px_2px_0_#1f1c0f] hover:translate-y-[-1px] disabled:opacity-50"
-                  title="Join"
+                  onClick={() => openInviteDraft(friendId, p?.currentGameTitle ?? null)}
+                  disabled={!!inviting}
+                  className="neo-copy flex items-center gap-1 border-2 border-[#171411] bg-[#b7102a] px-1.5 py-0.5 text-[10px] font-black uppercase text-white shadow-[2px_2px_0_#1f1c0f] hover:translate-y-[-1px] disabled:opacity-50"
+                  title="Invite"
                 >
-                  <Swords size={10} />
-                  {joining === link.matchedUserId ? "..." : "Join"}
+                  <Gamepad2 size={10} />
+                  {inviting === friendId ? "..." : "Invite"}
                 </button>
-              )}
-              <button
-                onClick={() => handleInvite(link.matchedUserId!)}
-                disabled={!!inviting}
-                className="neo-copy flex items-center gap-1 border-2 border-[#171411] bg-[#b7102a] px-1.5 py-0.5 text-[10px] font-black uppercase text-white shadow-[2px_2px_0_#1f1c0f] hover:translate-y-[-1px] disabled:opacity-50"
-                title="Invite"
-              >
-                <Gamepad2 size={10} />
-                {inviting === link.matchedUserId ? "..." : "Invite"}
-              </button>
+              </div>
             </div>
+            {isInviteDraftOpen ? (
+              <form
+                aria-label="Overlay game invite"
+                className="space-y-2 border-2 border-[#171411] bg-[#f6edd8] p-2 shadow-[2px_2px_0_#1f1c0f]"
+                onSubmit={(event) => void handleInvite(event, friendId)}
+              >
+                <label
+                  className="neo-copy block text-[9px] font-black uppercase tracking-[0.12em] text-[#b7102a]"
+                  htmlFor={inviteInputId}
+                >
+                  Game Invite Title
+                </label>
+                <input
+                  className="neo-copy h-8 w-full border-2 border-[#171411] bg-[#fff9ed] px-2 text-[11px] font-black uppercase text-[#171411] outline-none focus:bg-[#8cf5e4]"
+                  id={inviteInputId}
+                  onChange={(event) => setInviteGameTitle(event.target.value)}
+                  placeholder="Game title"
+                  value={inviteGameTitle}
+                />
+                <div className="flex flex-wrap justify-end gap-1.5">
+                  <button
+                    className="neo-copy border-2 border-[#171411] bg-[#fff9ed] px-2 py-1 text-[9px] font-black uppercase text-[#171411] shadow-[2px_2px_0_#1f1c0f] hover:translate-y-[-1px]"
+                    onClick={closeInviteDraft}
+                    type="button"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    className="neo-copy border-2 border-[#171411] bg-[#b7102a] px-2 py-1 text-[9px] font-black uppercase text-white shadow-[2px_2px_0_#1f1c0f] hover:translate-y-[-1px] disabled:bg-[#655f58]"
+                    disabled={Boolean(inviting) || inviteGameTitle.trim().length === 0}
+                    type="submit"
+                  >
+                    {inviting === friendId ? "Sending" : "Send Invite"}
+                  </button>
+                </div>
+              </form>
+            ) : null}
           </div>
         );
       })}

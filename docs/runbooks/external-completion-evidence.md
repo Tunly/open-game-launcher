@@ -193,9 +193,10 @@ placeholder/weak detail values, a retained `Template only` banner once proof
 rows or detail rows are filled, local `docs/verification/screenshots/*`
 locators, relative/local/file path locators, arbitrary HTTPS URLs outside the
 accepted host/pattern list, Stripe test-mode Dashboard URLs such as
-`dashboard.stripe.com/test/...`, generic locator values, stale/future capture
-times, non-ISO capture times, and checked rows without captured evidence
-details stay blocked.
+`dashboard.stripe.com/test/...`, generic Stripe Dashboard pages such as
+`/settings`, `/customers`, and `/payments`, generic locator values,
+stale/future capture times, non-ISO capture times, and checked rows without
+captured evidence details stay blocked.
 
 When `preflight`, `next`, `worklist`, or `status` reports artifact reason
 codes, treat them as redacted diagnostics for the field named beside the code:

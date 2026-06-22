@@ -1016,14 +1016,69 @@ function hostedCronCollectorRunIdValueIsSpecific(value) {
   );
 }
 
-function valueContainsAllowedStripeDashboardUrl(value) {
+function stripeDashboardPathWithoutAccount(pathname) {
+  const normalized = pathname.replace(/\/+$/g, "") || "/";
+  const accountMatch = normalized.match(/^\/accts?\/[^/]+(\/.*)?$/i);
+  return accountMatch ? (accountMatch[1] ?? "/") : normalized;
+}
+
+const specificStripeDashboardPathPatterns = Object.freeze([
+  /^\/events\/evt_[a-z0-9]{8,}(?:\/.*)?$/i,
+  /^\/webhooks\/we_[a-z0-9]{8,}(?:\/.*)?$/i,
+  /^\/logs\/(?:log|req)_[a-z0-9]{8,}(?:\/.*)?$/i,
+  /^\/invoices\/in_[a-z0-9]{8,}(?:\/.*)?$/i,
+  /^\/payments\/(?:ch|cs|pi|py)_(?:live_|test_)?[a-z0-9]{8,}(?:\/.*)?$/i,
+  /^\/payment-links\/plink_[a-z0-9]{8,}(?:\/.*)?$/i,
+  /^\/subscriptions\/sub_[a-z0-9]{8,}(?:\/.*)?$/i,
+  /^\/customers\/cus_[a-z0-9]{8,}(?:\/.*)?$/i,
+  /^\/settings\/(?:billing|invoice|invoicing|tax)(?:\/.*)?$/i,
+  /^\/tax\/(?:calculations|registrations|settings|transactions)\/.+$/i,
+]);
+
+function stripeDashboardUrlIsSpecific(url) {
+  if (
+    !/^dashboard\.stripe\.com$/i.test(url.hostname) ||
+    !evidenceUrlIsAllowed(url)
+  ) {
+    return false;
+  }
+  const path = stripeDashboardPathWithoutAccount(url.pathname);
+  return specificStripeDashboardPathPatterns.some((pattern) =>
+    pattern.test(path),
+  );
+}
+
+function valueContainsStripeDashboardUrl(value) {
+  const urls = value.match(/\bhttps:\/\/[^\s<>)\]]+/gi) ?? [];
+  return urls.some((rawUrl) => {
+    try {
+      const url = new URL(normalizeEvidenceUrl(rawUrl));
+      return /^dashboard\.stripe\.com$/i.test(url.hostname);
+    } catch {
+      return false;
+    }
+  });
+}
+
+function valueContainsSpecificStripeDashboardUrl(value) {
+  const urls = value.match(/\bhttps:\/\/[^\s<>)\]]+/gi) ?? [];
+  return urls.some((rawUrl) => {
+    try {
+      return stripeDashboardUrlIsSpecific(new URL(normalizeEvidenceUrl(rawUrl)));
+    } catch {
+      return false;
+    }
+  });
+}
+
+function valueContainsGenericStripeDashboardUrl(value) {
   const urls = value.match(/\bhttps:\/\/[^\s<>)\]]+/gi) ?? [];
   return urls.some((rawUrl) => {
     try {
       const url = new URL(normalizeEvidenceUrl(rawUrl));
       return (
         /^dashboard\.stripe\.com$/i.test(url.hostname) &&
-        evidenceUrlIsAllowed(url)
+        !stripeDashboardUrlIsSpecific(url)
       );
     } catch {
       return false;
@@ -1054,7 +1109,12 @@ function stripeDashboardEvidenceValueIsSpecific(value) {
   if (evidenceLocatorContainsLocalVerificationPath(cleaned)) return false;
   if (evidenceLocatorContainsBlockedLocalPath(cleaned)) return false;
   if (evidenceLocatorContainsRejectedUrl(cleaned)) return false;
-  if (valueContainsAllowedStripeDashboardUrl(cleaned)) return true;
+  if (valueContainsStripeDashboardUrl(cleaned)) {
+    return (
+      valueContainsSpecificStripeDashboardUrl(cleaned) &&
+      !valueContainsGenericStripeDashboardUrl(cleaned)
+    );
+  }
   return evidenceIdentifierValueMatches(cleaned, [
     /stripe/i,
     /dashboard/i,
@@ -1527,12 +1587,12 @@ function expectedProofEvidenceValuePatterns(proof) {
   const normalizedProof = proof.toLowerCase();
   if (/stripe webhook signature/.test(normalizedProof)) {
     return [
-      /(?:stripe[-_\s]?webhook|webhook[-_\s]?signature|dashboard\.stripe\.com\/(?:accts?\/[^/]+\/)?(?:events|webhooks)|evt_[a-z0-9]{8,})/i,
+      /(?:stripe[-_\s]?webhook|webhook[-_\s]?signature|dashboard\.stripe\.com\/(?:accts?\/[^/]+\/)?(?:events\/evt_[a-z0-9]{8,}|webhooks\/we_[a-z0-9]{8,})|evt_[a-z0-9]{8,})/i,
     ];
   }
   if (/stripe tax and invoice/.test(normalizedProof)) {
     return [
-      /(?:stripe[-_\s]?(?:tax|invoice)|dashboard[-_\s]?(?:tax|invoice)|tax[-_\s]?invoice|dashboard\.stripe\.com\/(?:accts?\/[^/]+\/)?(?:settings|invoices|tax))/i,
+      /(?:stripe[-_\s]?(?:tax|invoice)|dashboard[-_\s]?(?:tax|invoice)|tax[-_\s]?invoice|dashboard\.stripe\.com\/(?:accts?\/[^/]+\/)?(?:settings\/(?:billing|invoice|invoicing|tax)|invoices\/in_[a-z0-9]{8,}|tax\/(?:calculations|registrations|settings|transactions)\/.+))/i,
     ];
   }
   if (/license signing key custody/.test(normalizedProof)) {
@@ -1630,6 +1690,12 @@ function proofEvidenceValueIssueReasonForProof(proof, value) {
   }
   const locatorReason = proofEvidenceValueIssueReason(value);
   if (locatorReason) return locatorReason;
+  if (
+    /stripe (?:webhook signature|tax and invoice)/i.test(proof) &&
+    valueContainsGenericStripeDashboardUrl(value)
+  ) {
+    return "missing_lane_terms";
+  }
   const expectedPatterns = expectedProofEvidenceValuePatterns(proof);
   return expectedPatterns.every((pattern) => pattern.test(value))
     ? null
@@ -2001,6 +2067,7 @@ export function artifactTemplate(gate, artifactPath) {
     "## Proof Evidence Mapping",
     "",
     "When a proof row is checked, fill the matching evidence line with a specific redacted run ID, dashboard link, external artifact locator, workflow ID, signed log, or `sha256:<64-hex>` reference. Accepted dashboard URL hosts are Supabase, Stripe live Dashboard, GitHub Actions/releases/deployments, Vercel, Netlify, Cloudflare, App Store Connect, Google Play Console, Firebase, and OneSignal; otherwise use `run:`/`artifact:`/`sha256:` style locators. Generic text such as `redacted`, `see above`, local files, localhost URLs, and example URLs do not satisfy preflight.",
+    "Stripe Dashboard URLs used for Store/Stripe evidence must point at concrete detail paths such as `/events/evt_...`, `/invoices/in_...`, or targeted tax/invoice settings; generic `/settings`, `/customers`, and `/payments` dashboard pages do not satisfy preflight.",
     "Proof evidence values must name the proof lane they support, for example `stripe-webhook`, `stripe-tax-invoice`, `license-key-custody-live-license-issuance`, `price-drop`, `presence-poll`, `account-deletion`, `mod.io/CurseForge`, `non-steam-presence-bridge-provider`, `provider-approved-catalog-cloud-transfer`, `achievement-provider-cache-real-client`, `fullscreen-anti-cheat-overlay`, `backup-restore`, `client-mount-apply-provider-client`, `community-artwork-screenshot-rollout`, `controller-layout-profile-sync`, `plugin-marketplace-execution-update`, `mobile-push-provider-store-distribution`, or `hosted-deploy`; bare `evt_...` values are accepted only for the Stripe webhook signature proof. Syntactically specific but generic IDs such as `run-generic-1` stay blocked. Compound proof values must include every required term in the same value: mod-provider evidence includes both `mod.io` and `CurseForge`; external-drive backup/restore proof evidence includes `Windows`, `macOS`, and `Linux`; long native overlay proof evidence includes a numeric measured duration/window; hardware matrix evidence includes one `Windows`, one `macOS`, and one `Linux` row, each with `title:`, `client:`, and a specific locator.",
     "",
     ...requiredProofs.map((proof) => `- Evidence for ${proof}:`),

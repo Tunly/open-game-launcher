@@ -3711,6 +3711,188 @@ test("preflight status accepts a bare Stripe event id for webhook proof mapping"
   assert.deepEqual(status.missingEvidenceDetails, []);
 });
 
+test("preflight status rejects generic Stripe dashboard detail URLs", () => {
+  const gate = evidenceGates.find((item) => item.id === "store-stripe-live");
+  assert.ok(gate);
+  const stagingPath = "docs/verification/external/store-stripe-live-staging.md";
+  const schedulerPath =
+    "docs/verification/external/store-price-drop-scheduler-live.md";
+  const stagingProofs = gate.artifactProofs.find(
+    (item) => item.path === stagingPath,
+  ).requiredProofs;
+  const schedulerProofs = gate.artifactProofs.find(
+    (item) => item.path === schedulerPath,
+  ).requiredProofs;
+  const stripeTaxProof = stagingProofs.find((proof) =>
+    proof.includes("Stripe Tax and invoice"),
+  );
+  const schedulerContent = [
+    ...schedulerProofs.map((proof) => `- [x] ${proof}`),
+    ...schedulerProofs.map(
+      (proof) =>
+        `- Evidence for ${proof}: ${proofEvidenceValueForProof(
+          proof,
+          "run-store-scheduler-123",
+        )}`,
+    ),
+    capturedEvidenceDetails(),
+    "- Hosted cron table: store_price_drop_notification_runs",
+    "- Function: notify-price-drop",
+    "- Run ID: price-drop-run-123",
+    "- Scheduled: scheduled",
+    "- dry_run=false: false",
+    "- Status: completed",
+  ].join("\n");
+
+  for (const stripeDashboardEvidence of [
+    "https://dashboard.stripe.com/settings",
+    "https://dashboard.stripe.com/customers",
+    "https://dashboard.stripe.com/payments",
+    "https://dashboard.stripe.com/acct/acct_123/settings",
+    "https://dashboard.stripe.com/events/evt_1234567890abcdef https://dashboard.stripe.com/settings",
+  ]) {
+    const stagingContent = [
+      ...stagingProofs.map((proof) => `- [x] ${proof}`),
+      ...stagingProofs.map((proof) => {
+        if (proof === stripeTaxProof) {
+          return `- Evidence for ${proof}: ${stripeDashboardEvidence}`;
+        }
+        return `- Evidence for ${proof}: ${proofEvidenceValueForProof(
+          proof,
+          "run-store-stripe-live-123",
+        )}`;
+      }),
+      capturedEvidenceDetails({
+        locator: "https://dashboard.stripe.com/events/evt_1234567890abcdef",
+      }),
+      "- Stripe webhook event ID: evt_1234567890abcdef",
+      `- Stripe Dashboard evidence: ${stripeDashboardEvidence}`,
+      "- Supabase function log run ID: https://supabase.com/dashboard/project/awebfvfyqzwapcgixdfj/functions/logs/run-12345",
+      "- License key custody evidence: license-key-custody workflow-123",
+      "- Live license issuance evidence: live-license-issuance workflow-123",
+    ].join("\n");
+    const status = gateStatus(
+      gate,
+      configuredEnv,
+      fakeExists(gate.artifactPaths),
+      fakeRead({
+        [stagingPath]: stagingContent,
+        [schedulerPath]: schedulerContent,
+      }),
+    );
+
+    assert.equal(status.ready, false);
+    assert.deepEqual(status.missingProofs, []);
+    assert.deepEqual(status.missingArtifactProofs, []);
+    assert.deepEqual(status.missingEvidenceDetails, [
+      {
+        field: "Stripe Dashboard evidence",
+        path: stagingPath,
+      },
+      {
+        field: `Evidence for ${stripeTaxProof}`,
+        path: stagingPath,
+      },
+    ]);
+    assert.deepEqual(status.proofEvidenceFindings, [
+      {
+        field: `Evidence for ${stripeTaxProof}`,
+        path: stagingPath,
+        proof: stripeTaxProof,
+        reason: "missing_lane_terms",
+      },
+    ]);
+  }
+});
+
+test("preflight status accepts specific Stripe dashboard detail evidence", () => {
+  const gate = evidenceGates.find((item) => item.id === "store-stripe-live");
+  assert.ok(gate);
+  const stagingPath = "docs/verification/external/store-stripe-live-staging.md";
+  const schedulerPath =
+    "docs/verification/external/store-price-drop-scheduler-live.md";
+  const stagingProofs = gate.artifactProofs.find(
+    (item) => item.path === stagingPath,
+  ).requiredProofs;
+  const schedulerProofs = gate.artifactProofs.find(
+    (item) => item.path === schedulerPath,
+  ).requiredProofs;
+  const stripeTaxProof = stagingProofs.find((proof) =>
+    proof.includes("Stripe Tax and invoice"),
+  );
+  const schedulerContent = [
+    ...schedulerProofs.map((proof) => `- [x] ${proof}`),
+    ...schedulerProofs.map(
+      (proof) =>
+        `- Evidence for ${proof}: ${proofEvidenceValueForProof(
+          proof,
+          "run-store-scheduler-123",
+        )}`,
+    ),
+    capturedEvidenceDetails(),
+    "- Hosted cron table: store_price_drop_notification_runs",
+    "- Function: notify-price-drop",
+    "- Run ID: price-drop-run-123",
+    "- Scheduled: scheduled",
+    "- dry_run=false: false",
+    "- Status: completed",
+  ].join("\n");
+
+  for (const { stripeTaxEvidence, stripeDashboardEvidence } of [
+    {
+      stripeTaxEvidence: "run-stripe-dashboard-tax-invoice-123",
+      stripeDashboardEvidence:
+        "https://dashboard.stripe.com/events/evt_1234567890abcdef",
+    },
+    {
+      stripeTaxEvidence:
+        "https://dashboard.stripe.com/invoices/in_1234567890abcdef",
+      stripeDashboardEvidence:
+        "https://dashboard.stripe.com/invoices/in_1234567890abcdef",
+    },
+    {
+      stripeTaxEvidence: "stripe dashboard tax invoice workflow-123",
+      stripeDashboardEvidence: "stripe dashboard tax invoice workflow-123",
+    },
+  ]) {
+    const stagingContent = [
+      ...stagingProofs.map((proof) => `- [x] ${proof}`),
+      ...stagingProofs.map((proof) => {
+        if (proof === stripeTaxProof) {
+          return `- Evidence for ${proof}: ${stripeTaxEvidence}`;
+        }
+        return `- Evidence for ${proof}: ${proofEvidenceValueForProof(
+          proof,
+          "run-store-stripe-live-123",
+        )}`;
+      }),
+      capturedEvidenceDetails({
+        locator: "https://dashboard.stripe.com/events/evt_1234567890abcdef",
+      }),
+      "- Stripe webhook event ID: evt_1234567890abcdef",
+      `- Stripe Dashboard evidence: ${stripeDashboardEvidence}`,
+      "- Supabase function log run ID: https://supabase.com/dashboard/project/awebfvfyqzwapcgixdfj/functions/logs/run-12345",
+      "- License key custody evidence: license-key-custody workflow-123",
+      "- Live license issuance evidence: live-license-issuance workflow-123",
+    ].join("\n");
+    const status = gateStatus(
+      gate,
+      configuredEnv,
+      fakeExists(gate.artifactPaths),
+      fakeRead({
+        [stagingPath]: stagingContent,
+        [schedulerPath]: schedulerContent,
+      }),
+    );
+
+    assert.equal(status.ready, true);
+    assert.deepEqual(status.missingProofs, []);
+    assert.deepEqual(status.missingArtifactProofs, []);
+    assert.deepEqual(status.missingEvidenceDetails, []);
+    assert.deepEqual(status.proofEvidenceFindings, []);
+  }
+});
+
 test("preflight status rejects dry_run=false value no", () => {
   const gate = evidenceGates.find((item) => item.id === "hosted-supabase-cron");
   assert.ok(gate);
