@@ -391,6 +391,22 @@ test("parseArgs accepts external evidence actions", () => {
       return true;
     },
   );
+  assert.throws(
+    () => parseArgs(["--sk_live_should_not_echo_123456"]),
+    (error) => {
+      assert.match(error.message, /Unknown external evidence option/);
+      assert.equal(error.message.includes("sk_live_should_not_echo"), false);
+      return true;
+    },
+  );
+  assert.throws(
+    () => parseArgs(["status", "preflight"]),
+    (error) => {
+      assert.match(error.message, /at most one external evidence action/);
+      assert.equal(error.message.includes("preflight"), false);
+      return true;
+    },
+  );
 });
 
 test("operator runbook gives sequenced redacted evidence handoff without checkboxes", () => {
@@ -1000,6 +1016,29 @@ test("gate selection can focus one or more external lanes", () => {
       }),
     (error) => {
       assert.match(error.message, /Unknown OGL_EXTERNAL_EVIDENCE_GATES item/);
+      assert.equal(error.message.includes("sk_live_should_not_echo"), false);
+      return true;
+    },
+  );
+  assert.throws(
+    () =>
+      selectedGates({
+        OGL_EXTERNAL_EVIDENCE_GATES:
+          "hardware-os-e2e,hardware-os-e2e",
+      }),
+    (error) => {
+      assert.match(error.message, /must not include duplicate gates/);
+      return true;
+    },
+  );
+  assert.throws(
+    () =>
+      selectedGates({
+        OGL_EXTERNAL_EVIDENCE_GATES:
+          "sk_live_should_not_echo_123456,sk_live_should_not_echo_123456",
+      }),
+    (error) => {
+      assert.match(error.message, /must not include duplicate gates/);
       assert.equal(error.message.includes("sk_live_should_not_echo"), false);
       return true;
     },
@@ -1950,6 +1989,34 @@ test("unscoped release-boundary status requires release tag and commit context",
       `${gate.id} should require commit SHA context`,
     );
   }
+});
+
+test("unscoped release-boundary handoffs require release tag and commit context", () => {
+  const artifacts = completeEvidenceArtifacts();
+  const fileExists = fakeExists(Object.keys(artifacts));
+  const readFile = fakeRead(artifacts);
+
+  const handoffs = [
+    ["nextStepsReport", nextStepsReport(configuredEnv, fileExists, readFile)],
+    [
+      "operatorPacketReport",
+      operatorPacketReport(configuredEnv, fileExists, readFile),
+    ],
+    ["runbookReport", runbookReport(configuredEnv, fileExists, readFile)],
+  ];
+
+  for (const [name, output] of handoffs) {
+    assert.match(output, /release_ref_context_missing/, name);
+    assert.match(output, /commit_sha_context_missing/, name);
+    assert.match(output, /pnpm completion:gate:external/, name);
+  }
+
+  const packet = operatorPacketReport(configuredEnv, fileExists, readFile);
+  assert.match(packet, /Ready gates: 0\/5/);
+  assert.match(
+    packet,
+    /External completion: not proven; live evidence is still required/,
+  );
 });
 
 test("unscoped release-boundary status accepts matching release tag and commit context", () => {
@@ -4181,6 +4248,18 @@ test("artifactTemplate prints required proof checklist rows without secret value
     schedulerCaptureSection,
     /artifact hints fill Gate-Specific Evidence only/,
   );
+  assert.match(
+    schedulerTemplate,
+    /Hosted Cron REST Collector Environment/,
+  );
+  assert.match(
+    schedulerTemplate,
+    new RegExp(escapeRegExp(hostedCronRestUrlPrerequisite)),
+  );
+  assert.match(
+    schedulerTemplate,
+    new RegExp(escapeRegExp(hostedCronRestAuthPrerequisite)),
+  );
   assert.match(schedulerCaptureSection, /store_price_drop_notification_runs/);
   assert.doesNotMatch(schedulerCaptureSection, /presence_poll_runs/);
   assert.doesNotMatch(
@@ -4232,6 +4311,18 @@ test("artifactTemplate prints required proof checklist rows without secret value
   assert.match(
     hostedCronCaptureSection,
     /final hosted-supabase-cron proof needs unscoped grouped `pnpm hosted:cron-evidence:artifact-hints` output/i,
+  );
+  assert.match(
+    hostedCronTemplate,
+    /Hosted Cron REST Collector Environment/,
+  );
+  assert.match(
+    hostedCronTemplate,
+    new RegExp(escapeRegExp(hostedCronRestUrlPrerequisite)),
+  );
+  assert.match(
+    hostedCronTemplate,
+    new RegExp(escapeRegExp(hostedCronRestAuthPrerequisite)),
   );
 
   const rolloutGate = evidenceGates.find(

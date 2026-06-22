@@ -203,6 +203,30 @@ test("parseArgs accepts plan, check, artifact-hints, and packet only", () => {
     checks: "price-drop",
   });
   assert.throws(
+    () => parseArgs(["--unknown"]),
+    (error) => {
+      assert.match(error.message, /Unknown hosted cron evidence option/);
+      assert.equal(error.message.includes("unknown"), false);
+      return true;
+    },
+  );
+  assert.throws(
+    () => parseArgs(["plan", "packet"]),
+    (error) => {
+      assert.match(error.message, /at most one hosted cron evidence action/);
+      assert.equal(error.message.includes("packet"), false);
+      return true;
+    },
+  );
+  assert.throws(
+    () => parseArgs(["--checks=price-drop", "--checks", "presence-poll"]),
+    (error) => {
+      assert.match(error.message, /at most one hosted cron evidence check list/);
+      assert.equal(error.message.includes("presence-poll"), false);
+      return true;
+    },
+  );
+  assert.throws(
     () => parseArgs(["check", "--checks"]),
     (error) => {
       assert.match(error.message, /Missing hosted cron evidence check list/);
@@ -242,6 +266,14 @@ test("selectedCronEvidenceChecks filters checks without echoing unknown input", 
     () => selectedCronEvidenceChecks({}, ","),
     (error) => {
       assert.match(error.message, /at least one check/);
+      return true;
+    },
+  );
+  assert.throws(
+    () => selectedCronEvidenceChecks({}, "price-drop,price-drop"),
+    (error) => {
+      assert.match(error.message, /must not include duplicate checks/);
+      assert.equal(error.message.includes("price-drop,"), false);
       return true;
     },
   );

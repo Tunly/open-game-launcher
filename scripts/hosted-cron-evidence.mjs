@@ -320,42 +320,48 @@ function parseCheckIds(value) {
     .filter(Boolean);
 }
 
-function checkIdsFromArgs(argv) {
-  const equalsArg = argv.find((arg) => arg.startsWith("--checks="));
-  if (equalsArg) {
-    const value = equalsArg.slice("--checks=".length);
-    if (!clean(value))
-      throw new Error("Missing hosted cron evidence check list.");
-    return value;
-  }
+function parseCliArgs(argv) {
+  const positional = [];
+  let checks = "";
 
-  const flagIndex = argv.indexOf("--checks");
-  if (flagIndex >= 0) {
-    const value = argv[flagIndex + 1] ?? "";
-    if (!clean(value) || value.startsWith("-")) {
-      throw new Error("Missing hosted cron evidence check list.");
-    }
-    return value;
-  }
-
-  return "";
-}
-
-function actionFromArgs(argv) {
-  let skipNext = false;
-  for (const arg of argv) {
-    if (skipNext) {
-      skipNext = false;
-      continue;
-    }
+  for (let index = 0; index < argv.length; index += 1) {
+    const arg = argv[index];
     if (arg === "--checks") {
-      skipNext = true;
+      const value = argv[index + 1] ?? "";
+      if (!clean(value) || value.startsWith("-")) {
+        throw new Error("Missing hosted cron evidence check list.");
+      }
+      if (checks) {
+        throw new Error("Expected at most one hosted cron evidence check list.");
+      }
+      checks = value;
+      index += 1;
       continue;
     }
-    if (arg.startsWith("-")) continue;
-    return arg;
+    if (arg.startsWith("--checks=")) {
+      const value = arg.slice("--checks=".length);
+      if (!clean(value)) {
+        throw new Error("Missing hosted cron evidence check list.");
+      }
+      if (checks) {
+        throw new Error("Expected at most one hosted cron evidence check list.");
+      }
+      checks = value;
+      continue;
+    }
+    if (arg.startsWith("-")) {
+      throw new Error(
+        'Unknown hosted cron evidence option. Use "plan", "check", "artifact-hints", or "packet".',
+      );
+    }
+    positional.push(arg);
   }
-  return "check";
+
+  if (positional.length > 1) {
+    throw new Error("Expected at most one hosted cron evidence action.");
+  }
+
+  return { action: positional[0] ?? "check", checks };
 }
 
 export function selectedCronEvidenceChecks(env = process.env, requested = "") {
@@ -367,6 +373,12 @@ export function selectedCronEvidenceChecks(env = process.env, requested = "") {
     );
   }
   if (ids.length === 0) return [...cronEvidenceChecks];
+  const duplicateRequested = ids.some((id, index) => ids.indexOf(id) !== index);
+  if (duplicateRequested) {
+    throw new Error(
+      "OGL_HOSTED_CRON_EVIDENCE_CHECKS must not include duplicate checks.",
+    );
+  }
 
   const known = new Map(cronEvidenceChecks.map((check) => [check.id, check]));
   return ids.map((id) => {
@@ -383,7 +395,7 @@ export function selectedCronEvidenceChecks(env = process.env, requested = "") {
 }
 
 export function parseArgs(argv) {
-  const action = actionFromArgs(argv);
+  const { action, checks } = parseCliArgs(argv);
   if (
     action !== "check" &&
     action !== "plan" &&
@@ -394,7 +406,7 @@ export function parseArgs(argv) {
       'Unknown hosted cron evidence action. Use "plan", "check", "artifact-hints", or "packet".',
     );
   }
-  return { action, checks: checkIdsFromArgs(argv) };
+  return { action, checks };
 }
 
 function freshnessHoursForCheck(check, env = process.env) {

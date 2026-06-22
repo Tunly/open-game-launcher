@@ -4,6 +4,7 @@ import { spawnSync } from "node:child_process";
 import {
   existsSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   writeFileSync,
@@ -282,6 +283,22 @@ test("parseArgs defaults to the full check and accepts scoped actions", () => {
     (error) => {
       assert.match(error.message, /Unknown completion gate action/);
       assert.equal(error.message.includes("sk_live_should_not_echo"), false);
+      return true;
+    },
+  );
+  assert.throws(
+    () => parseArgs(["--sk_live_should_not_echo_123456"]),
+    (error) => {
+      assert.match(error.message, /Unknown completion gate option/);
+      assert.equal(error.message.includes("sk_live_should_not_echo"), false);
+      return true;
+    },
+  );
+  assert.throws(
+    () => parseArgs(["local", "external"]),
+    (error) => {
+      assert.match(error.message, /at most one completion gate action/);
+      assert.equal(error.message.includes("external"), false);
       return true;
     },
   );
@@ -1125,15 +1142,49 @@ test("external evidence runbook documents release-gated coverage", () => {
     externalEvidenceRunbook,
     /coverage runs as a separate informational artifact job/i,
   );
+  assert.match(
+    readme,
+    /coverage runs as a separate threshold-enforcing release-gated job/i,
+  );
+  assert.doesNotMatch(
+    readme,
+    /coverage runs as a separate informational artifact job/i,
+  );
 });
 
-test("release boundary external checks ignore scoped evidence env", () => {
+test("README documents current-main release tag boundary", () => {
+  assert.match(
+    readme,
+    /tagged commit is the current `origin\/main` commit/i,
+  );
+  assert.match(
+    readme,
+    /validated `v\*` tags whose commits point at the current `origin\/main` commit/i,
+  );
+  assert.doesNotMatch(readme, /reachable from `origin\/main`/i);
+  assert.doesNotMatch(readme, /reachable from `main`/i);
+});
+
+test("README Supabase migration count matches the repository", () => {
+  const migrationCount = readdirSync(
+    new URL("../supabase/migrations", import.meta.url),
+  ).filter((name) => name.endsWith(".sql")).length;
+
+  assert.match(
+    readme,
+    new RegExp(`# ${migrationCount} migrations \\(`),
+  );
+});
+
+test("release boundary external checks ignore scoped evidence and freshness override env", () => {
   assert.deepEqual(
     releaseBoundaryEnv({
       KEEP_ME: "yes",
       OGL_EXTERNAL_EVIDENCE_GATES: "store-stripe-live",
+      OGL_EXTERNAL_EVIDENCE_NOW: "2030-01-01T00:00:00.000Z",
       OGL_HOSTED_DEPLOY_FUNCTIONS: "stripe-webhook",
       OGL_HOSTED_CRON_EVIDENCE_CHECKS: "price-drop",
+      OGL_HOSTED_CRON_FRESHNESS_HOURS: "9999",
     }),
     { KEEP_ME: "yes" },
   );
@@ -1144,8 +1195,10 @@ test("release boundary external checks ignore scoped evidence env", () => {
     env: {
       KEEP_ME: "yes",
       OGL_EXTERNAL_EVIDENCE_GATES: "store-stripe-live",
+      OGL_EXTERNAL_EVIDENCE_NOW: "2030-01-01T00:00:00.000Z",
       OGL_HOSTED_DEPLOY_FUNCTIONS: "stripe-webhook",
       OGL_HOSTED_CRON_EVIDENCE_CHECKS: "price-drop",
+      OGL_HOSTED_CRON_FRESHNESS_HOURS: "9999",
     },
     logger: captureLogger().logger,
     platform: "linux",
@@ -1162,8 +1215,10 @@ test("release boundary external checks ignore scoped evidence env", () => {
   for (const call of calls) {
     assert.equal(call.env.KEEP_ME, "yes");
     assert.equal("OGL_EXTERNAL_EVIDENCE_GATES" in call.env, false);
+    assert.equal("OGL_EXTERNAL_EVIDENCE_NOW" in call.env, false);
     assert.equal("OGL_HOSTED_DEPLOY_FUNCTIONS" in call.env, false);
     assert.equal("OGL_HOSTED_CRON_EVIDENCE_CHECKS" in call.env, false);
+    assert.equal("OGL_HOSTED_CRON_FRESHNESS_HOURS" in call.env, false);
   }
 });
 

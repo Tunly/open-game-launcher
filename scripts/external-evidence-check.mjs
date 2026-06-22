@@ -1689,7 +1689,19 @@ function proofEvidenceDetailsFromArtifactContent(
 }
 
 export function parseArgs(argv) {
-  const requestedAction = argv.find((arg) => !arg.startsWith("-")) ?? "plan";
+  const positional = [];
+  for (const arg of argv) {
+    if (arg.startsWith("-")) {
+      throw new Error(
+        `Unknown external evidence option. Use one of: ${actionNames.join(", ")}.`,
+      );
+    }
+    positional.push(arg);
+  }
+  if (positional.length > 1) {
+    throw new Error("Expected at most one external evidence action.");
+  }
+  const requestedAction = positional[0] ?? "plan";
   if (!actions.has(requestedAction)) {
     throw new Error(
       `Unknown external evidence action. Use one of: ${actionNames.join(", ")}.`,
@@ -1710,6 +1722,16 @@ export function selectedGates(env = process.env) {
   if (requestedIds.length === 0) {
     throw new Error(
       `OGL_EXTERNAL_EVIDENCE_GATES selected no gates. Use one of: ${Array.from(
+        known.keys(),
+      ).join(", ")}.`,
+    );
+  }
+  const duplicateRequested = requestedIds.some(
+    (id, index) => requestedIds.indexOf(id) !== index,
+  );
+  if (duplicateRequested) {
+    throw new Error(
+      `OGL_EXTERNAL_EVIDENCE_GATES must not include duplicate gates. Use one of: ${Array.from(
         known.keys(),
       ).join(", ")}.`,
     );
@@ -1913,6 +1935,8 @@ export function statusReport(
 export function artifactTemplate(gate, artifactPath) {
   const requiredProofs = requiredProofsForArtifact(gate, artifactPath);
   const requiredArtifactEnv = requiredEnvForArtifact(gate, artifactPath);
+  const hostedCronCollectorPrerequisites =
+    hostedCronCollectorPrerequisitesForArtifact(gate, artifactPath);
   const requiredArtifactEvidenceFields = requiredEvidenceFieldsForArtifact(
     gate,
     artifactPath,
@@ -1937,6 +1961,18 @@ export function artifactTemplate(gate, artifactPath) {
           (name) => `- \`${name}\` set in the external run environment`,
         )),
     "",
+    ...(hostedCronCollectorPrerequisites.length === 0
+      ? []
+      : [
+          "## Hosted Cron REST Collector Environment",
+          "",
+          "Required when running `pnpm hosted:cron-evidence`, `pnpm hosted:cron-evidence:packet`, or `pnpm hosted:cron-evidence:artifact-hints` for this artifact; these values collect row evidence only and do not satisfy proof rows by themselves.",
+          "",
+          ...hostedCronCollectorPrerequisites.map(
+            (name) => `- \`${name}\` set in the operator shell`,
+          ),
+          "",
+        ]),
     "## Required Proof Checklist",
     "",
     "Leave each item unchecked until the external run evidence is captured and redacted. `pnpm external:evidence:preflight` accepts checked `- [x]` rows only in the artifact assigned to that proof.",
@@ -2099,6 +2135,24 @@ function gateUsesHostedCronEvidence(gate) {
   );
 }
 
+function artifactUsesHostedCronEvidence(gate, artifactPath) {
+  return (
+    gate.artifactEvidenceFields
+      ?.find((item) => item.path === artifactPath)
+      ?.requiredFields.some((field) =>
+        hostedCronEvidenceFields.includes(field),
+      ) ||
+    gate.artifactEvidenceGroups
+      ?.find((item) => item.path === artifactPath)
+      ?.groups.some((group) =>
+        group.requiredFields.some((field) =>
+          hostedCronEvidenceFields.includes(field),
+        ),
+      ) ||
+    false
+  );
+}
+
 function hostedCronEvidenceCheckIdsForGate(gate) {
   if (!gateUsesHostedCronEvidence(gate)) return [];
   if (gate.id === "store-stripe-live") return ["price-drop"];
@@ -2116,6 +2170,12 @@ function hostedCronEvidenceCommandPrefix(checkIds) {
 
 function hostedCronCollectorPrerequisitesForGate(gate) {
   return gateUsesHostedCronEvidence(gate)
+    ? [...hostedCronRestCollectorPrerequisites]
+    : [];
+}
+
+function hostedCronCollectorPrerequisitesForArtifact(gate, artifactPath) {
+  return artifactUsesHostedCronEvidence(gate, artifactPath)
     ? [...hostedCronRestCollectorPrerequisites]
     : [];
 }
@@ -2508,9 +2568,10 @@ export function nextStepsReport(
   { includeCaptureHandoffs = true } = {},
 ) {
   const gates = selectedGates(env);
+  const options = statusValidationOptions(env);
   const statuses = gates.map((gate) => ({
     gate,
-    status: gateStatus(gate, env, fileExists, readFile),
+    status: gateStatus(gate, env, fileExists, readFile, options),
   }));
   const missingStatuses = statuses.filter(({ status }) => !status.ready);
   const lines = [
@@ -2622,9 +2683,10 @@ export function operatorPacketReport(
   readFile = readFileSync,
 ) {
   const gates = selectedGates(env);
+  const options = statusValidationOptions(env);
   const statuses = gates.map((gate) => ({
     gate,
-    status: gateStatus(gate, env, fileExists, readFile),
+    status: gateStatus(gate, env, fileExists, readFile, options),
   }));
   const readyCount = statuses.filter(({ status }) => status.ready).length;
   const selectedIds = new Set(gates.map((gate) => gate.id));
@@ -2698,9 +2760,10 @@ export function runbookReport(
   readFile = readFileSync,
 ) {
   const gates = selectedGates(env);
+  const options = statusValidationOptions(env);
   const statuses = gates.map((gate) => ({
     gate,
-    status: gateStatus(gate, env, fileExists, readFile),
+    status: gateStatus(gate, env, fileExists, readFile, options),
   }));
   const lines = [
     "External completion evidence operator runbook",
@@ -2730,6 +2793,16 @@ export function runbookReport(
     lines.push(
       `- Missing env names: ${formatInlineList(compactList(status.missingEnv))}`,
     );
+    const detailFindings = status.evidenceDetailFindings.map(
+      (item) => `${item.path}: ${formatFindingReason(item)}`,
+    );
+    if (detailFindings.length > 0) {
+      lines.push(
+        `- Evidence detail findings: ${formatInlineList(
+          compactList(detailFindings),
+        )}`,
+      );
+    }
     lines.push(
       `- Commands: ${recommendedCommandsForGate(gate, status)
         .map((command) => `\`${command}\``)

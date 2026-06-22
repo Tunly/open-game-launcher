@@ -12,6 +12,13 @@ Artifact: `docs/verification/external/hosted-supabase-cron.md`
 - `ACCOUNT_DELETION_PROCESSOR_SECRET` set in the external run environment
 - `PRESENCE_POLL_SECRET` set in the external run environment
 
+## Hosted Cron REST Collector Environment
+
+Required when running `pnpm hosted:cron-evidence`, `pnpm hosted:cron-evidence:packet`, or `pnpm hosted:cron-evidence:artifact-hints` for this artifact; these values collect row evidence only and do not satisfy proof rows by themselves.
+
+- `SUPABASE_REST_URL or SUPABASE_URL or SUPABASE_PROJECT_REF` set in the operator shell
+- `SUPABASE_SERVICE_ROLE_KEY or SUPABASE_ANON_KEY + SUPABASE_AUTH_JWT` set in the operator shell
+
 ## Required Proof Checklist
 
 Leave each item unchecked until the external run evidence is captured and redacted. `pnpm external:evidence:preflight` accepts checked `- [x]` rows only in the artifact assigned to that proof.

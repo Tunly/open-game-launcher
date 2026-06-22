@@ -298,10 +298,27 @@ export const releaseBoundaryScopeEnvNames = Object.freeze([
   "OGL_HOSTED_CRON_EVIDENCE_CHECKS",
 ]);
 
+export const releaseBoundaryOverrideEnvNames = Object.freeze([
+  "OGL_EXTERNAL_EVIDENCE_NOW",
+  "OGL_HOSTED_CRON_FRESHNESS_HOURS",
+]);
+
 const actions = new Set(["check", "external", "local", "plan", "status"]);
 
 export function parseArgs(argv) {
-  const action = argv.find((arg) => !arg.startsWith("-")) ?? "check";
+  const positional = [];
+  for (const arg of argv) {
+    if (arg.startsWith("-")) {
+      throw new Error(
+        'Unknown completion gate option. Use "plan", "status", "local", "external", or "check".',
+      );
+    }
+    positional.push(arg);
+  }
+  if (positional.length > 1) {
+    throw new Error("Expected at most one completion gate action.");
+  }
+  const action = positional[0] ?? "check";
   if (!actions.has(action)) {
     throw new Error(
       'Unknown completion gate action. Use "plan", "status", "local", "external", or "check".',
@@ -325,7 +342,10 @@ function commandLine(check) {
 
 export function releaseBoundaryEnv(env = process.env) {
   const next = { ...env };
-  for (const name of releaseBoundaryScopeEnvNames) {
+  for (const name of [
+    ...releaseBoundaryScopeEnvNames,
+    ...releaseBoundaryOverrideEnvNames,
+  ]) {
     delete next[name];
   }
   return next;
