@@ -526,6 +526,7 @@ function pollPerformanceMetricCallCount() {
 
 describe("routed page smoke coverage", () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     window.localStorage.clear();
     currentUserMock.mockReturnValue({
       error: null,

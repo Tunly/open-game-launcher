@@ -49,6 +49,12 @@ export default tseslint.config(
     },
   },
   {
+    files: ["src/app/router.tsx"],
+    rules: {
+      "react-refresh/only-export-components": "off",
+    },
+  },
+  {
     files: ["scripts/**/*.mjs"],
     languageOptions: {
       ecmaVersion: 2022,

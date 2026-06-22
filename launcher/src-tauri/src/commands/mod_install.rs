@@ -1846,7 +1846,11 @@ fn verify_sha256(path: &Path, expected: &str) -> Result<(), String> {
         }
         hasher.update(&buffer[..read]);
     }
-    let actual = format!("{:x}", hasher.finalize());
+    let actual = hasher
+        .finalize()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
     if actual != expected {
         return Err(format!(
             "SHA-256 verification failed: expected {expected}, got {actual}."
