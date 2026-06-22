@@ -61,7 +61,7 @@
     "globals": "^17.6.0",
     "husky": "^9.1.7",
     "jsdom": "^29.1.1",
-    "lint-staged": "^15.5.2",
+    "lint-staged": "^17.0.8",
     "postcss": "^8.4.49",
     "prettier": "^3.8.4",
     "prettier-plugin-tailwindcss": "^0.8.0",
