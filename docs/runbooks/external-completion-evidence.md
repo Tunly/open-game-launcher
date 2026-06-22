@@ -238,6 +238,12 @@ Required environment names:
 - `STRIPE_WEBHOOK_SECRET`
 - `PRICE_DROP_NOTIFY_SECRET`
 
+`OGL_LICENSE_SIGNING_KEY` is also a hosted runtime prerequisite for signed
+production licenses, but it is deliberately not a required shell variable for
+`pnpm external:evidence:preflight`. Prove that lane through redacted runtime
+secret custody evidence plus a live license issuance/order/function locator;
+never paste the signing key into an artifact or operator log.
+
 Required artifacts:
 
 - `docs/verification/external/store-stripe-live-staging.md`
@@ -273,6 +279,19 @@ from the price-drop-only hosted cron artifact hints:
 - `docs/verification/external/store-price-drop-scheduler-live.md`:
   `dry_run=false`.
 - `docs/verification/external/store-price-drop-scheduler-live.md`: Status.
+
+Recommended Store/Stripe capture sequence:
+
+1. Confirm hosted runtime secrets include `SUPABASE_URL`, Stripe live keys,
+   `OGL_LICENSE_SIGNING_KEY`, and the scheduler secret names without exposing
+   their values.
+2. Run a live checkout through the hosted Stripe path and capture the Stripe
+   live event locator, Stripe Dashboard tax/invoice locator, Supabase
+   `stripe-webhook` function log locator, Store order/license locator, and
+   license key custody locator.
+3. Fill `docs/verification/external/store-stripe-live-staging.md` only with
+   redacted locators and IDs, then remove the template banner and check the
+   proof rows after review.
 
 Recommended hosted cron collector commands for the scheduler artifact:
 
@@ -346,6 +365,17 @@ The desktop keychain proof and the external preflight env check are separate:
 the same live mod.io and CurseForge values must also be injected through the
 Release Vault or shell environment as `MOD_IO_API_KEY` and
 `CURSEFORGE_API_KEY`. Do not write those values into artifacts.
+
+For the non-Steam presence bridge proof, deploy/configure
+`poll-platform-presence` with `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`,
+`PRESENCE_POLL_SECRET`, `STEAM_WEB_API_KEY`, `PRESENCE_PROVIDER_TOKEN`, and the
+live bridge endpoints needed for the matrix:
+`EPIC_PRESENCE_ENDPOINT`, `GOG_PRESENCE_ENDPOINT`, `EA_PRESENCE_ENDPOINT`,
+`XBOX_PRESENCE_ENDPOINT`, `BATTLENET_PRESENCE_ENDPOINT`, and
+`UBISOFT_PRESENCE_ENDPOINT`. Invoke the hosted function with a non-dry-run live
+session, then paste only the redacted provider bridge run ID, Supabase function
+log locator, and provider response locator into
+`docs/verification/external/provider-live-integrations.md`.
 
 Required artifacts:
 

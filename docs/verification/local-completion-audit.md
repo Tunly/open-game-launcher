@@ -281,8 +281,8 @@ branch tip.
 - Rollout tracks (`rollout-tracks`): community-wide hosted artwork/screenshots rollout,
   production controller layout rollout, plugin marketplace execution/update
   channels, native mobile apps, push-provider delivery, app-store distribution,
-  hosted production deployment, and One-Click Setup hosted/auth/provider
-  rollback proof. Use `docs/runbooks/external-completion-evidence.md` plus
+  and hosted production deployment. Use
+  `docs/runbooks/external-completion-evidence.md` plus
   `pnpm external:evidence:worklist` and `pnpm external:evidence:preflight` to
   track required proof artifacts.
 

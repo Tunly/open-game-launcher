@@ -420,11 +420,11 @@ Accessed through `launcher/src/lib/launcher.ts`. Do not call `invoke()` directly
 | Command                                     | Behavior                                 |
 | ------------------------------------------- | ---------------------------------------- |
 | `install_mod_from_url(input)`               | Download + SHA-256 + extract mod archive |
-| `scan_mod_directory(path)`                  | Scan folder for installed mods           |
 | `scan_game_mods(gameId)`                    | Detect installed mods for a game         |
 | `enable_mod(modId)` / `disable_mod(modId)`  | Toggle mod activation                    |
 | `uninstall_mod(modId)`                      | Remove mod + cleanup                     |
-| `set_mod_provider_secret(provider, secret)` | Store API key for Nexus/CurseForge       |
+| `set_mod_provider_secret(provider, secret)` | Store API key for mod.io/CurseForge      |
+| `run_mod_provider_staging_probe(input)`     | Run redacted mod.io/CurseForge probe     |
 
 ### Family Sharing
 

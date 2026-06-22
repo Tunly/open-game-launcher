@@ -417,10 +417,9 @@ Evidenz `5/5` Gates abdeckt und das volle `pnpm completion:gate` besteht.
 
 - ✅ `mod_install.rs`: Install, Enable, Disable, Uninstall, Queue-Management, Pause/Cancel
 - ✅ `install_mod_from_url()`: Download + SHA256 + Extract + Manifest
-- ✅ `scan_mod_directory()`: Scannt Mod-Ordner nach installierten Mods
 - ✅ `scan_game_mods()`: Erkennt installierte Mods pro Spiel
-- ✅ Provider: `DirectUrl`, `LocalArchive`, `LocalFolder` (SteamWorkshop, Nexus, Modio, CurseForge als enum vorhanden)
-- ✅ `set_mod_provider_secret()`: API-Keys für Nexus/CurseForge
+- ✅ Provider: `DirectUrl`, `LocalArchive`, `LocalFolder`, `SteamWorkshop`, `Modio`, `CurseForge`
+- ✅ `set_mod_provider_secret()`: API-Keys für mod.io/CurseForge
 - ✅ `search_native_mods()`: mod.io/CurseForge API-Suche mit OS-Keychain-Keys und normalisiertem Ergebnisformat
 
 #### Datenbank

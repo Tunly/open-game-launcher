@@ -22,6 +22,10 @@ const runbook = readFileSync(
   new URL("../docs/runbooks/external-completion-evidence.md", import.meta.url),
   "utf8",
 );
+const externalEvidenceIndex = readFileSync(
+  new URL("../docs/verification/external/README.md", import.meta.url),
+  "utf8",
+);
 const functionsEnvExample = readFileSync(
   new URL("../supabase/functions/.env.example", import.meta.url),
   "utf8",
@@ -34,6 +38,7 @@ const featurePlan = readFileSync(
   new URL("../FEATURE_PLAN.md", import.meta.url),
   "utf8",
 );
+const readme = readFileSync(new URL("../README.md", import.meta.url), "utf8");
 const externalSummarySource = readFileSync(
   new URL(
     "../launcher/src/lib/external-completion-evidence-summary.ts",
@@ -4201,6 +4206,36 @@ test("runbook and local audit mention every external gate", () => {
   assert.match(localAudit, /Rollout tracks/);
 });
 
+test("external evidence index mentions every external gate and artifact", () => {
+  assert.match(externalEvidenceIndex, /External Evidence Index/);
+  assert.match(externalEvidenceIndex, /pnpm completion:gate:external/);
+  assert.match(externalEvidenceIndex, /OGL_EXTERNAL_EVIDENCE_GATES=<gate-id>/);
+  assert.match(
+    externalEvidenceIndex,
+    /pnpm hosted:deploy-gate:scheduler-packet/,
+  );
+  assert.match(
+    externalEvidenceIndex,
+    /pnpm hosted:cron-evidence:artifact-hints/,
+  );
+  assert.match(externalEvidenceIndex, /pnpm hosted:deploy-gate:packet/);
+
+  for (const gate of evidenceGates) {
+    assert.match(externalEvidenceIndex, new RegExp(gate.id));
+    for (const artifact of gate.artifactPaths) {
+      assert.match(externalEvidenceIndex, new RegExp(escapeForRegExp(artifact)));
+    }
+    assert.match(
+      externalEvidenceIndex,
+      new RegExp(
+        escapeForRegExp(
+          `OGL_EXTERNAL_EVIDENCE_GATES=${gate.id} pnpm external:evidence:preflight`,
+        ),
+      ),
+    );
+  }
+});
+
 test("runbook documents Store price-drop scheduler artifact as flat gate-specific evidence", () => {
   const storeStripeRunbook = runbookSection("store-stripe-live");
 
@@ -4216,6 +4251,39 @@ test("runbook documents Store price-drop scheduler artifact as flat gate-specifi
     storeStripeRunbook,
     /scheduler artifact uses one price-drop scheduler detail block/i,
   );
+  assert.match(storeStripeRunbook, /OGL_LICENSE_SIGNING_KEY/);
+  assert.match(storeStripeRunbook, /hosted runtime prerequisite/);
+  assert.match(storeStripeRunbook, /live license issuance\/order\/function locator/);
+  assert.match(storeStripeRunbook, /never paste the signing key/i);
+});
+
+test("provider runbook documents non-Steam presence bridge collection inputs", () => {
+  const providerRunbook = runbookSection("provider-live-integrations");
+
+  for (const value of [
+    "PRESENCE_PROVIDER_TOKEN",
+    "EPIC_PRESENCE_ENDPOINT",
+    "GOG_PRESENCE_ENDPOINT",
+    "EA_PRESENCE_ENDPOINT",
+    "XBOX_PRESENCE_ENDPOINT",
+    "BATTLENET_PRESENCE_ENDPOINT",
+    "UBISOFT_PRESENCE_ENDPOINT",
+  ]) {
+    assert.match(providerRunbook, new RegExp(escapeForRegExp(value)));
+  }
+  assert.match(providerRunbook, /non-dry-run live\s+session/);
+  assert.match(providerRunbook, /provider bridge run ID/);
+});
+
+test("mods documentation no longer advertises removed scanner or Nexus provider lane", () => {
+  assert.doesNotMatch(readme, /scan_mod_directory/);
+  assert.doesNotMatch(featurePlan, /scan_mod_directory/);
+  assert.doesNotMatch(readme, /Nexus\/CurseForge/);
+  assert.doesNotMatch(featurePlan, /Nexus/);
+  assert.match(readme, /run_mod_provider_staging_probe/);
+  assert.match(featurePlan, /run_mod_provider_staging_probe/);
+  assert.match(readme, /mod\.io\/CurseForge/);
+  assert.match(featurePlan, /mod\.io\/CurseForge/);
 });
 
 test("runbook documents proof evidence lane identity", () => {
