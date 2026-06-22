@@ -383,13 +383,25 @@ function safeFunctionsBaseUrl(value) {
 }
 
 export function parseArgs(argv) {
+  const positional = [];
+  let dryRunDeploy = false;
+
   for (const arg of argv) {
-    if (arg.startsWith("-") && arg !== "--dry-run") {
+    if (arg === "--dry-run") {
+      dryRunDeploy = true;
+      continue;
+    }
+    if (arg.startsWith("-")) {
       throw new Error("Unknown hosted deploy gate flag.");
     }
+    positional.push(arg);
   }
 
-  const action = argv.find((arg) => !arg.startsWith("-")) ?? "plan";
+  if (positional.length > 1) {
+    throw new Error("Only one hosted deploy gate action is allowed.");
+  }
+
+  const action = positional[0] ?? "plan";
   if (!actions.has(action)) {
     throw new Error(
       `Unknown hosted deploy gate action. Use one of: ${Array.from(
@@ -397,10 +409,13 @@ export function parseArgs(argv) {
       ).join(", ")}.`,
     );
   }
+  if (dryRunDeploy && action !== "deploy" && action !== "all") {
+    throw new Error("--dry-run is only supported for deploy or all actions.");
+  }
 
   return {
     action,
-    dryRunDeploy: argv.includes("--dry-run"),
+    dryRunDeploy,
   };
 }
 
@@ -1175,6 +1190,8 @@ async function main() {
       console.log(
         `Supabase function verify_jwt config OK (${configResult.checked} checked)`,
       );
+      const result = runRuntimeSecretsPreflight();
+      console.log(`Supabase runtime secret names OK (${result.checked} checked)`);
     }
     runDeploy(process.env, dryRunDeploy);
   }

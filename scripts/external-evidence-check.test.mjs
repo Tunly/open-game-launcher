@@ -669,6 +669,18 @@ test("artifact worklist groups missing artifact tasks without secret values", ()
     /OGL_HOSTED_CRON_EVIDENCE_CHECKS=price-drop pnpm hosted:cron-evidence:artifact-hints/,
   );
   assert.match(output, /Capture handoffs:/);
+  assert.match(output, /Rows to fill:/);
+  assert.match(
+    output,
+    /Proof row: Stripe Tax and invoice settings are verified in Dashboard\./,
+  );
+  assert.match(
+    output,
+    /Proof evidence row: Evidence for Stripe Tax and invoice settings are verified in Dashboard\.:/,
+  );
+  assert.match(output, /Evidence detail row: Captured at:/);
+  assert.match(output, /Gate-specific evidence row: Stripe webhook event ID:/);
+  assert.match(output, /Gate-specific evidence row: Hosted cron table:/);
   assert.match(output, /store_price_drop_notification_runs/);
   assert.match(output, new RegExp(escapeRegExp(hostedCronRestUrlPrerequisite)));
   assert.match(
@@ -685,9 +697,67 @@ test("artifact worklist groups missing artifact tasks without secret values", ()
   assert.match(output, /pnpm external:evidence:preflight/);
   assert.doesNotMatch(output, /\[[xX ]\]/);
   assert.doesNotMatch(output, /docs\/verification\/screenshots/);
+  assert.doesNotMatch(output, /2026-06-16/);
+  assert.doesNotMatch(output, /run-123/);
   for (const value of Object.values(configuredEnv)) {
     assert.equal(output.includes(value), false);
   }
+});
+
+test("hosted cron worklist includes lane-specific rows to fill", () => {
+  const output = artifactWorklistReport(
+    {
+      ...configuredEnv,
+      OGL_EXTERNAL_EVIDENCE_GATES: "hosted-supabase-cron",
+    },
+    fakeExists([]),
+    fakeRead({}),
+  );
+
+  assert.match(output, /Hosted Supabase cron \(hosted-supabase-cron\)/);
+  assert.match(output, /Rows to fill:/);
+  assert.match(
+    output,
+    /Proof row: poll-platform-presence scheduled run writes fresh evidence\./,
+  );
+  assert.match(
+    output,
+    /Proof evidence row: Evidence for notify-price-drop scheduled run writes fresh evidence\.:/,
+  );
+  assert.match(output, /Lane-specific evidence row: price-drop \/ Run ID:/);
+  assert.match(output, /Lane-specific evidence row: presence-poll \/ Function:/);
+  assert.match(output, /Lane-specific evidence row: account-deletion \/ Status:/);
+  assert.match(output, /pnpm hosted:cron-evidence:artifact-hints/);
+  assert.doesNotMatch(output, /\[[xX ]\]/);
+  assert.doesNotMatch(output, /run-123/);
+  assert.doesNotMatch(output, /2026-/);
+  for (const value of Object.values(configuredEnv)) {
+    assert.equal(output.includes(value), false);
+  }
+});
+
+test("artifact worklist includes all fill rows for unreadable artifacts", () => {
+  const output = artifactWorklistReport(
+    {
+      ...configuredEnv,
+      OGL_EXTERNAL_EVIDENCE_GATES: "hosted-supabase-cron",
+    },
+    fakeExists(["docs/verification/external/hosted-supabase-cron.md"]),
+    fakeRead({}),
+  );
+
+  assert.match(output, /State: unreadable artifact/);
+  assert.match(output, /Rows to fill:/);
+  assert.match(
+    output,
+    /Proof row: poll-platform-presence scheduled run writes fresh evidence\./,
+  );
+  assert.match(output, /Evidence detail row: Captured at:/);
+  assert.match(output, /Lane-specific evidence row: price-drop \/ Run ID:/);
+  assert.match(output, /Lane-specific evidence row: account-deletion \/ Status:/);
+  assert.doesNotMatch(output, /\[[xX ]\]/);
+  assert.doesNotMatch(output, /run-123/);
+  assert.doesNotMatch(output, /2026-/);
 });
 
 test("rollout worklist includes hosted deploy packet handoff commands", () => {

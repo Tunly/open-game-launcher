@@ -1,7 +1,16 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { readdirSync, readFileSync } from "node:fs";
+import {
+  chmodSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { delimiter, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
@@ -156,10 +165,55 @@ function accountDeletionBucketsFromContract(contractText) {
   return [...match.groups.body.matchAll(/"([^"]+)"/g)].map(([, name]) => name);
 }
 
+function createFakePnpmBin(secretNames) {
+  const dir = mkdtempSync(join(tmpdir(), "ogl-hosted-deploy-gate-"));
+  const fakePnpmPath = join(dir, "pnpm");
+  const script = [
+    "#!/usr/bin/env node",
+    `const secretNames = ${JSON.stringify(secretNames)};`,
+    'if (process.argv.includes("secrets") && process.argv.includes("list")) {',
+    "  console.log(JSON.stringify({ secrets: secretNames.map((name) => ({ name })) }));",
+    "  process.exit(0);",
+    "}",
+    'console.error("unexpected fake pnpm invocation");',
+    "process.exit(1);",
+    "",
+  ].join("\n");
+  writeFileSync(fakePnpmPath, script);
+  chmodSync(fakePnpmPath, 0o755);
+  writeFileSync(
+    join(dir, "pnpm.cmd"),
+    `@echo off\r\n"${process.execPath}" "%~dp0pnpm" %*\r\n`,
+  );
+  return dir;
+}
+
+function spawnDirectDeployDryRunWithRuntimeSecretNames(secretNames) {
+  const fakeBin = createFakePnpmBin(secretNames);
+  try {
+    return spawnSync(process.execPath, [gateScriptPath, "deploy", "--dry-run"], {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        OGL_HOSTED_DEPLOY_FUNCTIONS: "notify-price-drop",
+        PATH: `${fakeBin}${delimiter}${process.env.PATH ?? ""}`,
+        SUPABASE_ACCESS_TOKEN: plausibleSupabaseAccessToken,
+        SUPABASE_PROJECT_REF: "awebfvfyqzwapcgixdfj",
+      },
+    });
+  } finally {
+    rmSync(fakeBin, { force: true, recursive: true });
+  }
+}
+
 test("parseArgs rejects unknown actions without echoing them", () => {
   assert.deepEqual(parseArgs([]), { action: "plan", dryRunDeploy: false });
   assert.deepEqual(parseArgs(["deploy", "--dry-run"]), {
     action: "deploy",
+    dryRunDeploy: true,
+  });
+  assert.deepEqual(parseArgs(["all", "--dry-run"]), {
+    action: "all",
     dryRunDeploy: true,
   });
   assert.deepEqual(parseArgs(["scheduler-packet"]), {
@@ -180,6 +234,24 @@ test("parseArgs rejects unknown actions without echoing them", () => {
   );
 });
 
+test("parseArgs rejects extra positional actions without echoing them", () => {
+  for (const argv of [
+    ["deploy", "smoke"],
+    ["deploy", "packet"],
+    ["deploy", "sk_live_should_not_echo_123456"],
+  ]) {
+    assert.throws(
+      () => parseArgs(argv),
+      (error) => {
+        assert.match(error.message, /Only one hosted deploy gate action/);
+        assert.equal(error.message.includes("sk_live_should_not_echo"), false);
+        return true;
+      },
+      argv.join(" "),
+    );
+  }
+});
+
 test("parseArgs rejects unknown flags without converting dry-run typos to live deploys", () => {
   for (const flag of ["--dryrun", "--dry_run", "--dry-run=true"]) {
     assert.throws(
@@ -190,6 +262,27 @@ test("parseArgs rejects unknown flags without converting dry-run typos to live d
         return true;
       },
       flag,
+    );
+  }
+});
+
+test("parseArgs rejects dry-run outside deploy-capable actions", () => {
+  for (const action of [
+    undefined,
+    "plan",
+    "packet",
+    "preflight",
+    "smoke",
+    "scheduler-packet",
+  ]) {
+    const argv = action ? [action, "--dry-run"] : ["--dry-run"];
+    assert.throws(
+      () => parseArgs(argv),
+      (error) => {
+        assert.match(error.message, /--dry-run is only supported/);
+        return true;
+      },
+      argv.join(" "),
     );
   }
 });
@@ -1134,28 +1227,36 @@ test("deploy command rejects short fake project refs without echoing them", () =
 });
 
 test("direct deploy dry-run runs verify_jwt config preflight before deploy commands", () => {
-  const result = spawnSync(
-    process.execPath,
-    [gateScriptPath, "deploy", "--dry-run"],
-    {
-      encoding: "utf8",
-      env: {
-        ...process.env,
-        OGL_HOSTED_DEPLOY_FUNCTIONS: "notify-price-drop",
-        SUPABASE_ACCESS_TOKEN: plausibleSupabaseAccessToken,
-        SUPABASE_PROJECT_REF: "awebfvfyqzwapcgixdfj",
-      },
-    },
-  );
+  const result =
+    spawnDirectDeployDryRunWithRuntimeSecretNames(runtimeSecretNames);
 
   assert.equal(result.status, 0);
   assert.equal(result.stderr, "");
   assert.match(result.stdout, /Preflight OK for action: deploy/);
   assert.match(result.stdout, /Supabase function verify_jwt config OK/);
+  assert.match(result.stdout, /Supabase runtime secret names OK/);
   assert.match(result.stdout, /supabase functions deploy notify-price-drop/);
   assert.ok(
     result.stdout.indexOf("Supabase function verify_jwt config OK") <
       result.stdout.indexOf("supabase functions deploy notify-price-drop"),
+  );
+  assert.ok(
+    result.stdout.indexOf("Supabase runtime secret names OK") <
+      result.stdout.indexOf("supabase functions deploy notify-price-drop"),
+  );
+});
+
+test("direct deploy dry-run stops before deploy commands when runtime secrets are missing", () => {
+  const result = spawnDirectDeployDryRunWithRuntimeSecretNames(
+    runtimeSecretNames.filter((name) => name !== "RAWG_API_KEY"),
+  );
+
+  assert.notEqual(result.status, 0);
+  assert.match(result.stderr, /Missing Supabase runtime secret names/);
+  assert.match(result.stderr, /RAWG_API_KEY/);
+  assert.equal(
+    result.stdout.includes("supabase functions deploy notify-price-drop"),
+    false,
   );
 });
 

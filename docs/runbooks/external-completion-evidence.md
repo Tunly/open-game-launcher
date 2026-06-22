@@ -80,11 +80,13 @@ has succeeded.
 
 Use `pnpm external:evidence:worklist` when an operator needs a per-artifact fill
 list. It groups each selected artifact by readiness state, missing proof labels,
-per-artifact capture handoffs, complete missing detail field names, redacted
-reason codes for rejected detail and proof-evidence rows, blocking finding
-labels, and the same follow-up commands. It is redacted output only: it does not
-write artifacts, does not include proof checkboxes, does not print environment
-values or artifact values, and does not mark external evidence complete.
+per-artifact capture handoffs, `Rows to fill` labels with requirement hints,
+complete missing detail field names, redacted reason codes for rejected detail
+and proof-evidence rows, blocking finding labels, and the same follow-up
+commands. It is redacted output only: it does not write artifacts, does not
+include proof checkboxes, does not print environment values or artifact values,
+does not generate run IDs or timestamps, and does not mark external evidence
+complete.
 
 Use `pnpm external:evidence:packet` when an operator needs one redacted handoff
 document before a release run. It includes selected gate counts, ready counts,

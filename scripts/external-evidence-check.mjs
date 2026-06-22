@@ -2169,6 +2169,154 @@ function pushCaptureHandoffs(lines, handoffs, { indent = "- " } = {}) {
   }
 }
 
+function fieldRequirementHint(field, group = null) {
+  if (group && hostedCronEvidenceFields.includes(field)) {
+    return "paste the reviewed hosted cron artifact-hints row for this lane with scheduled, non-dry-run, completed evidence";
+  }
+
+  if (hostedCronEvidenceFields.includes(field)) {
+    return "paste reviewed hosted cron artifact-hints output with scheduled, non-dry-run, completed evidence";
+  }
+
+  switch (field) {
+    case "Captured at":
+      return "current UTC ISO-8601 timestamp from the external capture";
+    case "Release ref":
+      return "release tag or release ref for the external run";
+    case "Commit SHA":
+      return "full 40-hex commit SHA for the release checkout";
+    case "Operator":
+      return "human or automation owner for the external capture";
+    case "Environment":
+      return "external environment name, not local";
+    case "Redacted run IDs, dashboard links, screenshots, or signed deployment logs":
+      return "specific accepted external locator or signed log, with secrets redacted";
+    case "Redaction notes":
+      return "positive redaction statement such as raw secrets removed or tokens redacted";
+    case "Provider/client matrix":
+      return "include both mod.io and CurseForge plus provider-client evidence";
+    case "Community rollout evidence":
+      return "include community artwork screenshot rollout evidence";
+    case "Controller layout/profile sync evidence":
+      return "include controller layout profile sync evidence";
+    case "Marketplace evidence":
+      return "include plugin marketplace execution or update review evidence";
+    case "Mobile distribution evidence":
+      return "include mobile store distribution evidence";
+    case "Push-provider evidence":
+      return "include push provider evidence from Firebase or OneSignal";
+    case "Hosted deploy evidence":
+      return "include hosted-deploy, GitHub Actions run URL, CI, main, hosted_deploy_gate=true, hosted_environment=hosted-production, hosted_deploy_action=all, hosted_deploy_dry_run=false";
+    case "OS/title/client matrix":
+      return "include Windows, macOS, and Linux rows, each with title, client, and external locator";
+    case "Session/run ID":
+      return "include overlay session or run plus measured numeric duration or window";
+    default:
+      return "specific accepted external locator or ID; keep secrets redacted";
+  }
+}
+
+function proofEvidenceRequirementHint(gate, proof) {
+  const handoff = captureHandoffForProof(gate, proof);
+  const cueText =
+    handoff.terms.length === 0
+      ? ""
+      : `include cues ${handoff.terms.map((term) => `\`${term}\``).join(", ")}; `;
+  return `${cueText}include a specific accepted external locator or ID; keep secrets redacted`;
+}
+
+function pushUniqueFillRow(rows, seen, label, hint = "") {
+  const row = hint ? `${label} - ${hint}` : label;
+  if (seen.has(row)) return;
+  seen.add(row);
+  rows.push(row);
+}
+
+function artifactFillRows(gate, status, artifactPath) {
+  const artifactUnavailable =
+    status.missingArtifacts.includes(artifactPath) ||
+    status.unreadableArtifacts.some((item) => item.path === artifactPath);
+  const missingProofs = artifactUnavailable
+    ? requiredProofsForArtifact(gate, artifactPath)
+    : artifactMissingProofs(gate, status, artifactPath);
+  const missingDetailFields = status.missingEvidenceDetails
+    .filter((item) => item.path === artifactPath)
+    .map((item) => item.field);
+  const missingDetailSet = new Set(missingDetailFields);
+  const rows = [];
+  const seen = new Set();
+
+  for (const proof of missingProofs) {
+    pushUniqueFillRow(
+      rows,
+      seen,
+      `Proof row: ${proof}`,
+      "check only after live evidence is captured and redacted",
+    );
+  }
+
+  const proofEvidenceFields = new Set([
+    ...missingProofs.map((proof) => `Evidence for ${proof}`),
+    ...missingDetailFields.filter((field) => field.startsWith("Evidence for ")),
+  ]);
+  for (const field of proofEvidenceFields) {
+    const proof = field.replace(/^Evidence for\s+/, "");
+    pushUniqueFillRow(
+      rows,
+      seen,
+      `Proof evidence row: ${field}:`,
+      proofEvidenceRequirementHint(gate, proof),
+    );
+  }
+
+  const gateSpecificFields = new Set(
+    requiredEvidenceFieldsForArtifact(gate, artifactPath),
+  );
+  for (const field of requiredEvidenceDetailFieldsForArtifact(
+    gate,
+    artifactPath,
+  )) {
+    if (!artifactUnavailable && !missingDetailSet.has(field)) continue;
+    const labelPrefix = gateSpecificFields.has(field)
+      ? "Gate-specific evidence row"
+      : "Evidence detail row";
+    pushUniqueFillRow(
+      rows,
+      seen,
+      `${labelPrefix}: ${field}:`,
+      fieldRequirementHint(field),
+    );
+  }
+
+  for (const group of requiredEvidenceGroupsForArtifact(gate, artifactPath)) {
+    for (const field of group.requiredFields) {
+      const detailField = `${group.heading}: ${field}`;
+      if (!artifactUnavailable && !missingDetailSet.has(detailField)) continue;
+      pushUniqueFillRow(
+        rows,
+        seen,
+        `Lane-specific evidence row: ${group.heading} / ${field}:`,
+        fieldRequirementHint(field, group),
+      );
+    }
+  }
+
+  return rows;
+}
+
+function pushArtifactFillRows(lines, gate, status, artifactPath) {
+  lines.push("- Rows to fill:");
+  const rows = artifactFillRows(gate, status, artifactPath);
+  if (rows.length === 0) {
+    lines.push("  - none");
+    return;
+  }
+
+  for (const row of rows) {
+    lines.push(`  - ${row}`);
+  }
+}
+
 function recommendedCommandsForGate(gate, status) {
   const commands = new Set([
     `OGL_EXTERNAL_EVIDENCE_GATES=${gate.id} pnpm external:evidence:status`,
@@ -2253,9 +2401,10 @@ export function artifactWorklistReport(
   readFile = readFileSync,
 ) {
   const gates = selectedGates(env);
+  const options = statusValidationOptions(env);
   const statuses = gates.map((gate) => ({
     gate,
-    status: gateStatus(gate, env, fileExists, readFile),
+    status: gateStatus(gate, env, fileExists, readFile, options),
   }));
   const readyArtifacts = statuses.flatMap(({ gate, status }) =>
     gate.artifactPaths.filter(
@@ -2272,7 +2421,7 @@ export function artifactWorklistReport(
     `Selected gates: ${statuses.length}`,
     `Artifact readiness: ${readyArtifacts}/${totalArtifacts}`,
     "",
-    "This worklist is redacted and non-mutating. It lists artifact paths, missing proof labels, capture handoffs, missing detail field names, blocking finding labels, and commands only; it does not print environment values, mark proof rows checked, write artifacts, or assert external success.",
+    "This worklist is redacted and non-mutating. It lists artifact paths, missing proof labels, capture handoffs, fill-row labels, missing detail field names, blocking finding labels, and commands only; it does not print environment values, mark proof rows checked, write artifacts, or assert external success.",
     releaseBoundaryReminder,
     "",
   ];
@@ -2340,6 +2489,7 @@ export function artifactWorklistReport(
           indent: "  - ",
         },
       );
+      pushArtifactFillRows(lines, gate, status, artifactPath);
       lines.push("");
     }
   }
