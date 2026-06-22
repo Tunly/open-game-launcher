@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { FileSearch, X } from "lucide-react";
+import { isTauri } from "@tauri-apps/api/core";
 
 import { executableTitleFromPath, getErrorMessage } from "../../lib/formatters";
 
@@ -53,18 +54,42 @@ export function AddGameDialog({ isOpen, onClose, onAddGame }: AddGameDialogProps
     }
   }
 
-  function handleSelectGameExecutable() {
-    setError("File selection is disabled without the dialog plugin. Enter the EXE path manually.");
+  async function handleSelectGameExecutable() {
+    if (!isTauri()) {
+      setError(
+        "Desktop app can open a native file picker. Browser preview keeps manual EXE entry available.",
+      );
+      return;
+    }
+
+    setError(null);
+    try {
+      const { open } = await import("@tauri-apps/plugin-dialog");
+      const selectedPath = await open({
+        directory: false,
+        multiple: false,
+        title: "Choose game executable",
+      });
+
+      if (typeof selectedPath !== "string") {
+        setError("Executable selection cancelled.");
+        return;
+      }
+
+      handlePathChange(selectedPath);
+    } catch (err) {
+      setError(`Could not open executable picker: ${getErrorMessage(err)}`);
+    }
   }
 
   return (
-    <div className="fixed inset-0 z-[80] grid place-items-center bg-black/45 px-4">
+    <div className="fixed inset-0 z-[80] grid place-items-center bg-[#171411]/90 bg-[radial-gradient(circle,rgba(255,249,237,0.14)_1px,transparent_1px)] bg-[length:10px_10px] px-4">
       <form
         className="w-full max-w-[520px] border-4 border-black bg-[#fbf4e7] shadow-[8px_8px_0_#171411]"
         onSubmit={handleSubmit}
       >
         <div className="flex items-center justify-between border-b-4 border-black bg-[#b7102a] px-4 py-3 text-white">
-          <h2 className="neo-title text-2xl leading-none uppercase">Add a Game</h2>
+          <h2 className="neo-title text-2xl uppercase leading-none">Add a Game</h2>
           <button
             type="button"
             className="grid h-8 w-8 place-items-center border-2 border-black bg-[#fbf4e7] text-[#171411] shadow-[2px_2px_0_#171411]"
@@ -77,7 +102,7 @@ export function AddGameDialog({ isOpen, onClose, onAddGame }: AddGameDialogProps
 
         <div className="space-y-4 p-4">
           <label className="block">
-            <span className="neo-copy block text-[11px] font-black text-[#55504a] uppercase">
+            <span className="neo-copy block text-[11px] font-black uppercase text-[#55504a]">
               Game title
             </span>
             <input
@@ -92,7 +117,7 @@ export function AddGameDialog({ isOpen, onClose, onAddGame }: AddGameDialogProps
           </label>
 
           <label className="block">
-            <span className="neo-copy block text-[11px] font-black text-[#55504a] uppercase">
+            <span className="neo-copy block text-[11px] font-black uppercase text-[#55504a]">
               Executable
             </span>
             <div className="mt-1 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
@@ -108,13 +133,13 @@ export function AddGameDialog({ isOpen, onClose, onAddGame }: AddGameDialogProps
                 onClick={handleSelectGameExecutable}
               >
                 <FileSearch className="h-4 w-4" />
-                Manual Path
+                Browse EXE
               </button>
             </div>
           </label>
 
           {error && (
-            <p className="neo-copy border-2 border-black bg-[#f5d6d9] px-3 py-2 text-[11px] font-black text-[#77101f] uppercase">
+            <p className="neo-copy border-2 border-black bg-[#f5d6d9] px-3 py-2 text-[11px] font-black uppercase text-[#77101f]">
               {error}
             </p>
           )}
@@ -130,7 +155,7 @@ export function AddGameDialog({ isOpen, onClose, onAddGame }: AddGameDialogProps
             <button
               type="submit"
               disabled={isSubmitting}
-              className="border-2 border-black bg-[#169b83] px-4 py-2 text-[12px] font-black text-white uppercase shadow-[3px_3px_0_#171411] disabled:cursor-not-allowed disabled:opacity-60"
+              className="border-2 border-black bg-[#169b83] px-4 py-2 text-[12px] font-black uppercase text-white shadow-[3px_3px_0_#171411] disabled:cursor-not-allowed disabled:opacity-60"
             >
               {isSubmitting ? "Adding..." : "Save Game"}
             </button>

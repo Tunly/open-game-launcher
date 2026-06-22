@@ -1,0 +1,16 @@
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  viewBox="0 0 360 120"
+  role="img"
+  aria-labelledby="title desc"
+>
+  <title id="title">Akira's Revenge demo logo</title>
+  <desc id="desc">Bold black Akira logo on aged paper with red underline and teal accent.</desc>
+  <rect width="360" height="120" fill="#f6edd8" />
+  <rect x="8" y="8" width="344" height="104" fill="none" stroke="#171411" stroke-width="10" />
+  <path d="M32 84h210" stroke="#c4102f" stroke-width="14" />
+  <path d="M254 36h72M254 58h54" stroke="#10a89e" stroke-width="12" />
+  <text x="32" y="70" font-family="Arial Black, Impact, sans-serif" font-size="54" fill="#171411">
+    AKIRA
+  </text>
+</svg>

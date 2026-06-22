@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { AlertTriangle, Cloud, KeyRound, Loader2, RefreshCcw, ShieldCheck } from "lucide-react";
+import { isTauri } from "@tauri-apps/api/core";
 
 import { generateCloudKey, isCloudKeyPresent, rotateCloudKey } from "../../lib/launcher";
 import { getCloudStorageUsage } from "../../lib/supabase/cloud-saves";
@@ -13,11 +14,12 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }
 
-type KeyState = "loading" | "present" | "missing";
+type KeyState = "loading" | "present" | "missing" | "desktop_only";
 
 export function CloudSavesSettings() {
   const user = useCurrentUser();
   const userId = user?.session?.user?.id ?? null;
+  const isDesktopRuntime = isTauri();
 
   const [keyState, setKeyState] = useState<KeyState>("loading");
   const [usage, setUsage] = useState<{
@@ -32,6 +34,12 @@ export function CloudSavesSettings() {
 
   const refreshAll = useCallback(async () => {
     setErrorMessage(null);
+    if (!isDesktopRuntime) {
+      setKeyState("desktop_only");
+      setUsage(null);
+      setInfoMessage("Cloud key inspection is available in the desktop app after sign-in.");
+      return;
+    }
     if (!userId) {
       setKeyState("missing");
       setUsage(null);
@@ -52,13 +60,18 @@ export function CloudSavesSettings() {
     } finally {
       setActionBusy(null);
     }
-  }, [userId]);
+  }, [isDesktopRuntime, userId]);
 
   useEffect(() => {
     void refreshAll();
   }, [refreshAll]);
 
   const handleGenerate = useCallback(async () => {
+    if (!isDesktopRuntime) {
+      setInfoMessage("Generate is available in the desktop app after sign-in.");
+      setErrorMessage(null);
+      return;
+    }
     if (!userId) {
       setErrorMessage("Sign in required to manage cloud key.");
       return;
@@ -75,9 +88,14 @@ export function CloudSavesSettings() {
     } finally {
       setActionBusy(null);
     }
-  }, [userId]);
+  }, [isDesktopRuntime, userId]);
 
   const handleRotate = useCallback(async () => {
+    if (!isDesktopRuntime) {
+      setInfoMessage("Rotate is available in the desktop app after sign-in.");
+      setErrorMessage(null);
+      return;
+    }
     if (!userId) {
       setErrorMessage("Sign in required to rotate cloud key.");
       return;
@@ -97,44 +115,59 @@ export function CloudSavesSettings() {
     } finally {
       setActionBusy(null);
     }
-  }, [userId]);
+  }, [isDesktopRuntime, userId]);
 
   const keyBadge = {
-    loading: { label: "Checking…", className: "bg-[#ded3c1] text-[#171411]" },
+    loading: { label: "Checking", className: "bg-[#efe6d4] text-[#171411]" },
     present: { label: "Active", className: "bg-[#087d6d] text-white" },
     missing: { label: "Missing", className: "bg-[#b7102a] text-white" },
+    desktop_only: { label: "Desktop Only", className: "bg-[#fff9ed] text-[#171411]" },
   }[keyState];
 
   return (
     <div className="border-4 border-black bg-[#f5eedf] shadow-[4px_4px_0_#171411]">
       <div className="flex items-center justify-between border-b-4 border-black p-5">
         <div>
-          <p className="neo-copy text-[10px] font-bold text-[#55504a] uppercase">Cloud Sync</p>
-          <h2 className="text-3xl font-black text-[#171411] uppercase">Cloud Saves</h2>
+          <p className="neo-copy text-[10px] font-bold uppercase text-[#55504a]">Cloud Sync</p>
+          <h2 className="text-3xl font-black uppercase text-[#171411]">Cloud Saves</h2>
         </div>
         <Cloud className="h-10 w-10 text-[#087d6d]" />
       </div>
 
       <div className="space-y-4 p-5">
+        {!isDesktopRuntime ? (
+          <div className="border-[3px] border-black bg-[#fff9ed] p-3 shadow-[3px_3px_0_#171411]">
+            <p className="neo-copy text-[10px] font-black uppercase tracking-[0.12em] text-[#c20b2f]">
+              Browser Cloud Guard
+            </p>
+            <p className="neo-copy mt-2 text-[11px] font-bold uppercase leading-5 text-[#55504a]">
+              Browser preview cannot read the OS keychain or generate encryption keys. Open the
+              desktop app after signing in to manage cloud-save keys.
+            </p>
+          </div>
+        ) : null}
+
         <div className="grid gap-3 sm:grid-cols-2">
           <div className="border-2 border-black bg-[#efe6d4] p-4 shadow-[2px_2px_0_#171411]">
             <div className="mb-2 flex items-center gap-2">
               <KeyRound className="h-4 w-4 text-[#171411]" />
-              <span className="text-xs font-black text-[#171411] uppercase">Master Key</span>
+              <span className="text-xs font-black uppercase text-[#171411]">Master Key</span>
               <span
                 className={`neo-copy ml-auto border-2 border-black px-2 py-0.5 text-[9px] font-black uppercase ${keyBadge.className}`}
               >
                 {keyBadge.label}
               </span>
             </div>
-            <p className="neo-copy text-[10px] font-bold text-[#55504a] uppercase">
+            <p className="neo-copy text-[10px] font-bold uppercase text-[#55504a]">
               Stored in the OS keychain (Windows Credential Manager / macOS Keychain / Linux Secret
               Service). Encrypts every save before upload.
             </p>
             <div className="mt-3 flex flex-wrap gap-2">
               <button
-                className="neo-copy flex h-9 items-center justify-center gap-1 border-2 border-black bg-[#087d6d] px-3 text-[10px] font-black text-white uppercase shadow-[2px_2px_0_#171411] disabled:cursor-not-allowed disabled:opacity-55"
-                disabled={!userId || actionBusy !== null || keyState === "present"}
+                className="neo-copy flex h-9 items-center justify-center gap-1 border-2 border-black bg-[#087d6d] px-3 text-[10px] font-black uppercase text-white shadow-[2px_2px_0_#171411] disabled:cursor-not-allowed disabled:bg-[#8f887c] disabled:text-white disabled:opacity-100"
+                disabled={
+                  !isDesktopRuntime || !userId || actionBusy !== null || keyState === "present"
+                }
                 type="button"
                 onClick={() => void handleGenerate()}
               >
@@ -146,8 +179,10 @@ export function CloudSavesSettings() {
                 Generate
               </button>
               <button
-                className="neo-copy flex h-9 items-center justify-center gap-1 border-2 border-black bg-[#b7102a] px-3 text-[10px] font-black text-white uppercase shadow-[2px_2px_0_#171411] disabled:cursor-not-allowed disabled:opacity-55"
-                disabled={!userId || actionBusy !== null || keyState !== "present"}
+                className="neo-copy flex h-9 items-center justify-center gap-1 border-2 border-black bg-[#b7102a] px-3 text-[10px] font-black uppercase text-white shadow-[2px_2px_0_#171411] disabled:cursor-not-allowed disabled:bg-[#8f887c] disabled:text-white disabled:opacity-100"
+                disabled={
+                  !isDesktopRuntime || !userId || actionBusy !== null || keyState !== "present"
+                }
                 type="button"
                 onClick={() => setConfirmRotate(true)}
               >
@@ -159,7 +194,7 @@ export function CloudSavesSettings() {
                 Rotate
               </button>
               <button
-                className="neo-copy flex h-9 items-center justify-center gap-1 border-2 border-black bg-[#fbf4e7] px-3 text-[10px] font-black text-[#171411] uppercase shadow-[2px_2px_0_#171411] disabled:cursor-not-allowed disabled:opacity-55"
+                className="neo-copy flex h-9 items-center justify-center gap-1 border-2 border-black bg-[#fff9ed] px-3 text-[10px] font-black uppercase text-[#171411] shadow-[2px_2px_0_#171411] disabled:cursor-not-allowed disabled:opacity-55"
                 disabled={actionBusy !== null}
                 type="button"
                 onClick={() => void refreshAll()}
@@ -177,7 +212,7 @@ export function CloudSavesSettings() {
           <div className="border-2 border-black bg-[#efe6d4] p-4 shadow-[2px_2px_0_#171411]">
             <div className="mb-2 flex items-center gap-2">
               <Cloud className="h-4 w-4 text-[#171411]" />
-              <span className="text-xs font-black text-[#171411] uppercase">Storage Usage</span>
+              <span className="text-xs font-black uppercase text-[#171411]">Storage Usage</span>
             </div>
             {usage ? (
               <dl className="space-y-1 text-[11px] font-black uppercase">
@@ -195,40 +230,42 @@ export function CloudSavesSettings() {
                 </div>
               </dl>
             ) : (
-              <p className="neo-copy text-[10px] font-bold text-[#55504a] uppercase">
-                Sign in and run the cloud setup script to see usage.
+              <p className="neo-copy text-[10px] font-bold uppercase text-[#55504a]">
+                {isDesktopRuntime
+                  ? "Sign in and run the cloud setup script to see usage."
+                  : "Usage is hidden in browser preview because cloud storage requires Supabase auth."}
               </p>
             )}
           </div>
         </div>
 
         {infoMessage ? (
-          <div className="border-2 border-black bg-[#d4f1ea] p-3 text-[10px] font-black text-[#06685a] uppercase">
+          <div className="border-2 border-black bg-[#087d6d] p-3 text-[10px] font-black uppercase text-white">
             {infoMessage}
           </div>
         ) : null}
         {errorMessage ? (
-          <div className="border-2 border-black bg-[#fbd6dc] p-3 text-[10px] font-black text-[#7a0918] uppercase">
+          <div className="border-2 border-black bg-[#c20b2f] p-3 text-[10px] font-black uppercase text-white">
             {errorMessage}
           </div>
         ) : null}
 
         {confirmRotate ? (
-          <div className="flex flex-col gap-2 border-2 border-black bg-[#fbd6dc] p-3 text-[11px] font-black text-[#7a0918] uppercase">
+          <div className="flex flex-col gap-2 border-2 border-black bg-[#fff9ed] p-3 text-[11px] font-black uppercase text-[#171411]">
             <div className="flex items-center gap-2">
               <AlertTriangle className="h-4 w-4" />
               <span>Rotating invalidates all existing cloud saves. Continue?</span>
             </div>
             <div className="flex flex-wrap gap-2">
               <button
-                className="border-2 border-black bg-[#b7102a] px-3 py-1 text-[10px] font-black text-white uppercase shadow-[1px_1px_0_#000] hover:bg-[#990a20]"
+                className="border-2 border-black bg-[#b7102a] px-3 py-1 text-[10px] font-black uppercase text-white shadow-[1px_1px_0_#000] hover:bg-[#990a20]"
                 type="button"
                 onClick={() => void handleRotate()}
               >
                 Yes, rotate key
               </button>
               <button
-                className="border-2 border-black bg-[#fbf4e7] px-3 py-1 text-[10px] font-black text-[#171411] uppercase shadow-[1px_1px_0_#000] hover:bg-[#efe3cf]"
+                className="border-2 border-black bg-[#fff9ed] px-3 py-1 text-[10px] font-black uppercase text-[#171411] shadow-[1px_1px_0_#000] hover:bg-[#efe6d4]"
                 type="button"
                 onClick={() => setConfirmRotate(false)}
               >
@@ -238,7 +275,7 @@ export function CloudSavesSettings() {
           </div>
         ) : null}
 
-        <p className="neo-copy text-[10px] font-bold text-[#55504a] uppercase">
+        <p className="neo-copy text-[10px] font-bold uppercase text-[#55504a]">
           Tip: Run <code className="bg-[#efe6d4] px-1">pnpm setup:cloud</code> once to ensure the
           private <code className="bg-[#efe6d4] px-1">game-saves</code> bucket and RLS policies
           exist in your Supabase project.

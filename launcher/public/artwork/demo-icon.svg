@@ -1,0 +1,14 @@
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  viewBox="0 0 128 128"
+  role="img"
+  aria-labelledby="title desc"
+>
+  <title id="title">Akira's Revenge demo icon</title>
+  <desc id="desc">Square retro manga icon with red badge and teal slash.</desc>
+  <rect width="128" height="128" fill="#f6edd8" />
+  <rect x="8" y="8" width="112" height="112" fill="none" stroke="#171411" stroke-width="12" />
+  <circle cx="72" cy="48" r="30" fill="#c4102f" stroke="#171411" stroke-width="8" />
+  <path d="M18 94 98 16l14 18-78 78z" fill="#10a89e" stroke="#171411" stroke-width="6" />
+  <path d="M26 32h32M22 48h24M76 92h30" stroke="#171411" stroke-width="8" />
+</svg>

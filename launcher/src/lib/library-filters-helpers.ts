@@ -49,6 +49,10 @@ export const FALLBACK_MOCK_GAMES: Game[] = [
     installPath: "~/.local/share/open-game-launcher/games/embers-and-engines",
     lastPlayed: "May 12, 2026",
     playtimeMinutes: 2145,
+    coverUrl: "/artwork/demo-cover.svg",
+    iconUrl: "/artwork/demo-icon.svg",
+    logoUrl: "/artwork/demo-logo.svg",
+    logoUrls: ["/artwork/demo-logo.svg"],
   },
   {
     id: "software-open-streamer",

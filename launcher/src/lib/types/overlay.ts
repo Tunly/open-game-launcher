@@ -12,6 +12,15 @@ export interface OverlaySettings {
   updatedAt: string;
 }
 
+export interface NativeOverlaySettings {
+  isEnabled?: boolean;
+  hotkey?: string;
+  position?: OverlaySettings["position"];
+  opacity?: number;
+  fpsHudEnabled?: boolean;
+  showGpu?: boolean;
+}
+
 export interface ScreenshotMeta {
   id: string;
   file_name: string;

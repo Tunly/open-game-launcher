@@ -76,13 +76,12 @@ describe("mergeEaOwned", () => {
     expect(localStorage.getItem(STORAGE_KEYS.EA_TOKEN)).toBeNull();
   });
 
-  it("persists the EA token when one is returned", async () => {
+  it("does not persist the EA token when one is returned", async () => {
     eaGetToken.mockResolvedValueOnce({ accessToken: "abc", capturedAt: 1000 });
     eaFetchOwnedGames.mockResolvedValueOnce([]);
 
     await mergeEaOwned([], makeContext());
-    const stored = JSON.parse(localStorage.getItem(STORAGE_KEYS.EA_TOKEN) as string);
-    expect(stored.accessToken).toBe("abc");
+    expect(localStorage.getItem(STORAGE_KEYS.EA_TOKEN)).toBeNull();
   });
 
   it("merges EA-owned games that are not already installed", async () => {

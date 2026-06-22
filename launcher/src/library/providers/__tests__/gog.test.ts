@@ -69,7 +69,7 @@ describe("mergeGogOwned", () => {
     expect(fetchGogOwnedGames).not.toHaveBeenCalled();
   });
 
-  it("uses the locally cached GOG token even if backend has none", async () => {
+  it("ignores and clears legacy localStorage GOG tokens when backend has none", async () => {
     gogGetToken.mockResolvedValueOnce(null);
     window.localStorage.setItem(STORAGE_KEYS.GOG_TOKEN, JSON.stringify({ accessToken: "x" }));
     fetchGogOwnedGames.mockResolvedValueOnce(
@@ -77,9 +77,9 @@ describe("mergeGogOwned", () => {
     );
 
     const result = await mergeGogOwned([], makeContext());
-    expect(fetchGogOwnedGames).toHaveBeenCalledTimes(1);
-    expect(result.games).toHaveLength(1);
-    expect(result.games[0].id).toBe("gog-owned-9");
+    expect(fetchGogOwnedGames).not.toHaveBeenCalled();
+    expect(result.games).toEqual([]);
+    expect(localStorage.getItem(STORAGE_KEYS.GOG_TOKEN)).toBeNull();
   });
 
   it("merges GOG-owned games that are not already installed", async () => {
@@ -120,7 +120,7 @@ describe("mergeGogOwned", () => {
     expect(result.games[0]).toBe(installed);
   });
 
-  it("persists refreshed token to localStorage", async () => {
+  it("does not persist refreshed tokens to localStorage", async () => {
     gogGetToken.mockResolvedValueOnce({ accessToken: "x" });
     gogRefreshToken.mockResolvedValueOnce({
       accessToken: "newAccess",
@@ -132,10 +132,7 @@ describe("mergeGogOwned", () => {
 
     await mergeGogOwned([], makeContext());
 
-    const stored = localStorage.getItem(STORAGE_KEYS.GOG_TOKEN);
-    expect(stored).toBeTruthy();
-    const parsed = JSON.parse(stored as string);
-    expect(parsed.accessToken).toBe("newAccess");
+    expect(localStorage.getItem(STORAGE_KEYS.GOG_TOKEN)).toBeNull();
   });
 
   it("does not throw when the GOG refresh call fails", async () => {

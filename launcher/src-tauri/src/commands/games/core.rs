@@ -1,8 +1,11 @@
+use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
+use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
 use notify::{Config, RecommendedWatcher, RecursiveMode, Watcher};
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
-    env, fs, io,
+    env, fs,
+    io::{self, Read},
     path::{Component, Path, PathBuf},
     process::{Child, Command},
     sync::mpsc,
@@ -29,13 +32,26 @@ use super::types::*;
 
 pub const OG_MANAGED_LATEST_VERSION: &str = "1.1.0";
 pub const OG_MANAGED_MANIFEST_FILE: &str = "og-manifest.json";
+pub const OG_MANAGED_MANIFEST_SIGNATURE_PREFIX: &str = "OGLM1";
+const OG_MANIFEST_SIGNING_KEY_ENV: &str = "OGL_INSTALL_MANIFEST_SIGNING_KEY";
+const OG_MANIFEST_VERIFYING_KEY_ENV: &str = "OGL_INSTALL_MANIFEST_VERIFYING_KEY";
+const OG_MANIFEST_KEY_ID_ENV: &str = "OGL_INSTALL_MANIFEST_KEY_ID";
+
+#[cfg(test)]
+pub(crate) fn manifest_env_test_lock() -> &'static std::sync::Mutex<()> {
+    static LOCK: std::sync::OnceLock<std::sync::Mutex<()>> = std::sync::OnceLock::new();
+    LOCK.get_or_init(|| std::sync::Mutex::new(()))
+}
 const ACHIEVEMENT_CLIENT_CACHE_MAX_DEPTH: usize = 4;
 const ACHIEVEMENT_CLIENT_CACHE_MAX_DISCOVERED_FILES: usize = 64;
 const ACHIEVEMENT_CLIENT_CACHE_MAX_FILE_BYTES: u64 = 2 * 1024 * 1024;
+const OG_MANAGED_MANIFEST_FORMAT_VERSION: u32 = 1;
 
-#[derive(Debug, Serialize, Deserialize, Clone, Default)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct OgManagedManifest {
+    #[serde(default = "default_og_manifest_format_version")]
+    pub format_version: u32,
     #[serde(default)]
     pub game_id: String,
     #[serde(default)]
@@ -55,7 +71,31 @@ pub struct OgManagedManifest {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub executable_path: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub manifest_key_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub manifest_signature: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub updated_at: Option<String>,
+}
+
+impl Default for OgManagedManifest {
+    fn default() -> Self {
+        Self {
+            format_version: OG_MANAGED_MANIFEST_FORMAT_VERSION,
+            game_id: String::new(),
+            title: String::new(),
+            version: String::new(),
+            managed_by: String::new(),
+            download_url: None,
+            download_sha256: None,
+            package_file: None,
+            files: Vec::new(),
+            executable_path: None,
+            manifest_key_id: None,
+            manifest_signature: None,
+            updated_at: None,
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -66,6 +106,18 @@ pub struct OgManagedManifestFile {
     pub size_bytes: Option<u64>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub sha256: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OgManifestTrustStatus {
+    Missing,
+    Unsigned,
+    Signed,
+    Invalid,
+}
+
+fn default_og_manifest_format_version() -> u32 {
+    OG_MANAGED_MANIFEST_FORMAT_VERSION
 }
 
 #[tauri::command]
@@ -586,7 +638,13 @@ async fn sync_best_effort_achievements(
             .filter(|value| !value.is_empty())
         {
             match crate::commands::gog::fetch_gog_achievements(gog_id).await {
-                Ok(achievements) if !achievements.is_empty() => return Ok(achievements),
+                Ok(achievements) if !achievements.is_empty() => {
+                    return Ok(merge_local_achievement_cache_overlay(
+                        provider,
+                        game,
+                        achievements,
+                    ));
+                }
                 Ok(_) => {
                     eprintln!(
                         "[open-game-launcher] GOG achievements API returned no achievements for {}. Trying local cache.",
@@ -609,7 +667,13 @@ async fn sync_best_effort_achievements(
             .filter(|value| !value.is_empty())
         {
             match crate::commands::epic::fetch_epic_legendary_achievements(app_name).await {
-                Ok(achievements) if !achievements.is_empty() => return Ok(achievements),
+                Ok(achievements) if !achievements.is_empty() => {
+                    return Ok(merge_local_achievement_cache_overlay(
+                        provider,
+                        game,
+                        achievements,
+                    ));
+                }
                 Ok(_) => {
                     eprintln!(
                         "[open-game-launcher] Legendary info returned no achievements for {}. Trying local cache.",
@@ -630,10 +694,35 @@ async fn sync_best_effort_achievements(
         Ok(achievements) => Ok(achievements),
         Err(local_error) if provider == "epic" => fetch_epic_public_achievements(game)
             .await
+            .map(|achievements| merge_local_achievement_cache_overlay(provider, game, achievements))
             .map_err(|epic_error| {
                 format!("{local_error} Epic public fallback failed: {epic_error}")
             }),
         Err(error) => Err(error),
+    }
+}
+
+fn merge_local_achievement_cache_overlay(
+    provider: &str,
+    game: &InstalledGame,
+    achievements: Vec<UnifiedAchievement>,
+) -> Vec<UnifiedAchievement> {
+    if !matches!(provider, "epic" | "gog") {
+        return achievements;
+    }
+
+    match read_local_achievement_cache(provider, game) {
+        Ok(local_achievements) if !local_achievements.is_empty() => {
+            preserve_known_unlocks(achievements, &local_achievements)
+        }
+        Ok(_) => achievements,
+        Err(error) => {
+            eprintln!(
+                "[open-game-launcher] No local {provider} unlock overlay applied for {}: {error}",
+                game.title
+            );
+            achievements
+        }
     }
 }
 
@@ -743,9 +832,27 @@ fn local_achievement_client_cache_roots(provider: &str) -> Vec<PathBuf> {
         roots.push(data_dir.join("client-cache").join(provider));
     }
 
+    push_provider_achievement_client_cache_roots(
+        &mut roots,
+        provider,
+        env_path("LOCALAPPDATA"),
+        env_path("ProgramData"),
+        env_path("APPDATA"),
+    );
+
+    roots
+}
+
+fn push_provider_achievement_client_cache_roots(
+    roots: &mut Vec<PathBuf>,
+    provider: &str,
+    local_app_data: Option<PathBuf>,
+    program_data: Option<PathBuf>,
+    app_data: Option<PathBuf>,
+) {
     match provider {
         "ea" => {
-            if let Some(local_app_data) = env_path("LOCALAPPDATA") {
+            if let Some(local_app_data) = local_app_data.as_ref() {
                 roots.push(local_app_data.join("Electronic Arts").join("EA Desktop"));
                 roots.push(
                     local_app_data
@@ -755,14 +862,14 @@ fn local_achievement_client_cache_roots(provider: &str) -> Vec<PathBuf> {
                 );
                 roots.push(local_app_data.join("Origin"));
             }
-            if let Some(program_data) = env_path("ProgramData") {
+            if let Some(program_data) = program_data.as_ref() {
                 roots.push(program_data.join("EA Desktop"));
                 roots.push(program_data.join("Electronic Arts").join("EA Desktop"));
                 roots.push(program_data.join("Origin"));
             }
         }
         "ubisoft" => {
-            if let Some(local_app_data) = env_path("LOCALAPPDATA") {
+            if let Some(local_app_data) = local_app_data.as_ref() {
                 roots.push(
                     local_app_data
                         .join("Ubisoft")
@@ -771,7 +878,7 @@ fn local_achievement_client_cache_roots(provider: &str) -> Vec<PathBuf> {
                 );
                 roots.push(local_app_data.join("Ubisoft Game Launcher").join("cache"));
             }
-            if let Some(program_data) = env_path("ProgramData") {
+            if let Some(program_data) = program_data.as_ref() {
                 roots.push(
                     program_data
                         .join("Ubisoft")
@@ -781,7 +888,7 @@ fn local_achievement_client_cache_roots(provider: &str) -> Vec<PathBuf> {
             }
         }
         "battlenet" => {
-            if let Some(program_data) = env_path("ProgramData") {
+            if let Some(program_data) = program_data.as_ref() {
                 roots.push(program_data.join("Battle.net"));
                 roots.push(
                     program_data
@@ -789,7 +896,7 @@ fn local_achievement_client_cache_roots(provider: &str) -> Vec<PathBuf> {
                         .join("Battle.net"),
                 );
             }
-            if let Some(local_app_data) = env_path("LOCALAPPDATA") {
+            if let Some(local_app_data) = local_app_data.as_ref() {
                 roots.push(local_app_data.join("Battle.net"));
                 roots.push(
                     local_app_data
@@ -797,15 +904,15 @@ fn local_achievement_client_cache_roots(provider: &str) -> Vec<PathBuf> {
                         .join("Battle.net"),
                 );
             }
-            if let Some(app_data) = env_path("APPDATA") {
+            if let Some(app_data) = app_data.as_ref() {
                 roots.push(app_data.join("Battle.net"));
             }
         }
         "gog" => {
-            if let Some(program_data) = env_path("ProgramData") {
+            if let Some(program_data) = program_data.as_ref() {
                 roots.push(program_data.join("GOG.com").join("Galaxy").join("webcache"));
             }
-            if let Some(local_app_data) = env_path("LOCALAPPDATA") {
+            if let Some(local_app_data) = local_app_data.as_ref() {
                 roots.push(
                     local_app_data
                         .join("GOG.com")
@@ -815,7 +922,7 @@ fn local_achievement_client_cache_roots(provider: &str) -> Vec<PathBuf> {
             }
         }
         "epic" => {
-            if let Some(program_data) = env_path("ProgramData") {
+            if let Some(program_data) = program_data.as_ref() {
                 roots.push(
                     program_data
                         .join("Epic")
@@ -823,14 +930,12 @@ fn local_achievement_client_cache_roots(provider: &str) -> Vec<PathBuf> {
                         .join("Data"),
                 );
             }
-            if let Some(local_app_data) = env_path("LOCALAPPDATA") {
+            if let Some(local_app_data) = local_app_data.as_ref() {
                 roots.push(local_app_data.join("EpicGamesLauncher").join("Saved"));
             }
         }
         _ => {}
     }
-
-    roots
 }
 
 fn discover_local_achievement_cache_files(
@@ -1227,6 +1332,14 @@ fn parse_local_achievement_cache(
         }
     }
 
+    let nested_achievements = nested_local_achievement_rows(value, provider);
+    if !nested_achievements.is_empty() {
+        return Ok(nested_achievements);
+    }
+    if has_nested_local_achievement_container(value) {
+        return Ok(Vec::new());
+    }
+
     if let Some(achievement_map) = value.as_object() {
         return Ok(local_achievement_map_to_achievements(
             achievement_map,
@@ -1261,58 +1374,212 @@ fn local_achievement_map_to_achievements(
         .collect()
 }
 
+fn has_nested_local_achievement_container(value: &serde_json::Value) -> bool {
+    value.as_object().is_some_and(|object| {
+        object.iter().any(|(key, child)| {
+            let key = key.to_lowercase();
+            let key_is_container = key.contains("achievement")
+                || key.contains("unlock")
+                || key.contains("trophy")
+                || key.contains("progress")
+                || key.contains("stat")
+                || key.contains("challenge")
+                || key.contains("criteria");
+            key_is_container
+                && (child.is_array()
+                    || child.get("items").is_some()
+                    || child.get("criteria").is_some()
+                    || child.get("stats").is_some()
+                    || child.get("statistics").is_some()
+                    || child.get("challenges").is_some()
+                    || child.get("actions").is_some())
+        })
+    })
+}
+
+fn nested_local_achievement_rows(
+    value: &serde_json::Value,
+    provider: &str,
+) -> Vec<UnifiedAchievement> {
+    let mut achievements = Vec::new();
+    collect_nested_local_achievement_rows(value, provider, false, &mut achievements);
+    achievements
+}
+
+fn collect_nested_local_achievement_rows(
+    value: &serde_json::Value,
+    provider: &str,
+    in_achievement_context: bool,
+    achievements: &mut Vec<UnifiedAchievement>,
+) {
+    match value {
+        serde_json::Value::Array(items) => {
+            let parsed = if in_achievement_context {
+                items
+                    .iter()
+                    .filter_map(|item| local_json_to_achievement(item, provider))
+                    .collect::<Vec<_>>()
+            } else {
+                Vec::new()
+            };
+
+            if !parsed.is_empty() {
+                for achievement in parsed {
+                    push_unique_achievement(achievements, achievement);
+                }
+            } else {
+                for item in items {
+                    collect_nested_local_achievement_rows(
+                        item,
+                        provider,
+                        in_achievement_context,
+                        achievements,
+                    );
+                }
+            }
+        }
+        serde_json::Value::Object(object) => {
+            for (key, child) in object {
+                let key = key.to_lowercase();
+                let child_is_achievement_context = in_achievement_context
+                    || key.contains("achievement")
+                    || key.contains("unlock")
+                    || key.contains("trophy")
+                    || key.contains("progress")
+                    || key.contains("stat")
+                    || key.contains("challenge")
+                    || key.contains("criteria");
+                collect_nested_local_achievement_rows(
+                    child,
+                    provider,
+                    child_is_achievement_context,
+                    achievements,
+                );
+            }
+        }
+        _ => {}
+    }
+}
+
+fn push_unique_achievement(
+    achievements: &mut Vec<UnifiedAchievement>,
+    achievement: UnifiedAchievement,
+) {
+    let keys = achievement_identity_keys(&achievement);
+    if achievements.iter().any(|existing| {
+        let existing_keys = achievement_identity_keys(existing);
+        keys.iter().any(|key| existing_keys.contains(key))
+    }) {
+        return;
+    }
+
+    achievements.push(achievement);
+}
+
 fn local_json_to_achievement(
     value: &serde_json::Value,
     provider: &str,
 ) -> Option<UnifiedAchievement> {
-    let id = json_string_at(
-        value,
-        &[
-            &["id"][..],
-            &["key"][..],
-            &["apiKey"][..],
-            &["achievementId"][..],
-            &["sourceAchievementId"][..],
-            &["source_achievement_id"][..],
-            &["name"][..],
-        ],
-    )?;
+    if is_plain_non_achievement_stat(value) {
+        return None;
+    }
+
+    let id = local_achievement_id(value, provider)?;
     let name = json_string_at(
         value,
         &[
             &["displayName"][..],
             &["display_name"][..],
+            &["displayText"][..],
+            &["display_text"][..],
+            &["displayTitle"][..],
+            &["display_title"][..],
+            &["achievementTitle"][..],
+            &["achievement_title"][..],
             &["title"][..],
+            &["label"][..],
+            &["statName"][..],
+            &["stat_name"][..],
+            &["challengeName"][..],
+            &["challenge_name"][..],
+            &["actionName"][..],
+            &["action_name"][..],
+            &["clubActionName"][..],
+            &["club_action_name"][..],
             &["name"][..],
+            &["localizedTitle"][..],
+            &["localized_title"][..],
             &["localizedName"][..],
             &["localized_name"][..],
         ],
     )
     .unwrap_or_else(|| id.clone());
-    let unlocked_at = json_string_at(
+    let unlocked_at = json_datetime_at(
         value,
         &[
             &["unlockedAt"][..],
             &["unlocked_at"][..],
             &["unlockTime"][..],
             &["unlock_time"][..],
+            &["unlockDate"][..],
+            &["unlock_date"][..],
+            &["unlockTimestamp"][..],
+            &["unlock_timestamp"][..],
+            &["earnedAt"][..],
+            &["earned_at"][..],
+            &["grantDate"][..],
+            &["grant_date"][..],
+            &["completedAt"][..],
+            &["completed_at"][..],
+            &["completionTime"][..],
+            &["completion_time"][..],
+            &["dateUnlocked"][..],
+            &["date_unlocked"][..],
+            &["timestamp"][..],
+            &["updatedAt"][..],
+            &["updated_at"][..],
         ],
     )
     .or_else(|| {
-        json_unix_timestamp_at(
-            value,
-            &[
-                &["unlockTimestamp"][..],
-                &["unlock_timestamp"][..],
-                &["dateUnlocked"][..],
-                &["date_unlocked"][..],
-            ],
-        )
-    })
-    .or_else(|| {
         json_bool_at(
             value,
-            &[&["unlocked"][..], &["achieved"][..], &["completed"][..]],
+            &[
+                &["unlocked"][..],
+                &["isUnlocked"][..],
+                &["is_unlocked"][..],
+                &["achieved"][..],
+                &["isAchieved"][..],
+                &["is_achieved"][..],
+                &["completed"][..],
+                &["isComplete"][..],
+                &["is_complete"][..],
+                &["complete"][..],
+                &["earned"][..],
+                &["isEarned"][..],
+                &["is_earned"][..],
+                &["isCompleted"][..],
+                &["is_completed"][..],
+                &["claimed"][..],
+                &["isClaimed"][..],
+                &["is_claimed"][..],
+            ],
+        )
+        .filter(|unlocked| *unlocked)
+        .map(|_| unix_timestamp_to_iso(current_unix_timestamp()))
+    })
+    .or_else(|| {
+        json_unlock_status_at(
+            value,
+            &[
+                &["status"][..],
+                &["state"][..],
+                &["unlockState"][..],
+                &["unlock_state"][..],
+                &["completionState"][..],
+                &["completion_state"][..],
+                &["grantState"][..],
+                &["grant_state"][..],
+            ],
         )
         .filter(|unlocked| *unlocked)
         .map(|_| unix_timestamp_to_iso(current_unix_timestamp()))
@@ -1326,6 +1593,10 @@ fn local_json_to_achievement(
             &[
                 &["description"][..],
                 &["desc"][..],
+                &["summary"][..],
+                &["details"][..],
+                &["displayDescription"][..],
+                &["display_description"][..],
                 &["localizedDescription"][..],
                 &["localized_description"][..],
             ],
@@ -1340,6 +1611,16 @@ fn local_json_to_achievement(
                 &["image_url"][..],
                 &["unlockedIconUrl"][..],
                 &["unlocked_icon_url"][..],
+                &["badgeUrl"][..],
+                &["badge_url"][..],
+                &["tileUrl"][..],
+                &["tile_url"][..],
+                &["thumbnailUrl"][..],
+                &["thumbnail_url"][..],
+                &["imageUrlUnlocked"][..],
+                &["image_url_unlocked"][..],
+                &["imageUrlLocked"][..],
+                &["image_url_locked"][..],
             ],
         ),
         unlocked_at,
@@ -1350,20 +1631,346 @@ fn local_json_to_achievement(
                 &["percent"][..],
                 &["unlockPercentage"][..],
                 &["unlock_percentage"][..],
+                &["percentComplete"][..],
+                &["percent_complete"][..],
+                &["completionPercent"][..],
+                &["completion_percent"][..],
+                &["progressPercent"][..],
+                &["progress_percent"][..],
             ],
         ),
         source: json_string_at(value, &[&["source"][..]]).or(Some(provider.to_string())),
-        source_achievement_id: json_string_at(
-            value,
-            &[&["sourceAchievementId"][..], &["source_achievement_id"][..]],
-        )
-        .or(Some(id)),
+        source_achievement_id: local_source_achievement_id(value, provider).or(Some(id)),
         provider_confidence: json_string_at(
             value,
             &[&["providerConfidence"][..], &["provider_confidence"][..]],
         )
         .or_else(|| Some("unofficial".to_string())),
     })
+}
+
+fn is_plain_non_achievement_stat(value: &serde_json::Value) -> bool {
+    let stat_id = json_string_at(
+        value,
+        &[
+            &["statId"][..],
+            &["stat_id"][..],
+            &["statName"][..],
+            &["stat_name"][..],
+        ],
+    )
+    .map(|value| value.to_lowercase())
+    .unwrap_or_default();
+    let unit = json_string_at(value, &[&["unit"][..]])
+        .map(|value| value.to_lowercase())
+        .unwrap_or_default();
+
+    let has_unlock_signal = json_datetime_at(
+        value,
+        &[
+            &["unlockedAt"][..],
+            &["unlocked_at"][..],
+            &["unlockTime"][..],
+            &["unlock_time"][..],
+            &["earnedAt"][..],
+            &["earned_at"][..],
+            &["grantDate"][..],
+            &["grant_date"][..],
+            &["completedAt"][..],
+            &["completed_at"][..],
+        ],
+    )
+    .is_some()
+        || json_bool_at(
+            value,
+            &[
+                &["unlocked"][..],
+                &["isUnlocked"][..],
+                &["is_unlocked"][..],
+                &["isEarned"][..],
+                &["is_earned"][..],
+                &["isCompleted"][..],
+                &["is_completed"][..],
+                &["complete"][..],
+            ],
+        )
+        .unwrap_or(false)
+        || json_unlock_status_at(
+            value,
+            &[
+                &["status"][..],
+                &["state"][..],
+                &["grantState"][..],
+                &["grant_state"][..],
+            ],
+        )
+        .unwrap_or(false);
+
+    if has_unlock_signal || stat_id.is_empty() {
+        return false;
+    }
+
+    let looks_like_achievement = stat_id.contains("ach")
+        || stat_id.contains("trophy")
+        || stat_id.contains("challenge")
+        || stat_id.contains("criteria")
+        || stat_id.contains("medal");
+    let looks_like_playtime = stat_id.contains("minute")
+        || stat_id.contains("seconds")
+        || stat_id.contains("hours")
+        || stat_id.contains("timeplayed")
+        || stat_id.contains("playtime")
+        || matches!(
+            unit.as_str(),
+            "minute" | "minutes" | "second" | "seconds" | "hour" | "hours"
+        );
+
+    looks_like_playtime && !looks_like_achievement
+}
+
+fn local_achievement_id(value: &serde_json::Value, provider: &str) -> Option<String> {
+    if provider == "gog" {
+        return json_string_at(
+            value,
+            &[
+                &["id"][..],
+                &["key"][..],
+                &["apiKey"][..],
+                &["achievementKey"][..],
+                &["achievement_key"][..],
+                &["achievementId"][..],
+                &["achievement_id"][..],
+                &["achievementCode"][..],
+                &["achievement_code"][..],
+                &["achievementName"][..],
+                &["achievement_name"][..],
+                &["statId"][..],
+                &["stat_id"][..],
+                &["statName"][..],
+                &["stat_name"][..],
+                &["challengeId"][..],
+                &["challenge_id"][..],
+                &["challengeName"][..],
+                &["challenge_name"][..],
+                &["actionId"][..],
+                &["action_id"][..],
+                &["actionName"][..],
+                &["action_name"][..],
+                &["clubActionId"][..],
+                &["club_action_id"][..],
+                &["clubActionName"][..],
+                &["club_action_name"][..],
+                &["objectiveId"][..],
+                &["objective_id"][..],
+                &["criteriaId"][..],
+                &["criteria_id"][..],
+                &["trophyId"][..],
+                &["trophy_id"][..],
+                &["medalId"][..],
+                &["medal_id"][..],
+                &["uid"][..],
+                &["code"][..],
+                &["sourceAchievementId"][..],
+                &["source_achievement_id"][..],
+                &["name"][..],
+            ],
+        );
+    }
+
+    json_string_at(
+        value,
+        &[
+            &["id"][..],
+            &["key"][..],
+            &["apiKey"][..],
+            &["achievementId"][..],
+            &["achievement_id"][..],
+            &["achievementCode"][..],
+            &["achievement_code"][..],
+            &["achievementKey"][..],
+            &["achievement_key"][..],
+            &["achievementName"][..],
+            &["achievement_name"][..],
+            &["statId"][..],
+            &["stat_id"][..],
+            &["statName"][..],
+            &["stat_name"][..],
+            &["challengeId"][..],
+            &["challenge_id"][..],
+            &["challengeName"][..],
+            &["challenge_name"][..],
+            &["actionId"][..],
+            &["action_id"][..],
+            &["actionName"][..],
+            &["action_name"][..],
+            &["clubActionId"][..],
+            &["club_action_id"][..],
+            &["clubActionName"][..],
+            &["club_action_name"][..],
+            &["objectiveId"][..],
+            &["objective_id"][..],
+            &["criteriaId"][..],
+            &["criteria_id"][..],
+            &["trophyId"][..],
+            &["trophy_id"][..],
+            &["medalId"][..],
+            &["medal_id"][..],
+            &["uid"][..],
+            &["code"][..],
+            &["sourceAchievementId"][..],
+            &["source_achievement_id"][..],
+            &["name"][..],
+        ],
+    )
+}
+
+fn local_source_achievement_id(value: &serde_json::Value, provider: &str) -> Option<String> {
+    if provider == "gog" {
+        return json_string_at(
+            value,
+            &[
+                &["sourceAchievementId"][..],
+                &["source_achievement_id"][..],
+                &["achievementKey"][..],
+                &["achievement_key"][..],
+                &["achievementId"][..],
+                &["achievement_id"][..],
+                &["achievementCode"][..],
+                &["achievement_code"][..],
+                &["achievementName"][..],
+                &["achievement_name"][..],
+                &["statId"][..],
+                &["stat_id"][..],
+                &["statName"][..],
+                &["stat_name"][..],
+                &["challengeId"][..],
+                &["challenge_id"][..],
+                &["challengeName"][..],
+                &["challenge_name"][..],
+                &["actionId"][..],
+                &["action_id"][..],
+                &["actionName"][..],
+                &["action_name"][..],
+                &["clubActionId"][..],
+                &["club_action_id"][..],
+                &["clubActionName"][..],
+                &["club_action_name"][..],
+                &["objectiveId"][..],
+                &["objective_id"][..],
+                &["criteriaId"][..],
+                &["criteria_id"][..],
+                &["trophyId"][..],
+                &["trophy_id"][..],
+                &["medalId"][..],
+                &["medal_id"][..],
+                &["uid"][..],
+                &["code"][..],
+            ],
+        );
+    }
+
+    json_string_at(
+        value,
+        &[
+            &["sourceAchievementId"][..],
+            &["source_achievement_id"][..],
+            &["achievementName"][..],
+            &["achievement_name"][..],
+            &["achievementId"][..],
+            &["achievement_id"][..],
+            &["achievementCode"][..],
+            &["achievement_code"][..],
+            &["achievementKey"][..],
+            &["achievement_key"][..],
+            &["statId"][..],
+            &["stat_id"][..],
+            &["statName"][..],
+            &["stat_name"][..],
+            &["challengeId"][..],
+            &["challenge_id"][..],
+            &["challengeName"][..],
+            &["challenge_name"][..],
+            &["actionId"][..],
+            &["action_id"][..],
+            &["actionName"][..],
+            &["action_name"][..],
+            &["clubActionId"][..],
+            &["club_action_id"][..],
+            &["clubActionName"][..],
+            &["club_action_name"][..],
+            &["objectiveId"][..],
+            &["objective_id"][..],
+            &["criteriaId"][..],
+            &["criteria_id"][..],
+            &["trophyId"][..],
+            &["trophy_id"][..],
+            &["medalId"][..],
+            &["medal_id"][..],
+            &["uid"][..],
+            &["code"][..],
+        ],
+    )
+}
+
+fn json_unlock_status_at(value: &serde_json::Value, paths: &[&[&str]]) -> Option<bool> {
+    json_string_at(value, paths).map(|status| {
+        matches!(
+            status.to_lowercase().as_str(),
+            "unlocked"
+                | "unlock"
+                | "achieved"
+                | "complete"
+                | "completed"
+                | "earned"
+                | "done"
+                | "finished"
+                | "granted"
+                | "claimed"
+                | "true"
+        )
+    })
+}
+
+fn json_datetime_at(value: &serde_json::Value, paths: &[&[&str]]) -> Option<String> {
+    paths.iter().find_map(|path| {
+        let mut current = value;
+        for key in *path {
+            current = current.get(*key)?;
+        }
+
+        match current {
+            serde_json::Value::Number(value) => {
+                value.as_f64().and_then(unix_timestamp_number_to_iso)
+            }
+            serde_json::Value::String(value) => {
+                let value = value.trim();
+                if value.is_empty() {
+                    return None;
+                }
+                if value
+                    .chars()
+                    .all(|character| character.is_ascii_digit() || character == '.')
+                {
+                    value
+                        .parse::<f64>()
+                        .ok()
+                        .and_then(unix_timestamp_number_to_iso)
+                        .or_else(|| Some(value.to_string()))
+                } else {
+                    Some(value.to_string())
+                }
+            }
+            _ => None,
+        }
+    })
+}
+
+fn unix_timestamp_number_to_iso(timestamp: f64) -> Option<String> {
+    if timestamp.is_finite() && timestamp > 0.0 {
+        Some(unix_timestamp_to_iso(timestamp as u64))
+    } else {
+        None
+    }
 }
 
 fn json_string_at(value: &serde_json::Value, paths: &[&[&str]]) -> Option<String> {
@@ -1400,16 +2007,6 @@ fn json_number_at(value: &serde_json::Value, paths: &[&[&str]]) -> Option<f64> {
         current
             .as_f64()
             .or_else(|| current.as_str()?.trim_end_matches('%').parse::<f64>().ok())
-    })
-}
-
-fn json_unix_timestamp_at(value: &serde_json::Value, paths: &[&[&str]]) -> Option<String> {
-    json_number_at(value, paths).and_then(|timestamp| {
-        if timestamp.is_finite() && timestamp > 0.0 {
-            Some(unix_timestamp_to_iso(timestamp as u64))
-        } else {
-            None
-        }
     })
 }
 
@@ -1907,17 +2504,258 @@ pub fn read_og_managed_manifest(install_path: &Path) -> Option<OgManagedManifest
     serde_json::from_str::<OgManagedManifest>(&contents).ok()
 }
 
+pub fn og_managed_manifest_trust_status(
+    install_path: Option<&Path>,
+    manifest: Option<&OgManagedManifest>,
+) -> OgManifestTrustStatus {
+    let Some(manifest) = manifest else {
+        return OgManifestTrustStatus::Missing;
+    };
+    if !manifest_has_signature(manifest) {
+        return OgManifestTrustStatus::Unsigned;
+    }
+    match install_path {
+        Some(install_path) => verify_og_managed_manifest_signature(install_path, manifest)
+            .map(|_| OgManifestTrustStatus::Signed)
+            .unwrap_or(OgManifestTrustStatus::Invalid),
+        None => OgManifestTrustStatus::Invalid,
+    }
+}
+
+pub fn manifest_has_signature(manifest: &OgManagedManifest) -> bool {
+    manifest
+        .manifest_signature
+        .as_deref()
+        .is_some_and(|value| !value.trim().is_empty())
+}
+
+pub fn verify_og_managed_manifest_signature(
+    install_path: &Path,
+    manifest: &OgManagedManifest,
+) -> Result<(), String> {
+    let Some(signature_text) = manifest
+        .manifest_signature
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    else {
+        return Ok(());
+    };
+
+    let verifying_key = og_manifest_verifying_key().ok_or_else(|| {
+        "Signed OG manifest requires OGL_INSTALL_MANIFEST_VERIFYING_KEY.".to_string()
+    })?;
+    verify_og_managed_manifest_signature_with_key(
+        install_path,
+        manifest,
+        signature_text,
+        &verifying_key,
+    )
+}
+
+fn verify_og_managed_manifest_signature_with_key(
+    install_path: &Path,
+    manifest: &OgManagedManifest,
+    signature_text: &str,
+    verifying_key: &VerifyingKey,
+) -> Result<(), String> {
+    let signature = parse_signature(signature_text)
+        .ok_or_else(|| "OG manifest signature is not valid base64url or hex.".to_string())?;
+    let signing_input = og_managed_manifest_signing_input(install_path, manifest)?;
+    verifying_key
+        .verify(signing_input.as_bytes(), &signature)
+        .map_err(|_| "OG manifest signature check failed.".to_string())
+}
+
+fn og_managed_manifest_signing_input(
+    install_path: &Path,
+    manifest: &OgManagedManifest,
+) -> Result<String, String> {
+    let payload = OgManagedManifestSigningPayload {
+        format_version: manifest.format_version,
+        game_id: manifest.game_id.as_str(),
+        title: manifest.title.as_str(),
+        version: manifest.version.as_str(),
+        managed_by: manifest.managed_by.as_str(),
+        manifest_key_id: manifest.manifest_key_id.as_deref(),
+        download_url: manifest.download_url.as_deref(),
+        download_sha256: manifest.download_sha256.as_deref(),
+        package_file: manifest.package_file.as_deref(),
+        files: &manifest.files,
+        executable_path: manifest.executable_path.as_deref(),
+        package_sha256: manifest
+            .package_file
+            .as_deref()
+            .and_then(|path| og_manifest_path_for_entry(install_path, path))
+            .and_then(|path| sha256_file_hex(&path).ok()),
+    };
+    let payload_bytes = serde_json::to_vec(&payload)
+        .map_err(|error| format!("Could not encode OG manifest signing payload: {error}"))?;
+    Ok(format!(
+        "{}.{}",
+        OG_MANAGED_MANIFEST_SIGNATURE_PREFIX,
+        URL_SAFE_NO_PAD.encode(payload_bytes)
+    ))
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct OgManagedManifestSigningPayload<'a> {
+    format_version: u32,
+    game_id: &'a str,
+    title: &'a str,
+    version: &'a str,
+    managed_by: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    manifest_key_id: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    download_url: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    download_sha256: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    package_file: Option<&'a str>,
+    files: &'a [OgManagedManifestFile],
+    #[serde(skip_serializing_if = "Option::is_none")]
+    executable_path: Option<&'a str>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    package_sha256: Option<String>,
+}
+
+fn og_manifest_verifying_key() -> Option<VerifyingKey> {
+    std::env::var(OG_MANIFEST_VERIFYING_KEY_ENV)
+        .ok()
+        .and_then(|value| clean_manifest_key_text(&value))
+        .or_else(|| option_env!("OGL_INSTALL_MANIFEST_VERIFYING_KEY").map(ToString::to_string))
+        .and_then(|value| parse_verifying_key(&value))
+}
+
+fn sign_og_managed_manifest_if_configured(
+    install_path: &Path,
+    manifest: &mut OgManagedManifest,
+) -> Result<(), String> {
+    if manifest_has_signature(manifest) {
+        return Ok(());
+    }
+
+    let Some(signing_key) = og_manifest_signing_key()? else {
+        return Ok(());
+    };
+    let key_id = og_manifest_key_id();
+    sign_og_managed_manifest_with_key(install_path, manifest, &signing_key, key_id.as_deref())
+}
+
+fn sign_og_managed_manifest_with_key(
+    install_path: &Path,
+    manifest: &mut OgManagedManifest,
+    signing_key: &SigningKey,
+    key_id: Option<&str>,
+) -> Result<(), String> {
+    if let Some(key_id) = key_id.map(str::trim).filter(|value| !value.is_empty()) {
+        manifest.manifest_key_id = Some(key_id.chars().take(120).collect());
+    }
+
+    let signing_input = og_managed_manifest_signing_input(install_path, manifest)?;
+    let signature = signing_key.sign(signing_input.as_bytes());
+    manifest.manifest_signature = Some(URL_SAFE_NO_PAD.encode(signature.to_bytes()));
+    Ok(())
+}
+
+fn og_manifest_signing_key() -> Result<Option<SigningKey>, String> {
+    let Some(value) = std::env::var(OG_MANIFEST_SIGNING_KEY_ENV)
+        .ok()
+        .and_then(|value| clean_manifest_key_text(&value))
+        .or_else(|| option_env!("OGL_INSTALL_MANIFEST_SIGNING_KEY").map(ToString::to_string))
+    else {
+        return Ok(None);
+    };
+
+    let bytes = parse_base64url_or_hex(&value, 32).ok_or_else(|| {
+        format!(
+            "{OG_MANIFEST_SIGNING_KEY_ENV} must be a base64url or hex encoded 32-byte Ed25519 signing key seed."
+        )
+    })?;
+    let key_bytes: [u8; 32] = bytes
+        .try_into()
+        .map_err(|_| format!("{OG_MANIFEST_SIGNING_KEY_ENV} must decode to exactly 32 bytes."))?;
+    Ok(Some(SigningKey::from_bytes(&key_bytes)))
+}
+
+fn og_manifest_key_id() -> Option<String> {
+    std::env::var(OG_MANIFEST_KEY_ID_ENV)
+        .ok()
+        .and_then(|value| clean_manifest_key_text(&value))
+        .or_else(|| option_env!("OGL_INSTALL_MANIFEST_KEY_ID").map(ToString::to_string))
+        .map(|value| value.chars().take(120).collect())
+}
+
+fn clean_manifest_key_text(value: &str) -> Option<String> {
+    let trimmed = value.trim();
+    (!trimmed.is_empty() && trimmed.len() <= 4096).then(|| trimmed.to_string())
+}
+
+fn parse_verifying_key(value: &str) -> Option<VerifyingKey> {
+    let bytes = parse_base64url_or_hex(value, 32)?;
+    let key_bytes: [u8; 32] = bytes.try_into().ok()?;
+    VerifyingKey::from_bytes(&key_bytes).ok()
+}
+
+fn parse_signature(value: &str) -> Option<Signature> {
+    let bytes = parse_base64url_or_hex(value, 64)?;
+    Signature::from_slice(&bytes).ok()
+}
+
+fn parse_base64url_or_hex(value: &str, expected_len: usize) -> Option<Vec<u8>> {
+    let trimmed = value.trim();
+    URL_SAFE_NO_PAD
+        .decode(trimmed.as_bytes())
+        .ok()
+        .filter(|bytes| bytes.len() == expected_len)
+        .or_else(|| hex_decode(trimmed).filter(|bytes| bytes.len() == expected_len))
+}
+
+fn hex_decode(value: &str) -> Option<Vec<u8>> {
+    let value = value.trim();
+    if !value.len().is_multiple_of(2) {
+        return None;
+    }
+
+    value
+        .as_bytes()
+        .chunks(2)
+        .map(|chunk| {
+            let high = hex_value(chunk[0])?;
+            let low = hex_value(chunk[1])?;
+            Some((high << 4) | low)
+        })
+        .collect()
+}
+
+fn hex_value(value: u8) -> Option<u8> {
+    match value {
+        b'0'..=b'9' => Some(value - b'0'),
+        b'a'..=b'f' => Some(value - b'a' + 10),
+        b'A'..=b'F' => Some(value - b'A' + 10),
+        _ => None,
+    }
+}
+
 pub fn write_og_managed_manifest(
     install_path: &Path,
     game_id: &str,
     title: &str,
     version: &str,
 ) -> Result<(), String> {
+    let files = collect_og_manifest_files(install_path)?;
+    let executable_path = find_launch_executable(install_path, title)
+        .as_deref()
+        .and_then(|path| og_manifest_relative_path(install_path, path));
     let manifest = OgManagedManifest {
         game_id: game_id.to_string(),
         title: title.to_string(),
         version: version.to_string(),
         managed_by: "OG-Launcher".to_string(),
+        files,
+        executable_path,
         updated_at: Some(unix_timestamp_to_iso(current_unix_timestamp())),
         ..Default::default()
     };
@@ -1930,12 +2768,13 @@ pub fn write_og_managed_manifest_details(
 ) -> Result<(), String> {
     let manifest_path = install_path.join(OG_MANAGED_MANIFEST_FILE);
     let mut manifest = manifest.clone();
-    if manifest.managed_by.trim().is_empty() {
+    if !manifest_has_signature(&manifest) && manifest.managed_by.trim().is_empty() {
         manifest.managed_by = "OG-Launcher".to_string();
     }
     if manifest.updated_at.is_none() {
         manifest.updated_at = Some(unix_timestamp_to_iso(current_unix_timestamp()));
     }
+    sign_og_managed_manifest_if_configured(install_path, &mut manifest)?;
 
     let contents = serde_json::to_string_pretty(&manifest)
         .map_err(|error| format!("Could not serialize update manifest: {error}"))?;
@@ -2005,8 +2844,81 @@ pub fn og_manifest_file_for_path(
     Some(OgManagedManifestFile {
         path: og_manifest_relative_path(install_path, path)?,
         size_bytes: Some(metadata.len()),
-        sha256: None,
+        sha256: sha256_file_hex(path).ok(),
     })
+}
+
+pub fn sha256_file_hex(path: &Path) -> Result<String, String> {
+    use sha2::{Digest, Sha256};
+
+    let mut file = fs::File::open(path)
+        .map_err(|error| format!("Could not open file for SHA-256: {error}"))?;
+    let mut hasher = Sha256::new();
+    let mut buffer = [0_u8; 64 * 1024];
+
+    loop {
+        let bytes_read = file
+            .read(&mut buffer)
+            .map_err(|error| format!("Could not read file for SHA-256: {error}"))?;
+        if bytes_read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..bytes_read]);
+    }
+
+    Ok(hasher
+        .finalize()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect())
+}
+
+fn collect_og_manifest_files(install_path: &Path) -> Result<Vec<OgManagedManifestFile>, String> {
+    fn visit(
+        install_path: &Path,
+        current_path: &Path,
+        files: &mut Vec<OgManagedManifestFile>,
+    ) -> Result<(), String> {
+        let entries = fs::read_dir(current_path)
+            .map_err(|error| format!("Could not read install folder for manifest: {error}"))?;
+
+        for entry in entries {
+            let entry =
+                entry.map_err(|error| format!("Could not read install folder entry: {error}"))?;
+            let path = entry.path();
+            let file_type = entry
+                .file_type()
+                .map_err(|error| format!("Could not inspect install folder entry: {error}"))?;
+
+            if file_type.is_symlink() {
+                continue;
+            }
+            if file_type.is_dir() {
+                visit(install_path, &path, files)?;
+                continue;
+            }
+            if !file_type.is_file() {
+                continue;
+            }
+
+            let Some(file) = og_manifest_file_for_path(install_path, &path) else {
+                continue;
+            };
+            if file.path.eq_ignore_ascii_case(OG_MANAGED_MANIFEST_FILE) {
+                continue;
+            }
+            files.push(file);
+        }
+
+        Ok(())
+    }
+
+    let mut files = Vec::new();
+    if install_path.exists() {
+        visit(install_path, install_path, &mut files)?;
+    }
+    files.sort_by(|left, right| left.path.cmp(&right.path));
+    Ok(files)
 }
 
 pub fn extract_og_zip_package<F>(
@@ -2832,6 +3744,229 @@ fn collect_path_size(path: &Path, size: &mut u64) {
 mod tests {
     use super::*;
 
+    fn unique_temp_dir(name: &str) -> PathBuf {
+        let path = std::env::temp_dir().join(format!(
+            "ogl-{name}-{}-{}",
+            std::process::id(),
+            current_unix_timestamp()
+        ));
+        fs::create_dir_all(&path).unwrap();
+        path
+    }
+
+    fn normalized_path_text(path: &Path) -> String {
+        path.to_string_lossy().replace('\\', "/")
+    }
+
+    #[test]
+    fn og_manifest_file_for_path_records_sha256() {
+        let root = unique_temp_dir("manifest-hash");
+        let file_path = root.join("game.bin");
+        fs::write(&file_path, b"abc").unwrap();
+
+        let manifest_file = og_manifest_file_for_path(&root, &file_path).unwrap();
+
+        assert_eq!(manifest_file.path, "game.bin");
+        assert_eq!(manifest_file.size_bytes, Some(3));
+        assert_eq!(
+            manifest_file.sha256.as_deref(),
+            Some("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
+        );
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn write_og_managed_manifest_records_install_files_with_hashes() {
+        let root = unique_temp_dir("managed-manifest");
+        fs::create_dir_all(root.join("bin")).unwrap();
+        let executable_name = if cfg!(target_os = "windows") {
+            "game.exe"
+        } else {
+            "game"
+        };
+        let executable_path = root.join("bin").join(executable_name);
+        fs::write(&executable_path, b"abc").unwrap();
+        #[cfg(unix)]
+        fs::set_permissions(&executable_path, fs::Permissions::from_mode(0o755)).unwrap();
+
+        write_og_managed_manifest(&root, "game-1", "Game", "1.0.0").unwrap();
+        let manifest = read_og_managed_manifest(&root).unwrap();
+        let expected_relative = format!("bin/{executable_name}");
+
+        assert_eq!(manifest.files.len(), 1);
+        assert_eq!(manifest.files[0].path, expected_relative);
+        assert_eq!(
+            manifest.files[0].sha256.as_deref(),
+            Some("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
+        );
+        assert_eq!(
+            manifest.executable_path.as_deref(),
+            Some(expected_relative.as_str())
+        );
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn og_managed_manifest_signature_accepts_valid_signature() {
+        let root = unique_temp_dir("managed-manifest-signed");
+        fs::write(root.join("game.bin"), b"abc").unwrap();
+        let signing_key = SigningKey::from_bytes(&[7; 32]);
+        let mut manifest = OgManagedManifest {
+            game_id: "game-1".to_string(),
+            title: "Game".to_string(),
+            version: "1.0.0".to_string(),
+            managed_by: "OG-Launcher".to_string(),
+            files: vec![og_manifest_file_for_path(&root, &root.join("game.bin")).unwrap()],
+            ..Default::default()
+        };
+        let signing_input = og_managed_manifest_signing_input(&root, &manifest).unwrap();
+        let signature = signing_key.sign(signing_input.as_bytes());
+        manifest.manifest_signature = Some(URL_SAFE_NO_PAD.encode(signature.to_bytes()));
+
+        let result = verify_og_managed_manifest_signature_with_key(
+            &root,
+            &manifest,
+            manifest.manifest_signature.as_deref().unwrap(),
+            &signing_key.verifying_key(),
+        );
+
+        assert!(result.is_ok());
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn og_managed_manifest_signature_rejects_tampered_manifest() {
+        let root = unique_temp_dir("managed-manifest-tampered");
+        fs::write(root.join("game.bin"), b"abc").unwrap();
+        let signing_key = SigningKey::from_bytes(&[9; 32]);
+        let mut manifest = OgManagedManifest {
+            game_id: "game-1".to_string(),
+            title: "Game".to_string(),
+            version: "1.0.0".to_string(),
+            managed_by: "OG-Launcher".to_string(),
+            files: vec![og_manifest_file_for_path(&root, &root.join("game.bin")).unwrap()],
+            ..Default::default()
+        };
+        let signing_input = og_managed_manifest_signing_input(&root, &manifest).unwrap();
+        let signature = signing_key.sign(signing_input.as_bytes());
+        manifest.manifest_signature = Some(URL_SAFE_NO_PAD.encode(signature.to_bytes()));
+        manifest.version = "2.0.0".to_string();
+
+        let error = verify_og_managed_manifest_signature_with_key(
+            &root,
+            &manifest,
+            manifest.manifest_signature.as_deref().unwrap(),
+            &signing_key.verifying_key(),
+        )
+        .unwrap_err();
+
+        assert!(error.contains("signature check failed"));
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn signs_manifest_with_key_id_bound_to_signature() {
+        let root = unique_temp_dir("managed-manifest-key-id");
+        fs::write(root.join("game.bin"), b"abc").unwrap();
+        let signing_key = SigningKey::from_bytes(&[13; 32]);
+        let mut manifest = OgManagedManifest {
+            game_id: "game-1".to_string(),
+            title: "Game".to_string(),
+            version: "1.0.0".to_string(),
+            managed_by: "OG-Launcher".to_string(),
+            files: vec![og_manifest_file_for_path(&root, &root.join("game.bin")).unwrap()],
+            ..Default::default()
+        };
+
+        sign_og_managed_manifest_with_key(
+            &root,
+            &mut manifest,
+            &signing_key,
+            Some("provider-release-2026q2"),
+        )
+        .unwrap();
+
+        assert_eq!(
+            manifest.manifest_key_id.as_deref(),
+            Some("provider-release-2026q2")
+        );
+        assert!(manifest_has_signature(&manifest));
+        assert!(verify_og_managed_manifest_signature_with_key(
+            &root,
+            &manifest,
+            manifest.manifest_signature.as_deref().unwrap(),
+            &signing_key.verifying_key(),
+        )
+        .is_ok());
+
+        manifest.manifest_key_id = Some("other-key".to_string());
+        let error = verify_og_managed_manifest_signature_with_key(
+            &root,
+            &manifest,
+            manifest.manifest_signature.as_deref().unwrap(),
+            &signing_key.verifying_key(),
+        )
+        .unwrap_err();
+        assert!(error.contains("signature check failed"));
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn write_manifest_uses_configured_signing_key() {
+        let _guard = manifest_env_test_lock()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let root = unique_temp_dir("managed-manifest-env-signed");
+        fs::write(root.join("game.bin"), b"abc").unwrap();
+        let signing_key = SigningKey::from_bytes(&[17; 32]);
+        let signing_key_text = URL_SAFE_NO_PAD.encode(signing_key.to_bytes());
+        let verifying_key_text = URL_SAFE_NO_PAD.encode(signing_key.verifying_key().to_bytes());
+        std::env::set_var(OG_MANIFEST_SIGNING_KEY_ENV, signing_key_text);
+        std::env::set_var(OG_MANIFEST_VERIFYING_KEY_ENV, verifying_key_text);
+        std::env::set_var(OG_MANIFEST_KEY_ID_ENV, "provider-release-env");
+
+        write_og_managed_manifest(&root, "game-1", "Game", "1.0.0").unwrap();
+        let manifest = read_og_managed_manifest(&root).unwrap();
+
+        assert_eq!(
+            manifest.manifest_key_id.as_deref(),
+            Some("provider-release-env")
+        );
+        assert!(manifest_has_signature(&manifest));
+        assert_eq!(
+            og_managed_manifest_trust_status(Some(&root), Some(&manifest)),
+            OgManifestTrustStatus::Signed
+        );
+
+        std::env::remove_var(OG_MANIFEST_SIGNING_KEY_ENV);
+        std::env::remove_var(OG_MANIFEST_VERIFYING_KEY_ENV);
+        std::env::remove_var(OG_MANIFEST_KEY_ID_ENV);
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn parses_manifest_verifying_keys_from_base64url_and_hex() {
+        let signing_key = SigningKey::from_bytes(&[11; 32]);
+        let verifying_key = signing_key.verifying_key();
+        let key_bytes = verifying_key.to_bytes();
+        let base64_key = URL_SAFE_NO_PAD.encode(key_bytes);
+        let hex_key = key_bytes
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>();
+
+        assert_eq!(
+            parse_verifying_key(&base64_key).unwrap().to_bytes(),
+            key_bytes
+        );
+        assert_eq!(parse_verifying_key(&hex_key).unwrap().to_bytes(), key_bytes);
+    }
+
     #[test]
     fn upserts_achievement_provider_status_by_source() {
         let mut game = installed_game(
@@ -3060,6 +4195,41 @@ mod tests {
     }
 
     #[test]
+    fn parses_local_gog_galaxy_achievement_aliases() {
+        let value = serde_json::json!({
+            "items": [
+                {
+                    "achievement_id": "48497841707623054",
+                    "achievement_key": "ACHIEVEMENT_NODEATH1",
+                    "name": "Early Bird",
+                    "description": "Complete level 1 without dying",
+                    "image_url_unlocked": "https://images.gog.com/unlocked.jpg",
+                    "image_url_locked": "https://images.gog.com/locked.jpg",
+                    "date_unlocked": "2026-06-07T01:10:00+00:00",
+                    "provider_confidence": "local"
+                }
+            ]
+        });
+
+        let achievements = parse_local_achievement_cache(&value, "gog").unwrap();
+
+        assert_eq!(achievements.len(), 1);
+        assert_eq!(achievements[0].id, "ACHIEVEMENT_NODEATH1");
+        assert_eq!(
+            achievements[0].source_achievement_id.as_deref(),
+            Some("ACHIEVEMENT_NODEATH1")
+        );
+        assert_eq!(
+            achievements[0].unlocked_at.as_deref(),
+            Some("2026-06-07T01:10:00+00:00")
+        );
+        assert_eq!(
+            achievements[0].icon_url.as_deref(),
+            Some("https://images.gog.com/unlocked.jpg")
+        );
+    }
+
+    #[test]
     fn parses_local_achievement_cache_map_format() {
         let value = serde_json::json!({
             "ACH_WIN": {
@@ -3114,6 +4284,163 @@ mod tests {
     }
 
     #[test]
+    fn parses_local_ea_stats_achievement_cache() {
+        let value = serde_json::json!({
+            "achievementStats": {
+                "items": [
+                    {
+                        "statName": "EA_WIN_01",
+                        "displayTitle": "Club Legend",
+                        "summary": "Win a season match.",
+                        "badgeUrl": "https://ea.example.test/badge.png",
+                        "earnedAt": "2026-06-08T18:00:00Z",
+                        "percentComplete": "100",
+                        "provider_confidence": "local"
+                    }
+                ]
+            }
+        });
+
+        let achievements = parse_local_achievement_cache(&value, "ea").unwrap();
+
+        assert_eq!(achievements.len(), 1);
+        assert_eq!(achievements[0].id, "EA_WIN_01");
+        assert_eq!(achievements[0].name, "Club Legend");
+        assert_eq!(
+            achievements[0].description.as_deref(),
+            Some("Win a season match.")
+        );
+        assert_eq!(
+            achievements[0].icon_url.as_deref(),
+            Some("https://ea.example.test/badge.png")
+        );
+        assert_eq!(
+            achievements[0].unlocked_at.as_deref(),
+            Some("2026-06-08T18:00:00Z")
+        );
+        assert_eq!(achievements[0].rarity, Some(100.0));
+        assert_eq!(achievements[0].source.as_deref(), Some("ea"));
+    }
+
+    #[test]
+    fn skips_plain_ea_playtime_stats_cache_rows() {
+        let value = serde_json::json!({
+            "stats": {
+                "items": [
+                    {
+                        "statId": "minutesPlayed",
+                        "displayText": "Minutes Played",
+                        "value": 120,
+                        "unit": "minutes"
+                    }
+                ]
+            }
+        });
+
+        let achievements = parse_local_achievement_cache(&value, "ea").unwrap();
+
+        assert!(achievements.is_empty());
+    }
+
+    #[test]
+    fn parses_local_ubisoft_challenge_cache() {
+        let value = serde_json::json!({
+            "challenges": [
+                {
+                    "challengeId": "ubi_story_01",
+                    "localizedTitle": "Welcome to DedSec",
+                    "displayDescription": "Complete the opening operation.",
+                    "thumbnailUrl": "https://ubisoft.example.test/challenge.png",
+                    "completionState": "GRANTED",
+                    "completedAt": "2026-06-08T19:00:00Z",
+                    "providerConfidence": "local"
+                }
+            ]
+        });
+
+        let achievements = parse_local_achievement_cache(&value, "ubisoft").unwrap();
+
+        assert_eq!(achievements.len(), 1);
+        assert_eq!(achievements[0].id, "ubi_story_01");
+        assert_eq!(achievements[0].name, "Welcome to DedSec");
+        assert_eq!(
+            achievements[0].description.as_deref(),
+            Some("Complete the opening operation.")
+        );
+        assert_eq!(
+            achievements[0].unlocked_at.as_deref(),
+            Some("2026-06-08T19:00:00Z")
+        );
+        assert_eq!(achievements[0].source.as_deref(), Some("ubisoft"));
+    }
+
+    #[test]
+    fn parses_local_battlenet_criteria_cache() {
+        let value = serde_json::json!({
+            "progress": {
+                "criteria": [
+                    {
+                        "criteriaId": "bn_raid_clear",
+                        "label": "Raid Night",
+                        "details": "Clear a raid wing.",
+                        "state": "DONE",
+                        "updatedAt": "2026-06-08T20:00:00Z",
+                        "progressPercent": "100",
+                        "provider_confidence": "local"
+                    }
+                ]
+            }
+        });
+
+        let achievements = parse_local_achievement_cache(&value, "battlenet").unwrap();
+
+        assert_eq!(achievements.len(), 1);
+        assert_eq!(achievements[0].id, "bn_raid_clear");
+        assert_eq!(achievements[0].name, "Raid Night");
+        assert_eq!(
+            achievements[0].description.as_deref(),
+            Some("Clear a raid wing.")
+        );
+        assert_eq!(
+            achievements[0].unlocked_at.as_deref(),
+            Some("2026-06-08T20:00:00Z")
+        );
+        assert_eq!(achievements[0].rarity, Some(100.0));
+        assert_eq!(achievements[0].source.as_deref(), Some("battlenet"));
+    }
+
+    #[test]
+    fn parses_nested_epic_local_achievement_status_items() {
+        let value = serde_json::json!({
+            "metadata": {
+                "achievementStatus": {
+                    "items": [
+                        {
+                            "achievementName": "A_HOUSE_DIVIDED",
+                            "displayName": "A House Divided",
+                            "isUnlocked": true,
+                            "unlockTime": 1767225600
+                        }
+                    ]
+                }
+            }
+        });
+
+        let achievements = parse_local_achievement_cache(&value, "epic").unwrap();
+
+        assert_eq!(achievements.len(), 1);
+        assert_eq!(achievements[0].id, "A_HOUSE_DIVIDED");
+        assert_eq!(
+            achievements[0].source_achievement_id.as_deref(),
+            Some("A_HOUSE_DIVIDED")
+        );
+        assert_eq!(
+            achievements[0].unlocked_at.as_deref(),
+            Some("2026-01-01T00:00:00Z")
+        );
+    }
+
+    #[test]
     fn local_achievement_candidates_include_install_sidecars() {
         let mut game = installed_game(
             "epic-game-1",
@@ -3128,13 +4455,12 @@ mod tests {
 
         assert!(candidates
             .iter()
-            .any(|path| path.ends_with(r"C:\Games\Epic Game\og-achievements.json")));
-        assert!(candidates
-            .iter()
-            .any(|path| path.ends_with(r"C:\Games\Epic Game\epic-achievements.json")));
-        assert!(candidates
-            .iter()
-            .any(|path| path.ends_with(r"C:\Games\Epic Game\.og-launcher\achievements.json")));
+            .any(|path| normalized_path_text(path)
+                .ends_with("C:/Games/Epic Game/og-achievements.json")));
+        assert!(candidates.iter().any(|path| normalized_path_text(path)
+            .ends_with("C:/Games/Epic Game/epic-achievements.json")));
+        assert!(candidates.iter().any(|path| normalized_path_text(path)
+            .ends_with("C:/Games/Epic Game/.og-launcher/achievements.json")));
         assert!(candidates.iter().any(|path| path
             .ends_with("achievement-cache\\epic\\epic-app.json")
             || path.ends_with("achievement-cache/epic/epic-app.json")));
@@ -3159,23 +4485,75 @@ mod tests {
             text.contains("client-cache\\ea\\offer-123.json")
                 || text.contains("client-cache/ea/offer-123.json")
         }));
-        assert!(candidates
-            .iter()
-            .any(|path| path.to_string_lossy().contains("EA Desktop")));
     }
 
     #[test]
     fn local_achievement_client_cache_roots_cover_unofficial_providers() {
-        assert!(local_achievement_client_cache_roots("ubisoft")
+        for provider in ["ubisoft", "battlenet", "gog", "epic"] {
+            let provider_roots = local_achievement_client_cache_roots(provider);
+            assert!(provider_roots.iter().any(|path| {
+                let text = normalized_path_text(path);
+                text.contains(&format!("client-cache/{provider}"))
+            }));
+        }
+
+        let mut roots = Vec::new();
+        push_provider_achievement_client_cache_roots(
+            &mut roots,
+            "ea",
+            Some(PathBuf::from("C:/Users/Test/AppData/Local")),
+            Some(PathBuf::from("C:/ProgramData")),
+            Some(PathBuf::from("C:/Users/Test/AppData/Roaming")),
+        );
+        assert!(roots
+            .iter()
+            .any(|path| path.to_string_lossy().contains("EA Desktop")));
+
+        roots.clear();
+        push_provider_achievement_client_cache_roots(
+            &mut roots,
+            "ubisoft",
+            Some(PathBuf::from("C:/Users/Test/AppData/Local")),
+            Some(PathBuf::from("C:/ProgramData")),
+            None,
+        );
+        assert!(roots
             .iter()
             .any(|path| path.to_string_lossy().contains("Ubisoft Game Launcher")));
-        assert!(local_achievement_client_cache_roots("battlenet")
+
+        roots.clear();
+        push_provider_achievement_client_cache_roots(
+            &mut roots,
+            "battlenet",
+            Some(PathBuf::from("C:/Users/Test/AppData/Local")),
+            Some(PathBuf::from("C:/ProgramData")),
+            Some(PathBuf::from("C:/Users/Test/AppData/Roaming")),
+        );
+        assert!(roots
             .iter()
             .any(|path| path.to_string_lossy().contains("Battle.net")));
-        assert!(local_achievement_client_cache_roots("gog")
+
+        roots.clear();
+        push_provider_achievement_client_cache_roots(
+            &mut roots,
+            "gog",
+            Some(PathBuf::from("C:/Users/Test/AppData/Local")),
+            Some(PathBuf::from("C:/ProgramData")),
+            None,
+        );
+        assert!(roots
             .iter()
             .any(|path| path.to_string_lossy().contains("Galaxy")));
-        assert!(local_achievement_client_cache_roots("epic")
+
+        roots.clear();
+        push_provider_achievement_client_cache_roots(
+            &mut roots,
+            "epic",
+            Some(PathBuf::from("C:/Users/Test/AppData/Local")),
+            Some(PathBuf::from("C:/ProgramData")),
+            None,
+        );
+        assert!(roots
             .iter()
             .any(|path| path.to_string_lossy().contains("EpicGamesLauncher")));
     }
@@ -3206,6 +4584,26 @@ mod tests {
         assert!(!candidates
             .iter()
             .any(|path| path.ends_with("unrelated.json")));
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn discovers_stats_subdirectory_client_cache_candidates() {
+        let root = std::env::temp_dir().join(format!(
+            "ogl-achievement-stats-cache-test-{}",
+            current_unix_timestamp()
+        ));
+        let stats_dir = root.join("stats");
+        fs::create_dir_all(&stats_dir).unwrap();
+        fs::write(stats_dir.join("wow.json"), "{}").unwrap();
+
+        let mut candidates = Vec::new();
+        discover_local_achievement_cache_files(&root, &["wow".to_string()], &mut candidates);
+
+        assert!(candidates
+            .iter()
+            .any(|path| { normalized_path_text(path).ends_with("stats/wow.json") }));
 
         let _ = fs::remove_dir_all(root);
     }
@@ -3329,6 +4727,79 @@ mod tests {
         assert_eq!(parsed[0].id, "a-house-divided");
         assert_eq!(parsed[0].rarity, Some(28.0));
         assert_eq!(parsed[0].provider_confidence.as_deref(), Some("unofficial"));
+    }
+
+    #[test]
+    fn epic_definition_overlay_preserves_local_unlocks() {
+        let definitions = vec![UnifiedAchievement {
+            id: "epic-a-house-divided".to_string(),
+            name: "A House Divided".to_string(),
+            description: Some("Hack a geth collective".to_string()),
+            icon_url: None,
+            unlocked_at: None,
+            rarity: Some(28.0),
+            source: Some("epic".to_string()),
+            source_achievement_id: Some("A_HOUSE_DIVIDED".to_string()),
+            provider_confidence: Some("unofficial".to_string()),
+        }];
+        let local_unlocks = vec![UnifiedAchievement {
+            id: "A_HOUSE_DIVIDED".to_string(),
+            name: "A House Divided".to_string(),
+            description: None,
+            icon_url: None,
+            unlocked_at: Some("2026-01-01T00:00:00Z".to_string()),
+            rarity: None,
+            source: Some("epic".to_string()),
+            source_achievement_id: Some("A_HOUSE_DIVIDED".to_string()),
+            provider_confidence: Some("local".to_string()),
+        }];
+
+        let merged = preserve_known_unlocks(definitions, &local_unlocks);
+
+        assert_eq!(merged.len(), 1);
+        assert_eq!(merged[0].id, "epic-a-house-divided");
+        assert_eq!(
+            merged[0].unlocked_at.as_deref(),
+            Some("2026-01-01T00:00:00Z")
+        );
+        assert_eq!(merged[0].rarity, Some(28.0));
+    }
+
+    #[test]
+    fn gog_definition_overlay_preserves_local_unlocks() {
+        let definitions = vec![UnifiedAchievement {
+            id: "gog-ACHIEVEMENT_NODEATH1".to_string(),
+            name: "Early Bird".to_string(),
+            description: Some("Complete level 1 without dying".to_string()),
+            icon_url: Some("https://images.gog.com/locked.jpg".to_string()),
+            unlocked_at: None,
+            rarity: None,
+            source: Some("gog".to_string()),
+            source_achievement_id: Some("ACHIEVEMENT_NODEATH1".to_string()),
+            provider_confidence: Some("official".to_string()),
+        }];
+        let local_unlocks = vec![UnifiedAchievement {
+            id: "ACHIEVEMENT_NODEATH1".to_string(),
+            name: "Early Bird".to_string(),
+            description: None,
+            icon_url: Some("https://images.gog.com/unlocked.jpg".to_string()),
+            unlocked_at: Some("2026-06-07T01:10:00+00:00".to_string()),
+            rarity: None,
+            source: Some("gog".to_string()),
+            source_achievement_id: Some("ACHIEVEMENT_NODEATH1".to_string()),
+            provider_confidence: Some("local".to_string()),
+        }];
+
+        let merged = preserve_known_unlocks(definitions, &local_unlocks);
+
+        assert_eq!(merged.len(), 1);
+        assert_eq!(merged[0].id, "gog-ACHIEVEMENT_NODEATH1");
+        assert_eq!(merged[0].name, "Early Bird");
+        assert_eq!(
+            merged[0].unlocked_at.as_deref(),
+            Some("2026-06-07T01:10:00+00:00")
+        );
+        assert_eq!(merged[0].provider_confidence.as_deref(), Some("official"));
     }
 
     #[test]

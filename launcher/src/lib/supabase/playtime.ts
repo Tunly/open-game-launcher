@@ -8,6 +8,7 @@ import {
   rowString,
   type UnknownRecord,
 } from "./helpers";
+import { isTrustedIngestionStrictMode, trustedIngestionStrictModeError } from "./trusted-ingestion";
 
 type PlaytimeSyncInput = {
   game: Game;
@@ -15,6 +16,42 @@ type PlaytimeSyncInput = {
   lastPlayedAt?: string | null;
   countSessionStart?: boolean;
 };
+
+type TrustedPlaytimeAggregatePayload = {
+  firstPlayedAt?: string | null;
+  gameId: string;
+  installedVersion?: string | null;
+  lastPlayedAt?: string | null;
+  playtimeMinutes: number;
+  totalSessions?: number;
+};
+
+type TrustedPlaytimeSessionPayload = {
+  durationMinutes: number | null;
+  endedAt: string | null;
+  gameId: string;
+  id: string;
+  launcherDeviceId: string | null;
+  platform: GameSessionPlatform | null;
+  startedAt: string;
+};
+
+type TrustedPlaytimePayload = {
+  aggregate?: TrustedPlaytimeAggregatePayload;
+  sessions?: TrustedPlaytimeSessionPayload[];
+};
+
+type SupabaseFunctionErrorLike = {
+  context?: { status?: number };
+  message?: string;
+  name?: string;
+  status?: number;
+};
+
+type SupabaseFunctionInvoker = (
+  functionName: string,
+  options: { body: TrustedPlaytimePayload },
+) => Promise<{ data: unknown; error: SupabaseFunctionErrorLike | null }>;
 
 const catalogGameCacheTtlMs = 5 * 60_000;
 const catalogGameIdCache = new Map<string, { catalogGameId: string | null; expiresAt: number }>();
@@ -164,6 +201,60 @@ export function clearPlaytimeSupabaseCaches() {
 
 export { resolveCatalogGameId };
 
+function getTrustedPlaytimeInvoker(client: unknown): SupabaseFunctionInvoker | null {
+  const functions = (client as { functions?: { invoke?: SupabaseFunctionInvoker } }).functions;
+  return typeof functions?.invoke === "function" ? functions.invoke.bind(functions) : null;
+}
+
+export function isTrustedPlaytimeIngestionUnavailable(error: unknown) {
+  const typedError = (error ?? {}) as SupabaseFunctionErrorLike;
+  const status = typedError.status ?? typedError.context?.status ?? null;
+  const message = String(typedError.message ?? "").toLowerCase();
+  const name = String(typedError.name ?? "").toLowerCase();
+
+  return (
+    status === 404 ||
+    status === 503 ||
+    name.includes("fetch") ||
+    message.includes("failed to fetch") ||
+    message.includes("function not found") ||
+    message.includes("not found") ||
+    message.includes("networkerror")
+  );
+}
+
+async function tryTrustedPlaytimeIngestion(payload: TrustedPlaytimePayload): Promise<boolean> {
+  if (!isSupabaseConfigured) {
+    return false;
+  }
+
+  const invokeFunction = getTrustedPlaytimeInvoker(getSupabaseClient());
+  if (!invokeFunction) {
+    if (isTrustedIngestionStrictMode()) {
+      throw trustedIngestionStrictModeError("playtime", "Supabase Functions client unavailable");
+    }
+    return false;
+  }
+
+  const { error } = await invokeFunction("ingest-playtime", { body: payload });
+  if (!error) {
+    return true;
+  }
+
+  if (isTrustedPlaytimeIngestionUnavailable(error)) {
+    if (isTrustedIngestionStrictMode()) {
+      throw trustedIngestionStrictModeError(
+        "playtime",
+        error.message ?? "ingest-playtime unavailable",
+      );
+    }
+    return false;
+  }
+
+  handleError({ message: error.message ?? "Trusted playtime ingestion failed." });
+  return false;
+}
+
 export async function syncGamePlaytimeStats(input: PlaytimeSyncInput) {
   if (!isSupabaseConfigured) {
     return;
@@ -211,6 +302,22 @@ export async function syncGamePlaytimeStats(input: PlaytimeSyncInput) {
       ? { total_sessions: rowNumber(existing, "total_sessions") + 1 }
       : {}),
   };
+
+  const trustedPushed = await tryTrustedPlaytimeIngestion({
+    aggregate: {
+      firstPlayedAt,
+      gameId: catalogGameId,
+      installedVersion: input.game.version,
+      lastPlayedAt,
+      playtimeMinutes: nextPlaytime,
+      ...(input.countSessionStart
+        ? { totalSessions: rowNumber(existing, "total_sessions") + 1 }
+        : {}),
+    },
+  });
+  if (trustedPushed) {
+    return;
+  }
 
   const { error } = await client
     .from("user_game_stats")
@@ -357,6 +464,9 @@ export async function updateGameSession(id: string, patch: GameSessionPatch): Pr
   if (!userId) {
     return false;
   }
+  if (isTrustedIngestionStrictMode()) {
+    throw trustedIngestionStrictModeError("playtime", "direct game session edit blocked");
+  }
 
   const update: Record<string, unknown> = {};
   if (patch.startedAt !== undefined) update.started_at = patch.startedAt;
@@ -390,6 +500,28 @@ export async function updateUserGamePlaytime(
   if (!userId || !gameId) return;
   const client = getSupabaseClient();
   const safeMinutes = Math.max(0, Math.floor(playtimeMinutes));
+
+  const invokeFunction = getTrustedPlaytimeInvoker(client);
+  const currentUserId = await getCurrentSessionUserId();
+  if (currentUserId === userId) {
+    if (invokeFunction || isTrustedIngestionStrictMode()) {
+      const trustedPushed = await tryTrustedPlaytimeIngestion({
+        aggregate: {
+          gameId,
+          playtimeMinutes: safeMinutes,
+        },
+      });
+      if (trustedPushed) {
+        return;
+      }
+    }
+  } else if (isTrustedIngestionStrictMode()) {
+    throw trustedIngestionStrictModeError(
+      "playtime",
+      "direct aggregate write for another user blocked",
+    );
+  }
+
   const { error } = await client.from("user_game_stats").upsert(
     {
       user_id: userId,
@@ -530,6 +662,22 @@ export async function syncGameSessions(sessions: PlaySession[]): Promise<GameSes
     return outcome;
   }
 
+  const trustedSessions = rows.map((row) => ({
+    durationMinutes: row.duration_minutes,
+    endedAt: row.ended_at,
+    gameId: row.game_id,
+    id: row.id,
+    launcherDeviceId: row.launcher_device_id,
+    platform: row.platform,
+    startedAt: row.started_at,
+  }));
+  const trustedPushed = await tryTrustedPlaytimeIngestion({ sessions: trustedSessions });
+  if (trustedPushed) {
+    outcome.pushed = rows.length;
+    outcome.pushedIds = rows.map((row) => row.id);
+    return outcome;
+  }
+
   const { error } = await client.from("game_sessions").upsert(rows, { onConflict: "id" });
   if (error) {
     if (isMissingSchemaError(error)) {
@@ -554,6 +702,9 @@ export async function deleteGameSession(id: string): Promise<boolean> {
   const client = getSupabaseClient();
   const userId = await getCurrentSessionUserId();
   if (!userId) return false;
+  if (isTrustedIngestionStrictMode()) {
+    throw trustedIngestionStrictModeError("playtime", "direct game session delete blocked");
+  }
 
   const { error } = await client.from("game_sessions").delete().eq("id", id).eq("user_id", userId);
 

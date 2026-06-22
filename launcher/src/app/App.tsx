@@ -1,8 +1,10 @@
 import { lazy, Suspense, useCallback, useState } from "react";
 import { RouterProvider } from "react-router-dom";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
+import type { DeepLinkParams } from "../hooks/useDeepLink";
 import { AuthProvider } from "./providers/AuthProvider";
 import { router } from "./router";
+import { handleInstallDeepLink } from "./deep-link-handlers";
 import { useDeepLink } from "../hooks/useDeepLink";
 import { useOverlayHotkey, useFpsHudHotkey, useAchievementPopup } from "../lib/overlay";
 import type { AchievementPopupPayload } from "../lib/types/overlay";
@@ -54,25 +56,32 @@ function MainWindowHandlers() {
 }
 
 function DeepLinkHandler() {
-  useDeepLink((link) => {
+  const handleLink = useCallback((link: DeepLinkParams) => {
     const { action, params } = link;
     const game = params.game || params.title || "";
     const platform = params.platform || "";
     const invite = params.invite || "";
     switch (action) {
-      case "join":
-        router.navigate(`/library?join=${game}&platform=${platform}&invite=${invite}`);
+      case "join": {
+        const searchParams = new URLSearchParams();
+        searchParams.set("join", game);
+        searchParams.set("platform", platform);
+        searchParams.set("invite", invite);
+        router.navigate(`/library?${searchParams.toString()}`);
         break;
+      }
       case "open":
         if (game) router.navigate(`/store?slug=${game}`);
         break;
       case "install":
-        if (game) router.navigate(`/store?slug=${game}&install=1`);
+        void handleInstallDeepLink(params, game);
         break;
       default:
         console.warn("[deep-link] Unknown action:", action);
     }
-  });
+  }, []);
+
+  useDeepLink(handleLink);
   return null;
 }
 
@@ -91,7 +100,7 @@ function AchievementPopupLayer() {
   if (popups.length === 0) return null;
 
   return (
-    <div className="fixed top-4 right-4 z-[9999] flex flex-col gap-2">
+    <div className="fixed right-4 top-4 z-[9999] flex flex-col gap-2">
       {popups.map((p, i) => (
         <div
           key={`${p.achievement_name}-${i}`}
@@ -101,7 +110,7 @@ function AchievementPopupLayer() {
             <Trophy size={20} className="text-white" />
           </div>
           <div className="min-w-0">
-            <div className="neo-copy text-[9px] font-black text-[#b7102a] uppercase">
+            <div className="neo-copy text-[9px] font-black uppercase text-[#b7102a]">
               Achievement unlocked
             </div>
             <div className="truncate text-[12px] font-bold text-[#171411]">
@@ -135,7 +144,7 @@ export default function App() {
           <Suspense
             fallback={
               <div className="grid h-screen w-screen place-items-center bg-black/70">
-                <div className="neo-copy border-[3px] border-[#171411] bg-[#171411]/80 px-4 py-3 text-sm font-black text-[#fff9ed] uppercase shadow-[4px_4px_0_#000]">
+                <div className="neo-copy border-[3px] border-[#171411] bg-[#171411]/80 px-4 py-3 text-sm font-black uppercase text-[#fff9ed] shadow-[4px_4px_0_#000]">
                   Loading overlay...
                 </div>
               </div>

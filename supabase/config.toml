@@ -16,12 +16,9 @@ extra_search_path = ["public", "extensions"]
 # The maximum number of rows returns from a view, table, or stored procedure. Limits payload size
 # for accidental or malicious requests.
 max_rows = 1000
-# Controls whether new tables, views, sequences and functions created in the `public` schema by
-# `postgres` are reachable through the Data API roles (`anon`, `authenticated`, `service_role`)
-# without explicit GRANTs. Leave unset today to preserve local behaviour. The implicit default
-# flips to `false` on 2026-05-30 to match the new cloud default, and the field is removed in
-# 2026-10-30 once the always-revoked behaviour is permanent. Set to `false` to opt in early.
-# auto_expose_new_tables = false
+# Keep local Data API table exposure aligned with hosted/cloud defaults. Public
+# tables must become reachable only through explicit migration grants.
+auto_expose_new_tables = false
 
 [api.tls]
 # Enable HTTPS endpoints locally using a self-signed certificate.
@@ -384,6 +381,57 @@ deno_version = 2
 
 # [edge_runtime.secrets]
 # secret_key = "env(SECRET_VALUE)"
+
+[functions.cancel-account-deletion]
+verify_jwt = true
+
+[functions.community-artwork-moderation]
+verify_jwt = true
+
+[functions.export-user-data]
+verify_jwt = true
+
+[functions.ingest-achievements]
+verify_jwt = true
+
+[functions.ingest-playtime]
+verify_jwt = true
+
+[functions.invite-hosted-proof]
+verify_jwt = true
+
+[functions.mobile-push-registration]
+verify_jwt = true
+
+[functions.notify-price-drop]
+verify_jwt = false
+
+[functions.poll-platform-presence]
+verify_jwt = false
+
+[functions.process-account-deletions]
+verify_jwt = false
+
+[functions.rawg-assets]
+verify_jwt = true
+
+[functions.remote-companion-relay]
+verify_jwt = true
+
+[functions.request-account-deletion]
+verify_jwt = true
+
+[functions.store-download-build]
+verify_jwt = true
+
+[functions.store-order-support]
+verify_jwt = true
+
+[functions.stripe-create-checkout]
+verify_jwt = true
+
+[functions.stripe-webhook]
+verify_jwt = false
 
 [analytics]
 enabled = true

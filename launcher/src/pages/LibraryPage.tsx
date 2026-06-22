@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 
 import { LibrarySidebar } from "../components/library/LibrarySidebar";
 import { LibraryFilters } from "../components/library/LibraryFilters";
@@ -22,6 +22,7 @@ export function LibraryPage() {
   const gameListScrollRef = useRef<HTMLDivElement>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [isAddGameOpen, setIsAddGameOpen] = useState(false);
+  const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const downloadCount = useDownloadStore((s) => s.items.length);
   const completedDownloadCount = useDownloadStore(selectCompletedCount);
@@ -105,7 +106,7 @@ export function LibraryPage() {
 
     launchCrossPlayJoin(platform, gameSlug)
       .then((uri) => {
-        const inviteSuffix = invite ? ` (invite ${invite})` : "";
+        const inviteSuffix = invite ? " with invite token" : "";
         setStatusMessage(`Joining ${match.title} on ${platform}${inviteSuffix}…`);
         console.info("[deep-link] launched", uri);
       })
@@ -199,6 +200,8 @@ export function LibraryPage() {
             selectedGroup={filters.selectedGroup}
             setSelectedGroup={(group) => filters.setSelectedGroupId(group.id)}
             favorites={manual.favorites}
+            gameRuntimeById={sync.gameRuntimeById}
+            runningGameIds={sync.runningGameIds}
             fallbackMockGames={filters.fallbackMockGames}
             listScrollRef={gameListScrollRef}
             setIsAddGameOpen={setIsAddGameOpen}
@@ -208,7 +211,7 @@ export function LibraryPage() {
             isOpen={filters.isFilterPopupOpen}
             onClose={() => filters.setIsFilterPopupOpen(false)}
           />
-          <GameDetailPanel />
+          <GameDetailPanel verifyMode={searchParams.get("verify")} />
         </div>
 
         <AddGameDialog
@@ -235,7 +238,9 @@ export function LibraryPage() {
           <span className="hidden sm:inline">
             Downloads - {completedDownloadCount} of {downloadCount} items Complete
           </span>
-          <button type="button">Friends & Chat +</button>
+          <button type="button" onClick={() => navigate("/friends?tab=chat")}>
+            Friends & Chat +
+          </button>
         </footer>
       </div>
     </LibraryProvider>

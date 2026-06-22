@@ -1,5 +1,7 @@
 use serde::Serialize;
 
+use super::secure_store;
+
 // ============================================================================
 // Platform Friend Type
 // ============================================================================
@@ -112,7 +114,8 @@ fn extract_xml_value(segment: &str, tag: &str) -> Option<String> {
 // ============================================================================
 
 #[tauri::command]
-pub async fn fetch_gog_friends(access_token: String) -> Result<Vec<PlatformFriend>, String> {
+pub async fn fetch_gog_friends() -> Result<Vec<PlatformFriend>, String> {
+    let access_token = read_gog_access_token()?;
     if access_token.is_empty() {
         return Err("GOG access token is required.".to_string());
     }
@@ -212,6 +215,22 @@ pub async fn fetch_gog_friends(access_token: String) -> Result<Vec<PlatformFrien
     }
 
     Ok(friends)
+}
+
+fn read_gog_access_token() -> Result<String, String> {
+    let Some(raw) = secure_store::get_secret("gog")? else {
+        return Err("GOG token missing. Reconnect in Settings.".to_string());
+    };
+    let value: serde_json::Value =
+        serde_json::from_str(&raw).map_err(|e| format!("Failed to parse GOG token: {e}"))?;
+    value
+        .get("accessToken")
+        .or_else(|| value.get("access_token"))
+        .and_then(|token| token.as_str())
+        .map(str::trim)
+        .filter(|token| !token.is_empty())
+        .map(str::to_string)
+        .ok_or_else(|| "GOG access token missing. Reconnect in Settings.".to_string())
 }
 
 // ============================================================================

@@ -103,12 +103,12 @@ export function GroupChatPanel({
       <div className="flex items-center justify-between border-b-2 border-black pb-2">
         <div className="flex items-center gap-2">
           <Users className="h-4 w-4 text-[#b7102a]" />
-          <p className="neo-copy text-[10px] font-black tracking-[0.12em] text-[#171411] uppercase">
+          <p className="neo-copy text-[10px] font-black uppercase tracking-[0.12em] text-[#171411]">
             Group Chats ({groups.length})
           </p>
         </div>
         <button
-          className="neo-copy flex h-7 items-center gap-1 border-2 border-black bg-[#087d6d] px-2 text-[9px] font-black text-white uppercase shadow-[1px_1px_0_#171411]"
+          className="neo-copy flex h-7 items-center gap-1 border-2 border-black bg-[#087d6d] px-2 text-[9px] font-black uppercase text-white shadow-[1px_1px_0_#171411]"
           type="button"
           onClick={() => setShowCreate(!showCreate)}
         >
@@ -127,7 +127,7 @@ export function GroupChatPanel({
             value={newGroupName}
             onChange={(e) => setNewGroupName(e.target.value)}
           />
-          <p className="neo-copy mb-1 text-[9px] font-bold text-[#55504a] uppercase">
+          <p className="neo-copy mb-1 text-[9px] font-bold uppercase text-[#55504a]">
             Select members ({selectedMembers.length})
           </p>
           <div className="max-h-32 space-y-1 overflow-y-auto">
@@ -157,7 +157,7 @@ export function GroupChatPanel({
             })}
           </div>
           <button
-            className="neo-copy mt-2 h-8 w-full border-2 border-black bg-[#087d6d] text-[10px] font-black text-white uppercase shadow-[1px_1px_0_#171411] disabled:opacity-50"
+            className="neo-copy mt-2 h-8 w-full border-2 border-black bg-[#087d6d] text-[10px] font-black uppercase text-white shadow-[1px_1px_0_#171411] disabled:opacity-50"
             disabled={loading || !newGroupName.trim() || selectedMembers.length === 0}
             type="button"
             onClick={() => void handleCreate()}
@@ -189,7 +189,7 @@ export function GroupChatPanel({
       {/* Chat area */}
       {selectedGroup && (
         <div className="border-2 border-black bg-[#f6edd8] p-3 shadow-[2px_2px_0_#171411]">
-          <p className="neo-copy mb-2 text-[10px] font-black text-[#171411] uppercase">
+          <p className="neo-copy mb-2 text-[10px] font-black uppercase text-[#171411]">
             {selectedGroup.name ?? "Group Chat"}
           </p>
           <div className="max-h-48 space-y-2 overflow-y-auto pr-1">
@@ -205,7 +205,7 @@ export function GroupChatPanel({
                 </div>
               ))
             ) : (
-              <p className="neo-copy border-2 border-dashed border-black bg-[#fff9ed] p-3 text-[11px] font-bold text-[#655f58] uppercase">
+              <p className="neo-copy border-2 border-dashed border-black bg-[#fff9ed] p-3 text-[11px] font-bold uppercase text-[#655f58]">
                 No messages yet.
               </p>
             )}

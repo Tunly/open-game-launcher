@@ -1,0 +1,34 @@
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  viewBox="0 0 640 360"
+  role="img"
+  aria-labelledby="title desc"
+>
+  <title id="title">Akira's Revenge demo cover</title>
+  <desc id="desc">
+    Retro manga style cover art with red sun, teal speed lines, and black ink border.
+  </desc>
+  <rect width="640" height="360" fill="#f6edd8" />
+  <path d="M0 0h640v360H0z" fill="none" stroke="#171411" stroke-width="24" />
+  <circle cx="454" cy="96" r="70" fill="#c4102f" stroke="#171411" stroke-width="10" />
+  <path d="M36 294 220 78l80 94 66-66 238 188z" fill="#111" stroke="#171411" stroke-width="8" />
+  <path d="M80 74h276M68 112h214M420 212h166M390 250h206" stroke="#10a89e" stroke-width="16" />
+  <path d="M36 42h222v52H36z" fill="#f6edd8" stroke="#171411" stroke-width="8" />
+  <text x="54" y="78" font-family="Arial Black, Impact, sans-serif" font-size="30" fill="#171411">
+    AKIRA
+  </text>
+  <g fill="#171411" opacity=".25">
+    <circle cx="86" cy="148" r="5" />
+    <circle cx="120" cy="148" r="5" />
+    <circle cx="154" cy="148" r="5" />
+    <circle cx="188" cy="148" r="5" />
+    <circle cx="222" cy="148" r="5" />
+    <circle cx="256" cy="148" r="5" />
+    <circle cx="86" cy="182" r="5" />
+    <circle cx="120" cy="182" r="5" />
+    <circle cx="154" cy="182" r="5" />
+    <circle cx="188" cy="182" r="5" />
+    <circle cx="222" cy="182" r="5" />
+    <circle cx="256" cy="182" r="5" />
+  </g>
+</svg>

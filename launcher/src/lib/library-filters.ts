@@ -139,6 +139,28 @@ function matchesGenreLabel(game: Game, filter: string): boolean {
   });
 }
 
+function getGameCategoryLabels(game: Game, context: LibraryFilterContext): string[] {
+  return [
+    ...(context.customCategories[game.id] || []),
+    ...(game.categories || []),
+    ...(game.categoryLabels || []),
+    ...(game.tags || []),
+    ...(game.tagLabels || []),
+  ];
+}
+
+function matchesCategoryLabel(game: Game, filter: string, context: LibraryFilterContext): boolean {
+  const token = normalizeFilterToken(filter);
+  if (!token) {
+    return false;
+  }
+
+  return getGameCategoryLabels(game, context).some((label) => {
+    const labelToken = normalizeFilterToken(label);
+    return labelToken === token || labelToken.includes(token) || token.includes(labelToken);
+  });
+}
+
 function matchesFeatureLabel(game: Game, filter: string): boolean {
   const token = normalizeFilterToken(filter);
   const features = (game.features || []).map((feature) => feature.toLowerCase());
@@ -375,9 +397,8 @@ export function gamePassesAdvancedFilters(
   }
 
   if (filters.categories.length > 0) {
-    const gameCategories = context.customCategories[game.id] || [];
     const matchesCategories = filters.categories.some((category) =>
-      gameCategories.includes(category),
+      matchesCategoryLabel(game, category, context),
     );
     if (!matchesCategories) {
       return false;

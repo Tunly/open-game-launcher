@@ -183,6 +183,23 @@ export interface ModCatalogVersion {
   createdAt: string;
 }
 
+export interface SharedModProviderGameMapping {
+  id: string;
+  localGameId: string;
+  gameId?: string | null;
+  gameTitle?: string | null;
+  provider: Extract<ModProvider, "modio" | "curseforge">;
+  providerGameId: string;
+  source: "manual" | "local_hint" | "provider_api" | "admin" | "catalog";
+  confidence: "manual" | "low" | "medium" | "high" | "verified";
+  status: "active" | "archived" | "rejected";
+  createdBy?: string | null;
+  verifiedAt?: string | null;
+  metadata?: Record<string, unknown> | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface NexusModInfo {
   name: string;
   author: string;
@@ -200,4 +217,52 @@ export interface NexusSearchResult {
   iconUrl: string | null;
   downloads: string | null;
   endorsements: string | null;
+}
+
+export interface NativeModSearchRequest {
+  provider: Extract<ModProvider, "modio" | "curseforge">;
+  providerGameId: string;
+  query: string;
+  page?: number;
+  pageSize?: number;
+}
+
+export interface NativeModSearchResult {
+  provider: Extract<ModProvider, "modio" | "curseforge">;
+  externalId: string;
+  name: string;
+  author: string | null;
+  summary: string | null;
+  url: string;
+  iconUrl: string | null;
+  downloads: string | null;
+  follows: string | null;
+  latestVersion: string | null;
+  downloadUrl: string | null;
+  providerAppUrl?: string | null;
+  fileSizeBytes: number | null;
+}
+
+export type ModProviderStagingProbeStatus = "blocked" | "ready" | "provider_error";
+
+export interface ModProviderStagingProbeRequest {
+  provider: Extract<ModProvider, "modio" | "curseforge">;
+  providerGameId: string;
+  query: string;
+}
+
+export interface ModProviderStagingProbeResult {
+  provider: Extract<ModProvider, "modio" | "curseforge">;
+  providerGameId: string;
+  queryHint: string;
+  pageSize: number;
+  status: ModProviderStagingProbeStatus;
+  liveRequestAttempted: boolean;
+  resultCount: number;
+  directDownloadCount: number;
+  providerAppHandoffCount: number;
+  durationMs: number;
+  redactedRequest: string;
+  message: string;
+  guards: string[];
 }

@@ -1,6 +1,7 @@
 use futures_util::StreamExt;
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::{
     collections::HashMap,
@@ -8,7 +9,7 @@ use std::{
     io::{Read, Write},
     path::{Path, PathBuf},
     sync::{Arc, Mutex, OnceLock},
-    time::{SystemTime, UNIX_EPOCH},
+    time::{Instant, SystemTime, UNIX_EPOCH},
 };
 use tauri::Emitter;
 use tokio::sync::watch;
@@ -138,6 +139,68 @@ pub struct InstalledModInfo {
     pub version_id: Option<String>,
     pub source_url: Option<String>,
     pub installed_at: u64,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct NativeModSearchRequest {
+    pub provider: ModProvider,
+    pub provider_game_id: String,
+    pub query: String,
+    pub page: Option<u32>,
+    pub page_size: Option<u32>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct NativeModSearchResult {
+    pub provider: ModProvider,
+    pub external_id: String,
+    pub name: String,
+    pub author: Option<String>,
+    pub summary: Option<String>,
+    pub url: String,
+    pub icon_url: Option<String>,
+    pub downloads: Option<String>,
+    pub follows: Option<String>,
+    pub latest_version: Option<String>,
+    pub download_url: Option<String>,
+    pub provider_app_url: Option<String>,
+    pub file_size_bytes: Option<u64>,
+}
+
+#[derive(Debug, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct ModProviderStagingProbeRequest {
+    pub provider: ModProvider,
+    pub provider_game_id: String,
+    pub query: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum ModProviderStagingProbeStatus {
+    Blocked,
+    Ready,
+    ProviderError,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct ModProviderStagingProbeResult {
+    pub provider: ModProvider,
+    pub provider_game_id: String,
+    pub query_hint: String,
+    pub page_size: u32,
+    pub status: ModProviderStagingProbeStatus,
+    pub live_request_attempted: bool,
+    pub result_count: usize,
+    pub direct_download_count: usize,
+    pub provider_app_handoff_count: usize,
+    pub duration_ms: u64,
+    pub redacted_request: String,
+    pub message: String,
+    pub guards: Vec<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -414,6 +477,59 @@ pub fn set_mod_provider_secret(provider: ModProvider, secret: String) -> Result<
         secure_store::delete_secret(&domain)
     } else {
         secure_store::set_secret(&domain, trimmed)
+    }
+}
+
+#[tauri::command]
+pub async fn search_native_mods(
+    input: NativeModSearchRequest,
+) -> Result<Vec<NativeModSearchResult>, String> {
+    let provider_game_id = normalize_id(&input.provider_game_id, "providerGameId")?;
+    let query = normalize_id(&input.query, "query")?;
+    let page = input.page.unwrap_or(1).clamp(1, 100);
+    let page_size = input.page_size.unwrap_or(12).clamp(1, 50);
+    match input.provider {
+        ModProvider::Modio => search_modio_mods(&provider_game_id, &query, page, page_size).await,
+        ModProvider::Curseforge => {
+            search_curseforge_mods(&provider_game_id, &query, page, page_size).await
+        }
+        other => Err(format!(
+            "{} does not expose native API search in OG-Launcher yet.",
+            other.display_name()
+        )),
+    }
+}
+
+#[tauri::command]
+pub async fn run_mod_provider_staging_probe(
+    input: ModProviderStagingProbeRequest,
+) -> Result<ModProviderStagingProbeResult, String> {
+    let request = build_mod_provider_staging_probe_request(&input)?;
+    if !provider_secret_configured(request.provider)? {
+        return Ok(build_mod_provider_staging_probe_blocked(
+            &request,
+            &format!(
+                "{} API key is not stored in the local keychain; no provider request was made.",
+                request.provider.display_name()
+            ),
+        ));
+    }
+
+    let started = Instant::now();
+    let result = search_native_mods(request.clone()).await;
+    let duration_ms = started.elapsed().as_millis().min(u128::from(u64::MAX)) as u64;
+
+    match result {
+        Ok(results) => Ok(build_mod_provider_staging_probe_success(
+            &request,
+            &results,
+            duration_ms,
+        )),
+        Err(error) => Ok(build_mod_provider_staging_probe_error(
+            &request,
+            &error,
+            duration_ms,
+        )),
     }
 }
 
@@ -1100,9 +1216,19 @@ fn delegated_url_for_provider(input: &ModInstallRequest) -> Option<String> {
             })
             .or_else(|| source.map(ToOwned::to_owned))
         }
-        ModProvider::Modio | ModProvider::Curseforge => source.map(ToOwned::to_owned),
+        ModProvider::Modio => source.map(ToOwned::to_owned),
+        ModProvider::Curseforge => source
+            .map(ToOwned::to_owned)
+            .or_else(|| input.catalog_item_id.as_deref().map(curseforge_project_url)),
         ModProvider::DirectUrl | ModProvider::LocalArchive | ModProvider::LocalFolder => None,
     }
+}
+
+fn curseforge_project_url(project_id: &str) -> String {
+    format!(
+        "https://www.curseforge.com/projects/{}",
+        sanitize_url_path_segment(project_id)
+    )
 }
 
 fn extract_steam_workshop_id(value: &str) -> Option<String> {
@@ -1120,6 +1246,369 @@ fn extract_steam_workshop_id(value: &str) -> Option<String> {
         .filter(|character| character.is_ascii_digit())
         .collect::<String>();
     (!digits.is_empty()).then_some(digits)
+}
+
+async fn search_modio_mods(
+    game_id: &str,
+    query: &str,
+    page: u32,
+    page_size: u32,
+) -> Result<Vec<NativeModSearchResult>, String> {
+    let api_key = read_provider_secret(ModProvider::Modio)?;
+    let mut url = Url::parse(&format!(
+        "https://api.mod.io/v1/games/{}/mods",
+        sanitize_url_path_segment(game_id)
+    ))
+    .map_err(|error| format!("Invalid mod.io API URL: {error}"))?;
+    let offset = page.saturating_sub(1).saturating_mul(page_size);
+    url.query_pairs_mut()
+        .append_pair("api_key", &api_key)
+        .append_pair("_q", query)
+        .append_pair("limit", &page_size.to_string())
+        .append_pair("offset", &offset.to_string());
+
+    let payload = reqwest::Client::new()
+        .get(url)
+        .header("Accept", "application/json")
+        .send()
+        .await
+        .map_err(|error| format!("mod.io search failed: {error}"))?;
+    if !payload.status().is_success() {
+        return Err(format!("mod.io search returned {}", payload.status()));
+    }
+    let json = payload
+        .json::<Value>()
+        .await
+        .map_err(|error| format!("mod.io response was not valid JSON: {error}"))?;
+    Ok(map_modio_search_results(&json))
+}
+
+fn build_mod_provider_staging_probe_request(
+    input: &ModProviderStagingProbeRequest,
+) -> Result<NativeModSearchRequest, String> {
+    match input.provider {
+        ModProvider::Modio | ModProvider::Curseforge => Ok(NativeModSearchRequest {
+            provider: input.provider,
+            provider_game_id: normalize_id(&input.provider_game_id, "providerGameId")?,
+            query: normalize_id(&input.query, "query")?,
+            page: Some(1),
+            page_size: Some(1),
+        }),
+        other => Err(format!(
+            "{} does not expose provider API staging probes.",
+            other.display_name()
+        )),
+    }
+}
+
+fn provider_secret_configured(provider: ModProvider) -> Result<bool, String> {
+    let domain = provider_secret_domain(provider);
+    secure_store::get_secret(&domain)
+        .map_err(|error| format!("Could not read {} key: {error}", provider.display_name()))
+        .map(|secret| {
+            secret
+                .map(|value| !value.trim().is_empty())
+                .unwrap_or(false)
+        })
+}
+
+fn build_mod_provider_staging_probe_redacted_request(request: &NativeModSearchRequest) -> String {
+    match request.provider {
+        ModProvider::Modio => format!(
+            "GET https://api.mod.io/v1/games/{}/mods?api_key=<redacted>&_q={}&limit=1&offset=0",
+            sanitize_url_path_segment(&request.provider_game_id),
+            request.query
+        ),
+        ModProvider::Curseforge => format!(
+            "GET https://api.curseforge.com/v1/mods/search?gameId={}&searchFilter={}&pageSize=1&index=0 x-api-key=<redacted>",
+            request.provider_game_id, request.query
+        ),
+        other => format!("{} provider API staging is unsupported", other.display_name()),
+    }
+}
+
+fn build_mod_provider_staging_probe_success(
+    request: &NativeModSearchRequest,
+    results: &[NativeModSearchResult],
+    duration_ms: u64,
+) -> ModProviderStagingProbeResult {
+    ModProviderStagingProbeResult {
+        provider: request.provider,
+        provider_game_id: request.provider_game_id.clone(),
+        query_hint: request.query.clone(),
+        page_size: request.page_size.unwrap_or(1),
+        status: ModProviderStagingProbeStatus::Ready,
+        live_request_attempted: true,
+        result_count: results.len(),
+        direct_download_count: results
+            .iter()
+            .filter(|result| {
+                result
+                    .download_url
+                    .as_deref()
+                    .is_some_and(|url| !url.is_empty())
+            })
+            .count(),
+        provider_app_handoff_count: results
+            .iter()
+            .filter(|result| {
+                result
+                    .provider_app_url
+                    .as_deref()
+                    .is_some_and(|url| !url.is_empty())
+            })
+            .count(),
+        duration_ms,
+        redacted_request: build_mod_provider_staging_probe_redacted_request(request),
+        message: format!(
+            "{} staging probe returned {} result(s) with redacted telemetry.",
+            request.provider.display_name(),
+            results.len()
+        ),
+        guards: mod_provider_staging_probe_guards(),
+    }
+}
+
+fn build_mod_provider_staging_probe_blocked(
+    request: &NativeModSearchRequest,
+    message: &str,
+) -> ModProviderStagingProbeResult {
+    ModProviderStagingProbeResult {
+        provider: request.provider,
+        provider_game_id: request.provider_game_id.clone(),
+        query_hint: request.query.clone(),
+        page_size: request.page_size.unwrap_or(1),
+        status: ModProviderStagingProbeStatus::Blocked,
+        live_request_attempted: false,
+        result_count: 0,
+        direct_download_count: 0,
+        provider_app_handoff_count: 0,
+        duration_ms: 0,
+        redacted_request: build_mod_provider_staging_probe_redacted_request(request),
+        message: message.to_string(),
+        guards: mod_provider_staging_probe_guards(),
+    }
+}
+
+fn build_mod_provider_staging_probe_error(
+    request: &NativeModSearchRequest,
+    error: &str,
+    duration_ms: u64,
+) -> ModProviderStagingProbeResult {
+    ModProviderStagingProbeResult {
+        provider: request.provider,
+        provider_game_id: request.provider_game_id.clone(),
+        query_hint: request.query.clone(),
+        page_size: request.page_size.unwrap_or(1),
+        status: ModProviderStagingProbeStatus::ProviderError,
+        live_request_attempted: true,
+        result_count: 0,
+        direct_download_count: 0,
+        provider_app_handoff_count: 0,
+        duration_ms,
+        redacted_request: build_mod_provider_staging_probe_redacted_request(request),
+        message: redact_mod_provider_staging_probe_error(error),
+        guards: mod_provider_staging_probe_guards(),
+    }
+}
+
+fn mod_provider_staging_probe_guards() -> Vec<String> {
+    vec![
+        "API key redacted".to_string(),
+        "Single-result staging probe".to_string(),
+        "No direct-download URL returned".to_string(),
+        "Keys stay out of Supabase".to_string(),
+    ]
+}
+
+fn redact_mod_provider_staging_probe_error(error: &str) -> String {
+    let redacted = redact_assignment_value(error, "api_key=");
+    redact_assignment_value(&redacted, "x-api-key=")
+}
+
+fn redact_assignment_value(input: &str, marker: &str) -> String {
+    let mut output = input.to_string();
+    let mut cursor = 0;
+    while let Some(relative_start) = output[cursor..].find(marker) {
+        let value_start = cursor + relative_start + marker.len();
+        let value_end = output[value_start..]
+            .find(|character: char| {
+                character == '&'
+                    || character == ' '
+                    || character == '\n'
+                    || character == '\r'
+                    || character == '\t'
+            })
+            .map(|relative_end| value_start + relative_end)
+            .unwrap_or_else(|| output.len());
+        output.replace_range(value_start..value_end, "<redacted>");
+        cursor = value_start + "<redacted>".len();
+    }
+    output
+}
+
+async fn search_curseforge_mods(
+    game_id: &str,
+    query: &str,
+    page: u32,
+    page_size: u32,
+) -> Result<Vec<NativeModSearchResult>, String> {
+    let api_key = read_provider_secret(ModProvider::Curseforge)?;
+    let mut url = Url::parse("https://api.curseforge.com/v1/mods/search")
+        .map_err(|error| format!("Invalid CurseForge API URL: {error}"))?;
+    let index = page.saturating_sub(1).saturating_mul(page_size);
+    url.query_pairs_mut()
+        .append_pair("gameId", game_id)
+        .append_pair("searchFilter", query)
+        .append_pair("pageSize", &page_size.to_string())
+        .append_pair("index", &index.to_string());
+
+    let payload = reqwest::Client::new()
+        .get(url)
+        .header("Accept", "application/json")
+        .header("x-api-key", api_key)
+        .send()
+        .await
+        .map_err(|error| format!("CurseForge search failed: {error}"))?;
+    if !payload.status().is_success() {
+        return Err(format!("CurseForge search returned {}", payload.status()));
+    }
+    let json = payload
+        .json::<Value>()
+        .await
+        .map_err(|error| format!("CurseForge response was not valid JSON: {error}"))?;
+    Ok(map_curseforge_search_results(&json))
+}
+
+fn map_modio_search_results(json: &Value) -> Vec<NativeModSearchResult> {
+    json.get("data")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|entry| {
+            let external_id = value_u64(entry, &["id"])
+                .map(|value| value.to_string())
+                .or_else(|| value_string(entry, &["name_id"]))?;
+            let name = value_string(entry, &["name"])?;
+            let url = value_string(entry, &["profile_url"]).unwrap_or_else(|| {
+                format!(
+                    "https://mod.io/g/mods/m/{}",
+                    sanitize_url_path_segment(&external_id)
+                )
+            });
+            let modfile = entry.get("modfile").unwrap_or(&Value::Null);
+            Some(NativeModSearchResult {
+                provider: ModProvider::Modio,
+                external_id,
+                name,
+                author: value_string(entry, &["submitted_by", "username"]),
+                summary: value_string(entry, &["summary"]),
+                url,
+                icon_url: first_string(entry, &[&["logo", "thumb_320x180"], &["logo", "original"]]),
+                downloads: value_u64(entry, &["stats", "downloads_total"]).map(format_count),
+                follows: value_u64(entry, &["stats", "subscribers_total"]).map(format_count),
+                latest_version: value_string(modfile, &["version"]),
+                download_url: value_string(modfile, &["download", "binary_url"]),
+                provider_app_url: None,
+                file_size_bytes: value_u64(modfile, &["filesize"]),
+            })
+        })
+        .collect()
+}
+
+fn map_curseforge_search_results(json: &Value) -> Vec<NativeModSearchResult> {
+    json.get("data")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(|entry| {
+            let external_id = value_u64(entry, &["id"]).map(|value| value.to_string())?;
+            let name = value_string(entry, &["name"])?;
+            let provider_app_url = value_string(entry, &["links", "websiteUrl"])
+                .unwrap_or_else(|| curseforge_project_url(&external_id));
+            let latest_file = entry
+                .get("latestFiles")
+                .and_then(Value::as_array)
+                .and_then(|files| files.first())
+                .unwrap_or(&Value::Null);
+            Some(NativeModSearchResult {
+                provider: ModProvider::Curseforge,
+                external_id,
+                name,
+                author: entry
+                    .get("authors")
+                    .and_then(Value::as_array)
+                    .and_then(|authors| authors.first())
+                    .and_then(|author| value_string(author, &["name"])),
+                summary: value_string(entry, &["summary"]),
+                url: provider_app_url.clone(),
+                icon_url: first_string(entry, &[&["logo", "thumbnailUrl"], &["logo", "url"]]),
+                downloads: value_u64(entry, &["downloadCount"]).map(format_count),
+                follows: value_u64(entry, &["thumbsUpCount"]).map(format_count),
+                latest_version: first_string(
+                    latest_file,
+                    &[&["displayName"], &["fileName"], &["releaseType"]],
+                ),
+                download_url: value_string(latest_file, &["downloadUrl"]),
+                provider_app_url: Some(provider_app_url),
+                file_size_bytes: value_u64(latest_file, &["fileLength"]),
+            })
+        })
+        .collect()
+}
+
+fn read_provider_secret(provider: ModProvider) -> Result<String, String> {
+    let domain = provider_secret_domain(provider);
+    secure_store::get_secret(&domain)
+        .map_err(|error| format!("Could not read {} key: {error}", provider.display_name()))?
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| {
+            format!(
+                "{} API key is required. Save it from the Provider Keys panel first.",
+                provider.display_name()
+            )
+        })
+}
+
+fn value_string(value: &Value, path: &[&str]) -> Option<String> {
+    path.iter()
+        .try_fold(value, |current, key| current.get(*key))
+        .and_then(Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+}
+
+fn first_string(value: &Value, paths: &[&[&str]]) -> Option<String> {
+    paths.iter().find_map(|path| value_string(value, path))
+}
+
+fn value_u64(value: &Value, path: &[&str]) -> Option<u64> {
+    let leaf = path
+        .iter()
+        .try_fold(value, |current, key| current.get(*key))?;
+    leaf.as_u64()
+        .or_else(|| leaf.as_f64().map(|number| number.max(0.0) as u64))
+        .or_else(|| leaf.as_str()?.parse::<u64>().ok())
+}
+
+fn format_count(value: u64) -> String {
+    if value >= 1_000_000 {
+        format!("{:.1}M", value as f64 / 1_000_000.0)
+    } else if value >= 1_000 {
+        format!("{:.1}K", value as f64 / 1_000.0)
+    } else {
+        value.to_string()
+    }
+}
+
+fn sanitize_url_path_segment(value: &str) -> String {
+    value
+        .trim()
+        .chars()
+        .filter(|character| character.is_ascii_alphanumeric() || matches!(character, '-' | '_'))
+        .collect::<String>()
 }
 
 fn provider_secret_domain(provider: ModProvider) -> String {
@@ -1444,5 +1933,197 @@ mod tests {
             ..direct
         };
         assert!(should_delegate_provider(&steam));
+    }
+
+    #[test]
+    fn curseforge_delegation_falls_back_to_project_url() {
+        let input = ModInstallRequest {
+            game_id: "steam-1".to_string(),
+            provider: ModProvider::Curseforge,
+            catalog_item_id: Some("987".to_string()),
+            version_id: None,
+            source_url: None,
+            local_path: None,
+            target_policy_id: None,
+            profile_id: None,
+            title: None,
+            sha256: None,
+        };
+
+        assert!(should_delegate_provider(&input));
+        assert_eq!(
+            delegated_url_for_provider(&input).as_deref(),
+            Some("https://www.curseforge.com/projects/987")
+        );
+
+        let native_input = ModInstallRequest {
+            source_url: Some("https://edge.forgecdn.net/files/ui.zip".to_string()),
+            ..input
+        };
+        assert!(!should_delegate_provider(&native_input));
+        assert_eq!(
+            delegated_url_for_provider(&native_input).as_deref(),
+            Some("https://edge.forgecdn.net/files/ui.zip")
+        );
+    }
+
+    #[test]
+    fn modio_search_mapper_extracts_latest_download() {
+        let json = serde_json::json!({
+            "data": [{
+                "id": 123,
+                "name": "Better Maps",
+                "summary": "Adds cleaner tactical maps.",
+                "profile_url": "https://mod.io/g/example/m/better-maps",
+                "submitted_by": { "username": "mapper" },
+                "logo": { "thumb_320x180": "https://img.example/map.png" },
+                "stats": { "downloads_total": 12345, "subscribers_total": 678 },
+                "modfile": {
+                    "version": "1.2.0",
+                    "filesize": 4096,
+                    "download": { "binary_url": "https://mods.example/better-maps.zip" }
+                }
+            }]
+        });
+
+        let results = map_modio_search_results(&json);
+
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].provider, ModProvider::Modio);
+        assert_eq!(results[0].external_id, "123");
+        assert_eq!(results[0].downloads.as_deref(), Some("12.3K"));
+        assert_eq!(
+            results[0].download_url.as_deref(),
+            Some("https://mods.example/better-maps.zip")
+        );
+        assert_eq!(results[0].provider_app_url, None);
+    }
+
+    #[test]
+    fn curseforge_search_mapper_uses_latest_file() {
+        let json = serde_json::json!({
+            "data": [{
+                "id": 987,
+                "name": "Sharper UI",
+                "summary": "Dense launcher-friendly menus.",
+                "links": { "websiteUrl": "https://www.curseforge.com/example/sharper-ui" },
+                "logo": { "thumbnailUrl": "https://img.example/ui.png" },
+                "authors": [{ "name": "forge-author" }],
+                "downloadCount": 2500000,
+                "thumbsUpCount": 42,
+                "latestFiles": [{
+                    "displayName": "2.0.1",
+                    "fileLength": 2048,
+                    "downloadUrl": "https://edge.forgecdn.net/files/ui.zip"
+                }]
+            }]
+        });
+
+        let results = map_curseforge_search_results(&json);
+
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].provider, ModProvider::Curseforge);
+        assert_eq!(results[0].external_id, "987");
+        assert_eq!(results[0].author.as_deref(), Some("forge-author"));
+        assert_eq!(results[0].downloads.as_deref(), Some("2.5M"));
+        assert_eq!(results[0].latest_version.as_deref(), Some("2.0.1"));
+        assert_eq!(
+            results[0].provider_app_url.as_deref(),
+            Some("https://www.curseforge.com/example/sharper-ui")
+        );
+    }
+
+    #[test]
+    fn curseforge_search_mapper_builds_project_handoff_url() {
+        let json = serde_json::json!({
+            "data": [{
+                "id": 987,
+                "name": "Sharper UI",
+                "latestFiles": [{
+                    "displayName": "2.0.1",
+                    "fileLength": 2048
+                }]
+            }]
+        });
+
+        let results = map_curseforge_search_results(&json);
+
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].download_url, None);
+        assert_eq!(
+            results[0].provider_app_url.as_deref(),
+            Some("https://www.curseforge.com/projects/987")
+        );
+    }
+
+    #[test]
+    fn provider_staging_probe_forces_single_result_and_redacts_request() {
+        let input = ModProviderStagingProbeRequest {
+            provider: ModProvider::Modio,
+            provider_game_id: "example-game".to_string(),
+            query: "ui tweaks".to_string(),
+        };
+
+        let request = build_mod_provider_staging_probe_request(&input).unwrap();
+        let redacted_request = build_mod_provider_staging_probe_redacted_request(&request);
+
+        assert_eq!(request.provider, ModProvider::Modio);
+        assert_eq!(request.provider_game_id, "example-game");
+        assert_eq!(request.query, "ui tweaks");
+        assert_eq!(request.page, Some(1));
+        assert_eq!(request.page_size, Some(1));
+        assert!(redacted_request.contains("api_key=<redacted>"));
+        assert!(redacted_request.contains("limit=1"));
+        assert!(!redacted_request.contains("secret"));
+    }
+
+    #[test]
+    fn provider_staging_probe_counts_results_without_returning_urls() {
+        let request = NativeModSearchRequest {
+            provider: ModProvider::Curseforge,
+            provider_game_id: "432".to_string(),
+            query: "ui".to_string(),
+            page: Some(1),
+            page_size: Some(1),
+        };
+        let results = vec![NativeModSearchResult {
+            provider: ModProvider::Curseforge,
+            external_id: "987".to_string(),
+            name: "Sharper UI".to_string(),
+            author: Some("forge-author".to_string()),
+            summary: Some("Dense menus.".to_string()),
+            url: "https://www.curseforge.com/example/sharper-ui".to_string(),
+            icon_url: Some("https://img.example/ui.png".to_string()),
+            downloads: Some("2.5M".to_string()),
+            follows: Some("42".to_string()),
+            latest_version: Some("2.0.1".to_string()),
+            download_url: Some("https://edge.forgecdn.net/files/ui.zip?token=secret".to_string()),
+            provider_app_url: Some("https://www.curseforge.com/example/sharper-ui".to_string()),
+            file_size_bytes: Some(2048),
+        }];
+
+        let probe = build_mod_provider_staging_probe_success(&request, &results, 48);
+
+        assert_eq!(probe.status, ModProviderStagingProbeStatus::Ready);
+        assert!(probe.live_request_attempted);
+        assert_eq!(probe.result_count, 1);
+        assert_eq!(probe.direct_download_count, 1);
+        assert_eq!(probe.provider_app_handoff_count, 1);
+        assert_eq!(probe.duration_ms, 48);
+        assert!(probe.redacted_request.contains("x-api-key=<redacted>"));
+        assert!(!serde_json::to_string(&probe)
+            .unwrap()
+            .contains("edge.forgecdn.net"));
+        assert!(!serde_json::to_string(&probe).unwrap().contains("secret"));
+    }
+
+    #[test]
+    fn provider_staging_probe_error_redaction_removes_query_api_keys() {
+        let error = "mod.io search failed: https://api.mod.io/v1/games/example/mods?api_key=super-secret&_q=ui";
+
+        let redacted = redact_mod_provider_staging_probe_error(error);
+
+        assert!(redacted.contains("api_key=<redacted>"));
+        assert!(!redacted.contains("super-secret"));
     }
 }

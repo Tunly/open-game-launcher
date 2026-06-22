@@ -67,17 +67,17 @@ export function DesktopTitleBar() {
   }
 
   return (
-    <div className="sticky top-0 z-50 flex h-9 items-center border-b-[3px] border-black bg-[#fff9ed] text-[#1f1c0f] select-none">
+    <div className="app-shell-titlebar sticky top-0 z-50 flex h-9 select-none items-center border-b-[3px] border-black">
       {/* Tauri drag region — keyboard handlers are intentionally omitted because
           window-drag is a native OS gesture, not a user-facing control. */}
       {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions */}
       <div
-        className="neo-copy flex min-w-0 flex-1 items-center gap-2 px-4 text-[10px] font-black tracking-[0.16em] uppercase"
+        className="neo-copy flex min-w-0 flex-1 items-center gap-2 px-4 text-[10px] font-black uppercase tracking-[0.16em]"
         data-tauri-drag-region
         onDoubleClick={() => void toggleMaximizeWindow()}
         onMouseDown={(event) => void startWindowDrag(event)}
       >
-        <span className="h-3 w-3 shrink-0 border-2 border-black bg-[#b7102a]" />
+        <span className="app-shell-primary h-3 w-3 shrink-0 border-2 border-black" />
         <span className="truncate" data-tauri-drag-region>
           OG-Launcher Desktop
         </span>
@@ -120,8 +120,8 @@ function WindowControlButton({
       aria-label={label}
       className={`grid h-full w-12 place-items-center border-l-2 border-black transition ${
         isDanger
-          ? "bg-[#b7102a] text-white hover:bg-[#8f0b20]"
-          : "bg-[#fff9ed] text-[#1f1c0f] hover:bg-[#8cf5e4]"
+          ? "app-shell-primary app-shell-secondary-hover"
+          : "app-shell-surface app-shell-highlight-hover"
       }`}
       type="button"
       onClick={onClick}

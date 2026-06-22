@@ -42,7 +42,12 @@ export interface ControllerLayout {
   isDefault: boolean;
   authorName: string | null;
   createdAt: string;
+  downloadCount?: number;
+  moderationStatus?: "approved" | "pending" | "rejected";
+  reportCount?: number;
   updatedAt: string;
+  userVote?: -1 | 0 | 1;
+  voteScore?: number;
 }
 
 export const CONTROLLER_INPUTS = [

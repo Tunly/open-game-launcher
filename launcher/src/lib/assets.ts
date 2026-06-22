@@ -6,7 +6,15 @@ export function getGameAssetUrl(assetUrl?: string): string | undefined {
     return undefined;
   }
 
-  return /^(https?:|data:|blob:)/i.test(assetUrl) ? assetUrl : convertFileSrc(assetUrl);
+  if (/^(https?:|data:|blob:)/i.test(assetUrl) || assetUrl.startsWith("/artwork/")) {
+    return assetUrl;
+  }
+
+  try {
+    return convertFileSrc(assetUrl);
+  } catch {
+    return assetUrl.startsWith("/") ? assetUrl : undefined;
+  }
 }
 
 export function getGameBannerStyle(

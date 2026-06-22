@@ -1,11 +1,22 @@
 import { useMemo, useState } from "react";
-import { BarChart3, Hourglass, Loader2, Sparkles, Trophy } from "lucide-react";
+import {
+  BarChart3,
+  CalendarDays,
+  CloudOff,
+  Hourglass,
+  Loader2,
+  Sparkles,
+  Trophy,
+} from "lucide-react";
 import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { Link } from "react-router-dom";
 
 import { useUserPlaySessions } from "../../hooks/useUserPlaySessions";
+import {
+  buildPerformanceHistoryPath,
+  type ActivityRange,
+} from "../../lib/activity-performance-links";
 import type { UserPlaySession } from "../../lib/supabase/playtime";
-
-type ActivityRange = "day" | "week" | "month" | "year";
 
 interface RangeButton {
   id: ActivityRange;
@@ -134,7 +145,17 @@ function filterSessionsByRange(
 }
 
 function sessionMinutes(session: UserPlaySession): number {
-  return sessionMinutes(session);
+  if (typeof session.durationMinutes === "number" && Number.isFinite(session.durationMinutes)) {
+    return Math.max(0, session.durationMinutes);
+  }
+
+  const startedAt = new Date(session.startedAt).getTime();
+  const endedAt = session.endedAt ? new Date(session.endedAt).getTime() : Number.NaN;
+  if (!Number.isFinite(startedAt) || !Number.isFinite(endedAt) || endedAt <= startedAt) {
+    return 0;
+  }
+
+  return Math.max(0, Math.round((endedAt - startedAt) / 60_000));
 }
 
 function aggregateChart(
@@ -266,8 +287,8 @@ function topGamesForSessions(sessions: UserPlaySession[], limit: number): TopGam
     } else {
       totals.set(session.gameId, {
         gameId: session.gameId,
-        gameTitle: session.gameId,
-        gameCoverUrl: null,
+        gameTitle: session.gameTitle ?? session.gameId,
+        gameCoverUrl: session.gameCoverUrl ?? null,
         minutes,
       });
     }
@@ -275,6 +296,42 @@ function topGamesForSessions(sessions: UserPlaySession[], limit: number): TopGam
   return Array.from(totals.values())
     .sort((a, b) => b.minutes - a.minutes)
     .slice(0, limit);
+}
+
+function minutesBefore(now: Date, minutes: number) {
+  return new Date(now.getTime() - minutes * 60_000);
+}
+
+function createLocalActivitySessions(now: Date): UserPlaySession[] {
+  const makeSession = (
+    id: string,
+    gameId: string,
+    gameTitle: string,
+    startedMinutesAgo: number,
+    durationMinutes: number,
+  ): UserPlaySession => {
+    const started = minutesBefore(now, startedMinutesAgo);
+    const ended = new Date(started.getTime() + durationMinutes * 60_000);
+    return {
+      catalogGameId: gameId,
+      durationMinutes,
+      endedAt: ended.toISOString(),
+      gameCoverUrl: null,
+      gameId,
+      gameTitle,
+      id,
+      launcherDeviceId: "browser-preview",
+      platform: "web",
+      startedAt: started.toISOString(),
+    };
+  };
+
+  return [
+    makeSession("local-activity-1", "local-demo-neon-runner", "Neon Runner", 150, 74),
+    makeSession("local-activity-2", "local-demo-mecha-shift", "Mecha Shift", 1_620, 118),
+    makeSession("local-activity-3", "local-demo-neon-runner", "Neon Runner", 3_180, 42),
+    makeSession("local-activity-4", "local-demo-boss-rush", "Boss Rush EX", 6_900, 96),
+  ];
 }
 
 interface ActivityChartTooltipProps {
@@ -326,7 +383,13 @@ function ActivityBarChart({ data, range, totalMinutes }: ActivityBarChartProps) 
       className="h-72 w-full border-2 border-black bg-[#fff9ed] p-3 shadow-[3px_3px_0_#1f1c0f]"
       role="img"
     >
-      <ResponsiveContainer height="100%" width="100%">
+      <ResponsiveContainer
+        height="100%"
+        initialDimension={{ width: 1, height: 1 }}
+        minHeight={1}
+        minWidth={1}
+        width="100%"
+      >
         <BarChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 4 }}>
           <CartesianGrid
             stroke="#171411"
@@ -362,14 +425,15 @@ function ActivityBarChart({ data, range, totalMinutes }: ActivityBarChartProps) 
 
 interface TopGamesListProps {
   games: TopGameEntry[];
+  range: ActivityRange;
   totalMinutes: number;
 }
 
-function TopGamesList({ games, totalMinutes }: TopGamesListProps) {
+function TopGamesList({ games, range, totalMinutes }: TopGamesListProps) {
   if (games.length === 0) {
     return (
       <div className="border-2 border-black bg-[#fff9ed] p-4 shadow-[3px_3px_0_#1f1c0f]">
-        <p className="neo-copy text-[10px] font-bold text-[#55504a] uppercase">
+        <p className="neo-copy text-[10px] font-bold uppercase text-[#55504a]">
           No top games for this range yet.
         </p>
       </div>
@@ -382,13 +446,13 @@ function TopGamesList({ games, totalMinutes }: TopGamesListProps) {
         return (
           <li
             key={game.gameId}
-            className="grid grid-cols-[28px_minmax(0,1fr)_88px] items-center gap-3 border-2 border-black bg-[#fff9ed] p-3 shadow-[2px_2px_0_#1f1c0f]"
+            className="grid grid-cols-[28px_minmax(0,1fr)_88px_40px] items-center gap-3 border-2 border-black bg-[#fff9ed] p-3 shadow-[2px_2px_0_#1f1c0f]"
           >
             <span className="neo-copy inline-flex h-7 w-7 items-center justify-center border-2 border-black bg-[#c20b2f] text-[11px] font-black text-white">
               {index + 1}
             </span>
             <div className="min-w-0">
-              <span className="block truncate text-sm font-black text-[#171411] uppercase">
+              <span className="block truncate text-sm font-black uppercase text-[#171411]">
                 {game.gameTitle}
               </span>
               <div className="mt-1 h-3 w-full border border-black bg-[#efe6d4]">
@@ -399,9 +463,17 @@ function TopGamesList({ games, totalMinutes }: TopGamesListProps) {
                 />
               </div>
             </div>
-            <span className="neo-copy text-right text-[11px] font-black text-[#171411] uppercase">
+            <span className="neo-copy text-right text-[11px] font-black uppercase text-[#171411]">
               {formatPlayTimeMinutes(game.minutes)}
             </span>
+            <Link
+              aria-label={`Open performance history for ${game.gameTitle}`}
+              className="inline-flex h-9 w-9 items-center justify-center border-2 border-black bg-[#171411] text-white shadow-[2px_2px_0_#087d6d] hover:-translate-y-0.5"
+              title="Open performance history"
+              to={buildPerformanceHistoryPath(range, game.gameId)}
+            >
+              <BarChart3 aria-hidden="true" className="h-4 w-4" />
+            </Link>
           </li>
         );
       })}
@@ -411,12 +483,17 @@ function TopGamesList({ games, totalMinutes }: TopGamesListProps) {
 
 export function ActivitySection() {
   const [range, setRange] = useState<ActivityRange>("week");
-  const { sessions, isLoading, error } = useUserPlaySessions();
+  const { sessions, isConfigured, isLoading, error } = useUserPlaySessions();
   const now = useMemo(() => new Date(), []);
+  const localPreviewSessions = useMemo(
+    () => (isConfigured ? [] : createLocalActivitySessions(now)),
+    [isConfigured, now],
+  );
+  const visibleSessions = isConfigured ? sessions : localPreviewSessions;
 
   const sessionsInRange = useMemo(
-    () => filterSessionsByRange(sessions, range, now),
-    [sessions, range, now],
+    () => filterSessionsByRange(visibleSessions, range, now),
+    [visibleSessions, range, now],
   );
   const chartData = useMemo(
     () => aggregateChart(sessionsInRange, range, now),
@@ -435,13 +512,30 @@ export function ActivitySection() {
     >
       <div className="flex items-center justify-between border-b-4 border-black p-5">
         <div>
-          <p className="neo-copy text-[10px] font-bold text-[#55504a] uppercase">Session History</p>
-          <h2 className="text-3xl font-black text-[#171411] uppercase">Activity</h2>
+          <p className="neo-copy text-[10px] font-bold uppercase text-[#55504a]">Session History</p>
+          <h2 className="text-3xl font-black uppercase text-[#171411]">Activity</h2>
         </div>
         <BarChart3 aria-hidden="true" className="h-10 w-10 text-[#087d6d]" />
       </div>
 
       <div className="space-y-5 p-5">
+        {!isConfigured ? (
+          <div className="flex flex-wrap items-start gap-3 border-[3px] border-black bg-[#fff9ed] p-3 shadow-[3px_3px_0_#171411]">
+            <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center border-2 border-black bg-[#c20b2f] text-white">
+              <CloudOff aria-hidden="true" className="h-4 w-4" />
+            </span>
+            <div className="min-w-0">
+              <p className="neo-copy text-[10px] font-black uppercase tracking-[0.12em] text-[#c20b2f]">
+                Local Activity Relay
+              </p>
+              <p className="neo-copy mt-2 text-[10px] font-bold uppercase leading-relaxed text-[#55504a]">
+                Supabase is not configured, so browser preview uses local sample sessions while the
+                launcher chart and performance links stay testable.
+              </p>
+            </div>
+          </div>
+        ) : null}
+
         <div aria-label="Activity range" className="flex flex-wrap gap-2" role="group">
           {RANGE_BUTTONS.map((button) => {
             const isActive = range === button.id;
@@ -469,38 +563,57 @@ export function ActivitySection() {
             <Hourglass aria-hidden="true" className="h-4 w-4" />
           </span>
           <div className="min-w-0 flex-1">
-            <p className="neo-copy text-[10px] font-bold text-[#55504a] uppercase">
+            <p className="neo-copy text-[10px] font-bold uppercase text-[#55504a]">
               Total // {describeRange(range)}
             </p>
-            <p className="neo-copy mt-1 truncate text-xl font-black text-[#171411] uppercase">
+            <p className="neo-copy mt-1 truncate text-xl font-black uppercase text-[#171411]">
               {formatPlayTimeMinutes(totalMinutes)} across {sessionsInRange.length} session
               {sessionsInRange.length === 1 ? "" : "s"}
             </p>
+          </div>
+          <div className="flex gap-2">
+            <Link
+              aria-label="Open yearly activity dashboard"
+              className="inline-flex h-10 w-10 items-center justify-center border-2 border-black bg-[#087d6d] text-white shadow-[2px_2px_0_#171411] hover:-translate-y-0.5"
+              title="Open yearly activity dashboard"
+              to="/activity"
+            >
+              <CalendarDays aria-hidden="true" className="h-4 w-4" />
+            </Link>
+            <Link
+              aria-label="Open performance history for this activity range"
+              className="inline-flex h-10 w-10 items-center justify-center border-2 border-black bg-[#c20b2f] text-white shadow-[2px_2px_0_#171411] hover:-translate-y-0.5"
+              title="Open performance history"
+              to={buildPerformanceHistoryPath(range)}
+            >
+              <BarChart3 aria-hidden="true" className="h-4 w-4" />
+            </Link>
           </div>
         </div>
 
         {isLoading ? (
           <div className="border-2 border-black bg-[#fff9ed] p-6 shadow-[3px_3px_0_#1f1c0f]">
-            <p className="neo-copy inline-flex items-center gap-2 text-xs font-bold text-[#55504a] uppercase">
+            <p className="neo-copy inline-flex items-center gap-2 text-xs font-bold uppercase text-[#55504a]">
               <Loader2 aria-hidden="true" className="h-4 w-4 animate-spin" />
               Loading activity...
             </p>
           </div>
         ) : error ? (
           <div className="border-2 border-black bg-[#fbd6dc] p-4 shadow-[3px_3px_0_#1f1c0f]">
-            <p className="neo-copy text-[11px] font-black text-[#7a0918] uppercase">{error}</p>
+            <p className="neo-copy text-[11px] font-black uppercase text-[#7a0918]">{error}</p>
           </div>
         ) : sessionsInRange.length === 0 ? (
           <div className="border-2 border-black bg-[#fff9ed] p-6 shadow-[3px_3px_0_#1f1c0f]">
             <div className="flex items-start gap-3">
               <Sparkles aria-hidden="true" className="h-5 w-5 shrink-0 text-[#087d6d]" />
               <div>
-                <p className="text-sm font-black text-[#171411] uppercase">
+                <p className="text-sm font-black uppercase text-[#171411]">
                   No play sessions recorded yet
                 </p>
-                <p className="neo-copy mt-2 text-[10px] leading-relaxed font-bold text-[#55504a] uppercase">
-                  Launch a game to start filling this dashboard. Synced sessions will appear here as
-                  soon as your Rust poller flushes them to Supabase.
+                <p className="neo-copy mt-2 text-[10px] font-bold uppercase leading-relaxed text-[#55504a]">
+                  {isConfigured
+                    ? "Launch a game to start filling this activity tape. Synced sessions appear here after the launcher records playtime."
+                    : "Browser preview has no synced play sessions for this range yet. Change the range or connect Supabase to load real activity."}
                 </p>
               </div>
             </div>
@@ -511,11 +624,11 @@ export function ActivitySection() {
             <div>
               <div className="mb-2 flex items-center gap-2">
                 <Trophy aria-hidden="true" className="h-4 w-4 text-[#c20b2f]" />
-                <h3 className="neo-copy text-[11px] font-black text-[#171411] uppercase">
+                <h3 className="neo-copy text-[11px] font-black uppercase text-[#171411]">
                   Top 5 Games // {describeRange(range)}
                 </h3>
               </div>
-              <TopGamesList games={topGames} totalMinutes={totalMinutes} />
+              <TopGamesList games={topGames} range={range} totalMinutes={totalMinutes} />
             </div>
           </>
         )}

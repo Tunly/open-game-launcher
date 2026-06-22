@@ -1,31 +1,47 @@
-# Open Game Launcher — Offene Features
+# Open Game Launcher — Lokaler Fertigstellungsplan + externe Evidenz
 
-> **Ziel:** Übersicht aller Features, die noch nicht (vollständig) implementiert sind.
+> **Ziel:** Übersicht aller lokal fertiggestellten, lokal gestagten und extern
+> evidenzpflichtigen Features.
 > Bereits implementierte Features sind in `docs/PROJECT_DESIGN.md` und im Code dokumentiert.
 >
 > **Prinzipien:** Modular, Cross-Platform, Offline-resilient (Cloud-Sync mit Local-Cache), Open-Source (AGPL-3.0).
+>
+> **Lokale Evidence-Grenze:** `/settings?verify=external-completion-evidence-summary`
+> zeigt Store/Stripe, Hosted Cron, Provider-Live, Hardware/OS und Rollout als
+> lokalen No-Write-Nachweisplan mit Env-Namen, Artefaktpfaden und
+> Proof-Anforderungen. Die dort gelisteten Gates bleiben offen, bis die echten
+> externen Artefakte aus `docs/runbooks/external-completion-evidence.md`
+> vorliegen.
 
 ---
 
 ## Übersicht
 
-| # | Feature | Priorität | Status | Gesamtfortschritt | Offene Aufgaben |
-|---|---------|-----------|--------|-------------------|-----------------|
-| 0 | Embedded Client-Manager | Hoch | 🟡 URI-Start + Plattform-Detection + Login-Flow fertig | ~30% | Client-Health-Poll, Status-Indikatoren, Silent-Install, Auto-Updates, Client-Modifikation |
-| 2 | Store-Backend Frontend | Hoch | 🟡 Backend + Stripe + DeveloperPortal fertig | ~50% | StorePage auf echte Daten, Checkout, Reviews, Preischart |
-| 3 | In-Game Overlay vollständig | Mittel | 🟡 Tabs + Hotkey + AC + Screenshot + FPS/GPU fertig | ~90% | Recharts statt SVG-Sparkline |
-| 4 | Performance-Monitor Frontend | Mittel | 🟡 Overlay-Tab + Rust-Polling + GPU/NVML fertig | ~50% | PerfHistoryPage-Route fehlt, Recharts-ActivitySection tot, Session-Persistierung |
-| 5 | Cloud-Save E2E Integration | Hoch | 🟡 Crypto + Panel + Settings + AutoSync fertig | ~80% | Konflikt-UI, Sync-Status-Details |
-| 6 | Categories/Tags + Screenshots + Prices UIs | Mittel | 🟡 DB + Layer + NewsPage fertig | ~40% | CategoryChips, ScreenshotGallery, PriceChart |
-| 7 | Mod-Management | Mittel | 🟡 Vollständige Engine + UI + DB + Steam-Workshop fertig | ~90% | CurseForge/Mod.io native APIs |
-| 9 | DSGVO/Privacy | Hoch | 🟡 Privacy-Settings-UI + Formular fertig | ~45% | Datenexport (JSON), Account-Löschung (30-Tage) |
-| 10 | Echtzeit-Presence | Mittel | 🟡 Supabase-Realtime + Overlay-Tab + Hook fertig | ~75% | Plattform-Polling (Edge Function), echte Plattform in Freundesliste |
-| 11 | Custom Artwork | Niedrig | 🟡 rawg-assets EF + Rust-Cache + Drag-Drop-Upload fertig | ~70% | Auto-Download in GameDetails (Steam-Header, Epic-Caps) |
-| 12 | Backup & Restore | Niedrig | ❌ Nicht begonnen | 0% | Externes Laufwerk, inkrementell |
-| 13 | Remote Play & Downloads | Niedrig | ❌ Nicht begonnen | 0% | Delegation an Steam/Epic, Mobile/Web |
-| 14 | Spielzeit-Tracking erweitert | Niedrig | 🟡 playtime.rs + idle.rs + Sessions + Editor fertig | ~75% | Session-Charts (ActivitySection tot) |
+Die Prozentwerte in `Lokaler Stand` beschreiben nur lokal belegte Completion.
+Sie sind keine Release-Freigabe; Release-Readiness bleibt blockiert, bis externe
+Evidenz `5/5` Gates abdeckt und das volle `pnpm completion:gate` besteht.
+
+| #   | Feature                                    | Priorität | Status                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | Lokaler Stand (keine Release-Freigabe) | Offene Aufgaben                                                                                                                                                                       |
+| --- | ------------------------------------------ | --------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 0   | Embedded Client-Manager                    | Hoch      | 🟡 URI-Start + Plattform-Detection + Login-Flow + konfigurierbarer Client-Health-Poll + Status-Indikatoren + Lifecycle-Events mit Runtime-/Window-Metadaten + Live-Input-Runtime + Cross-Source-Running + Platform-Health-Score + One-Click-Setup-Readiness + One-Click-Rollback-/Audit-No-Write-Contract + SHA-256 Verify/Repair + 24h Update-Scheduler + Headless OS-Timer + sicheres Scheduled Auto-Open + Silent-Install-Staging + Auto-Apply-Guard + Asset-Cache-Lookup + Path-Overlay-Apply-Preflight + lokales Mount-/Apply-Contract-Paket + lokale 7-Provider-Apply-Policy-Matrix + lokaler Sandbox-Apply-/Rollback-Proof fertig                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | ~89%                                   | Provider-approved Auto-Apply-Integrationen, Provider-Terms-Approval, echtes OS-Mounting/Overlay-Anwendung gegen Provider-Clients                                                      |
+| 2   | Store-Backend Frontend                     | Hoch      | 🟡 Backend + sicherer Stripe-Checkout + Checkout-Attempt-Idempotenz + signierter Webhook-Replay-Ledger mit stale Retry-Lease + konflikt-idempotente Lizenz-Ausgabe + Refund-Ausführung + Invoice-Staging + Offline-Stripe-Staging-Contract + Store-Edge-Contract-CI + Store-Readiness-Panel + Price-Drop-Scheduler-Readiness + StorePage + Cart-Drawer + PriceChart + persistente Store-Wishlist/Preisalarme + Lizenzen + Reviews + Downloads lokal/vertraglich fertig; `store-stripe-live` bleibt extern offen                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   | ~99%                                   | Live-Stripe-Staging mit echter Webhook-Signaturzustellung, Stripe-Dashboard Tax-/Invoice-Konfiguration und echte Hosted Price-Drop-Scheduler-Ausführung                               |
+| 3   | In-Game Overlay vollständig                | Mittel    | 🟡 Tabs + persistente Overlay-Settings + konfigurierbarer Hotkey + AC + Screenshot + FPS/GPU + Recharts-Performance + Anti-Cheat-Fallback-Deck + `/settings/performance?verify=overlay-fullscreen-anti-cheat-readiness` lokales Fullscreen-/Anti-Cheat-Research-Packet fertig                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | ~98%                                   | Echte Fullscreen-Injection-/Anti-Cheat-/Protected-Title-Evidence                                                                                                                      |
+| 4   | Performance-Monitor Frontend               | Mittel    | 🟡 Overlay-Tab + Rust-Polling + GPU/NVML + Active-Game-Kontext + `overlay-runtime`-Attribution + PerfHistory + Buckets + ActivitySection + Recharts + 300-Sample Session-Flush-Contract + `/settings/performance?verify=overlay-e2e-readiness` lokale Overlay-E2E-Gates + Fullscreen-/Anti-Cheat-Research-Packet fertig                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           | ~97%                                   | Live-/externes Overlay-E2E, lange Native/Supabase-Session-E2E, echte Fullscreen-/Anti-Cheat-Staging-Evidence                                                                          |
+| 5   | Cloud-Save E2E Integration                 | Hoch      | 🟡 Crypto + Panel + Settings + AutoSync + Konfliktprüfung + Sync-Statusdetails + gemischte Per-File-Konfliktauflösung + Supabase-Dateimetadaten-Upsert/Delete + native Cloud-Objektpfad-Verträge mit Label-Root-Prefix, non-empty Single-File-Keys, exakter `.enc`/`.meta.json`-Sidecar-Behandlung und Browser-Guards + lokaler Cross-Store-Save-Sync-Planer + Provider-Katalog-Coverage-Paket + Provider-Cloud-Transfer-Contract-Paket + Migration-Session-Rehearsal-Paket + lokale Provider-Save-Mapping-Fixture-Schicht fuer Steam/GOG/Epic externe IDs, Install-Pfade, relative Pfadregeln, Save-Root-Shapes und Save-File-Counts als lokale Vorschlaege/Metadata-Provenance im Cloud Saves Panel + Provider-Pfad-Review-Matrix mit Duplicate-Target-Collision-Blocker + automatische Path-Map-Apply-Request-Templates mit `accepted=false` + Post-Copy-Konfliktverifikationspaket + consent-gated Native-Copy-/Rollback-Proof mit Duplicate-Target-Reject, Target-Snapshot, Apply-Manifest-Readback, Unchanged-Target-Guard und SHA-256-Verifikation lokal/vertraglich fertig; Live-Supabase/Keychain und Provider-Migration bleiben externe Evidenz                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         | ~99%                                   | Live-Supabase/Keychain-E2E gegen echte Buckets, provider-approved Cloud-Import/Export-Ausführung, Provider-API-/Katalog-Validierung und echte Migration-Session-E2E                   |
+| 6   | Categories/Tags + Screenshots + Prices UIs | Mittel    | 🟡 DB + Layer + NewsPage + Store-PriceChart + Lowest-Price-Badge + CategoryChips + Sidebar + Screenshot Upload/Like/Private-Bucket + lokale Public-Screenshot-Feed-Preview lokal/vertraglich fertig; `rollout-tracks` bleibt fuer hosted Community-Screenshot-/Artwork-Rollout extern offen                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | ~95%                                   | Echtes Staging gegen Profil-/Community-Feeds mit Supabase Public-Embeds und hosted Community-Rollout-Evidenz                                                                          |
+| 7   | Mod-Management                             | Mittel    | 🟡 Vollständige Engine + UI + DB + Steam-Workshop + mod.io/CurseForge Native-Suche + lokale/shared Provider-ID-Mappings + Provider-API-Mapping-Promotion + CurseForge/Overwolf-Handoff + redigierter single-result Provider-Staging-Probe + lokale Provider-Response-Shape-Review-Fixtures fertig                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 | ~99%                                   | Reale API-Key-Stagingläufe mit echten Provider-Keys/Live-Antworten und Terms-/Rate-Limit-Freigabe                                                                                     |
+| 9   | DSGVO/Privacy                              | Hoch      | 🟡 Privacy-Settings-UI + Public-Profile-Privacy-Guard mit Client-Redaktion/RLS-Lane-Contract + AccountDataPrivacyPanel-Readiness + JSON-Export + Export-Coverage-Contract fuer neuere User-Daten + Export-Adapter-Coverage fuer Auth-/Read-Query-Shapes und Missing-Table-Warnings + Request/Cancel/Processor-Adapter-Coverage + 30-Tage-Löschanfrage + lokaler Processor-Dry-Run + Secret-/Limit-/Dry-Run-Contract + process-account-deletions HTTP-Handler-Coverage + `game-artwork` Storage-Cleanup-Coverage + `/settings/privacy?verify=deletion-processor-cron-dry-run-packet` + manueller Hosted-Deploy-Gate mit Dry-Run-Smoke fertig                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | ~96%                                   | Hosted Cron/Supabase Scheduled Deployment mit realem `ACCOUNT_DELETION_PROCESSOR_SECRET` + Staging-Verifikation                                                                       |
+| 10  | Echtzeit-Presence                          | Mittel    | 🟡 Supabase-Realtime + Overlay-Tab + Plattform-Badges + Polling-Edge-Function + Deploy-Runbook + client-evidence-basiertes Settings-Readiness-Panel + lokale Cron-Config + Hosted-Deploy-Gate-/Scheduler-Handoff-Staging-Paket + Steam-/Bridge-Provider-Client-HTTP- und Rate-Limit-Mapping-Coverage fertig                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | ~95%                                   | Echtes Trusted Hosted-Cron-Projekt-Staging + reale Provider-Bridges ausser Steam                                                                                                      |
+| 11  | Custom Artwork                             | Niedrig   | 🟡 rawg-assets EF + Source-Policy-Evidence + HTTP-Handler-Coverage, Rust-Cache, Drag-Drop-Upload, Auto-Artwork-Kandidaten mit Steam-CDN/App-ID-Policy, lokale Community-Artwork-Import-Galerie mit browser-lokalem Vote-Ledger, Hosted Community-Artwork v1, public Upload UI, Pending-Submission-Karten, private Moderator-Allowlist, Service-Role-Scan-/Review-RPCs, Trusted Live-Review-Endpoint mit HTTP-Handler-Coverage, deterministische Content-Scan-Evidenz, Provider-Source-Policy-Gate, lokale Steam/RAWG/Epic-Caps-Proof-Matrix, Approval-Gate, Moderator-Console-Preview und Audit-Ledger fertig                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     | ~99%                                   | Provider-Staging mit echten RAWG-/Steam-/Epic-Screenshot-Nachweisen und Community-Rollout                                                                                             |
+| 12  | Backup & Restore                           | Niedrig   | 🟡 Native Manifest-Backups + inkrementelle Copy/Restore + Restore-Review-Gate + ZIP-Archiv + Login-Autostart + Reminder + Headless OS-Timer + Folder-Picker + read-only Removable-Drive-Detection + consented Sentinel-Write/Read/Checksum/Delete-Proof + consented Eject-Safety-Preflight + consented lokaler OS-Eject/Unmount-Pfad mit finalem Preflight, Linux/macOS/Windows-Command-Backend und Mount-Verschwinden-Prüfung fertig                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | ~99%                                   | Externe-Drive-E2E auf echten Windows/macOS/Linux-Laufwerken                                                                                                                           |
+| 13  | Remote Play & Downloads                    | Niedrig   | 🟡 Erste sichere Desktop-Delegation + GameDetails-Button + lokale Remote-Play-Proof-Matrix fuer Steam, Epic/EOS URI-only Review, HTTPS Cloud und Unsafe-URI-Blocker + lokaler Epic/EOS Provider-State-/Fixture-State-Replay-/Invite-/URI-/Error-/Stream-Proof-Contract + Remote-Download-Readiness-Guard mit lokalem Companion-Pairing/Ping, Desktop-Vault- und Hosted-Auth-Gates + App-Lifetime-Always-On-Polling + lokaler Remote-Install-Handoff per Deep Link + Web-Dashboard-Route mit Hosted-Enqueue + lokaler Handoff-Ledger + lokaler LAN-Transfer-Planer + native lokale Pfad-Kopie mit Manifest-Hash-Verifikation + cancellable Copy-Jobs + Resume-Copy + consented Cleanup-Candidate-Loeschung + Supabase-Companion-Cloud-Vertrag + JWT-Relay-Function/API + Relay-Contract-CI + Desktop-Secret-Vault + nativer Poll-once-Claim + Remote-Store-Ticket-Provenance + terminale Remote-Status-Synchronisierung mit erlaubten Transitionen fertig                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | ~88%                                   | Echte Epic/EOS-Provider-Session-/Invite-Integration, echtes Hosted-Deployment von Web-Relay und Staging gegen echte Supabase-Instanz, echte LAN-Peer-Discovery/Pairing/Mount/Firewall |
+| 14  | Spielzeit-Tracking erweitert               | Niedrig   | 🟡 playtime.rs + idle.rs + Sessions + Editor + Settings-Aktivität + Activity→Performance-Querfilter + Performance-Bucket-Detailcharts + Activity-Recap-Share-Card fertig                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          | ~96%                                   | Langzeit-E2E mit echten Native-/Supabase-Sessions                                                                                                                                     |
+| 16  | Custom-Link Invites                        | Mittel    | 🟡 Deep-Link-Handler + `/invite/:token` Web-Fallback + CrossPlatformInvite Link-Readouts + RLS-safe `share_tokens` Create/Resolve/Redeem-RPC + signierter Token-Envelope + Unknown-Recipient-Claim + Invite-Hosted-Readiness + Hosted-Token-Rehearsal + Hosted-Replay-Origin-Proof-Contract + Migration-Contract-Evidence fertig                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  | ~94%                                   | Externes Hosted-Web-/Supabase-Staging-E2E mit real deployter Token-Erstellung/Redemption und Live-Hosted-Origin-Replay-Proof                                                          |
+| 17  | Broadcasting Readiness                     | Niedrig   | 🟡 Lokales `/community` Readiness-Panel fuer Capture-/Overlay-/Upload-/Chat-/VOD-Checks fertig; `/community?verify=broadcasting-rtmp-dry-run` zeigt ein redigiertes lokales RTMP-Dry-Run-Paket ohne Socket/Publish; `/community?verify=broadcasting-chat-moderation-shadow` zeigt eine lokale Chat-Moderation-Shadow-Queue mit redigierten Fixtures ohne Provider-Enforcement; `/community?verify=broadcasting-vod-archive-policy` zeigt lokale VOD-Retention-/Visibility-/Delete-Coverage-Policy ohne Provider-/Supabase-/Signed-URL-Ausfuehrung; `/community?verify=broadcasting-provider-oauth-contract` zeigt lokale OAuth-Contract-Fixtures fuer PKCE, State, Redirects, Scopes, Callback-Fehler, Token-Grenzen und Secret-Redaction ohne Provider-Auth-Redirect oder Token-Exchange; `/community?verify=broadcasting-provider-callback-contract` zeigt lokale Callback/Webhook-Contract-Fixtures ohne Hosted-Endpoint, Provider-Delivery, Supabase-Callback-Row, Replay-Runner oder VOD-Sync-Job; `/community?verify=broadcasting-live-session-rehearsal` zeigt die lokale Go-live-Reihenfolge mit Preflight-/Desktop-Vault-/Rollback-Review und blockierten OAuth-/RTMP-/Chat-/Moderation-/VOD-/Callback-/Audience-Status-Lanes; `/community?verify=broadcasting-audience-status-contract` zeigt einen lokalen Audience-/Live-Status-Vertrag fuer Preview-Labels, Stale-Fallback, Rollback-Clear, Provider-State-Events, Audience-Counts, Chat-Presence, Public-Status-Writes und Supabase-Audience-Row-Blocker ohne Provider-Read oder Public-Mutation; `/community?verify=broadcasting-provider-live-readiness` zeigt lokale Provider-/Live-Gates plus consented Desktop-Stream-Key-Vault ohne Twitch/YouTube-OAuth, RTMP-Ausgabe, stream-key Live-Nutzung, Hosted-Moderation, VOD-Sync oder Audience-/Live-Status-Claim | ~54%                                   | Echte Provider-OAuth-Ausfuehrung/Token-Exchange, RTMP-/Live-Ausgabe, Provider-Chat-Reads/-Moderation, VOD-Provider-Sync/-Archive, Provider-Callbacks und Live-E2E                     |
+| 18  | AI-Empfehlungen                            | Niedrig   | 🟡 Lokales `/library` Backlog-Priority-Panel fuer installierte/downloadbare Spiele, lokale Friend-Count-Signale aus Library-State, Mood Tags, Achievements, Playtime, Session-Fit, resetbares browser-lokales Preference-Profil, browser-lokales Learning Tape fuer Mood-/Session-/Social-Gewichte, manuelle browser-lokale Play-Next-Queue, lokales Explanation-Packet mit Score-Signalen und uebersprungenen Model-/Cloud-Schritten sowie lokales Consent-Audit-Packet mit redigiertem Prompt-Envelope/No-Write-Evidenz fertig; `/library?verify=ai-recommendations-readiness` zeigt lokale Hosted-/Model-Gates ohne KI-/Model-Calls, Hosted Inference, Cloud-Personalisierung, Provider-Telemetrie oder Launch-Automation; `/library?verify=ai-recommendations-hosted-eval-contract` zeigt lokale Hosted-Eval-Contract-Lanes fuer deterministic baseline, prompt regression, quality thresholds, safety/abuse fixtures, consent sample review, hosted runner boundaries, cloud profile replay, provider telemetry replay und rollout rollback gates ohne Model-Call, Prompt-Upload, Hosted Inference, Cloud-Replay, Provider-Telemetrie oder Live-Rollout                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | ~53%                                   | Echte KI-/Model-Calls, Hosted Inference, Cloud-Personalisierung, Provider-Telemetrie, hosted Nutzerprofil-Modellierung und Hosted Evals                                               |
 
 ---
+
 ## 0. Embedded Client-Manager
 
 > Ziel: Open Game Launcher ist ein vollwertiger Client-Manager für alle unterstützten Plattformen — nicht nur ein Aggregator. Erkennung laufender Clients, Status-Polling, Silent-Install, Auto-Updates und Client-Modifikationen (Pfad-Overlays, Asset-Cache, Mod-Wurzelverzeichnisse) sind im Scope. Client-Start erfolgt über die offiziellen URI-Protokolle der jeweiligen Plattformen.
@@ -37,48 +53,79 @@
 - ✅ Library listet installierte Spiele mit Launcher-Source (Steam, GOG, Epic, Xbox, Ubisoft, Battle.net, EA)
 - ✅ Login + Owned-Games-Flow für 7 Plattformen
 - ✅ Cross-Plattform Source-Tracking über `game_external_ids` Tabelle
+- ✅ Native Client-Health-Abfrage für Steam, Epic, GOG, Xbox, Ubisoft, Battle.net und EA mit Install-/Running-Status, PID und Startfähigkeit
+- ✅ LibraryRow/GameDetails zeigen Source-Client-Status und können unterstützte Plattform-Clients starten
 
-### Offene Tasks
+### Status und offene Tasks
 
 #### 7-Plattform Client-Detection
-- Pro Plattform: Installationspfad, Version, Running-State, Update-Verfügbarkeit
-- Detection-Layer aus `detect/{epic,steam}.rs` auf alle 7 Plattformen erweitern
-- Konfigurierbares Poll-Intervall (Default 30s)
+
+- ✅ Pro Plattform: best-effort Installationspfad, Running-State und Startfähigkeit
+- ✅ Version und Update-Verfügbarkeit sind über lokale Versionsdetektion, `latestKnownVersion`, Update-Policy und History abgedeckt; Client-Lifecycle-Polling ist in Settings konfigurierbar
 
 #### Process-Status-Polling
-- `ClientInfo` Model mit Live-Updates: PID, Window-Handle, last-input, uptime
-- Plattform-spezifische Prozess-Detection (Steam = `steam.exe`, Epic = `EpicGamesLauncher.exe`, GOG = `GalaxyClient.exe`, etc.)
-- Events: `client_started`, `client_stopped`, `game_started`, `game_stopped`
-- Integration in `useLibrarySync` für Live-Refresh
+
+- ✅ Plattform-spezifische Prozess-Detection (Steam = `steam.exe`, Epic = `EpicGamesLauncher.exe`, GOG = `GalaxyClient.exe`, etc.)
+- ✅ Lifecycle-Events: Client-Poller emittiert `client_started`/`client_stopped`, Playtime-Poller emittiert `game_started`/`game_stopped`, Library reagiert mit Running-Chips und sofortigem Source-Client-Refresh
+- ✅ Runtime-Metadaten: Client- und Game-Lifecycle-Events liefern PID, Prozessname und Uptime; Stopp-Events behalten die letzte bekannte Prozesskennung
+- ✅ Live-Input-Metadaten: Playtime-Poller emittiert `game_runtime_updated` fuer laufende Spiele mit `lastInputSeconds`; Library aktualisiert den Game-Runtime-Strip ohne Playtime-/Supabase-Sync
+- ✅ Window-Live-Events: Windows-Best-Effort ordnet laufenden Game- und Source-Client-Prozessen sichtbare Top-Level-Fenster zu; `client_window_updated` aktualisiert die Library ohne Status-Spam, non-Windows bleibt null
 
 #### Library-Status-Indikatoren
-- "Steam läuft nicht" / "Steam starten"-Button in `GameRow`
-- "Spiel läuft"-Badge mit PID/Window-Handle
-- Cross-Plattform-Konsolidierung: Wenn ein Spiel auf Steam läuft, in Epic-Library als „läuft über Steam" markieren
+
+- ✅ Source-Client-Statuschip und "Start client"-Button in Library-Detailansicht
+- ✅ Kompakter Client-Statuschip in ausgewählter LibraryRow
+- ✅ "Spiel läuft"-Badge, Running-Primary-State und Game-Runtime-Strip mit Prozessname, PID und Uptime
+- ✅ Cross-Plattform-Konsolidierung: gruppierte Varianten zeigen `via Steam`/Provider im Running-State, wenn eine andere Source-Variante läuft
+- ✅ Window-Handle/Fenstertitel erscheinen im Running-State fuer Game Runtime, Source Client und Settings Platform Health, sobald native Window-Zuordnung existiert
 
 #### Silent-Install
-- Unterstützte Plattform-Clients silent installieren, wo lizenzrechtlich + technisch möglich
-- Voraussetzung: User-Consent + Capability-Check (Admin-Rechte, freier Speicher, .NET-Runtime etc.)
-- Eigenes Installationsmanifest pro Plattform
-- UI: „Plattform fehlt → Installieren"-Flow in der Library
+
+- ✅ Safe Best-Effort-Flow: fehlender Plattform-Client öffnet offizielle Download-URI oder einen lokal konfigurierten Installerpfad; OG-Launcher lädt keine fremden Client-Binaries still herunter
+- ✅ Lokale Installer-/Updaterpfade werden pro Client gespeichert und in der Library-Detailansicht als kompakter Client-Manager bedienbar
+- ✅ Silent-Install-Staging-Preview: `preview_platform_client_install` klassifiziert `alreadyInstalled`/`localInstaller`/`officialDownload`/`blocked`, zeigt User-Consent-, Lizenz- und Admin-Checks und macht `No silent download`/`No auto-apply` in GameDetails sichtbar
+- Bewusst nicht implementiert: echte Silent-Install-Ausführung nur pro Plattform mit explizitem User-Consent, Lizenzprüfung und offiziellem Provider-Mechanismus
+- ✅ Lokale Auto-Apply-Capability-Checks fuer Runtime-/Client-Praesenz, Installationsziel, freien Speicher, Admin-Review und Desktop-Capability-Preview sind im Mount-/Apply-Contract enthalten; echtes Auto-Apply bleibt nur mit provider-approved Mechanismus, Terms Approval und expliziter Live-Provider-Freigabe erlaubt
+- ✅ Eigenes Installationsmanifest pro Plattform; OG-managed Manifeste enthalten Formatversion, SHA-256-Dateien, optionalen Ed25519-Trust-Status und können in Release-/Staging-Flows per `OGL_INSTALL_MANIFEST_SIGNING_KEY` + `OGL_INSTALL_MANIFEST_KEY_ID` signiert werden
+- ✅ UI: „Plattform fehlt → Installieren"-Flow in der Library öffnet sichere Quelle statt automatischem Download
+- ✅ File Integrity: OG-managed Manifeste speichern `files[].sha256`; interne Downloads akzeptieren signierte Install-Manifest-Sidecars (`installManifestUrl`/`installManifestSha256`), Verify erkennt Same-Size-Hashfehler und Repair validiert `downloadSha256` sowie reparierte Dateien gegen das bestehende Manifest
+- ✅ GameDetails-Settings zeigen Verify/Repair-Aktionen, Ergebnisstatus, Manifest-Trust (`missing/unsigned/signed/invalid`) und kurze Issue-Liste im Retro-Manga-Stil
 
 #### Auto-Updates
-- Versions-Polling pro Plattform (24h)
-- Auto-Download von Client-Updates (konfigurierbar: manuell / auto-download / auto-apply)
-- Update-History pro Client
+
+- ✅ Best-effort Update-Status mit lokaler Versionsdetektion, manuell gepflegter `latestKnownVersion`, Update-Policy und History pro Client
+- ✅ Library-Detailansicht kann offiziellen Updater/Client oder lokal konfigurierten Updaterpfad öffnen und Check-History schreiben
+- ✅ App-lifetime 24h Hintergrund-Polling mit persistiertem Scheduler: `notifyOnly`/`openClient` aktivieren automatische Checks, History speichert Scheduled-Runs, GameDetails zeigt Last/Next Check und Header-Notifications melden gefundene Updates
+- ✅ `openClient` öffnet bei Scheduled-Runs nur vorhandene sichere Updater-/Launch-Ziele nach erkannter Versionslücke, schreibt `auto_opened`/`auto_open_failed` in die History und nutzt keine offizielle Downloadseite als Auto-Open-Fallback
+- ✅ Headless OS-Level Scheduler: per-user Windows Task Scheduler/macOS LaunchAgent/Linux systemd-user Timer startet den bestehenden Scheduled-Update-Check ohne GUI und schreibt Statusdatei
+- ✅ Guarded Auto-Apply-Policy: `autoApply` wird gespeichert, aktiviert Scheduled Checks, rendert eine Auto-Apply-Guard-Karte und schreibt ohne offiziellen Provider-Mechanismus `auto_apply_blocked`, ohne Updater/Installer zu öffnen
+- Offen: echter Auto-Download/Auto-Apply nur, falls ein offizieller, erlaubter Provider-Mechanismus existiert; aktuell bewusst nicht implementiert
 
 #### Client-Modifikation
-- Pfad-Overlays: Launcher kann alternative Asset-/Mod-Pfade pro Client verwalten
-- Asset-Cache-Pflege: gemeinsamer Cache über alle Clients, konfliktfreie Lookup-Tabelle
-- Mod-Wurzelverzeichnisse pro Client: Steam `steamapps/workshop`, GOG `Galaxy-2.0-Plugins-Storage`, Epic `Mods/`, etc.
-- Schutz vor versehentlicher Modifikation: Read-Only-Mount für fremde Verzeichnisse
+
+- ✅ Pfad-Overlays: Launcher kann alternative Asset-/Mod-Pfade pro Client lokal verwalten
+- ✅ Asset-Cache-Pflege: gemeinsamer Cache über alle Clients, konfliktfreie Lookup-Tabelle mit Priorität und Konfliktvorschau
+- ✅ Mod-Wurzelverzeichnisse pro Client lokal konfigurierbar: Steam `steamapps/workshop`, GOG `Galaxy-2.0-Plugins-Storage`, Epic `Mods/`, etc.
+- ✅ Schutz-Metadaten: Read-Only-Flag pro Overlay wird gespeichert
+- ✅ Path-Overlay-Apply-Preflight: GameDetails bewertet Path-Overlay-Drafts lokal auf fehlende Pfade, Root-/Drive-Targets, Same-Path-Paare, doppelte Targets sowie read-only/writable Review und zeigt eine ausdrueckliche Preflight-only Safety Card
+- ✅ Mount-/Apply-Contract-Paket: `/settings?verify=client-manager-mount-apply-contract` zeigt Path-Overlay-Preflight, Asset-Cache-Lookup, Auto-Apply-Guard und eine 7-Provider-Apply-Policy-Matrix fuer Steam/GOG/Epic/EA/Ubisoft/Battle.net/Xbox mit No-provider-approved-launcher-apply- und Terms-not-approved-Evidence als lokale Review-Lanes; `/settings?verify=client-manager-mount-apply-sandbox-proof` beweist lokalen Sandbox-Copy/Manifest/Hash/Rollback auf Throwaway-Pfaden; Provider-Mechanismus, echte OS-Mount-Erstellung, Provider-Terms, Symlink/Junction, Admin-Elevation, Driver/Kernel, destruktive Writes, Live-Provider-Rollback/Unmount und Live-Client-Mutation bleiben explizit blockiert
+- Offen: tatsächliches Mounting/Overlay-Anwendung; Asset-Cache bleibt bewusst Lookup-only, bis provider-/OS-sichere Mount-Regeln existieren
 
 #### Tests + Telemetrie
-- Plattform-Health-Score (Detection-Erfolgsrate, Login-Status, Update-Verfügbarkeit)
-- Anonyme Nutzungsstatistik pro Plattform (nur lokal, opt-in)
-- E2E-Tests mit gemockten Prozessen
+
+- ✅ Focused Rust-Tests für Client-Klassifikation, Versionsvergleich, Config-Normalisierung und History-Capping
+- ✅ Focused TS-Tests für Client-ID-Normalisierung und Desktop-Fallbacks
+- ✅ Platform-Health-Score in Settings kombiniert Detection-Erfolgsrate, Login-Status und Update-Verfügbarkeit mit read-only Client-Checks
+- ✅ One-Click-Setup-Readiness in Settings bündelt Desktop-Runtime, Installationsziel, Store-Links, Library-Seed, Backup/Restore und Cloud-Account-Evidence als lokalen New-PC-Setup-Tape
+- ✅ `/settings?verify=one-click-setup-e2e-readiness` zeigt lokale Hosted-/Provider-E2E-Gates fuer Hosted Auth, Provider OAuth, Token Replay, Silent Install, Consent/Terms und Rollback Audit mit expliziten No-Claims fuer echte Hosted Auth, OAuth-/Token-Replay, provider-approved Silent Install, Consent/Terms Approval und Rollback/Audit-Proof
+- ✅ `/settings?verify=one-click-setup-rollback-audit-contract` zeigt einen lokalen No-Write-Vertrag fuer Setup-Step-Ledger, Undo-/Cleanup-Order, Partial-Failure-Map und Audit-Envelope ohne Setup-Ausfuehrung, lokale Datei-Write/Delete, Supabase-Write, Audit-Persistenz, Provider-Client-Mutation, Token-/Keychain-Replay oder echten Rollback-Erfolg
+- ✅ Window-Live-Event-Tests decken Game-Runtime-Fensterdaten, Source-Client-`client_window_updated` und Browser-Fallbacks ab
+- ✅ Anonyme Nutzungsstatistik pro Plattform (nur lokal, opt-in): Settings-Panel speichert Zähler ausschließlich in `localStorage` und füllt sie aus Headless-Client-Update-Runs
+- ✅ Deterministische Prozess-Snapshot-Tests decken Client-Namensmatching, PID/Pfad/Uptime und Window-Priorisierung ab
+- ✅ Platform-Auth-Härtung: GOG/EA Tokens bleiben im nativen Secure Store, Settings/Friends/Provider entfernen alte Browser-Token-Kopien, GOG Friends liest den Backend-Token direkt und Epic nutzt nur noch einen nicht-sensitiven Session-Marker im Browser
 
 ---
+
 ## 15. Cross-Platform Achievements
 
 > Ziel: Achievements pro Spielgruppe kombinieren. Wenn ein Spiel auf mehreren Plattformen vorhanden ist, ist die Variante mit den meisten Achievement-Definitionen die Basis; Unlocks, Rarity, Icons und Zusatz-Achievements aus anderen Plattformen werden darauf gemappt.
@@ -98,143 +145,196 @@
 - Zusatz-Achievements aus Nicht-Basisplattformen bleiben erhalten.
 - Steam und Xbox haben echte Sync-Pfade ueber Nutzerkonto/lokale Titelhinweise.
 - GOG, Epic, EA, Ubisoft und Battle.net haben sichtbare Provider-Statuspfade.
-- GOG hat einen Login-basierten Sync ueber die Galaxy-Gameplay-Achievement-Route; der lokale Importer bleibt Fallback.
+- GOG hat einen Login-basierten Sync ueber die Galaxy-Gameplay-Achievement-Route; lokale Galaxy-/Sidecar-Unlocks werden in API-Definitionen zurueckgemerged.
 - Epic versucht Legendary-Login-Metadaten (`legendary info --json`) vor lokalem Import und oeffentlichem Store-Fallback.
+- GOG/EA/Epic Achievement-Verfügbarkeit vertraut nicht mehr auf echte Browser-Token-JSONs; GOG nutzt Cache-/Installationsnachweise, EA lokale Installation/Sidecars und Epic nur Cache bzw. den nicht-sensitiven Session-Marker.
 - Lokaler best-effort Importer fuer JSON-Caches: `achievement-cache/<provider>/<game-id>.json`.
 - Der lokale Importer prueft zusaetzlich bekannte Client-Cache-Wurzeln fuer GOG, Epic, EA, Ubisoft und Battle.net und sucht dort begrenzt nach plausiblen Achievement-/Stats-JSONs.
+- EA/Ubisoft/Battle.net lokale Cache-Shapes: Stats-/Challenge-/Criteria-Felder wie `statName`, `challengeId`, `criteriaId`, `earnedAt`, `completionState`, `badgeUrl` und Progress-Prozentwerte werden fuer best-effort Unlock-Imports gelesen.
 - Sidecar-Import aus Spielordnern: `og-achievements.json`, `achievements.json`, `<provider>-achievements.json` und `.og-launcher/*`.
 - Sidecar-/Scraper-Format dokumentiert in `docs/references/achievement-sidecars.md`.
 - Installierte best-effort Provider versuchen den lokalen Importer auch ohne Login, damit Sidecars nicht uebersehen werden.
 - Epic Public-Fallback: Definitions/Rarity werden best-effort von oeffentlichen Epic Achievement-Seiten gelesen und lokal gecacht, ohne API-Key.
+- GOG lokale Unlock-Overlays: API-Definitionsdaten bleiben primaer, lokale Galaxy-/Sidecar-Felder wie `achievement_key`, `date_unlocked` und `image_url_unlocked` werden gelesen und ueber stabile Source-Achievement-IDs gemerged.
+- Epic lokale Unlock-Overlays: Legendary-/Store-Definitionsdaten bleiben primaer, lokale Epic/EOS-/Sidecar-Unlocks werden danach ueber stabile Source-Achievement-IDs in die Definitionen gemerged.
+- Trusted Achievement-Ingestion: `ingest-achievements` Edge Function schreibt Achievement-Definitionen, neue User-Unlocks, XP/Level und Achievement-Activity via service_role; der Launcher sendet erfolgreiche Provider-Syncs ohne direkte Tabellen-Fallback-Writes und haengt die stabile lokale `launcher_device_id` als Audit-Metadatum an. `providerConfidence: "official"` wird nur fuer offizielle Provider akzeptiert, damit lokale/best-effort Anbieter keine volle XP-Gewichtung behaupten koennen. Playtime-/Session-Fallbacks sind in Production-strict mode per `VITE_OG_TRUSTED_INGESTION_STRICT` blockiert; fokussierte Vitest-Coverage pinnt Production-/Local-Defaults, True-/False-Aliase und Invalid-Value-Fallback auf `MODE`, Deno-Adapter-Coverage pinnt Playtime Auth/Catalog/Session-Conflict/Aggregate/Session-Mutations und Achievement Auth/Catalog/Definition-Upsert/Trusted-Unlock-RPC-Payloads, waehrend ein Migration-Contract-Test die verbleibenden DB-Direct-Write-Ausnahmen fuer `user_game_stats`, `game_sessions` und schmale `activity_feed` Posts pinnt.
+- Remote Achievement-Hydration: `/achievements` liest Supabase-Definitionen/User-Unlocks je echter Provider-Variante zurueck, merged sie vor `groupGames()` in die realen Games und aggregiert erst danach lokal, ohne synthetische `grouped-*` IDs remote zu verwenden.
+- RLS-Haertung: normale authenticated Clients koennen `profiles.profile_xp`/`profile_level`, `user_achievements`, `achievement_progress` und `achievement_unlocked`-Feed-Posts nicht mehr direkt schreiben.
+- Profile-Readonly-Contract: statischer Vitest pinnt, dass der Profile-Client Progression-Tabellen nur liest und der alte Direct-Write-TODO entfernt bleibt.
+- Lokale Cache-Readiness: `/achievements?verify=achievement-cache-readiness` zeigt Cache-Folder-Handoff, Sidecar-Format-Map, lokale Parser-Coverage und Provider-Status-Matrix als deterministische lokale Review-Lanes und ueberspringt Hosted-Hydration in diesem Verify-Modus.
 
-### Offene Tasks
+### Status und offene Tasks
 
-- GOG: lokale Galaxy-Clientdaten zusaetzlich zum Login-Sync nach Achievement-/Stats-Cache untersuchen.
-- Epic: echte lokale Unlocks aus Epic/EOS-Clientdaten finden und mit Legendary-/Store-Definitionen mergen.
-- EA/Ubisoft/Battle.net: konkrete Achievement-Cacheformate je Client identifizieren; Importpfad prueft bereits bekannte lokale Cache-Wurzeln plus begrenzte JSON-Discovery.
-- Remote/Supabase-Sync fuer aggregierte Achievements spaeter nachziehen.
+- GOG: lokale Galaxy-/Sidecar-Unlocks werden mit API-Definitionen gemerged; offen bleibt Live-E2E gegen echte Galaxy-Clientdaten.
+- Epic: lokale Unlocks werden mit Legendary-/Store-Definitionen gemerged; offen bleibt Live-E2E gegen echte Epic/EOS-Clientdaten.
+- EA/Ubisoft/Battle.net: lokale Stats-/Challenge-/Criteria-Cacheformen werden geparst; offen bleibt Live-E2E gegen echte Clientdaten je Anbieter.
+- Achievement Cache Readiness bleibt lokal-only: kein Provider-Sync, keine Hosted-Hydration, keine Supabase-Writes, kein OAuth-/Token-Exchange, kein Live-Unlock-Import, kein Remote-Cache-Job, keine Provider-Credentials und kein offizieller Unlock-Proof.
+- Offen: echte Provider-/Device-Attestation und Hosted-Staging-E2E fuer Achievement-Ingestion/Hydration; `launcher_device_id` ist nur ein auditierbarer lokaler Hinweis, kein Sicherheitsbeweis.
 
 ---
+
 ## 2. Store-Backend Frontend (S3)
 
-> Detaillierter Plan: `docs/plans/03-own-store-backend.md`
-> Bereits fertig: Migration `store_schema` (products, orders, cart_items, licenses, store_reviews, price_history etc.), Types, Supabase-Layer, Stripe-Command, DeveloperPortalPage
+> Quelle: Dieser Abschnitt ist die gepflegte Detailquelle; ein separater Detailplan ist im aktuellen Checkout nicht vorhanden.
+> Bereits fertig: Migration `store_schema` (products, orders, cart_items, licenses, store_reviews, price_history etc.), Types, Supabase-Layer, Stripe-Command, DeveloperPortalPage, StorePage-Datenanbindung, serverseitiger Stripe-Checkout mit Attempt-Idempotenz, Webhook-Fulfillment mit stale Retry-Lease-Replay-Ledger, konflikt-idempotente Lizenz-Ausgabe, echte Stripe-Refund-Ausführung, Invoice-Staging/Sync, Offline-Stripe-Staging-Contract, Store-Edge-Contract-CI, Store-Readiness-Panel und verified Store Reviews
 
-### Offene Tasks
+### Status und offene Tasks
 
 #### StorePage mit echten Daten
 
-Aktuell Mock-Daten → muss auf `listPublishedProducts()` umgestellt werden.
+`StorePage` nutzt `listPublishedProducts()` mit lokalem Preview-Fallback für Offline/Seed-losen Betrieb.
 
-| Ansicht | Beschreibung |
-|---|---|
-| **Home** | Hero-Banner, Featured Sale, Neuerscheinungen |
-| **Durchstöbern** | Filter: "Alle", "Free", "Sale", "Neu", "Top" |
-| **Produktseite** | Cover, Beschreibung, Preis, Reviews, SysReq |
-| **Warenkorb** | Cart-Icon + Badge, Cart-Drawer |
-| **Bestellhistorie** | Käufe, Rechnung, Refund-Button |
+| Ansicht             | Beschreibung                                                                                                         |
+| ------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| **Home**            | Hero-Banner, Featured Sale, Neuerscheinungen                                                                         |
+| **Durchstöbern**    | Filter: "Alle", "Free", "Sale", "Neu", "Top"                                                                         |
+| **Produktseite**    | Cover, Beschreibung, Preis, PriceChart, SysReq, Reviews, Developer-Antworten und Report-Flow vorhanden               |
+| **Warenkorb**       | Cart-Tab, Badge und Cart-Drawer vorhanden                                                                            |
+| **Bestellhistorie** | Käufe/Status, Lizenzprüfung, Invoice-/Tax-Status, Stripe-Sync, Refund-Ausführung und Store-Readiness-Panel vorhanden |
 
 #### Checkout-Frontend
-1. Warenkorb → "Zur Kasse"
-2. Zahlungsmethode (Stripe-Redirect)
-3. Redirect → Bestellbestätigung → Lizenz → Download freigeschaltet
-4. Mock: Direkt `paid`-Status
+
+- ✅ Warenkorb/Buy Now → `stripe-create-checkout` mit extrahierter HTTP-Handler-Coverage fuer CORS/Auth/Body/Product/Ownership/Signing/Free/Paid/Rollback-Pfade plus Adapter-Coverage fuer Supabase/Stripe Query-Shapes, Duplicate-Attempts, Free-Fulfillment, Attach-/Session-/Cart-Fehler und Session-Projektion
+- ✅ Client sendet nur `product_ids`; Preise/Titel werden serverseitig aus `store_products` gelesen
+- ✅ `stripe-webhook` erfüllt `store_orders` nur bei bezahlten Checkout Sessions oder `async_payment_succeeded`, erstellt `store_licenses`, persistiert Stripe-Subtotal/Tax/Total/PaymentIntent, bereinigt den Warenkorb und dedupliziert signierte Events über `store_stripe_webhook_events`; Adapter-Tests pinnen Claim-Leases, Lease-Token-Finalizer, Order-/License-Fulfillment, Invoice-Persistenz und Refund-Ledger/Status; failed/stale-processing Events werden exklusiv neu geleast statt dauerhaft als in-flight Duplicate hängen zu bleiben
+- ✅ Kostenlose Produkte werden ohne Stripe-Redirect direkt fulfilled
+- ✅ Redirect-Bestellbestätigung verarbeitet `session_id`, öffnet Orders und aktualisiert Lizenzen/Downloads
+- ✅ Download-Freischaltung: `store-download-build` Edge Function prüft aktive Lizenz und erstellt kurzlebige Signed URLs für `store-builds`; Adapter-Tests pinnen Auth, Lizenz-/Build-Query-Shapes, Storage-Signed-URL-Delegation und Fehler-Mapping ohne Live-Supabase
+- ✅ `store-order-support` authentifiziert Nutzer, prüft Order-Ownership/Zahlstatus und führt Stripe-Refunds idempotent per PaymentIntent aus; HTTP-Handler-Guards pinnen Auth, Order-Ownership, Invoice-Sync, Refund-Statusbranches und Fehlerpfade ohne Live-Secrets; Adapter-Tests pinnen Order-/Refund-/Invoice-Query-Shapes, Refund-Staging-/Reject-Mutations und Stripe-Refund-Delegation
+- ✅ Store Order Support Contract Evidence: Deno-CI pinnt Request-Parsing, Refund-Reason-Mapping, Stripe-Refund-Idempotency-Payloads, Adapter-Query-Shapes, Refund-Staging-/Reject-Mutations und Store Order Support HTTP-Handler-Guards ohne Live-Secrets
+- ✅ Refund-Status wird über Stripe-Antwort/Webhook in `store_order_refund_requests` gespiegelt; erfolgreiche Refunds setzen Orders auf `refunded` und widerrufen Store-Lizenzen
+- ✅ Offline-Stripe-Staging-Contract umgesetzt: Checkout setzt automatic tax, Tax-ID Collection, Billing Address Collection und Invoice-Creation/Invoice-Data; Checkout-Attempts sind per Client-UUID plus Stripe-Idempotency-Key dedupliziert; Adapter-Tests pinnen Checkout Query-Shapes, Duplicate-Attempt-Reuse, Free-Order-Fulfillment, Attach-/Session-/Cart-Fehler und Session-Projektion; Webhook persistiert Stripe subtotal/tax/total, PaymentIntent und Invoice-Links; Lizenz-Ausgabe akzeptiert parallele Duplicate-Key-Konflikte nur nach erneuter Prüfung aller erwarteten aktiven Lizenzen; Store UI zeigt das Stripe-Staging-Readiness-Panel
+- ✅ Store Edge Contract Evidence: CI fuehrt Deno-2-Tests fuer Stripe-API-Version, Checkout-Tax/Invoice-Parameter, Checkout-Attempt-Idempotenz, Checkout-Adapter-Query-Shapes, Duplicate-Attempt-Reuse, Free-Fulfillment, Attach-/Session-/Cart-Fehler, Session-Projektion, Webhook-Replay-Ledger/stale Retry-Leases, Adapter-Claim/Finalizer, Order-/License-Fulfillment, Invoice-Persistenz, Refund-Ledger/Status, Active-License-Skip-before-Signing, Lizenz-Konflikt-Recovery, Preisdrop-Kandidatenauswahl, Store-Download-Ticket-Request-Parsing, Store-Download-Build HTTP-Handler-Guards und Store-Download-Build Adapter-Query-/Storage-Shapes ohne Live-Secrets aus
+- Offen: Live-Stripe-Staging mit echter Webhook-Signaturzustellung sowie Tax-/Invoice-Konfiguration im Stripe Dashboard prüfen
 
 #### Reviews
-- Nur verifizierte Käufe, 1–5 Sterne, Abuse-Schutz (≥3 Meldungen → ausgeblendet)
-- Spam-Schutz: max. 1 Review/Spiel/Nutzer, Rate-Limit 5/h
-- Developer-Antworten
+
+- ✅ Nur verifizierte Käufe/Lizenzen via Trigger + RLS
+- ✅ 1 Review pro Nutzer/Produkt, 1-5 Sterne, Titel/Text, Rating-Aggregate
+- ✅ Abuse-Schutz: Report-Tabelle/RLS, Rate-Limit 5/h, ≥3 aktive Meldungen blenden Reviews aus Rating/Listings aus
+- ✅ Developer-Antworten: eine Antwort pro Review, Produkt-Developer-RLS, Inline-Anzeige und Editor im Store
 
 #### Wishlist + Preisdrop
-- "+ Zur Wunschliste" Button
-- Edge Function `notify-price-drop` bei Preisänderung
-- Preisverlauf via `price_history` (deployed)
+
+- ✅ Store-Wishlist: `store_wishlist` speichert pro Nutzer `store_products`, RLS ist own-only, `StorePage` lädt/synchronisiert signed-in Remote-Wishlist und behält LocalStorage als Offline-/Anonymous-Fallback
+- ✅ Store-Preisalarme: `store_price_alerts` speichert aktive Zielpreise pro Store-Produkt, `StorePage` synchronisiert Alerts signed-in und zeigt lokale Alerts weiterhin offline an
+- ✅ Preisverlauf via `price_history` im Store-Produktdetail visualisiert
+- ✅ Edge Function `notify-price-drop`: service-role Cron-Endpunkt scannt aktive `store_price_alerts`, erzeugt `user_notifications`, markiert `last_notified_at`, unterstützt Dry-Run/Filter und hat Adapter-Tests fuer Lazy-Secret-Read, Alert-Query-Shapes, Notification-/Alert-Mutations, Evidence-Insert und Supabase-Fehlermapping
+- ✅ Price-Drop-Scheduler-Readiness-Panel in `StorePage`: trennt lokale Offline-Alerts von remote synchronisierten `store_price_alerts`-Cron-Zeilen, zeigt Secret-Gate, lokale Cron-Config, Dry-Run-Payload `{"dryRun":true,"triggerSource":"hosted_deploy_gate"}` und kann frische scheduled `store_price_drop_notification_runs`-Evidence als Hosted-Cron-Nachweis markieren
+- ✅ Store Edge Contract Evidence: `notify-price-drop`-Preisdrop-Logik, exakte Cron-Secret-Header, Lazy-Secret-Read, Dry-Run-Parsing, UUID-Filter, Limit-Clamping, Alert-/Notification-/Evidence-Adapter-Shapes und sanitized Run-Evidence sind im Deno-CI-Testumfang, ohne echte Scheduled-Ausführung als erledigt zu deklarieren
+- ✅ Manueller Hosted-Deploy-Gate (`hosted_deploy_gate` in CI + `scripts/hosted-deploy-gate.mjs`) deployt Functions nur per GitHub Environment und smoket `notify-price-drop` dry-run ohne `user_notifications`-Writes, aber mit `store_price_drop_notification_runs`-Evidence-Pflicht
+- Offen: Hosted Scheduling mit echtem `PRICE_DROP_NOTIFY_SECRET` und Supabase Scheduled Functions bzw. externem Cron
 
 #### Bestellhistorie + Lizenz-Validierung
-- Bestellungen: Datum, Spiel, Preis, Status, Rechnungs-PDF
-- Tauri-Command `validate_license`: Offline-Token 30 Tage, Gerätelimit
+
+- ✅ Bestellungen: Datum/Preis/Status, Line Items, Invoice-/Tax-Status, Download-Entitlement, Stripe-Invoice-Links, Stripe-Staging-Readiness und Refund-Ausführung vorhanden
+- ✅ Tauri-Command `validate_license`: Ed25519 Offline-Token, Public-Key-Verifikation, 30-Tage-Ablauf, Plattform- und Gerätebindung
+- ✅ Checkout/Fulfillment reicht Device-ID durch und stellt mit `OGL_LICENSE_SIGNING_KEY` signierte `OGL1`-Tokens aus; unsigned Fallbacks sind nur per expliziter Staging-Flag erlaubt, als `OGL-STAGING-UNSIGNED-*` gelabelt und nicht offline-valid
 
 ---
+
 ## 3. In-Game Overlay vollständig (S4)
 
-> Detaillierter Plan: `docs/plans/04-in-game-overlay.md`
-> Bereits fertig: Overlay-Fenster mit 4 Tabs (Freunde/Chat/Erfolge/Performance), globaler Hotkey (Shift+F1), Anti-Cheat-Scanning (13 AC), Screenshot-Capture (GDI BitBlt + Persistierung), echte FPS-/GPU-Werte (DXGI + NVML)
+> Quelle: Dieser Abschnitt ist die gepflegte Detailquelle; ein separater Detailplan ist im aktuellen Checkout nicht vorhanden.
+> Bereits fertig: Overlay-Fenster mit 4 Tabs (Freunde/Chat/Erfolge/Performance), globaler Hotkey (Default Shift+F1, lokal konfigurierbar), Anti-Cheat-Scanning (13 AC), Screenshot-Capture (GDI BitBlt + Persistierung), echte FPS-/GPU-Werte (DXGI + NVML)
 
 ### Bereits implementiert
 
 #### Overlay-Fenster & Hotkey
+
 - ✅ `toggle_in_game_overlay` erzeugt `transparent: true`, `always_on_top: true`, `decorations: false`, `skip_taskbar: true`
 - ✅ Route `/overlay` mit vollständiger `OverlayPage.tsx` (4 Tabs)
-- ✅ `Shift+F1` via `tauri-plugin-global-shortcut` registriert
-- Fullscreen: Nicht nutzbar → Toast-Notifications als Fallback
+- ✅ `Shift+F1` default via `tauri-plugin-global-shortcut` registriert
+- ✅ Overlay Settings speichern Hotkey, Position und Opacity lokal in `overlay-settings.json`; `save_overlay_settings` registriert geänderte Hotkeys sofort neu
+- ✅ Fullscreen-/AC-Fallback-Copy: blockierende Anti-Cheat-Prozesse zeigen ein Safety-Fallback-Deck mit Back-to-Game, FPS-HUD und Screenshot-Aktionen; echter injected Fullscreen-Overlay bleibt Research-Track
+- ✅ `/settings/performance?verify=overlay-fullscreen-anti-cheat-readiness` zeigt ein lokales Research-Packet fuer Fullscreen-Modi, Overlay-Settings und Anti-Cheat-Fallback-UX ohne Fullscreen-Injection, Anti-Cheat-Bypass, Kernel-/Driver-Install, Protected-Process-Attach, Game-Capture-Proof, Compatibility-Certification, Live-Title-Validation, External-Overlay-Window-Proof, E2E-Success-Claim oder echten Game-Process-Zugriff
 
 #### Anti-Cheat-Detection
+
 - ✅ `anti_cheat.rs` scannt Prozesse auf Vanguard, FACEIT, BattlEye, EAC, ESEA, PunkBuster, XignCode, GameGuard, Arkos, Mihoyo Protect u.a.
 - ✅ `is_overlay_blocked_by_anti_cheat()` als separater Command
-- ✅ OverlayPage zeigt rote (blockiert) / gelbe (AC erkannt) Banner
+- ✅ OverlayPage zeigt rote (blockiert) / gelbe (AC erkannt) Banner und bei blockierenden Prozessen ein Safety-Fallback-Deck statt einer falschen Sicherheitszusage
 
 #### Overlay-UI (4 vollständige Tabs)
+
 - **Freunde:** `getVisiblePresence` + `subscribeToPresenceChanges`, Online-Status, aktuelles Spiel
 - **Chat:** Gruppenchats, `subscribeToGroupMessages`, Nachrichten senden
 - **Erfolge:** Installierte Spiele mit Achievement-Progress-Bar
-- **Performance:** CPU%, RAM MB, FPS (DXGI Frame-Pacing), Frame-Time, SVG-Sparkline, Uptime
+- **Performance:** CPU%, RAM MB, FPS (DXGI Frame-Pacing), Frame-Time, 4 Recharts-LineCharts, Uptime
 
 #### Echte FPS/GPU-Werte
+
 - ✅ FPS via `report_frame_rendered` in `perf_monitor.rs:33-55` (DXGI Frame-Pacing)
 - ✅ GPU via NVML in `perf_monitor.rs:104-119` (Windows)
 - ✅ `FpsHudPage` zeigt Live-Werte
 
 #### Screenshot-Capture
+
 - ✅ Windows GDI `BitBlt` (kein DXGI)
 - ✅ Persistiert in `AppData\OG-Launcher\screenshots\ogl_*.jpg` (`overlay.rs:270-280`)
 
-### Offene Tasks
+### Status und offene Tasks
 
 #### Recharts statt SVG-Sparkline
-- Custom SVG-Sparkline funktioniert (`OverlayPage.tsx:1312`) → 4 Recharts `<LineChart>` mit 60 Samples
+
+- ✅ 4 kompakte Recharts `<LineChart>` fuer CPU, GPU, FPS und Frame-Time mit 60 Samples
 
 ---
+
 ## 4. Performance-Monitor Frontend (S5)
 
-> Detaillierter Plan: `docs/plans/05-performance-monitor.md`
-> Bereits fertig: Migration `performance_metrics`, `perf_monitor.rs` (CPU+RAM+FPS+NVML-GPU), Types, Overlay-PerfTab mit echten Metriken + SVG-Sparkline
+> Quelle: Dieser Abschnitt ist die gepflegte Detailquelle; ein separater Detailplan ist im aktuellen Checkout nicht vorhanden.
+> Bereits fertig: Migration `performance_metrics`, `perf_monitor.rs` (CPU+RAM+FPS+NVML-GPU), Types, Overlay-PerfTab mit echten Metriken + Recharts, Performance-History-Route mit persistierten Samples und Session-Aggregates
 
 ### Bereits implementiert
 
 #### PerfMonitorTab im Overlay
-- ✅ `poll_performance_metrics` pollt CPU%, RAM MB, FPS, Frame-Time, GPU und Uptime (alle 2s im Overlay)
+
+- ✅ `poll_performance_metrics` pollt CPU%, RAM MB, FPS, Frame-Time, GPU und Uptime mit 1Hz bei aktivem Library-Spielkontext; Standalone/Idle-Overlay zeigt nur lokale Preview und startet kein natives Polling
 - ✅ 4 MetricCards in 2×2 Grid: CPU, RAM, FPS, Frame
-- ✅ SVG-Sparkline für CPU-Verlauf (30 Samples)
+- ✅ 4 Recharts-LineCharts fuer CPU, GPU, FPS und Frame-Time (60 Samples)
 - ✅ FPS via DXGI Frame-Pacing, GPU via NVML (Windows)
 
-### Offene Tasks
+### Status und offene Tasks
 
 #### PerfHistoryPage in Settings
-- Route `/settings/performance` fehlt komplett (kein Eintrag in `router.tsx:90-122`)
-- Vergangene Sessions: Dauer, Avg-FPS, Peak-RAM
-- Recharts-Charts über Zeit
-- Filter: 7 Tage / 30 Tage / Alle
 
-#### ActivitySection ist Dead-Code
-- `launcher/src/components/settings/ActivitySection.tsx` (~412 LOC, Recharts BarChart) ist gebaut, wird aber **nirgends importiert**.
-- Aktion: Entweder in SettingsPage mounten oder löschen.
+- ✅ Route `/settings/performance`
+- ✅ Filter: Tag / Woche / Monat / Jahr / Alle
+- ✅ Chart/Tabelle für persistierte `performance_snapshots`
+- ✅ Sidebar fuer `performance_sessions` mit Avg-FPS und Peak-RAM
+- ✅ Spiel-Filter, Auto/Stunde/Tag/Woche/Monat-Buckets, Detailtabelle und Spielzeit-/Performance-Balken
+- ✅ Overlay-Samples nutzen den aktiven Launch-Kontext, wenn ein Spiel aus der Library gestartet wurde
+- ✅ Standalone Overlay-Sessions ohne aktiven Library-Launch werden explizit als `overlay-runtime` attributiert und nicht mehr als unaufgeloester Spiel-Fallback behandelt
+- ✅ `/settings/performance?verify=overlay-fullscreen-anti-cheat-readiness` zeigt lokale Fullscreen-/Anti-Cheat-Research-Gates neben der Performance-History ohne native Anti-Cheat-Detection oder Overlay-Fenster-Start
+- Offen: Live-/externes Overlay-E2E fuer die Standalone-Attribution
+
+#### ActivitySection in Settings
+
+- ✅ `ActivitySection` ist in `SettingsPage` gemountet und zeigt Spielzeit-/Session-Auswertung.
+- ✅ Detailroute mit Datumsfiltern und Performance-Historie vorhanden.
 
 #### Recharts statt SVG-Sparkline
-- Custom SVG funktioniert → 4 Recharts `<LineChart>` mit 60 Samples
+
+- ✅ 4 Recharts `<LineChart>` mit 60 Samples im Overlay
 
 #### Persistierung
-- Frontend sammelt 300 Samples (5 min)
-- Bei Spiel-Ende: Bulk-Insert via `savePerfSession()`
+
+- ✅ Overlay persistiert throttled Live-Samples in `performance_snapshots`
+- ✅ Launches schreiben aktiven Spielkontext für Performance-Samples
+- ✅ Overlay puffert bis zu 300 Performance-Samples und schreibt bei Overlay-Ende ein Session-Aggregate
 
 ---
+
 ## 5. Cloud-Save E2E Integration (S6)
 
-> Detaillierter Plan: `docs/plans/06-cloud-save-e2e-encryption.md`
-> Bereits fertig: Crypto (aes-gcm, argon2), cloud_crypto.rs, CloudSavesSettings, CloudSavesPanel, useCloudAutoSync, Supabase-Layer
+> Quelle: Dieser Abschnitt ist die gepflegte Detailquelle; ein separater Detailplan ist im aktuellen Checkout nicht vorhanden.
+> Bereits fertig: Crypto (aes-gcm, argon2), cloud_crypto.rs, CloudSavesSettings, CloudSavesPanel, Sync-Statusdetails, useCloudAutoSync, Supabase-Layer
 
 ### Bereits implementiert
 
 #### Crypto (Rust)
+
 - ✅ `encrypt_file()`: AES-256-GCM + Argon2id Key-Derivation
 - ✅ `decrypt_file()`: Entschlüsselung mit Meta-Validierung
 - ✅ `get_or_create_user_keyring_key()`: 32-Byte Master-Key im OS-Keychain
@@ -242,111 +342,171 @@ Aktuell Mock-Daten → muss auf `listPublishedProducts()` umgestellt werden.
 - ✅ `SaveFileMeta` mit Version, Nonce, Salt, SHA256
 
 #### Integration in Save-Sync-Flow
+
 - ✅ `useCloudAutoSync.ts` Hook: Auto-Sync bei Spiel-Start (60s Lock)
 - ✅ `CloudSavesPanel.tsx` in GameDetails: Upload, Download, Restore, Sync-Modus
 - ✅ `CloudSavesSettings.tsx`: Key-Status-Anzeige, Key-Erzeugung/Rotation, Speicherplatz
 - ✅ Supabase-Layer: `cloud-saves.ts` mit CRUD für Save-Sets und Files
-- Format: `${user_id}/${game_id}/${save_set_id}/${filename}.enc`
+- ✅ Supabase-Dateimetadaten: `upsertCloudSaveFile` und `deleteCloudSaveFileByPath` halten Storage-Objektpfad, Checksumme, Größe und Sync-Zeitpunkte am `(save_set_id, local_path)`-Constraint fest.
+- Storage-Objektformat: `${user_id}/${game_id}/${label_root}/${relative_save_path}.enc` plus `${user_id}/${game_id}/${label_root}/${relative_save_path}.meta.json`; einzelne konfigurierte Save-Dateien nutzen einen non-empty `label_root` als relativen Key. Save-Sets bleiben Metadaten im Supabase-Layer.
+- ✅ Browser-/Non-Tauri-Guards blocken Cloud-Save Upload, Download, Restore und Conflict Check vor `invoke` oder Supabase-Config-Load.
+- ✅ Lokaler Cross-Store-Save-Sync-Planer in GameDetails: bewertet Varianten derselben Spielgruppe und lokale Save-Metadaten als Review-Plan; die Provider-Save-Mapping-Fixture-Schicht reviewed Steam/GOG/Epic externe IDs, Install-Pfade, relative Pfadregeln, Save-Root-Shapes und Save-File-Counts lokal und zeigt daraus abgeleitete Pfadregeln im Cloud Saves Panel nur als lokale Vorschlaege/Metadata-Provenance; blockt doppelte `targetRelativePath`-Mappings vor Native-Apply-Proof; automatische Path-Map-Apply-Request-Templates wandeln reviewed relative Save-Aktionen in `cross_store_save_native_copy_apply`-Payloads mit `accepted=false`, Consent-Root- und Action-Count-Grenzen um; Dry-Run-Audit plus consent-gated Desktop-Native-Copy-/Rollback-Proof, credential-freier lokaler Sandbox-E2E-Proof und opt-in `prove_cross_store_save_supabase_keychain_staging` fuer redigierte Supabase/Keychain-Staging-Evidence mit user-scoped `game-saves` Upload/List/Download/Decrypt/Hash/Cleanup; keine Provider-API-Validierung, keine Provider-Cloud-Aktion, kein Live-Supabase/Keychain-E2E und keine echte Migration.
 
 #### SettingsPage E2E-Info
+
 - ✅ CloudSavesSettings mit Key-Status, Usage und Erklärung
 
-### Offene Tasks
+### Status und offene Tasks
 
 #### Konflikt-UI
-- Aktuell: Lokal überschreibt Cloud oder umgekehrt
-- Nötig: Vergleichs-UI mit Date-Diffs, manuelle Auswahl "Lokal vs. Cloud"
+
+- ✅ Read-only Konfliktprüfung vergleicht lokale Save-Dateien mit Cloud-Metadaten.
+- ✅ `CloudSavesPanel` zeigt Badge/Tabelle für Matching, Local Missing, Cloud Missing und mögliche Konflikte.
+- ✅ Manuelle "Lokal gewinnt" / "Cloud gewinnt"-Auswahl sperrt Upload/Restore bis zur passenden Bestätigung.
+- ✅ Native gemischte Per-File-Anwendung: pro Datei Local/Cloud wählen, lokale/cloudseitige Deletes und selektive Upload/Restore-Ausführung
 
 #### Synchronisierungs-Status
-- Aktuell: Nur Success/Error-Toast
-- Nötig: Letzter Sync-Zeitpunkt, offene Änderungen, Konfliktzähler
+
+- ✅ Statusdetails mit letztem Sync-Zeitpunkt, pending Upload/Download, Konfliktzähler und Entscheidungshinweisen
+- Offen: Live-Lauf des Supabase/Keychain-Staging-Proofs gegen echte Buckets/Credentials, echte Cross-Store-Save-Erkennung, provider-approved Pfad-/ID-Validierung, breitere reale Konflikt-E2E und Provider-Cloud-Import/Export
 
 ---
+
 ## 6. Categories/Tags + Screenshots + Price-Tracker UIs (S8)
 
-> Detaillierter Plan: `docs/plans/08-categories-tags-news-screenshots-prices.md`
+> Quelle: Dieser Abschnitt ist die gepflegte Detailquelle; ein separater Detailplan ist im aktuellen Checkout nicht vorhanden.
 > Bereits fertig: Migration (categories, news_posts, game_screenshots, price_history), Supabase-Layer, Types, NewsPage
 
 ### Offene Tasks
 
 #### Categories/Tags + Library-Filter
-- **CategoryChips:** Teal Pills, Klick → Library-Filter
-- **Sidebar:** Checkbox-Liste aller Categories, kombinierbar mit Suche
+
+- ✅ **CategoryChips:** Retro-Manga-Chips in GameDetails, Klick → vorhandene Library-Filter
+- ✅ **Sidebar:** Checkbox-Liste aller Categories/Tags/Product-Typen, kombinierbar mit Suche
 
 #### Screenshot-Galerie
-- Grid (3 Spalten), Klick → Lightbox
-- "+ Upload" (Supabase Storage)
-- Like-Button, Privacy-Stufen
+
+- ✅ Grid (3 Spalten), Klick → Lightbox
+- ✅ Lokale Overlay-Screenshots, Cloud-Screenshots und Game-Metadaten-Screenshots werden zusammengeführt
+- ✅ "+ Upload" (Supabase Storage)
+- ✅ Like-Button, Privacy-Stufen und Lightbox-Steuerung
+- ✅ Privacy gehärtet: `screenshots` Storage-Bucket privat, sichtbarkeitsbasierte Storage-Policy und signierte Anzeige-URLs
+- ✅ Public-Screenshot-Feed-Staging: `/community` zeigt lokale Public-Screenshot-Feed-Fixtures mit Privacy-Gates ohne Supabase-Read/Sign-URL/Ranking-Sync; `/community?verify=public-screenshot-feed` zeigt public-only Supabase-Readiness fuer sichtbare Screenshot-Metadaten, scoped Signed-Media-Review, Like-State-Staging, authentifizierte Heart-Button-Like-Aktionen, deterministische Fallback-Karten, Privacy-Gates und no-private-embed/no-hosted-moderation/no-production-ranking Guards
+- Offen: Community-weite Hosted-Rollout-Verifikation gegen echte Profil-/Community-Feeds, Moderation und Production-Ranking
 
 #### Price-Tracker-UI
-- **PriceChart:** Recharts `<LineChart>` aus `price_history`
-- "Niedrigster Preis"-Badge, "+ Wishlist"-Button
-- Edge Function `notify-price-drop`
+
+- ✅ **PriceChart:** Recharts `<LineChart>` aus `price_history` im Store-Produktdetail
+- ✅ "Niedrigster Preis"-Badge
+- ✅ Store-Wishlist-Button und Store-Preisalarm-Button speichern lokal und signed-in in `store_wishlist`/`store_price_alerts`
+- ✅ Edge Function `notify-price-drop` implementiert lokale Kandidatenermittlung, In-App-Notification-Erstellung und sanitized `store_price_drop_notification_runs`-Evidence mit Adapter-Coverage fuer Query-/Mutation-Shapes und Fehlerpfade
+- ✅ Store Edge Contract Evidence: Deno-CI prueft Store-Checkout-Parameter, Webhook-Retry-Leases, Lease-Token-Finalizer, Active-License-Skip-before-Signing, Lizenz-Konflikt-Recovery, Price-Drop-Cron-Request/Secret-Vertraege, Preisdrop-Kandidaten und exakte Store-Build-Ticket-Requests ohne Live-Secrets
+- ✅ StorePage zeigt Price-Drop-Scheduler-Readiness mit lokalen Alerts, remote synchronisierten Cron-Zeilen, Dry-Run-Vertrag, latest `store_price_drop_notification_runs` und Hosted-Cron-Warnung bzw. Evidence-Pass; `/settings?verify=hosted-cron-evidence-summary` vergleicht Price-Drop, Account-Deletion und Presence als lokalen No-Write-Scheduler-Gate
+- Offen: Hosted Scheduling mit echtem `PRICE_DROP_NOTIFY_SECRET` und Supabase Scheduled Functions bzw. externem Cron
 
 ---
+
 ## 8. Mod-Management
 
-> Detaillierter Plan: `docs/plans/09-mod-management.md`
+> Quelle: Dieser Abschnitt ist die gepflegte Detailquelle; ein separater Detailplan ist im aktuellen Checkout nicht vorhanden.
 > Bereits fertig: DB-Migrationen (mods_schema, mod_catalog_user_installs), Types, Supabase-Layer, Rust-Commands, ModsPage, ModInstallStore, Mod-Install-Engine (URL/Archive/Folder)
 
 ### Bereits implementiert
 
 #### Rust-Backend
+
 - ✅ `mod_install.rs`: Install, Enable, Disable, Uninstall, Queue-Management, Pause/Cancel
 - ✅ `install_mod_from_url()`: Download + SHA256 + Extract + Manifest
-- ✅ `scan_mod_directory()`: Scannt Mod-Ordner nach installierten Mods
 - ✅ `scan_game_mods()`: Erkennt installierte Mods pro Spiel
-- ✅ Provider: `DirectUrl`, `LocalArchive`, `LocalFolder` (SteamWorkshop, Nexus, Modio, CurseForge als enum vorhanden)
-- ✅ `set_mod_provider_secret()`: API-Keys für Nexus/CurseForge
+- ✅ Provider: `DirectUrl`, `LocalArchive`, `LocalFolder`, `SteamWorkshop`, `Modio`, `CurseForge`
+- ✅ `set_mod_provider_secret()`: API-Keys für mod.io/CurseForge
+- ✅ `search_native_mods()`: mod.io/CurseForge API-Suche mit OS-Keychain-Keys und normalisiertem Ergebnisformat
 
 #### Datenbank
+
 - ✅ Migration `mods_schema.sql`: managed_mods, mod_profiles, mod_catalog, mod_catalog_versions
 - ✅ Migration `mod_catalog_user_installs.sql`: mod_catalog_user_installs, mod_catalog_dependencies
 
 #### Frontend (ModsPage)
+
 - ✅ Vollständige `ModsPage.tsx` mit Provider-Filter, Suche, Game-Filter
 - ✅ Install-Queue-Ansicht mit Fortschritt / Pause / Cancel
 - ✅ Enable/Disable/Uninstall pro Mod
 - ✅ API-Key-Eingabe pro Provider
+- ✅ Native Provider Search für mod.io/CurseForge mit direkter Installation, wenn Provider-Download-URL vorhanden ist
+- ✅ Lokale Provider-Game-ID-Hints: mod.io bevorzugt Library-/Title-Slugs, CurseForge zeigt nur explizite numerische IDs als nutzbar und Steam AppIDs als Referenz
+- ✅ Persistente lokale Provider-ID-Mappings: manuell gespeicherte mod.io/CurseForge Game-IDs werden pro lokalem Spiel/Provider in LocalStorage bevorzugt, CurseForge nur numerisch
+- ✅ Shared Provider-Katalog-Mapping: `mod_provider_game_mappings` speichert aktive mod.io/CurseForge Game-ID-Kandidaten mit RLS, Confidence/Source/Verified-Metadaten; Mods Browse nutzt shared Mappings vor Heuristik-Hints und kann lokale Mappings in den shared Catalog syncen
+- ✅ Provider-API-Mapping-Promotion: echte nicht-leere mod.io/CurseForge API-Treffer speichern die normalisierte Provider-Game-ID automatisch lokal und promoten sie als `provider_api`/`high` mit Evidence-Metadaten in den Shared Catalog, ohne trusted `verified_at` zu setzen
+- ✅ CurseForge/Overwolf-Handoff: Native Search Results ohne direkten Download tragen eine Provider-App-URL, `start_mod_install` delegiert per CurseForge-Projektseite und die UI zeigt `Overwolf`/`Open App`
+- ✅ `/mods?verify=provider-api-key-staging` zeigt ein lokales Provider-API-Key-Staging-Readiness-Panel fuer Keychain, Provider-ID-Mapping, mod.io/CurseForge-Key-Gates, Rate Limits, Shared Catalog, Overwolf-Handoff, ein redigiertes single-result Request-Paket und lokale mod.io/CurseForge Response-Shape-Review-Fixtures mit Safe Fields, blockierten Direct-Archive-/CDN-Feldern, Handoff-Policy und Redaction-Grenzen; explizite No-Claims fuer echte Provider-Keys im Verify-Mode, Live API Calls, Hosted Moderation/Downloads, CurseForge-Direct-Downloads und Supabase-Key-Speicherung bleiben sichtbar
+- ✅ `run_mod_provider_staging_probe()`: consented Desktop-Staging-Probe fuer mod.io/CurseForge mit OS-Keychain-Key, pageSize=1, redigierter Request-Telemetrie, API-Key-/Error-Redaction und nur Ergebnis-/Direct-URL-/Provider-App-Handoff-Zaehlern ohne Rueckgabe von Download-URLs
 - ✅ `modInstallStore.ts` (Zustand): Queue-Status, Progress
 
 ### Offene Tasks
 
 #### Steam Workshop
+
 - ✅ `extract_steam_workshop_id` + `install_path.join("workshop")` in `mod_install.rs:1046-1083` ist real
 - ✅ Workshop-Items werden mit korrektem Pfad und ID-Extraction installiert
 
 #### CurseForge / Mod.io
-- Overwolf-Integration (CurseForge)
-- Offene API (Mod.io)
+
+- ✅ Native API-Suche für mod.io und CurseForge
+- ✅ Provider-ID-Hints aus lokaler Library fuer mod.io/CurseForge im Browse-Tab
+- ✅ Persistente lokale Provider-ID-Mappings aus dem Browse-Tab
+- ✅ Shared Provider-Katalog-Mapping aus lokalen Library-IDs zu mod.io/CurseForge Game-IDs mit Sync-UI im Browse-Tab
+- ✅ Provider-API-Mapping-Promotion aus echten nativen Suchtreffern mit `provider_api`/`high` Shared-Catalog-Evidence
+- ✅ CurseForge/Overwolf-Handoff-Fallback fuer Ergebnisse ohne direkten Download
+- Offen: reale API-Key-Stagingläufe mit echten mod.io/CurseForge-Keys und Live-Providerantworten, Terms-/Rate-Limit-Freigabe, gepruefte Provider-Telemetrie und Hosted Moderation/Download-Rollout
 
 ---
 
 ## 9. DSGVO/Privacy
 
-> Bereits fertig: PrivacySettingsPage.tsx, ProfilePrivacyForm.tsx, Supabase-Layer (profile.ts)
-> Offen: Datenexport (JSON), Account-Löschung (30-Tage-Wartefrist)
+> Bereits fertig: PrivacySettingsPage.tsx, ProfilePrivacyForm.tsx, Public-Profile-Privacy-Guard mit Client-Redaktion und RLS-Lane-Contract, Supabase-Layer (profile.ts), AccountDataPrivacyPanel, AccountDataPrivacyPanel-Readiness, JSON-Export Edge Function, Shared-Privacy-Runtime-Coverage fuer Auth/Admin-Client-Boundaries, Export-Coverage-Contract fuer neuere User-Daten, Export-Adapter-Coverage fuer Auth-/Read-Query-Shapes und Missing-Table-Warnings, 30-Tage-Löschanfrage/Storno Edge Functions mit Request-Adapter-Coverage fuer Auth, Active-Lookup, Create-Mutation und `23505`-Preservation sowie Cancel-Adapter-Coverage fuer Auth, Pending-Lookup und pending-only Mutation, trusted process-account-deletions Edge Function mit Processor-Adapter-Coverage fuer Due-Request-Query, Processing-Claim, Audit-Mutations, Auth-Delete, Evidence-Insert und rekursive Storage-Cleanup-Pfade, lokaler Dry-Run-Nachweis, Secret-/Limit-/Dry-Run-Contract, extrahierte HTTP-Handler-Coverage und sanitized Cron-Dry-Run-Packet
 
 ### Bereits implementiert
 
 #### Privacy-Einstellungen
+
 - ✅ PrivacySettingsPage.tsx mit vollständigem ProfilePrivacyForm.tsx
 - ✅ Profil-Sichtbarkeit: Profil, Bibliothek, Achievements, Spielaktivitäten, Online-Status, Kommentare, Wunschliste
 - ✅ Werte: Öffentlich / Nur Freunde / Privat
 - ✅ Speicherung via `updateMyProfilePrivacy()` in Supabase
+- ✅ Public-Profile-Privacy-Guard: `/u/localprivacy?verify=profile-privacy-guard`, redigierte Public-Viewer-Lanes, guarded Showcase-Placeholder, `lastSeenAt`-Redaktion und RLS-Contract fuer Parent-Profil + Lane-Sichtbarkeit
+- ✅ Social-Link-Visibility-Guard: Profil-Social-Links haben per-link `public`/`friends_only`/`private` Sichtbarkeit, Public-Viewer-Filter im Client, Editor-Visibility-Auswahl und RLS-Contract fuer Parent-Profil + Link-Sichtbarkeit
 
-### Offene Tasks
+### Status und offene Tasks
 
 #### Datenexport (JSON)
-- SettingsPage → "Meine Daten exportieren"
-- Inhalt: Profile, Freunde, Spielzeit, Achievements, Bestellungen
-- `exportUserData(userId) → Blob`
+
+- ✅ Settings/Privacy → JSON exportieren
+- ✅ JSON-Export-Coverage: `export-user-data` liest neuere user-scoped Store-, Remote-Companion-, Performance-, Local-Entity-, Community-Artwork-, Controller-Layout- und Share-Token-Daten mit Missing-Table-Warnings fuer ältere Staging-DBs; Deno-Adaptertests pinnen Auth-Bridge, Equality-/In-/Or-Read-Query-Shapes, leere Dependent-Read-Skips, Missing-Relation-Warnings und nicht-optionale Supabase-Fehler
+- ✅ Shared-Privacy-Runtime-Coverage: Deno-CI pinnt required Supabase Env, Service-Role-Admin-Client, Bearer-Auth-Bridge, Anon-Key-Blocker und invalid-session Mapping ohne Live-Secrets
+- ✅ Inhalt: Auth-Metadaten, Profile, Freunde, Spielzeit, Achievements, Bestellungen, Store-Lizenzen, Mods, Family, Presence/Activity soweit Tabellen vorhanden
+- ✅ Family Sharing bleibt im lokalen Launcher nutzbar, wenn Supabase nicht konfiguriert ist: `/family` kann browser-lokale Relays erstellen, seeded Invite-Codes joinen, aktive Mitgliedschaft persistieren und die Retro-Manga-Launcher-Panels ohne Hosted-Erfolgsclaim anzeigen
+- ✅ Export toleriert optional fehlende Tabellen mit Warnungen
 
 #### Account-Löschung
-- 30-Tage-Wartefrist (Reaktivierung möglich)
-- Danach: Hard Delete aller User-Daten
+
+- ✅ 30-Tage-Wartefrist als `account_deletion_requests`
+- ✅ Storno für pending Requests
+- ✅ Account-Deletion-Request/Cancel-Contract: Deno-CI pinnt Reason-Normalisierung, 1000-Zeichen-Limit, idempotente Pending-Request-Erkennung, Request-Adapter-Auth, Active-Lookup-Query, owner-scoped Create-Mutation, `23505`-Fehlerobjekt-Preservation, Cancel-Filter auf `id + user_id + pending`, Cancel-Adapter-Auth, Pending-Lookup-Query und pending-only Cancel-Mutation inklusive Fehlerdurchreichung
+- ✅ Trusted Processor löscht bekannte User-Storage-Prefixes, ruft Auth Admin Delete auf und markiert Fehler als `failed`
+- ✅ Processor-Dry-Run: `process-account-deletions` akzeptiert secret-gated `dry_run`, listet fällige Requests/Storage-Buckets und führt keine Storage- oder Auth-Deletes aus
+- ✅ Processor-HTTP-Handler: Deno-CI pinnt CORS/Method-Guards ohne Env, Secret-vor-Body/DB, malformed JSON Default, Dry-Run Evidence, Claim-Skip, Completed, Delete-Failure und Audit-Failure-Pfade ohne Live-Supabase
+- ✅ Processor-Adapter-CI: Deno-CI pinnt Due-Request-Query, Processing-Claim, Processing-only Audit-Mutations, Auth-Admin-Delete-Delegation, Evidence-Insert, rekursive Storage-Objektlöschung und Missing-Bucket-Handling ohne Live-Supabase
+- ✅ Processor-Contract-CI: Deno-Tests decken Secret-Header/Bearer, Limit-Clamping, non-destructive Dry-Run-Antworten und `game-artwork` Storage-Cleanup-Coverage ab
+- ✅ AccountDataPrivacyPanel zeigt Prozessor-Readiness, lokalen Dry-Run-Nachweis, Secret-/Cron-Status, sanitized `dry_run` Cron-Packet mit redacted Secret-Headers und verbleibende Hosted-Deployment-Blocker; `/settings/privacy?verify=deletion-processor-cron-dry-run-packet` erzwingt diesen lokalen Evidence-State ohne Supabase-Secrets
+- ✅ `/settings?verify=hosted-cron-evidence-summary` zeigt die Account-Deletion-Scheduler-Lane neben Price-Drop und Presence als lokalen No-Write-Gate, bei dem stale/missing/dry-run Rows nicht als Live-Cron-Proof gelten
+- ✅ Screenshot-Nachweis: `docs/verification/screenshots/privacy-deletion-processor-readiness.png`
+- ✅ Screenshot-Nachweis: `docs/verification/screenshots/privacy-deletion-processor-cron-dry-run-packet.png`
+- ✅ Manueller Hosted-Deploy-Gate (`docs/runbooks/hosted-deploy-gate.md`) enthält Deployment-Preflight, Function deploy plan und dry-run Smoke fuer `process-account-deletions`, ohne Accounts oder Storage zu löschen
+- Offen: Hosted Cron/Supabase Scheduled Deployment mit realem `ACCOUNT_DELETION_PROCESSOR_SECRET` und Staging-Verifikation gegen echte Supabase-Instanz
 
 #### Keine Tracking-Cookies
+
 - Launcher setzt keine Cookies
 - Analytics opt-in, keine Third-Party-Tracker
 
@@ -359,40 +519,67 @@ Aktuell Mock-Daten → muss auf `listPublishedProducts()` umgestellt werden.
 ### Bereits implementiert
 
 #### Supabase-Layer
+
 - ✅ `setLauncherPresence()`: Upsert mit customStatus, currentGameId, currentGameTitle
 - ✅ `getVisiblePresence()`: Sichtbare Presences abrufen
 - ✅ `subscribeToPresenceChanges()`: Echtzeit-Updates via Supabase Realtime
 - ✅ `user_presence` Tabelle mit Realtime Publication
 - ✅ Overlay Friends Tab: Zeigt Online-Status und aktuelles Spiel
+- ✅ Plattform-Felder (`platform`, `platform_source`, `platform_game_id`, `platform_last_polled_at`) mit Fallback fuer alte Schemas
+- ✅ FriendsList und ActivityFeed zeigen Plattform-/Source-Badges
+- ✅ Friend-Dedup-Merge-Group-Contract: Suggestion-Acceptance nutzt vorhandene Ziel-`merge_group_id`, finaler Accepted-Status bleibt user-scoped, `og` ist in `platform_accounts`/`friend_links` erlaubt, und Auto-Match-Propagation ist per Owner + Plattform + Platform-Friend-ID begrenzt
 
 ### Offene Tasks
 
 #### Plattform-Polling
-- Polling: 60s pro Plattform (Steam/Epic/Xbox API)
-- Edge Function: Plattform-Polling mit Batch-Update
+
+- ✅ Edge Function `poll-platform-presence`: 60s Default-Cadence, Batch-Update, Steam-Web-API, Provider-Bridge-Fallbacks und Provider-Client-/Adapter-Coverage fuer Secret-/Runtime-Wiring, Platform-Account-/Existing-Presence-Queries, Cache-Updates, Presence-/Activity-/Evidence-Mutations, Steam HTTP, Bridge HTTP, Provider-Errors und Rate-Limits
+- ✅ `presence_poll_runs` speichert service-role-geschriebene, client-lesbare Poll-Run-Evidence mit aggregierten Zaehlern, Trigger-Source, Plattform-/Status-Summaries und ohne Account-IDs, User-IDs, Tokens oder Spieltitel
+- ✅ Deploy-/Secret-Runbook in README fuer `PRESENCE_POLL_SECRET` und `poll-platform-presence`
+- ✅ Settings-Readiness-Panel zeigt Supabase-Client, Realtime-Vertrag, Polling-Function, Secret-Gate, client-lesbare `presencePollCache`-/`platform_last_polled_at`-Evidenz, neueste `presence_poll_runs`-Scheduler-Evidence, Trusted-Dry-Run-Review-Pakete, Hosted-Cron und Provider-Bridge-Abdeckung, ohne client-writable Evidence oder Dry-Run-Pakete als Hosted-Writeback zu werten
+- ✅ `/settings?verify=presence-evidence` zeigt ein Hosted-Cron-Staging-Paket fuer `hosted_deploy_gate`, `hosted-staging`, `poll-platform-presence` Dry-Run-Smoke, User-Daten-No-Write-Assertions, `presence_poll_runs`-Evidence-Pflicht, Scheduler-Handoff-Body und Runbook-Link, ohne eine echte Scheduled-Run-Ausfuehrung oder Provider-Ausfuehrung zu claimen
+- ✅ `/settings?verify=hosted-cron-evidence-summary` fasst Presence, Price-Drop und Account-Deletion als lokalen Scheduler-Evidence-Gate zusammen und blockiert fehlende, stale oder dry-run Rows ohne Secret-Material
+- ✅ `/settings?verify=presence-evidence` zeigt eine lokale Provider-Bridge-Contract-Matrix fuer Epic/GOG/EA/Xbox/Battle.net/Ubisoft mit Request-/Response-Fixtures, Token-Redaction, Provider-Error-, Missing-Provider- und Rate-Limit-Pfaden, ohne Live-Provider-Coverage oder Writeback zu claimen
+- ✅ Lokale Supabase-Config setzt `poll-platform-presence` auf `verify_jwt = false`, damit der secret-gated Cron-Vertrag im lokalen Deploy-Setup abgebildet ist
+- ✅ Deno-Contract pinnt `dryRun`/`force` Boolean-Parsing, Limit-Clamping, User-ID-Filter, Plattform-Normalisierung, Trigger-Source, Steam-Web-API-Provider-Client, Bridge-Adapter-Mapping, Rate-Limit-Uebersetzung und sanitizierte Poll-Run-Evidence, damit Strings wie `"false"`, `"0"` und `"off"` keine Cron-Pfade aktivieren und unbekannte Plattformen nicht in Poll-Requests gelangen
+- Offen: Hosted-Cron/Staging mit echter Supabase-Projektumgebung
+- Offen: echte Provider-Bridges fuer Epic/GOG/EA/Xbox/Battle.net/Ubisoft
 
 #### Plattform-Anzeige in Freundesliste
-- Freundesliste: "🎮 Max spielt Fortnite auf Epic"
-- Klick → Chat, Smart-Join, oder Einladung
-- Friend Activity Feed erweitern
+
+- ✅ Freundesliste: "spielt Fortnite auf Epic/Steam/etc." mit Badge und Unknown-Fallback
+- ✅ Library-Footer `Friends & Chat +` routet direkt nach `/friends?tab=chat`
+- ✅ Roster-Aktionshandoff: Freundeskarten bieten direkte Chat-, Smart-Join- und Invite-Aktionen; lokale Preview und konfigurierte FriendsList routen ueber die bestehenden Chat-/Invite-/Join-Flows
+- ✅ Friend Activity Feed zeigt Plattform-Badges aus Metadata
+- ✅ Dedup-Merge-Groups bleiben owner-scoped; automatische Matches werden nicht zwischen Nutzern geteilt, selbst wenn Plattform und Platform-Friend-ID gleich aussehen
 
 ---
+
 ## 11. Custom Artwork
 
-> Bereits fertig: rawg-assets Edge Function, Rust-Cache, Drag-Drop-Upload in GameDetails
+> Bereits fertig: rawg-assets Edge Function mit Source-Policy-Evidence, HTTP-Handler-Coverage, Adapter-Env/Auth/Fetch-Coverage, Rust-Cache, Drag-Drop-Upload und explizites Anwenden von Auto-Artwork-Kandidaten in GameDetails
 
 ### Bereits implementiert
 
-- ✅ `supabase/functions/rawg-assets/index.ts`: Ruft Cover-Art von RAWG-API ab
+- ✅ `supabase/functions/rawg-assets/handler.ts`/`adapters.ts`/`index.ts`: Ruft Cover-Art von RAWG-API ab, liefert RAWG-Provider-Policy-Evidence fuer importierte Medien und ist per HTTP-Handler- plus Adapter-Env/Auth/Fetch-Coverage gepinnt
 - ✅ Asset-Caching in Rust-Backend (`rawg_asset_cache_path`)
-- ✅ `lib/custom-artwork.ts`: Custom-Artwork-Logik
-- ✅ Drag-Drop-Upload in `GameDetails.tsx:282` + Handler in `useLibrarySync.ts:518`
+- ✅ `lib/custom-artwork.ts`: Custom-Artwork-Logik, Steam-URL-Kandidaten mit CDN/App-ID-Policy-Evidence, Screenshot-/Launcher-Art-Kandidaten und Deduplizierung
+- ✅ Drag-Drop-Upload in `GameDetails.tsx` + Handler in `useLibrarySync.ts`
 - ✅ `ArtworkPreviewModal`: Vorschau vor Übernahme
+- ✅ Auto-Artwork-Grid in `GameDetails.tsx`: Cover/Icon/Logo-Kandidaten mit Thumbnail, Replace/Apply-Aktion und Persistenz über `useLibrarySync`
+- ✅ Lokale Community-Artwork-Import-Galerie in `GameDetails.tsx`: kuratierte lokale Cover/Icon/Logo-Einträge mit statischen Votes-/Download-Metadaten, browser-lokalem Vote-Ledger, Import-Zustand und Persistenz über den bestehenden Custom-Artwork-Apply-Flow
+- ✅ Hosted Community Artwork v1: `community_artwork_items`, `community_artwork_votes`, `community_artwork_reports`, `game-artwork` Storage, RLS, approved-feed RPC, authenticated Vote-RPC, Report-/Moderation-Queue-RPC, Ranking-Sync und Launcher-Helper mit lokalem Fallback
+- ✅ Public Upload UI in `GameDetails.tsx`: Hosted Upload Queue mit Datei-Guardrails, Submit-for-Review-Pfad und Pending-Submission-Karten vor Freischaltung
+- ✅ Service-Role-Scan-/Review-Vertrag: private Moderator-Allowlist, service-role-only Moderation-Queue-/Scan-/Review-RPCs, Scan-Result-History, Approval-Gate und Audit-Ledger fuer Scan-/Review-Entscheidungen
+- ✅ Trusted Live-Review-Endpoint: `community-artwork-moderation` Edge Function validiert User-JWT, prueft `private.community_artwork_moderators`, ruft service-role Queue-/Scan-/Review-RPCs serverseitig auf, injiziert Reviewer serverseitig und ist per HTTP-Handler-Coverage fuer CORS, Methode, Auth, Parser, inactive Reviewer, List, Review, Scan und Fehlerpfade gepinnt
+- ✅ `/library?verify=hosted-community-artwork`: Retro-Manga-Readiness-Panel fuer Schema/RLS, Storage, Client Helper, Vote Persistence, Moderation Queue, Ranking Sync, Upload UI, Moderator Console, Live Review Endpoint, Content Scanning, Provider Artwork, lokale Steam/RAWG/Epic-Caps-Proof-Matrix, Audit Logging und explizite Guards gegen ML-/unvetted-Provider-/Provider-API-/Rollout-Claims
+- ✅ Moderator Console Preview in `GameDetails.tsx`: lokale Pending-/Reported-/Rejected-Queue, Review-Preview-Aktionen und Audit-Ledger ohne Service-Role-Key im Browser
+- ✅ Focused Tests fuer Custom-Artwork-Kandidaten und Kind-Erkennung
 
 ### Offene Tasks
 
-- Auto-Download in Spieldetailseite (Steam Headerimages, Epic Caps) — RAWG-Edge-Function gibt Cover, aber kein Auto-Apply
-- Community-Artwork mit Voting (Späterer Scope)
+- Provider-Staging mit echten RAWG-/Steam-/Epic-Artwork-Daten und Screenshot-Nachweis
+- Community-Rollout fuer Hosted Community Artwork
 
 ---
 
@@ -400,9 +587,29 @@ Aktuell Mock-Daten → muss auf `listPublishedProducts()` umgestellt werden.
 
 > Kein Sub-Plan. Aus Feature-Plan Section 3.12.
 
-- Externes Laufwerk, ZIP/tar.gz Komprimierung
-- Inkrementelle Backups (Diff-basiert, Hash-Manifest)
-- Vollständige Wiederherstellung (Einzelne Spiele oder alles)
+### Bereits implementiert
+
+- ✅ Native Tauri-Commands `preview_backup_plan`, `run_backup_plan`, `preview_restore_plan`, `restore_backup`, `get_latest_backup_status`
+- ✅ Manifestformat mit SHA-256, Dateigröße, mtime, Quellwurzel, Game-ID und Library-Data-Einträgen
+- ✅ Inkrementelle Copy: unveränderte Dateien werden übersprungen, entfernte Dateien im Plan markiert
+- ✅ Restore-Plan mit Create/Overwrite/Unchanged/Blocked/Missing-Status und Safety-Copy vor Überschreiben
+- ✅ Pfadsicherheit: absolute Backup-Ziele, kein `..`, Restore-Allowlist aus aktueller Library/Launcher-Datenbank
+- ✅ Settings-Panel im Retro-Manga-Stil mit Target Path, Preview, Backup, Restore-Plan, Restore und Manifeststatus
+- ✅ Restore Review Gate: Restore ist erst nach sauberem Plan aktiv, blockiert `blocked`/`missing_backup`, pinnt `manifestPath` und zeigt Safety-Copy-/Skipped-/Failed-Ergebnisdetails
+- ✅ App-lifetime Backup-Reminder mit LocalStorage-Persistenz, täglicher/wöchentlicher Fälligkeit, Header-Notification, Snooze und Mark-Done
+- ✅ Nativer Tauri-Dialog für Zielordnerauswahl, beschränkt auf `dialog:allow-open` im Hauptfenster
+- ✅ Optionale ZIP-Archiv-Erstellung pro Backup-Plan unter `.og-launcher-backups/archives`, ohne den geprüften Restore-Payload-Pfad zu verändern
+- ✅ OS-Login-Autostart-Catch-up: Autostart-Plugin, Settings-Control, expliziter Auto-run bei fälligem Reminder und Header-Erfolg/Fehler
+- ✅ Headless OS-Scheduler: per-user Windows Task Scheduler/macOS LaunchAgent/Linux systemd-user Timer, native Config-/Statusdateien, Headless-Startargument vor Tauri-Startup und Settings-Controls
+- ✅ Read-only Removable-Drive-Detection: native Disk-Metadaten liefern Mount, Kapazität, Filesystem, Kind sowie Removable/Read-only-Flags; `/settings?verify=backup-external-drive-detection-mounted` zeigt eine gemountete Fixture ohne Write-/Restore-Claims
+- ✅ Removable-Media-Sentinel-Proof: UI sendet expected Mountpoint + expliziten consented `sentinel_write_read_checksum_delete`-Payload; Rust schreibt, liest, hasht und löscht den Sentinel auf dem gematchten removable Mount
+- ✅ Eject-Safety-Preflight: UI sendet expected Mountpoint + expliziten consented `flush_write_delete_before_eject_review`-Payload; Rust schreibt, flushed/synct, liest, hasht, löscht den Sentinel, prüft ausstehende Proof-Dateien und übergibt danach bewusst an OS-Eject/Unmount
+- ✅ OS-Eject/Unmount-Pfad: UI sendet expected Mountpoint + Proof-ID + expliziten consented `os_eject_unmount_removable_target`-Payload; Rust führt direkt vor dem OS-Kommando einen finalen Sentinel-Preflight aus, nutzt shell-freie Linux/macOS-Kommandos sowie Windows `Win32_Volume.Dismount` über PowerShell ohne `cmd.exe`, verlangt Windows-Drive-Roots und meldet Erfolg nur, wenn der Mount danach nicht mehr gelistet ist
+- ✅ Focused Rust-/TS-Tests für Manifest-Diff, Pfadsicherheit, Helper-Aggregation, Restore-Gate-, Reminder- und Scheduler-Artefakt-Zustände
+
+### Offene Tasks
+
+- Externe-Drive-E2E auf Windows/macOS/Linux mit echten Laufwerken
 
 ---
 
@@ -411,13 +618,51 @@ Aktuell Mock-Daten → muss auf `listPublishedProducts()` umgestellt werden.
 > Kein Sub-Plan. Aus Feature-Plan Section 3.11.
 
 ### Remote Play Together
-- Delegation an Steam Remote Play / Epic EOS
-- "Remote Play"-Button in Spieldetailseite
+
+- ✅ Tauri-Command `start_remote_play`: validiert Eingaben, bevorzugt numerische Steam-AppIDs via `steam://run/<appid>` und nutzt sonst nur erlaubte Launcher-URI-/HTTPS-Schemes
+- ✅ `launcher.ts` Wrapper + GameDetails-Button/Status für unterstützte Remote-Play-Provider/URIs
+- ✅ `/library?verify=remote-play-local-proof` zeigt eine lokale Remote-Play-Proof-Matrix fuer Steam AppID, Epic/EOS URI-only Review, HTTPS Cloud und Unsafe-URI-Blocker ohne Provider-Session-, Invite- oder Live-Streaming-Claim
+- ✅ `/library?verify=remote-play-epic-eos-provider-contract` zeigt lokale Epic/EOS Provider-State-, Fixture-State-Replay-, Invite-Envelope-, URI-Fallback-, Provider-Error- und Stream-Proof-Blocker als Retro-Manga Launcher State-Machine-Fixture-Evidence ohne Live-Epic/EOS-Session-, Invite-Delivery-, Invite-Acceptance-, Provider-Token-, Provider-Client-Mutation- oder Live-Streaming-Claim
+- Offen: echte Epic/EOS-Provider-Session-/Invite-Integration statt nur sicherer Launcher-URI-Review
+- Offen: echte Remote-Session-/Device-Erkennung, Einladungen und Fehlerzustände der Provider
 
 ### Remote Downloads
-- Web-Dashboard `app.og-launcher.com`
-- Status-Abfrage, Install-Trigger
-- Späterer Scope, erfordert always-on PC
+
+- ✅ Downloads-Seite zeigt einen Remote-Download-Readiness-Guard mit Desktop-App, Mobile/Web Companion, Always-On, Queue-Zustand, Desktop-Vault und Hosted-Auth; lokale Companion-/Always-On-Evidence allein macht den Guard nicht production-ready
+- ✅ LAN-Transfer-Planer auf `/downloads`: bewertet lokale Peer-Kandidaten, Pairing-/Sharing-/Disk-/Heartbeat-Gates, empfiehlt einen Peer-Copy-Lane und trennt lokale Preview-Evidence von echter Peer-Discovery
+- ✅ Native LAN-Pfad-Kopie: Tauri kann eine erreichbare Quelle previewen, nach explizitem Source-/Target-Consent in ein leeres Ziel kopieren, kopierte Dateien per SHA-256 pruefen und ein `og-manifest.json` mit `version=lan-copy` schreiben
+- ✅ Consent-gated LAN Resume-Copy: Tauri kann identische Ziel-Dateien wiederverwenden, fehlende Dateien kopieren, Konflikte/Cleanup-Kandidaten vor Mutation ablehnen und das Manifest nach dem Schreiben wieder einlesen/verifizieren
+- ✅ LAN Copy-Jobs: Tauri kann lokale LAN-Kopien als chunked Job starten, aktiv abbrechen, den Jobstatus abfragen und partielle Dateien vor einem Manifest-Write bereinigen
+- ✅ LAN Cancel/Cleanup-Ledger: Tauri klassifiziert vorhandene Ziel-Dateien als reusable, pending, conflict oder cleanup-candidate und trennt diese Review-Evidence von mutierenden Cleanup-/Copy-Job-Aktionen
+- ✅ Native LAN Copy Review-Konsole: `/downloads?verify=lan-transfer-readiness` bietet Pfadfelder fuer consent-gated Peer-Discovery-/Share-Preflight, Copy Preview, Ledger Preview, Run Copy, Start Copy Job, Cancel Job, Resume Copy und Cleanup Candidates, zeigt im Browser aber sauber Desktop-App-required statt Erfolg
+- ✅ `/downloads?verify=lan-transfer-readiness` zeigt lokale Native-Copy-Readiness-Gates fuer Peer Discovery Preflight, Pairing Trust, Copy Engine, Resume/Cancel, Firewall Handling und Manifest Verification mit expliziten No-Claims fuer LAN-Broadcast, trusted Pairing, automatische Network-Share-Mounts und Firewall-Regeln
+- ✅ Lokales Companion-Pairing: kurzlebiger Pairing-Code, lokaler Ping, Expired-State und Hinweis, dass keine Companion Tokens, signierten URLs oder Hosted-Secrets gespeichert werden
+- ✅ Always-On-Zustand ist lokal persistent; der alte Companion-Boolean bleibt nur Legacy-/Compat-Datum und gilt nicht mehr als Readiness-Beweis
+- ✅ `oglauncher://install?gameId=...&title=...&downloadUrl=...` startet lokal über die vorhandene `start_download` Engine, navigiert zu Downloads und zeigt Pending/Accepted/Failed-Handoff-Status
+- ✅ `/downloads/remote?gameId=...&title=...&downloadUrl=...` rendert eine Web-Dashboard-/Fallback-Route, baut den Desktop-Handoff-Link mit `source=web-dashboard`, zeigt Local-Only/Hosted-Relay-Status und blockiert unsichere Payloads
+- ✅ `/downloads/remote` kann opaque Hosted-Relay-Jobs per `enqueueRemoteCompanionInstallJob()` senden, wenn `VITE_OG_REMOTE_HOSTED_RELAY_ENABLED` true-like ist: Companion-Device-ID, Store-Product/Build-ID, Plattform und Channel gehen an `remote-companion-relay`, Store-Jobs nutzen `store-build-ticket` Package-Refs statt generischer Package-Metadaten, und Deep-Link-`downloadUrl`/Manifest-URLs werden nicht in den Cloud-Job übernommen; `verify=remote-hosted-contract-ready` bleibt nur Readiness-Evidence und schaltet Enqueue nicht frei
+- ✅ Deep-Link-Logs werden auf Action/Param-Key-Summary redigiert, damit Raw-URLs/Invite-Tokens nicht in der Konsole landen
+- ✅ Lokaler Remote-Handoff-Ledger auf `/downloads`: persistiert die letzten bereinigten Pending/Accepted/Failed-Handoffs mit Spiel, Status, Source-Badge, Host, Hash-/Manifest-Hinweisen und Zeitstempel, ohne vollständige signierte Download-URLs zu speichern
+- ✅ Supabase-Companion-Cloud-Vertrag: `remote_companion_devices` und `remote_install_jobs` sind owner-scoped per RLS, Pairing-Codes und Desktop-Device-Secrets werden nur einmal per RPC ausgegeben und gehasht gespeichert, Remote-Jobs speichern nur Produkt-/Build-Refs plus bereinigte Metadaten und blockieren Raw-URLs/Tokens
+- ✅ `remote-companion-relay` Edge Function ist caller-authenticated (`verify_jwt=true`), mappt Web/Mobile/Desktop-Actions auf die Cloud-RPCs, blockt URL-/Token-Metadaten im Relay-Vertrag, spiegelt keine Args/Secrets zurück und hat extrahierte HTTP-Handler-Tests für CORS, Methode, Auth, Body-Parsing und RPC-Erfolg/-Fehler plus Adapter-Tests fuer Caller-Auth-Bridge und RPC-Delegation
+- ✅ Desktop-Claim-Flow kann Jobs mit `device_id + device_secret` claimen und Status `started/completed/failed/cancelled` ohne URL-Leak zurückmelden; Companion-Pings sind ebenfalls device-secret-gehärtet
+- ✅ Launcher-Supabase-Client kapselt Relay-Actions für Pairing, Redeem, Ping, Enqueue, Claim und Status-Update
+- ✅ Desktop-Secret-Vault: Tauri-Commands speichern das one-time Companion-Device-Secret im nativen Secure Store mit verschlüsseltem Fallback und geben an React nur `deviceId`, Secret-Hint und Status-Metadaten zurück
+- ✅ Nativer Remote-Companion-Poll-once: Tauri liest JWT + Companion-Secret intern, pingt/claimt `remote-companion-relay`, mintet `store-download-build` Tickets mit optionaler `build_id`, startet interne Downloads mit ephemerer Store-Ticket-Quelle und meldet `started/failed` redigiert zurück
+- ✅ App-Lifetime-Always-On-Polling: `AppShell` hostet einen Tauri-only Poller, liest den persistierten Always-On-Schalter pro Tick, nutzt einen gemeinsamen single-flight Runner mit dem manuellen `Claim Jobs`-Button und aktualisiert die lokale Download-Queue nur nach Claimed/Started-Jobs
+- ✅ Terminale Remote-Status-Synchronisierung: Native interne Remote-Downloads posten `completed`/`failed`/`cancelled` per generischem Lifecycle-Hook an den Relay, behalten die lokale Queue-ID bei, redigieren Statusmeldungen und markieren bereits aktive Duplicate-Jobs terminal als `failed`, statt sie ohne Lifecycle hängen zu lassen
+- ✅ Remote-Claim-Härtung: Download-`game_id` wird vor lokalen Pfaden als sicherer Slug validiert, Store-Ticket-URLs müssen vor `started` HTTPS sein, Ticket-SHA-256 wird vor Queue-Start geprüft, und native Supabase-Calls akzeptieren nur localhost oder `*.supabase.co` mit HTTPS ausserhalb lokaler Entwicklung
+- ✅ Remote-Store-Ticket-Provenance: native interne Downloads können ephemeral Store-Ticket-Quellen markieren, generierte/signed OG-Manifeste persistieren dann kein `downloadUrl`, und Queue-/History-Fehlertexte werden gegen URL-/Token-Leaks redigiert
+- ✅ Remote-Companion Status-/Store-Ticket-Härtung: SQL/RPC erlaubt nur `accepted -> started|failed|cancelled` und `started -> completed|failed|cancelled`, terminale Jobs bleiben unveränderlich, direkte Store-Enqueue-RPCs verlangen `store-build-ticket` Package-Refs plus Product-ID fuer Build-Jobs, und Relay-Contract-CI deckt Method/Auth/Body/Device/Job/Error-Guards ohne Secrets ab
+- ✅ Remote-Companion-Poll-Redaction-Guard: Poll-Status und Claim-Fehler werden vor React/UI auf URL-/Token-Formen redigiert und zeigen nur sichere Status-Metadaten, keine Package-URLs, Store-Ticket-URLs, JWTs oder Companion-Secrets
+- ✅ `store-download-build` akzeptiert optional `build_id`, wählt dann exakt diesen Build statt `is_latest`, der Supabase-Client serialisiert `build_id` für spätere Remote-Claim-Downloads, und Deno-CI pinnt Adapter-Auth, Lizenz-/Build-Query-Shapes, Storage-Signed-URL-Delegation und Fehler-Mapping ohne Live-Supabase
+- ✅ `/downloads` und `/downloads/remote` zeigen ein Remote Hosted Contract Readiness Panel mit Schema/RLS, Pairing-RPC, opaque Jobs, Store-Ticket-Jobs, Relay-Function, Desktop-Vault und Hosted-Deploy-Gate; `/downloads` bietet zusätzlich einen `Claim Jobs`-Poll-Button mit Relay-Poll-Status
+- ✅ `/downloads?verify=mobile-app-readiness` zeigt ein lokales Mobile-App-Readiness-Panel fuer Device Pairing, Library Sync, Chat Relay, Remote Downloads, Push Provider, Hosted Relay und App Store mit expliziten No-Claims fuer native iOS/Android-App, Push-Versand, App-Store-Distribution, mobile Background-Downloads und Live-Hosted-Deployment
+- ✅ `/downloads?verify=mobile-session-library-chat-contract` zeigt einen lokalen No-Write-Vertrag fuer Mobile-Session-Envelope, scoped Library-Projection, Chat-Read-Scope, Chat-Send-Queue-Policy und Token-Redaction mit expliziten No-Claims fuer Live-Mobile-Session, native App, Mobile-Session-Write, Raw Tokens, Supabase-Verify-Route-Write, `game_sessions`-Mutation, Library-Mutation, Provider-/Library-Scrape, `chat_messages`-Insert, Room-/Member-Creation, Realtime-Subscription, Mobile-Chat-/Invite-Send, APNs/FCM-Send, App-Store-Distribution und Hosted-Production-E2E
+- ✅ `/downloads?verify=mobile-push-dry-run` zeigt ein lokales Push-Dry-Run-Packet mit Target/Platform, Payload Preview, Consent, Token-Safety, `Writes: none` und expliziten No-Claims fuer Push-Send, APNs/FCM-Call, Device-Token-Write, Supabase-Write und mobile Background-Downloads
+- ✅ `/downloads?verify=mobile-push-registration-contract` zeigt den caller-authenticated `mobile-push-registration` Edge-Function-Vertrag fuer Consent, owner-scoped Token-Hash, Unregister-Pfad, Raw-Token-Rejection, Account-Export-Coverage und service-role-only Writes; Deno-CI pinnt zusaetzlich Adapter-Auth, Delete-/Insert-/Update-Query-Shapes und Mutation-Error-Mapping ohne Live-Supabase; Verify-Route-Writes und APNs/FCM-Send bleiben blockiert
+- Offen: Hosted Deployment von `app.og-launcher.com`
+- Offen: Staging gegen echte Supabase-Instanz, Web-Relay-Deployment und Always-On-PC-Claim mit echtem Desktop-Device-Secret
 
 ---
 
@@ -432,50 +677,98 @@ Aktuell Mock-Daten → muss auf `listPublishedProducts()` umgestellt werden.
 - ✅ `idle.rs` (Windows `GetLastInputInfo`, Linux `xprintidle`, macOS-Stub): Plattform-spezifische Idle-Erkennung
 - ✅ `useUserPlaySessions` Hook: Sessions abrufen
 - ✅ `PlaytimeEditorPanel`: Manuelle Korrektur von Spielzeit
+- ✅ `ActivitySection` in SettingsPage: Recharts-Auswertung fuer Sessions/Top-Spiele
+- ✅ ActivitySection Top Games verlinken nach `/settings/performance?range=<1d|7d|30d|365d>&gameId=<id>&bucket=auto&source=activity#playtime-detail`; `PerfHistoryPage` liest Query-Filter, zeigt den Activity Filter und fokussiert `#playtime-detail`
+- ✅ `/activity`: lokales Game Activity Dashboard mit Gaming-Year-Recap, Jahresfilter, Top-Games, Monats-Tape, Zeit-/Wochentagsmuster, aktivem Tages-Streak und Browser-Fallback-Demo-Sessions
+- ✅ Activity Recap Sharing: `/activity` erzeugt eine lokale Share-Card mit `OG-Launcher Gaming Year`-Text, SVG-Datei-Payload, Browser-Share-Handoff mit Text-Fallback, Copy-Status, SVG-Export und TXT-Export-Link, ohne Supabase/Hosting oder echte Social-Ziel-Integration vorauszusetzen
+- ✅ `/settings/performance` zeigt Tag/Woche/Monat/Jahr-Filter, Spiel-Filter, Snapshot-Tabelle, Bucket-Detailcharts und Session-Aggregate
+
+### Status und offene Tasks
+
+#### Session-Historie Charts
+
+- ✅ Tages-/Wochen-/Monats-/Jahresübersicht und Detailcharts fuer Spielzeit/Performance
+- ✅ ActivitySection→Performance-History Querfilter fuer Range, Game, Auto-Bucket und Zielanker umgesetzt
+- ✅ Game Activity Dashboard Screenshot-Nachweise: `docs/verification/screenshots/game-activity-dashboard-yearly-recap-local-preview.png`, `docs/verification/screenshots/game-activity-dashboard-yearly-recap-local-preview-mobile.png`, `docs/verification/screenshots/game-activity-dashboard-yearly-recap-sharing-local-preview.png`
+- ✅ Screenshot-Nachweis: `docs/verification/screenshots/activity-performance-crossfilter-target.png`
+- ✅ Trusted Playtime-Ingestion: `ingest-playtime` Edge Function validiert Auth-User, schreibt `user_game_stats`/`game_sessions` via service_role und der Launcher bevorzugt den Function-Pfad vor direkten Staging-Writes; Production-strict mode blockt direkte Aggregate-/Session-Fallback-Writes, Deno-Adapter-Coverage pinnt Auth-, Catalog-, Session-Conflict-, Aggregate-Upsert- und Session-Insert-Grenzen, plus statischer Migration-Contract fuer verbleibende DB-Ausnahmen
+- ✅ Trusted XP-/Achievement-Ingestion: `ingest-achievements` schreibt neue Unlocks/XP/Level via service_role, blockt direkte XP/Level- und Achievement-Writes per RLS/Grants, haelt Achievement-Unlocks idempotent und pinnt per Deno-Adaptertests Auth-, Catalog-, Definition-Upsert-/ID-Resolution- und Trusted-Unlock-RPC-Payloads
+- Offen: echte Provider-/Device-Attestation und Hosted-Staging-E2E vor Production; lokale `launcher_device_id`-Metadaten sind nur Audit-Hinweise
+- Offen: Langzeit-E2E mit echten Native-/Supabase-Sessions
+
+---
+
+## 16. Custom-Link Invites
+
+> Ziel: Spiel-Einladungen sollen als App-Deep-Link und Web-Fallback teilbar sein, ohne private `game_invites`-RLS-Grenzen zu öffnen.
+
+### Bereits implementiert
+
+- ✅ Tauri Deep-Link-Parser akzeptiert `oglauncher://join?game=...&platform=...&invite=...`
+- ✅ `useDeepLink` routet Join-Links in die Library und `LibraryPage` startet den Cross-Play-Join mit Invite-Kontext
+- ✅ `/invite/:token` Web-Fallback-Seite zeigt den Invite-Token-Envelope, Game/Platform-Kontext und den App-Deep-Link im Retro-Manga-Stil
+- ✅ `CrossPlatformInvite` erzeugt nach erfolgreichem `game_invites`-Insert Web-Fallback- und App-Deep-Link-Readouts mit Copy/Open-Aktionen
+- ✅ `share_tokens` Migration speichert nur `sha256`-Hashes, schützt die Tabelle per RLS/no-`anon`-grant und erzeugt Public Tokens nur über `create_game_invite_share_token`
+- ✅ Neue Public Tokens nutzen eine `ogl_<header>.<payload>.<signature>` Huelle; die Signatur dient Format-/Tamper-Erkennung, waehrend `token_hash` plus `game_invites` weiterhin die Autoritaet fuer Resolve/Redeem bleiben
+- ✅ `resolve_share_token` erlaubt anonymes minimales Token-Resolve für Web-Fallback-Kontext, ohne direkte `game_invites`-Reads zu öffnen
+- ✅ Frontend fällt bei fehlender RPC auf den Legacy-Invite-ID-Link zurück und ersetzt ihn bei Erfolg durch den Server Share Token
+- ✅ `redeem_share_token` akzeptiert server-verifizierte Tokens fuer bekannte Empfaenger oder offene `receiver_id = null` Share Links, sperrt Token+Invite per `for update`, setzt beim ersten Claim `receiver_id = auth.uid()`, setzt `game_invites.status = accepted` und verbraucht eine Token-Nutzung
+- ✅ `/invite/:token` zeigt fuer eingeloggte Empfaenger einen Accept-Flow mit Success/Error-Zustand
+- ✅ `CrossPlatformInvite` kann per Share-Link-Modus einen one-use Link fuer noch nicht bekannte signierte Empfaenger erstellen; der erste erfolgreiche Accept claimed den Invite
+- ✅ Invite-Hosted-Readiness: `/invite/:token` zeigt Web-Fallback, App-Deep-Link, Share-RPC, Receiver-Auth und Hosted-Web-Gates mit lokalem Blocker statt Hosted-Erfolg vorzutäuschen
+- ✅ Hosted-Token-Rehearsal: `/invite/:token` zeigt Create-Token-, Resolve-Token-, Receiver-Auth-, Redeem-Token- und Replay-Guard-Evidenz mit No-Raw-Token-/No-Anonymous-Invite-Row-/No-Hosted-Success-Guards, ohne externe Hosted-E2E zu behaupten
+- ✅ Hosted-Replay-Origin-Proof-Contract: `prove_share_token_replay_denial` und `invite-hosted-proof` pruefen authenticated receiver/sender, erlaubte HTTPS-Origin, konsumierten one-use Token, abgelehnten zweiten Redeem und sanitized Proof-Packets ohne Raw-Token-/Hash-Echo; Deno-CI pinnt zusaetzlich HTTP-CORS/Origin/Method/Auth/Body/Proof/Replay-Guards im extrahierten Handler plus Adapter-Tests fuer Auth-Bridge, Origin-Config und RPC-Payloads
+- ✅ Statischer Migration-Contract-Test prueft RLS/no-client-table-grants, private Signing-Keys, Envelope-Validierung, Unknown-Recipient-Claim-Regeln, Replay-Denial-Guards und den Hosted-Proof-RPC fuer Share Tokens
+- ✅ Screenshot-Nachweise: `docs/verification/screenshots/friends-custom-link-invite-fallback.png`, `docs/verification/screenshots/friends-custom-link-invite-compose.png`, `docs/verification/screenshots/friends-custom-link-invite-server-token.png`, `docs/verification/screenshots/friends-custom-link-token-lookup.png`, `docs/verification/screenshots/friends-custom-link-accept-success.png`, `docs/verification/screenshots/friends-custom-link-token-envelope.png`, `docs/verification/screenshots/friends-custom-link-unknown-recipient-accept-success.png`, `docs/verification/screenshots/friends-custom-link-hosted-readiness-local.png`, `docs/verification/screenshots/friends-custom-link-hosted-token-rehearsal-local.png`, `docs/verification/screenshots/friends-custom-link-hosted-token-rehearsal-local-mobile.png`, `docs/verification/screenshots/friends-custom-link-hosted-replay-origin-proof.png`, `docs/verification/screenshots/friends-custom-link-hosted-replay-origin-proof-mobile.png`
 
 ### Offene Tasks
 
-#### Session-Historie Charts
-- `launcher/src/components/settings/ActivitySection.tsx` ist gebaut (Recharts BarChart), wird aber **nirgends importiert**.
-- Aktion: In SettingsPage mounten oder löschen.
-- Filter: Tages-/Wochen-/Monats-/Jahresübersicht
+- Hosted-Web-/Supabase-Staging mit realer Token-Erstellung/Redemption und Live-Hosted-Origin-Replay-Proof gegen deployte Infrastruktur
 
 ---
+
 ## Spätere Erweiterungen
 
 > Konzepte ohne konkreten Implementierungsplan.
 
-| Feature | Scope | Beschreibung |
-|---------|-------|-------------|
-| **In-Game Overlay (Windowed/Borderless)** | Später | Echtes Overlay via Windows-APIs (`IDXGIOutputDuplication`). Anti-Cheat-Blockiert — separater Research-Track. |
-| **Mobile App (iOS/Android)** | Später | Library, Chat, Remote Downloads, Push |
-| **Smart Install** | Später | Schnellste/günstigste Download-Quelle automatisch wählen |
-| **One-Click Setup** | Später | Neuer PC: Ein Login, Stores verbinden, Spiele erkennen |
-| **Cross-Store Save Sync** | Konzept | Spielstände zwischen Store-Versionen synchronisieren |
-| **Game Activity Dashboard** | Später | "Dein Gaming-Jahr" (Spotify Wrapped-Stil) |
-| **Local Multiplayer Hub** | Später | Couch-Coop-Setup, Controller-Auto-Konfig |
-| **Plugin-System** | Konzept | Store-Plugins, Tool-Plugins, Themes, Marketplace |
-| **Themes/Skins** | Später | Dark/Light, Custom Themes. `user_settings.theme` existiert. |
-| **AI-Empfehlungen** | Konzept | Mood-basiert, Backlog-Priorisierung |
-| **Broadcasting** | Konzept | Twitch/YouTube-Integration |
-| **LAN-Transfer** | Später | Netzwerk-Kopie zwischen PCs |
-| **Kernel-Level Virtual-Gamepad** | Später | Virtual-Gamepad-Treiber wie Steam Input/ViGEm für Anti-Cheat-/Raw-Input-Sonderfälle |
-| **Controller Community-Layouts** | Später | Community-Layouts mit Bewertungen, Downloads und Moderation |
-| **Controller Gyro/Haptik** | Später | Gyro/Haptik real an unterstützte Controller-Treiber anbinden |
+| Feature                                     | Scope          | Beschreibung                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| ------------------------------------------- | -------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Client Manager Mount/Apply Contract**     | Lokal          | `/settings?verify=client-manager-mount-apply-contract` zeigt lokale Contract-Lanes fuer Path-Overlay-Preflight, Asset-Cache-Lookup, Auto-Apply-Guard, lokale Auto-Apply-Capability-Checks fuer Runtime-/Client-Praesenz, Installationsziel, freien Speicher und Admin-Review, eine read-only native Capability-Preview, eine 7-Provider-Apply-Policy-Matrix fuer Steam/GOG/Epic/EA/Ubisoft/Battle.net/Xbox, Provider-Mechanismus, OS-Mount-Sandbox, Rollback/Unmount, Provider-Terms, Symlink/Junction, Admin-Elevation, Driver/Kernel, destruktive Client-Writes und Live-Client-Mutation; `/settings?verify=client-manager-mount-apply-sandbox-proof` zeigt lokalen Sandbox-Copy/Manifest/Hash/Rollback-Proof fuer Throwaway-Pfade; echte Provider-Mount-Anwendung, Provider-Auto-Apply, echte OS-Mount-Erstellung, Symlink/Junction-Erstellung, Admin-Elevation, Driver-/Kernel-Install, destruktive Writes, Terms Approval, Live-Provider-Rollback/Unmount und Live-Client-Mutation bleiben blockiert                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| **In-Game Overlay (Windowed/Borderless)**   | Später         | Echtes Overlay via Windows-APIs (`IDXGIOutputDuplication`). Anti-Cheat-Blockiert — separater Research-Track.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| **Overlay Fullscreen/Anti-Cheat Readiness** | Lokal          | `/settings/performance?verify=overlay-fullscreen-anti-cheat-readiness` zeigt lokale Research-Lanes fuer Fullscreen-Modi, Overlay-Settings, Anti-Cheat-Fallback, Fullscreen-Injection, Protected-Process-Attach, Kernel-/Driver-Install, External-Overlay-Window-Proof, Game-Capture-Proof, Live-Title-Validation und Compatibility-Certification; echte Injection, Bypass/Evasion, Driver-Install, Protected-Process-Zugriff, Game-Capture-Proof, Live-Title-Validation, External-Window-Proof und E2E-Success bleiben blockiert                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| **Mobile App (iOS/Android)**                | Später/Lokal   | `/downloads?verify=mobile-app-readiness` zeigt nur lokale Companion-Gates fuer Device Pairing, Library, Chat, Remote Downloads, Push, Hosted Relay und App Store; `/downloads?verify=mobile-session-library-chat-contract` zeigt einen lokalen No-Write-Vertrag fuer Mobile-Session-Envelope, scoped Library-Projection, Chat-Read-Scope, Chat-Send-Queue-Policy und Token-Redaction ohne Live-Mobile-Session, native App, Mobile-Session-Write, Raw Tokens, Supabase-Verify-Route-Write, `game_sessions`-Mutation, Library-Mutation, Provider-/Library-Scrape, `chat_messages`-Insert, Room-/Member-Creation, Realtime-Subscription, Mobile-Chat-/Invite-Send, APNs/FCM-Send, App-Store-Distribution oder Hosted-Production-E2E; `/downloads?verify=mobile-push-dry-run` zeigt ein redigiertes lokales Push-Dry-Run-Packet mit Target/Platform, Payload Preview, Consent, Token-Safety und `Writes: none`; `/downloads?verify=mobile-push-registration-contract` zeigt den caller-authenticated `mobile-push-registration` Edge-Function-Vertrag mit owner-scoped Token-Hash, service-role-only Writes, Unregister-Pfad, Raw-Token-Rejection und Verify-Route-No-Write/No-Send-Guards; echte native App, Mobile Auth/Session Storage, Push-Versand, App-Store-Distribution, mobile Background-Downloads und Hosted-Production-E2E bleiben offen                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| **Smart Install**                           | Lokal          | `/downloads` bewertet lokale CDN-/LAN-/Launcher-Kandidaten deterministisch; `/downloads?verify=smart-install-provider-telemetry` zeigt lokale Provider-Telemetrie-Gates; echte Provider-Telemetrie, Entitlement-API-Calls, Mirror-Messung, Ranking-Sync und Auto-Purchase/Download bleiben offen                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| **One-Click Setup**                         | Lokal          | Settings zeigt lokalen New-PC-Setup-Tape; `/settings?verify=one-click-setup-e2e-readiness` zeigt lokale Hosted-/Provider-E2E-Gates; `/settings?verify=one-click-setup-rollback-audit-contract` zeigt einen lokalen No-Write-Vertrag fuer Setup-Step-Ledger, Undo-/Cleanup-Order, Partial-Failure-Map und Audit-Envelope; echte Hosted Auth, Provider-OAuth-/Token-Replay, Provider-approved Silent Install, Consent/Terms Approval, Production Hosted Deployment und echter Rollback/Audit-Proof bleiben offen                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| **Cross-Store Save Sync**                   | Lokal          | `/library?verify=cross-store-save-sync` zeigt einen lokalen Review-Planer fuer Store-Varianten, Save-Metadaten, Provider-Katalog-Coverage-Paket, Provider-Cloud-Transfer-Contract-Paket, Migration-Session-Rehearsal-Paket, Dry-Run-Audit-Packet, lokale Provider-Save-Mapping-Fixtures fuer Steam/GOG/Epic externe IDs, Install-Pfade, relative Pfadregeln, Save-Root-Shapes und Save-File-Counts, Provider-Pfad-Review-Matrix, automatische Path-Map-Apply-Request-Templates, Post-Copy-Konfliktverifikationspaket, Supabase/Keychain-Staging-Contract und Native-Apply-/Rollback-Proof; das Cloud Saves Panel zeigt Fixture-Pfadregeln nur als lokale Vorschlaege/Metadata-Provenance; der Desktop-Command kopiert/restauriert nur explizit consented relative File-Actions mit Target-Snapshot, Apply-Manifest, Unchanged-Target-Guard und SHA-256-Verifikation; `prove_cross_store_save_local_e2e` fuehrt zusaetzlich einen credential-freien Temp-Sandbox-Apply/Rollback/Cleanup-Proof aus; `prove_cross_store_save_supabase_keychain_staging` kann eine opt-in user-scoped `game-saves` Upload/List/Download/Decrypt/Hash/Cleanup-Staging-Probe mit redigierten Ergebniscounts fahren; Provider-API-Validierung, Provider-Cloud-Ausführung, provider-approved Katalog-API-Validierung, echte Migration-Session-E2E und Live-Supabase/Keychain-Credentials bleiben offen                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| **Activity Recap Sharing**                  | Lokal          | Browser-Share-Handoff mit lokalem SVG-Datei-Payload, Text-Fallback, SVG-Export, TXT-Export und Copy-Share-Karte fuer das lokale Gaming-Year-Dashboard sind umgesetzt; Hosted-Share-URLs und echte Social-Ziel-Integrationen bleiben spaeter                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| **Local Multiplayer Hub**                   | Lokal          | `/controllers` zeigt Couch-Coop-Slots, standby Pads, Keyboard/Maus-Fallback, Auto-Konfig-Checklist, lokales Virtual-Gamepad-Readiness-Panel, lokale Raw-Input-Per-Game-Safety-Policy auf `/controllers?verify=controller-per-game-safety-raw-input` und Apply/Clear-Controls fuer die vorhandene Desktop-Controller-Runtime ohne echten Treiber-Install                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| **Backup/Restore External Drive**           | Lokal          | `/settings?verify=backup-external-drive-readiness` zeigt lokale External-Drive-Gates fuer Target Folder, Folder Picker, Manifest Preview, Restore Review, ZIP Archive, Headless Timer, Windows-Eject-Backend, Sentinel-Write/Read/Checksum/Delete-Proof, Eject-Safety-Preflight und OS-Eject/Unmount-Result; `/settings?verify=backup-external-drive-detection-mounted` zeigt read-only Removable-Target-Detection; `/settings?verify=backup-external-drive-write-proof` zeigt Removable-Target-Metadaten plus Write-Proof-Fixture; `/settings?verify=backup-external-drive-eject-safety-proof` zeigt Write-Proof plus Eject-Safety-Fixture; `/settings?verify=backup-external-drive-os-eject-proof` zeigt lokalen OS-Unmount-Result; Windows/macOS/Linux-Backup-Restore-E2E auf echten Laufwerken bleibt offen                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| **Plugin-System**                           | Lokal          | Settings zeigt ein lokales Plugin-System-Readiness-Panel mit read-only Desktop-Manifest-Folder-Scan, Browser-JSON-Import, Manifest-, statischer Policy-, Permission-, Theme-Hook- und Marketplace-Gates plus lokalem Manifest-/Permission-/Policy-Ledger mit deny-by-default Unknown-Permission-Evidence; die Signed-Package-Staging-Konsole prueft Package-Pfad plus explizite Consent-Operation, signed lokale Plugin-Packages koennen mit Ed25519-Signatur, Datei-Hashes, Pfad-/Symlink-Guards und Consent in eine disabled Registry gestaged werden, `/settings?verify=plugin-disabled-registry-audit` zeigt native Disabled-Registry-Audit-Evidence, die Stage-Record, Hashes, Signatur, Path-Containment und Symlink-Guards vom browser-lokalen Display-Cache trennt, `/settings?verify=plugin-runtime-sandbox-process-boundary` zeigt nativen Runtime-Sandbox-Process-Boundary-Proof, der die disabled Registry erneut auditiert, EntryPoints vor Code-Load verweigert, keine Permissions grantet, `codeExecuted false` belegt und 8 lokale Escape-Fixtures fuer Path-Traversal, Symlink-Entrypoints, Nested-Manifest-Pfade, Deny-All/Network-IPC, Environment-/Filesystem-Versuche und Permission-Escalation vor Code-Load blockt, native Activation-Plan-Review verlangt exakte `review_plugin_activation_plan:<plugin>@<version>`-Consent, auditiert die disabled Registry erneut, hasht das staged Manifest fuer saubere Packages und blockt Ausfuehrung, Download, Install, Netzwerk und Permission-Grants bis eine Production-Sandbox existiert, native Update-Signing-Envelope-Review prueft Ed25519-signierte Envelopes gegen eine saubere disabled Registry, blockt Auto-Install, verlangt Rollback-Metadaten und Manifest-Hash-Matches, `/settings?verify=plugin-update-signing-review` zeigt lokales Update-Signing-Review fuer signierte Update-Envelopes, Manifest-Hashes, Rollback-Metadaten und geblockte Auto-Install-Pfade, und `/settings?verify=plugin-marketplace-update-index-trust` zeigt lokales signiertes Marketplace-/Update-Index-Trust-Packet fuer signierte Index-Envelopes, Publisher-Key-Fingerprint, Disabled-Registry-Match, Freshness-/Rollback-Metadaten, Channel-/Version-Constraints und geblockte Install-/Download-/Execute-Lanes; echtes Plugin-Laden/-Ausfuehren, Marketplace, Production-Signing-Trust, Live-Update-Channels, Update-Downloads, Auto-Update-Installation und Production-Sandbox-Haertung bleiben offen |
+| **Themes/Skins**                            | Lokal          | `/settings/profile/customize` bietet eine browser-lokale Retro-Manga-Shell-Skin-Umschaltung fuer Header, Navigation, Main Shell und Desktop Title Bar plus Default-Skin-Reset, Invalid-ID-Fallback, lokale Profil-Theme-Presets, Draft-Persistenz, gehosteten Built-in-Shell-Skin-Preference-Sync ueber `profiles.app_shell_skin` und validierten Custom-Theme-Draft-Sync ueber `profiles.custom_theme_json`; `/settings/profile/customize?verify=theme-skins` zeigt die Profil-Theme-Readiness; `/settings/profile/customize?verify=app-wide-theme-readiness` zeigt lokale App-wide-Gates fuer Profil-Presets, lokalen Draft, Design-Guard, Shell-Skin, schema-validiertes Custom-Theme-I/O, Hosted Sync und Rollback; Live-Profile-Theme-Katalogpersistenz, Marketplace-Skins und Marketplace-Rollback-Proof bleiben offen                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
+| **IGDB Cross-Play Import**                  | Lokal          | `/library?verify=igdb-cross-play-readiness` zeigt lokale Mapping-/External-ID-Gates fuer IGDB-foermige Plattformdaten plus einen staged Import-Preview-Envelope mit review-only `game_cross_play`-Rows, `games.external_ids`-Patch, Skip-Gruenden und Duplicate-/Conflict-Review fuer externe-ID-Source-Keys und Plattform-Rows; echte IGDB-API-Nutzung, Supabase-Writes, Provider-Telemetrie, Hosted Sync und Live-Cross-Play-Verifikation bleiben offen                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| **Achievement Cache Readiness**             | Lokal          | `/achievements?verify=achievement-cache-readiness` zeigt lokale Cache-Folder-, Sidecar-, Parser- und Provider-Status-Lanes ohne Provider-API-Call, Hosted-Hydration, Supabase-Write, OAuth-/Token-Exchange, Live-Unlock-Import, Remote-Cache-Job, Provider-Credentials oder offiziellen Unlock-Proof; `/achievements?verify=achievement-hosted-hydration-contract` zeigt einen lokalen No-Write-Vertrag fuer authentifizierte Supabase-Read-Shape, Provider-Key-Filterung, Catalog-Game-Resolution, Definition/Unlock-Merge und Fallback-to-local-Verhalten, waehrend Live-Hosted-Staging, Supabase-Writes, Provider-Sync, OAuth-/Token-Exchange, Remote-Cache-Jobs, Trusted-Ingestion-Calls, Live-Unlock-Import und offizieller Unlock-Proof blockiert bleiben                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| **Community Local Posts**                   | Lokal          | `/community` hat einen browser-lokalen Create-Post-Composer fuer den Relay Board Feed; lokale Posts werden oben einsortiert und nur gekappt in localStorage gespeichert; `/community?verify=community-create-post` liefert deterministische In-Memory-Evidenz ohne localStorage-Write; Hosted Publishing, Supabase-Feed-Writes, Provider-Sync und Moderation-Ausfuehrung bleiben offen                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| **Community Public Screenshot Feed**        | Lokal/Review   | `/community` zeigt einen lokalen Public-Screenshot-Feed mit Fixture-Embeds, Privacy-Pass/-Block-Karten, lokalen Likes und No-Supabase-/No-Signed-URL-/No-Hosted-Moderation-/No-Ranking-Sync-Guards; `/community?verify=public-screenshot-feed` bleibt das Supabase-Public-Read-Staging fuer sichtbare Screenshot-Metadaten, scoped Signed-Media-Review, Like-State-Staging und authentifizierte Heart-Button-Like-Aktionen, waehrend private/Fixture-Cards locked bleiben; community-weiter Hosted-Rollout, Moderation und Production-Ranking bleiben offen                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| **AI-Empfehlungen**                         | Lokal          | `/library` zeigt deterministisches lokales Backlog-Scoring aus Launcher-Daten, ein resetbares browser-lokales Preference-Profil, ein browser-lokales Learning Tape fuer Boost/Skip/Finished-Feedback mit Mood-/Session-/Social-Gewichten, eine manuelle browser-lokale Play-Next-Queue und ein lokales Explanation-Packet mit Score-Signalen und uebersprungenen Model-/Cloud-Schritten; `/library?verify=ai-recommendations-readiness` zeigt lokale Hosted-/Model-Gates plus Consent-Audit-Packet mit redigiertem Prompt-Envelope, Audit-ID, No-Write/No-Prompt-Guards und Reset/Export-Review; `/library?verify=ai-recommendations-hosted-eval-contract` zeigt lokale Hosted-Eval-Contract-Lanes fuer Deterministic-Baseline-Fixtures, Prompt-Regression-Suite, Quality-Threshold-Review, Safety-/Abuse-Fixtures, Consent-Sample-Review, Hosted-Runner-Handshakes, Cloud-Profile-Replay-Blocker, Provider-Telemetry-Replay-Blocker und Rollout-/Rollback-Gates mit expliziten No-Model-/No-Prompt-Upload-/No-Hosted-Inference-/No-Cloud-Replay-/No-Provider-Telemetry-/No-Live-Rollout-Guards; echte KI-/Model-Calls, Hosted Inference, Cloud-Personalisierung, Provider-Telemetrie, hosted Nutzerprofil-Modellierung, Provider-Ranking-Sync, Launch-Automation und Hosted Evals bleiben offen                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
+| **Broadcasting**                            | Lokal          | `/community` zeigt ein lokales Readiness-Panel; `/community?verify=broadcasting-rtmp-dry-run` zeigt ein redigiertes lokales RTMP-Dry-Run-Paket ohne Socket, Publish oder Stream-Key-Reveal; `/community?verify=broadcasting-chat-moderation-shadow` zeigt eine lokale Chat-Moderation-Shadow-Queue mit redigierten Link-/Secret-Previews und nur lokalen Queue-Aktionen; `/community?verify=broadcasting-vod-archive-policy` zeigt lokale VOD-Archiv-Policy fuer Retention, Visibility und Delete-Coverage mit expliziten No-OAuth-/No-RTMP-/No-Supabase-/No-Signed-URL-/No-Sync-Job-Guards; `/community?verify=broadcasting-provider-oauth-contract` zeigt lokale OAuth-Contract-Fixtures fuer PKCE, State, Redirect-URI-Allowlist, Scope Review, Callback-Fehler, Token-Storage-Grenzen und Secret-Redaction mit expliziten No-Auth-Redirect-/No-Token-Exchange-/No-Provider-Token-/No-Provider-Chat-/No-VOD-Sync-/No-RTMP-Live-Guards; `/community?verify=broadcasting-provider-callback-contract` zeigt lokale Callback/Webhook-Contract-Fixtures fuer Event-Schema, Signature-Headers, Idempotency, Replay-Duplicate und redacted Audit Rows mit expliziten No-Hosted-Endpoint-/No-Callback-Runner-/No-Provider-Delivery-/No-Supabase-Row-/No-Replay-Runner-/No-VOD-Sync-Guards; `/community?verify=broadcasting-live-session-rehearsal` zeigt eine lokale Go-live-Reihenfolge fuer Preflight, Desktop Vault, Provider OAuth, RTMP, Provider Chat, Hosted Moderation, VOD, Callback, Audience Status und Rollback mit expliziten No-Live-Provider-Guards; `/community?verify=broadcasting-audience-status-contract` zeigt lokale Audience-/Live-Status-Contract-Lanes fuer Preview-State, Provider-State-Event, Audience-Count, Chat-Presence, Public-Status-Write, Supabase-Audience-Row, Stale-Fallback und Rollback-Clear mit expliziten No-Provider-Read-/No-Polling-/No-Public-Mutation-Guards; `/community?verify=broadcasting-provider-live-readiness` zeigt lokale Provider-/Live-Gates plus consented Desktop-Stream-Key-Vault mit nicht-geheimen lokalen Metadaten; echte Twitch/YouTube-OAuth-Ausfuehrung, Provider-Chat-Reads, RTMP-/Live-Ausgabe, Stream-Key-Live-Nutzung, Hosted-Chat-Moderation/-Enforcement, VOD-Provider-Sync/-Archive, Provider-Callbacks und Live-E2E bleiben offen                                                                                                                                                    |
+| **LAN-Transfer**                            | Lokal          | `/downloads` zeigt lokalen Peer-Copy-Lane-Planer; native lokale Pfad-Kopie mit post-copy Manifest-Hash-Verifikation, cancellable Copy-Jobs, consent-gated Resume-Copy, Cancel/Cleanup-Ledger, consented Cleanup-Candidate-Loeschung, consent-gated native Peer-Discovery-/Share-Preflight mit Loopback-Bind-Check, manueller Source-Inspection und No-Network-Automation-Flags sowie Native-Copy-Review-Konsole ist umgesetzt; `/downloads?verify=lan-transfer-readiness` zeigt lokale Native-Copy-Gates; echte LAN-Broadcast-Discovery, Relay-Lookup, trusted Pairing, automatische Network-Share-Mounts und Firewall-Regelaenderungen bleiben offen                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| **Kernel-Level Virtual-Gamepad**            | Später         | Lokale Virtual-Gamepad-Readiness enthaelt model-level Guard-Copy und No-Claims fuer Kernel-Driver-Install, ViGEm/DS4Windows-Install, Virtual-HID-Emission, Raw-HID-Write, Steam Input, Gyro-/Haptik-Ausgabe, Windows SendInput, Anti-Cheat-Kompatibilitaet, Protected-Title-Validation und automatische Launch-Routing-Aenderungen; echter Virtual-Gamepad-Treiber/ViGEm-Install, tiefere Raw-Input-Runtime-Sonderfälle und Anti-Cheat-Kompatibilitätsvalidierung bleiben offen; lokale Per-Game-Safety-Policy-Evidenz fuer geschuetzte Titel ist staged                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| **Hosted Controller Community-Layouts**     | Review-Staging | `/controllers` hat eine lokale Community-Layout-Galerie mit Import und browser-lokalem Vote-Fallback plus Editor-Approved-Feed-Staging fuer approved hosted Rows; Supabase-Migration, RLS, Approved-Feed-RPC, One-User-Vote-RPC, Ranking-Order, Hosted-Import/Download-Counter, Hosted-Report-Actions, Report-backed Moderation Queue, Service-Role Review/Audit, Helper-Fallbacks und Profile-Consent/Rollback-Review-Evidence sind staged; `/controllers?verify=hosted-controller-layouts` zeigt 8/8 staged Review-Gates und separate blockierte Rollout-Lanes; Production-/Community-Rollout, Marketplace Publish und automatische/live Profile-Cloud-Sync bleiben offen/blockiert                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
+| **Controller Gyro/Haptik**                  | Lokal          | `/controllers?verify=controller-gyro-haptics-readiness` zeigt lokale Layout-Intent-/Runtime-Evidence-Gates; `/controllers?verify=controller-per-game-safety-raw-input` zeigt lokale Raw-Input-Safety-Policy fuer protected Titles, Layout-/Template-Scope und blockierte Virtual-/Motion-Lanes; echte HID-/SDL-/Steam-Input-/Haptik-Ausgabe und Anti-Cheat-/Vendor-Validierung bleiben offen                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 
 ---
 
 ## Performance-Ziele
 
-| Metrik | Ziel |
-|--------|------|
-| Startup | <2 Sekunden |
-| RAM (Idle) | <200 MB |
-| CPU (Hintergrund) | Minimal, kein Polling im Idle |
-| GPU | Optional, deaktivierbar |
-| Overlay-Open | <100ms nach Hotkey |
-| PerfMonitor-Polling | 1 Hz (während Spiel), 0 Hz (Idle) |
-| Cloud-Sync | Bandbreitenlimitierbar, Pause/Resume |
+| Metrik              | Ziel                                 |
+| ------------------- | ------------------------------------ |
+| Startup             | <2 Sekunden                          |
+| RAM (Idle)          | <200 MB                              |
+| CPU (Hintergrund)   | Minimal, kein Polling im Idle        |
+| GPU                 | Optional, deaktivierbar              |
+| Overlay-Open        | <100ms nach Hotkey                   |
+| PerfMonitor-Polling | 1 Hz (während Spiel), 0 Hz (Idle)    |
+| Cloud-Sync          | Bandbreitenlimitierbar, Pause/Resume |
 
 ---
 
@@ -483,17 +776,17 @@ Aktuell Mock-Daten → muss auf `listPublishedProducts()` umgestellt werden.
 
 > Nur noch für offene Features relevant.
 
-| Herausforderung | Ansatz |
-|-----------------|--------|
-| **Overlay bei Anti-Cheat** | Process-Scanning + DB `game_anti_cheat` + Fallback: Externes Fenster / Toast |
-| **Overlay bei Fullscreen** | Nur Windowed/Borderless; Toast als Fallback. Echtes In-Game: separater Research-Track. |
-| **Controller-Emulation** | ViGEmBus, DS4Windows, `gilrs`. Gyro/Haptik plattformabhängig. |
-| **E2E-Verschlüsselung** | AES-256-GCM + Keychain-Key. Migration unverschlüsselter Saves. Versionierung. |
-| **Realtime-Presence** | Supabase Realtime + Edge Functions für Plattform-Polling (60s). Caching gegen Rate-Limits. |
-| **Store-Payment** | Stripe-Redirect. Mock für Open-Source-Version. |
-| **Idle-Erkennung** | Windows: `GetLastInputInfo`. macOS/Linux: `xprintidle`. Fallback: Maus/Tastatur-Hook. |
-| **Mod-Management** | Jede Plattform eigenes API. Priorität: Steam Workshop (größte Nutzerbasis). |
+| Herausforderung            | Ansatz                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| **Overlay bei Anti-Cheat** | Process-Scanning + DB `game_anti_cheat` + Fallback: Externes Fenster / Toast                                                                                                                                                                                                                                                                                                                                                                                 |
+| **Overlay bei Fullscreen** | Nur Windowed/Borderless; Toast als Fallback. Echtes In-Game: separater Research-Track.                                                                                                                                                                                                                                                                                                                                                                       |
+| **Controller-Emulation**   | Layout-Editor kann die aktuelle Draft-Map lokal per Desktop-Bridge aktivieren/loeschen; lokale Virtual-Gamepad-Readiness und Raw-Input-Per-Game-Safety-Policy fuer protected Titles sind mit expliziten No-Driver-/No-HID-/No-SendInput-/No-Anti-Cheat-Claims staged; echte ViGEmBus-/DS4Windows-Treiberinstallation, Kernel-Routing, tiefere Raw-Input-Runtime, Gyro/Haptik-Ausgabe und Anti-Cheat-Kompatibilitaet bleiben offene Research-/Staging-Themen. |
+| **E2E-Verschlüsselung**    | AES-256-GCM + Keychain-Key. Migration unverschlüsselter Saves. Versionierung.                                                                                                                                                                                                                                                                                                                                                                                |
+| **Realtime-Presence**      | Supabase Realtime + Edge Functions für Plattform-Polling (60s). Caching gegen Rate-Limits.                                                                                                                                                                                                                                                                                                                                                                   |
+| **Store-Payment**          | Stripe checkout via `stripe-create-checkout`/server-priced Redirect ist lokal implementiert; live Stripe-Webhook-Delivery, Dashboard-Tax/Invoice-Verifikation und Hosted-Price-Drop-Scheduler-Evidence bleiben externe Gates.                                                                                                                                                                                                                                |
+| **Idle-Erkennung**         | Windows: `GetLastInputInfo`. macOS/Linux: `xprintidle`. Fallback: Maus/Tastatur-Hook.                                                                                                                                                                                                                                                                                                                                                                        |
+| **Mod-Management**         | Jede Plattform eigenes API. Priorität: Steam Workshop (größte Nutzerbasis).                                                                                                                                                                                                                                                                                                                                                                                  |
 
 ---
 
-> Letztes Update: Siehe Git-Log. Nächste Schritte in `docs/plans/00-master-plan-missing-features.md`.
+> Letztes Update: Siehe Git-Log. Nächste Schritte werden in diesem Dokument gepflegt.

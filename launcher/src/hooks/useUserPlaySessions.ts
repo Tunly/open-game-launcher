@@ -5,6 +5,7 @@ import { useCurrentUser } from "./useCurrentUser";
 
 export interface UseUserPlaySessionsResult {
   error: string | null;
+  isConfigured: boolean;
   isLoading: boolean;
   refetch: () => void;
   sessions: UserPlaySession[];
@@ -65,5 +66,5 @@ export function useUserPlaySessions(): UseUserPlaySessionsResult {
     };
   }, [isConfigured, userId, reloadToken]);
 
-  return { sessions, isLoading, error, refetch };
+  return { sessions, isConfigured, isLoading, error, refetch };
 }

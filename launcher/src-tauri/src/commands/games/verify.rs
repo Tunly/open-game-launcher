@@ -1,17 +1,31 @@
 use std::{
+    collections::BTreeMap,
     fs,
     path::{Path, PathBuf},
 };
 
 use super::core::{
     extract_og_zip_package, find_launch_executable, is_og_managed_install_path, is_zip_package,
-    launcher_display_name, normalize_game_id, og_manifest_file_for_path,
-    og_manifest_path_for_entry, og_manifest_relative_path, open_uri, path_to_string,
-    read_installed_games_cache, read_og_managed_manifest, read_og_managed_version,
-    update_uri_for_game, write_installed_games_cache, write_og_managed_manifest,
-    write_og_managed_manifest_details, OG_MANAGED_LATEST_VERSION,
+    launcher_display_name, manifest_has_signature, normalize_game_id,
+    og_managed_manifest_trust_status, og_manifest_file_for_path, og_manifest_path_for_entry,
+    og_manifest_relative_path, open_uri, path_to_string, read_installed_games_cache,
+    read_og_managed_manifest, read_og_managed_version, sha256_file_hex, update_uri_for_game,
+    verify_og_managed_manifest_signature, write_installed_games_cache, write_og_managed_manifest,
+    write_og_managed_manifest_details, OgManagedManifest, OgManagedManifestFile,
+    OgManifestTrustStatus, OG_MANAGED_LATEST_VERSION,
 };
 use super::types::*;
+
+impl From<OgManifestTrustStatus> for ManifestTrustStatus {
+    fn from(value: OgManifestTrustStatus) -> Self {
+        match value {
+            OgManifestTrustStatus::Missing => ManifestTrustStatus::Missing,
+            OgManifestTrustStatus::Unsigned => ManifestTrustStatus::Unsigned,
+            OgManifestTrustStatus::Signed => ManifestTrustStatus::Signed,
+            OgManifestTrustStatus::Invalid => ManifestTrustStatus::Invalid,
+        }
+    }
+}
 
 #[tauri::command]
 pub fn verify_game_files(game_id: String) -> Result<VerifyGameFilesResponse, String> {
@@ -29,6 +43,11 @@ pub fn verify_game_files(game_id: String) -> Result<VerifyGameFilesResponse, Str
 
     let install_path = game.install_path.as_deref().map(PathBuf::from);
     let manifest = install_path.as_deref().and_then(read_og_managed_manifest);
+    let manifest_trust =
+        og_managed_manifest_trust_status(install_path.as_deref(), manifest.as_ref());
+    if matches!(manifest_trust, OgManifestTrustStatus::Invalid) {
+        missing_files.push("manifest signature invalid".to_string());
+    }
 
     if let Some(install_path) = install_path.as_deref() {
         checked_files += 1;
@@ -42,21 +61,8 @@ pub fn verify_game_files(game_id: String) -> Result<VerifyGameFilesResponse, Str
     if let (Some(install_path), Some(manifest)) = (install_path.as_deref(), manifest.as_ref()) {
         for file in &manifest.files {
             checked_files += 1;
-            let Some(file_path) = og_manifest_path_for_entry(install_path, &file.path) else {
-                missing_files.push(format!("invalid manifest path: {}", file.path));
-                continue;
-            };
-
-            match fs::metadata(&file_path) {
-                Ok(metadata) if metadata.is_file() => {
-                    if let Some(expected_size) = file.size_bytes {
-                        if metadata.len() != expected_size {
-                            missing_files
-                                .push(format!("{} (size mismatch)", path_to_string(file_path)));
-                        }
-                    }
-                }
-                _ => missing_files.push(path_to_string(file_path)),
+            if let Some(issue) = verify_manifest_file_entry(install_path, file) {
+                missing_files.push(issue);
             }
         }
     }
@@ -106,8 +112,128 @@ pub fn verify_game_files(game_id: String) -> Result<VerifyGameFilesResponse, Str
         game_id,
         checked_files,
         missing_files,
+        manifest_trust: manifest_trust.into(),
         status,
     })
+}
+
+fn verify_manifest_file_entry(install_path: &Path, file: &OgManagedManifestFile) -> Option<String> {
+    let Some(file_path) = og_manifest_path_for_entry(install_path, &file.path) else {
+        return Some(format!("invalid manifest path: {}", file.path));
+    };
+
+    let metadata = match fs::metadata(&file_path) {
+        Ok(metadata) if metadata.is_file() => metadata,
+        _ => return Some(path_to_string(file_path)),
+    };
+
+    if let Some(expected_size) = file.size_bytes {
+        if metadata.len() != expected_size {
+            return Some(format!("{} (size mismatch)", path_to_string(file_path)));
+        }
+    }
+
+    let expected_sha256 = file
+        .sha256
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())?;
+
+    match sha256_file_hex(&file_path) {
+        Ok(actual_sha256) if actual_sha256.eq_ignore_ascii_case(expected_sha256) => None,
+        Ok(_) => Some(format!("{} (hash mismatch)", path_to_string(file_path))),
+        Err(error) => Some(format!(
+            "{} (hash unreadable: {error})",
+            path_to_string(file_path)
+        )),
+    }
+}
+
+fn validate_repair_package_hash(
+    manifest: &OgManagedManifest,
+    package_path: &Path,
+    title: &str,
+) -> Result<(), String> {
+    let Some(expected_sha256) = manifest
+        .download_sha256
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    else {
+        return Ok(());
+    };
+
+    let actual_sha256 = sha256_file_hex(package_path).map_err(|error| {
+        format!(
+            "{} repair package could not be hashed: {} ({error})",
+            title,
+            path_to_string(package_path.to_path_buf())
+        )
+    })?;
+
+    if actual_sha256.eq_ignore_ascii_case(expected_sha256) {
+        Ok(())
+    } else {
+        Err(format!(
+            "{} repair package failed SHA-256 validation: {}",
+            title,
+            path_to_string(package_path.to_path_buf())
+        ))
+    }
+}
+
+fn validate_repaired_manifest_files(
+    expected_files: &[OgManagedManifestFile],
+    repaired_files: &[OgManagedManifestFile],
+) -> Result<(), String> {
+    if expected_files.is_empty() {
+        return Ok(());
+    }
+
+    let repaired_by_path = repaired_files
+        .iter()
+        .map(|file| (file.path.as_str(), file))
+        .collect::<BTreeMap<_, _>>();
+
+    for expected in expected_files {
+        let Some(repaired) = repaired_by_path.get(expected.path.as_str()) else {
+            return Err(format!(
+                "Repair output is missing expected manifest file: {}",
+                expected.path
+            ));
+        };
+
+        if let Some(expected_size) = expected.size_bytes {
+            if repaired.size_bytes != Some(expected_size) {
+                return Err(format!(
+                    "Repair output differs from manifest for {} (size mismatch).",
+                    expected.path
+                ));
+            }
+        }
+
+        let Some(expected_sha256) = expected
+            .sha256
+            .as_deref()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+        else {
+            continue;
+        };
+
+        if !repaired
+            .sha256
+            .as_deref()
+            .is_some_and(|actual| actual.eq_ignore_ascii_case(expected_sha256))
+        {
+            return Err(format!(
+                "Repair output differs from manifest for {} (hash mismatch).",
+                expected.path
+            ));
+        }
+    }
+
+    Ok(())
 }
 
 #[tauri::command]
@@ -149,6 +275,9 @@ pub fn repair_game_files(game_id: String) -> Result<RepairGameFilesResponse, Str
             game.title
         )
     })?;
+    verify_og_managed_manifest_signature(&install_path, &manifest)
+        .map_err(|error| format!("{} repair stopped: {error}", game.title))?;
+    let manifest_is_signed = manifest_has_signature(&manifest);
     let package_file = manifest
         .package_file
         .as_deref()
@@ -163,6 +292,9 @@ pub fn repair_game_files(game_id: String) -> Result<RepairGameFilesResponse, Str
             path_to_string(package_path)
         ));
     }
+    validate_repair_package_hash(&manifest, &package_path, &game.title)?;
+
+    let expected_manifest_files = manifest.files.clone();
 
     let repaired_manifest_files = if is_zip_package(&package_path) {
         extract_og_zip_package(&package_path, &install_path, |_, _| {})?
@@ -171,6 +303,7 @@ pub fn repair_game_files(game_id: String) -> Result<RepairGameFilesResponse, Str
             .into_iter()
             .collect()
     };
+    validate_repaired_manifest_files(&expected_manifest_files, &repaired_manifest_files)?;
 
     let executable_path = find_launch_executable(&install_path, &game.title).ok_or_else(|| {
         format!(
@@ -178,8 +311,10 @@ pub fn repair_game_files(game_id: String) -> Result<RepairGameFilesResponse, Str
             game.title
         )
     })?;
-    manifest.files = repaired_manifest_files.clone();
-    manifest.executable_path = og_manifest_relative_path(&install_path, &executable_path);
+    if !manifest_is_signed {
+        manifest.files = repaired_manifest_files.clone();
+        manifest.executable_path = og_manifest_relative_path(&install_path, &executable_path);
+    }
     write_og_managed_manifest_details(&install_path, &manifest)?;
 
     game.status = GameStatus::Installed;
@@ -332,4 +467,95 @@ pub fn install_game_update(game_id: String) -> Result<InstallGameUpdateResponse,
         game: game.clone(),
         message: format!("{} updated to version {}.", game.title, game.version),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn unique_temp_dir(name: &str) -> PathBuf {
+        let path = std::env::temp_dir().join(format!(
+            "ogl-{name}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(&path).unwrap();
+        path
+    }
+
+    #[test]
+    fn verify_manifest_file_entry_flags_same_size_hash_mismatch() {
+        let root = unique_temp_dir("verify-hash-mismatch");
+        fs::write(root.join("game.bin"), b"abc").unwrap();
+        let manifest_file = OgManagedManifestFile {
+            path: "game.bin".to_string(),
+            size_bytes: Some(3),
+            sha256: Some(
+                "0000000000000000000000000000000000000000000000000000000000000000".to_string(),
+            ),
+        };
+
+        let issue = verify_manifest_file_entry(&root, &manifest_file).unwrap();
+
+        assert!(issue.contains("hash mismatch"));
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn verify_manifest_file_entry_accepts_matching_hash() {
+        let root = unique_temp_dir("verify-hash-match");
+        fs::write(root.join("game.bin"), b"abc").unwrap();
+        let manifest_file = OgManagedManifestFile {
+            path: "game.bin".to_string(),
+            size_bytes: Some(3),
+            sha256: Some(
+                "BA7816BF8F01CFEA414140DE5DAE2223B00361A396177A9CB410FF61F20015AD".to_string(),
+            ),
+        };
+
+        assert!(verify_manifest_file_entry(&root, &manifest_file).is_none());
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn validate_repair_package_hash_rejects_changed_package() {
+        let root = unique_temp_dir("repair-package-hash");
+        let package_path = root.join("package.zip");
+        fs::write(&package_path, b"corrupt-package").unwrap();
+        let manifest = OgManagedManifest {
+            download_sha256: Some(
+                "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad".to_string(),
+            ),
+            ..Default::default()
+        };
+
+        let error = validate_repair_package_hash(&manifest, &package_path, "Game").unwrap_err();
+
+        assert!(error.contains("failed SHA-256 validation"));
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn validate_repaired_manifest_files_rejects_hash_mismatch() {
+        let expected = vec![OgManagedManifestFile {
+            path: "bin/game".to_string(),
+            size_bytes: Some(3),
+            sha256: Some("expected".to_string()),
+        }];
+        let repaired = vec![OgManagedManifestFile {
+            path: "bin/game".to_string(),
+            size_bytes: Some(3),
+            sha256: Some("actual".to_string()),
+        }];
+
+        let error = validate_repaired_manifest_files(&expected, &repaired).unwrap_err();
+
+        assert!(error.contains("hash mismatch"));
+    }
 }

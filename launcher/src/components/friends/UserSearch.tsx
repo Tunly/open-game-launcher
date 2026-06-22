@@ -7,7 +7,7 @@ export function UserSearch({
 }) {
   return (
     <label className="block">
-      <span className="neo-copy text-[11px] font-black tracking-[0.12em] text-[#5b403f] uppercase">
+      <span className="neo-copy text-[11px] font-black uppercase tracking-[0.12em] text-[#5b403f]">
         Search users
       </span>
       <input

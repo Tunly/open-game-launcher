@@ -1,5 +1,19 @@
 import type { Game } from "./types";
 
+const SOURCE_LABELS: Record<string, string> = {
+  battlenet: "Battle.net",
+  ea: "EA",
+  epic: "Epic",
+  gog: "GOG",
+  linux: "Linux",
+  macos: "macOS",
+  manual: "Manual",
+  steam: "Steam",
+  ubisoft: "Ubisoft",
+  windows: "Windows",
+  xbox: "Xbox",
+};
+
 /**
  * Coerce any thrown value into a human-readable string.
  *
@@ -169,6 +183,15 @@ export function getGameSource(game: Game): string {
   if (description.includes("steam")) return "steam";
 
   return game.platform;
+}
+
+export function getSourceDisplayLabel(source: string | null | undefined): string {
+  const normalized = (source ?? "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+  if (!normalized) return "Unknown";
+  return SOURCE_LABELS[normalized] ?? source?.trim() ?? normalized;
 }
 
 /** Match advanced library launcher filter (e.g. "ea" matches "EA App" installs). */

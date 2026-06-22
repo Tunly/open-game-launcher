@@ -48,12 +48,14 @@ begin
       updated_at = now()
   where fl.matched_user_id is null
     and fl.merge_group_id is not null
-    and fl.merge_group_id in (
-      select merge_group_id
-      from public.friend_links
-      where platform = new.platform
-        and platform_friend_id = new.platform_user_id
-        and merge_group_id is not null
+    and exists (
+      select 1
+      from public.friend_links direct
+      where direct.owner_id = fl.owner_id
+        and direct.merge_group_id = fl.merge_group_id
+        and direct.platform = new.platform
+        and direct.platform_friend_id = new.platform_user_id
+        and direct.merge_group_id is not null
     );
 
   return new;

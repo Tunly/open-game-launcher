@@ -1,7 +1,11 @@
 import { listen } from "@tauri-apps/api/event";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, isTauri } from "@tauri-apps/api/core";
 import { useEffect } from "react";
-import type { ScreenshotMeta, AchievementPopupPayload, OverlaySettings } from "./types/overlay";
+import type {
+  ScreenshotMeta,
+  AchievementPopupPayload,
+  NativeOverlaySettings,
+} from "./types/overlay";
 
 export async function toggleInGameOverlay(): Promise<boolean> {
   return invoke("toggle_in_game_overlay");
@@ -23,13 +27,13 @@ export async function deleteScreenshot(path: string): Promise<void> {
   return invoke("delete_screenshot", { path });
 }
 
-export async function getOverlaySettings(): Promise<OverlaySettings> {
+export async function getOverlaySettings(): Promise<NativeOverlaySettings> {
   return invoke("get_overlay_settings");
 }
 
 export async function saveOverlaySettings(
-  settings: Partial<OverlaySettings>,
-): Promise<OverlaySettings> {
+  settings: NativeOverlaySettings,
+): Promise<NativeOverlaySettings> {
   return invoke("save_overlay_settings", { settings });
 }
 
@@ -39,6 +43,10 @@ export async function emitAchievementPopup(payload: AchievementPopupPayload): Pr
 
 export function useOverlayHotkey() {
   useEffect(() => {
+    if (!isTauri()) {
+      return;
+    }
+
     let unlisten: (() => void) | null = null;
 
     listen("overlay-toggle-requested", async () => {
@@ -59,6 +67,10 @@ export function useOverlayHotkey() {
 
 export function useAchievementPopup(callback: (payload: AchievementPopupPayload) => void) {
   useEffect(() => {
+    if (!isTauri()) {
+      return;
+    }
+
     let unlisten: (() => void) | null = null;
 
     listen("achievement-unlocked", (event) => {
@@ -75,6 +87,10 @@ export function useAchievementPopup(callback: (payload: AchievementPopupPayload)
 
 export function useScreenshotCaptured(callback: (meta: ScreenshotMeta) => void) {
   useEffect(() => {
+    if (!isTauri()) {
+      return;
+    }
+
     let unlisten: (() => void) | null = null;
 
     listen("screenshot-captured", (event) => {

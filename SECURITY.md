@@ -9,10 +9,7 @@
 
 ## Reporting a vulnerability
 
-**Please do not file a public issue.** Open Game Launcher takes security seriously. To report a vulnerability, contact the maintainers privately:
-
-- Email: security@open-game-launcher.example
-- GPG: `0xDEADBEEF 1234 5678 9ABC DEF0 1234 5678 9ABC DEF0` (placeholder; replace before publishing)
+**Please do not file a public issue.** Open Game Launcher takes security seriously. To report a vulnerability, use the repository's private vulnerability reporting channel when it is available. If this repository is mirrored or deployed privately, the deployment owner must publish a real security contact before accepting external reports.
 
 Include as much of the following as you can:
 
@@ -30,6 +27,8 @@ Security & RLS Hardening has been successfully completed:
 - **Stripe checkout**: Enforced caller JWT, derived `user_id` from claims, and corrected the target column.
 - **RLS**: Added missing `SELECT` policy on `price_history`, implemented access policies on `store_orders`, `store_order_items`, `store_builds`, and `store_licenses`, and blocked self-publishing in `store_products`.
 - **Rust backend**: Eliminated shell, PowerShell, and path-traversal injection vectors, replaced plaintext-token JSON fallback with the OS keychain, and swapped `Mutex::lock().unwrap()` for poisoned-lock-aware variants to prevent lock poisoning.
+- **Platform auth**: GOG and EA bearer tokens stay in the native secure store; frontend flows remove legacy browser token copies, and Epic keeps only a non-sensitive connected-session marker while Legendary owns credentials.
+- **Install manifests**: Signed OG install manifests verify with a public key; `OGL_INSTALL_MANIFEST_SIGNING_KEY` is a release/staging secret and must never be committed or bundled into public client builds.
 
 ## Best practices for contributors
 
