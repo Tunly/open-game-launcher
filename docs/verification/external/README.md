@@ -59,9 +59,10 @@ hosted cron evidence, and external evidence preflight.
 - `provider-live-integrations` needs real provider keys, live provider probes,
   non-Steam presence bridge evidence, provider-approved catalog/cloud transfer
   evidence, and achievement/provider cache E2E against real client data.
-- `hardware-os-e2e` needs real-title overlay, long native overlay sessions,
-  backup/restore across Windows, macOS, and Linux, and real provider-client
-  mount/apply evidence.
+- `hardware-os-e2e` needs real-title overlay, long native overlay sessions with
+  a numeric measured duration/window, backup/restore across Windows, macOS, and
+  Linux, and a matrix with one row per OS that names title, client, and locator
+  coverage plus real provider-client mount/apply evidence.
 - `rollout-tracks` needs hosted community rollout, controller layout/profile
   sync, plugin marketplace review, mobile store/push provider evidence, and
   hosted production deployment evidence.

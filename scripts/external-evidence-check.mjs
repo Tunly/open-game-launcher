@@ -353,7 +353,7 @@ export const evidenceGates = Object.freeze([
         },
       "Hosted production deployment evidence is attached.": {
         capture:
-          "Run `pnpm hosted:deploy-gate:packet`, then run GitHub Actions `CI` from `main` with `hosted_deploy_gate=true`, `hosted_environment=hosted-production`, `hosted_deploy_action=all`, and `hosted_deploy_dry_run=false`; paste the labelled `hosted-deploy workflow-<id>` locator into both the proof evidence row and `Hosted deploy evidence`.",
+          "Run `pnpm hosted:deploy-gate:packet`, then run GitHub Actions `CI` from `main` with `hosted_deploy_gate=true`, `hosted_environment=hosted-production`, `hosted_deploy_action=all`, and `hosted_deploy_dry_run=false`; paste a labelled `hosted-deploy` GitHub Actions run URL plus those CI inputs into both the proof evidence row and `Hosted deploy evidence`.",
         terms: ["hosted-deploy", "workflow"],
       },
     },
@@ -1055,13 +1055,27 @@ function stripeDashboardEvidenceValueIsSpecific(value) {
   ]);
 }
 
+const measuredSessionDurationPattern =
+  /\b(?:duration|window|measured[-_\s]?window)[-_: #=]*(?:[1-9]\d{0,3})\s?(?:m|min|mins|minutes|h|hr|hrs|hours)\b/i;
+
+const hostedDeployRequiredInputPatterns = Object.freeze([
+  /\bCI\b/,
+  /\bmain\b/,
+  /\bhosted_deploy_gate=true\b/,
+  /\bhosted_environment=hosted-production\b/,
+  /\bhosted_deploy_action=all\b/,
+  /\bhosted_deploy_dry_run=false\b/,
+]);
+
 function hostedDeployWorkflowEvidenceValueIsSpecific(value) {
   const cleaned = clean(value);
   if (evidenceLocatorIssueReason(cleaned)) return false;
   if (!/\bhosted[-_\s]?deploy\b/i.test(cleaned)) return false;
   if (evidenceLocatorContainsGithubPullOrCommitUrl(cleaned)) return false;
-  if (evidenceLocatorContainsGithubActionsRunUrl(cleaned)) return true;
-  return /\bworkflow[-_: #]?[a-z0-9][a-z0-9._:-]*\d\b/i.test(cleaned);
+  if (!evidenceLocatorContainsGithubActionsRunUrl(cleaned)) return false;
+  return hostedDeployRequiredInputPatterns.every((pattern) =>
+    pattern.test(cleaned),
+  );
 }
 
 function hostedDeployWorkflowEvidenceIssueReason(value) {
@@ -1070,6 +1084,30 @@ function hostedDeployWorkflowEvidenceIssueReason(value) {
   return hostedDeployWorkflowEvidenceValueIsSpecific(value)
     ? null
     : "missing_lane_terms";
+}
+
+function hardwareOsMatrixValueIsSpecific(value) {
+  const cleaned = clean(value);
+  if (evidenceLocatorIssueReason(cleaned)) return false;
+  const rows = cleaned.split(/\s*(?:\||;)\s*/).filter(Boolean);
+  if (rows.length < 3) return false;
+  return [/windows/i, /mac\s?os/i, /linux/i].every((osPattern) =>
+    rows.some(
+      (row) =>
+        osPattern.test(row) &&
+        /\btitle\s*[:=]\s*[^|;]{2,}/i.test(row) &&
+        /\bclient\s*[:=]\s*[^|;]{2,}/i.test(row) &&
+        evidenceIdentifierValueIsSpecific(row),
+    ),
+  );
+}
+
+function sessionRunEvidenceValueIsSpecific(value) {
+  const cleaned = clean(value);
+  return (
+    evidenceIdentifierValueMatchesAll(cleaned, [/session/i, /run/i, /overlay/i]) &&
+    measuredSessionDurationPattern.test(cleaned)
+  );
 }
 
 const fieldSpecificEvidenceValidators = Object.freeze({
@@ -1112,13 +1150,7 @@ const fieldSpecificEvidenceValidators = Object.freeze({
       /distribution/i,
       /store/i,
     ]),
-  "OS/title/client matrix": (value) =>
-    evidenceIdentifierValueMatchesAll(value, [
-      /matrix/i,
-      /windows/i,
-      /mac\s?os/i,
-      /linux/i,
-    ]),
+  "OS/title/client matrix": hardwareOsMatrixValueIsSpecific,
   "Provider response evidence": (value) =>
     evidenceIdentifierValueMatches(value, [/provider/i, /response/i, /probe/i]),
   "Provider/client matrix": (value) =>
@@ -1133,8 +1165,7 @@ const fieldSpecificEvidenceValidators = Object.freeze({
     evidenceIdentifierValueMatchesAll(value, [/push/i, /provider/i]) &&
     evidenceIdentifierValueMatches(value, [/firebase/i, /onesignal/i]),
   "Run ID": runIdValueIsSpecific,
-  "Session/run ID": (value) =>
-    evidenceIdentifierValueMatches(value, [/session/i, /run/i, /overlay/i]),
+  "Session/run ID": sessionRunEvidenceValueIsSpecific,
   "Stripe Dashboard evidence": stripeDashboardEvidenceValueIsSpecific,
   "Stripe webhook event ID": stripeEventIdValueIsSpecific,
   "Supabase function log run ID": evidenceIdentifierValueIsSpecific,
@@ -1533,6 +1564,7 @@ function expectedProofEvidenceValuePatterns(proof) {
     return [
       /native[-_\s]?overlay/i,
       /(?:long[-_\s]?session|runtime[-_\s]?session)/i,
+      measuredSessionDurationPattern,
     ];
   }
   if (/external-drive backup\/restore/.test(normalizedProof)) {
@@ -1925,7 +1957,7 @@ export function artifactTemplate(gate, artifactPath) {
     "## Proof Evidence Mapping",
     "",
     "When a proof row is checked, fill the matching evidence line with a specific redacted run ID, dashboard link, external artifact locator, workflow ID, signed log, or `sha256:<64-hex>` reference. Accepted dashboard URL hosts are Supabase, Stripe live Dashboard, GitHub Actions/releases/deployments, Vercel, Netlify, Cloudflare, App Store Connect, Google Play Console, Firebase, and OneSignal; otherwise use `run:`/`artifact:`/`sha256:` style locators. Generic text such as `redacted`, `see above`, local files, localhost URLs, and example URLs do not satisfy preflight.",
-    "Proof evidence values must name the proof lane they support, for example `stripe-webhook`, `stripe-tax-invoice`, `license-key-custody-live-license-issuance`, `price-drop`, `presence-poll`, `account-deletion`, `mod.io/CurseForge`, `non-steam-presence-bridge-provider`, `provider-approved-catalog-cloud-transfer`, `achievement-provider-cache-real-client`, `fullscreen-anti-cheat-overlay`, `backup-restore`, `client-mount-apply-provider-client`, `community-artwork-screenshot-rollout`, `controller-layout-profile-sync`, `plugin-marketplace-execution-update`, `mobile-push-provider-store-distribution`, or `hosted-deploy`; bare `evt_...` values are accepted only for the Stripe webhook signature proof. Syntactically specific but generic IDs such as `run-generic-1` stay blocked. Compound proof values must include every required term in the same value: mod-provider evidence includes both `mod.io` and `CurseForge`; external-drive backup/restore proof evidence and hardware matrix evidence include `Windows`, `macOS`, and `Linux`.",
+    "Proof evidence values must name the proof lane they support, for example `stripe-webhook`, `stripe-tax-invoice`, `license-key-custody-live-license-issuance`, `price-drop`, `presence-poll`, `account-deletion`, `mod.io/CurseForge`, `non-steam-presence-bridge-provider`, `provider-approved-catalog-cloud-transfer`, `achievement-provider-cache-real-client`, `fullscreen-anti-cheat-overlay`, `backup-restore`, `client-mount-apply-provider-client`, `community-artwork-screenshot-rollout`, `controller-layout-profile-sync`, `plugin-marketplace-execution-update`, `mobile-push-provider-store-distribution`, or `hosted-deploy`; bare `evt_...` values are accepted only for the Stripe webhook signature proof. Syntactically specific but generic IDs such as `run-generic-1` stay blocked. Compound proof values must include every required term in the same value: mod-provider evidence includes both `mod.io` and `CurseForge`; external-drive backup/restore proof evidence includes `Windows`, `macOS`, and `Linux`; long native overlay proof evidence includes a numeric measured duration/window; hardware matrix evidence includes one `Windows`, one `macOS`, and one `Linux` row, each with `title:`, `client:`, and a specific locator.",
     "",
     ...requiredProofs.map((proof) => `- Evidence for ${proof}:`),
     "",
@@ -1968,12 +2000,17 @@ export function artifactTemplate(gate, artifactPath) {
       : []),
     ...(requiredArtifactEvidenceFields.includes("Hosted deploy evidence")
       ? [
-          "Hosted deploy evidence must include `hosted-deploy` and a GitHub Actions workflow locator.",
+          "Hosted deploy evidence must include `hosted-deploy`, a GitHub Actions run URL, `CI`, `main`, `hosted_deploy_gate=true`, `hosted_environment=hosted-production`, `hosted_deploy_action=all`, and `hosted_deploy_dry_run=false`.",
         ]
       : []),
     ...(requiredArtifactEvidenceFields.includes("OS/title/client matrix")
       ? [
-          "OS/title/client matrix values must include `Windows`, `macOS`, and `Linux`.",
+          "OS/title/client matrix values must include one `Windows`, one `macOS`, and one `Linux` row separated by `|` or `;`; each row must include `title:`, `client:`, and a specific locator.",
+        ]
+      : []),
+    ...(requiredArtifactEvidenceFields.includes("Session/run ID")
+      ? [
+          "Session/run ID values must include `overlay`, `session`/`run`, and a numeric duration/window such as `duration:30m`.",
         ]
       : []),
     ...(requiredArtifactEvidenceFields.includes("Hosted cron table")
@@ -2091,7 +2128,7 @@ function pushHostedCronCollectorPrerequisites(lines, gate) {
 function pushHostedDeployProofHandoff(lines, gate) {
   if (gate.id !== "rollout-tracks") return;
   lines.push(
-    "- Hosted deploy proof: run GitHub Actions `CI` from `main` with `hosted_deploy_gate=true`, `hosted_environment=hosted-production`, `hosted_deploy_action=all`, and `hosted_deploy_dry_run=false`; paste a labelled locator such as `hosted-deploy workflow: https://github.com/<owner>/<repo>/actions/runs/<id>` or `hosted-deploy workflow-<id>` into `Evidence for Hosted production deployment evidence is attached.` and `Hosted deploy evidence`.",
+    "- Hosted deploy proof: run GitHub Actions `CI` from `main` with `hosted_deploy_gate=true`, `hosted_environment=hosted-production`, `hosted_deploy_action=all`, and `hosted_deploy_dry_run=false`; paste a labelled locator such as `hosted-deploy CI main hosted_deploy_gate=true hosted_environment=hosted-production hosted_deploy_action=all hosted_deploy_dry_run=false workflow: https://github.com/<owner>/<repo>/actions/runs/<id>` into `Evidence for Hosted production deployment evidence is attached.` and `Hosted deploy evidence`.",
   );
 }
 

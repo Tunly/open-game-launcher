@@ -227,7 +227,10 @@ values are accepted only for the Stripe webhook signature proof. Syntactically
 specific but generic IDs such as `run-generic-1` stay blocked. Compound proof
 values must include every required term in the same value: mod-provider evidence
 includes both `mod.io` and `CurseForge`; external-drive backup/restore proof
-evidence and hardware matrix evidence include `Windows`, `macOS`, and `Linux`.
+evidence includes `Windows`, `macOS`, and `Linux`; long native overlay proof
+evidence includes a numeric measured duration/window; hardware matrix evidence
+includes one `Windows`, one `macOS`, and one `Linux` row, each with `title:`,
+`client:`, and a specific locator.
 
 ## store-stripe-live
 
@@ -419,7 +422,11 @@ Gate-specific evidence rows:
 - Hardware profile.
 - Session/run ID.
 
-OS/title/client matrix values must include `Windows`, `macOS`, and `Linux`.
+OS/title/client matrix values must include one `Windows`, one `macOS`, and one
+`Linux` row separated by `|` or `;`; each row must include `title:`, `client:`,
+and a specific locator.
+Session/run ID values must include `overlay`, `session`/`run`, and a numeric
+duration/window such as `duration:30m`.
 
 ## rollout-tracks
 
@@ -452,10 +459,13 @@ Hosted deploy proof comes from the GitHub Actions `CI` workflow run from
 `main` with `hosted_deploy_gate=true`,
 `hosted_environment=hosted-production`, `hosted_deploy_action=all`, and
 `hosted_deploy_dry_run=false`. Paste a labelled locator such as
-`hosted-deploy workflow: https://github.com/<owner>/<repo>/actions/runs/<id>`
-or `hosted-deploy workflow-<id>` into both `Evidence for Hosted production
-deployment evidence is attached.` and `Hosted deploy evidence`; a bare Actions
-URL lacks the lane label required by preflight.
+`hosted-deploy CI main hosted_deploy_gate=true
+hosted_environment=hosted-production hosted_deploy_action=all
+hosted_deploy_dry_run=false workflow:
+https://github.com/<owner>/<repo>/actions/runs/<id>` into both `Evidence for
+Hosted production deployment evidence is attached.` and `Hosted deploy
+evidence`; a bare Actions URL or standalone workflow ID lacks the lane label and
+production inputs required by preflight.
 
 Here, screenshots means hosted community screenshot content, not
 `docs/verification/screenshots/*` artifacts.

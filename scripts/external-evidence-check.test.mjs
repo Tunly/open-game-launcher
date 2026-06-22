@@ -75,6 +75,10 @@ const hostedCronRestUrlPrerequisite =
   "SUPABASE_REST_URL or SUPABASE_URL or SUPABASE_PROJECT_REF";
 const hostedCronRestAuthPrerequisite =
   "SUPABASE_SERVICE_ROLE_KEY or SUPABASE_ANON_KEY + SUPABASE_AUTH_JWT";
+const validHardwareOsMatrix =
+  "Windows title:redacted-game client:Steam run:win-matrix-123 | macOS title:redacted-game client:Steam run:macos-matrix-123 | Linux title:redacted-game client:Steam run:linux-matrix-123";
+const validHostedDeployEvidence =
+  "hosted-deploy CI main hosted_deploy_gate=true hosted_environment=hosted-production hosted_deploy_action=all hosted_deploy_dry_run=false workflow: https://github.com/open-game-collective/open-game-launcher/actions/runs/12345";
 
 function requiredEvidenceFieldsForArtifact(gate, artifactPath) {
   return [
@@ -124,13 +128,16 @@ function gateSpecificEvidenceDetails(gate) {
         return "- Live license issuance evidence: live-license-issuance workflow-123";
       }
       if (field === "OS/title/client matrix") {
-        return "- OS/title/client matrix: os-title-client matrix Windows macOS Linux workflow-123";
+        return `- OS/title/client matrix: ${validHardwareOsMatrix}`;
+      }
+      if (field === "Session/run ID") {
+        return "- Session/run ID: overlay-session-run-123 duration:30m";
       }
       if (field === "Provider/client matrix") {
         return "- Provider/client matrix: provider-client matrix mod.io CurseForge workflow-123";
       }
       if (field === "Hosted deploy evidence") {
-        return "- Hosted deploy evidence: hosted-deploy workflow-123";
+        return `- Hosted deploy evidence: ${validHostedDeployEvidence}`;
       }
       if (field === "Community rollout evidence") {
         return "- Community rollout evidence: community artwork screenshot rollout workflow-123";
@@ -177,7 +184,7 @@ function proofEvidenceValueForProof(proof, fallback) {
   if (proof.includes("Fullscreen/anti-cheat overlay"))
     return "run-fullscreen-anticheat-overlay-session-123";
   if (proof.includes("Long native overlay sessions"))
-    return "run-native-overlay-long-session-123";
+    return "run-native-overlay-long-session-duration-45min-123";
   if (proof.includes("External-drive backup/restore"))
     return "run-external-drive-backup-restore-Windows-macOS-Linux-e2e-123";
   if (proof.includes("Real client mount/apply"))
@@ -191,7 +198,7 @@ function proofEvidenceValueForProof(proof, fallback) {
   if (proof.includes("Native mobile apps"))
     return "run-mobile-push-provider-store-distribution-123";
   if (proof.includes("Hosted production deployment"))
-    return "hosted-deploy workflow-123";
+    return validHostedDeployEvidence;
   return fallback;
 }
 
@@ -730,8 +737,9 @@ test("rollout operator packet and runbook name the production hosted deploy proo
     assert.match(output, /hosted_environment=hosted-production/);
     assert.match(output, /hosted_deploy_action=all/);
     assert.match(output, /hosted_deploy_dry_run=false/);
-    assert.match(output, /labelled locator/);
-    assert.match(output, /hosted-deploy workflow/);
+    assert.match(output, /labelled/);
+    assert.match(output, /hosted-deploy/);
+    assert.match(output, /actions\/runs\/<id>/);
     assert.match(
       output,
       /Evidence for Hosted production deployment evidence is attached/,
@@ -2047,7 +2055,7 @@ test("preflight status requires compound provider proof evidence terms", () => {
   assert.deepEqual(bothProvidersStatus.missingEvidenceDetails, []);
 });
 
-test("preflight status requires hardware OS proof and matrix to name every OS lane", () => {
+test("preflight status requires hardware OS proof and matrix to name every OS title client lane", () => {
   const gate = evidenceGates.find((item) => item.id === "hardware-os-e2e");
   assert.ok(gate);
   const artifactPath = "docs/verification/external/hardware-os-e2e.md";
@@ -2070,7 +2078,7 @@ test("preflight status requires hardware OS proof and matrix to name every OS la
       ),
       `- OS/title/client matrix: ${matrix}`,
       "- Hardware profile: hardware-profile-run-123",
-      "- Session/run ID: overlay-session-run-123",
+      "- Session/run ID: overlay-session-run-123 duration:30m",
       capturedEvidenceDetails(),
     ].join("\n");
 
@@ -2080,7 +2088,7 @@ test("preflight status requires hardware OS proof and matrix to name every OS la
     fakeExists(gate.artifactPaths),
     fakeRead({
       [artifactPath]: contentWithOsEvidence({
-        matrix: "os-title-client matrix Windows workflow-123",
+        matrix: "Windows title:redacted-game client:Steam run:win-matrix-123",
         proofEvidence: "workflow-backup-restore-Windows-123",
       }),
     }),
@@ -2099,13 +2107,33 @@ test("preflight status requires hardware OS proof and matrix to name every OS la
     },
   ]);
 
+  const osOnlyStatus = gateStatus(
+    gate,
+    configuredEnv,
+    fakeExists(gate.artifactPaths),
+    fakeRead({
+      [artifactPath]: contentWithOsEvidence({
+        matrix: "matrix Windows macOS Linux workflow-123",
+        proofEvidence: "workflow-backup-restore-Windows-macOS-Linux-123",
+      }),
+    }),
+  );
+
+  assert.equal(osOnlyStatus.ready, false);
+  assert.deepEqual(osOnlyStatus.missingEvidenceDetails, [
+    {
+      field: "OS/title/client matrix",
+      path: artifactPath,
+    },
+  ]);
+
   const allOsStatus = gateStatus(
     gate,
     configuredEnv,
     fakeExists(gate.artifactPaths),
     fakeRead({
       [artifactPath]: contentWithOsEvidence({
-        matrix: "os-title-client matrix Windows macOS Linux workflow-123",
+        matrix: validHardwareOsMatrix,
         proofEvidence: "workflow-backup-restore-Windows-macOS-Linux-123",
       }),
     }),
@@ -2171,6 +2199,85 @@ test("preflight status requires compound hardware overlay proof terms", () => {
 
   assert.equal(fullOverlayStatus.ready, true);
   assert.deepEqual(fullOverlayStatus.missingEvidenceDetails, []);
+});
+
+test("preflight status requires long native overlay proof to include measured duration", () => {
+  const gate = evidenceGates.find((item) => item.id === "hardware-os-e2e");
+  assert.ok(gate);
+  const artifactPath = "docs/verification/external/hardware-os-e2e.md";
+  const longOverlayProof =
+    "Long native overlay sessions produce stable runtime/session evidence.";
+
+  const contentWithLongOverlayProofEvidence = (value) =>
+    [
+      ...gate.requiredProofs.map((proof) => `- [x] ${proof}`),
+      ...gate.requiredProofs.map(
+        (proof, index) =>
+          `- Evidence for ${proof}: ${
+            proof === longOverlayProof
+              ? value
+              : proofEvidenceValueForProof(
+                  proof,
+                  `run-hardware-os-${index + 1}`,
+                )
+          }`,
+      ),
+      gateSpecificEvidenceDetails(gate),
+      capturedEvidenceDetails(),
+    ].join("\n");
+
+  const noDurationStatus = gateStatus(
+    gate,
+    configuredEnv,
+    fakeExists(gate.artifactPaths),
+    fakeRead({
+      [artifactPath]: contentWithLongOverlayProofEvidence(
+        "workflow-native-overlay-long-session-123",
+      ),
+    }),
+  );
+
+  assert.equal(noDurationStatus.ready, false);
+  assert.deepEqual(noDurationStatus.missingProofs, []);
+  assert.deepEqual(noDurationStatus.missingEvidenceDetails, [
+    {
+      field: `Evidence for ${longOverlayProof}`,
+      path: artifactPath,
+    },
+  ]);
+
+  const noUnitDurationStatus = gateStatus(
+    gate,
+    configuredEnv,
+    fakeExists(gate.artifactPaths),
+    fakeRead({
+      [artifactPath]: contentWithLongOverlayProofEvidence(
+        "workflow-native-overlay-long-session-duration-123",
+      ),
+    }),
+  );
+
+  assert.equal(noUnitDurationStatus.ready, false);
+  assert.deepEqual(noUnitDurationStatus.missingEvidenceDetails, [
+    {
+      field: `Evidence for ${longOverlayProof}`,
+      path: artifactPath,
+    },
+  ]);
+
+  const durationStatus = gateStatus(
+    gate,
+    configuredEnv,
+    fakeExists(gate.artifactPaths),
+    fakeRead({
+      [artifactPath]: contentWithLongOverlayProofEvidence(
+        "workflow-native-overlay-long-session-duration-45min-123",
+      ),
+    }),
+  );
+
+  assert.equal(durationStatus.ready, true);
+  assert.deepEqual(durationStatus.missingEvidenceDetails, []);
 });
 
 test("preflight status requires compound mobile rollout proof terms", () => {
@@ -2488,7 +2595,7 @@ test("preflight status rejects generic gate-specific evidence identifiers", () =
       replacements: [
         "- OS/title/client matrix: run-generic-field-123",
         "- Hardware profile: run-generic-field-456",
-        "- Session/run ID: overlay-session-run-123",
+        "- Session/run ID: overlay-session-run-123 duration:30m",
       ],
     },
     {
@@ -2653,7 +2760,7 @@ test("preflight status rejects weak rollout track evidence detail values", () =>
         "- Marketplace evidence: plugin marketplace execution update run-123",
         "- Mobile distribution evidence: mobile store distribution run-123",
         "- Push-provider evidence: push provider firebase run-123",
-        "- Hosted deploy evidence: hosted-deploy workflow-123",
+        `- Hosted deploy evidence: ${validHostedDeployEvidence}`,
       ].join("\n"),
     }),
   );
@@ -3176,7 +3283,7 @@ function rolloutEvidenceContent(gate, hostedDeployLocator) {
   ].join("\n");
 }
 
-test("preflight status requires hosted deploy workflow evidence instead of PR or commit URLs", () => {
+test("preflight status requires hosted deploy workflow evidence with production CI inputs", () => {
   const gate = evidenceGates.find((item) => item.id === "rollout-tracks");
   assert.ok(gate);
   const artifactPath = "docs/verification/external/rollout-tracks.md";
@@ -3184,6 +3291,11 @@ test("preflight status requires hosted deploy workflow evidence instead of PR or
     "Hosted production deployment evidence is attached.";
 
   for (const locator of [
+    "hosted-deploy workflow-123",
+    "hosted-deploy workflow: https://github.com/open-game-collective/open-game-launcher/actions/runs/12345",
+    "hosted-deploy CI main hosted_deploy_action=all hosted_deploy_dry_run=false workflow: https://github.com/open-game-collective/open-game-launcher/actions/runs/12345",
+    "hosted-deploy CI main hosted_deploy_gate=true hosted_environment=hosted-production hosted_deploy_dry_run=false workflow: https://github.com/open-game-collective/open-game-launcher/actions/runs/12345",
+    "hosted-deploy CI main hosted_deploy_gate=true hosted_environment=hosted-production hosted_deploy_action=all workflow: https://github.com/open-game-collective/open-game-launcher/actions/runs/12345",
     "hosted-deploy https://github.com/open-game-collective/open-game-launcher/pull/123",
     "hosted-deploy workflow-123 https://github.com/open-game-collective/open-game-launcher/pull/123",
     "hosted-deploy https://github.com/open-game-collective/open-game-launcher/commit/0123456789abcdef0123456789abcdef01234567",
@@ -3224,10 +3336,7 @@ test("preflight status requires hosted deploy workflow evidence instead of PR or
     configuredEnv,
     fakeExists(gate.artifactPaths),
     fakeRead({
-      [artifactPath]: rolloutEvidenceContent(
-        gate,
-        "hosted-deploy workflow: https://github.com/open-game-collective/open-game-launcher/actions/runs/12345",
-      ),
+      [artifactPath]: rolloutEvidenceContent(gate, validHostedDeployEvidence),
     }),
   );
 
@@ -3560,7 +3669,7 @@ test("preflight status blocks raw GitHub token artifact content", () => {
       fakeRead({
         [artifactPath]: rolloutEvidenceContent(
           gate,
-          "hosted-deploy workflow-123",
+          validHostedDeployEvidence,
         ).concat("\n", rawGithubToken),
       }),
     );
@@ -3582,7 +3691,7 @@ test("preflight status blocks raw GitHub token artifact content", () => {
     fakeExists(gate.artifactPaths),
     fakeRead({
       [artifactPath]: [
-        rolloutEvidenceContent(gate, "hosted-deploy workflow-123"),
+        rolloutEvidenceContent(gate, validHostedDeployEvidence),
         "GITHUB_TOKEN=[redacted]",
         "GH_TOKEN=<redacted>",
         "GITHUB_PAT=***",
