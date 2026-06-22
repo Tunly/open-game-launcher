@@ -852,9 +852,13 @@ non-Windows hosts that Windows check is skipped with an explicit handoff note
 because GitHub Actions runs it on `windows-2025`. The Supabase migration lint
 wrapper starts the local database when needed, redacts local Supabase
 credentials from CLI output, and stops only a database instance it started
-itself. The Tauri debug bundle smoke is local only; tag release builds still
-produce the full Windows/macOS/Linux artifact matrix after the external
-release-boundary gate passes. A successful local run writes a gitignored
+itself. The release-tracking lane rejects both untracked and changed
+release-critical paths, so a dirty tracked release artifact cannot produce a
+clean-checkout local receipt. The Tauri debug bundle smoke is local only; tag
+release builds still produce the full Windows/macOS/Linux artifact matrix after
+the external release-boundary gate passes, with explicit per-platform artifact
+inventory rows, pre-upload inventory validation, and upload failure when a
+contract path matches no files. A successful local run writes a gitignored
 `.codex/completion-gate-local-latest.json` receipt with check IDs, platform,
 skipped platform-scoped checks, and an explicit `releaseProof: false` /
 `externalEvidenceCollected: false` boundary so operators can see the last local

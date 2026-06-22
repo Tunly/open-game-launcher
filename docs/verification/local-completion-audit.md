@@ -5,11 +5,11 @@ local deterministic completion boundary, not a release-readiness boundary or a
 claim that external provider, hardware, or hosted production systems have been
 exercised. Full release readiness still requires the real external evidence
 artifacts and a successful full `pnpm completion:gate` release-boundary run.
-Last refreshed: 2026-06-22 for completion-gate status, external evidence, hosted
-cron evidence helper semantics, the current Plugin Runtime Sandbox local
-boundary, and locked Cargo/Tauri release checks. The mutable local gate receipt
-is stored outside Git; no live external evidence was collected in this
-workspace.
+Last refreshed: 2026-06-22 for completion-gate status, external evidence,
+hosted cron evidence helper semantics, the current Plugin Runtime Sandbox local
+boundary, locked Cargo/Tauri release checks, release artifact inventory checks,
+and dirty tracked release-artifact guards. The mutable local gate receipt is
+stored outside Git; no live external evidence was collected in this workspace.
 
 ## Local Completion Boundary
 
@@ -95,13 +95,15 @@ workspace.
   sources, public artwork assets, Supabase Function and migration sources,
   scripts, runbooks, external evidence templates, screenshot artifacts,
   toolchain pins, package/CI manifests, lint-staged config, and hosted evidence
-  UI summaries must be tracked by Git before `completion:gate:local` can
-  represent a clean-checkout-reproducible state.
+  UI summaries must be tracked by Git and unchanged in the working tree before
+  `completion:gate:local` can represent a clean-checkout-reproducible state.
 - Release workflow structure is locally gated: `pnpm release:workflow:test` and
   `pnpm release:workflow` verify that `v*` tag packaging still waits for the
   hosted-production external completion boundary, pinned platform build matrix,
-  target-scoped artifact uploads, signing env names, and draft-release handoff
-  before `completion:gate:local` can pass.
+  Cargo-locked Tauri builds, explicit per-platform artifact inventory rows,
+  pre-upload artifact inventory validation, target-scoped uploads that fail
+  when no files match, signing env names, and draft-release handoff before
+  `completion:gate:local` can pass.
 - AI Recommendations Hosted Eval Contract local evidence is limited to
   `/library?verify=ai-recommendations-hosted-eval-contract` screenshots, DOM
   overflow checks, and contract tests for deterministic baseline fixtures,
