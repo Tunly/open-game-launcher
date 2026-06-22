@@ -153,6 +153,35 @@ describe("socialLinksSchema", () => {
     expect(result.success).toBe(true);
   });
 
+  it("keeps per-link visibility in valid social link payloads", () => {
+    const result = socialLinksSchema.safeParse([
+      { platform: "docs", url: "https://example.com/public", visibility: "public" },
+      {
+        platform: "discord",
+        label: "Private Discord",
+        url: "https://discord.gg/private-lab",
+        visibility: "private",
+      },
+    ]);
+
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.map((link) => link.visibility)).toEqual(["public", "private"]);
+    }
+  });
+
+  it("rejects unknown social link visibility values", () => {
+    const result = socialLinksSchema.safeParse([
+      {
+        platform: "discord",
+        url: "https://discord.gg/private-lab",
+        visibility: "guild_only",
+      },
+    ]);
+
+    expect(result.success).toBe(false);
+  });
+
   it("rejects non-url values", () => {
     const result = socialLinksSchema.safeParse([{ platform: "twitter", url: "not-a-url" }]);
     expect(result.success).toBe(false);

@@ -10,6 +10,7 @@ type LauncherType =
   | "xbox"
   | "manual"
   | "unknown";
+export type ClientPlatformId = "steam" | "epic" | "gog" | "xbox" | "ubisoft" | "battlenet" | "ea";
 type LogoPosition = "bottomLeft" | "upperCenter" | "centerCenter" | "bottomCenter";
 export type DownloadStatus =
   | "queued"
@@ -47,6 +48,22 @@ interface SaveFile {
   syncedAt?: string | null;
 }
 
+export interface GameScreenshot {
+  id?: string;
+  url?: string | null;
+  imageUrl?: string | null;
+  thumbnailUrl?: string | null;
+  caption?: string | null;
+  source?: string | null;
+  sourceLabel?: string | null;
+  provider?: string | null;
+  isPublic?: boolean | null;
+  createdAt?: string | null;
+  width?: number | null;
+  height?: number | null;
+  sizeBytes?: number | null;
+}
+
 export interface Game {
   id: string;
   title: string;
@@ -79,7 +96,13 @@ export interface Game {
   players?: string[];
   features?: string[];
   genres?: string[];
+  categories?: string[];
+  categoryLabels?: string[];
+  tags?: string[];
+  tagLabels?: string[];
   productCategory?: string; // e.g. "game", "software", "video", "dlc", "soundtrack", "demo", "beta"
+  screenshots?: Array<string | GameScreenshot>;
+  screenshotUrls?: string[];
   steamDeckCompatibility?: "verified" | "playable" | "unsupported" | "unknown";
   protonCompatible?: boolean;
   developer?: string;
@@ -102,6 +125,7 @@ export interface Game {
 
 export interface StoreGame {
   id: string;
+  slug?: string;
   title: string;
   description: string;
   price: number;
@@ -147,6 +171,375 @@ export interface ProviderHealthStatus {
   manifestsCount: number;
 }
 
+export interface PlatformClientHealth {
+  platformId: ClientPlatformId;
+  displayName: string;
+  installed: boolean;
+  running: boolean;
+  installPath?: string | null;
+  pid?: number | null;
+  processName?: string | null;
+  uptimeSeconds?: number | null;
+  windowHandle?: string | null;
+  windowTitle?: string | null;
+  statusLabel: string;
+  canLaunch: boolean;
+  lastCheckedAt: string;
+}
+
+export interface PlatformClientLifecycleEvent extends PlatformClientHealth {
+  event: "client_started" | "client_stopped" | "client_window_updated";
+  occurredAt: string;
+}
+
+export interface GameLifecycleEvent {
+  event: "game_started" | "game_stopped";
+  gameId: string;
+  title: string;
+  launcher: string;
+  running: boolean;
+  pid?: number | null;
+  processName?: string | null;
+  uptimeSeconds?: number | null;
+  lastInputSeconds?: number | null;
+  windowHandle?: string | null;
+  windowTitle?: string | null;
+  lastPlayed?: string | null;
+  playtimeMinutes?: number | null;
+  occurredAt: string;
+}
+
+export interface GameRuntimeStatus {
+  gameId: string;
+  title: string;
+  launcher: string;
+  running: boolean;
+  pid?: number | null;
+  processName?: string | null;
+  uptimeSeconds?: number | null;
+  lastInputSeconds?: number | null;
+  windowHandle?: string | null;
+  windowTitle?: string | null;
+  occurredAt: string;
+}
+
+export type GameRuntimeUpdate = GameRuntimeStatus;
+
+export interface ClientPathOverlay {
+  id: string;
+  label: string;
+  sourcePath: string;
+  targetPath: string;
+  enabled: boolean;
+  readOnly: boolean;
+  notes?: string | null;
+}
+
+export interface ClientModRoot {
+  id: string;
+  label: string;
+  path: string;
+  enabled: boolean;
+  kind: string;
+}
+
+export interface ClientAssetCacheEntry {
+  id: string;
+  label: string;
+  cacheKey: string;
+  cachePath: string;
+  enabled: boolean;
+  priority: number;
+  notes?: string | null;
+}
+
+export type ClientUpdatePolicy = "manual" | "notifyOnly" | "openClient" | "autoApply";
+
+export interface ClientModificationConfig {
+  platformId: ClientPlatformId;
+  displayName: string;
+  localInstallerPath?: string | null;
+  localUpdaterPath?: string | null;
+  latestKnownVersion?: string | null;
+  updatePolicy: ClientUpdatePolicy;
+  pathOverlays: ClientPathOverlay[];
+  modRoots: ClientModRoot[];
+  assetCaches: ClientAssetCacheEntry[];
+  updatedAt?: string | null;
+}
+
+export interface ClientAssetCacheLookupEntry {
+  cacheKey: string;
+  ownerPlatformId: ClientPlatformId;
+  ownerDisplayName: string;
+  entryId: string;
+  label: string;
+  cachePath: string;
+  priority: number;
+  conflictCount: number;
+}
+
+export interface ClientAssetCacheConflictEntry {
+  ownerPlatformId: ClientPlatformId;
+  ownerDisplayName: string;
+  entryId: string;
+  label: string;
+  cachePath: string;
+  priority: number;
+}
+
+export interface ClientAssetCacheConflict {
+  cacheKey: string;
+  entries: ClientAssetCacheConflictEntry[];
+}
+
+export interface ClientAssetCacheLookup {
+  generatedAt: string;
+  entries: ClientAssetCacheLookupEntry[];
+  conflicts: ClientAssetCacheConflict[];
+}
+
+export interface ClientPollingSettings {
+  lifecyclePollIntervalSeconds: number;
+  updatedAt?: string | null;
+}
+
+export interface ClientUpdateHistoryItem {
+  id: string;
+  platformId: ClientPlatformId;
+  checkedAt: string;
+  action: string;
+  status: string;
+  installedVersion?: string | null;
+  latestKnownVersion?: string | null;
+  message: string;
+}
+
+export interface ClientUpdateStatus {
+  platformId: ClientPlatformId;
+  displayName: string;
+  installed: boolean;
+  running: boolean;
+  installedVersion?: string | null;
+  latestKnownVersion?: string | null;
+  updateAvailable: boolean;
+  statusLabel: string;
+  detail: string;
+  canOpenUpdater: boolean;
+  officialDownloadUri?: string | null;
+  localUpdaterPath?: string | null;
+  updatePolicy: ClientUpdatePolicy;
+  schedulerEnabled: boolean;
+  lastScheduledCheckAt?: string | null;
+  nextScheduledCheckAt?: string | null;
+  lastCheckedAt: string;
+  history: ClientUpdateHistoryItem[];
+}
+
+export interface ScheduledClientUpdateChecksResponse {
+  checkedAt: string;
+  nextCheckAt?: string | null;
+  checkedClients: ClientUpdateStatus[];
+  skippedClients: string[];
+  updateCount: number;
+  message: string;
+}
+
+export interface ClientUpdateSchedulerRunStatus {
+  checkedAt: string;
+  checkedClients?: ClientUpdateStatus[];
+  success: boolean;
+  message: string;
+  updateCount: number;
+  checkedCount: number;
+  skippedCount: number;
+  nextCheckAt?: string | null;
+}
+
+export interface ClientUpdateSchedulerStatus {
+  supported: boolean;
+  installed: boolean;
+  provider: string;
+  configPath: string;
+  statusPath: string;
+  lastRun?: ClientUpdateSchedulerRunStatus | null;
+  message: string;
+}
+
+export interface ClientInstallerMetadata {
+  platformId: ClientPlatformId;
+  displayName: string;
+  officialDownloadUri?: string | null;
+  updaterUri?: string | null;
+  localInstallerPath?: string | null;
+  localUpdaterPath?: string | null;
+  canOpenOfficialDownload: boolean;
+  canOpenLocalInstaller: boolean;
+  canOpenUpdater: boolean;
+  installActionLabel: string;
+  updateActionLabel: string;
+  installNotes: string;
+  updateNotes: string;
+}
+
+export interface ClientInstallStageCheck {
+  label: string;
+  status: "pass" | "warning" | "blocked";
+  detail: string;
+}
+
+export interface ClientInstallStagePlan {
+  platformId: ClientPlatformId;
+  displayName: string;
+  stage: "alreadyInstalled" | "localInstaller" | "officialDownload" | "blocked" | "desktopOnly";
+  targetLabel: string;
+  targetUri?: string | null;
+  targetPath?: string | null;
+  canProceed: boolean;
+  requiresUserConsent: boolean;
+  requiresLicenseReview: boolean;
+  requiresAdminReview: boolean;
+  checks: ClientInstallStageCheck[];
+  message: string;
+}
+
+export interface ClientAutoApplyCheck {
+  label: string;
+  status: "pass" | "warning" | "blocked";
+  detail: string;
+}
+
+export interface ClientAutoApplyPlan {
+  platformId: ClientPlatformId;
+  displayName: string;
+  policy: ClientUpdatePolicy;
+  stage:
+    | "policyOff"
+    | "noUpdate"
+    | "safeOpenOnly"
+    | "blocked"
+    | "unsupported"
+    | "ready"
+    | "desktopOnly";
+  safeTargetLabel?: string | null;
+  canAutoApply: boolean;
+  canOpenSafeUpdater: boolean;
+  allowsSilentExecution: boolean;
+  requiresProviderMechanism: boolean;
+  requiresUserConsent: boolean;
+  checks: ClientAutoApplyCheck[];
+  message: string;
+}
+
+export interface ClientManagerAutoApplyCapabilityRequest {
+  platformId: ClientPlatformId;
+  installTargetPath?: string | null;
+  requiredDiskBytes?: number | null;
+}
+
+export interface ClientManagerAutoApplyCapabilityCheck {
+  id: string;
+  label: string;
+  status: "pass" | "warning" | "blocked";
+  detail: string;
+  evidence: string;
+}
+
+export interface ClientManagerAutoApplyCapabilityPreview {
+  platformId: ClientPlatformId;
+  displayName: string;
+  generatedAt: string;
+  targetPath?: string | null;
+  requiredDiskBytes: number;
+  availableDiskBytes?: number | null;
+  diskMountPoint?: string | null;
+  autoApplyStage: ClientAutoApplyPlan["stage"];
+  canAutoApply: boolean;
+  checks: ClientManagerAutoApplyCapabilityCheck[];
+  message: string;
+}
+
+export interface ClientManagerMountApplySandboxConsent {
+  accepted: boolean;
+  sourcePath: string;
+  targetPath: string;
+  operation: "client_manager_mount_apply_sandbox_proof";
+}
+
+export interface ClientManagerMountApplySandboxRequest {
+  sourcePath: string;
+  targetPath: string;
+  consent: ClientManagerMountApplySandboxConsent;
+}
+
+export interface ClientManagerMountApplySandboxFile {
+  relativePath: string;
+  sizeBytes: number;
+  sha256: string;
+}
+
+export interface ClientManagerMountApplySandboxProof {
+  proofId: string;
+  sourcePath: string;
+  targetPath: string;
+  manifestPath: string;
+  fileCount: number;
+  bytesCopied: number;
+  verifiedFiles: number;
+  rollbackVerified: boolean;
+  targetCreated: boolean;
+  symlinkFree: boolean;
+  providerPathsTouched: boolean;
+  adminElevationUsed: boolean;
+  mountedPathsCreated: boolean;
+  files: ClientManagerMountApplySandboxFile[];
+  message: string;
+}
+
+export interface ClientManagerActionResult {
+  platformId: ClientPlatformId;
+  action: string;
+  openedTarget: string;
+  message: string;
+  historyItem: ClientUpdateHistoryItem;
+}
+
+export type BroadcastStreamProvider = "custom" | "twitch" | "youtube";
+
+export interface BroadcastStreamKeyVaultConsent {
+  accepted: boolean;
+  channelId: string;
+  operation: "broadcast_stream_key_vault_save" | "broadcast_stream_key_vault_clear";
+  provider: BroadcastStreamProvider;
+}
+
+export interface BroadcastStreamKeyVaultStatusRequest {
+  channelId: string;
+  provider: BroadcastStreamProvider;
+}
+
+export interface BroadcastStreamKeyVaultSaveRequest {
+  channelId: string;
+  consent: BroadcastStreamKeyVaultConsent;
+  provider: BroadcastStreamProvider;
+  secret: string;
+}
+
+export interface BroadcastStreamKeyVaultClearRequest {
+  channelId: string;
+  consent: BroadcastStreamKeyVaultConsent;
+  provider: BroadcastStreamProvider;
+}
+
+export interface BroadcastStreamKeyVaultStatus {
+  channelId: string;
+  configured: boolean;
+  message: string;
+  provider: BroadcastStreamProvider;
+  secretHint?: string | null;
+  storage: string;
+}
+
 export interface ReconciliationResult {
   installedRemoved: string[];
   activeRestored: string[];
@@ -158,6 +551,17 @@ export interface SystemInfo {
   os: string;
   arch: string;
   appVersion: string;
+}
+
+export interface DiskInfo {
+  availableSpace: number;
+  fileSystem: string;
+  isReadOnly: boolean;
+  isRemovable: boolean;
+  kind: string;
+  mountPoint: string;
+  name: string;
+  totalSpace: number;
 }
 
 export interface HardwareInfo {
@@ -190,7 +594,344 @@ export interface SyncGameAchievementsResponse {
 export interface StartDownloadResponse {
   gameId: string;
   downloadId: string;
-  status: "started" | "already_installed";
+  status: "started" | "already_queued" | "already_installed";
+  message: string;
+}
+
+export interface LanTransferCopyConsent {
+  accepted: boolean;
+  operation: "lan_native_copy_verify_manifest" | "lan_native_resume_copy_verify_manifest";
+  sourcePath: string;
+  targetPath: string;
+}
+
+export interface LanTransferCopyRequest {
+  gameId: string;
+  title: string;
+  sourcePath: string;
+  targetPath: string;
+  consent: LanTransferCopyConsent;
+}
+
+export interface LanTransferCopyFile {
+  relativePath: string;
+  sizeBytes: number;
+  sha256?: string;
+}
+
+export interface LanTransferCopyPreview {
+  gameId: string;
+  title: string;
+  sourcePath: string;
+  targetPath: string;
+  fileCount: number;
+  bytesTotal: number;
+  files: LanTransferCopyFile[];
+  message: string;
+}
+
+export interface LanTransferCopyResult {
+  gameId: string;
+  title: string;
+  sourcePath: string;
+  targetPath: string;
+  manifestPath: string;
+  executablePath?: string | null;
+  fileCount: number;
+  bytesCopied: number;
+  verifiedFiles: number;
+  files: LanTransferCopyFile[];
+  message: string;
+}
+
+export interface LanTransferCopyJob {
+  jobId: string;
+  gameId: string;
+  title: string;
+  sourcePath: string;
+  targetPath: string;
+  status: "queued" | "running" | "cancelling" | "cancelled" | "completed" | "failed";
+  progress: number;
+  bytesCopied: number;
+  bytesTotal: number;
+  copiedFileCount: number;
+  fileCount: number;
+  canCancel: boolean;
+  manifestPath?: string | null;
+  executablePath?: string | null;
+  error?: string | null;
+  message: string;
+}
+
+export interface LanTransferResumeCopyResult {
+  gameId: string;
+  title: string;
+  sourcePath: string;
+  targetPath: string;
+  manifestPath: string;
+  executablePath?: string | null;
+  fileCount: number;
+  bytesCopied: number;
+  bytesReused: number;
+  copiedFileCount: number;
+  reusedFileCount: number;
+  verifiedFiles: number;
+  files: LanTransferCopyFile[];
+  message: string;
+}
+
+export interface LanTransferCleanupCandidatesConsent {
+  accepted: boolean;
+  operation: "lan_native_cleanup_candidates_delete";
+  sourcePath: string;
+  targetPath: string;
+  cleanupCandidateCount: number;
+}
+
+export interface LanTransferCleanupCandidatesRequest {
+  gameId: string;
+  title: string;
+  sourcePath: string;
+  targetPath: string;
+  consent: LanTransferCleanupCandidatesConsent;
+}
+
+export interface LanTransferCleanupCandidatesResult {
+  gameId: string;
+  title: string;
+  sourcePath: string;
+  targetPath: string;
+  deletedCount: number;
+  deletedCandidates: LanTransferResumeCancelCleanupCandidate[];
+  message: string;
+}
+
+export interface LanTransferResumeCancelLedgerRequest {
+  gameId: string;
+  title: string;
+  sourcePath: string;
+  targetPath: string;
+}
+
+export interface LanTransferResumeCancelLedgerFile {
+  relativePath: string;
+  status: "reusable" | "pending" | "conflict";
+  sourceSizeBytes: number;
+  targetSizeBytes?: number | null;
+  sourceSha256: string;
+  targetSha256?: string | null;
+}
+
+export interface LanTransferResumeCancelCleanupCandidate {
+  relativePath: string;
+  entryKind: "file" | "symlink" | "unsupported";
+  sizeBytes?: number | null;
+}
+
+export interface LanTransferResumeCancelLedger {
+  gameId: string;
+  title: string;
+  sourcePath: string;
+  targetPath: string;
+  reusableFileCount: number;
+  pendingFileCount: number;
+  conflictFileCount: number;
+  cleanupCandidateCount: number;
+  bytesReusable: number;
+  bytesPending: number;
+  bytesConflicting: number;
+  files: LanTransferResumeCancelLedgerFile[];
+  cleanupCandidates: LanTransferResumeCancelCleanupCandidate[];
+  message: string;
+}
+
+export interface LanTransferPeerDiscoveryPreflightConsent {
+  accepted: boolean;
+  operation: "lan_peer_discovery_preflight_review";
+}
+
+export interface LanTransferPeerDiscoveryPreflightRequest {
+  consent: LanTransferPeerDiscoveryPreflightConsent;
+  manualSourcePath?: string | null;
+}
+
+export interface LanTransferPeerDiscoveryManualSource {
+  path: string;
+  reachable: boolean;
+  fileCount: number;
+  bytesTotal: number;
+  symlinkFree: boolean;
+}
+
+export interface LanTransferPeerDiscoveryPreflightResult {
+  operation: "lan_peer_discovery_preflight_review";
+  status: "warning" | "blocked";
+  broadcastSent: false;
+  relayCalled: false;
+  firewallRuleChanged: false;
+  shareMounted: false;
+  loopbackTcpBindReady: boolean;
+  loopbackUdpBindReady: boolean;
+  redactedEndpoint: string;
+  manualSource?: LanTransferPeerDiscoveryManualSource | null;
+  guards: string[];
+  warnings: string[];
+  message: string;
+}
+
+export interface CrossStoreSaveApplyConsent {
+  accepted: boolean;
+  operation: "cross_store_save_native_copy_apply";
+  sourceRoot: string;
+  targetRoot: string;
+  actionCount: number;
+}
+
+export interface CrossStoreSaveApplyAction {
+  id: string;
+  sourceRelativePath: string;
+  targetRelativePath: string;
+  expectedSha256?: string | null;
+  expectedSizeBytes?: number | null;
+}
+
+export interface CrossStoreSaveApplyRequest {
+  actions: CrossStoreSaveApplyAction[];
+  consent: CrossStoreSaveApplyConsent;
+  gameId: string;
+  sourceLabel: string;
+  sourceRoot: string;
+  targetLabel: string;
+  targetRoot: string;
+}
+
+export interface CrossStoreSaveAppliedFile {
+  id: string;
+  sourceRelativePath: string;
+  targetRelativePath: string;
+  sizeBytes: number;
+  sha256: string;
+  backedUp: boolean;
+  backupRelativePath?: string | null;
+  backupSizeBytes?: number | null;
+  backupSha256?: string | null;
+}
+
+export interface CrossStoreSaveApplyResult {
+  backupCount: number;
+  bytesCopied: number;
+  fileCount: number;
+  files: CrossStoreSaveAppliedFile[];
+  gameId: string;
+  manifestPath: string;
+  message: string;
+  rollbackManifestId: string;
+  sourceLabel: string;
+  sourceRoot: string;
+  targetLabel: string;
+  targetRoot: string;
+  verifiedFiles: number;
+}
+
+export interface CrossStoreSaveRollbackConsent {
+  accepted: boolean;
+  operation: "cross_store_save_native_copy_rollback";
+  targetRoot: string;
+  manifestPath: string;
+  rollbackManifestId: string;
+  fileCount: number;
+}
+
+export interface CrossStoreSaveRollbackRequest {
+  consent: CrossStoreSaveRollbackConsent;
+  gameId: string;
+  manifestPath: string;
+  rollbackManifestId: string;
+  targetRoot: string;
+}
+
+export interface CrossStoreSaveRollbackFile {
+  id: string;
+  targetRelativePath: string;
+  action: string;
+  sizeBytes: number;
+  sha256?: string | null;
+}
+
+export interface CrossStoreSaveRollbackResult {
+  deletedFiles: number;
+  files: CrossStoreSaveRollbackFile[];
+  gameId: string;
+  manifestPath: string;
+  message: string;
+  restoredFiles: number;
+  rollbackManifestId: string;
+  targetRoot: string;
+  verifiedFiles: number;
+}
+
+export interface CrossStoreSaveLocalE2EProofResult {
+  apply: CrossStoreSaveApplyResult;
+  appliedFiles: number;
+  bytesCopied: number;
+  deletedFiles: number;
+  keychainRestoreSkipped: boolean;
+  manifestPath: string;
+  message: string;
+  proofId: string;
+  providerTransferSkipped: boolean;
+  rollback: CrossStoreSaveRollbackResult;
+  rollbackManifestId: string;
+  rolledBackFiles: number;
+  restoredFiles: number;
+  sandboxCleaned: boolean;
+  sandboxRoot: string;
+  sourceRoot: string;
+  supabaseBucketSkipped: boolean;
+  targetRoot: string;
+  verifiedApplyFiles: number;
+  verifiedRollbackFiles: number;
+}
+
+export interface CrossStoreSaveSupabaseKeychainStagingProofConsent {
+  accepted: boolean;
+  operation: "cross_store_save_supabase_keychain_staging_proof";
+  userId: string;
+  gameId: string;
+}
+
+export interface CrossStoreSaveSupabaseKeychainStagingProofRequest {
+  accessToken: string;
+  apiKey: string;
+  consent: CrossStoreSaveSupabaseKeychainStagingProofConsent;
+  gameId: string;
+  supabaseUrl: string;
+  userId: string;
+}
+
+export interface CrossStoreSaveSupabaseKeychainStagingProofResult {
+  proofId: string;
+  gameId: string;
+  success: boolean;
+  bucket: string;
+  stagingPrefixRedacted: string;
+  providerTransferSkipped: boolean;
+  keychainSecretPresent: boolean;
+  encryptedPayloadUploaded: boolean;
+  metaSidecarUploaded: boolean;
+  listedObjectCount: number;
+  listedEncryptedObjectCount: number;
+  listedMetaSidecarCount: number;
+  downloadedObjectCount: number;
+  decryptedPayloadCount: number;
+  plaintextSizeBytes: number;
+  sizeVerified: boolean;
+  hashVerified: boolean;
+  encryptedHashVerified: boolean;
+  deleteAttemptedCount: number;
+  deletedObjectCount: number;
+  deleteFailedCount: number;
+  cleanupStatus: string;
   message: string;
 }
 
@@ -232,6 +973,25 @@ export interface UninstallGameResponse {
   message: string;
 }
 
+export type VerificationStatus = "verified" | "repair_required";
+export type ManifestTrustStatus = "missing" | "unsigned" | "signed" | "invalid";
+
+export interface VerifyGameFilesResponse {
+  gameId: string;
+  checkedFiles: number;
+  missingFiles: string[];
+  manifestTrust: ManifestTrustStatus;
+  status: VerificationStatus;
+}
+
+export interface RepairGameFilesResponse {
+  gameId: string;
+  success: boolean;
+  game: Game;
+  repairedFiles: string[];
+  message: string;
+}
+
 export interface SyncGameSavesResponse {
   gameId: string;
   success: boolean;
@@ -247,6 +1007,7 @@ export interface UploadGameSavesToCloudResponse {
   success: boolean;
   game: Game;
   uploadedFiles: string[];
+  deletedCloudFiles: string[];
   missingFiles: string[];
   failedFiles: string[];
   message: string;
@@ -266,8 +1027,43 @@ export interface RestoreGameSavesFromCloudResponse {
   success: boolean;
   restoredFiles: string[];
   backedUpFiles: string[];
+  deletedLocalFiles: string[];
   skippedFiles: string[];
   failedFiles: string[];
+  message: string;
+}
+
+export type CloudSaveConflictStatus =
+  | "matching"
+  | "local_newer"
+  | "cloud_newer"
+  | "different"
+  | "local_missing"
+  | "cloud_missing"
+  | "unknown";
+
+export interface CloudSaveConflictFile {
+  path: string;
+  relativePath: string;
+  status: CloudSaveConflictStatus;
+  localSizeBytes: number | null;
+  cloudSizeBytes: number | null;
+  localModifiedAt: string | null;
+  cloudCreatedAt: string | null;
+  localSha256: string | null;
+  cloudSha256: string | null;
+  message: string;
+}
+
+export interface CheckGameSaveConflictsResponse {
+  gameId: string;
+  success: boolean;
+  checkedFiles: number;
+  conflictCount: number;
+  matchingCount: number;
+  missingLocalCount: number;
+  missingCloudCount: number;
+  files: CloudSaveConflictFile[];
   message: string;
 }
 
@@ -311,3 +1107,4 @@ export interface CloudSaveFile {
 }
 
 export type * from "./types/profile";
+export type * from "./types/backup";

@@ -6,13 +6,13 @@ Thanks for your interest in contributing to Open Game Launcher! This project is 
 
 ```bash
 # 1. Install prerequisites
-node >= 20
-pnpm >= 9
+node --version   # >= 22.12 and < 26
+pnpm --version   # >= 9
 rustup target add x86_64-pc-windows-msvc aarch64-apple-darwin x86_64-unknown-linux-gnu
-supabase --version   # >= 1.180
 
 # 2. Bootstrap
-pnpm install
+pnpm --dir launcher install
+pnpm --dir launcher exec supabase --version   # 2.104.0
 cp supabase/functions/.env.example supabase/functions/.env  # fill in keys
 pnpm --dir launcher typecheck
 pnpm --dir launcher lint
@@ -28,7 +28,7 @@ pnpm --dir launcher tauri dev
    - `feature/<short-slug>` for new features
    - `fix/<short-slug>` for bug fixes
    - `chore/<short-slug>` for tooling / refactors
-2. Run `pnpm typecheck && pnpm lint && pnpm test` before opening a PR.
+2. Run `pnpm --dir launcher typecheck && pnpm --dir launcher lint && pnpm --dir launcher test` before opening a PR.
 3. Sign off each commit (`git commit -s`) — see `DCO` requirement below.
 4. Open a PR with a clear description and link any related issues.
 

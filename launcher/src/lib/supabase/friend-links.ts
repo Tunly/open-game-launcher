@@ -357,11 +357,23 @@ export async function acceptMergeSuggestion(suggestionId: string): Promise<void>
   } else if (linkB) {
     // Heuristic merge (no OG user yet): assign a shared merge_group_id so
     // the auto-match trigger propagates the match to both members.
-    const mergeGroupId = crypto.randomUUID();
+    const targetIds = [linkA, linkB];
+    const { data: currentLinks, error: currentLinksErr } = await client
+      .from("friend_links")
+      .select("id, merge_group_id")
+      .in("id", targetIds)
+      .eq("owner_id", ownerId);
+    handleError(currentLinksErr);
+
+    const existingMergeGroupId =
+      currentLinks
+        ?.map((link) => rowNullableString(link as UnknownRecord, "merge_group_id"))
+        .find((mergeGroupId): mergeGroupId is string => Boolean(mergeGroupId)) ?? null;
+    const mergeGroupId = existingMergeGroupId ?? crypto.randomUUID();
     const { error: groupErr } = await client
       .from("friend_links")
       .update({ merge_group_id: mergeGroupId })
-      .in("id", [linkA, linkB])
+      .in("id", targetIds)
       .eq("owner_id", ownerId);
     handleError(groupErr);
   }
@@ -369,7 +381,8 @@ export async function acceptMergeSuggestion(suggestionId: string): Promise<void>
   const { error } = await client
     .from("friend_merge_suggestions")
     .update({ status: "accepted" })
-    .eq("id", suggestionId);
+    .eq("id", suggestionId)
+    .eq("user_id", ownerId);
   handleError(error);
 }
 

@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import {
   Bell,
   ChevronDown,
   CheckCircle2,
+  DatabaseBackup,
   Download,
   Gift,
   LogIn,
@@ -16,8 +18,32 @@ import {
 
 import { Sidebar, type PageKey } from "./Sidebar";
 import { DesktopTitleBar } from "./DesktopTitleBar";
+import { RemoteCompanionAutoPollHost } from "./RemoteCompanionAutoPollHost";
+import {
+  APP_SHELL_SKIN_CHANGED_EVENT,
+  APP_SHELL_SKIN_STORAGE_KEY,
+  readAppShellSkinId,
+  resolveAppShellSkinId,
+  type AppShellSkinId,
+} from "../../lib/app-shell-skins";
 import { selectActiveCount, useDownloadStore } from "../../stores/downloadStore";
-import { getDownloadQueue } from "../../lib/launcher";
+import {
+  BACKUP_REMINDER_SETTINGS_CHANGED_EVENT,
+  formatBackupReminderDate,
+  getBackupReminderStatus,
+  isBackupReminderDue,
+  markBackupReminderDone,
+  readBackupReminderSettings,
+  saveBackupReminderSettings,
+  shouldAutoRunBackupReminder,
+  snoozeBackupReminder,
+} from "../../lib/backup-reminder";
+import {
+  getDownloadQueue,
+  runBackupPlan,
+  runScheduledPlatformClientUpdateChecks,
+} from "../../lib/launcher";
+import { STORAGE_KEYS } from "../../lib/storage-keys";
 import type { DownloadItem } from "../../lib/types";
 
 interface AppShellProps {
@@ -45,14 +71,14 @@ interface NotificationItem {
   message: string;
   time: string;
   isUnread: boolean;
-  type: "download" | "update" | "social";
+  type: "backup" | "download" | "update" | "social";
   action?: {
     label: string;
     page: PageKey;
   };
 }
 
-const notificationItems: NotificationItem[] = [
+const BASE_NOTIFICATION_ITEMS: NotificationItem[] = [
   {
     id: "download-complete",
     title: "Download Complete",
@@ -82,6 +108,14 @@ const notificationItems: NotificationItem[] = [
   },
 ];
 
+const BACKUP_REMINDER_POLL_MS = 60 * 60 * 1000;
+const CLIENT_UPDATE_SCHEDULER_POLL_MS = 60 * 60 * 1000;
+const BACKUP_AUTORUN_FAILURE_SNOOZE_MS = 60 * 60 * 1000;
+
+function errorMessage(error: unknown) {
+  return error instanceof Error ? error.message : String(error);
+}
+
 export function AppShell({
   activePage,
   authAvatarUrl,
@@ -99,19 +133,68 @@ export function AppShell({
   onRoute,
 }: AppShellProps) {
   const [isNotificationMenuOpen, setIsNotificationMenuOpen] = useState(false);
+  const [scheduledClientUpdateNotifications, setScheduledClientUpdateNotifications] = useState<
+    NotificationItem[]
+  >([]);
+  const [scheduledBackupReminderNotifications, setScheduledBackupReminderNotifications] = useState<
+    NotificationItem[]
+  >([]);
   const [readNotificationIds, setReadNotificationIds] = useState<Set<string>>(() => new Set());
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
+  const [shellSkinId, setShellSkinId] = useState<AppShellSkinId>(() => readAppShellSkinId());
   const notificationMenuRef = useRef<HTMLDivElement | null>(null);
   const profileMenuRef = useRef<HTMLDivElement | null>(null);
+  const isAutoBackupRunningRef = useRef(false);
   const accountLabel = authDisplayName ?? authEmail ?? "Account";
   const avatarInitials = getInitials(accountLabel);
   const profileMenuLabel = authUsername ?? accountLabel;
   const profileMenuInitials = getInitials(profileMenuLabel);
+  const notificationItems = [
+    ...(isAuthenticated ? BASE_NOTIFICATION_ITEMS : []),
+    ...scheduledBackupReminderNotifications,
+    ...scheduledClientUpdateNotifications,
+  ];
   const unreadNotificationCount = notificationItems.filter(
     (item) => item.isUnread && !readNotificationIds.has(item.id),
   ).length;
 
   const downloadCount = useDownloadStore(selectActiveCount);
+
+  useEffect(() => {
+    document.documentElement.dataset.ogShellSkin = shellSkinId;
+
+    return () => {
+      if (document.documentElement.dataset.ogShellSkin === shellSkinId) {
+        delete document.documentElement.dataset.ogShellSkin;
+      }
+    };
+  }, [shellSkinId]);
+
+  useEffect(() => {
+    function syncShellSkin(value: unknown = readAppShellSkinId()) {
+      setShellSkinId(resolveAppShellSkinId(value));
+    }
+
+    function handleShellSkinChanged(event: Event) {
+      const detail = event instanceof CustomEvent ? (event.detail as { skinId?: unknown }) : null;
+      syncShellSkin(detail?.skinId ?? readAppShellSkinId());
+    }
+
+    function handleStorage(event: StorageEvent) {
+      if (event.key === APP_SHELL_SKIN_STORAGE_KEY) {
+        syncShellSkin(event.newValue);
+      }
+    }
+
+    syncShellSkin();
+    window.addEventListener(APP_SHELL_SKIN_CHANGED_EVENT, handleShellSkinChanged);
+    window.addEventListener("storage", handleStorage);
+
+    return () => {
+      window.removeEventListener(APP_SHELL_SKIN_CHANGED_EVENT, handleShellSkinChanged);
+      window.removeEventListener("storage", handleStorage);
+    };
+  }, []);
 
   useEffect(() => {
     if (!isProfileMenuOpen && !isNotificationMenuOpen) {
@@ -172,16 +255,20 @@ export function AppShell({
   useEffect(() => {
     let active = true;
 
-    const unlistenPromise = listen<DownloadItem>("download_progress", (event) => {
-      if (active) {
-        useDownloadStore.getState().upsertItem(event.payload);
-      }
-    });
-    const unlistenRemovedPromise = listen<{ gameId: string }>("download_removed", (event) => {
-      if (active) {
-        useDownloadStore.getState().removeItem(event.payload.gameId);
-      }
-    });
+    const unlistenPromise = isTauri()
+      ? listen<DownloadItem>("download_progress", (event) => {
+          if (active) {
+            useDownloadStore.getState().upsertItem(event.payload);
+          }
+        })
+      : null;
+    const unlistenRemovedPromise = isTauri()
+      ? listen<{ gameId: string }>("download_removed", (event) => {
+          if (active) {
+            useDownloadStore.getState().removeItem(event.payload.gameId);
+          }
+        })
+      : null;
 
     getDownloadQueue()
       .then((queue) => {
@@ -193,8 +280,167 @@ export function AppShell({
 
     return () => {
       active = false;
-      void unlistenPromise.then((unlisten) => unlisten());
-      void unlistenRemovedPromise.then((unlisten) => unlisten());
+      void unlistenPromise?.then((unlisten) => unlisten());
+      void unlistenRemovedPromise?.then((unlisten) => unlisten());
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isTauri()) {
+      return;
+    }
+
+    let active = true;
+
+    async function runScheduledChecks() {
+      try {
+        const result = await runScheduledPlatformClientUpdateChecks();
+        if (!active || result.updateCount === 0) {
+          return;
+        }
+        setScheduledClientUpdateNotifications([
+          {
+            id: `client-update-scheduler-${result.checkedAt}`,
+            title: "Client Update Check",
+            message: result.message,
+            time: "Just now",
+            isUnread: true,
+            type: "update",
+            action: { label: "Open Library", page: "library" },
+          },
+        ]);
+      } catch {
+        if (!active) {
+          return;
+        }
+      }
+    }
+
+    void runScheduledChecks();
+    const intervalId = window.setInterval(runScheduledChecks, CLIENT_UPDATE_SCHEDULER_POLL_MS);
+
+    return () => {
+      active = false;
+      window.clearInterval(intervalId);
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+
+    async function syncBackupReminderNotification() {
+      const settings = readBackupReminderSettings();
+      if (!active) {
+        return;
+      }
+
+      if (!isBackupReminderDue(settings)) {
+        setScheduledBackupReminderNotifications([]);
+        return;
+      }
+
+      const status = getBackupReminderStatus(settings);
+      if (
+        shouldAutoRunBackupReminder(settings, new Date(), isTauri()) &&
+        !isAutoBackupRunningRef.current
+      ) {
+        isAutoBackupRunningRef.current = true;
+        setScheduledBackupReminderNotifications([
+          {
+            id: `backup-auto-run-started-${settings.nextDueAt ?? settings.updatedAt ?? "due"}`,
+            title: "Backup Auto-Run",
+            message: `Running scheduled backup for ${settings.targetPath}.`,
+            time: "Now",
+            isUnread: true,
+            type: "backup",
+            action: { label: "Open Settings", page: "settings" },
+          },
+        ]);
+
+        try {
+          const result = await runBackupPlan({
+            compression: settings.compression,
+            includeLibraryData: settings.includeLibraryData,
+            targetPath: settings.targetPath,
+          });
+          if (!active) {
+            return;
+          }
+          const savedSettings = saveBackupReminderSettings(markBackupReminderDone(settings));
+          setScheduledBackupReminderNotifications([
+            {
+              id: `backup-auto-run-finished-${result.manifestId}`,
+              title: "Backup Auto-Run Complete",
+              message: `${result.message} Next: ${formatBackupReminderDate(savedSettings.nextDueAt)}.`,
+              time: "Just now",
+              isUnread: true,
+              type: "backup",
+              action: { label: "Open Settings", page: "settings" },
+            },
+          ]);
+        } catch (error) {
+          if (!active) {
+            return;
+          }
+          const retryAt = new Date(Date.now() + BACKUP_AUTORUN_FAILURE_SNOOZE_MS);
+          const savedSettings = saveBackupReminderSettings(
+            snoozeBackupReminder(settings, retryAt, new Date()),
+          );
+          setScheduledBackupReminderNotifications([
+            {
+              id: `backup-auto-run-failed-${settings.nextDueAt ?? settings.updatedAt ?? "due"}`,
+              title: "Backup Auto-Run Failed",
+              message: `${errorMessage(error)} Retry: ${formatBackupReminderDate(
+                savedSettings.snoozedUntil,
+              )}.`,
+              time: "Just now",
+              isUnread: true,
+              type: "backup",
+              action: { label: "Open Settings", page: "settings" },
+            },
+          ]);
+        } finally {
+          isAutoBackupRunningRef.current = false;
+        }
+        return;
+      }
+
+      setScheduledBackupReminderNotifications([
+        {
+          id: `backup-reminder-${settings.nextDueAt ?? settings.updatedAt ?? "due"}`,
+          title: status.title,
+          message: status.message,
+          time: "Due now",
+          isUnread: true,
+          type: "backup",
+          action: { label: "Open Settings", page: "settings" },
+        },
+      ]);
+    }
+
+    function handleStorage(event: StorageEvent) {
+      if (event.key === STORAGE_KEYS.BACKUP_REMINDER_SETTINGS) {
+        void syncBackupReminderNotification();
+      }
+    }
+
+    function handleReminderSettingsChanged() {
+      void syncBackupReminderNotification();
+    }
+
+    void syncBackupReminderNotification();
+    window.addEventListener(BACKUP_REMINDER_SETTINGS_CHANGED_EVENT, handleReminderSettingsChanged);
+    window.addEventListener("storage", handleStorage);
+    const intervalId = window.setInterval(syncBackupReminderNotification, BACKUP_REMINDER_POLL_MS);
+
+    return () => {
+      active = false;
+      window.removeEventListener(
+        BACKUP_REMINDER_SETTINGS_CHANGED_EVENT,
+        handleReminderSettingsChanged,
+      );
+      window.removeEventListener("storage", handleStorage);
+      window.clearInterval(intervalId);
     };
   }, []);
 
@@ -205,12 +451,13 @@ export function AppShell({
   }
 
   return (
-    <div className="flex min-h-screen min-w-0 bg-[#fff9ed] text-[#1f1c0f]">
+    <div className="app-shell-root flex min-h-screen min-w-0" data-og-shell-skin={shellSkinId}>
+      <RemoteCompanionAutoPollHost />
       <div className="min-w-0 flex-1">
         <DesktopTitleBar />
-        <header className="app-main-header sticky top-0 z-30 flex min-h-20 w-full max-w-full flex-wrap items-center gap-x-3 gap-y-2 overflow-visible border-b-[7px] border-black bg-[#fff9ed] px-3 py-3 sm:px-4 lg:px-5">
+        <header className="app-main-header app-shell-header sticky top-0 z-30 flex min-h-20 w-full max-w-full flex-wrap items-center gap-x-3 gap-y-2 overflow-visible border-b-[7px] border-black px-3 py-3 sm:px-4 lg:px-5">
           <button
-            className="neo-title max-w-[min(50vw,250px)] shrink truncate text-left text-[clamp(1.75rem,3.2vw,2.75rem)] leading-none text-[#b7102a] xl:max-w-none xl:text-[clamp(2rem,3vw,3rem)]"
+            className="neo-title app-shell-brand max-w-[min(50vw,250px)] shrink truncate text-left text-[1.75rem] leading-none sm:text-[2rem] lg:text-[2.5rem] xl:max-w-none xl:text-[3rem]"
             type="button"
             onClick={() => onNavigate("store")}
           >
@@ -229,14 +476,14 @@ export function AppShell({
             <div ref={notificationMenuRef} className="relative">
               <TopIconButton
                 label="Notifications"
-                disabled={!isAuthenticated}
+                disabled={notificationItems.length === 0}
                 onClick={() => {
                   setIsNotificationMenuOpen((isOpen) => !isOpen);
                   setIsProfileMenuOpen(false);
                 }}
               >
                 {unreadNotificationCount > 0 ? (
-                  <span className="neo-copy absolute -top-2 -right-2 flex h-5 min-w-5 items-center justify-center border-2 border-black bg-[#b7102a] px-1 text-[10px] font-black text-white">
+                  <span className="neo-copy app-shell-primary absolute -right-2 -top-2 flex h-5 min-w-5 items-center justify-center border-2 border-black px-1 text-[10px] font-black">
                     {unreadNotificationCount}
                   </span>
                 ) : null}
@@ -245,6 +492,7 @@ export function AppShell({
 
               {isNotificationMenuOpen ? (
                 <NotificationMenu
+                  items={notificationItems}
                   unreadNotificationCount={unreadNotificationCount}
                   readNotificationIds={readNotificationIds}
                   onClose={() => setIsNotificationMenuOpen(false)}
@@ -270,7 +518,7 @@ export function AppShell({
                   aria-expanded={isProfileMenuOpen}
                   aria-haspopup="menu"
                   aria-label="Open profile menu"
-                  className="flex h-12 items-center gap-2 border-[3px] border-black bg-[#fff9ed] p-1 shadow-[3px_3px_0_#1f1c0f] transition hover:-translate-y-0.5 hover:bg-[#f6edd8]"
+                  className="app-shell-surface app-shell-dim-hover flex h-12 items-center gap-2 border-[3px] border-black p-1 shadow-[3px_3px_0_#1f1c0f] transition hover:-translate-y-0.5"
                   disabled={isAuthLoading || !isAuthConfigured}
                   type="button"
                   onClick={() => {
@@ -349,7 +597,7 @@ function TopIconButton({
   return (
     <button
       aria-label={label}
-      className="relative flex h-12 w-12 items-center justify-center border-[3px] border-black bg-[#fff9ed] text-[#1f1c0f] shadow-[3px_3px_0_#1f1c0f] transition hover:-translate-y-0.5 hover:bg-[#8cf5e4] disabled:cursor-not-allowed disabled:opacity-45"
+      className="app-shell-surface app-shell-highlight-hover relative flex h-12 w-12 items-center justify-center border-[3px] border-black shadow-[3px_3px_0_#1f1c0f] transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-45"
       disabled={disabled}
       type="button"
       onClick={onClick}
@@ -360,12 +608,14 @@ function TopIconButton({
 }
 
 function NotificationMenu({
+  items,
   onAction,
   onClose,
   onMarkAllRead,
   readNotificationIds,
   unreadNotificationCount,
 }: {
+  items: NotificationItem[];
   onAction: (item: NotificationItem, page: PageKey) => void;
   onClose: () => void;
   onMarkAllRead: () => void;
@@ -375,19 +625,19 @@ function NotificationMenu({
   return (
     <div
       aria-label="Notifications"
-      className="absolute top-full right-0 z-50 mt-3 w-[min(22rem,calc(100vw-2rem))] border-4 border-black bg-[#fff9ed] p-3 shadow-[7px_7px_0_#1f1c0f]"
+      className="app-shell-surface absolute right-0 top-full z-50 mt-3 w-[min(22rem,calc(100vw-2rem))] border-4 border-black p-3 shadow-[7px_7px_0_#1f1c0f]"
       role="dialog"
     >
       <div className="mb-3 flex items-start justify-between gap-3 border-b-2 border-black pb-3">
         <div>
-          <p className="neo-copy text-[10px] font-black tracking-[0.14em] text-[#b7102a] uppercase">
+          <p className="neo-copy text-[10px] font-black uppercase tracking-[0.14em] text-[#b7102a]">
             Launcher Feed
           </p>
           <h2 className="neo-title text-3xl leading-none text-[#1f1c0f]">Notifications</h2>
         </div>
         <button
           aria-label="Close notifications"
-          className="flex h-9 w-9 items-center justify-center border-2 border-black bg-[#f6edd8] shadow-[2px_2px_0_#1f1c0f]"
+          className="app-shell-surface-dim app-shell-highlight-hover flex h-9 w-9 items-center justify-center border-2 border-black shadow-[2px_2px_0_#1f1c0f]"
           type="button"
           onClick={onClose}
         >
@@ -396,7 +646,7 @@ function NotificationMenu({
       </div>
 
       <div className="space-y-2">
-        {notificationItems.map((item) => (
+        {items.map((item) => (
           <NotificationCard
             key={item.id}
             item={item}
@@ -407,7 +657,7 @@ function NotificationMenu({
       </div>
 
       <button
-        className="neo-copy mt-3 h-10 w-full border-2 border-black bg-[#1f1c0f] px-3 text-[11px] font-black tracking-[0.1em] text-[#fff9ed] uppercase shadow-[2px_2px_0_#1f1c0f] disabled:cursor-not-allowed disabled:opacity-45"
+        className="neo-copy mt-3 h-10 w-full border-2 border-black bg-[#1f1c0f] px-3 text-[11px] font-black uppercase tracking-[0.1em] text-[#fff9ed] shadow-[2px_2px_0_#1f1c0f] disabled:cursor-not-allowed disabled:opacity-45"
         disabled={unreadNotificationCount === 0}
         type="button"
         onClick={onMarkAllRead}
@@ -439,17 +689,17 @@ function NotificationCard({
         <NotificationIcon type={item.type} />
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-2">
-            <h3 className="neo-copy text-[11px] font-black text-[#1f1c0f] uppercase">
+            <h3 className="neo-copy text-[11px] font-black uppercase text-[#1f1c0f]">
               {item.title}
             </h3>
-            <span className="neo-copy shrink-0 text-[10px] font-bold text-[#5b403f] uppercase">
+            <span className="neo-copy shrink-0 text-[10px] font-bold uppercase text-[#5b403f]">
               {item.time}
             </span>
           </div>
           <p className="mt-1 text-sm leading-5 text-[#5b403f]">{item.message}</p>
           {action ? (
             <button
-              className="neo-copy mt-3 border-2 border-black bg-[#007166] px-3 py-2 text-[10px] font-black tracking-[0.1em] text-white uppercase shadow-[2px_2px_0_#1f1c0f] transition hover:-translate-y-0.5"
+              className="neo-copy app-shell-secondary app-shell-secondary-hover mt-3 border-2 border-black px-3 py-2 text-[10px] font-black uppercase tracking-[0.1em] shadow-[2px_2px_0_#1f1c0f] transition hover:-translate-y-0.5"
               type="button"
               onClick={() => onAction(action.page)}
             >
@@ -470,6 +720,14 @@ function NotificationIcon({ type }: { type: NotificationItem["type"] }) {
     return (
       <span className={className}>
         <Download className="h-5 w-5" />
+      </span>
+    );
+  }
+
+  if (type === "backup") {
+    return (
+      <span className={className}>
+        <DatabaseBackup className="h-5 w-5" />
       </span>
     );
   }
@@ -514,7 +772,7 @@ function ProfileMenu({
 }) {
   return (
     <div
-      className="absolute top-full right-0 z-50 mt-3 w-72 border-4 border-black bg-[#fff9ed] p-3 shadow-[7px_7px_0_#1f1c0f]"
+      className="app-shell-surface absolute right-0 top-full z-50 mt-3 w-72 border-4 border-black p-3 shadow-[7px_7px_0_#1f1c0f]"
       role="menu"
     >
       <div className="mb-3 flex min-w-0 items-center gap-3 border-b-2 border-black pb-3">
@@ -525,7 +783,7 @@ function ProfileMenu({
           size="lg"
         />
         <div className="min-w-0">
-          <p className="neo-copy truncate text-[11px] font-black text-[#1f1c0f] uppercase">
+          <p className="neo-copy truncate text-[11px] font-black uppercase text-[#1f1c0f]">
             {usernameLabel}
           </p>
         </div>
@@ -595,7 +853,7 @@ function Avatar({
     return (
       <img
         alt={label}
-        className={`${sizeClass} shrink-0 border-2 border-black bg-[#f6edd8] object-cover`}
+        className={`app-shell-surface-dim ${sizeClass} shrink-0 border-2 border-black object-cover`}
         src={avatarUrl}
       />
     );
@@ -603,7 +861,7 @@ function Avatar({
 
   return (
     <span
-      className={`neo-copy ${sizeClass} flex shrink-0 items-center justify-center border-2 border-black bg-[#007166] font-black text-white uppercase`}
+      className={`neo-copy app-shell-secondary ${sizeClass} flex shrink-0 items-center justify-center border-2 border-black font-black uppercase`}
     >
       {initials}
     </span>
@@ -625,8 +883,8 @@ function ProfileMenuItem({
 }) {
   return (
     <button
-      className={`neo-copy flex h-11 w-full items-center gap-3 border-2 border-black px-3 text-left text-[11px] font-black tracking-[0.1em] uppercase shadow-[2px_2px_0_#1f1c0f] transition hover:-translate-y-0.5 ${
-        tone === "danger" ? "bg-[#b7102a] text-white" : "bg-[#f6edd8] text-[#1f1c0f]"
+      className={`neo-copy flex h-11 w-full items-center gap-3 border-2 border-black px-3 text-left text-[11px] font-black uppercase tracking-[0.1em] shadow-[2px_2px_0_#1f1c0f] transition hover:-translate-y-0.5 ${
+        tone === "danger" ? "app-shell-primary" : "app-shell-surface-dim"
       } disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0`}
       disabled={disabled}
       role="menuitem"

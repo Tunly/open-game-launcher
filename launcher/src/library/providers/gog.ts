@@ -1,5 +1,6 @@
 import { fetchGogOwnedGames, gogGetToken, gogRefreshToken } from "../../lib/launcher";
 import { installedGogKeys, ownedGameToGame } from "../../lib/library-providers";
+import { clearLegacyGogTokenCopy } from "../../lib/platform-token-storage";
 import { STORAGE_KEYS } from "../../lib/storage-keys";
 import type { Game } from "../../lib/types";
 import type { MergeContext, ProviderResult } from "./types";
@@ -11,26 +12,16 @@ export async function mergeGogOwned(games: Game[], context: MergeContext): Promi
 
   try {
     const backendToken = await gogGetToken();
-    const localTokenStr = localStorage.getItem(STORAGE_KEYS.GOG_TOKEN);
-    const hasGogSession = Boolean(backendToken?.accessToken) || Boolean(localTokenStr);
+    const hasGogSession = Boolean(backendToken?.accessToken);
 
     if (!hasGogSession) {
+      clearLegacyGogTokenCopy();
       return { games, warnings, statusMessage };
     }
 
     try {
-      const refreshed = await gogRefreshToken();
-      if (refreshed?.accessToken) {
-        localStorage.setItem(
-          STORAGE_KEYS.GOG_TOKEN,
-          JSON.stringify({
-            accessToken: refreshed.accessToken,
-            refreshToken: refreshed.refreshToken,
-            expiresAt: refreshed.expiresAt,
-            userId: refreshed.userId,
-          }),
-        );
-      }
+      await gogRefreshToken();
+      clearLegacyGogTokenCopy();
     } catch {
       // Token refresh failed, proceed with existing token
     }

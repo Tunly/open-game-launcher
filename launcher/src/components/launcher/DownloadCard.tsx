@@ -46,13 +46,13 @@ const statusClass: Record<DownloadStatus, string> = {
 };
 
 const platformColors: Record<string, string> = {
-  Steam: "bg-[#0b1c2e] text-[#66c0f4] border-[#66c0f4]",
-  "Epic Games": "bg-[#1f1f1f] text-white border-white",
-  "GOG Galaxy": "bg-[#4f0c6b] text-[#fbf0ff] border-[#fbf0ff]",
-  "EA App": "bg-[#f54242] text-white border-[#f54242]",
-  "Ubisoft Connect": "bg-[#0070b8] text-white border-[#0070b8]",
-  "Xbox Game Pass": "bg-[#107c10] text-white border-[#107c10]",
-  "Battle.net": "bg-[#00aeff] text-white border-[#00aeff]",
+  Steam: "bg-[#171411] text-[#fbf4e7] border-black",
+  "Epic Games": "bg-[#171411] text-[#fbf4e7] border-black",
+  "GOG Galaxy": "bg-[#087d6d] text-white border-black",
+  "EA App": "bg-[#c20b2f] text-white border-black",
+  "Ubisoft Connect": "bg-[#087d6d] text-white border-black",
+  "Xbox Game Pass": "bg-[#f5eedf] text-[#171411] border-black",
+  "Battle.net": "bg-[#8cf5e4] text-[#171411] border-black",
   "OG Store": "bg-[#087d6d] text-white border-black",
 };
 
@@ -91,7 +91,7 @@ export function DownloadCard({
   // Cover image URL or fallback to logoUrl
   const imageUrl = game ? getGameAssetUrl(game.coverUrl || game.logoUrl) : undefined;
 
-  // Let's determine placeholder pattern class based on index/id for variety
+  // Rotate deterministic art patterns when a game has no cover asset.
   const placeholderClasses = ["library-art-tokyo", "library-art-mech", "library-art-phantom"];
   const placeholderClass = placeholderClasses[index % placeholderClasses.length];
 
@@ -104,9 +104,9 @@ export function DownloadCard({
             <img src={imageUrl} alt="" className="h-full w-full object-cover" />
           ) : (
             <div
-              className={`flex h-full w-full flex-col items-center justify-center p-2 text-center select-none ${placeholderClass}`}
+              className={`flex h-full w-full select-none flex-col items-center justify-center p-2 text-center ${placeholderClass}`}
             >
-              <span className="neo-title max-w-full truncate bg-black/60 px-1 text-xs font-black tracking-tight text-white uppercase">
+              <span className="neo-title max-w-full truncate bg-black/60 px-1 text-xs font-black uppercase tracking-tight text-white">
                 {item.title}
               </span>
             </div>
@@ -116,7 +116,7 @@ export function DownloadCard({
         {/* Content & Progress */}
         <div className="min-w-0 flex-1">
           <div className="mb-1.5 flex flex-wrap items-center gap-2">
-            <h2 className="truncate text-base leading-none font-black tracking-tight text-[#171411] uppercase sm:text-lg">
+            <h2 className="truncate text-base font-black uppercase leading-none tracking-tight text-[#171411] sm:text-lg">
               {item.title}
             </h2>
             {item.platform && (
@@ -141,10 +141,10 @@ export function DownloadCard({
           </div>
 
           <div className="mt-2 flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
-            <span className="neo-copy text-[10px] font-bold text-[#55504a] uppercase">
+            <span className="neo-copy text-[10px] font-bold uppercase text-[#55504a]">
               {item.progress}% complete{phaseLabel}
             </span>
-            <span className="neo-copy text-[10px] font-bold text-[#5b403f] uppercase">
+            <span className="neo-copy text-[10px] font-bold uppercase text-[#5b403f]">
               {byteLabel ? `${item.speed} // ${byteLabel}` : item.speed}
             </span>
           </div>
@@ -156,7 +156,7 @@ export function DownloadCard({
           {isComplete && onLaunch ? (
             <button
               onClick={() => void onLaunch(item.gameId)}
-              className="neo-copy flex items-center justify-center gap-1.5 border-2 border-black bg-[#087d6d] px-4 py-2 text-xs font-bold tracking-wider text-white uppercase shadow-[2px_2px_0_#171411] hover:bg-[#087d6d]/90 active:translate-x-[1px] active:translate-y-[1px] active:shadow-[1px_1px_0_#171411]"
+              className="neo-copy flex items-center justify-center gap-1.5 border-2 border-black bg-[#087d6d] px-4 py-2 text-xs font-bold uppercase tracking-wider text-white shadow-[2px_2px_0_#171411] hover:bg-[#087d6d]/90 active:translate-x-[1px] active:translate-y-[1px] active:shadow-[1px_1px_0_#171411]"
               type="button"
             >
               <Play className="h-3.5 w-3.5 fill-current" />
@@ -167,7 +167,7 @@ export function DownloadCard({
           {/* Pause / Resume Controls */}
           {canPause ? (
             <button
-              className="neo-copy flex items-center justify-center gap-1.5 border-2 border-black bg-[#f5eedf] px-3 py-2 text-xs font-bold text-[#171411] uppercase shadow-[2px_2px_0_#171411] hover:bg-[#efe6d4] active:translate-x-[1px] active:translate-y-[1px] active:shadow-[1px_1px_0_#171411]"
+              className="neo-copy flex items-center justify-center gap-1.5 border-2 border-black bg-[#f5eedf] px-3 py-2 text-xs font-bold uppercase text-[#171411] shadow-[2px_2px_0_#171411] hover:bg-[#efe6d4] active:translate-x-[1px] active:translate-y-[1px] active:shadow-[1px_1px_0_#171411]"
               type="button"
               onClick={() => onPauseToggle(item.id)}
             >
@@ -185,7 +185,7 @@ export function DownloadCard({
             </button>
           ) : !isTerminal && !isComplete ? (
             <button
-              className="neo-copy flex cursor-not-allowed items-center justify-center gap-1.5 border-2 border-black bg-[#efe6d4] px-3 py-2 text-xs font-bold text-[#55504a] uppercase"
+              className="neo-copy flex cursor-not-allowed items-center justify-center gap-1.5 border-2 border-black bg-[#efe6d4] px-3 py-2 text-xs font-bold uppercase text-[#55504a]"
               disabled
               type="button"
             >
@@ -197,7 +197,7 @@ export function DownloadCard({
           {/* Cancel Button */}
           {canCancel ? (
             <button
-              className="neo-copy flex items-center justify-center gap-1.5 border-2 border-black bg-[#c20b2f] px-3 py-2 text-xs font-bold text-white uppercase shadow-[2px_2px_0_#171411] hover:bg-[#a50826] active:translate-x-[1px] active:translate-y-[1px] active:shadow-[1px_1px_0_#171411]"
+              className="neo-copy flex items-center justify-center gap-1.5 border-2 border-black bg-[#c20b2f] px-3 py-2 text-xs font-bold uppercase text-white shadow-[2px_2px_0_#171411] hover:bg-[#a50826] active:translate-x-[1px] active:translate-y-[1px] active:shadow-[1px_1px_0_#171411]"
               type="button"
               onClick={() => onCancel(item.id)}
             >
@@ -209,7 +209,7 @@ export function DownloadCard({
           {/* Archive / Clear Button */}
           {isTerminal || isComplete ? (
             <button
-              className="neo-copy flex items-center justify-center gap-1.5 border-2 border-black bg-[#efe6d4] px-3 py-2 text-xs font-bold text-[#171411] uppercase shadow-[2px_2px_0_#171411] hover:bg-[#e2d8c3] active:translate-x-[1px] active:translate-y-[1px] active:shadow-[1px_1px_0_#171411]"
+              className="neo-copy flex items-center justify-center gap-1.5 border-2 border-black bg-[#efe6d4] px-3 py-2 text-xs font-bold uppercase text-[#171411] shadow-[2px_2px_0_#171411] hover:bg-[#e2d8c3] active:translate-x-[1px] active:translate-y-[1px] active:shadow-[1px_1px_0_#171411]"
               type="button"
               onClick={() => onArchive(item.id)}
             >

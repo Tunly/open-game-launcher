@@ -73,6 +73,17 @@ export interface UpsertCloudSaveSetInput {
   metadata?: Record<string, unknown>;
 }
 
+export interface UpsertCloudSaveFileInput {
+  saveSetId: string;
+  localPath: string;
+  label?: string | null;
+  storageObjectPath?: string | null;
+  checksumSha256?: string | null;
+  sizeBytes?: number | null;
+  modifiedAt?: string | null;
+  syncedAt?: string | null;
+}
+
 export async function getCloudSaveSetByGameKey(localGameKey: string): Promise<CloudSaveSet | null> {
   const client = getSupabaseClient();
   const { data: userData, error: authError } = await client.auth.getUser();
@@ -185,6 +196,57 @@ export async function listCloudSaveFilesForSet(saveSetId: string): Promise<Cloud
   if (isMissingSchemaError(error)) return [];
   handleError(error);
   return (data ?? []).map((row) => toCloudSaveFile(row as UnknownRecord));
+}
+
+export async function upsertCloudSaveFile(input: UpsertCloudSaveFileInput): Promise<CloudSaveFile> {
+  const client = getSupabaseClient();
+  const { data: userData, error: authError } = await client.auth.getUser();
+  handleError(authError);
+  if (!userData.user) throw new Error("You must be signed in.");
+
+  const localPath = input.localPath.trim();
+  if (!localPath) {
+    throw new Error("Local save path is required.");
+  }
+
+  const { data, error } = await client
+    .from("user_cloud_save_files")
+    .upsert(
+      {
+        checksum_sha256: input.checksumSha256 ?? null,
+        label: input.label ?? null,
+        local_path: localPath,
+        modified_at: input.modifiedAt ?? null,
+        save_set_id: input.saveSetId,
+        size_bytes: input.sizeBytes ?? null,
+        storage_object_path: input.storageObjectPath ?? null,
+        synced_at: input.syncedAt ?? null,
+        user_id: userData.user.id,
+      },
+      { onConflict: "save_set_id,local_path" },
+    )
+    .select("*")
+    .single();
+  handleError(error);
+  return toCloudSaveFile(data as UnknownRecord);
+}
+
+export async function deleteCloudSaveFileByPath(
+  saveSetId: string,
+  localPath: string,
+): Promise<void> {
+  const normalizedLocalPath = localPath.trim();
+  if (!normalizedLocalPath) {
+    throw new Error("Local save path is required.");
+  }
+
+  const client = getSupabaseClient();
+  const { error } = await client
+    .from("user_cloud_save_files")
+    .delete()
+    .eq("save_set_id", saveSetId)
+    .eq("local_path", normalizedLocalPath);
+  handleError(error);
 }
 
 export interface CloudSaveUsage {

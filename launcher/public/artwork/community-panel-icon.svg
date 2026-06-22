@@ -1,0 +1,14 @@
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  viewBox="0 0 128 128"
+  role="img"
+  aria-labelledby="title desc"
+>
+  <title id="title">Community relay stamp icon</title>
+  <desc id="desc">Retro manga community icon with red stamp and teal bolt.</desc>
+  <rect width="128" height="128" fill="#fff9ed" />
+  <rect x="8" y="8" width="112" height="112" fill="none" stroke="#171411" stroke-width="12" />
+  <path d="M32 30h64v52H32z" fill="#b7102a" stroke="#171411" stroke-width="8" />
+  <path d="M22 98 90 18l16 18-66 76z" fill="#169b83" stroke="#171411" stroke-width="6" />
+  <path d="M42 50h42M42 66h28" stroke="#fff9ed" stroke-width="10" />
+</svg>

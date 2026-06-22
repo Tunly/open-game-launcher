@@ -1,0 +1,16 @@
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  viewBox="0 0 360 120"
+  role="img"
+  aria-labelledby="title desc"
+>
+  <title id="title">Community inkline logo</title>
+  <desc id="desc">Wide retro manga logo tape with black letters, red bar, and teal marks.</desc>
+  <rect width="360" height="120" fill="#fff9ed" />
+  <rect x="8" y="8" width="344" height="104" fill="none" stroke="#171411" stroke-width="10" />
+  <path d="M30 82h196" stroke="#b7102a" stroke-width="14" />
+  <path d="M244 34h76M244 56h56" stroke="#169b83" stroke-width="12" />
+  <text x="30" y="70" font-family="Arial Black, Impact, sans-serif" font-size="48" fill="#171411">
+    INKLINE
+  </text>
+</svg>

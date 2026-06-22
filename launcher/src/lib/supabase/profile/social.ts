@@ -39,6 +39,7 @@ export async function updateMySocialLinks(links: SocialLinksInput) {
         label: link.label,
         url: link.url,
         sort_order: link.sortOrder ?? index,
+        visibility: link.visibility ?? "public",
       })),
     )
     .select("*")

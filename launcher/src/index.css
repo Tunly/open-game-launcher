@@ -5,6 +5,19 @@
 @tailwind utilities;
 
 :root {
+  --og-shell-active: #007166;
+  --og-shell-active-hover: #087d6d;
+  --og-shell-brand: #b7102a;
+  --og-shell-brand-hover: #c20b2f;
+  --og-shell-dot: rgba(23, 20, 17, 0.065);
+  --og-shell-highlight: #8cf5e4;
+  --og-shell-ink: #171411;
+  --og-shell-muted: #5b403f;
+  --og-shell-paper: #fff9ed;
+  --og-shell-paper-base: #f5eedf;
+  --og-shell-paper-dim: #f6edd8;
+  --og-shell-paper-soft: #fbf8ef;
+  --og-shell-shadow: #1f1c0f;
   color-scheme: light;
   font-family:
     "Roboto Condensed",
@@ -15,8 +28,8 @@
     BlinkMacSystemFont,
     "Segoe UI",
     sans-serif;
-  background: #f5eedf;
-  color: #171411;
+  background: var(--og-shell-paper-base);
+  color: var(--og-shell-ink);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
@@ -41,8 +54,36 @@ body {
   min-width: 320px;
   background:
     linear-gradient(90deg, rgba(0, 0, 0, 0.035) 1px, transparent 1px),
-    linear-gradient(180deg, rgba(0, 0, 0, 0.025) 1px, transparent 1px), #f5eedf;
+    linear-gradient(180deg, rgba(0, 0, 0, 0.025) 1px, transparent 1px), var(--og-shell-paper-base);
   background-size: 34px 34px;
+}
+
+html[data-og-shell-skin="redline-print"] {
+  --og-shell-active: #b7102a;
+  --og-shell-active-hover: #007166;
+  --og-shell-brand: #c20b2f;
+  --og-shell-brand-hover: #b7102a;
+  --og-shell-dot: rgba(183, 16, 42, 0.08);
+  --og-shell-highlight: #8cf5e4;
+  --og-shell-muted: #5b403f;
+  --og-shell-paper: #fff9ed;
+  --og-shell-paper-base: #f5eedf;
+  --og-shell-paper-dim: #efe6d4;
+  --og-shell-paper-soft: #fff4e4;
+}
+
+html[data-og-shell-skin="teal-print"] {
+  --og-shell-active: #087d6d;
+  --og-shell-active-hover: #b7102a;
+  --og-shell-brand: #007166;
+  --og-shell-brand-hover: #087d6d;
+  --og-shell-dot: rgba(0, 113, 102, 0.09);
+  --og-shell-highlight: #8cf5e4;
+  --og-shell-muted: #5b403f;
+  --og-shell-paper: #fff9ed;
+  --og-shell-paper-base: #f5eedf;
+  --og-shell-paper-dim: #efe6d4;
+  --og-shell-paper-soft: #f1f6ed;
 }
 
 html.floating-overlay-runtime,
@@ -112,7 +153,7 @@ a:focus-visible {
   font-family: "Oswald", Impact, Haettenschweiler, "Arial Narrow", sans-serif;
   font-style: italic;
   font-weight: 700;
-  letter-spacing: -0.04em;
+  letter-spacing: 0;
   text-transform: uppercase;
 }
 
@@ -128,8 +169,67 @@ a:focus-visible {
 }
 
 .neo-dots {
-  background: radial-gradient(circle, rgba(23, 20, 17, 0.065) 1px, transparent 1px), #fbf8ef;
+  background:
+    radial-gradient(circle, var(--og-shell-dot) 1px, transparent 1px), var(--og-shell-paper-soft);
   background-size: 8px 8px;
+}
+
+.neo-dots-ink {
+  background:
+    radial-gradient(circle, rgba(255, 249, 237, 0.16) 1px, transparent 1px), rgba(23, 20, 17, 0.9);
+  background-size: 8px 8px;
+}
+
+.app-shell-root,
+.app-shell-header,
+.app-shell-titlebar,
+.app-shell-surface {
+  background: var(--og-shell-paper);
+  color: var(--og-shell-ink);
+}
+
+.app-shell-surface-dim {
+  background: var(--og-shell-paper-dim);
+}
+
+.app-shell-brand {
+  color: var(--og-shell-brand);
+}
+
+.app-shell-primary {
+  background: var(--og-shell-brand);
+  color: #fff9ed;
+}
+
+.app-shell-primary-hover:hover {
+  background: var(--og-shell-active);
+}
+
+.app-shell-secondary {
+  background: var(--og-shell-active);
+  color: #fff9ed;
+}
+
+.app-shell-secondary-hover:hover {
+  background: var(--og-shell-brand);
+}
+
+.app-shell-highlight-hover:hover {
+  background: var(--og-shell-highlight);
+}
+
+.app-shell-dim-hover:hover {
+  background: var(--og-shell-paper-dim);
+}
+
+.app-shell-muted-text {
+  color: var(--og-shell-muted);
+}
+
+.app-shell-active-nav {
+  background: var(--og-shell-active);
+  box-shadow: 4px 4px 0 var(--og-shell-shadow);
+  color: #fff9ed;
 }
 
 .tauri-runtime .app-main-header {

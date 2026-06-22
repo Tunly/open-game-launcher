@@ -31,8 +31,9 @@ import {
   Pin,
   PinOff,
 } from "lucide-react";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
+import { CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts";
 import { useCurrentUser } from "../hooks/useCurrentUser";
 import {
   getMyGroupChats,
@@ -40,13 +41,37 @@ import {
   subscribeToGroupMessages,
   type GroupChatInfo,
 } from "../lib/supabase/social";
-import { getSupabaseClient } from "../lib/supabase/client";
 import { getVisiblePresence, subscribeToPresenceChanges } from "../lib/supabase/presence";
 import { launchCrossPlayJoin, listInstalledGames } from "../lib/launcher";
-import { listScreenshots, deleteScreenshot, captureScreenshot } from "../lib/overlay";
-import { getMyScreenshots } from "../lib/supabase/screenshots";
+import {
+  listScreenshots,
+  deleteScreenshot,
+  captureScreenshot,
+  getOverlaySettings,
+  saveOverlaySettings,
+} from "../lib/overlay";
+import { getMyScreenshots, uploadScreenshotForGame } from "../lib/supabase/screenshots";
 import { getMyFriendLinks } from "../lib/supabase/friend-links";
 import { sendGameInvite } from "../lib/supabase/social";
+import {
+  savePerformanceSession,
+  savePerformanceSnapshotFromMetrics,
+} from "../lib/supabase/performance";
+import {
+  readActivePerformanceGameContext,
+  resolvePerformanceAttribution,
+} from "../lib/performance-context";
+import {
+  ACTIVE_GAME_PERFORMANCE_POLL_INTERVAL_MS,
+  shouldPollPerformanceMetrics,
+} from "../lib/performance-polling";
+import { createBrowserPreviewMetrics } from "../lib/performance-preview";
+import {
+  PERFORMANCE_SESSION_FLUSH_EVENT,
+  appendPerformanceSessionSample,
+  requestPerformanceSessionFlush,
+  type PerformanceSessionFlushDetail,
+} from "../lib/performance-session-flush-contract";
 import type { UserPresence, ChatMessage } from "../lib/types/profile";
 import type { Game, UnifiedAchievement } from "../lib/types";
 import type { RealtimeMetrics } from "../lib/types/performance";
@@ -61,7 +86,22 @@ interface AntiCheatInfo {
 }
 
 type OverlayPanel = "friends" | "chat" | "achievements" | "perf" | "screenshots" | "settings";
+type OverlayPosition = "top_left" | "top_right" | "bottom_left" | "bottom_right";
 type ResizeDirection = "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw";
+
+type PerformanceChartPoint = {
+  sample: number;
+  value: number | null;
+};
+
+const PERFORMANCE_CHART_SAMPLE_LIMIT = 60;
+const OVERLAY_SETTINGS_PREVIEW_KEY = "og-launcher:overlay-settings-preview";
+const OVERLAY_POSITIONS: OverlayPosition[] = [
+  "top_left",
+  "top_right",
+  "bottom_left",
+  "bottom_right",
+];
 
 interface OverlayPanelState {
   height: number;
@@ -82,6 +122,10 @@ export function OverlayPage() {
   const [now, setNow] = useState(() => new Date());
 
   useEffect(() => {
+    if (!isTauri()) {
+      return;
+    }
+
     let mounted = true;
     invoke<AntiCheatInfo[]>("detect_anti_cheat_processes")
       .then((list) => {
@@ -100,6 +144,14 @@ export function OverlayPage() {
     return () => window.clearInterval(timer);
   }, []);
 
+  const closeOverlayWindow = useCallback(() => {
+    void requestPerformanceSessionFlush()
+      .then(() => invoke("toggle_in_game_overlay"))
+      .catch((err) => {
+        console.error("[overlay] close failed:", err);
+      });
+  }, []);
+
   const closeOverlay = useCallback(() => {
     const pinnedPanels = openPanels.filter((panel) => panelStates[panel]?.pinned);
     if (pinnedPanels.length > 0) {
@@ -108,10 +160,8 @@ export function OverlayPage() {
       return;
     }
 
-    void invoke("toggle_in_game_overlay").catch((err) => {
-      console.error("[overlay] close failed:", err);
-    });
-  }, [openPanels, panelStates]);
+    closeOverlayWindow();
+  }, [closeOverlayWindow, openPanels, panelStates]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -126,6 +176,10 @@ export function OverlayPage() {
   }, [closeOverlay]);
 
   useEffect(() => {
+    if (!isTauri()) {
+      return;
+    }
+
     let unlisten: (() => void) | undefined;
     listen("overlay-global-toggle", () => {
       if (isChromeVisible) {
@@ -149,10 +203,8 @@ export function OverlayPage() {
   useEffect(() => {
     if (isChromeVisible) return;
     if (openPanels.some((panel) => panelStates[panel]?.pinned)) return;
-    void invoke("toggle_in_game_overlay").catch((err) => {
-      console.error("[overlay] close failed:", err);
-    });
-  }, [isChromeVisible, openPanels, panelStates]);
+    closeOverlayWindow();
+  }, [closeOverlayWindow, isChromeVisible, openPanels, panelStates]);
 
   const blocked = acList.some((ac) => ac.blocks_overlay);
   const sessionSeconds = Math.max(0, Math.floor((now.getTime() - sessionStartedAt.current) / 1000));
@@ -220,6 +272,20 @@ export function OverlayPage() {
     [openPanels.length],
   );
 
+  const blockedAntiCheats = acList.filter((ac) => ac.blocks_overlay);
+
+  const handleCaptureScreenshot = useCallback(() => {
+    void captureScreenshot()
+      .then((meta) => console.log("[screenshot] saved:", meta.path))
+      .catch(console.error);
+  }, []);
+
+  const handleToggleFpsHud = useCallback(() => {
+    void invoke("toggle_fps_hud").catch((err) => {
+      console.error("[fps-hud] toggle failed:", err);
+    });
+  }, []);
+
   const dockItems: Array<
     | { type: "panel"; panel: OverlayPanel; label: string; icon: React.ElementType }
     | { type: "action"; id: string; label: string; icon: React.ElementType; onClick: () => void }
@@ -234,22 +300,14 @@ export function OverlayPage() {
       id: "capture",
       label: "Capture screenshot",
       icon: Camera,
-      onClick: () => {
-        void captureScreenshot()
-          .then((meta) => console.log("[screenshot] saved:", meta.path))
-          .catch(console.error);
-      },
+      onClick: handleCaptureScreenshot,
     },
     {
       type: "action",
       id: "fps",
       label: "FPS-HUD",
       icon: Monitor,
-      onClick: () => {
-        void invoke("toggle_fps_hud").catch((err) => {
-          console.error("[fps-hud] toggle failed:", err);
-        });
-      },
+      onClick: handleToggleFpsHud,
     },
     { type: "panel", panel: "settings", label: "Settings", icon: Settings },
   ];
@@ -261,13 +319,13 @@ export function OverlayPage() {
       {isChromeVisible && (
         <>
           <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle,rgba(255,249,237,0.11)_1px,transparent_1px)] bg-[length:10px_10px] opacity-40" />
-          <div className="pointer-events-none absolute inset-0 shadow-[inset_0_0_130px_rgba(0,0,0,0.75)]" />
+          <div className="pointer-events-none absolute inset-0 border-[10px] border-black/55" />
         </>
       )}
 
       {isChromeVisible && (
         <>
-          <div className="neo-copy absolute top-5 left-6 z-20 text-[11px] leading-5 font-black text-[#fff9ed] uppercase drop-shadow-[2px_2px_0_#171411]">
+          <div className="neo-copy absolute left-6 top-5 z-20 text-[11px] font-black uppercase leading-5 text-[#fff9ed] drop-shadow-[2px_2px_0_#171411]">
             <div className="text-lg leading-none">
               {now.toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" })}
             </div>
@@ -277,19 +335,19 @@ export function OverlayPage() {
             <div>{formatSessionTime(sessionSeconds)} session</div>
           </div>
 
-          <div className="absolute top-5 left-1/2 z-20 -translate-x-1/2 text-center">
+          <div className="absolute left-1/2 top-5 z-20 -translate-x-1/2 text-center">
             <div className="mx-auto mb-1 grid h-10 w-10 place-items-center border-[3px] border-[#171411] bg-[#b7102a] text-[#fff9ed] shadow-[4px_4px_0_#1f1c0f]">
               <Gamepad2 size={22} />
             </div>
-            <div className="neo-title text-lg font-bold text-[#fff9ed] uppercase drop-shadow-[3px_3px_0_#171411]">
+            <div className="neo-title text-lg font-bold uppercase text-[#fff9ed] drop-shadow-[3px_3px_0_#171411]">
               OG-Launcher
             </div>
           </div>
 
-          <div className="absolute top-5 right-6 z-20 flex items-center gap-2">
+          <div className="absolute right-6 top-5 z-20 flex items-center gap-2">
             <button
               onClick={closeOverlay}
-              className="neo-copy border-2 border-[#fff9ed] bg-[#171411]/70 px-3 py-1.5 text-[11px] font-black text-[#fff9ed] uppercase shadow-[3px_3px_0_#000] hover:-translate-y-0.5 hover:bg-[#087d6d]"
+              className="neo-copy border-2 border-[#fff9ed] bg-[#171411]/70 px-3 py-1.5 text-[11px] font-black uppercase text-[#fff9ed] shadow-[3px_3px_0_#000] hover:-translate-y-0.5 hover:bg-[#087d6d]"
             >
               Back to Game
             </button>
@@ -306,7 +364,7 @@ export function OverlayPage() {
 
       {isChromeVisible && (blocked || acList.length > 0) && (
         <div
-          className={`neo-copy absolute top-24 left-1/2 z-20 flex max-w-[min(760px,calc(100vw-32px))] -translate-x-1/2 items-center gap-2 border-[3px] border-[#171411] px-3 py-2 text-[11px] font-black text-white uppercase shadow-[4px_4px_0_#000] ${blocked ? "bg-[#b7102a]" : "bg-[#087d6d]"}`}
+          className={`neo-copy absolute left-1/2 top-24 z-20 flex max-w-[min(760px,calc(100vw-32px))] -translate-x-1/2 items-center gap-2 border-[3px] border-[#171411] px-3 py-2 text-[11px] font-black uppercase text-white shadow-[4px_4px_0_#000] ${blocked ? "bg-[#b7102a]" : "bg-[#087d6d]"}`}
         >
           <ShieldAlert size={15} />
           {blocked
@@ -316,6 +374,15 @@ export function OverlayPage() {
                 .join(", ")}`
             : `Anti-cheat detected: ${acList.map((a) => a.name).join(", ")}`}
         </div>
+      )}
+
+      {isChromeVisible && blocked && (
+        <OverlayFallbackDeck
+          blockedAntiCheats={blockedAntiCheats}
+          onBackToGame={closeOverlay}
+          onCaptureScreenshot={handleCaptureScreenshot}
+          onToggleFpsHud={handleToggleFpsHud}
+        />
       )}
 
       {openPanels.map((panel, index) => {
@@ -376,6 +443,120 @@ export function OverlayPage() {
         </nav>
       )}
     </div>
+  );
+}
+
+function OverlayFallbackDeck({
+  blockedAntiCheats,
+  onBackToGame,
+  onCaptureScreenshot,
+  onToggleFpsHud,
+}: {
+  blockedAntiCheats: AntiCheatInfo[];
+  onBackToGame: () => void;
+  onCaptureScreenshot: () => void;
+  onToggleFpsHud: () => void;
+}) {
+  const blockedNames = blockedAntiCheats.map((ac) => ac.name).join(" / ");
+
+  return (
+    <section className="absolute left-1/2 top-[150px] z-20 max-h-[calc(100vh-230px)] w-[min(820px,calc(100vw-32px))] -translate-x-1/2 overflow-y-auto border-[4px] border-[#171411] bg-[#fff9ed] p-3 text-[#171411] shadow-[7px_7px_0_#000] md:max-h-none">
+      <div className="grid gap-3 md:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)] md:items-stretch">
+        <div className="neo-dots border-[3px] border-[#171411] bg-[#f6edd8] p-3">
+          <span className="neo-copy inline-flex items-center gap-2 border-2 border-[#171411] bg-[#b7102a] px-3 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-white shadow-[3px_3px_0_#1f1c0f]">
+            <ShieldAlert className="h-4 w-4" />
+            Safety Fallback
+          </span>
+          <h2 className="neo-title mt-3 text-4xl leading-none text-[#171411]">Overlay Hold</h2>
+          <p className="neo-copy mt-2 text-[10px] font-black uppercase leading-5 text-[#5b403f]">
+            {blockedNames || "Anti-cheat"} is running. OG-Launcher keeps the transparent overlay
+            restrained and exposes safe side actions instead of forcing an injected surface.
+          </p>
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            <FallbackMetric label="Blocked AC" value={String(blockedAntiCheats.length)} />
+            <FallbackMetric label="Mode" value="External" />
+          </div>
+        </div>
+
+        <div className="grid gap-2">
+          <FallbackAction
+            body="Return focus to the game and keep pinned overlay panels only if you already chose them."
+            icon={X}
+            label="Back to Game"
+            tone="red"
+            onClick={onBackToGame}
+          />
+          <FallbackAction
+            body="Use the lightweight FPS HUD path instead of a full overlay panel when AC pressure is high."
+            icon={Monitor}
+            label="Toggle FPS HUD"
+            tone="teal"
+            onClick={onToggleFpsHud}
+          />
+          <FallbackAction
+            body="Capture a local screenshot through the desktop path for post-match review."
+            icon={Camera}
+            label="Capture Shot"
+            tone="paper"
+            onClick={onCaptureScreenshot}
+          />
+        </div>
+      </div>
+      <div className="neo-copy mt-3 border-2 border-[#171411] bg-[#171411] px-3 py-2 text-[9px] font-black uppercase leading-4 text-[#fff9ed]">
+        Fullscreen fallback: use Windowed/Borderless mode or the external HUD/notification path.
+        True injected in-game overlay remains a separate anti-cheat research track.
+      </div>
+    </section>
+  );
+}
+
+function FallbackMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="border-2 border-[#171411] bg-[#fff9ed] p-2 text-center shadow-[2px_2px_0_#1f1c0f]">
+      <p className="text-2xl font-black leading-none text-[#171411]">{value}</p>
+      <p className="neo-copy mt-1 text-[8px] font-black uppercase text-[#5b403f]">{label}</p>
+    </div>
+  );
+}
+
+function FallbackAction({
+  body,
+  icon: Icon,
+  label,
+  onClick,
+  tone,
+}: {
+  body: string;
+  icon: React.ElementType;
+  label: string;
+  onClick: () => void;
+  tone: "red" | "teal" | "paper";
+}) {
+  const toneClass =
+    tone === "red"
+      ? "bg-[#b7102a] text-white"
+      : tone === "teal"
+        ? "bg-[#087d6d] text-white"
+        : "bg-[#fff9ed] text-[#171411]";
+
+  return (
+    <button
+      className="grid grid-cols-[44px_minmax(0,1fr)] gap-3 border-[3px] border-[#171411] bg-[#f6edd8] p-2 text-left shadow-[3px_3px_0_#1f1c0f] transition hover:-translate-y-0.5 hover:shadow-[5px_5px_0_#1f1c0f]"
+      type="button"
+      onClick={onClick}
+    >
+      <span
+        className={`grid h-10 w-10 place-items-center border-2 border-[#171411] shadow-[2px_2px_0_#1f1c0f] ${toneClass}`}
+      >
+        <Icon className="h-5 w-5" />
+      </span>
+      <span className="min-w-0">
+        <span className="neo-title block text-xl leading-none text-[#171411]">{label}</span>
+        <span className="neo-copy mt-1 block text-[9px] font-black uppercase leading-4 text-[#5b403f]">
+          {body}
+        </span>
+      </span>
+    </button>
   );
 }
 
@@ -503,7 +684,7 @@ function OverlayPanelShell({
       }}
     >
       <header
-        className="flex cursor-move items-center justify-between gap-3 border-b-[3px] border-[#171411] bg-[#fff9ed] px-3 py-2 select-none"
+        className="flex cursor-move select-none items-center justify-between gap-3 border-b-[3px] border-[#171411] bg-[#fff9ed] px-3 py-2"
         onPointerDown={startDrag}
         onPointerMove={moveDrag}
         onPointerUp={stopDrag}
@@ -511,7 +692,7 @@ function OverlayPanelShell({
       >
         <div className="flex min-w-0 items-center gap-2">
           <Grip size={16} className="shrink-0 text-[#655f58]" />
-          <h2 className="neo-title truncate text-lg font-bold text-[#b7102a] uppercase">{title}</h2>
+          <h2 className="neo-title truncate text-lg font-bold uppercase text-[#b7102a]">{title}</h2>
         </div>
         <div className="flex shrink-0 items-center gap-1">
           <button
@@ -646,14 +827,105 @@ function clampPanelState(state: OverlayPanelState): OverlayPanelState {
 function OverlaySettingsPanel({ onClose }: { onClose: () => void }) {
   const [hotkey, setHotkey] = useState("Shift+F1");
   const [opacity, setOpacity] = useState(95);
-  const [pos, setPos] = useState<"top_left" | "top_right" | "bottom_left" | "bottom_right">(
-    "bottom_right",
-  );
+  const [pos, setPos] = useState<OverlayPosition>("bottom_right");
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [status, setStatus] = useState("Loading settings...");
+
+  useEffect(() => {
+    let cancelled = false;
+
+    function applySettings(settings: { hotkey?: string; opacity?: number; position?: string }) {
+      const nextHotkey = settings.hotkey?.trim() || "Shift+F1";
+      const rawOpacity = typeof settings.opacity === "number" ? settings.opacity : 0.95;
+      const nextOpacity = rawOpacity <= 1 ? Math.round(rawOpacity * 100) : Math.round(rawOpacity);
+      const nextPosition = OVERLAY_POSITIONS.includes(settings.position as OverlayPosition)
+        ? (settings.position as OverlayPosition)
+        : "bottom_right";
+
+      setHotkey(nextHotkey);
+      setOpacity(Math.min(100, Math.max(50, nextOpacity)));
+      setPos(nextPosition);
+    }
+
+    async function loadSettings() {
+      try {
+        if (isTauri()) {
+          applySettings(await getOverlaySettings());
+          if (!cancelled) setStatus("Settings loaded from desktop config.");
+          return;
+        }
+
+        const stored = localStorage.getItem(OVERLAY_SETTINGS_PREVIEW_KEY);
+        if (stored) {
+          applySettings(
+            JSON.parse(stored) as { hotkey?: string; opacity?: number; position?: string },
+          );
+        }
+        if (!cancelled) setStatus("Settings loaded for preview.");
+      } catch (error) {
+        if (!cancelled) {
+          setStatus(
+            error instanceof Error
+              ? `Settings load failed: ${error.message}`
+              : "Settings load failed.",
+          );
+        }
+      } finally {
+        if (!cancelled) setIsLoading(false);
+      }
+    }
+
+    void loadSettings();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  async function handleSave() {
+    const nextHotkey = hotkey.trim() || "Shift+F1";
+    const settings = {
+      fpsHudEnabled: false,
+      hotkey: nextHotkey,
+      isEnabled: true,
+      opacity: opacity / 100,
+      position: pos,
+      showGpu: true,
+    };
+
+    setIsSaving(true);
+    try {
+      if (isTauri()) {
+        const saved = await saveOverlaySettings(settings);
+        const savedOpacity =
+          typeof saved.opacity === "number" ? Math.round(saved.opacity * 100) : opacity;
+        setHotkey(saved.hotkey ?? nextHotkey);
+        setOpacity(Math.min(100, Math.max(50, savedOpacity)));
+        setPos(saved.position ?? pos);
+      } else {
+        localStorage.setItem(OVERLAY_SETTINGS_PREVIEW_KEY, JSON.stringify(settings));
+      }
+
+      setStatus(`Saved // ${nextHotkey} // ${opacity}% // ${pos.replace("_", " ")}`);
+    } catch (error) {
+      setStatus(error instanceof Error ? `Save failed: ${error.message}` : "Save failed.");
+    } finally {
+      setIsSaving(false);
+    }
+  }
 
   return (
     <div className="w-full border-[3px] border-[#171411] bg-[#f6edd8] p-3 shadow-[4px_4px_0_#1f1c0f]">
-      <div className="neo-title mb-2 border-b-[3px] border-[#171411] pb-1 text-[11px] font-black text-[#b7102a] uppercase">
-        Overlay Settings
+      <div className="mb-2 flex items-center justify-between gap-2 border-b-[3px] border-[#171411] pb-1">
+        <div className="neo-title text-[11px] font-black uppercase text-[#b7102a]">
+          Overlay Settings
+        </div>
+        <div
+          role="status"
+          className="neo-copy truncate text-[9px] font-black uppercase tracking-[0.08em] text-[#655f58]"
+        >
+          {status}
+        </div>
       </div>
       <div className="space-y-2">
         <div>
@@ -680,21 +952,32 @@ function OverlaySettingsPanel({ onClose }: { onClose: () => void }) {
         <div>
           <span className="neo-copy text-[10px] font-bold text-[#655f58]">Position</span>
           <div className="mt-1 grid grid-cols-2 gap-1">
-            {(["top_left", "top_right", "bottom_left", "bottom_right"] as const).map((p) => (
+            {OVERLAY_POSITIONS.map((p) => (
               <button
                 key={p}
-                onClick={() => setPos(p)}
+                aria-pressed={pos === p}
                 className={`neo-copy border-2 border-[#171411] px-1 py-0.5 text-[9px] font-black uppercase shadow-[2px_2px_0_#1f1c0f] ${pos === p ? "bg-[#087d6d] text-white" : "bg-[#fff9ed] text-[#171411]"}`}
+                type="button"
+                onClick={() => setPos(p)}
               >
                 {p.replace("_", " ")}
               </button>
             ))}
           </div>
         </div>
-        <div className="flex justify-end pt-1">
+        <div className="flex justify-end gap-2 pt-1">
           <button
+            className="neo-copy border-2 border-[#171411] bg-[#b7102a] px-2 py-1 text-[10px] font-black uppercase text-white shadow-[2px_2px_0_#1f1c0f] hover:translate-y-[-1px] disabled:opacity-60"
+            disabled={isLoading || isSaving}
+            type="button"
+            onClick={handleSave}
+          >
+            {isSaving ? "Saving" : "Save"}
+          </button>
+          <button
+            className="neo-copy border-2 border-[#171411] bg-[#087d6d] px-2 py-1 text-[10px] font-black uppercase text-white shadow-[2px_2px_0_#1f1c0f] hover:translate-y-[-1px]"
+            type="button"
             onClick={onClose}
-            className="neo-copy border-2 border-[#171411] bg-[#087d6d] px-2 py-1 text-[10px] font-black text-white uppercase shadow-[2px_2px_0_#1f1c0f] hover:translate-y-[-1px]"
           >
             Done
           </button>
@@ -728,9 +1011,9 @@ function OverlayEmptyState({
           <div className="flex h-8 w-8 shrink-0 items-center justify-center border-2 border-[#171411] bg-[#b7102a] text-white shadow-[2px_2px_0_#1f1c0f]">
             <Icon size={16} />
           </div>
-          <div className="neo-title text-sm font-bold text-[#171411] uppercase">{title}</div>
+          <div className="neo-title text-sm font-bold uppercase text-[#171411]">{title}</div>
         </div>
-        <p className="neo-copy text-[11px] leading-5 font-bold text-[#655f58]">{copy}</p>
+        <p className="neo-copy text-[11px] font-bold leading-5 text-[#655f58]">{copy}</p>
       </div>
     </div>
   );
@@ -739,13 +1022,58 @@ function OverlayEmptyState({
 /* ========== FRIENDS TAB ========== */
 function OverlayFriendsTab() {
   const { isConfigured, isLoading: isAuthLoading, user } = useCurrentUser();
+  const verifyMode = new URLSearchParams(window.location.search).get("verify");
+  const isInviteVerify = verifyMode === "overlay-friend-invite";
   const [presence, setPresence] = useState<Record<string, UserPresence>>({});
   const [links, setLinks] = useState<FriendLink[]>([]);
   const [loading, setLoading] = useState(true);
   const [joining, setJoining] = useState<string | null>(null);
   const [inviting, setInviting] = useState<string | null>(null);
+  const [inviteDraftFriendId, setInviteDraftFriendId] = useState<string | null>(null);
+  const [inviteGameTitle, setInviteGameTitle] = useState("");
+  const [inviteMessage, setInviteMessage] = useState<string | null>(null);
 
   useEffect(() => {
+    if (isInviteVerify) {
+      const friendId = "overlay-invite-verify-friend";
+      setLinks([
+        {
+          createdAt: "2026-06-22T00:00:00.000Z",
+          dismissed: false,
+          id: "overlay-invite-verify-link",
+          matchMethod: "manual",
+          matchedUserId: friendId,
+          mergeGroupId: null,
+          ownerId: "overlay-verify-user",
+          platform: "steam",
+          platformFriendAvatar: null,
+          platformFriendId: "steam-overlay-verify-friend",
+          platformFriendName: "Arcade Rival",
+          updatedAt: "2026-06-22T00:00:00.000Z",
+        },
+      ]);
+      setPresence({
+        [friendId]: {
+          customStatus: null,
+          currentGameId: "overlay-verify-game",
+          currentGameTitle: "Neon Drift",
+          lastHeartbeatAt: "2026-06-22T00:00:00.000Z",
+          platform: "steam",
+          platformGameId: "steam-overlay-verify-game",
+          platformLastPolledAt: "2026-06-22T00:00:00.000Z",
+          platformSource: "steam",
+          status: "online",
+          updatedAt: "2026-06-22T00:00:00.000Z",
+          userId: friendId,
+        },
+      });
+      setInviteDraftFriendId(friendId);
+      setInviteGameTitle("Neon Drift");
+      setInviteMessage("Verify route rendered the inline invite form without native prompts.");
+      setLoading(false);
+      return;
+    }
+
     if (!user) {
       setLinks([]);
       setPresence({});
@@ -794,7 +1122,7 @@ function OverlayFriendsTab() {
       mounted = false;
       unsubscribePresence?.();
     };
-  }, [user]);
+  }, [isInviteVerify, user]);
 
   const handleJoin = async (friendId: string, gameTitle: string | null) => {
     if (!gameTitle) return;
@@ -808,21 +1136,48 @@ function OverlayFriendsTab() {
     }
   };
 
-  const handleInvite = async (friendId: string) => {
-    const gameTitle = window.prompt("Which game to invite to?");
-    if (!gameTitle) return;
+  const openInviteDraft = (friendId: string, gameTitle: string | null) => {
+    setInviteDraftFriendId(friendId);
+    setInviteGameTitle(gameTitle ?? "");
+    setInviteMessage(null);
+  };
+
+  const closeInviteDraft = () => {
+    setInviteDraftFriendId(null);
+    setInviteGameTitle("");
+    setInviteMessage(null);
+  };
+
+  const handleInvite = async (event: { preventDefault: () => void }, friendId: string) => {
+    event.preventDefault();
+    const gameTitle = inviteGameTitle.trim();
+    if (!gameTitle) {
+      setInviteMessage("Enter a game title before sending the invite.");
+      return;
+    }
+    if (isInviteVerify) {
+      setInviteMessage(`Local verify invite preview for ${gameTitle}. No Supabase invite sent.`);
+      setInviteDraftFriendId(null);
+      setInviteGameTitle("");
+      return;
+    }
     setInviting(friendId);
+    setInviteMessage(null);
     try {
       await sendGameInvite({ receiverId: friendId, gameTitle });
+      setInviteMessage(`Invite sent for ${gameTitle}.`);
+      setInviteDraftFriendId(null);
+      setInviteGameTitle("");
     } catch (err) {
       console.error(err);
+      setInviteMessage(err instanceof Error ? err.message : String(err));
     } finally {
       setInviting(null);
     }
   };
 
   if (isAuthLoading) return <OverlayLoadingState />;
-  if (!isConfigured) {
+  if (!isConfigured && !isInviteVerify) {
     return (
       <OverlayEmptyState
         icon={ShieldAlert}
@@ -831,7 +1186,7 @@ function OverlayFriendsTab() {
       />
     );
   }
-  if (!user) {
+  if (!user && !isInviteVerify) {
     return (
       <OverlayEmptyState
         icon={Users}
@@ -849,8 +1204,20 @@ function OverlayFriendsTab() {
 
   return (
     <div className="space-y-2">
+      {inviteMessage ? (
+        <p
+          aria-live="polite"
+          className="neo-copy border-2 border-[#171411] bg-[#8cf5e4] px-2 py-1.5 text-[10px] font-black uppercase leading-4 text-[#171411] shadow-[2px_2px_0_#1f1c0f]"
+          role="status"
+        >
+          {inviteMessage}
+        </p>
+      ) : null}
       {friends.map((link) => {
         const p = link.matchedUserId ? presence[link.matchedUserId] : null;
+        const friendId = link.matchedUserId!;
+        const isInviteDraftOpen = inviteDraftFriendId === friendId;
+        const inviteInputId = `overlay-invite-game-${friendId}`;
         const statusColor =
           p?.status === "online"
             ? "bg-[#087d6d]"
@@ -858,43 +1225,79 @@ function OverlayFriendsTab() {
               ? "bg-[#f56c2d]"
               : "bg-[#655f58]";
         return (
-          <div
-            key={link.id}
-            className="flex items-center justify-between border-2 border-[#171411] bg-[#fff9ed] px-2 py-1.5 text-[12px] shadow-[2px_2px_0_#1f1c0f]"
-          >
-            <div className="flex min-w-0 items-center gap-2">
-              <div className={`h-2 w-2 shrink-0 border border-[#171411] ${statusColor}`} />
-              <span className="truncate font-semibold text-[#171411]">
-                {link.platformFriendName || link.matchedUserId?.slice(0, 8)}
-              </span>
-              {p?.currentGameTitle && (
-                <span className="neo-copy truncate text-[10px] font-bold text-[#655f58]">
-                  playing {p.currentGameTitle}
+          <div key={link.id} className="space-y-1.5">
+            <div className="flex items-center justify-between border-2 border-[#171411] bg-[#fff9ed] px-2 py-1.5 text-[12px] shadow-[2px_2px_0_#1f1c0f]">
+              <div className="flex min-w-0 items-center gap-2">
+                <div className={`h-2 w-2 shrink-0 border border-[#171411] ${statusColor}`} />
+                <span className="truncate font-semibold text-[#171411]">
+                  {link.platformFriendName || link.matchedUserId?.slice(0, 8)}
                 </span>
-              )}
-            </div>
-            <div className="flex shrink-0 items-center gap-1">
-              {p?.currentGameTitle && (
+                {p?.currentGameTitle && (
+                  <span className="neo-copy truncate text-[10px] font-bold text-[#655f58]">
+                    playing {p.currentGameTitle}
+                  </span>
+                )}
+              </div>
+              <div className="flex shrink-0 items-center gap-1">
+                {p?.currentGameTitle && (
+                  <button
+                    onClick={() => handleJoin(friendId, p.currentGameTitle)}
+                    disabled={!!joining}
+                    className="neo-copy flex items-center gap-1 border-2 border-[#171411] bg-[#087d6d] px-1.5 py-0.5 text-[10px] font-black uppercase text-white shadow-[2px_2px_0_#1f1c0f] hover:translate-y-[-1px] disabled:opacity-50"
+                    title="Join"
+                  >
+                    <Swords size={10} />
+                    {joining === friendId ? "..." : "Join"}
+                  </button>
+                )}
                 <button
-                  onClick={() => handleJoin(link.matchedUserId!, p.currentGameTitle)}
-                  disabled={!!joining}
-                  className="neo-copy flex items-center gap-1 border-2 border-[#171411] bg-[#087d6d] px-1.5 py-0.5 text-[10px] font-black text-white uppercase shadow-[2px_2px_0_#1f1c0f] hover:translate-y-[-1px] disabled:opacity-50"
-                  title="Join"
+                  onClick={() => openInviteDraft(friendId, p?.currentGameTitle ?? null)}
+                  disabled={!!inviting}
+                  className="neo-copy flex items-center gap-1 border-2 border-[#171411] bg-[#b7102a] px-1.5 py-0.5 text-[10px] font-black uppercase text-white shadow-[2px_2px_0_#1f1c0f] hover:translate-y-[-1px] disabled:opacity-50"
+                  title="Invite"
                 >
-                  <Swords size={10} />
-                  {joining === link.matchedUserId ? "..." : "Join"}
+                  <Gamepad2 size={10} />
+                  {inviting === friendId ? "..." : "Invite"}
                 </button>
-              )}
-              <button
-                onClick={() => handleInvite(link.matchedUserId!)}
-                disabled={!!inviting}
-                className="neo-copy flex items-center gap-1 border-2 border-[#171411] bg-[#b7102a] px-1.5 py-0.5 text-[10px] font-black text-white uppercase shadow-[2px_2px_0_#1f1c0f] hover:translate-y-[-1px] disabled:opacity-50"
-                title="Invite"
-              >
-                <Gamepad2 size={10} />
-                {inviting === link.matchedUserId ? "..." : "Invite"}
-              </button>
+              </div>
             </div>
+            {isInviteDraftOpen ? (
+              <form
+                aria-label="Overlay game invite"
+                className="space-y-2 border-2 border-[#171411] bg-[#f6edd8] p-2 shadow-[2px_2px_0_#1f1c0f]"
+                onSubmit={(event) => void handleInvite(event, friendId)}
+              >
+                <label
+                  className="neo-copy block text-[9px] font-black uppercase tracking-[0.12em] text-[#b7102a]"
+                  htmlFor={inviteInputId}
+                >
+                  Game Invite Title
+                </label>
+                <input
+                  className="neo-copy h-8 w-full border-2 border-[#171411] bg-[#fff9ed] px-2 text-[11px] font-black uppercase text-[#171411] outline-none focus:bg-[#8cf5e4]"
+                  id={inviteInputId}
+                  onChange={(event) => setInviteGameTitle(event.target.value)}
+                  placeholder="Game title"
+                  value={inviteGameTitle}
+                />
+                <div className="flex flex-wrap justify-end gap-1.5">
+                  <button
+                    className="neo-copy border-2 border-[#171411] bg-[#fff9ed] px-2 py-1 text-[9px] font-black uppercase text-[#171411] shadow-[2px_2px_0_#1f1c0f] hover:translate-y-[-1px]"
+                    onClick={closeInviteDraft}
+                    type="button"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    className="neo-copy border-2 border-[#171411] bg-[#b7102a] px-2 py-1 text-[9px] font-black uppercase text-white shadow-[2px_2px_0_#1f1c0f] hover:translate-y-[-1px] disabled:bg-[#655f58]"
+                    disabled={Boolean(inviting) || inviteGameTitle.trim().length === 0}
+                    type="submit"
+                  >
+                    {inviting === friendId ? "Sending" : "Send Invite"}
+                  </button>
+                </div>
+              </form>
+            ) : null}
           </div>
         );
       })}
@@ -1015,7 +1418,7 @@ function OverlayChatTab() {
         )}
         {messages.map((msg) => (
           <div key={msg.id} className="flex flex-col">
-            <span className="neo-copy text-[9px] font-black text-[#b7102a] uppercase">
+            <span className="neo-copy text-[9px] font-black uppercase text-[#b7102a]">
               {msg.senderId === user?.id ? "You" : msg.senderId.slice(0, 8)}
             </span>
             <span className="text-[#171411]">{msg.content}</span>
@@ -1100,7 +1503,7 @@ function OverlayAchievementsTab() {
             >
               <div className="min-w-0">
                 <span className="block text-[12px] font-bold text-[#171411]">{game.title}</span>
-                <span className="neo-copy text-[10px] font-black text-[#b7102a] uppercase">
+                <span className="neo-copy text-[10px] font-black uppercase text-[#b7102a]">
                   {unlocked} / {total} achievements
                 </span>
               </div>
@@ -1167,7 +1570,7 @@ function AchievementRow({ achievement }: { achievement: UnifiedAchievement }) {
           <p className="neo-copy text-[10px] text-[#655f58]">{achievement.description}</p>
         )}
         {isUnlocked && achievement.unlockedAt && (
-          <p className="neo-copy text-[9px] font-black text-[#087d6d] uppercase">
+          <p className="neo-copy text-[9px] font-black uppercase text-[#087d6d]">
             Unlocked: {new Date(achievement.unlockedAt).toLocaleDateString("en-US")}
           </p>
         )}
@@ -1176,33 +1579,104 @@ function AchievementRow({ achievement }: { achievement: UnifiedAchievement }) {
   );
 }
 
-/* ========== PERFORMANCE TAB ========== */
 function OverlayPerfTab() {
   const [metrics, setMetrics] = useState<RealtimeMetrics | null>(null);
   const [history, setHistory] = useState<RealtimeMetrics[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [activeGameContext] = useState(() => readActivePerformanceGameContext());
+  const performanceAttribution = resolvePerformanceAttribution(activeGameContext);
+  const performanceGameId = performanceAttribution.gameId;
+  const shouldPollNativeMetrics = shouldPollPerformanceMetrics(performanceAttribution);
+  const startedAtRef = useRef(Date.now());
+  const lastPersistedAtRef = useRef(0);
+  const sessionBufferRef = useRef<RealtimeMetrics[]>([]);
+  const flushedSessionRef = useRef(false);
 
   useEffect(() => {
     let mounted = true;
+    const flushSession = () => {
+      if (!isTauri() || flushedSessionRef.current) {
+        return null;
+      }
+
+      const samples = sessionBufferRef.current;
+      if (samples.length === 0) {
+        return null;
+      }
+
+      flushedSessionRef.current = true;
+      sessionBufferRef.current = [];
+      return savePerformanceSession({
+        gameId: performanceGameId,
+        samples,
+        startedAt: new Date(startedAtRef.current).toISOString(),
+        endedAt: new Date().toISOString(),
+      }).catch((persistError) => {
+        console.warn("[performance] session persist failed:", persistError);
+        return false;
+      });
+    };
+    const handleFlushRequest = (event: Event) => {
+      const promise = flushSession();
+      if (promise) {
+        (event as CustomEvent<PerformanceSessionFlushDetail>).detail?.waitUntil(promise);
+      }
+    };
+    const applyMetrics = (m: RealtimeMetrics, shouldPersist: boolean) => {
+      if (!mounted) return;
+      setMetrics(m);
+      setHistory((prev) => [...prev.slice(-(PERFORMANCE_CHART_SAMPLE_LIMIT - 1)), m]);
+      setError(null);
+      const now = Date.now();
+      if (shouldPersist) {
+        flushedSessionRef.current = false;
+        sessionBufferRef.current = appendPerformanceSessionSample(sessionBufferRef.current, m);
+        if (now - lastPersistedAtRef.current > 30_000) {
+          lastPersistedAtRef.current = now;
+          void savePerformanceSnapshotFromMetrics(m, {
+            gameId: performanceGameId,
+            durationSeconds: Math.round((now - startedAtRef.current) / 1000),
+          }).catch((persistError) => {
+            console.warn("[performance] snapshot persist failed:", persistError);
+          });
+        }
+      }
+    };
+
+    window.addEventListener(PERFORMANCE_SESSION_FLUSH_EVENT, handleFlushRequest);
     const tick = () => {
+      if (!isTauri()) {
+        const elapsedSeconds = Math.round((Date.now() - startedAtRef.current) / 1000);
+        applyMetrics(createBrowserPreviewMetrics(elapsedSeconds), false);
+        return;
+      }
+
       invoke<RealtimeMetrics>("poll_performance_metrics")
-        .then((m) => {
-          if (!mounted) return;
-          setMetrics(m);
-          setHistory((prev) => [...prev.slice(-29), m]);
-          setError(null);
-        })
+        .then((m) => applyMetrics(m, true))
         .catch((err) => {
           if (mounted) setError(String(err));
         });
     };
+    if (!shouldPollNativeMetrics) {
+      applyMetrics(createBrowserPreviewMetrics(0), false);
+      return () => {
+        mounted = false;
+        window.removeEventListener(PERFORMANCE_SESSION_FLUSH_EVENT, handleFlushRequest);
+      };
+    }
+
     tick();
-    const iv = setInterval(tick, 2000);
+    const iv = setInterval(tick, ACTIVE_GAME_PERFORMANCE_POLL_INTERVAL_MS);
     return () => {
       mounted = false;
       clearInterval(iv);
+      window.removeEventListener(PERFORMANCE_SESSION_FLUSH_EVENT, handleFlushRequest);
+      const flushPromise = flushSession();
+      if (flushPromise) {
+        void flushPromise;
+      }
     };
-  }, []);
+  }, [performanceGameId, shouldPollNativeMetrics]);
 
   if (error) return <div className="neo-copy text-sm text-[#b7102a]">{error}</div>;
   if (!metrics)
@@ -1213,9 +1687,66 @@ function OverlayPerfTab() {
     );
 
   const latest = metrics;
+  const chartSamples =
+    history.length > 0 ? history.slice(-PERFORMANCE_CHART_SAMPLE_LIMIT) : [latest];
+  const chartDataFor = (
+    selector: (sample: RealtimeMetrics) => number | null | undefined,
+  ): PerformanceChartPoint[] =>
+    chartSamples.map((sample, index) => ({
+      sample: index,
+      value: selector(sample) ?? null,
+    }));
+  const performanceCharts: Array<{
+    color: string;
+    data: PerformanceChartPoint[];
+    fallbackDomain: [number, number];
+    label: string;
+    value: string;
+  }> = [
+    {
+      color: "#087d6d",
+      data: chartDataFor((sample) => sample.cpuPercent),
+      fallbackDomain: [0, 100],
+      label: "CPU",
+      value: `${latest.cpuPercent.toFixed(0)}%`,
+    },
+    {
+      color: "#007166",
+      data: chartDataFor((sample) => sample.gpuPercent),
+      fallbackDomain: [0, 100],
+      label: "GPU",
+      value: latest.gpuPercent != null ? `${latest.gpuPercent.toFixed(0)}%` : "N/A",
+    },
+    {
+      color: "#b7102a",
+      data: chartDataFor((sample) => sample.fps),
+      fallbackDomain: [0, 120],
+      label: "FPS",
+      value: `${latest.fps.toFixed(0)}`,
+    },
+    {
+      color: "#1f1c0f",
+      data: chartDataFor((sample) => sample.frameTimeMs),
+      fallbackDomain: [0, 40],
+      label: "Frame",
+      value: `${latest.frameTimeMs.toFixed(1)} ms`,
+    },
+  ];
 
   return (
     <div className="space-y-3">
+      <div className="neo-dots border-2 border-[#171411] bg-[#fff9ed] p-2 shadow-[2px_2px_0_#1f1c0f]">
+        <p className="neo-copy text-[9px] font-black uppercase text-[#655f58]">Sample Scope</p>
+        <div className="mt-1 flex items-center gap-2">
+          <Gamepad2 size={14} className="text-[#087d6d]" />
+          <span className="truncate text-[12px] font-black uppercase text-[#171411]">
+            {performanceAttribution.label}
+          </span>
+        </div>
+        <p className="neo-copy mt-1 text-[8px] font-black uppercase text-[#655f58]">
+          {performanceAttribution.detail}
+        </p>
+      </div>
       <div className="grid grid-cols-2 gap-2">
         <MetricCard
           label="CPU"
@@ -1266,20 +1797,11 @@ function OverlayPerfTab() {
           />
         )}
       </div>
-      <div className="border-2 border-[#171411] bg-[#fff9ed] p-2 shadow-[2px_2px_0_#1f1c0f]">
-        <div className="neo-copy mb-1 text-[10px] font-black text-[#655f58] uppercase">
-          CPU history
-        </div>
-        <Sparkline data={history.map((h) => h.cpuPercent)} color="#087d6d" />
+      <div className="grid grid-cols-2 gap-2">
+        {performanceCharts.map((chart) => (
+          <PerformanceLineChart key={chart.label} {...chart} />
+        ))}
       </div>
-      {latest.gpuPercent != null && (
-        <div className="border-2 border-[#171411] bg-[#fff9ed] p-2 shadow-[2px_2px_0_#1f1c0f]">
-          <div className="neo-copy mb-1 text-[10px] font-black text-[#655f58] uppercase">
-            GPU history
-          </div>
-          <Sparkline data={history.map((h) => h.gpuPercent ?? 0)} color="#087d6d" />
-        </div>
-      )}
       <div className="neo-copy text-[10px] text-[#655f58]">Uptime: {latest.uptime}</div>
     </div>
   );
@@ -1300,7 +1822,7 @@ function MetricCard({
     <div className="flex items-center gap-2 border-2 border-[#171411] bg-[#fff9ed] p-2 shadow-[2px_2px_0_#1f1c0f]">
       <Icon size={16} className="shrink-0" style={{ color }} />
       <div>
-        <div className="neo-copy text-[9px] font-black text-[#655f58] uppercase">{label}</div>
+        <div className="neo-copy text-[9px] font-black uppercase text-[#655f58]">{label}</div>
         <div className="text-[13px] font-bold text-[#171411]" style={{ color }}>
           {value}
         </div>
@@ -1309,35 +1831,136 @@ function MetricCard({
   );
 }
 
-function Sparkline({ data, color }: { data: number[]; color: string }) {
-  if (data.length < 2) return <div className="h-8" />;
-  const max = Math.max(...data, 1);
-  const min = Math.min(...data, 0);
-  const range = max - min || 1;
-  const w = 100;
-  const h = 40;
-  const points = data
-    .map((v, i) => `${(i / (data.length - 1)) * w},${h - ((v - min) / range) * h}`)
-    .join(" ");
+function PerformanceLineChart({
+  color,
+  data,
+  fallbackDomain,
+  label,
+  value,
+}: {
+  color: string;
+  data: PerformanceChartPoint[];
+  fallbackDomain: [number, number];
+  label: string;
+  value: string;
+}) {
+  const [isChartReady, setIsChartReady] = useState(false);
+  const validPointCount = data.filter((point) => point.value != null).length;
+  const domain = resolvePerformanceChartDomain(data, fallbackDomain);
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => setIsChartReady(true));
+    return () => window.cancelAnimationFrame(frame);
+  }, []);
+
   return (
-    <svg viewBox={`0 0 ${w} ${h}`} className="h-10 w-full">
-      <polyline fill="none" stroke={color} strokeWidth="2" points={points} opacity={0.8} />
-    </svg>
+    <div
+      aria-label={`${label} performance history: ${value}`}
+      className="neo-dots border-2 border-[#171411] bg-[#fff9ed] p-2 shadow-[2px_2px_0_#1f1c0f]"
+      role="img"
+    >
+      <div className="mb-1 flex h-5 items-center justify-between gap-2">
+        <span className="neo-copy truncate text-[9px] font-black uppercase text-[#655f58]">
+          {label} tape
+        </span>
+        <span
+          className="neo-title shrink-0 text-[13px] leading-none text-[#171411]"
+          style={{ color }}
+        >
+          {value}
+        </span>
+      </div>
+      <div className="h-14 w-full overflow-hidden border-2 border-[#171411] bg-[#f6edd8]">
+        {isChartReady ? (
+          <LineChart
+            data={data}
+            height={56}
+            margin={{ bottom: 2, left: 2, right: 2, top: 4 }}
+            width={280}
+          >
+            <CartesianGrid
+              stroke="#171411"
+              strokeDasharray="2 4"
+              strokeOpacity={0.18}
+              vertical={false}
+            />
+            <XAxis dataKey="sample" hide type="number" />
+            <YAxis domain={domain} hide width={0} />
+            <Line
+              activeDot={false}
+              connectNulls={false}
+              dataKey="value"
+              dot={
+                validPointCount < 2
+                  ? { fill: color, r: 3, stroke: "#171411", strokeWidth: 2 }
+                  : false
+              }
+              isAnimationActive={false}
+              stroke={color}
+              strokeWidth={3}
+              type="monotone"
+            />
+          </LineChart>
+        ) : null}
+      </div>
+    </div>
   );
 }
 
+function resolvePerformanceChartDomain(
+  data: PerformanceChartPoint[],
+  fallbackDomain: [number, number],
+): [number, number] {
+  const values = data
+    .map((point) => point.value)
+    .filter((value): value is number => value != null && Number.isFinite(value));
+
+  if (values.length === 0) {
+    return fallbackDomain;
+  }
+
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+
+  if (min === max) {
+    const padding = Math.max(Math.abs(min) * 0.1, 1);
+    return [Math.max(0, min - padding), max + padding];
+  }
+
+  const padding = (max - min) * 0.2;
+  return [Math.max(0, min - padding), max + padding];
+}
+
 /* ========== SCREENSHOTS TAB ========== */
+function screenshotPreviewToFile(shot: ScreenshotMeta): File | null {
+  if (!shot.base64_preview) return null;
+  try {
+    const binary = atob(shot.base64_preview);
+    const bytes = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index += 1) {
+      bytes[index] = binary.charCodeAt(index);
+    }
+    return new File([bytes], shot.file_name || `${shot.id}.jpg`, {
+      lastModified: Date.parse(shot.created_at) || Date.now(),
+      type: "image/jpeg",
+    });
+  } catch {
+    return null;
+  }
+}
+
 function OverlayScreenshotsTab() {
   const [localShots, setLocalShots] = useState<ScreenshotMeta[]>([]);
   const [cloudShots, setCloudShots] = useState<Screenshot[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState<string | null>(null);
+  const [uploadMessage, setUploadMessage] = useState<string | null>(null);
   const [preview, setPreview] = useState<ScreenshotMeta | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const local = await listScreenshots();
+      const local = isTauri() ? await listScreenshots() : [];
       setLocalShots(local);
       try {
         const cloud = await getMyScreenshots();
@@ -1366,26 +1989,33 @@ function OverlayScreenshotsTab() {
   };
 
   const handleUpload = async (shot: ScreenshotMeta) => {
-    if (!shot.base64_preview) return;
+    const file = screenshotPreviewToFile(shot);
+    if (!file) {
+      setUploadMessage("Open the local capture once before cloud upload.");
+      return;
+    }
     setUploading(shot.id);
+    setUploadMessage(null);
     try {
-      const client = getSupabaseClient();
-      if (!client) return;
-      const { data: userData } = await client.auth.getUser();
-      if (!userData.user) return;
-      await client.from("screenshots").insert({
-        user_id: userData.user.id,
-        storage_path: shot.path,
-        thumbnail_path: shot.base64_preview?.slice(0, 200) ?? null,
+      const result = await uploadScreenshotForGame({
         caption: shot.file_name,
-        width: shot.width,
-        height: shot.height,
-        size_bytes: shot.size_bytes,
-        is_public: false,
+        file,
+        height: shot.height || null,
+        isPublic: false,
+        width: shot.width || null,
       });
-      await load();
+      if (!result.ok) {
+        setUploadMessage(result.message);
+        return;
+      }
+      setCloudShots((current) => [
+        result.value,
+        ...current.filter((item) => item.id !== result.value.id),
+      ]);
+      setUploadMessage("Screenshot uploaded as private cloud capture.");
     } catch (err) {
       console.error(err);
+      setUploadMessage("Screenshot upload failed.");
     } finally {
       setUploading(null);
     }
@@ -1400,9 +2030,14 @@ function OverlayScreenshotsTab() {
 
   return (
     <div className="space-y-3">
-      <div className="neo-copy text-[10px] font-black text-[#655f58] uppercase">
+      <div className="neo-copy text-[10px] font-black uppercase text-[#655f58]">
         Local ({localShots.length})
       </div>
+      {uploadMessage && (
+        <div className="neo-copy border-2 border-[#171411] bg-[#fff9ed] px-2 py-1 text-[9px] font-black uppercase text-[#171411] shadow-[2px_2px_0_#1f1c0f]">
+          {uploadMessage}
+        </div>
+      )}
       <div className="grid grid-cols-3 gap-2">
         {localShots.map((shot) => (
           <div
@@ -1452,27 +2087,38 @@ function OverlayScreenshotsTab() {
 
       {cloudShots.length > 0 && (
         <>
-          <div className="neo-copy text-[10px] font-black text-[#655f58] uppercase">
+          <div className="neo-copy text-[10px] font-black uppercase text-[#655f58]">
             Cloud ({cloudShots.length})
           </div>
           <div className="grid grid-cols-3 gap-2">
-            {cloudShots.map((shot) => (
-              <div
-                key={shot.id}
-                className="aspect-video border-2 border-[#171411] bg-[#fff9ed] p-1 shadow-[2px_2px_0_#1f1c0f]"
-              >
-                <div className="neo-copy flex h-full items-center justify-center text-[9px] font-bold text-[#655f58]">
-                  {shot.caption || "Screenshot"}
+            {cloudShots.map((shot) => {
+              const imageUrl = shot.thumbnailUrl ?? shot.publicUrl;
+              return (
+                <div
+                  key={shot.id}
+                  className="aspect-video overflow-hidden border-2 border-[#171411] bg-[#fff9ed] p-1 shadow-[2px_2px_0_#1f1c0f]"
+                >
+                  {imageUrl ? (
+                    <img
+                      alt={shot.caption || "Cloud screenshot"}
+                      className="h-full w-full object-cover"
+                      src={imageUrl}
+                    />
+                  ) : (
+                    <div className="neo-copy flex h-full items-center justify-center text-center text-[9px] font-bold text-[#655f58]">
+                      {shot.caption || "Screenshot"}
+                    </div>
+                  )}
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </>
       )}
 
       {preview && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center bg-[#171411]/90 p-4"
+          className="neo-dots-ink fixed inset-0 z-50 flex items-center justify-center p-4"
           role="button"
           tabIndex={-1}
           aria-label="Close preview"

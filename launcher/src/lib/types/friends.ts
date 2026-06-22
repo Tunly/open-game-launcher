@@ -1,6 +1,14 @@
 // Universal Friends System types
 
-export type PlatformType = "steam" | "epic" | "gog" | "ea" | "xbox" | "battlenet" | "ubisoft" | "og";
+export type PlatformType =
+  | "steam"
+  | "epic"
+  | "gog"
+  | "ea"
+  | "xbox"
+  | "battlenet"
+  | "ubisoft"
+  | "og";
 export type MatchMethod = "linked_account" | "heuristic" | "manual";
 export type MergeSuggestionStatus = "pending" | "accepted" | "rejected";
 export type ActivityType = "game_start" | "game_stop" | "achievement_unlocked" | "screenshot_taken";
@@ -63,7 +71,7 @@ export interface ActivityFeedItem {
   gameTitle: string | null;
   achievementName: string | null;
   screenshotUrl: string | null;
-  metadata: Record<string, unknown>;
+  metadata: ActivityFeedMetadata;
   visibility: "public" | "friends_only" | "private";
   createdAt: string;
 }
@@ -87,7 +95,7 @@ export interface GroupChatMember {
 export interface CrossPlatformInvite {
   id: string;
   senderId: string;
-  receiverId: string;
+  receiverId: string | null;
   gameId: string | null;
   gameTitle: string;
   platform: PlatformType | null;
@@ -102,8 +110,11 @@ export interface CrossPlatformInvite {
 
 export interface PlatformPresenceInfo {
   platform: PlatformType;
+  source?: string | null;
   status: "online" | "offline" | "away" | "busy" | "unknown";
   currentGame: string | null;
+  platformGameId?: string | null;
+  lastPolledAt?: string | null;
 }
 
 export interface AggregatedPresence {
@@ -111,4 +122,10 @@ export interface AggregatedPresence {
   bestStatus: "online" | "away" | "busy" | "offline";
   platforms: PlatformPresenceInfo[];
   currentGame: string | null;
+}
+
+export interface ActivityFeedMetadata extends Record<string, unknown> {
+  platform?: PlatformType | string | null;
+  platformSource?: string | null;
+  platform_source?: string | null;
 }

@@ -226,6 +226,21 @@ pub(crate) fn normalize_game_id(game_id: String) -> Result<String, String> {
     if normalized.is_empty() {
         return Err("game_id must not be empty.".to_string());
     }
+    if normalized.len() > 160 {
+        return Err("game_id must be 160 characters or fewer.".to_string());
+    }
+    if normalized == "." || normalized == ".." || normalized.contains("..") {
+        return Err("game_id must not contain path traversal segments.".to_string());
+    }
+    if normalized.starts_with('.') || normalized.ends_with('.') {
+        return Err("game_id must not start or end with a dot.".to_string());
+    }
+    if !normalized
+        .chars()
+        .all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '_' || ch == '.')
+    {
+        return Err("game_id may only contain letters, numbers, '.', '-' or '_'.".to_string());
+    }
     Ok(normalized)
 }
 
@@ -267,5 +282,41 @@ mod tests {
         assert_eq!(steam_app_id_from_download_id("steam-12345"), Some("12345"));
         assert_eq!(steam_app_id_from_download_id("steam-owned-beta"), None);
         assert_eq!(steam_app_id_from_download_id("epic-owned-12345"), None);
+    }
+
+    #[test]
+    fn normalize_game_id_rejects_path_like_values() {
+        for value in [
+            "",
+            "../escape",
+            "a/b",
+            "a\\b",
+            "/absolute",
+            "C:\\absolute",
+            ".hidden",
+            "trailing.",
+            "store demo",
+            "store\ndemo",
+        ] {
+            assert!(
+                normalize_game_id(value.to_string()).is_err(),
+                "expected {value:?} to be rejected"
+            );
+        }
+    }
+
+    #[test]
+    fn normalize_game_id_accepts_safe_launcher_slugs() {
+        for value in [
+            "steam-owned-12345",
+            "epic-owned-action_demo",
+            "store-demo.v1",
+            "GOG_12345",
+        ] {
+            assert_eq!(
+                normalize_game_id(format!(" {value} ")).expect("safe game id"),
+                value
+            );
+        }
     }
 }

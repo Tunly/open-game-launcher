@@ -65,7 +65,7 @@ describe("mergeEpicOwned", () => {
   });
 
   it("persists fetched Epic owned games as local best-effort source evidence", async () => {
-    window.localStorage.setItem(STORAGE_KEYS.EPIC_TOKEN, JSON.stringify({ accessToken: "epic" }));
+    window.localStorage.setItem(STORAGE_KEYS.EPIC_SESSION_MARKER, "Epic User");
     const ownedGames = toOwnedGame([{ id: "epic-owned-hades", title: "Hades" }]);
     fetchEpicOwnedGames.mockResolvedValueOnce(ownedGames);
 

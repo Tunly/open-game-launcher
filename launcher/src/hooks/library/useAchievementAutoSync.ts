@@ -5,6 +5,7 @@ import { achievementProviderForGame } from "../../lib/achievement-providers";
 import { supportedAchievementSyncGames, type GameGroup } from "../../lib/game-groups";
 import { getErrorMessage } from "../../lib/formatters";
 import { updateAchievementProviderStatus } from "../../lib/launcher";
+import { ingestTrustedAchievements } from "../../lib/supabase/achievements";
 import { useActivityLogger } from "../useActivityLogger";
 import type { Game } from "../../lib/types";
 
@@ -125,6 +126,14 @@ export function useAchievementAutoSync({
 
       try {
         const response = await provider.sync(game);
+        void ingestTrustedAchievements({
+          game: response.game,
+          provider: provider.provider,
+          providerConfidence: provider.stability,
+          syncedAt: response.game.achievementsSyncedAt ?? null,
+        }).catch((error) => {
+          console.warn("[OG-Launcher] Trusted achievement ingestion skipped:", error);
+        });
         const status: GameAchievementProviderStatus = {
           source: provider.provider,
           status: "available",

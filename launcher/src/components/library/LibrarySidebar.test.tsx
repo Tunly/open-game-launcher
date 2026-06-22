@@ -141,6 +141,44 @@ describe("LibrarySidebar", () => {
     ).toBeInTheDocument();
   });
 
+  it("shows cross-source runtime metadata for grouped variants", async () => {
+    const steamGame = makeGame({
+      id: "steam-440",
+      launcher: "steam",
+      title: "Team Fortress 2",
+    });
+    const epicGame = makeGame({
+      id: "epic-tf2",
+      launcher: "epic",
+      title: "Team Fortress 2",
+    });
+    const group = aggregateGameGroup([epicGame, steamGame]);
+
+    renderSidebar({
+      filteredGames: [group],
+      games: [group],
+      gameRuntimeById: {
+        "steam-440": {
+          gameId: "steam-440",
+          launcher: "steam",
+          occurredAt: "2026-06-10T10:00:00.000Z",
+          pid: 4242,
+          processName: "hl2.exe",
+          running: true,
+          title: "Team Fortress 2",
+          uptimeSeconds: 185,
+        },
+      },
+      runningGameIds: new Set(["steam-440"]),
+      selectedGroup: group,
+    });
+
+    await screen.findByText("Desktop only");
+
+    expect(screen.getByText(/via Steam/i)).toBeInTheDocument();
+    expect(screen.getByText(/hl2\.exe/i)).toBeInTheDocument();
+  });
+
   it("updates the search query through the controlled input", () => {
     const setSearchQuery = vi.fn();
     renderSidebar({ setSearchQuery });

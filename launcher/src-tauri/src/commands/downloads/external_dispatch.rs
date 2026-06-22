@@ -17,6 +17,15 @@ pub struct ExternalDispatch {
 /// reflected in `external_message` so the caller can surface
 /// them to the UI.
 pub fn dispatch_external_launcher(game_id: &str) -> ExternalDispatch {
+    dispatch_external_launcher_with_open_uri(game_id, |uri| {
+        let _ = crate::commands::system::open_uri(uri);
+    })
+}
+
+fn dispatch_external_launcher_with_open_uri<F>(game_id: &str, mut open_uri: F) -> ExternalDispatch
+where
+    F: FnMut(&str),
+{
     let mut result = ExternalDispatch {
         steam_tracker_id: None,
         epic_tracker_id: None,
@@ -41,7 +50,7 @@ pub fn dispatch_external_launcher(game_id: &str) -> ExternalDispatch {
             }
         };
         let uri = format!("steam://install/{safe_steam_id}");
-        let _ = crate::commands::system::open_uri(&uri);
+        open_uri(&uri);
         result.steam_tracker_id = Some(safe_steam_id);
         result.is_external_download = true;
         result.external_message =
@@ -62,7 +71,7 @@ pub fn dispatch_external_launcher(game_id: &str) -> ExternalDispatch {
         match validate_slug(ea_id) {
             Ok(safe_ea_id) => {
                 let uri = format!("origin2://game/launch?offerIds={safe_ea_id}&autoDownload=true");
-                let _ = crate::commands::system::open_uri(&uri);
+                open_uri(&uri);
                 result.is_external_download = true;
                 result.external_message =
                     "Installation started via EA App. Check EA App for progress.".to_string();
@@ -77,7 +86,7 @@ pub fn dispatch_external_launcher(game_id: &str) -> ExternalDispatch {
         match validate_slug(uplay_id) {
             Ok(safe_uplay_id) => {
                 let uri = format!("uplay://install/{safe_uplay_id}");
-                let _ = crate::commands::system::open_uri(&uri);
+                open_uri(&uri);
                 result.is_external_download = true;
                 result.external_message =
                     "Installation started in Ubisoft Connect. Check Ubisoft Connect for progress."
@@ -93,7 +102,7 @@ pub fn dispatch_external_launcher(game_id: &str) -> ExternalDispatch {
         match validate_slug(bnet_id) {
             Ok(safe_bnet_id) => {
                 let uri = format!("battlenet://{safe_bnet_id}");
-                let _ = crate::commands::system::open_uri(&uri);
+                open_uri(&uri);
                 result.is_external_download = true;
                 result.external_message =
                     "Installation started in Battle.net. Check Battle.net for download progress."
@@ -106,4 +115,116 @@ pub fn dispatch_external_launcher(game_id: &str) -> ExternalDispatch {
     }
 
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn safe_steam_ids_open_install_uri_and_track_id() {
+        for (game_id, expected_steam_id) in
+            [("steam-440", "440"), ("steam-owned-1245620", "1245620")]
+        {
+            let mut opened_uris = Vec::new();
+
+            let result = dispatch_external_launcher_with_open_uri(game_id, |uri| {
+                opened_uris.push(uri.to_string())
+            });
+
+            assert_eq!(result.steam_tracker_id.as_deref(), Some(expected_steam_id));
+            assert_eq!(result.epic_tracker_id, None);
+            assert!(result.is_external_download);
+            assert_eq!(
+                opened_uris,
+                vec![format!("steam://install/{expected_steam_id}")]
+            );
+            assert_eq!(
+                result.external_message,
+                "Installation started in Steam. Check Steam for download progress."
+            );
+        }
+    }
+
+    #[test]
+    fn steam_slug_rejection_blocks_shell_and_path_like_payloads() {
+        for game_id in [
+            "steam-123 & calc.exe",
+            "steam-owned-../payload",
+            "steam-owned-C:\\Games\\payload",
+            "steam-owned-foo/bar",
+        ] {
+            let result = dispatch_external_launcher_with_open_uri(game_id, |_| {
+                panic!("rejected Steam payload should not open a URI")
+            });
+
+            assert_eq!(result.steam_tracker_id, None);
+            assert_eq!(result.epic_tracker_id, None);
+            assert!(!result.is_external_download);
+            assert!(
+                result
+                    .external_message
+                    .starts_with("Steam install link rejected:"),
+                "unexpected message for {game_id:?}: {:?}",
+                result.external_message
+            );
+        }
+    }
+
+    #[test]
+    fn owned_launcher_slugs_reject_unsafe_payloads() {
+        for (game_id, expected_prefix) in [
+            ("ea-owned-offer & calc.exe", "EA install link rejected:"),
+            ("ubisoft-owned-../payload", "Ubisoft install link rejected:"),
+            (
+                "battlenet-owned-product;shutdown",
+                "Battle.net install link rejected:",
+            ),
+        ] {
+            let result = dispatch_external_launcher_with_open_uri(game_id, |_| {
+                panic!("rejected external launcher payload should not open a URI")
+            });
+
+            assert_eq!(result.steam_tracker_id, None);
+            assert_eq!(result.epic_tracker_id, None);
+            assert!(!result.is_external_download);
+            assert!(
+                result.external_message.starts_with(expected_prefix),
+                "unexpected message for {game_id:?}: {:?}",
+                result.external_message
+            );
+        }
+    }
+
+    #[test]
+    fn epic_owned_id_tracks_without_uri_validation_or_opening_uri() {
+        let epic_id = "Fortnite/../../payload & still-tracked";
+        let game_id = format!("epic-owned-{epic_id}");
+
+        let result = dispatch_external_launcher_with_open_uri(&game_id, |_| {
+            panic!("Epic dispatch should only hand off to Legendary tracking")
+        });
+
+        assert_eq!(result.steam_tracker_id, None);
+        assert_eq!(result.epic_tracker_id.as_deref(), Some(epic_id));
+        assert!(result.is_external_download);
+        assert_eq!(
+            result.external_message,
+            "Installation started via Epic Games (Legendary). Check Legendary for progress."
+        );
+    }
+
+    #[test]
+    fn non_external_ids_return_no_external_download() {
+        for game_id in ["local-game", "gog-owned-12345", "itch-owned-demo"] {
+            let result = dispatch_external_launcher_with_open_uri(game_id, |_| {
+                panic!("non-external ids should not open a URI")
+            });
+
+            assert_eq!(result.steam_tracker_id, None);
+            assert_eq!(result.epic_tracker_id, None);
+            assert!(!result.is_external_download);
+            assert!(result.external_message.is_empty());
+        }
+    }
 }

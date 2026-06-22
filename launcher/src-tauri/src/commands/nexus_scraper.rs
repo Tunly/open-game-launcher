@@ -50,15 +50,13 @@ pub async fn scrape_nexus_mod_info(url: String) -> Result<NexusModInfo, String> 
         .await
         .map_err(|error| format!("Failed to read page body: {error}"))?;
 
-    let name = extract_meta_content(&html, "og:title")
-        .unwrap_or_else(|| "Unknown Mod".to_string());
+    let name = extract_meta_content(&html, "og:title").unwrap_or_else(|| "Unknown Mod".to_string());
 
     let author = extract_meta_content(&html, "author")
         .or_else(|| extract_user_class_author(&html))
         .unwrap_or_else(|| "Unknown Author".to_string());
 
-    let summary = extract_meta_content(&html, "og:description")
-        .unwrap_or_default();
+    let summary = extract_meta_content(&html, "og:description").unwrap_or_default();
 
     let icon_url = extract_meta_content(&html, "og:image");
 
@@ -145,11 +143,12 @@ fn find_all_tiles(html: &str) -> Option<Vec<String>> {
         while let Some(class_pos) = html[search_from..].find(pattern) {
             let abs_pos = search_from + class_pos;
 
-            let tag_start = html[..abs_pos]
-                .rfind('<')
-                .unwrap_or(0);
+            let tag_start = html[..abs_pos].rfind('<').unwrap_or(0);
 
-            let open_tag_end = html[tag_start..].find('>').map(|i| tag_start + i + 1).unwrap_or(tag_start);
+            let open_tag_end = html[tag_start..]
+                .find('>')
+                .map(|i| tag_start + i + 1)
+                .unwrap_or(tag_start);
 
             let close_tag = find_matching_close_tag(html, tag_start, pattern);
             if let Some(end) = close_tag {
@@ -171,7 +170,10 @@ fn find_all_tiles(html: &str) -> Option<Vec<String>> {
         let mut search_from = 0;
         while let Some(li_pos) = html[search_from..].find("<li") {
             let abs_pos = search_from + li_pos;
-            let open_end = html[abs_pos..].find('>').map(|i| abs_pos + i + 1).unwrap_or(abs_pos);
+            let open_end = html[abs_pos..]
+                .find('>')
+                .map(|i| abs_pos + i + 1)
+                .unwrap_or(abs_pos);
             if let Some(close) = html[open_end..].find("</li>") {
                 let content = &html[open_end..open_end + close];
                 if content.len() > 50 && content.contains("nexusmods.com") {
@@ -200,7 +202,7 @@ fn find_matching_close_tag(html: &str, start: usize, _tag_pattern: &str) -> Opti
 
 fn extract_tag_name(html片段: &str) -> Option<String> {
     let after_bracket = html片段.get(1..)?;
-    let end = after_bracket.find(|c: char| c == ' ' || c == '>' || c == '/')?;
+    let end = after_bracket.find([' ', '>', '/'])?;
     let name = &after_bracket[..end];
 
     let valid_chars: Vec<char> = name.chars().collect();
@@ -214,8 +216,7 @@ fn extract_tag_name(html片段: &str) -> Option<String> {
 fn parse_single_tile(tile: &str, _game: &str) -> Option<NexusSearchResult> {
     let name = extract_tile_name(tile)?;
     let url = extract_tile_url(tile)?;
-    let author = extract_tile_stat(tile, "author")
-        .unwrap_or_else(|| "Unknown".to_string());
+    let author = extract_tile_stat(tile, "author").unwrap_or_else(|| "Unknown".to_string());
     let summary = extract_tile_summary(tile).unwrap_or_default();
     let icon_url = extract_tile_icon(tile);
     let downloads = extract_tile_stat(tile, "download");
@@ -374,7 +375,11 @@ fn extract_game_name(url: &str) -> Result<String, String> {
         .map_err(|error| format!("Invalid URL: {error}"))?;
 
     let path = parsed.path();
-    let segments: Vec<&str> = path.trim_start_matches('/').trim_end_matches('/').split('/').collect();
+    let segments: Vec<&str> = path
+        .trim_start_matches('/')
+        .trim_end_matches('/')
+        .split('/')
+        .collect();
 
     if segments.len() >= 2 && segments[1] == "mods" {
         return Ok(segments[0].to_string());

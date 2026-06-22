@@ -4,11 +4,11 @@ use std::time::Instant;
 use tokio::sync::watch;
 
 use crate::commands::downloads::types::{
-    cancellable_sleep, emit_download_progress, update_download_metrics, update_download_status,
-    InternalDownloadSource,
+    cancellable_sleep, emit_download_progress, redact_download_error_message,
+    update_download_metrics, update_download_status, InternalDownloadSource,
 };
 use crate::commands::downloads::utils::{
-    calculate_active_progress, download_file_name, verify_sha256,
+    calculate_active_progress, download_file_name, sanitize_download_file_name, verify_sha256,
 };
 use crate::commands::http::shared_http_client;
 
@@ -59,12 +59,13 @@ pub(crate) async fn download_internal_game_file(
             }
             Err(error) if error == "Download cancelled." => return Err(error),
             Err(error) if attempt < 3 => {
+                let safe_error = redact_download_error_message(&error);
                 update_download_status(game_id, "downloading", "Retrying", 0, 999);
                 emit_download_progress(
                     app,
                     game_id,
                     0,
-                    &format!("Retry {attempt}/3: {error}"),
+                    &format!("Retry {attempt}/3: {safe_error}"),
                     "downloading",
                     999,
                 );
@@ -73,9 +74,71 @@ pub(crate) async fn download_internal_game_file(
                     return Err("Download cancelled.".to_string());
                 }
             }
-            Err(error) => return Err(error),
+            Err(error) => return Err(redact_download_error_message(&error)),
         }
     }
+}
+
+pub(crate) async fn download_internal_install_manifest_file(
+    source: &InternalDownloadSource,
+    install_dir: &PathBuf,
+) -> Result<Option<PathBuf>, String> {
+    let Some(manifest_url) = source
+        .install_manifest_url
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    else {
+        return Ok(None);
+    };
+
+    let parsed_url = reqwest::Url::parse(manifest_url)
+        .map_err(|error| format!("Invalid install manifest URL: {error}"))?;
+    if parsed_url.scheme() != "https" && parsed_url.scheme() != "http" {
+        return Err("Install manifest URL must use http or https.".to_string());
+    }
+
+    tokio::fs::create_dir_all(install_dir)
+        .await
+        .map_err(|error| format!("Could not create install directory: {error}"))?;
+
+    let file_name = parsed_url
+        .path_segments()
+        .and_then(|mut segments| segments.next_back())
+        .map(sanitize_download_file_name)
+        .filter(|segment| !segment.trim().is_empty())
+        .unwrap_or_else(|| "og-install-manifest.json".to_string());
+    let final_path = install_dir.join(format!(".{file_name}.sidecar"));
+    let response = shared_http_client()
+        .get(manifest_url)
+        .header(reqwest::header::ACCEPT, "application/json")
+        .send()
+        .await
+        .map_err(|error| {
+            redact_download_error_message(&format!("Install manifest request failed: {error}"))
+        })?;
+    if !response.status().is_success() {
+        return Err(format!(
+            "Install manifest download failed with status {}",
+            response.status()
+        ));
+    }
+    let bytes = response
+        .bytes()
+        .await
+        .map_err(|error| format!("Could not read install manifest response: {error}"))?;
+    if bytes.len() > 1024 * 1024 {
+        return Err("Install manifest is larger than 1 MiB.".to_string());
+    }
+
+    tokio::fs::write(&final_path, bytes)
+        .await
+        .map_err(|error| format!("Could not write install manifest: {error}"))?;
+    if let Some(expected_sha256) = source.install_manifest_sha256.as_deref() {
+        verify_sha256(&final_path, expected_sha256)?;
+    }
+
+    Ok(Some(final_path))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -102,10 +165,9 @@ async fn download_internal_game_file_once(
         request = request.header(reqwest::header::RANGE, format!("bytes={existing_bytes}-"));
     }
 
-    let response = request
-        .send()
-        .await
-        .map_err(|error| format!("Download request failed: {error}"))?;
+    let response = request.send().await.map_err(|error| {
+        redact_download_error_message(&format!("Download request failed: {error}"))
+    })?;
     let status = response.status();
     if !status.is_success() {
         return Err(format!("Download failed with status {status}"));
@@ -166,7 +228,9 @@ async fn download_internal_game_file_once(
             }
         }
 
-        let chunk = chunk.map_err(|error| format!("Download stream error: {error}"))?;
+        let chunk = chunk.map_err(|error| {
+            redact_download_error_message(&format!("Download stream error: {error}"))
+        })?;
         file.write_all(&chunk)
             .await
             .map_err(|error| format!("Could not write download chunk: {error}"))?;

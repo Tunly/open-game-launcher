@@ -32,7 +32,18 @@ class MemoryStorage implements Storage {
 
 const memoryStorage = new MemoryStorage();
 
+(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
+  .IS_REACT_ACT_ENVIRONMENT = true;
+
+Object.defineProperty(globalThis, "localStorage", {
+  configurable: true,
+  writable: true,
+  value: memoryStorage,
+});
+
 beforeEach(() => {
+  if (typeof window === "undefined") return;
+
   memoryStorage.clear();
   Object.defineProperty(window, "localStorage", {
     configurable: true,
@@ -92,18 +103,21 @@ beforeEach(() => {
 
 afterEach(() => {
   memoryStorage.clear();
-  cleanup();
+  if (typeof window !== "undefined") {
+    cleanup();
+  }
   vi.restoreAllMocks();
 });
 
 // Mock the Tauri invoke API globally. Individual tests can still override
 // the return value via vi.mocked(invoke).mockResolvedValueOnce(...).
 vi.mock("@tauri-apps/api/core", () => ({
+  isTauri: vi.fn(() => false),
   invoke: vi.fn(() => Promise.resolve(undefined)),
 }));
 
 // Suppress noisy "navigation not implemented" warnings from React Router in
 // tests that render routed pages. We are not testing routing here.
-if (!("scrollTo" in window)) {
+if (typeof window !== "undefined" && !("scrollTo" in window)) {
   window.scrollTo = vi.fn() as unknown as typeof window.scrollTo;
 }

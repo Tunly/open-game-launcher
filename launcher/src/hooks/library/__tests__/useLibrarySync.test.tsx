@@ -1,4 +1,5 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
+import { isTauri } from "@tauri-apps/api/core";
 import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -60,6 +61,10 @@ vi.mock("../../../lib/launcher", () => ({
   fetchGamePassCatalog: (...args: unknown[]) => mocks.fetchGamePassCatalog(...args),
   openSteamScraperWindow: (...args: unknown[]) => mocks.openSteamScraperWindow(...args),
   normalizeSteamOwnedGames: (...args: unknown[]) => mocks.normalizeSteamOwnedGames(...args),
+  syncGamePlaytimeStats: (...args: unknown[]) => mocks.syncGamePlaytimeStats(...args),
+}));
+
+vi.mock("../../../lib/supabase/playtime", () => ({
   syncGamePlaytimeStats: (...args: unknown[]) => mocks.syncGamePlaytimeStats(...args),
 }));
 
@@ -289,8 +294,137 @@ describe("useLibrarySync", () => {
     }
   });
 
-  it("handleLogoLoad deduplicates URLs", () => {
+  it("tracks runtime game lifecycle events without changing install status", async () => {
+    vi.mocked(isTauri).mockReturnValue(true);
+    const handlers = new Map<string, Array<(event: { event: string; payload: unknown }) => void>>();
+    mocks.listenMock.mockImplementation((...args: unknown[]) => {
+      const [event, handler] = args as [
+        string,
+        (event: { event: string; payload: unknown }) => void,
+      ];
+      handlers.set(event, [...(handlers.get(event) ?? []), handler]);
+      return Promise.resolve(() => {
+        handlers.set(
+          event,
+          (handlers.get(event) ?? []).filter((current) => current !== handler),
+        );
+      });
+    });
+    const runtimeGame = makeGame({
+      id: "steam-440",
+      title: "Team Fortress 2",
+      playtimeMinutes: 7,
+    });
+    mocks.listInstalledGames.mockResolvedValue([runtimeGame]);
+    mocks.refreshInstalledGames.mockResolvedValue([runtimeGame]);
+
+    const { result } = renderLibrarySyncWithStatus();
+
+    await waitFor(() => {
+      expect(result.current.sync.installedGames.some((game) => game.id === "steam-440")).toBe(true);
+    });
+
+    act(() => {
+      handlers.get("game_started")?.forEach((handler) =>
+        handler({
+          event: "game_started",
+          payload: {
+            event: "game_started",
+            gameId: "steam-440",
+            lastPlayed: "2026-06-10T10:00:00Z",
+            lastInputSeconds: 45,
+            launcher: "steam",
+            occurredAt: "2026-06-10T10:00:00Z",
+            pid: 4242,
+            playtimeMinutes: 7,
+            processName: "hl2.exe",
+            running: true,
+            title: "Team Fortress 2",
+            uptimeSeconds: 360,
+            windowHandle: "0x1234",
+            windowTitle: "Team Fortress 2 - Main Window",
+          },
+        }),
+      );
+    });
+
+    expect(result.current.sync.runningGameIds.has("steam-440")).toBe(true);
+    expect(result.current.sync.gameRuntimeById["steam-440"]?.processName).toBe("hl2.exe");
+    expect(result.current.sync.gameRuntimeById["steam-440"]?.uptimeSeconds).toBe(360);
+    expect(result.current.sync.gameRuntimeById["steam-440"]?.lastInputSeconds).toBe(45);
+    expect(result.current.sync.gameRuntimeById["steam-440"]?.windowHandle).toBe("0x1234");
+    expect(result.current.sync.gameRuntimeById["steam-440"]?.windowTitle).toBe(
+      "Team Fortress 2 - Main Window",
+    );
+    expect(result.current.sync.installedGames[0]?.status).toBe("installed");
+    expect(result.current.msg).toBe("Team Fortress 2 is now running.");
+    const syncCallsAfterStart = mocks.syncGamePlaytimeStats.mock.calls.length;
+
+    act(() => {
+      handlers.get("game_runtime_updated")?.forEach((handler) =>
+        handler({
+          event: "game_runtime_updated",
+          payload: {
+            gameId: "steam-440",
+            lastInputSeconds: 125,
+            launcher: "steam",
+            occurredAt: "2026-06-10T10:01:00Z",
+            pid: 4242,
+            processName: "hl2.exe",
+            running: true,
+            title: "Team Fortress 2",
+            uptimeSeconds: 420,
+            windowHandle: "0x1234",
+            windowTitle: "Team Fortress 2 - Match Window",
+          },
+        }),
+      );
+    });
+
+    expect(result.current.sync.runningGameIds.has("steam-440")).toBe(true);
+    expect(result.current.sync.gameRuntimeById["steam-440"]?.lastInputSeconds).toBe(125);
+    expect(result.current.sync.gameRuntimeById["steam-440"]?.uptimeSeconds).toBe(420);
+    expect(result.current.sync.gameRuntimeById["steam-440"]?.windowTitle).toBe(
+      "Team Fortress 2 - Match Window",
+    );
+    expect(result.current.msg).toBe("Team Fortress 2 is now running.");
+    expect(mocks.syncGamePlaytimeStats).toHaveBeenCalledTimes(syncCallsAfterStart);
+
+    act(() => {
+      handlers.get("game_stopped")?.forEach((handler) =>
+        handler({
+          event: "game_stopped",
+          payload: {
+            event: "game_stopped",
+            gameId: "steam-440",
+            lastPlayed: "2026-06-10T10:02:00Z",
+            lastInputSeconds: 120,
+            launcher: "steam",
+            occurredAt: "2026-06-10T10:02:00Z",
+            pid: null,
+            playtimeMinutes: 9,
+            processName: null,
+            running: false,
+            title: "Team Fortress 2",
+            uptimeSeconds: null,
+          },
+        }),
+      );
+    });
+
+    expect(result.current.sync.runningGameIds.has("steam-440")).toBe(false);
+    expect(result.current.sync.gameRuntimeById["steam-440"]).toBeUndefined();
+    expect(result.current.sync.installedGames[0]?.playtimeMinutes).toBe(9);
+    expect(result.current.msg).toBe("Team Fortress 2 stopped.");
+  });
+
+  it("handleLogoLoad deduplicates URLs", async () => {
     const { result } = renderLibrarySync();
+
+    await waitFor(() => {
+      expect(result.current.isDiscoveringGames).toBe(false);
+    });
+
     act(() => {
       result.current.handleLogoLoad("https://example.com/logo.png");
     });
@@ -302,9 +436,14 @@ describe("useLibrarySync", () => {
     expect(result.current.loadedLogoUrls.has("https://example.com/logo.png")).toBe(true);
   });
 
-  it("handleLogoError advances the candidate index for the game", () => {
+  it("handleLogoError advances the candidate index for the game", async () => {
     const { result } = renderLibrarySync();
     const game = makeGame({ id: "steam-err", logoUrl: "a", logoUrls: ["a", "b", "c"] });
+
+    await waitFor(() => {
+      expect(result.current.isDiscoveringGames).toBe(false);
+    });
+
     act(() => {
       result.current.handleLogoError(game);
     });

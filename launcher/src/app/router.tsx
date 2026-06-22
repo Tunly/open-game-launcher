@@ -22,8 +22,16 @@ const EditProfilePage = lazy(() =>
 const FriendsPage = lazy(() =>
   import("../pages/FriendsPage").then((page) => ({ default: page.FriendsPage })),
 );
+const GameActivityDashboardPage = lazy(() =>
+  import("../pages/GameActivityDashboardPage").then((page) => ({
+    default: page.GameActivityDashboardPage,
+  })),
+);
 const HomePage = lazy(() =>
   import("../pages/HomePage").then((page) => ({ default: page.HomePage })),
+);
+const InviteFallbackPage = lazy(() =>
+  import("../pages/InviteFallbackPage").then((page) => ({ default: page.InviteFallbackPage })),
 );
 const LibraryPage = lazy(() =>
   import("../pages/LibraryPage").then((page) => ({ default: page.LibraryPage })),
@@ -33,6 +41,14 @@ const ModsPage = lazy(() =>
 );
 const NotFoundPage = lazy(() =>
   import("../pages/NotFoundPage").then((page) => ({ default: page.NotFoundPage })),
+);
+const PerfHistoryPage = lazy(() =>
+  import("../pages/PerfHistoryPage").then((page) => ({ default: page.PerfHistoryPage })),
+);
+const RemoteInstallDashboardPage = lazy(() =>
+  import("../pages/RemoteInstallDashboardPage").then((page) => ({
+    default: page.RemoteInstallDashboardPage,
+  })),
 );
 const PrivacySettingsPage = lazy(() =>
   import("../pages/PrivacySettingsPage").then((page) => ({ default: page.PrivacySettingsPage })),
@@ -105,13 +121,17 @@ export const router = createBrowserRouter([
       { path: "/community", element: page(<CommunityPage />) },
       { path: "/controllers", element: page(<ControllersPage />) },
       { path: "/downloads", element: page(<DownloadsPage />) },
+      { path: "/downloads/remote", element: page(<RemoteInstallDashboardPage />) },
       { path: "/achievements", element: page(<AchievementsPage />) },
+      { path: "/activity", element: page(<GameActivityDashboardPage />) },
       { path: "/mods", element: page(<ModsPage />) },
       { path: "/auth", element: page(<AuthPage />) },
+      { path: "/invite/:token", element: page(<InviteFallbackPage />) },
       { path: "/u/:username", element: page(<ProfilePage />) },
       { path: "/settings/profile", element: page(<EditProfilePage />) },
       { path: "/settings", element: page(<SettingsPage />) },
       { path: "/settings/profile/customize", element: page(<ProfileCustomizePage />) },
+      { path: "/settings/performance", element: page(<PerfHistoryPage />) },
       { path: "/settings/privacy", element: page(<PrivacySettingsPage />) },
       { path: "/friends", element: page(<FriendsPage />) },
       { path: "/family", element: page(<FamilyPage />) },

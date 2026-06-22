@@ -26,6 +26,7 @@ pub struct StartDownloadResponse {
 #[serde(rename_all = "snake_case")]
 pub enum DownloadStartStatus {
     Started,
+    AlreadyQueued,
     AlreadyInstalled,
 }
 
@@ -101,6 +102,46 @@ pub(crate) struct ActiveDownload {
 pub(crate) struct InternalDownloadSource {
     pub(crate) url: String,
     pub(crate) sha256: Option<String>,
+    pub(crate) install_manifest_url: Option<String>,
+    pub(crate) install_manifest_sha256: Option<String>,
+    pub(crate) persist_download_url: bool,
+}
+
+impl InternalDownloadSource {
+    pub(crate) fn direct_url(
+        url: String,
+        sha256: Option<String>,
+        install_manifest_url: Option<String>,
+        install_manifest_sha256: Option<String>,
+    ) -> Self {
+        Self {
+            url,
+            sha256,
+            install_manifest_url,
+            install_manifest_sha256,
+            persist_download_url: true,
+        }
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn ephemeral_remote_store_ticket(
+        url: String,
+        sha256: Option<String>,
+        install_manifest_url: Option<String>,
+        install_manifest_sha256: Option<String>,
+    ) -> Self {
+        Self {
+            url,
+            sha256,
+            install_manifest_url,
+            install_manifest_sha256,
+            persist_download_url: false,
+        }
+    }
+
+    pub(crate) fn manifest_download_url(&self) -> Option<String> {
+        self.persist_download_url.then(|| self.url.clone())
+    }
 }
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -298,7 +339,7 @@ pub(crate) fn emit_download_command_error(app: &tauri::AppHandle, game_id: &str,
         "download_command_error",
         DownloadCommandErrorPayload {
             game_id: game_id.to_string(),
-            message: message.to_string(),
+            message: redact_download_error_message(message),
         },
     );
 }
@@ -463,6 +504,8 @@ fn default_download_payload(game_id: &str, title: &str) -> DownloadItemPayload {
 
 pub(crate) fn normalize_queue_payload(mut item: DownloadItemPayload) -> DownloadItemPayload {
     item.status = validated_download_status(&item.status).to_string();
+    item.speed = redact_download_error_message(&item.speed);
+    item.error = item.error.as_deref().map(redact_download_error_message);
     if item.id.trim().is_empty() {
         item.id = format!("download-{}", item.game_id);
     }
@@ -494,6 +537,35 @@ pub(crate) fn normalize_queue_payload(mut item: DownloadItemPayload) -> Download
     item.can_cancel = item.can_cancel && !external && !is_terminal;
 
     item
+}
+
+pub(crate) fn redact_download_error_message(message: &str) -> String {
+    if !contains_download_secret_marker(message) {
+        return message.to_string();
+    }
+
+    message
+        .split_whitespace()
+        .map(|part| {
+            if contains_download_secret_marker(part) {
+                "[redacted-url]"
+            } else {
+                part
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn contains_download_secret_marker(value: &str) -> bool {
+    let lowered = value.to_ascii_lowercase();
+    lowered.contains("http://")
+        || lowered.contains("https://")
+        || lowered.contains("oglauncher://")
+        || lowered.contains("token=")
+        || lowered.contains("sig=")
+        || lowered.contains("signedurl")
+        || lowered.contains("signed_url")
 }
 
 #[cfg(test)]
@@ -661,5 +733,54 @@ mod tests {
             phase_from_status_and_speed("downloading", "EA App (External)"),
             "external"
         );
+    }
+
+    #[test]
+    fn redact_download_error_message_removes_urls_and_signed_tokens() {
+        let message =
+            "Download request failed: error sending request for url (https://cdn.test/build.zip?sig=abc&token=def): timeout";
+        let redacted = redact_download_error_message(message);
+
+        assert!(redacted.contains("Download request failed"));
+        assert!(!redacted.contains("https://"));
+        assert!(!redacted.contains("sig="));
+        assert!(!redacted.contains("token="));
+        assert!(redacted.contains("[redacted-url]"));
+    }
+
+    #[test]
+    fn redact_download_error_message_keeps_plain_errors() {
+        let message = "Download failed with status 404 Not Found";
+
+        assert_eq!(redact_download_error_message(message), message);
+    }
+
+    #[test]
+    fn normalize_queue_payload_redacts_signed_url_error_text() {
+        let item = normalize_queue_payload(DownloadItemPayload {
+            id: "download-demo".to_string(),
+            game_id: "demo".to_string(),
+            title: "Demo".to_string(),
+            progress: 1,
+            speed: "Retry 1/3: https://signed.example.test/build.zip?sig=abc".to_string(),
+            status: "downloading".to_string(),
+            eta: 999,
+            platform: "windows".to_string(),
+            phase: "download".to_string(),
+            bytes_downloaded: None,
+            bytes_total: None,
+            can_pause: true,
+            can_cancel: true,
+            external: false,
+            last_updated_at: 0,
+            provider: String::new(),
+            raw_status: String::new(),
+            progress_source: String::new(),
+            error: Some("signedUrl=https://signed.example.test/build.zip".to_string()),
+        });
+
+        assert!(!item.speed.contains("https://"));
+        assert!(!item.speed.contains("sig="));
+        assert_eq!(item.error.as_deref(), Some("[redacted-url]"));
     }
 }

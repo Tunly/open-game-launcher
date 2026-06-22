@@ -258,13 +258,35 @@ fn extract_keyboard_mouse_bindings(layout: &Value) -> HashMap<String, String> {
         .filter_map(|binding| {
             let input = binding.get("input")?.as_str()?.to_string();
             let output = binding.get("output")?.as_str()?.to_string();
-            if virtual_output_supported(&output) {
+            if virtual_input_supported(&input) && virtual_output_supported(&output) {
                 Some((input, output))
             } else {
                 None
             }
         })
         .collect()
+}
+
+fn virtual_input_supported(input: &str) -> bool {
+    matches!(
+        input,
+        "A / Cross"
+            | "B / Circle"
+            | "X / Square"
+            | "Y / Triangle"
+            | "LB / L1"
+            | "RB / R1"
+            | "LT / L2"
+            | "RT / R2"
+            | "Left Stick Click"
+            | "Right Stick Click"
+            | "D-Pad Up"
+            | "D-Pad Down"
+            | "D-Pad Left"
+            | "D-Pad Right"
+            | "Menu / Start"
+            | "View / Select"
+    )
 }
 
 fn virtual_output_supported(output: &str) -> bool {
@@ -438,7 +460,7 @@ fn runtime_status_from_payload(
     let vigem_bus_detected = is_vigem_bus_detected();
     let keyboard_mouse_emulation_ready = true;
     let driver_message = if active_template.as_deref() == Some("keyboardMouse") {
-        "Keyboard/mouse runtime is active via Windows SendInput. ViGEmBus is only needed for virtual gamepad drivers.".to_string()
+        keyboard_mouse_runtime_message().to_string()
     } else if vigem_bus_detected {
         "ViGEmBus detected. Native passthrough is active and virtual gamepad adapters can be added."
             .to_string()
@@ -466,6 +488,16 @@ fn runtime_status_from_payload(
 }
 
 #[cfg(target_os = "windows")]
+fn keyboard_mouse_runtime_message() -> &'static str {
+    "Keyboard/mouse runtime is active via Windows SendInput. ViGEmBus is only needed for virtual gamepad drivers."
+}
+
+#[cfg(not(target_os = "windows"))]
+fn keyboard_mouse_runtime_message() -> &'static str {
+    "Keyboard/mouse layout is staged in the desktop runtime config. Native SendInput output is Windows-only; no virtual output is emitted on this OS."
+}
+
+#[cfg(target_os = "windows")]
 fn is_vigem_bus_detected() -> bool {
     use winreg::{enums::HKEY_LOCAL_MACHINE, RegKey};
 
@@ -480,4 +512,137 @@ fn is_vigem_bus_detected() -> bool {
 #[cfg(not(target_os = "windows"))]
 fn is_vigem_bus_detected() -> bool {
     false
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json::json;
+
+    #[test]
+    fn classify_controller_detects_known_families() {
+        for (name, expected) in [
+            ("Xbox Wireless Controller", "xbox"),
+            ("xinput compatible pad", "xbox"),
+            ("Sony DualSense", "playstation"),
+            ("Wireless Controller", "playstation"),
+            ("Nintendo Switch Pro Controller", "switch"),
+            ("Joy-Con Pair", "switch"),
+            ("Steam Controller", "steam"),
+            ("Arcade Fight Stick", "generic"),
+        ] {
+            assert_eq!(classify_controller(name), expected);
+        }
+    }
+
+    #[test]
+    fn sanitize_file_component_replaces_unsafe_chars_and_rejects_empty_ids() {
+        assert_eq!(
+            sanitize_file_component("abc-DEF_123.test").as_deref(),
+            Ok("abc-DEF_123.test")
+        );
+        assert_eq!(
+            sanitize_file_component("game/id\\with spaces:and?marks").as_deref(),
+            Ok("game_id_with_spaces_and_marks")
+        );
+
+        for value in ["", "   ", "///", "\\\\", "::"] {
+            assert_eq!(
+                sanitize_file_component(value),
+                Err("Game id must not be empty.".to_string())
+            );
+        }
+    }
+
+    #[test]
+    fn output_mapping_contract_keeps_keyboard_and_mouse_labels_explicit() {
+        for output in [
+            "W",
+            "A",
+            "S",
+            "D",
+            "E",
+            "F",
+            "R",
+            "Space",
+            "Left Shift",
+            "Left Ctrl",
+            "Tab",
+            "Escape",
+            "Enter",
+        ] {
+            assert!(key_code_for_output(output).is_some(), "{output}");
+            assert!(virtual_output_supported(output), "{output}");
+        }
+        for output in ["Mouse Left", "Mouse Right", "Mouse Middle"] {
+            assert!(mouse_button_for_output(output).is_some(), "{output}");
+            assert!(virtual_output_supported(output), "{output}");
+        }
+        for output in ["space", "Mouse Side", "A / Cross", "", "Launch Shell"] {
+            assert!(!virtual_output_supported(output), "{output}");
+        }
+    }
+
+    #[test]
+    fn extracts_only_known_inputs_with_supported_virtual_outputs() {
+        let bindings = extract_keyboard_mouse_bindings(&json!({
+            "bindings": [
+                { "input": "A / Cross", "output": "Space" },
+                { "input": "RT / R2", "output": "Mouse Left" },
+                { "input": "", "output": "Enter" },
+                { "input": "Unknown Button", "output": "W" },
+                { "input": "B / Circle", "output": "A / Cross" },
+                { "input": "X / Square" },
+                { "output": "D" },
+                { "input": 42, "output": "W" }
+            ]
+        }));
+
+        assert_eq!(bindings.len(), 2);
+        assert_eq!(bindings.get("A / Cross").map(String::as_str), Some("Space"));
+        assert_eq!(
+            bindings.get("RT / R2").map(String::as_str),
+            Some("Mouse Left")
+        );
+        assert!(!bindings.contains_key(""));
+        assert!(!bindings.contains_key("Unknown Button"));
+        assert!(!bindings.contains_key("B / Circle"));
+    }
+
+    #[test]
+    fn input_labels_and_runtime_modes_match_frontend_contract() {
+        for (button, label) in [
+            (gilrs::Button::South, "A / Cross"),
+            (gilrs::Button::East, "B / Circle"),
+            (gilrs::Button::West, "X / Square"),
+            (gilrs::Button::North, "Y / Triangle"),
+            (gilrs::Button::LeftTrigger, "LB / L1"),
+            (gilrs::Button::RightTrigger, "RB / R1"),
+            (gilrs::Button::LeftTrigger2, "LT / L2"),
+            (gilrs::Button::RightTrigger2, "RT / R2"),
+            (gilrs::Button::LeftThumb, "Left Stick Click"),
+            (gilrs::Button::RightThumb, "Right Stick Click"),
+            (gilrs::Button::DPadUp, "D-Pad Up"),
+            (gilrs::Button::DPadDown, "D-Pad Down"),
+            (gilrs::Button::DPadLeft, "D-Pad Left"),
+            (gilrs::Button::DPadRight, "D-Pad Right"),
+            (gilrs::Button::Start, "Menu / Start"),
+            (gilrs::Button::Select, "View / Select"),
+        ] {
+            assert_eq!(input_name_for_button(button), label);
+            assert!(virtual_input_supported(label), "{label}");
+        }
+
+        assert_eq!(
+            runtime_mode_for_template("keyboardMouse"),
+            "sendinput-emulation"
+        );
+        assert_eq!(runtime_mode_for_template("disabled"), "disabled");
+        assert_eq!(runtime_mode_for_template("gamepad"), "native-passthrough");
+        assert_eq!(
+            runtime_mode_for_template("gamepadGyro"),
+            "native-passthrough"
+        );
+        assert_eq!(runtime_mode_for_template("unknown"), "native-passthrough");
+    }
 }

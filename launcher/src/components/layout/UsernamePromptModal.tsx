@@ -94,16 +94,16 @@ export function UsernamePromptModal({ onComplete }: UsernamePromptModalProps) {
           : "3-32 characters: letters, numbers, _, . or -";
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4 backdrop-blur-sm">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-[#171411]/90 bg-[radial-gradient(circle,rgba(255,249,237,0.14)_1px,transparent_1px)] bg-[length:10px_10px] p-4">
       <div className="w-full max-w-[500px]">
         <div className="mb-4">
-          <span className="neo-copy inline-flex border-2 border-black bg-[#c20b2f] px-3 py-1 text-xs font-bold text-white uppercase shadow-[3px_3px_0_#171411]">
+          <span className="neo-copy inline-flex border-2 border-black bg-[#c20b2f] px-3 py-1 text-xs font-bold uppercase text-white shadow-[3px_3px_0_#171411]">
             Required Action
           </span>
-          <h2 className="neo-title mt-4 text-[clamp(2.5rem,8vw,4rem)] leading-[0.82] text-white drop-shadow-[2px_2px_0_#171411]">
+          <h2 className="neo-title mt-4 text-[2.5rem] leading-[0.82] text-white drop-shadow-[2px_2px_0_#171411] sm:text-[3.25rem] lg:text-[4rem]">
             Pick a Username
           </h2>
-          <p className="neo-copy mt-4 text-xs leading-6 font-bold text-[#efe6d4] uppercase">
+          <p className="neo-copy mt-4 text-xs font-bold uppercase leading-6 text-[#efe6d4]">
             Your current account was created without a username. Please select one now to use social
             features.
           </p>
@@ -114,7 +114,7 @@ export function UsernamePromptModal({ onComplete }: UsernamePromptModalProps) {
           onSubmit={handleSubmit}
         >
           <label className="grid gap-2">
-            <span className="neo-copy text-[10px] font-bold text-[#55504a] uppercase">
+            <span className="neo-copy text-[10px] font-bold uppercase text-[#55504a]">
               Username
             </span>
             <span className="flex h-12 items-center gap-3 border-2 border-black bg-[#fbf8ef] px-3">
@@ -162,13 +162,13 @@ export function UsernamePromptModal({ onComplete }: UsernamePromptModalProps) {
           </label>
 
           {errorMessage && (
-            <p className="neo-copy mt-4 border-2 border-black bg-[#c20b2f] p-3 text-[10px] font-bold text-white uppercase">
+            <p className="neo-copy mt-4 border-2 border-black bg-[#c20b2f] p-3 text-[10px] font-bold uppercase text-white">
               {errorMessage}
             </p>
           )}
 
           <button
-            className="neo-copy mt-5 flex h-12 w-full items-center justify-center gap-3 border-2 border-black bg-[#087d6d] px-5 text-xs font-bold text-white uppercase shadow-[3px_3px_0_#171411] disabled:opacity-60"
+            className="neo-copy mt-5 flex h-12 w-full items-center justify-center gap-3 border-2 border-black bg-[#087d6d] px-5 text-xs font-bold uppercase text-white shadow-[3px_3px_0_#171411] disabled:opacity-60"
             disabled={isSubmitting || usernameStatus === "taken" || usernameStatus === "checking"}
             type="submit"
           >

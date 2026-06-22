@@ -49,7 +49,13 @@ export function isMissingSchemaError(error: SupabaseErrorLike | null) {
   if (!error) {
     return false;
   }
-  return isMissingSchemaMessage(error.message) || error.code === "42703" || error.code === "42P01";
+  return (
+    isMissingSchemaMessage(error.message) ||
+    error.code === "42703" ||
+    error.code === "42883" ||
+    error.code === "42P01" ||
+    error.code === "PGRST202"
+  );
 }
 
 export function isMissingSchemaMessage(message: string) {

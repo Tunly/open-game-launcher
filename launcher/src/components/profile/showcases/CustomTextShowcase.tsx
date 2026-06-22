@@ -5,11 +5,13 @@ export function CustomTextShowcase({ showcase }: { showcase: ProfileShowcase }) 
   const text =
     typeof showcase.config.text === "string"
       ? showcase.config.text
-      : "Custom showcase text has not been set.";
+      : typeof showcase.config.body === "string"
+        ? showcase.config.body
+        : "Custom showcase text has not been set.";
 
   return (
     <ShowcasePanel title={showcase.title ?? "Custom"}>
-      <p className="text-sm leading-6 font-semibold text-[#5b403f]">{text}</p>
+      <p className="text-sm font-semibold leading-6 text-[#5b403f]">{text}</p>
     </ShowcasePanel>
   );
 }
