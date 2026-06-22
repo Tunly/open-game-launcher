@@ -2,6 +2,14 @@
 import { existsSync, readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
+import {
+  completionGateRunIdEnvName,
+  hostedCronEvidenceArtifactDigest,
+  hostedCronEvidenceReceiptDigest,
+  hostedCronEvidenceReceiptDigestAlgorithm,
+  hostedCronEvidenceReceiptEnvName,
+} from "./hosted-cron-evidence.mjs";
+
 const hostedCronEvidenceFields = Object.freeze([
   "Hosted cron table",
   "Function",
@@ -10,6 +18,7 @@ const hostedCronEvidenceFields = Object.freeze([
   "dry_run=false",
   "Status",
 ]);
+const hostedCronReceiptDigestField = "Hosted cron receipt SHA256";
 const hostedCronRestCollectorPrerequisites = Object.freeze([
   "SUPABASE_REST_URL or SUPABASE_URL or SUPABASE_PROJECT_REF",
   "SUPABASE_SERVICE_ROLE_KEY or SUPABASE_ANON_KEY + SUPABASE_AUTH_JWT",
@@ -616,6 +625,401 @@ function evidenceGroupLines(content, heading) {
   return groupLines;
 }
 
+function evidenceDetailValuesFromLines(lines, field) {
+  const pattern = new RegExp(
+    `^\\s*[-*]\\s+${escapeRegExp(field)}:\\s*(\\S.*)$`,
+  );
+  return lines.map((line) => clean(line.match(pattern)?.[1])).filter(Boolean);
+}
+
+function firstEvidenceDetailValue(lines, field) {
+  return evidenceDetailValuesFromLines(lines, field)[0] ?? "";
+}
+
+function hostedCronReceiptPath(env = process.env) {
+  return clean(env[hostedCronEvidenceReceiptEnvName]);
+}
+
+function hostedCronReceiptFinding(path, field, reason) {
+  return { field, path, reason };
+}
+
+function setValuesMatch(left, right) {
+  if (left.length !== right.length) return false;
+  const sortedLeft = [...left].sort();
+  const sortedRight = [...right].sort();
+  return sortedLeft.every((value, index) => value === sortedRight[index]);
+}
+
+function hostedCronReceiptLaneFreshnessIssue(receipt, lane, now) {
+  const completedAt = clean(lane?.completedAt);
+  const parsedCompletedAt = new Date(completedAt);
+  if (
+    !completedAt ||
+    Number.isNaN(parsedCompletedAt.valueOf()) ||
+    parsedCompletedAt.toISOString() !== canonicalUtcIsoTimestamp(completedAt)
+  ) {
+    return "malformed_timestamp";
+  }
+  const ageMs = now.valueOf() - parsedCompletedAt.valueOf();
+  if (ageMs < -maxEvidenceFutureSkewMs) return "future_timestamp";
+
+  const freshnessHours = Number(receipt?.freshnessHours?.[clean(lane?.id)]);
+  if (!Number.isFinite(freshnessHours) || freshnessHours <= 0) {
+    return "missing_freshness";
+  }
+  if (ageMs > freshnessHours * 60 * 60 * 1000) return "stale_timestamp";
+  return null;
+}
+
+function hostedCronReceiptContext(
+  env = process.env,
+  fileExists = existsSync,
+  readFile = readFileSync,
+) {
+  const path = hostedCronReceiptPath(env);
+  if (!path) return { required: false };
+
+  if (!fileExists(path)) {
+    return {
+      findings: [
+        hostedCronReceiptFinding(path, "Hosted cron receipt", "missing"),
+      ],
+      path,
+      required: true,
+    };
+  }
+
+  let content;
+  try {
+    content = String(readFile(path, "utf8"));
+  } catch {
+    return {
+      findings: [
+        hostedCronReceiptFinding(path, "Hosted cron receipt", "unreadable"),
+      ],
+      path,
+      required: true,
+    };
+  }
+
+  const findings = scanForbiddenArtifactContent(path, content).map((finding) =>
+    hostedCronReceiptFinding(path, "Hosted cron receipt", finding.label),
+  );
+
+  let receipt;
+  try {
+    receipt = JSON.parse(content);
+  } catch {
+    return {
+      findings: [
+        ...findings,
+        hostedCronReceiptFinding(path, "Hosted cron receipt", "malformed_json"),
+      ],
+      path,
+      required: true,
+    };
+  }
+
+  if (receipt?.version !== 1) {
+    findings.push(
+      hostedCronReceiptFinding(path, "Hosted cron receipt", "schema_version"),
+    );
+  }
+  if (receipt?.type !== "hosted-cron-evidence-receipt") {
+    findings.push(
+      hostedCronReceiptFinding(path, "Hosted cron receipt", "schema_type"),
+    );
+  }
+  if (
+    receipt?.digestAlgorithm !== hostedCronEvidenceReceiptDigestAlgorithm ||
+    receipt?.digest !== hostedCronEvidenceReceiptDigest(receipt)
+  ) {
+    findings.push(
+      hostedCronReceiptFinding(path, "Hosted cron receipt SHA256", "mismatch"),
+    );
+  }
+  if (receipt?.artifactDigest !== hostedCronEvidenceArtifactDigest(receipt)) {
+    findings.push(
+      hostedCronReceiptFinding(path, "Hosted cron artifact SHA256", "mismatch"),
+    );
+  }
+  const expectedGateRunId = clean(env[completionGateRunIdEnvName]);
+  if (expectedGateRunId && receipt?.gateRunId !== expectedGateRunId) {
+    findings.push(
+      hostedCronReceiptFinding(path, "Hosted cron receipt run", "mismatch"),
+    );
+  }
+  const expectedRef = expectedReleaseRef(env);
+  if (
+    expectedRef &&
+    normalizedReleaseRef(receipt?.release?.ref) !== expectedRef
+  ) {
+    findings.push(
+      hostedCronReceiptFinding(
+        path,
+        "Hosted cron receipt release ref",
+        "mismatch",
+      ),
+    );
+  }
+  const expectedSha = clean(env.GITHUB_SHA).toLowerCase();
+  if (
+    expectedSha &&
+    clean(receipt?.release?.commitSha).toLowerCase() !== expectedSha
+  ) {
+    findings.push(
+      hostedCronReceiptFinding(
+        path,
+        "Hosted cron receipt commit SHA",
+        "mismatch",
+      ),
+    );
+  }
+  const generatedAtIssue = timestampEvidenceIssueReason(
+    clean(receipt?.generatedAt),
+    evidenceValidationNow(env),
+  );
+  if (generatedAtIssue) {
+    findings.push(
+      hostedCronReceiptFinding(
+        path,
+        "Hosted cron receipt generatedAt",
+        generatedAtIssue,
+      ),
+    );
+  }
+
+  const lanes = Array.isArray(receipt?.lanes) ? receipt.lanes : [];
+  const selectedChecks = Array.isArray(receipt?.selectedChecks)
+    ? receipt.selectedChecks.map(clean).filter(Boolean)
+    : [];
+  if (lanes.length === 0 || selectedChecks.length === 0) {
+    findings.push(
+      hostedCronReceiptFinding(path, "Hosted cron receipt lanes", "missing"),
+    );
+  }
+
+  const laneById = new Map();
+  const laneIds = [];
+  const now = evidenceValidationNow(env);
+  for (const lane of lanes) {
+    const lanePath = `${path}#${clean(lane?.id) || "unknown-lane"}`;
+    if (!clean(lane?.id)) {
+      findings.push(
+        hostedCronReceiptFinding(
+          lanePath,
+          "Hosted cron receipt lane",
+          "missing",
+        ),
+      );
+      continue;
+    }
+    laneIds.push(clean(lane.id));
+    laneById.set(clean(lane.id), lane);
+    for (const [field, expected] of [
+      ["triggerSource", "scheduled"],
+      ["status", "completed"],
+    ]) {
+      if (clean(lane?.[field]) !== expected) {
+        findings.push(
+          hostedCronReceiptFinding(
+            lanePath,
+            `Hosted cron receipt ${field}`,
+            "mismatch",
+          ),
+        );
+      }
+    }
+    if (lane?.dryRun !== false) {
+      findings.push(
+        hostedCronReceiptFinding(
+          lanePath,
+          "Hosted cron receipt dryRun",
+          "mismatch",
+        ),
+      );
+    }
+    if (!runIdValueIsSpecific(clean(lane?.runId))) {
+      findings.push(
+        hostedCronReceiptFinding(
+          lanePath,
+          "Hosted cron receipt runId",
+          "malformed",
+        ),
+      );
+    }
+    const freshnessIssue = hostedCronReceiptLaneFreshnessIssue(
+      receipt,
+      lane,
+      now,
+    );
+    if (freshnessIssue) {
+      findings.push(
+        hostedCronReceiptFinding(
+          lanePath,
+          "Hosted cron receipt completedAt",
+          freshnessIssue,
+        ),
+      );
+    }
+  }
+
+  if (selectedChecks.length > 0 && !setValuesMatch(selectedChecks, laneIds)) {
+    findings.push(
+      hostedCronReceiptFinding(
+        path,
+        "Hosted cron receipt selectedChecks",
+        "mismatch",
+      ),
+    );
+  }
+
+  return {
+    digest: clean(receipt?.artifactDigest),
+    findings,
+    laneById,
+    path,
+    receipt,
+    required: true,
+  };
+}
+
+function hostedCronArtifactUsesReceipt(gate, artifactPath) {
+  return artifactUsesHostedCronEvidence(gate, artifactPath);
+}
+
+function hostedCronLaneForFlatArtifact(gate, artifactPath) {
+  const expectedValues = expectedEvidenceValuesForArtifact(gate, artifactPath);
+  if (expectedValues?.Function?.test("notify-price-drop")) {
+    return "price-drop";
+  }
+  return "";
+}
+
+function hostedCronReceiptArtifactFinding(path, field, reason) {
+  return { field, path, reason };
+}
+
+function fieldLabelForHostedCronLane(laneId, field) {
+  return laneId ? `${laneId}: ${field}` : field;
+}
+
+function compareHostedCronReceiptLane({
+  artifactPath,
+  digest,
+  lane,
+  laneId,
+  lines,
+}) {
+  const findings = [];
+  if (!lane) {
+    findings.push(
+      hostedCronReceiptArtifactFinding(
+        artifactPath,
+        fieldLabelForHostedCronLane(laneId, "Hosted cron receipt lane"),
+        "missing",
+      ),
+    );
+    return findings;
+  }
+
+  for (const [field, expectedValue] of [
+    ["Hosted cron table", lane.table],
+    ["Function", lane.functionName],
+    ["Run ID", lane.runId],
+    ["Scheduled", lane.triggerSource],
+    ["Status", lane.status],
+  ]) {
+    const value = firstEvidenceDetailValue(lines, field);
+    if (!value) continue;
+    if (clean(value) !== clean(expectedValue)) {
+      findings.push(
+        hostedCronReceiptArtifactFinding(
+          artifactPath,
+          fieldLabelForHostedCronLane(laneId, field),
+          "receipt_mismatch",
+        ),
+      );
+    }
+  }
+
+  const dryRunValue = firstEvidenceDetailValue(lines, "dry_run=false");
+  if (dryRunValue && !/^(?:false|confirmed false)$/i.test(clean(dryRunValue))) {
+    findings.push(
+      hostedCronReceiptArtifactFinding(
+        artifactPath,
+        fieldLabelForHostedCronLane(laneId, "dry_run=false"),
+        "receipt_mismatch",
+      ),
+    );
+  }
+
+  const digestValues = evidenceDetailValuesFromLines(
+    lines,
+    hostedCronReceiptDigestField,
+  );
+  if (digestValues.length === 0) {
+    findings.push(
+      hostedCronReceiptArtifactFinding(
+        artifactPath,
+        fieldLabelForHostedCronLane(laneId, hostedCronReceiptDigestField),
+        "missing",
+      ),
+    );
+  } else if (!digestValues.some((value) => clean(value) === digest)) {
+    findings.push(
+      hostedCronReceiptArtifactFinding(
+        artifactPath,
+        fieldLabelForHostedCronLane(laneId, hostedCronReceiptDigestField),
+        "receipt_mismatch",
+      ),
+    );
+  }
+
+  return findings;
+}
+
+function hostedCronReceiptFindingsFromArtifactContent(
+  gate,
+  artifactPath,
+  content,
+  receiptContext,
+) {
+  if (!receiptContext.required) return [];
+  if (!hostedCronArtifactUsesReceipt(gate, artifactPath)) return [];
+  if (receiptContext.findings?.length > 0) return receiptContext.findings;
+
+  const findings = [];
+  const digest = receiptContext.digest;
+  for (const group of requiredEvidenceGroupsForArtifact(gate, artifactPath)) {
+    findings.push(
+      ...compareHostedCronReceiptLane({
+        artifactPath,
+        digest,
+        lane: receiptContext.laneById?.get(group.heading),
+        laneId: group.heading,
+        lines: evidenceGroupLines(content, group.heading),
+      }),
+    );
+  }
+
+  const flatLaneId = hostedCronLaneForFlatArtifact(gate, artifactPath);
+  if (flatLaneId) {
+    findings.push(
+      ...compareHostedCronReceiptLane({
+        artifactPath,
+        digest,
+        lane: receiptContext.laneById?.get(flatLaneId),
+        laneId: "",
+        lines: evidenceMarkdownLines(content),
+      }),
+    );
+  }
+
+  return findings;
+}
+
 function verifiedProofsFromArtifactContent(content) {
   return new Set(
     evidenceMarkdownLines(content)
@@ -1064,7 +1468,9 @@ function valueContainsSpecificStripeDashboardUrl(value) {
   const urls = value.match(/\bhttps:\/\/[^\s<>)\]]+/gi) ?? [];
   return urls.some((rawUrl) => {
     try {
-      return stripeDashboardUrlIsSpecific(new URL(normalizeEvidenceUrl(rawUrl)));
+      return stripeDashboardUrlIsSpecific(
+        new URL(normalizeEvidenceUrl(rawUrl)),
+      );
     } catch {
       return false;
     }
@@ -1173,8 +1579,11 @@ function hardwareOsMatrixValueIsSpecific(value) {
 function sessionRunEvidenceValueIsSpecific(value) {
   const cleaned = clean(value);
   return (
-    evidenceIdentifierValueMatchesAll(cleaned, [/session/i, /run/i, /overlay/i]) &&
-    measuredSessionDurationPattern.test(cleaned)
+    evidenceIdentifierValueMatchesAll(cleaned, [
+      /session/i,
+      /run/i,
+      /overlay/i,
+    ]) && measuredSessionDurationPattern.test(cleaned)
   );
 }
 
@@ -1848,10 +2257,12 @@ export function gateStatus(
   const missingArtifactProofs = [];
   const missingEvidenceDetails = [];
   const proofEvidenceFindings = [];
+  const hostedCronReceiptFindings = [];
   const secretFindings = [];
   const templateOnlyFindings = [];
   const unreadableArtifacts = [];
   const now = evidenceValidationNow(env);
+  const receiptContext = hostedCronReceiptContext(env, fileExists, readFile);
 
   for (const path of gate.artifactPaths) {
     if (missingArtifacts.includes(path)) continue;
@@ -1916,6 +2327,14 @@ export function gateStatus(
           path,
         })),
       );
+      hostedCronReceiptFindings.push(
+        ...hostedCronReceiptFindingsFromArtifactContent(
+          gate,
+          path,
+          content,
+          receiptContext,
+        ),
+      );
       templateOnlyFindings.push(
         ...templateOnlyFindingsFromArtifactContent(
           path,
@@ -1957,11 +2376,13 @@ export function gateStatus(
       missingProofs.length === 0 &&
       missingArtifactProofs.length === 0 &&
       missingEvidenceDetails.length === 0 &&
+      hostedCronReceiptFindings.length === 0 &&
       secretFindings.length === 0 &&
       templateOnlyFindings.length === 0 &&
       unreadableArtifacts.length === 0,
     missingArtifactProofs,
     missingEvidenceDetails,
+    hostedCronReceiptFindings,
     secretFindings,
     templateOnlyFindings,
     unreadableArtifacts,
@@ -2133,6 +2554,11 @@ export function artifactTemplate(gate, artifactPath) {
     ...(requiredArtifactEvidenceFields.length === 0
       ? []
       : requiredArtifactEvidenceFields.map((field) => `- ${field}:`)),
+    ...(requiredArtifactEvidenceFields.some((field) =>
+      hostedCronEvidenceFields.includes(field),
+    )
+      ? [`- ${hostedCronReceiptDigestField}:`]
+      : []),
     ...(requiredArtifactEvidenceFields.length === 0 ? [] : [""]),
     "## Lane-Specific Evidence",
     "",
@@ -2149,6 +2575,11 @@ export function artifactTemplate(gate, artifactPath) {
       `### ${group.heading}`,
       "",
       ...group.requiredFields.map((field) => `- ${field}:`),
+      ...(group.requiredFields.some((field) =>
+        hostedCronEvidenceFields.includes(field),
+      )
+        ? [`- ${hostedCronReceiptDigestField}:`]
+        : []),
       "",
     ]),
     "## Evidence Captured",
@@ -3015,6 +3446,12 @@ export function preflightReport(
       lines,
       "proof evidence findings",
       status.proofEvidenceFindings,
+      formatFindingReason,
+    );
+    appendGroupedPathValues(
+      lines,
+      "hosted cron receipt findings",
+      status.hostedCronReceiptFindings,
       formatFindingReason,
     );
     appendGroupedPathValues(

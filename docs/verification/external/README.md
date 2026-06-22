@@ -35,18 +35,22 @@ OGL_EXTERNAL_EVIDENCE_GATES=<gate-id> pnpm external:evidence:preflight
 The final release-boundary check is unscoped. It must run with release tag and
 SHA context, and it must include `pnpm hosted:deploy-gate:preflight`,
 `pnpm hosted:deploy-gate:smoke`, `pnpm hosted:cron-evidence`, and
-`pnpm external:evidence:preflight`.
+`pnpm external:evidence:preflight`. That release-boundary run shares a
+gitignored hosted-cron receipt path between the cron collector and external
+preflight; hosted cron artifacts must paste the emitted
+`Hosted cron receipt SHA256` beside the lane details so preflight can reject
+stale or mismatched scheduler rows.
 
 ## Gate Matrix
 
-| Gate | Artifact | First handoff commands | Final scoped check |
-| --- | --- | --- | --- |
-| `store-stripe-live` | `docs/verification/external/store-stripe-live-staging.md` | `OGL_EXTERNAL_EVIDENCE_GATES=store-stripe-live pnpm external:evidence:worklist` | `OGL_EXTERNAL_EVIDENCE_GATES=store-stripe-live pnpm external:evidence:preflight` |
-| `store-stripe-live` | `docs/verification/external/store-price-drop-scheduler-live.md` | `pnpm hosted:deploy-gate:scheduler-packet`; `OGL_HOSTED_CRON_EVIDENCE_CHECKS=price-drop pnpm hosted:cron-evidence:artifact-hints` | `OGL_EXTERNAL_EVIDENCE_GATES=store-stripe-live pnpm external:evidence:preflight` |
-| `hosted-supabase-cron` | `docs/verification/external/hosted-supabase-cron.md` | `pnpm hosted:deploy-gate:scheduler-packet`; `pnpm hosted:cron-evidence:packet`; `pnpm hosted:cron-evidence:artifact-hints` | `OGL_EXTERNAL_EVIDENCE_GATES=hosted-supabase-cron pnpm external:evidence:preflight` |
-| `provider-live-integrations` | `docs/verification/external/provider-live-integrations.md` | `OGL_EXTERNAL_EVIDENCE_GATES=provider-live-integrations pnpm external:evidence:worklist` | `OGL_EXTERNAL_EVIDENCE_GATES=provider-live-integrations pnpm external:evidence:preflight` |
-| `hardware-os-e2e` | `docs/verification/external/hardware-os-e2e.md` | `OGL_EXTERNAL_EVIDENCE_GATES=hardware-os-e2e pnpm external:evidence:worklist` | `OGL_EXTERNAL_EVIDENCE_GATES=hardware-os-e2e pnpm external:evidence:preflight` |
-| `rollout-tracks` | `docs/verification/external/rollout-tracks.md` | `pnpm hosted:deploy-gate:packet`; `OGL_EXTERNAL_EVIDENCE_GATES=rollout-tracks pnpm external:evidence:worklist` | `OGL_EXTERNAL_EVIDENCE_GATES=rollout-tracks pnpm external:evidence:preflight` |
+| Gate                         | Artifact                                                        | First handoff commands                                                                                                            | Final scoped check                                                                        |
+| ---------------------------- | --------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `store-stripe-live`          | `docs/verification/external/store-stripe-live-staging.md`       | `OGL_EXTERNAL_EVIDENCE_GATES=store-stripe-live pnpm external:evidence:worklist`                                                   | `OGL_EXTERNAL_EVIDENCE_GATES=store-stripe-live pnpm external:evidence:preflight`          |
+| `store-stripe-live`          | `docs/verification/external/store-price-drop-scheduler-live.md` | `pnpm hosted:deploy-gate:scheduler-packet`; `OGL_HOSTED_CRON_EVIDENCE_CHECKS=price-drop pnpm hosted:cron-evidence:artifact-hints` | `OGL_EXTERNAL_EVIDENCE_GATES=store-stripe-live pnpm external:evidence:preflight`          |
+| `hosted-supabase-cron`       | `docs/verification/external/hosted-supabase-cron.md`            | `pnpm hosted:deploy-gate:scheduler-packet`; `pnpm hosted:cron-evidence:packet`; `pnpm hosted:cron-evidence:artifact-hints`        | `OGL_EXTERNAL_EVIDENCE_GATES=hosted-supabase-cron pnpm external:evidence:preflight`       |
+| `provider-live-integrations` | `docs/verification/external/provider-live-integrations.md`      | `OGL_EXTERNAL_EVIDENCE_GATES=provider-live-integrations pnpm external:evidence:worklist`                                          | `OGL_EXTERNAL_EVIDENCE_GATES=provider-live-integrations pnpm external:evidence:preflight` |
+| `hardware-os-e2e`            | `docs/verification/external/hardware-os-e2e.md`                 | `OGL_EXTERNAL_EVIDENCE_GATES=hardware-os-e2e pnpm external:evidence:worklist`                                                     | `OGL_EXTERNAL_EVIDENCE_GATES=hardware-os-e2e pnpm external:evidence:preflight`            |
+| `rollout-tracks`             | `docs/verification/external/rollout-tracks.md`                  | `pnpm hosted:deploy-gate:packet`; `OGL_EXTERNAL_EVIDENCE_GATES=rollout-tracks pnpm external:evidence:worklist`                    | `OGL_EXTERNAL_EVIDENCE_GATES=rollout-tracks pnpm external:evidence:preflight`             |
 
 ## Proof Boundaries
 

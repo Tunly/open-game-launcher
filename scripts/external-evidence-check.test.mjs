@@ -17,6 +17,13 @@ import {
   selectedGates,
   statusReport,
 } from "./external-evidence-check.mjs";
+import {
+  completionGateRunIdEnvName,
+  hostedCronEvidenceArtifactDigest,
+  hostedCronEvidenceReceiptDigest,
+  hostedCronEvidenceReceiptDigestAlgorithm,
+  hostedCronEvidenceReceiptEnvName,
+} from "./hosted-cron-evidence.mjs";
 
 const runbook = readFileSync(
   new URL("../docs/runbooks/external-completion-evidence.md", import.meta.url),
@@ -238,6 +245,98 @@ const hostedCronLaneDetails = Object.freeze({
 
 function allHostedCronLaneDetails() {
   return Object.values(hostedCronLaneDetails).join("\n");
+}
+
+function hostedCronLaneDetailsWithReceiptDigest(digest) {
+  return Object.fromEntries(
+    Object.entries(hostedCronLaneDetails).map(([id, details]) => [
+      id,
+      [details, `- Hosted cron receipt SHA256: ${digest}`].join("\n"),
+    ]),
+  );
+}
+
+function allHostedCronLaneDetailsWithReceiptDigest(digest) {
+  return Object.values(hostedCronLaneDetailsWithReceiptDigest(digest)).join(
+    "\n",
+  );
+}
+
+function hostedCronReceiptFixture(overrides = {}) {
+  const receipt = {
+    digestAlgorithm: hostedCronEvidenceReceiptDigestAlgorithm,
+    freshnessHours: {
+      "account-deletion": 25,
+      "presence-poll": 0.25,
+      "price-drop": 25,
+    },
+    gateRunId: overrides.gateRunId ?? "completion-gate-run-123",
+    generatedAt: overrides.generatedAt ?? "2026-06-17T11:50:00.000Z",
+    lanes: overrides.lanes ?? [
+      {
+        completedAt: "2026-06-17T11:45:00.000Z",
+        counts: {},
+        dryRun: false,
+        functionName: "notify-price-drop",
+        id: "price-drop",
+        runId: "price-drop-run-123",
+        status: "completed",
+        table: "store_price_drop_notification_runs",
+        triggerSource: "scheduled",
+      },
+      {
+        completedAt: "2026-06-17T11:45:00.000Z",
+        counts: {},
+        dryRun: false,
+        functionName: "poll-platform-presence",
+        id: "presence-poll",
+        runId: "presence-poll-run-123",
+        status: "completed",
+        table: "presence_poll_runs",
+        triggerSource: "scheduled",
+      },
+      {
+        completedAt: "2026-06-17T11:45:00.000Z",
+        counts: {},
+        dryRun: false,
+        functionName: "process-account-deletions",
+        id: "account-deletion",
+        runId: "account-deletion-run-123",
+        status: "completed",
+        table: "account_deletion_processor_runs",
+        triggerSource: "scheduled",
+      },
+    ],
+    release: {
+      commitSha: "0123456789abcdef0123456789abcdef01234567",
+      ref: "v1.2.3",
+    },
+    restTargetProjectRef: "awebfvfyqzwapcgixdfj",
+    selectedChecks: overrides.selectedChecks ?? [
+      "price-drop",
+      "presence-poll",
+      "account-deletion",
+    ],
+    type: "hosted-cron-evidence-receipt",
+    version: 1,
+  };
+  const receiptWithArtifactDigest = {
+    ...receipt,
+    artifactDigest: hostedCronEvidenceArtifactDigest(receipt),
+  };
+  return {
+    ...receiptWithArtifactDigest,
+    digest: hostedCronEvidenceReceiptDigest(receiptWithArtifactDigest),
+  };
+}
+
+function receiptEnv(receiptPath = ".codex/completion-gate/hosted-cron.json") {
+  return {
+    ...configuredEnv,
+    ...releaseBoundaryContext,
+    [completionGateRunIdEnvName]: "completion-gate-run-123",
+    [hostedCronEvidenceReceiptEnvName]: receiptPath,
+  };
 }
 
 function proofContent(gate, extra = "") {
@@ -752,8 +851,14 @@ test("hosted cron worklist includes lane-specific rows to fill", () => {
     /Proof evidence row: Evidence for notify-price-drop scheduled run writes fresh evidence\.:/,
   );
   assert.match(output, /Lane-specific evidence row: price-drop \/ Run ID:/);
-  assert.match(output, /Lane-specific evidence row: presence-poll \/ Function:/);
-  assert.match(output, /Lane-specific evidence row: account-deletion \/ Status:/);
+  assert.match(
+    output,
+    /Lane-specific evidence row: presence-poll \/ Function:/,
+  );
+  assert.match(
+    output,
+    /Lane-specific evidence row: account-deletion \/ Status:/,
+  );
   assert.match(output, /pnpm hosted:cron-evidence:artifact-hints/);
   assert.doesNotMatch(output, /\[[xX ]\]/);
   assert.doesNotMatch(output, /run-123/);
@@ -781,7 +886,10 @@ test("artifact worklist includes all fill rows for unreadable artifacts", () => 
   );
   assert.match(output, /Evidence detail row: Captured at:/);
   assert.match(output, /Lane-specific evidence row: price-drop \/ Run ID:/);
-  assert.match(output, /Lane-specific evidence row: account-deletion \/ Status:/);
+  assert.match(
+    output,
+    /Lane-specific evidence row: account-deletion \/ Status:/,
+  );
   assert.doesNotMatch(output, /\[[xX ]\]/);
   assert.doesNotMatch(output, /run-123/);
   assert.doesNotMatch(output, /2026-/);
@@ -985,9 +1093,9 @@ test("rollout status commands include hosted production CI handoff", () => {
   );
 
   assert.deepEqual(
-    report.gates.flatMap((gate) => gate.commands).filter((command) =>
-      command.includes("hosted_deploy_gate=true"),
-    ),
+    report.gates
+      .flatMap((gate) => gate.commands)
+      .filter((command) => command.includes("hosted_deploy_gate=true")),
     [
       "GitHub Actions CI main hosted_deploy_gate=true hosted_environment=hosted-production hosted_deploy_action=all hosted_deploy_dry_run=false",
     ],
@@ -1023,8 +1131,7 @@ test("gate selection can focus one or more external lanes", () => {
   assert.throws(
     () =>
       selectedGates({
-        OGL_EXTERNAL_EVIDENCE_GATES:
-          "hardware-os-e2e,hardware-os-e2e",
+        OGL_EXTERNAL_EVIDENCE_GATES: "hardware-os-e2e,hardware-os-e2e",
       }),
     (error) => {
       assert.match(error.message, /must not include duplicate gates/);
@@ -1693,6 +1800,243 @@ test("preflight status requires hosted cron details for every scheduler lane", (
       path: artifactPath,
     },
   ]);
+});
+
+test("preflight binds hosted cron artifacts to the live collector receipt when present", () => {
+  const gate = evidenceGates.find((item) => item.id === "hosted-supabase-cron");
+  assert.ok(gate);
+  const artifactPath = "docs/verification/external/hosted-supabase-cron.md";
+  const receiptPath = ".codex/completion-gate/hosted-cron.json";
+  const receipt = hostedCronReceiptFixture();
+  const artifactContent = [
+    proofContent(gate),
+    allHostedCronLaneDetailsWithReceiptDigest(receipt.artifactDigest),
+    capturedEvidenceDetails(),
+  ].join("\n");
+
+  const readyStatus = gateStatus(
+    gate,
+    receiptEnv(receiptPath),
+    fakeExists([artifactPath, receiptPath]),
+    fakeRead({
+      [artifactPath]: artifactContent,
+      [receiptPath]: JSON.stringify(receipt),
+    }),
+  );
+
+  assert.equal(readyStatus.ready, true);
+  assert.deepEqual(readyStatus.hostedCronReceiptFindings, []);
+
+  const missingReceiptStatus = gateStatus(
+    gate,
+    receiptEnv(receiptPath),
+    fakeExists([artifactPath]),
+    fakeRead({
+      [artifactPath]: artifactContent,
+    }),
+  );
+
+  assert.equal(missingReceiptStatus.ready, false);
+  assert.deepEqual(missingReceiptStatus.hostedCronReceiptFindings, [
+    {
+      field: "Hosted cron receipt",
+      path: receiptPath,
+      reason: "missing",
+    },
+  ]);
+
+  const staleRunStatus = gateStatus(
+    gate,
+    receiptEnv(receiptPath),
+    fakeExists([artifactPath, receiptPath]),
+    fakeRead({
+      [artifactPath]: artifactContent.replaceAll(
+        "- Run ID: price-drop-run-123",
+        "- Run ID: price-drop-run-999",
+      ),
+      [receiptPath]: JSON.stringify(receipt),
+    }),
+  );
+
+  assert.equal(staleRunStatus.ready, false);
+  assert.deepEqual(staleRunStatus.hostedCronReceiptFindings, [
+    {
+      field: "price-drop: Run ID",
+      path: artifactPath,
+      reason: "receipt_mismatch",
+    },
+  ]);
+
+  const wrongDigestStatus = gateStatus(
+    gate,
+    receiptEnv(receiptPath),
+    fakeExists([artifactPath, receiptPath]),
+    fakeRead({
+      [artifactPath]: artifactContent.replaceAll(
+        receipt.artifactDigest,
+        "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      ),
+      [receiptPath]: JSON.stringify(receipt),
+    }),
+  );
+
+  assert.equal(wrongDigestStatus.ready, false);
+  assert.deepEqual(wrongDigestStatus.hostedCronReceiptFindings, [
+    {
+      field: "price-drop: Hosted cron receipt SHA256",
+      path: artifactPath,
+      reason: "receipt_mismatch",
+    },
+    {
+      field: "presence-poll: Hosted cron receipt SHA256",
+      path: artifactPath,
+      reason: "receipt_mismatch",
+    },
+    {
+      field: "account-deletion: Hosted cron receipt SHA256",
+      path: artifactPath,
+      reason: "receipt_mismatch",
+    },
+  ]);
+
+  const tamperedReceiptStatus = gateStatus(
+    gate,
+    receiptEnv(receiptPath),
+    fakeExists([artifactPath, receiptPath]),
+    fakeRead({
+      [artifactPath]: artifactContent,
+      [receiptPath]: JSON.stringify({
+        ...receipt,
+        generatedAt: "2026-06-17T11:55:00.000Z",
+      }),
+    }),
+  );
+
+  assert.equal(tamperedReceiptStatus.ready, false);
+  assert.deepEqual(tamperedReceiptStatus.hostedCronReceiptFindings, [
+    {
+      field: "Hosted cron receipt SHA256",
+      path: receiptPath,
+      reason: "mismatch",
+    },
+  ]);
+
+  const priceDropOnlyReceipt = hostedCronReceiptFixture({
+    lanes: receipt.lanes.filter((lane) => lane.id === "price-drop"),
+    selectedChecks: ["price-drop"],
+  });
+  const scopedReceiptStatus = gateStatus(
+    gate,
+    receiptEnv(receiptPath),
+    fakeExists([artifactPath, receiptPath]),
+    fakeRead({
+      [artifactPath]: artifactContent.replaceAll(
+        receipt.artifactDigest,
+        priceDropOnlyReceipt.artifactDigest,
+      ),
+      [receiptPath]: JSON.stringify(priceDropOnlyReceipt),
+    }),
+  );
+
+  assert.equal(scopedReceiptStatus.ready, false);
+  assert.deepEqual(scopedReceiptStatus.hostedCronReceiptFindings, [
+    {
+      field: "presence-poll: Hosted cron receipt lane",
+      path: artifactPath,
+      reason: "missing",
+    },
+    {
+      field: "account-deletion: Hosted cron receipt lane",
+      path: artifactPath,
+      reason: "missing",
+    },
+  ]);
+
+  const selectedChecksMismatchReceipt = hostedCronReceiptFixture({
+    selectedChecks: ["price-drop"],
+  });
+  const selectedChecksMismatchStatus = gateStatus(
+    gate,
+    receiptEnv(receiptPath),
+    fakeExists([artifactPath, receiptPath]),
+    fakeRead({
+      [artifactPath]: artifactContent.replaceAll(
+        receipt.artifactDigest,
+        selectedChecksMismatchReceipt.artifactDigest,
+      ),
+      [receiptPath]: JSON.stringify(selectedChecksMismatchReceipt),
+    }),
+  );
+
+  assert.equal(selectedChecksMismatchStatus.ready, false);
+  assert.deepEqual(selectedChecksMismatchStatus.hostedCronReceiptFindings, [
+    {
+      field: "Hosted cron receipt selectedChecks",
+      path: receiptPath,
+      reason: "mismatch",
+    },
+  ]);
+
+  const staleReceipt = hostedCronReceiptFixture({
+    lanes: receipt.lanes.map((lane) => ({
+      ...lane,
+      completedAt: "2026-06-15T00:00:00.000Z",
+    })),
+  });
+  const staleReceiptStatus = gateStatus(
+    gate,
+    receiptEnv(receiptPath),
+    fakeExists([artifactPath, receiptPath]),
+    fakeRead({
+      [artifactPath]: artifactContent.replaceAll(
+        receipt.artifactDigest,
+        staleReceipt.artifactDigest,
+      ),
+      [receiptPath]: JSON.stringify(staleReceipt),
+    }),
+  );
+
+  assert.equal(staleReceiptStatus.ready, false);
+  assert.deepEqual(staleReceiptStatus.hostedCronReceiptFindings, [
+    {
+      field: "Hosted cron receipt completedAt",
+      path: `${receiptPath}#price-drop`,
+      reason: "stale_timestamp",
+    },
+    {
+      field: "Hosted cron receipt completedAt",
+      path: `${receiptPath}#presence-poll`,
+      reason: "stale_timestamp",
+    },
+    {
+      field: "Hosted cron receipt completedAt",
+      path: `${receiptPath}#account-deletion`,
+      reason: "stale_timestamp",
+    },
+  ]);
+
+  const secretReceiptStatus = gateStatus(
+    gate,
+    receiptEnv(receiptPath),
+    fakeExists([artifactPath, receiptPath]),
+    fakeRead({
+      [artifactPath]: artifactContent,
+      [receiptPath]: JSON.stringify({
+        ...receipt,
+        note: "SUPABASE_SERVICE_ROLE_KEY=service-role-secret-123456",
+      }),
+    }),
+  );
+
+  assert.equal(secretReceiptStatus.ready, false);
+  assert.equal(
+    secretReceiptStatus.hostedCronReceiptFindings.some(
+      (finding) =>
+        finding.field === "Hosted cron receipt" &&
+        finding.reason === "Raw Supabase credential",
+    ),
+    true,
+  );
 });
 
 test("preflight status rejects unchecked template proof rows", () => {
@@ -4120,7 +4464,8 @@ test("preflight status blocks raw provider API key artifact content", () => {
 test("preflight status blocks raw license signing key artifact content", () => {
   const gate = evidenceGates.find((item) => item.id === "store-stripe-live");
   assert.ok(gate);
-  const artifactPath = "docs/verification/external/store-stripe-live-staging.md";
+  const artifactPath =
+    "docs/verification/external/store-stripe-live-staging.md";
   const rawLicenseSigningKey =
     "OGL_LICENSE_SIGNING_KEY=license_signing_material_1234567890";
 
@@ -4143,7 +4488,10 @@ test("preflight status blocks raw license signing key artifact content", () => {
       path: artifactPath,
     },
   ]);
-  assert.equal(JSON.stringify(status).includes("license_signing_material"), false);
+  assert.equal(
+    JSON.stringify(status).includes("license_signing_material"),
+    false,
+  );
 
   const redactedStatus = gateStatus(
     gate,
@@ -4331,6 +4679,7 @@ test("collectStatuses marks a fully evidenced filtered gate ready", () => {
         id: "hosted-supabase-cron",
         evidenceDetailFindings: [],
         envFindings: [],
+        hostedCronReceiptFindings: [],
         missingArtifacts: [],
         missingArtifactProofs: [],
         missingEnv: [],
@@ -4475,10 +4824,7 @@ test("artifactTemplate prints required proof checklist rows without secret value
     schedulerCaptureSection,
     /artifact hints fill Gate-Specific Evidence only/,
   );
-  assert.match(
-    schedulerTemplate,
-    /Hosted Cron REST Collector Environment/,
-  );
+  assert.match(schedulerTemplate, /Hosted Cron REST Collector Environment/);
   assert.match(
     schedulerTemplate,
     new RegExp(escapeRegExp(hostedCronRestUrlPrerequisite)),
@@ -4539,10 +4885,7 @@ test("artifactTemplate prints required proof checklist rows without secret value
     hostedCronCaptureSection,
     /final hosted-supabase-cron proof needs unscoped grouped `pnpm hosted:cron-evidence:artifact-hints` output/i,
   );
-  assert.match(
-    hostedCronTemplate,
-    /Hosted Cron REST Collector Environment/,
-  );
+  assert.match(hostedCronTemplate, /Hosted Cron REST Collector Environment/);
   assert.match(
     hostedCronTemplate,
     new RegExp(escapeRegExp(hostedCronRestUrlPrerequisite)),
@@ -4755,7 +5098,10 @@ test("external evidence index mentions every external gate and artifact", () => 
   for (const gate of evidenceGates) {
     assert.match(externalEvidenceIndex, new RegExp(gate.id));
     for (const artifact of gate.artifactPaths) {
-      assert.match(externalEvidenceIndex, new RegExp(escapeForRegExp(artifact)));
+      assert.match(
+        externalEvidenceIndex,
+        new RegExp(escapeForRegExp(artifact)),
+      );
     }
     assert.match(
       externalEvidenceIndex,
@@ -4785,7 +5131,10 @@ test("runbook documents Store price-drop scheduler artifact as flat gate-specifi
   );
   assert.match(storeStripeRunbook, /OGL_LICENSE_SIGNING_KEY/);
   assert.match(storeStripeRunbook, /hosted runtime prerequisite/);
-  assert.match(storeStripeRunbook, /live license issuance\/order\/function locator/);
+  assert.match(
+    storeStripeRunbook,
+    /live license issuance\/order\/function locator/,
+  );
   assert.match(storeStripeRunbook, /never paste the signing key/i);
 });
 

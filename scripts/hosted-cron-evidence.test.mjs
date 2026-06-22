@@ -1,7 +1,15 @@
 import assert from "node:assert/strict";
 import { Buffer } from "node:buffer";
 import { spawnSync } from "node:child_process";
-import { readdirSync, readFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+} from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
 
@@ -11,16 +19,22 @@ import {
   artifactHintsFromResults,
   buildLatestScheduledRunUrl,
   collectCronEvidence,
+  completionGateRunIdEnvName,
+  createHostedCronEvidenceReceipt,
   cronEvidenceChecks,
   deriveRestBaseUrl,
   expectedAccountDeletionStorageBucketCount,
   fetchLatestScheduledRun,
   hostedCronEvidencePacket,
+  hostedCronEvidenceArtifactDigest,
+  hostedCronEvidenceReceiptDigest,
+  hostedCronEvidenceReceiptDigestAlgorithm,
   missingRequiredEnv,
   parseArgs,
   planSummary,
   selectedCronEvidenceChecks,
   summarizeRun,
+  writeHostedCronEvidenceReceipt,
 } from "./hosted-cron-evidence.mjs";
 
 const runbook = readFileSync(
@@ -151,6 +165,173 @@ function completedRow(check, overrides = {}) {
   };
 }
 
+function readyResults(now = new Date("2026-06-16T10:10:00.000Z")) {
+  return cronEvidenceChecks.map((check) =>
+    summarizeRun(check, completedRow(check), now),
+  );
+}
+
+test("hosted cron evidence receipt is deterministic, redacted, and writable under .codex only", () => {
+  const now = new Date("2026-06-16T10:10:00.000Z");
+  const receiptEnv = {
+    ...env,
+    [completionGateRunIdEnvName]: "completion-gate-run-123",
+    GITHUB_REF_NAME: "v1.2.3",
+    GITHUB_SHA: "0123456789abcdef0123456789abcdef01234567",
+  };
+  const receipt = createHostedCronEvidenceReceipt(
+    readyResults(now),
+    receiptEnv,
+    now,
+  );
+
+  assert.equal(receipt.version, 1);
+  assert.equal(receipt.type, "hosted-cron-evidence-receipt");
+  assert.equal(
+    receipt.digestAlgorithm,
+    hostedCronEvidenceReceiptDigestAlgorithm,
+  );
+  assert.equal(
+    receipt.artifactDigest,
+    hostedCronEvidenceArtifactDigest(receipt),
+  );
+  assert.equal(receipt.digest, hostedCronEvidenceReceiptDigest(receipt));
+  assert.equal(
+    hostedCronEvidenceArtifactDigest({
+      ...receipt,
+      gateRunId: "another-completion-gate-run",
+      generatedAt: "2026-06-16T10:15:00.000Z",
+      release: {
+        commitSha: "ffffffffffffffffffffffffffffffffffffffff",
+        ref: "v9.9.9",
+      },
+    }),
+    receipt.artifactDigest,
+  );
+  assert.notEqual(
+    hostedCronEvidenceReceiptDigest({
+      ...receipt,
+      gateRunId: "another-completion-gate-run",
+      generatedAt: "2026-06-16T10:15:00.000Z",
+      release: {
+        commitSha: "ffffffffffffffffffffffffffffffffffffffff",
+        ref: "v9.9.9",
+      },
+    }),
+    receipt.digest,
+  );
+  assert.equal(receipt.gateRunId, "completion-gate-run-123");
+  assert.deepEqual(receipt.selectedChecks, [
+    "price-drop",
+    "presence-poll",
+    "account-deletion",
+  ]);
+  assert.deepEqual(
+    receipt.lanes.map((lane) => ({
+      dryRun: lane.dryRun,
+      functionName: lane.functionName,
+      id: lane.id,
+      runId: lane.runId,
+      status: lane.status,
+      table: lane.table,
+      triggerSource: lane.triggerSource,
+    })),
+    [
+      {
+        dryRun: false,
+        functionName: "notify-price-drop",
+        id: "price-drop",
+        runId: "price-drop-scheduled-20260616",
+        status: "completed",
+        table: "store_price_drop_notification_runs",
+        triggerSource: "scheduled",
+      },
+      {
+        dryRun: false,
+        functionName: "poll-platform-presence",
+        id: "presence-poll",
+        runId: "presence-poll-scheduled-20260616",
+        status: "completed",
+        table: "presence_poll_runs",
+        triggerSource: "scheduled",
+      },
+      {
+        dryRun: false,
+        functionName: "process-account-deletions",
+        id: "account-deletion",
+        runId: "account-deletion-scheduled-20260616",
+        status: "completed",
+        table: "account_deletion_processor_runs",
+        triggerSource: "scheduled",
+      },
+    ],
+  );
+
+  const serialized = JSON.stringify(receipt);
+  assert.equal(serialized.includes(serviceRoleJwt), false);
+  assert.equal(serialized.includes("SUPABASE_SERVICE_ROLE_KEY"), false);
+  assert.equal(serialized.includes("Bearer "), false);
+
+  const hints = artifactHintsFromResults(
+    readyResults(now),
+    cronEvidenceChecks,
+    {
+      receiptDigest: receipt.artifactDigest,
+    },
+  );
+  assert.match(
+    hints,
+    new RegExp(`Hosted cron receipt SHA256: ${receipt.artifactDigest}`),
+  );
+  const packet = hostedCronEvidencePacket(
+    readyResults(now),
+    receiptEnv,
+    now,
+    cronEvidenceChecks,
+    { receiptDigest: receipt.artifactDigest },
+  );
+  assert.match(
+    packet,
+    new RegExp(`Hosted cron receipt SHA256: ${receipt.artifactDigest}`),
+  );
+
+  const root = mkdtempSync(join(tmpdir(), "ogl-hosted-cron-receipt-"));
+  try {
+    const path = writeHostedCronEvidenceReceipt(
+      receipt,
+      ".codex/completion-gate/hosted-cron.json",
+      root,
+    );
+    assert.equal(path, join(root, ".codex/completion-gate/hosted-cron.json"));
+    assert.equal(existsSync(path), true);
+    assert.match(readFileSync(path, "utf8"), /hosted-cron-evidence-receipt/);
+    assert.throws(
+      () => writeHostedCronEvidenceReceipt(receipt, "docs/receipt.json", root),
+      /must stay under \.codex/,
+    );
+  } finally {
+    rmSync(root, { force: true, recursive: true });
+  }
+});
+
+test("hosted cron evidence receipt refuses incomplete results", () => {
+  assert.throws(
+    () =>
+      createHostedCronEvidenceReceipt(
+        [
+          {
+            id: "price-drop",
+            ready: false,
+            table: "store_price_drop_notification_runs",
+            validationErrors: ["No scheduled evidence row found."],
+          },
+        ],
+        env,
+      ),
+    /receipt requires every selected scheduled non-dry-run row to validate/,
+  );
+});
+
 test("hosted cron evidence migrations index latest completed scheduled runs", () => {
   const migrations = allMigrationSql();
 
@@ -159,7 +340,10 @@ test("hosted cron evidence migrations index latest completed scheduled runs", ()
       "store_price_drop_notification_runs",
       "store_price_drop_notification_runs_trigger_completed_at_idx",
     ],
-    ["presence_poll_runs", "presence_poll_runs_trigger_source_completed_at_idx"],
+    [
+      "presence_poll_runs",
+      "presence_poll_runs_trigger_source_completed_at_idx",
+    ],
     [
       "account_deletion_processor_runs",
       "account_deletion_processor_runs_trigger_completed_at_idx",
@@ -221,7 +405,10 @@ test("parseArgs accepts plan, check, artifact-hints, and packet only", () => {
   assert.throws(
     () => parseArgs(["--checks=price-drop", "--checks", "presence-poll"]),
     (error) => {
-      assert.match(error.message, /at most one hosted cron evidence check list/);
+      assert.match(
+        error.message,
+        /at most one hosted cron evidence check list/,
+      );
       assert.equal(error.message.includes("presence-poll"), false);
       return true;
     },

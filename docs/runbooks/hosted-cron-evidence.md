@@ -129,6 +129,12 @@ are grouped per lane under `### price-drop`, `### presence-poll`, and
 lane block; one generic cron detail block cannot satisfy all three hosted cron
 proofs. When scoped only to `price-drop`, details are printed flat so they can
 be pasted into `docs/verification/external/store-price-drop-scheduler-live.md`.
+During `pnpm completion:gate:external`, the collector also writes a gitignored
+`.codex/completion-gate/hosted-cron-<run>.json` receipt and the artifact hints
+include `Hosted cron receipt SHA256`; the following
+`external:evidence:preflight` run requires the pasted lane details and receipt
+SHA to match that same collector run. Standalone packet/hints commands remain
+operator handoffs and do not create release proof by themselves.
 Both outputs are redacted handoff text only. The hosted cron packet does not check proof rows before an operator reviews artifacts. It does not mark external
 completion, does not prove scheduler dashboard ownership, and must not include
 raw REST URLs, bearer tokens, Supabase keys, scheduler secrets, or other secret

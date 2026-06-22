@@ -1,11 +1,13 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 import {
+  completionGateRunIdEnvName,
+  hostedCronEvidenceReceiptEnvName,
   missingRequiredEnv as missingHostedCronEnv,
   planSummary as hostedCronPlanSummary,
 } from "./hosted-cron-evidence.mjs";
@@ -15,6 +17,7 @@ import { statusReport as externalEvidenceStatusReport } from "./external-evidenc
 export const repoRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 export const localCompletionReceiptRelativePath =
   ".codex/completion-gate-local-latest.json";
+export const externalHostedCronReceiptDirectory = ".codex/completion-gate";
 export const checkoutFingerprintAlgorithm =
   "git-head-diff-status-untracked-sha256-v1";
 
@@ -296,6 +299,8 @@ export const releaseBoundaryScopeEnvNames = Object.freeze([
   "OGL_EXTERNAL_EVIDENCE_GATES",
   "OGL_HOSTED_DEPLOY_FUNCTIONS",
   "OGL_HOSTED_CRON_EVIDENCE_CHECKS",
+  completionGateRunIdEnvName,
+  hostedCronEvidenceReceiptEnvName,
 ]);
 
 export const releaseBoundaryOverrideEnvNames = Object.freeze([
@@ -351,9 +356,22 @@ export function releaseBoundaryEnv(env = process.env) {
   return next;
 }
 
-function envForCheck(check, env) {
+function externalHostedCronReceiptRelativePath(runId) {
+  return `${externalHostedCronReceiptDirectory}/hosted-cron-${runId}.json`;
+}
+
+export function externalGateRunEnv(env = process.env, runId = randomUUID()) {
+  return {
+    ...releaseBoundaryEnv(env),
+    [completionGateRunIdEnvName]: runId,
+    [hostedCronEvidenceReceiptEnvName]:
+      externalHostedCronReceiptRelativePath(runId),
+  };
+}
+
+function envForCheck(check, env, externalRunEnv = null) {
   if (!check.forceAllEvidence) return env;
-  return releaseBoundaryEnv(env);
+  return externalRunEnv ?? releaseBoundaryEnv(env);
 }
 
 function checksSummary(checks, platform) {
@@ -748,9 +766,13 @@ export function runCompletionGate({
   const startingCheckout = requireStableCheckout
     ? checkoutSnapshot(root)
     : null;
+  const runChecks = checksForAction(action);
+  const boundaryRunEnv = runChecks.some((check) => check.forceAllEvidence)
+    ? externalGateRunEnv(env)
+    : null;
   const failures = [];
   const skippedChecks = [];
-  for (const check of checksForAction(action)) {
+  for (const check of runChecks) {
     logger.log(`\n== ${check.label} ==`);
     if (check.platforms && !check.platforms.includes(platform)) {
       logger.log(`Skipped on ${platform}: ${check.platformNote}.`);
@@ -759,7 +781,7 @@ export function runCompletionGate({
     }
     const result = runCommand(check.command, check.args, {
       cwd: root,
-      env: envForCheck(check, env),
+      env: envForCheck(check, env, boundaryRunEnv),
     });
     if (result.error) {
       failures.push(check.label);

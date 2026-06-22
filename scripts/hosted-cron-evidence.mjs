@@ -1,10 +1,16 @@
 #!/usr/bin/env node
 import { Buffer } from "node:buffer";
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { createHash } from "node:crypto";
+import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 export const repoRoot = dirname(dirname(fileURLToPath(import.meta.url)));
+export const hostedCronEvidenceReceiptEnvName =
+  "OGL_HOSTED_CRON_EVIDENCE_RECEIPT_PATH";
+export const completionGateRunIdEnvName = "OGL_COMPLETION_GATE_RUN_ID";
+export const hostedCronEvidenceReceiptDigestAlgorithm =
+  "sha256-hosted-cron-evidence-receipt-v1";
 const restBaseUrlRequirement =
   "SUPABASE_REST_URL or SUPABASE_URL or SUPABASE_PROJECT_REF";
 const missingRestBaseUrlLabel = `(set ${restBaseUrlRequirement})`;
@@ -338,7 +344,9 @@ function parseCliArgs(argv) {
         throw new Error("Missing hosted cron evidence check list.");
       }
       if (checks) {
-        throw new Error("Expected at most one hosted cron evidence check list.");
+        throw new Error(
+          "Expected at most one hosted cron evidence check list.",
+        );
       }
       checks = value;
       index += 1;
@@ -350,7 +358,9 @@ function parseCliArgs(argv) {
         throw new Error("Missing hosted cron evidence check list.");
       }
       if (checks) {
-        throw new Error("Expected at most one hosted cron evidence check list.");
+        throw new Error(
+          "Expected at most one hosted cron evidence check list.",
+        );
       }
       checks = value;
       continue;
@@ -878,7 +888,141 @@ export async function collectCronEvidence(
   return results;
 }
 
-export function artifactHintsFromResults(results, checks = cronEvidenceChecks) {
+function canonicalJson(value) {
+  if (value === null || typeof value !== "object") {
+    return JSON.stringify(value);
+  }
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => canonicalJson(item)).join(",")}]`;
+  }
+  return `{${Object.keys(value)
+    .sort()
+    .map((key) => `${JSON.stringify(key)}:${canonicalJson(value[key])}`)
+    .join(",")}}`;
+}
+
+export function hostedCronEvidenceArtifactDigest(receipt) {
+  const {
+    artifactDigest: _artifactDigest,
+    digest: _digest,
+    gateRunId: _gateRunId,
+    generatedAt: _generatedAt,
+    release: _release,
+    ...receiptWithoutEphemeralFields
+  } = receipt ?? {};
+  const hash = createHash("sha256");
+  hash.update(`${hostedCronEvidenceReceiptDigestAlgorithm}\0`);
+  hash.update(canonicalJson(receiptWithoutEphemeralFields));
+  return `sha256:${hash.digest("hex")}`;
+}
+
+export function hostedCronEvidenceReceiptDigest(receipt) {
+  const { digest: _digest, ...receiptWithoutDigest } = receipt ?? {};
+  const hash = createHash("sha256");
+  hash.update(`${hostedCronEvidenceReceiptDigestAlgorithm}\0`);
+  hash.update(canonicalJson(receiptWithoutDigest));
+  return `sha256:${hash.digest("hex")}`;
+}
+
+function safeReceiptPath(value, root = repoRoot) {
+  const configuredPath = clean(value);
+  if (!configuredPath) return "";
+
+  const rootPath = resolve(root);
+  const codexPath = resolve(rootPath, ".codex");
+  const receiptPath = isAbsolute(configuredPath)
+    ? resolve(configuredPath)
+    : resolve(rootPath, configuredPath);
+  const relativeToCodex = relative(codexPath, receiptPath);
+  if (
+    relativeToCodex === "" ||
+    (!relativeToCodex.startsWith("..") && !isAbsolute(relativeToCodex))
+  ) {
+    return receiptPath;
+  }
+
+  throw new Error("Hosted cron evidence receipt path must stay under .codex.");
+}
+
+export function createHostedCronEvidenceReceipt(
+  results,
+  env = process.env,
+  now = new Date(),
+  checks = selectedCronEvidenceChecks(env),
+) {
+  const missing = missingRequiredEnv(env);
+  if (missing.length > 0) {
+    throw new Error(`Missing hosted cron evidence env: ${missing.join(", ")}`);
+  }
+  if (results.some((result) => !result.ready)) {
+    throw new Error(
+      "Hosted cron evidence is incomplete; receipt requires every selected scheduled non-dry-run row to validate.",
+    );
+  }
+
+  const resultById = new Map(results.map((result) => [result.id, result]));
+  const receipt = {
+    digestAlgorithm: hostedCronEvidenceReceiptDigestAlgorithm,
+    freshnessHours: Object.fromEntries(
+      checks.map((check) => [check.id, freshnessHoursForCheck(check, env)]),
+    ),
+    gateRunId: clean(env[completionGateRunIdEnvName]) || null,
+    generatedAt: now.toISOString(),
+    release: {
+      commitSha: clean(env.GITHUB_SHA) || null,
+      ref: clean(env.GITHUB_REF_NAME) || clean(env.GITHUB_REF) || null,
+    },
+    restTargetProjectRef: uniqueRestTargetProjectRefs(env)[0] ?? null,
+    selectedChecks: checks.map((check) => check.id),
+    type: "hosted-cron-evidence-receipt",
+    version: 1,
+    lanes: checks.map((check) => {
+      const result = resultById.get(check.id);
+      return {
+        completedAt: result.completedAt,
+        counts: result.counts ?? {},
+        dryRun: false,
+        functionName: check.functionName,
+        id: check.id,
+        runId: result.runId,
+        status: "completed",
+        table: check.table,
+        triggerSource: "scheduled",
+      };
+    }),
+  };
+  const receiptWithArtifactDigest = {
+    ...receipt,
+    artifactDigest: hostedCronEvidenceArtifactDigest(receipt),
+  };
+  return {
+    ...receiptWithArtifactDigest,
+    digest: hostedCronEvidenceReceiptDigest(receiptWithArtifactDigest),
+  };
+}
+
+export function writeHostedCronEvidenceReceipt(
+  receipt,
+  receiptPath,
+  root = repoRoot,
+) {
+  const path = safeReceiptPath(receiptPath, root);
+  if (!path) return "";
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, `${JSON.stringify(receipt, null, 2)}\n`, "utf8");
+  return path;
+}
+
+function hostedCronReceiptDigestLines(receiptDigest) {
+  const digest = clean(receiptDigest);
+  return digest ? [`- Hosted cron receipt SHA256: ${digest}`] : [];
+}
+
+export function artifactHintsFromResults(
+  results,
+  checks = cronEvidenceChecks,
+  { receiptDigest = "" } = {},
+) {
   if (results.some((result) => !result.ready)) {
     throw new Error(
       "Hosted cron evidence is incomplete; artifact hints require every selected scheduled non-dry-run row to validate.",
@@ -912,6 +1056,7 @@ export function artifactHintsFromResults(results, checks = cronEvidenceChecks) {
         "- Scheduled: scheduled",
         "- dry_run=false: confirmed false",
         "- Status: completed",
+        ...hostedCronReceiptDigestLines(receiptDigest),
       );
       continue;
     }
@@ -925,6 +1070,7 @@ export function artifactHintsFromResults(results, checks = cronEvidenceChecks) {
       "- Scheduled: scheduled",
       "- dry_run=false: confirmed false",
       "- Status: completed",
+      ...hostedCronReceiptDigestLines(receiptDigest),
     );
   }
 
@@ -999,6 +1145,7 @@ export function hostedCronEvidencePacket(
   env = process.env,
   now = new Date(),
   checks = selectedCronEvidenceChecks(env),
+  { receiptDigest = "" } = {},
 ) {
   const missingEnv = missingRequiredEnv(env);
   const resultById = new Map(results.map((result) => [result.id, result]));
@@ -1066,7 +1213,7 @@ export function hostedCronEvidencePacket(
 
   lines.push("## Artifact Detail Hints", "");
   if (allReady) {
-    lines.push(artifactHintsFromResults(results, checks));
+    lines.push(artifactHintsFromResults(results, checks, { receiptDigest }));
   } else {
     lines.push(
       "Artifact hints unavailable until every selected scheduled non-dry-run row validates.",
@@ -1136,20 +1283,49 @@ async function main() {
     new Date(),
     checks,
   );
+  const receiptPath = clean(process.env[hostedCronEvidenceReceiptEnvName]);
+  const receipt = results.every((result) => result.ready)
+    ? createHostedCronEvidenceReceipt(results, process.env, new Date(), checks)
+    : null;
+  if (receipt && receiptPath) {
+    writeHostedCronEvidenceReceipt(receipt, receiptPath);
+  }
   if (action === "packet") {
     console.log("");
     console.log(
-      hostedCronEvidencePacket(results, process.env, new Date(), checks),
+      hostedCronEvidencePacket(results, process.env, new Date(), checks, {
+        receiptDigest: receipt?.artifactDigest ?? "",
+      }),
     );
     return;
   }
   if (action === "artifact-hints") {
-    console.log(artifactHintsFromResults(results, checks));
+    console.log(
+      artifactHintsFromResults(results, checks, {
+        receiptDigest: receipt?.artifactDigest ?? "",
+      }),
+    );
     return;
   }
 
   console.log("");
-  console.log(JSON.stringify({ results }, null, 2));
+  console.log(
+    JSON.stringify(
+      {
+        hostedCronReceipt: receipt
+          ? {
+              artifactDigest: receipt.artifactDigest,
+              digest: receipt.digest,
+              digestAlgorithm: receipt.digestAlgorithm,
+              path: receiptPath || null,
+            }
+          : null,
+        results,
+      },
+      null,
+      2,
+    ),
+  );
   if (results.some((result) => !result.ready)) {
     throw new Error("Hosted cron evidence is incomplete.");
   }

@@ -48,6 +48,7 @@ Expected hosted cron values: `Hosted cron table: store_price_drop_notification_r
 - Scheduled:
 - dry_run=false:
 - Status:
+- Hosted cron receipt SHA256:
 
 ## Lane-Specific Evidence
 

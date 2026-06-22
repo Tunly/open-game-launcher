@@ -167,6 +167,16 @@ runs are preparation checks for a single proof lane. The unscoped
 in a release tag/SHA context through `GITHUB_REF_NAME` or `GITHUB_REF` and
 `GITHUB_SHA`.
 
+When the release-boundary `completion:gate:external` action reaches the hosted
+cron lane, it creates one gitignored hosted-cron receipt path and passes it to
+both `pnpm hosted:cron-evidence` and `pnpm external:evidence:preflight`.
+Hosted-cron artifact rows must include the `Hosted cron receipt SHA256` emitted
+by the collector hints, and preflight compares that SHA plus table, function,
+run ID, scheduled/non-dry-run status, and selected lanes against the receipt
+from the same gate run. A missing, stale, scoped, mismatched, or secret-bearing
+receipt keeps the release boundary red even when the Markdown proof rows look
+complete.
+
 `pnpm external:evidence:preflight` requires every selected required environment
 name to hold a non-placeholder value with the expected shape, every selected
 artifact file to exist, per-artifact proof coverage for assigned proof rows,

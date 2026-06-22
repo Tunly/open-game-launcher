@@ -19,12 +19,17 @@ import {
   completionStatusReport,
   completionExternalChecks,
   completionLocalChecks,
+  externalGateRunEnv,
   localCompletionReceiptPath,
   parseArgs,
   releaseBoundaryEnv,
   renderStatus,
   runCompletionGate,
 } from "./completion-gate.mjs";
+import {
+  completionGateRunIdEnvName,
+  hostedCronEvidenceReceiptEnvName,
+} from "./hosted-cron-evidence.mjs";
 
 const expectedLocalCompletionCheckIds = Object.freeze([
   "git-diff-check",
@@ -1153,10 +1158,7 @@ test("external evidence runbook documents release-gated coverage", () => {
 });
 
 test("README documents current-main release tag boundary", () => {
-  assert.match(
-    readme,
-    /tagged commit is the current `origin\/main` commit/i,
-  );
+  assert.match(readme, /tagged commit is the current `origin\/main` commit/i);
   assert.match(
     readme,
     /validated `v\*` tags whose commits point at the current `origin\/main` commit/i,
@@ -1170,10 +1172,7 @@ test("README Supabase migration count matches the repository", () => {
     new URL("../supabase/migrations", import.meta.url),
   ).filter((name) => name.endsWith(".sql")).length;
 
-  assert.match(
-    readme,
-    new RegExp(`# ${migrationCount} migrations \\(`),
-  );
+  assert.match(readme, new RegExp(`# ${migrationCount} migrations \\(`));
 });
 
 test("release boundary external checks ignore scoped evidence and freshness override env", () => {
@@ -1185,8 +1184,28 @@ test("release boundary external checks ignore scoped evidence and freshness over
       OGL_HOSTED_DEPLOY_FUNCTIONS: "stripe-webhook",
       OGL_HOSTED_CRON_EVIDENCE_CHECKS: "price-drop",
       OGL_HOSTED_CRON_FRESHNESS_HOURS: "9999",
+      [completionGateRunIdEnvName]: "user-run",
+      [hostedCronEvidenceReceiptEnvName]: ".codex/user-receipt.json",
     }),
     { KEEP_ME: "yes" },
+  );
+
+  assert.deepEqual(
+    externalGateRunEnv(
+      {
+        KEEP_ME: "yes",
+        OGL_EXTERNAL_EVIDENCE_GATES: "hosted-supabase-cron",
+        [completionGateRunIdEnvName]: "user-run",
+        [hostedCronEvidenceReceiptEnvName]: ".codex/user-receipt.json",
+      },
+      "release-run-123",
+    ),
+    {
+      KEEP_ME: "yes",
+      [completionGateRunIdEnvName]: "release-run-123",
+      [hostedCronEvidenceReceiptEnvName]:
+        ".codex/completion-gate/hosted-cron-release-run-123.json",
+    },
   );
 
   const calls = [];
@@ -1199,6 +1218,8 @@ test("release boundary external checks ignore scoped evidence and freshness over
       OGL_HOSTED_DEPLOY_FUNCTIONS: "stripe-webhook",
       OGL_HOSTED_CRON_EVIDENCE_CHECKS: "price-drop",
       OGL_HOSTED_CRON_FRESHNESS_HOURS: "9999",
+      [completionGateRunIdEnvName]: "user-run",
+      [hostedCronEvidenceReceiptEnvName]: ".codex/user-receipt.json",
     },
     logger: captureLogger().logger,
     platform: "linux",
@@ -1219,7 +1240,16 @@ test("release boundary external checks ignore scoped evidence and freshness over
     assert.equal("OGL_HOSTED_DEPLOY_FUNCTIONS" in call.env, false);
     assert.equal("OGL_HOSTED_CRON_EVIDENCE_CHECKS" in call.env, false);
     assert.equal("OGL_HOSTED_CRON_FRESHNESS_HOURS" in call.env, false);
+    assert.match(call.env[completionGateRunIdEnvName], /^[0-9a-f-]{36}$/);
+    assert.equal(
+      call.env[hostedCronEvidenceReceiptEnvName],
+      `.codex/completion-gate/hosted-cron-${call.env[completionGateRunIdEnvName]}.json`,
+    );
   }
+  assert.equal(
+    new Set(calls.map((call) => call.env[completionGateRunIdEnvName])).size,
+    1,
+  );
 });
 
 test("local action runs only local checks in order", () => {
@@ -1320,6 +1350,56 @@ test("external action runs only external checks and names external evidence", ()
   assert.doesNotMatch(output, /Release-boundary completion gate passed/);
 });
 
+test("external action shares one hosted cron receipt path with external preflight", () => {
+  const calls = [];
+  const status = runCompletionGate({
+    action: "external",
+    logger: captureLogger().logger,
+    platform: "linux",
+    runCommand(command, args, options) {
+      calls.push({
+        commandLine: [command, ...args].join(" "),
+        env: options.env,
+      });
+      return { status: 0 };
+    },
+  });
+
+  assert.equal(status, 0);
+  const hostedCronCall = calls.find(
+    (call) => call.commandLine === "pnpm hosted:cron-evidence",
+  );
+  const preflightCall = calls.find(
+    (call) => call.commandLine === "pnpm external:evidence:preflight",
+  );
+  assert.ok(hostedCronCall);
+  assert.ok(preflightCall);
+  assert.match(
+    hostedCronCall.env[completionGateRunIdEnvName],
+    /^[0-9a-f-]{36}$/,
+  );
+  assert.equal(
+    preflightCall.env[completionGateRunIdEnvName],
+    hostedCronCall.env[completionGateRunIdEnvName],
+  );
+  assert.equal(
+    hostedCronCall.env[hostedCronEvidenceReceiptEnvName],
+    `.codex/completion-gate/hosted-cron-${hostedCronCall.env[completionGateRunIdEnvName]}.json`,
+  );
+  assert.equal(
+    preflightCall.env[hostedCronEvidenceReceiptEnvName],
+    hostedCronCall.env[hostedCronEvidenceReceiptEnvName],
+  );
+  assert.ok(
+    calls.findIndex(
+      (call) => call.commandLine === "pnpm hosted:cron-evidence",
+    ) <
+      calls.findIndex(
+        (call) => call.commandLine === "pnpm external:evidence:preflight",
+      ),
+  );
+});
+
 test("full check success is the only release-boundary success summary", () => {
   const calls = [];
   const { logger, logs } = captureLogger();
@@ -1393,7 +1473,10 @@ test("external action fails when checkout changes during release-boundary checks
       root,
       runCommand() {
         if (!mutated) {
-          writeFileSync(join(root, "tracked.txt"), "changed during external gate\n");
+          writeFileSync(
+            join(root, "tracked.txt"),
+            "changed during external gate\n",
+          );
           mutated = true;
         }
         return { status: 0 };
