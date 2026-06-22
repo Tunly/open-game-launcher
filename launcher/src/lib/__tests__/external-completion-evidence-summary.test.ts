@@ -31,6 +31,8 @@ const evidenceDetails: Record<ExternalCompletionEvidenceDetailField, string> = {
     "run-external-evidence-123 https://dashboard.stripe.com/events/evt_redacted",
   "Redaction notes": "Raw secrets removed before commit",
 };
+const validHostedDeployEvidence =
+  "hosted-deploy CI main hosted_deploy_gate=true hosted_environment=hosted-production hosted_deploy_action=all hosted_deploy_dry_run=false workflow: https://github.com/open-game-collective/open-game-launcher/actions/runs/12345";
 
 function envEvidenceFor(gate: ExternalCompletionEvidenceGateInput) {
   return gate.requiredEnv.map((name) => ({
@@ -183,7 +185,7 @@ function externalProofEvidenceFor(proof: string, fallback = "run-external-eviden
   if (proof.includes("Plugin marketplace")) return "run-plugin-marketplace-execution-update-123";
   if (proof.includes("Native mobile apps"))
     return "run-mobile-push-provider-store-distribution-123";
-  if (proof.includes("Hosted production deployment")) return "hosted-deploy workflow-123";
+  if (proof.includes("Hosted production deployment")) return validHostedDeployEvidence;
   return fallback;
 }
 
@@ -302,7 +304,10 @@ describe("external completion evidence summary", () => {
       ]),
     );
     expect(summary.gates.find((gate) => gate.id === "rollout-tracks")?.recommendedCommands).toEqual(
-      expect.arrayContaining(["pnpm hosted:deploy-gate:packet"]),
+      expect.arrayContaining([
+        "pnpm hosted:deploy-gate:packet",
+        "GitHub Actions CI main hosted_deploy_gate=true hosted_environment=hosted-production hosted_deploy_action=all hosted_deploy_dry_run=false",
+      ]),
     );
     expect(JSON.stringify(summary)).not.toMatch(/sk_live|whsec_|secret-value|bearer\s+[a-z0-9]/i);
     expect(JSON.stringify(summary)).not.toMatch(
@@ -485,7 +490,7 @@ describe("external completion evidence summary", () => {
                 ...evidenceDetails,
                 "Community rollout evidence": "community-artwork-screenshot-rollout-run-123",
                 "Controller layout/profile sync evidence": "controller-layout-profile-sync-run-123",
-                "Hosted deploy evidence": "hosted-deploy workflow-123",
+                "Hosted deploy evidence": validHostedDeployEvidence,
                 "Marketplace evidence": "plugin-marketplace-update-run-123",
                 "Mobile distribution evidence": "mobile-store-distribution-run-123",
                 "Push-provider evidence": "firebase-push-provider-run-123",
@@ -1399,7 +1404,7 @@ describe("external completion evidence summary", () => {
     ]);
   });
 
-  it("requires hosted deploy workflow evidence instead of PR or commit URLs", () => {
+  it("requires hosted deploy production workflow evidence instead of partial locators", () => {
     const rolloutGate = EXTERNAL_COMPLETION_EVIDENCE_GATE_INPUTS.find(
       (gate) => gate.id === "rollout-tracks",
     );
@@ -1413,6 +1418,11 @@ describe("external completion evidence summary", () => {
       "hosted-deploy workflow-123 https://github.com/open-game-collective/open-game-launcher/pull/123",
       "hosted-deploy https://github.com/open-game-collective/open-game-launcher/commit/0123456789abcdef0123456789abcdef01234567",
       "hosted-deploy workflow-123 https://github.com/open-game-collective/open-game-launcher/commit/0123456789abcdef0123456789abcdef01234567",
+      "hosted-deploy workflow: https://github.com/open-game-collective/open-game-launcher/actions/runs/12345",
+      "hosted-deploy CI main hosted_environment=hosted-production hosted_deploy_action=all hosted_deploy_dry_run=false workflow: https://github.com/open-game-collective/open-game-launcher/actions/runs/12345",
+      "hosted-deploy CI main hosted_deploy_gate=true hosted_deploy_action=all hosted_deploy_dry_run=false workflow: https://github.com/open-game-collective/open-game-launcher/actions/runs/12345",
+      "hosted-deploy CI main hosted_deploy_gate=true hosted_environment=hosted-production hosted_deploy_dry_run=false workflow: https://github.com/open-game-collective/open-game-launcher/actions/runs/12345",
+      "hosted-deploy CI main hosted_deploy_gate=true hosted_environment=hosted-production hosted_deploy_action=all workflow: https://github.com/open-game-collective/open-game-launcher/actions/runs/12345",
     ]) {
       const summary = buildExternalCompletionEvidenceSummary({
         createdAt: "2026-06-16T00:00:00.000Z",
@@ -1467,10 +1477,7 @@ describe("external completion evidence summary", () => {
           ...gate,
           artifactEvidence: [
             {
-              content: rolloutArtifactContent(
-                gate,
-                "hosted-deploy workflow: https://github.com/open-game-collective/open-game-launcher/actions/runs/12345",
-              ),
+              content: rolloutArtifactContent(gate, validHostedDeployEvidence),
               path: artifactPath,
               readable: true,
             },
@@ -2152,7 +2159,7 @@ describe("external completion evidence summary", () => {
             artifactEvidence: [
               {
                 content: [
-                  rolloutArtifactContent(gate, "hosted-deploy workflow-123"),
+                  rolloutArtifactContent(gate, validHostedDeployEvidence),
                   rawGithubToken,
                 ].join("\n"),
                 path: artifactPath,
@@ -2180,7 +2187,7 @@ describe("external completion evidence summary", () => {
           artifactEvidence: [
             {
               content: [
-                rolloutArtifactContent(gate, "hosted-deploy workflow-123"),
+                rolloutArtifactContent(gate, validHostedDeployEvidence),
                 "GITHUB_TOKEN=[redacted]",
                 "GH_TOKEN=<redacted>",
                 "GITHUB_PAT=***",
@@ -2223,7 +2230,7 @@ describe("external completion evidence summary", () => {
               ].join("\n"),
               evidenceDetails: {
                 ...evidenceDetails,
-                "Hosted deploy evidence": "workflow-hosted-deploy-live-123",
+                "Hosted deploy evidence": validHostedDeployEvidence,
                 "Marketplace evidence": "marketplace-review-live-123",
                 "Mobile distribution evidence": "mobile-store-review-live-123",
                 "Push-provider evidence": "push-provider-live-123",

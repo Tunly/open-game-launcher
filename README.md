@@ -540,6 +540,11 @@ Manual hosted deploy gate:
 ```bash
 pnpm hosted:deploy-gate:plan
 pnpm hosted:deploy-gate:packet
+pnpm hosted:deploy-gate:preflight
+pnpm hosted:deploy-gate:deploy:dry-run
+pnpm hosted:deploy-gate:deploy:live
+pnpm hosted:deploy-gate:smoke
+pnpm hosted:deploy-gate:all:live
 pnpm hosted:deploy-gate:scheduler-packet
 pnpm hosted:deploy-gate:test
 pnpm hosted:cron-evidence:plan
@@ -548,7 +553,7 @@ pnpm hosted:cron-evidence:packet
 pnpm hosted:cron-evidence:artifact-hints
 ```
 
-GitHub Actions exposes a manual `hosted_deploy_gate` workflow_dispatch path that uses the `hosted-staging` or `hosted-production` Environment, deploys the known Supabase Edge Function set on request, and can run hosted dry-run live smokes when invoked with real secrets. Presence, price-drop, and account-deletion smokes write only sanitized evidence rows (`presence_poll_runs`, `store_price_drop_notification_runs`, `account_deletion_processor_runs`) and fail if the hosted function does not return `evidenceRecorded` with a server-authored `runId`. The deploy gate packet, scheduler packet, hosted cron packet, and artifact hints commands prepare redacted operator handoff text only; the scheduler packet also reports whether `SUPABASE_FUNCTIONS_URL` is configured or needs the emitted redacted derivation step from `SUPABASE_URL`/`SUPABASE_PROJECT_REF`. Use `OGL_HOSTED_CRON_EVIDENCE_CHECKS=price-drop` or `--checks=price-drop` when collecting the Store/Stripe price-drop scheduler artifact; leave the collector unscoped for the full hosted cron gate. These helpers do not deploy functions, call hosted functions, create schedules, check proof rows, or prove external completion. `v*` tag builds have an additional `hosted-production` release-boundary job that validates the tag against launcher/Tauri versions, verifies the tagged commit is reachable from `origin/main`, and runs unscoped `pnpm completion:gate:external` before packaging; a single draft-release job runs only after the full OS build matrix uploads artifacts. Tags cannot publish release artifacts until hosted deploy preflight/smoke, hosted cron evidence, and checked external proof artifacts pass. `/settings?verify=hosted-cron-evidence-summary` summarizes the three scheduler lanes as a local no-write evidence gate while dry-run, stale, missing, placeholder-env, unsafe REST target, unsafe run-id, missing/invalid aggregate-count, semantically impossible aggregate-count, or non-zero `failed_count` rows stay blocked, and `/settings?verify=external-completion-evidence-summary` shows the wider Store/Stripe, hosted cron, provider-live, hardware/OS, and rollout artifact checklist without treating local dry-runs as external proof. See `docs/runbooks/hosted-deploy-gate.md`.
+GitHub Actions exposes a manual `hosted_deploy_gate` workflow_dispatch path that uses the `hosted-staging` or `hosted-production` Environment, deploys the known Supabase Edge Function set on request, and can run hosted dry-run live smokes when invoked with real secrets. Presence, price-drop, and account-deletion smokes write only sanitized evidence rows (`presence_poll_runs`, `store_price_drop_notification_runs`, `account_deletion_processor_runs`) and fail if the hosted function does not return `evidenceRecorded` with a server-authored `runId`. The deploy gate packet, scheduler packet, hosted cron packet, and artifact hints commands prepare redacted operator handoff text only; the scheduler packet also reports whether `SUPABASE_FUNCTIONS_URL` is configured or needs the emitted redacted derivation step from `SUPABASE_URL`/`SUPABASE_PROJECT_REF`. Use `OGL_HOSTED_CRON_EVIDENCE_CHECKS=price-drop` or `--checks=price-drop` when collecting the Store/Stripe price-drop scheduler artifact; leave the collector unscoped for the full hosted cron gate. These helpers do not deploy functions, call hosted functions, create schedules, check proof rows, or prove external completion. `v*` tag builds have an additional `hosted-production` release-boundary job that validates the tag against launcher/Tauri versions, verifies the tagged commit is reachable from `origin/main`, and runs unscoped `pnpm completion:gate:external` before packaging; a single draft-release job runs only after the full OS build matrix uploads artifacts. Tags cannot publish release artifacts until `pnpm hosted:deploy-gate:preflight`, `pnpm hosted:deploy-gate:smoke`, hosted cron evidence, and checked external proof artifacts pass. `/settings?verify=hosted-cron-evidence-summary` summarizes the three scheduler lanes as a local no-write evidence gate while dry-run, stale, missing, placeholder-env, unsafe REST target, unsafe run-id, missing/invalid aggregate-count, semantically impossible aggregate-count, or non-zero `failed_count` rows stay blocked, and `/settings?verify=external-completion-evidence-summary` shows the wider Store/Stripe, hosted cron, provider-live, hardware/OS, and rollout artifact checklist without treating local dry-runs as external proof. See `docs/runbooks/hosted-deploy-gate.md`.
 
 ## Environment Variables
 
@@ -872,9 +877,10 @@ use `local.latestReceipt` for the optional local-only receipt,
 `external.statusPrerequisites` for env/artifact readiness, and
 `pnpm completion:gate` for release-boundary evaluation.
 
-`pnpm completion:gate` runs the local deterministic checks plus hosted deploy
-preflight, hosted deploy smoke, hosted cron evidence, and external evidence
-preflight. It is expected to fail until the required external secrets, scheduler
+`pnpm completion:gate` runs the local deterministic checks plus
+`pnpm hosted:deploy-gate:preflight`, `pnpm hosted:deploy-gate:smoke`,
+`pnpm hosted:cron-evidence`, and `pnpm external:evidence:preflight`. It is
+expected to fail until the required external secrets, scheduler
 rows, provider/hardware evidence, rollout artifacts, checked proof rows, and
 specific evidence detail fields pass external preflight.
 `OGL_EXTERNAL_EVIDENCE_GATES` and `OGL_HOSTED_CRON_EVIDENCE_CHECKS` scope only

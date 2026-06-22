@@ -477,7 +477,7 @@ const requiredEvidenceDetailFields = Object.freeze([
 ]);
 
 const releaseBoundaryReminder =
-  "Release-boundary reminder: run `pnpm completion:gate:status` before final verification. The final `pnpm completion:gate:external` run is unscoped and also runs hosted deploy preflight, hosted deploy smoke, hosted cron evidence, and external evidence preflight.";
+  "Release-boundary reminder: run `pnpm completion:gate:status` before final verification. The final `pnpm completion:gate:external` run is unscoped and also runs `pnpm hosted:deploy-gate:preflight`, `pnpm hosted:deploy-gate:smoke`, `pnpm hosted:cron-evidence`, and `pnpm external:evidence:preflight`.";
 
 const placeholderEvidenceDetailValues = new Set([
   "-",

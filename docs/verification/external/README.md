@@ -33,8 +33,9 @@ OGL_EXTERNAL_EVIDENCE_GATES=<gate-id> pnpm external:evidence:preflight
 ```
 
 The final release-boundary check is unscoped. It must run with release tag and
-SHA context, and it must include hosted deploy preflight, hosted deploy smoke,
-hosted cron evidence, and external evidence preflight.
+SHA context, and it must include `pnpm hosted:deploy-gate:preflight`,
+`pnpm hosted:deploy-gate:smoke`, `pnpm hosted:cron-evidence`, and
+`pnpm external:evidence:preflight`.
 
 ## Gate Matrix
 

@@ -594,6 +594,13 @@ test("handoff reports include a release-boundary reminder but artifact templates
     ["runbookReport", runbookReport(env, fileExists, readFile)],
   ]) {
     assert.match(output, /Release-boundary reminder/i, name);
+    assert.match(output, /pnpm hosted:deploy-gate:preflight/, name);
+    assert.match(output, /pnpm hosted:deploy-gate:smoke/, name);
+    assert.doesNotMatch(
+      output,
+      /hosted deploy preflight, hosted deploy smoke/,
+      name,
+    );
   }
 
   assert.doesNotMatch(
@@ -4389,6 +4396,8 @@ test("external evidence index mentions every external gate and artifact", () => 
   assert.match(externalEvidenceIndex, /External Evidence Index/);
   assert.match(externalEvidenceIndex, /pnpm completion:gate:external/);
   assert.match(externalEvidenceIndex, /OGL_EXTERNAL_EVIDENCE_GATES=<gate-id>/);
+  assert.match(externalEvidenceIndex, /pnpm hosted:deploy-gate:preflight/);
+  assert.match(externalEvidenceIndex, /pnpm hosted:deploy-gate:smoke/);
   assert.match(
     externalEvidenceIndex,
     /pnpm hosted:deploy-gate:scheduler-packet/,
@@ -4491,12 +4500,29 @@ test("runbook documents the external evidence next steps mode", () => {
 test("runbook command list includes hosted cron plan and collector", () => {
   assert.match(runbook, /^pnpm hosted:deploy-gate:plan$/m);
   assert.match(runbook, /^pnpm hosted:deploy-gate:packet$/m);
+  assert.match(runbook, /pnpm hosted:deploy-gate:preflight/);
+  assert.match(runbook, /pnpm hosted:deploy-gate:smoke/);
   assert.match(
     runbook,
     /^OGL_HOSTED_CRON_EVIDENCE_CHECKS=price-drop pnpm hosted:cron-evidence:plan$/m,
   );
   assert.match(runbook, /^pnpm hosted:cron-evidence:plan$/m);
   assert.match(runbook, /^pnpm hosted:cron-evidence$/m);
+});
+
+test("README documents explicit hosted deploy gate aliases", () => {
+  for (const command of [
+    "pnpm hosted:deploy-gate:preflight",
+    "pnpm hosted:deploy-gate:deploy:dry-run",
+    "pnpm hosted:deploy-gate:deploy:live",
+    "pnpm hosted:deploy-gate:smoke",
+    "pnpm hosted:deploy-gate:all:live",
+  ]) {
+    assert.match(readme, new RegExp(`^${escapeRegExp(command)}$`, "m"));
+  }
+  assert.match(readme, /pnpm hosted:deploy-gate:preflight/);
+  assert.match(readme, /pnpm hosted:deploy-gate:smoke/);
+  assert.doesNotMatch(readme, /hosted deploy preflight\/smoke/);
 });
 
 test("external evidence CLI gates stay in sync with the UI summary and plan boundary", () => {

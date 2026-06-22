@@ -30,9 +30,10 @@ pnpm hosted:cron-evidence:artifact-hints
 ```
 
 For a current-platform release-boundary rehearsal, use `pnpm completion:gate`.
-It first runs the local deterministic gate, then hosted deploy preflight,
-hosted deploy smoke, hosted cron evidence collector, and this external evidence
-preflight. It must fail until the real external artifacts and required
+It first runs the local deterministic gate, then
+`pnpm hosted:deploy-gate:preflight`, `pnpm hosted:deploy-gate:smoke`,
+`pnpm hosted:cron-evidence`, and `pnpm external:evidence:preflight`. It must
+fail until the real external artifacts and required
 environment values below are present. Cross-platform signoff comes from the
 configured CI runners, but GitHub Actions does not mirror the local gate
 exactly: coverage runs as a separate threshold-enforcing CI job, and no CI
@@ -43,9 +44,9 @@ and an unscoped `pnpm completion:gate:external` tag job in the
 That tag job validates launcher/Tauri version alignment and rejects semver-valid
 `v*` tags whose checked-out commit is not the current `origin/main` commit.
 Before final release-boundary verification, run `pnpm completion:gate:status`.
-The final `pnpm completion:gate:external` run is unscoped and also runs hosted
-deploy preflight, hosted deploy smoke, hosted cron evidence, and external
-evidence preflight.
+The final `pnpm completion:gate:external` run is unscoped and also runs
+`pnpm hosted:deploy-gate:preflight`, `pnpm hosted:deploy-gate:smoke`,
+`pnpm hosted:cron-evidence`, and `pnpm external:evidence:preflight`.
 
 To focus one lane:
 

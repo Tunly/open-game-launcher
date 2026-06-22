@@ -172,6 +172,11 @@ describe("ExternalCompletionEvidenceSummaryPanel", () => {
       within(panel).getAllByText("pnpm hosted:deploy-gate:scheduler-packet").length,
     ).toBeGreaterThanOrEqual(1);
     expect(within(panel).getByText("pnpm hosted:deploy-gate:packet")).toBeVisible();
+    expect(
+      within(panel).getByText(
+        "GitHub Actions CI main hosted_deploy_gate=true hosted_environment=hosted-production hosted_deploy_action=all hosted_deploy_dry_run=false",
+      ),
+    ).toBeVisible();
     expect(within(panel).getAllByText("Artifact Proof Map").length).toBeGreaterThan(0);
     expect(
       within(panel).getAllByText("docs/verification/external/store-price-drop-scheduler-live.md")

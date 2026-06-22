@@ -265,6 +265,9 @@ export const EXTERNAL_COMPLETION_EVIDENCE_RELEASE_BOUNDARY_COMMANDS = [
   "pnpm completion:gate:external",
 ] as const;
 
+const HOSTED_DEPLOY_PROOF_RUN_HANDOFF =
+  "GitHub Actions CI main hosted_deploy_gate=true hosted_environment=hosted-production hosted_deploy_action=all hosted_deploy_dry_run=false";
+
 export const EXTERNAL_COMPLETION_EVIDENCE_GATE_INPUTS: ExternalCompletionEvidenceGateInput[] = [
   {
     artifactPaths: [
@@ -724,6 +727,7 @@ function recommendedCommandsForGate(
   if (gate.id === "rollout-tracks") {
     commands.add("pnpm hosted:deploy-gate:plan");
     commands.add("pnpm hosted:deploy-gate:packet");
+    commands.add(HOSTED_DEPLOY_PROOF_RUN_HANDOFF);
   }
 
   commands.add(`OGL_EXTERNAL_EVIDENCE_GATES=${gate.id} pnpm external:evidence:preflight`);
@@ -1362,13 +1366,22 @@ function stripeDashboardEvidenceValueIsSpecific(value: string) {
   return evidenceIdentifierValueMatches(cleaned, [/stripe/i, /dashboard/i, /tax/i, /invoice/i]);
 }
 
+const hostedDeployRequiredInputPatterns = [
+  /\bCI\b/,
+  /\bmain\b/,
+  /\bhosted_deploy_gate=true\b/,
+  /\bhosted_environment=hosted-production\b/,
+  /\bhosted_deploy_action=all\b/,
+  /\bhosted_deploy_dry_run=false\b/,
+] as const;
+
 function hostedDeployWorkflowEvidenceValueIsSpecific(value: string) {
   const cleaned = clean(value);
   if (evidenceLocatorIssueReason(cleaned)) return false;
   if (!/\bhosted[-_\s]?deploy\b/i.test(cleaned)) return false;
   if (evidenceLocatorContainsGithubPullOrCommitUrl(cleaned)) return false;
-  if (evidenceLocatorContainsGithubActionsRunUrl(cleaned)) return true;
-  return /\bworkflow[-_: #]?[a-z0-9][a-z0-9._:-]*\d\b/i.test(cleaned);
+  if (!evidenceLocatorContainsGithubActionsRunUrl(cleaned)) return false;
+  return hostedDeployRequiredInputPatterns.every((pattern) => pattern.test(cleaned));
 }
 
 function hostedDeployWorkflowEvidenceIssueReason(
