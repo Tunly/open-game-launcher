@@ -63,6 +63,9 @@ describe("CrossStoreSaveSyncPlanner", () => {
     expect(
       within(panel).getByText(/no provider cloud save listing, export, import/i),
     ).toBeInTheDocument();
+    expect(
+      within(panel).getByText(/Provider-approved OAuth\/device auth evidence is not attached/i),
+    ).toBeInTheDocument();
     expect(within(panel).getByText("Still Blocked After Contract Packet")).toBeInTheDocument();
     expect(within(panel).getByText("Provider Path Map")).toBeInTheDocument();
     expect(within(panel).getByText("Review Only")).toBeInTheDocument();
@@ -163,6 +166,7 @@ describe("CrossStoreSaveSyncPlanner", () => {
     expect(within(panel).getByText("No automatic rollback execution")).toBeInTheDocument();
     expect(within(panel).getByText("No live Supabase/keychain bucket E2E")).toBeInTheDocument();
     expect(within(panel).getAllByText(/review-only/i).length).toBeGreaterThan(0);
+    expect(panel).not.toHaveTextContent(/not implemented/i);
     expect(panel).not.toHaveTextContent(
       /migration (started|complete|ready)|saves? (migrated|transferred)|provider cloud (connected|live|synced|transfer complete)|path mapping (verified|ready|complete)|rollback (verified|ready|complete)|supabase\/keychain bucket e2e (passed|ready)|live bucket e2e passed|copy complete/i,
     );

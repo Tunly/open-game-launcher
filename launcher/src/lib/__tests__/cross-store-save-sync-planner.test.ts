@@ -177,8 +177,12 @@ describe("buildCrossStoreSaveSyncPlan", () => {
       ]),
     );
     expect(plan.providerCloudContractProof?.blockedAfterProof).toContain(
+      "Provider-approved OAuth/device auth evidence is not attached.",
+    );
+    expect(plan.providerCloudContractProof?.blockedAfterProof).toContain(
       "Provider cloud save listing/export/import APIs are not called.",
     );
+    expect(JSON.stringify(plan)).not.toMatch(/not implemented/i);
     expect(plan.pathMappingProof).toMatchObject({
       actionCount: 2,
       id: "path-map-steam-mech-arcade-to-gog-mech-arcade",

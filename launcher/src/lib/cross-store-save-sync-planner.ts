@@ -887,7 +887,7 @@ function buildProviderCloudContractProof(
 
   return {
     blockedAfterProof: [
-      "Provider-approved OAuth/device auth is not implemented.",
+      "Provider-approved OAuth/device auth evidence is not attached.",
       "Provider cloud save listing/export/import APIs are not called.",
       "Live provider sandbox evidence is still required.",
       "Real migration sessions remain blocked until provider transfer and Supabase/keychain E2E pass.",

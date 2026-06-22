@@ -26,6 +26,10 @@ const externalEvidenceIndex = readFileSync(
   new URL("../docs/verification/external/README.md", import.meta.url),
   "utf8",
 );
+const verificationReadme = readFileSync(
+  new URL("../docs/verification/README.md", import.meta.url),
+  "utf8",
+);
 const functionsEnvExample = readFileSync(
   new URL("../supabase/functions/.env.example", import.meta.url),
   "utf8",
@@ -4545,6 +4549,21 @@ test("README documents explicit hosted deploy gate aliases", () => {
   assert.match(readme, /pnpm hosted:deploy-gate:preflight/);
   assert.match(readme, /pnpm hosted:deploy-gate:smoke/);
   assert.doesNotMatch(readme, /hosted deploy preflight\/smoke/);
+});
+
+test("verification screenshot rows document external next handoff", () => {
+  const externalSummaryRows = verificationReadme
+    .split("\n")
+    .filter((line) =>
+      /screenshots\/settings-external-completion-evidence-summary-(?:local|mobile)\.png/.test(
+        line,
+      ),
+    );
+
+  assert.equal(externalSummaryRows.length, 2);
+  for (const row of externalSummaryRows) {
+    assert.match(row, /next\/worklist\/packet\/runbook\/preflight\/status\/completion-gate/);
+  }
 });
 
 test("external evidence CLI gates stay in sync with the UI summary and plan boundary", () => {
