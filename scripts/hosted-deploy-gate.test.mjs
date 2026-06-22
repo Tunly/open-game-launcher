@@ -21,6 +21,7 @@ import {
   deriveFunctionsBaseUrl,
   deployFunctions,
   getDeployFunctions,
+  getSmokePlan,
   hostedDeployGatePacket,
   missingRequiredEnv,
   missingRuntimeSecretNames,
@@ -30,6 +31,7 @@ import {
   parseArgs,
   runCronDryRunSmoke,
   runOptionsSmoke,
+  runSmoke,
   runRuntimeSecretsPreflight,
   runVerifyJwtConfigPreflight,
   runtimeSecretNames,
@@ -48,6 +50,9 @@ const runbook = readFileSync(
 const ciWorkflow = readFileSync(
   new URL("../.github/workflows/ci.yml", import.meta.url),
   "utf8",
+);
+const rootPackage = JSON.parse(
+  readFileSync(new URL("../package.json", import.meta.url), "utf8"),
 );
 const supabaseConfig = readFileSync(
   new URL("../supabase/config.toml", import.meta.url),
@@ -287,6 +292,34 @@ test("parseArgs rejects dry-run outside deploy-capable actions", () => {
   }
 });
 
+test("package exposes explicit hosted deploy gate aliases", () => {
+  assert.equal(
+    rootPackage.scripts["hosted:deploy-gate"],
+    "node scripts/hosted-deploy-gate.mjs",
+  );
+  assert.equal(
+    rootPackage.scripts["hosted:deploy-gate:preflight"],
+    "node scripts/hosted-deploy-gate.mjs preflight",
+  );
+  assert.equal(
+    rootPackage.scripts["hosted:deploy-gate:deploy:dry-run"],
+    "node scripts/hosted-deploy-gate.mjs deploy --dry-run",
+  );
+  assert.equal(
+    rootPackage.scripts["hosted:deploy-gate:deploy:live"],
+    "node scripts/hosted-deploy-gate.mjs deploy",
+  );
+  assert.equal(
+    rootPackage.scripts["hosted:deploy-gate:smoke"],
+    "node scripts/hosted-deploy-gate.mjs smoke",
+  );
+  assert.equal(
+    rootPackage.scripts["hosted:deploy-gate:all:live"],
+    "node scripts/hosted-deploy-gate.mjs all",
+  );
+  assert.equal(rootPackage.scripts["hosted:deploy-gate:deploy"], undefined);
+});
+
 test("CI workflow exposes hosted deploy dry-run dispatch input", () => {
   const block = workflowInputBlock("hosted_deploy_dry_run");
 
@@ -303,8 +336,8 @@ test("CI workflow routes hosted deploy dry-run through deploy command", () => {
     /if: inputs\.hosted_deploy_action == 'deploy' \|\| inputs\.hosted_deploy_action == 'all'/,
   );
   assert.match(step, /inputs\.hosted_deploy_dry_run|HOSTED_DEPLOY_DRY_RUN/);
-  assert.match(step, /pnpm hosted:deploy-gate deploy --dry-run/);
-  assert.match(step, /pnpm hosted:deploy-gate deploy\n/);
+  assert.match(step, /pnpm hosted:deploy-gate:deploy:dry-run/);
+  assert.match(step, /pnpm hosted:deploy-gate:deploy:live\n/);
 });
 
 test("CI workflow gates production hosted deploy and smoke to main", () => {
@@ -355,6 +388,7 @@ test("CI workflow runs production smoke-only through deploy preflight", () => {
     step,
     /inputs\.hosted_environment == 'hosted-production' && inputs\.hosted_deploy_action == 'smoke'/,
   );
+  assert.match(step, /pnpm hosted:deploy-gate:preflight/);
   assert.match(step, /SUPABASE_ACCESS_TOKEN:/);
 });
 
@@ -362,6 +396,7 @@ test("CI workflow skips all-action smoke during hosted deploy dry-run only", () 
   const step = workflowStepBlock("Smoke hosted Supabase functions");
 
   assert.match(step, /inputs\.hosted_deploy_action == 'smoke'/);
+  assert.match(step, /pnpm hosted:deploy-gate:smoke/);
   assert.match(
     step,
     /\(inputs\.hosted_deploy_action == 'all' && !inputs\.hosted_deploy_dry_run\)/,
@@ -374,6 +409,13 @@ test("CI workflow skips all-action smoke during hosted deploy dry-run only", () 
   assert.equal(shouldRunHostedDeploySmoke("all", false), true);
   assert.equal(shouldRunHostedDeploySmoke("all", true), false);
   assert.equal(shouldRunHostedDeploySmoke("deploy", true), false);
+});
+
+test("CI workflow passes hosted deploy function override to smoke step", () => {
+  const step = workflowStepBlock("Smoke hosted Supabase functions");
+
+  assert.match(step, /OGL_HOSTED_DEPLOY_FUNCTIONS:/);
+  assert.match(step, /vars\.OGL_HOSTED_DEPLOY_FUNCTIONS/);
 });
 
 test("hosted deploy gate packet summarizes handoff without secret values", () => {
@@ -439,6 +481,22 @@ test("hosted deploy gate packet lists missing env names without failing", () => 
     /SUPABASE_FUNCTIONS_URL or SUPABASE_URL or SUPABASE_PROJECT_REF/,
   );
   assert.equal(output.includes("YOUR-PROJECT-REF"), false);
+});
+
+test("hosted deploy gate packet mirrors scoped smoke plan", () => {
+  const output = hostedDeployGatePacket({
+    OGL_HOSTED_DEPLOY_FUNCTIONS: "rawg-assets",
+    SUPABASE_ACCESS_TOKEN: plausibleSupabaseAccessToken,
+    SUPABASE_PROJECT_REF: "awebfvfyqzwapcgixdfj",
+  });
+
+  assert.match(output, /Deploy functions: 1\/17 selected/);
+  assert.match(output, /rawg-assets \(verify_jwt=true\)/);
+  assert.match(output, /rawg-assets: OPTIONS module\/env sanity/);
+  assert.doesNotMatch(output, /notify-price-drop: POST dry-run/);
+  assert.doesNotMatch(output, /poll-platform-presence: POST dry-run/);
+  assert.doesNotMatch(output, /process-account-deletions: POST dry-run/);
+  assert.doesNotMatch(output, /stripe-webhook: OPTIONS module\/env sanity/);
 });
 
 test("deriveFunctionsBaseUrl prefers explicit functions URL", () => {
@@ -726,6 +784,9 @@ test("runbook documents the redacted scheduler-packet handoff", () => {
 
 test("runbook documents hosted deploy dry-run limits", () => {
   assert.match(runbook, /hosted_deploy_dry_run/);
+  assert.match(runbook, /pnpm hosted:deploy-gate:deploy:dry-run/);
+  assert.match(runbook, /easy to distinguish/);
+  assert.doesNotMatch(runbook, /hard to distinguish/);
   assert.match(runbook, /prints deploy commands/i);
   assert.match(runbook, /does not\s+deploy/i);
   assert.match(runbook, /does not mock secrets/i);
@@ -947,6 +1008,69 @@ test("preflight requires deploy and dry-run smoke secrets", () => {
       "PRESENCE_POLL_SECRET",
     ],
   );
+});
+
+test("deploy function override scopes smoke plans consistently", () => {
+  assert.deepEqual(
+    getSmokePlan({
+      OGL_HOSTED_DEPLOY_FUNCTIONS: "notify-price-drop,rawg-assets",
+    }),
+    {
+      cronDryRunSmokes: [
+        {
+          body: {
+            alertIds: ["00000000-0000-4000-8000-000000000000"],
+            dryRun: true,
+            limit: 1,
+            triggerSource: "hosted_deploy_gate",
+          },
+          name: "notify-price-drop",
+          secretEnv: "PRICE_DROP_NOTIFY_SECRET",
+        },
+      ],
+      optionsSmokes: [{ name: "notify-price-drop" }, { name: "rawg-assets" }],
+    },
+  );
+  assert.deepEqual(getSmokePlan({ OGL_HOSTED_DEPLOY_FUNCTIONS: "rawg-assets" }), {
+    cronDryRunSmokes: [],
+    optionsSmokes: [{ name: "rawg-assets" }],
+  });
+});
+
+test("smoke env requirements follow scoped cron smoke selection", () => {
+  assert.deepEqual(
+    missingRequiredEnv("smoke", {
+      OGL_HOSTED_DEPLOY_FUNCTIONS: "rawg-assets",
+      SUPABASE_PROJECT_REF: "awebfvfyqzwapcgixdfj",
+    }),
+    [],
+  );
+  assert.deepEqual(
+    missingRequiredEnv("smoke", {
+      OGL_HOSTED_DEPLOY_FUNCTIONS: "notify-price-drop,rawg-assets",
+      SUPABASE_PROJECT_REF: "awebfvfyqzwapcgixdfj",
+    }),
+    ["PRICE_DROP_NOTIFY_SECRET"],
+  );
+});
+
+test("plan command mirrors scoped smoke plan", () => {
+  const result = spawnSync(process.execPath, [gateScriptPath, "plan"], {
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      OGL_HOSTED_DEPLOY_FUNCTIONS: "rawg-assets",
+      SUPABASE_PROJECT_REF: "awebfvfyqzwapcgixdfj",
+    },
+  });
+
+  assert.equal(result.status, 0);
+  assert.equal(result.stderr, "");
+  assert.match(result.stdout, /rawg-assets \(verify_jwt=true\)/);
+  assert.match(result.stdout, /rawg-assets: OPTIONS module\/env sanity/);
+  assert.doesNotMatch(result.stdout, /notify-price-drop: POST dry-run/);
+  assert.doesNotMatch(result.stdout, /process-account-deletions: POST dry-run/);
+  assert.doesNotMatch(result.stdout, /stripe-webhook: OPTIONS module\/env sanity/);
 });
 
 test("deploy env rejects short fake project refs as missing", () => {
@@ -1741,6 +1865,37 @@ test("runOptionsSmoke validates CORS origin and methods", async () => {
       ),
     /Access-Control-Allow-Methods must include OPTIONS/,
   );
+});
+
+test("runSmoke executes only scoped smoke plan", async () => {
+  const calls = [];
+  const originalLog = console.log;
+
+  try {
+    console.log = () => {};
+    await runSmoke(
+      {
+        OGL_HOSTED_DEPLOY_FUNCTIONS: "rawg-assets",
+        SUPABASE_URL: "https://awebfvfyqzwapcgixdfj.supabase.co",
+      },
+      async (url, init) => {
+        calls.push({ method: init.method, url });
+        return new Response(null, {
+          headers: { "Access-Control-Allow-Origin": "*" },
+          status: 200,
+        });
+      },
+    );
+  } finally {
+    console.log = originalLog;
+  }
+
+  assert.deepEqual(calls, [
+    {
+      method: "OPTIONS",
+      url: "https://awebfvfyqzwapcgixdfj.supabase.co/functions/v1/rawg-assets",
+    },
+  ]);
 });
 
 test("smoke failures redact response bodies", async () => {

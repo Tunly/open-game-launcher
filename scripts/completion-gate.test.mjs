@@ -533,8 +533,8 @@ test("plan prints every gate command without running commands", () => {
   assert.match(output, /rustup show active-toolchain/);
   assert.match(output, /pnpm supabase:functions:check/);
   assert.match(output, /pnpm verify:routes/);
-  assert.match(output, /pnpm hosted:deploy-gate preflight/);
-  assert.match(output, /pnpm hosted:deploy-gate smoke/);
+  assert.match(output, /pnpm hosted:deploy-gate:preflight/);
+  assert.match(output, /pnpm hosted:deploy-gate:smoke/);
   assert.match(output, /pnpm external:evidence:preflight/);
   assert.match(output, /pnpm completion:gate:status/);
   assert.match(output, /redacted prerequisite\/status inventory/);

@@ -460,14 +460,28 @@ export function getDeployFunctions(env = process.env) {
   return functions;
 }
 
-function requiredEnvForAction(action) {
+export function getSmokePlan(env = process.env) {
+  const selectedFunctionNames = new Set(
+    getDeployFunctions(env).map((fn) => fn.name),
+  );
+  return {
+    cronDryRunSmokes: cronDryRunSmokes.filter((smoke) =>
+      selectedFunctionNames.has(smoke.name),
+    ),
+    optionsSmokes: optionsSmokes.filter((smoke) =>
+      selectedFunctionNames.has(smoke.name),
+    ),
+  };
+}
+
+function requiredEnvForAction(action, env = process.env) {
   const required = new Set();
   if (action === "preflight" || action === "deploy" || action === "all") {
     required.add("SUPABASE_ACCESS_TOKEN");
     required.add("SUPABASE_PROJECT_REF");
   }
   if (action === "preflight" || action === "smoke" || action === "all") {
-    for (const smoke of cronDryRunSmokes) {
+    for (const smoke of getSmokePlan(env).cronDryRunSmokes) {
       required.add(smoke.secretEnv);
     }
   }
@@ -489,7 +503,7 @@ function requiredEnvValueIsValid(name, value) {
 }
 
 export function missingRequiredEnv(action, env = process.env) {
-  const missing = requiredEnvForAction(action).filter(
+  const missing = requiredEnvForAction(action, env).filter(
     (name) => !requiredEnvValueIsValid(name, env[name]),
   );
   if (
@@ -965,6 +979,7 @@ export async function runOptionsSmoke(
 
 function printPlan(env = process.env) {
   const functions = getDeployFunctions(env);
+  const smokePlan = getSmokePlan(env);
   const baseUrl = deriveFunctionsBaseUrl(env)
     ? "configured"
     : "(set SUPABASE_URL/SUPABASE_PROJECT_REF)";
@@ -979,10 +994,10 @@ function printPlan(env = process.env) {
   }
   console.log("");
   console.log("Non-mutating smoke checks:");
-  for (const smoke of cronDryRunSmokes) {
+  for (const smoke of smokePlan.cronDryRunSmokes) {
     console.log(`- ${smoke.name}: POST dry-run using ${smoke.secretEnv}`);
   }
-  for (const smoke of optionsSmokes) {
+  for (const smoke of smokePlan.optionsSmokes) {
     console.log(`- ${smoke.name}: OPTIONS module/env sanity`);
   }
   console.log("");
@@ -998,6 +1013,7 @@ function printPlan(env = process.env) {
 
 export function hostedDeployGatePacket(env = process.env) {
   const functions = getDeployFunctions(env);
+  const smokePlan = getSmokePlan(env);
   const baseUrlState = deriveFunctionsBaseUrl(env)
     ? "configured"
     : "(set SUPABASE_URL/SUPABASE_PROJECT_REF)";
@@ -1036,13 +1052,13 @@ export function hostedDeployGatePacket(env = process.env) {
     "",
     "## Non-Mutating Smoke Plan",
     "",
-    ...cronDryRunSmokes.map(
+    ...smokePlan.cronDryRunSmokes.map(
       (smoke) =>
         `- ${smoke.name}: POST dry-run using ${smoke.secretEnv}, body ${JSON.stringify(
           smoke.body,
         )}`,
     ),
-    ...optionsSmokes.map(
+    ...smokePlan.optionsSmokes.map(
       (smoke) => `- ${smoke.name}: OPTIONS module/env sanity`,
     ),
     "",
@@ -1076,7 +1092,10 @@ export function hostedDeployGatePacket(env = process.env) {
     "",
     "## Next Commands",
     "",
-    "- `pnpm hosted:deploy-gate preflight` runs the hosted deploy preflight.",
+    "- `pnpm hosted:deploy-gate:preflight` runs the hosted deploy preflight.",
+    "- `pnpm hosted:deploy-gate:deploy:dry-run` rehearses hosted deploy command wiring.",
+    "- `pnpm hosted:deploy-gate:deploy:live` deploys the selected hosted functions.",
+    "- `pnpm hosted:deploy-gate:smoke` runs the scoped hosted smoke plan.",
     "- `pnpm hosted:deploy-gate:scheduler-packet` prints only scheduler handoff JSON.",
     "- `pnpm hosted:cron-evidence:packet` validates hosted scheduler rows after real schedules run.",
     "- `pnpm completion:gate:external` remains the release-boundary check.",
@@ -1120,18 +1139,19 @@ function runDeploy(env = process.env, dryRunDeploy = false) {
   }
 }
 
-async function runSmoke(env = process.env) {
+export async function runSmoke(env = process.env, fetchImpl = fetch) {
   assertEnv("smoke", env);
+  const smokePlan = getSmokePlan(env);
   const results = [];
-  for (const smoke of cronDryRunSmokes) {
-    const result = await runCronDryRunSmoke(smoke, env);
+  for (const smoke of smokePlan.cronDryRunSmokes) {
+    const result = await runCronDryRunSmoke(smoke, env, fetchImpl);
     results.push(result);
     console.log(
       `ok ${result.type} ${result.name} ${JSON.stringify(result.summary)}`,
     );
   }
-  for (const smoke of optionsSmokes) {
-    const result = await runOptionsSmoke(smoke, env);
+  for (const smoke of smokePlan.optionsSmokes) {
+    const result = await runOptionsSmoke(smoke, env, fetchImpl);
     results.push(result);
     console.log(`ok ${result.type} ${result.name}`);
   }

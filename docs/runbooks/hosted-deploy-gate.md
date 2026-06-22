@@ -60,9 +60,18 @@ copied URLs.
 ```bash
 pnpm hosted:deploy-gate:plan
 pnpm hosted:deploy-gate:packet
+pnpm hosted:deploy-gate:preflight
+pnpm hosted:deploy-gate:deploy:dry-run
+pnpm hosted:deploy-gate:deploy:live
+pnpm hosted:deploy-gate:smoke
+pnpm hosted:deploy-gate:all:live
 pnpm hosted:deploy-gate:scheduler-packet
 pnpm hosted:deploy-gate:test
 ```
+
+Legacy `pnpm hosted:deploy-gate <action>` invocations remain supported for
+local compatibility, but CI and this runbook use explicit aliases so dry-run,
+live deploy, and smoke-only steps are easy to distinguish.
 
 Use `pnpm hosted:deploy-gate:packet` when an operator needs one redacted
 handoff before running the GitHub Environment workflow. It lists missing
@@ -105,7 +114,7 @@ Stripe secrets, bearer values, JWT-shaped strings, or hosted cron secret names;
 unsafe values fail validation without printing the raw value.
 
 When `hosted_deploy_dry_run` is `true`, the deploy step runs
-`pnpm hosted:deploy-gate deploy --dry-run`. It prints deploy commands, does not
+`pnpm hosted:deploy-gate:deploy:dry-run`. It prints deploy commands, does not
 deploy Supabase functions, and does not mock secrets. The dry-run still uses the
 selected GitHub Environment; missing or placeholder values still fail the gate
 checks. A dry-run does not count as Hosted-Deploy proof or

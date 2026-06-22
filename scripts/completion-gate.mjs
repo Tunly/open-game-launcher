@@ -263,14 +263,14 @@ export const completionLocalChecks = Object.freeze([
 
 export const completionExternalChecks = Object.freeze([
   {
-    args: ["hosted:deploy-gate", "preflight"],
+    args: ["hosted:deploy-gate:preflight"],
     command: "pnpm",
     forceAllEvidence: true,
     id: "hosted-deploy-preflight",
     label: "Hosted deploy gate preflight",
   },
   {
-    args: ["hosted:deploy-gate", "smoke"],
+    args: ["hosted:deploy-gate:smoke"],
     command: "pnpm",
     forceAllEvidence: true,
     id: "hosted-deploy-smoke",

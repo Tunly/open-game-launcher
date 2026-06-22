@@ -508,7 +508,7 @@ jobs:
         run: pnpm hosted:deploy-gate:test
       - name: Hosted deploy gate preflight
         if: inputs.hosted_deploy_action == 'preflight' || inputs.hosted_deploy_action == 'deploy' || inputs.hosted_deploy_action == 'all' || (inputs.hosted_environment == 'hosted-production' && inputs.hosted_deploy_action == 'smoke')
-        run: pnpm hosted:deploy-gate preflight
+        run: pnpm hosted:deploy-gate:preflight
         env:
           SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
           SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
@@ -523,9 +523,9 @@ jobs:
         if: inputs.hosted_deploy_action == 'deploy' || inputs.hosted_deploy_action == 'all'
         run: |
           if [ "$HOSTED_DEPLOY_DRY_RUN" = "true" ]; then
-            pnpm hosted:deploy-gate deploy --dry-run
+            pnpm hosted:deploy-gate:deploy:dry-run
           else
-            pnpm hosted:deploy-gate deploy
+            pnpm hosted:deploy-gate:deploy:live
           fi
         env:
           HOSTED_DEPLOY_DRY_RUN: ${{ inputs.hosted_deploy_dry_run }}
@@ -535,7 +535,7 @@ jobs:
           OGL_HOSTED_DEPLOY_FUNCTIONS: ${{ vars.OGL_HOSTED_DEPLOY_FUNCTIONS }}
       - name: Smoke hosted Supabase functions
         if: ${{ inputs.hosted_deploy_action == 'smoke' || (inputs.hosted_deploy_action == 'all' && !inputs.hosted_deploy_dry_run) }}
-        run: pnpm hosted:deploy-gate smoke
+        run: pnpm hosted:deploy-gate:smoke
         env:
           SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
@@ -543,4 +543,5 @@ jobs:
           ACCOUNT_DELETION_PROCESSOR_SECRET: ${{ secrets.ACCOUNT_DELETION_PROCESSOR_SECRET }}
           PRICE_DROP_NOTIFY_SECRET: ${{ secrets.PRICE_DROP_NOTIFY_SECRET }}
           PRESENCE_POLL_SECRET: ${{ secrets.PRESENCE_POLL_SECRET }}
+          OGL_HOSTED_DEPLOY_FUNCTIONS: ${{ vars.OGL_HOSTED_DEPLOY_FUNCTIONS }}
           OGL_HOSTED_SMOKE_ORIGIN: ${{ vars.OGL_HOSTED_SMOKE_ORIGIN }}
