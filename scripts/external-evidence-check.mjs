@@ -479,6 +479,9 @@ const requiredEvidenceDetailFields = Object.freeze([
 const releaseBoundaryReminder =
   "Release-boundary reminder: run `pnpm completion:gate:status` before final verification. The final `pnpm completion:gate:external` run is unscoped and also runs `pnpm hosted:deploy-gate:preflight`, `pnpm hosted:deploy-gate:smoke`, `pnpm hosted:cron-evidence`, and `pnpm external:evidence:preflight`.";
 
+const hostedDeployProofRunHandoff =
+  "GitHub Actions CI main hosted_deploy_gate=true hosted_environment=hosted-production hosted_deploy_action=all hosted_deploy_dry_run=false";
+
 const placeholderEvidenceDetailValues = new Set([
   "-",
   "--",
@@ -2347,6 +2350,7 @@ function recommendedCommandsForGate(gate, status) {
   if (gate.id === "rollout-tracks") {
     commands.add("pnpm hosted:deploy-gate:plan");
     commands.add("pnpm hosted:deploy-gate:packet");
+    commands.add(hostedDeployProofRunHandoff);
   }
 
   commands.add(

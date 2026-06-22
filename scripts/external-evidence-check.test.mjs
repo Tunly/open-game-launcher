@@ -952,6 +952,28 @@ test("Store Stripe gate requires license key custody and live issuance evidence"
   );
 });
 
+test("rollout status commands include hosted production CI handoff", () => {
+  const report = statusReport(
+    {
+      ...configuredEnv,
+      OGL_EXTERNAL_EVIDENCE_GATES: "rollout-tracks",
+    },
+    fakeExists(["docs/verification/external/rollout-tracks.md"]),
+    fakeRead({
+      "docs/verification/external/rollout-tracks.md": "",
+    }),
+  );
+
+  assert.deepEqual(
+    report.gates.flatMap((gate) => gate.commands).filter((command) =>
+      command.includes("hosted_deploy_gate=true"),
+    ),
+    [
+      "GitHub Actions CI main hosted_deploy_gate=true hosted_environment=hosted-production hosted_deploy_action=all hosted_deploy_dry_run=false",
+    ],
+  );
+});
+
 test("gate selection can focus one or more external lanes", () => {
   assert.deepEqual(
     selectedGates({
