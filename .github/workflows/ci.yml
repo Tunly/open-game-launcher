@@ -157,7 +157,7 @@ jobs:
     if: github.event_name == 'push' || github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.hosted_deploy_gate)
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
-      - uses: supabase/setup-cli@ab058987d8d6c725971f6cf9d0b5c98467e30bd1 # v1
+      - uses: supabase/setup-cli@3c2f5e2ae34c34e428e8e206e2c4d21fa2d20fbf # v1
         with:
           version: 2.104.0
       - name: Start Postgres
@@ -511,7 +511,7 @@ jobs:
           node-version-file: .node-version
           cache: pnpm
           cache-dependency-path: launcher/pnpm-lock.yaml
-      - uses: supabase/setup-cli@ab058987d8d6c725971f6cf9d0b5c98467e30bd1 # v1
+      - uses: supabase/setup-cli@3c2f5e2ae34c34e428e8e206e2c4d21fa2d20fbf # v1
         with:
           version: 2.104.0
       - name: Install launcher dependencies
