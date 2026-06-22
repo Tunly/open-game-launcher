@@ -38,6 +38,8 @@ const verifyConstantRegex =
   /\b(?:export\s+)?const\s+([A-Z0-9_]*VERIFY[A-Z0-9_]*)\s*=\s*["']([a-z0-9-]+)["']/g;
 const screenshotArtifactRegex =
   /`?(docs\/verification\/screenshots\/[^`\s)]+\.png|screenshots\/[^`\s)]+\.png)`?/g;
+const routerPathRegex = /\bpath\s*:\s*["']([^"']+)["']/g;
+const documentedRouteRegex = /`(\/[^`\s]*)`/g;
 const pngSignature = Buffer.from([
   0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
 ]);
@@ -161,6 +163,40 @@ export function collectSourceVerifyFlags(root = repoRoot) {
   );
 }
 
+function isIgnoredAppRoutePath(routePath) {
+  return routePath === "/" || routePath === "*";
+}
+
+export function collectAppRoutePathsFromText(text, filePath = "inline") {
+  const routePaths = new Map();
+  const lines = String(text).split(/\r?\n/);
+  for (const [index, line] of lines.entries()) {
+    routerPathRegex.lastIndex = 0;
+    for (const match of line.matchAll(routerPathRegex)) {
+      const routePath = match[1];
+      if (isIgnoredAppRoutePath(routePath)) continue;
+      if (!routePaths.has(routePath)) routePaths.set(routePath, []);
+      routePaths.get(routePath).push(`${filePath}:${index + 1}`);
+    }
+  }
+  return new Map(
+    [...routePaths.entries()].sort(([left], [right]) =>
+      left.localeCompare(right),
+    ),
+  );
+}
+
+export function collectAppRoutePaths(root = repoRoot) {
+  const routerPath = join(root, "launcher", "src", "app", "router.tsx");
+  if (!statSync(routerPath, { throwIfNoEntry: false })?.isFile()) {
+    return new Map();
+  }
+  return collectAppRoutePathsFromText(
+    readFileSync(routerPath, "utf8"),
+    relative(root, routerPath).replaceAll("\\", "/"),
+  );
+}
+
 export function documentedVerifyFlags(root = repoRoot) {
   const docsPath = join(root, "docs", "verification", "README.md");
   const docs = readFileSync(docsPath, "utf8");
@@ -187,6 +223,41 @@ function isConcreteScreenshotArtifactPath(artifactPath) {
   return !/[*?[{]/.test(artifactPath);
 }
 
+function normalizeDocumentedRoutePath(routePath) {
+  const pathOnly = routePath.split(/[?#]/, 1)[0];
+  if (
+    pathOnly.length === 0 ||
+    pathOnly === "/" ||
+    pathOnly === "*" ||
+    pathOnly.includes(":") ||
+    pathOnly.includes("*")
+  ) {
+    return null;
+  }
+  return pathOnly.length > 1 ? pathOnly.replace(/\/+$/, "") : pathOnly;
+}
+
+function routePathToRegex(routePath) {
+  const escapedSegments = routePath
+    .split("/")
+    .filter(Boolean)
+    .map((segment) =>
+      segment.startsWith(":")
+        ? "[^/]+"
+        : segment.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+    );
+  return new RegExp(`^/${escapedSegments.join("/")}$`);
+}
+
+function documentedRouteMatchesAppRoute(documentedRoutePath, appRoutePath) {
+  const normalizedRoutePath =
+    appRoutePath.length > 1 ? appRoutePath.replace(/\/+$/, "") : appRoutePath;
+  if (normalizedRoutePath.includes(":")) {
+    return routePathToRegex(normalizedRoutePath).test(documentedRoutePath);
+  }
+  return documentedRoutePath === normalizedRoutePath;
+}
+
 export function documentedScreenshotArtifacts(root = repoRoot) {
   const docsPath = join(root, "docs", "verification", "README.md");
   const docs = readFileSync(docsPath, "utf8").split(/\r?\n/);
@@ -203,6 +274,49 @@ export function documentedScreenshotArtifacts(root = repoRoot) {
       artifacts
         .get(normalizedPath)
         .push(`docs/verification/README.md:${index + 1}`);
+    }
+  }
+
+  return artifacts;
+}
+
+export function documentedAppRouteScreenshotArtifacts(
+  root = repoRoot,
+  appRoutePaths = collectAppRoutePaths(root),
+) {
+  const docsPath = join(root, "docs", "verification", "README.md");
+  const docs = readFileSync(docsPath, "utf8").split(/\r?\n/);
+  const artifacts = new Map();
+
+  for (const [index, line] of docs.entries()) {
+    const screenshotPaths = [...line.matchAll(screenshotArtifactRegex)]
+      .map((match) => match[1])
+      .filter(isConcreteScreenshotArtifactPath);
+    if (screenshotPaths.length === 0) continue;
+
+    const documentedRoutes = [...line.matchAll(documentedRouteRegex)]
+      .map((match) => normalizeDocumentedRoutePath(match[1]))
+      .filter((routePath) => routePath !== null);
+    if (documentedRoutes.length === 0) continue;
+
+    for (const [appRoutePath] of appRoutePaths.entries()) {
+      const matchingRoute = documentedRoutes.find((documentedRoutePath) =>
+        documentedRouteMatchesAppRoute(documentedRoutePath, appRoutePath),
+      );
+      if (!matchingRoute) continue;
+
+      if (!artifacts.has(appRoutePath)) artifacts.set(appRoutePath, []);
+      for (const artifactPath of screenshotPaths) {
+        const resolvedPath = resolveScreenshotArtifact(root, artifactPath);
+        artifacts.get(appRoutePath).push({
+          artifactPath,
+          documentedRoutePath: matchingRoute,
+          exists:
+            statSync(resolvedPath, { throwIfNoEntry: false })?.isFile() ??
+            false,
+          location: `docs/verification/README.md:${index + 1}`,
+        });
+      }
     }
   }
 
@@ -413,11 +527,19 @@ export function verifyRouteInventory(root = repoRoot) {
 
   if (!statSync(sourceRoot, { throwIfNoEntry: false })?.isDirectory()) {
     errors.push(`Source directory missing: ${relative(root, sourceRoot)}`);
-    return { documentedFlags: new Set(), errors, sourceFlags: new Map() };
+    return {
+      appRouteArtifacts: new Map(),
+      appRoutePaths: new Map(),
+      documentedFlags: new Set(),
+      errors,
+      sourceFlags: new Map(),
+    };
   }
   if (!statSync(docsPath, { throwIfNoEntry: false })?.isFile()) {
     errors.push(`Verification README missing: ${relative(root, docsPath)}`);
     return {
+      appRouteArtifacts: new Map(),
+      appRoutePaths: collectAppRoutePaths(root),
       documentedFlags: new Set(),
       errors,
       sourceFlags: collectSourceVerifyFlags(root),
@@ -425,11 +547,16 @@ export function verifyRouteInventory(root = repoRoot) {
   }
 
   const sourceFlags = collectSourceVerifyFlags(root);
+  const appRoutePaths = collectAppRoutePaths(root);
   const documentedFlags = documentedVerifyFlags(root);
   const documentedScreenshots = documentedScreenshotArtifacts(root);
   const existingScreenshots = existingScreenshotArtifacts(root);
   const screenshotIntegrity = screenshotArtifactIntegrity(root);
   const screenshotArtifacts = documentedVerifyScreenshotArtifacts(root);
+  const appRouteArtifacts = documentedAppRouteScreenshotArtifacts(
+    root,
+    appRoutePaths,
+  );
 
   for (const [artifactPath, locations] of documentedScreenshots.entries()) {
     if (!existingScreenshots.has(artifactPath)) {
@@ -486,6 +613,30 @@ export function verifyRouteInventory(root = repoRoot) {
     }
   }
 
+  for (const [routePath, locations] of appRoutePaths.entries()) {
+    if (!routePath.startsWith("/")) {
+      errors.push(
+        `App route path '${routePath}' must be absolute for static screenshot inventory, or the inventory parser must be extended to resolve relative child routes. First seen at ${locations[0]}.`,
+      );
+      continue;
+    }
+
+    const artifacts = appRouteArtifacts.get(routePath) ?? [];
+    if (artifacts.length === 0) {
+      errors.push(
+        `App route '${routePath}' is missing from docs/verification/README.md as a concrete screenshot artifact line documenting that route family. First seen at ${locations[0]}.`,
+      );
+      continue;
+    }
+    for (const artifact of artifacts) {
+      if (!artifact.exists) {
+        errors.push(
+          `App route '${routePath}' references missing screenshot artifact '${artifact.artifactPath}' at ${artifact.location}.`,
+        );
+      }
+    }
+  }
+
   const activeDocumentedFlags = new Set();
   for (const flag of sourceFlags.keys()) {
     const legacy = legacyVerifyFlags[flag];
@@ -504,6 +655,8 @@ export function verifyRouteInventory(root = repoRoot) {
   }
 
   return {
+    appRouteArtifacts,
+    appRoutePaths,
     documentedFlags,
     documentedScreenshots,
     errors,
@@ -515,6 +668,8 @@ export function verifyRouteInventory(root = repoRoot) {
 }
 
 export function inventorySummary({
+  appRouteArtifacts = new Map(),
+  appRoutePaths = new Map(),
   documentedScreenshots,
   existingScreenshots,
   screenshotArtifacts,
@@ -528,6 +683,12 @@ export function inventorySummary({
     `Discovered ${sourceFlags.size} verify route flags in launcher/src.`,
     `Verified screenshot artifact coverage for ${screenshotArtifacts.size} documented verify route flags.`,
   ];
+  if (appRoutePaths.size > 0) {
+    lines.push(
+      `Discovered ${appRoutePaths.size} normal app route paths in launcher/src/app/router.tsx.`,
+      `Verified screenshot artifact coverage for ${appRouteArtifacts.size} normal app route paths.`,
+    );
+  }
   if (legacyAliasCount > 0) {
     lines.push(
       `Recognized ${legacyAliasCount} legacy verify route aliases; aliases reuse canonical screenshot coverage.`,
@@ -545,11 +706,15 @@ export function main() {
     documentedScreenshots,
     errors,
     existingScreenshots,
+    appRouteArtifacts,
+    appRoutePaths,
     screenshotIntegrity,
     screenshotArtifacts,
     sourceFlags,
   } = verifyRouteInventory();
   for (const line of inventorySummary({
+    appRouteArtifacts,
+    appRoutePaths,
     documentedScreenshots,
     existingScreenshots,
     screenshotArtifacts,

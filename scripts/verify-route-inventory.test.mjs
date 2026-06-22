@@ -5,6 +5,7 @@ import { dirname, join } from "node:path";
 import test from "node:test";
 
 import {
+  collectAppRoutePathsFromText,
   collectSourceVerifyFlags,
   collectVerifyFlagsFromText,
   documentedScreenshotArtifacts,
@@ -43,6 +44,7 @@ const validPngFixture = pngFixture();
 
 function tempRepo() {
   const root = mkdtempSync(join(tmpdir(), "ogl-verify-route-inventory-"));
+  mkdirSync(join(root, "launcher", "src", "app"), { recursive: true });
   mkdirSync(join(root, "launcher", "src", "pages"), { recursive: true });
   mkdirSync(join(root, "docs", "verification"), { recursive: true });
   return {
@@ -62,6 +64,21 @@ function writeFixture(root, source, docs, screenshotPaths = []) {
     mkdirSync(dirname(absolutePath), { recursive: true });
     writeFileSync(absolutePath, validPngFixture);
   }
+}
+
+function writeRouter(root, routePaths = []) {
+  const routes = [
+    '{ path: "/", element: <Navigate to="/library" replace /> }',
+    ...routePaths.map(
+      (routePath) =>
+        `{ path: "${routePath}", element: page(<ExamplePage />) }`,
+    ),
+    '{ path: "*", element: page(<NotFoundPage />) }',
+  ];
+  writeFileSync(
+    join(root, "launcher", "src", "app", "router.tsx"),
+    `export const router = createBrowserRouter([${routes.join(",")}]);`,
+  );
 }
 
 function writeScreenshot(root, screenshotPath, bytes) {
@@ -87,6 +104,30 @@ test("collectVerifyFlagsFromText extracts route and branch literals", () => {
   ]);
 });
 
+test("collectAppRoutePathsFromText extracts router paths", () => {
+  const routePaths = collectAppRoutePathsFromText(
+    `
+      export const router = createBrowserRouter([
+        { path: "/", element: <Navigate to="/library" replace /> },
+        { path: "relative-child", element: page(<RelativePage />) },
+        { path: "/home", element: page(<HomePage />) },
+        { path: "/downloads/remote", element: page(<RemotePage />) },
+        { path: "/u/:username", element: page(<ProfilePage />) },
+        { path: "*", element: page(<NotFoundPage />) },
+      ]);
+    `,
+    "launcher/src/app/router.tsx",
+  );
+
+  assert.deepEqual([...routePaths.keys()], [
+    "/downloads/remote",
+    "/home",
+    "/u/:username",
+    "relative-child",
+  ]);
+  assert.deepEqual(routePaths.get("/home"), ["launcher/src/app/router.tsx:5"]);
+});
+
 test("verifyRouteInventory accepts documented verify routes", () => {
   const { root, cleanup } = tempRepo();
   try {
@@ -98,6 +139,91 @@ test("verifyRouteInventory accepts documented verify routes", () => {
     );
 
     assert.deepEqual(verifyRouteInventory(root).errors, []);
+  } finally {
+    cleanup();
+  }
+});
+
+test("verifyRouteInventory rejects normal app routes without screenshot evidence", () => {
+  const { root, cleanup } = tempRepo();
+  try {
+    writeRouter(root, ["/home", "/library"]);
+    writeFixture(
+      root,
+      "",
+      "- `screenshots/home-local.png` - `/home` documented.",
+      ["screenshots/home-local.png"],
+    );
+
+    assert.match(
+      verifyRouteInventory(root).errors.join("\n"),
+      /App route '\/library'.*missing.*concrete screenshot artifact line/,
+    );
+  } finally {
+    cleanup();
+  }
+});
+
+test("verifyRouteInventory accepts concrete dynamic route examples", () => {
+  const { root, cleanup } = tempRepo();
+  try {
+    writeRouter(root, ["/invite/:token", "/u/:username"]);
+    writeFixture(
+      root,
+      "",
+      [
+        "- `screenshots/invite-local.png` - `/invite/local-token` documented.",
+        "- `screenshots/profile-local.png` - `/u/manga-rider` documented.",
+      ].join("\n"),
+      ["screenshots/invite-local.png", "screenshots/profile-local.png"],
+    );
+
+    const result = verifyRouteInventory(root);
+
+    assert.deepEqual(result.errors, []);
+    assert.deepEqual([...result.appRouteArtifacts.keys()], [
+      "/invite/:token",
+      "/u/:username",
+    ]);
+    assert.equal(
+      result.appRouteArtifacts.get("/invite/:token")[0].documentedRoutePath,
+      "/invite/local-token",
+    );
+  } finally {
+    cleanup();
+  }
+});
+
+test("verifyRouteInventory rejects relative app routes until parser support exists", () => {
+  const { root, cleanup } = tempRepo();
+  try {
+    writeRouter(root, ["library"]);
+    writeFixture(root, "", "");
+
+    assert.match(
+      verifyRouteInventory(root).errors.join("\n"),
+      /App route path 'library' must be absolute/,
+    );
+  } finally {
+    cleanup();
+  }
+});
+
+test("verifyRouteInventory rejects dynamic placeholder route documentation", () => {
+  const { root, cleanup } = tempRepo();
+  try {
+    writeRouter(root, ["/invite/:token"]);
+    writeFixture(
+      root,
+      "",
+      "- `screenshots/invite-placeholder.png` - `/invite/:token` documented.",
+      ["screenshots/invite-placeholder.png"],
+    );
+
+    assert.match(
+      verifyRouteInventory(root).errors.join("\n"),
+      /App route '\/invite\/:token'.*missing.*concrete screenshot artifact line/,
+    );
   } finally {
     cleanup();
   }
@@ -331,6 +457,8 @@ test("current verify route inventory is documented with explicit legacy aliases"
   const result = verifyRouteInventory();
 
   assert.equal(result.sourceFlags.size, 71);
+  assert.equal(result.appRoutePaths.size, 24);
+  assert.equal(result.appRouteArtifacts.size, 24);
   assert.deepEqual(result.errors, []);
   assert.equal(
     result.documentedScreenshots.size,
@@ -359,6 +487,15 @@ test("current verify route inventory is documented with explicit legacy aliases"
     true,
   );
   assert.equal(result.documentedFlags.has("remote-hydration"), false);
+  assert.deepEqual(
+    inventorySummary(result).filter((line) =>
+      line.includes("normal app route paths"),
+    ),
+    [
+      "Discovered 24 normal app route paths in launcher/src/app/router.tsx.",
+      "Verified screenshot artifact coverage for 24 normal app route paths.",
+    ],
+  );
 });
 
 test("inventorySummary explains legacy alias route counts", () => {
