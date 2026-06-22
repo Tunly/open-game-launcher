@@ -752,7 +752,12 @@ describe("routed page smoke coverage", () => {
       await Promise.resolve();
     });
 
-    expect(screen.getByRole("heading", { name: /neo-strike/i })).toBeInTheDocument();
+    expect(screen.getAllByRole("heading", { name: /wasteland drifter/i }).length).toBeGreaterThan(
+      0,
+    );
+    expect(screen.getByRole("region", { name: /store catalog source/i })).toHaveTextContent(
+      /hosted empty/i,
+    );
     expect(
       screen.getByRole("region", { name: /price-drop scheduler readiness/i }),
     ).toBeInTheDocument();

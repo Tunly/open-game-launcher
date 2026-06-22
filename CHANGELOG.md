@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ## [Unreleased]
 
+No unreleased changes yet.
+
+## [0.1.0] - 2026-06-22
+
 ### Fixed
 
 - Checkout now persists Stripe customer IDs in `store_customers` instead of non-existent `profiles.metadata`, and `stripe-webhook` is configured to accept external Stripe delivery without Supabase JWT verification.

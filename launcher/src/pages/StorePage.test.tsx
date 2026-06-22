@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 
 import { STORAGE_KEYS } from "../lib/storage-keys";
+import type { StoreProduct } from "../lib/types/store";
 import { StorePage } from "./StorePage";
 
 const storeMocks = vi.hoisted(() => ({
@@ -86,6 +87,37 @@ function renderStoreRoute(initialEntry = "/store") {
       </Routes>
     </MemoryRouter>,
   );
+}
+
+function makeStoreProduct(overrides: Partial<StoreProduct> = {}): StoreProduct {
+  return {
+    coverImageUrl: null,
+    createdAt: "2026-06-20T10:00:00.000Z",
+    description: "Hosted catalog entry wired to the store hero.",
+    developerId: "developer-1",
+    discountPercent: 0,
+    downloadsCount: 0,
+    genres: ["Action"],
+    id: "11111111-1111-4111-8111-111111111111",
+    metadata: {},
+    minSystemRequirements: {},
+    platforms: ["windows"],
+    priceCents: 1234,
+    publisher: "Signal Works",
+    rating: null,
+    ratingsCount: 0,
+    recSystemRequirements: {},
+    releaseDate: "2026-06-20",
+    screenshots: [],
+    shortDescription: "Hosted hero product.",
+    slug: "hosted-hero-product",
+    status: "published",
+    tags: ["Featured"],
+    title: "Hosted Hero Product",
+    trailerUrl: "https://media.example.com/hosted-hero-trailer",
+    updatedAt: "2026-06-20T10:00:00.000Z",
+    ...overrides,
+  };
 }
 
 describe("StorePage price-drop scheduler readiness", () => {
@@ -228,8 +260,9 @@ describe("StorePage price-drop scheduler readiness", () => {
     renderStoreRoute();
 
     const buyNow = await screen.findByRole("button", {
-      name: /buy now - 49\.99 eur/i,
+      name: /buy now -/i,
     });
+    expect(buyNow).toHaveTextContent("19.99");
     fireEvent.click(buyNow);
 
     await waitFor(() => {
@@ -240,11 +273,60 @@ describe("StorePage price-drop scheduler readiness", () => {
             checkout_attempt_id: expect.stringMatching(
               /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
             ),
-            product_ids: expect.any(Array),
+            product_ids: ["deep-signal"],
           }),
         }),
       );
     });
+  });
+
+  it("labels empty hosted catalogs as local preview and disables missing trailers", async () => {
+    renderStoreRoute();
+
+    const sourcePanel = await screen.findByRole("region", {
+      name: /store catalog source/i,
+    });
+
+    await waitFor(() => {
+      expect(within(sourcePanel).getByText("Hosted Empty")).toBeInTheDocument();
+    });
+    expect(within(sourcePanel).getByText(/local preview fixtures only/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /trailer unavailable/i })).toBeDisabled();
+    expect(screen.queryByText(/live sample/i)).not.toBeInTheDocument();
+  });
+
+  it("drives the hero title, price, checkout product, and trailer from the hosted product", async () => {
+    const hostedProduct = makeStoreProduct();
+    const openSpy = vi.spyOn(window, "open").mockReturnValue(null);
+    storeMocks.listPublishedProducts.mockResolvedValue([hostedProduct]);
+
+    renderStoreRoute();
+
+    expect(await screen.findAllByRole("heading", { name: "Hosted Hero Product" })).toHaveLength(2);
+
+    const sourcePanel = screen.getByRole("region", {
+      name: /store catalog source/i,
+    });
+    expect(within(sourcePanel).getByText("Hosted Catalog")).toBeInTheDocument();
+
+    const buyNow = screen.getByRole("button", { name: /buy now -/i });
+    expect(buyNow).toHaveTextContent("12.34");
+    fireEvent.click(buyNow);
+
+    await waitFor(() => {
+      expect(storeMocks.invokeFunction).toHaveBeenCalledWith(
+        "stripe-create-checkout",
+        expect.objectContaining({
+          body: expect.objectContaining({
+            product_ids: [hostedProduct.id],
+          }),
+        }),
+      );
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: /watch trailer/i }));
+    expect(openSpy).toHaveBeenCalledWith(hostedProduct.trailerUrl, "_blank", "noopener,noreferrer");
+    openSpy.mockRestore();
   });
 
   it("shows the Stripe live-staging contract on the verify route without live secret claims", async () => {

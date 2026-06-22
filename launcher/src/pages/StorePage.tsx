@@ -90,6 +90,7 @@ import type {
 } from "../lib/types/store";
 
 type StoreTab = "browse" | "wishlist" | "cart" | "orders";
+type StoreCatalogSource = "hosted" | "local-preview" | "empty" | "error";
 type CheckoutResponse = {
   id: string | null;
   url: string | null;
@@ -350,6 +351,46 @@ function formatCurrency(value: number) {
   }).format(value);
 }
 
+function formatStorePrice(game: StoreGame) {
+  return game.isFree || game.price <= 0 ? "Free" : formatCurrency(game.price);
+}
+
+function catalogSourceLabel(source: StoreCatalogSource) {
+  switch (source) {
+    case "hosted":
+      return "Hosted Catalog";
+    case "empty":
+      return "Hosted Empty";
+    case "error":
+      return "Hosted Error";
+    case "local-preview":
+      return "Local Preview";
+  }
+}
+
+function catalogSourceDetail(source: StoreCatalogSource) {
+  switch (source) {
+    case "hosted":
+      return "Published Supabase products loaded. Buttons use the selected product ID and hosted price.";
+    case "empty":
+      return "Hosted catalog returned no published products. Showing local preview fixtures only.";
+    case "error":
+      return "Hosted catalog could not be loaded. Showing local preview fixtures only.";
+    case "local-preview":
+      return "Local preview fixtures are visible until hosted catalog data is available.";
+  }
+}
+
+function heroAccentLabel(game: StoreGame) {
+  if (game.discountPercent) return `${game.discountPercent}% Off`;
+  if (game.isFree || game.price <= 0) return "Free";
+  return "Featured";
+}
+
+function heroGenreLabel(game: StoreGame) {
+  return game.genres?.[0] ?? game.tagLine.split("/")[0]?.trim() ?? "Store";
+}
+
 function formatDateTime(value: string | null) {
   if (!value) return "Pending";
   const date = new Date(value);
@@ -436,6 +477,7 @@ export function StorePage() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [products, setProducts] = useState<StoreGame[]>(storeGames);
   const [storeProducts, setStoreProducts] = useState<StoreProduct[]>([]);
+  const [catalogSource, setCatalogSource] = useState<StoreCatalogSource>("local-preview");
   const [ordersLoading, setOrdersLoading] = useState(true);
   const [selectedProductId, setSelectedProductId] = useState(storeGames[0]?.id ?? null);
   const [isStoreSignedIn, setIsStoreSignedIn] = useState(false);
@@ -512,10 +554,12 @@ export function StorePage() {
         if (publishedProducts.length === 0) {
           setStoreProducts([]);
           setProducts(storeGames);
+          setCatalogSource("empty");
         } else {
           const mapped = publishedProducts.map(mapProductToStoreGame);
           setStoreProducts(publishedProducts);
           setProducts(mapped);
+          setCatalogSource("hosted");
           if (!cancelled && selectedProductId === null && mapped.length > 0) {
             setSelectedProductId(mapped[0].id);
           }
@@ -524,6 +568,7 @@ export function StorePage() {
         if (!cancelled) {
           setStoreProducts([]);
           setProducts(storeGames);
+          setCatalogSource("error");
         }
       }
     }
@@ -737,6 +782,8 @@ export function StorePage() {
     selectedProduct === null
       ? null
       : (storeProducts.find((product) => product.id === selectedProduct.id) ?? null);
+  const selectedProductOwned = selectedProduct ? ownedIds.has(selectedProduct.id) : false;
+  const heroTrailerUrl = firstText(selectedStoreProduct?.trailerUrl) ?? null;
   const canManageSelectedProductReplies =
     Boolean(storeUserId && selectedStoreProduct?.developerId === storeUserId) &&
     Boolean(selectedProduct && isUuid(selectedProduct.id));
@@ -1491,6 +1538,11 @@ export function StorePage() {
     }
   }
 
+  function handleOpenHeroTrailer() {
+    if (!heroTrailerUrl) return;
+    window.open(heroTrailerUrl, "_blank", "noopener,noreferrer");
+  }
+
   return (
     <div className="min-h-[600px]">
       <section className="space-y-7">
@@ -1499,44 +1551,56 @@ export function StorePage() {
           <div className="neo-dots-ink relative m-4 flex min-h-[330px] items-center border-l-4 border-[#c20b2f] p-5 sm:m-6 sm:min-h-[280px] sm:p-9">
             <div className="max-w-[590px]">
               <div className="neo-copy flex flex-wrap gap-2 text-[11px] font-bold uppercase">
-                <span className="border-2 border-[#c20b2f] px-3 py-1 text-[#c20b2f]">
-                  New Release
+                <span className="border-2 border-[#c20b2f] bg-[#fff9ed] px-3 py-1 text-[#c20b2f]">
+                  {selectedProduct ? heroAccentLabel(selectedProduct) : "Store"}
                 </span>
-                <span className="border-2 border-[#087d6d] px-3 py-1 text-[#087d6d]">Action</span>
+                <span className="border-2 border-[#087d6d] bg-[#fff9ed] px-3 py-1 text-[#087d6d]">
+                  {selectedProduct ? heroGenreLabel(selectedProduct) : "Catalog"}
+                </span>
+                <span className="border-2 border-black bg-[#fff9ed] px-3 py-1 text-[#171411]">
+                  {catalogSourceLabel(catalogSource)}
+                </span>
               </div>
               <h1 className="neo-title mt-4 text-[3.25rem] leading-none text-[#fffaf0] sm:text-[4rem] lg:text-[4.5rem]">
-                Neo-Strike
+                {selectedProduct?.title ?? "Store Desk"}
               </h1>
               <p className="mt-4 max-w-[560px] text-base leading-7 text-[#fffaf0] sm:text-lg">
-                The ultimate cyber brawler. Fight through the neon canyons of Neo-Berlin. Survive
-                the night. Break the system.
+                {selectedProduct
+                  ? selectedProduct.description
+                  : "Store catalog is still loading. Local preview fixtures stay labelled until hosted products arrive."}
               </p>
               <div className="mt-8 grid gap-3 sm:flex sm:flex-wrap sm:items-center sm:gap-5">
                 <button
                   className="neo-copy flex h-12 items-center justify-center gap-3 border-2 border-black bg-[#c20b2f] px-5 text-xs font-bold uppercase text-[#fffaf0] shadow-[4px_4px_0_#171411] disabled:opacity-50 sm:px-7"
                   type="button"
-                  disabled={isProcessing}
+                  disabled={!selectedProduct || selectedProductOwned || isProcessing}
                   onClick={() => {
-                    const heroGame = products[0];
-                    if (heroGame) buyNow(heroGame.id);
+                    if (selectedProduct) buyNow(selectedProduct.id);
                   }}
                 >
                   <Play className="h-4 w-4 fill-current" />
-                  Buy Now - 49.99 EUR
+                  {selectedProductOwned
+                    ? "Owned"
+                    : selectedProduct
+                      ? `${selectedProduct.isFree ? "Claim" : "Buy Now"} - ${formatStorePrice(
+                          selectedProduct,
+                        )}`
+                      : "Store Loading"}
                 </button>
                 <button
-                  className="neo-copy h-12 border-2 border-[#fffaf0] bg-black/35 px-5 text-xs font-bold uppercase text-[#fffaf0]"
+                  className="neo-copy h-12 border-2 border-[#fffaf0] bg-black/35 px-5 text-xs font-bold uppercase text-[#fffaf0] disabled:cursor-not-allowed disabled:opacity-60"
+                  disabled={!heroTrailerUrl}
                   type="button"
-                  onClick={() =>
-                    setStatusMessage("Trailer playback is queued for the media feature slice.")
-                  }
+                  onClick={handleOpenHeroTrailer}
                 >
-                  Watch Trailer
+                  {heroTrailerUrl ? "Watch Trailer" : "Trailer Unavailable"}
                 </button>
               </div>
             </div>
           </div>
         </div>
+
+        <CatalogSourceTape productCount={products.length} source={catalogSource} />
 
         {statusMessage ? (
           <div className="neo-copy border-[3px] border-black bg-[#8cf5e4] p-3 text-[11px] font-black uppercase tracking-[0.12em] text-[#171411] shadow-[4px_4px_0_#171411]">
@@ -1852,6 +1916,45 @@ function PriceDropSchedulerReadinessPanel({
           ? "Hosted scheduler evidence is present. Keep PRICE_DROP_NOTIFY_SECRET in the protected hosted environment and continue monitoring sanitized run rows."
           : "Do not enter or expose PRICE_DROP_NOTIFY_SECRET in the launcher. A real hosted Supabase Scheduled Function or trusted external cron run is still required before go-live."}
       </p>
+    </section>
+  );
+}
+
+function CatalogSourceTape({
+  productCount,
+  source,
+}: {
+  productCount: number;
+  source: StoreCatalogSource;
+}) {
+  const isHosted = source === "hosted";
+
+  return (
+    <section
+      aria-label="Store catalog source"
+      className="grid gap-3 border-[3px] border-black bg-[#fff9ed] p-3 shadow-[3px_3px_0_#171411] md:grid-cols-[220px_1fr_150px]"
+    >
+      <div>
+        <p className="neo-copy text-[9px] font-black uppercase tracking-[0.16em] text-[#b7102a]">
+          Catalog Source
+        </p>
+        <h2 className="neo-title mt-1 text-2xl leading-none text-[#171411]">
+          {catalogSourceLabel(source)}
+        </h2>
+      </div>
+      <p className="neo-copy border-2 border-black bg-[#f6edd8] p-2 text-[10px] font-black uppercase leading-5 tracking-[0.08em] text-[#171411]">
+        {catalogSourceDetail(source)}
+      </p>
+      <div className="grid grid-cols-2 gap-2 md:grid-cols-1">
+        <SupportStamp label="Products" value={String(productCount)} />
+        <span
+          className={`neo-copy inline-flex items-center justify-center border-2 border-black px-2 py-1 text-[10px] font-black uppercase tracking-[0.1em] shadow-[2px_2px_0_#171411] ${
+            isHosted ? "bg-[#8cf5e4] text-[#171411]" : "bg-[#f6edd8] text-[#171411]"
+          }`}
+        >
+          {isHosted ? "Hosted" : "Preview"}
+        </span>
+      </div>
     </section>
   );
 }
@@ -2193,7 +2296,7 @@ function PriceTapePanel({
   const currentDiscount = game.discountPercent ?? 0;
   const lowestBadgeLabel = lowPoint
     ? `${formatCurrency(lowPoint.effectivePrice)} // ${lowPoint.label} // ${lowPoint.platform}`
-    : `${formatCurrency(game.price)} // live sample`;
+    : `${formatCurrency(game.price)} // current catalog price`;
 
   return (
     <section className="my-4 border-[3px] border-black bg-[#f6edd8] p-3 shadow-[3px_3px_0_#171411]">
@@ -2218,7 +2321,7 @@ function PriceTapePanel({
         </p>
         <p className="neo-title mt-1 text-3xl leading-none">{formatCurrency(lowPrice)}</p>
         <p className="neo-copy mt-1 truncate text-[10px] font-black uppercase tracking-[0.08em]">
-          {lowPoint ? `${lowPoint.label} / ${lowPoint.platform}` : "Current live sample"}
+          {lowPoint ? `${lowPoint.label} / ${lowPoint.platform}` : "Current catalog price"}
         </p>
       </div>
 
@@ -2300,7 +2403,8 @@ function PriceTapePanel({
             <PriceTapeCell accent="paper" label="Deal" value={`${currentDiscount}%`} />
           </div>
           <p className="neo-copy mt-3 border-2 border-dashed border-black bg-[#fff9ed] p-3 text-[10px] font-black uppercase leading-5 text-[#655f58]">
-            No saved price_history rows yet. Showing the current store price as a live sample.
+            No saved price_history rows yet. Showing the current catalog price without external
+            price-history proof.
           </p>
         </>
       )}

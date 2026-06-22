@@ -447,6 +447,18 @@ jobs:
         with:
           path: release-artifacts
           merge-multiple: true
+      - name: Generate release artifact checksums
+        shell: bash
+        run: |
+          set -euo pipefail
+          tmpfile="$(mktemp)"
+          find release-artifacts -type f ! -name SHA256SUMS.txt -print0 \
+            | sort -z \
+            | while IFS= read -r -d '' file; do
+                sha256sum "$file"
+              done > "$tmpfile"
+          test -s "$tmpfile"
+          mv "$tmpfile" release-artifacts/SHA256SUMS.txt
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2

@@ -216,6 +216,44 @@ test("release workflow contract requires draft releases after upload", () => {
   ]);
 });
 
+test("release workflow contract requires draft release checksums", () => {
+  const broken = ciWorkflow.replace(
+    /      - name: Generate release artifact checksums\n(?:        .+\n|        run: \|\n(?:          .+\n)+)/,
+    "",
+  );
+
+  assert.deepEqual(errorsFor(broken), [
+    "create-draft-release must generate release artifact checksums",
+  ]);
+});
+
+test("release workflow contract requires checksum manifest before release upload", () => {
+  const checksumStart = ciWorkflow.indexOf(
+    "      - name: Generate release artifact checksums\n",
+  );
+  const releaseStart = ciWorkflow.indexOf(
+    "      - name: Create GitHub Release\n",
+  );
+  assert.ok(checksumStart >= 0);
+  assert.ok(releaseStart > checksumStart);
+
+  const checksumStep = ciWorkflow.slice(checksumStart, releaseStart);
+  const withoutChecksum =
+    ciWorkflow.slice(0, checksumStart) + ciWorkflow.slice(releaseStart);
+  const hostedDeployComment = withoutChecksum.indexOf(
+    "\n  # ---------- Supabase: manual hosted deploy gate ----------",
+  );
+  assert.ok(hostedDeployComment > 0);
+  const broken =
+    withoutChecksum.slice(0, hostedDeployComment) +
+    checksumStep +
+    withoutChecksum.slice(hostedDeployComment);
+
+  assert.deepEqual(errorsFor(broken), [
+    "create-draft-release must checksum artifacts before release upload",
+  ]);
+});
+
 test("release workflow contract requires CI to run its test file", () => {
   const broken = ciWorkflow.replace(
     "      - name: Validate release workflow contract\n        run: node --test scripts/release-workflow-check.test.mjs\n",

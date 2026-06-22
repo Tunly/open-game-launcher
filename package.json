@@ -15,6 +15,8 @@
     "completion:tracked": "node scripts/release-tracking-check.mjs",
     "completion:tracked:test": "node --test scripts/release-tracking-check.test.mjs",
     "launcher:prepare-hook:test": "node --test scripts/launcher-prepare-hook.test.mjs",
+    "release:candidate": "node scripts/release-candidate-check.mjs",
+    "release:candidate:test": "node --test scripts/release-candidate-check.test.mjs",
     "release:tag:test": "node --test scripts/release-tag-check.test.mjs",
     "release:workflow": "node scripts/release-workflow-check.mjs",
     "release:workflow:test": "node --test scripts/release-workflow-check.test.mjs",

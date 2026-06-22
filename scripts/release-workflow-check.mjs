@@ -470,6 +470,15 @@ export function releaseWorkflowReport({ content, root = repoRoot } = {}) {
   if (!draftRelease) {
     errors.push("workflow must define create-draft-release job");
   } else {
+    const checksumStep = workflowStepWithName(
+      draftRelease,
+      "Generate release artifact checksums",
+    );
+    const createReleaseStep = workflowStepWithUse(
+      draftRelease,
+      "softprops/action-gh-release@",
+    );
+
     pushMissing(
       errors,
       draftRelease,
@@ -482,12 +491,45 @@ export function releaseWorkflowReport({ content, root = repoRoot } = {}) {
       "needs: [build-upload]",
       "create-draft-release must wait for build-upload",
     );
-    pushMissing(
-      errors,
-      draftRelease,
-      "softprops/action-gh-release",
-      "create-draft-release must use GitHub release action",
-    );
+    if (!checksumStep) {
+      errors.push(
+        "create-draft-release must generate release artifact checksums",
+      );
+    } else {
+      pushMissing(
+        errors,
+        checksumStep,
+        "find release-artifacts -type f ! -name SHA256SUMS.txt -print0",
+        "create-draft-release checksum step must hash downloaded artifacts",
+      );
+      pushMissing(
+        errors,
+        checksumStep,
+        "sort -z",
+        "create-draft-release checksum step must sort artifacts deterministically",
+      );
+      pushMissing(
+        errors,
+        checksumStep,
+        "sha256sum",
+        "create-draft-release checksum step must use sha256sum",
+      );
+      pushMissing(
+        errors,
+        checksumStep,
+        "test -s",
+        "create-draft-release checksum step must fail empty checksum manifests",
+      );
+      pushMissing(
+        errors,
+        checksumStep,
+        "release-artifacts/SHA256SUMS.txt",
+        "create-draft-release checksum step must publish SHA256SUMS.txt",
+      );
+    }
+    if (!createReleaseStep) {
+      errors.push("create-draft-release must use GitHub release action");
+    }
     pushMissing(
       errors,
       draftRelease,
@@ -500,6 +542,16 @@ export function releaseWorkflowReport({ content, root = repoRoot } = {}) {
       "draft: true",
       "create-draft-release must create a draft release",
     );
+    if (
+      checksumStep &&
+      createReleaseStep &&
+      draftRelease.indexOf(checksumStep) >
+        draftRelease.indexOf(createReleaseStep)
+    ) {
+      errors.push(
+        "create-draft-release must checksum artifacts before release upload",
+      );
+    }
   }
 
   return {

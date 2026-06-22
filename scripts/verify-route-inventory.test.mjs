@@ -70,8 +70,7 @@ function writeRouter(root, routePaths = []) {
   const routes = [
     '{ path: "/", element: <Navigate to="/library" replace /> }',
     ...routePaths.map(
-      (routePath) =>
-        `{ path: "${routePath}", element: page(<ExamplePage />) }`,
+      (routePath) => `{ path: "${routePath}", element: page(<ExamplePage />) }`,
     ),
     '{ path: "*", element: page(<NotFoundPage />) }',
   ];
@@ -119,12 +118,10 @@ test("collectAppRoutePathsFromText extracts router paths", () => {
     "launcher/src/app/router.tsx",
   );
 
-  assert.deepEqual([...routePaths.keys()], [
-    "/downloads/remote",
-    "/home",
-    "/u/:username",
-    "relative-child",
-  ]);
+  assert.deepEqual(
+    [...routePaths.keys()],
+    ["/downloads/remote", "/home", "/u/:username", "relative-child"],
+  );
   assert.deepEqual(routePaths.get("/home"), ["launcher/src/app/router.tsx:5"]);
 });
 
@@ -181,10 +178,10 @@ test("verifyRouteInventory accepts concrete dynamic route examples", () => {
     const result = verifyRouteInventory(root);
 
     assert.deepEqual(result.errors, []);
-    assert.deepEqual([...result.appRouteArtifacts.keys()], [
-      "/invite/:token",
-      "/u/:username",
-    ]);
+    assert.deepEqual(
+      [...result.appRouteArtifacts.keys()],
+      ["/invite/:token", "/u/:username"],
+    );
     assert.equal(
       result.appRouteArtifacts.get("/invite/:token")[0].documentedRoutePath,
       "/invite/local-token",
@@ -464,8 +461,8 @@ test("current verify route inventory is documented with explicit legacy aliases"
     result.documentedScreenshots.size,
     result.existingScreenshots.size,
   );
-  assert.equal(result.existingScreenshots.size, 397);
-  assert.equal(result.screenshotIntegrity.size, 397);
+  assert.equal(result.existingScreenshots.size, 399);
+  assert.equal(result.screenshotIntegrity.size, 399);
   assert.equal(
     [...result.screenshotIntegrity.values()].every(
       (inspection) =>
