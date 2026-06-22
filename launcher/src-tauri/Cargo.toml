@@ -30,7 +30,7 @@ tungstenite = "0.24"
 tokio = { version = "1", features = ["full"] }
 sysinfo = { version = "0.39", features = ["serde"] }
 futures-util = "0.3"
-notify = "6"
+notify = "8"
 zip = "8.6.0"
 ureq = { version = "3.2.1", features = ["json"] }
 keyring = "3"
