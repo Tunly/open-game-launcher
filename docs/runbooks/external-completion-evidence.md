@@ -182,10 +182,10 @@ than 10 minutes in the future, `Release ref` as the exact release tag,
 `Commit SHA` as the full 40-hex release commit, release CI exact matches
 against `GITHUB_REF_NAME` and `GITHUB_SHA`, and blocks common raw secret shapes
 such as Stripe live/test and restricted keys, webhook secrets, bearer tokens,
-JWT-like tokens, provider API
-keys/tokens, provider API-key headers, Supabase service-role/auth/access tokens,
-bare `sbp_...` deploy tokens, hosted scheduler secrets, mobile push/provider
-secrets, private keys, device tokens, and unredacted secret fixtures. Unchecked template rows,
+JWT-like tokens, RAWG/Steam/mod provider keys, provider API-key headers, the
+`OGL_LICENSE_SIGNING_KEY` runtime secret, Supabase service-role/auth/access
+tokens, bare `sbp_...` deploy tokens, hosted scheduler secrets, mobile
+push/provider secrets, private keys, device tokens, and unredacted secret fixtures. Unchecked template rows,
 checked rows inside fenced/commented/indented examples, missing per-artifact
 proof coverage, checked proof rows without specific matching proof evidence
 mappings, placeholder/copied env values, malformed env values,

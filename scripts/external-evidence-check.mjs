@@ -411,7 +411,12 @@ const forbiddenArtifactPatterns = Object.freeze([
   {
     label: "Raw provider API key",
     pattern:
-      /\b(?:STEAM_WEB_API_KEY|MOD_IO_API_KEY|CURSEFORGE_API_KEY|PRESENCE_PROVIDER_TOKEN)\s*[:=]\s*(?!(?:\[?redacted\]?|<redacted>|\*{3,})(?:\s|$))[^\s`"'<>]{8,}/i,
+      /\b(?:STEAM_WEB_API_KEY|MOD_IO_API_KEY|CURSEFORGE_API_KEY|RAWG_API_KEY|PRESENCE_PROVIDER_TOKEN)\s*[:=]\s*(?!(?:\[?redacted\]?|<redacted>|\*{3,})(?:\s|$))[^\s`"'<>]{8,}/i,
+  },
+  {
+    label: "Raw license signing key",
+    pattern:
+      /\bOGL_LICENSE_SIGNING_KEY\s*[:=]\s*(?!(?:\[?redacted\]?|<redacted>|\*{3,})(?:\s|$))[^\s`"'<>]{8,}/i,
   },
   {
     label: "Raw provider API key",

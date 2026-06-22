@@ -1380,6 +1380,40 @@ test("full check fails when checkout changes during release-boundary checks", ()
   }
 });
 
+test("external action fails when checkout changes during release-boundary checks", () => {
+  const root = mkdtempSync(join(tmpdir(), "ogl-completion-gate-git-"));
+  try {
+    initializeGitRepo(root);
+    const { errors, logger, logs } = captureLogger();
+    let mutated = false;
+    const status = runCompletionGate({
+      action: "external",
+      logger,
+      platform: "linux",
+      root,
+      runCommand() {
+        if (!mutated) {
+          writeFileSync(join(root, "tracked.txt"), "changed during external gate\n");
+          mutated = true;
+        }
+        return { status: 0 };
+      },
+    });
+
+    assert.equal(status, 1);
+    assert.match(
+      errors.join("\n"),
+      /checkout changed while checks were running/,
+    );
+    assert.doesNotMatch(
+      logs.join("\n"),
+      /External completion evidence checks passed/,
+    );
+  } finally {
+    rmSync(root, { force: true, recursive: true });
+  }
+});
+
 test("full check success with platform-scoped skips is not a cross-platform release claim", () => {
   const calls = [];
   const { logger, logs } = captureLogger();

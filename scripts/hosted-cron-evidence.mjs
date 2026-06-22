@@ -284,6 +284,12 @@ function uniqueRestTargetProjectRefs(env = process.env) {
 const secretLikeEvidenceValuePattern =
   /(?:sk|rk)_(?:live|test)_|whsec_|bearer\s+[a-z0-9._~+/=-]{12,}|eyJ[a-zA-Z0-9_-]{8,}\.[a-zA-Z0-9_-]{8,}\.[a-zA-Z0-9_-]{8,}|\b(?:SUPABASE_SERVICE_ROLE_KEY|SUPABASE_ANON_KEY|SUPABASE_AUTH_JWT|PRICE_DROP_NOTIFY_SECRET|ACCOUNT_DELETION_PROCESSOR_SECRET|PRESENCE_POLL_SECRET)\b/i;
 const safeRunIdPattern = /^[a-z0-9][a-z0-9._:-]{2,127}$/i;
+const uuidRunIdPattern =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const specificRunIdTokenPattern =
+  /\b(?:run|run_id|probe|session|workflow|deployment|deploy|log|event|artifact|ticket|build)[-_: #]?[a-z0-9][a-z0-9._:-]{2,}\b/i;
+const hostedCronLaneRunIdPattern =
+  /(?:price[-_.:\s]?drop|notify[-_.:\s]?price[-_.:\s]?drop|presence[-_.:\s]?poll|poll[-_.:\s]?platform[-_.:\s]?presence|account[-_.:\s]?deletion|process[-_.:\s]?account[-_.:\s]?deletions?)/i;
 
 export function accountDeletionStorageBucketCountFromContractSource(source) {
   const match = String(source).match(
@@ -709,14 +715,19 @@ function safeRunId(value) {
   if (!runId) return "";
   if (!safeRunIdPattern.test(runId)) return "";
   if (secretLikeEvidenceValuePattern.test(runId)) return "";
-  return runId;
+  if (uuidRunIdPattern.test(runId)) return runId;
+  if (specificRunIdTokenPattern.test(runId) && /\d/.test(runId)) return runId;
+  if (/scheduled/i.test(runId) && hostedCronLaneRunIdPattern.test(runId)) {
+    return runId;
+  }
+  return "";
 }
 
 export function summarizeRun(
   check,
   row,
   now = new Date(),
-  freshness = freshnessMs(),
+  freshness = freshnessMs(process.env, check),
 ) {
   const completedAt = new Date(row.completed_at);
   const ageMs = now.getTime() - completedAt.getTime();

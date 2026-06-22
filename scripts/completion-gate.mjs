@@ -743,7 +743,8 @@ export function runCompletionGate({
     return 0;
   }
 
-  const requireStableCheckout = action === "check" || action === "local";
+  const requireStableCheckout =
+    action === "check" || action === "local" || action === "external";
   const startingCheckout = requireStableCheckout
     ? checkoutSnapshot(root)
     : null;

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { FileSearch, X } from "lucide-react";
+import { isTauri } from "@tauri-apps/api/core";
 
 import { executableTitleFromPath, getErrorMessage } from "../../lib/formatters";
 
@@ -53,8 +54,32 @@ export function AddGameDialog({ isOpen, onClose, onAddGame }: AddGameDialogProps
     }
   }
 
-  function handleSelectGameExecutable() {
-    setError("File selection is disabled without the dialog plugin. Enter the EXE path manually.");
+  async function handleSelectGameExecutable() {
+    if (!isTauri()) {
+      setError(
+        "Desktop app can open a native file picker. Browser preview keeps manual EXE entry available.",
+      );
+      return;
+    }
+
+    setError(null);
+    try {
+      const { open } = await import("@tauri-apps/plugin-dialog");
+      const selectedPath = await open({
+        directory: false,
+        multiple: false,
+        title: "Choose game executable",
+      });
+
+      if (typeof selectedPath !== "string") {
+        setError("Executable selection cancelled.");
+        return;
+      }
+
+      handlePathChange(selectedPath);
+    } catch (err) {
+      setError(`Could not open executable picker: ${getErrorMessage(err)}`);
+    }
   }
 
   return (
@@ -108,7 +133,7 @@ export function AddGameDialog({ isOpen, onClose, onAddGame }: AddGameDialogProps
                 onClick={handleSelectGameExecutable}
               >
                 <FileSearch className="h-4 w-4" />
-                Manual Path
+                Browse EXE
               </button>
             </div>
           </label>

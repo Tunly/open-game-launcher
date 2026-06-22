@@ -3884,6 +3884,7 @@ test("preflight status blocks raw provider API key artifact content", () => {
     "STEAM_WEB_API_KEY=steam_live_super_secret_1234567890",
     "MOD_IO_API_KEY=modio_live_super_secret_1234567890",
     "CURSEFORGE_API_KEY=curseforge_live_super_secret_1234567890",
+    "RAWG_API_KEY=rawg_live_super_secret_1234567890",
     "PRESENCE_PROVIDER_TOKEN=presence_live_super_secret_1234567890",
     "X-Api-Key: curseforge_live_super_secret_1234567890",
     "Authorization: Token modio_live_super_secret_1234567890",
@@ -3921,6 +3922,7 @@ test("preflight status blocks raw provider API key artifact content", () => {
       [artifactPath]: [
         proofContent(gate, capturedEvidenceDetails()),
         "STEAM_WEB_API_KEY=[redacted]",
+        "RAWG_API_KEY=[redacted]",
         "PRESENCE_PROVIDER_TOKEN=<redacted>",
         "CURSEFORGE_API_KEY=***",
         "X-Api-Key: [redacted]",
@@ -3930,6 +3932,49 @@ test("preflight status blocks raw provider API key artifact content", () => {
   );
 
   assert.equal(redactedStatus.ready, true);
+  assert.deepEqual(redactedStatus.secretFindings, []);
+});
+
+test("preflight status blocks raw license signing key artifact content", () => {
+  const gate = evidenceGates.find((item) => item.id === "store-stripe-live");
+  assert.ok(gate);
+  const artifactPath = "docs/verification/external/store-stripe-live-staging.md";
+  const rawLicenseSigningKey =
+    "OGL_LICENSE_SIGNING_KEY=license_signing_material_1234567890";
+
+  const status = gateStatus(
+    gate,
+    configuredEnv,
+    fakeExists([artifactPath]),
+    fakeRead({
+      [artifactPath]: proofContent(
+        gate,
+        [capturedEvidenceDetails(), rawLicenseSigningKey].join("\n"),
+      ),
+    }),
+  );
+
+  assert.equal(status.ready, false);
+  assert.deepEqual(status.secretFindings, [
+    {
+      label: "Raw license signing key",
+      path: artifactPath,
+    },
+  ]);
+  assert.equal(JSON.stringify(status).includes("license_signing_material"), false);
+
+  const redactedStatus = gateStatus(
+    gate,
+    configuredEnv,
+    fakeExists([artifactPath]),
+    fakeRead({
+      [artifactPath]: [
+        proofContent(gate, capturedEvidenceDetails()),
+        "OGL_LICENSE_SIGNING_KEY=[redacted]",
+      ].join("\n"),
+    }),
+  );
+
   assert.deepEqual(redactedStatus.secretFindings, []);
 });
 
@@ -4652,8 +4697,19 @@ test("verification screenshot rows document external next handoff", () => {
     );
 
   assert.equal(externalSummaryRows.length, 2);
+  const documentedCommands = [
+    "pnpm external:evidence:next",
+    "pnpm external:evidence:worklist",
+    "pnpm external:evidence:packet",
+    "pnpm external:evidence:runbook",
+    "pnpm external:evidence:preflight",
+    "pnpm completion:gate:status",
+    "pnpm completion:gate:external",
+  ];
   for (const row of externalSummaryRows) {
-    assert.match(row, /next\/worklist\/packet\/runbook\/preflight\/status\/completion-gate/);
+    for (const command of documentedCommands) {
+      assert.match(row, new RegExp(escapeForRegExp(command)));
+    }
   }
 });
 

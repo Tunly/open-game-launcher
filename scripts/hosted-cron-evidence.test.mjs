@@ -144,7 +144,7 @@ function completedRow(check, overrides = {}) {
     ...summaryDefaults(check),
     completed_at: "2026-06-16T10:00:00.000Z",
     dry_run: false,
-    run_id: `${check.id}-run`,
+    run_id: `${check.id}-scheduled-20260616`,
     status: "completed",
     trigger_source: "scheduled",
     ...overrides,
@@ -1103,7 +1103,7 @@ test("summarizeRun accepts fresh completed scheduled rows and redacts row detail
       notification_payload: "must not be included",
       notifications_recorded_count: 3,
       raw_user_id: "must not be included",
-      run_id: "run-1",
+      run_id: "run-123",
       scanned_count: 3,
     }),
     new Date("2026-06-16T10:30:00.000Z"),
@@ -1121,6 +1121,7 @@ test("summarizeRun accepts fresh completed scheduled rows and redacts row detail
 
 test("summarizeRun rejects unsafe run IDs and invalid count values without echoing them", () => {
   for (const runId of [
+    "abc",
     "sk_live_should_not_echo_1234567890",
     "sk_test_should_not_echo_1234567890",
     "rk_live_should_not_echo_1234567890",
@@ -1426,7 +1427,7 @@ test("summarizeRun rejects stale, dry-run, and non-scheduled rows", () => {
     completedRow(cronEvidenceChecks[1], {
       completed_at: "2026-06-15T10:00:00.000Z",
       dry_run: true,
-      run_id: "run-2",
+      run_id: "run-222",
       status: "dry_run",
       trigger_source: "hosted_deploy_gate",
     }),
@@ -1443,6 +1444,27 @@ test("summarizeRun rejects stale, dry-run, and non-scheduled rows", () => {
   ]);
 });
 
+test("summarizeRun uses the selected check freshness by default", () => {
+  const presencePoll = cronEvidenceChecks.find(
+    (check) => check.id === "presence-poll",
+  );
+  assert.ok(presencePoll);
+
+  const result = summarizeRun(
+    presencePoll,
+    completedRow(presencePoll, {
+      completed_at: "2026-06-16T10:00:00.000Z",
+      run_id: "presence-poll-scheduled-direct-default",
+    }),
+    new Date("2026-06-16T12:00:00.000Z"),
+  );
+
+  assert.equal(result.ready, false);
+  assert.deepEqual(result.validationErrors, [
+    "completed_at is older than the configured freshness window.",
+  ]);
+});
+
 test("summarizeRun rejects completed account deletion rows with failures", () => {
   const result = summarizeRun(
     cronEvidenceChecks.find((check) => check.id === "account-deletion"),
@@ -1453,7 +1475,7 @@ test("summarizeRun rejects completed account deletion rows with failures", () =>
         due_request_count: 1,
         failed_count: 1,
         limit_count: 1,
-        run_id: "run-with-failure",
+        run_id: "run-with-failure-123",
       },
     ),
     new Date("2026-06-16T10:30:00.000Z"),
@@ -1503,7 +1525,7 @@ test("collectCronEvidence reports latest scheduled attempts that are failed or d
     [
       priceDrop.table,
       completedRow(priceDrop, {
-        run_id: "price-drop-latest-failed",
+        run_id: "price-drop-scheduled-failed-20260616",
         status: "failed",
       }),
     ],
@@ -1511,7 +1533,7 @@ test("collectCronEvidence reports latest scheduled attempts that are failed or d
       presencePoll.table,
       completedRow(presencePoll, {
         dry_run: true,
-        run_id: "presence-poll-latest-dry-run",
+        run_id: "presence-poll-scheduled-dry-run-20260616",
       }),
     ],
   ]);
@@ -1548,14 +1570,14 @@ test("collectCronEvidence uses tighter default freshness for presence than daily
       presencePoll.table,
       completedRow(presencePoll, {
         completed_at: "2026-06-16T10:00:00.000Z",
-        run_id: "presence-poll-two-hours-old",
+        run_id: "presence-poll-scheduled-two-hours-old",
       }),
     ],
     [
       accountDeletion.table,
       completedRow(accountDeletion, {
         completed_at: "2026-06-15T12:30:00.000Z",
-        run_id: "account-deletion-daily-old",
+        run_id: "account-deletion-scheduled-daily-old",
       }),
     ],
   ]);
