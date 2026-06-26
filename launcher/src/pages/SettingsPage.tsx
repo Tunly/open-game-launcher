@@ -8,7 +8,7 @@ import {
   Link as LinkIcon,
   LogOut,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Link as RouterLink, useSearchParams } from "react-router-dom";
 import { isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -52,19 +52,50 @@ import {
   writeEpicSessionMarker,
 } from "../lib/platform-token-storage";
 import type { ClientManagerMountApplySandboxProof, SystemInfo } from "../lib/types";
-import { ActivitySection } from "../components/settings/ActivitySection";
-import { BackupRestoreSettings } from "../components/settings/BackupRestoreSettings";
-import { ClientManagerMountApplyContractPanel } from "../components/settings/ClientManagerMountApplyContractPanel";
 import { ClientUpdateSchedulerSettings } from "../components/settings/ClientUpdateSchedulerSettings";
-import { CloudSavesSettings } from "../components/settings/CloudSavesSettings";
-import { ExternalCompletionEvidenceSummaryPanel } from "../components/settings/ExternalCompletionEvidenceSummaryPanel";
-import { HostedCronEvidenceSummaryPanel } from "../components/settings/HostedCronEvidenceSummaryPanel";
-import { OneClickSetupE2EReadinessPanel } from "../components/settings/OneClickSetupE2EReadinessPanel";
 import { OneClickSetupReadinessPanel } from "../components/settings/OneClickSetupReadinessPanel";
-import { OneClickSetupRollbackAuditContractPanel } from "../components/settings/OneClickSetupRollbackAuditContractPanel";
 import { PlatformHealthPanel } from "../components/settings/PlatformHealthPanel";
 import { PluginSystemReadinessPanel } from "../components/settings/PluginSystemReadinessPanel";
 import { PresencePollingReadinessPanel } from "../components/settings/PresencePollingReadinessPanel";
+
+const LazyActivitySection = React.lazy(() =>
+  import("../components/settings/ActivitySection").then((m) => ({ default: m.ActivitySection })),
+);
+const LazyBackupRestoreSettings = React.lazy(() =>
+  import("../components/settings/BackupRestoreSettings").then((m) => ({
+    default: m.BackupRestoreSettings,
+  })),
+);
+const LazyClientManagerMountApplyContractPanel = React.lazy(() =>
+  import("../components/settings/ClientManagerMountApplyContractPanel").then((m) => ({
+    default: m.ClientManagerMountApplyContractPanel,
+  })),
+);
+const LazyCloudSavesSettings = React.lazy(() =>
+  import("../components/settings/CloudSavesSettings").then((m) => ({
+    default: m.CloudSavesSettings,
+  })),
+);
+const LazyExternalCompletionEvidenceSummaryPanel = React.lazy(() =>
+  import("../components/settings/ExternalCompletionEvidenceSummaryPanel").then((m) => ({
+    default: m.ExternalCompletionEvidenceSummaryPanel,
+  })),
+);
+const LazyHostedCronEvidenceSummaryPanel = React.lazy(() =>
+  import("../components/settings/HostedCronEvidenceSummaryPanel").then((m) => ({
+    default: m.HostedCronEvidenceSummaryPanel,
+  })),
+);
+const LazyOneClickSetupE2EReadinessPanel = React.lazy(() =>
+  import("../components/settings/OneClickSetupE2EReadinessPanel").then((m) => ({
+    default: m.OneClickSetupE2EReadinessPanel,
+  })),
+);
+const LazyOneClickSetupRollbackAuditContractPanel = React.lazy(() =>
+  import("../components/settings/OneClickSetupRollbackAuditContractPanel").then((m) => ({
+    default: m.OneClickSetupRollbackAuditContractPanel,
+  })),
+);
 import type {
   PresenceHostedCronStagingEvidence,
   PresenceReadinessPlatformAccount,
@@ -1973,30 +2004,36 @@ export function SettingsPage() {
           <OneClickSetupReadinessPanel readiness={oneClickSetupReadiness} />
 
           {isOneClickSetupE2EVerify ? (
-            <OneClickSetupE2EReadinessPanel readiness={oneClickSetupE2EReadiness} />
+            <React.Suspense fallback={null}>
+              <LazyOneClickSetupE2EReadinessPanel readiness={oneClickSetupE2EReadiness} />
+            </React.Suspense>
           ) : null}
 
           {isOneClickSetupRollbackAuditVerify ? (
-            <OneClickSetupRollbackAuditContractPanel
-              contract={oneClickSetupRollbackAuditContract}
-            />
+            <React.Suspense fallback={null}>
+              <LazyOneClickSetupRollbackAuditContractPanel
+                contract={oneClickSetupRollbackAuditContract}
+              />
+            </React.Suspense>
           ) : null}
 
           {showClientManagerMountApplyPanel ? (
-            <ClientManagerMountApplyContractPanel
-              contract={clientManagerMountApplyContract}
-              sandboxControls={{
-                busy: clientManagerSandboxBusy,
-                isDesktopRuntime,
-                message: clientManagerSandboxMessage,
-                onLoadFixture: handleLoadClientManagerSandboxFixture,
-                onRunProof: handleRunClientManagerSandboxProof,
-                onSourcePathChange: setClientManagerSandboxSourcePath,
-                onTargetPathChange: setClientManagerSandboxTargetPath,
-                sourcePath: clientManagerSandboxSourcePath,
-                targetPath: clientManagerSandboxTargetPath,
-              }}
-            />
+            <React.Suspense fallback={null}>
+              <LazyClientManagerMountApplyContractPanel
+                contract={clientManagerMountApplyContract}
+                sandboxControls={{
+                  busy: clientManagerSandboxBusy,
+                  isDesktopRuntime,
+                  message: clientManagerSandboxMessage,
+                  onLoadFixture: handleLoadClientManagerSandboxFixture,
+                  onRunProof: handleRunClientManagerSandboxProof,
+                  onSourcePathChange: setClientManagerSandboxSourcePath,
+                  onTargetPathChange: setClientManagerSandboxTargetPath,
+                  sourcePath: clientManagerSandboxSourcePath,
+                  targetPath: clientManagerSandboxTargetPath,
+                }}
+              />
+            </React.Suspense>
           ) : null}
 
           <PlatformHealthPanel
@@ -2052,11 +2089,17 @@ export function SettingsPage() {
           />
 
           {isHostedCronEvidenceSummaryVerify ? (
-            <HostedCronEvidenceSummaryPanel summary={hostedCronEvidenceSummary} />
+            <React.Suspense fallback={null}>
+              <LazyHostedCronEvidenceSummaryPanel summary={hostedCronEvidenceSummary} />
+            </React.Suspense>
           ) : null}
 
           {isExternalCompletionEvidenceSummaryVerify ? (
-            <ExternalCompletionEvidenceSummaryPanel summary={externalCompletionEvidenceSummary} />
+            <React.Suspense fallback={null}>
+              <LazyExternalCompletionEvidenceSummaryPanel
+                summary={externalCompletionEvidenceSummary}
+              />
+            </React.Suspense>
           ) : null}
 
           <PluginSystemReadinessPanel
@@ -2139,15 +2182,19 @@ export function SettingsPage() {
 
           <ClientUpdateSchedulerSettings />
 
-          <CloudSavesSettings />
+          <React.Suspense fallback={null}>
+            <LazyCloudSavesSettings />
+          </React.Suspense>
 
-          <BackupRestoreSettings
-            externalDriveDetectionFixture={isBackupExternalDriveDetectionFixture}
-            externalDriveEjectSafetyFixture={isBackupExternalDriveEjectSafetyFixture}
-            externalDriveOsEjectFixture={isBackupExternalDriveOsEjectFixture}
-            externalDriveWriteProofFixture={isBackupExternalDriveWriteProofFixture}
-            showExternalDriveReadiness={isBackupExternalDriveVerify}
-          />
+          <React.Suspense fallback={null}>
+            <LazyBackupRestoreSettings
+              externalDriveDetectionFixture={isBackupExternalDriveDetectionFixture}
+              externalDriveEjectSafetyFixture={isBackupExternalDriveEjectSafetyFixture}
+              externalDriveOsEjectFixture={isBackupExternalDriveOsEjectFixture}
+              externalDriveWriteProofFixture={isBackupExternalDriveWriteProofFixture}
+              showExternalDriveReadiness={isBackupExternalDriveVerify}
+            />
+          </React.Suspense>
 
           <div className="border-4 border-black bg-[#f5eedf] shadow-[4px_4px_0_#171411]">
             <div className="flex items-center justify-between border-b-4 border-black p-5">
@@ -2176,7 +2223,9 @@ export function SettingsPage() {
             </div>
           </div>
 
-          <ActivitySection />
+          <React.Suspense fallback={null}>
+            <LazyActivitySection />
+          </React.Suspense>
         </div>
 
         <aside className="min-w-0 space-y-4">

@@ -1,11 +1,13 @@
-import { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 
 import { LibrarySidebar } from "../components/library/LibrarySidebar";
 import { LibraryFilters } from "../components/library/LibraryFilters";
 import { AddGameDialog } from "../components/library/AddGameDialog";
 import { ProviderPickerDialog } from "../components/library/ProviderPickerDialog";
-import { GameDetailPanel } from "../components/library/GameDetailPanel";
+const GameDetailPanel = React.lazy(() =>
+  import("../components/library/GameDetailPanel").then((m) => ({ default: m.GameDetailPanel })),
+);
 import { useCloudAutoSync } from "../hooks/useCloudAutoSync";
 import { useDownloadStore, selectCompletedCount } from "../stores/downloadStore";
 import { LibraryProvider } from "../context/LibraryProvider";
@@ -211,7 +213,9 @@ export function LibraryPage() {
             isOpen={filters.isFilterPopupOpen}
             onClose={() => filters.setIsFilterPopupOpen(false)}
           />
-          <GameDetailPanel verifyMode={searchParams.get("verify")} />
+          <React.Suspense fallback={null}>
+            <GameDetailPanel verifyMode={searchParams.get("verify")} />
+          </React.Suspense>
         </div>
 
         <AddGameDialog

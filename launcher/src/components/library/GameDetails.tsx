@@ -33,7 +33,7 @@ import {
 } from "lucide-react";
 import { isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import type {
   ClientAssetCacheLookup,
@@ -133,15 +133,34 @@ import type { CrossPlayPlatform } from "../../lib/types/crossplay";
 import type { Screenshot, ScreenshotLikeState } from "../../lib/types/screenshots";
 import type { ScreenshotMeta } from "../../lib/types/overlay";
 import { LibraryContext } from "../../context/LibraryContext";
-import { AiRecommendationHostedEvalContractPanel } from "./GameDetails/AiRecommendationHostedEvalContractPanel";
-import { AiRecommendationReadinessPanel } from "./GameDetails/AiRecommendationReadinessPanel";
-import { BacklogPriorityPanel } from "./BacklogPriorityPanel";
-import { CrossStoreSaveMigrationReadinessPanel } from "./GameDetails/CrossStoreSaveMigrationReadinessPanel";
-import { CrossStoreSaveSyncPlanner } from "./GameDetails/CrossStoreSaveSyncPlanner";
-import { HostedCommunityArtworkReadinessPanel } from "./GameDetails/HostedCommunityArtworkReadinessPanel";
-import { HostedCommunityArtworkModeratorConsolePanel } from "./GameDetails/HostedCommunityArtworkModeratorConsolePanel";
-import { IgdbCrossPlayReadinessPanel } from "./GameDetails/IgdbCrossPlayReadinessPanel";
-import { CloudSavesPanel } from "./GameDetails/CloudSavesPanel";
+const CrossStoreSaveMigrationReadinessPanel = React.lazy(() =>
+  import("./GameDetails/CrossStoreSaveMigrationReadinessPanel").then((m) => ({
+    default: m.CrossStoreSaveMigrationReadinessPanel,
+  })),
+);
+const CrossStoreSaveSyncPlanner = React.lazy(() =>
+  import("./GameDetails/CrossStoreSaveSyncPlanner").then((m) => ({
+    default: m.CrossStoreSaveSyncPlanner,
+  })),
+);
+const HostedCommunityArtworkReadinessPanel = React.lazy(() =>
+  import("./GameDetails/HostedCommunityArtworkReadinessPanel").then((m) => ({
+    default: m.HostedCommunityArtworkReadinessPanel,
+  })),
+);
+const HostedCommunityArtworkModeratorConsolePanel = React.lazy(() =>
+  import("./GameDetails/HostedCommunityArtworkModeratorConsolePanel").then((m) => ({
+    default: m.HostedCommunityArtworkModeratorConsolePanel,
+  })),
+);
+const IgdbCrossPlayReadinessPanel = React.lazy(() =>
+  import("./GameDetails/IgdbCrossPlayReadinessPanel").then((m) => ({
+    default: m.IgdbCrossPlayReadinessPanel,
+  })),
+);
+const CloudSavesPanel = React.lazy(() =>
+  import("./GameDetails/CloudSavesPanel").then((m) => ({ default: m.CloudSavesPanel })),
+);
 import { GameUpdateFeed } from "./GameUpdateFeed";
 import { ControllerLayoutEditor } from "../controllers/ControllerLayoutEditor";
 import type { ControllerDevice } from "../../lib/types/controllers";
@@ -151,9 +170,6 @@ import {
   CommunityArtworkUploadPanel,
   type CommunityArtworkUploadDraft,
 } from "./CommunityArtworkUploadPanel";
-import type { BacklogRecommendationPlan } from "../../lib/backlog-recommendations";
-import type { AiRecommendationHostedEvalContract } from "../../lib/ai-recommendation-hosted-eval-contract";
-import type { AiRecommendationReadiness } from "../../lib/ai-recommendation-readiness";
 import type { CrossStoreSaveMigrationReadiness } from "../../lib/cross-store-save-migration-readiness";
 import type { CrossStoreSaveSyncPlan } from "../../lib/cross-store-save-sync-planner";
 import type { HostedCommunityArtworkReadiness } from "../../lib/hosted-community-artwork-readiness";
@@ -1244,11 +1260,6 @@ export interface GameDetailsProps {
   selectedGame: Game | null;
   enrichedSelectedGame: Game | null;
   gameVariants?: Game[];
-  backlogPriorityPlan?: BacklogRecommendationPlan;
-  backlogLaunchingCandidateId?: string | null;
-  onLaunchBacklogCandidate?: (candidateId: string) => void | Promise<void>;
-  aiRecommendationHostedEvalContract?: AiRecommendationHostedEvalContract;
-  aiRecommendationReadiness?: AiRecommendationReadiness;
   crossStoreSaveMigrationReadiness?: CrossStoreSaveMigrationReadiness;
   crossStoreSaveSyncPlan?: CrossStoreSaveSyncPlan;
   hostedCommunityArtworkReadiness?: HostedCommunityArtworkReadiness;
@@ -1310,11 +1321,6 @@ export function GameDetails({
   selectedGame,
   enrichedSelectedGame,
   gameVariants = [],
-  backlogPriorityPlan,
-  backlogLaunchingCandidateId = null,
-  onLaunchBacklogCandidate,
-  aiRecommendationHostedEvalContract,
-  aiRecommendationReadiness,
   crossStoreSaveMigrationReadiness,
   crossStoreSaveSyncPlan,
   hostedCommunityArtworkReadiness,
@@ -4436,38 +4442,26 @@ export function GameDetails({
 
                   {/* Right Column: RICH METADATA & Hardware cards */}
                   <aside className="space-y-4">
-                    {backlogPriorityPlan ? (
-                      <BacklogPriorityPanel
-                        launchingCandidateId={backlogLaunchingCandidateId}
-                        onLaunchCandidate={onLaunchBacklogCandidate}
-                        plan={backlogPriorityPlan}
-                      />
-                    ) : null}
-
-                    {aiRecommendationReadiness ? (
-                      <AiRecommendationReadinessPanel readiness={aiRecommendationReadiness} />
-                    ) : null}
-
-                    {aiRecommendationHostedEvalContract ? (
-                      <AiRecommendationHostedEvalContractPanel
-                        contract={aiRecommendationHostedEvalContract}
-                      />
-                    ) : null}
-
                     {hostedCommunityArtworkReadiness ? (
-                      <HostedCommunityArtworkReadinessPanel
-                        readiness={hostedCommunityArtworkReadiness}
-                      />
+                      <React.Suspense fallback={null}>
+                        <HostedCommunityArtworkReadinessPanel
+                          readiness={hostedCommunityArtworkReadiness}
+                        />
+                      </React.Suspense>
                     ) : null}
 
                     {hostedCommunityArtworkModerationConsole ? (
-                      <HostedCommunityArtworkModeratorConsolePanel
-                        initialConsole={hostedCommunityArtworkModerationConsole}
-                      />
+                      <React.Suspense fallback={null}>
+                        <HostedCommunityArtworkModeratorConsolePanel
+                          initialConsole={hostedCommunityArtworkModerationConsole}
+                        />
+                      </React.Suspense>
                     ) : null}
 
                     {igdbCrossPlayReadinessPlan ? (
-                      <IgdbCrossPlayReadinessPanel plan={igdbCrossPlayReadinessPlan} />
+                      <React.Suspense fallback={null}>
+                        <IgdbCrossPlayReadinessPanel plan={igdbCrossPlayReadinessPlan} />
+                      </React.Suspense>
                     ) : null}
 
                     <section className="border-4 border-black bg-[#fbf4e7] shadow-[3px_3px_0_#171411]">
@@ -4914,21 +4908,27 @@ export function GameDetails({
 
                     {/* Cross-store save planning */}
                     {crossStoreSaveSyncPlan ? (
-                      <CrossStoreSaveSyncPlanner plan={crossStoreSaveSyncPlan} />
+                      <React.Suspense fallback={null}>
+                        <CrossStoreSaveSyncPlanner plan={crossStoreSaveSyncPlan} />
+                      </React.Suspense>
                     ) : null}
 
                     {crossStoreSaveMigrationReadiness ? (
-                      <CrossStoreSaveMigrationReadinessPanel
-                        readiness={crossStoreSaveMigrationReadiness}
-                      />
+                      <React.Suspense fallback={null}>
+                        <CrossStoreSaveMigrationReadinessPanel
+                          readiness={crossStoreSaveMigrationReadiness}
+                        />
+                      </React.Suspense>
                     ) : null}
 
                     {/* Cloud Saves Panel */}
                     {enrichedSelectedGame.status === "installed" ? (
-                      <CloudSavesPanel
-                        game={enrichedSelectedGame}
-                        onStatusMessage={setStatusMessage}
-                      />
+                      <React.Suspense fallback={null}>
+                        <CloudSavesPanel
+                          game={enrichedSelectedGame}
+                          onStatusMessage={setStatusMessage}
+                        />
+                      </React.Suspense>
                     ) : null}
                   </aside>
                 </div>

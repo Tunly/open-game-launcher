@@ -21,8 +21,24 @@ export default defineConfig({
             return "vendor-icons";
           }
 
-          if (id.includes("react") || id.includes("scheduler")) {
+          if (/\/react(\/|-dom\/)/.test(id) || id.includes("scheduler")) {
             return "vendor-react";
+          }
+
+          if (id.includes("react-router")) {
+            return "vendor-router";
+          }
+
+          if (id.includes("zod")) {
+            return "vendor-zod";
+          }
+
+          if (id.includes("zustand")) {
+            return "vendor-zustand";
+          }
+
+          if (id.includes("@tauri-apps")) {
+            return "vendor-tauri";
           }
 
           return "vendor";

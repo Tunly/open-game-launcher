@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
+import { Suspense } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const presencePollingReadinessPanelMock = vi.hoisted(() => vi.fn());
@@ -494,9 +495,11 @@ import { SettingsPage } from "./SettingsPage";
 function renderSettingsRoute(initialEntry: string) {
   return render(
     <MemoryRouter initialEntries={[initialEntry]}>
-      <Routes>
-        <Route element={<SettingsPage />} path="/settings" />
-      </Routes>
+      <Suspense fallback={null}>
+        <Routes>
+          <Route element={<SettingsPage />} path="/settings" />
+        </Routes>
+      </Suspense>
     </MemoryRouter>,
   );
 }
@@ -1134,7 +1137,7 @@ describe("SettingsPage One-Click Setup E2E readiness", () => {
     expect(launcherMocks.stageSignedPluginPackage).toHaveBeenCalledTimes(1);
   });
 
-  it("mounts client-manager mount/apply contract only on the verify route", () => {
+  it("mounts client-manager mount/apply contract only on the verify route", async () => {
     const base = renderSettingsRoute("/settings");
 
     expect(
@@ -1144,53 +1147,58 @@ describe("SettingsPage One-Click Setup E2E readiness", () => {
 
     renderSettingsRoute("/settings?verify=client-manager-mount-apply-contract");
 
-    const panel = screen.getByRole("region", {
-      name: /client manager mount apply contract/i,
+    let panel: HTMLElement;
+    await waitFor(() => {
+      panel = screen.getByRole("region", {
+        name: /client manager mount apply contract/i,
+      });
+      expect(within(panel).getByText("Mount Apply Contract")).toBeInTheDocument();
+      expect(within(panel).getByText("Path Overlay Preflight")).toBeInTheDocument();
+      expect(within(panel).getByText("Asset Cache Lookup")).toBeInTheDocument();
+      expect(within(panel).getByText("Auto-Apply Guard")).toBeInTheDocument();
+      const capabilities = within(panel).getByRole("region", {
+        name: /client manager auto apply capability check/i,
+      });
+      expect(within(capabilities).getByText("Auto-Apply Capability Check")).toBeInTheDocument();
+      expect(within(capabilities).getByText("Runtime Presence")).toBeInTheDocument();
+      expect(within(capabilities).getByText("Install Target")).toBeInTheDocument();
+      expect(within(capabilities).getByText("Free Disk Space")).toBeInTheDocument();
+      expect(within(capabilities).getByText("Admin Review")).toBeInTheDocument();
+      const matrix = within(panel).getByRole("region", {
+        name: /client manager provider policy matrix/i,
+      });
+      expect(within(matrix).getByText("Provider Policy Matrix")).toBeInTheDocument();
+      expect(within(matrix).getByText("Steam")).toBeInTheDocument();
+      expect(within(matrix).getByText("Xbox / Game Pass")).toBeInTheDocument();
+      expect(
+        within(matrix).getAllByText("No provider-approved launcher apply").length,
+      ).toBeGreaterThan(0);
+      expect(within(panel).getByText("No real provider mount application")).toBeInTheDocument();
+      expect(within(panel).getByText("No provider auto-apply")).toBeInTheDocument();
+      expect(within(panel).getByText("No rollback/unmount proof")).toBeInTheDocument();
+      expect(panel).not.toHaveTextContent(
+        /(real mount (?:applied|complete|ready|verified)|provider auto-apply(?: approved| complete| ready| verified)|symlink(?: created| ready)|junction(?: created| ready)|driver (?:installed|ready)|admin elevation (?:granted|ready)|destructive writes? (?:complete|ready)|client mutation (?:verified|complete)|terms approved|rollback (?:verified|complete)|unmount proof (?:verified|complete))/i,
+      );
     });
-    expect(within(panel).getByText("Mount Apply Contract")).toBeInTheDocument();
-    expect(within(panel).getByText("Path Overlay Preflight")).toBeInTheDocument();
-    expect(within(panel).getByText("Asset Cache Lookup")).toBeInTheDocument();
-    expect(within(panel).getByText("Auto-Apply Guard")).toBeInTheDocument();
-    const capabilities = within(panel).getByRole("region", {
-      name: /client manager auto apply capability check/i,
-    });
-    expect(within(capabilities).getByText("Auto-Apply Capability Check")).toBeInTheDocument();
-    expect(within(capabilities).getByText("Runtime Presence")).toBeInTheDocument();
-    expect(within(capabilities).getByText("Install Target")).toBeInTheDocument();
-    expect(within(capabilities).getByText("Free Disk Space")).toBeInTheDocument();
-    expect(within(capabilities).getByText("Admin Review")).toBeInTheDocument();
-    const matrix = within(panel).getByRole("region", {
-      name: /client manager provider policy matrix/i,
-    });
-    expect(within(matrix).getByText("Provider Policy Matrix")).toBeInTheDocument();
-    expect(within(matrix).getByText("Steam")).toBeInTheDocument();
-    expect(within(matrix).getByText("Xbox / Game Pass")).toBeInTheDocument();
-    expect(
-      within(matrix).getAllByText("No provider-approved launcher apply").length,
-    ).toBeGreaterThan(0);
-    expect(within(panel).getByText("No real provider mount application")).toBeInTheDocument();
-    expect(within(panel).getByText("No provider auto-apply")).toBeInTheDocument();
-    expect(within(panel).getByText("No rollback/unmount proof")).toBeInTheDocument();
-    expect(panel).not.toHaveTextContent(
-      /(real mount (?:applied|complete|ready|verified)|provider auto-apply(?: approved| complete| ready| verified)|symlink(?: created| ready)|junction(?: created| ready)|driver (?:installed|ready)|admin elevation (?:granted|ready)|destructive writes? (?:complete|ready)|client mutation (?:verified|complete)|terms approved|rollback (?:verified|complete)|unmount proof (?:verified|complete))/i,
-    );
   });
 
-  it("loads the client-manager sandbox proof fixture on the sandbox verify route", () => {
+  it("loads the client-manager sandbox proof fixture on the sandbox verify route", async () => {
     renderSettingsRoute("/settings?verify=client-manager-mount-apply-sandbox-proof");
 
-    const panel = screen.getByRole("region", {
-      name: /client manager mount apply contract/i,
-    });
-    const proofPanel = screen.getByRole("region", {
-      name: /client manager sandbox apply rollback proof/i,
-    });
+    await waitFor(() => {
+      const panel = screen.getByRole("region", {
+        name: /client manager mount apply contract/i,
+      });
+      const proofPanel = screen.getByRole("region", {
+        name: /client manager sandbox apply rollback proof/i,
+      });
 
-    expect(within(panel).getByText("Sandbox rollback proof only")).toBeInTheDocument();
-    expect(within(proofPanel).getByText("Apply / Rollback Rehearsal")).toBeInTheDocument();
-    expect(within(proofPanel).getByText("Sandbox Proof Ready")).toBeInTheDocument();
-    expect(proofPanel).toHaveTextContent("Provider Paths: not touched");
-    expect(proofPanel).toHaveTextContent("Mounts Created: no");
+      expect(within(panel).getByText("Sandbox rollback proof only")).toBeInTheDocument();
+      expect(within(proofPanel).getByText("Apply / Rollback Rehearsal")).toBeInTheDocument();
+      expect(within(proofPanel).getByText("Sandbox Proof Ready")).toBeInTheDocument();
+      expect(proofPanel).toHaveTextContent("Provider Paths: not touched");
+      expect(proofPanel).toHaveTextContent("Mounts Created: no");
+    });
   });
 
   it("passes the presence evidence fixture to the presence polling readiness panel", () => {

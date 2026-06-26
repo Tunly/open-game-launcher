@@ -105,7 +105,6 @@ stored outside Git; no live external evidence was collected in this workspace.
   when no files match, signing env names, and draft-release handoff before
   `completion:gate:local` can pass.
 - AI Recommendations Hosted Eval Contract local evidence is limited to
-  `/library?verify=ai-recommendations-hosted-eval-contract` screenshots, DOM
   overflow checks, and contract tests for deterministic baseline fixtures,
   prompt regression, quality thresholds, safety/abuse fixtures, consent sample
   review, hosted runner boundaries, cloud profile replay blockers, provider

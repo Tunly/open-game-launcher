@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -144,13 +144,17 @@ vi.mock("../stores/downloadStore", () => ({
     selector({ items: [] }),
 }));
 
+import { Suspense } from "react";
+
 function renderLibraryRoute(initialEntry: string) {
   return render(
     <MemoryRouter initialEntries={[initialEntry]}>
-      <Routes>
-        <Route element={<LibraryPage />} path="/library" />
-        <Route element={<FriendsRouteProbe />} path="/friends" />
-      </Routes>
+      <Suspense fallback={null}>
+        <Routes>
+          <Route element={<LibraryPage />} path="/library" />
+          <Route element={<FriendsRouteProbe />} path="/friends" />
+        </Routes>
+      </Suspense>
     </MemoryRouter>,
   );
 }
@@ -171,22 +175,21 @@ describe("LibraryPage verification route wiring", () => {
     gameDetailPanelMock.mockClear();
   });
 
-  it("passes IGDB cross-play readiness verify mode to GameDetailPanel", () => {
+  it("passes IGDB cross-play readiness verify mode to GameDetailPanel", async () => {
     renderLibraryRoute("/library?verify=igdb-cross-play-readiness");
 
-    expect(screen.getByRole("region", { name: /game detail panel mock/i })).toHaveAttribute(
-      "data-verify-mode",
-      "igdb-cross-play-readiness",
-    );
+    await waitFor(() => {
+      expect(screen.getByRole("region", { name: /game detail panel mock/i })).toHaveAttribute(
+        "data-verify-mode",
+        "igdb-cross-play-readiness",
+      );
+    });
     expect(gameDetailPanelMock).toHaveBeenLastCalledWith({
       verifyMode: "igdb-cross-play-readiness",
     });
   });
 
   it.each([
-    ["ai-recommendations-hosted-eval-contract"],
-    ["ai-recommendations-readiness"],
-    ["backlog-priority"],
     ["cross-store-save-sync"],
     ["cross-store-save-sync-e2e-readiness"],
     ["hosted-community-artwork"],

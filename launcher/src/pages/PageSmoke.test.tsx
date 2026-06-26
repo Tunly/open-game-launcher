@@ -472,12 +472,16 @@ function renderRoute(ui: ReactNode, initialEntry = "/") {
   return render(<MemoryRouter initialEntries={[initialEntry]}>{ui}</MemoryRouter>);
 }
 
+import { Suspense } from "react";
+
 function renderRoutedPage(ui: ReactNode, path: string, initialEntry = path) {
   return render(
     <MemoryRouter initialEntries={[initialEntry]}>
-      <Routes>
-        <Route element={ui} path={path} />
-      </Routes>
+      <Suspense fallback={null}>
+        <Routes>
+          <Route element={ui} path={path} />
+        </Routes>
+      </Suspense>
     </MemoryRouter>,
   );
 }
@@ -721,29 +725,18 @@ describe("routed page smoke coverage", () => {
     expect(screen.getByText("Launcher HQ")).toBeInTheDocument();
   });
 
-  it("renders the documented library route shell", () => {
+  it("renders the documented library route shell", async () => {
     renderRoutedPage(<LibraryPage />, "/library");
 
     expect(
       screen.getByRole("complementary", { name: /library sidebar mock/i }),
     ).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: /game detail panel mock/i })).toHaveAttribute(
-      "data-verify-mode",
-      "null",
-    );
-  });
-
-  it("renders the AI hosted eval verify route shell", () => {
-    renderRoutedPage(
-      <LibraryPage />,
-      "/library",
-      "/library?verify=ai-recommendations-hosted-eval-contract",
-    );
-
-    expect(screen.getByRole("region", { name: /game detail panel mock/i })).toHaveAttribute(
-      "data-verify-mode",
-      "ai-recommendations-hosted-eval-contract",
-    );
+    await waitFor(() => {
+      expect(screen.getByRole("region", { name: /game detail panel mock/i })).toHaveAttribute(
+        "data-verify-mode",
+        "null",
+      );
+    });
   });
 
   it("renders the store discovery shelf", async () => {

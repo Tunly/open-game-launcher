@@ -1,13 +1,10 @@
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useMemo, useRef } from "react";
 
 import { GameDetails } from "./GameDetails";
 import { useLibraryContext } from "../../context/useLibraryContext";
 import { useActivityLogger } from "../../hooks/useActivityLogger";
 import { captureScreenshot, moveGame } from "../../lib/launcher";
 import type { Game } from "../../lib/types";
-import { createVerifyAiRecommendationHostedEvalContract } from "../../lib/ai-recommendation-hosted-eval-contract";
-import { createVerifyAiRecommendationReadiness } from "../../lib/ai-recommendation-readiness";
-import { buildBacklogRecommendationPlan } from "../../lib/backlog-recommendations";
 import { createVerifyCrossStoreSaveMigrationReadiness } from "../../lib/cross-store-save-migration-readiness";
 import { createVerifyHostedCommunityArtworkReadiness } from "../../lib/hosted-community-artwork-readiness";
 import { createVerifyHostedCommunityArtworkModerationConsole } from "../../lib/hosted-community-artwork-moderation-console";
@@ -17,11 +14,6 @@ import {
   createVerifyCrossStoreSaveSyncCandidates,
 } from "../../lib/cross-store-save-sync-planner";
 import { createVerifyIgdbCrossPlayReadinessPlan } from "../../lib/igdb-cross-play-readiness";
-import {
-  buildBacklogCandidatesFromGroups,
-  createVerifyBacklogCandidates,
-} from "../../lib/library-backlog-candidates";
-import { isPlayableGame } from "../../lib/game-groups";
 
 const REMOTE_PLAY_LOCAL_PROOF_GAME: Game = {
   categories: ["Remote Play", "Verification"],
@@ -67,75 +59,31 @@ const REMOTE_PLAY_EPIC_EOS_PROVIDER_CONTRACT_GAME: Game = {
   version: "1.0.0",
 };
 
-const AI_RECOMMENDATION_HOSTED_EVAL_CONTRACT_GAME: Game = {
-  categories: ["AI Recommendations", "Verification"],
-  description:
-    "Deterministic AI hosted-eval fixture for baseline ranking, prompt regression, safety cases, consent review, hosted runner boundaries, profile replay blockers, provider telemetry blockers, and rollout rollback gates.",
-  developer: "OG Launcher Lab",
-  externalId: "ai-hosted-eval-local",
-  features: ["Local baseline", "Prompt regression", "Safety fixtures", "Rollback gate"],
-  genres: ["Strategy", "Backlog"],
-  id: "ai-recommendation-hosted-eval-contract",
-  launcher: "manual",
-  platform: "windows",
-  playtimeMinutes: 420,
-  publisher: "OG Launcher",
-  releaseDate: "2026-06-16",
-  sizeGb: 4,
-  status: "installed",
-  tagLabels: ["AI Eval", "Local Contract", "No Model Call"],
-  title: "AI Eval Proof Deck",
-  version: "1.0.0",
-};
-
 export function GameDetailPanel({ verifyMode }: { verifyMode?: string | null }) {
   const ctx = useLibraryContext();
   const detailScrollRef = useRef<HTMLElement>(null);
-  const [launchingBacklogCandidateId, setLaunchingBacklogCandidateId] = useState<string | null>(
-    null,
-  );
   const { logScreenshot } = useActivityLogger();
-  const libraryGroups = ctx.filters.libraryGroups;
-  const { handlePlayVariant, setProviderPicker } = ctx.picking;
-  const setLibraryStatusMessage = ctx.setStatusMessage;
 
   const selectedGroup = ctx.filters.selectedGroup;
-  const isAiRecommendationHostedEvalContractVerify =
-    verifyMode === "ai-recommendations-hosted-eval-contract";
   const isRemotePlayLocalProofVerify = verifyMode === "remote-play-local-proof";
   const isRemotePlayEpicEosProviderContractVerify =
     verifyMode === "remote-play-epic-eos-provider-contract";
-  const selectedGame = isAiRecommendationHostedEvalContractVerify
-    ? AI_RECOMMENDATION_HOSTED_EVAL_CONTRACT_GAME
-    : isRemotePlayLocalProofVerify
-      ? REMOTE_PLAY_LOCAL_PROOF_GAME
-      : isRemotePlayEpicEosProviderContractVerify
-        ? REMOTE_PLAY_EPIC_EOS_PROVIDER_CONTRACT_GAME
-        : (selectedGroup?.displayGame ?? null);
-  const selectedVariants = isAiRecommendationHostedEvalContractVerify
-    ? [AI_RECOMMENDATION_HOSTED_EVAL_CONTRACT_GAME]
-    : isRemotePlayLocalProofVerify
-      ? [REMOTE_PLAY_LOCAL_PROOF_GAME]
-      : isRemotePlayEpicEosProviderContractVerify
-        ? [REMOTE_PLAY_EPIC_EOS_PROVIDER_CONTRACT_GAME]
-        : (selectedGroup?.variants ?? []);
+  const selectedGame = isRemotePlayLocalProofVerify
+    ? REMOTE_PLAY_LOCAL_PROOF_GAME
+    : isRemotePlayEpicEosProviderContractVerify
+      ? REMOTE_PLAY_EPIC_EOS_PROVIDER_CONTRACT_GAME
+      : (selectedGroup?.displayGame ?? null);
+  const selectedVariants = isRemotePlayLocalProofVerify
+    ? [REMOTE_PLAY_LOCAL_PROOF_GAME]
+    : isRemotePlayEpicEosProviderContractVerify
+      ? [REMOTE_PLAY_EPIC_EOS_PROVIDER_CONTRACT_GAME]
+      : (selectedGroup?.variants ?? []);
   const selectedRuntime =
     selectedVariants.map((game) => ctx.sync.gameRuntimeById[game.id]).find(Boolean) ?? null;
-  const isBacklogVerify = verifyMode === "backlog-priority";
-  const isAiRecommendationVerify = verifyMode === "ai-recommendations-readiness";
   const isCrossStoreMigrationReadinessVerify = verifyMode === "cross-store-save-sync-e2e-readiness";
   const isCrossStoreSaveVerify = verifyMode === "cross-store-save-sync";
   const isHostedCommunityArtworkVerify = verifyMode === "hosted-community-artwork";
   const isIgdbCrossPlayVerify = verifyMode === "igdb-cross-play-readiness";
-  const backlogPriorityPlan = useMemo(
-    () =>
-      buildBacklogRecommendationPlan(
-        isBacklogVerify || isAiRecommendationVerify
-          ? createVerifyBacklogCandidates()
-          : buildBacklogCandidatesFromGroups(libraryGroups),
-      ),
-    [isAiRecommendationVerify, isBacklogVerify, libraryGroups],
-  );
   const crossStoreSaveSyncPlan = useMemo(() => {
     if (isCrossStoreSaveVerify || isCrossStoreMigrationReadinessVerify) {
       return buildCrossStoreSaveSyncPlan(createVerifyCrossStoreSaveSyncCandidates());
@@ -158,17 +106,6 @@ export function GameDetailPanel({ verifyMode }: { verifyMode?: string | null }) 
     () => (isIgdbCrossPlayVerify ? createVerifyIgdbCrossPlayReadinessPlan() : undefined),
     [isIgdbCrossPlayVerify],
   );
-  const aiRecommendationReadiness = useMemo(
-    () => (isAiRecommendationVerify ? createVerifyAiRecommendationReadiness() : undefined),
-    [isAiRecommendationVerify],
-  );
-  const aiRecommendationHostedEvalContract = useMemo(
-    () =>
-      isAiRecommendationHostedEvalContractVerify
-        ? createVerifyAiRecommendationHostedEvalContract()
-        : undefined,
-    [isAiRecommendationHostedEvalContractVerify],
-  );
   const hostedCommunityArtworkReadiness = useMemo(
     () =>
       isHostedCommunityArtworkVerify ? createVerifyHostedCommunityArtworkReadiness() : undefined,
@@ -187,48 +124,6 @@ export function GameDetailPanel({ verifyMode }: { verifyMode?: string | null }) 
         ? createVerifyRemotePlayEpicEosProviderContract()
         : undefined,
     [isRemotePlayEpicEosProviderContractVerify],
-  );
-  const shouldEnableBacklogLaunch = !verifyMode;
-  const handleLaunchBacklogCandidate = useCallback(
-    async (candidateId: string) => {
-      const group = libraryGroups.find(
-        (libraryGroup) =>
-          libraryGroup.id === candidateId ||
-          libraryGroup.primaryGame.id === candidateId ||
-          libraryGroup.displayGame.id === candidateId ||
-          libraryGroup.variants.some((game) => game.id === candidateId),
-      );
-
-      if (!group) {
-        setLibraryStatusMessage("Play Next launch target is no longer in the local library.");
-        return;
-      }
-
-      const playableVariants = group.variants.filter(isPlayableGame);
-
-      if (playableVariants.length > 1) {
-        setLibraryStatusMessage(null);
-        setProviderPicker({
-          mode: "play",
-          title: group.title,
-          variants: playableVariants,
-        });
-        return;
-      }
-
-      if (playableVariants.length === 0) {
-        setLibraryStatusMessage(`${group.title} is not installed locally yet.`);
-        return;
-      }
-
-      setLaunchingBacklogCandidateId(candidateId);
-      try {
-        await handlePlayVariant(playableVariants[0]);
-      } finally {
-        setLaunchingBacklogCandidateId(null);
-      }
-    },
-    [handlePlayVariant, libraryGroups, setLibraryStatusMessage, setProviderPicker],
   );
 
   async function handleCaptureScreenshot() {
@@ -266,13 +161,6 @@ export function GameDetailPanel({ verifyMode }: { verifyMode?: string | null }) 
         selectedVariants.some((game) => game.id === ctx.achievements.syncingAchievementGameId),
       )}
       gameVariants={selectedVariants}
-      backlogPriorityPlan={backlogPriorityPlan}
-      backlogLaunchingCandidateId={shouldEnableBacklogLaunch ? launchingBacklogCandidateId : null}
-      onLaunchBacklogCandidate={
-        shouldEnableBacklogLaunch ? handleLaunchBacklogCandidate : undefined
-      }
-      aiRecommendationHostedEvalContract={aiRecommendationHostedEvalContract}
-      aiRecommendationReadiness={aiRecommendationReadiness}
       hostedCommunityArtworkReadiness={hostedCommunityArtworkReadiness}
       hostedCommunityArtworkModerationConsole={hostedCommunityArtworkModerationConsole}
       crossStoreSaveMigrationReadiness={crossStoreSaveMigrationReadiness}

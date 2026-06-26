@@ -1,0 +1,21 @@
+// Auto-generated barrel file – re-exports everything from domain modules
+
+export * from "./types";
+export * from "./shared";
+export * from "./platform-health";
+export * from "./system";
+export * from "./plugins";
+export * from "./store";
+export * from "./backup";
+export * from "./games";
+export * from "./controllers";
+export * from "./remote-play";
+export * from "./cloud-saves";
+export * from "./downloads";
+export * from "./lan";
+export * from "./cross-store";
+export * from "./platform-auth";
+export * from "./friends";
+export * from "./mods";
+export * from "./local-sync";
+export * from "./misc";
