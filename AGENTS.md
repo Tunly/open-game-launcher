@@ -13,7 +13,6 @@ When editing UI:
 - Reuse `neo-title`, `neo-copy`, `neo-dots`, and existing art placeholder classes.
 - Preserve the game-launcher feel on profile/settings/social pages too.
 - Run the relevant checks before finishing.
-- Verify every feature change with a screenshot of the affected UI state and keep the artifact under `docs/verification/screenshots/`.
 
 Collaboration preference:
 

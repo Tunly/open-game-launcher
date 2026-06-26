@@ -372,6 +372,7 @@ export const evidenceGates = Object.freeze([
 const actionNames = Object.freeze([
   "plan",
   "preflight",
+  "artifact-preflight",
   "status",
   "template",
   "next",
@@ -2389,6 +2390,20 @@ export function gateStatus(
   };
 }
 
+function artifactReadyStatus(status) {
+  return (
+    status.missingArtifacts.length === 0 &&
+    status.missingProofs.length === 0 &&
+    status.missingArtifactProofs.length === 0 &&
+    status.missingEvidenceDetails.length === 0 &&
+    status.proofEvidenceFindings.length === 0 &&
+    status.hostedCronReceiptFindings.length === 0 &&
+    status.secretFindings.length === 0 &&
+    status.templateOnlyFindings.length === 0 &&
+    status.unreadableArtifacts.length === 0
+  );
+}
+
 export function collectStatuses(
   env = process.env,
   fileExists = existsSync,
@@ -2951,12 +2966,20 @@ function artifactState(gate, status, artifactPath) {
   const hasProofEvidenceFindings = status.proofEvidenceFindings.some(
     (item) => item.path === artifactPath,
   );
+  const hasHostedCronReceiptFindings = status.hostedCronReceiptFindings.some(
+    (item) => item.path === artifactPath || item.path.startsWith(`${artifactPath}#`),
+  );
   const hasBlockers =
     status.secretFindings.some((item) => item.path === artifactPath) ||
     status.templateOnlyFindings.some((item) => item.path === artifactPath);
 
   if (hasBlockers) return "blocked";
-  if (hasMissingProofs || hasMissingDetails || hasProofEvidenceFindings) {
+  if (
+    hasMissingProofs ||
+    hasMissingDetails ||
+    hasProofEvidenceFindings ||
+    hasHostedCronReceiptFindings
+  ) {
     return "needs evidence";
   }
   return "artifact ready";
@@ -3021,6 +3044,13 @@ export function artifactWorklistReport(
       const proofEvidenceFindings = status.proofEvidenceFindings
         .filter((item) => item.path === artifactPath)
         .map(formatFindingReason);
+      const hostedCronReceiptFindings = status.hostedCronReceiptFindings
+        .filter(
+          (item) =>
+            item.path === artifactPath ||
+            item.path.startsWith(`${artifactPath}#`),
+        )
+        .map(formatFindingReason);
       const blockers = [
         ...status.secretFindings
           .filter((item) => item.path === artifactPath)
@@ -3046,6 +3076,11 @@ export function artifactWorklistReport(
       );
       lines.push(
         `- Proof evidence findings: ${formatInlineList(proofEvidenceFindings)}`,
+      );
+      lines.push(
+        `- Hosted cron receipt findings: ${formatInlineList(
+          hostedCronReceiptFindings,
+        )}`,
       );
       lines.push(`- Blockers: ${formatInlineList(compactList(blockers))}`);
       lines.push("- Capture handoffs:");
@@ -3142,6 +3177,17 @@ export function nextStepsReport(
       lines.push(
         `- Proof evidence findings: ${formatInlineList(
           compactList(proofEvidenceFindings),
+        )}`,
+      );
+    }
+
+    const hostedCronReceiptFindings = status.hostedCronReceiptFindings.map(
+      (item) => `${item.path}: ${formatFindingReason(item)}`,
+    );
+    if (hostedCronReceiptFindings.length > 0) {
+      lines.push(
+        `- Hosted cron receipt findings: ${formatInlineList(
+          compactList(hostedCronReceiptFindings),
         )}`,
       );
     }
@@ -3479,8 +3525,97 @@ export function preflightReport(
   };
 }
 
+export function artifactPreflightReport(
+  env = process.env,
+  fileExists = existsSync,
+  readFile = readFileSync,
+) {
+  const statuses = collectStatuses(env, fileExists, readFile);
+  const lines = ["External completion evidence artifact preflight", ""];
+  const ready = statuses.every(artifactReadyStatus);
+
+  for (const status of statuses) {
+    const state = artifactReadyStatus(status) ? "artifact-ready" : "missing";
+    lines.push(`${state} ${status.id}`);
+    for (const finding of status.envFindings) {
+      lines.push(`- env ${finding.reason}: ${finding.name}`);
+    }
+    for (const path of status.missingArtifacts) {
+      lines.push(`- missing artifact: ${path}`);
+    }
+    for (const proof of status.missingProofs) {
+      lines.push(`- missing verified proof: ${proof}`);
+    }
+    appendGroupedPathValues(
+      lines,
+      "missing artifact verified proofs",
+      status.missingArtifactProofs,
+      (proof) => proof.proof,
+    );
+    appendGroupedPathValues(
+      lines,
+      "missing evidence details",
+      status.missingEvidenceDetails,
+      (detail) => detail.field,
+    );
+    appendGroupedPathValues(
+      lines,
+      "evidence detail findings",
+      status.evidenceDetailFindings,
+      formatFindingReason,
+    );
+    appendGroupedPathValues(
+      lines,
+      "proof evidence findings",
+      status.proofEvidenceFindings,
+      formatFindingReason,
+    );
+    appendGroupedPathValues(
+      lines,
+      "hosted cron receipt findings",
+      status.hostedCronReceiptFindings,
+      formatFindingReason,
+    );
+    appendGroupedPathValues(
+      lines,
+      "blocked artifact secrets",
+      status.secretFindings,
+      (finding) => finding.label,
+    );
+    for (const finding of status.templateOnlyFindings) {
+      lines.push(`- blocked template-only banner: ${finding.path}`);
+    }
+    for (const artifact of status.unreadableArtifacts) {
+      lines.push(`- unreadable artifact: ${artifact.path}`);
+    }
+  }
+
+  if (!ready) {
+    lines.push("", "External completion evidence artifacts are incomplete.");
+  }
+
+  lines.push(
+    "",
+    "Artifact preflight ignores missing live environment values; run `pnpm external:evidence:preflight` and `pnpm completion:gate:external` with release-boundary env before release.",
+  );
+
+  return {
+    output: lines.join("\n"),
+    ready,
+    statuses,
+  };
+}
+
 function runPreflight(env = process.env) {
   const report = preflightReport(env);
+  if (report.output) console.log(report.output);
+  if (!report.ready) {
+    process.exitCode = 1;
+  }
+}
+
+function runArtifactPreflight(env = process.env) {
+  const report = artifactPreflightReport(env);
   if (report.output) console.log(report.output);
   if (!report.ready) {
     process.exitCode = 1;
@@ -3547,6 +3682,10 @@ function main() {
   }
   if (action === "preflight") {
     runPreflight();
+    return;
+  }
+  if (action === "artifact-preflight") {
+    runArtifactPreflight();
     return;
   }
   printPlan();
