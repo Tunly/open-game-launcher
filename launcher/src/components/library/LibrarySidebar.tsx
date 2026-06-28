@@ -13,78 +13,6 @@ import { LibraryCustomScrollbar } from "./LibraryCustomScrollbar";
 const LIBRARY_ROW_HEIGHT = 56;
 const LIBRARY_ROW_OVERSCAN = 8;
 const LIBRARY_VIRTUALIZE_THRESHOLD = 80;
-const PRODUCT_CATEGORY_LABELS: Record<string, string> = {
-  game: "Games",
-  software: "Software",
-  video: "Videos",
-  dlc: "DLCs",
-  soundtrack: "Soundtracks",
-  demo: "Demos",
-  beta: "Beta Access",
-};
-const PRODUCT_CATEGORY_KEYS = Object.keys(PRODUCT_CATEGORY_LABELS);
-
-interface SidebarCategoryOption {
-  label: string;
-  count: number;
-}
-
-function toggleListValue<T>(values: T[], value: T): T[] {
-  return values.includes(value) ? values.filter((entry) => entry !== value) : [...values, value];
-}
-
-function addCategoryLabel(
-  counts: Map<string, SidebarCategoryOption>,
-  label: string | null | undefined,
-) {
-  const trimmed = label?.trim();
-  if (!trimmed) {
-    return;
-  }
-
-  const key = trimmed.toLowerCase();
-  const current = counts.get(key);
-  if (current) {
-    current.count += 1;
-    return;
-  }
-
-  counts.set(key, { label: trimmed, count: 1 });
-}
-
-function addGameCategoryLabels(counts: Map<string, SidebarCategoryOption>, game: Game) {
-  (game.categories ?? []).forEach((label) => addCategoryLabel(counts, label));
-  (game.categoryLabels ?? []).forEach((label) => addCategoryLabel(counts, label));
-  (game.tags ?? []).forEach((label) => addCategoryLabel(counts, label));
-  (game.tagLabels ?? []).forEach((label) => addCategoryLabel(counts, label));
-}
-
-function buildSidebarCategoryOptions(
-  groups: GameGroup[],
-  customCategories: Record<string, string[]>,
-): SidebarCategoryOption[] {
-  const counts = new Map<string, SidebarCategoryOption>();
-
-  groups.forEach((group) => {
-    group.variants.forEach((game) => {
-      (customCategories[game.id] ?? []).forEach((label) => addCategoryLabel(counts, label));
-      addGameCategoryLabels(counts, game);
-    });
-  });
-
-  return [...counts.values()].sort((a, b) => b.count - a.count || a.label.localeCompare(b.label));
-}
-
-function buildProductCategoryCounts(groups: GameGroup[]): Record<string, number> {
-  const counts = Object.fromEntries(PRODUCT_CATEGORY_KEYS.map((key) => [key, 0]));
-  groups.forEach((group) => {
-    group.variants.forEach((game) => {
-      const key = (game.productCategory || "game").toLowerCase();
-      counts[key] = (counts[key] ?? 0) + 1;
-    });
-  });
-  return counts;
-}
 
 export interface LibrarySidebarProps {
   games: GameGroup[];
@@ -142,7 +70,6 @@ export function LibrarySidebar({
   const clearAddGameError = setAddGameError ?? (() => undefined);
   const libraryContext = useContext(LibraryContext);
   const setAdvancedFilters = libraryContext?.filters.setAdvancedFilters;
-  const customCategories = libraryContext?.manual.customCategories;
 
   const hasActiveFilters =
     hasActiveFiltersProp ??
@@ -181,33 +108,6 @@ export function LibrarySidebar({
       games: filteredGames.slice(startIndex, endIndex),
     };
   }, [filteredGames, listViewport.height, listViewport.scrollTop, shouldVirtualize]);
-  const sidebarCategories = useMemo(
-    () => buildSidebarCategoryOptions(games, customCategories ?? {}),
-    [customCategories, games],
-  );
-  const productCategoryCounts = useMemo(() => buildProductCategoryCounts(games), [games]);
-  const activeCategorySet = useMemo(
-    () => new Set(advancedFilters.categories.map((category) => category.toLowerCase())),
-    [advancedFilters.categories],
-  );
-  const activeProductCategorySet = useMemo(
-    () => new Set(advancedFilters.productCategories.map((category) => category.toLowerCase())),
-    [advancedFilters.productCategories],
-  );
-
-  function toggleSidebarCategory(label: string) {
-    setAdvancedFilters?.((current) => ({
-      ...current,
-      categories: toggleListValue(current.categories, label),
-    }));
-  }
-
-  function toggleProductCategory(category: string) {
-    setAdvancedFilters?.((current) => ({
-      ...current,
-      productCategories: toggleListValue(current.productCategories, category),
-    }));
-  }
 
   useEffect(() => {
     const element = listScrollRef.current;
@@ -328,84 +228,6 @@ export function LibrarySidebar({
             </button>
           </label>
         </div>
-
-        {libraryContext ? (
-          <div className="border-t-2 border-black bg-[#f4ead8] px-2 py-2">
-            <div className="border-2 border-black bg-[#fbf8ef] shadow-[2px_2px_0_#171411]">
-              <div className="flex items-center justify-between gap-2 border-b-2 border-black bg-[#171411] px-2 py-1">
-                <h3 className="neo-copy text-[10px] font-black uppercase text-[#fff9ed]">
-                  Categories / Tags
-                </h3>
-                {advancedFilters.categories.length > 0 ? (
-                  <button
-                    type="button"
-                    className="neo-copy border border-black bg-[#fff9ed] px-1.5 py-0.5 text-[8px] font-black uppercase text-[#171411] hover:bg-[#8cf5e4]"
-                    onClick={() =>
-                      setAdvancedFilters?.((current) => ({ ...current, categories: [] }))
-                    }
-                  >
-                    Clear
-                  </button>
-                ) : null}
-              </div>
-
-              <div className="grid grid-cols-2 border-b-2 border-black">
-                {PRODUCT_CATEGORY_KEYS.map((category) => {
-                  const count = productCategoryCounts[category] ?? 0;
-                  const checked = activeProductCategorySet.has(category);
-                  return (
-                    <label
-                      key={category}
-                      className={`neo-copy flex min-w-0 cursor-pointer items-center gap-1 border-b border-r border-black px-2 py-1 text-[9px] font-black uppercase last:border-r-0 ${
-                        checked ? "bg-[#087d6d] text-white" : "bg-[#efe3cf] text-[#171411]"
-                      }`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        onChange={() => toggleProductCategory(category)}
-                        className="h-3 w-3 shrink-0 accent-[#b7102a]"
-                      />
-                      <span className="min-w-0 flex-1 truncate">
-                        {PRODUCT_CATEGORY_LABELS[category]}
-                      </span>
-                      <span className="shrink-0">{count}</span>
-                    </label>
-                  );
-                })}
-              </div>
-
-              {sidebarCategories.length > 0 ? (
-                <div className="max-h-28 overflow-y-auto p-1">
-                  {sidebarCategories.slice(0, 14).map((category) => {
-                    const checked = activeCategorySet.has(category.label.toLowerCase());
-                    return (
-                      <label
-                        key={category.label}
-                        className={`neo-copy mb-1 flex min-w-0 cursor-pointer items-center gap-1.5 border-2 border-black px-2 py-1 text-[9px] font-black uppercase shadow-[1px_1px_0_#171411] ${
-                          checked ? "bg-[#b7102a] text-white" : "bg-[#efe3cf] text-[#171411]"
-                        }`}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          onChange={() => toggleSidebarCategory(category.label)}
-                          className="h-3 w-3 shrink-0 accent-[#087d6d]"
-                        />
-                        <span className="min-w-0 flex-1 truncate">{category.label}</span>
-                        <span className="shrink-0">{category.count}</span>
-                      </label>
-                    );
-                  })}
-                </div>
-              ) : (
-                <p className="neo-copy px-2 py-2 text-[9px] font-black uppercase text-[#655f58]">
-                  No category tags in this rack.
-                </p>
-              )}
-            </div>
-          </div>
-        ) : null}
 
         {/* List Frame */}
         <div className="library-scroll-frame library-sidebar-scroll-frame min-h-0 flex-1 border-t-2 border-black">
