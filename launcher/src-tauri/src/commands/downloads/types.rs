@@ -726,7 +726,7 @@ mod tests {
     #[test]
     fn external_tracker_phase_stays_external_without_fake_progress() {
         assert_eq!(
-            phase_from_status_and_speed("downloading", "Xbox Game Pass (External)"),
+            phase_from_status_and_speed("downloading", "Xbox App / PC Game Pass (External)"),
             "external"
         );
         assert_eq!(

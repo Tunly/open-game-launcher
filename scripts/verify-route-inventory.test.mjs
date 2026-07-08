@@ -89,7 +89,7 @@ function writeScreenshot(root, screenshotPath, bytes) {
 test("collectVerifyFlagsFromText extracts route and branch literals", () => {
   const flags = collectVerifyFlagsFromText(`
     const verifyMode = searchParams.get("verify");
-    const ready = verifyMode === "remote-play-local-proof";
+    const ready = verifyMode === "lan-transfer-readiness";
     const alsoReady = searchParams.get("verify") === "hosted-cron-evidence-summary";
     renderRoute("/downloads?verify=mobile-app-readiness");
     renderWithLibrary(<GameDetailPanel verifyMode="backlog-priority" />);
@@ -98,8 +98,8 @@ test("collectVerifyFlagsFromText extracts route and branch literals", () => {
   assert.deepEqual([...flags.keys()].sort(), [
     "backlog-priority",
     "hosted-cron-evidence-summary",
+    "lan-transfer-readiness",
     "mobile-app-readiness",
-    "remote-play-local-proof",
   ]);
 });
 
@@ -453,7 +453,7 @@ test("verifyRouteInventory allows legacy aliases only when canonical route is do
 test("current verify route inventory is documented with explicit legacy aliases", () => {
   const result = verifyRouteInventory();
 
-  assert.equal(result.sourceFlags.size, 71);
+  assert.equal(result.sourceFlags.size, 66);
   assert.equal(result.appRoutePaths.size, 24);
   assert.equal(result.appRouteArtifacts.size, 24);
   assert.deepEqual(result.errors, []);
@@ -461,8 +461,8 @@ test("current verify route inventory is documented with explicit legacy aliases"
     result.documentedScreenshots.size,
     result.existingScreenshots.size,
   );
-  assert.equal(result.existingScreenshots.size, 399);
-  assert.equal(result.screenshotIntegrity.size, 399);
+  assert.equal(result.existingScreenshots.size, 383);
+  assert.equal(result.screenshotIntegrity.size, 383);
   assert.equal(
     [...result.screenshotIntegrity.values()].every(
       (inspection) =>

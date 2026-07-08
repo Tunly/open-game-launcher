@@ -99,7 +99,6 @@ export const ACCOUNT_DELETION_CRON_DRY_RUN_PACKET: AccountDeletionCronDryRunPack
 };
 
 const ACCOUNT_DELETION_STORAGE_BUCKETS = [
-  "game-saves",
   "avatars",
   "profile-banners",
   "profile-showcases",

@@ -271,35 +271,6 @@ export interface CrossStoreSaveProviderCloudContractProof {
   title: string;
 }
 
-export interface CrossStoreSaveSupabaseKeychainStagingStep {
-  evidence: string;
-  id: string;
-  label: string;
-  status: "staging_contract" | "live_blocked";
-}
-
-export interface CrossStoreSaveSupabaseKeychainStagingProof {
-  blockedAfterProof: string[];
-  bucketName: "game-saves";
-  cleanupEvidence: string;
-  consentOperation: "cross_store_save_supabase_keychain_staging_proof";
-  encryptedObjectCount: number;
-  guard: string;
-  hashVerificationCount: number;
-  id: string;
-  keychainOperation: "get_or_create_user_keyring_key";
-  metadataSidecarCount: number;
-  noKeyExport: true;
-  objectPrefix: string;
-  providerTransferSkipped: true;
-  sourceLabel: string;
-  status: "staging-contract";
-  steps: CrossStoreSaveSupabaseKeychainStagingStep[];
-  summary: string;
-  targetLabel: string;
-  title: string;
-}
-
 export interface CrossStoreSaveMigrationSessionRehearsalStep {
   action: string;
   evidence: string;
@@ -331,7 +302,6 @@ export interface CrossStoreSaveSyncPlan {
   nativeApplyProof: CrossStoreSaveNativeApplyProof | null;
   automaticPathMapApplyProof: CrossStoreSaveAutomaticPathMapApplyProof | null;
   postCopyVerificationProof: CrossStoreSavePostCopyVerificationProof | null;
-  supabaseKeychainStagingProof: CrossStoreSaveSupabaseKeychainStagingProof | null;
   migrationSessionRehearsalProof: CrossStoreSaveMigrationSessionRehearsalProof | null;
   status: CrossStoreSaveSyncStatus;
   label: string;
@@ -373,10 +343,8 @@ const LOCAL_ONLY_GUARDS = [
   "Provider path/id fixture review only",
   "Automatic path-map apply is consent-gated",
   "Post-copy verification review only",
-  "Supabase/keychain staging proof review only",
   "Migration session rehearsal review only",
   "No automatic rollback execution",
-  "No live Supabase/keychain bucket E2E",
   "User review required before any write",
 ];
 
@@ -417,10 +385,6 @@ export function buildCrossStoreSaveSyncPlan(games: Game[]): CrossStoreSaveSyncPl
     audit && pathMappingProof && nativeApplyProof
       ? buildPostCopyVerificationProof(audit, pathMappingProof, nativeApplyProof)
       : null;
-  const supabaseKeychainStagingProof =
-    audit && pathMappingProof && postCopyVerificationProof
-      ? buildSupabaseKeychainStagingProof(audit, pathMappingProof, postCopyVerificationProof, title)
-      : null;
   const migrationSessionRehearsalProof =
     audit &&
     providerCatalogProof &&
@@ -428,8 +392,7 @@ export function buildCrossStoreSaveSyncPlan(games: Game[]): CrossStoreSaveSyncPl
     providerCloudContractProof &&
     pathMappingProof &&
     nativeApplyProof &&
-    postCopyVerificationProof &&
-    supabaseKeychainStagingProof
+    postCopyVerificationProof
       ? buildMigrationSessionRehearsalProof(
           audit,
           providerCatalogProof,
@@ -438,7 +401,6 @@ export function buildCrossStoreSaveSyncPlan(games: Game[]): CrossStoreSaveSyncPl
           pathMappingProof,
           nativeApplyProof,
           postCopyVerificationProof,
-          supabaseKeychainStagingProof,
           title,
         )
       : null;
@@ -485,7 +447,6 @@ export function buildCrossStoreSaveSyncPlan(games: Game[]): CrossStoreSaveSyncPl
     nativeApplyProof,
     automaticPathMapApplyProof,
     postCopyVerificationProof,
-    supabaseKeychainStagingProof,
     migrationSessionRehearsalProof,
     status,
     label:
@@ -523,7 +484,7 @@ function buildNativeApplyProof(audit: CrossStoreSaveSyncAudit): CrossStoreSaveNa
       "Provider path mapping output must be reviewed before consent.",
       "Provider cloud transfer is not called.",
       "Rollback restore is native-local only and requires unchanged target hashes.",
-      "Live Supabase/keychain bucket E2E is not part of native copy.",
+      "OG-Launcher cloud saving is not part of native copy.",
     ],
     consentOperation: "cross_store_save_native_copy_apply",
     detail:
@@ -659,7 +620,7 @@ function buildAutomaticPathMapApplyProof(
       "Desktop user consent is still required before any native copy.",
       "Overwrite actions require explicit conflict review before consent.",
       "Provider cloud transfer is still not called.",
-      "Live Supabase/keychain bucket E2E and real migration sessions remain open.",
+      "Real migration sessions remain open and platform cloud saves stay user-managed.",
     ],
     consentOperation: nativeApplyProof.consentOperation,
     guard:
@@ -890,7 +851,7 @@ function buildProviderCloudContractProof(
       "Provider-approved OAuth/device auth evidence is not attached.",
       "Provider cloud save listing/export/import APIs are not called.",
       "Live provider sandbox evidence is still required.",
-      "Real migration sessions remain blocked until provider transfer and Supabase/keychain E2E pass.",
+      "Real migration sessions remain blocked until provider transfer approval exists.",
     ],
     entries,
     guard:
@@ -937,7 +898,6 @@ function buildPostCopyVerificationProof(
     actionCount: items.length,
     blockedAfterProof: [
       "Provider cloud transfer is still not verified.",
-      "Live Supabase/keychain bucket E2E is still not run.",
       "Provider-approved catalog API validation and real user-data migration sessions remain open.",
     ],
     conflictCount: audit.conflictCount,
@@ -957,92 +917,6 @@ function buildPostCopyVerificationProof(
   };
 }
 
-function buildSupabaseKeychainStagingProof(
-  audit: CrossStoreSaveSyncAudit,
-  pathMappingProof: CrossStoreSavePathMappingProof,
-  postCopyVerificationProof: CrossStoreSavePostCopyVerificationProof,
-  title: string,
-): CrossStoreSaveSupabaseKeychainStagingProof {
-  const encryptedObjectCount = postCopyVerificationProof.actionCount;
-  const objectPrefix = `auth.uid()/cross-store-save-staging/${slugForLocalId(title)}/<redacted-proof>/`;
-  const steps: CrossStoreSaveSupabaseKeychainStagingStep[] = [
-    {
-      evidence: `Use game-saves/${objectPrefix} so RLS can require the authenticated owner as the first object-path segment.`,
-      id: "owner-scoped-prefix",
-      label: "Owner-Scoped Prefix",
-      status: "staging_contract",
-    },
-    {
-      evidence:
-        "Call get_or_create_user_keyring_key inside the desktop command and never return raw key material, access tokens, plaintext, or ciphertext.",
-      id: "keychain-redaction",
-      label: "Keychain Redaction",
-      status: "staging_contract",
-    },
-    {
-      evidence: `${encryptedObjectCount} encrypted .enc object contract${encryptedObjectCount === 1 ? "" : "s"} plus ${encryptedObjectCount} .meta.json sidecar contract${encryptedObjectCount === 1 ? "" : "s"} for reviewed target paths.`,
-      id: "encrypted-sidecars",
-      label: "Encrypted Sidecars",
-      status: "staging_contract",
-    },
-    {
-      evidence: `${pathMappingProof.actionCount} reviewed path-map action${pathMappingProof.actionCount === 1 ? "" : "s"} require upload, list, download, decrypt, and SHA-256/size comparison before any real migration claim.`,
-      id: "download-decrypt-hash",
-      label: "Download/Decrypt Hash",
-      status: "staging_contract",
-    },
-    {
-      evidence:
-        "Delete the staging .enc and .meta.json objects after verification and return only cleanup counts/status.",
-      id: "cleanup",
-      label: "Cleanup Contract",
-      status: "staging_contract",
-    },
-    {
-      evidence: "Provider cloud save listing/export/import APIs are still skipped by this proof.",
-      id: "provider-transfer-skipped",
-      label: "Provider Transfer Skipped",
-      status: "live_blocked",
-    },
-    {
-      evidence:
-        "The planner fixture does not authenticate to a live bucket or run keychain restore; it only documents the command contract.",
-      id: "live-run-blocked",
-      label: "Live Run Blocked",
-      status: "live_blocked",
-    },
-  ];
-
-  return {
-    blockedAfterProof: [
-      "Live Supabase bucket E2E must run through the desktop command with a real authenticated user.",
-      "Keychain restore evidence must be collected without exporting raw key material.",
-      "Provider-approved cloud import/export execution is still blocked.",
-      "Real user-data migration sessions are still not executed.",
-    ],
-    bucketName: "game-saves",
-    cleanupEvidence:
-      "Staging cleanup must delete encrypted objects and metadata sidecars, then report redacted counts only.",
-    consentOperation: "cross_store_save_supabase_keychain_staging_proof",
-    encryptedObjectCount,
-    guard:
-      "Supabase/keychain staging proof is a command contract and redaction review only; this planner does not upload, download, decrypt, restore, or delete live bucket objects.",
-    hashVerificationCount: postCopyVerificationProof.rollbackGuardCount,
-    id: `supabase-keychain-staging-${audit.sourceVariantId}-to-${audit.targetVariantId}`,
-    keychainOperation: "get_or_create_user_keyring_key",
-    metadataSidecarCount: encryptedObjectCount,
-    noKeyExport: true,
-    objectPrefix,
-    providerTransferSkipped: true,
-    sourceLabel: audit.sourceLabel,
-    status: "staging-contract",
-    steps,
-    summary: `${audit.sourceLabel} -> ${audit.targetLabel} has a redacted Supabase/keychain staging contract for ${encryptedObjectCount} encrypted object${encryptedObjectCount === 1 ? "" : "s"} and ${encryptedObjectCount} metadata sidecar${encryptedObjectCount === 1 ? "" : "s"} before live bucket E2E.`,
-    targetLabel: audit.targetLabel,
-    title,
-  };
-}
-
 function buildMigrationSessionRehearsalProof(
   audit: CrossStoreSaveSyncAudit,
   providerCatalogProof: CrossStoreSaveProviderCatalogProof,
@@ -1051,7 +925,6 @@ function buildMigrationSessionRehearsalProof(
   pathMappingProof: CrossStoreSavePathMappingProof,
   nativeApplyProof: CrossStoreSaveNativeApplyProof,
   postCopyVerificationProof: CrossStoreSavePostCopyVerificationProof,
-  supabaseKeychainStagingProof: CrossStoreSaveSupabaseKeychainStagingProof,
   title: string,
 ): CrossStoreSaveMigrationSessionRehearsalProof {
   const steps: CrossStoreSaveMigrationSessionRehearsalStep[] = [
@@ -1115,27 +988,10 @@ function buildMigrationSessionRehearsalProof(
       status: "local_evidence",
     },
     {
-      action:
-        "Review the redacted Supabase/keychain staging contract before any live bucket proof.",
-      evidence: `${supabaseKeychainStagingProof.objectPrefix} with ${supabaseKeychainStagingProof.encryptedObjectCount} encrypted object contract${supabaseKeychainStagingProof.encryptedObjectCount === 1 ? "" : "s"}`,
-      id: "supabase-keychain-staging-contract",
-      label: "Supabase/Keychain Staging",
-      status: "local_evidence",
-    },
-    {
       action: "Block provider cloud import/export until an approved provider sandbox exists.",
       evidence: "No provider cloud save listing/export/import API is called.",
       id: "provider-transfer-execution",
       label: "Provider Transfer Execution",
-      status: "external_blocked",
-    },
-    {
-      action:
-        "Block live migration until the bucket upload/restore and keychain restore command has run.",
-      evidence:
-        "A redacted staging contract exists, but no live Supabase bucket write or keychain restore has run in this fixture.",
-      id: "live-supabase-keychain",
-      label: "Live Supabase/Keychain",
       status: "external_blocked",
     },
     {
@@ -1153,7 +1009,6 @@ function buildMigrationSessionRehearsalProof(
     blockedAfterProof: [
       "Provider-approved cloud import/export execution is still not run.",
       "Provider-approved catalog API validation is still not run.",
-      "Live Supabase/keychain bucket E2E is still not run.",
       "Real user-data migration sessions are still not executed.",
     ],
     blockedStepCount,
@@ -1253,9 +1108,9 @@ function buildAuditForFirstReviewLane(
         reason: "Rollback manifest is a preview only.",
       },
       {
-        id: "supabase-keychain-e2e",
-        label: "Supabase/keychain E2E",
-        reason: "No live bucket, encryption key, or keychain restore flow is used.",
+        id: "platform-cloud-transfer",
+        label: "Platform cloud transfer",
+        reason: "Users must manage cloud save transfer in the platform client.",
       },
     ],
     sourceLabel,

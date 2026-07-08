@@ -1543,7 +1543,7 @@ test("dry-run smoke validation rejects mutating responses", () => {
       failedCount: 1,
       processed: [{ id: "request-1" }],
       processedCount: 1,
-      storageBuckets: "game-saves",
+      storageBuckets: "avatars",
     }),
     [
       "dryRun must be true.",

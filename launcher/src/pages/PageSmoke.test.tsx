@@ -264,10 +264,6 @@ vi.mock("../components/settings/ClientUpdateSchedulerSettings", () => ({
   ClientUpdateSchedulerSettings: () => <section aria-label="Client scheduler mock" />,
 }));
 
-vi.mock("../components/settings/CloudSavesSettings", () => ({
-  CloudSavesSettings: () => <section aria-label="Cloud saves mock" />,
-}));
-
 vi.mock("../components/settings/OneClickSetupE2EReadinessPanel", () => ({
   OneClickSetupE2EReadinessPanel: () => <section aria-label="One-click setup E2E readiness mock" />,
 }));
@@ -290,12 +286,6 @@ vi.mock("../components/settings/PresencePollingReadinessPanel", () => ({
 
 vi.mock("../hooks/useCurrentUser", () => ({
   useCurrentUser: currentUserMock,
-}));
-
-vi.mock("../hooks/useCloudAutoSync", () => ({
-  useCloudAutoSync: () => ({
-    maybeSyncOnLaunch: noop,
-  }),
 }));
 
 vi.mock("../hooks/library/useAchievementAutoSync", () => ({
@@ -385,7 +375,6 @@ vi.mock("../hooks/library/useProviderPicking", () => ({
     handleInstallFromProvider: noop,
     handlePlay: noop,
     handlePlayVariant: noop,
-    maybeSyncOnLaunch: noop,
     providerPicker: null,
     setProviderPicker: noop,
   }),

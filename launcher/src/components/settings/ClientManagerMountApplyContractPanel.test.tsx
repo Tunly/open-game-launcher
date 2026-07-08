@@ -46,7 +46,7 @@ describe("ClientManagerMountApplyContractPanel", () => {
     expect(within(matrix).getByText("EA")).toBeInTheDocument();
     expect(within(matrix).getByText("Ubisoft")).toBeInTheDocument();
     expect(within(matrix).getByText("Battle.net")).toBeInTheDocument();
-    expect(within(matrix).getByText("Xbox / Game Pass")).toBeInTheDocument();
+    expect(within(matrix).getByText("Xbox App / PC Game Pass")).toBeInTheDocument();
     expect(within(matrix).getAllByText("No provider-approved launcher apply")).toHaveLength(7);
     expect(within(matrix).getAllByText("Terms: Terms not approved")).toHaveLength(7);
     expect(within(panel).getByText("No real provider mount application")).toBeInTheDocument();

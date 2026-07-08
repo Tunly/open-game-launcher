@@ -20,30 +20,6 @@ import type { Game } from "../types";
 
 export type { Game };
 
-export interface RemotePlayRequest {
-  gameId: string | null;
-  launcher: string | null;
-  externalId: string | null;
-  launchUri: string | null;
-  cloudGamingUrl: string | null;
-}
-
-export interface RemotePlayLaunchResult {
-  provider: string;
-  mode: string;
-  uri: string;
-  message: string;
-}
-
-export interface RemotePlayDescriptor {
-  supported: boolean;
-  providerLabel: string;
-  actionLabel: string;
-  statusLabel: string;
-  detail: string;
-  request: RemotePlayRequest | null;
-}
-
 export interface RemoteCompanionDeviceSecretInput {
   deviceId: string;
   deviceSecret: string;

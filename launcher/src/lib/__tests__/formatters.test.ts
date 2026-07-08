@@ -198,7 +198,7 @@ describe("normalizeLauncherKey", () => {
     expect(normalizeLauncherKey(undefined, "gog-witcher")).toBe("gog");
     expect(normalizeLauncherKey(undefined, "ubisoft-ac")).toBe("ubisoft");
     expect(normalizeLauncherKey(undefined, "xbox-game")).toBe("xbox");
-    expect(normalizeLauncherKey(undefined, "gamepass-xyz")).toBe("xbox");
+    expect(normalizeLauncherKey(undefined, "gamepass-xyz")).toBe("unknown");
     expect(normalizeLauncherKey(undefined, "battlenet-wow")).toBe("battlenet");
     expect(normalizeLauncherKey(undefined, "ea-apex")).toBe("ea");
     expect(normalizeLauncherKey(undefined, "manual-local")).toBe("manual");

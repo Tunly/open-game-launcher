@@ -116,25 +116,7 @@ export const initialAdvancedFilters: AdvancedFilters = {
   categories: [],
   sizeQuery: "",
   productCategories: [...PRODUCT_CATEGORIES],
-  showGamePassCatalog: getXboxConnectionStatus(),
 };
-
-export function getXboxConnectionStatus(): boolean {
-  try {
-    if (localStorage.getItem(STORAGE_KEYS.XBOX_USERNAME)) {
-      return true;
-    }
-
-    const cache = localStorage.getItem(STORAGE_KEYS.XBOX_GAMES_CACHE);
-    if (cache) {
-      const parsed = JSON.parse(cache);
-      return Array.isArray(parsed);
-    }
-  } catch {
-    /* ignore */
-  }
-  return false;
-}
 
 export function normalizeStringArray(value: unknown): string[] {
   return Array.isArray(value)
@@ -162,11 +144,6 @@ export function normalizeAdvancedFilters(value: unknown): AdvancedFilters {
       normalizeStringArray(stored.productCategories).length > 0
         ? normalizeStringArray(stored.productCategories)
         : initialAdvancedFilters.productCategories,
-    showGamePassCatalog: getXboxConnectionStatus()
-      ? true
-      : typeof stored.showGamePassCatalog === "boolean"
-        ? stored.showGamePassCatalog
-        : false,
   };
 }
 

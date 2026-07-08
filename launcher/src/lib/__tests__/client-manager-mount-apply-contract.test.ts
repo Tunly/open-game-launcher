@@ -42,7 +42,7 @@ describe("client manager mount/apply contract", () => {
       "EA",
       "Ubisoft",
       "Battle.net",
-      "Xbox / Game Pass",
+      "Xbox App / PC Game Pass",
     ]);
     expect(contract.providerPolicyMatrix.every((policy) => policy.status === "blocked")).toBe(true);
     expect(

@@ -267,11 +267,11 @@ Deno.test("process account deletion adapters remove nested storage objects and i
       },
       operations,
       storageLists: {
-        [`game-saves:${userId}`]: [
+        [`avatars:${userId}`]: [
           { id: "file-1", name: "root.sav" },
           { id: null, name: "nested" },
         ],
-        [`game-saves:${userId}/nested`]: [
+        [`avatars:${userId}/nested`]: [
           { id: "file-2", name: "leaf.bin" },
         ],
       },
@@ -284,17 +284,17 @@ Deno.test("process account deletion adapters remove nested storage objects and i
     {
       args: [userId, { limit: 1000 }],
       method: "storage.list",
-      table: "game-saves",
+      table: "avatars",
     },
     {
       args: [`${userId}/nested`, { limit: 1000 }],
       method: "storage.list",
-      table: "game-saves",
+      table: "avatars",
     },
     {
       args: [[`${userId}/root.sav`, `${userId}/nested/leaf.bin`]],
       method: "storage.remove",
-      table: "game-saves",
+      table: "avatars",
     },
     ...ACCOUNT_DELETION_USER_STORAGE_BUCKETS.slice(1).map((bucket) => ({
       args: [userId, { limit: 1000 }],

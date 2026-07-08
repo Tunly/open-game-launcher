@@ -179,7 +179,7 @@ pub(crate) fn get_platform_from_game_id(game_id: &str) -> String {
     } else if game_id.starts_with("ubisoft-") {
         "Ubisoft Connect".to_string()
     } else if game_id.starts_with("xbox-") {
-        "Xbox Game Pass".to_string()
+        "Xbox App / PC Game Pass".to_string()
     } else if game_id.starts_with("battlenet-") {
         "Battle.net".to_string()
     } else {
@@ -322,5 +322,21 @@ mod tests {
                 value
             );
         }
+    }
+
+    #[test]
+    fn xbox_ids_stay_on_local_xbox_app_pc_game_pass_path() {
+        assert_eq!(
+            get_platform_from_game_id("xbox-microsoft.forzahorizon5_8wekyb3d8bbwe"),
+            "Xbox App / PC Game Pass"
+        );
+        assert_eq!(
+            provider_key_from_game_id("xbox-microsoft.forzahorizon5_8wekyb3d8bbwe"),
+            "xbox"
+        );
+        assert_eq!(
+            progress_source_from_game_id("xbox-microsoft.forzahorizon5_8wekyb3d8bbwe"),
+            "external_tracker"
+        );
     }
 }

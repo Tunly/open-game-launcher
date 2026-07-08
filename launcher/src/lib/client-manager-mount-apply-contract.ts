@@ -175,8 +175,9 @@ function createProviderApplyPolicyMatrix(): ClientManagerProviderApplyPolicy[] {
     {
       allowedSurface: "Xbox app / Windows Store handoff only; package folders stay sealed.",
       id: "xbox",
-      label: "Xbox / Game Pass",
-      nextAction: "Keep Game Pass installs out of apply scope unless Microsoft exposes approval.",
+      label: "Xbox App / PC Game Pass",
+      nextAction:
+        "Keep Xbox app and PC Game Pass installs out of apply scope unless Microsoft exposes approval.",
       risk: "Windows app packages and protected folders are not safe mutation targets.",
       status: "blocked",
       terms: "No Microsoft approval for package-folder mutation.",

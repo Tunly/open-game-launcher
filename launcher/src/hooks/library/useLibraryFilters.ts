@@ -8,7 +8,6 @@ import type { Game } from "../../lib/types";
 import type { GameCustomArtwork } from "../../lib/custom-artwork";
 import type { GameGroup } from "../../lib/game-groups";
 import {
-  getXboxConnectionStatus,
   initialAdvancedFilters,
   readPersistedLibraryFilterState,
   type LibraryPlatformFilter,
@@ -96,25 +95,6 @@ export function useLibraryFilters(options: UseLibraryFiltersOptions): UseLibrary
     return () => window.clearTimeout(timeout);
   }, [activePlatformFilter, advancedFilters, searchQuery, sortOption]);
 
-  useEffect(() => {
-    const checkAndEnable = () => {
-      if (getXboxConnectionStatus() && !advancedFilters.showGamePassCatalog) {
-        setAdvancedFilters((prev) => ({ ...prev, showGamePassCatalog: true }));
-      }
-    };
-
-    checkAndEnable();
-
-    const handleFocus = () => checkAndEnable();
-    window.addEventListener("focus", handleFocus);
-    document.addEventListener("visibilitychange", handleFocus);
-
-    return () => {
-      window.removeEventListener("focus", handleFocus);
-      document.removeEventListener("visibilitychange", handleFocus);
-    };
-  }, [advancedFilters.showGamePassCatalog]);
-
   const pipeline = useLibraryFilterPipeline({
     installedGames,
     customArtwork,
@@ -131,10 +111,7 @@ export function useLibraryFilters(options: UseLibraryFiltersOptions): UseLibrary
   });
 
   function resetAdvancedFilters() {
-    setAdvancedFilters({
-      ...initialAdvancedFilters,
-      showGamePassCatalog: getXboxConnectionStatus(),
-    });
+    setAdvancedFilters(initialAdvancedFilters);
     setActivePlatformFilter("all");
     setSearchQuery("");
   }
@@ -166,7 +143,6 @@ export function useLibraryFilters(options: UseLibraryFiltersOptions): UseLibrary
 }
 
 export {
-  getXboxConnectionStatus,
   initialAdvancedFilters,
   shouldHideNonGameLibraryEntry,
 } from "../../lib/library-filters-helpers";

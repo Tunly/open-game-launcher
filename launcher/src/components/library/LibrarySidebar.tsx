@@ -1,12 +1,11 @@
 import { Search, SlidersHorizontal, Grid2X2 } from "lucide-react";
-import { useContext, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { RefObject } from "react";
 import type { Game, GameRuntimeStatus } from "../../lib/types";
 import type { GameGroup } from "../../lib/game-groups";
 import type { LibraryAdvancedFilters } from "../../lib/library-filters";
 import type { LibrarySortOption } from "../../lib/library-sort";
 import type { CustomArtworkKind } from "../../lib/custom-artwork";
-import { LibraryContext } from "../../context/LibraryContext";
 import { LibraryRow } from "./LibraryRow";
 import { LibraryCustomScrollbar } from "./LibraryCustomScrollbar";
 
@@ -68,8 +67,6 @@ export function LibrarySidebar({
   onArtworkDrop,
 }: LibrarySidebarProps) {
   const clearAddGameError = setAddGameError ?? (() => undefined);
-  const libraryContext = useContext(LibraryContext);
-  const setAdvancedFilters = libraryContext?.filters.setAdvancedFilters;
 
   const hasActiveFilters =
     hasActiveFiltersProp ??

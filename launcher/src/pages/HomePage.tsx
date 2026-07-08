@@ -55,7 +55,7 @@ const quickActions: QuickAction[] = [
     to: "/store",
   },
   {
-    body: "Tune profile privacy, overlay controls, backup cadence, platform keys, and cloud saves.",
+    body: "Tune profile privacy, overlay controls, backup cadence, platform keys, and backup paths.",
     icon: Settings,
     label: "Settings",
     meta: "Control room",

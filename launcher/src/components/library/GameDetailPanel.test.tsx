@@ -18,7 +18,7 @@ vi.mock("../../lib/launcher", () => ({
 vi.mock("./GameDetails", () => ({
   GameDetails: (props: {
     crossStoreSaveMigrationReadiness?: {
-      keychainRestoreEvidence?: { guards: string[]; label: string } | null;
+      guards: string[];
       statusLabel: string;
     };
     crossStoreSaveSyncPlan?: { label: string };
@@ -26,8 +26,6 @@ vi.mock("./GameDetails", () => ({
     hostedCommunityArtworkModerationConsole?: { modeLabel: string };
     hostedCommunityArtworkReadiness?: { statusLabel: string };
     igdbCrossPlayReadinessPlan?: { statusLabel: string };
-    remotePlayEpicEosProviderContract?: { statusLabel: string };
-    remotePlayLocalProof?: boolean;
     selectedGame?: { externalId?: string; title?: string } | null;
     seedHostedArtworkUploadPending?: boolean;
   }) => (
@@ -35,16 +33,9 @@ vi.mock("./GameDetails", () => ({
       {props.crossStoreSaveMigrationReadiness ? (
         <>
           <p>Cross-store E2E: {props.crossStoreSaveMigrationReadiness.statusLabel}</p>
-          {props.crossStoreSaveMigrationReadiness.keychainRestoreEvidence ? (
-            <>
-              <p>{props.crossStoreSaveMigrationReadiness.keychainRestoreEvidence.label}</p>
-              {props.crossStoreSaveMigrationReadiness.keychainRestoreEvidence.guards.map(
-                (guard) => (
-                  <p key={guard}>{guard}</p>
-                ),
-              )}
-            </>
-          ) : null}
+          {props.crossStoreSaveMigrationReadiness.guards.map((guard) => (
+            <p key={guard}>{guard}</p>
+          ))}
         </>
       ) : null}
       {props.crossStoreSaveSyncPlan ? (
@@ -58,18 +49,6 @@ vi.mock("./GameDetails", () => ({
       ) : null}
       {props.hostedCommunityArtworkModerationConsole ? (
         <p>Hosted moderation: {props.hostedCommunityArtworkModerationConsole.modeLabel}</p>
-      ) : null}
-      {props.remotePlayLocalProof ? (
-        <p>
-          Remote Play proof: {props.selectedGame?.title} / AppID{" "}
-          {props.enrichedSelectedGame?.externalId}
-        </p>
-      ) : null}
-      {props.remotePlayEpicEosProviderContract ? (
-        <p>
-          Epic/EOS provider contract: {props.remotePlayEpicEosProviderContract.statusLabel} /{" "}
-          {props.selectedGame?.title}
-        </p>
       ) : null}
       {props.seedHostedArtworkUploadPending ? <p>Seed hosted pending upload</p> : null}
     </section>
@@ -98,8 +77,10 @@ describe("GameDetailPanel verification modes", () => {
 
     expect(screen.getByText("Cross-store E2E: Local only")).toBeInTheDocument();
     expect(screen.getByText("Cross-store planner: Review Plan Only")).toBeInTheDocument();
-    expect(screen.getByText("Keychain Restore Contract")).toBeInTheDocument();
-    expect(screen.getByText("No live keychain restore run")).toBeInTheDocument();
+    expect(
+      screen.getByText("Rollback restore requires explicit desktop consent"),
+    ).toBeInTheDocument();
+    expect(screen.queryByText("Keychain Restore Contract")).not.toBeInTheDocument();
   });
 
   it("passes IGDB cross-play readiness for the IGDB verification route", () => {
@@ -115,26 +96,6 @@ describe("GameDetailPanel verification modes", () => {
     expect(screen.getByText("Hosted artwork: Hosted v1 staged")).toBeInTheDocument();
     expect(screen.getByText("Hosted moderation: Local Review Preview")).toBeInTheDocument();
     expect(screen.getByText("Seed hosted pending upload")).toBeInTheDocument();
-  });
-
-  it("passes the Remote Play local proof fixture for the verification route", () => {
-    renderWithLibrary(<GameDetailPanel verifyMode="remote-play-local-proof" />);
-
-    expect(
-      screen.getByText("Remote Play proof: Portal 2 Remote Proof / AppID 620"),
-    ).toBeInTheDocument();
-    expect(screen.queryByText(/Hosted artwork/i)).not.toBeInTheDocument();
-  });
-
-  it("passes the Epic/EOS Remote Play provider contract for the verification route", () => {
-    renderWithLibrary(<GameDetailPanel verifyMode="remote-play-epic-eos-provider-contract" />);
-
-    expect(
-      screen.getByText(
-        "Epic/EOS provider contract: Provider Proof Required / Epic EOS Remote Proof",
-      ),
-    ).toBeInTheDocument();
-    expect(screen.queryByText(/Hosted artwork/i)).not.toBeInTheDocument();
   });
 });
 

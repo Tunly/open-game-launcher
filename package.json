@@ -60,8 +60,6 @@
     "supabase:db:lint:test": "node --test scripts/supabase-db-lint.test.mjs",
     "supabase:db:lint": "node scripts/supabase-db-lint.mjs",
     "supabase:db:push": "pnpm --dir launcher supabase:db:push",
-    "release:gate": "pnpm completion:gate",
-    "setup:cloud": "node launcher/scripts/setup-cloud.mjs",
-    "setup:cloud:dry": "node launcher/scripts/setup-cloud.mjs --dry-run"
+    "release:gate": "pnpm completion:gate"
   }
 }

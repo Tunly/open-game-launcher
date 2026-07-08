@@ -287,10 +287,6 @@ vi.mock("../components/settings/ClientUpdateSchedulerSettings", () => ({
   ClientUpdateSchedulerSettings: () => <section aria-label="Client scheduler mock" />,
 }));
 
-vi.mock("../components/settings/CloudSavesSettings", () => ({
-  CloudSavesSettings: () => <section aria-label="Cloud saves mock" />,
-}));
-
 vi.mock("../components/settings/PlatformHealthPanel", () => ({
   PlatformHealthPanel: () => <section aria-label="Platform health mock" />,
 }));
@@ -515,6 +511,13 @@ describe("SettingsPage One-Click Setup E2E readiness", () => {
     launcherMocks.reviewPluginUpdateSigningEnvelope.mockClear();
     launcherMocks.stageSignedPluginPackage.mockClear();
     window.localStorage.clear();
+  });
+
+  it("does not render first-party cloud save management", () => {
+    renderSettingsRoute("/settings");
+
+    expect(screen.queryByText("E2E Cloud Saves")).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: /cloud saves mock/i })).not.toBeInTheDocument();
   });
 
   it("mounts hosted/provider E2E readiness only on the verify route", async () => {
@@ -1169,7 +1172,7 @@ describe("SettingsPage One-Click Setup E2E readiness", () => {
       });
       expect(within(matrix).getByText("Provider Policy Matrix")).toBeInTheDocument();
       expect(within(matrix).getByText("Steam")).toBeInTheDocument();
-      expect(within(matrix).getByText("Xbox / Game Pass")).toBeInTheDocument();
+      expect(within(matrix).getByText("Xbox App / PC Game Pass")).toBeInTheDocument();
       expect(
         within(matrix).getAllByText("No provider-approved launcher apply").length,
       ).toBeGreaterThan(0);

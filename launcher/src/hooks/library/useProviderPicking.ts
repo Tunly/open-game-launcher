@@ -44,7 +44,6 @@ function trackActivePerformanceGame(game: Game) {
 export interface UseProviderPickingOptions {
   selectedGroup: GameGroup | null;
   setStatusMessage: Dispatch<SetStateAction<string | null>>;
-  maybeAutoSyncOnLaunch: () => Promise<void>;
 }
 
 export interface UseProviderPickingResult {
@@ -58,7 +57,6 @@ export interface UseProviderPickingResult {
 export function useProviderPicking({
   selectedGroup,
   setStatusMessage,
-  maybeAutoSyncOnLaunch,
 }: UseProviderPickingOptions): UseProviderPickingResult {
   const [providerPicker, setProviderPicker] = useState<ProviderPickerState>(null);
   const [searchParams, setSearchParams] = useSearchParams();
@@ -130,7 +128,6 @@ export function useProviderPicking({
         trackActivePerformanceGame(game);
         void logGameStart(game.id, game.title, { launcher: game.launcher });
         void trackPlaySessionStart(game);
-        void maybeAutoSyncOnLaunch();
         return;
       }
 
@@ -140,7 +137,6 @@ export function useProviderPicking({
         trackActivePerformanceGame(game);
         void logGameStart(game.id, game.title, { launcher: game.launcher });
         void trackPlaySessionStart(game);
-        void maybeAutoSyncOnLaunch();
         return;
       }
 

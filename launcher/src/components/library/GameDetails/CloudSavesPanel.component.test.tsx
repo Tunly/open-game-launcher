@@ -1,4 +1,4 @@
-import { render, screen, within } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import type { Game } from "../../../lib/types";
@@ -11,40 +11,24 @@ vi.mock("../../../hooks/useCurrentUser", () => ({
   }),
 }));
 
-describe("CloudSavesPanel provider fixture suggestions", () => {
-  it("renders fixture-only provider save-root suggestions without live provider claims", () => {
+describe("CloudSavesPanel platform-only notice", () => {
+  it("directs users to platform cloud saves without first-party sync controls", () => {
     render(
       <CloudSavesPanel
         game={makeGame({
           id: "steam-akira",
-          launcher: undefined,
+          launcher: "steam",
           saveFiles: [],
         })}
       />,
     );
 
-    const panel = screen.getByText("Provider Save Map: Local Review").closest("div");
-    expect(panel).not.toBeNull();
-    const suggestion = panel?.parentElement;
-    expect(suggestion).not.toBeNull();
-
-    expect(screen.getByText("Fixture Only")).toBeInTheDocument();
-    expect(screen.getByText("Steam Save Root")).toBeInTheDocument();
-    expect(screen.getByText(/steam_userdata_remote/i)).toBeInTheDocument();
-    expect(screen.getByText("2 / ID 110011")).toBeInTheDocument();
-    expect(
-      screen.getByText(/Local provider save-root suggestion only; no provider API/i),
-    ).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: /track/i })).toBeDisabled();
-    expect(
-      within(suggestion as HTMLElement).queryByText(/provider verified/i),
-    ).not.toBeInTheDocument();
-    expect(
-      within(suggestion as HTMLElement).queryByText(/cloud transfer ready/i),
-    ).not.toBeInTheDocument();
-    expect(
-      within(suggestion as HTMLElement).queryByText(/migration complete/i),
-    ).not.toBeInTheDocument();
+    expect(screen.getByRole("region", { name: /platform cloud saves/i })).toBeInTheDocument();
+    expect(screen.getByText("Steam Cloud")).toBeInTheDocument();
+    expect(screen.getByText(/use steam cloud for save sync/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /upload/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /restore/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /sync mode/i })).not.toBeInTheDocument();
   });
 });
 

@@ -10,9 +10,9 @@ describe("buildCrossStoreSaveMigrationReadiness", () => {
     const readiness = createVerifyCrossStoreSaveMigrationReadiness();
 
     expect(readiness.statusLabel).toBe("Local only");
-    expect(readiness.readyCount).toBe(5);
-    expect(readiness.warningCount).toBe(8);
-    expect(readiness.blockedCount).toBe(2);
+    expect(readiness.readyCount).toBe(4);
+    expect(readiness.warningCount).toBe(7);
+    expect(readiness.blockedCount).toBe(1);
     expect(readiness.progress).toBe(33);
     expect(readiness.guards).toContain("Dry-run audit before copy");
     expect(readiness.guards).toContain("Native copy requires explicit desktop consent");
@@ -23,24 +23,10 @@ describe("buildCrossStoreSaveMigrationReadiness", () => {
     expect(readiness.guards).toContain("Post-copy verification review only");
     expect(readiness.guards).toContain("Local sandbox proof uses temp files only");
     expect(readiness.guards).toContain("Migration session rehearsal review only");
-    expect(readiness.guards).toContain("Supabase/keychain staging proof review only");
     expect(readiness.guards).toContain("No provider cloud transfer");
-    expect(readiness.guards).toContain("No live Supabase bucket E2E");
-    expect(readiness.guards).toContain("Keychain restore contract review only");
     expect(readiness.guards).toContain("Rollback restore requires explicit desktop consent");
-    expect(readiness.keychainRestoreEvidence?.label).toBe("Keychain Restore Contract");
-    expect(readiness.keychainRestoreEvidence?.guards).toContain("No key export");
-    expect(readiness.keychainRestoreEvidence?.guards).toContain("No live keychain restore run");
-    expect(readiness.keychainRestoreEvidence?.guards).toContain(
-      "Restore requires explicit desktop consent",
-    );
-    expect(readiness.keychainRestoreEvidence?.restoreRules.map((rule) => rule.label)).toEqual([
-      "Redacted React Boundary",
-      "Desktop Vault Boundary",
-      "Session Consent Boundary",
-    ]);
-    expect(readiness.keychainRestoreEvidence?.summary).not.toMatch(
-      /key exported|plaintext secret|live bucket restored|keychain restored|migration complete/i,
+    expect(readiness.guards).not.toEqual(
+      expect.arrayContaining([expect.stringMatching(/supabase|keychain|bucket/i)]),
     );
     expect(readiness.gates.map((gate) => gate.label)).toEqual([
       "Local Save Plan",
@@ -51,9 +37,6 @@ describe("buildCrossStoreSaveMigrationReadiness", () => {
       "Native Copy Engine",
       "Path Mapping Matrix",
       "Provider Cloud Transfer",
-      "Supabase/Keychain Staging Contract",
-      "Supabase Bucket E2E",
-      "Keychain Restore",
       "Rollback Restore",
       "Local Sandbox E2E Proof",
       "Post-Copy Conflict Audit",
@@ -65,7 +48,6 @@ describe("buildCrossStoreSaveMigrationReadiness", () => {
     const readiness = buildCrossStoreSaveMigrationReadiness({
       conflictAuditReady: true,
       dryRunAuditReady: true,
-      keychainRestoreReady: true,
       localPlanReady: true,
       localSandboxProofReady: true,
       migrationSessionRehearsalReady: true,
@@ -75,8 +57,6 @@ describe("buildCrossStoreSaveMigrationReadiness", () => {
       providerCloudContractReady: true,
       providerCloudTransferReady: false,
       rollbackSnapshotReady: true,
-      supabaseBucketE2EReady: false,
-      supabaseKeychainStagingProofReady: true,
       variantMetadataReady: true,
     });
 
@@ -88,18 +68,15 @@ describe("buildCrossStoreSaveMigrationReadiness", () => {
     expect(readiness.summary).toContain("rollback restore proof");
     expect(readiness.summary).toContain("temp-file local sandbox E2E proof");
     expect(readiness.summary).toContain("post-copy conflict verification packet");
-    expect(readiness.summary).toContain("redacted Supabase/keychain staging contract");
-    expect(readiness.summary).toContain("keychain restore contract");
     expect(readiness.summary).toContain("migration-session rehearsal packet");
     expect(readiness.summary).toContain("provider-approved catalog validation");
-    expect(readiness.summary).toContain("live Supabase/keychain E2E");
+    expect(readiness.summary).not.toMatch(/supabase|keychain|bucket/i);
     expect(readiness.nextAction).toContain("Stage provider-approved cloud");
     expect(readiness.guardCopy).toContain("Native desktop copy and rollback now require");
     expect(readiness.guardCopy).toContain("provider cloud contract review");
     expect(readiness.guardCopy).toContain("temp-file local sandbox proof");
     expect(readiness.guardCopy).toContain("migration session rehearsal review");
-    expect(readiness.guardCopy).toContain("Supabase/keychain staging-contract review");
-    expect(readiness.guardCopy).toContain("keychain restore contract review");
     expect(readiness.guardCopy).toContain("provider-approved catalog validation");
+    expect(readiness.guardCopy).not.toMatch(/supabase|keychain|bucket/i);
   });
 });

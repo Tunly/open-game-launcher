@@ -121,38 +121,6 @@ struct AppxPackage {
     package_family_name: Option<String>,
 }
 
-#[derive(Deserialize, Debug)]
-struct GamePassCatalogItem {
-    id: Option<String>,
-}
-
-#[derive(Deserialize, Debug)]
-#[allow(non_snake_case)]
-struct DisplayCatalogResponse {
-    Products: Vec<DisplayCatalogProduct>,
-}
-
-#[derive(Deserialize, Debug)]
-#[allow(non_snake_case)]
-struct DisplayCatalogProduct {
-    ProductId: Option<String>,
-    LocalizedProperties: Option<Vec<DisplayCatalogLocalizedProperties>>,
-}
-
-#[derive(Deserialize, Debug)]
-#[allow(non_snake_case)]
-struct DisplayCatalogLocalizedProperties {
-    ProductTitle: Option<String>,
-    Images: Option<Vec<DisplayCatalogImage>>,
-}
-
-#[derive(Deserialize, Debug)]
-#[allow(non_snake_case)]
-struct DisplayCatalogImage {
-    ImagePurpose: String,
-    Uri: String,
-}
-
 fn start_xbox_callback_server(app: tauri::AppHandle) {
     thread::spawn(move || {
         let listener = match TcpListener::bind("127.0.0.1:18236") {
@@ -639,10 +607,7 @@ pub async fn fetch_xbox_owned_games(code: String) -> Result<XboxFetchResult, Str
             icon_url: None,
             playtime_minutes,
             last_played_at: last_played,
-            cloud_gaming_url: Some(format!(
-                "https://www.xbox.com/play/launch/{}",
-                title.title_id
-            )),
+            cloud_gaming_url: None,
         });
     }
 
@@ -688,111 +653,6 @@ pub async fn install_xbox_game(pfn: String) -> Result<(), String> {
     crate::commands::system::open_uri(&url)?;
 
     Ok(())
-}
-
-#[tauri::command]
-pub async fn fetch_game_pass_catalog() -> Result<Vec<OwnedGame>, String> {
-    let client = crate::commands::http::shared_http_client();
-
-    // 1. Fetch the list of Game Pass PC product IDs
-    let list_res = client
-        .get("https://catalog.gamepass.com/sigls/v2?id=fdd9e2a7-0fee-49f6-ad69-4354098401ff&language=en-us&market=US")
-        .send()
-        .await
-        .map_err(|e| format!("Failed to fetch Game Pass catalog list: {}", e))?;
-
-    let items: Vec<GamePassCatalogItem> = list_res
-        .json()
-        .await
-        .map_err(|e| format!("Failed to parse Game Pass catalog list: {}", e))?;
-
-    // Skip the first item which is usually a metadata/header item
-    let ids: Vec<String> = items.into_iter().filter_map(|item| item.id).collect();
-
-    let mut games = Vec::new();
-
-    // 2. Fetch details in batches of 50
-    for chunk in ids.chunks(50) {
-        let big_ids = chunk.join(",");
-        let url = format!(
-            "https://displaycatalog.mp.microsoft.com/v7.0/products?bigIds={}&market=US&languages=en-us&MS-CV=DUMMY.1",
-            big_ids
-        );
-
-        let detail_res = client.get(&url).send().await;
-
-        if let Ok(res) = detail_res {
-            let status = res.status();
-            match res.json::<DisplayCatalogResponse>().await {
-                Ok(catalog_data) => {
-                    for product in catalog_data.Products {
-                        if let Some(props_list) = product.LocalizedProperties {
-                            if let Some(props) = props_list.first() {
-                                let Some(product_id) = product
-                                    .ProductId
-                                    .as_deref()
-                                    .map(str::trim)
-                                    .filter(|id| !id.is_empty())
-                                else {
-                                    continue;
-                                };
-                                let Some(title) = props
-                                    .ProductTitle
-                                    .as_deref()
-                                    .map(str::trim)
-                                    .filter(|title| !title.is_empty())
-                                else {
-                                    continue;
-                                };
-
-                                // Find the poster image
-                                let cover_url = if let Some(images) = &props.Images {
-                                    images
-                                        .iter()
-                                        .find(|img| {
-                                            img.ImagePurpose.eq_ignore_ascii_case("Poster")
-                                                || img.ImagePurpose.eq_ignore_ascii_case("BoxArt")
-                                        })
-                                        .or_else(|| images.first())
-                                        .map(|img| {
-                                            if img.Uri.starts_with("//") {
-                                                format!("https:{}", img.Uri)
-                                            } else {
-                                                img.Uri.clone()
-                                            }
-                                        })
-                                } else {
-                                    None
-                                };
-
-                                games.push(OwnedGame {
-                                    id: format!("gamepass-{}", product_id),
-                                    external_id: Some(product_id.to_string()),
-                                    title: title.to_string(),
-                                    description: String::new(),
-                                    cover_url,
-                                    logo_url: None,
-                                    icon_url: None,
-                                    playtime_minutes: 0,
-                                    last_played_at: None,
-                                    cloud_gaming_url: Some("https://www.xbox.com/play".to_string()),
-                                });
-                            }
-                        }
-                    }
-                }
-                Err(e) => {
-                    println!(
-                        "[Xbox] Failed to parse DisplayCatalogResponse (status {}): {}",
-                        status, e
-                    );
-                }
-            }
-        } else if let Err(e) = detail_res {
-            println!("[Xbox] Failed to fetch catalog details: {}", e);
-        }
-    }
-    Ok(games)
 }
 
 #[derive(Deserialize, Debug)]

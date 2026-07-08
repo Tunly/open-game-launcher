@@ -71,11 +71,6 @@ const LazyClientManagerMountApplyContractPanel = React.lazy(() =>
     default: m.ClientManagerMountApplyContractPanel,
   })),
 );
-const LazyCloudSavesSettings = React.lazy(() =>
-  import("../components/settings/CloudSavesSettings").then((m) => ({
-    default: m.CloudSavesSettings,
-  })),
-);
 const LazyExternalCompletionEvidenceSummaryPanel = React.lazy(() =>
   import("../components/settings/ExternalCompletionEvidenceSummaryPanel").then((m) => ({
     default: m.ExternalCompletionEvidenceSummaryPanel,
@@ -1652,39 +1647,6 @@ export function SettingsPage() {
             </div>
           </div>
 
-          {/* E2E ENCRYPTION INFO */}
-          <div className="border-4 border-black bg-[#f5eedf] shadow-[4px_4px_0_#171411]">
-            <div className="flex items-center justify-between border-b-4 border-black p-5">
-              <div>
-                <p className="neo-copy text-[10px] font-bold uppercase text-[#55504a]">
-                  Security & Privacy
-                </p>
-                <h2 className="text-3xl font-black uppercase text-[#171411]">E2E Cloud Saves</h2>
-              </div>
-              <ShieldCheck className="h-10 w-10 text-[#087d6d]" />
-            </div>
-
-            <div className="p-5">
-              <div className="border-2 border-black bg-[#efe6d4] p-4">
-                <h3 className="mb-2 text-xl font-black uppercase text-[#171411]">
-                  Zero-Knowledge Architecture
-                </h3>
-                <p className="neo-copy mb-4 text-[10px] font-bold uppercase leading-relaxed text-[#55504a]">
-                  All game saves uploaded to our cloud storage are fully end-to-end encrypted
-                  locally on your device. We use{" "}
-                  <span className="font-black text-[#c20b2f]">AES-256-GCM</span> with keys securely
-                  derived via Argon2id and stored strictly in your operating system's native
-                  keychain.
-                </p>
-                <p className="neo-copy text-[10px] font-bold uppercase leading-relaxed text-[#55504a]">
-                  <strong className="text-[#087d6d]">DSGVO / GDPR Compliant:</strong> Because the
-                  decryption key never leaves your device, neither we nor any cloud provider can
-                  read your save data. Your privacy is guaranteed.
-                </p>
-              </div>
-            </div>
-          </div>
-
           {/* CLOUD ACCOUNTS LINKING */}
           <div className="border-4 border-black bg-[#f5eedf] shadow-[4px_4px_0_#171411]">
             <div className="flex items-center justify-between border-b-4 border-black p-5">
@@ -1889,10 +1851,10 @@ export function SettingsPage() {
                 <div className="flex flex-col justify-between border-2 border-black bg-[#efe6d4] p-4 shadow-[2px_2px_0_#171411]">
                   <div>
                     <h3 className="mb-1 text-xl font-black uppercase text-[#171411]">
-                      Xbox / MS Store
+                      Xbox App / PC Game Pass
                     </h3>
                     <p className="neo-copy mb-4 text-[9px] font-bold uppercase leading-relaxed text-[#55504a]">
-                      Import your Xbox Game Pass and Microsoft Store games.
+                      Import your Xbox app, PC Game Pass, and Microsoft Store games.
                     </p>
                   </div>
                   <div>
@@ -2181,10 +2143,6 @@ export function SettingsPage() {
           />
 
           <ClientUpdateSchedulerSettings />
-
-          <React.Suspense fallback={null}>
-            <LazyCloudSavesSettings />
-          </React.Suspense>
 
           <React.Suspense fallback={null}>
             <LazyBackupRestoreSettings

@@ -254,9 +254,11 @@ pub async fn run_external_download(
                 "Battle.net" => crate::commands::games::detect::scan_battlenet_games()
                     .iter()
                     .any(|g| g.id == clean_id),
-                "Xbox Game Pass" => crate::commands::games::detect::scan_xbox_games()
-                    .iter()
-                    .any(|g| g.id == clean_id),
+                "Xbox App / PC Game Pass" | "Xbox App" | "Xbox Game Pass" => {
+                    crate::commands::games::detect::scan_xbox_games()
+                        .iter()
+                        .any(|g| g.id == clean_id)
+                }
                 _ => false,
             };
 

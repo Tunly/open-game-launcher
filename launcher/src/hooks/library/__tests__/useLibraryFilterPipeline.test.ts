@@ -31,7 +31,6 @@ const baseAdvanced: LibraryAdvancedFilters = {
   categories: [],
   sizeQuery: "",
   productCategories: [],
-  showGamePassCatalog: false,
 };
 
 function makeOptions(overrides: Partial<Parameters<typeof useLibraryFilterPipeline>[0]> = {}) {

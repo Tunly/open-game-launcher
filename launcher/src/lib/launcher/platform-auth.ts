@@ -106,10 +106,6 @@ export function installXboxGame(pfn: string): Promise<void> {
   return invokeCommand<void>("install_xbox_game", { pfn });
 }
 
-export function fetchGamePassCatalog(): Promise<OwnedGame[]> {
-  return invokeCommand<OwnedGame[]>("fetch_game_pass_catalog");
-}
-
 type SteamRawGame = Record<string, unknown>;
 
 function readString(record: SteamRawGame, keys: string[]) {

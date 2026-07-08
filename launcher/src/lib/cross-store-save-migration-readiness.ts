@@ -3,7 +3,6 @@ export type CrossStoreSaveMigrationReadinessStatus = "blocked" | "ready" | "warn
 export interface CrossStoreSaveMigrationReadinessInput {
   conflictAuditReady: boolean;
   dryRunAuditReady: boolean;
-  keychainRestoreReady: boolean;
   localPlanReady: boolean;
   localSandboxProofReady: boolean;
   migrationSessionRehearsalReady: boolean;
@@ -13,8 +12,6 @@ export interface CrossStoreSaveMigrationReadinessInput {
   providerCloudContractReady: boolean;
   providerCloudTransferReady: boolean;
   rollbackSnapshotReady: boolean;
-  supabaseBucketE2EReady: boolean;
-  supabaseKeychainStagingProofReady: boolean;
   variantMetadataReady: boolean;
 }
 
@@ -26,27 +23,11 @@ export interface CrossStoreSaveMigrationReadinessGate {
   status: CrossStoreSaveMigrationReadinessStatus;
 }
 
-export interface CrossStoreSaveKeychainRestoreRule {
-  boundary: string;
-  evidence: string;
-  id: string;
-  label: string;
-}
-
-export interface CrossStoreSaveKeychainRestoreEvidence {
-  guards: string[];
-  label: string;
-  restoreRules: CrossStoreSaveKeychainRestoreRule[];
-  status: Extract<CrossStoreSaveMigrationReadinessStatus, "warning">;
-  summary: string;
-}
-
 export interface CrossStoreSaveMigrationReadiness {
   blockedCount: number;
   gates: CrossStoreSaveMigrationReadinessGate[];
   guardCopy: string;
   guards: string[];
-  keychainRestoreEvidence: CrossStoreSaveKeychainRestoreEvidence | null;
   nextAction: string;
   progress: number;
   readyCount: number;
@@ -66,52 +47,12 @@ const CROSS_STORE_SAVE_MIGRATION_GUARDS = [
   "Post-copy verification review only",
   "Local sandbox proof uses temp files only",
   "Migration session rehearsal review only",
-  "Supabase/keychain staging proof review only",
   "No provider cloud transfer",
-  "No live Supabase bucket E2E",
-  "Keychain restore contract review only",
   "Rollback restore requires explicit desktop consent",
 ];
 
 const CROSS_STORE_SAVE_MIGRATION_GUARD_COPY =
-  "Cross-store save sync E2E review is local only. Native desktop copy and rollback now require explicit user consent, source/target root review, target snapshots, unchanged target hashes, local provider catalog coverage review, local provider cloud contract review, a temp-file local sandbox proof, migration session rehearsal review, redacted Supabase/keychain staging-contract review, keychain restore contract review, and post-copy hash verification review; this panel still does not run automatic migration, provider-approved catalog validation, auto-apply provider path mappings, transfer provider cloud saves, use a live Supabase bucket, export key material, or restore live keychain material.";
-
-const CROSS_STORE_SAVE_KEYCHAIN_RESTORE_EVIDENCE: CrossStoreSaveKeychainRestoreEvidence = {
-  guards: [
-    "No key export",
-    "No plaintext save secret",
-    "No live keychain restore run",
-    "Restore requires explicit desktop consent",
-    "Bucket object handles stay redacted",
-    "Provider cloud transfer stays skipped",
-  ],
-  label: "Keychain Restore Contract",
-  restoreRules: [
-    {
-      boundary: "React receives only restore status labels, counts, and redacted object handles.",
-      evidence: "No plaintext key, ciphertext, access token, API key, or user id is returned.",
-      id: "redacted-react-boundary",
-      label: "Redacted React Boundary",
-    },
-    {
-      boundary: "Desktop command must unlock local secure storage inside Tauri before decrypting.",
-      evidence:
-        "The verify route documents the handoff but never asks browser state for key material.",
-      id: "desktop-vault-boundary",
-      label: "Desktop Vault Boundary",
-    },
-    {
-      boundary: "Restore can only target reviewed migration sessions after live bucket E2E passes.",
-      evidence:
-        "Local readiness keeps provider cloud transfer and live Supabase bucket E2E blocked.",
-      id: "session-consent-boundary",
-      label: "Session Consent Boundary",
-    },
-  ],
-  status: "warning",
-  summary:
-    "Keychain restore is local contract evidence only: the launcher reviews redaction, desktop-vault boundaries, object-handle scope, and consent requirements, but it does not export keys, decrypt live bucket objects, restore credentials, or write migrated save files.",
-};
+  "Cross-store save sync E2E review is local only. Native desktop copy and rollback now require explicit user consent, source/target root review, target snapshots, unchanged target hashes, local provider catalog coverage review, local provider cloud contract review, a temp-file local sandbox proof, migration session rehearsal review, and post-copy hash verification review; this panel still does not run automatic migration, provider-approved catalog validation, auto-apply provider path mappings, transfer provider cloud saves, or platform cloud-save operations.";
 
 export function buildCrossStoreSaveMigrationReadiness(
   input: CrossStoreSaveMigrationReadinessInput,
@@ -206,39 +147,6 @@ export function buildCrossStoreSaveMigrationReadiness(
       status: input.providerCloudTransferReady ? "warning" : "blocked",
     },
     {
-      action: input.supabaseKeychainStagingProofReady
-        ? "Keep the staging proof redacted and require a real authenticated desktop run before live E2E is marked complete."
-        : "Add a redacted Supabase/keychain staging contract before running live bucket E2E.",
-      detail: input.supabaseKeychainStagingProofReady
-        ? "A user-scoped bucket prefix, encrypted object and metadata sidecar contract, keychain no-export rule, hash verification plan, cleanup contract, and provider-transfer skip are staged for review."
-        : "No redacted Supabase/keychain staging contract exists between local copy proof and live bucket E2E.",
-      id: "supabase-keychain-staging-proof",
-      label: "Supabase/Keychain Staging Contract",
-      status: input.supabaseKeychainStagingProofReady ? "ready" : "blocked",
-    },
-    {
-      action: input.supabaseBucketE2EReady
-        ? "Keep live bucket writes behind migration rollback review."
-        : "Run a live Supabase bucket E2E with upload, restore, RLS, and encryption evidence.",
-      detail: input.supabaseBucketE2EReady
-        ? "Supabase bucket E2E evidence exists, but it is not connected to migration."
-        : "No live Supabase bucket migration E2E has been run for cross-store saves.",
-      id: "supabase-bucket-e2e",
-      label: "Supabase Bucket E2E",
-      status: input.supabaseBucketE2EReady ? "warning" : "blocked",
-    },
-    {
-      action: input.keychainRestoreReady
-        ? "Review keychain restore boundaries without exporting keys or decrypting live bucket objects."
-        : "Validate keychain unlock/restore flow before encrypted save migration staging.",
-      detail: input.keychainRestoreReady
-        ? "Local restore contract evidence covers redacted object handles, desktop-vault scope, no key export, and explicit migration-session consent."
-        : "No keychain restore or encrypted migration credential flow is validated.",
-      id: "keychain-restore",
-      label: "Keychain Restore",
-      status: input.keychainRestoreReady ? "warning" : "blocked",
-    },
-    {
       action: input.rollbackSnapshotReady
         ? "Keep rollback restore desktop-only and require unchanged target hashes before restoring."
         : "Create pre-copy snapshots and rollback verification before native copy is allowed.",
@@ -254,7 +162,7 @@ export function buildCrossStoreSaveMigrationReadiness(
         ? "Use the temp-file sandbox proof as local evidence before any real save migration session."
         : "Add a local sandbox proof that applies, verifies, rolls back, and cleans up temp save files.",
       detail: input.localSandboxProofReady
-        ? "The native proof command creates temporary Steam/GOG save roots, applies reviewed files, verifies hashes and manifest output, rolls back restored/deleted files, and removes the sandbox without Supabase, provider cloud, or keychain access."
+        ? "The native proof command creates temporary Steam/GOG save roots, applies reviewed files, verifies hashes and manifest output, rolls back restored/deleted files, and removes the sandbox without provider cloud or platform cloud-save access."
         : "No credential-free local sandbox proof exercises the native apply and rollback path end to end.",
       id: "local-sandbox-proof",
       label: "Local Sandbox E2E Proof",
@@ -296,15 +204,6 @@ export function buildCrossStoreSaveMigrationReadiness(
     gates,
     guardCopy: CROSS_STORE_SAVE_MIGRATION_GUARD_COPY,
     guards: [...CROSS_STORE_SAVE_MIGRATION_GUARDS],
-    keychainRestoreEvidence: input.keychainRestoreReady
-      ? {
-          ...CROSS_STORE_SAVE_KEYCHAIN_RESTORE_EVIDENCE,
-          guards: [...CROSS_STORE_SAVE_KEYCHAIN_RESTORE_EVIDENCE.guards],
-          restoreRules: CROSS_STORE_SAVE_KEYCHAIN_RESTORE_EVIDENCE.restoreRules.map((rule) => ({
-            ...rule,
-          })),
-        }
-      : null,
     nextAction: nextGate?.action ?? "Cross-store save migration can enter controlled staging.",
     progress: Math.round((readyCount / gates.length) * 100),
     readyCount,
@@ -312,7 +211,7 @@ export function buildCrossStoreSaveMigrationReadiness(
       blockedCount > 0 ? "Local only" : warningCount > 0 ? "Needs staging" : "Review ready",
     summary:
       blockedCount > 0
-        ? "Cross-store save sync has a local planner, provider catalog coverage packet, provider cloud contract packet, dry-run audit packet, provider path-map review matrix, consent-gated native copy proof, rollback restore proof, temp-file local sandbox E2E proof, post-copy conflict verification packet, redacted Supabase/keychain staging contract, keychain restore contract, and migration-session rehearsal packet. Provider cloud transfer, provider-approved catalog validation, live Supabase/keychain E2E, and real migration sessions remain open."
+        ? "Cross-store save sync has a local planner, provider catalog coverage packet, provider cloud contract packet, dry-run audit packet, provider path-map review matrix, consent-gated native copy proof, rollback restore proof, temp-file local sandbox E2E proof, post-copy conflict verification packet, and migration-session rehearsal packet. Provider cloud transfer, provider-approved catalog validation, and real migration sessions remain open."
         : warningCount > 0
           ? "Cross-store migration staging evidence exists, but file mutation and provider transfer still need review."
           : "Cross-store save migration can enter controlled staging.",
@@ -324,7 +223,6 @@ export function createVerifyCrossStoreSaveMigrationReadiness(): CrossStoreSaveMi
   return buildCrossStoreSaveMigrationReadiness({
     conflictAuditReady: true,
     dryRunAuditReady: true,
-    keychainRestoreReady: true,
     localPlanReady: true,
     localSandboxProofReady: true,
     migrationSessionRehearsalReady: true,
@@ -334,8 +232,6 @@ export function createVerifyCrossStoreSaveMigrationReadiness(): CrossStoreSaveMi
     providerCloudContractReady: true,
     providerCloudTransferReady: false,
     rollbackSnapshotReady: true,
-    supabaseBucketE2EReady: false,
-    supabaseKeychainStagingProofReady: true,
     variantMetadataReady: true,
   });
 }

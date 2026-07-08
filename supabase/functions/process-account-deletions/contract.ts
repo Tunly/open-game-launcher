@@ -91,7 +91,6 @@ export const ACCOUNT_DELETION_PROCESSOR_DEFAULT_LIMIT = 20;
 export const ACCOUNT_DELETION_PROCESSOR_MAX_LIMIT = 100;
 export const ACCOUNT_DELETION_PROCESSING_STATUS = "processing";
 export const ACCOUNT_DELETION_USER_STORAGE_BUCKETS = [
-  "game-saves",
   "avatars",
   "profile-banners",
   "profile-showcases",

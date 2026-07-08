@@ -17,7 +17,6 @@ import {
   shouldHideNonGameLibraryEntry,
   sortGameGroups,
   initialAdvancedFilters,
-  getXboxConnectionStatus,
 } from "../../lib/library-filters-helpers";
 import type { Game } from "../../lib/types";
 import type { LibraryPlatformFilter } from "../../lib/library-filters-helpers";
@@ -145,11 +144,7 @@ export function useLibraryFilterPipeline(
   );
 
   const activeAdvancedFilterCount = useMemo(
-    () =>
-      countActiveAdvancedFilters(advancedFilters, {
-        ...initialAdvancedFilters,
-        showGamePassCatalog: getXboxConnectionStatus(),
-      }),
+    () => countActiveAdvancedFilters(advancedFilters, initialAdvancedFilters),
     [advancedFilters],
   );
 

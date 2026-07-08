@@ -47,7 +47,6 @@ export const STORAGE_KEYS = {
   BATTLENET_GAMES_CACHE: "launcher.battlenetGamesCache",
   XBOX_GAMES_CACHE: "launcher.xboxGamesCache",
   XBOX_USERNAME: "launcher.xboxUsername",
-  GAME_PASS_CATALOG_CACHE: "launcher.gamePassCatalogCache",
 
   STORE_CART: "og-launcher:store:cart",
   STORE_OWNED: "og-launcher:store:owned",

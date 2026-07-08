@@ -53,7 +53,6 @@ export const cronDryRunSmokes = Object.freeze([
 ]);
 
 export const accountDeletionUserStorageBuckets = Object.freeze([
-  "game-saves",
   "avatars",
   "profile-banners",
   "profile-showcases",

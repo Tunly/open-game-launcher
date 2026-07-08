@@ -51,7 +51,8 @@ const platformColors: Record<string, string> = {
   "GOG Galaxy": "bg-[#087d6d] text-white border-black",
   "EA App": "bg-[#c20b2f] text-white border-black",
   "Ubisoft Connect": "bg-[#087d6d] text-white border-black",
-  "Xbox Game Pass": "bg-[#f5eedf] text-[#171411] border-black",
+  "Xbox App": "bg-[#f5eedf] text-[#171411] border-black",
+  "Xbox App / PC Game Pass": "bg-[#f5eedf] text-[#171411] border-black",
   "Battle.net": "bg-[#8cf5e4] text-[#171411] border-black",
   "OG Store": "bg-[#087d6d] text-white border-black",
 };

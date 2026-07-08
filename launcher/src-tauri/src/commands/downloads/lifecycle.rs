@@ -15,14 +15,14 @@ pub type InternalDownloadTerminalHook = Arc<
 
 /// The kind of launcher that will provide a download for this
 /// game. `External` covers Steam, Epic, EA App, Ubisoft Connect,
-/// Battle.net and Xbox Game Pass. `Internal` covers HTTP(S)
+/// Battle.net and Xbox App / PC Game Pass. `Internal` covers HTTP(S)
 /// downloads served by `internal_download::download_internal_game_file`.
 #[derive(Debug, Clone)]
 pub enum DownloadLifecycle {
     /// External launcher tracking. The tracker is the live
     /// install/install-poll source. `Other` is the catch-all for
     /// launchers that do not provide a numeric tracker id (EA
-    /// App, Ubisoft Connect, Battle.net, Xbox Game Pass): progress
+    /// App, Ubisoft Connect, Battle.net, Xbox App / PC Game Pass): progress
     /// is detected by polling `detect::scan_*_games` for the new
     /// entry instead.
     External(ExternalTracker),

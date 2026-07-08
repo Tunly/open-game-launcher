@@ -6,7 +6,7 @@ export function ownedGameToGame(og: OwnedGame): Game {
   if (og.id.startsWith("steam-")) launcher = "steam";
   else if (og.id.startsWith("epic-")) launcher = "epic";
   else if (og.id.startsWith("gog-")) launcher = "gog";
-  else if (og.id.startsWith("xbox-") || og.id.startsWith("gamepass-")) launcher = "xbox";
+  else if (og.id.startsWith("xbox-")) launcher = "xbox";
   else if (og.id.startsWith("ubisoft-")) launcher = "ubisoft";
   else if (og.id.startsWith("ea-")) launcher = "ea";
   else if (og.id.startsWith("battlenet-")) launcher = "battlenet";

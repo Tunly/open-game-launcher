@@ -22,7 +22,6 @@ import type {
   CrossStoreSaveSyncAudit,
   CrossStoreSaveSyncLane,
   CrossStoreSaveNativeApplyProof,
-  CrossStoreSaveSupabaseKeychainStagingProof,
   CrossStoreSaveSyncPlan,
   CrossStoreSaveSyncStatus,
 } from "../../../lib/cross-store-save-sync-planner";
@@ -121,10 +120,6 @@ export function CrossStoreSaveSyncPlanner({ plan }: { plan: CrossStoreSaveSyncPl
           <PostCopyVerificationPanel proof={plan.postCopyVerificationProof} />
         ) : null}
 
-        {plan.supabaseKeychainStagingProof ? (
-          <SupabaseKeychainStagingPanel proof={plan.supabaseKeychainStagingProof} />
-        ) : null}
-
         {plan.migrationSessionRehearsalProof ? (
           <MigrationSessionRehearsalPanel proof={plan.migrationSessionRehearsalProof} />
         ) : null}
@@ -166,107 +161,6 @@ export function CrossStoreSaveSyncPlanner({ plan }: { plan: CrossStoreSaveSyncPl
         ) : null}
       </div>
     </section>
-  );
-}
-
-function SupabaseKeychainStagingPanel({
-  proof,
-}: {
-  proof: CrossStoreSaveSupabaseKeychainStagingProof;
-}) {
-  return (
-    <div className="border-2 border-black bg-[#8cf5e4] p-3 shadow-[2px_2px_0_#171411]">
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div className="min-w-0">
-          <p className="neo-copy flex items-center gap-2 text-[9px] font-black uppercase text-[#171411]">
-            <Database aria-hidden="true" className="h-4 w-4" />
-            Supabase/Keychain Staging
-          </p>
-          <p className="neo-copy mt-2 text-[8px] font-black uppercase leading-4 text-[#17413b]">
-            {proof.summary} {proof.guard}
-          </p>
-        </div>
-        <span className="neo-copy border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] font-black uppercase text-[#171411] shadow-[1px_1px_0_#171411]">
-          Redacted Contract
-        </span>
-      </div>
-
-      <dl className="mt-3 grid gap-1 text-[8px] font-black uppercase">
-        <div className="border-2 border-black bg-[#fbf4e7] px-1.5 py-1">
-          <dt className="text-[#655f58]">Bucket</dt>
-          <dd className="text-[#171411]">{proof.bucketName}</dd>
-        </div>
-        <div className="border-2 border-black bg-[#fbf4e7] px-1.5 py-1">
-          <dt className="text-[#655f58]">Prefix</dt>
-          <dd className="break-all text-[#171411]">{proof.objectPrefix}</dd>
-        </div>
-        <div className="border-2 border-black bg-[#fbf4e7] px-1.5 py-1">
-          <dt className="text-[#655f58]">Consent</dt>
-          <dd className="break-all text-[#171411]">{proof.consentOperation}</dd>
-        </div>
-        <div className="border-2 border-black bg-[#fbf4e7] px-1.5 py-1">
-          <dt className="text-[#655f58]">Objects</dt>
-          <dd className="text-[#171411]">
-            {proof.encryptedObjectCount} enc / {proof.metadataSidecarCount} meta
-          </dd>
-        </div>
-        <div className="border-2 border-black bg-[#fbf4e7] px-1.5 py-1">
-          <dt className="text-[#655f58]">Hash Checks</dt>
-          <dd className="text-[#087d6d]">{proof.hashVerificationCount}</dd>
-        </div>
-        <div className="border-2 border-black bg-[#fbf4e7] px-1.5 py-1">
-          <dt className="text-[#655f58]">Keychain</dt>
-          <dd className="break-all text-[#171411]">{proof.keychainOperation}</dd>
-        </div>
-      </dl>
-
-      <p className="neo-copy mt-3 border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#171411]">
-        {proof.noKeyExport ? "No key export" : "Key export blocked"} //{" "}
-        {proof.providerTransferSkipped ? "Provider transfer skipped" : "Provider transfer blocked"}{" "}
-        // {proof.cleanupEvidence}
-      </p>
-
-      <div className="mt-3 grid gap-2">
-        {proof.steps.map((step) => (
-          <article
-            className="border-2 border-black bg-[#fbf4e7] p-2 shadow-[1px_1px_0_#171411]"
-            key={step.id}
-          >
-            <div className="flex flex-wrap items-start justify-between gap-2">
-              <p className="neo-copy text-[8px] font-black uppercase tracking-[0.1em] text-[#5b403f]">
-                {step.label}
-              </p>
-              <span
-                className={`neo-copy border-2 border-black px-1.5 py-0.5 text-[8px] font-black uppercase text-[#171411] ${
-                  step.status === "staging_contract" ? "bg-[#8cf5e4]" : "bg-[#f7d04a]"
-                }`}
-              >
-                {step.status === "staging_contract" ? "Staging Contract" : "Live Blocked"}
-              </span>
-            </div>
-            <p className="neo-copy mt-2 border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#171411]">
-              {step.evidence}
-            </p>
-          </article>
-        ))}
-      </div>
-
-      <div className="mt-3 border-2 border-black bg-[#171411] p-2 text-[#fbf4e7] shadow-[2px_2px_0_#b7102a]">
-        <p className="neo-copy text-[8px] font-black uppercase text-[#8cf5e4]">
-          Still Blocked After Staging Contract
-        </p>
-        <div className="mt-2 grid gap-1.5">
-          {proof.blockedAfterProof.map((item) => (
-            <p
-              className="neo-copy border-2 border-[#fbf4e7] bg-[#2a221b] px-2 py-1 text-[8px] font-black uppercase leading-4"
-              key={item}
-            >
-              {item}
-            </p>
-          ))}
-        </div>
-      </div>
-    </div>
   );
 }
 

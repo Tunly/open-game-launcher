@@ -80,8 +80,6 @@ Local completion pass for the current launcher checkout.
 - Hardened native Cloud Save object path contracts with labeled save-root prefixes, non-empty single-file keys, exact encrypted sidecar suffix handling, and browser/non-Tauri guards for upload/download/restore/conflict wrappers.
 - Added a local Cross-Store Save provider save-mapping fixture layer that reviews Steam/GOG/Epic external IDs, install paths, relative path mapping rules, save-root shapes, and save-file counts, surfaces those rules in the Cloud Saves panel as local suggestions/metadata provenance, and adds target collision blockers in the planner, native duplicate-target rejection, rollback manifest path/name guards, and consent-gated automatic path-map apply request templates with `accepted=false`, without provider API validation, provider cloud transfer, live Supabase/keychain E2E, or real migration execution.
 - Added browser-local Backlog Learning feedback and a manual Play Next Queue to `/library?verify=backlog-priority`, with `Boost Pick`, `Skip Pick`, `Finished`, `Clear Learn`, `Queue Pick`, `Remove`, and `Clear Queue` controls that tune local mood/session/social weights and queue local picks without hosted model, cloud profile, provider telemetry, launch automation, or account sync.
-- Added `/library?verify=remote-play-local-proof` with deterministic Steam AppID delegation, Epic/EOS URI-only review, HTTPS cloud endpoint review, browser desktop guard, and unsafe URI rejection evidence without claiming provider-session detection, invite delivery, or live streaming success.
-- Added `/library?verify=remote-play-epic-eos-provider-contract` with local Epic/EOS provider-session labels, invite-envelope review, URI fallback, provider error mapping, stream-proof blockers, and explicit no provider-session, invite-delivery, invite-acceptance, provider-token, provider-client mutation, or live-streaming proof claims.
 - Wired the Library footer `Friends & Chat +` control to `/friends?tab=chat`.
 - Added a browser-local `/community` Create Post composer that prepends local feed cards and stores only capped localStorage entries without hosted publishing, Supabase writes, provider sync, or moderation execution.
 - Added `/community?verify=community-create-post` as deterministic in-memory Create Post evidence with desktop/mobile screenshots and no browser-storage write.
@@ -132,8 +130,6 @@ Local completion pass for the current launcher checkout.
 - Screenshot: `docs/verification/screenshots/settings-hosted-cron-evidence-summary-mobile.png`
 - Screenshot: `docs/verification/screenshots/settings-external-completion-evidence-summary-local.png`
 - Screenshot: `docs/verification/screenshots/settings-external-completion-evidence-summary-mobile.png`
-- Screenshot: `docs/verification/screenshots/library-remote-play-epic-eos-provider-contract-local.png`
-- Screenshot: `docs/verification/screenshots/library-remote-play-epic-eos-provider-contract-mobile.png`
 - Screenshot: `docs/verification/screenshots/library-ai-recommendations-hosted-eval-contract-local.png`
 - Screenshot: `docs/verification/screenshots/library-ai-recommendations-hosted-eval-contract-mobile.png`
 - Screenshot: `docs/verification/screenshots/friends-roster-action-handoff-local.png`
@@ -158,7 +154,7 @@ pnpm format:check # passed
 pnpm typecheck # passed
 pnpm lint # passed
 pnpm exec vitest run src/pages/DownloadsPage.test.tsx # see fresh command output
-pnpm exec vitest run src/lib/__tests__/igdb-cross-play-readiness.test.ts src/lib/launcher.remote-play.test.ts src/components/library/GameDetails/IgdbCrossPlayReadinessPanel.test.tsx src/pages/LibraryPage.test.tsx src/components/library/GameDetailPanel.test.tsx
+pnpm exec vitest run src/lib/__tests__/igdb-cross-play-readiness.test.ts src/components/library/GameDetails/IgdbCrossPlayReadinessPanel.test.tsx src/pages/LibraryPage.test.tsx src/components/library/GameDetailPanel.test.tsx
 pnpm exec vitest run src/lib/__tests__/mobile-app-push-dry-run.test.ts src/components/launcher/MobileAppPushDryRunPanel.test.tsx src/pages/DownloadsPage.test.tsx
 pnpm exec vitest run src/lib/__tests__/mobile-push-registration-readiness.test.ts src/components/launcher/MobilePushRegistrationContractPanel.test.tsx src/pages/DownloadsPage.test.tsx src/lib/__tests__/mobile-app-readiness.test.ts
 pnpm exec vitest run src/lib/__tests__/mobile-session-library-chat-contract.test.ts src/components/launcher/MobileSessionLibraryChatContractPanel.test.tsx src/pages/DownloadsPage.test.tsx
@@ -185,7 +181,6 @@ pnpm vitest run src/lib/__tests__/plugin-system-readiness.test.ts src/components
 pnpm exec vitest run src/lib/__tests__/one-click-setup-rollback-audit-contract.test.ts src/components/settings/OneClickSetupRollbackAuditContractPanel.test.tsx src/pages/SettingsPage.test.tsx
 pnpm exec vitest run src/lib/__tests__/hosted-cron-evidence-summary.test.ts src/components/settings/HostedCronEvidenceSummaryPanel.test.tsx src/pages/SettingsPage.test.tsx
 pnpm exec vitest run src/lib/__tests__/external-completion-evidence-summary.test.ts src/components/settings/ExternalCompletionEvidenceSummaryPanel.test.tsx src/pages/SettingsPage.test.tsx
-pnpm exec vitest run src/lib/remote-play-epic-eos-provider-contract.test.ts src/components/library/RemotePlayEpicEosProviderContractPanel.test.tsx src/components/library/GameDetailPanel.test.tsx src/pages/LibraryPage.test.tsx src/lib/remote-play-local-proof.test.ts src/lib/launcher.remote-play.test.ts
 pnpm exec vitest run src/lib/__tests__/broadcast-audience-status-contract.test.ts src/components/community/BroadcastAudienceStatusContractPanel.test.tsx src/pages/CommunityPage.test.tsx src/pages/PageSmoke.test.tsx
 pnpm exec vitest run src/lib/__tests__/ai-recommendation-hosted-eval-contract.test.ts src/components/library/GameDetails/AiRecommendationHostedEvalContractPanel.test.tsx src/components/library/GameDetailPanel.test.tsx src/pages/LibraryPage.test.tsx src/pages/PageSmoke.test.tsx
 pnpm test        # see fresh command output

@@ -39,7 +39,6 @@ const defaults: LibraryAdvancedFilters = {
   categories: [],
   sizeQuery: "",
   productCategories: ["game"],
-  showGamePassCatalog: false,
 };
 
 const context: LibraryFilterContext = {
@@ -112,17 +111,6 @@ describe("gamePassesAdvancedFilters", () => {
     expect(gamePassesAdvancedFilters(game, defaults, context)).toBe(false);
   });
 
-  it("rejects gamepass games when showGamePassCatalog is false", () => {
-    const game = makeGame({ id: "gamepass-foo" });
-    expect(gamePassesAdvancedFilters(game, defaults, context)).toBe(false);
-  });
-
-  it("allows gamepass games when showGamePassCatalog is true", () => {
-    const filters = { ...defaults, showGamePassCatalog: true };
-    const game = makeGame({ id: "gamepass-foo" });
-    expect(gamePassesAdvancedFilters(game, filters, context)).toBe(true);
-  });
-
   it("filters by launcher source", () => {
     const filters = { ...defaults, launchers: ["EA"] };
     const eaGame = makeGame({ id: "ea-apex" });
@@ -185,11 +173,6 @@ describe("countActiveAdvancedFilters", () => {
       ...defaults,
       productCategories: ["dlc", "video"],
     };
-    expect(countActiveAdvancedFilters(modified, defaults)).toBe(1);
-  });
-
-  it("counts a toggled gamepass catalog flag", () => {
-    const modified: LibraryAdvancedFilters = { ...defaults, showGamePassCatalog: true };
     expect(countActiveAdvancedFilters(modified, defaults)).toBe(1);
   });
 });

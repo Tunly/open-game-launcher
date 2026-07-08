@@ -2,9 +2,23 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { UseProviderPickingOptions } from "../hooks/library/useProviderPicking";
 import { LibraryPage } from "./LibraryPage";
 
 const gameDetailPanelMock = vi.hoisted(() => vi.fn());
+const useProviderPickingMock = vi.hoisted(() =>
+  vi.fn((options: UseProviderPickingOptions) => {
+    void options;
+
+    return {
+      handleInstallFromProvider: vi.fn(),
+      handlePlay: vi.fn(),
+      handlePlayVariant: vi.fn(),
+      providerPicker: null,
+      setProviderPicker: vi.fn(),
+    };
+  }),
+);
 
 const noop = vi.fn();
 
@@ -117,20 +131,7 @@ vi.mock("../hooks/library/useManualCollections", () => ({
 }));
 
 vi.mock("../hooks/library/useProviderPicking", () => ({
-  useProviderPicking: () => ({
-    handleInstallFromProvider: noop,
-    handlePlay: noop,
-    handlePlayVariant: noop,
-    maybeSyncOnLaunch: noop,
-    providerPicker: null,
-    setProviderPicker: noop,
-  }),
-}));
-
-vi.mock("../hooks/useCloudAutoSync", () => ({
-  useCloudAutoSync: () => ({
-    maybeSyncOnLaunch: noop,
-  }),
+  useProviderPicking: useProviderPickingMock,
 }));
 
 vi.mock("../lib/launcher", () => ({
@@ -173,6 +174,7 @@ function FriendsRouteProbe() {
 describe("LibraryPage verification route wiring", () => {
   beforeEach(() => {
     gameDetailPanelMock.mockClear();
+    useProviderPickingMock.mockClear();
   });
 
   it("passes IGDB cross-play readiness verify mode to GameDetailPanel", async () => {
@@ -193,8 +195,6 @@ describe("LibraryPage verification route wiring", () => {
     ["cross-store-save-sync"],
     ["cross-store-save-sync-e2e-readiness"],
     ["hosted-community-artwork"],
-    ["remote-play-local-proof"],
-    ["remote-play-epic-eos-provider-contract"],
   ])("passes %s verify mode to GameDetailPanel", (verifyMode) => {
     renderLibraryRoute(`/library?verify=${verifyMode}`);
 
@@ -213,6 +213,20 @@ describe("LibraryPage verification route wiring", () => {
       "null",
     );
     expect(gameDetailPanelMock).toHaveBeenLastCalledWith({ verifyMode: null });
+  });
+
+  it("does not pass a first-party cloud auto-sync callback to provider picking", () => {
+    renderLibraryRoute("/library");
+
+    const lastCall = useProviderPickingMock.mock.lastCall as [{ selectedGroup: null }] | undefined;
+    const options = lastCall?.[0];
+    expect(options).toEqual(
+      expect.objectContaining({
+        selectedGroup: null,
+        setStatusMessage: expect.any(Function),
+      }),
+    );
+    expect(options).not.toHaveProperty("maybeAutoSyncOnLaunch");
   });
 
   it("routes the footer Friends & Chat control to the chat tab", () => {

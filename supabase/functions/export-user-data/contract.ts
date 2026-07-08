@@ -18,8 +18,6 @@ export const exportOwnUserIdTables = [
   "user_game_collections",
   "user_game_collection_items",
   "user_profile_cosmetics",
-  "user_cloud_save_sets",
-  "user_cloud_save_files",
   "profile_showcases",
   "screenshots",
   "screenshot_likes",

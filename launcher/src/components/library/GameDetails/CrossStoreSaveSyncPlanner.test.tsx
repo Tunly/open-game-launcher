@@ -116,23 +116,11 @@ describe("CrossStoreSaveSyncPlanner", () => {
       within(panel).getAllByText(/Post-copy target size and SHA-256 match/i).length,
     ).toBeGreaterThan(0);
     expect(within(panel).getByText("Still Blocked After Verification Packet")).toBeInTheDocument();
-    expect(within(panel).getAllByText("Supabase/Keychain Staging").length).toBeGreaterThan(0);
-    expect(within(panel).getByText("Redacted Contract")).toBeInTheDocument();
-    expect(
-      within(panel).getAllByText(
-        /auth\.uid\(\)\/cross-store-save-staging\/mech-arcade\/<redacted-proof>\//i,
-      ).length,
-    ).toBeGreaterThan(0);
-    expect(
-      within(panel).getByText(/cross_store_save_supabase_keychain_staging/i),
-    ).toBeInTheDocument();
-    expect(within(panel).getByText(/No key export/i)).toBeInTheDocument();
-    expect(within(panel).getAllByText(/Provider transfer skipped/i).length).toBeGreaterThan(0);
-    expect(within(panel).getAllByText(/get_or_create_user_keyring_key/i).length).toBeGreaterThan(0);
-    expect(
-      within(panel).getByText(/does not upload, download, decrypt, restore, or delete live/i),
-    ).toBeInTheDocument();
-    expect(within(panel).getByText("Still Blocked After Staging Contract")).toBeInTheDocument();
+    expect(within(panel).queryByText("Supabase/Keychain Staging")).not.toBeInTheDocument();
+    expect(within(panel).queryByText("Redacted Contract")).not.toBeInTheDocument();
+    expect(panel).not.toHaveTextContent(/cross-store-save-staging|game-saves/i);
+    expect(panel).not.toHaveTextContent(/cross_store_save_supabase_keychain_staging/i);
+    expect(panel).not.toHaveTextContent(/get_or_create_user_keyring_key/i);
     expect(within(panel).getByText("Migration Session Rehearsal")).toBeInTheDocument();
     expect(within(panel).getByText("Rehearsal Only")).toBeInTheDocument();
     expect(within(panel).getByText(/Native Apply Consent/i)).toBeInTheDocument();
@@ -160,15 +148,17 @@ describe("CrossStoreSaveSyncPlanner", () => {
     ).toBeInTheDocument();
     expect(within(panel).getByText("Post-copy verification review only")).toBeInTheDocument();
     expect(
-      within(panel).getByText("Supabase/keychain staging proof review only"),
-    ).toBeInTheDocument();
+      within(panel).queryByText("Supabase/keychain staging proof review only"),
+    ).not.toBeInTheDocument();
     expect(within(panel).getByText("Migration session rehearsal review only")).toBeInTheDocument();
     expect(within(panel).getByText("No automatic rollback execution")).toBeInTheDocument();
-    expect(within(panel).getByText("No live Supabase/keychain bucket E2E")).toBeInTheDocument();
+    expect(
+      within(panel).queryByText("No live Supabase/keychain bucket E2E"),
+    ).not.toBeInTheDocument();
     expect(within(panel).getAllByText(/review-only/i).length).toBeGreaterThan(0);
     expect(panel).not.toHaveTextContent(/not implemented/i);
     expect(panel).not.toHaveTextContent(
-      /migration (started|complete|ready)|saves? (migrated|transferred)|provider cloud (connected|live|synced|transfer complete)|path mapping (verified|ready|complete)|rollback (verified|ready|complete)|supabase\/keychain bucket e2e (passed|ready)|live bucket e2e passed|copy complete/i,
+      /migration (started|complete|ready)|saves? (migrated|transferred)|provider cloud (connected|live|synced|transfer complete)|path mapping (verified|ready|complete)|rollback (verified|ready|complete)|supabase\/keychain|live bucket e2e passed|copy complete/i,
     );
   });
 });

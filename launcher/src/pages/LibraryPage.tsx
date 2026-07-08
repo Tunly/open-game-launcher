@@ -8,7 +8,6 @@ import { ProviderPickerDialog } from "../components/library/ProviderPickerDialog
 const GameDetailPanel = React.lazy(() =>
   import("../components/library/GameDetailPanel").then((m) => ({ default: m.GameDetailPanel })),
 );
-import { useCloudAutoSync } from "../hooks/useCloudAutoSync";
 import { useDownloadStore, selectCompletedCount } from "../stores/downloadStore";
 import { LibraryProvider } from "../context/LibraryProvider";
 import { launchCrossPlayJoin } from "../lib/launcher";
@@ -55,14 +54,9 @@ export function LibraryPage() {
     setInstalledGames: sync.setInstalledGames,
     setStatusMessage,
   });
-  const { maybeSyncOnLaunch: maybeAutoSyncOnLaunch } = useCloudAutoSync({
-    game: filters.selectedGroup?.primaryGame ?? filters.selectedGroup?.displayGame ?? null,
-    onMessage: setStatusMessage,
-  });
   const picking = useProviderPicking({
     selectedGroup: filters.selectedGroup,
     setStatusMessage,
-    maybeAutoSyncOnLaunch,
   });
 
   // Deep-link `?join=...&platform=...&invite=...` from a universallauncher://join URL.

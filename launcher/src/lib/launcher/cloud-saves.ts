@@ -5,15 +5,10 @@ import type {
   BroadcastStreamKeyVaultSaveRequest,
   BroadcastStreamKeyVaultStatus,
   BroadcastStreamKeyVaultStatusRequest,
-  CheckGameSaveConflictsResponse,
-  DownloadGameSavesFromCloudResponse,
   RemoteCompanionDeviceSecretInput,
   RemoteCompanionDeviceSecretStatus,
   RemoteCompanionPollOnceResult,
-  RestoreGameSavesFromCloudResponse,
-  UploadGameSavesToCloudResponse,
 } from "./types";
-import type { CommandArgs } from "./shared";
 import { invokeCommand } from "./shared";
 
 export async function readCachedSupabaseAccessToken(): Promise<string | null> {
@@ -137,146 +132,9 @@ export async function pollRemoteCompanionInstallJobsOnce(
   });
 }
 
-export function isCloudKeyPresent(userId: string): Promise<boolean> {
-  if (!isTauri()) {
-    return Promise.reject(new Error("Cloud key inspection is available in the desktop app."));
-  }
-
-  return invokeCommand<boolean>("is_cloud_key_present", { userId });
-}
-
-export function generateCloudKey(userId: string): Promise<string> {
-  if (!isTauri()) {
-    return Promise.reject(new Error("Cloud key generation is available in the desktop app."));
-  }
-
-  return invokeCommand<string>("generate_cloud_key", { userId });
-}
-
-export function rotateCloudKey(userId: string): Promise<string> {
-  if (!isTauri()) {
-    return Promise.reject(new Error("Cloud key rotation is available in the desktop app."));
-  }
-
-  return invokeCommand<string>("rotate_cloud_key", { userId });
-}
-
 export class CloudNotConfiguredError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "CloudNotConfiguredError";
   }
-}
-
-export async function buildCloudArgs(
-  gameId: string,
-  accessToken: string | null,
-  userId: string,
-): Promise<CommandArgs> {
-  if (!accessToken) {
-    throw new CloudNotConfiguredError(
-      "Sign in required for cloud sync. No cached access token found.",
-    );
-  }
-  // supabase config imported statically at top
-  if (supabaseConfigError || !supabaseUrl || !supabaseAnonKey) {
-    throw new CloudNotConfiguredError(
-      supabaseConfigError ?? "Missing VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY for cloud sync.",
-    );
-  }
-  return {
-    input: {
-      gameId,
-      supabaseUrl,
-      apiKey: supabaseAnonKey,
-      accessToken,
-      userId,
-    },
-  };
-}
-
-export async function uploadGameSavesToCloud(
-  gameId: string,
-  options: {
-    accessToken: string | null;
-    deleteCloudRelativePaths?: string[];
-    savePaths?: string[];
-    selectedRelativePaths?: string[];
-    userId: string;
-  },
-): Promise<UploadGameSavesToCloudResponse> {
-  if (!isTauri()) {
-    throw new Error("Cloud save upload is available in the desktop app.");
-  }
-
-  const args = await buildCloudArgs(gameId, options.accessToken, options.userId);
-  const input = args.input && typeof args.input === "object" ? args.input : {};
-  return invokeCommand<UploadGameSavesToCloudResponse>("upload_game_saves_to_cloud", {
-    input: {
-      ...input,
-      deleteCloudRelativePaths: options.deleteCloudRelativePaths ?? [],
-      savePaths: options.savePaths ?? [],
-      ...(options.selectedRelativePaths
-        ? { selectedRelativePaths: options.selectedRelativePaths }
-        : {}),
-    },
-  });
-}
-
-export async function downloadGameSavesFromCloud(
-  gameId: string,
-  options: { accessToken: string | null; userId: string },
-): Promise<DownloadGameSavesFromCloudResponse> {
-  if (!isTauri()) {
-    throw new Error("Cloud save download is available in the desktop app.");
-  }
-
-  const args = await buildCloudArgs(gameId, options.accessToken, options.userId);
-  return invokeCommand<DownloadGameSavesFromCloudResponse>("download_game_saves_from_cloud", args);
-}
-
-export async function restoreGameSavesFromCloud(
-  gameId: string,
-  options: {
-    accessToken: string | null;
-    deleteLocalPaths?: string[];
-    savePaths?: string[];
-    selectedRelativePaths?: string[];
-    userId: string;
-  },
-): Promise<RestoreGameSavesFromCloudResponse> {
-  if (!isTauri()) {
-    throw new Error("Cloud save restore is available in the desktop app.");
-  }
-
-  const args = await buildCloudArgs(gameId, options.accessToken, options.userId);
-  const input = args.input && typeof args.input === "object" ? args.input : {};
-  return invokeCommand<RestoreGameSavesFromCloudResponse>("restore_game_saves_from_cloud", {
-    input: {
-      ...input,
-      deleteLocalPaths: options.deleteLocalPaths ?? [],
-      savePaths: options.savePaths ?? [],
-      ...(options.selectedRelativePaths
-        ? { selectedRelativePaths: options.selectedRelativePaths }
-        : {}),
-    },
-  });
-}
-
-export async function checkGameSaveConflicts(
-  gameId: string,
-  options: { accessToken: string | null; userId: string; savePaths?: string[] },
-): Promise<CheckGameSaveConflictsResponse> {
-  if (!isTauri()) {
-    throw new Error("Cloud save conflict checks are available in the desktop app.");
-  }
-
-  const args = await buildCloudArgs(gameId, options.accessToken, options.userId);
-  const input = args.input && typeof args.input === "object" ? args.input : {};
-  return invokeCommand<CheckGameSaveConflictsResponse>("check_game_save_conflicts", {
-    input: {
-      ...input,
-      savePaths: options.savePaths ?? [],
-    },
-  });
 }

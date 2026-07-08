@@ -4,60 +4,14 @@ import { GameDetails } from "./GameDetails";
 import { useLibraryContext } from "../../context/useLibraryContext";
 import { useActivityLogger } from "../../hooks/useActivityLogger";
 import { captureScreenshot, moveGame } from "../../lib/launcher";
-import type { Game } from "../../lib/types";
 import { createVerifyCrossStoreSaveMigrationReadiness } from "../../lib/cross-store-save-migration-readiness";
 import { createVerifyHostedCommunityArtworkReadiness } from "../../lib/hosted-community-artwork-readiness";
 import { createVerifyHostedCommunityArtworkModerationConsole } from "../../lib/hosted-community-artwork-moderation-console";
-import { createVerifyRemotePlayEpicEosProviderContract } from "../../lib/remote-play-epic-eos-provider-contract";
 import {
   buildCrossStoreSaveSyncPlan,
   createVerifyCrossStoreSaveSyncCandidates,
 } from "../../lib/cross-store-save-sync-planner";
 import { createVerifyIgdbCrossPlayReadinessPlan } from "../../lib/igdb-cross-play-readiness";
-
-const REMOTE_PLAY_LOCAL_PROOF_GAME: Game = {
-  categories: ["Remote Play", "Verification"],
-  cloudGamingUrl: "https://play.og-launcher.example/remote/portal-2",
-  description:
-    "Deterministic Remote Play fixture for Steam AppID delegation, Epic/EOS URI review, HTTPS cloud handoff review, browser guard evidence, and unsafe URI rejection.",
-  developer: "Valve",
-  externalId: "620",
-  features: ["Steam delegation", "Epic/EOS URI review", "HTTPS cloud endpoint", "Browser guard"],
-  genres: ["Puzzle", "Co-op"],
-  id: "remote-play-proof-portal-2",
-  launcher: "steam",
-  platform: "windows",
-  playtimeMinutes: 1240,
-  publisher: "Valve",
-  releaseDate: "2011-04-19",
-  sizeGb: 12,
-  status: "installed",
-  tagLabels: ["Remote Proof", "Local Only", "No Provider Session"],
-  title: "Portal 2 Remote Proof",
-  version: "1.0.0",
-};
-
-const REMOTE_PLAY_EPIC_EOS_PROVIDER_CONTRACT_GAME: Game = {
-  categories: ["Remote Play", "Verification"],
-  description:
-    "Deterministic Epic/EOS Remote Play fixture for provider-state labels, invite envelope review, URI fallback, provider error mapping, and explicit no-streaming-proof guards.",
-  developer: "Epic Games",
-  externalId: "Fortnite",
-  features: ["Epic/EOS provider states", "Invite envelope", "URI fallback", "Error map"],
-  genres: ["Action", "Online"],
-  id: "remote-play-epic-eos-provider-contract",
-  launchUri: "com.epicgames.launcher://apps/Fortnite?action=launch",
-  launcher: "epic",
-  platform: "windows",
-  playtimeMinutes: 910,
-  publisher: "Epic Games",
-  releaseDate: "2017-07-21",
-  sizeGb: 42,
-  status: "installed",
-  tagLabels: ["Epic/EOS", "Provider Contract", "No Live Session"],
-  title: "Epic EOS Remote Proof",
-  version: "1.0.0",
-};
 
 export function GameDetailPanel({ verifyMode }: { verifyMode?: string | null }) {
   const ctx = useLibraryContext();
@@ -65,19 +19,8 @@ export function GameDetailPanel({ verifyMode }: { verifyMode?: string | null }) 
   const { logScreenshot } = useActivityLogger();
 
   const selectedGroup = ctx.filters.selectedGroup;
-  const isRemotePlayLocalProofVerify = verifyMode === "remote-play-local-proof";
-  const isRemotePlayEpicEosProviderContractVerify =
-    verifyMode === "remote-play-epic-eos-provider-contract";
-  const selectedGame = isRemotePlayLocalProofVerify
-    ? REMOTE_PLAY_LOCAL_PROOF_GAME
-    : isRemotePlayEpicEosProviderContractVerify
-      ? REMOTE_PLAY_EPIC_EOS_PROVIDER_CONTRACT_GAME
-      : (selectedGroup?.displayGame ?? null);
-  const selectedVariants = isRemotePlayLocalProofVerify
-    ? [REMOTE_PLAY_LOCAL_PROOF_GAME]
-    : isRemotePlayEpicEosProviderContractVerify
-      ? [REMOTE_PLAY_EPIC_EOS_PROVIDER_CONTRACT_GAME]
-      : (selectedGroup?.variants ?? []);
+  const selectedGame = selectedGroup?.displayGame ?? null;
+  const selectedVariants = selectedGroup?.variants ?? [];
   const selectedRuntime =
     selectedVariants.map((game) => ctx.sync.gameRuntimeById[game.id]).find(Boolean) ?? null;
   const isCrossStoreMigrationReadinessVerify = verifyMode === "cross-store-save-sync-e2e-readiness";
@@ -118,14 +61,6 @@ export function GameDetailPanel({ verifyMode }: { verifyMode?: string | null }) 
         : undefined,
     [isHostedCommunityArtworkVerify, selectedGame],
   );
-  const remotePlayEpicEosProviderContract = useMemo(
-    () =>
-      isRemotePlayEpicEosProviderContractVerify
-        ? createVerifyRemotePlayEpicEosProviderContract()
-        : undefined,
-    [isRemotePlayEpicEosProviderContractVerify],
-  );
-
   async function handleCaptureScreenshot() {
     const target = selectedGame;
     if (!target) return;
@@ -166,8 +101,6 @@ export function GameDetailPanel({ verifyMode }: { verifyMode?: string | null }) 
       crossStoreSaveMigrationReadiness={crossStoreSaveMigrationReadiness}
       crossStoreSaveSyncPlan={crossStoreSaveSyncPlan}
       igdbCrossPlayReadinessPlan={igdbCrossPlayReadinessPlan}
-      remotePlayLocalProof={isRemotePlayLocalProofVerify}
-      remotePlayEpicEosProviderContract={remotePlayEpicEosProviderContract}
       seedHostedArtworkUploadPending={isHostedCommunityArtworkVerify}
       logoCandidateIndexes={ctx.sync.logoCandidateIndexes}
       loadedLogoUrls={ctx.sync.loadedLogoUrls}

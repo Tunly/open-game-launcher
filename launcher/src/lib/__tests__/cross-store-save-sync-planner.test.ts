@@ -330,53 +330,13 @@ describe("buildCrossStoreSaveSyncPlan", () => {
     expect(plan.postCopyVerificationProof?.items[1].checks).toContain(
       "Post-copy target size and SHA-256 match the reviewed source file.",
     );
-    expect(plan.postCopyVerificationProof?.blockedAfterProof).toContain(
-      "Live Supabase/keychain bucket E2E is still not run.",
-    );
-    expect(plan.supabaseKeychainStagingProof).toMatchObject({
-      bucketName: "game-saves",
-      consentOperation: "cross_store_save_supabase_keychain_staging_proof",
-      encryptedObjectCount: 2,
-      hashVerificationCount: 2,
-      id: "supabase-keychain-staging-steam-mech-arcade-to-gog-mech-arcade",
-      keychainOperation: "get_or_create_user_keyring_key",
-      metadataSidecarCount: 2,
-      noKeyExport: true,
-      providerTransferSkipped: true,
-      sourceLabel: "Steam",
-      status: "staging-contract",
-      targetLabel: "GOG",
-      title: "Mech Arcade",
-    });
-    expect(plan.supabaseKeychainStagingProof?.objectPrefix).toBe(
-      "auth.uid()/cross-store-save-staging/mech-arcade/<redacted-proof>/",
-    );
-    expect(plan.supabaseKeychainStagingProof?.guard).toContain(
-      "does not upload, download, decrypt, restore, or delete live bucket objects",
-    );
-    expect(plan.supabaseKeychainStagingProof?.steps).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          id: "keychain-redaction",
-          status: "staging_contract",
-        }),
-        expect.objectContaining({
-          id: "provider-transfer-skipped",
-          status: "live_blocked",
-        }),
-        expect.objectContaining({
-          id: "live-run-blocked",
-          status: "live_blocked",
-        }),
-      ]),
-    );
-    expect(plan.supabaseKeychainStagingProof?.blockedAfterProof).toContain(
-      "Live Supabase bucket E2E must run through the desktop command with a real authenticated user.",
+    expect(plan.postCopyVerificationProof?.blockedAfterProof).not.toEqual(
+      expect.arrayContaining([expect.stringMatching(/supabase|keychain|bucket/i)]),
     );
     expect(plan.migrationSessionRehearsalProof).toMatchObject({
-      blockedStepCount: 3,
+      blockedStepCount: 2,
       id: "migration-session-rehearsal-steam-mech-arcade-to-gog-mech-arcade",
-      localEvidenceCount: 9,
+      localEvidenceCount: 8,
       sourceLabel: "Steam",
       status: "rehearsal-only",
       targetLabel: "GOG",
@@ -395,10 +355,6 @@ describe("buildCrossStoreSaveSyncPlan", () => {
         }),
         expect.objectContaining({
           id: "automatic-path-map-apply-template",
-          status: "local_evidence",
-        }),
-        expect.objectContaining({
-          id: "supabase-keychain-staging-contract",
           status: "local_evidence",
         }),
         expect.objectContaining({
@@ -424,10 +380,11 @@ describe("buildCrossStoreSaveSyncPlan", () => {
     expect(plan.guards).toContain("Provider path/id fixture review only");
     expect(plan.guards).toContain("Automatic path-map apply is consent-gated");
     expect(plan.guards).toContain("Post-copy verification review only");
-    expect(plan.guards).toContain("Supabase/keychain staging proof review only");
     expect(plan.guards).toContain("Migration session rehearsal review only");
     expect(plan.guards).toContain("No automatic rollback execution");
-    expect(plan.guards).toContain("No live Supabase/keychain bucket E2E");
+    expect(plan.guards).not.toEqual(
+      expect.arrayContaining([expect.stringMatching(/supabase|keychain|bucket/i)]),
+    );
     expect(plan.lanes.some((lane) => lane.summary.includes("Steam -> GOG"))).toBe(true);
     expect(plan.lanes.some((lane) => lane.summary.includes("no files will be copied"))).toBe(true);
   });
@@ -460,7 +417,6 @@ describe("buildCrossStoreSaveSyncPlan", () => {
     expect(plan.nativeApplyProof).toBeNull();
     expect(plan.automaticPathMapApplyProof).toBeNull();
     expect(plan.postCopyVerificationProof).toBeNull();
-    expect(plan.supabaseKeychainStagingProof).toBeNull();
     expect(plan.migrationSessionRehearsalProof).toBeNull();
   });
 
@@ -531,7 +487,6 @@ describe("buildCrossStoreSaveSyncPlan", () => {
     expect(plan.nativeApplyProof).toBeNull();
     expect(plan.automaticPathMapApplyProof).toBeNull();
     expect(plan.postCopyVerificationProof).toBeNull();
-    expect(plan.supabaseKeychainStagingProof).toBeNull();
     expect(plan.migrationSessionRehearsalProof).toBeNull();
   });
 

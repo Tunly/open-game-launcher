@@ -15,19 +15,6 @@ export const CLIENT_PLATFORM_IDS = [
 
 export const CLIENT_HEALTH_CACHE_MAX_AGE_MS = 5_000;
 
-export const REMOTE_PLAY_ALLOWED_URI_PREFIXES = [
-  "steam://",
-  "com.epicgames.launcher://",
-  "goggalaxy://",
-  "ms-xbl-38966778-3f57-4f6e-a6e9-3b81c79fbb3f://",
-  "battlenet://",
-  "origin2://",
-  "uplay://",
-  "psjoin://",
-  "switchgame://",
-  "https://",
-] as const;
-
 export const CLIENT_DISPLAY_NAMES: Record<ClientPlatformId, string> = {
   battlenet: "Battle.net",
   ea: "EA app",
@@ -92,21 +79,6 @@ export function toClientPlatformId(value: string | null | undefined): ClientPlat
 export function cleanOptionalString(value: string | null | undefined): string | null {
   const trimmed = value?.trim();
   return trimmed ? trimmed : null;
-}
-
-export function normalizeSteamAppId(value: string | null | undefined): string | null {
-  const trimmed = cleanOptionalString(value);
-  if (!trimmed) return null;
-  const candidate = trimmed.toLowerCase().startsWith("steam-") ? trimmed.slice(6) : trimmed;
-  if (!/^[1-9]\d{0,9}$/.test(candidate)) return null;
-  return candidate;
-}
-
-export function steamAppIdFromLaunchUri(uri: string | null | undefined): string | null {
-  const trimmed = cleanOptionalString(uri);
-  if (!trimmed) return null;
-  const match = /^steam:\/\/(?:run|rungameid)\/([^/?#&]+)/.exec(trimmed);
-  return normalizeSteamAppId(match?.[1]);
 }
 
 export function getBrowserHardwareInfo(): HardwareInfo {

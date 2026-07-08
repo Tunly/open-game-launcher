@@ -17,7 +17,6 @@ const mocks = vi.hoisted(() => {
   const eaFetchOwnedGames = vi.fn();
   const fetchEpicOwnedGames = vi.fn();
   const fetchUbisoftOwnedGames = vi.fn();
-  const fetchGamePassCatalog = vi.fn();
   const openSteamScraperWindow = vi.fn();
   const normalizeSteamOwnedGames = vi.fn();
   const syncGamePlaytimeStats = vi.fn();
@@ -36,7 +35,6 @@ const mocks = vi.hoisted(() => {
     eaFetchOwnedGames,
     fetchEpicOwnedGames,
     fetchUbisoftOwnedGames,
-    fetchGamePassCatalog,
     openSteamScraperWindow,
     normalizeSteamOwnedGames,
     syncGamePlaytimeStats,
@@ -58,7 +56,6 @@ vi.mock("../../../lib/launcher", () => ({
   eaFetchOwnedGames: (...args: unknown[]) => mocks.eaFetchOwnedGames(...args),
   fetchEpicOwnedGames: (...args: unknown[]) => mocks.fetchEpicOwnedGames(...args),
   fetchUbisoftOwnedGames: (...args: unknown[]) => mocks.fetchUbisoftOwnedGames(...args),
-  fetchGamePassCatalog: (...args: unknown[]) => mocks.fetchGamePassCatalog(...args),
   openSteamScraperWindow: (...args: unknown[]) => mocks.openSteamScraperWindow(...args),
   normalizeSteamOwnedGames: (...args: unknown[]) => mocks.normalizeSteamOwnedGames(...args),
   syncGamePlaytimeStats: (...args: unknown[]) => mocks.syncGamePlaytimeStats(...args),
@@ -75,11 +72,6 @@ vi.mock("../../../library/providers", () => ({
   mergeEpicOwned: vi.fn(async (games: Game[]) => ({ games, warnings: [], statusMessage: null })),
   mergeUbisoftOwned: vi.fn(async (games: Game[]) => ({ games, warnings: [], statusMessage: null })),
   mergeXboxOwned: vi.fn(async (games: Game[]) => ({ games, warnings: [], statusMessage: null })),
-  mergeGamePassOwned: vi.fn(async (games: Game[]) => ({
-    games,
-    warnings: [],
-    statusMessage: null,
-  })),
   mergeBattlenetOwned: vi.fn(async (games: Game[]) => ({
     games,
     warnings: [],
@@ -141,7 +133,6 @@ function setupDefaultMocks() {
   mocks.eaFetchOwnedGames.mockReset();
   mocks.fetchEpicOwnedGames.mockReset();
   mocks.fetchUbisoftOwnedGames.mockReset();
-  mocks.fetchGamePassCatalog.mockReset();
   mocks.openSteamScraperWindow.mockReset();
   mocks.normalizeSteamOwnedGames.mockReset();
   mocks.syncGamePlaytimeStats.mockReset();
@@ -159,7 +150,6 @@ function setupDefaultMocks() {
   mocks.eaFetchOwnedGames.mockResolvedValue([]);
   mocks.fetchEpicOwnedGames.mockResolvedValue([]);
   mocks.fetchUbisoftOwnedGames.mockResolvedValue([]);
-  mocks.fetchGamePassCatalog.mockResolvedValue([]);
   mocks.fetchSteamOwnedGames.mockResolvedValue([]);
   mocks.normalizeSteamOwnedGames.mockImplementation((raw: unknown) =>
     Array.isArray(raw) ? raw : [],
@@ -201,6 +191,35 @@ describe("useLibrarySync", () => {
     const persisted: Game[] = [makeGame({ id: "steam-1", title: "Persisted" })];
     window.localStorage.setItem("launcher_library_snapshot", JSON.stringify(persisted));
     mocks.listInstalledGames.mockResolvedValue([]);
+
+    const { result } = renderLibrarySync();
+
+    await waitFor(() => {
+      expect(result.current.installedGames.some((g) => g.id === "steam-1")).toBe(true);
+    });
+  });
+
+  it("drops legacy Xbox cloud catalog entries from persisted snapshots", async () => {
+    const persisted: Game[] = [
+      makeGame({ id: "steam-1", title: "Persisted" }),
+      makeGame({ id: "gamepass-cloud", title: "Cloud Catalog Entry", launcher: "xbox" }),
+    ];
+    window.localStorage.setItem("launcher_library_snapshot", JSON.stringify(persisted));
+    mocks.listInstalledGames.mockResolvedValue([]);
+
+    const { result } = renderLibrarySync();
+
+    await waitFor(() => {
+      expect(result.current.installedGames.some((g) => g.id === "steam-1")).toBe(true);
+    });
+
+    expect(result.current.installedGames.some((g) => g.id.startsWith("gamepass-"))).toBe(false);
+  });
+
+  it("does not require an Xbox cloud catalog fetch on startup", async () => {
+    const persisted: Game[] = [makeGame({ id: "steam-1", title: "Persisted" })];
+    window.localStorage.setItem("launcher_library_snapshot", JSON.stringify(persisted));
+    mocks.listInstalledGames.mockResolvedValue(persisted);
 
     const { result } = renderLibrarySync();
 

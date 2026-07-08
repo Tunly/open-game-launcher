@@ -14,7 +14,6 @@ export interface LibraryAdvancedFilters {
   categories: string[];
   sizeQuery: string;
   productCategories: string[];
-  showGamePassCatalog: boolean;
 }
 
 export interface LibraryFilterContext {
@@ -414,10 +413,6 @@ export function gamePassesAdvancedFilters(
     return false;
   }
 
-  if (!filters.showGamePassCatalog && game.id.startsWith("gamepass-")) {
-    return false;
-  }
-
   return true;
 }
 
@@ -435,8 +430,6 @@ export function countActiveAdvancedFilters(
   if (filters.launchers.length > 0) count += 1;
   if (filters.categories.length > 0) count += 1;
   if (filters.sizeQuery.trim()) count += 1;
-  if (filters.showGamePassCatalog !== defaults.showGamePassCatalog) count += 1;
-
   const defaultCategories = new Set(defaults.productCategories.map((entry) => entry.toLowerCase()));
   const currentCategories = new Set(filters.productCategories.map((entry) => entry.toLowerCase()));
   const productCategoriesChanged =

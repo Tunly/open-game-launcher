@@ -89,3 +89,35 @@ test("prepare hook runs the local husky binary from the repo root when present",
     cleanup();
   }
 });
+
+test("prepare hook runs the Windows husky cmd shim through a shell", () => {
+  const { cleanup, launcherRoot, root } = tempRepo();
+  const calls = [];
+  try {
+    const bin = huskyBinPath(launcherRoot, "win32");
+    mkdirSync(join(launcherRoot, "node_modules", ".bin"), { recursive: true });
+    writeFileSync(bin, "");
+
+    const status = runPrepareHusky({
+      exists: (path) => path === bin,
+      launcherRoot,
+      logger: { log() {} },
+      platform: "win32",
+      runCommand(command, args, options) {
+        calls.push({ args, command, options });
+        return { status: 0 };
+      },
+    });
+
+    assert.equal(status, 0);
+    assert.deepEqual(calls, [
+      {
+        args: [],
+        command: bin,
+        options: { cwd: root, shell: true, stdio: "inherit" },
+      },
+    ]);
+  } finally {
+    cleanup();
+  }
+});

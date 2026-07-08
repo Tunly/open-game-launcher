@@ -4,6 +4,5 @@ export { mergeEaOwned } from "./ea";
 export { mergeEpicOwned } from "./epic";
 export { mergeUbisoftOwned } from "./ubisoft";
 export { mergeXboxOwned } from "./xbox";
-export { mergeGamePassOwned } from "./gamepass";
 export { mergeBattlenetOwned } from "./battlenet";
 export type { MergeContext, ProviderResult, ProviderMerger } from "./types";

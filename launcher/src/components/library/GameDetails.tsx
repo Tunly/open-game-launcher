@@ -79,11 +79,6 @@ import {
 } from "../../lib/formatters";
 import { getGameAssetUrl, getGameBannerStyle } from "../../lib/assets";
 import {
-  createRemotePlayLocalProofRows,
-  type RemotePlayLocalProofTone,
-} from "../../lib/remote-play-local-proof";
-import type { RemotePlayEpicEosProviderContract } from "../../lib/remote-play-epic-eos-provider-contract";
-import {
   buildClientPathOverlayPreflight,
   type ClientPathOverlayPreflight,
   type ClientPathOverlayPreflightStatus,
@@ -94,7 +89,6 @@ import {
   getPlatformClientInstallerMetadata,
   getPlatformClientModificationConfig,
   getPlatformClientUpdateStatus,
-  getRemotePlayDescriptor,
   launchPlatformClient,
   listControllers,
   openAchievementCacheFolder,
@@ -105,7 +99,6 @@ import {
   previewPlatformClientInstall,
   repairGameFiles,
   savePlatformClientModificationConfig,
-  startRemotePlay,
   toClientPlatformId,
   uninstallGame,
   verifyGameFiles,
@@ -114,7 +107,6 @@ import { listScreenshots, useScreenshotCaptured } from "../../lib/overlay";
 import { isLiveDownloadItem, useDownloadStore } from "../../stores/downloadStore";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { CrossPlayBadge } from "./CrossPlayBadge";
-import { RemotePlayEpicEosProviderContractPanel } from "./RemotePlayEpicEosProviderContractPanel";
 import { getCrossPlayPlatforms } from "../../lib/supabase/crossplay";
 import {
   getMyScreenshotsForGame,
@@ -270,12 +262,6 @@ function getManifestTrustLabel(result: VerifyGameFilesResponse | null): string {
 function getManifestTrustClasses(result: VerifyGameFilesResponse | null): string {
   if (!result) return "bg-[#fbf4e7] text-[#655f58]";
   return MANIFEST_TRUST_CLASSES[result.manifestTrust];
-}
-
-function getRemotePlayLocalProofToneClass(tone: RemotePlayLocalProofTone): string {
-  if (tone === "ready") return "bg-[#087d6d] text-white";
-  if (tone === "review") return "bg-[#fff9ed] text-[#171411]";
-  return "bg-[#b7102a] text-white";
 }
 
 const PRODUCT_CATEGORY_LABELS: Record<string, string> = {
@@ -1266,8 +1252,6 @@ export interface GameDetailsProps {
   hostedCommunityArtworkModerationConsole?: HostedCommunityArtworkModerationConsole;
   seedHostedArtworkUploadPending?: boolean;
   igdbCrossPlayReadinessPlan?: IgdbCrossPlayReadinessPlan;
-  remotePlayLocalProof?: boolean;
-  remotePlayEpicEosProviderContract?: RemotePlayEpicEosProviderContract;
   shouldShowLibraryLoading: boolean;
   handlePlay: () => void;
   onInstallFromProvider?: () => void;
@@ -1327,8 +1311,6 @@ export function GameDetails({
   hostedCommunityArtworkModerationConsole,
   seedHostedArtworkUploadPending = false,
   igdbCrossPlayReadinessPlan,
-  remotePlayLocalProof = false,
-  remotePlayEpicEosProviderContract,
   shouldShowLibraryLoading,
   handlePlay,
   onInstallFromProvider,
@@ -1566,7 +1548,6 @@ export function GameDetails({
   const [isClientHealthLoading, setIsClientHealthLoading] = useState(false);
   const [clientHealthError, setClientHealthError] = useState<string | null>(null);
   const [isStartingClient, setIsStartingClient] = useState(false);
-  const [isStartingRemotePlay, setIsStartingRemotePlay] = useState(false);
   const [isClientManagerOpen, setIsClientManagerOpen] = useState(false);
   const [clientInstallerMetadata, setClientInstallerMetadata] =
     useState<ClientInstallerMetadata | null>(null);
@@ -1607,14 +1588,6 @@ export function GameDetails({
         .filter(Boolean)
         .join(" / ") || "Process active"
     : null;
-  const remotePlayDescriptor = useMemo(
-    () => getRemotePlayDescriptor(enrichedSelectedGame),
-    [enrichedSelectedGame],
-  );
-  const remotePlayLocalProofRows = useMemo(
-    () => (remotePlayLocalProof ? createRemotePlayLocalProofRows() : []),
-    [remotePlayLocalProof],
-  );
   const selectedSourceClientName =
     clientHealth?.displayName ?? selectedSourceClientId?.toUpperCase() ?? "Source client";
   const selectedClientHealthClasses = clientHealthClasses(clientHealth, clientHealthError);
@@ -2275,22 +2248,6 @@ export function GameDetails({
     }
   }
 
-  async function handleStartRemotePlay() {
-    if (!enrichedSelectedGame || !remotePlayDescriptor.supported || isStartingRemotePlay) {
-      return;
-    }
-
-    setIsStartingRemotePlay(true);
-    try {
-      const result = await startRemotePlay(enrichedSelectedGame);
-      setStatusMessage(result.message);
-    } catch (error) {
-      setStatusMessage(`Remote Play failed: ${getErrorMessage(error)}`);
-    } finally {
-      setIsStartingRemotePlay(false);
-    }
-  }
-
   async function handleVerifyGameFiles() {
     if (!enrichedSelectedGame || isVerifyingFiles || isRepairingFiles) {
       return;
@@ -2649,27 +2606,6 @@ export function GameDetails({
                       </button>
                     </div>
                   )}
-                  {remotePlayDescriptor.supported ? (
-                    <button
-                      className="flex h-[64px] min-w-0 flex-1 items-center justify-center gap-2 border-4 border-black bg-[#087d6d] px-3 text-[16px] font-black uppercase text-white shadow-[3px_3px_0_#171411] transition-colors hover:bg-[#006458] disabled:cursor-not-allowed disabled:bg-[#d8cbb7] disabled:text-[#655f58]"
-                      title={remotePlayDescriptor.detail}
-                      type="button"
-                      disabled={isStartingRemotePlay}
-                      onClick={() => void handleStartRemotePlay()}
-                    >
-                      {isStartingRemotePlay ? (
-                        <Loader2 className="h-6 w-6 animate-spin" />
-                      ) : (
-                        <Cloud className="h-6 w-6" />
-                      )}
-                      <span className="min-w-0 leading-none">
-                        <span className="block truncate">{remotePlayDescriptor.actionLabel}</span>
-                        <span className="neo-copy mt-1 block truncate text-[8px] font-black uppercase text-[#d8fff7]">
-                          {remotePlayDescriptor.providerLabel}
-                        </span>
-                      </span>
-                    </button>
-                  ) : null}
                   {enrichedSelectedGame.status !== "not_installed" ? (
                     <button
                       className="flex h-[64px] min-w-0 flex-1 items-center justify-center gap-2 border-4 border-black bg-[#fbf4e7] px-3 text-[18px] font-black uppercase text-[#171411] shadow-[3px_3px_0_#171411] transition-colors hover:bg-[#8cf5e4]"
@@ -2697,85 +2633,6 @@ export function GameDetails({
                 </div>
 
                 <div className="min-w-0 space-y-2">
-                  {remotePlayDescriptor.supported ? (
-                    <div
-                      className="flex min-w-0 flex-wrap items-center justify-between gap-2 border-2 border-black bg-[#fff9ed] px-2 py-1.5 shadow-[2px_2px_0_#171411]"
-                      title={remotePlayDescriptor.detail}
-                    >
-                      <div className="flex min-w-0 flex-1 items-center gap-2">
-                        <Cloud className="h-4 w-4 shrink-0 text-[#087d6d]" />
-                        <div className="min-w-0">
-                          <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-                            <span className="neo-copy text-[9px] font-black uppercase text-[#55504a]">
-                              Remote Play
-                            </span>
-                            <span className="neo-copy truncate text-[11px] font-black uppercase text-[#171411]">
-                              {remotePlayDescriptor.providerLabel}
-                            </span>
-                          </div>
-                          <p className="neo-copy mt-0.5 truncate text-[9px] font-bold uppercase text-[#655f58]">
-                            {remotePlayDescriptor.statusLabel}
-                          </p>
-                        </div>
-                      </div>
-                      <span className="neo-copy shrink-0 border-2 border-black bg-[#087d6d] px-1.5 py-0.5 text-[8px] font-black uppercase text-white shadow-[1px_1px_0_#171411]">
-                        Official
-                      </span>
-                    </div>
-                  ) : null}
-
-                  {remotePlayLocalProof ? (
-                    <div className="border-2 border-black bg-[#8cf5e4] px-3 py-2 shadow-[2px_2px_0_#171411]">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="neo-copy border-2 border-black bg-[#171411] px-2 py-0.5 text-[8px] font-black uppercase tracking-[0.12em] text-[#fff9ed]">
-                          Remote Play Local Proof
-                        </span>
-                        <span className="neo-copy border-2 border-black bg-[#fff9ed] px-2 py-0.5 text-[8px] font-black uppercase tracking-[0.1em] text-[#171411]">
-                          Steam AppID 620
-                        </span>
-                        <span className="neo-copy border-2 border-black bg-[#fff9ed] px-2 py-0.5 text-[8px] font-black uppercase tracking-[0.1em] text-[#171411]">
-                          HTTPS cloud endpoint
-                        </span>
-                        <span className="neo-copy border-2 border-black bg-[#b7102a] px-2 py-0.5 text-[8px] font-black uppercase tracking-[0.1em] text-white">
-                          Browser guard
-                        </span>
-                      </div>
-                      <p className="neo-copy mt-2 text-[9px] font-black uppercase leading-4 text-[#171411]">
-                        Desktop app required for native invoke. Unsafe remote URIs are rejected by
-                        descriptor tests. Epic/EOS remains URI-review only, with no provider session
-                        detection, invite delivery, or live streaming success claim.
-                      </p>
-                      <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                        {remotePlayLocalProofRows.map((row) => (
-                          <article
-                            key={row.id}
-                            className="border-2 border-black bg-[#fff9ed] p-2 shadow-[2px_2px_0_#171411]"
-                          >
-                            <div className="flex flex-wrap items-center justify-between gap-1.5">
-                              <span className="neo-copy text-[9px] font-black uppercase text-[#171411]">
-                                {row.label}
-                              </span>
-                              <span
-                                className={`neo-copy border-2 border-black px-1.5 py-0.5 text-[8px] font-black uppercase shadow-[1px_1px_0_#171411] ${getRemotePlayLocalProofToneClass(row.tone)}`}
-                              >
-                                {row.status}
-                              </span>
-                            </div>
-                            <p className="neo-copy mt-1 text-[8px] font-black uppercase leading-4 text-[#5b403f]">
-                              {row.detail}
-                            </p>
-                          </article>
-                        ))}
-                      </div>
-                    </div>
-                  ) : null}
-
-                  {remotePlayEpicEosProviderContract ? (
-                    <RemotePlayEpicEosProviderContractPanel
-                      contract={remotePlayEpicEosProviderContract}
-                    />
-                  ) : null}
-
                   {isGameRunning && gameRuntime ? (
                     <div
                       className="flex min-w-0 flex-wrap items-center justify-between gap-2 border-2 border-black bg-[#fbf4e7] px-2 py-1.5 shadow-[2px_2px_0_#171411]"
@@ -4710,11 +4567,6 @@ export function GameDetails({
                         <div className="flex justify-between border-b border-black/10 pb-1">
                           <span className="uppercase text-[#55504a]">Category:</span>
                           <div className="flex items-center gap-2">
-                            {enrichedSelectedGame.id.startsWith("gamepass-") && (
-                              <span className="bg-[#139a82] px-1.5 py-0.5 text-[10px] font-black uppercase text-white shadow-[1px_1px_0_#000]">
-                                Game Pass
-                              </span>
-                            )}
                             <span className="font-black capitalize">
                               {enrichedSelectedGame.productCategory || "game"}
                             </span>
@@ -4921,13 +4773,10 @@ export function GameDetails({
                       </React.Suspense>
                     ) : null}
 
-                    {/* Cloud Saves Panel */}
+                    {/* Platform Cloud Saves Panel */}
                     {enrichedSelectedGame.status === "installed" ? (
                       <React.Suspense fallback={null}>
-                        <CloudSavesPanel
-                          game={enrichedSelectedGame}
-                          onStatusMessage={setStatusMessage}
-                        />
+                        <CloudSavesPanel game={enrichedSelectedGame} />
                       </React.Suspense>
                     ) : null}
                   </aside>

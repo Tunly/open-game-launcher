@@ -221,23 +221,6 @@ export function LibraryFilters({ isOpen, onClose }: LibraryFiltersProps) {
           })}
         </FilterSection>
 
-        <div className="border-2 border-black bg-[#efe3cf] p-2 shadow-[2px_2px_0_#000]">
-          <h4 className="mb-2 border-b border-black pb-1 text-[12px] font-black uppercase">
-            Xbox Game Pass
-          </h4>
-          <label className="flex cursor-pointer items-center gap-1.5 text-[11px] font-bold">
-            <input
-              type="checkbox"
-              checked={advancedFilters.showGamePassCatalog}
-              onChange={(e) =>
-                setAdvancedFilters({ ...advancedFilters, showGamePassCatalog: e.target.checked })
-              }
-              className="h-3.5 w-3.5 border-2 border-black accent-[#139a82]"
-            />
-            <span>Show Game Pass Catalog</span>
-          </label>
-        </div>
-
         <FilterCheckboxSection
           title="Play Status"
           values={advancedFilters.status}

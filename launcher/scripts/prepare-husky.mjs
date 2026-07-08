@@ -26,6 +26,7 @@ export function runPrepareHusky({
 
   const result = runCommand(bin, [], {
     cwd: dirname(launcherRoot),
+    ...(platform === "win32" ? { shell: true } : {}),
     stdio: "inherit",
   });
   if (result.error) throw result.error;

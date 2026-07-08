@@ -70,8 +70,7 @@ stored outside Git; no live external evidence was collected in this workspace.
   desktop/mobile, local hosted-readiness panels, mobile session/library/chat contract
   proofs, One-Click Setup rollback/audit no-write contract desktop/mobile
   evidence, Hosted Cron Evidence Summary desktop/mobile evidence, External
-  Completion Evidence Summary desktop/mobile evidence, Remote Play Epic/EOS
-  Provider Contract desktop/mobile evidence, Broadcasting Audience Status
+  Completion Evidence Summary desktop/mobile evidence, Broadcasting Audience Status
   Contract desktop/mobile evidence, AI Recommendations Consent Audit/Gateway
   Eval evidence, Controller runtime safety evidence, Friends roster action
   handoff desktop/mobile evidence, and no-horizontal-overflow DOM checks for
@@ -119,12 +118,6 @@ stored outside Git; no live external evidence was collected in this workspace.
   blockers. It is not provider live-state reads, viewer-count polling, callback
   replay, public live badge mutation, RTMP output, VOD sync, or live audience
   proof.
-- Remote Play Epic/EOS Provider Contract local evidence is limited to
-  `/library?verify=remote-play-epic-eos-provider-contract` screenshots, panel
-  overflow checks, and contract tests for provider-state labels, invite-envelope
-  shape, URI fallback, provider error mapping, and stream-proof blockers. It is
-  not Epic/EOS provider-session detection, invite delivery, invite acceptance, or
-  live streaming proof.
 - External Completion Evidence Summary local evidence is limited to
   `/settings?verify=external-completion-evidence-summary` screenshots, summary
   panel gate cards, and no-write contract tests for Store/Stripe, hosted cron,

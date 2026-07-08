@@ -37,7 +37,6 @@ function renderSidebar(overrides: Partial<React.ComponentProps<typeof LibrarySid
       platforms: [],
       players: [],
       productCategories: [],
-      showGamePassCatalog: false,
       sizeQuery: "",
       status: [],
     },

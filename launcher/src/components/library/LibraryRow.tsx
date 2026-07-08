@@ -213,10 +213,6 @@ function LibraryRowBase({
           >
             {group.variants.length} Anbieter
           </span>
-        ) : game.id.startsWith("gamepass-") ? (
-          <span className="mt-0.5 text-[9px] font-bold uppercase tracking-wider text-[#139a82]">
-            Game Pass
-          </span>
         ) : null}
       </span>
 

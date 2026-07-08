@@ -5,7 +5,6 @@ import { listen } from "@tauri-apps/api/event";
 
 import {
   addManualGame,
-  fetchGamePassCatalog,
   listInstalledGames,
   normalizeSteamOwnedGames,
   refreshInstalledGames,
@@ -32,7 +31,6 @@ import {
   mergeBattlenetOwned,
   mergeEaOwned,
   mergeEpicOwned,
-  mergeGamePassOwned,
   mergeGogOwned,
   mergeSteamOwned,
   mergeUbisoftOwned,
@@ -54,6 +52,14 @@ type LibraryInventoryChanged = {
 
 type GameStatusSetter = Dispatch<SetStateAction<string | null>>;
 
+function isLegacyGamePassCatalogGame(game: Game): boolean {
+  return game.id.toLowerCase().startsWith("gamepass-");
+}
+
+function withoutLegacyGamePassCatalog(games: Game[]): Game[] {
+  return games.filter((game) => !isLegacyGamePassCatalogGame(game));
+}
+
 function readLibrarySnapshot(): Game[] {
   try {
     const saved = localStorage.getItem(STORAGE_KEYS.LIBRARY_SNAPSHOT);
@@ -62,7 +68,7 @@ function readLibrarySnapshot(): Game[] {
     }
 
     const games = JSON.parse(saved);
-    return Array.isArray(games) ? (games as Game[]) : [];
+    return Array.isArray(games) ? withoutLegacyGamePassCatalog(games as Game[]) : [];
   } catch {
     return [];
   }
@@ -70,7 +76,10 @@ function readLibrarySnapshot(): Game[] {
 
 function writeLibrarySnapshot(games: Game[]) {
   try {
-    localStorage.setItem(STORAGE_KEYS.LIBRARY_SNAPSHOT, JSON.stringify(games));
+    localStorage.setItem(
+      STORAGE_KEYS.LIBRARY_SNAPSHOT,
+      JSON.stringify(withoutLegacyGamePassCatalog(games)),
+    );
   } catch {
     // The native cache is authoritative; this snapshot only prevents UI flicker.
   }
@@ -144,7 +153,6 @@ const PROVIDER_PIPELINE: ProviderMerger[] = [
   mergeEpicOwned,
   mergeUbisoftOwned,
   mergeXboxOwned,
-  mergeGamePassOwned,
   mergeBattlenetOwned,
 ];
 
@@ -233,9 +241,12 @@ export function useLibrarySync({ setStatusMessage }: UseLibrarySyncOptions): Use
         return;
       }
 
-      setInstalledGames((current) => (areGameListsEqual(current, games) ? current : games));
+      const visibleGames = withoutLegacyGamePassCatalog(games);
+      setInstalledGames((current) =>
+        areGameListsEqual(current, visibleGames) ? current : visibleGames,
+      );
       setDiscoveryMessage(
-        games.length > 0
+        visibleGames.length > 0
           ? null
           : "No installed Steam, Epic, or GOG games found. Local preview shelf loaded.",
       );
@@ -317,53 +328,6 @@ export function useLibrarySync({ setStatusMessage }: UseLibrarySyncOptions): Use
       isMounted = false;
     };
   }, [initialLibrarySnapshot.length, loadInstalledGames]);
-
-  useEffect(() => {
-    let isMounted = true;
-
-    if (initialLibrarySnapshot.length === 0) {
-      return;
-    }
-
-    const cacheStr = localStorage.getItem(STORAGE_KEYS.GAME_PASS_CATALOG_CACHE);
-    let needsFetch = !cacheStr;
-    if (cacheStr) {
-      try {
-        const parsed = JSON.parse(cacheStr);
-        if (!Array.isArray(parsed) || parsed.length === 0) {
-          needsFetch = true;
-        }
-      } catch {
-        needsFetch = true;
-      }
-    }
-
-    if (needsFetch) {
-      setIsDiscoveringGames(true);
-      setDiscoveryMessage("Fetching Xbox Game Pass Catalog (~500 games)...");
-      fetchGamePassCatalog()
-        .then((games) => {
-          if (!isMounted) return;
-          localStorage.setItem(STORAGE_KEYS.GAME_PASS_CATALOG_CACHE, JSON.stringify(games));
-          void runAutomaticLibrarySync(true);
-        })
-        .catch((err) => {
-          if (!isMounted) return;
-          console.error("Game Pass fetch failed", err);
-        })
-        .finally(() => {
-          if (!isMounted) return;
-          setIsDiscoveringGames(false);
-          setDiscoveryMessage(null);
-        });
-    } else {
-      void runAutomaticLibrarySync(false);
-    }
-
-    return () => {
-      isMounted = false;
-    };
-  }, [initialLibrarySnapshot.length, runAutomaticLibrarySync]);
 
   useEffect(() => {
     if (!isTauri()) {

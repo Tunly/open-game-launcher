@@ -126,7 +126,7 @@ function launcherHintFromId(id: string): Game["launcher"] | null {
   if (id.startsWith("epic-")) return "epic";
   if (id.startsWith("gog-")) return "gog";
   if (id.startsWith("ubisoft-")) return "ubisoft";
-  if (id.startsWith("xbox-") || id.startsWith("gamepass-")) return "xbox";
+  if (id.startsWith("xbox-")) return "xbox";
   if (id.startsWith("battlenet-")) return "battlenet";
   if (id.startsWith("ea-")) return "ea";
   if (id.startsWith("manual-")) return "manual";

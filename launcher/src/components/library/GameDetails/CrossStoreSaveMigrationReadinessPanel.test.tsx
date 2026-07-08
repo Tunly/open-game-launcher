@@ -25,9 +25,6 @@ describe("CrossStoreSaveMigrationReadinessPanel", () => {
     expect(within(panel).getByText("Native Copy Engine")).toBeInTheDocument();
     expect(within(panel).getByText("Path Mapping Matrix")).toBeInTheDocument();
     expect(within(panel).getByText("Provider Cloud Transfer")).toBeInTheDocument();
-    expect(within(panel).getByText("Supabase/Keychain Staging Contract")).toBeInTheDocument();
-    expect(within(panel).getByText("Supabase Bucket E2E")).toBeInTheDocument();
-    expect(within(panel).getByText("Keychain Restore")).toBeInTheDocument();
     expect(within(panel).getByText("Rollback Restore")).toBeInTheDocument();
     expect(within(panel).getByText("Local Sandbox E2E Proof")).toBeInTheDocument();
     expect(within(panel).getByText("Post-Copy Conflict Audit")).toBeInTheDocument();
@@ -44,23 +41,15 @@ describe("CrossStoreSaveMigrationReadinessPanel", () => {
     expect(within(panel).getByText("Post-copy verification review only")).toBeInTheDocument();
     expect(within(panel).getByText("Local sandbox proof uses temp files only")).toBeInTheDocument();
     expect(within(panel).getByText("Migration session rehearsal review only")).toBeInTheDocument();
-    expect(
-      within(panel).getByText("Supabase/keychain staging proof review only"),
-    ).toBeInTheDocument();
     expect(within(panel).getByText("No provider cloud transfer")).toBeInTheDocument();
-    expect(within(panel).getByText("No live Supabase bucket E2E")).toBeInTheDocument();
-    expect(within(panel).getByText("Keychain restore contract review only")).toBeInTheDocument();
-    expect(within(panel).getByText("Keychain Restore Contract")).toBeInTheDocument();
-    expect(within(panel).getByText("No key export")).toBeInTheDocument();
-    expect(within(panel).getByText("No live keychain restore run")).toBeInTheDocument();
-    expect(within(panel).getByText("Redacted React Boundary")).toBeInTheDocument();
-    expect(within(panel).getByText("Desktop Vault Boundary")).toBeInTheDocument();
-    expect(within(panel).getByText("Session Consent Boundary")).toBeInTheDocument();
+    expect(within(panel).queryByText("Supabase/Keychain Staging Contract")).not.toBeInTheDocument();
+    expect(within(panel).queryByText("Supabase Bucket E2E")).not.toBeInTheDocument();
+    expect(within(panel).queryByText("Keychain Restore")).not.toBeInTheDocument();
     expect(
       within(panel).getByText("Rollback restore requires explicit desktop consent"),
     ).toBeInTheDocument();
     expect(panel).not.toHaveTextContent(
-      /migration (started|complete|ready)|saves? (copied|migrated|transferred)|provider cloud (connected|live|synced|transfer complete)|path mapping (verified|ready|complete)|rollback (verified|ready|complete)|supabase\/keychain bucket e2e (passed|ready)|live bucket e2e passed|key exported|keychain restored|live keychain restore complete/i,
+      /migration (started|complete|ready)|saves? (copied|migrated|transferred)|provider cloud (connected|live|synced|transfer complete)|path mapping (verified|ready|complete)|rollback (verified|ready|complete)|supabase\/keychain|live bucket e2e passed|key exported|keychain restored|live keychain restore complete/i,
     );
   });
 });

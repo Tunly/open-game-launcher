@@ -7,17 +7,13 @@ import {
   applyControllerLayout,
   cancelLanTransferCopyJob,
   clearControllerLayout,
-  checkGameSaveConflicts,
   clearBroadcastStreamKeySecret,
-  downloadGameSavesFromCloud,
   ejectBackupExternalDrive,
-  generateCloudKey,
   getBroadcastStreamKeyVaultStatus,
   getControllerRuntimeStatus,
   getLanTransferCopyJobs,
   getDiskInfo,
   getLatestBackupStatus,
-  isCloudKeyPresent,
   listControllers,
   openEpicLoginWindow,
   openSteamLoginWindow,
@@ -26,7 +22,6 @@ import {
   reviewPluginUpdateSigningEnvelope,
   provePluginRuntimeSandbox,
   proveCrossStoreSaveLocalE2E,
-  proveCrossStoreSaveSupabaseKeychainStaging,
   proveBackupExternalDriveEjectSafety,
   proveBackupExternalDriveWrite,
   previewLanTransferCopy,
@@ -34,7 +29,6 @@ import {
   previewLanTransferResumeCancelLedger,
   previewBackupPlan,
   previewRestorePlan,
-  restoreGameSavesFromCloud,
   restoreBackup,
   rollbackCrossStoreSaveCopy,
   runLanTransferCopy,
@@ -42,10 +36,8 @@ import {
   runLanTransferResumeCopy,
   setBroadcastStreamKeySecret,
   startLanTransferCopyJob,
-  rotateCloudKey,
   runBackupPlan,
   scanLocalPluginManifests,
-  uploadGameSavesToCloud,
   stageSignedPluginPackage,
 } from "../launcher";
 
@@ -330,51 +322,6 @@ describe("launcher browser guards", () => {
       }),
     ).rejects.toThrow("desktop app");
     await expect(proveCrossStoreSaveLocalE2E()).rejects.toThrow("desktop app");
-    await expect(
-      proveCrossStoreSaveSupabaseKeychainStaging("mech-arcade", {
-        accessToken: "supabase-access-token",
-        userId: "user-1",
-      }),
-    ).rejects.toThrow("desktop app");
-    expect(invoke).not.toHaveBeenCalled();
-  });
-
-  it("blocks cloud keychain commands outside Tauri", async () => {
-    await expect(isCloudKeyPresent("user-1")).rejects.toThrow("desktop app");
-    await expect(generateCloudKey("user-1")).rejects.toThrow("desktop app");
-    await expect(rotateCloudKey("user-1")).rejects.toThrow("desktop app");
-    expect(invoke).not.toHaveBeenCalled();
-  });
-
-  it("blocks cloud-save sync wrappers outside Tauri", async () => {
-    const options = {
-      accessToken: "supabase-access-token",
-      userId: "user-1",
-    };
-
-    await expect(
-      uploadGameSavesToCloud("game-1", {
-        ...options,
-        deleteCloudRelativePaths: ["old/profile.sav"],
-        savePaths: ["/games/game-1/saves"],
-        selectedRelativePaths: ["profile.sav"],
-      }),
-    ).rejects.toThrow("desktop app");
-    await expect(downloadGameSavesFromCloud("game-1", options)).rejects.toThrow("desktop app");
-    await expect(
-      restoreGameSavesFromCloud("game-1", {
-        ...options,
-        deleteLocalPaths: ["/games/game-1/saves/old.sav"],
-        savePaths: ["/games/game-1/saves"],
-        selectedRelativePaths: ["profile.sav"],
-      }),
-    ).rejects.toThrow("desktop app");
-    await expect(
-      checkGameSaveConflicts("game-1", {
-        ...options,
-        savePaths: ["/games/game-1/saves"],
-      }),
-    ).rejects.toThrow("desktop app");
     expect(invoke).not.toHaveBeenCalled();
   });
 
