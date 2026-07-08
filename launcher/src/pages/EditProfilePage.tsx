@@ -47,7 +47,6 @@ interface ProfileFormState {
   keyboard: string;
   mouse: string;
   headset: string;
-  controller: string;
   hardwareVisibility: ProfileVisibility;
 }
 
@@ -75,7 +74,6 @@ const emptyForm: ProfileFormState = {
   keyboard: "",
   mouse: "",
   headset: "",
-  controller: "",
   hardwareVisibility: "friends_only",
 };
 
@@ -89,16 +87,7 @@ function normalizeUsername(username: string) {
   return username.trim().toLowerCase();
 }
 
-const hardwareFields = [
-  "cpu",
-  "gpu",
-  "ram",
-  "monitor",
-  "keyboard",
-  "mouse",
-  "headset",
-  "controller",
-] as const;
+const hardwareFields = ["cpu", "gpu", "ram", "monitor", "keyboard", "mouse", "headset"] as const;
 
 type HardwareField = (typeof hardwareFields)[number];
 
@@ -192,7 +181,6 @@ export function EditProfilePage() {
           keyboard: hardware?.keyboard ?? "",
           mouse: hardware?.mouse ?? "",
           headset: hardware?.headset ?? "",
-          controller: hardware?.controller ?? "",
           hardwareVisibility: hardware?.visibility ?? "friends_only",
         });
         setSocialLinks(
@@ -372,7 +360,6 @@ export function EditProfilePage() {
       });
       await updateMyProfileTheme(selectedThemeId || null);
       await updateMyHardware({
-        controller: nullable(form.controller),
         cpu: nullable(form.cpu),
         gpu: nullable(form.gpu),
         headset: nullable(form.headset),
@@ -838,7 +825,6 @@ function createMockProfileEditorState(options: { socialLinkVisibilityEditor?: bo
     wishlistVisibility: "public",
   };
   const form = profileToForm(profile, {
-    controller: "Xbox Elite Controller",
     cpu: "8 logical cores",
     gpu: "Browser WebGL adapter",
     headset: "",
@@ -936,22 +922,13 @@ function profileToForm(
   profile: Profile,
   hardware: Pick<
     ProfileFormState,
-    | "controller"
-    | "cpu"
-    | "gpu"
-    | "headset"
-    | "keyboard"
-    | "monitor"
-    | "mouse"
-    | "ram"
-    | "hardwareVisibility"
+    "cpu" | "gpu" | "headset" | "keyboard" | "monitor" | "mouse" | "ram" | "hardwareVisibility"
   >,
 ): ProfileFormState {
   return {
     avatarUrl: profile.avatarUrl ?? "",
     bannerUrl: profile.bannerUrl ?? "",
     bio: profile.bio ?? "",
-    controller: hardware.controller,
     countryCode: profile.countryCode ?? "",
     cpu: hardware.cpu,
     displayName: profile.displayName ?? "",

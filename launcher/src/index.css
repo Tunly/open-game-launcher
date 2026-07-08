@@ -182,7 +182,6 @@ a:focus-visible {
 
 .app-shell-root,
 .app-shell-header,
-.app-shell-titlebar,
 .app-shell-surface {
   background: var(--og-shell-paper);
   color: var(--og-shell-ink);
@@ -230,14 +229,6 @@ a:focus-visible {
   background: var(--og-shell-active);
   box-shadow: 4px 4px 0 var(--og-shell-shadow);
   color: #fff9ed;
-}
-
-.tauri-runtime .app-main-header {
-  top: 2.25rem;
-}
-
-.tauri-runtime .app-library-main {
-  height: calc(100vh - 2.25rem - 80px);
 }
 
 .steam-game-banner {

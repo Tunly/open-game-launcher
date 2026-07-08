@@ -8,6 +8,7 @@ import {
   matchesSearchQuery,
   matchesSizeQuery,
 } from "../library-filters";
+import { isUbisoftDlcEntry } from "../library-filters-helpers";
 
 function makeGame(overrides: Partial<Game> = {}): Game {
   return {
@@ -119,6 +120,13 @@ describe("gamePassesAdvancedFilters", () => {
     expect(gamePassesAdvancedFilters(steamGame, filters, context)).toBe(false);
   });
 
+  it("matches legacy Uplay rows with the Ubisoft launcher filter", () => {
+    const filters = { ...defaults, launchers: ["Ubisoft"] };
+    const uplayGame = makeGame({ id: "legacy-635", launcher: "Uplay" as never });
+
+    expect(gamePassesAdvancedFilters(uplayGame, filters, context)).toBe(true);
+  });
+
   it("respects hidden games in status filter", () => {
     const hiddenContext: LibraryFilterContext = {
       ...context,
@@ -150,6 +158,51 @@ describe("gamePassesAdvancedFilters", () => {
     expect(
       gamePassesAdvancedFilters(game, { ...defaults, categories: ["boss rush"] }, context),
     ).toBe(true);
+  });
+});
+
+describe("isUbisoftDlcEntry", () => {
+  it("does not hide Ubisoft base game editions", () => {
+    for (const title of [
+      "Assassin's Creed Valhalla Gold Edition",
+      "Far Cry 6 - Base Game",
+      "Tom Clancy's Rainbow Six Siege - Deluxe Edition",
+      "Watch Dogs Legion Ultimate Edition",
+    ]) {
+      expect(
+        isUbisoftDlcEntry(
+          makeGame({
+            id: "ubisoft-owned-6100",
+            title,
+            description: "Ubisoft Connect game (Owned). ID: 6100",
+            launcher: "ubisoft",
+          }),
+        ),
+      ).toBe(false);
+    }
+  });
+
+  it("still hides Ubisoft DLC and asset entries", () => {
+    for (const [id, launcher, title] of [
+      ["ubisoft-owned-6100", "ubisoft", "Assassin's Creed Valhalla - Season Pass"],
+      ["ubisoft-6100", "ubisoft", "Far Cry 6 HD Texture Pack"],
+      ["legacy-credits", "Uplay", "Rainbow Six Siege 1200 Credits Pack"],
+      ["legacy-expansion", "Ubisoft Connect", "Watch Dogs Legion - Bloodline Expansion"],
+      ["legacy-odyssey", "Ubisoft Connect", "Assassin's Creed Odyssey - Legacy of the First Blade"],
+      ["legacy-division", "ubisoft", "Tom Clancy's The Division 2 - Warlords of New York"],
+      ["legacy-crew", "Uplay", "The Crew - Calling All Units"],
+    ] as const) {
+      expect(
+        isUbisoftDlcEntry(
+          makeGame({
+            id,
+            title,
+            description: "Ubisoft Connect game (Owned). ID: 6100",
+            launcher: launcher as never,
+          }),
+        ),
+      ).toBe(true);
+    }
   });
 });
 

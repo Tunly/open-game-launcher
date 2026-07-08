@@ -1,3 +1,4 @@
+use std::collections::HashSet;
 use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -240,6 +241,90 @@ fn read_uplay_id(sub_buffer: &[u8]) -> Option<u64> {
     None
 }
 
+fn yaml_like_line_value<'a>(line: &'a str, key: &str) -> Option<&'a str> {
+    let trimmed = line.trim();
+    let rest = trimmed.strip_prefix(key)?.trim_start();
+    let value = rest.strip_prefix(':')?.trim();
+    Some(value.trim_matches('"').trim_matches('\'').trim())
+}
+
+fn is_yaml_like_null(value: &str) -> bool {
+    let normalized = value.trim().trim_matches('"').trim_matches('\'');
+    normalized.is_empty()
+        || normalized.eq_ignore_ascii_case("null")
+        || normalized == "~"
+        || normalized == "[]"
+        || normalized == "{}"
+}
+
+fn yaml_like_bool_is_true(buffer: &[u8], key: &str) -> bool {
+    let contents = String::from_utf8_lossy(buffer);
+    contents.lines().any(|line| {
+        yaml_like_line_value(line, key).is_some_and(|value| {
+            value.eq_ignore_ascii_case("true")
+                || value.eq_ignore_ascii_case("yes")
+                || value.eq_ignore_ascii_case("on")
+                || value == "1"
+        })
+    })
+}
+
+fn yaml_like_key_has_value_or_block(buffer: &[u8], key: &str) -> bool {
+    let contents = String::from_utf8_lossy(buffer);
+    contents.lines().any(|line| {
+        yaml_like_line_value(line, key)
+            .is_some_and(|value| value.is_empty() || !is_yaml_like_null(value))
+    })
+}
+
+fn line_indent(line: &str) -> usize {
+    line.chars().take_while(|char| *char == ' ').count()
+}
+
+fn extract_ubisoft_addon_ids(buffer: &[u8]) -> Vec<u64> {
+    let contents = String::from_utf8_lossy(buffer);
+    let mut ids = Vec::new();
+    let mut in_addons_block = false;
+    let mut addons_indent = 0;
+
+    for line in contents.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+
+        let indent = line_indent(line);
+
+        if in_addons_block {
+            if indent <= addons_indent && !trimmed.starts_with('-') {
+                in_addons_block = false;
+            } else {
+                let item = trimmed.trim_start_matches('-').trim_start();
+                if let Some(id) =
+                    yaml_like_line_value(item, "id").and_then(|value| value.parse::<u64>().ok())
+                {
+                    ids.push(id);
+                }
+                continue;
+            }
+        }
+
+        if yaml_like_line_value(line, "addons").is_some() {
+            in_addons_block = true;
+            addons_indent = indent;
+        }
+    }
+
+    ids
+}
+
+fn should_skip_ubisoft_library_entry(buffer: &[u8], name: &str) -> bool {
+    should_skip_ubisoft_library_name(name)
+        || yaml_like_bool_is_true(buffer, "is_ulc")
+        || yaml_like_key_has_value_or_block(buffer, "third_party_platform")
+        || !yaml_like_key_has_value_or_block(buffer, "start_game")
+}
+
 fn should_skip_ubisoft_library_name(name: &str) -> bool {
     let normalized = name.to_lowercase();
 
@@ -328,7 +413,6 @@ fn should_skip_ubisoft_library_name(name: &str) -> bool {
         || normalized.contains("xp boost")
         || normalized.contains("loot")
         || normalized.contains("ubicollectibles")
-        || normalized.contains("edition")
         || normalized.contains("hero skin")
         || normalized.contains("premier")
         || normalized.contains("welcome")
@@ -353,6 +437,12 @@ fn should_skip_ubisoft_library_name(name: &str) -> bool {
             || suffix.contains("mission")
             || suffix.contains("dead kings")
             || suffix.contains("secrets of")
+            || suffix.contains("legacy of")
+            || suffix.contains("warlords of")
+            || suffix.contains("wrath of")
+            || suffix.contains("fate of")
+            || suffix.contains("tyranny of")
+            || suffix.contains("siege of")
             || suffix.contains("underground")
             || suffix.contains("freedom cry")
             || suffix.contains("last stand")
@@ -361,6 +451,12 @@ fn should_skip_ubisoft_library_name(name: &str) -> bool {
             || suffix.contains("bad blood")
             || suffix.contains("road to")
             || suffix.contains("conspiracy")
+            || suffix.contains("jack the ripper")
+            || suffix.contains("lost archive")
+            || suffix.contains("calling all units")
+            || suffix.contains("wild run")
+            || suffix.contains("narco road")
+            || suffix.contains("fallen ghosts")
             || suffix.contains("rocket wings")
             || suffix.contains("winter fest")
             || suffix.contains("x games")
@@ -381,13 +477,6 @@ fn should_skip_ubisoft_library_name(name: &str) -> bool {
             || suffix.contains("nighthawk")
             || suffix.contains("suave")
             || suffix.starts_with("the ")
-            || suffix.contains("base game")
-            || suffix.contains("gold edition")
-            || suffix.contains("deluxe")
-            || suffix.contains("ultimate")
-            || suffix.contains("starter")
-            || suffix.contains("elite")
-            || suffix.contains("special")
             || suffix.contains("animus")
             || suffix.contains("company logos")
             || suffix.contains("road 66");
@@ -406,6 +495,7 @@ pub fn parse_ubisoft_configurations(path: &Path) -> Vec<UbisoftGame> {
     };
 
     let mut games = Vec::new();
+    let mut addon_ids = HashSet::new();
     let mut offset = 0;
 
     while offset < file_content.len() {
@@ -426,6 +516,8 @@ pub fn parse_ubisoft_configurations(path: &Path) -> Vec<UbisoftGame> {
         let sub_buffer = &file_content[offset..offset + length];
         offset += length;
 
+        addon_ids.extend(extract_ubisoft_addon_ids(sub_buffer));
+
         let Some(uplay_id) = read_uplay_id(sub_buffer) else {
             continue;
         };
@@ -438,7 +530,7 @@ pub fn parse_ubisoft_configurations(path: &Path) -> Vec<UbisoftGame> {
             .or_else(|| extract_yaml_value(sub_buffer, b"root:\n  name: "))
             .unwrap_or_default();
 
-        if name.is_empty() || should_skip_ubisoft_library_name(&name) {
+        if name.is_empty() || should_skip_ubisoft_library_entry(sub_buffer, &name) {
             continue;
         }
 
@@ -461,6 +553,7 @@ pub fn parse_ubisoft_configurations(path: &Path) -> Vec<UbisoftGame> {
         });
     }
 
+    games.retain(|game| !addon_ids.contains(&game.id));
     games.sort_by_key(|game| game.id);
     games.dedup_by_key(|game| game.id);
     games
@@ -554,4 +647,114 @@ pub async fn fetch_ubisoft_owned_games() -> Result<Vec<OwnedGame>, String> {
         .collect();
 
     Ok(owned_games)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn write_varint_u32(mut value: u32, out: &mut Vec<u8>) {
+        while value >= 0x80 {
+            out.push((value as u8 & 0x7f) | 0x80);
+            value >>= 7;
+        }
+        out.push(value as u8);
+    }
+
+    fn configuration_record(id: u32, yaml: &str) -> Vec<u8> {
+        let mut sub_buffer = vec![0x08];
+        write_varint_u32(id, &mut sub_buffer);
+        sub_buffer.extend_from_slice(yaml.as_bytes());
+
+        let mut record = vec![0x0a];
+        write_varint_u32(sub_buffer.len() as u32, &mut record);
+        record.extend(sub_buffer);
+        record
+    }
+
+    #[test]
+    fn ubisoft_owned_parser_keeps_base_game_editions() {
+        for title in [
+            "Assassins Creed Valhalla Gold Edition",
+            "Far Cry 6 - Base Game",
+            "Tom Clancys Rainbow Six Siege - Deluxe Edition",
+            "Watch Dogs Legion Ultimate Edition",
+        ] {
+            assert!(
+                !should_skip_ubisoft_library_name(title),
+                "base game edition should stay visible: {title}"
+            );
+        }
+    }
+
+    #[test]
+    fn ubisoft_owned_parser_still_skips_dlc_and_assets() {
+        for title in [
+            "Assassins Creed Valhalla - Season Pass",
+            "Far Cry 6 HD Texture Pack",
+            "Rainbow Six Siege 1200 Credits Pack",
+            "Watch Dogs Legion - Bloodline Expansion",
+        ] {
+            assert!(
+                should_skip_ubisoft_library_name(title),
+                "DLC or asset entry should stay hidden: {title}"
+            );
+        }
+    }
+
+    #[test]
+    fn ubisoft_owned_parser_skips_structural_dlc_entries() {
+        let mut contents = Vec::new();
+        contents.extend(configuration_record(
+            100,
+            r#"
+root:
+  name: "Assassins Creed Odyssey"
+  start_game:
+    executable: "ACOdyssey.exe"
+  addons:
+    - id: 200
+"#,
+        ));
+        contents.extend(configuration_record(
+            200,
+            r#"
+root:
+  name: "Atlantis Chapter"
+  start_game:
+    executable: "ACOdyssey.exe"
+"#,
+        ));
+        contents.extend(configuration_record(
+            300,
+            r#"
+root:
+  name: "Gallery Viewer"
+"#,
+        ));
+        contents.extend(configuration_record(
+            400,
+            r#"
+root:
+  name: "Linked Platform Entry"
+  start_game:
+    executable: "Linked.exe"
+  third_party_platform:
+    name: "Steam"
+"#,
+        ));
+
+        let path = std::env::temp_dir().join(format!(
+            "ogl-ubisoft-configurations-{}-structural-dlc",
+            std::process::id()
+        ));
+        std::fs::write(&path, contents).expect("write test Ubisoft cache");
+
+        let games = parse_ubisoft_configurations(&path);
+        let _ = std::fs::remove_file(&path);
+
+        assert_eq!(games.len(), 1);
+        assert_eq!(games[0].id, 100);
+        assert_eq!(games[0].name, "Assassins Creed Odyssey");
+    }
 }

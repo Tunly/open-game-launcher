@@ -35,7 +35,6 @@ export const exportOwnUserIdTables = [
   "platform_accounts",
   "friend_merge_suggestions",
   "activity_feed",
-  "controller_layouts",
   "chat_room_members",
   "store_reviews",
   "store_order_refund_requests",
@@ -48,7 +47,6 @@ export const exportOwnUserIdTables = [
   "performance_sessions",
   "launcher_local_entities",
   "community_artwork_votes",
-  "controller_layout_votes",
 ] as const;
 
 export const exportAdditionalUserScopedReads = [
@@ -66,16 +64,6 @@ export const exportAdditionalUserScopedReads = [
     column: "reviewer_user_id",
     key: "community_artwork_moderation_audit",
     table: "community_artwork_moderation_audit",
-  },
-  {
-    column: "reporter_id",
-    key: "controller_layout_reports",
-    table: "controller_layout_reports",
-  },
-  {
-    column: "reviewer_id",
-    key: "controller_layout_moderation_audit",
-    table: "controller_layout_moderation_audit",
   },
   {
     column: "created_by",

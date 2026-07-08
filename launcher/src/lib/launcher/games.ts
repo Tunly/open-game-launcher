@@ -10,7 +10,6 @@ import type {
 } from "./types";
 import { writeActivePerformanceGameContext } from "../performance-context";
 import { invokeCommand } from "./shared";
-import { activateBestControllerLayoutForGame } from "./controllers";
 
 export function listInstalledGames(): Promise<Game[]> {
   return invokeCommand<Game[]>("list_installed_games");
@@ -62,7 +61,6 @@ export function repairGameFiles(gameId: string): Promise<RepairGameFilesResponse
 }
 
 export async function launchGame(gameId: string): Promise<LaunchGameResponse> {
-  await activateBestControllerLayoutForGame(gameId);
   const response = await invokeCommand<LaunchGameResponse>("launch_game", { gameId });
   writeActivePerformanceGameContext({ gameId });
   return response;

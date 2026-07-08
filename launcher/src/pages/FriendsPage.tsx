@@ -5,6 +5,7 @@ import {
   MessageSquare,
   Send,
   Shield,
+  ThumbsUp,
   UserPlus,
   Users,
   Activity,
@@ -104,13 +105,36 @@ type LocalInvite = {
   status: "pending" | "accepted" | "declined" | "staged";
 };
 
+type ActivitySidebarFriend = {
+  detail: string;
+  id: string;
+  name: string;
+  status: "online" | "away" | "offline" | "busy" | "invisible";
+};
+
+type LocalActivityItem = {
+  action: string;
+  actor: string;
+  artClass: string;
+  comments: Array<{ author: string; copy: string }>;
+  dayLabel: string;
+  detail: string;
+  gameTitle: string;
+  handle: string;
+  id: string;
+  meta: string;
+  platform: string;
+  reactions: number;
+  timeLabel: string;
+};
+
 const LOCAL_FRIENDS: LocalFriend[] = [
   {
     id: "packet-ghost",
     artClass: "library-art-tokyo",
     displayName: "Packet Ghost",
     gameTitle: "Neon Drift",
-    note: "Ranked queue open, controller ready.",
+    note: "Ranked queue open, party ready.",
     platforms: ["Steam", "Xbox"],
     signal: "Live party",
     status: "online",
@@ -232,11 +256,87 @@ const LOCAL_DEDUP_STRIP = [
   },
 ];
 
-const LOCAL_ACTIVITY = [
-  "Packet Ghost launched Neon Drift from Steam.",
-  "Teal Shift unlocked MECHA-SIGNAL / Hard Reset.",
-  "Vector Kid sent a squad request for tonight.",
-  "Arcade Witch synced Phantom Arcade save data.",
+const LOCAL_ACTIVITY: LocalActivityItem[] = [
+  {
+    action: "shared a new session",
+    actor: "Packet Ghost",
+    artClass: "library-art-tokyo",
+    comments: [
+      {
+        author: "You",
+        copy: "Lobby link staged. Waiting for party check.",
+      },
+    ],
+    dayLabel: "Today",
+    detail: "Ranked heat ended with a clean drift chain and a squad invite ready for relay.",
+    gameTitle: "Neon Drift",
+    handle: "packetghost",
+    id: "activity-packet-ghost-neon-drift",
+    meta: "2.4 hrs this session / party open",
+    platform: "Steam",
+    reactions: 18,
+    timeLabel: "12:44",
+  },
+  {
+    action: "unlocked an achievement",
+    actor: "Teal Shift",
+    artClass: "library-art-mech",
+    comments: [
+      {
+        author: "Packet Ghost",
+        copy: "That boss phase finally cracked.",
+      },
+    ],
+    dayLabel: "Today",
+    detail: "MECHA-SIGNAL / Hard Reset popped after a workshop run.",
+    gameTitle: "Mecha Signal",
+    handle: "tealshift",
+    id: "activity-teal-shift-mecha-signal",
+    meta: "Rare unlock / 7.2% players",
+    platform: "GOG",
+    reactions: 11,
+    timeLabel: "10:18",
+  },
+  {
+    action: "posted a squad request",
+    actor: "Vector Kid",
+    artClass: "card-art-crash",
+    comments: [
+      {
+        author: "Arcade Witch",
+        copy: "Can fill support after sync finishes.",
+      },
+    ],
+    dayLabel: "Yesterday",
+    detail: "Tonight's co-op slot is pinned with cross-platform invite routing.",
+    gameTitle: "Boss Rush EX",
+    handle: "vectorkid",
+    id: "activity-vector-kid-boss-rush",
+    meta: "2 open slots / invite pending",
+    platform: "Open Link",
+    reactions: 7,
+    timeLabel: "22:03",
+  },
+  {
+    action: "synced screenshots",
+    actor: "Arcade Witch",
+    artClass: "library-art-phantom",
+    comments: [
+      {
+        author: "Teal Shift",
+        copy: "That final room belongs in the showcase.",
+      },
+    ],
+    dayLabel: "Yesterday",
+    detail: "Phantom Arcade save data and two gallery shots landed in the activity lane.",
+    gameTitle: "Phantom Arcade",
+    handle: "arcadewitch",
+    id: "activity-arcade-witch-phantom",
+    meta: "Cloud save verified / 2 images",
+    platform: "Steam",
+    reactions: 13,
+    timeLabel: "19:41",
+  },
 ];
 
 export function FriendsPage() {
@@ -601,6 +701,10 @@ export function FriendsPage() {
   const displayedOnlineFriends = isConfigured
     ? onlineFriends
     : LOCAL_FRIENDS.filter((friend) => friend.status === "online").length;
+  const activityFriends = useMemo(
+    () => getConfiguredActivityFriends(friendIds, friendProfileById, presenceByUserId),
+    [friendIds, friendProfileById, presenceByUserId],
+  );
 
   return (
     <div className="mx-auto w-full max-w-[1220px] px-0 py-2">
@@ -890,12 +994,19 @@ export function FriendsPage() {
           )}
 
           {activeTab === "activity" && (
-            <Panel title="Friend Activity Feed">
-              <p className="neo-copy mb-4 text-[11px] font-bold uppercase leading-5 text-[#55504a]">
-                Real-time updates from your friends: game launches, achievements, and screenshots.
-              </p>
+            <ActivityTabShell
+              friends={activityFriends}
+              modeLabel="Live Social Relay"
+              onlineCount={onlineFriends}
+              totalFriends={friendIds.length}
+              onComposerPost={(copy) => {
+                setMessage(`Activity post staged: ${copy.slice(0, 72)}`);
+              }}
+            >
               <ActivityFeed friendIds={friendIds} />
-            </Panel>
+              {errorMessage ? <Status tone="error" message={errorMessage} /> : null}
+              {message ? <Status tone="success" message={message} /> : null}
+            </ActivityTabShell>
           )}
 
           {activeTab === "invites" && (
@@ -963,6 +1074,320 @@ export function FriendsPage() {
 function getFriendIds(friends: Friendship[], currentUserId: string) {
   return friends.map((friendship) =>
     friendship.requesterId === currentUserId ? friendship.addresseeId : friendship.requesterId,
+  );
+}
+
+function getConfiguredActivityFriends(
+  friendIds: string[],
+  friendProfileById: Record<
+    string,
+    { id: string; username: string; displayName: string | null; avatarUrl: string | null }
+  >,
+  presenceByUserId: Record<string, UserPresence>,
+): ActivitySidebarFriend[] {
+  return friendIds.slice(0, 8).map((friendId) => {
+    const profile = friendProfileById[friendId];
+    const presence = presenceByUserId[friendId];
+    const name = profile?.displayName ?? profile?.username ?? `Player ${friendId.slice(0, 8)}`;
+    const platform = presence?.platform ? ` / ${presence.platform}` : "";
+    const detail = presence?.currentGameTitle
+      ? `Playing ${presence.currentGameTitle}${platform}`
+      : presence?.customStatus || "No active game session";
+
+    return {
+      detail,
+      id: friendId,
+      name,
+      status: presence?.status ?? "offline",
+    };
+  });
+}
+
+function getLocalActivityFriends(): ActivitySidebarFriend[] {
+  return LOCAL_FRIENDS.map((friend) => ({
+    detail: `${friend.gameTitle} / ${friend.signal}`,
+    id: friend.id,
+    name: friend.displayName,
+    status: friend.status,
+  }));
+}
+
+function ActivityTabShell({
+  children,
+  friends,
+  modeLabel,
+  onComposerPost,
+  onlineCount,
+  totalFriends,
+}: {
+  children: ReactNode;
+  friends: ActivitySidebarFriend[];
+  modeLabel: string;
+  onComposerPost: (copy: string) => void;
+  onlineCount: number;
+  totalFriends: number;
+}) {
+  const [composerText, setComposerText] = useState("");
+  const spotlightFriend =
+    friends.find((friend) => friend.status === "online" || friend.status === "busy") ?? friends[0];
+
+  function submitComposer(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const copy = composerText.trim();
+    if (!copy) return;
+    onComposerPost(copy);
+    setComposerText("");
+  }
+
+  return (
+    <section
+      aria-label="Friend activity tab"
+      className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px]"
+    >
+      <div className="min-w-0 space-y-4">
+        <section className="border-[5px] border-black bg-[#f5eedf] shadow-[6px_6px_0_#171411]">
+          <div className="grid gap-4 border-b-[5px] border-black p-4 lg:grid-cols-[minmax(0,1fr)_260px]">
+            <div className="min-w-0">
+              <p className="neo-copy inline-flex border-2 border-black bg-[#007166] px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-white shadow-[2px_2px_0_#171411]">
+                {modeLabel}
+              </p>
+              <h2 className="neo-title mt-3 text-5xl leading-none text-[#171411]">
+                Friend Activity
+              </h2>
+              <p className="neo-copy mt-2 text-[11px] font-bold uppercase leading-5 text-[#5b403f]">
+                Recent games, unlocks, comments, and quick reactions from your launcher network.
+              </p>
+            </div>
+            <div className="grid grid-cols-2 gap-2 text-center">
+              <div className="border-[3px] border-black bg-[#fff9ed] p-3 shadow-[3px_3px_0_#171411]">
+                <p className="neo-title text-3xl leading-none text-[#b7102a]">{onlineCount}</p>
+                <p className="neo-copy mt-1 text-[9px] font-black uppercase tracking-[0.12em] text-[#5b403f]">
+                  Online
+                </p>
+              </div>
+              <div className="border-[3px] border-black bg-[#fff9ed] p-3 shadow-[3px_3px_0_#171411]">
+                <p className="neo-title text-3xl leading-none text-[#007166]">{totalFriends}</p>
+                <p className="neo-copy mt-1 text-[9px] font-black uppercase tracking-[0.12em] text-[#5b403f]">
+                  Friends
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <form
+            className="grid gap-3 p-4 sm:grid-cols-[56px_minmax(0,1fr)]"
+            onSubmit={submitComposer}
+          >
+            <div className="neo-title flex h-14 w-14 items-center justify-center border-[3px] border-black bg-[#b7102a] text-2xl leading-none text-white shadow-[3px_3px_0_#171411]">
+              OG
+            </div>
+            <div className="min-w-0">
+              <textarea
+                className="neo-copy min-h-20 w-full resize-none border-[3px] border-black bg-[#fff9ed] px-3 py-2 text-[11px] font-bold uppercase leading-5 outline-none placeholder:text-[#655f58]"
+                maxLength={240}
+                placeholder="What's new, commander?"
+                value={composerText}
+                onChange={(event) => setComposerText(event.target.value)}
+              />
+              <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                <div className="flex flex-wrap gap-2">
+                  {["Screenshot", "Achievement", "Review"].map((label) => (
+                    <button
+                      key={label}
+                      className="neo-copy border-2 border-black bg-[#fff9ed] px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] shadow-[1px_1px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#8cf5e4]"
+                      type="button"
+                      onClick={() =>
+                        setComposerText((current) => `${current}${current ? " " : ""}${label}: `)
+                      }
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+                <button
+                  className="neo-copy border-[3px] border-black bg-[#b7102a] px-4 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-white shadow-[3px_3px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#007166] disabled:opacity-50"
+                  disabled={!composerText.trim()}
+                  type="submit"
+                >
+                  Post Activity
+                </button>
+              </div>
+            </div>
+          </form>
+        </section>
+
+        {children}
+      </div>
+
+      <aside className="space-y-4">
+        <section className="border-4 border-black bg-[#fff9ed] p-4 shadow-[5px_5px_0_#171411]">
+          <p className="neo-copy inline-flex border-2 border-black bg-[#171411] px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-[#fff9ed]">
+            Playing Now
+          </p>
+          {spotlightFriend ? (
+            <div className="mt-3 border-[3px] border-black bg-[#f6edd8] p-3 shadow-[3px_3px_0_#171411]">
+              <p className="neo-title text-3xl leading-none text-[#171411]">
+                {spotlightFriend.name}
+              </p>
+              <p className="neo-copy mt-2 text-[10px] font-black uppercase leading-5 text-[#5b403f]">
+                {spotlightFriend.detail}
+              </p>
+              <p className={activityStatusClassName(spotlightFriend.status)}>
+                {spotlightFriend.status}
+              </p>
+            </div>
+          ) : (
+            <p className="neo-copy mt-3 border-2 border-dashed border-black bg-[#f6edd8] p-3 text-[11px] font-bold uppercase leading-5 text-[#655f58]">
+              No friends loaded yet.
+            </p>
+          )}
+        </section>
+
+        <section className="border-4 border-black bg-[#fff9ed] p-4 shadow-[5px_5px_0_#171411]">
+          <div className="flex items-center justify-between gap-3 border-b-[3px] border-black pb-3">
+            <h3 className="neo-title text-3xl leading-none text-[#171411]">Friends Online</h3>
+            <span className="neo-copy border-2 border-black bg-[#007166] px-2 py-1 text-[10px] font-black uppercase text-white">
+              {onlineCount}
+            </span>
+          </div>
+          <div className="mt-3 space-y-2">
+            {friends.length > 0 ? (
+              friends.map((friend) => (
+                <div
+                  key={friend.id}
+                  className="grid grid-cols-[34px_minmax(0,1fr)] gap-2 border-2 border-black bg-[#f6edd8] p-2 shadow-[2px_2px_0_#171411]"
+                >
+                  <div className="neo-title flex h-8 w-8 items-center justify-center border-2 border-black bg-[#171411] text-sm text-[#fff9ed]">
+                    {friend.name.slice(0, 2).toUpperCase()}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="neo-copy truncate text-[10px] font-black uppercase text-[#171411]">
+                      {friend.name}
+                    </p>
+                    <p className="neo-copy truncate text-[9px] font-bold uppercase text-[#5b403f]">
+                      {friend.detail}
+                    </p>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <p className="neo-copy border-2 border-dashed border-black bg-[#f6edd8] p-3 text-[11px] font-bold uppercase leading-5 text-[#655f58]">
+                Add friends to fill the activity rail.
+              </p>
+            )}
+          </div>
+        </section>
+      </aside>
+    </section>
+  );
+}
+
+function activityStatusClassName(status: ActivitySidebarFriend["status"]) {
+  const baseClassName =
+    "neo-copy mt-3 inline-flex border-2 border-black px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] shadow-[1px_1px_0_#171411]";
+
+  if (status === "online") return `${baseClassName} bg-[#007166] text-white`;
+  if (status === "busy") return `${baseClassName} bg-[#b7102a] text-white`;
+  if (status === "away") return `${baseClassName} bg-[#8cf5e4] text-[#171411]`;
+
+  return `${baseClassName} bg-[#fff9ed] text-[#171411]`;
+}
+
+function LocalActivityFeed({ items }: { items: LocalActivityItem[] }) {
+  return (
+    <div className="space-y-4">
+      {items.map((item, index) => {
+        const previousDay = index > 0 ? items[index - 1].dayLabel : null;
+
+        return (
+          <div className="space-y-3" key={item.id}>
+            {item.dayLabel !== previousDay ? (
+              <div className="neo-copy border-y-[3px] border-black bg-[#171411] px-3 py-2 text-[10px] font-black uppercase tracking-[0.14em] text-[#fff9ed]">
+                {item.dayLabel}
+              </div>
+            ) : null}
+            <article className="border-[3px] border-black bg-[#fff9ed] p-3 shadow-[3px_3px_0_#171411]">
+              <div className="flex items-start gap-3">
+                <div className="neo-title flex h-12 w-12 shrink-0 items-center justify-center border-[3px] border-black bg-[#171411] text-xl leading-none text-[#fff9ed] shadow-[2px_2px_0_#b7102a]">
+                  {item.actor.slice(0, 2).toUpperCase()}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                    <p className="neo-copy text-[11px] font-black uppercase tracking-[0.08em] text-[#171411]">
+                      {item.actor}
+                    </p>
+                    <p className="neo-copy text-[10px] font-black uppercase text-[#655f58]">
+                      @{item.handle} / {item.timeLabel}
+                    </p>
+                  </div>
+                  <p className="mt-1 text-sm font-bold leading-5 text-[#5b403f]">{item.action}</p>
+                </div>
+                <span className="neo-copy shrink-0 border-2 border-black bg-[#8cf5e4] px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] shadow-[1px_1px_0_#171411]">
+                  {item.platform}
+                </span>
+              </div>
+
+              <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(190px,270px)_minmax(0,1fr)]">
+                <div
+                  aria-label={`${item.gameTitle} activity artwork`}
+                  className={`min-h-32 border-[3px] border-black shadow-[3px_3px_0_#171411] ${item.artClass}`}
+                  role="img"
+                />
+                <div className="min-w-0 border-[3px] border-black bg-[#f6edd8] p-3">
+                  <p className="neo-title truncate text-4xl leading-none text-[#171411]">
+                    {item.gameTitle}
+                  </p>
+                  <p className="neo-copy mt-2 text-[10px] font-black uppercase leading-5 text-[#b7102a]">
+                    {item.meta}
+                  </p>
+                  <p className="mt-2 text-sm font-bold leading-5 text-[#5b403f]">{item.detail}</p>
+                  <div className="mt-3 h-4 border-2 border-black bg-[#fff9ed]">
+                    <div
+                      aria-hidden="true"
+                      className="h-full bg-[#007166]"
+                      style={{ width: `${Math.min(92, 32 + item.reactions * 3)}%` }}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="mt-3 flex flex-wrap items-center gap-2 border-t-2 border-black pt-3">
+                <button
+                  className="neo-copy inline-flex items-center gap-1 border-2 border-black bg-[#fff9ed] px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] shadow-[1px_1px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#8cf5e4]"
+                  type="button"
+                >
+                  <ThumbsUp className="h-3 w-3" />
+                  Rate Up {item.reactions}
+                </button>
+                <button
+                  className="neo-copy inline-flex items-center gap-1 border-2 border-black bg-[#fff9ed] px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] shadow-[1px_1px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#f6edd8]"
+                  type="button"
+                >
+                  <MessageSquare className="h-3 w-3" />
+                  Comment
+                </button>
+              </div>
+
+              <div className="mt-3 space-y-2">
+                {item.comments.map((comment) => (
+                  <div
+                    key={`${item.id}-${comment.author}`}
+                    className="border-2 border-black bg-[#f6edd8] p-2 shadow-[1px_1px_0_#171411]"
+                  >
+                    <p className="neo-copy text-[9px] font-black uppercase tracking-[0.12em] text-[#b7102a]">
+                      {comment.author}
+                    </p>
+                    <p className="mt-1 text-sm font-bold leading-5 text-[#5b403f]">
+                      {comment.copy}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </article>
+          </div>
+        );
+      })}
+    </div>
   );
 }
 
@@ -1386,21 +1811,15 @@ function LocalFriendsHub({
       ) : null}
 
       {activeTab === "activity" ? (
-        <Panel title="Friend Activity Feed">
-          <div className="grid gap-3 md:grid-cols-2">
-            {LOCAL_ACTIVITY.map((item, index) => (
-              <div
-                key={item}
-                className="border-[3px] border-black bg-[#f6edd8] p-3 shadow-[3px_3px_0_#171411]"
-              >
-                <p className="neo-copy inline-flex border-2 border-black bg-[#b7102a] px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-white">
-                  Feed {String(index + 1).padStart(2, "0")}
-                </p>
-                <p className="mt-3 text-sm font-bold leading-5 text-[#5b403f]">{item}</p>
-              </div>
-            ))}
-          </div>
-        </Panel>
+        <ActivityTabShell
+          friends={getLocalActivityFriends()}
+          modeLabel="Local Activity Relay"
+          onlineCount={LOCAL_FRIENDS.filter((friend) => friend.status === "online").length}
+          totalFriends={LOCAL_FRIENDS.length}
+          onComposerPost={(copy) => stagePlayerAction(`Activity post: ${copy.slice(0, 72)}`)}
+        >
+          <LocalActivityFeed items={LOCAL_ACTIVITY} />
+        </ActivityTabShell>
       ) : null}
 
       {activeTab === "invites" ? (

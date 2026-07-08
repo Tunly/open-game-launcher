@@ -153,9 +153,6 @@ function gateSpecificEvidenceDetails(gate) {
       if (field === "Community rollout evidence") {
         return "- Community rollout evidence: community artwork screenshot rollout workflow-123";
       }
-      if (field === "Controller layout/profile sync evidence") {
-        return "- Controller layout/profile sync evidence: controller layout profile sync workflow-123";
-      }
       if (field === "Marketplace evidence") {
         return "- Marketplace evidence: plugin marketplace execution update workflow-123";
       }
@@ -202,8 +199,6 @@ function proofEvidenceValueForProof(proof, fallback) {
     return "run-client-mount-apply-provider-client-123";
   if (proof.includes("Hosted community artwork/screenshots"))
     return "run-community-artwork-screenshot-rollout-123";
-  if (proof.includes("Production controller layout"))
-    return "run-controller-layout-profile-sync-123";
   if (proof.includes("Plugin marketplace"))
     return "run-plugin-marketplace-execution-update-review-123";
   if (proof.includes("Native mobile apps"))
@@ -1037,7 +1032,7 @@ test("gate ids are stable and unique", () => {
   ]);
 });
 
-test("rollout track evidence fields cover community and controller rollout lanes", () => {
+test("rollout track evidence fields cover community and release rollout lanes", () => {
   const gate = evidenceGates.find((item) => item.id === "rollout-tracks");
   assert.ok(gate);
   const fields =
@@ -1045,7 +1040,6 @@ test("rollout track evidence fields cover community and controller rollout lanes
 
   assert.deepEqual(fields, [
     "Community rollout evidence",
-    "Controller layout/profile sync evidence",
     "Marketplace evidence",
     "Mobile distribution evidence",
     "Push-provider evidence",
@@ -3118,7 +3112,6 @@ test("preflight status rejects generic gate-specific evidence identifiers", () =
       gateId: "rollout-tracks",
       replacements: [
         "- Community rollout evidence: community artwork screenshot rollout run-123",
-        "- Controller layout/profile sync evidence: controller layout profile sync run-123",
         "- Marketplace evidence: run-generic-field-123",
         "- Mobile distribution evidence: mobile store distribution run-123",
         "- Push-provider evidence: push provider Firebase run-123",
@@ -3224,7 +3217,6 @@ test("preflight status rejects weak rollout track evidence detail values", () =>
       [artifactPath]: [
         ...baseContent,
         "- Community rollout evidence: ok",
-        "- Controller layout/profile sync evidence: ok",
         "- Marketplace evidence: marketplace-run-123",
         "- Mobile distribution evidence: mobile-distribution-run-123",
         "- Push-provider evidence: push-provider-run-123",
@@ -3238,10 +3230,6 @@ test("preflight status rejects weak rollout track evidence detail values", () =>
   assert.deepEqual(weakStatus.missingEvidenceDetails, [
     {
       field: "Community rollout evidence",
-      path: artifactPath,
-    },
-    {
-      field: "Controller layout/profile sync evidence",
       path: artifactPath,
     },
     {
@@ -3270,7 +3258,6 @@ test("preflight status rejects weak rollout track evidence detail values", () =>
       [artifactPath]: [
         ...baseContent,
         "- Community rollout evidence: community artwork screenshot rollout run-123",
-        "- Controller layout/profile sync evidence: controller layout profile sync run-123",
         "- Marketplace evidence: plugin marketplace execution update run-123",
         "- Mobile distribution evidence: mobile store distribution run-123",
         "- Push-provider evidence: push provider firebase run-123",
@@ -3789,7 +3776,6 @@ function rolloutEvidenceContent(gate, hostedDeployLocator) {
     }),
     capturedEvidenceDetails(),
     "- Community rollout evidence: community artwork screenshot rollout workflow-123",
-    "- Controller layout/profile sync evidence: controller layout profile sync workflow-123",
     "- Marketplace evidence: plugin marketplace execution update workflow-123",
     "- Mobile distribution evidence: mobile push provider store distribution workflow-123",
     "- Push-provider evidence: push provider firebase onesignal workflow-123",
@@ -5175,7 +5161,6 @@ test("runbook documents proof evidence lane identity", () => {
   assert.match(runbook, /achievement-provider-cache-real-client/);
   assert.match(runbook, /fullscreen-anti-cheat-overlay/);
   assert.match(runbook, /community-artwork-screenshot-rollout/);
-  assert.match(runbook, /controller-layout-profile-sync/);
   assert.match(runbook, /plugin-marketplace-execution-update/);
   assert.match(runbook, /mobile-push-provider-store-distribution/);
 });

@@ -115,7 +115,6 @@ export function getAutoArtworkCandidates(game: Game): CustomArtworkCandidate[] {
   const candidates: CustomArtworkCandidate[] = [];
 
   pushArtworkCandidate(candidates, "cover", game.coverUrl, "Current Cover");
-  pushArtworkCandidate(candidates, "cover", firstGameScreenshotUrl(game), "Screenshot");
   if (steamAppId) {
     pushArtworkCandidate(
       candidates,
@@ -216,15 +215,6 @@ function dedupeArtworkCandidates(candidates: CustomArtworkCandidate[]) {
     seen.add(key);
     return true;
   });
-}
-
-function firstGameScreenshotUrl(game: Game): string | undefined {
-  for (const entry of game.screenshots ?? []) {
-    if (typeof entry === "string") return entry;
-    const url = entry.imageUrl ?? entry.url ?? entry.thumbnailUrl ?? undefined;
-    if (url) return url;
-  }
-  return game.screenshotUrls?.[0];
 }
 
 function getSteamAppId(game: Game): string | null {

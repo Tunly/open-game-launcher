@@ -19,7 +19,6 @@ function toActivityItem(row: UnknownRecord): ActivityFeedItem {
     gameId: rowNullableString(row, "game_id"),
     gameTitle: rowNullableString(row, "game_title"),
     achievementName: rowNullableString(row, "achievement_name"),
-    screenshotUrl: rowNullableString(row, "screenshot_url"),
     metadata: rowConfig(row, "metadata"),
     visibility: rowString(row, "visibility", "friends_only") as ActivityFeedItem["visibility"],
     createdAt: rowString(row, "created_at"),
@@ -40,7 +39,6 @@ export async function postActivity(
     gameId?: string | null;
     gameTitle?: string | null;
     achievementName?: string | null;
-    screenshotUrl?: string | null;
     metadata?: Record<string, unknown>;
     visibility?: "public" | "friends_only" | "private";
   },
@@ -56,7 +54,6 @@ export async function postActivity(
       game_id: data.gameId ?? null,
       game_title: data.gameTitle ?? null,
       achievement_name: data.achievementName ?? null,
-      screenshot_url: data.screenshotUrl ?? null,
       metadata: (data.metadata ?? {}) as unknown as Record<string, never>,
       visibility: data.visibility ?? "friends_only",
     })

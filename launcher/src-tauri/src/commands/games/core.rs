@@ -122,11 +122,14 @@ fn default_og_manifest_format_version() -> u32 {
 
 #[tauri::command]
 pub async fn list_installed_games() -> Result<Vec<InstalledGame>, String> {
-    if let Some(games) = read_installed_games_cache() {
-        return Ok(games);
-    }
+    Ok(list_installed_games_from_cache(read_installed_games_cache))
+}
 
-    refresh_installed_games().await
+fn list_installed_games_from_cache<F>(read_cache: F) -> Vec<InstalledGame>
+where
+    F: FnOnce() -> Option<Vec<InstalledGame>>,
+{
+    read_cache().unwrap_or_default()
 }
 
 #[tauri::command]
@@ -3264,7 +3267,7 @@ pub fn launcher_key_from_source(source: &str) -> &'static str {
         "steam"
     } else if normalized.contains("epic") {
         "epic"
-    } else if normalized.contains("ubisoft") {
+    } else if normalized.contains("ubisoft") || normalized.contains("uplay") {
         "ubisoft"
     } else if normalized.contains("origin")
         || normalized.starts_with("ea")
@@ -3759,6 +3762,12 @@ mod tests {
     }
 
     #[test]
+    fn launcher_key_normalizes_legacy_uplay_labels() {
+        assert_eq!(launcher_key_from_source("Uplay"), "ubisoft");
+        assert_eq!(launcher_key_from_source("Uplay game import"), "ubisoft");
+    }
+
+    #[test]
     fn og_manifest_file_for_path_records_sha256() {
         let root = unique_temp_dir("manifest-hash");
         let file_path = root.join("game.bin");
@@ -4012,6 +4021,13 @@ mod tests {
                 && status.status == "available"
                 && status.message == "xbox synced"
         }));
+    }
+
+    #[test]
+    fn cache_only_library_list_returns_empty_on_cache_miss() {
+        let games = list_installed_games_from_cache(|| None);
+
+        assert!(games.is_empty());
     }
 
     #[test]

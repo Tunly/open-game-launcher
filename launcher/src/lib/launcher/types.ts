@@ -1,7 +1,6 @@
 // Re-export ALL types from lib/types hierarchy — this makes types.ts a superset
 export * from "../types";
 export * from "../types/backup";
-export * from "../types/controllers";
 export * from "../types/friends";
 export * from "../types/mods";
 export * from "../types/store";

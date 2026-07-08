@@ -47,7 +47,7 @@ const fallbackNews: NewsItem[] = [
     id: "local-overlay-guard",
     title: "Overlay Guard: Safety Fallback",
     slug: "local-overlay-guard-safety-fallback",
-    body: "Anti-cheat detection now routes blocked overlays into a clear fallback deck with FPS HUD and screenshot actions.",
+    body: "Anti-cheat detection now routes blocked overlays into a clear fallback deck with FPS HUD actions.",
     excerpt:
       "Blocked overlays now show a clear anti-cheat fallback deck with FPS HUD and capture actions.",
     authorId: "local",

@@ -1,57 +1,124 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const communitySupabaseMocks = vi.hoisted(() => ({
-  getScreenshotLikeState: vi.fn(),
-  isSupabaseConfigured: false,
-  listPublicScreenshotFeedScreenshots: vi.fn(),
-  setScreenshotLiked: vi.fn(),
-}));
-
-vi.mock("../lib/supabase/client", () => ({
-  get isSupabaseConfigured() {
-    return communitySupabaseMocks.isSupabaseConfigured;
-  },
-}));
-
-vi.mock("../lib/supabase/screenshots", () => ({
-  getScreenshotLikeState: communitySupabaseMocks.getScreenshotLikeState,
-  listPublicScreenshotFeedScreenshots: communitySupabaseMocks.listPublicScreenshotFeedScreenshots,
-  setScreenshotLiked: communitySupabaseMocks.setScreenshotLiked,
-}));
-
 import { CommunityPage } from "./CommunityPage";
-import type { Screenshot } from "../lib/types/screenshots";
 
 const COMMUNITY_LOCAL_POSTS_STORAGE_KEY = "og-launcher:community-posts:v1";
 
-function resetCommunitySupabaseMocks() {
-  communitySupabaseMocks.isSupabaseConfigured = false;
-  communitySupabaseMocks.getScreenshotLikeState.mockReset();
-  communitySupabaseMocks.listPublicScreenshotFeedScreenshots.mockReset();
-  communitySupabaseMocks.setScreenshotLiked.mockReset();
-  communitySupabaseMocks.getScreenshotLikeState.mockResolvedValue({
-    available: false,
-    canLike: false,
-    likes: {},
+describe("CommunityPage activity shell", () => {
+  beforeEach(() => {
+    window.history.replaceState(null, "", "/community");
+    window.localStorage.clear();
   });
-  communitySupabaseMocks.listPublicScreenshotFeedScreenshots.mockResolvedValue({
-    ok: false,
-    message: "Public screenshot feed needs Supabase configuration.",
-    reason: "config",
+
+  it("renders the Steam-like community sections in the retro manga launcher shell", () => {
+    render(<CommunityPage />);
+
+    const home = screen.getByRole("region", { name: /community activity home/i });
+    expect(within(home).getByRole("heading", { name: /community activity/i })).toBeInTheDocument();
+
+    const nav = within(home).getByRole("navigation", { name: /community sections/i });
+    expect(within(nav).getByRole("button", { name: "Home" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    expect(within(nav).getByRole("button", { name: "Discussions" })).toBeInTheDocument();
+    expect(within(nav).getByRole("button", { name: "Workshop" })).toBeInTheDocument();
+    expect(within(nav).getByRole("button", { name: "Market" })).toBeInTheDocument();
+    expect(within(nav).getByRole("button", { name: "Broadcasts" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: /community section board/i })).toHaveTextContent(
+      "Live Arcade Lobby",
+    );
+
+    expect(screen.getByRole("region", { name: /popular hubs/i })).toHaveTextContent(
+      "Neo-Tokyo Drift",
+    );
+    expect(screen.getByRole("form", { name: /find hubs/i })).toBeInTheDocument();
+    expect(screen.getByRole("form", { name: /find people/i })).toBeInTheDocument();
+    const filters = screen.getByRole("region", { name: /community content filters/i });
+    const contentTypeGroup = within(filters).getByRole("group", { name: /content type/i });
+    expect(within(contentTypeGroup).getByRole("button", { name: "All" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(
+      within(contentTypeGroup).queryByRole("button", { name: "Screenshots" }),
+    ).not.toBeInTheDocument();
+    expect(within(contentTypeGroup).getByRole("button", { name: "Artwork" })).toBeInTheDocument();
+    expect(
+      within(contentTypeGroup).getByRole("button", { name: "Broadcasts" }),
+    ).toBeInTheDocument();
+    expect(within(contentTypeGroup).getByRole("button", { name: "Workshop" })).toBeInTheDocument();
   });
-  communitySupabaseMocks.setScreenshotLiked.mockResolvedValue({
-    ok: false,
-    message: "Screenshot likes need Supabase configuration.",
-    reason: "config",
+
+  it("filters visible activity cards by community content type", () => {
+    render(<CommunityPage />);
+
+    const filters = screen.getByRole("region", { name: /community content filters/i });
+    const contentTypeGroup = within(filters).getByRole("group", { name: /content type/i });
+    fireEvent.click(within(contentTypeGroup).getByRole("button", { name: "Broadcasts" }));
+
+    const feed = screen.getByRole("region", { name: /community feed/i });
+    expect(feed).toHaveTextContent("Netrunner Phantom Cup locks Friday");
+    expect(feed).not.toHaveTextContent("Neo-Tokyo Drift ranked queue opens");
   });
-}
+
+  it("filters popular hubs from the hub search", () => {
+    render(<CommunityPage />);
+
+    fireEvent.change(screen.getByRole("textbox", { name: /hub name/i }), {
+      target: { value: "phantom" },
+    });
+
+    const popular = screen.getByRole("region", { name: /popular hubs/i });
+    expect(popular).toHaveTextContent("Netrunner Phantom");
+    expect(popular).not.toHaveTextContent("Steel Battalion X");
+  });
+
+  it("switches section tabs into matching feed lanes", () => {
+    render(<CommunityPage />);
+
+    const home = screen.getByRole("region", { name: /community activity home/i });
+    const nav = within(home).getByRole("navigation", { name: /community sections/i });
+    fireEvent.click(within(nav).getByRole("button", { name: "Workshop" }));
+
+    expect(within(nav).getByRole("button", { name: "Workshop" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    expect(screen.getByRole("region", { name: /community section board/i })).toHaveTextContent(
+      "Workshop Dispatch",
+    );
+    const feed = screen.getByRole("region", { name: /community feed/i });
+    expect(feed).toHaveTextContent("Steel Battalion X raid slot free");
+    expect(feed).not.toHaveTextContent("Neo-Tokyo Drift ranked queue opens");
+  });
+
+  it("routes the Market section to the artwork board", () => {
+    render(<CommunityPage />);
+
+    const home = screen.getByRole("region", { name: /community activity home/i });
+    const nav = within(home).getByRole("navigation", { name: /community sections/i });
+    fireEvent.click(within(nav).getByRole("button", { name: "Market" }));
+
+    const filters = screen.getByRole("region", { name: /community content filters/i });
+    const contentTypeGroup = within(filters).getByRole("group", { name: /content type/i });
+    expect(within(contentTypeGroup).getByRole("button", { name: "Artwork" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(screen.getByRole("region", { name: /community section board/i })).toHaveTextContent(
+      "Poster Market",
+    );
+    expect(screen.getByRole("region", { name: /community feed/i })).toHaveTextContent(
+      "Steel Battalion zine cover wins",
+    );
+  });
+});
 
 describe("CommunityPage broadcast readiness", () => {
   const falseLiveProviderClaim =
     /\b(?:live\s*(?:now|ready|online|enabled|started)|go[-\s]?live\s*(?:ready|enabled|available)|ready\s+for\s+(?:local\s+)?broadcast(?:\s+staging)?|rtmp(?:\s+ingest)?\s*(?:ready|connected|enabled|started)|(?:twitch|youtube|provider)\s*(?:oauth|stream(?:ing)?|live|chat|vod)\s*(?:ready|verified|connected|enabled|synced|complete)|chat\s+moderation\s*(?:ready|verified|enabled)|vod(?:\s+provider)?\s*(?:sync|archive)\s*(?:ready|verified|synced|enabled)|broadcast\s*(?:started|online))\b/i;
-  const falseHostedScreenshotFeedClaim =
-    /\b(?:supabase\s*(?:connected|synced|verified|ready)|signed\s+url\s*(?:created|generated|served)|public\s+storage\s*(?:served|enabled|ready)|hosted\s*(?:feed|moderation|ranking)\s*(?:ready|synced|enabled|verified|complete)|production\s+ranking\s*(?:ready|synced|enabled)|real\s+(?:profile|community)\s+feed)\b/i;
   const falseHostedModerationClaim =
     /\b(?:(?:twitch|youtube|provider)\s*(?:chat|oauth|moderation)\s*(?:connected|ready|verified|enabled|synced|complete)|hosted\s*moderation\s*(?:ready|verified|enabled|complete)|(?:timeout|ban|delete)\s*(?:sent|executed|applied)|supabase\s*moderation\s*logs?\s*(?:written|synced|ready)|live\s*chat\s*replay\s*(?:ready|connected|synced)|rtmp(?:\/live|\s+live)?\s*output\s*(?:ready|started|enabled)|audience\s*status\s*(?:ready|updated|online))\b/i;
   const falseVodArchivePolicyClaim =
@@ -66,7 +133,6 @@ describe("CommunityPage broadcast readiness", () => {
     /\b(?:live\s*(?:now|ready|online|enabled|started)|audience(?:\/live)?\s*status\s*(?:ready|updated|online|synced)|provider\s*live-state\s*(?:ready|connected|verified|synced)|viewer\s*count\s*(?:verified|polled|synced)|public\s*live\s*badge\s*(?:updated|synced|enabled)|supabase\s*audience\s*row\s*(?:written|inserted|updated|synced)|chat\s*presence\s*(?:synced|connected|verified)|callback\s*(?:received|processed|replayed)|rtmp(?:\s+ingest|\s+socket|\s+live)?\s*(?:ready|connected|started|published))\b/i;
 
   beforeEach(() => {
-    resetCommunitySupabaseMocks();
     window.history.replaceState(null, "", "/community?verify=broadcasting-readiness");
   });
 
@@ -192,207 +258,15 @@ describe("CommunityPage broadcast readiness", () => {
     expect(panel).not.toHaveTextContent(falseLiveProviderClaim);
   });
 
-  it("renders public screenshot feed staging without rollout claims", () => {
+  it("does not render the removed public screenshot feed", () => {
     window.history.replaceState(null, "", "/community?verify=public-screenshot-feed");
 
     render(<CommunityPage />);
 
-    const panel = screen.getByRole("region", {
-      name: /public screenshot feed preview/i,
-    });
-
-    expect(within(panel).getByText("Public Screenshot Feed")).toBeInTheDocument();
-    expect(within(panel).getByText("Hosted feed staging")).toBeInTheDocument();
-    expect(within(panel).getAllByText("Hosted Feed Preview")).toHaveLength(2);
-    expect(within(panel).getByText("Unreviewed boss reveal")).toBeInTheDocument();
-    expect(within(panel).getAllByText("Embed Blocked")).toHaveLength(2);
-    expect(within(panel).getByText("Moderation + Ranking Contract")).toBeInTheDocument();
-    expect(within(panel).getByText("Moderation Pending Block")).toBeInTheDocument();
-    expect(within(panel).getByText("Moderation Before Ranking")).toBeInTheDocument();
-    expect(within(panel).getByText("Deterministic Ranking")).toBeInTheDocument();
-    expect(within(panel).getByText("Public metadata RLS")).toBeInTheDocument();
-    expect(within(panel).getByText("Signed URL path staged")).toBeInTheDocument();
-    expect(within(panel).getByText("Like count sync staged")).toBeInTheDocument();
-    expect(within(panel).getByText("No hosted moderation")).toBeInTheDocument();
-    expect(within(panel).getByText("No production ranking claim")).toBeInTheDocument();
-    expect(within(panel).getByText("Moderation review contract")).toBeInTheDocument();
-    expect(within(panel).getByText("Deterministic ranking contract")).toBeInTheDocument();
-    expect(panel).not.toHaveTextContent(falseHostedScreenshotFeedClaim);
-  });
-
-  it("falls back to the default public screenshot feed as a local fixture board", () => {
-    window.history.replaceState(null, "", "/community");
-
-    render(<CommunityPage />);
-
-    const panel = screen.getByRole("region", {
-      name: /public screenshot feed preview/i,
-    });
-
-    expect(within(panel).getByText("Public Screenshot Feed")).toBeInTheDocument();
-    expect(within(panel).getByText("Local fixture feed")).toBeInTheDocument();
-    expect(within(panel).getAllByText("Public Embed Preview")).toHaveLength(2);
-    expect(within(panel).getAllByText("Embed Blocked")).toHaveLength(2);
-    expect(within(panel).getByText("Moderation + Ranking Contract")).toBeInTheDocument();
-    expect(within(panel).getByText("No Supabase feed read")).toBeInTheDocument();
-    expect(within(panel).getByText("No signed URL request")).toBeInTheDocument();
-    expect(within(panel).getByText("No ranking sync")).toBeInTheDocument();
-    expect(within(panel).getByText("Moderation review contract")).toBeInTheDocument();
-    expect(within(panel).getByText("Deterministic ranking contract")).toBeInTheDocument();
     expect(
-      within(panel).getByText(/hosted feed needs Supabase configuration/i),
-    ).toBeInTheDocument();
-    expect(panel).not.toHaveTextContent("Hosted feed staging");
-    expect(panel).not.toHaveTextContent(falseHostedScreenshotFeedClaim);
-    expect(communitySupabaseMocks.listPublicScreenshotFeedScreenshots).not.toHaveBeenCalled();
-    expect(communitySupabaseMocks.getScreenshotLikeState).not.toHaveBeenCalled();
-  });
-
-  it("loads hosted public screenshot rows on the default community board", async () => {
-    const hostedScreenshot = {
-      caption: "Hosted arcade finish",
-      createdAt: "2026-06-14T10:00:00.000Z",
-      gameId: "game-portal-run",
-      height: 720,
-      id: "hosted-shot-1",
-      isPublic: true,
-      publicUrl: "https://cdn.example/shot.jpg",
-      sizeBytes: 42000,
-      storagePath: "public/shot.jpg",
-      thumbnailPath: "public/thumb.jpg",
-      thumbnailUrl: "https://cdn.example/thumb.jpg",
-      userId: "user-hosted",
-      width: 1280,
-    } satisfies Screenshot;
-    communitySupabaseMocks.isSupabaseConfigured = true;
-    communitySupabaseMocks.listPublicScreenshotFeedScreenshots.mockResolvedValue({
-      ok: true,
-      value: [hostedScreenshot],
-    });
-    communitySupabaseMocks.getScreenshotLikeState.mockResolvedValue({
-      available: true,
-      canLike: true,
-      likes: {
-        "hosted-shot-1": {
-          count: 7,
-          likedByMe: false,
-        },
-      },
-    });
-
-    window.history.replaceState(null, "", "/community");
-
-    render(<CommunityPage />);
-
-    const panel = await screen.findByRole("region", {
-      name: /public screenshot feed preview/i,
-    });
-
-    expect(
-      await within(panel).findByText(
-        /hosted public screenshot rows loaded for the community board/i,
-      ),
-    ).toBeInTheDocument();
-    expect(within(panel).getByText("Hosted feed staging")).toBeInTheDocument();
-    expect(within(panel).getByText("Hosted arcade finish")).toBeInTheDocument();
-    expect(within(panel).getByText("Hosted Row")).toBeInTheDocument();
-    expect(within(panel).getByText("Signed Media Review")).toBeInTheDocument();
-    expect(within(panel).getByText("7 Likes")).toBeInTheDocument();
-    expect(within(panel).getByRole("button", { name: /like hosted arcade finish/i })).toBeEnabled();
-    expect(panel).not.toHaveTextContent(falseHostedScreenshotFeedClaim);
-    expect(communitySupabaseMocks.listPublicScreenshotFeedScreenshots).toHaveBeenCalledWith({
-      limit: 6,
-    });
-    expect(communitySupabaseMocks.getScreenshotLikeState).toHaveBeenCalledWith(["hosted-shot-1"]);
-  });
-
-  it("keeps fixture evidence visible when the default hosted feed returns no rows", async () => {
-    communitySupabaseMocks.isSupabaseConfigured = true;
-    communitySupabaseMocks.listPublicScreenshotFeedScreenshots.mockResolvedValue({
-      ok: true,
-      value: [],
-    });
-
-    window.history.replaceState(null, "", "/community");
-
-    render(<CommunityPage />);
-
-    const panel = await screen.findByRole("region", {
-      name: /public screenshot feed preview/i,
-    });
-
-    expect(
-      await within(panel).findByText(/no public supabase screenshots returned/i),
-    ).toBeInTheDocument();
-    expect(within(panel).getByText("Local fixture feed")).toBeInTheDocument();
-    expect(within(panel).getAllByText("Public Embed Preview")).toHaveLength(2);
-    expect(within(panel).getByText("No Supabase feed read")).toBeInTheDocument();
-    expect(communitySupabaseMocks.listPublicScreenshotFeedScreenshots).toHaveBeenCalledWith({
-      limit: 6,
-    });
-    expect(communitySupabaseMocks.getScreenshotLikeState).not.toHaveBeenCalled();
-  });
-
-  it("allows hosted public screenshot likes on the default community board", async () => {
-    const hostedScreenshot = {
-      caption: "Hosted arcade finish",
-      createdAt: "2026-06-14T10:00:00.000Z",
-      gameId: "game-portal-run",
-      height: 720,
-      id: "hosted-shot-1",
-      isPublic: true,
-      publicUrl: "https://cdn.example/shot.jpg",
-      sizeBytes: 42000,
-      storagePath: "public/shot.jpg",
-      thumbnailPath: "public/thumb.jpg",
-      thumbnailUrl: "https://cdn.example/thumb.jpg",
-      userId: "user-hosted",
-      width: 1280,
-    } satisfies Screenshot;
-    communitySupabaseMocks.isSupabaseConfigured = true;
-    communitySupabaseMocks.listPublicScreenshotFeedScreenshots.mockResolvedValue({
-      ok: true,
-      value: [hostedScreenshot],
-    });
-    communitySupabaseMocks.getScreenshotLikeState.mockResolvedValue({
-      available: true,
-      canLike: true,
-      likes: {
-        "hosted-shot-1": {
-          count: 7,
-          likedByMe: false,
-        },
-      },
-    });
-    communitySupabaseMocks.setScreenshotLiked.mockResolvedValue({
-      ok: true,
-      value: {
-        count: 8,
-        likedByMe: true,
-      },
-    });
-
-    window.history.replaceState(null, "", "/community");
-
-    render(<CommunityPage />);
-
-    const panel = await screen.findByRole("region", {
-      name: /public screenshot feed preview/i,
-    });
-    const likeButton = await within(panel).findByRole("button", {
-      name: /like hosted arcade finish/i,
-    });
-
-    fireEvent.click(likeButton);
-
-    await waitFor(() => {
-      expect(communitySupabaseMocks.setScreenshotLiked).toHaveBeenCalledWith("hosted-shot-1", true);
-    });
-    expect(await within(panel).findByText("8 Likes")).toBeInTheDocument();
-    expect(
-      within(panel).getByRole("button", { name: /unlike hosted arcade finish/i }),
-    ).toHaveAttribute("aria-pressed", "true");
-    expect(panel).not.toHaveTextContent(falseHostedScreenshotFeedClaim);
+      screen.queryByRole("region", { name: /public screenshot feed preview/i }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText(/public screenshot feed/i)).not.toBeInTheDocument();
   });
 
   it("renders local chat moderation shadow queue without provider enforcement claims", () => {

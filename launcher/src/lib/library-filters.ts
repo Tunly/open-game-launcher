@@ -36,7 +36,6 @@ export const LIBRARY_STORE_FILTER_OPTIONS = [
 
 export const LIBRARY_FEATURE_FILTER_OPTIONS = [
   "Steam Achievements",
-  "Full Controller Support",
   "Steam Trading Cards",
   "Steam Workshop",
   "Steam Cloud",
@@ -169,9 +168,6 @@ function matchesFeatureLabel(game: Game, filter: string): boolean {
   if (token.includes("achieve")) {
     return features.some((feature) => feature.includes("achievement"));
   }
-  if (token.includes("controller")) {
-    return features.some((feature) => feature.includes("controller"));
-  }
   if (token.includes("card")) {
     return features.some((feature) => feature.includes("trading"));
   }
@@ -216,9 +212,6 @@ function matchesHardwareLabel(game: Game, filter: string): boolean {
   }
   if (token.includes("playable")) {
     return game.steamDeckCompatibility === "playable";
-  }
-  if (token.includes("controller")) {
-    return features.some((feature) => feature.toLowerCase().includes("controller"));
   }
   if (token.includes("vr")) {
     return features.some((feature) => feature.toLowerCase().includes("vr"));

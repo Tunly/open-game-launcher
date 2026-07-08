@@ -172,7 +172,6 @@ function saveHardwareFallback(userId: string, input: HardwareInput) {
   const now = new Date().toISOString();
   const existing = getHardwareFallback(userId);
   const hardware: UserHardware = {
-    controller: input.controller ?? null,
     cpu: input.cpu ?? null,
     createdAt: existing?.createdAt ?? now,
     gpu: input.gpu ?? null,
@@ -342,7 +341,6 @@ function toHardware(row: UnknownRecord | null): UserHardware | null {
     keyboard: rowNullableString(row, "keyboard"),
     mouse: rowNullableString(row, "mouse"),
     headset: rowNullableString(row, "headset"),
-    controller: rowNullableString(row, "controller"),
     setupImageUrl: rowNullableString(row, "setup_image_url"),
     visibility: rowString(row, "visibility", "friends_only") as UserHardware["visibility"],
     createdAt: rowString(row, "created_at"),
@@ -1391,7 +1389,6 @@ function toHardwarePayload(input: HardwareInput) {
     keyboard: input.keyboard,
     mouse: input.mouse,
     headset: input.headset,
-    controller: input.controller,
     setup_image_url: input.setupImageUrl,
     visibility: input.visibility,
   };

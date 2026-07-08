@@ -56,8 +56,6 @@ stored outside Git; no live external evidence was collected in this workspace.
   push registration, and shared privacy/store boundaries without live secrets.
 - Native Rust coverage includes external launcher dispatch URI validation with a
   test-injected opener, no-process rejection of unsafe Steam/EA/Ubisoft/Battle.net
-  payloads, Epic/Legendary tracking without URI launch, controller layout filename
-  sanitization, explicit keyboard/mouse output mappings, supported controller
   input labels, filtering for unknown or empty virtual input bindings before
   runtime output paths can use them, and Cross-Store Save Sync apply/rollback
   coverage for nested multi-file copies, overwrite-plus-new-file manifests,
@@ -72,7 +70,6 @@ stored outside Git; no live external evidence was collected in this workspace.
   evidence, Hosted Cron Evidence Summary desktop/mobile evidence, External
   Completion Evidence Summary desktop/mobile evidence, Broadcasting Audience Status
   Contract desktop/mobile evidence, AI Recommendations Consent Audit/Gateway
-  Eval evidence, Controller runtime safety evidence, Friends roster action
   handoff desktop/mobile evidence, and no-horizontal-overflow DOM checks for
   explicitly recorded screenshot sweep routes.
 - UI screenshot evidence is locally gated for dirty worktrees and CI diffs: when
@@ -271,7 +268,6 @@ branch tip.
   E2E on Windows/macOS/Linux, and real client mount/apply behavior against
   provider clients.
 - Rollout tracks (`rollout-tracks`): community-wide hosted artwork/screenshots rollout,
-  production controller layout rollout, plugin marketplace execution/update
   channels, native mobile apps, push-provider delivery, app-store distribution,
   and hosted production deployment. Use
   `docs/runbooks/external-completion-evidence.md` plus

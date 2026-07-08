@@ -125,7 +125,6 @@ const pageRouteTokens = Object.freeze({
   AchievementsPage: ["/achievements"],
   AuthPage: ["/auth"],
   CommunityPage: ["/community"],
-  ControllersPage: ["/controllers"],
   DeveloperPortalPage: ["/developer"],
   DownloadsPage: ["/downloads"],
   EditProfilePage: ["/settings/profile"],
@@ -171,9 +170,6 @@ function expectedRouteTokensForUiPath(path) {
   if (/^launcher\/src\/components\/friends\//.test(path)) {
     return ["/friends", "/invite/"];
   }
-  if (/^launcher\/src\/components\/controllers\//.test(path)) {
-    return ["/controllers"];
-  }
   if (/^launcher\/src\/components\/mods\//.test(path)) {
     return ["/mods"];
   }
@@ -200,9 +196,6 @@ function expectedRouteTokensForUiPath(path) {
   }
   if (/^launcher\/src\/lib\/(?:remote-|lan-|mobile-)/.test(path)) {
     return ["/downloads"];
-  }
-  if (/^launcher\/src\/lib\/(?:controller|virtual-gamepad)/.test(path)) {
-    return ["/controllers"];
   }
   if (/^launcher\/src\/lib\/(?:performance|overlay)/.test(path)) {
     return ["/settings/performance", "/overlay", "/activity"];

@@ -77,7 +77,7 @@ describe("account deletion processor readiness", () => {
         limit: 20,
         processedCount: 0,
         runId: "account-deletion-fixture",
-        storageBuckets: expect.arrayContaining(["game-artwork", "screenshots"]),
+        storageBuckets: expect.arrayContaining(["game-artwork"]),
         triggerSource: "hosted_deploy_gate",
         wouldProcess: [
           {

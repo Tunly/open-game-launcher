@@ -132,10 +132,10 @@ describe("ExternalCompletionEvidenceSummaryPanel", () => {
       within(artifactSnapshot).getByRole("article", { name: "Artifact Ready: 0/6" }),
     ).toBeVisible();
     expect(
-      within(artifactSnapshot).getByRole("article", { name: "Proof Rows Missing: 20" }),
+      within(artifactSnapshot).getByRole("article", { name: "Proof Rows Missing: 19" }),
     ).toBeVisible();
     expect(
-      within(artifactSnapshot).getByRole("article", { name: "Details Missing: 83" }),
+      within(artifactSnapshot).getByRole("article", { name: "Details Missing: 82" }),
     ).toBeVisible();
     expect(within(artifactSnapshot).getAllByText("Yes")).toHaveLength(6);
     expect(within(artifactSnapshot).getAllByText("blocked").length).toBeGreaterThan(0);

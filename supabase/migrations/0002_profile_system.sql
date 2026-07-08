@@ -310,7 +310,6 @@ create table if not exists public.user_hardware (
   keyboard text,
   mouse text,
   headset text,
-  controller text,
   setup_image_url text,
   visibility text not null default 'friends_only',
   created_at timestamptz not null default now(),

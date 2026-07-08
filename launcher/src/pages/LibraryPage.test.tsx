@@ -50,7 +50,6 @@ vi.mock("../components/library/ProviderPickerDialog", () => ({
 
 vi.mock("../hooks/library/useAchievementAutoSync", () => ({
   useAchievementAutoSync: () => ({
-    handleSyncAchievements: noop,
     syncingAchievementGameId: null,
   }),
 }));

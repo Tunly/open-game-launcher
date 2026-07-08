@@ -199,6 +199,73 @@ describe("useLibrarySync", () => {
     });
   });
 
+  it("keeps a persisted snapshot responsive and defers the startup refresh", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const persisted: Game[] = [makeGame({ id: "steam-1", title: "Persisted" })];
+      const refreshed: Game[] = [makeGame({ id: "steam-2", title: "Refreshed" })];
+      window.localStorage.setItem("launcher_library_snapshot", JSON.stringify(persisted));
+      mocks.refreshInstalledGames.mockResolvedValue(refreshed);
+
+      const { result } = renderLibrarySync();
+
+      expect(result.current.installedGames.some((g) => g.id === "steam-1")).toBe(true);
+      expect(mocks.listInstalledGames).not.toHaveBeenCalled();
+      expect(mocks.refreshInstalledGames).not.toHaveBeenCalled();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1499);
+      });
+      expect(mocks.refreshInstalledGames).not.toHaveBeenCalled();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1);
+      });
+
+      await waitFor(() => {
+        expect(mocks.refreshInstalledGames).toHaveBeenCalledTimes(1);
+      });
+      await waitFor(() => {
+        expect(result.current.installedGames.some((g) => g.id === "steam-2")).toBe(true);
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("loads the native cache before delaying the first forced startup refresh", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      const cached: Game[] = [makeGame({ id: "steam-cache", title: "Cached" })];
+      const refreshed: Game[] = [makeGame({ id: "steam-refresh", title: "Refreshed" })];
+      mocks.listInstalledGames.mockResolvedValue(cached);
+      mocks.refreshInstalledGames.mockResolvedValue(refreshed);
+
+      const { result } = renderLibrarySync();
+
+      await waitFor(() => {
+        expect(mocks.listInstalledGames).toHaveBeenCalledTimes(1);
+      });
+      await waitFor(() => {
+        expect(result.current.installedGames.some((g) => g.id === "steam-cache")).toBe(true);
+      });
+      expect(mocks.refreshInstalledGames).not.toHaveBeenCalled();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1500);
+      });
+
+      await waitFor(() => {
+        expect(mocks.refreshInstalledGames).toHaveBeenCalledTimes(1);
+      });
+      await waitFor(() => {
+        expect(result.current.installedGames.some((g) => g.id === "steam-refresh")).toBe(true);
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("drops legacy Xbox cloud catalog entries from persisted snapshots", async () => {
     const persisted: Game[] = [
       makeGame({ id: "steam-1", title: "Persisted" }),

@@ -11,7 +11,6 @@ export function ownedGameToGame(og: OwnedGame): Game {
   else if (og.id.startsWith("ea-")) launcher = "ea";
   else if (og.id.startsWith("battlenet-")) launcher = "battlenet";
 
-  const ubisoftLaunchId = og.externalId ?? og.id.replace(/^ubisoft-owned-/, "");
   const gogLaunchId = og.externalId ?? og.id.replace(/^gog-owned-/, "");
   const eaLaunchId = og.externalId ?? og.id.replace(/^ea-owned-/, "");
   const steamLaunchId = og.externalId ?? og.id.replace(/^steam-owned-/, "");
@@ -23,13 +22,11 @@ export function ownedGameToGame(og: OwnedGame): Game {
     launchUri:
       og.id.startsWith("steam-owned-") && /^\d+$/.test(steamLaunchId)
         ? `steam://install/${steamLaunchId}`
-        : og.id.startsWith("ubisoft-owned-") && ubisoftLaunchId
-          ? `uplay://launch/${ubisoftLaunchId}`
-          : og.id.startsWith("gog-owned-") && gogLaunchId
-            ? `gogalaxy://openGameView/${gogLaunchId}`
-            : og.id.startsWith("ea-owned-") && eaLaunchId
-              ? `origin://launchgame/${eaLaunchId}`
-              : undefined,
+        : og.id.startsWith("gog-owned-") && gogLaunchId
+          ? `gogalaxy://openGameView/${gogLaunchId}`
+          : og.id.startsWith("ea-owned-") && eaLaunchId
+            ? `origin://launchgame/${eaLaunchId}`
+            : undefined,
     description: og.description,
     version: "1.0",
     coverUrl: og.coverUrl ?? undefined,
@@ -107,7 +104,12 @@ export function installedEpicIds(games: Game[]): Set<string> {
 export function installedUbiKeys(games: Game[]): Set<string> {
   const keys = new Set<string>();
   for (const g of games) {
-    if (!g.id.startsWith("ubisoft-")) {
+    const launcher = String(g.launcher ?? "").toLowerCase();
+    if (
+      !g.id.startsWith("ubisoft-") &&
+      !launcher.includes("ubisoft") &&
+      !launcher.includes("uplay")
+    ) {
       continue;
     }
     keys.add(g.id);

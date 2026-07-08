@@ -172,8 +172,7 @@ describe("LibrarySidebar", () => {
       selectedGroup: group,
     });
 
-    await screen.findByText("Desktop only");
-
+    expect(screen.queryByText("Desktop only")).not.toBeInTheDocument();
     expect(screen.getByText(/via Steam/i)).toBeInTheDocument();
     expect(screen.getByText(/hl2\.exe/i)).toBeInTheDocument();
   });

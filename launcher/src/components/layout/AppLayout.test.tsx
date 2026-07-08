@@ -71,7 +71,7 @@ describe("AppLayout hosted shell skin hydration", () => {
     window.removeEventListener(APP_SHELL_SKIN_CHANGED_EVENT, eventSpy);
   });
 
-  it("marks the controllers route as the active primary page", () => {
+  it("falls back to the home page key for unknown routes", () => {
     mocks.useCurrentUser.mockReturnValue({
       isConfigured: false,
       isLoading: false,
@@ -80,10 +80,10 @@ describe("AppLayout hosted shell skin hydration", () => {
     });
 
     const { container } = render(
-      <MemoryRouter initialEntries={["/controllers"]}>
+      <MemoryRouter initialEntries={["/retired-feature"]}>
         <Routes>
           <Route element={<AppLayout />}>
-            <Route path="/controllers" element={<div>Controllers</div>} />
+            <Route path="/retired-feature" element={<div>Removed feature route</div>} />
           </Route>
         </Routes>
       </MemoryRouter>,
@@ -91,7 +91,7 @@ describe("AppLayout hosted shell skin hydration", () => {
 
     expect(container.querySelector("[data-active-page]")).toHaveAttribute(
       "data-active-page",
-      "controllers",
+      "home",
     );
   });
 });

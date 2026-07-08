@@ -275,7 +275,7 @@ export function isUbisoftDlcEntry(
   game: Pick<Game, "id" | "title" | "description" | "launcher">,
 ): boolean {
   const launcher = normalizeLauncherKey(game.launcher, game.id);
-  if (launcher !== "ubisoft" || !game.id.startsWith("ubisoft-owned-")) {
+  if (launcher !== "ubisoft") {
     return false;
   }
 
@@ -295,7 +295,7 @@ export function isUbisoftDlcEntry(
   }
 
   const hasDlcKeyword =
-    text.includes(" dlc") ||
+    /\bdlc\b/.test(text) ||
     text.includes("add-on") ||
     text.includes("addon") ||
     text.includes("season pass") ||
@@ -319,19 +319,32 @@ export function isUbisoftDlcEntry(
     text.includes("costume") ||
     text.includes("weapon") ||
     text.includes("cosmetic") ||
+    text.includes("gear set") ||
     text.includes("knuckles") ||
     text.includes("gauntlet") ||
+    text.includes("belt") ||
+    text.includes("breeches") ||
+    text.includes("cloak") ||
     text.includes("revolver") ||
     text.includes("pistol") ||
     text.includes("rifle") ||
     text.includes("kukri") ||
     text.includes("rapier") ||
     text.includes("sword") ||
+    text.includes("cane-sword") ||
     text.includes("spear") ||
     text.includes("axe") ||
+    text.includes("blade") ||
+    text.includes("sails") ||
+    text.includes("hood") ||
+    text.includes("trousers") ||
+    text.includes("waistcoat") ||
+    text.includes("bracers") ||
+    text.includes("bushido") ||
     text.includes("artbook") ||
     text.includes("art book") ||
     text.includes("soundtrack") ||
+    text.includes("digital art") ||
     text.includes("ornament") ||
     text.includes("figurehead") ||
     text.includes("pre-order") ||
@@ -341,11 +354,14 @@ export function isUbisoftDlcEntry(
     text.includes("xp boost") ||
     text.includes("loot") ||
     text.includes("ubicollectibles") ||
-    text.includes("edition") ||
     text.includes("hero skin") ||
     text.includes("premier") ||
     text.includes("welcome") ||
     text.includes("signature") ||
+    text.includes("initiates") ||
+    text.includes("impaler") ||
+    text.includes("sabre") ||
+    text.includes("honour") ||
     text.includes("season ");
 
   if (hasDlcKeyword) {
@@ -363,6 +379,13 @@ export function isUbisoftDlcEntry(
       suffix.includes("mission") ||
       suffix.includes("dead kings") ||
       suffix.includes("secrets of") ||
+      suffix.includes("legacy of") ||
+      suffix.includes("warlords of") ||
+      suffix.includes("wrath of") ||
+      suffix.includes("fate of") ||
+      suffix.includes("tyranny of") ||
+      suffix.includes("siege of") ||
+      suffix.includes("underground") ||
       suffix.includes("freedom cry") ||
       suffix.includes("last stand") ||
       suffix.includes("human conditions") ||
@@ -370,17 +393,35 @@ export function isUbisoftDlcEntry(
       suffix.includes("bad blood") ||
       suffix.includes("road to") ||
       suffix.includes("conspiracy") ||
+      suffix.includes("jack the ripper") ||
+      suffix.includes("lost archive") ||
+      suffix.includes("calling all units") ||
+      suffix.includes("wild run") ||
+      suffix.includes("narco road") ||
+      suffix.includes("fallen ghosts") ||
+      suffix.includes("rocket wings") ||
+      suffix.includes("winter fest") ||
+      suffix.includes("x games") ||
+      suffix.includes("crash &") ||
       suffix.includes("void dasher") ||
       suffix.includes("dedsec") ||
+      suffix.includes("curse of") ||
+      suffix.includes("guild of") ||
+      suffix.includes("pride of") ||
+      suffix.includes("trove of") ||
+      suffix.includes("streets of") ||
+      suffix.includes("runaway") ||
+      suffix.includes("naval") ||
+      suffix.includes("calamity") ||
+      suffix.includes("hidden ones") ||
+      suffix.includes("killed by") ||
+      suffix.includes("chemical") ||
+      suffix.includes("nighthawk") ||
+      suffix.includes("suave") ||
       suffix.startsWith("the ") ||
-      suffix.includes("base game") ||
-      suffix.includes("gold edition") ||
-      suffix.includes("deluxe") ||
-      suffix.includes("ultimate") ||
-      suffix.includes("starter") ||
-      suffix.includes("elite") ||
-      suffix.includes("special") ||
-      suffix.includes("animus")
+      suffix.includes("animus") ||
+      suffix.includes("company logos") ||
+      suffix.includes("road 66")
     ) {
       return true;
     }
@@ -453,13 +494,7 @@ export function enrichGameWithMetadata(game: Game): Game {
       ...game,
       sizeGb: 12.4,
       players: ["Singleplayer", "Multiplayer", "Co-op", "PvP"],
-      features: [
-        "Steam Achievements",
-        "Full Controller Support",
-        "Steam Trading Cards",
-        "Steam Cloud",
-        "Stats",
-      ],
+      features: ["Steam Achievements", "Steam Trading Cards", "Steam Cloud", "Stats"],
       genres: ["Racing", "Action", "Sports"],
       productCategory: "game",
       steamDeckCompatibility: "verified",
@@ -475,13 +510,7 @@ export function enrichGameWithMetadata(game: Game): Game {
       ...game,
       sizeGb: 58.2,
       players: ["Singleplayer", "Multiplayer", "Co-op", "Online Co-op"],
-      features: [
-        "Steam Achievements",
-        "Full Controller Support",
-        "Steam Cloud",
-        "Stats",
-        "Leaderboards",
-      ],
+      features: ["Steam Achievements", "Steam Cloud", "Stats", "Leaderboards"],
       genres: ["Strategy", "Simulation", "Action"],
       productCategory: "game",
       steamDeckCompatibility: "playable",
@@ -505,7 +534,7 @@ export function enrichGameWithMetadata(game: Game): Game {
       ...game,
       sizeGb: 4.1,
       players: ["Singleplayer"],
-      features: ["Full Controller Support", "Stats"],
+      features: ["Stats"],
       genres: ["Action", "Indie", "Casual"],
       productCategory: "demo",
       steamDeckCompatibility: "verified",
@@ -553,7 +582,7 @@ export function enrichGameWithMetadata(game: Game): Game {
       ...game,
       sizeGb: 34.5,
       players: ["Multiplayer", "PvP", "MMO"],
-      features: ["Full Controller Support", "Stats", "Leaderboards", "In-App Purchases"],
+      features: ["Stats", "Leaderboards", "In-App Purchases"],
       genres: ["Action", "Strategy", "Early Access"],
       productCategory: "beta",
       steamDeckCompatibility: "playable",
@@ -593,7 +622,6 @@ export function enrichGameWithMetadata(game: Game): Game {
   ];
   const featuresList = [
     "Steam Achievements",
-    "Full Controller Support",
     "Steam Trading Cards",
     "Steam Workshop",
     "Steam Cloud",

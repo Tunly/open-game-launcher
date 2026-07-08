@@ -67,23 +67,6 @@ describe("useActivityLogger", () => {
         },
       ],
     },
-    {
-      name: "logScreenshot",
-      call: (logger: ActivityLogger) =>
-        logger.logScreenshot(null, null, "https://cdn.example/screenshot.jpg", {
-          source: "overlay",
-        }),
-      expected: [
-        "screenshot_taken",
-        {
-          gameId: null,
-          gameTitle: null,
-          metadata: { source: "overlay" },
-          screenshotUrl: "https://cdn.example/screenshot.jpg",
-          visibility: "friends_only",
-        },
-      ],
-    },
   ])("posts the $name payload", async ({ call, expected }) => {
     const { result } = renderHook(() => useActivityLogger());
 

@@ -4,17 +4,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   applyCrossStoreSaveCopy,
   auditStagedPluginRegistry,
-  applyControllerLayout,
   cancelLanTransferCopyJob,
-  clearControllerLayout,
   clearBroadcastStreamKeySecret,
   ejectBackupExternalDrive,
   getBroadcastStreamKeyVaultStatus,
-  getControllerRuntimeStatus,
   getLanTransferCopyJobs,
   getDiskInfo,
   getLatestBackupStatus,
-  listControllers,
   openEpicLoginWindow,
   openSteamLoginWindow,
   reviewPluginActivationPlan,
@@ -246,38 +242,6 @@ describe("launcher browser guards", () => {
         provider: request.provider,
       }),
     ).rejects.toThrow("desktop app");
-    expect(invoke).not.toHaveBeenCalled();
-  });
-
-  it("keeps controller runtime activation desktop-only outside Tauri", async () => {
-    await expect(
-      applyControllerLayout({
-        gameId: "global-controller-preview",
-        layout: {
-          authorName: "Local Browser",
-          bindings: [],
-          controllerType: "xbox",
-          createdAt: "2026-06-12T00:00:00.000Z",
-          gameId: null,
-          gyroEnabled: false,
-          hapticsEnabled: true,
-          id: "local-xbox-default",
-          isCommunity: false,
-          isDefault: true,
-          name: "Local Default",
-          template: "gamepad",
-          updatedAt: "2026-06-12T00:00:00.000Z",
-          userId: "local-controller-user",
-        },
-      }),
-    ).rejects.toThrow("desktop app");
-    await expect(clearControllerLayout()).rejects.toThrow("desktop app");
-    await expect(listControllers()).rejects.toThrow("desktop app");
-    await expect(getControllerRuntimeStatus()).resolves.toMatchObject({
-      activeLayoutName: "Browser Preview Only",
-      keyboardMouseEmulationReady: false,
-      nativePassthroughReady: false,
-    });
     expect(invoke).not.toHaveBeenCalled();
   });
 

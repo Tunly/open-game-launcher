@@ -1,17 +1,10 @@
 import { memo, useState, useEffect } from "react";
-import { isTauri } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
 import { Heart } from "lucide-react";
 import type { GameGroup } from "../../lib/game-groups";
-import type {
-  GameRuntimeStatus,
-  PlatformClientHealth,
-  PlatformClientLifecycleEvent,
-} from "../../lib/types";
+import type { GameRuntimeStatus } from "../../lib/types";
 import type { CustomArtworkKind } from "../../lib/custom-artwork";
 import { getGameAssetUrl } from "../../lib/assets";
 import { getGameIconCandidates, getGameSource, getSourceDisplayLabel } from "../../lib/formatters";
-import { pollPlatformClientHealth, toClientPlatformId } from "../../lib/launcher";
 import { PlatformIcon, PlatformSourceIcon } from "./PlatformIcons";
 
 type LibraryRowProps = {
@@ -51,31 +44,6 @@ function runtimeSummary(runtime: GameRuntimeStatus | undefined, group?: GameGrou
   );
 }
 
-function clientStatusClasses(health: PlatformClientHealth | null) {
-  if (!health) {
-    return {
-      chip: "border-black bg-[#fbf4e7] text-[#655f58]",
-      dot: "bg-[#655f58]",
-    };
-  }
-  if (health.running) {
-    return {
-      chip: "border-black bg-[#087d6d] text-white",
-      dot: "bg-[#8cf5e4]",
-    };
-  }
-  if (!health.installed) {
-    return {
-      chip: "border-black bg-[#b7102a] text-white",
-      dot: "bg-[#fff9ed]",
-    };
-  }
-  return {
-    chip: "border-black bg-[#fbf4e7] text-[#171411]",
-    dot: "bg-[#e8c843]",
-  };
-}
-
 function LibraryRowBase({
   group,
   selected,
@@ -88,63 +56,12 @@ function LibraryRowBase({
   const game = group.primaryGame;
   const [iconCandidateIndex, setIconCandidateIndex] = useState(0);
   const [isDragOver, setIsDragOver] = useState(false);
-  const [clientHealth, setClientHealth] = useState<PlatformClientHealth | null>(null);
   const iconCandidates = getGameIconCandidates(game);
   const iconUrl = getGameAssetUrl(iconCandidates[iconCandidateIndex]);
-  const sourceClientId = toClientPlatformId(getGameSource(game));
 
   useEffect(() => {
     setIconCandidateIndex(0);
   }, [game.id, game.iconUrl, game.iconUrls]);
-
-  useEffect(() => {
-    if (!selected || !sourceClientId) {
-      setClientHealth(null);
-      return;
-    }
-
-    let cancelled = false;
-    const refreshClientHealth = (maxAgeMs = 5_000) => {
-      pollPlatformClientHealth({ maxAgeMs })
-        .then((statuses) => {
-          if (cancelled) return;
-          setClientHealth(statuses.find((status) => status.platformId === sourceClientId) ?? null);
-        })
-        .catch(() => {
-          if (!cancelled) setClientHealth(null);
-        });
-    };
-
-    refreshClientHealth();
-    const interval = window.setInterval(() => refreshClientHealth(0), 30_000);
-    const handleClientLifecycleEvent = (event: PlatformClientLifecycleEvent) => {
-      if (event.platformId === sourceClientId) {
-        setClientHealth(event);
-      }
-    };
-    const unlistenClientStarted = isTauri()
-      ? listen<PlatformClientLifecycleEvent>("client_started", (event) => {
-          if (!cancelled) handleClientLifecycleEvent(event.payload);
-        })
-      : null;
-    const unlistenClientStopped = isTauri()
-      ? listen<PlatformClientLifecycleEvent>("client_stopped", (event) => {
-          if (!cancelled) handleClientLifecycleEvent(event.payload);
-        })
-      : null;
-    const unlistenClientWindowUpdated = isTauri()
-      ? listen<PlatformClientLifecycleEvent>("client_window_updated", (event) => {
-          if (!cancelled) handleClientLifecycleEvent(event.payload);
-        })
-      : null;
-    return () => {
-      cancelled = true;
-      window.clearInterval(interval);
-      void unlistenClientStarted?.then((unlisten) => unlisten());
-      void unlistenClientStopped?.then((unlisten) => unlisten());
-      void unlistenClientWindowUpdated?.then((unlisten) => unlisten());
-    };
-  }, [selected, sourceClientId]);
 
   function handleDragOver(event: React.DragEvent) {
     event.preventDefault();
@@ -245,24 +162,6 @@ function LibraryRowBase({
           title={`Running${runtime ? `: ${runtimeSummary(runtime, group)}` : ""}`}
         >
           {runtime ? runtimeSummary(runtime, group) : "Running"}
-        </span>
-      ) : null}
-
-      {selected && sourceClientId ? (
-        <span
-          className={`neo-copy hidden shrink-0 items-center gap-1 border px-1.5 py-0.5 text-[8px] font-black uppercase min-[380px]:inline-flex ${
-            clientStatusClasses(clientHealth).chip
-          }`}
-          title={
-            clientHealth
-              ? `${clientHealth.displayName}: ${clientHealth.statusLabel}`
-              : "Checking source client"
-          }
-        >
-          <span
-            className={`h-1.5 w-1.5 border border-black ${clientStatusClasses(clientHealth).dot}`}
-          />
-          {clientHealth?.statusLabel ?? "Check"}
         </span>
       ) : null}
 

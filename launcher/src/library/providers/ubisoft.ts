@@ -1,4 +1,5 @@
 import { fetchUbisoftOwnedGames } from "../../lib/launcher";
+import { isUbisoftDlcEntry } from "../../lib/library-filters-helpers";
 import { installedUbiKeys, ownedGameToGame } from "../../lib/library-providers";
 import type { Game } from "../../lib/types";
 import type { MergeContext, ProviderResult } from "./types";
@@ -13,7 +14,7 @@ export async function mergeUbisoftOwned(
 
   try {
     const ubiRaw = await fetchUbisoftOwnedGames();
-    const ownedUbiGames = ubiRaw.map(ownedGameToGame);
+    const ownedUbiGames = ubiRaw.map(ownedGameToGame).filter((game) => !isUbisoftDlcEntry(game));
     if (ownedUbiGames.length === 0) {
       return { games, warnings, statusMessage };
     }

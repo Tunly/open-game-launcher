@@ -102,7 +102,6 @@ const ACCOUNT_DELETION_STORAGE_BUCKETS = [
   "avatars",
   "profile-banners",
   "profile-showcases",
-  "screenshots",
   "game-artwork",
 ];
 

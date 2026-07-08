@@ -538,186 +538,6 @@ export type Database = {
           },
         ]
       }
-      controller_layouts: {
-        Row: {
-          author_name: string | null
-          bindings: Json
-          controller_type: string
-          created_at: string
-          game_id: string | null
-          gyro_enabled: boolean
-          haptics_enabled: boolean
-          id: string
-          is_community: boolean
-          is_default: boolean
-          moderation_status: string
-          name: string
-          report_count: number
-          template: string
-          updated_at: string
-          user_id: string
-          vote_score: number
-          download_count: number
-          approved_at: string | null
-          rejected_at: string | null
-        }
-        Insert: {
-          approved_at?: string | null
-          author_name?: string | null
-          bindings?: Json
-          controller_type?: string
-          created_at?: string
-          download_count?: number
-          game_id?: string | null
-          gyro_enabled?: boolean
-          haptics_enabled?: boolean
-          id?: string
-          is_community?: boolean
-          is_default?: boolean
-          moderation_status?: string
-          name: string
-          rejected_at?: string | null
-          report_count?: number
-          template?: string
-          updated_at?: string
-          user_id: string
-          vote_score?: number
-        }
-        Update: {
-          approved_at?: string | null
-          author_name?: string | null
-          bindings?: Json
-          controller_type?: string
-          created_at?: string
-          download_count?: number
-          game_id?: string | null
-          gyro_enabled?: boolean
-          haptics_enabled?: boolean
-          id?: string
-          is_community?: boolean
-          is_default?: boolean
-          moderation_status?: string
-          name?: string
-          rejected_at?: string | null
-          report_count?: number
-          template?: string
-          updated_at?: string
-          user_id?: string
-          vote_score?: number
-        }
-        Relationships: []
-      }
-      controller_layout_moderation_audit: {
-        Row: {
-          created_at: string
-          id: string
-          layout_id: string
-          new_status: string
-          note: string | null
-          previous_status: string | null
-          report_count: number
-          reviewer_id: string | null
-        }
-        Insert: {
-          created_at?: string
-          id?: string
-          layout_id: string
-          new_status: string
-          note?: string | null
-          previous_status?: string | null
-          report_count?: number
-          reviewer_id?: string | null
-        }
-        Update: {
-          created_at?: string
-          id?: string
-          layout_id?: string
-          new_status?: string
-          note?: string | null
-          previous_status?: string | null
-          report_count?: number
-          reviewer_id?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "controller_layout_moderation_audit_layout_id_fkey"
-            columns: ["layout_id"]
-            isOneToOne: false
-            referencedRelation: "controller_layouts"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      controller_layout_reports: {
-        Row: {
-          active: boolean
-          created_at: string
-          id: string
-          layout_id: string
-          reason: string
-          reporter_id: string
-          resolved_at: string | null
-        }
-        Insert: {
-          active?: boolean
-          created_at?: string
-          id?: string
-          layout_id: string
-          reason: string
-          reporter_id: string
-          resolved_at?: string | null
-        }
-        Update: {
-          active?: boolean
-          created_at?: string
-          id?: string
-          layout_id?: string
-          reason?: string
-          reporter_id?: string
-          resolved_at?: string | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "controller_layout_reports_layout_id_fkey"
-            columns: ["layout_id"]
-            isOneToOne: false
-            referencedRelation: "controller_layouts"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      controller_layout_votes: {
-        Row: {
-          created_at: string
-          layout_id: string
-          updated_at: string
-          user_id: string
-          vote: number
-        }
-        Insert: {
-          created_at?: string
-          layout_id: string
-          updated_at?: string
-          user_id: string
-          vote: number
-        }
-        Update: {
-          created_at?: string
-          layout_id?: string
-          updated_at?: string
-          user_id?: string
-          vote?: number
-        }
-        Relationships: [
-          {
-            foreignKeyName: "controller_layout_votes_layout_id_fkey"
-            columns: ["layout_id"]
-            isOneToOne: false
-            referencedRelation: "controller_layouts"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       developer_applications: {
         Row: {
           created_at: string
@@ -3941,7 +3761,6 @@ export type Database = {
       }
       user_hardware: {
         Row: {
-          controller: string | null
           cpu: string | null
           created_at: string
           gpu: string | null
@@ -3956,7 +3775,6 @@ export type Database = {
           visibility: string
         }
         Insert: {
-          controller?: string | null
           cpu?: string | null
           created_at?: string
           gpu?: string | null
@@ -3971,7 +3789,6 @@ export type Database = {
           visibility?: string
         }
         Update: {
-          controller?: string | null
           cpu?: string | null
           created_at?: string
           gpu?: string | null

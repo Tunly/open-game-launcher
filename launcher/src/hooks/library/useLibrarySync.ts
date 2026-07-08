@@ -155,6 +155,7 @@ const PROVIDER_PIPELINE: ProviderMerger[] = [
   mergeXboxOwned,
   mergeBattlenetOwned,
 ];
+const STARTUP_LIBRARY_REFRESH_DELAY_MS = 1_500;
 
 export function useLibrarySync({ setStatusMessage }: UseLibrarySyncOptions): UseLibrarySyncResult {
   const [initialLibrarySnapshot] = useState(readLibrarySnapshot);
@@ -270,7 +271,7 @@ export function useLibrarySync({ setStatusMessage }: UseLibrarySyncOptions): Use
 
   const loadInstalledGames = useCallback(loadInstalledGamesImpl, [setStatusMessage]);
 
-  function shouldRunStartupLibraryRescan() {
+  function claimStartupLibraryRescan() {
     try {
       if (sessionStorage.getItem(STORAGE_KEYS.STARTUP_LIBRARY_RESCAN_DONE) === "true") {
         return false;
@@ -301,33 +302,41 @@ export function useLibrarySync({ setStatusMessage }: UseLibrarySyncOptions): Use
 
   useEffect(() => {
     let isMounted = true;
+    let startupRefreshTimeout: number | null = null;
 
     async function loadLibrary() {
       if (automaticSyncInFlightRef.current) return;
       automaticSyncInFlightRef.current = true;
       try {
-        const shouldRefreshOnStartup = shouldRunStartupLibraryRescan();
-
-        if (initialLibrarySnapshot.length > 0 && shouldRefreshOnStartup) {
-          await loadInstalledGames(true, () => isMounted, false);
-        } else {
+        if (initialLibrarySnapshot.length === 0) {
           await loadInstalledGames(false, () => isMounted, initialLibrarySnapshot.length === 0);
-
-          if (isMounted && shouldRefreshOnStartup) {
-            await loadInstalledGames(true, () => isMounted, false);
-          }
         }
       } finally {
         automaticSyncInFlightRef.current = false;
       }
+
+      if (!isMounted) {
+        return;
+      }
+
+      startupRefreshTimeout = window.setTimeout(() => {
+        if (!isMounted || !claimStartupLibraryRescan()) {
+          return;
+        }
+
+        void runAutomaticLibrarySync(true);
+      }, STARTUP_LIBRARY_REFRESH_DELAY_MS);
     }
 
     void loadLibrary();
 
     return () => {
       isMounted = false;
+      if (startupRefreshTimeout !== null) {
+        window.clearTimeout(startupRefreshTimeout);
+      }
     };
-  }, [initialLibrarySnapshot.length, loadInstalledGames]);
+  }, [initialLibrarySnapshot.length, loadInstalledGames, runAutomaticLibrarySync]);
 
   useEffect(() => {
     if (!isTauri()) {

@@ -15,7 +15,6 @@ Deno.test(
       "performance_sessions",
       "launcher_local_entities",
       "community_artwork_votes",
-      "controller_layout_votes",
     ]);
   },
 );
@@ -31,8 +30,6 @@ Deno.test(
       "community_artwork_items.submitter_id",
       "community_artwork_reports.reporter_user_id",
       "community_artwork_moderation_audit.reviewer_user_id",
-      "controller_layout_reports.reporter_id",
-      "controller_layout_moderation_audit.reviewer_id",
       "share_tokens.created_by",
       "mobile_push_registrations.owner_id",
       "store_products.developer_id",

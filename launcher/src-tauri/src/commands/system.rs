@@ -51,7 +51,6 @@ pub struct HardwareInfo {
     keyboard: Option<String>,
     mouse: Option<String>,
     headset: Option<String>,
-    controller: Option<String>,
     source: String,
 }
 
@@ -149,9 +148,6 @@ fn windows_hardware_info() -> HardwareInfo {
         headset: powershell_first_line(
             "(Get-CimInstance Win32_SoundDevice | Where-Object {$_.Name -match 'headset|headphone|audio|sound'} | Select-Object -First 1 -ExpandProperty Name).Trim()",
         ),
-        controller: powershell_first_line(
-            "Get-PnpDevice -PresentOnly | Where-Object {$_.FriendlyName -match 'xbox|controller|gamepad|dualsense|dualshock'} | Select-Object -First 1 -ExpandProperty FriendlyName",
-        ),
         source: "native".to_string(),
     }
 }
@@ -165,7 +161,6 @@ fn linux_hardware_info() -> HardwareInfo {
         keyboard: linux_input_device("keyboard"),
         mouse: linux_input_device("mouse"),
         headset: linux_input_device("headset").or_else(|| linux_input_device("headphone")),
-        controller: linux_input_device("gamepad").or_else(|| linux_input_device("controller")),
         source: "native".to_string(),
     }
 }
@@ -179,7 +174,6 @@ fn macos_hardware_info() -> HardwareInfo {
         keyboard: None,
         mouse: None,
         headset: None,
-        controller: None,
         source: "native".to_string(),
     }
 }

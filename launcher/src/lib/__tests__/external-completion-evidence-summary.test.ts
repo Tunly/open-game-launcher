@@ -176,11 +176,8 @@ function externalProofEvidenceFor(proof: string, fallback = "run-external-eviden
   if (proof.includes("Real client mount/apply")) {
     return "run-client-mount-apply-provider-client-123";
   }
-  if (proof.includes("Hosted community artwork/screenshots")) {
+  if (proof.includes("Hosted community artwork")) {
     return "run-community-artwork-screenshot-rollout-123";
-  }
-  if (proof.includes("Production controller layout")) {
-    return "run-controller-layout-profile-sync-123";
   }
   if (proof.includes("Plugin marketplace")) return "run-plugin-marketplace-execution-update-123";
   if (proof.includes("Native mobile apps"))
@@ -210,7 +207,6 @@ function rolloutArtifactContent(
     "- Redacted run IDs, dashboard links, screenshots, or signed deployment logs: workflow-rollout-123",
     "- Redaction notes: Raw secrets removed before commit",
     "- Community rollout evidence: community artwork screenshot rollout workflow-123",
-    "- Controller layout/profile sync evidence: controller layout profile sync workflow-123",
     "- Marketplace evidence: plugin marketplace execution update workflow-123",
     "- Mobile distribution evidence: mobile push provider store distribution workflow-123",
     "- Push-provider evidence: push provider firebase onesignal workflow-123",
@@ -489,7 +485,6 @@ describe("external completion evidence summary", () => {
               evidenceDetails: {
                 ...evidenceDetails,
                 "Community rollout evidence": "community-artwork-screenshot-rollout-run-123",
-                "Controller layout/profile sync evidence": "controller-layout-profile-sync-run-123",
                 "Hosted deploy evidence": validHostedDeployEvidence,
                 "Marketplace evidence": "plugin-marketplace-update-run-123",
                 "Mobile distribution evidence": "mobile-store-distribution-run-123",
@@ -1364,8 +1359,7 @@ describe("external completion evidence summary", () => {
               checkedProofs: rolloutGate!.proofRequirements,
               evidenceDetails: {
                 ...evidenceDetails,
-                "Community rollout evidence": "community-rollout-run-123",
-                "Controller layout/profile sync evidence": "controller-profile-sync-run-123",
+                "Community rollout evidence": "community-artwork-screenshot-rollout-run-123",
                 "Hosted deploy evidence": "run-generic-field-123",
                 "Marketplace evidence": "run-generic-field-456",
                 "Mobile distribution evidence": "mobile-distribution-run-123",
@@ -2265,7 +2259,6 @@ describe("external completion evidence summary", () => {
 
     expect(rolloutGate?.artifactEvidenceFields?.[0]?.requiredFields).toEqual([
       "Community rollout evidence",
-      "Controller layout/profile sync evidence",
       "Marketplace evidence",
       "Mobile distribution evidence",
       "Push-provider evidence",

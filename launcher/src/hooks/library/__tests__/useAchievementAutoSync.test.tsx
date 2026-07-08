@@ -1,4 +1,4 @@
-import { act, renderHook, waitFor } from "@testing-library/react";
+import { renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
@@ -114,17 +114,20 @@ function renderSyncHook(selectedGroup: GameGroup, initialGames: Game[]) {
   const statusMessages: Array<string | null> = [];
   return {
     statusMessages,
-    hook: renderHook(() => {
-      const [games, setGames] = useState(initialGames);
-      const sync = useAchievementAutoSync({
-        selectedGroup,
-        setInstalledGames: setGames as Dispatch<SetStateAction<Game[]>>,
-        setStatusMessage: (message) => {
-          statusMessages.push(typeof message === "function" ? message(null) : message);
-        },
-      });
-      return { games, sync };
-    }),
+    hook: renderHook(
+      (props: { selectedGroup: GameGroup }) => {
+        const [games, setGames] = useState(initialGames);
+        const sync = useAchievementAutoSync({
+          selectedGroup: props.selectedGroup,
+          setInstalledGames: setGames as Dispatch<SetStateAction<Game[]>>,
+          setStatusMessage: (message) => {
+            statusMessages.push(typeof message === "function" ? message(null) : message);
+          },
+        });
+        return { games, sync };
+      },
+      { initialProps: { selectedGroup } },
+    ),
   };
 }
 
@@ -144,7 +147,8 @@ describe("useAchievementAutoSync", () => {
     providerState.updateAchievementProviderStatus.mockResolvedValue(undefined);
   });
 
-  it("summarizes partial success across multiple achievement providers", async () => {
+  it("auto-syncs every supported provider in the selected group without user status messages", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
     const steamGame = game({
       id: "steam-1",
       title: "Steam Game",
@@ -168,56 +172,53 @@ describe("useAchievementAutoSync", () => {
       xboxGame,
     ]);
 
-    await act(async () => {
-      await hook.result.current.sync.handleSyncAchievements();
+    await waitFor(() => {
+      expect(providerState.syncByProvider.get("steam")).toHaveBeenCalledTimes(1);
+      expect(providerState.syncByProvider.get("xbox")).toHaveBeenCalledTimes(1);
+      expect(providerState.updateAchievementProviderStatus).toHaveBeenCalledWith({
+        gameId: "steam-1",
+        status: {
+          source: "steam",
+          status: "available",
+          stability: "official",
+          message: "steam synced",
+        },
+      });
+      expect(providerState.updateAchievementProviderStatus).toHaveBeenCalledWith({
+        gameId: "xbox-1",
+        status: {
+          source: "xbox",
+          status: "failed",
+          stability: "official",
+          message: "Xbox TitleId could not be resolved",
+        },
+      });
+      expect(
+        hook.result.current.games.find((game) => game.id === "steam-1")
+          ?.achievementProviderStatuses,
+      ).toEqual([
+        {
+          source: "steam",
+          status: "available",
+          stability: "official",
+          message: "steam synced",
+        },
+      ]);
+      expect(
+        hook.result.current.games.find((game) => game.id === "xbox-1")?.achievementProviderStatuses,
+      ).toEqual([
+        {
+          source: "xbox",
+          status: "failed",
+          stability: "official",
+          message: "Xbox TitleId could not be resolved",
+        },
+      ]);
+      expect(
+        hook.result.current.games.find((game) => game.id === "steam-1")?.achievements,
+      ).toHaveLength(1);
     });
-
-    expect(providerState.syncByProvider.get("steam")).toHaveBeenCalledTimes(1);
-    expect(providerState.syncByProvider.get("xbox")).toHaveBeenCalledTimes(1);
-    expect(providerState.updateAchievementProviderStatus).toHaveBeenCalledWith({
-      gameId: "steam-1",
-      status: {
-        source: "steam",
-        status: "available",
-        stability: "official",
-        message: "steam synced",
-      },
-    });
-    expect(providerState.updateAchievementProviderStatus).toHaveBeenCalledWith({
-      gameId: "xbox-1",
-      status: {
-        source: "xbox",
-        status: "failed",
-        stability: "official",
-        message: "Xbox TitleId could not be resolved",
-      },
-    });
-    expect(statusMessages.at(-1)).toBe(
-      "Synced 1/2 achievement providers (10 achievements). 1 provider failed: XBOX.",
-    );
-    expect(
-      hook.result.current.games.find((game) => game.id === "steam-1")?.achievementProviderStatuses,
-    ).toEqual([
-      {
-        source: "steam",
-        status: "available",
-        stability: "official",
-        message: "steam synced",
-      },
-    ]);
-    expect(
-      hook.result.current.games.find((game) => game.id === "xbox-1")?.achievementProviderStatuses,
-    ).toEqual([
-      {
-        source: "xbox",
-        status: "failed",
-        stability: "official",
-        message: "Xbox TitleId could not be resolved",
-      },
-    ]);
-    expect(
-      hook.result.current.games.find((game) => game.id === "steam-1")?.achievements,
-    ).toHaveLength(1);
+    expect(statusMessages).toEqual([]);
   });
 
   it("submits successful provider sync results to trusted achievement ingestion", async () => {
@@ -229,11 +230,7 @@ describe("useAchievementAutoSync", () => {
     });
     providerState.syncByProvider.set("steam", vi.fn().mockResolvedValue(syncResponse(steamGame)));
 
-    const { hook } = renderSyncHook(group([steamGame]), [steamGame]);
-
-    await act(async () => {
-      await hook.result.current.sync.handleSyncAchievements();
-    });
+    renderSyncHook(group([steamGame]), [steamGame]);
 
     await waitFor(() => {
       expect(providerState.ingestTrustedAchievements).toHaveBeenCalledTimes(1);
@@ -256,6 +253,7 @@ describe("useAchievementAutoSync", () => {
   });
 
   it("does not submit trusted achievement ingestion when provider sync fails", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
     const steamGame = game({
       id: "steam-1",
       title: "Steam Game",
@@ -267,16 +265,24 @@ describe("useAchievementAutoSync", () => {
       vi.fn().mockRejectedValue(new Error("Steam profile is private")),
     );
 
-    const { hook } = renderSyncHook(group([steamGame]), [steamGame]);
+    renderSyncHook(group([steamGame]), [steamGame]);
 
-    await act(async () => {
-      await hook.result.current.sync.handleSyncAchievements();
+    await waitFor(() => {
+      expect(providerState.updateAchievementProviderStatus).toHaveBeenCalledWith({
+        gameId: "steam-1",
+        status: {
+          source: "steam",
+          status: "failed",
+          stability: "official",
+          message: "Steam profile is private",
+        },
+      });
     });
 
     expect(providerState.ingestTrustedAchievements).not.toHaveBeenCalled();
   });
 
-  it("auto-syncs providers that are missing achievements even when the group has other achievements", async () => {
+  it("auto-syncs providers even when local achievements already exist", async () => {
     const steamGame = game({
       id: "steam-1",
       title: "Steam Game",
@@ -284,8 +290,9 @@ describe("useAchievementAutoSync", () => {
       achievements: [syncedAchievement()],
     });
     const xboxGame = game({ id: "xbox-1", title: "Xbox Game", launcher: "xbox" });
+    const steamSync = vi.fn().mockResolvedValue(syncResponse(steamGame));
     const xboxSync = vi.fn().mockResolvedValue(syncResponse(xboxGame));
-    providerState.syncByProvider.set("steam", vi.fn().mockResolvedValue(syncResponse(steamGame)));
+    providerState.syncByProvider.set("steam", steamSync);
     providerState.syncByProvider.set("xbox", xboxSync);
 
     const { hook, statusMessages } = renderSyncHook(group([steamGame, xboxGame]), [
@@ -294,13 +301,51 @@ describe("useAchievementAutoSync", () => {
     ]);
 
     await waitFor(() => {
+      expect(steamSync).toHaveBeenCalledTimes(1);
       expect(xboxSync).toHaveBeenCalledTimes(1);
       expect(
         hook.result.current.games.find((game) => game.id === "xbox-1")?.achievements,
       ).toHaveLength(1);
     });
 
-    expect(providerState.syncByProvider.get("steam")).not.toHaveBeenCalled();
+    expect(statusMessages).toEqual([]);
+  });
+
+  it("retries auto-sync when provider sync identity changes after a failed attempt", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const staleSteamGame = game({
+      id: "steam-1",
+      title: "Steam Game",
+      launcher: "steam",
+      externalId: "111",
+      achievements: [syncedAchievement()],
+    });
+    const refreshedSteamGame = {
+      ...staleSteamGame,
+      externalId: "222",
+    };
+    const steamSync = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("Steam AppID changed during library refresh"))
+      .mockResolvedValueOnce(syncResponse(refreshedSteamGame));
+    providerState.syncByProvider.set("steam", steamSync);
+
+    const { hook, statusMessages } = renderSyncHook(group([staleSteamGame]), [staleSteamGame]);
+
+    await waitFor(() => {
+      expect(steamSync).toHaveBeenCalledTimes(1);
+    });
+
+    hook.rerender({ selectedGroup: group([refreshedSteamGame]) });
+
+    await waitFor(() => {
+      expect(steamSync).toHaveBeenCalledTimes(2);
+      expect(steamSync.mock.calls[0]?.[0]).toMatchObject({ externalId: "111" });
+      expect(steamSync.mock.calls[1]?.[0]).toMatchObject({ externalId: "222" });
+      expect(
+        hook.result.current.games.find((game) => game.id === "steam-1")?.achievements,
+      ).toHaveLength(1);
+    });
     expect(statusMessages).toEqual([]);
   });
 });

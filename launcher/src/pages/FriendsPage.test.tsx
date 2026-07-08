@@ -121,6 +121,18 @@ describe("FriendsPage", () => {
     expect(screen.getByText(/Invite handoff staged for Packet Ghost/i)).toBeInTheDocument();
   });
 
+  it("renders the local activity tab with Steam-like feed regions", () => {
+    renderFriendsPage("/friends?tab=activity");
+
+    expect(screen.getByRole("region", { name: /friend activity tab/i })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /friend activity/i })).toBeInTheDocument();
+    expect(screen.getByPlaceholderText(/what's new, commander/i)).toBeInTheDocument();
+    expect(screen.getAllByText("Packet Ghost").length).toBeGreaterThan(0);
+    expect(screen.getByText(/shared a new session/i)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /friends online/i })).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /rate up/i }).length).toBeGreaterThan(0);
+  });
+
   it("clears stale configured invite titles when the next friend has no active game", async () => {
     useCurrentUserMock.mockReturnValue({
       isConfigured: true,

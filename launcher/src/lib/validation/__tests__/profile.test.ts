@@ -207,7 +207,6 @@ describe("hardwareSchema", () => {
       keyboard: "Keychron K2",
       mouse: "Logitech G Pro",
       headset: "HyperX Cloud II",
-      controller: "Xbox Elite v2",
       setupImageUrl: "https://example.com/setup.jpg",
       visibility: "public",
     });

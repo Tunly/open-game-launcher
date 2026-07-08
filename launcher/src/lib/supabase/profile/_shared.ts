@@ -102,7 +102,6 @@ export function saveHardwareFallback(userId: string, input: HardwareInput) {
   const now = new Date().toISOString();
   const existing = getHardwareFallback(userId);
   const hardware: UserHardware = {
-    controller: input.controller ?? null,
     cpu: input.cpu ?? null,
     createdAt: existing?.createdAt ?? now,
     gpu: input.gpu ?? null,

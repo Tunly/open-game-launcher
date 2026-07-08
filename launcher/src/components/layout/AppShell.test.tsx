@@ -1,4 +1,5 @@
-import { act, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { isTauri } from "@tauri-apps/api/core";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -8,8 +9,22 @@ import {
 } from "../../lib/app-shell-skins";
 import { AppShell } from "./AppShell";
 
+const tauriWindowMock = vi.hoisted(() => ({
+  currentWindow: {
+    close: vi.fn(() => Promise.resolve()),
+    isMaximized: vi.fn(() => Promise.resolve(false)),
+    minimize: vi.fn(() => Promise.resolve()),
+    startDragging: vi.fn(() => Promise.resolve()),
+    toggleMaximize: vi.fn(() => Promise.resolve()),
+  },
+}));
+
 vi.mock("@tauri-apps/api/event", () => ({
-  listen: vi.fn(),
+  listen: vi.fn(() => Promise.resolve(() => undefined)),
+}));
+
+vi.mock("@tauri-apps/api/window", () => ({
+  getCurrentWindow: vi.fn(() => tauriWindowMock.currentWindow),
 }));
 
 vi.mock("../../lib/launcher", () => ({
@@ -58,13 +73,75 @@ describe("AppShell browser-local shell skins", () => {
 
     const header = screen.getByRole("banner");
     expect(within(header).getByRole("button", { name: "OG-Launcher" })).toBeInTheDocument();
-    for (const label of ["Store", "Library", "Community", "Downloads", "Controllers"]) {
+    for (const label of ["Store", "Library", "Community", "Downloads"]) {
       expect(within(header).getByRole("button", { name: label })).toBeInTheDocument();
     }
   });
+
+  it("keeps the brand row above the primary navigation row", () => {
+    renderShell();
+
+    const header = screen.getByRole("banner");
+    const brandRow = header.querySelector(".app-shell-brand-row");
+    const navRow = header.querySelector(".app-shell-nav-row");
+
+    expect(header).toHaveClass("flex-col");
+    expect(brandRow).toContainElement(within(header).getByRole("button", { name: "OG-Launcher" }));
+    expect(navRow).toContainElement(within(header).getByRole("button", { name: "Library" }));
+    expect(navRow).toContainElement(within(header).getByRole("button", { name: "Notifications" }));
+    expect(navRow).toContainElement(within(header).getByRole("button", { name: "Login" }));
+    expect(brandRow).not.toContainElement(
+      within(header).getByRole("button", { name: "Notifications" }),
+    );
+    expect(brandRow?.nextElementSibling).toBe(navRow);
+  });
+
+  it("places desktop window controls in the header brand row without a separate title bar", async () => {
+    const { container } = renderShell({ isDesktop: true });
+
+    const header = screen.getByRole("banner");
+    const brandRow = header.querySelector(".app-shell-brand-row");
+
+    expect(container.querySelector(".app-shell-titlebar")).not.toBeInTheDocument();
+    expect(await within(header).findByRole("button", { name: "Minimize" })).toBeInTheDocument();
+    expect(within(header).getByRole("button", { name: "Maximize" })).toBeInTheDocument();
+    expect(within(header).getByRole("button", { name: "Close" })).toBeInTheDocument();
+    expect(brandRow).toContainElement(within(header).getByRole("button", { name: "Close" }));
+    expect(brandRow?.querySelector(".app-window-controls")).toBeInTheDocument();
+    expect(brandRow?.querySelector(".app-window-controls")).not.toHaveClass("border-[3px]");
+    expect(brandRow?.querySelector(".app-window-control-button")).toHaveClass(
+      "border-transparent",
+      "bg-transparent",
+    );
+    const dragRegion = brandRow?.querySelector("[data-tauri-drag-region]");
+    expect(dragRegion).toBeInTheDocument();
+    expect(dragRegion).toHaveClass("self-stretch", "min-h-8");
+
+    tauriWindowMock.currentWindow.startDragging.mockClear();
+    fireEvent.mouseDown(dragRegion as Element, { button: 0 });
+    expect(tauriWindowMock.currentWindow.startDragging).toHaveBeenCalledTimes(1);
+  });
+
+  it("sizes the library shell from the real header height instead of a fixed viewport subtraction", () => {
+    const { container } = renderShell();
+
+    const shell = container.querySelector(".app-shell-root");
+    const shellFrame = shell?.firstElementChild;
+    const header = screen.getByRole("banner");
+    const main = container.querySelector(".app-library-main");
+
+    expect(shell).toHaveClass("h-screen", "min-h-0", "overflow-hidden");
+    expect(shell).not.toHaveClass("min-h-screen");
+    expect(shellFrame).toHaveClass("flex", "h-full", "min-h-0", "flex-col", "overflow-hidden");
+    expect(header).toHaveClass("shrink-0");
+    expect(main).toHaveClass("flex-1", "overflow-hidden");
+    expect(main?.className).not.toContain("h-[calc(100vh-80px)]");
+  });
 });
 
-function renderShell() {
+function renderShell({ isDesktop = false }: { isDesktop?: boolean } = {}) {
+  vi.mocked(isTauri).mockReturnValue(isDesktop);
+
   return render(
     <AppShell
       activePage="library"

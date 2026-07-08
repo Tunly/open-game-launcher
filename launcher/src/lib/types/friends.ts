@@ -11,7 +11,7 @@ export type PlatformType =
   | "og";
 export type MatchMethod = "linked_account" | "heuristic" | "manual";
 export type MergeSuggestionStatus = "pending" | "accepted" | "rejected";
-export type ActivityType = "game_start" | "game_stop" | "achievement_unlocked" | "screenshot_taken";
+export type ActivityType = "game_start" | "game_stop" | "achievement_unlocked";
 export type InviteFeasibility = "possible" | "uncertain" | "impossible";
 
 export interface PlatformAccount {
@@ -70,7 +70,6 @@ export interface ActivityFeedItem {
   gameId: string | null;
   gameTitle: string | null;
   achievementName: string | null;
-  screenshotUrl: string | null;
   metadata: ActivityFeedMetadata;
   visibility: "public" | "friends_only" | "private";
   createdAt: string;

@@ -31,4 +31,12 @@ describe("Retro Manga static visual system", () => {
 
     expect(violations).toEqual([]);
   });
+
+  it("does not hard-code the library viewport height against an assumed header height", () => {
+    const appShell = readFileSync(join(sourceRoot, "components/layout/AppShell.tsx"), "utf8");
+    const indexCss = readFileSync(join(sourceRoot, "index.css"), "utf8");
+
+    expect(appShell).not.toContain("app-library-main neo-dots h-[calc(100vh-80px)]");
+    expect(indexCss).not.toMatch(/\.tauri-runtime\s+\.app-library-main\s*\{[^}]*height:/s);
+  });
 });

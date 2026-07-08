@@ -1372,9 +1372,10 @@ pub fn scan_ubisoft_games() -> Vec<InstalledGame> {
             .or_else(|| cover_url.clone());
 
         if !seen_titles.insert(title.to_lowercase()) {
-            apply_ubisoft_launcher_assets(
+            apply_ubisoft_launcher_metadata(
                 &mut games,
                 title,
+                &install.install_id,
                 UbisoftLauncherAssets {
                     cover_url,
                     logo_url,
@@ -1433,9 +1434,10 @@ pub fn scan_ubisoft_games() -> Vec<InstalledGame> {
     games
 }
 
-fn apply_ubisoft_launcher_assets(
+fn apply_ubisoft_launcher_metadata(
     games: &mut [InstalledGame],
     title: &str,
+    install_id: &str,
     assets: UbisoftLauncherAssets,
 ) {
     let Some(game) = games
@@ -1444,6 +1446,15 @@ fn apply_ubisoft_launcher_assets(
     else {
         return;
     };
+
+    if game.external_id.is_none() {
+        game.id = format!("ubisoft-{install_id}");
+        game.external_id = Some(install_id.to_string());
+    }
+
+    if game.launch_uri.is_none() {
+        game.launch_uri = Some(format!("uplay://launch/{install_id}"));
+    }
 
     if game.cover_url.is_none() {
         game.cover_url = assets.cover_url;
@@ -2400,6 +2411,11 @@ fn find_ubisoft_cached_asset_for_install(file_name: &str, install_id: &str) -> O
 
     for root in ubisoft_cached_asset_roots() {
         let per_game_root = root.join(install_id);
+        let direct_path = per_game_root.join(&normalized);
+        if direct_path.exists() && direct_path.is_file() {
+            return Some(path_to_string(direct_path));
+        }
+
         let Ok(entries) = fs::read_dir(&per_game_root) else {
             continue;
         };
@@ -2850,5 +2866,35 @@ mod tests {
 
         assert_eq!(games.len(), 1);
         assert!(games.contains_key("epic-1"));
+    }
+
+    #[test]
+    fn ubisoft_directory_match_gets_registry_launch_metadata() {
+        let mut games = vec![installed_game(
+            "ubisoft-Assassins Creed Mirage",
+            "Assassins Creed Mirage".to_string(),
+            "ubisoft".to_string(),
+            Some("C:/Ubisoft Games/Assassins Creed Mirage".to_string()),
+            None,
+        )];
+
+        apply_ubisoft_launcher_metadata(
+            &mut games,
+            "ASSASSINS CREED MIRAGE",
+            "6100",
+            UbisoftLauncherAssets {
+                cover_url: Some("cover.jpg".to_string()),
+                logo_url: Some("logo.png".to_string()),
+                icon_url: Some("icon.png".to_string()),
+            },
+        );
+
+        let game = &games[0];
+        assert_eq!(game.id, "ubisoft-6100");
+        assert_eq!(game.external_id.as_deref(), Some("6100"));
+        assert_eq!(game.launch_uri.as_deref(), Some("uplay://launch/6100"));
+        assert_eq!(game.cover_url.as_deref(), Some("cover.jpg"));
+        assert_eq!(game.logo_url.as_deref(), Some("logo.png"));
+        assert_eq!(game.icon_url.as_deref(), Some("icon.png"));
     }
 }

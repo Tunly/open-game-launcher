@@ -1,7 +1,6 @@
 ﻿import { useCallback, useEffect, useRef, useState } from "react";
 import {
   X,
-  Camera,
   MessageSquare,
   Trophy,
   Activity,
@@ -14,9 +13,6 @@ import {
   Clock,
   Hash,
   Settings,
-  Trash2,
-  Upload,
-  Image,
   CheckCircle2,
   Gamepad2,
   Swords,
@@ -43,14 +39,7 @@ import {
 } from "../lib/supabase/social";
 import { getVisiblePresence, subscribeToPresenceChanges } from "../lib/supabase/presence";
 import { launchCrossPlayJoin, listInstalledGames } from "../lib/launcher";
-import {
-  listScreenshots,
-  deleteScreenshot,
-  captureScreenshot,
-  getOverlaySettings,
-  saveOverlaySettings,
-} from "../lib/overlay";
-import { getMyScreenshots, uploadScreenshotForGame } from "../lib/supabase/screenshots";
+import { getOverlaySettings, saveOverlaySettings } from "../lib/overlay";
 import { getMyFriendLinks } from "../lib/supabase/friend-links";
 import { sendGameInvite } from "../lib/supabase/social";
 import {
@@ -75,8 +64,6 @@ import {
 import type { UserPresence, ChatMessage } from "../lib/types/profile";
 import type { Game, UnifiedAchievement } from "../lib/types";
 import type { RealtimeMetrics } from "../lib/types/performance";
-import type { ScreenshotMeta } from "../lib/types/overlay";
-import type { Screenshot } from "../lib/types/screenshots";
 import type { FriendLink } from "../lib/types/friends";
 
 interface AntiCheatInfo {
@@ -85,7 +72,7 @@ interface AntiCheatInfo {
   process_name: string;
 }
 
-type OverlayPanel = "friends" | "chat" | "achievements" | "perf" | "screenshots" | "settings";
+type OverlayPanel = "friends" | "chat" | "achievements" | "perf" | "settings";
 type OverlayPosition = "top_left" | "top_right" | "bottom_left" | "bottom_right";
 type ResizeDirection = "n" | "s" | "e" | "w" | "ne" | "nw" | "se" | "sw";
 
@@ -274,12 +261,6 @@ export function OverlayPage() {
 
   const blockedAntiCheats = acList.filter((ac) => ac.blocks_overlay);
 
-  const handleCaptureScreenshot = useCallback(() => {
-    void captureScreenshot()
-      .then((meta) => console.log("[screenshot] saved:", meta.path))
-      .catch(console.error);
-  }, []);
-
   const handleToggleFpsHud = useCallback(() => {
     void invoke("toggle_fps_hud").catch((err) => {
       console.error("[fps-hud] toggle failed:", err);
@@ -294,14 +275,6 @@ export function OverlayPage() {
     { type: "panel", panel: "chat", label: "Chat", icon: MessageSquare },
     { type: "panel", panel: "achievements", label: "Achievements", icon: Trophy },
     { type: "panel", panel: "perf", label: "Performance", icon: Activity },
-    { type: "panel", panel: "screenshots", label: "Screenshots", icon: Image },
-    {
-      type: "action",
-      id: "capture",
-      label: "Capture screenshot",
-      icon: Camera,
-      onClick: handleCaptureScreenshot,
-    },
     {
       type: "action",
       id: "fps",
@@ -380,7 +353,6 @@ export function OverlayPage() {
         <OverlayFallbackDeck
           blockedAntiCheats={blockedAntiCheats}
           onBackToGame={closeOverlay}
-          onCaptureScreenshot={handleCaptureScreenshot}
           onToggleFpsHud={handleToggleFpsHud}
         />
       )}
@@ -402,7 +374,6 @@ export function OverlayPage() {
             {panel === "chat" && <OverlayChatTab />}
             {panel === "achievements" && <OverlayAchievementsTab />}
             {panel === "perf" && <OverlayPerfTab />}
-            {panel === "screenshots" && <OverlayScreenshotsTab />}
             {panel === "settings" && <OverlaySettingsPanel onClose={() => closePanel(panel)} />}
           </OverlayPanelShell>
         );
@@ -449,12 +420,10 @@ export function OverlayPage() {
 function OverlayFallbackDeck({
   blockedAntiCheats,
   onBackToGame,
-  onCaptureScreenshot,
   onToggleFpsHud,
 }: {
   blockedAntiCheats: AntiCheatInfo[];
   onBackToGame: () => void;
-  onCaptureScreenshot: () => void;
   onToggleFpsHud: () => void;
 }) {
   const blockedNames = blockedAntiCheats.map((ac) => ac.name).join(" / ");
@@ -492,13 +461,6 @@ function OverlayFallbackDeck({
             label="Toggle FPS HUD"
             tone="teal"
             onClick={onToggleFpsHud}
-          />
-          <FallbackAction
-            body="Capture a local screenshot through the desktop path for post-match review."
-            icon={Camera}
-            label="Capture Shot"
-            tone="paper"
-            onClick={onCaptureScreenshot}
           />
         </div>
       </div>
@@ -772,7 +734,6 @@ function overlayPanelTitle(panel: OverlayPanel) {
     chat: "Chat",
     friends: "Friends",
     perf: "Performance",
-    screenshots: "Screenshots",
     settings: "Overlay Settings",
   };
 
@@ -1929,220 +1890,4 @@ function resolvePerformanceChartDomain(
 
   const padding = (max - min) * 0.2;
   return [Math.max(0, min - padding), max + padding];
-}
-
-/* ========== SCREENSHOTS TAB ========== */
-function screenshotPreviewToFile(shot: ScreenshotMeta): File | null {
-  if (!shot.base64_preview) return null;
-  try {
-    const binary = atob(shot.base64_preview);
-    const bytes = new Uint8Array(binary.length);
-    for (let index = 0; index < binary.length; index += 1) {
-      bytes[index] = binary.charCodeAt(index);
-    }
-    return new File([bytes], shot.file_name || `${shot.id}.jpg`, {
-      lastModified: Date.parse(shot.created_at) || Date.now(),
-      type: "image/jpeg",
-    });
-  } catch {
-    return null;
-  }
-}
-
-function OverlayScreenshotsTab() {
-  const [localShots, setLocalShots] = useState<ScreenshotMeta[]>([]);
-  const [cloudShots, setCloudShots] = useState<Screenshot[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [uploading, setUploading] = useState<string | null>(null);
-  const [uploadMessage, setUploadMessage] = useState<string | null>(null);
-  const [preview, setPreview] = useState<ScreenshotMeta | null>(null);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const local = isTauri() ? await listScreenshots() : [];
-      setLocalShots(local);
-      try {
-        const cloud = await getMyScreenshots();
-        setCloudShots(cloud);
-      } catch {
-        /* ignore missing table */
-      }
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    void load();
-  }, [load]);
-
-  const handleDelete = async (path: string) => {
-    try {
-      await deleteScreenshot(path);
-      setLocalShots((prev) => prev.filter((s) => s.path !== path));
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const handleUpload = async (shot: ScreenshotMeta) => {
-    const file = screenshotPreviewToFile(shot);
-    if (!file) {
-      setUploadMessage("Open the local capture once before cloud upload.");
-      return;
-    }
-    setUploading(shot.id);
-    setUploadMessage(null);
-    try {
-      const result = await uploadScreenshotForGame({
-        caption: shot.file_name,
-        file,
-        height: shot.height || null,
-        isPublic: false,
-        width: shot.width || null,
-      });
-      if (!result.ok) {
-        setUploadMessage(result.message);
-        return;
-      }
-      setCloudShots((current) => [
-        result.value,
-        ...current.filter((item) => item.id !== result.value.id),
-      ]);
-      setUploadMessage("Screenshot uploaded as private cloud capture.");
-    } catch (err) {
-      console.error(err);
-      setUploadMessage("Screenshot upload failed.");
-    } finally {
-      setUploading(null);
-    }
-  };
-
-  if (loading)
-    return (
-      <div className="grid h-full place-items-center">
-        <Loader2 className="animate-spin text-[#655f58]" size={20} />
-      </div>
-    );
-
-  return (
-    <div className="space-y-3">
-      <div className="neo-copy text-[10px] font-black uppercase text-[#655f58]">
-        Local ({localShots.length})
-      </div>
-      {uploadMessage && (
-        <div className="neo-copy border-2 border-[#171411] bg-[#fff9ed] px-2 py-1 text-[9px] font-black uppercase text-[#171411] shadow-[2px_2px_0_#1f1c0f]">
-          {uploadMessage}
-        </div>
-      )}
-      <div className="grid grid-cols-3 gap-2">
-        {localShots.map((shot) => (
-          <div
-            key={shot.id}
-            className="group relative aspect-video border-2 border-[#171411] bg-[#fff9ed] shadow-[2px_2px_0_#1f1c0f]"
-          >
-            {shot.base64_preview ? (
-              <img
-                src={`data:image/jpeg;base64,${shot.base64_preview}`}
-                alt=""
-                className="h-full w-full object-cover"
-              />
-            ) : (
-              <div className="flex h-full items-center justify-center">
-                <Image size={16} className="text-[#655f58]" />
-              </div>
-            )}
-            <div className="absolute inset-0 hidden flex-col items-center justify-center gap-1 bg-[#171411]/80 group-hover:flex">
-              <button
-                onClick={() => setPreview(shot)}
-                className="border-2 border-[#171411] bg-[#fff9ed] p-1 shadow-[2px_2px_0_#1f1c0f] hover:translate-y-[-1px]"
-              >
-                <Camera size={12} className="text-[#171411]" />
-              </button>
-              <button
-                onClick={() => handleUpload(shot)}
-                disabled={!!uploading}
-                className="border-2 border-[#171411] bg-[#087d6d] p-1 text-white shadow-[2px_2px_0_#1f1c0f] hover:translate-y-[-1px] disabled:opacity-50"
-              >
-                <Upload size={12} />
-              </button>
-              <button
-                onClick={() => handleDelete(shot.path)}
-                className="border-2 border-[#171411] bg-[#b7102a] p-1 text-white shadow-[2px_2px_0_#1f1c0f] hover:translate-y-[-1px]"
-              >
-                <Trash2 size={12} />
-              </button>
-            </div>
-            {uploading === shot.id && (
-              <div className="absolute inset-0 flex items-center justify-center bg-[#171411]/60">
-                <Loader2 size={14} className="animate-spin text-white" />
-              </div>
-            )}
-          </div>
-        ))}
-      </div>
-
-      {cloudShots.length > 0 && (
-        <>
-          <div className="neo-copy text-[10px] font-black uppercase text-[#655f58]">
-            Cloud ({cloudShots.length})
-          </div>
-          <div className="grid grid-cols-3 gap-2">
-            {cloudShots.map((shot) => {
-              const imageUrl = shot.thumbnailUrl ?? shot.publicUrl;
-              return (
-                <div
-                  key={shot.id}
-                  className="aspect-video overflow-hidden border-2 border-[#171411] bg-[#fff9ed] p-1 shadow-[2px_2px_0_#1f1c0f]"
-                >
-                  {imageUrl ? (
-                    <img
-                      alt={shot.caption || "Cloud screenshot"}
-                      className="h-full w-full object-cover"
-                      src={imageUrl}
-                    />
-                  ) : (
-                    <div className="neo-copy flex h-full items-center justify-center text-center text-[9px] font-bold text-[#655f58]">
-                      {shot.caption || "Screenshot"}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </>
-      )}
-
-      {preview && (
-        <div
-          className="neo-dots-ink fixed inset-0 z-50 flex items-center justify-center p-4"
-          role="button"
-          tabIndex={-1}
-          aria-label="Close preview"
-          onClick={() => setPreview(null)}
-          onKeyDown={(event) => {
-            if (event.key === "Escape" || event.key === "Enter" || event.key === " ") {
-              setPreview(null);
-            }
-          }}
-        >
-          <div className="max-h-full max-w-full border-[3px] border-[#171411] bg-[#fbf8ef] p-2 shadow-[6px_6px_0_#1f1c0f]">
-            {preview.base64_preview && (
-              <img
-                src={`data:image/jpeg;base64,${preview.base64_preview}`}
-                alt=""
-                className="max-h-[70vh]"
-              />
-            )}
-            <div className="neo-copy mt-1 text-center text-[10px] font-bold text-[#655f58]">
-              {preview.file_name}
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
 }

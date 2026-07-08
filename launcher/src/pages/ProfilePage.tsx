@@ -469,7 +469,6 @@ function createMockProfilePageData(username: string): ProfilePageData {
       keyboard: "Low-profile mechanical",
       mouse: "Wireless esports mouse",
       headset: null,
-      controller: null,
       setupImageUrl: null,
       visibility: "public",
       createdAt: now,

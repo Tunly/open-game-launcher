@@ -8,7 +8,6 @@ export * from "./plugins";
 export * from "./store";
 export * from "./backup";
 export * from "./games";
-export * from "./controllers";
 export * from "./cloud-saves";
 export * from "./downloads";
 export * from "./lan";

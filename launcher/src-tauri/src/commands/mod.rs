@@ -3,7 +3,6 @@ pub mod backup;
 pub mod battlenet;
 pub mod broadcast;
 pub mod client_manager;
-pub mod controller;
 pub mod cross_store_save;
 pub mod crossplay;
 pub mod deeplink;

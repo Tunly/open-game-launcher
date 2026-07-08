@@ -6,12 +6,7 @@ import { LibraryContext, type LibraryContextValue } from "../../context/LibraryC
 import { type GameGroup } from "../../lib/game-groups";
 import { GameDetailPanel } from "./GameDetailPanel";
 
-vi.mock("../../hooks/useActivityLogger", () => ({
-  useActivityLogger: () => ({ logScreenshot: vi.fn() }),
-}));
-
 vi.mock("../../lib/launcher", () => ({
-  captureScreenshot: vi.fn(),
   moveGame: vi.fn(),
 }));
 
@@ -116,7 +111,6 @@ function createLibraryContext(options: LibraryRenderOptions = {}): LibraryContex
 
   return {
     achievements: {
-      handleSyncAchievements: noop,
       syncingAchievementGameId: null,
     },
     dynamic: {

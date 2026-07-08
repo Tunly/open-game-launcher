@@ -11,7 +11,6 @@ export function HardwareShowcase({ hardware }: { hardware: UserHardware | null }
         ["Keyboard", hardware.keyboard],
         ["Mouse", hardware.mouse],
         ["Headset", hardware.headset],
-        ["Controller", hardware.controller],
       ].filter(([, value]) => Boolean(value))
     : [];
 

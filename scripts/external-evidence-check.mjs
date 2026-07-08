@@ -79,7 +79,6 @@ const hardwareEvidenceFields = Object.freeze([
 
 const rolloutEvidenceFields = Object.freeze([
   "Community rollout evidence",
-  "Controller layout/profile sync evidence",
   "Marketplace evidence",
   "Mobile distribution evidence",
   "Push-provider evidence",
@@ -323,7 +322,6 @@ export const evidenceGates = Object.freeze([
     ],
     requiredProofs: [
       "Hosted community artwork/screenshots rollout is exercised beyond fixtures.",
-      "Production controller layout rollout and profile sync are verified.",
       "Plugin marketplace execution/update channels are externally reviewed.",
       "Native mobile apps, push-provider delivery, and store distribution are verified.",
       "Hosted production deployment evidence is attached.",
@@ -339,11 +337,6 @@ export const evidenceGates = Object.freeze([
             "screenshot-rollout",
           ],
         },
-      "Production controller layout rollout and profile sync are verified.": {
-        capture:
-          "Verify production controller layout rollout and profile sync, then attach redacted sync and rollout evidence.",
-        terms: ["controller-layout", "profile-sync"],
-      },
       "Plugin marketplace execution/update channels are externally reviewed.": {
         capture:
           "Attach external review evidence for plugin marketplace execution and update channels without including raw package secrets.",
@@ -1596,13 +1589,6 @@ const fieldSpecificEvidenceValidators = Object.freeze({
       /screenshot/i,
       /rollout/i,
     ]),
-  "Controller layout/profile sync evidence": (value) =>
-    evidenceIdentifierValueMatchesAll(value, [
-      /controller/i,
-      /layout/i,
-      /profile/i,
-      /sync/i,
-    ]),
   "Hosted deploy evidence": hostedDeployWorkflowEvidenceValueIsSpecific,
   "Hardware profile": (value) =>
     evidenceIdentifierValueMatches(value, [/hardware/i, /profile/i]),
@@ -2063,9 +2049,6 @@ function expectedProofEvidenceValuePatterns(proof) {
   if (/hosted community artwork\/screenshots/.test(normalizedProof)) {
     return [/community/i, /artwork/i, /screenshots?/i, /rollout/i];
   }
-  if (/production controller layout/.test(normalizedProof)) {
-    return [/controller[-_\s]?layout/i, /profile[-_\s]?sync/i];
-  }
   if (/plugin marketplace/.test(normalizedProof)) {
     return [
       /plugin[-_\s]?marketplace/i,
@@ -2504,7 +2487,7 @@ export function artifactTemplate(gate, artifactPath) {
     "",
     "When a proof row is checked, fill the matching evidence line with a specific redacted run ID, dashboard link, external artifact locator, workflow ID, signed log, or `sha256:<64-hex>` reference. Accepted dashboard URL hosts are Supabase, Stripe live Dashboard, GitHub Actions/releases/deployments, Vercel, Netlify, Cloudflare, App Store Connect, Google Play Console, Firebase, and OneSignal; otherwise use `run:`/`artifact:`/`sha256:` style locators. Generic text such as `redacted`, `see above`, local files, localhost URLs, and example URLs do not satisfy preflight.",
     "Stripe Dashboard URLs used for Store/Stripe evidence must point at concrete detail paths such as `/events/evt_...`, `/invoices/in_...`, or targeted tax/invoice settings; generic `/settings`, `/customers`, and `/payments` dashboard pages do not satisfy preflight.",
-    "Proof evidence values must name the proof lane they support, for example `stripe-webhook`, `stripe-tax-invoice`, `license-key-custody-live-license-issuance`, `price-drop`, `presence-poll`, `account-deletion`, `mod.io/CurseForge`, `non-steam-presence-bridge-provider`, `provider-approved-catalog-cloud-transfer`, `achievement-provider-cache-real-client`, `fullscreen-anti-cheat-overlay`, `backup-restore`, `client-mount-apply-provider-client`, `community-artwork-screenshot-rollout`, `controller-layout-profile-sync`, `plugin-marketplace-execution-update`, `mobile-push-provider-store-distribution`, or `hosted-deploy`; bare `evt_...` values are accepted only for the Stripe webhook signature proof. Syntactically specific but generic IDs such as `run-generic-1` stay blocked. Compound proof values must include every required term in the same value: mod-provider evidence includes both `mod.io` and `CurseForge`; external-drive backup/restore proof evidence includes `Windows`, `macOS`, and `Linux`; long native overlay proof evidence includes a numeric measured duration/window; hardware matrix evidence includes one `Windows`, one `macOS`, and one `Linux` row, each with `title:`, `client:`, and a specific locator.",
+    "Proof evidence values must name the proof lane they support, for example `stripe-webhook`, `stripe-tax-invoice`, `license-key-custody-live-license-issuance`, `price-drop`, `presence-poll`, `account-deletion`, `mod.io/CurseForge`, `non-steam-presence-bridge-provider`, `provider-approved-catalog-cloud-transfer`, `achievement-provider-cache-real-client`, `fullscreen-anti-cheat-overlay`, `backup-restore`, `client-mount-apply-provider-client`, `community-artwork-screenshot-rollout`, `plugin-marketplace-execution-update`, `mobile-push-provider-store-distribution`, or `hosted-deploy`; bare `evt_...` values are accepted only for the Stripe webhook signature proof. Syntactically specific but generic IDs such as `run-generic-1` stay blocked. Compound proof values must include every required term in the same value: mod-provider evidence includes both `mod.io` and `CurseForge`; external-drive backup/restore proof evidence includes `Windows`, `macOS`, and `Linux`; long native overlay proof evidence includes a numeric measured duration/window; hardware matrix evidence includes one `Windows`, one `macOS`, and one `Linux` row, each with `title:`, `client:`, and a specific locator.",
     "",
     ...requiredProofs.map((proof) => `- Evidence for ${proof}:`),
     "",
@@ -2521,13 +2504,6 @@ export function artifactTemplate(gate, artifactPath) {
     ...(requiredArtifactEvidenceFields.includes("Community rollout evidence")
       ? [
           "Community rollout evidence must include `community`, `artwork`, `screenshot`, and `rollout`.",
-        ]
-      : []),
-    ...(requiredArtifactEvidenceFields.includes(
-      "Controller layout/profile sync evidence",
-    )
-      ? [
-          "Controller layout/profile sync evidence must include `controller`, `layout`, `profile`, and `sync`.",
         ]
       : []),
     ...(requiredArtifactEvidenceFields.includes("Marketplace evidence")
@@ -2778,8 +2754,6 @@ function fieldRequirementHint(field, group = null) {
       return "include both mod.io and CurseForge plus provider-client evidence";
     case "Community rollout evidence":
       return "include community artwork screenshot rollout evidence";
-    case "Controller layout/profile sync evidence":
-      return "include controller layout profile sync evidence";
     case "Marketplace evidence":
       return "include plugin marketplace execution or update review evidence";
     case "Mobile distribution evidence":

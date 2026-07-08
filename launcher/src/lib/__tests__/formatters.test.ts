@@ -207,6 +207,7 @@ describe("normalizeLauncherKey", () => {
   it("identifies launcher from label", () => {
     expect(normalizeLauncherKey("Steam")).toBe("steam");
     expect(normalizeLauncherKey("EA App")).toBe("ea");
+    expect(normalizeLauncherKey("Uplay")).toBe("ubisoft");
   });
 
   it("falls back to unknown when nothing matches and no label is provided", () => {
@@ -236,6 +237,12 @@ describe("matchesLauncherFilter", () => {
 
   it("matches case-insensitively", () => {
     expect(matchesLauncherFilter(makeGame({ id: "ea-game" }), "EA")).toBe(true);
+  });
+
+  it("matches legacy Uplay rows as Ubisoft", () => {
+    expect(
+      matchesLauncherFilter(makeGame({ id: "legacy-635", launcher: "Uplay" as never }), "Ubisoft"),
+    ).toBe(true);
   });
 
   it("rejects non-matching sources", () => {

@@ -91,7 +91,6 @@ const hardwareEvidenceFields = [
 
 const rolloutEvidenceFields = [
   "Community rollout evidence",
-  "Controller layout/profile sync evidence",
   "Marketplace evidence",
   "Mobile distribution evidence",
   "Push-provider evidence",
@@ -406,17 +405,15 @@ export const EXTERNAL_COMPLETION_EVIDENCE_GATE_INPUTS: ExternalCompletionEvidenc
     id: "rollout-tracks",
     label: "Rollout tracks",
     localEvidence:
-      "Community, controller, plugin, mobile, push, and hosted deployment readiness are covered by local contracts.",
+      "Community, plugin, mobile, push, and hosted deployment readiness are covered by local contracts.",
     proofRequirements: [
       "Hosted community artwork/screenshots rollout is exercised beyond fixtures.",
-      "Production controller layout rollout and profile sync are verified.",
       "Plugin marketplace execution/update channels are externally reviewed.",
       "Native mobile apps, push-provider delivery, and store distribution are verified.",
       "Hosted production deployment evidence is attached.",
     ],
     requiredEnv: [],
-    skippedProof:
-      "No community rollout, controller production sync, marketplace run, app-store, or deployment packet.",
+    skippedProof: "No community rollout, marketplace run, app-store, or deployment packet.",
     surface: "Rollout Gate",
   },
 ];
@@ -1441,9 +1438,12 @@ type EvidenceDetailFieldValidator = (
 const fieldSpecificEvidenceValidators: Partial<Record<string, EvidenceDetailFieldValidator>> = {
   "Commit SHA": commitShaValueIsValid,
   "Community rollout evidence": (value) =>
-    evidenceIdentifierValueMatches(value, [/community/i, /artwork/i, /screenshot/i, /rollout/i]),
-  "Controller layout/profile sync evidence": (value) =>
-    evidenceIdentifierValueMatches(value, [/controller/i, /layout/i, /profile/i, /sync/i]),
+    evidenceIdentifierValueMatchesAll(value, [
+      /community/i,
+      /artwork/i,
+      /screenshots?/i,
+      /rollout/i,
+    ]),
   "Hosted deploy evidence": hostedDeployWorkflowEvidenceValueIsSpecific,
   "Hardware profile": (value) => evidenceIdentifierValueMatches(value, [/hardware/i, /profile/i]),
   "License key custody evidence": (value) =>
@@ -1604,9 +1604,6 @@ function expectedProofEvidenceValuePattern(proof: string) {
   }
   if (/hosted community artwork\/screenshots/.test(normalizedProof)) {
     return [/community/i, /artwork/i, /screenshots?/i, /rollout/i];
-  }
-  if (/production controller layout/.test(normalizedProof)) {
-    return [/controller[-_\s]?layout/i, /profile[-_\s]?sync/i];
   }
   if (/plugin marketplace/.test(normalizedProof)) {
     return [

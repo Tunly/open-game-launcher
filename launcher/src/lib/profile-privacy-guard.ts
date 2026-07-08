@@ -329,7 +329,6 @@ export function createVerifyProfilePrivacyGuardData(): ProfilePageData {
       keyboard: "Private split board",
       mouse: "Hidden sensor mouse",
       headset: null,
-      controller: null,
       setupImageUrl: null,
       visibility: "private",
       createdAt: now,

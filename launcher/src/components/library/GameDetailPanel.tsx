@@ -2,8 +2,7 @@ import { useMemo, useRef } from "react";
 
 import { GameDetails } from "./GameDetails";
 import { useLibraryContext } from "../../context/useLibraryContext";
-import { useActivityLogger } from "../../hooks/useActivityLogger";
-import { captureScreenshot, moveGame } from "../../lib/launcher";
+import { moveGame } from "../../lib/launcher";
 import { createVerifyCrossStoreSaveMigrationReadiness } from "../../lib/cross-store-save-migration-readiness";
 import { createVerifyHostedCommunityArtworkReadiness } from "../../lib/hosted-community-artwork-readiness";
 import { createVerifyHostedCommunityArtworkModerationConsole } from "../../lib/hosted-community-artwork-moderation-console";
@@ -16,7 +15,6 @@ import { createVerifyIgdbCrossPlayReadinessPlan } from "../../lib/igdb-cross-pla
 export function GameDetailPanel({ verifyMode }: { verifyMode?: string | null }) {
   const ctx = useLibraryContext();
   const detailScrollRef = useRef<HTMLElement>(null);
-  const { logScreenshot } = useActivityLogger();
 
   const selectedGroup = ctx.filters.selectedGroup;
   const selectedGame = selectedGroup?.displayGame ?? null;
@@ -61,20 +59,6 @@ export function GameDetailPanel({ verifyMode }: { verifyMode?: string | null }) 
         : undefined,
     [isHostedCommunityArtworkVerify, selectedGame],
   );
-  async function handleCaptureScreenshot() {
-    const target = selectedGame;
-    if (!target) return;
-    try {
-      const dataUrl = await captureScreenshot();
-      void logScreenshot(target.id, target.title, dataUrl);
-      ctx.setStatusMessage("Screenshot captured and posted to your activity feed.");
-    } catch (err) {
-      ctx.setStatusMessage(
-        `Screenshot failed: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
-  }
-
   return (
     <GameDetails
       selectedGame={selectedGame}
@@ -89,12 +73,6 @@ export function GameDetailPanel({ verifyMode }: { verifyMode?: string | null }) 
       )}
       isGameRunning={Boolean(selectedVariants.some((game) => ctx.sync.runningGameIds.has(game.id)))}
       gameRuntime={selectedRuntime}
-      handleCaptureScreenshot={handleCaptureScreenshot}
-      handleSyncAchievements={ctx.achievements.handleSyncAchievements}
-      isSyncingAchievements={Boolean(
-        ctx.achievements.syncingAchievementGameId &&
-        selectedVariants.some((game) => game.id === ctx.achievements.syncingAchievementGameId),
-      )}
       gameVariants={selectedVariants}
       hostedCommunityArtworkReadiness={hostedCommunityArtworkReadiness}
       hostedCommunityArtworkModerationConsole={hostedCommunityArtworkModerationConsole}

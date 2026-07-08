@@ -9,6 +9,15 @@ pub struct ExternalDispatch {
     pub external_message: String,
 }
 
+pub fn is_external_launcher_game_id(game_id: &str) -> bool {
+    game_id.starts_with("steam-owned-")
+        || game_id.starts_with("steam-")
+        || game_id.starts_with("epic-owned-")
+        || game_id.starts_with("ea-owned-")
+        || game_id.starts_with("ubisoft-owned-")
+        || game_id.starts_with("battlenet-owned-")
+}
+
 /// Inspect `game_id` for external-launcher prefixes and open the
 /// matching install URI. Each prefix branch is wrapped in
 /// `validate_slug` so a malicious `game_id` cannot smuggle a
@@ -17,14 +26,12 @@ pub struct ExternalDispatch {
 /// reflected in `external_message` so the caller can surface
 /// them to the UI.
 pub fn dispatch_external_launcher(game_id: &str) -> ExternalDispatch {
-    dispatch_external_launcher_with_open_uri(game_id, |uri| {
-        let _ = crate::commands::system::open_uri(uri);
-    })
+    dispatch_external_launcher_with_open_uri(game_id, crate::commands::system::open_uri)
 }
 
 fn dispatch_external_launcher_with_open_uri<F>(game_id: &str, mut open_uri: F) -> ExternalDispatch
 where
-    F: FnMut(&str),
+    F: FnMut(&str) -> Result<(), String>,
 {
     let mut result = ExternalDispatch {
         steam_tracker_id: None,
@@ -50,11 +57,17 @@ where
             }
         };
         let uri = format!("steam://install/{safe_steam_id}");
-        open_uri(&uri);
-        result.steam_tracker_id = Some(safe_steam_id);
-        result.is_external_download = true;
-        result.external_message =
-            "Installation started in Steam. Check Steam for download progress.".to_string();
+        match open_uri(&uri) {
+            Ok(()) => {
+                result.steam_tracker_id = Some(safe_steam_id);
+                result.is_external_download = true;
+                result.external_message =
+                    "Installation started in Steam. Check Steam for download progress.".to_string();
+            }
+            Err(error) => {
+                result.external_message = format!("Steam install link failed: {error}");
+            }
+        }
     } else if game_id.starts_with("epic-owned-") {
         let epic_id = game_id
             .strip_prefix("epic-owned-")
@@ -71,10 +84,17 @@ where
         match validate_slug(ea_id) {
             Ok(safe_ea_id) => {
                 let uri = format!("origin2://game/launch?offerIds={safe_ea_id}&autoDownload=true");
-                open_uri(&uri);
-                result.is_external_download = true;
-                result.external_message =
-                    "Installation started via EA App. Check EA App for progress.".to_string();
+                match open_uri(&uri) {
+                    Ok(()) => {
+                        result.is_external_download = true;
+                        result.external_message =
+                            "Installation started via EA App. Check EA App for progress."
+                                .to_string();
+                    }
+                    Err(error) => {
+                        result.external_message = format!("EA install link failed: {error}");
+                    }
+                }
             }
             Err(error) => {
                 result.external_message = format!("EA install link rejected: {error}");
@@ -86,11 +106,17 @@ where
         match validate_slug(uplay_id) {
             Ok(safe_uplay_id) => {
                 let uri = format!("uplay://install/{safe_uplay_id}");
-                open_uri(&uri);
-                result.is_external_download = true;
-                result.external_message =
-                    "Installation started in Ubisoft Connect. Check Ubisoft Connect for progress."
-                        .to_string();
+                match open_uri(&uri) {
+                    Ok(()) => {
+                        result.is_external_download = true;
+                        result.external_message =
+                            "Installation started in Ubisoft Connect. Check Ubisoft Connect for progress."
+                                .to_string();
+                    }
+                    Err(error) => {
+                        result.external_message = format!("Ubisoft install link failed: {error}");
+                    }
+                }
             }
             Err(error) => {
                 result.external_message = format!("Ubisoft install link rejected: {error}");
@@ -102,11 +128,18 @@ where
         match validate_slug(bnet_id) {
             Ok(safe_bnet_id) => {
                 let uri = format!("battlenet://{safe_bnet_id}");
-                open_uri(&uri);
-                result.is_external_download = true;
-                result.external_message =
-                    "Installation started in Battle.net. Check Battle.net for download progress."
-                        .to_string();
+                match open_uri(&uri) {
+                    Ok(()) => {
+                        result.is_external_download = true;
+                        result.external_message =
+                            "Installation started in Battle.net. Check Battle.net for download progress."
+                                .to_string();
+                    }
+                    Err(error) => {
+                        result.external_message =
+                            format!("Battle.net install link failed: {error}");
+                    }
+                }
             }
             Err(error) => {
                 result.external_message = format!("Battle.net install link rejected: {error}");
@@ -129,7 +162,8 @@ mod tests {
             let mut opened_uris = Vec::new();
 
             let result = dispatch_external_launcher_with_open_uri(game_id, |uri| {
-                opened_uris.push(uri.to_string())
+                opened_uris.push(uri.to_string());
+                Ok(())
             });
 
             assert_eq!(result.steam_tracker_id.as_deref(), Some(expected_steam_id));
@@ -197,6 +231,23 @@ mod tests {
     }
 
     #[test]
+    fn safe_ubisoft_owned_id_opens_install_uri() {
+        let mut opened_uris = Vec::new();
+
+        let result = dispatch_external_launcher_with_open_uri("ubisoft-owned-635", |uri| {
+            opened_uris.push(uri.to_string());
+            Ok(())
+        });
+
+        assert!(result.is_external_download);
+        assert_eq!(opened_uris, vec!["uplay://install/635"]);
+        assert_eq!(
+            result.external_message,
+            "Installation started in Ubisoft Connect. Check Ubisoft Connect for progress."
+        );
+    }
+
+    #[test]
     fn epic_owned_id_tracks_without_uri_validation_or_opening_uri() {
         let epic_id = "Fortnite/../../payload & still-tracked";
         let game_id = format!("epic-owned-{epic_id}");
@@ -226,5 +277,21 @@ mod tests {
             assert!(!result.is_external_download);
             assert!(result.external_message.is_empty());
         }
+    }
+
+    #[test]
+    fn ubisoft_open_failure_does_not_start_external_download() {
+        let result = dispatch_external_launcher_with_open_uri("ubisoft-owned-635", |uri| {
+            assert_eq!(uri, "uplay://install/635");
+            Err("protocol handler is not registered".to_string())
+        });
+
+        assert_eq!(result.steam_tracker_id, None);
+        assert_eq!(result.epic_tracker_id, None);
+        assert!(!result.is_external_download);
+        assert_eq!(
+            result.external_message,
+            "Ubisoft install link failed: protocol handler is not registered"
+        );
     }
 }

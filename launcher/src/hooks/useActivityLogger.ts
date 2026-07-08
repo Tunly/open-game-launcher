@@ -9,7 +9,6 @@ interface ActivityPayload {
   gameId?: string | null;
   gameTitle?: string | null;
   achievementName?: string | null;
-  screenshotUrl?: string | null;
   metadata?: Record<string, unknown>;
   visibility?: Visibility;
 }
@@ -56,22 +55,5 @@ export function useActivityLogger() {
     [],
   );
 
-  const logScreenshot = useCallback(
-    (
-      gameId: string | null,
-      gameTitle: string | null,
-      screenshotUrl: string | null,
-      metadata?: Record<string, unknown>,
-    ) =>
-      safePost("screenshot_taken", {
-        gameId,
-        gameTitle,
-        screenshotUrl,
-        metadata,
-        visibility: "friends_only",
-      }),
-    [],
-  );
-
-  return { logGameStart, logGameStop, logAchievement, logScreenshot };
+  return { logGameStart, logGameStop, logAchievement };
 }

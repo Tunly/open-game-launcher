@@ -93,7 +93,6 @@ export function getBrowserHardwareInfo(): HardwareInfo {
       : null;
 
   return {
-    controller: null,
     cpu: cores ? `${cores} logical cores` : null,
     gpu: getBrowserGpuName(),
     headset: null,

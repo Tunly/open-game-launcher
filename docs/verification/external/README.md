@@ -68,8 +68,8 @@ stale or mismatched scheduler rows.
   a numeric measured duration/window, backup/restore across Windows, macOS, and
   Linux, and a matrix with one row per OS that names title, client, and locator
   coverage plus real provider-client mount/apply evidence.
-- `rollout-tracks` needs hosted community rollout, controller layout/profile
-  sync, plugin marketplace review, mobile store/push provider evidence, and
+- `rollout-tracks` needs hosted community rollout, plugin marketplace review,
+  mobile store/push provider evidence, and
   hosted production deployment evidence.
 
 For full field-level rules and accepted locator shapes, use

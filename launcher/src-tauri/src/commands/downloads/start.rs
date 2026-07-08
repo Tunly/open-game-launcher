@@ -40,6 +40,16 @@ pub async fn start_download(
         return crate::commands::gog::gog_start_download(app, gog_id.to_string(), None).await;
     }
 
+    let is_external_launcher_request = external_dispatch::is_external_launcher_game_id(&game_id);
+    if is_external_launcher_request && is_download_game_installed(&game_id) {
+        return Ok(StartDownloadResponse {
+            game_id,
+            download_id,
+            status: DownloadStartStatus::AlreadyInstalled,
+            message: "Game is already installed and was not added to Downloads.".to_string(),
+        });
+    }
+
     let external_dispatch::ExternalDispatch {
         mut steam_tracker_id,
         mut epic_tracker_id,
@@ -49,13 +59,8 @@ pub async fn start_download(
 
     let title = resolve_download_title(&game_id, game_title);
 
-    if is_external_download && is_download_game_installed(&game_id) {
-        return Ok(StartDownloadResponse {
-            game_id,
-            download_id,
-            status: DownloadStartStatus::AlreadyInstalled,
-            message: "Game is already installed and was not added to Downloads.".to_string(),
-        });
+    if is_external_launcher_request && !is_external_download && !external_message.is_empty() {
+        return Err(external_message);
     }
 
     let internal_download_source = download_url

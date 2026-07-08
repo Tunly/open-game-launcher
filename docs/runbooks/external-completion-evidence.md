@@ -234,8 +234,7 @@ such as `stripe-webhook`, `stripe-tax-invoice`,
 `provider-approved-catalog-cloud-transfer`,
 `achievement-provider-cache-real-client`, `fullscreen-anti-cheat-overlay`,
 `backup-restore`, `client-mount-apply-provider-client`,
-`community-artwork-screenshot-rollout`, `controller-layout-profile-sync`,
-`plugin-marketplace-execution-update`,
+`community-artwork-screenshot-rollout`, `plugin-marketplace-execution-update`,
 `mobile-push-provider-store-distribution`, or `hosted-deploy`. Bare `evt_...`
 values are accepted only for the Stripe webhook signature proof. Syntactically
 specific but generic IDs such as `run-generic-1` stay blocked. Compound proof
@@ -455,7 +454,6 @@ Required artifacts:
 Proof required:
 
 - Hosted community artwork/screenshots rollout is exercised beyond fixtures.
-- Production controller layout rollout and profile sync are verified.
 - Plugin marketplace execution/update channels are externally reviewed.
 - Native mobile apps, push-provider delivery, and store distribution are verified.
 - Hosted production deployment evidence is attached.
@@ -463,7 +461,6 @@ Proof required:
 Gate-specific evidence rows:
 
 - Community rollout evidence.
-- Controller layout/profile sync evidence.
 - Marketplace evidence.
 - Mobile distribution evidence.
 - Push-provider evidence.

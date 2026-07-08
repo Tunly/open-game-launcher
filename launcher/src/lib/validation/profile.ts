@@ -41,7 +41,6 @@ const showcaseTypeSchema = z.enum([
   "rare_achievements",
   "latest_achievements",
   "completionist",
-  "screenshots",
   "stats",
   "collections",
   "reviews",
@@ -87,7 +86,6 @@ export const hardwareSchema = z.object({
   keyboard: z.string().max(120).nullable().optional(),
   mouse: z.string().max(120).nullable().optional(),
   headset: z.string().max(120).nullable().optional(),
-  controller: z.string().max(120).nullable().optional(),
   setupImageUrl: z.string().url().nullable().optional(),
   visibility: visibilitySchema.optional(),
 });

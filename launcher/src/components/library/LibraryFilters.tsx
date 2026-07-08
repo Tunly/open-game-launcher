@@ -26,12 +26,7 @@ const PLAYER_OPTIONS = [
   "Shared/Split Screen",
   "MMO",
 ] as const;
-const HARDWARE_OPTIONS = [
-  "Steam Deck Verified",
-  "Steam Deck Playable",
-  "Full Controller Support",
-  "VR",
-] as const;
+const HARDWARE_OPTIONS = ["Steam Deck Verified", "Steam Deck Playable", "VR"] as const;
 const GENRE_OPTIONS = [
   "Action",
   "Adventure",

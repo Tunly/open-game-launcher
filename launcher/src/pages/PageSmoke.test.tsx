@@ -8,7 +8,6 @@ import { invoke, isTauri } from "@tauri-apps/api/core";
 import { AchievementsPage } from "./AchievementsPage";
 import { AuthPage } from "./AuthPage";
 import { CommunityPage } from "./CommunityPage";
-import { ControllersPage } from "./ControllersPage";
 import { DeveloperPortalPage } from "./DeveloperPortalPage";
 import { DownloadsPage } from "./DownloadsPage";
 import { EditProfilePage } from "./EditProfilePage";
@@ -61,7 +60,6 @@ const launcherMocks = vi.hoisted(() => ({
   fetchSteamProfileName: vi.fn(),
   fetchXboxOwnedGames: vi.fn(),
   getBroadcastStreamKeyVaultStatus: vi.fn(),
-  getControllerRuntimeStatus: vi.fn(),
   getDefaultInstallDir: vi.fn(),
   getDownloadQueue: vi.fn(),
   getLicenseDeviceId: vi.fn(),
@@ -73,7 +71,6 @@ const launcherMocks = vi.hoisted(() => ({
   launchCrossPlayJoin: vi.fn(),
   launchGame: vi.fn(),
   listInstalledGames: vi.fn(),
-  listControllers: vi.fn(),
   normalizeSteamOwnedGames: vi.fn(),
   openBattleNetLoginWindow: vi.fn(),
   openAchievementCacheFolder: vi.fn(),
@@ -206,10 +203,6 @@ vi.mock("recharts", () => ({
   YAxis: () => null,
 }));
 
-vi.mock("../components/controllers/ControllerLayoutEditor", () => ({
-  ControllerLayoutEditor: () => <section aria-label="Controller layout editor mock" />,
-}));
-
 vi.mock("../components/launcher/StoreGameCard", () => ({
   StoreGameCard: ({ game }: { game: { title: string } }) => <article>{game.title}</article>,
 }));
@@ -290,7 +283,6 @@ vi.mock("../hooks/useCurrentUser", () => ({
 
 vi.mock("../hooks/library/useAchievementAutoSync", () => ({
   useAchievementAutoSync: () => ({
-    handleSyncAchievements: noop,
     syncingAchievementGameId: null,
   }),
 }));
@@ -561,16 +553,6 @@ describe("routed page smoke coverage", () => {
       configured: false,
       message: "Stream-key vault empty.",
     });
-    launcherMocks.getControllerRuntimeStatus.mockResolvedValue({
-      activeGameId: null,
-      activeLayoutName: "Arcade Default",
-      activeTemplate: "gamepadGyro",
-      configPath: "test",
-      driverMessage: "Runtime ready for local routing.",
-      keyboardMouseEmulationReady: true,
-      nativePassthroughReady: false,
-      vigemBusDetected: true,
-    });
     launcherMocks.getDefaultInstallDir.mockResolvedValue("/games");
     launcherMocks.getDownloadQueue.mockResolvedValue([]);
     launcherMocks.getLicenseDeviceId.mockResolvedValue("device-test");
@@ -591,7 +573,6 @@ describe("routed page smoke coverage", () => {
     launcherMocks.launchCrossPlayJoin.mockResolvedValue(undefined);
     launcherMocks.launchGame.mockResolvedValue(undefined);
     launcherMocks.listInstalledGames.mockResolvedValue([]);
-    launcherMocks.listControllers.mockResolvedValue([]);
     launcherMocks.normalizeSteamOwnedGames.mockImplementation((games) => games);
     launcherMocks.openAchievementCacheFolder.mockResolvedValue("/tmp/achievements");
     launcherMocks.openBattleNetLoginWindow.mockResolvedValue(undefined);
@@ -750,10 +731,10 @@ describe("routed page smoke coverage", () => {
     });
   });
 
-  it("renders the community relay board", () => {
+  it("renders the community activity board", () => {
     renderRoutedPage(<CommunityPage />, "/community");
 
-    expect(screen.getByRole("heading", { name: /community hub/i })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: /community activity/i })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: /community feed/i })).toBeInTheDocument();
   });
 
@@ -790,13 +771,6 @@ describe("routed page smoke coverage", () => {
 
     expect(screen.getByRole("heading", { level: 1, name: /remote install/i })).toBeInTheDocument();
     expect(screen.getByText(/remote install web dashboard/i)).toBeInTheDocument();
-  });
-
-  it("renders the controllers support route after desktop bridge fallback load", async () => {
-    renderRoutedPage(<ControllersPage />, "/controllers");
-
-    expect(await screen.findByRole("heading", { name: /controller support/i })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: /local multiplayer hub/i })).toBeInTheDocument();
   });
 
   it("renders the mods manager route after local library load", async () => {
@@ -1001,7 +975,7 @@ describe("routed page smoke coverage", () => {
 
     expect(screen.getByText("OG-Launcher")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Friends" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Screenshots" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Screenshots" })).not.toBeInTheDocument();
   });
 
   it("sends overlay friend invites from an inline form without native prompts", async () => {

@@ -572,7 +572,6 @@ export interface HardwareInfo {
   keyboard: string | null;
   mouse: string | null;
   headset: string | null;
-  controller: string | null;
   source: "native" | "browser";
 }
 

@@ -10,6 +10,7 @@ const SOURCE_LABELS: Record<string, string> = {
   manual: "Manual",
   steam: "Steam",
   ubisoft: "Ubisoft",
+  uplay: "Ubisoft",
   windows: "Windows",
   xbox: "Xbox",
 };
@@ -138,7 +139,7 @@ function launcherHintFromLabel(launcher: string): Game["launcher"] | null {
   if (value.includes("steam")) return "steam";
   if (value.includes("epic")) return "epic";
   if (value.includes("gog")) return "gog";
-  if (value.includes("ubisoft")) return "ubisoft";
+  if (value.includes("ubisoft") || value.includes("uplay")) return "ubisoft";
   if (value.includes("xbox")) return "xbox";
   if (value.includes("battle.net") || value.includes("battlenet")) return "battlenet";
   if (
@@ -177,7 +178,7 @@ export function getGameSource(game: Game): string {
   if (description.includes("ea app") || description.includes("origin")) return "ea";
   if (description.includes("epic")) return "epic";
   if (description.includes("gog")) return "gog";
-  if (description.includes("ubisoft")) return "ubisoft";
+  if (description.includes("ubisoft") || description.includes("uplay")) return "ubisoft";
   if (description.includes("xbox")) return "xbox";
   if (description.includes("battle.net")) return "battlenet";
   if (description.includes("steam")) return "steam";

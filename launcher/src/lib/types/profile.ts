@@ -8,7 +8,6 @@ type ShowcaseType =
   | "rare_achievements"
   | "latest_achievements"
   | "completionist"
-  | "screenshots"
   | "stats"
   | "collections"
   | "reviews"
@@ -197,7 +196,6 @@ export interface UserHardware {
   keyboard: string | null;
   mouse: string | null;
   headset: string | null;
-  controller: string | null;
   setupImageUrl: string | null;
   visibility: ProfileVisibility;
   createdAt: string;

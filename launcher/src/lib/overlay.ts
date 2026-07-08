@@ -1,11 +1,7 @@
 import { listen } from "@tauri-apps/api/event";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { useEffect } from "react";
-import type {
-  ScreenshotMeta,
-  AchievementPopupPayload,
-  NativeOverlaySettings,
-} from "./types/overlay";
+import type { AchievementPopupPayload, NativeOverlaySettings } from "./types/overlay";
 
 export async function toggleInGameOverlay(): Promise<boolean> {
   return invoke("toggle_in_game_overlay");
@@ -13,18 +9,6 @@ export async function toggleInGameOverlay(): Promise<boolean> {
 
 export async function toggleFpsHud(): Promise<boolean> {
   return invoke("toggle_fps_hud");
-}
-
-export async function captureScreenshot(): Promise<ScreenshotMeta> {
-  return invoke("capture_screenshot");
-}
-
-export async function listScreenshots(): Promise<ScreenshotMeta[]> {
-  return invoke("list_screenshots");
-}
-
-export async function deleteScreenshot(path: string): Promise<void> {
-  return invoke("delete_screenshot", { path });
 }
 
 export async function getOverlaySettings(): Promise<NativeOverlaySettings> {
@@ -75,26 +59,6 @@ export function useAchievementPopup(callback: (payload: AchievementPopupPayload)
 
     listen("achievement-unlocked", (event) => {
       callback(event.payload as AchievementPopupPayload);
-    }).then((fn) => {
-      unlisten = fn;
-    });
-
-    return () => {
-      if (unlisten) unlisten();
-    };
-  }, [callback]);
-}
-
-export function useScreenshotCaptured(callback: (meta: ScreenshotMeta) => void) {
-  useEffect(() => {
-    if (!isTauri()) {
-      return;
-    }
-
-    let unlisten: (() => void) | null = null;
-
-    listen("screenshot-captured", (event) => {
-      callback(event.payload as ScreenshotMeta);
     }).then((fn) => {
       unlisten = fn;
     });

@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 
 import { Sidebar, type PageKey } from "./Sidebar";
-import { DesktopTitleBar } from "./DesktopTitleBar";
+import { DesktopWindowChrome } from "./DesktopWindowChrome";
 import { RemoteCompanionAutoPollHost } from "./RemoteCompanionAutoPollHost";
 import {
   APP_SHELL_SKIN_CHANGED_EVENT,
@@ -159,6 +159,7 @@ export function AppShell({
   ).length;
 
   const downloadCount = useDownloadStore(selectActiveCount);
+  const isLibraryPage = activePage === "library";
 
   useEffect(() => {
     document.documentElement.dataset.ogShellSkin = shellSkinId;
@@ -451,126 +452,147 @@ export function AppShell({
   }
 
   return (
-    <div className="app-shell-root flex min-h-screen min-w-0" data-og-shell-skin={shellSkinId}>
+    <div
+      className={
+        isLibraryPage
+          ? "app-shell-root flex h-screen min-h-0 min-w-0 overflow-hidden"
+          : "app-shell-root flex min-h-screen min-w-0"
+      }
+      data-og-shell-skin={shellSkinId}
+    >
       <RemoteCompanionAutoPollHost />
-      <div className="min-w-0 flex-1">
-        <DesktopTitleBar />
-        <header className="app-main-header app-shell-header sticky top-0 z-30 flex min-h-20 w-full max-w-full flex-wrap items-center gap-x-3 gap-y-2 overflow-visible border-b-[7px] border-black px-3 py-3 sm:px-4 lg:px-5">
-          <button
-            className="neo-title app-shell-brand max-w-[min(50vw,250px)] shrink truncate text-left text-[1.75rem] leading-none sm:text-[2rem] lg:text-[2.5rem] xl:max-w-none xl:text-[3rem]"
-            type="button"
-            onClick={() => onNavigate("store")}
-          >
-            OG-Launcher
-          </button>
-
-          <div className="order-3 min-w-0 flex-1 basis-full sm:order-none sm:basis-auto">
-            <Sidebar
-              activePage={activePage}
-              downloadCount={downloadCount}
-              onNavigate={onNavigate}
-            />
+      <div
+        className={
+          isLibraryPage
+            ? "flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
+            : "min-w-0 flex-1"
+        }
+      >
+        <header
+          className={`app-main-header app-shell-header sticky top-0 z-30 flex min-h-20 w-full max-w-full flex-col items-stretch gap-2 overflow-visible border-b-[7px] border-black px-3 py-3 sm:px-4 lg:px-5 ${
+            isLibraryPage ? "shrink-0" : ""
+          }`}
+        >
+          <div className="app-shell-brand-row flex min-w-0 items-center gap-3">
+            <button
+              className="neo-title app-shell-brand min-w-0 max-w-[min(65vw,420px)] shrink truncate text-left text-[1.75rem] leading-none sm:text-[2rem] lg:text-[2.5rem] xl:text-[3rem]"
+              type="button"
+              onClick={() => onNavigate("store")}
+            >
+              OG-Launcher
+            </button>
+            <DesktopWindowChrome />
           </div>
 
-          <div className="ml-auto flex shrink-0 items-center gap-2 sm:gap-3">
-            <div ref={notificationMenuRef} className="relative">
-              <TopIconButton
-                label="Notifications"
-                disabled={notificationItems.length === 0}
-                onClick={() => {
-                  setIsNotificationMenuOpen((isOpen) => !isOpen);
-                  setIsProfileMenuOpen(false);
-                }}
-              >
-                {unreadNotificationCount > 0 ? (
-                  <span className="neo-copy app-shell-primary absolute -right-2 -top-2 flex h-5 min-w-5 items-center justify-center border-2 border-black px-1 text-[10px] font-black">
-                    {unreadNotificationCount}
-                  </span>
-                ) : null}
-                <Bell className="h-5 w-5" />
-              </TopIconButton>
-
-              {isNotificationMenuOpen ? (
-                <NotificationMenu
-                  items={notificationItems}
-                  unreadNotificationCount={unreadNotificationCount}
-                  readNotificationIds={readNotificationIds}
-                  onClose={() => setIsNotificationMenuOpen(false)}
-                  onMarkAllRead={() =>
-                    setReadNotificationIds(new Set(notificationItems.map((item) => item.id)))
-                  }
-                  onAction={(item, page) => {
-                    setReadNotificationIds((current) => {
-                      const next = new Set(current);
-                      next.add(item.id);
-                      return next;
-                    });
-                    setIsNotificationMenuOpen(false);
-                    onNavigate(page);
-                  }}
-                />
-              ) : null}
+          <div className="app-shell-nav-row flex min-w-0 items-start gap-3">
+            <div className="min-w-0 flex-1">
+              <Sidebar
+                activePage={activePage}
+                downloadCount={downloadCount}
+                onNavigate={onNavigate}
+              />
             </div>
 
-            {authEmail ? (
-              <div ref={profileMenuRef} className="relative">
-                <button
-                  aria-expanded={isProfileMenuOpen}
-                  aria-haspopup="menu"
-                  aria-label="Open profile menu"
-                  className="app-shell-surface app-shell-dim-hover flex h-12 items-center gap-2 border-[3px] border-black p-1 shadow-[3px_3px_0_#1f1c0f] transition hover:-translate-y-0.5"
-                  disabled={isAuthLoading || !isAuthConfigured}
-                  type="button"
+            <div className="ml-auto flex shrink-0 items-start gap-2 pt-0.5 sm:gap-3">
+              <div ref={notificationMenuRef} className="relative">
+                <TopIconButton
+                  label="Notifications"
+                  disabled={notificationItems.length === 0}
                   onClick={() => {
-                    setIsProfileMenuOpen((isOpen) => !isOpen);
-                    setIsNotificationMenuOpen(false);
+                    setIsNotificationMenuOpen((isOpen) => !isOpen);
+                    setIsProfileMenuOpen(false);
                   }}
                 >
-                  <Avatar
-                    avatarUrl={authAvatarUrl}
-                    initials={avatarInitials}
-                    label={accountLabel}
-                  />
-                  <ChevronDown aria-hidden="true" className="mr-1 h-4 w-4 text-[#1f1c0f]" />
-                </button>
+                  {unreadNotificationCount > 0 ? (
+                    <span className="neo-copy app-shell-primary absolute -right-2 -top-2 flex h-5 min-w-5 items-center justify-center border-2 border-black px-1 text-[10px] font-black">
+                      {unreadNotificationCount}
+                    </span>
+                  ) : null}
+                  <Bell className="h-5 w-5" />
+                </TopIconButton>
 
-                {isProfileMenuOpen ? (
-                  <ProfileMenu
-                    accountLabel={accountLabel}
-                    authAvatarUrl={authAvatarUrl}
-                    authProfilePath={authProfilePath}
-                    avatarInitials={profileMenuInitials}
-                    isAuthProfileLoading={isAuthProfileLoading}
-                    usernameLabel={profileMenuLabel}
-                    onClose={() => setIsProfileMenuOpen(false)}
-                    onLogout={() => void handleLogout()}
-                    onNavigate={onNavigate}
-                    onRoute={onRoute}
+                {isNotificationMenuOpen ? (
+                  <NotificationMenu
+                    items={notificationItems}
+                    unreadNotificationCount={unreadNotificationCount}
+                    readNotificationIds={readNotificationIds}
+                    onClose={() => setIsNotificationMenuOpen(false)}
+                    onMarkAllRead={() =>
+                      setReadNotificationIds(new Set(notificationItems.map((item) => item.id)))
+                    }
+                    onAction={(item, page) => {
+                      setReadNotificationIds((current) => {
+                        const next = new Set(current);
+                        next.add(item.id);
+                        return next;
+                      });
+                      setIsNotificationMenuOpen(false);
+                      onNavigate(page);
+                    }}
                   />
                 ) : null}
               </div>
-            ) : (
-              <TopIconButton
-                label="Login"
-                disabled={isAuthLoading || !isAuthConfigured}
-                onClick={() => onRoute?.("/auth")}
-              >
-                <LogIn className="h-5 w-5" />
-              </TopIconButton>
-            )}
+
+              {authEmail ? (
+                <div ref={profileMenuRef} className="relative">
+                  <button
+                    aria-expanded={isProfileMenuOpen}
+                    aria-haspopup="menu"
+                    aria-label="Open profile menu"
+                    className="app-shell-surface app-shell-dim-hover flex h-12 items-center gap-2 border-[3px] border-black p-1 shadow-[3px_3px_0_#1f1c0f] transition hover:-translate-y-0.5"
+                    disabled={isAuthLoading || !isAuthConfigured}
+                    type="button"
+                    onClick={() => {
+                      setIsProfileMenuOpen((isOpen) => !isOpen);
+                      setIsNotificationMenuOpen(false);
+                    }}
+                  >
+                    <Avatar
+                      avatarUrl={authAvatarUrl}
+                      initials={avatarInitials}
+                      label={accountLabel}
+                    />
+                    <ChevronDown aria-hidden="true" className="mr-1 h-4 w-4 text-[#1f1c0f]" />
+                  </button>
+
+                  {isProfileMenuOpen ? (
+                    <ProfileMenu
+                      accountLabel={accountLabel}
+                      authAvatarUrl={authAvatarUrl}
+                      authProfilePath={authProfilePath}
+                      avatarInitials={profileMenuInitials}
+                      isAuthProfileLoading={isAuthProfileLoading}
+                      usernameLabel={profileMenuLabel}
+                      onClose={() => setIsProfileMenuOpen(false)}
+                      onLogout={() => void handleLogout()}
+                      onNavigate={onNavigate}
+                      onRoute={onRoute}
+                    />
+                  ) : null}
+                </div>
+              ) : (
+                <TopIconButton
+                  label="Login"
+                  disabled={isAuthLoading || !isAuthConfigured}
+                  onClick={() => onRoute?.("/auth")}
+                >
+                  <LogIn className="h-5 w-5" />
+                </TopIconButton>
+              )}
+            </div>
           </div>
         </header>
 
         <main
           className={
-            activePage === "library"
-              ? "app-library-main neo-dots h-[calc(100vh-80px)] min-h-0 min-w-0 overflow-hidden"
+            isLibraryPage
+              ? "app-library-main neo-dots min-h-0 min-w-0 flex-1 overflow-hidden"
               : "neo-dots min-h-[calc(100vh-80px)] min-w-0"
           }
         >
           <div
             className={
-              activePage === "library"
+              isLibraryPage
                 ? "h-full min-h-0 w-full overflow-hidden px-0 py-0"
                 : "mx-auto w-full max-w-[1220px] px-6 py-7"
             }

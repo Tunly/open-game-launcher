@@ -1,9 +1,5 @@
 import { invokeCommand } from "./shared";
 
-export function captureScreenshot(): Promise<string> {
-  return invokeCommand<string>("capture_screenshot");
-}
-
 export function launchCrossPlayJoin(platform: string, gameSlug: string): Promise<string> {
   return invokeCommand<string>("launch_cross_play_join", { platform, gameSlug });
 }

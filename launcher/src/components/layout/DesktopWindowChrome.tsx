@@ -1,9 +1,9 @@
 import { isTauri } from "@tauri-apps/api/core";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { Maximize, Minimize, Square, X } from "lucide-react";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState, type MouseEvent, type ReactNode } from "react";
 
-export function DesktopTitleBar() {
+export function DesktopWindowChrome() {
   const [isDesktop, setIsDesktop] = useState(false);
   const [isMaximized, setIsMaximized] = useState(false);
 
@@ -46,7 +46,7 @@ export function DesktopTitleBar() {
     }
   }
 
-  async function startWindowDrag(event: React.MouseEvent<HTMLDivElement>) {
+  async function startWindowDrag(event: MouseEvent<HTMLDivElement>) {
     if (event.button !== 0) {
       return;
     }
@@ -67,30 +67,25 @@ export function DesktopTitleBar() {
   }
 
   return (
-    <div className="app-shell-titlebar sticky top-0 z-50 flex h-9 select-none items-center border-b-[3px] border-black">
-      {/* Tauri drag region — keyboard handlers are intentionally omitted because
+    <div className="ml-auto flex min-h-8 min-w-0 flex-1 select-none items-center justify-end gap-3">
+      {/* Tauri drag region: keyboard handlers are intentionally omitted because
           window-drag is a native OS gesture, not a user-facing control. */}
       {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions */}
       <div
-        className="neo-copy flex min-w-0 flex-1 items-center gap-2 px-4 text-[10px] font-black uppercase tracking-[0.16em]"
+        className="hidden min-h-8 flex-1 cursor-move self-stretch sm:block"
         data-tauri-drag-region
         onDoubleClick={() => void toggleMaximizeWindow()}
         onMouseDown={(event) => void startWindowDrag(event)}
-      >
-        <span className="app-shell-primary h-3 w-3 shrink-0 border-2 border-black" />
-        <span className="truncate" data-tauri-drag-region>
-          OG-Launcher Desktop
-        </span>
-      </div>
-      <div className="flex h-full shrink-0">
+      />
+      <div className="app-window-controls flex h-8 shrink-0 items-center gap-1">
         <WindowControlButton label="Minimize" onClick={() => void minimizeWindow()}>
-          <Minimize className="h-4 w-4" />
+          <Minimize className="h-3.5 w-3.5" />
         </WindowControlButton>
         <WindowControlButton
           label={isMaximized ? "Restore" : "Maximize"}
           onClick={() => void toggleMaximizeWindow()}
         >
-          {isMaximized ? <Square className="h-3.5 w-3.5" /> : <Maximize className="h-4 w-4" />}
+          {isMaximized ? <Square className="h-3 w-3" /> : <Maximize className="h-3.5 w-3.5" />}
         </WindowControlButton>
         <WindowControlButton isDanger label="Close" onClick={() => void closeWindow()}>
           <X className="h-4 w-4" />
@@ -118,10 +113,10 @@ function WindowControlButton({
   return (
     <button
       aria-label={label}
-      className={`grid h-full w-12 place-items-center border-l-2 border-black transition ${
+      className={`app-window-control-button grid h-8 w-8 place-items-center border border-transparent bg-transparent transition ${
         isDanger
-          ? "app-shell-primary app-shell-secondary-hover"
-          : "app-shell-surface app-shell-highlight-hover"
+          ? "text-[#b7102a] hover:border-black hover:bg-[#b7102a] hover:text-[#fff9ed]"
+          : "text-[#171411] hover:border-black hover:bg-[#efe6d4]"
       }`}
       type="button"
       onClick={onClick}

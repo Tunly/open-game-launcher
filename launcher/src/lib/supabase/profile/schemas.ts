@@ -155,7 +155,6 @@ export function toHardware(
     keyboard: rowNullableString(row, "keyboard"),
     mouse: rowNullableString(row, "mouse"),
     headset: rowNullableString(row, "headset"),
-    controller: rowNullableString(row, "controller"),
     setupImageUrl: rowNullableString(row, "setup_image_url"),
     visibility: rowString(
       row,
@@ -254,7 +253,6 @@ export function toHardwarePayload(input: import("../../validation/profile").Hard
     keyboard: input.keyboard,
     mouse: input.mouse,
     headset: input.headset,
-    controller: input.controller,
     setup_image_url: input.setupImageUrl,
     visibility: input.visibility,
   };
