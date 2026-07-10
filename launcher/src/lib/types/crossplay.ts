@@ -16,12 +16,7 @@ export type CrossPlayPlatform =
   | "web";
 
 export type CrossPlayIssue =
-  | "cannot_invite"
-  | "cannot_join"
-  | "desync"
-  | "crash"
-  | "voice_chat"
-  | "other";
+  "cannot_invite" | "cannot_join" | "desync" | "crash" | "voice_chat" | "other";
 
 export type ReportStatus = "open" | "investigating" | "resolved" | "wontfix";
 

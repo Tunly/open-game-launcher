@@ -146,8 +146,7 @@ describe("FpsHudPage performance polling", () => {
     const pollCountBeforeDisable = pollCallCount();
 
     const settingsListener = eventMocks.listeners.get("overlay-settings-updated") as
-      | ((event: { payload: NativeOverlaySettings }) => void)
-      | undefined;
+      ((event: { payload: NativeOverlaySettings }) => void) | undefined;
     expect(settingsListener).toBeDefined();
     act(() => {
       settingsListener?.({ payload: { fpsHudEnabled: false } });

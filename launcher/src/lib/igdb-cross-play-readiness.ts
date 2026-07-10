@@ -41,14 +41,10 @@ export interface IgdbCrossPlayImportPreviewRow {
 }
 
 export type IgdbCrossPlayImportIssueDecision =
-  | "dedupe_incoming"
-  | "skip_incoming"
-  | "stage_external_id_only";
+  "dedupe_incoming" | "skip_incoming" | "stage_external_id_only";
 
 export type IgdbCrossPlayImportIssueReason =
-  | "conflicting_external_id"
-  | "duplicate_external_id"
-  | "duplicate_platform";
+  "conflicting_external_id" | "duplicate_external_id" | "duplicate_platform";
 
 export interface IgdbCrossPlayImportIssueRow {
   candidateIds: string[];

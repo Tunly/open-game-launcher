@@ -1,14 +1,7 @@
 // Universal Friends System types
 
 export type PlatformType =
-  | "steam"
-  | "epic"
-  | "gog"
-  | "ea"
-  | "xbox"
-  | "battlenet"
-  | "ubisoft"
-  | "og";
+  "steam" | "epic" | "gog" | "ea" | "xbox" | "battlenet" | "ubisoft" | "og";
 export type MatchMethod = "linked_account" | "heuristic" | "manual";
 export type MergeSuggestionStatus = "pending" | "accepted" | "rejected";
 export type ActivityType = "status" | "game_start" | "game_stop" | "achievement_unlocked";

@@ -4,21 +4,10 @@ export type BuildPlatform = "windows" | "macos" | "linux";
 export type BuildArch = "x86_64" | "aarch64";
 export type DevApplicationStatus = "pending" | "approved" | "rejected";
 export type StoreReviewReportReason =
-  | "spam"
-  | "harassment"
-  | "hate_or_abuse"
-  | "spoilers"
-  | "off_topic"
-  | "fraud"
-  | "other";
+  "spam" | "harassment" | "hate_or_abuse" | "spoilers" | "off_topic" | "fraud" | "other";
 export type StoreReviewReportStatus = "active" | "dismissed" | "withdrawn";
 export type StoreRefundRequestStatus =
-  | "requested"
-  | "reviewing"
-  | "approved"
-  | "rejected"
-  | "cancelled"
-  | "processed";
+  "requested" | "reviewing" | "approved" | "rejected" | "cancelled" | "processed";
 export type StoreInvoiceStatus = "pending" | "available" | "unavailable" | "void";
 
 export interface StoreProduct {

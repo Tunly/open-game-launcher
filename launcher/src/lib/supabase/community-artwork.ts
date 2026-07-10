@@ -22,13 +22,7 @@ export type CommunityArtworkActionResult<T> =
     };
 
 export type CommunityArtworkReportReason =
-  | "copyright"
-  | "explicit"
-  | "harassment"
-  | "low_quality"
-  | "other"
-  | "spam"
-  | "wrong_game";
+  "copyright" | "explicit" | "harassment" | "low_quality" | "other" | "spam" | "wrong_game";
 
 export interface SubmitCommunityArtworkInput {
   artistName: string;

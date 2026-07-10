@@ -1,10 +1,6 @@
 export type BroadcastChatModerationSeverity = "allow" | "block" | "review";
 export type BroadcastChatModerationRuleId =
-  | "caps-spike"
-  | "clean"
-  | "link-drop"
-  | "secret-leak"
-  | "spoiler-tag";
+  "caps-spike" | "clean" | "link-drop" | "secret-leak" | "spoiler-tag";
 
 export interface BroadcastChatModerationMessage {
   authorHandle: string;

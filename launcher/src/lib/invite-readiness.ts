@@ -5,25 +5,13 @@ export type InviteRedeemState = "accepted" | "error" | "idle" | "loading";
 export type InviteHostedReplayProofState = "idle" | "loading" | "unavailable" | "verified";
 
 export type InviteHostedReadinessRowId =
-  | "deep-link"
-  | "hosted-web"
-  | "receiver-auth"
-  | "share-rpc"
-  | "web-fallback";
+  "deep-link" | "hosted-web" | "receiver-auth" | "share-rpc" | "web-fallback";
 
 export type InviteHostedReplayProofRowId =
-  | "hosted-origin"
-  | "consumed-token"
-  | "replay-denial"
-  | "sanitized-proof"
-  | "deployment-scope";
+  "hosted-origin" | "consumed-token" | "replay-denial" | "sanitized-proof" | "deployment-scope";
 
 export type InviteHostedStagingStepId =
-  | "create-token"
-  | "receiver-auth"
-  | "redeem-token"
-  | "replay-guard"
-  | "resolve-token";
+  "create-token" | "receiver-auth" | "redeem-token" | "replay-guard" | "resolve-token";
 
 export type InviteLookupState = "idle" | "loading" | "missing" | "resolved";
 

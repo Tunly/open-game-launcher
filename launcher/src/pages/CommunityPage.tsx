@@ -82,14 +82,7 @@ const COMMUNITY_VERIFY_ROUTES = new Set([
 ]);
 
 type CommunityContentType =
-  | "all"
-  | "artwork"
-  | "broadcasts"
-  | "videos"
-  | "workshop"
-  | "news"
-  | "guides"
-  | "reviews";
+  "all" | "artwork" | "broadcasts" | "videos" | "workshop" | "news" | "guides" | "reviews";
 
 type CommunitySortMode = "popular" | "recent";
 type CommunitySectionId = "home" | "discussions" | "workshop" | "market" | "broadcasts";

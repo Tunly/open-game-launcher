@@ -2,11 +2,7 @@ import type { CommunityArtworkModerationQueueItem } from "./supabase/community-a
 import type { Game } from "./types";
 
 export type HostedCommunityArtworkModerationAction =
-  | "approved"
-  | "queued"
-  | "rejected"
-  | "reported-threshold"
-  | "returned-to-pending";
+  "approved" | "queued" | "rejected" | "reported-threshold" | "returned-to-pending";
 
 export interface HostedCommunityArtworkModerationAuditEntry {
   action: HostedCommunityArtworkModerationAction;

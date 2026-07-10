@@ -3,10 +3,7 @@ import type { UserPresence } from "./types/profile";
 
 export type PresencePollingReadinessStatus = "pass" | "warning" | "blocked";
 export type PresencePollCacheReason =
-  | "cached"
-  | "missing-provider"
-  | "provider-error"
-  | "rate-limited";
+  "cached" | "missing-provider" | "provider-error" | "rate-limited";
 
 export interface PresencePollingReadinessCheck {
   detail: string;
@@ -250,17 +247,15 @@ export function getPresencePollingReadiness(input: {
         cache.runId &&
         isRecentTimestamp(cache.fetchedAt, nowMs, freshnessWindowMs),
     )
-    .map(
-      ([platform, cache]): PresencePollDryRunEvidenceRow => ({
-        fetchedAt: cache.fetchedAt,
-        platform,
-        reason: cache.reason,
-        runId: cache.runId ?? "unknown-dry-run",
-        source: cache.source ?? "trusted-dry-run",
-        status: cache.status,
-        writeMode: "dry-run",
-      }),
-    );
+    .map(([platform, cache]): PresencePollDryRunEvidenceRow => ({
+      fetchedAt: cache.fetchedAt,
+      platform,
+      reason: cache.reason,
+      runId: cache.runId ?? "unknown-dry-run",
+      source: cache.source ?? "trusted-dry-run",
+      status: cache.status,
+      writeMode: "dry-run",
+    }));
   const hasTrustedEvidence = Boolean(input.trustedEvidence);
   const freshSuccessfulPlatforms = new Set(
     Array.from(cachesByPlatform.entries())

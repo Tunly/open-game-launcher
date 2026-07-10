@@ -458,17 +458,14 @@ describe("ingestTrustedAchievements", () => {
       return {};
     });
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
-    const remoteGames = Array.from(
-      { length: 8 },
-      (_, index): Game => ({
-        ...game,
-        achievements: [],
-        id: `steam-${index}`,
-        launcher: "steam",
-        slug: `remote-game-${index}`,
-        title: `Remote Game ${index}`,
-      }),
-    );
+    const remoteGames = Array.from({ length: 8 }, (_, index): Game => ({
+      ...game,
+      achievements: [],
+      id: `steam-${index}`,
+      launcher: "steam",
+      slug: `remote-game-${index}`,
+      title: `Remote Game ${index}`,
+    }));
 
     const { hydrateGamesWithRemoteAchievements } = await import("../achievements");
     const hydrated = await hydrateGamesWithRemoteAchievements(remoteGames, { userId: "user-1" });

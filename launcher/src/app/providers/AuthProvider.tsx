@@ -141,8 +141,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let isActive = true;
     let cleanup: (() => void) | null = null;
     let clearPresenceForSession:
-      | typeof import("../../lib/supabase/presence").clearLauncherPresenceForSession
-      | null = null;
+      typeof import("../../lib/supabase/presence").clearLauncherPresenceForSession | null = null;
     let unlistenGameStarted: (() => void) | null = null;
     let unlistenGameStopped: (() => void) | null = null;
     let lifecycleQueue = Promise.resolve();

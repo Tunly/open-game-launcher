@@ -60,8 +60,7 @@ function createQuery(table: string) {
     select: vi.fn(() => chain),
     then<TResult1 = { data: unknown; error: null }, TResult2 = never>(
       onfulfilled?:
-        | ((value: { data: unknown; error: null }) => TResult1 | PromiseLike<TResult1>)
-        | null,
+        ((value: { data: unknown; error: null }) => TResult1 | PromiseLike<TResult1>) | null,
       onrejected?: ((reason: unknown) => TResult2 | PromiseLike<TResult2>) | null,
     ) {
       return Promise.resolve(state.queryResults.shift() ?? { data: null, error: null }).then(

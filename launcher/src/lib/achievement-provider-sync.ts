@@ -32,8 +32,7 @@ type AchievementProviderSyncFailure = {
 };
 
 export type AchievementProviderSyncOutcome =
-  | AchievementProviderSyncSuccess
-  | AchievementProviderSyncFailure;
+  AchievementProviderSyncSuccess | AchievementProviderSyncFailure;
 
 function normalizeSource(source: string) {
   return source

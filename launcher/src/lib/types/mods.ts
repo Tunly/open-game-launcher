@@ -1,10 +1,5 @@
 export type ModProvider =
-  | "steam_workshop"
-  | "modio"
-  | "curseforge"
-  | "direct_url"
-  | "local_archive"
-  | "local_folder";
+  "steam_workshop" | "modio" | "curseforge" | "direct_url" | "local_archive" | "local_folder";
 
 export type ModInstallStatus =
   | "queued"

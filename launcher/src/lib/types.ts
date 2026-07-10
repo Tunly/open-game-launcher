@@ -2,15 +2,7 @@ type GameStatus = "installed" | "not_installed" | "update_available";
 export type Platform = "windows" | "linux" | "macos";
 export type CatalogSource = "pc_game_pass";
 type LauncherType =
-  | "steam"
-  | "epic"
-  | "ubisoft"
-  | "ea"
-  | "battlenet"
-  | "gog"
-  | "xbox"
-  | "manual"
-  | "unknown";
+  "steam" | "epic" | "ubisoft" | "ea" | "battlenet" | "gog" | "xbox" | "manual" | "unknown";
 export type ClientPlatformId = "steam" | "epic" | "gog" | "xbox" | "ubisoft" | "battlenet" | "ea";
 type LogoPosition = "bottomLeft" | "upperCenter" | "centerCenter" | "bottomCenter";
 export type DownloadStatus =
@@ -403,13 +395,7 @@ export interface ClientAutoApplyPlan {
   displayName: string;
   policy: ClientUpdatePolicy;
   stage:
-    | "policyOff"
-    | "noUpdate"
-    | "safeOpenOnly"
-    | "blocked"
-    | "unsupported"
-    | "ready"
-    | "desktopOnly";
+    "policyOff" | "noUpdate" | "safeOpenOnly" | "blocked" | "unsupported" | "ready" | "desktopOnly";
   safeTargetLabel?: string | null;
   canAutoApply: boolean;
   canOpenSafeUpdater: boolean;

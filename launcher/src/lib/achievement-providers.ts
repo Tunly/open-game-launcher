@@ -5,12 +5,7 @@ import type { Game, SyncGameAchievementsResponse } from "./types";
 
 export type AchievementProviderKind = "official" | "unofficial" | "local";
 export type AchievementProviderStatus =
-  | "available"
-  | "not_connected"
-  | "no_api"
-  | "private"
-  | "failed"
-  | "unsupported";
+  "available" | "not_connected" | "no_api" | "private" | "failed" | "unsupported";
 
 export interface AchievementProviderResult {
   provider: string;
