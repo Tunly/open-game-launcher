@@ -460,8 +460,8 @@ test("current verify route inventory is documented with explicit legacy aliases"
     result.documentedScreenshots.size,
     result.existingScreenshots.size,
   );
-  assert.equal(result.existingScreenshots.size, 297);
-  assert.equal(result.screenshotIntegrity.size, 297);
+  assert.equal(result.existingScreenshots.size, 298);
+  assert.equal(result.screenshotIntegrity.size, 298);
   assert.equal(
     [...result.screenshotIntegrity.values()].every(
       (inspection) =>

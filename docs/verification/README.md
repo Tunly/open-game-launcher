@@ -56,6 +56,7 @@ wrapping or overflow notes where relevant.
 ## Screenshots
 
 - `screenshots/home-retro-manga-launcher.png` - `/home` launcher start view after the UI rebuild, showing OG-Launcher header navigation, warm paper/halftone background, thick bordered manga panels, hard offset shadows, and red/teal launcher accents. Local verification evidence.
+- `screenshots/home-tailwind4-utilities-restored.png` - `/home` after the Tailwind 4 CSS import and layer migration, showing restored OG-Launcher header sizing, layout utilities, Retro Manga paper/halftone panels, thick borders, hard shadows, and no horizontal overflow. Local browser-preview verification evidence only; no live-provider claims.
 - `screenshots/home-retro-manga-launcher-mobile.png` - Mobile `/home` launcher start view showing the wrapped header icons, readable Play Desk panel, and stacked launcher action cards without text overlap. Local verification evidence.
 - `screenshots/home-fixed-responsive-title-retro-manga.png` - Desktop `/home` after the fixed responsive title cleanup, showing `neo-title` with zero letter spacing and no viewport-scaled font class. Local verification evidence.
 - `screenshots/home-fixed-responsive-title-retro-manga-mobile.png` - Mobile `/home` after the fixed responsive title cleanup, showing the Play Desk title and OG-Launcher header without horizontal overflow. Local verification evidence.

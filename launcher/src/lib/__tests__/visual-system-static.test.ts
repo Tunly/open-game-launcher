@@ -18,6 +18,15 @@ function sourceFiles(dir: string): string[] {
 }
 
 describe("Retro Manga static visual system", () => {
+  it("uses the Tailwind 4 CSS entrypoint and keeps custom styles in cascade layers", () => {
+    const indexCss = readFileSync(join(sourceRoot, "index.css"), "utf8");
+
+    expect(indexCss).toContain('@import "tailwindcss";');
+    expect(indexCss).not.toMatch(/@tailwind\s+(?:base|components|utilities)/);
+    expect(indexCss).toMatch(/@layer base\s*\{\s*:root/);
+    expect(indexCss).toMatch(/@layer components\s*\{\s*\.neo-title/);
+  });
+
   it("does not use viewport-scaled font sizes or negative letter spacing", () => {
     const violations = sourceFiles(sourceRoot).flatMap((path) => {
       const text = readFileSync(path, "utf8");
