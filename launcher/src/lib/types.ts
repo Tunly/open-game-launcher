@@ -48,22 +48,6 @@ interface SaveFile {
   syncedAt?: string | null;
 }
 
-export interface GameScreenshot {
-  id?: string;
-  url?: string | null;
-  imageUrl?: string | null;
-  thumbnailUrl?: string | null;
-  caption?: string | null;
-  source?: string | null;
-  sourceLabel?: string | null;
-  provider?: string | null;
-  isPublic?: boolean | null;
-  createdAt?: string | null;
-  width?: number | null;
-  height?: number | null;
-  sizeBytes?: number | null;
-}
-
 export interface Game {
   id: string;
   title: string;
@@ -101,8 +85,6 @@ export interface Game {
   tags?: string[];
   tagLabels?: string[];
   productCategory?: string; // e.g. "game", "software", "video", "dlc", "soundtrack", "demo", "beta"
-  screenshots?: Array<string | GameScreenshot>;
-  screenshotUrls?: string[];
   steamDeckCompatibility?: "verified" | "playable" | "unsupported" | "unknown";
   protonCompatible?: boolean;
   developer?: string;
@@ -128,12 +110,17 @@ export interface StoreGame {
   slug?: string;
   title: string;
   description: string;
+  coverImageUrl?: string;
+  downloadsCount?: number;
   price: number;
   originalPrice?: number;
   discountPercent?: number;
   isFree?: boolean;
   platform: Platform[];
   developer?: string;
+  publisher?: string;
+  rating?: number;
+  ratingsCount?: number;
   releaseDate?: string;
   genres?: string[];
   tagLine: string;
@@ -594,187 +581,6 @@ export interface StartDownloadResponse {
   gameId: string;
   downloadId: string;
   status: "started" | "already_queued" | "already_installed";
-  message: string;
-}
-
-export interface LanTransferCopyConsent {
-  accepted: boolean;
-  operation: "lan_native_copy_verify_manifest" | "lan_native_resume_copy_verify_manifest";
-  sourcePath: string;
-  targetPath: string;
-}
-
-export interface LanTransferCopyRequest {
-  gameId: string;
-  title: string;
-  sourcePath: string;
-  targetPath: string;
-  consent: LanTransferCopyConsent;
-}
-
-export interface LanTransferCopyFile {
-  relativePath: string;
-  sizeBytes: number;
-  sha256?: string;
-}
-
-export interface LanTransferCopyPreview {
-  gameId: string;
-  title: string;
-  sourcePath: string;
-  targetPath: string;
-  fileCount: number;
-  bytesTotal: number;
-  files: LanTransferCopyFile[];
-  message: string;
-}
-
-export interface LanTransferCopyResult {
-  gameId: string;
-  title: string;
-  sourcePath: string;
-  targetPath: string;
-  manifestPath: string;
-  executablePath?: string | null;
-  fileCount: number;
-  bytesCopied: number;
-  verifiedFiles: number;
-  files: LanTransferCopyFile[];
-  message: string;
-}
-
-export interface LanTransferCopyJob {
-  jobId: string;
-  gameId: string;
-  title: string;
-  sourcePath: string;
-  targetPath: string;
-  status: "queued" | "running" | "cancelling" | "cancelled" | "completed" | "failed";
-  progress: number;
-  bytesCopied: number;
-  bytesTotal: number;
-  copiedFileCount: number;
-  fileCount: number;
-  canCancel: boolean;
-  manifestPath?: string | null;
-  executablePath?: string | null;
-  error?: string | null;
-  message: string;
-}
-
-export interface LanTransferResumeCopyResult {
-  gameId: string;
-  title: string;
-  sourcePath: string;
-  targetPath: string;
-  manifestPath: string;
-  executablePath?: string | null;
-  fileCount: number;
-  bytesCopied: number;
-  bytesReused: number;
-  copiedFileCount: number;
-  reusedFileCount: number;
-  verifiedFiles: number;
-  files: LanTransferCopyFile[];
-  message: string;
-}
-
-export interface LanTransferCleanupCandidatesConsent {
-  accepted: boolean;
-  operation: "lan_native_cleanup_candidates_delete";
-  sourcePath: string;
-  targetPath: string;
-  cleanupCandidateCount: number;
-}
-
-export interface LanTransferCleanupCandidatesRequest {
-  gameId: string;
-  title: string;
-  sourcePath: string;
-  targetPath: string;
-  consent: LanTransferCleanupCandidatesConsent;
-}
-
-export interface LanTransferCleanupCandidatesResult {
-  gameId: string;
-  title: string;
-  sourcePath: string;
-  targetPath: string;
-  deletedCount: number;
-  deletedCandidates: LanTransferResumeCancelCleanupCandidate[];
-  message: string;
-}
-
-export interface LanTransferResumeCancelLedgerRequest {
-  gameId: string;
-  title: string;
-  sourcePath: string;
-  targetPath: string;
-}
-
-export interface LanTransferResumeCancelLedgerFile {
-  relativePath: string;
-  status: "reusable" | "pending" | "conflict";
-  sourceSizeBytes: number;
-  targetSizeBytes?: number | null;
-  sourceSha256: string;
-  targetSha256?: string | null;
-}
-
-export interface LanTransferResumeCancelCleanupCandidate {
-  relativePath: string;
-  entryKind: "file" | "symlink" | "unsupported";
-  sizeBytes?: number | null;
-}
-
-export interface LanTransferResumeCancelLedger {
-  gameId: string;
-  title: string;
-  sourcePath: string;
-  targetPath: string;
-  reusableFileCount: number;
-  pendingFileCount: number;
-  conflictFileCount: number;
-  cleanupCandidateCount: number;
-  bytesReusable: number;
-  bytesPending: number;
-  bytesConflicting: number;
-  files: LanTransferResumeCancelLedgerFile[];
-  cleanupCandidates: LanTransferResumeCancelCleanupCandidate[];
-  message: string;
-}
-
-export interface LanTransferPeerDiscoveryPreflightConsent {
-  accepted: boolean;
-  operation: "lan_peer_discovery_preflight_review";
-}
-
-export interface LanTransferPeerDiscoveryPreflightRequest {
-  consent: LanTransferPeerDiscoveryPreflightConsent;
-  manualSourcePath?: string | null;
-}
-
-export interface LanTransferPeerDiscoveryManualSource {
-  path: string;
-  reachable: boolean;
-  fileCount: number;
-  bytesTotal: number;
-  symlinkFree: boolean;
-}
-
-export interface LanTransferPeerDiscoveryPreflightResult {
-  operation: "lan_peer_discovery_preflight_review";
-  status: "warning" | "blocked";
-  broadcastSent: false;
-  relayCalled: false;
-  firewallRuleChanged: false;
-  shareMounted: false;
-  loopbackTcpBindReady: boolean;
-  loopbackUdpBindReady: boolean;
-  redactedEndpoint: string;
-  manualSource?: LanTransferPeerDiscoveryManualSource | null;
-  guards: string[];
-  warnings: string[];
   message: string;
 }
 

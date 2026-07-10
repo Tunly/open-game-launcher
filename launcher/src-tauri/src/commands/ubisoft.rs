@@ -632,14 +632,14 @@ pub async fn fetch_ubisoft_owned_games() -> Result<Vec<OwnedGame>, String> {
                 id: format!("ubisoft-owned-{}", game.id),
                 external_id: Some(game.id.to_string()),
                 title: game.name.clone(),
-                description: format!("Ubisoft Connect game (Owned). ID: {}", game.id),
+                description: String::new(),
                 cover_url,
                 logo_url,
                 // Reuse the cover image for the list icon – it's the only
                 // artwork we have a guaranteed path to. The icon
                 // resolution will fall through to the same file.
                 icon_url,
-                playtime_minutes: 0,
+                playtime_minutes: None,
                 last_played_at: None,
                 cloud_gaming_url: None,
             }

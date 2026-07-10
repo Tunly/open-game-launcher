@@ -36,7 +36,6 @@ export interface StoreProduct {
   priceCents: number;
   discountPercent: number;
   coverImageUrl: string | null;
-  screenshots: string[];
   trailerUrl: string | null;
   minSystemRequirements: Record<string, unknown>;
   recSystemRequirements: Record<string, unknown>;
@@ -48,17 +47,6 @@ export interface StoreProduct {
   createdAt: string;
   updatedAt: string;
 }
-
-export interface StorePricePoint {
-  id: string;
-  gameId: string;
-  platform: string;
-  priceCents: number;
-  discountPercent: number;
-  recordedAt: string;
-}
-
-export type StorePriceHistory = StorePricePoint[];
 
 export interface StoreCartItem {
   id: string;

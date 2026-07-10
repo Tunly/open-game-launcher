@@ -90,6 +90,8 @@ const validHardwareOsMatrix =
   "Windows title:redacted-game client:Steam run:win-matrix-123 | macOS title:redacted-game client:Steam run:macos-matrix-123 | Linux title:redacted-game client:Steam run:linux-matrix-123";
 const validHostedDeployEvidence =
   "hosted-deploy CI main hosted_deploy_gate=true hosted_environment=hosted-production hosted_deploy_action=all hosted_deploy_dry_run=false workflow: https://github.com/open-game-collective/open-game-launcher/actions/runs/12345";
+const rolloutProof = "Hosted community artwork rollout is exercised beyond fixtures.";
+const rolloutEvidence = "run-community-artwork-rollout-123";
 
 function requiredEvidenceFieldsForArtifact(gate, artifactPath) {
   return [
@@ -151,16 +153,10 @@ function gateSpecificEvidenceDetails(gate) {
         return `- Hosted deploy evidence: ${validHostedDeployEvidence}`;
       }
       if (field === "Community rollout evidence") {
-        return "- Community rollout evidence: community artwork screenshot rollout workflow-123";
+        return `- Community rollout evidence: ${rolloutEvidence}`;
       }
       if (field === "Marketplace evidence") {
         return "- Marketplace evidence: plugin marketplace execution update workflow-123";
-      }
-      if (field === "Mobile distribution evidence") {
-        return "- Mobile distribution evidence: mobile store distribution workflow-123";
-      }
-      if (field === "Push-provider evidence") {
-        return "- Push-provider evidence: push provider Firebase workflow-123";
       }
       return `- ${field}: ${field.toLowerCase()} evidence run-123`;
     })
@@ -197,12 +193,9 @@ function proofEvidenceValueForProof(proof, fallback) {
     return "run-external-drive-backup-restore-Windows-macOS-Linux-e2e-123";
   if (proof.includes("Real client mount/apply"))
     return "run-client-mount-apply-provider-client-123";
-  if (proof.includes("Hosted community artwork/screenshots"))
-    return "run-community-artwork-screenshot-rollout-123";
+  if (proof === rolloutProof) return rolloutEvidence;
   if (proof.includes("Plugin marketplace"))
     return "run-plugin-marketplace-execution-update-review-123";
-  if (proof.includes("Native mobile apps"))
-    return "run-mobile-push-provider-store-distribution-123";
   if (proof.includes("Hosted production deployment"))
     return validHostedDeployEvidence;
   return fallback;
@@ -1041,10 +1034,13 @@ test("rollout track evidence fields cover community and release rollout lanes", 
   assert.deepEqual(fields, [
     "Community rollout evidence",
     "Marketplace evidence",
-    "Mobile distribution evidence",
-    "Push-provider evidence",
     "Hosted deploy evidence",
   ]);
+  assert.equal(gate.requiredProofs[0], rolloutProof);
+  assert.doesNotMatch(
+    JSON.stringify(gate),
+    /community artwork\/screenshots|screenshot-rollout/i,
+  );
 });
 
 test("Store Stripe gate requires license key custody and live issuance evidence", () => {
@@ -2788,61 +2784,6 @@ test("preflight status requires long native overlay proof to include measured du
   assert.deepEqual(durationStatus.missingEvidenceDetails, []);
 });
 
-test("preflight status requires compound mobile rollout proof terms", () => {
-  const gate = evidenceGates.find((item) => item.id === "rollout-tracks");
-  assert.ok(gate);
-  const artifactPath = "docs/verification/external/rollout-tracks.md";
-  const mobileProof =
-    "Native mobile apps, push-provider delivery, and store distribution are verified.";
-
-  const contentWithMobileProofEvidence = (value) =>
-    [
-      ...gate.requiredProofs.map((proof) => `- [x] ${proof}`),
-      ...gate.requiredProofs.map(
-        (proof, index) =>
-          `- Evidence for ${proof}: ${
-            proof === mobileProof
-              ? value
-              : proofEvidenceValueForProof(proof, `run-rollout-${index + 1}`)
-          }`,
-      ),
-      gateSpecificEvidenceDetails(gate),
-      capturedEvidenceDetails(),
-    ].join("\n");
-
-  const mobileOnlyStatus = gateStatus(
-    gate,
-    configuredEnv,
-    fakeExists(gate.artifactPaths),
-    fakeRead({
-      [artifactPath]: contentWithMobileProofEvidence("workflow-mobile-123"),
-    }),
-  );
-
-  assert.equal(mobileOnlyStatus.ready, false);
-  assert.deepEqual(mobileOnlyStatus.missingProofs, []);
-  assert.deepEqual(mobileOnlyStatus.missingEvidenceDetails, [
-    {
-      field: `Evidence for ${mobileProof}`,
-      path: artifactPath,
-    },
-  ]);
-
-  const fullMobileStatus = gateStatus(
-    gate,
-    configuredEnv,
-    fakeExists(gate.artifactPaths),
-    fakeRead({
-      [artifactPath]: contentWithMobileProofEvidence(
-        "workflow-mobile-push-provider-store-distribution-123",
-      ),
-    }),
-  );
-
-  assert.equal(fullMobileStatus.ready, true);
-  assert.deepEqual(fullMobileStatus.missingEvidenceDetails, []);
-});
-
 test("preflight status rejects weak proof-specific run IDs without digits", () => {
   const gate = evidenceGates.find((item) => item.id === "hardware-os-e2e");
   assert.ok(gate);
@@ -3111,10 +3052,8 @@ test("preflight status rejects generic gate-specific evidence identifiers", () =
       fields: ["Marketplace evidence", "Hosted deploy evidence"],
       gateId: "rollout-tracks",
       replacements: [
-        "- Community rollout evidence: community artwork screenshot rollout run-123",
+        `- Community rollout evidence: ${rolloutEvidence}`,
         "- Marketplace evidence: run-generic-field-123",
-        "- Mobile distribution evidence: mobile store distribution run-123",
-        "- Push-provider evidence: push provider Firebase run-123",
         "- Hosted deploy evidence: run-generic-field-456",
       ],
     },
@@ -3218,8 +3157,6 @@ test("preflight status rejects weak rollout track evidence detail values", () =>
         ...baseContent,
         "- Community rollout evidence: ok",
         "- Marketplace evidence: marketplace-run-123",
-        "- Mobile distribution evidence: mobile-distribution-run-123",
-        "- Push-provider evidence: push-provider-run-123",
         "- Hosted deploy evidence: deployment-run-123",
       ].join("\n"),
     }),
@@ -3237,14 +3174,6 @@ test("preflight status rejects weak rollout track evidence detail values", () =>
       path: artifactPath,
     },
     {
-      field: "Mobile distribution evidence",
-      path: artifactPath,
-    },
-    {
-      field: "Push-provider evidence",
-      path: artifactPath,
-    },
-    {
       field: "Hosted deploy evidence",
       path: artifactPath,
     },
@@ -3257,10 +3186,8 @@ test("preflight status rejects weak rollout track evidence detail values", () =>
     fakeRead({
       [artifactPath]: [
         ...baseContent,
-        "- Community rollout evidence: community artwork screenshot rollout run-123",
+        `- Community rollout evidence: ${rolloutEvidence}`,
         "- Marketplace evidence: plugin marketplace execution update run-123",
-        "- Mobile distribution evidence: mobile store distribution run-123",
-        "- Push-provider evidence: push provider firebase run-123",
         `- Hosted deploy evidence: ${validHostedDeployEvidence}`,
       ].join("\n"),
     }),
@@ -3775,10 +3702,8 @@ function rolloutEvidenceContent(gate, hostedDeployLocator) {
       return `- Evidence for ${proof}: ${value}`;
     }),
     capturedEvidenceDetails(),
-    "- Community rollout evidence: community artwork screenshot rollout workflow-123",
+    `- Community rollout evidence: ${rolloutEvidence}`,
     "- Marketplace evidence: plugin marketplace execution update workflow-123",
-    "- Mobile distribution evidence: mobile push provider store distribution workflow-123",
-    "- Push-provider evidence: push provider firebase onesignal workflow-123",
     `- Hosted deploy evidence: ${hostedDeployLocator}`,
   ].join("\n");
 }
@@ -4575,28 +4500,11 @@ test("preflight status blocks raw Supabase and hosted cron secrets", () => {
   assert.deepEqual(redactedStatus.secretFindings, []);
 });
 
-test("preflight status blocks raw mobile push and private-key artifact content", () => {
+test("preflight status blocks raw private-key artifact content", () => {
   const gate = evidenceGates.find((item) => item.id === "rollout-tracks");
   assert.ok(gate);
   const artifactPath = "docs/verification/external/rollout-tracks.md";
   const rawSecrets = [
-    {
-      label: "Raw mobile push secret",
-      value: "APNS_AUTH_KEY=apns_live_super_secret_1234567890",
-    },
-    {
-      label: "Raw mobile push secret",
-      value: "FCM_SERVER_KEY=fcm_live_super_secret_1234567890",
-    },
-    {
-      label: "Raw mobile push secret",
-      value: "FIREBASE_PRIVATE_KEY=firebase_live_super_secret_1234567890",
-    },
-    {
-      label: "Raw mobile device token",
-      value:
-        "APNS_DEVICE_TOKEN=abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
-    },
     {
       label: "Raw private key",
       value: "-----BEGIN PRIVATE KEY-----",
@@ -4619,8 +4527,6 @@ test("preflight status blocks raw mobile push and private-key artifact content",
     assert.equal(status.ready, false);
     assert.deepEqual(status.missingProofs, []);
     assert.deepEqual(status.secretFindings, [{ label, path: artifactPath }]);
-    assert.equal(JSON.stringify(status).includes("super_secret"), false);
-    assert.equal(JSON.stringify(status).includes("abcdef1234567890"), false);
   }
 
   const redactedStatus = gateStatus(
@@ -4630,10 +4536,7 @@ test("preflight status blocks raw mobile push and private-key artifact content",
     fakeRead({
       [artifactPath]: [
         proofContent(gate, capturedEvidenceDetails()),
-        "APNS_AUTH_KEY=[redacted]",
-        "FCM_SERVER_KEY=<redacted>",
-        "FIREBASE_PRIVATE_KEY=***",
-        "APNS_DEVICE_TOKEN=***",
+        "PRIVATE_KEY=[redacted]",
       ].join("\n"),
     }),
   );
@@ -4904,11 +4807,11 @@ test("artifactTemplate prints required proof checklist rows without secret value
   assert.doesNotMatch(rolloutCaptureSection, /Required lane terms/);
   assert.match(
     rolloutTemplate,
-    /Community rollout evidence must include `community`, `artwork`, `screenshot`, and `rollout`/,
+    /Community rollout evidence must include `community`, `artwork`, and `rollout`/,
   );
-  assert.match(
+  assert.doesNotMatch(
     rolloutTemplate,
-    /Push-provider evidence must include `push`, `provider`, and either `Firebase` or `OneSignal`/,
+    /community artwork\/screenshots|screenshot-rollout/i,
   );
 });
 
@@ -5160,9 +5063,9 @@ test("runbook documents proof evidence lane identity", () => {
   assert.match(runbook, /provider-approved-catalog-cloud-transfer/);
   assert.match(runbook, /achievement-provider-cache-real-client/);
   assert.match(runbook, /fullscreen-anti-cheat-overlay/);
-  assert.match(runbook, /community-artwork-screenshot-rollout/);
+  assert.match(runbook, /community-artwork-rollout/);
+  assert.doesNotMatch(runbook, /community-artwork-screenshot-rollout/);
   assert.match(runbook, /plugin-marketplace-execution-update/);
-  assert.match(runbook, /mobile-push-provider-store-distribution/);
 });
 
 test("runbook documents the external evidence next steps mode", () => {

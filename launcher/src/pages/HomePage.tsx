@@ -1,14 +1,9 @@
 import {
-  Activity,
-  Bell,
   Download,
   Gamepad2,
   MessageSquareMore,
   Settings,
-  ShieldCheck,
   Store,
-  Trophy,
-  Users,
   type LucideIcon,
 } from "lucide-react";
 import { Link } from "react-router-dom";
@@ -22,11 +17,12 @@ interface QuickAction {
   to: string;
 }
 
-interface StatusPanel {
+interface SurfaceLink {
+  description: string;
   icon: LucideIcon;
   label: string;
   title: string;
-  value: string;
+  to: string;
 }
 
 const quickActions: QuickAction[] = [
@@ -39,7 +35,7 @@ const quickActions: QuickAction[] = [
     to: "/library",
   },
   {
-    body: "Track active jobs, remote handoff readiness, pause states, and completed installs.",
+    body: "Track active jobs, pause states, integrity checks, and completed installs.",
     icon: Download,
     label: "Downloads",
     meta: "Queue control",
@@ -47,7 +43,7 @@ const quickActions: QuickAction[] = [
     to: "/downloads",
   },
   {
-    body: "Inspect storefront licenses, orders, reviews, wishlist alerts, and build downloads.",
+    body: "Inspect storefront licenses, orders, reviews, wishlists, and build downloads.",
     icon: Store,
     label: "Store",
     meta: "Catalog ops",
@@ -64,18 +60,42 @@ const quickActions: QuickAction[] = [
   },
 ];
 
-const statusPanels: StatusPanel[] = [
-  { icon: ShieldCheck, label: "Secure RLS", title: "Profile writes", value: "Owner locked" },
-  { icon: Trophy, label: "Achievements", title: "Cross-source", value: "Merged" },
-  { icon: Users, label: "Social", title: "Friends layer", value: "Live" },
-  { icon: Activity, label: "Performance", title: "Overlay traces", value: "Ready" },
+const surfaceLinks: SurfaceLink[] = [
+  {
+    description: "Review account visibility and data controls.",
+    icon: Settings,
+    label: "Privacy",
+    title: "Profile Controls",
+    to: "/settings/privacy",
+  },
+  {
+    description: "Inspect locally available achievement data.",
+    icon: Gamepad2,
+    label: "Achievements",
+    title: "Game Progress",
+    to: "/achievements",
+  },
+  {
+    description: "Open friends, activity, chat, and invites.",
+    icon: MessageSquareMore,
+    label: "Social",
+    title: "Friends Layer",
+    to: "/friends",
+  },
+  {
+    description: "Inspect captured performance history.",
+    icon: Download,
+    label: "Performance",
+    title: "Runtime History",
+    to: "/settings/performance",
+  },
 ];
 
-const activityRows = [
-  ["Runtime", "Steam client detected", "2h uptime"],
-  ["Backup", "Daily reminder armed", "Next check"],
-  ["Mods", "Provider deck online", "3 sources"],
-  ["Privacy", "Deletion dry-run logged", "Guarded"],
+const deskLinks = [
+  { label: "Runtime", title: "Performance history", to: "/settings/performance" },
+  { label: "Backup", title: "Backup and restore settings", to: "/settings" },
+  { label: "Mods", title: "Installed mod manager", to: "/mods" },
+  { label: "Privacy", title: "Account privacy controls", to: "/settings/privacy" },
 ];
 
 export function HomePage() {
@@ -96,11 +116,12 @@ export function HomePage() {
                 launcher board.
               </p>
             </div>
-            <div className="grid grid-cols-2 border-[3px] border-black bg-[#171411] text-white shadow-[4px_4px_0_#171411]">
-              <Readout label="Active" value="4" />
-              <Readout label="Ready" value="12" />
-              <Readout label="Alerts" value="2" />
-              <Readout label="Sync" value="OK" />
+            <div className="max-w-[270px] border-[3px] border-black bg-[#171411] p-4 text-white shadow-[4px_4px_0_#171411]">
+              <p className="neo-title text-3xl leading-none text-[#8cf5e4]">Route Index</p>
+              <p className="neo-copy mt-2 text-[9px] font-black uppercase leading-4 text-[#f5eedf]">
+                Live counts and runtime state appear inside their owning pages. This desk shows no
+                synthetic telemetry.
+              </p>
             </div>
           </div>
 
@@ -127,8 +148,13 @@ export function HomePage() {
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
-            <ArtTile className="card-art-drift" label="Library" value="Grouped" />
-            <ArtTile className="card-art-blood" label="Store" value="Licensed" />
+            <ArtTile
+              className="card-art-drift"
+              label="Library"
+              to="/library"
+              value="Open Library"
+            />
+            <ArtTile className="card-art-blood" label="Store" to="/store" value="Open Store" />
           </div>
         </section>
       </div>
@@ -140,7 +166,7 @@ export function HomePage() {
               <p className="neo-copy text-[10px] font-black uppercase tracking-[0.12em] text-[#b7102a]">
                 System Board
               </p>
-              <h2 className="neo-title text-3xl leading-none text-[#171411]">Live Surfaces</h2>
+              <h2 className="neo-title text-3xl leading-none text-[#171411]">Feature Routes</h2>
             </div>
             <Link
               className="neo-copy inline-flex h-10 items-center gap-2 border-2 border-black bg-[#007166] px-3 text-[10px] font-black uppercase text-white shadow-[3px_3px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#b7102a]"
@@ -151,8 +177,8 @@ export function HomePage() {
             </Link>
           </div>
           <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-            {statusPanels.map((panel) => (
-              <StatusCard key={panel.label} panel={panel} />
+            {surfaceLinks.map((panel) => (
+              <SurfaceCard key={panel.label} panel={panel} />
             ))}
           </div>
         </section>
@@ -161,15 +187,19 @@ export function HomePage() {
           <div className="flex items-center justify-between gap-3 border-b-2 border-black pb-3">
             <div>
               <p className="neo-copy text-[10px] font-black uppercase tracking-[0.12em] text-[#5b403f]">
-                Activity Ticker
+                Route Directory
               </p>
-              <h2 className="neo-title text-3xl leading-none text-[#171411]">Ops Feed</h2>
+              <h2 className="neo-title text-3xl leading-none text-[#171411]">Quick Links</h2>
             </div>
-            <Bell className="h-5 w-5 text-[#b7102a]" />
+            <Gamepad2 className="h-5 w-5 text-[#b7102a]" />
           </div>
           <div className="mt-3 divide-y-2 divide-black border-2 border-black bg-[#f6edd8]">
-            {activityRows.map(([label, title, meta]) => (
-              <div key={`${label}-${title}`} className="grid grid-cols-[82px_1fr_auto] gap-2 p-3">
+            {deskLinks.map(({ label, title, to }) => (
+              <Link
+                key={to}
+                className="grid grid-cols-[82px_1fr_auto] gap-2 p-3 hover:bg-[#8cf5e4]"
+                to={to}
+              >
                 <span className="neo-copy text-[9px] font-black uppercase text-[#b7102a]">
                   {label}
                 </span>
@@ -177,23 +207,14 @@ export function HomePage() {
                   {title}
                 </span>
                 <span className="neo-copy text-[9px] font-black uppercase text-[#5b403f]">
-                  {meta}
+                  Open
                 </span>
-              </div>
+              </Link>
             ))}
           </div>
         </section>
       </div>
     </section>
-  );
-}
-
-function Readout({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="min-w-[78px] border-black px-4 py-3 text-center odd:border-r-2 [&:nth-child(-n+2)]:border-b-2">
-      <p className="text-2xl font-black leading-none">{value}</p>
-      <p className="neo-copy mt-1 text-[9px] font-black uppercase text-[#f5eedf]">{label}</p>
-    </div>
   );
 }
 
@@ -233,10 +254,21 @@ function QuickActionCard({ action }: { action: QuickAction }) {
   );
 }
 
-function ArtTile({ className, label, value }: { className: string; label: string; value: string }) {
+function ArtTile({
+  className,
+  label,
+  to,
+  value,
+}: {
+  className: string;
+  label: string;
+  to: string;
+  value: string;
+}) {
   return (
-    <div
+    <Link
       className={`${className} min-h-[110px] border-[3px] border-black p-3 shadow-[4px_4px_0_#171411]`}
+      to={to}
     >
       <span className="neo-copy inline-flex border-2 border-black bg-[#fff9ed] px-2 py-1 text-[9px] font-black uppercase text-[#171411] shadow-[2px_2px_0_#171411]">
         {label}
@@ -244,27 +276,33 @@ function ArtTile({ className, label, value }: { className: string; label: string
       <p className="neo-title mt-8 text-2xl leading-none text-white [text-shadow:2px_2px_0_#171411]">
         {value}
       </p>
-    </div>
+    </Link>
   );
 }
 
-function StatusCard({ panel }: { panel: StatusPanel }) {
+function SurfaceCard({ panel }: { panel: SurfaceLink }) {
   const Icon = panel.icon;
 
   return (
-    <article className="border-2 border-black bg-[#fff9ed] p-3 shadow-[3px_3px_0_#171411]">
+    <Link
+      className="border-2 border-black bg-[#fff9ed] p-3 shadow-[3px_3px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#8cf5e4]"
+      to={panel.to}
+    >
       <div className="flex items-start justify-between gap-2">
         <span className="grid h-9 w-9 place-items-center border-2 border-black bg-[#171411] text-[#8cf5e4]">
           <Icon className="h-4 w-4" />
         </span>
         <span className="neo-copy border-2 border-black bg-[#007166] px-2 py-1 text-[8px] font-black uppercase text-white">
-          {panel.value}
+          Open
         </span>
       </div>
       <p className="neo-copy mt-3 text-[9px] font-black uppercase tracking-[0.12em] text-[#b7102a]">
         {panel.label}
       </p>
       <h3 className="neo-title mt-1 text-2xl leading-none text-[#171411]">{panel.title}</h3>
-    </article>
+      <p className="neo-copy mt-2 text-[9px] font-black uppercase leading-4 text-[#5b403f]">
+        {panel.description}
+      </p>
+    </Link>
   );
 }

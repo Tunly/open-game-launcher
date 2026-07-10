@@ -23,9 +23,9 @@ const fieldClass =
   "neo-copy mt-2 w-full border-[3px] border-black bg-[#fff9ed] px-3 py-2 text-[12px] font-black uppercase text-[#171411] outline-none shadow-[2px_2px_0_#171411] placeholder:text-[#655f58] focus:bg-[#f6edd8]";
 
 const relayCards: { icon: LucideIcon; label: string; value: string }[] = [
-  { icon: Shield, label: "Borrow Gate", value: "Owner locked" },
-  { icon: Users, label: "Seats", value: "6 max" },
-  { icon: Gamepad2, label: "Library", value: "Shared pool" },
+  { icon: Shield, label: "Scope", value: "Membership" },
+  { icon: Users, label: "Capacity", value: "Group limit" },
+  { icon: Gamepad2, label: "Games", value: "Registry view" },
 ];
 
 function getErrorMessage(error: unknown): string {
@@ -40,6 +40,10 @@ function formatDate(value: string): string {
 
 function compactGameId(gameId: string): string {
   return gameId.length > 12 ? `${gameId.slice(0, 10)}...` : gameId;
+}
+
+function isLocalPreviewGroup(group: FamilyGroup) {
+  return group.id.startsWith("local-family");
 }
 
 function RelayCard({
@@ -122,7 +126,11 @@ export function FamilyPage() {
       setGroup(nextGroup);
       setNewName("");
       await hydrateGroup(nextGroup);
-      setStatusMessage(`Family relay created: ${nextGroup.name}`);
+      setStatusMessage(
+        isLocalPreviewGroup(nextGroup)
+          ? `Local preview relay created: ${nextGroup.name}. It is stored on this device only.`
+          : `Family group created: ${nextGroup.name}`,
+      );
     } catch (createError: unknown) {
       setError(getErrorMessage(createError));
     } finally {
@@ -144,7 +152,11 @@ export function FamilyPage() {
       setGroup(nextGroup);
       setInviteCode("");
       await hydrateGroup(nextGroup);
-      setStatusMessage(`Joined family relay: ${nextGroup.name}`);
+      setStatusMessage(
+        isLocalPreviewGroup(nextGroup)
+          ? `Joined local preview relay: ${nextGroup.name}. It is stored on this device only.`
+          : `Joined family group: ${nextGroup.name}`,
+      );
     } catch (joinError: unknown) {
       setError(getErrorMessage(joinError));
     } finally {
@@ -188,8 +200,8 @@ export function FamilyPage() {
             </span>
             <h1 className="neo-title mt-3 text-5xl leading-none md:text-7xl">Family Sharing</h1>
             <p className="neo-copy mt-3 max-w-2xl text-[11px] font-black uppercase leading-5 text-[#8cf5e4]">
-              Create a private borrow relay for trusted players, shared libraries, and active seat
-              checks.
+              Create a group, share its invite code, and inspect synchronized membership and game
+              records. Borrow activation and seat switching are not available in this client.
             </p>
           </div>
 
@@ -214,7 +226,7 @@ export function FamilyPage() {
                 Share Desk
               </h2>
               <p className="neo-copy mt-2 max-w-[280px] text-[10px] font-black uppercase leading-5 text-[#f5eedf]">
-                Invite codes, member seats, and library borrow status stay on one launcher panel.
+                Invite codes, member counts, and registered shared-game records stay on one panel.
               </p>
             </div>
           </div>
@@ -308,6 +320,12 @@ export function FamilyPage() {
         </div>
       ) : (
         <div className="space-y-4">
+          {isLocalPreviewGroup(group) ? (
+            <div className="neo-copy border-[3px] border-black bg-[#8cf5e4] p-3 text-[10px] font-black uppercase leading-5 text-[#171411] shadow-[3px_3px_0_#171411]">
+              Local preview only. This group and invite code exist on this device and cannot connect
+              other users.
+            </div>
+          ) : null}
           <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
             <div className="border-4 border-black bg-[#f5eedf] shadow-[6px_6px_0_#171411]">
               <div className="border-b-4 border-black bg-[#efe6d4] px-4 py-3">
@@ -432,7 +450,8 @@ export function FamilyPage() {
                   ))
                 ) : (
                   <p className="neo-copy p-4 text-[10px] font-black uppercase text-[#5b403f]">
-                    No games shared yet. Share from Library.
+                    No shared-game records are available. Borrow and seat controls are not exposed
+                    in this client.
                   </p>
                 )}
               </div>

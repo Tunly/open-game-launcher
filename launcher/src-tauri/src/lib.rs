@@ -1,8 +1,37 @@
 mod commands;
 
-use std::{env, fs, path::PathBuf};
-use tauri::{Emitter, Manager, PhysicalPosition, WebviewWindow, WindowEvent};
+use std::{
+    env, fs,
+    path::PathBuf,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc,
+    },
+    time::Duration,
+};
+use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, State, WebviewWindow, WindowEvent};
 use tauri_plugin_global_shortcut::ShortcutState;
+
+const STARTUP_FALLBACK_DELAY: Duration = Duration::from_secs(15);
+
+#[derive(Default)]
+struct StartupState {
+    transition_started: Arc<AtomicBool>,
+}
+
+#[tauri::command]
+fn complete_startup(app: AppHandle, state: State<'_, StartupState>) -> Result<(), String> {
+    if !claim_startup_transition(&state.transition_started) {
+        return Ok(());
+    }
+
+    if let Err(error) = show_main_and_close_splash(&app) {
+        state.transition_started.store(false, Ordering::Release);
+        return Err(error);
+    }
+
+    Ok(())
+}
 
 pub fn run_headless_backup_scheduler_from_args() -> Option<i32> {
     commands::backup::run_headless_backup_scheduler_from_args()
@@ -20,6 +49,7 @@ pub fn run() {
     load_local_env_files();
 
     tauri::Builder::default()
+        .manage(StartupState::default())
         .plugin(tauri_plugin_autostart::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_deep_link::init())
@@ -29,8 +59,14 @@ pub fn run() {
                     let link = commands::deeplink::parse_deep_link(&arg);
                     if let Some(window) = app.get_webview_window("main") {
                         let _ = window.emit("deep-link", link);
-                        let _ = window.show();
-                        let _ = window.set_focus();
+                        if app
+                            .state::<StartupState>()
+                            .transition_started
+                            .load(Ordering::Acquire)
+                        {
+                            let _ = window.show();
+                            let _ = window.set_focus();
+                        }
                     }
                 }
             }
@@ -53,9 +89,9 @@ pub fn run() {
             if let Some(window) = app.get_webview_window("main") {
                 keep_window_on_visible_monitor(&window);
                 attach_window_bounds_guard(&window);
-                let _ = window.show();
-                let _ = window.set_focus();
             }
+
+            spawn_startup_fallback(app);
 
             // Start the background process poller for tracking playtime
             commands::games::start_playtime_poller(app.handle().clone());
@@ -82,6 +118,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
+            complete_startup,
             commands::system::get_system_info,
             commands::system::get_default_install_dir,
             commands::system::get_hardware_info,
@@ -131,10 +168,6 @@ pub fn run() {
             commands::client_manager::run_platform_client_update_scheduler_now,
             commands::client_manager::open_platform_client_installer,
             commands::client_manager::open_platform_client_updater,
-            commands::remote_companion::save_remote_companion_device_secret,
-            commands::remote_companion::get_remote_companion_device_secret_status,
-            commands::remote_companion::clear_remote_companion_device_secret,
-            commands::remote_companion::remote_companion_poll_once,
             commands::gog::open_gog_login_window,
             commands::epic::open_epic_login_window,
             commands::epic::authenticate_epic_legendary,
@@ -155,6 +188,7 @@ pub fn run() {
             commands::stripe::validate_license,
             commands::perf_monitor::poll_performance_metrics,
             commands::overlay::toggle_in_game_overlay,
+            commands::overlay::set_in_game_overlay_click_through,
             commands::overlay::toggle_fps_hud,
             commands::overlay::get_overlay_settings,
             commands::overlay::save_overlay_settings,
@@ -218,15 +252,6 @@ pub fn run() {
             commands::downloads::get_download_queue,
             commands::downloads::check_provider_health,
             commands::downloads::reconcile_downloads,
-            commands::downloads::preview_lan_transfer_copy,
-            commands::downloads::preview_lan_transfer_resume_cancel_ledger,
-            commands::downloads::preview_lan_transfer_peer_discovery_preflight,
-            commands::downloads::get_lan_transfer_copy_jobs,
-            commands::downloads::start_lan_transfer_copy_job,
-            commands::downloads::cancel_lan_transfer_copy_job,
-            commands::downloads::run_lan_transfer_copy,
-            commands::downloads::run_lan_transfer_resume_copy,
-            commands::downloads::run_lan_transfer_cleanup_candidates,
             commands::local_db::apply_remote_local_entities,
             commands::local_db::get_all_local_entities,
             commands::local_db::get_local_database_path,
@@ -247,6 +272,46 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running Open Game Launcher");
+}
+
+fn claim_startup_transition(transition_started: &AtomicBool) -> bool {
+    transition_started
+        .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+        .is_ok()
+}
+
+fn show_main_and_close_splash(app: &AppHandle) -> Result<(), String> {
+    let main_window = app
+        .get_webview_window("main")
+        .ok_or_else(|| "Main window is unavailable during startup".to_string())?;
+
+    keep_window_on_visible_monitor(&main_window);
+    main_window
+        .show()
+        .map_err(|error| format!("Main window could not be shown: {error}"))?;
+    let _ = main_window.set_focus();
+
+    if let Some(splashscreen) = app.get_webview_window("splashscreen") {
+        let _ = splashscreen.close();
+    }
+
+    Ok(())
+}
+
+fn spawn_startup_fallback(app: &tauri::App) {
+    let app_handle = app.handle().clone();
+    let transition_started = app.state::<StartupState>().transition_started.clone();
+
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(STARTUP_FALLBACK_DELAY).await;
+        if !claim_startup_transition(&transition_started) {
+            return;
+        }
+
+        if show_main_and_close_splash(&app_handle).is_err() {
+            transition_started.store(false, Ordering::Release);
+        }
+    });
 }
 
 fn load_local_env_files() {
@@ -345,5 +410,18 @@ fn keep_window_on_visible_monitor(window: &WebviewWindow) {
 
     if clamped_x != position.x || clamped_y != position.y {
         let _ = window.set_position(PhysicalPosition::new(clamped_x, clamped_y));
+    }
+}
+
+#[cfg(test)]
+mod startup_tests {
+    use super::*;
+
+    #[test]
+    fn startup_transition_can_only_be_claimed_once() {
+        let transition_started = AtomicBool::new(false);
+
+        assert!(claim_startup_transition(&transition_started));
+        assert!(!claim_startup_transition(&transition_started));
     }
 }

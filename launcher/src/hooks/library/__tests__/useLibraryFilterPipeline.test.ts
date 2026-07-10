@@ -4,7 +4,10 @@ import { describe, expect, it } from "vitest";
 import { useLibraryFilterPipeline } from "../useLibraryFilterPipeline";
 import type { LibraryAdvancedFilters } from "../../../lib/library-filters";
 import type { LibrarySortOption } from "../../../lib/library-sort";
-import type { LibraryPlatformFilter } from "../../../lib/library-filters-helpers";
+import {
+  initialAdvancedFilters,
+  type LibraryPlatformFilter,
+} from "../../../lib/library-filters-helpers";
 import type { Game } from "../../../lib/types";
 
 function makeGame(overrides: Partial<Game> = {}): Game {
@@ -12,26 +15,28 @@ function makeGame(overrides: Partial<Game> = {}): Game {
     id: "steam-1",
     title: "Test Game",
     description: "",
+    features: [],
+    genres: ["Action"],
+    launcher: "steam",
     version: "1.0",
     status: "installed",
     platform: "windows",
     playtimeMinutes: 0,
+    players: ["Singleplayer"],
+    productCategory: "game",
+    sizeGb: 5,
     ...overrides,
   } as Game;
 }
 
 const baseAdvanced: LibraryAdvancedFilters = {
-  players: [],
-  features: [],
-  hardware: [],
-  genres: [],
-  status: [],
-  platforms: [],
-  launchers: [],
-  categories: [],
-  sizeQuery: "",
-  productCategories: [],
+  ...initialAdvancedFilters,
+  productCategories: [...initialAdvancedFilters.productCategories],
 };
+
+function filteredIds(groups: ReturnType<typeof useLibraryFilterPipeline>["filteredGroups"]) {
+  return groups.flatMap((group) => group.variants.map((game) => game.id));
+}
 
 function makeOptions(overrides: Partial<Parameters<typeof useLibraryFilterPipeline>[0]> = {}) {
   return {
@@ -52,10 +57,10 @@ function makeOptions(overrides: Partial<Parameters<typeof useLibraryFilterPipeli
 }
 
 describe("useLibraryFilterPipeline", () => {
-  it("returns fallback mock games when installedGames is empty", () => {
+  it("returns a real empty library when installedGames is empty", () => {
     const { result } = renderHook(() => useLibraryFilterPipeline(makeOptions()));
-    expect(result.current.baseLibraryGames.length).toBeGreaterThan(0);
-    expect(result.current.fallbackMockGames.length).toBe(result.current.baseLibraryGames.length);
+    expect(result.current.baseLibraryGames).toEqual([]);
+    expect(result.current.libraryGroups).toEqual([]);
   });
 
   it("uses installedGames when non-empty", () => {
@@ -77,17 +82,87 @@ describe("useLibraryFilterPipeline", () => {
     expect(result.current.baseLibraryGames.map((g) => g.id)).toEqual(["real"]);
   });
 
-  it("enriches games with metadata", () => {
-    const { result } = renderHook(() => useLibraryFilterPipeline(makeOptions()));
+  it("preserves provider metadata without inventing missing catalog facts", () => {
+    const game = makeGame({
+      id: "neo-tokyo-unverified",
+      features: undefined,
+      genres: undefined,
+      players: undefined,
+      productCategory: undefined,
+      protonCompatible: undefined,
+      sizeGb: undefined,
+      steamDeckCompatibility: undefined,
+      title: "Neo-Tokyo Drift",
+    });
+    const { result } = renderHook(() =>
+      useLibraryFilterPipeline(makeOptions({ installedGames: [game] })),
+    );
     const enriched = result.current.enrichedLibraryGames[0];
-    expect(enriched).toBeDefined();
+    expect(enriched).toMatchObject({ id: game.id, title: game.title });
+    expect(enriched?.features).toBeUndefined();
+    expect(enriched?.genres).toBeUndefined();
+    expect(enriched?.players).toBeUndefined();
+    expect(enriched?.productCategory).toBeUndefined();
+    expect(enriched?.protonCompatible).toBeUndefined();
+    expect(enriched?.sizeGb).toBeUndefined();
+    expect(enriched?.steamDeckCompatibility).toBeUndefined();
   });
 
   it("parses size query from search text", () => {
+    const games = [
+      makeGame({ id: "small", sizeGb: 5, title: "Small Game" }),
+      makeGame({ id: "large", sizeGb: 25, title: "Large Game" }),
+      makeGame({ id: "unknown", sizeGb: undefined, title: "Unknown Size" }),
+    ];
     const { result } = renderHook(() =>
-      useLibraryFilterPipeline(makeOptions({ searchQuery: ">10" })),
+      useLibraryFilterPipeline(makeOptions({ installedGames: games, searchQuery: ">10" })),
     );
-    expect(result.current.filteredGroups).toBeDefined();
+    expect(filteredIds(result.current.filteredGroups)).toEqual(["large"]);
+  });
+
+  it("uses an explicit advanced size query before a size query parsed from search", () => {
+    const games = [
+      makeGame({ id: "small", sizeGb: 5, title: "Small Game" }),
+      makeGame({ id: "large", sizeGb: 25, title: "Large Game" }),
+    ];
+    const { result } = renderHook(() =>
+      useLibraryFilterPipeline(
+        makeOptions({
+          advancedFilters: { ...baseAdvanced, sizeQuery: "<10" },
+          installedGames: games,
+          searchQuery: ">20",
+        }),
+      ),
+    );
+
+    expect(filteredIds(result.current.filteredGroups)).toEqual(["small"]);
+  });
+
+  it("filters by search text and preserves matching custom artwork", () => {
+    const games = [
+      makeGame({ coverUrl: "original.png", id: "alpha", title: "Alpha Strike" }),
+      makeGame({ id: "beta", title: "Beta Drift" }),
+    ];
+    const { result } = renderHook(() =>
+      useLibraryFilterPipeline(
+        makeOptions({
+          customArtwork: {
+            alpha: { coverUrl: "custom.png", iconUrl: "custom-icon.png" },
+          },
+          installedGames: games,
+          searchQuery: "Alpha",
+        }),
+      ),
+    );
+
+    expect(result.current.baseLibraryGames.find((game) => game.id === "alpha")).toMatchObject({
+      coverUrl: "custom.png",
+      iconUrl: "custom-icon.png",
+    });
+    expect(result.current.baseLibraryGames.find((game) => game.id === "beta")?.coverUrl).toBe(
+      undefined,
+    );
+    expect(filteredIds(result.current.filteredGroups)).toEqual(["alpha"]);
   });
 
   it("filters by manual collection", () => {
@@ -101,9 +176,42 @@ describe("useLibraryFilterPipeline", () => {
         }),
       ),
     );
-    const ids = result.current.baseLibraryGames.map((g) => g.id);
-    expect(ids).toContain("g1");
-    expect(ids).toContain("g2");
+    expect(filteredIds(result.current.filteredGroups)).toEqual(["g1"]);
+  });
+
+  it("returns no games for a selected manual collection that no longer exists", () => {
+    const { result } = renderHook(() =>
+      useLibraryFilterPipeline(
+        makeOptions({
+          installedGames: [makeGame({ id: "g1" })],
+          manualCollections: {},
+          selectedManualCollectionName: "Deleted Collection",
+        }),
+      ),
+    );
+
+    expect(result.current.filteredGroups).toEqual([]);
+  });
+
+  it("rejects games that fail platform, hidden, or advanced status filters", () => {
+    const games = [
+      makeGame({ id: "visible", platform: "windows", status: "installed" }),
+      makeGame({ id: "wrong-platform", platform: "linux", status: "installed" }),
+      makeGame({ id: "hidden", platform: "windows", status: "installed" }),
+      makeGame({ id: "not-installed", platform: "windows", status: "not_installed" }),
+    ];
+    const { result } = renderHook(() =>
+      useLibraryFilterPipeline(
+        makeOptions({
+          activePlatformFilter: "windows",
+          advancedFilters: { ...baseAdvanced, status: ["installed"] },
+          hiddenGames: { hidden: true },
+          installedGames: games,
+        }),
+      ),
+    );
+
+    expect(filteredIds(result.current.filteredGroups)).toEqual(["visible"]);
   });
 
   it("counts active advanced filters", () => {
@@ -120,15 +228,19 @@ describe("useLibraryFilterPipeline", () => {
   it("selects the group matching selectedGroupId", () => {
     const { result, rerender } = renderHook(
       (props: { selectedGroupId: string | null }) =>
-        useLibraryFilterPipeline(makeOptions({ selectedGroupId: props.selectedGroupId })),
+        useLibraryFilterPipeline(
+          makeOptions({
+            installedGames: [makeGame()],
+            selectedGroupId: props.selectedGroupId,
+          }),
+        ),
       { initialProps: { selectedGroupId: null as string | null } },
     );
     const firstGroup = result.current.libraryGroups[0];
-    if (firstGroup) {
-      rerender({ selectedGroupId: firstGroup.id });
-      expect(result.current.selectedGroup?.id).toBe(firstGroup.id);
-    } else {
-      expect(result.current.selectedGroup).toBeNull();
-    }
+    expect(firstGroup).toBeDefined();
+    expect(result.current.selectedGroup).toBeNull();
+
+    rerender({ selectedGroupId: firstGroup.id });
+    expect(result.current.selectedGroup?.id).toBe(firstGroup.id);
   });
 });

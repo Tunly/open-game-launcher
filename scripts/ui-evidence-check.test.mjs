@@ -37,6 +37,8 @@ test("parseGitStatusPaths extracts changed and untracked paths", () => {
         " M launcher/src/pages/SettingsPage.tsx",
         "?? docs/verification/screenshots/settings.png",
         "R  old.png -> docs/verification/screenshots/new.png",
+        " D docs/verification/screenshots/removed.png",
+        "D  launcher/src/pages/RemovedPage.tsx",
       ].join("\n"),
     ),
     [
@@ -44,6 +46,19 @@ test("parseGitStatusPaths extracts changed and untracked paths", () => {
       "docs/verification/screenshots/settings.png",
       "docs/verification/screenshots/new.png",
     ],
+  );
+});
+
+test("parseGitStatusPaths ignores deleted UI sources and screenshot artifacts", () => {
+  assert.deepEqual(
+    parseGitStatusPaths(
+      [
+        " D launcher/src/pages/RemovedPage.tsx",
+        "D  docs/verification/screenshots/removed.png",
+        " M launcher/src/pages/HomePage.tsx",
+      ].join("\n"),
+    ),
+    ["launcher/src/pages/HomePage.tsx"],
   );
 });
 
@@ -167,7 +182,7 @@ test("uiEvidenceReport rejects visible helper and local evidence data modules wi
       "launcher/src/components/settings/PlatformHealthPanel.helpers.ts",
       "launcher/src/lib/library-filters.ts",
       "launcher/src/lib/mock-data.ts",
-      "launcher/src/lib/smart-install-local-mirror-audit.ts",
+      "launcher/src/lib/app-shell-skins.ts",
     ],
     readmeText: "",
     root,
@@ -178,7 +193,7 @@ test("uiEvidenceReport rejects visible helper and local evidence data modules wi
     "launcher/src/components/settings/PlatformHealthPanel.helpers.ts",
     "launcher/src/lib/library-filters.ts",
     "launcher/src/lib/mock-data.ts",
-    "launcher/src/lib/smart-install-local-mirror-audit.ts",
+    "launcher/src/lib/app-shell-skins.ts",
   ]);
   assert.match(
     report.findings.join("\n"),
@@ -338,6 +353,24 @@ test("uiEvidenceReport requires screenshot route family to match the UI change",
 
   assert.equal(matchingHomeRouteReport.ready, true);
   assert.deepEqual(matchingHomeRouteReport.findings, []);
+});
+
+test("uiEvidenceReport maps the FPS HUD page to its registered /fps-hud route", () => {
+  const root = fixtureRoot();
+  writePngFixture(root, "docs/verification/screenshots/fps-hud.png");
+
+  const report = uiEvidenceReport({
+    changedPaths: [
+      "launcher/src/pages/FpsHudPage.tsx",
+      "docs/verification/screenshots/fps-hud.png",
+    ],
+    readmeText:
+      "- `screenshots/fps-hud.png` - `/fps-hud` local browser-preview HUD with Retro Manga styling and no horizontal overflow.",
+    root,
+  });
+
+  assert.equal(report.ready, true);
+  assert.deepEqual(report.findings, []);
 });
 
 test("uiEvidenceReport rejects incomplete screenshot entries in a dirty screenshot set", () => {

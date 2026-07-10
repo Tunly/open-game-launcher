@@ -40,7 +40,6 @@ vi.mock("../../../lib/launcher", () => ({
       description: "",
       coverUrl: null,
       logoUrl: null,
-      playtimeMinutes: 0,
     }));
   },
   openSteamScraperWindow: (...args: unknown[]) => openSteamScraperWindow(...args),
@@ -96,6 +95,7 @@ describe("mergeSteamOwned", () => {
     expect(localStorage.getItem(STORAGE_KEYS.STEAM_OWNED_GAMES_CACHE_VERSION)).toBe(
       STEAM_OWNED_GAMES_CACHE_VERSION,
     );
+    expect(localStorage.getItem(STORAGE_KEYS.STEAM_OWNED_GAMES_CACHE_ACCOUNT)).toBe("steamid-123");
   });
 
   it("uses the cached Steam-owned games when not force refreshing", async () => {
@@ -108,12 +108,55 @@ describe("mergeSteamOwned", () => {
       STORAGE_KEYS.STEAM_OWNED_GAMES_CACHE_VERSION,
       STEAM_OWNED_GAMES_CACHE_VERSION,
     );
+    window.localStorage.setItem(STORAGE_KEYS.STEAM_OWNED_GAMES_CACHE_ACCOUNT, "steamid-123");
 
     const result = await mergeSteamOwned([], makeContext({ forceRefresh: false }));
 
     expect(fetchSteamOwnedGames).not.toHaveBeenCalled();
     expect(result.games).toHaveLength(1);
     expect(result.games[0].id).toBe("steam-owned-440");
+    expect(openSteamScraperWindow).not.toHaveBeenCalled();
+  });
+
+  it("ignores a cache created for another Steam account", async () => {
+    window.localStorage.setItem(STORAGE_KEYS.STEAM_ID, JSON.stringify("steamid-new"));
+    window.localStorage.setItem(
+      STORAGE_KEYS.STEAM_OWNED_GAMES_CACHE,
+      JSON.stringify([{ appid: "999", title: "Old account game" }]),
+    );
+    window.localStorage.setItem(
+      STORAGE_KEYS.STEAM_OWNED_GAMES_CACHE_VERSION,
+      STEAM_OWNED_GAMES_CACHE_VERSION,
+    );
+    window.localStorage.setItem(STORAGE_KEYS.STEAM_OWNED_GAMES_CACHE_ACCOUNT, "steamid-old");
+    fetchSteamOwnedGames.mockResolvedValueOnce([{ appid: "440", title: "New account game" }]);
+
+    const result = await mergeSteamOwned([], makeContext());
+
+    expect(fetchSteamOwnedGames).toHaveBeenCalledWith("steamid-new");
+    expect(result.games.map((game) => game.id)).toEqual(["steam-owned-440"]);
+  });
+
+  it("discards an in-flight fetch after the active Steam account changes", async () => {
+    window.localStorage.setItem(STORAGE_KEYS.STEAM_ID, JSON.stringify("steamid-old"));
+    let resolveFetch: (games: unknown[]) => void = () => undefined;
+    fetchSteamOwnedGames.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          resolveFetch = resolve;
+        }),
+    );
+
+    const mergePromise = mergeSteamOwned([], makeContext());
+    await vi.waitFor(() => expect(fetchSteamOwnedGames).toHaveBeenCalledWith("steamid-old"));
+    window.localStorage.setItem(STORAGE_KEYS.STEAM_ID, JSON.stringify("steamid-new"));
+    resolveFetch([{ appid: "999", title: "Old account game" }]);
+
+    const result = await mergePromise;
+
+    expect(result.games).toEqual([]);
+    expect(openSteamScraperWindow).not.toHaveBeenCalled();
+    expect(localStorage.getItem(STORAGE_KEYS.STEAM_OWNED_GAMES_CACHE)).toBeNull();
   });
 
   it("ignores stale cache versions and re-fetches when forceRefresh is true", async () => {

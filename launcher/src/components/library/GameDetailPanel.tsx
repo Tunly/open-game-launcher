@@ -2,7 +2,6 @@ import { useMemo, useRef } from "react";
 
 import { GameDetails } from "./GameDetails";
 import { useLibraryContext } from "../../context/useLibraryContext";
-import { moveGame } from "../../lib/launcher";
 import { createVerifyCrossStoreSaveMigrationReadiness } from "../../lib/cross-store-save-migration-readiness";
 import { createVerifyHostedCommunityArtworkReadiness } from "../../lib/hosted-community-artwork-readiness";
 import { createVerifyHostedCommunityArtworkModerationConsole } from "../../lib/hosted-community-artwork-moderation-console";
@@ -94,15 +93,9 @@ export function GameDetailPanel({ verifyMode }: { verifyMode?: string | null }) 
       setCustomCategories={ctx.manual.setCustomCategories}
       manualCollections={ctx.manual.manualCollections}
       setManualCollections={ctx.manual.setManualCollections}
-      setActivePlatformFilter={ctx.filters.setActivePlatformFilter}
-      clearCollectionSelection={() => {
-        ctx.manual.clearManualCollectionSelection();
-        ctx.dynamic.setSelectedCollectionName(null);
-      }}
       detailScrollRef={detailScrollRef}
       isDiscoveringGames={ctx.sync.isDiscoveringGames}
       discoveryMessage={ctx.sync.discoveryMessage}
-      moveGame={moveGame}
       runAutomaticLibrarySync={ctx.sync.runAutomaticLibrarySync}
       customArtwork={
         selectedVariants[0] ? (ctx.sync.customArtwork[selectedVariants[0].id] ?? null) : null

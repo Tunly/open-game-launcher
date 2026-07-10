@@ -21,7 +21,6 @@ pub mod overlay;
 pub mod perf_monitor;
 pub mod plugin_runtime_sandbox;
 pub mod plugin_system;
-pub mod remote_companion;
 pub mod secure_store;
 pub mod stripe;
 pub mod system;

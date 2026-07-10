@@ -4,8 +4,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 
 use super::super::core::{
-    current_unix_timestamp, epic_catalog_asset_cache_path, get_dir_last_modified, installed_game,
-    path_to_string, unix_timestamp_to_iso,
+    current_unix_timestamp, epic_catalog_asset_cache_path, installed_game, path_to_string,
 };
 use super::super::types::*;
 use super::{
@@ -141,13 +140,6 @@ pub fn scan_epic_games() -> Vec<InstalledGame> {
             game.icon_url = icon_url;
             game.logo_urls = game.logo_url.clone().into_iter().collect();
             game.icon_urls = game.icon_url.clone().into_iter().collect();
-            if let Some(timestamp) = install_root
-                .as_ref()
-                .and_then(|path| get_dir_last_modified(path))
-            {
-                game.last_played_at = Some(unix_timestamp_to_iso(timestamp));
-            }
-
             Some(game)
         })
         .collect()

@@ -241,6 +241,39 @@ describe("ProfileCustomizePage local draft fallback", () => {
     });
   });
 
+  it("reports a shell skin as browser-only when the hosted profile column is missing", async () => {
+    const hostedProfile = makeProfile({ appShellSkinId: "redline-print" });
+    currentUserMock.mockReturnValue({
+      isConfigured: true,
+      isLoading: false,
+      session: { user: { id: hostedProfile.id } },
+      user: { id: hostedProfile.id },
+    });
+    profileMocks.getMyProfile.mockResolvedValue(hostedProfile);
+    profileMocks.getMyShowcases.mockResolvedValue([]);
+    profileMocks.getProfileThemes.mockResolvedValue([makeTheme({ id: "theme-paper" })]);
+    profileMocks.updateMyAppShellSkin.mockRejectedValue(
+      new Error(
+        "Supabase profiles.app_shell_skin is unavailable. The shell skin was not synced to the hosted profile.",
+      ),
+    );
+
+    const container = renderWithRoot(<ProfileCustomizePage />);
+    await waitForAssertion(() => {
+      expect(container).toHaveTextContent("Redline Print");
+    });
+
+    const tealButton = Array.from(container.querySelectorAll("button")).find((button) =>
+      button.textContent?.includes("Teal Print"),
+    );
+    await clickElement(tealButton);
+
+    await waitForAssertion(() => {
+      expect(container).toHaveTextContent("Teal Print browser-only shell skin selected.");
+      expect(container).not.toHaveTextContent("Teal Print shell skin synced to this profile.");
+    });
+  });
+
   it("imports and persists a validated local custom theme draft", async () => {
     const container = renderWithRoot(<ProfileCustomizePage />);
 

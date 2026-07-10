@@ -5,12 +5,7 @@ import { useState } from "react";
 import { DeduplicationPanel } from "./DeduplicationPanel";
 import type { PlatformFriend, PlatformType } from "../../lib/types/friends";
 import { importPlatformFriends } from "../../lib/supabase/friend-links";
-import {
-  fetchEpicFriends,
-  fetchGogFriends,
-  fetchSteamFriends,
-  fetchXboxFriends,
-} from "../../lib/launcher";
+import { fetchEpicFriends, fetchGogFriends, fetchSteamFriends } from "../../lib/launcher";
 import { STORAGE_KEYS } from "../../lib/storage-keys";
 
 interface FriendImportProps {
@@ -23,14 +18,7 @@ interface PlatformImportOption {
   detail: string;
   badge: string;
   accentClass: string;
-}
-
-type ImportSource = "native" | "preview";
-
-interface PlatformImportResult {
-  friends: PlatformFriend[];
-  note: string | null;
-  source: ImportSource;
+  available: boolean;
 }
 
 const PLATFORM_ORDER: PlatformType[] = [
@@ -48,144 +36,77 @@ const PLATFORM_OPTIONS: Record<PlatformType, PlatformImportOption> = {
   steam: {
     key: "steam",
     label: "Steam",
-    detail: "Public friends or local preview",
+    detail: "Imports your real public Steam friends",
     badge: "Native",
     accentClass: "bg-[#171411]",
+    available: true,
   },
   epic: {
     key: "epic",
     label: "Epic",
-    detail: "Legendary roster or local preview",
+    detail: "Imports your real Legendary roster",
     badge: "Native",
     accentClass: "bg-[#171411]",
+    available: true,
   },
   gog: {
     key: "gog",
     label: "GOG",
-    detail: "Galaxy friends or local preview",
+    detail: "Imports your real Galaxy roster",
     badge: "Native",
     accentClass: "bg-[#087d6d]",
+    available: true,
   },
   ea: {
     key: "ea",
     label: "EA App",
-    detail: "Connected-account preview",
-    badge: "Preview",
+    detail: "Friend import is not supported yet",
+    badge: "Unavailable",
     accentClass: "bg-[#b7102a]",
+    available: false,
   },
   xbox: {
     key: "xbox",
     label: "Xbox",
-    detail: "Gamertag cache or local preview",
-    badge: "Preview",
+    detail: "Secure friend-token handoff is not available yet",
+    badge: "Unavailable",
     accentClass: "bg-[#087d6d]",
+    available: false,
   },
   battlenet: {
     key: "battlenet",
     label: "Battle.net",
-    detail: "BattleTag-style preview",
-    badge: "Preview",
+    detail: "Friend import is not supported yet",
+    badge: "Unavailable",
     accentClass: "bg-[#171411]",
+    available: false,
   },
   ubisoft: {
     key: "ubisoft",
     label: "Ubisoft",
-    detail: "Connect roster preview",
-    badge: "Preview",
+    detail: "Friend import is not supported yet",
+    badge: "Unavailable",
     accentClass: "bg-[#087d6d]",
+    available: false,
   },
   og: {
     key: "og",
     label: "OG-Launcher",
-    detail: "Launcher network preview",
-    badge: "Local",
+    detail: "Use Add Friend for launcher accounts",
+    badge: "Unavailable",
     accentClass: "bg-[#b7102a]",
+    available: false,
   },
 };
 
 const PLATFORMS = PLATFORM_ORDER.map((platform) => PLATFORM_OPTIONS[platform]);
 
-const LOCAL_PREVIEW_ROSTERS: Record<
-  PlatformType,
-  Array<Pick<PlatformFriend, "displayName" | "onlineStatus" | "platformId">>
-> = {
-  steam: [
-    {
-      platformId: "preview-steam-arcade-ronin",
-      displayName: "ArcadeRonin",
-      onlineStatus: "online",
-    },
-    { platformId: "preview-steam-metro-ghost", displayName: "MetroGhost", onlineStatus: "away" },
-    { platformId: "preview-steam-katana-byte", displayName: "KatanaByte", onlineStatus: "offline" },
-  ],
-  epic: [
-    { platformId: "preview-epic-rift-signal", displayName: "RiftSignal", onlineStatus: "online" },
-    { platformId: "preview-epic-dropwave", displayName: "DropWave", onlineStatus: "busy" },
-    { platformId: "preview-epic-vaultpilot", displayName: "VaultPilot", onlineStatus: "offline" },
-  ],
-  gog: [
-    { platformId: "preview-gog-retro-orbit", displayName: "RetroOrbit", onlineStatus: "online" },
-    { platformId: "preview-gog-diskmage", displayName: "DiskMage", onlineStatus: "away" },
-    { platformId: "preview-gog-crt-saint", displayName: "CRTSaint", onlineStatus: "offline" },
-  ],
-  ea: [
-    { platformId: "preview-ea-grid-runner", displayName: "GridRunner", onlineStatus: "online" },
-    { platformId: "preview-ea-frostline", displayName: "Frostline", onlineStatus: "busy" },
-    { platformId: "preview-ea-boostframe", displayName: "BoostFrame", onlineStatus: "away" },
-  ],
-  xbox: [
-    {
-      platformId: "preview-xbox-neon-gamertag",
-      displayName: "NeonGamertag",
-      onlineStatus: "online",
-    },
-    { platformId: "preview-xbox-green-room", displayName: "GreenRoom", onlineStatus: "away" },
-    { platformId: "preview-xbox-party-cable", displayName: "PartyCable", onlineStatus: "offline" },
-  ],
-  battlenet: [
-    {
-      platformId: "preview-battlenet-hexrunner-117",
-      displayName: "HexRunner#117",
-      onlineStatus: "online",
-    },
-    {
-      platformId: "preview-battlenet-raidprint-404",
-      displayName: "RaidPrint#404",
-      onlineStatus: "busy",
-    },
-    {
-      platformId: "preview-battlenet-stormbit-226",
-      displayName: "StormBit#226",
-      onlineStatus: "offline",
-    },
-  ],
-  ubisoft: [
-    {
-      platformId: "preview-ubisoft-splinter-ink",
-      displayName: "SplinterInk",
-      onlineStatus: "online",
-    },
-    { platformId: "preview-ubisoft-nomad-loop", displayName: "NomadLoop", onlineStatus: "away" },
-    {
-      platformId: "preview-ubisoft-siege-panel",
-      displayName: "SiegePanel",
-      onlineStatus: "offline",
-    },
-  ],
-  og: [
-    { platformId: "preview-og-local-coop", displayName: "LocalCoop", onlineStatus: "online" },
-    { platformId: "preview-og-library-rival", displayName: "LibraryRival", onlineStatus: "away" },
-    { platformId: "preview-og-launch-room", displayName: "LaunchRoom", onlineStatus: "unknown" },
-  ],
-};
-
 function getPlatformLabel(platform: PlatformType) {
   return PLATFORM_OPTIONS[platform].label;
 }
 
-function formatImportCount(count: number, source: ImportSource) {
-  const importKind = source === "native" ? "live" : "preview";
-  return `${count} ${importKind} friend${count === 1 ? "" : "s"}`;
+function formatImportCount(count: number) {
+  return `${count} live friend${count === 1 ? "" : "s"}`;
 }
 
 function readLocalStorageString(key: string) {
@@ -202,17 +123,7 @@ function readLocalStorageString(key: string) {
   }
 }
 
-function createLocalPreviewFriends(platform: PlatformType): PlatformFriend[] {
-  return LOCAL_PREVIEW_ROSTERS[platform].map((friend) => ({
-    ...friend,
-    avatarUrl: null,
-    platform,
-  }));
-}
-
-async function fetchNativePlatformFriends(
-  platform: PlatformType,
-): Promise<PlatformFriend[] | null> {
+async function fetchNativePlatformFriends(platform: PlatformType): Promise<PlatformFriend[]> {
   switch (platform) {
     case "steam": {
       const steamId = readLocalStorageString(STORAGE_KEYS.STEAM_ID);
@@ -228,45 +139,21 @@ async function fetchNativePlatformFriends(
       }
       return fetchEpicFriends();
     }
-    case "xbox": {
-      if (!readLocalStorageString(STORAGE_KEYS.XBOX_GAMES_CACHE)) {
-        throw new Error("Connect Xbox first in Settings.");
-      }
-      return fetchXboxFriends("");
-    }
+    case "xbox":
     case "ea":
     case "battlenet":
     case "ubisoft":
     case "og":
-      return null;
+      throw new Error(`${getPlatformLabel(platform)} friend import is not supported yet.`);
   }
 }
 
-async function loadPlatformFriends(platform: PlatformType): Promise<PlatformImportResult> {
-  if (isTauri()) {
-    try {
-      const nativeFriends = await fetchNativePlatformFriends(platform);
-      if (nativeFriends) {
-        return {
-          friends: nativeFriends,
-          note: null,
-          source: "native",
-        };
-      }
-    } catch (err) {
-      return {
-        friends: createLocalPreviewFriends(platform),
-        note: `Native fetch skipped: ${err instanceof Error ? err.message : String(err)}`,
-        source: "preview",
-      };
-    }
+async function loadPlatformFriends(platform: PlatformType): Promise<PlatformFriend[]> {
+  if (!isTauri()) {
+    throw new Error("Friend import is available in the desktop app only.");
   }
 
-  return {
-    friends: createLocalPreviewFriends(platform),
-    note: "Local preview roster used.",
-    source: "preview",
-  };
+  return fetchNativePlatformFriends(platform);
 }
 
 export function FriendImport({ onImported }: FriendImportProps) {
@@ -280,13 +167,9 @@ export function FriendImport({ onImported }: FriendImportProps) {
     setError(null);
 
     try {
-      const { friends, note, source } = await loadPlatformFriends(platform);
+      const friends = await loadPlatformFriends(platform);
       const count = await importPlatformFriends(friends);
-      setMessage(
-        `Imported ${formatImportCount(count, source)} from ${getPlatformLabel(platform)}.${
-          note ? ` ${note}` : ""
-        }`,
-      );
+      setMessage(`Imported ${formatImportCount(count)} from ${getPlatformLabel(platform)}.`);
       onImported?.();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -298,11 +181,11 @@ export function FriendImport({ onImported }: FriendImportProps) {
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        {PLATFORMS.map(({ key, label, detail, badge, accentClass }) => (
+        {PLATFORMS.map(({ key, label, detail, badge, accentClass, available }) => (
           <button
             key={key}
             className="group min-h-[82px] border-[3px] border-black bg-[#f6edd8] p-2 text-left shadow-[3px_3px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#fff9ed] disabled:opacity-50"
-            disabled={loading !== null}
+            disabled={loading !== null || !available}
             type="button"
             onClick={() => void handleImport(key)}
           >

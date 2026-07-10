@@ -250,11 +250,11 @@ pub async fn process_battlenet_games_payload(
                     id: format!("battlenet-owned-{}", i.replace(" ", "-").to_lowercase()),
                     external_id: Some(i.to_string()),
                     title: n.to_string(),
-                    description: format!("Battle.net game (Owned). ID: {}", i),
+                    description: String::new(),
                     cover_url,
                     logo_url,
                     icon_url,
-                    playtime_minutes: 0,
+                    playtime_minutes: None,
                     last_played_at: None,
                     cloud_gaming_url: None,
                 });

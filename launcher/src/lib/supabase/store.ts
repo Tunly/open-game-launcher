@@ -15,7 +15,6 @@ import type {
   StoreOrderInvoice,
   StoreOrderItem,
   StorePriceAlert,
-  StorePricePoint,
   StoreProduct,
   StoreProductStatus,
   StoreReview,
@@ -45,7 +44,6 @@ type StoreLicenseRow = Database["public"]["Tables"]["store_licenses"]["Row"];
 type StoreReviewRow = Database["public"]["Tables"]["store_reviews"]["Row"];
 type StoreReviewReportRow = Database["public"]["Tables"]["store_review_reports"]["Row"];
 type StoreReviewReplyRow = Database["public"]["Tables"]["store_review_replies"]["Row"];
-type StorePriceHistoryRow = Database["public"]["Tables"]["price_history"]["Row"];
 type DeveloperApplicationRow = Database["public"]["Tables"]["developer_applications"]["Row"];
 
 export interface StorePriceDropNotificationRunEvidence {
@@ -94,7 +92,7 @@ export interface StoreOrderSupportResult {
 
 const PRODUCT_SELECT = `id, title, slug, description, short_description, developer_id, publisher,
   release_date, genres, tags, platforms, price_cents, discount_percent, cover_image_url,
-  screenshots, trailer_url, min_system_requirements, rec_system_requirements,
+  trailer_url, min_system_requirements, rec_system_requirements,
   rating, ratings_count, downloads_count, status, metadata, created_at, updated_at`;
 const CART_SELECT = `id, user_id, product_id, quantity, added_at`;
 const WISHLIST_SELECT = `id, user_id, product_id, added_at`;
@@ -118,9 +116,11 @@ const REVIEW_REPORT_SELECT = `id, review_id, reporter_user_id, reason, details, 
   created_at, updated_at`;
 const REVIEW_REPLY_SELECT = `id, review_id, product_id, developer_user_id, body, created_at,
   updated_at`;
-const PRICE_HISTORY_SELECT = `id, game_id, platform, price_cents, discount_percent, recorded_at`;
 const DEVELOPER_APPLICATION_SELECT = `id, user_id, studio_name, website, description, status,
   reviewed_by_user_id, reviewed_at, created_at, updated_at`;
+const publishedProductsCacheTtlMs = 5 * 60_000;
+let publishedProductsCache: { data: StoreProduct[]; expiresAt: number } | null = null;
+let publishedProductsRequest: Promise<StoreProduct[]> | null = null;
 
 function asRecord(value: unknown): Record<string, unknown> {
   return value && typeof value === "object" && !Array.isArray(value)
@@ -222,7 +222,6 @@ export function mapStoreProductRow(row: StoreProductRow): StoreProduct {
     priceCents: row.price_cents,
     discountPercent: row.discount_percent,
     coverImageUrl: row.cover_image_url,
-    screenshots: row.screenshots ?? [],
     trailerUrl: row.trailer_url,
     minSystemRequirements: asRecord(row.min_system_requirements),
     recSystemRequirements: asRecord(row.rec_system_requirements),
@@ -433,17 +432,6 @@ export function mapStoreReviewReplyRow(row: StoreReviewReplyRow): StoreReviewRep
   };
 }
 
-export function mapStorePriceHistoryRow(row: StorePriceHistoryRow): StorePricePoint {
-  return {
-    id: row.id,
-    gameId: row.game_id,
-    platform: row.platform,
-    priceCents: row.price_cents,
-    discountPercent: row.discount_percent,
-    recordedAt: row.recorded_at,
-  };
-}
-
 export function mapDeveloperApplicationRow(row: DeveloperApplicationRow): DeveloperApplication {
   return {
     id: row.id,
@@ -460,6 +448,27 @@ export function mapDeveloperApplicationRow(row: DeveloperApplicationRow): Develo
 }
 
 export async function listPublishedProducts(): Promise<StoreProduct[]> {
+  if (publishedProductsCache && publishedProductsCache.expiresAt > Date.now()) {
+    return publishedProductsCache.data;
+  }
+  if (publishedProductsRequest) {
+    return publishedProductsRequest;
+  }
+
+  publishedProductsRequest = loadPublishedProducts();
+  try {
+    const data = await publishedProductsRequest;
+    publishedProductsCache = {
+      data,
+      expiresAt: Date.now() + publishedProductsCacheTtlMs,
+    };
+    return data;
+  } finally {
+    publishedProductsRequest = null;
+  }
+}
+
+async function loadPublishedProducts(): Promise<StoreProduct[]> {
   const client = getSupabaseClient();
   const { data, error } = await client
     .from("store_products")
@@ -741,12 +750,17 @@ export async function getMyOrderByStripeSession(
   return data ? mapStoreOrderRow(data as StoreOrderRow) : null;
 }
 
-export async function listMyOrderItems(orderId: string): Promise<StoreOrderItem[]> {
+export async function listMyOrderItems(orderIds: string | string[]): Promise<StoreOrderItem[]> {
+  const ids = Array.from(
+    new Set((Array.isArray(orderIds) ? orderIds : [orderIds]).filter(Boolean)),
+  );
+  if (ids.length === 0) return [];
+
   const client = getSupabaseClient();
   const { data, error } = await client
     .from("store_order_items")
     .select(ORDER_ITEM_SELECT)
-    .eq("order_id", orderId);
+    .in("order_id", ids);
   if (error) throw new Error(error.message);
   return (data ?? []).map((row) => mapStoreOrderItemRow(row as StoreOrderItemRow));
 }
@@ -1016,28 +1030,6 @@ export async function upsertStoreReviewReply(
     .single();
   if (error) throw new Error(error.message);
   return data ? mapStoreReviewReplyRow(data as StoreReviewReplyRow) : null;
-}
-
-export async function getStoreProductPriceHistory(
-  productId: string,
-  platform?: string,
-  limit = 90,
-): Promise<StorePricePoint[]> {
-  const client = getSupabaseClient();
-  let query = client
-    .from("price_history")
-    .select(PRICE_HISTORY_SELECT)
-    .eq("game_id", productId)
-    .order("recorded_at", { ascending: false })
-    .limit(limit);
-
-  if (platform) {
-    query = query.eq("platform", platform);
-  }
-
-  const { data, error } = await query;
-  if (error) throw new Error(error.message);
-  return (data ?? []).map((row) => mapStorePriceHistoryRow(row as StorePriceHistoryRow)).reverse();
 }
 
 export async function upsertStoreReview(

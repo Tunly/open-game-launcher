@@ -63,6 +63,28 @@ describe("buildOneClickSetupReadiness", () => {
     );
   });
 
+  it("keeps a selected install folder in review until a native consumer applies it", () => {
+    const readiness = buildOneClickSetupReadiness({
+      backupReminderConfigured: true,
+      installDir: "D:\\OG Games",
+      installDirApplied: false,
+      isDesktopRuntime: true,
+      librarySnapshotCount: 3,
+      platforms: [{ gamesCount: 12, id: "steam", label: "Steam", linked: true }],
+      supabaseConfigured: true,
+    });
+
+    const installTarget = readiness.steps.find((step) => step.id === "install-target");
+    expect(installTarget).toEqual(
+      expect.objectContaining({
+        action: "Keep this selection in review until a native install-path setter consumes it.",
+        detail: "D:\\OG Games is selected for review only and is not applied to installs.",
+        status: "warning",
+      }),
+    );
+    expect(readiness.progress).toBe(83);
+  });
+
   it("keeps setup as warning-only when desktop is ready but stores are not linked", () => {
     const readiness = buildOneClickSetupReadiness({
       backupReminderConfigured: true,

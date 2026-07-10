@@ -8,6 +8,7 @@ export function CartDrawer({
   cartGames,
   isOpen,
   isProcessing,
+  commerceEnabled,
   onCheckout,
   onClose,
   onRemove,
@@ -17,6 +18,7 @@ export function CartDrawer({
   cartGames: StoreGame[];
   isOpen: boolean;
   isProcessing: boolean;
+  commerceEnabled: boolean;
   onCheckout: () => void;
   onClose: () => void;
   onRemove: (gameId: string) => void;
@@ -114,11 +116,11 @@ export function CartDrawer({
             </button>
             <button
               className="neo-copy h-11 border-2 border-black bg-[#b7102a] text-[10px] font-black uppercase tracking-[0.1em] text-white shadow-[3px_3px_0_#171411] disabled:opacity-50"
-              disabled={cartGames.length === 0 || isProcessing}
+              disabled={!commerceEnabled || cartGames.length === 0 || isProcessing}
               type="button"
               onClick={onCheckout}
             >
-              Checkout
+              {commerceEnabled ? "Checkout" : "Hosted Catalog Required"}
             </button>
           </div>
         </div>
@@ -133,12 +135,14 @@ export function CartPanel({
   onRemove,
   total,
   isProcessing,
+  commerceEnabled,
 }: {
   cartGames: StoreGame[];
   onCheckout: () => void;
   onRemove: (gameId: string) => void;
   total: number;
   isProcessing: boolean;
+  commerceEnabled: boolean;
 }) {
   if (cartGames.length === 0) {
     return <EmptyStorePanel label="Cart is empty." />;
@@ -187,11 +191,11 @@ export function CartPanel({
         </div>
         <button
           className="neo-copy h-12 w-full border-2 border-black bg-[#b7102a] text-[11px] font-black uppercase tracking-[0.12em] text-white shadow-[3px_3px_0_#171411] disabled:opacity-50"
-          disabled={isProcessing}
+          disabled={!commerceEnabled || isProcessing}
           type="button"
           onClick={onCheckout}
         >
-          Complete Order
+          {commerceEnabled ? "Complete Order" : "Hosted Catalog Required"}
         </button>
       </aside>
     </div>

@@ -15,22 +15,9 @@ import type {
 } from "../plugin-system-readiness";
 
 // Types that were defined in launcher.ts itself (NOT in lib/types)
-import type { Game } from "../types";
+import type { Game, UnifiedAchievement } from "../types";
 
 export type { Game };
-
-export interface RemoteCompanionDeviceSecretInput {
-  deviceId: string;
-  deviceSecret: string;
-  deviceSecretHint?: string | null;
-}
-
-export interface RemoteCompanionDeviceSecretStatus {
-  deviceId: string | null;
-  deviceSecretHint: string | null;
-  hasSecret: boolean;
-  updatedAtEpochMs: number | null;
-}
 
 export interface PluginManifestDiscoveryResult {
   discoveryPath: string;
@@ -97,22 +84,6 @@ export interface PluginUpdateSigningEnvelopeReviewRequest {
 
 export type PluginUpdateSigningEnvelopeReviewResult = PluginUpdateSigningReviewEvidence;
 
-export interface RemoteCompanionPollJobResult {
-  gameId: string;
-  jobId: string;
-  localQueueId: string | null;
-  message: string;
-  status: "failed" | "started" | string;
-}
-
-export interface RemoteCompanionPollOnceResult {
-  claimed: number;
-  configured: boolean;
-  failed: number;
-  jobs: RemoteCompanionPollJobResult[];
-  started: number;
-}
-
 export interface GogToken {
   accessToken: string;
   refreshToken: string;
@@ -138,7 +109,9 @@ export interface OwnedGame {
   coverUrl: string | null;
   logoUrl: string | null;
   iconUrl?: string;
-  playtimeMinutes: number;
+  playtimeMinutes?: number | null;
   lastPlayedAt?: string | null;
   cloudGamingUrl?: string | null;
+  achievements?: UnifiedAchievement[];
+  achievementsSyncedAt?: string | null;
 }

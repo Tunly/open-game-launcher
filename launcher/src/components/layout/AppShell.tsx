@@ -18,7 +18,6 @@ import {
 
 import { Sidebar, type PageKey } from "./Sidebar";
 import { DesktopWindowChrome } from "./DesktopWindowChrome";
-import { RemoteCompanionAutoPollHost } from "./RemoteCompanionAutoPollHost";
 import {
   APP_SHELL_SKIN_CHANGED_EVENT,
   APP_SHELL_SKIN_STORAGE_KEY,
@@ -78,36 +77,6 @@ interface NotificationItem {
   };
 }
 
-const BASE_NOTIFICATION_ITEMS: NotificationItem[] = [
-  {
-    id: "download-complete",
-    title: "Download Complete",
-    message: "Akira's Revenge is ready to launch.",
-    time: "Just now",
-    isUnread: true,
-    type: "download",
-    action: { label: "Open Downloads", page: "downloads" },
-  },
-  {
-    id: "update-ready",
-    title: "Update Available",
-    message: "Neo-Tokyo Drift has a new content pack.",
-    time: "12 Min.",
-    isUnread: true,
-    type: "update",
-    action: { label: "Open Library", page: "library" },
-  },
-  {
-    id: "store-drop",
-    title: "New Store Drop",
-    message: "Three new indie titles just landed in the store.",
-    time: "1 hr",
-    isUnread: true,
-    type: "social",
-    action: { label: "View Store", page: "store" },
-  },
-];
-
 const BACKUP_REMINDER_POLL_MS = 60 * 60 * 1000;
 const CLIENT_UPDATE_SCHEDULER_POLL_MS = 60 * 60 * 1000;
 const BACKUP_AUTORUN_FAILURE_SNOOZE_MS = 60 * 60 * 1000;
@@ -127,7 +96,6 @@ export function AppShell({
   isAuthConfigured,
   isAuthLoading,
   isAuthProfileLoading,
-  isAuthenticated,
   onLogout,
   onNavigate,
   onRoute,
@@ -150,7 +118,6 @@ export function AppShell({
   const profileMenuLabel = authUsername ?? accountLabel;
   const profileMenuInitials = getInitials(profileMenuLabel);
   const notificationItems = [
-    ...(isAuthenticated ? BASE_NOTIFICATION_ITEMS : []),
     ...scheduledBackupReminderNotifications,
     ...scheduledClientUpdateNotifications,
   ];
@@ -255,17 +222,48 @@ export function AppShell({
   // Initial download queue load + global listener for badge/cross-page state
   useEffect(() => {
     let active = true;
+    const pendingDownloadProgress = new Map<string, DownloadItem>();
+    let flushHandle: number | null = null;
+    let flushUsesAnimationFrame = false;
+
+    function flushPendingDownloadProgress() {
+      flushHandle = null;
+      if (!active || pendingDownloadProgress.size === 0) {
+        pendingDownloadProgress.clear();
+        return;
+      }
+
+      const batch = [...pendingDownloadProgress.values()];
+      pendingDownloadProgress.clear();
+      useDownloadStore.getState().upsertItems(batch);
+    }
+
+    function scheduleDownloadProgressFlush() {
+      if (flushHandle !== null) {
+        return;
+      }
+
+      if (typeof window.requestAnimationFrame === "function") {
+        flushUsesAnimationFrame = true;
+        flushHandle = window.requestAnimationFrame(flushPendingDownloadProgress);
+      } else {
+        flushUsesAnimationFrame = false;
+        flushHandle = window.setTimeout(flushPendingDownloadProgress, 16);
+      }
+    }
 
     const unlistenPromise = isTauri()
       ? listen<DownloadItem>("download_progress", (event) => {
           if (active) {
-            useDownloadStore.getState().upsertItem(event.payload);
+            pendingDownloadProgress.set(event.payload.gameId, event.payload);
+            scheduleDownloadProgressFlush();
           }
         })
       : null;
     const unlistenRemovedPromise = isTauri()
       ? listen<{ gameId: string }>("download_removed", (event) => {
           if (active) {
+            pendingDownloadProgress.delete(event.payload.gameId);
             useDownloadStore.getState().removeItem(event.payload.gameId);
           }
         })
@@ -281,6 +279,14 @@ export function AppShell({
 
     return () => {
       active = false;
+      if (flushHandle !== null) {
+        if (flushUsesAnimationFrame) {
+          window.cancelAnimationFrame(flushHandle);
+        } else {
+          window.clearTimeout(flushHandle);
+        }
+      }
+      pendingDownloadProgress.clear();
       void unlistenPromise?.then((unlisten) => unlisten());
       void unlistenRemovedPromise?.then((unlisten) => unlisten());
     };
@@ -460,7 +466,6 @@ export function AppShell({
       }
       data-og-shell-skin={shellSkinId}
     >
-      <RemoteCompanionAutoPollHost />
       <div
         className={
           isLibraryPage
@@ -497,7 +502,6 @@ export function AppShell({
               <div ref={notificationMenuRef} className="relative">
                 <TopIconButton
                   label="Notifications"
-                  disabled={notificationItems.length === 0}
                   onClick={() => {
                     setIsNotificationMenuOpen((isOpen) => !isOpen);
                     setIsProfileMenuOpen(false);
@@ -668,14 +672,21 @@ function NotificationMenu({
       </div>
 
       <div className="space-y-2">
-        {items.map((item) => (
-          <NotificationCard
-            key={item.id}
-            item={item}
-            isUnread={item.isUnread && !readNotificationIds.has(item.id)}
-            onAction={(page) => onAction(item, page)}
-          />
-        ))}
+        {items.length > 0 ? (
+          items.map((item) => (
+            <NotificationCard
+              key={item.id}
+              item={item}
+              isUnread={item.isUnread && !readNotificationIds.has(item.id)}
+              onAction={(page) => onAction(item, page)}
+            />
+          ))
+        ) : (
+          <p className="neo-copy border-2 border-dashed border-black bg-[#f6edd8] p-4 text-[10px] font-black uppercase leading-5 text-[#5b403f]">
+            No launcher notifications yet. Real download, backup, and client-update events will
+            appear here.
+          </p>
+        )}
       </div>
 
       <button

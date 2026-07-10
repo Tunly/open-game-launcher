@@ -56,7 +56,7 @@ import {
 } from "../../lib/custom-artwork";
 import { Metric } from "./Metric";
 import { LibraryCustomScrollbar } from "./LibraryCustomScrollbar";
-import { PlatformIcon, PlatformSourceIcon } from "./PlatformIcons";
+import { PlatformSourceIcon } from "./PlatformIcons";
 import {
   formatAchievementProgress,
   formatPlayTime,
@@ -690,12 +690,9 @@ export interface GameDetailsProps {
   setCustomCategories: React.Dispatch<React.SetStateAction<Record<string, string[]>>>;
   manualCollections: Record<string, string[]>;
   setManualCollections: React.Dispatch<React.SetStateAction<Record<string, string[]>>>;
-  setActivePlatformFilter: (platform: "all" | "windows" | "macos" | "linux") => void;
-  clearCollectionSelection: () => void;
   detailScrollRef: React.RefObject<HTMLElement | null>;
   isDiscoveringGames: boolean;
   discoveryMessage: string | null;
-  moveGame: (opts: { gameId: string; newPath: string }) => Promise<void>;
   runAutomaticLibrarySync: (force: boolean) => Promise<void>;
   customArtwork: GameCustomArtwork | null;
   artworkGameId?: string;
@@ -746,12 +743,9 @@ export function GameDetails({
   setCustomCategories,
   manualCollections,
   setManualCollections,
-  setActivePlatformFilter,
-  clearCollectionSelection,
   detailScrollRef,
   isDiscoveringGames,
   discoveryMessage,
-  moveGame,
   runAutomaticLibrarySync,
   customArtwork,
   artworkGameId,
@@ -823,6 +817,9 @@ export function GameDetails({
   );
   const variantsForActions =
     gameVariants.length > 0 ? gameVariants : enrichedSelectedGame ? [enrichedSelectedGame] : [];
+  const achievementAttentionMessage = achievementProviderStatuses.find(
+    (provider) => provider.status !== "available",
+  )?.message;
   const variantIds = variantsForActions.map((game) => game.id);
   const variantIdKey = variantIds.join("|");
   const primaryArtworkGameId = artworkGameId ?? enrichedSelectedGame?.id;
@@ -2758,8 +2755,14 @@ export function GameDetails({
                   <div className="grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-4">
                     <Metric
                       icon={<Cloud className="h-7 w-7 fill-black text-black" />}
-                      title="Cloud"
-                      value="Up to date"
+                      title="Save Data"
+                      value={
+                        enrichedSelectedGame.saveFiles && enrichedSelectedGame.saveFiles.length > 0
+                          ? `${enrichedSelectedGame.saveFiles.length} tracked file${
+                              enrichedSelectedGame.saveFiles.length === 1 ? "" : "s"
+                            }`
+                          : "Not detected"
+                      }
                     />
                     <Metric
                       icon={<Clock3 className="h-7 w-7" />}
@@ -3248,11 +3251,8 @@ export function GameDetails({
                 <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_300px]">
                   {/* Left Column: Activity Feed */}
                   <section className="min-w-0">
-                    <div className="mb-2 flex items-center justify-between gap-2">
+                    <div className="mb-2">
                       <h2 className="text-[15px] font-black uppercase leading-none">Activity</h2>
-                      <span className="neo-copy border-2 border-black bg-[#f3e8d7] px-2 py-0.5 text-[10px] font-black uppercase text-[#55504a]">
-                        Game Updates
-                      </span>
                     </div>
 
                     <GameUpdateFeed game={enrichedSelectedGame} />
@@ -3287,10 +3287,12 @@ export function GameDetails({
                         <h2 className="text-[15px] font-black uppercase leading-none">
                           Achievements
                         </h2>
-                        <span className="neo-copy border-2 border-black bg-[#e8c843] px-2 py-0.5 text-[10px] font-black uppercase">
-                          {unlockedAchievementCount}/{achievements.length} ·{" "}
-                          {achievementProgressPercent}%
-                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <span className="neo-copy border-2 border-black bg-[#087d6d] px-2 py-0.5 text-[10px] font-black uppercase text-white">
+                            {unlockedAchievementCount}/{achievements.length} ·{" "}
+                            {achievementProgressPercent}%
+                          </span>
+                        </div>
                       </div>
 
                       {achievementProviderStatuses.length > 0 ? (
@@ -3301,8 +3303,8 @@ export function GameDetails({
                               className={`neo-copy border-2 border-black px-1.5 py-0.5 text-[8px] font-black uppercase ${
                                 provider.status === "available"
                                   ? "bg-[#087d6d] text-white"
-                                  : provider.stability === "unofficial"
-                                    ? "bg-[#e8c843] text-[#171411]"
+                                  : provider.status === "failed" || provider.status === "private"
+                                    ? "bg-[#b7102a] text-white"
                                     : "bg-[#fbf4e7] text-[#55504a]"
                               }`}
                               title={provider.message}
@@ -3463,198 +3465,10 @@ export function GameDetails({
                         </>
                       ) : (
                         <div className="p-3 text-[12px] font-bold leading-5 text-[#55504a]">
-                          No achievements synced yet. Achievement auto-sync runs when a supported
-                          provider is available.
+                          {achievementAttentionMessage ??
+                            "No achievements synced yet. Achievement auto-sync runs when a supported provider is available."}
                         </div>
                       )}
-                    </section>
-
-                    {/* ENRICHED METADATA INFORMATION CARD */}
-                    <section
-                      className="border-4 border-black bg-[#fbf4e7] shadow-[3px_3px_0_#171411]"
-                      style={{ fontFamily: '"Arial Narrow", Impact, sans-serif' }}
-                    >
-                      <h2 className="border-b-2 border-black px-3 py-2 text-[15px] font-black uppercase leading-none">
-                        Metadaten & Infos
-                      </h2>
-                      <div className="space-y-2.5 p-3 text-[12px] font-bold">
-                        <div className="flex justify-between border-b border-black/10 pb-1">
-                          <span className="uppercase text-[#55504a]">Size:</span>
-                          <span className="text-right font-black">
-                            {enrichedSelectedGame.sizeGb
-                              ? `${enrichedSelectedGame.sizeGb.toFixed(1)} GB`
-                              : "Unknown"}
-                          </span>
-                        </div>
-                        <div className="flex justify-between border-b border-black/10 pb-1">
-                          <span className="uppercase text-[#55504a]">Category:</span>
-                          <div className="flex items-center gap-2">
-                            <span className="font-black capitalize">
-                              {enrichedSelectedGame.productCategory || "game"}
-                            </span>
-                          </div>
-                        </div>
-                        <div className="flex justify-between border-b border-black/10 pb-1">
-                          <span className="uppercase text-[#55504a]">Platform:</span>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setActivePlatformFilter(
-                                enrichedSelectedGame.platform as "windows" | "macos" | "linux",
-                              );
-                              clearCollectionSelection();
-                            }}
-                            className="flex cursor-pointer select-none items-center gap-1 font-black capitalize hover:text-[#139a82] hover:underline"
-                            title={`Filter by ${enrichedSelectedGame.platform}`}
-                          >
-                            <PlatformIcon
-                              platform={enrichedSelectedGame.platform}
-                              className="h-3.5 w-3.5"
-                            />
-                            <span className="underline decoration-dotted">
-                              {enrichedSelectedGame.platform}
-                            </span>
-                          </button>
-                        </div>
-                        {enrichedSelectedGame.protonCompatible && (
-                          <div className="flex justify-between border-b border-black/10 pb-1">
-                            <span className="uppercase text-[#55504a]">Proton Support:</span>
-                            <span className="font-black uppercase text-[#139a82]">
-                              Compatible (via Proton)
-                            </span>
-                          </div>
-                        )}
-                        <div className="flex justify-between border-b border-black/10 pb-1">
-                          <span className="uppercase text-[#55504a]">Steam Deck:</span>
-                          <span
-                            className={`border border-black px-1.5 py-0.5 text-[10px] font-black uppercase ${
-                              enrichedSelectedGame.steamDeckCompatibility === "verified"
-                                ? "bg-[#139a82] text-white shadow-[1px_1px_0_#000]"
-                                : enrichedSelectedGame.steamDeckCompatibility === "playable"
-                                  ? "bg-[#e8c843] text-black shadow-[1px_1px_0_#000]"
-                                  : enrichedSelectedGame.steamDeckCompatibility === "unsupported"
-                                    ? "bg-[#b7102a] text-white shadow-[1px_1px_0_#000]"
-                                    : "bg-[#efe3cf] text-black"
-                            }`}
-                          >
-                            {enrichedSelectedGame.steamDeckCompatibility || "unknown"}
-                          </span>
-                        </div>
-                        {enrichedSelectedGame.developer && (
-                          <div className="flex justify-between border-b border-black/10 pb-1">
-                            <span className="uppercase text-[#55504a]">Developer:</span>
-                            <span className="text-right font-black">
-                              {enrichedSelectedGame.developer}
-                            </span>
-                          </div>
-                        )}
-                        {enrichedSelectedGame.publisher && (
-                          <div className="flex justify-between border-b border-black/10 pb-1">
-                            <span className="uppercase text-[#55504a]">Publisher:</span>
-                            <span className="text-right font-black">
-                              {enrichedSelectedGame.publisher}
-                            </span>
-                          </div>
-                        )}
-                        {enrichedSelectedGame.installPath && (
-                          <div className="flex flex-col gap-1 border-b border-black/10 pb-2">
-                            <span className="uppercase text-[#55504a]">Install Path:</span>
-                            <span className="break-all text-[10px] font-black">
-                              {enrichedSelectedGame.installPath}
-                            </span>
-                            <button
-                              onClick={() => {
-                                const newPath = prompt(
-                                  `Move game.\nCurrent path: ${enrichedSelectedGame.installPath}\n\nEnter the new absolute path:`,
-                                );
-                                if (newPath && newPath.trim() !== "") {
-                                  moveGame({
-                                    gameId: enrichedSelectedGame.id,
-                                    newPath: newPath.trim(),
-                                  })
-                                    .then(() => {
-                                      alert("Game moved successfully!");
-                                      void runAutomaticLibrarySync(true);
-                                    })
-                                    .catch((err) => {
-                                      alert("Failed to move game: " + err);
-                                    });
-                                }
-                              }}
-                              className="self-start border-2 border-black bg-[#169b83] px-2 py-0.5 text-[10px] font-black uppercase text-white shadow-[1px_1px_0_#000] transition hover:bg-[#138872]"
-                            >
-                              Move Folder
-                            </button>
-                          </div>
-                        )}
-                        {enrichedSelectedGame.releaseDate && (
-                          <div className="flex justify-between border-b border-black/10 pb-1">
-                            <span className="uppercase text-[#55504a]">Release:</span>
-                            <span className="text-right font-black">
-                              {enrichedSelectedGame.releaseDate}
-                            </span>
-                          </div>
-                        )}
-                        {enrichedSelectedGame.genres && enrichedSelectedGame.genres.length > 0 && (
-                          <div className="border-b border-black/10 pb-1">
-                            <span className="mb-1 block uppercase text-[#55504a]">Genres:</span>
-                            <div className="flex flex-wrap gap-1">
-                              {enrichedSelectedGame.genres.map((g) => (
-                                <span
-                                  key={g}
-                                  className="border border-black bg-[#efe3cf] px-1.5 py-0.5 text-[9px] font-black uppercase"
-                                >
-                                  {g}
-                                </span>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-                        {enrichedSelectedGame.players &&
-                          enrichedSelectedGame.players.length > 0 && (
-                            <div>
-                              <span className="mb-1 block uppercase text-[#55504a]">
-                                Player Count:
-                              </span>
-                              <div className="flex flex-wrap gap-1">
-                                {enrichedSelectedGame.players.map((p) => (
-                                  <span
-                                    key={p}
-                                    className="border border-black bg-[#efe3cf] px-1.5 py-0.5 text-[9px] font-black uppercase"
-                                  >
-                                    {p}
-                                  </span>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-                      </div>
-                    </section>
-
-                    {/* Friends who play */}
-                    <section className="border-4 border-black bg-[#fbf4e7] shadow-[3px_3px_0_#171411]">
-                      <h2 className="border-b-2 border-black px-3 py-2 text-[15px] font-black uppercase leading-none">
-                        Friends Who Play
-                      </h2>
-                      <div className="space-y-3 p-3 text-[12px] font-bold leading-4">
-                        <p>2 friends have played previously</p>
-                        <div className="flex gap-2">
-                          {[0, 1].map((friend) => (
-                            <div
-                              key={friend}
-                              className={`h-9 w-9 border-2 border-black bg-[#171411] bg-cover bg-center ${getFallbackBannerClass(enrichedSelectedGame)}`}
-                              style={getGameBannerStyle(enrichedSelectedGame.coverUrl)}
-                            />
-                          ))}
-                        </div>
-                        <p>1 friend has {enrichedSelectedGame.title} on their wishlist</p>
-                        <button
-                          className="block w-full pt-2 text-right text-[11px] font-black uppercase"
-                          type="button"
-                        >
-                          View all friends who play
-                        </button>
-                      </div>
                     </section>
 
                     {/* Cross-store save planning */}

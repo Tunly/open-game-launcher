@@ -5,13 +5,15 @@ import { achievementProviderForGame } from "../../lib/achievement-providers";
 import { supportedAchievementSyncGames, type GameGroup } from "../../lib/game-groups";
 import { getErrorMessage } from "../../lib/formatters";
 import { updateAchievementProviderStatus } from "../../lib/launcher";
+import { emitAchievementPopup } from "../../lib/overlay";
+import { cacheSteamOwnedGameAchievements } from "../../lib/steam-owned-games-cache";
 import { ingestTrustedAchievements } from "../../lib/supabase/achievements";
-import { useActivityLogger } from "../useActivityLogger";
 import type { Game } from "../../lib/types";
 
 type GameAchievementProviderStatus = NonNullable<Game["achievementProviderStatuses"]>[number];
 
 export interface UseAchievementAutoSyncOptions {
+  installedGames?: Game[];
   selectedGroup: GameGroup | null;
   setInstalledGames: Dispatch<SetStateAction<Game[]>>;
   setStatusMessage: Dispatch<SetStateAction<string | null>>;
@@ -19,6 +21,8 @@ export interface UseAchievementAutoSyncOptions {
 
 export interface UseAchievementAutoSyncResult {
   syncingAchievementGameId: string | null;
+  syncingAchievementGameIds: ReadonlySet<string>;
+  syncAchievementsForGame: (game: Game) => Promise<void>;
 }
 
 function withAchievementProviderStatus(
@@ -34,6 +38,7 @@ function withAchievementProviderStatus(
 }
 
 function persistAchievementProviderStatus(gameId: string, status: GameAchievementProviderStatus) {
+  if (gameId.startsWith("steam-owned-")) return;
   updateAchievementProviderStatus({ gameId, status }).catch((error) => {
     console.warn("[OG-Launcher] Achievement provider status cache update failed:", error);
   });
@@ -56,13 +61,30 @@ function achievementSyncAttemptKey(game: Game): string {
 }
 
 export function useAchievementAutoSync({
+  installedGames,
   selectedGroup,
   setInstalledGames,
   setStatusMessage,
 }: UseAchievementAutoSyncOptions): UseAchievementAutoSyncResult {
   const autoAchievementSyncAttemptedRef = useRef<Set<string>>(new Set());
-  const [syncingAchievementGameId, setSyncingAchievementGameId] = useState<string | null>(null);
-  const { logAchievement } = useActivityLogger();
+  const installedGamesRef = useRef<Game[]>(installedGames ?? []);
+  const [syncingAchievementGameIds, setSyncingAchievementGameIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+  if (installedGames) {
+    installedGamesRef.current = installedGames;
+  }
+
+  const updateInstalledGame = useCallback(
+    (gameId: string, update: (game: Game) => Game) => {
+      setInstalledGames((current) => {
+        const next = current.map((game) => (game.id === gameId ? update(game) : game));
+        installedGamesRef.current = next;
+        return next;
+      });
+    },
+    [setInstalledGames],
+  );
 
   const syncAchievementsForGame = useCallback(
     async (game: Game, options: { silent?: boolean } = {}) => {
@@ -78,12 +100,8 @@ export function useAchievementAutoSync({
           setStatusMessage(provider.message);
         }
         persistAchievementProviderStatus(game.id, status);
-        setInstalledGames((current) =>
-          current.map((currentGame) =>
-            currentGame.id === game.id
-              ? withAchievementProviderStatus(currentGame, status)
-              : currentGame,
-          ),
+        updateInstalledGame(game.id, (currentGame) =>
+          withAchievementProviderStatus(currentGame, status),
         );
         return;
       }
@@ -93,57 +111,63 @@ export function useAchievementAutoSync({
       if (!options.silent) {
         setStatusMessage(`Syncing ${syncTarget} achievements...`);
       }
-      setSyncingAchievementGameId(game.id);
+      setSyncingAchievementGameIds((current) => new Set(current).add(game.id));
+
+      let syncedGame: Game | null = null;
+      let newUnlocks: NonNullable<Game["achievements"]> = [];
 
       try {
         const response = await provider.sync(game);
-        void ingestTrustedAchievements({
+        syncedGame = response.game;
+        cacheSteamOwnedGameAchievements(response.game);
+        const previous = installedGamesRef.current.find((candidate) => candidate.id === game.id);
+        const previousUnlocked = new Set(
+          previous?.achievements
+            ?.filter((achievement) => achievement.unlockedAt)
+            .map((a) => a.id) ?? [],
+        );
+        newUnlocks =
+          response.game.achievements?.filter(
+            (achievement) => achievement.unlockedAt && !previousUnlocked.has(achievement.id),
+          ) ?? [];
+
+        const ingestion = await ingestTrustedAchievements({
           game: response.game,
           provider: provider.provider,
           providerConfidence: provider.stability,
           syncedAt: response.game.achievementsSyncedAt ?? null,
-        }).catch((error) => {
-          console.warn("[OG-Launcher] Trusted achievement ingestion skipped:", error);
         });
+        const isLocalOnly = ingestion.persistence === "local_only" || ingestion.skipped;
+        const message = isLocalOnly
+          ? `${response.message} Local only; hosted profile was not updated.`
+          : response.message;
         const status: GameAchievementProviderStatus = {
           source: provider.provider,
           status: "available",
           stability: provider.stability,
-          message: response.message,
+          message,
         };
         persistAchievementProviderStatus(response.game.id, status);
 
-        setInstalledGames((current) => {
-          const previous = current.find((g) => g.id === response.game.id);
-          const previousUnlocked = new Set(
-            previous?.achievements?.filter((a) => a.unlockedAt).map((a) => a.id) ?? [],
-          );
-          const newUnlocks =
-            response.game.achievements?.filter(
-              (a) => a.unlockedAt && !previousUnlocked.has(a.id),
-            ) ?? [];
-          for (const unlock of newUnlocks) {
-            void logAchievement(response.game.id, response.game.title, unlock.name ?? null, {
-              achievementId: unlock.id,
-              rarity: unlock.rarity ?? null,
-            });
-          }
-          if (newUnlocks.length > 0 && !options.silent) {
-            setStatusMessage(
-              `${newUnlocks.length} new achievement${newUnlocks.length === 1 ? "" : "s"} unlocked!`,
-            );
-          } else if (!options.silent) {
-            setStatusMessage(response.message);
-          }
-          const nextGame = withAchievementProviderStatus(
+        updateInstalledGame(response.game.id, (currentGame) =>
+          withAchievementProviderStatus(
             response.game,
             status,
-            previous?.achievementProviderStatuses,
+            currentGame.achievementProviderStatuses,
+          ),
+        );
+        if (newUnlocks.length > 0 && !options.silent) {
+          setStatusMessage(
+            `${newUnlocks.length} new achievement${newUnlocks.length === 1 ? "" : "s"} unlocked! ${isLocalOnly ? "Saved locally only." : ""}`.trim(),
           );
-          return current.map((game) => (game.id === response.game.id ? nextGame : game));
-        });
+        } else if (!options.silent) {
+          setStatusMessage(message);
+        }
       } catch (error) {
-        const message = getErrorMessage(error);
+        const errorMessage = getErrorMessage(error);
+        const message = syncedGame
+          ? `Achievements synced locally, but trusted hosted persistence failed: ${errorMessage}`
+          : errorMessage;
         const status: GameAchievementProviderStatus = {
           source: provider.provider,
           status: "failed",
@@ -151,11 +175,11 @@ export function useAchievementAutoSync({
           message,
         };
         persistAchievementProviderStatus(game.id, status);
-        setInstalledGames((current) =>
-          current.map((currentGame) =>
-            currentGame.id === game.id
-              ? withAchievementProviderStatus(currentGame, status)
-              : currentGame,
+        updateInstalledGame(game.id, (currentGame) =>
+          withAchievementProviderStatus(
+            syncedGame ?? currentGame,
+            status,
+            currentGame.achievementProviderStatuses,
           ),
         );
         if (!options.silent) {
@@ -164,10 +188,28 @@ export function useAchievementAutoSync({
           console.warn("[OG-Launcher] Auto achievement sync failed:", message);
         }
       } finally {
-        setSyncingAchievementGameId(null);
+        for (const unlock of newUnlocks) {
+          try {
+            await emitAchievementPopup({
+              achievementName: unlock.name,
+              description: unlock.description ?? "",
+              gameTitle: syncedGame?.title ?? game.title,
+              iconUrl: unlock.iconUrl ?? null,
+              rarity:
+                typeof unlock.rarity === "number" ? `${unlock.rarity.toFixed(1)}% rarity` : "",
+            });
+          } catch (popupError) {
+            console.warn("[OG-Launcher] Achievement popup could not be emitted:", popupError);
+          }
+        }
+        setSyncingAchievementGameIds((current) => {
+          const next = new Set(current);
+          next.delete(game.id);
+          return next;
+        });
       }
     },
-    [logAchievement, setInstalledGames, setStatusMessage],
+    [setStatusMessage, updateInstalledGame],
   );
 
   useEffect(() => {
@@ -192,6 +234,8 @@ export function useAchievementAutoSync({
   }, [selectedGroup, syncAchievementsForGame]);
 
   return {
-    syncingAchievementGameId,
+    syncingAchievementGameId: syncingAchievementGameIds.values().next().value ?? null,
+    syncingAchievementGameIds,
+    syncAchievementsForGame,
   };
 }

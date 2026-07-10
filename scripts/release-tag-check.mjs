@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 export const repoRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const semverPrereleaseIdentifier = String.raw`(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)`;
@@ -91,7 +91,10 @@ export function assertReleaseTag(options) {
   return report;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (
+  process.argv[1] &&
+  import.meta.url === pathToFileURL(process.argv[1]).href
+) {
   const tag = process.argv[2] ?? process.env.GITHUB_REF_NAME;
   try {
     const report = assertReleaseTag({ tag });

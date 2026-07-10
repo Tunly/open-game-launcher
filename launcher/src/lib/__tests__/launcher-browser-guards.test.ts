@@ -4,13 +4,16 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   applyCrossStoreSaveCopy,
   auditStagedPluginRegistry,
-  cancelLanTransferCopyJob,
   clearBroadcastStreamKeySecret,
   ejectBackupExternalDrive,
   getBroadcastStreamKeyVaultStatus,
-  getLanTransferCopyJobs,
   getDiskInfo,
   getLatestBackupStatus,
+  listInstalledGames,
+  refreshInstalledGames,
+  openAchievementCacheFolder,
+  isSteamScrapedGamesEventForAccount,
+  isSteamScrapeErrorEventForAccount,
   openEpicLoginWindow,
   openSteamLoginWindow,
   reviewPluginActivationPlan,
@@ -20,18 +23,11 @@ import {
   proveCrossStoreSaveLocalE2E,
   proveBackupExternalDriveEjectSafety,
   proveBackupExternalDriveWrite,
-  previewLanTransferCopy,
-  previewLanTransferPeerDiscoveryPreflight,
-  previewLanTransferResumeCancelLedger,
   previewBackupPlan,
   previewRestorePlan,
   restoreBackup,
   rollbackCrossStoreSaveCopy,
-  runLanTransferCopy,
-  runLanTransferCleanupCandidates,
-  runLanTransferResumeCopy,
   setBroadcastStreamKeySecret,
-  startLanTransferCopyJob,
   runBackupPlan,
   scanLocalPluginManifests,
   stageSignedPluginPackage,
@@ -40,6 +36,54 @@ import {
 describe("launcher browser guards", () => {
   beforeEach(() => {
     vi.mocked(invoke).mockClear();
+  });
+
+  it("uses an honest empty installed-game inventory outside Tauri", async () => {
+    await expect(listInstalledGames()).resolves.toEqual([]);
+    await expect(refreshInstalledGames()).resolves.toEqual([]);
+    await expect(openAchievementCacheFolder()).rejects.toThrow("desktop app");
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
+  it("accepts Steam scraper events only for the current account", () => {
+    expect(
+      isSteamScrapedGamesEventForAccount(
+        { games: [{ appid: 10, name: "Counter-Strike" }], steamId: "76561198000000001" },
+        "76561198000000001",
+      ),
+    ).toBe(true);
+    expect(
+      isSteamScrapedGamesEventForAccount(
+        { games: [{ appid: 10, name: "Counter-Strike" }], steamId: "76561198000000001" },
+        "76561198000000002",
+      ),
+    ).toBe(false);
+    expect(isSteamScrapedGamesEventForAccount([{ appid: 10 }], "76561198000000001")).toBe(false);
+    expect(
+      isSteamScrapedGamesEventForAccount(
+        { games: [{ unexpected: true }], steamId: "76561198000000001" },
+        "76561198000000001",
+      ),
+    ).toBe(false);
+    expect(
+      isSteamScrapedGamesEventForAccount(
+        { games: [], steamId: "76561198000000001" },
+        "76561198000000001",
+      ),
+    ).toBe(true);
+
+    expect(
+      isSteamScrapeErrorEventForAccount(
+        { message: "Private profile", steamId: "76561198000000001" },
+        "76561198000000001",
+      ),
+    ).toBe(true);
+    expect(
+      isSteamScrapeErrorEventForAccount(
+        { message: "Private profile", steamId: "76561198000000001" },
+        "76561198000000002",
+      ),
+    ).toBe(false);
   });
 
   it("blocks backup and restore native commands outside Tauri", async () => {
@@ -142,66 +186,6 @@ describe("launcher browser guards", () => {
           operation: "review_plugin_update_signing_envelope",
         },
         envelopePath: "/tmp/og-plugin-update-envelope.json",
-      }),
-    ).rejects.toThrow("desktop app");
-    expect(invoke).not.toHaveBeenCalled();
-  });
-
-  it("blocks LAN transfer native copy commands outside Tauri", async () => {
-    const request = {
-      consent: {
-        accepted: true,
-        operation: "lan_native_copy_verify_manifest" as const,
-        sourcePath: "/mnt/peer/Arcade",
-        targetPath: "/home/user/Games/Arcade",
-      },
-      gameId: "arcade-1",
-      sourcePath: "/mnt/peer/Arcade",
-      targetPath: "/home/user/Games/Arcade",
-      title: "Arcade",
-    };
-
-    await expect(previewLanTransferCopy(request)).rejects.toThrow("desktop app");
-    await expect(
-      previewLanTransferPeerDiscoveryPreflight({
-        consent: {
-          accepted: true,
-          operation: "lan_peer_discovery_preflight_review",
-        },
-        manualSourcePath: request.sourcePath,
-      }),
-    ).rejects.toThrow("desktop app");
-    await expect(
-      previewLanTransferResumeCancelLedger({
-        gameId: request.gameId,
-        sourcePath: request.sourcePath,
-        targetPath: request.targetPath,
-        title: request.title,
-      }),
-    ).rejects.toThrow("desktop app");
-    await expect(runLanTransferCopy(request)).rejects.toThrow("desktop app");
-    await expect(getLanTransferCopyJobs()).rejects.toThrow("desktop app");
-    await expect(startLanTransferCopyJob(request)).rejects.toThrow("desktop app");
-    await expect(cancelLanTransferCopyJob("lan-copy-arcade-1")).rejects.toThrow("desktop app");
-    await expect(
-      runLanTransferResumeCopy({
-        ...request,
-        consent: {
-          ...request.consent,
-          operation: "lan_native_resume_copy_verify_manifest",
-        },
-      }),
-    ).rejects.toThrow("desktop app");
-    await expect(
-      runLanTransferCleanupCandidates({
-        ...request,
-        consent: {
-          accepted: true,
-          cleanupCandidateCount: 1,
-          operation: "lan_native_cleanup_candidates_delete",
-          sourcePath: request.sourcePath,
-          targetPath: request.targetPath,
-        },
       }),
     ).rejects.toThrow("desktop app");
     expect(invoke).not.toHaveBeenCalled();

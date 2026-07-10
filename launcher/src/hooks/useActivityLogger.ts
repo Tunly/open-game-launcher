@@ -8,7 +8,6 @@ type Visibility = "public" | "friends_only" | "private";
 interface ActivityPayload {
   gameId?: string | null;
   gameTitle?: string | null;
-  achievementName?: string | null;
   metadata?: Record<string, unknown>;
   visibility?: Visibility;
 }
@@ -38,22 +37,5 @@ export function useActivityLogger() {
     [],
   );
 
-  const logAchievement = useCallback(
-    (
-      gameId: string | null,
-      gameTitle: string | null,
-      achievementName: string | null,
-      metadata?: Record<string, unknown>,
-    ) =>
-      safePost("achievement_unlocked", {
-        gameId,
-        gameTitle,
-        achievementName,
-        metadata,
-        visibility: "friends_only",
-      }),
-    [],
-  );
-
-  return { logGameStart, logGameStop, logAchievement };
+  return { logGameStart, logGameStop };
 }

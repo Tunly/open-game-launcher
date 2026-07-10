@@ -20,7 +20,7 @@ export interface StripeWebhookHandlerDeps {
     body: string,
     signature: string,
     secret: string,
-  ) => StripeWebhookEvent;
+  ) => StripeWebhookEvent | Promise<StripeWebhookEvent>;
   fulfillCheckoutSession: (
     sessionId: string,
     licenseDeviceId: string | null,
@@ -112,7 +112,7 @@ export async function handleStripeWebhook(
 
     const body = await req.text();
     const secret = deps.requireWebhookSecret();
-    const event = deps.constructEvent(body, signature, secret);
+    const event = await deps.constructEvent(body, signature, secret);
     const claimedEvent = await deps.claimStoreStripeWebhookEvent(
       event.id,
       event.type,
@@ -221,7 +221,7 @@ export async function handleStripeWebhook(
     }
     deps.logError?.("Webhook error:", err);
     return jsonResponse(
-      { error: err instanceof Error ? err.message : String(err) },
+      { error: "Webhook processing failed." },
       500,
     );
   }

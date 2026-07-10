@@ -80,8 +80,6 @@ const hardwareEvidenceFields = Object.freeze([
 const rolloutEvidenceFields = Object.freeze([
   "Community rollout evidence",
   "Marketplace evidence",
-  "Mobile distribution evidence",
-  "Push-provider evidence",
   "Hosted deploy evidence",
 ]);
 
@@ -321,22 +319,16 @@ export const evidenceGates = Object.freeze([
       },
     ],
     requiredProofs: [
-      "Hosted community artwork/screenshots rollout is exercised beyond fixtures.",
+      "Hosted community artwork rollout is exercised beyond fixtures.",
       "Plugin marketplace execution/update channels are externally reviewed.",
-      "Native mobile apps, push-provider delivery, and store distribution are verified.",
       "Hosted production deployment evidence is attached.",
     ],
     captureHandoffs: {
-      "Hosted community artwork/screenshots rollout is exercised beyond fixtures.":
-        {
-          capture:
-            "Exercise hosted community artwork and screenshot rollout beyond local fixtures, then attach redacted rollout evidence.",
-          terms: [
-            "community-artwork",
-            "community-screenshots",
-            "screenshot-rollout",
-          ],
-        },
+      "Hosted community artwork rollout is exercised beyond fixtures.": {
+        capture:
+          "Exercise hosted community artwork rollout beyond local fixtures, then attach redacted rollout evidence.",
+        terms: ["community-artwork", "artwork-rollout"],
+      },
       "Plugin marketplace execution/update channels are externally reviewed.": {
         capture:
           "Attach external review evidence for plugin marketplace execution and update channels without including raw package secrets.",
@@ -347,12 +339,6 @@ export const evidenceGates = Object.freeze([
           "plugin-update",
         ],
       },
-      "Native mobile apps, push-provider delivery, and store distribution are verified.":
-        {
-          capture:
-            "Verify native mobile app distribution and push-provider delivery in store consoles, then attach redacted console evidence.",
-          terms: ["mobile", "store-distribution", "push-provider"],
-        },
       "Hosted production deployment evidence is attached.": {
         capture:
           "Run `pnpm hosted:deploy-gate:packet`, then run GitHub Actions `CI` from `main` with `hosted_deploy_gate=true`, `hosted_environment=hosted-production`, `hosted_deploy_action=all`, and `hosted_deploy_dry_run=false`; paste a labelled `hosted-deploy` GitHub Actions run URL plus those CI inputs into both the proof evidence row and `Hosted deploy evidence`.",
@@ -444,16 +430,6 @@ const forbiddenArtifactPatterns = Object.freeze([
   {
     label: "Raw Supabase access token",
     pattern: /\bsbp_[a-z0-9_=-]{20,}\b/i,
-  },
-  {
-    label: "Raw mobile push secret",
-    pattern:
-      /\b(?:APNS_AUTH_KEY|APNS_PRIVATE_KEY|FCM_SERVER_KEY|FCM_SERVICE_ACCOUNT|FIREBASE_SERVICE_ACCOUNT|FIREBASE_PRIVATE_KEY|GOOGLE_SERVICE_ACCOUNT_JSON|GOOGLE_APPLICATION_CREDENTIALS_JSON)\s*[:=]\s*(?!(?:\[?redacted\]?|<redacted>|\*{3,})(?:\s|$))[^\n`]{8,}/i,
-  },
-  {
-    label: "Raw mobile device token",
-    pattern:
-      /\b(?:APNS_DEVICE_TOKEN|FCM_DEVICE_TOKEN|DEVICE_PUSH_TOKEN|MOBILE_PUSH_TOKEN)\s*[:=]\s*(?!(?:\[?redacted\]?|<redacted>|\*{3,})(?:\s|$))[^\s`"'<>]{16,}/i,
   },
   {
     label: "Raw private key",
@@ -1242,14 +1218,6 @@ const allowedEvidenceUrlPatterns = Object.freeze([
     host: /^play\.google\.com$/i,
     path: /^\/console\/.+/i,
   },
-  {
-    host: /^console\.firebase\.google\.com$/i,
-    path: /^\/.+/i,
-  },
-  {
-    host: /^(?:app\.)?onesignal\.com$/i,
-    path: /^\/.+/i,
-  },
 ]);
 
 function evidenceUrlIsAllowed(url) {
@@ -1586,7 +1554,6 @@ const fieldSpecificEvidenceValidators = Object.freeze({
     evidenceIdentifierValueMatchesAll(value, [
       /community/i,
       /artwork/i,
-      /screenshot/i,
       /rollout/i,
     ]),
   "Hosted deploy evidence": hostedDeployWorkflowEvidenceValueIsSpecific,
@@ -1608,12 +1575,6 @@ const fieldSpecificEvidenceValidators = Object.freeze({
       /plugin/i,
       /(?:execution|update)/i,
     ]),
-  "Mobile distribution evidence": (value) =>
-    evidenceIdentifierValueMatchesAll(value, [
-      /mobile/i,
-      /distribution/i,
-      /store/i,
-    ]),
   "OS/title/client matrix": hardwareOsMatrixValueIsSpecific,
   "Provider response evidence": (value) =>
     evidenceIdentifierValueMatches(value, [/provider/i, /response/i, /probe/i]),
@@ -1625,9 +1586,6 @@ const fieldSpecificEvidenceValidators = Object.freeze({
       /mod[._\s-]?io/i,
       /curseforge/i,
     ]),
-  "Push-provider evidence": (value) =>
-    evidenceIdentifierValueMatchesAll(value, [/push/i, /provider/i]) &&
-    evidenceIdentifierValueMatches(value, [/firebase/i, /onesignal/i]),
   "Run ID": runIdValueIsSpecific,
   "Session/run ID": sessionRunEvidenceValueIsSpecific,
   "Stripe Dashboard evidence": stripeDashboardEvidenceValueIsSpecific,
@@ -2046,8 +2004,8 @@ function expectedProofEvidenceValuePatterns(proof) {
       /provider[-_\s]?clients?/i,
     ];
   }
-  if (/hosted community artwork\/screenshots/.test(normalizedProof)) {
-    return [/community/i, /artwork/i, /screenshots?/i, /rollout/i];
+  if (/hosted community artwork rollout/.test(normalizedProof)) {
+    return [/community/i, /artwork/i, /rollout/i];
   }
   if (/plugin marketplace/.test(normalizedProof)) {
     return [
@@ -2055,9 +2013,6 @@ function expectedProofEvidenceValuePatterns(proof) {
       /marketplace[-_\s]?execution/i,
       /(?:marketplace[-_\s]?update|plugin[-_\s]?update|execution[-_\s]?update)/i,
     ];
-  }
-  if (/native mobile apps/.test(normalizedProof)) {
-    return [/mobile/i, /push[-_\s]?provider/i, /store[-_\s]?distribution/i];
   }
   if (/hosted production deployment/.test(normalizedProof)) {
     return [
@@ -2468,12 +2423,6 @@ export function artifactTemplate(gate, artifactPath) {
     "Leave each item unchecked until the external run evidence is captured and redacted. `pnpm external:evidence:preflight` accepts checked `- [x]` rows only in the artifact assigned to that proof.",
     "",
     ...requiredProofs.map((proof) => `- [ ] ${proof}`),
-    ...(gate.id === "rollout-tracks"
-      ? [
-          "",
-          "Here, screenshots means hosted community screenshot content, not `docs/verification/screenshots/*` artifacts.",
-        ]
-      : []),
     "",
     "## Capture Handoff",
     "",
@@ -2485,9 +2434,9 @@ export function artifactTemplate(gate, artifactPath) {
     "",
     "## Proof Evidence Mapping",
     "",
-    "When a proof row is checked, fill the matching evidence line with a specific redacted run ID, dashboard link, external artifact locator, workflow ID, signed log, or `sha256:<64-hex>` reference. Accepted dashboard URL hosts are Supabase, Stripe live Dashboard, GitHub Actions/releases/deployments, Vercel, Netlify, Cloudflare, App Store Connect, Google Play Console, Firebase, and OneSignal; otherwise use `run:`/`artifact:`/`sha256:` style locators. Generic text such as `redacted`, `see above`, local files, localhost URLs, and example URLs do not satisfy preflight.",
+    "When a proof row is checked, fill the matching evidence line with a specific redacted run ID, dashboard link, external artifact locator, workflow ID, signed log, or `sha256:<64-hex>` reference. Accepted dashboard URL hosts are Supabase, Stripe live Dashboard, GitHub Actions/releases/deployments, Vercel, Netlify, Cloudflare, App Store Connect, and Google Play Console; otherwise use `run:`/`artifact:`/`sha256:` style locators. Generic text such as `redacted`, `see above`, local files, localhost URLs, and example URLs do not satisfy preflight.",
     "Stripe Dashboard URLs used for Store/Stripe evidence must point at concrete detail paths such as `/events/evt_...`, `/invoices/in_...`, or targeted tax/invoice settings; generic `/settings`, `/customers`, and `/payments` dashboard pages do not satisfy preflight.",
-    "Proof evidence values must name the proof lane they support, for example `stripe-webhook`, `stripe-tax-invoice`, `license-key-custody-live-license-issuance`, `price-drop`, `presence-poll`, `account-deletion`, `mod.io/CurseForge`, `non-steam-presence-bridge-provider`, `provider-approved-catalog-cloud-transfer`, `achievement-provider-cache-real-client`, `fullscreen-anti-cheat-overlay`, `backup-restore`, `client-mount-apply-provider-client`, `community-artwork-screenshot-rollout`, `plugin-marketplace-execution-update`, `mobile-push-provider-store-distribution`, or `hosted-deploy`; bare `evt_...` values are accepted only for the Stripe webhook signature proof. Syntactically specific but generic IDs such as `run-generic-1` stay blocked. Compound proof values must include every required term in the same value: mod-provider evidence includes both `mod.io` and `CurseForge`; external-drive backup/restore proof evidence includes `Windows`, `macOS`, and `Linux`; long native overlay proof evidence includes a numeric measured duration/window; hardware matrix evidence includes one `Windows`, one `macOS`, and one `Linux` row, each with `title:`, `client:`, and a specific locator.",
+    "Proof evidence values must name the proof lane they support, for example `stripe-webhook`, `stripe-tax-invoice`, `license-key-custody-live-license-issuance`, `price-drop`, `presence-poll`, `account-deletion`, `mod.io/CurseForge`, `non-steam-presence-bridge-provider`, `provider-approved-catalog-cloud-transfer`, `achievement-provider-cache-real-client`, `fullscreen-anti-cheat-overlay`, `backup-restore`, `client-mount-apply-provider-client`, `community-artwork-rollout`, `plugin-marketplace-execution-update`, or `hosted-deploy`; bare `evt_...` values are accepted only for the Stripe webhook signature proof. Syntactically specific but generic IDs such as `run-generic-1` stay blocked. Compound proof values must include every required term in the same value: mod-provider evidence includes both `mod.io` and `CurseForge`; external-drive backup/restore proof evidence includes `Windows`, `macOS`, and `Linux`; long native overlay proof evidence includes a numeric measured duration/window; hardware matrix evidence includes one `Windows`, one `macOS`, and one `Linux` row, each with `title:`, `client:`, and a specific locator.",
     "",
     ...requiredProofs.map((proof) => `- Evidence for ${proof}:`),
     "",
@@ -2503,22 +2452,12 @@ export function artifactTemplate(gate, artifactPath) {
       : []),
     ...(requiredArtifactEvidenceFields.includes("Community rollout evidence")
       ? [
-          "Community rollout evidence must include `community`, `artwork`, `screenshot`, and `rollout`.",
+          "Community rollout evidence must include `community`, `artwork`, and `rollout`.",
         ]
       : []),
     ...(requiredArtifactEvidenceFields.includes("Marketplace evidence")
       ? [
           "Marketplace evidence must include `plugin`, `marketplace`, and either `execution` or `update`.",
-        ]
-      : []),
-    ...(requiredArtifactEvidenceFields.includes("Mobile distribution evidence")
-      ? [
-          "Mobile distribution evidence must include `mobile`, `store`, and `distribution`.",
-        ]
-      : []),
-    ...(requiredArtifactEvidenceFields.includes("Push-provider evidence")
-      ? [
-          "Push-provider evidence must include `push`, `provider`, and either `Firebase` or `OneSignal`.",
         ]
       : []),
     ...(requiredArtifactEvidenceFields.includes("Hosted deploy evidence")
@@ -2589,7 +2528,7 @@ export function artifactTemplate(gate, artifactPath) {
     "",
     "Operator reminders only. Preflight enforces this boundary by scanning artifact content for secret-shaped values.",
     "",
-    "- Raw provider keys, Stripe secrets, bearer tokens, JWTs, Supabase service-role/auth/access tokens, scheduler secrets, mobile push/provider secrets, private keys, device tokens, and webhook secrets are absent.",
+    "- Raw provider keys, Stripe secrets, bearer tokens, JWTs, Supabase service-role/auth/access tokens, scheduler secrets, private keys, and webhook secrets are absent.",
     "- Logs and screenshots are redacted before this artifact is committed.",
   ].join("\n");
 }
@@ -2753,13 +2692,9 @@ function fieldRequirementHint(field, group = null) {
     case "Provider/client matrix":
       return "include both mod.io and CurseForge plus provider-client evidence";
     case "Community rollout evidence":
-      return "include community artwork screenshot rollout evidence";
+      return "include community artwork rollout evidence";
     case "Marketplace evidence":
       return "include plugin marketplace execution or update review evidence";
-    case "Mobile distribution evidence":
-      return "include mobile store distribution evidence";
-    case "Push-provider evidence":
-      return "include push provider evidence from Firebase or OneSignal";
     case "Hosted deploy evidence":
       return "include hosted-deploy, GitHub Actions run URL, CI, main, hosted_deploy_gate=true, hosted_environment=hosted-production, hosted_deploy_action=all, hosted_deploy_dry_run=false";
     case "OS/title/client matrix":

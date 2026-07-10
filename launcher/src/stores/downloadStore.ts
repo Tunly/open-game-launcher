@@ -5,6 +5,7 @@ export interface DownloadState {
   items: DownloadItem[];
   setItems: (items: DownloadItem[]) => void;
   upsertItem: (item: DownloadItem) => void;
+  upsertItems: (items: DownloadItem[]) => void;
   removeItem: (gameId: string) => void;
 }
 
@@ -32,7 +33,7 @@ export const useDownloadStore = create<DownloadState>()((set) => ({
         .filter((item) => !incomingByGameId.has(item.gameId) && TERMINAL_STATUSES.has(item.status))
         .slice(-MAX_RETAINED_TERMINAL_ITEMS);
 
-      return { items: [...normalizedItems, ...retainedTerminalItems] };
+      return { items: capRetainedTerminalItems([...normalizedItems, ...retainedTerminalItems]) };
     }),
 
   upsertItem: (item) =>
@@ -45,9 +46,34 @@ export const useDownloadStore = create<DownloadState>()((set) => ({
           ...updated[index],
           ...normalizedItem,
         });
-        return { items: updated };
+        return { items: capRetainedTerminalItems(updated) };
       }
-      return { items: [...state.items, normalizedItem] };
+      return { items: capRetainedTerminalItems([...state.items, normalizedItem]) };
+    }),
+
+  upsertItems: (items) =>
+    set((state) => {
+      if (items.length === 0) return state;
+
+      const normalizedByGameId = new Map<string, DownloadItem>();
+      for (const item of items) {
+        normalizedByGameId.set(item.gameId, normalizeDownloadItem(item));
+      }
+
+      const next = [...state.items];
+      for (const normalizedItem of normalizedByGameId.values()) {
+        const index = next.findIndex((entry) => entry.gameId === normalizedItem.gameId);
+        if (index > -1) {
+          next[index] = normalizeDownloadItem({
+            ...next[index],
+            ...normalizedItem,
+          });
+        } else {
+          next.push(normalizedItem);
+        }
+      }
+
+      return { items: capRetainedTerminalItems(next) };
     }),
 
   removeItem: (gameId) =>
@@ -55,6 +81,20 @@ export const useDownloadStore = create<DownloadState>()((set) => ({
       items: state.items.filter((i) => i.gameId !== gameId),
     })),
 }));
+
+function capRetainedTerminalItems(items: DownloadItem[]) {
+  const terminalItems = items.filter((item) => TERMINAL_STATUSES.has(item.status));
+  if (terminalItems.length <= MAX_RETAINED_TERMINAL_ITEMS) {
+    return items;
+  }
+
+  const retainedTerminalGameIds = new Set(
+    terminalItems.slice(-MAX_RETAINED_TERMINAL_ITEMS).map((item) => item.gameId),
+  );
+  return items.filter(
+    (item) => !TERMINAL_STATUSES.has(item.status) || retainedTerminalGameIds.has(item.gameId),
+  );
+}
 
 export function selectActiveCount(state: DownloadState): number {
   return state.items.filter((item) => isActiveDownloadItem(item)).length;

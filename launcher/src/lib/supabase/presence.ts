@@ -1,6 +1,7 @@
-import type { RealtimeChannel } from "@supabase/supabase-js";
+import type { RealtimeChannel, RealtimePostgresChangesPayload } from "@supabase/supabase-js";
 
 import { getCurrentSessionUserId, getSupabaseClient, supabase } from "./client";
+import { supabaseAnonKey, supabaseUrl } from "./config";
 import type { UserPresence } from "../types/profile";
 export type { UserPresence };
 import type { PlatformType } from "../types/friends";
@@ -13,6 +14,7 @@ import {
   type SupabaseErrorLike,
   type UnknownRecord,
 } from "./helpers";
+import { buildRealtimeInFilters } from "./realtime-filters";
 
 const PRESENCE_PLATFORM_LABELS: Record<PlatformType, string> = {
   battlenet: "Battle.net",
@@ -38,6 +40,28 @@ export type PresenceUpdateInput = {
   platformLastPolledAt?: string | null;
   platformSource?: string | null;
   status?: UserPresence["status"];
+};
+
+export type CapturedPresenceSession = {
+  accessToken: string;
+  generation: string;
+  userId: string;
+};
+
+export type PresenceSessionIdentity = Pick<CapturedPresenceSession, "generation" | "userId">;
+
+type PresenceWritePayload = {
+  last_heartbeat_at: string;
+  status: string;
+  user_id: string;
+  custom_status?: string | null;
+  current_game_id?: string | null;
+  current_game_title?: string | null;
+  platform?: PlatformType | null;
+  platform_game_id?: string | null;
+  platform_last_polled_at?: string | null;
+  platform_source?: string | null;
+  session_generation?: string;
 };
 
 export type PresencePollRunEvidence = {
@@ -114,24 +138,55 @@ async function getCurrentUserId() {
 }
 
 export async function setLauncherPresence(input: PresenceUpdateInput = {}) {
-  const client = getSupabaseClient();
   const userId = await getCurrentUserId();
-  const payload: {
-    last_heartbeat_at: string;
-    status: string;
-    user_id: string;
-    custom_status?: string | null;
-    current_game_id?: string | null;
-    current_game_title?: string | null;
-    platform?: PlatformType | null;
-    platform_game_id?: string | null;
-    platform_last_polled_at?: string | null;
-    platform_source?: string | null;
-  } = {
+  return writeLauncherPresence(userId, input);
+}
+
+export async function setLauncherPresenceForUser(
+  expectedUserId: string,
+  input: PresenceUpdateInput = {},
+) {
+  const currentUserId = await getCurrentSessionUserId();
+  if (!currentUserId || currentUserId !== expectedUserId) {
+    return null;
+  }
+
+  return writeLauncherPresence(expectedUserId, input);
+}
+
+export async function setLauncherPresenceForSession(
+  expectedSession: PresenceSessionIdentity,
+  input: PresenceUpdateInput = {},
+) {
+  const generation = expectedSession.generation.trim();
+  const userId = expectedSession.userId.trim();
+  if (!generation || !userId) {
+    return null;
+  }
+
+  const currentUserId = await getCurrentSessionUserId();
+  if (!currentUserId || currentUserId !== userId) {
+    return null;
+  }
+
+  return writeLauncherPresence(userId, input, generation);
+}
+
+async function writeLauncherPresence(
+  userId: string,
+  input: PresenceUpdateInput,
+  sessionGeneration?: string,
+) {
+  const client = getSupabaseClient();
+  const payload: PresenceWritePayload = {
     last_heartbeat_at: new Date().toISOString(),
     status: input.status ?? "online",
     user_id: userId,
   };
+
+  if (sessionGeneration) {
+    payload.session_generation = sessionGeneration;
+  }
 
   if ("customStatus" in input) {
     payload.custom_status = input.customStatus;
@@ -178,8 +233,61 @@ export async function setLauncherPresence(input: PresenceUpdateInput = {}) {
   return null;
 }
 
-export function clearLauncherPresence() {
-  return setLauncherPresence({
+export function clearLauncherPresenceForUser(expectedUserId: string) {
+  return setLauncherPresenceForUser(expectedUserId, getOfflinePresenceInput());
+}
+
+export async function clearLauncherPresenceForSession({
+  accessToken,
+  generation,
+  userId,
+}: CapturedPresenceSession) {
+  const normalizedAccessToken = accessToken.trim();
+  const normalizedGeneration = generation.trim();
+  const normalizedUserId = userId.trim();
+  if (
+    !normalizedAccessToken ||
+    !normalizedGeneration ||
+    !normalizedUserId ||
+    !supabaseUrl ||
+    !supabaseAnonKey
+  ) {
+    return null;
+  }
+
+  const response = await fetch(
+    `${supabaseUrl.replace(/\/$/, "")}/rest/v1/user_presence?user_id=eq.${encodeURIComponent(normalizedUserId)}&session_generation=eq.${encodeURIComponent(normalizedGeneration)}`,
+    {
+      body: JSON.stringify({
+        custom_status: null,
+        current_game_id: null,
+        current_game_title: null,
+        last_heartbeat_at: new Date().toISOString(),
+        platform: null,
+        platform_game_id: null,
+        platform_last_polled_at: null,
+        platform_source: null,
+        status: "offline",
+      }),
+      headers: {
+        apikey: supabaseAnonKey,
+        Authorization: `Bearer ${normalizedAccessToken}`,
+        "Content-Type": "application/json",
+        Prefer: "return=minimal",
+      },
+      method: "PATCH",
+    },
+  );
+
+  if (!response.ok) {
+    throw new Error("Launcher presence could not be cleared for the signed-out account.");
+  }
+
+  return null;
+}
+
+function getOfflinePresenceInput(): PresenceUpdateInput {
+  return {
     customStatus: null,
     currentGameId: null,
     currentGameTitle: null,
@@ -188,7 +296,7 @@ export function clearLauncherPresence() {
     platformLastPolledAt: null,
     platformSource: null,
     status: "offline",
-  });
+  };
 }
 
 export async function getVisiblePresence(userIds: string[]) {
@@ -200,7 +308,11 @@ export async function getVisiblePresence(userIds: string[]) {
   const client = getSupabaseClient();
   const { data, error } = await client
     .from("user_presence")
-    .select("*")
+    .select(
+      `user_id, status, custom_status, current_game_id, current_game_title,
+      last_heartbeat_at, platform, platform_game_id, platform_last_polled_at,
+      platform_source, updated_at`,
+    )
     .in("user_id", uniqueUserIds);
   if (isMissingSchemaError(error)) {
     return [];
@@ -298,19 +410,32 @@ export function subscribeToPresenceChanges(
 
   const client = supabase;
   const watchedUsers = new Set(userIds);
-  const channel: RealtimeChannel = client
-    .channel(`og-presence-${crypto.randomUUID()}`)
-    .on("postgres_changes", { event: "*", schema: "public", table: "user_presence" }, (payload) => {
-      const row = (
-        payload.new && Object.keys(payload.new).length > 0 ? payload.new : payload.old
-      ) as UnknownRecord;
-      const userId = rowString(row, "user_id");
+  const filters = buildRealtimeInFilters("user_id", userIds);
+  let channel: RealtimeChannel = client.channel(`og-presence-${crypto.randomUUID()}`);
+  const handlePresenceChange = (payload: RealtimePostgresChangesPayload<UnknownRecord>) => {
+    const row = payload.new as UnknownRecord;
+    const userId = rowString(row, "user_id");
 
-      if (watchedUsers.has(userId)) {
-        onChange(toPresence(row));
-      }
-    })
-    .subscribe();
+    if (watchedUsers.has(userId)) {
+      onChange(toPresence(row));
+    }
+  };
+
+  for (const filter of filters) {
+    channel = channel
+      .on(
+        "postgres_changes",
+        { event: "INSERT", filter, schema: "public", table: "user_presence" },
+        handlePresenceChange,
+      )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", filter, schema: "public", table: "user_presence" },
+        handlePresenceChange,
+      );
+  }
+
+  channel = channel.subscribe();
 
   return () => {
     void client.removeChannel(channel);

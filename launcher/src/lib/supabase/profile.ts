@@ -51,6 +51,9 @@ import {
 } from "./helpers";
 import type { Json } from "./database.types";
 import { STORAGE_KEYS } from "../storage-keys";
+import { replaceSocialLinksAtomically } from "./profile/social-link-replacement";
+
+export { isCurrentUserFriendWith } from "./profile/friendship";
 
 const hardwareFallbackStorageKey = STORAGE_KEYS.HARDWARE_FALLBACK;
 const hardwareFallbackCache = new Map<string, UserHardware>();
@@ -751,9 +754,8 @@ export async function updateMyAppShellSkin(skinId: AppShellSkinId | null) {
     .select(profileSelect)
     .single();
   if (isMissingSchemaError(error)) {
-    return assertSingle(
-      await getProfileByUserId(userId),
-      "Profile was not found for the current user.",
+    throw new Error(
+      "Supabase profiles.app_shell_skin is unavailable. The shell skin was not synced to the hosted profile.",
     );
   }
   handleError(error);
@@ -779,9 +781,8 @@ export async function updateMyCustomTheme(theme: ProfileTheme | null) {
     .select(profileSelect)
     .single();
   if (isMissingSchemaError(error)) {
-    return assertSingle(
-      await getProfileByUserId(userId),
-      "Profile was not found for the current user.",
+    throw new Error(
+      "Supabase profiles.custom_theme_json is unavailable. The custom theme was not synced to the hosted profile.",
     );
   }
   handleError(error);
@@ -1412,37 +1413,8 @@ export async function updateMySocialLinks(links: SocialLinksInput) {
   const parsed = socialLinksSchema.parse(links);
   const client = getSupabaseClient();
   const userId = await getCurrentUserId();
-
-  const { error: deleteError } = await client
-    .from("user_social_links")
-    .delete()
-    .eq("user_id", userId);
-  if (isMissingSchemaError(deleteError)) {
-    return [];
-  }
-  handleError(deleteError);
-
-  if (parsed.length === 0) {
-    clearProfilePageCacheForUser(userId);
-    return [];
-  }
-
-  const { data, error } = await client
-    .from("user_social_links")
-    .insert(
-      parsed.map((link, index) => ({
-        user_id: userId,
-        platform: link.platform,
-        label: link.label,
-        url: link.url,
-        sort_order: link.sortOrder ?? index,
-        visibility: link.visibility ?? "public",
-      })),
-    )
-    .select("*")
-    .order("sort_order");
-  handleError(error);
-  const socialLinks = (data ?? []).map((row) => toSocialLink(row as UnknownRecord));
+  const rows = await replaceSocialLinksAtomically(client, parsed);
+  const socialLinks = rows.map((row) => toSocialLink(row));
   clearProfilePageCacheForUser(userId);
   return socialLinks;
 }

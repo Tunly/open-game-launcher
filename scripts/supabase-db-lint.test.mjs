@@ -3,6 +3,8 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import {
+  pnpmExecutable,
+  pnpmInvocation,
   redactSupabaseOutput,
   runSupabaseDbLint,
   supabaseArgs,
@@ -21,6 +23,11 @@ function fakeRunner(results, calls) {
   };
 }
 
+function supabaseSubcommand(call) {
+  const supabaseIndex = call.args.lastIndexOf("supabase");
+  return call.args.slice(supabaseIndex + 1);
+}
+
 test("supabaseArgs uses the launcher-pinned Supabase CLI", () => {
   assert.deepEqual(supabaseArgs(["db", "lint"]), [
     "--dir",
@@ -30,6 +37,21 @@ test("supabaseArgs uses the launcher-pinned Supabase CLI", () => {
     "db",
     "lint",
   ]);
+});
+
+test("pnpmExecutable resolves the Windows command shim", () => {
+  assert.equal(pnpmExecutable("win32"), "pnpm.cmd");
+  assert.equal(pnpmExecutable("linux"), "pnpm");
+});
+
+test("pnpmInvocation runs the Windows shim through cmd without shell mode", () => {
+  assert.deepEqual(
+    pnpmInvocation(["--version"], { platform: "win32", comspec: "cmd.exe" }),
+    {
+      command: "cmd.exe",
+      args: ["/d", "/s", "/c", "pnpm.cmd", "--version"],
+    },
+  );
 });
 
 test("supabase config explicitly matches hosted Data API exposure defaults", () => {
@@ -69,13 +91,10 @@ test("runSupabaseDbLint reuses an already running local database", () => {
   });
 
   assert.equal(exitCode, 0);
-  assert.deepEqual(
-    calls.map((call) => call.args.slice(4)),
-    [
-      ["status", "--workdir", "..", "--output", "json"],
-      ["db", "lint", "--workdir", "..", "--local", "--fail-on", "error"],
-    ],
-  );
+  assert.deepEqual(calls.map(supabaseSubcommand), [
+    ["status", "--workdir", "..", "--output", "json"],
+    ["db", "lint", "--workdir", "..", "--local", "--fail-on", "error"],
+  ]);
 });
 
 test("runSupabaseDbLint starts and stops the local database when needed", () => {
@@ -95,15 +114,18 @@ test("runSupabaseDbLint starts and stops the local database when needed", () => 
   });
 
   assert.equal(exitCode, 0);
-  assert.deepEqual(
-    calls.map((call) => call.args.slice(4)),
+  assert.deepEqual(calls.map(supabaseSubcommand), [
+    ["status", "--workdir", "..", "--output", "json"],
     [
-      ["status", "--workdir", "..", "--output", "json"],
-      ["start", "--workdir", "..", "--no-api"],
-      ["db", "lint", "--workdir", "..", "--local", "--fail-on", "error"],
-      ["stop", "--workdir", ".."],
+      "start",
+      "--workdir",
+      "..",
+      "--exclude",
+      "edge-runtime,gotrue,imgproxy,kong,logflare,mailpit,postgres-meta,postgrest,realtime,storage-api,studio,supavisor,vector",
     ],
-  );
+    ["db", "lint", "--workdir", "..", "--local", "--fail-on", "error"],
+    ["stop", "--workdir", ".."],
+  ]);
 });
 
 test("runSupabaseDbLint still stops a self-started database after lint failure", () => {
@@ -123,5 +145,24 @@ test("runSupabaseDbLint still stops a self-started database after lint failure",
   });
 
   assert.equal(exitCode, 2);
-  assert.deepEqual(calls.at(-1).args.slice(4), ["stop", "--workdir", ".."]);
+  assert.deepEqual(supabaseSubcommand(calls.at(-1)), [
+    "stop",
+    "--workdir",
+    "..",
+  ]);
+});
+
+test("runSupabaseDbLint fails when the command cannot be spawned", () => {
+  const exitCode = runSupabaseDbLint({
+    runCommand: () => ({
+      error: Object.assign(new Error("spawn pnpm ENOENT"), { code: "ENOENT" }),
+      status: null,
+      stderr: "",
+      stdout: "",
+    }),
+    stderr: { write() {} },
+    stdout: { write() {} },
+  });
+
+  assert.equal(exitCode, 1);
 });

@@ -347,7 +347,7 @@ Deno.test("stripe checkout handler marks failed orders when item writes fail", a
 
   assertEquals(response.status, 500);
   assertEquals(await response.json(), {
-    error: "Failed to create order items: insert failed",
+    error: "Checkout could not be completed.",
   });
   assertEquals(failedOrders, ["order-1"]);
 });
@@ -371,7 +371,7 @@ Deno.test("stripe checkout handler marks failed orders when session creation fai
 
   assertEquals(response.status, 500);
   assertEquals(await response.json(), {
-    error: "Stripe unavailable",
+    error: "Checkout could not be completed.",
   });
   assertEquals(failedOrders, ["order-1"]);
 });
@@ -395,7 +395,7 @@ Deno.test("stripe checkout handler marks failed orders when session attach fails
 
   assertEquals(response.status, 500);
   assertEquals(await response.json(), {
-    error: "Failed to attach Stripe session to order: update failed",
+    error: "Checkout could not be completed.",
   });
   assertEquals(failedOrders, ["order-1"]);
 });

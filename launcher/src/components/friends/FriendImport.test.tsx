@@ -3,13 +3,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { FriendImport } from "./FriendImport";
 import { STORAGE_KEYS } from "../../lib/storage-keys";
-import type { PlatformFriend, PlatformType } from "../../lib/types/friends";
+import type { PlatformType } from "../../lib/types/friends";
 
 const mocks = vi.hoisted(() => ({
   fetchEpicFriends: vi.fn(),
   fetchGogFriends: vi.fn(),
   fetchSteamFriends: vi.fn(),
-  fetchXboxFriends: vi.fn(),
   importPlatformFriends: vi.fn(),
   isTauri: vi.fn(),
 }));
@@ -22,7 +21,6 @@ vi.mock("../../lib/launcher", () => ({
   fetchEpicFriends: mocks.fetchEpicFriends,
   fetchGogFriends: mocks.fetchGogFriends,
   fetchSteamFriends: mocks.fetchSteamFriends,
-  fetchXboxFriends: mocks.fetchXboxFriends,
 }));
 
 vi.mock("../../lib/supabase/friend-links", () => ({
@@ -58,7 +56,6 @@ describe("FriendImport", () => {
     mocks.fetchEpicFriends.mockReset();
     mocks.fetchGogFriends.mockReset();
     mocks.fetchSteamFriends.mockReset();
-    mocks.fetchXboxFriends.mockReset();
     mocks.isTauri.mockReset();
     mocks.isTauri.mockReturnValue(false);
     mocks.importPlatformFriends.mockReset();
@@ -79,31 +76,31 @@ describe("FriendImport", () => {
     { key: "ubisoft", label: "Ubisoft" },
     { key: "og", label: "OG-Launcher" },
   ] satisfies Array<{ key: PlatformType; label: string }>)(
-    "imports a local preview roster for $label",
-    async ({ key, label }) => {
-      const onImported = vi.fn();
-      render(<FriendImport onImported={onImported} />);
+    "disables unsupported $label import instead of persisting preview users",
+    ({ label }) => {
+      render(<FriendImport />);
 
-      fireEvent.click(getPlatformButton(label));
-
-      await waitFor(() => {
-        expect(mocks.importPlatformFriends).toHaveBeenCalledTimes(1);
-      });
-
-      const importedFriends = mocks.importPlatformFriends.mock.calls[0][0] as PlatformFriend[];
-      expect(importedFriends).toHaveLength(3);
-      expect(importedFriends.every((friend) => friend.platform === key)).toBe(true);
-      expect(
-        importedFriends.every((friend) => friend.platformId.startsWith(`preview-${key}`)),
-      ).toBe(true);
-      expect(onImported).toHaveBeenCalledTimes(1);
-      expect(
-        await screen.findByText(
-          new RegExp(`Imported 3 preview friends from ${escapeRegex(label)}`),
-        ),
-      ).toBeInTheDocument();
+      expect(getPlatformButton(label)).toBeDisabled();
+      expect(mocks.importPlatformFriends).not.toHaveBeenCalled();
     },
   );
+
+  it("disables Xbox until a secure friend-token handoff exists", () => {
+    render(<FriendImport />);
+
+    expect(getPlatformButton("Xbox")).toBeDisabled();
+    expect(mocks.importPlatformFriends).not.toHaveBeenCalled();
+  });
+
+  it("fails closed in the browser without persisting preview users", async () => {
+    render(<FriendImport />);
+
+    fireEvent.click(getPlatformButton("Steam"));
+
+    expect(await screen.findByText(/desktop app only/i)).toBeInTheDocument();
+    expect(mocks.fetchSteamFriends).not.toHaveBeenCalled();
+    expect(mocks.importPlatformFriends).not.toHaveBeenCalled();
+  });
 
   it("imports GOG friends through the native token-aware bridge without reading localStorage tokens", async () => {
     mocks.isTauri.mockReturnValue(true);
@@ -134,10 +131,9 @@ describe("FriendImport", () => {
 
     fireEvent.click(getPlatformButton("Epic"));
 
-    expect(
-      await screen.findByText(/Native fetch skipped: Connect Epic Games first in Settings/i),
-    ).toBeInTheDocument();
+    expect(await screen.findByText(/Connect Epic Games first in Settings/i)).toBeInTheDocument();
     expect(mocks.fetchEpicFriends).not.toHaveBeenCalled();
+    expect(mocks.importPlatformFriends).not.toHaveBeenCalled();
 
     window.localStorage.setItem(STORAGE_KEYS.EPIC_SESSION_MARKER, "Epic User");
     fireEvent.click(getPlatformButton("Epic"));
@@ -145,5 +141,17 @@ describe("FriendImport", () => {
     await waitFor(() => {
       expect(mocks.fetchEpicFriends).toHaveBeenCalledTimes(1);
     });
+  });
+
+  it("does not persist anything when a native provider fetch fails", async () => {
+    mocks.isTauri.mockReturnValue(true);
+    window.localStorage.setItem(STORAGE_KEYS.STEAM_ID, "76561198000000000");
+    mocks.fetchSteamFriends.mockRejectedValueOnce(new Error("Steam friends are private."));
+    render(<FriendImport />);
+
+    fireEvent.click(getPlatformButton("Steam"));
+
+    expect(await screen.findByText(/Steam friends are private/i)).toBeInTheDocument();
+    expect(mocks.importPlatformFriends).not.toHaveBeenCalled();
   });
 });

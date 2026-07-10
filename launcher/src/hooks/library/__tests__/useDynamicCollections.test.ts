@@ -64,6 +64,16 @@ describe("useDynamicCollections", () => {
     expect(result.current.newCollectionName).toBe("");
   });
 
+  it("selects a newly saved collection immediately", () => {
+    const { result } = renderHook(() => useDynamicCollections(makeOptions()));
+
+    act(() => {
+      result.current.saveCurrentFilterAsCollection("MyCollection");
+    });
+
+    expect(result.current.selectedCollectionName).toBe("MyCollection");
+  });
+
   it("saveCurrentFilterAsCollection ignores empty name", () => {
     const { result } = renderHook(() => useDynamicCollections(makeOptions()));
     act(() => {

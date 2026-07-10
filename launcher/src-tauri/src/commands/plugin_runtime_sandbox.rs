@@ -613,15 +613,19 @@ mod tests {
         fs,
         path::{Path, PathBuf},
         rc::Rc,
-        time::Duration,
     };
+
+    #[cfg(unix)]
+    use std::time::Duration;
 
     use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
     use ed25519_dalek::{Signer, SigningKey};
 
+    #[cfg(unix)]
+    use super::{DesktopOwnedProbe, SandboxPolicy};
     use super::{
-        DesktopOwnedProbe, OwnedProbeReport, OwnedProbeRequest, OwnedSandboxProbe,
-        PluginRuntimeSandbox, PluginRuntimeSandboxError, SandboxPolicy,
+        OwnedProbeReport, OwnedProbeRequest, OwnedSandboxProbe, PluginRuntimeSandbox,
+        PluginRuntimeSandboxError,
     };
     use crate::commands::plugin_system::{
         sha256_hex, unix_timestamp_millis, PluginActivationPlanReviewConsent,
@@ -962,6 +966,7 @@ printf '%s\n' '{"allowedExecutionCount":0,"codeExecuted":false,"ipcAllowlistRead
         root
     }
 
+    #[cfg(unix)]
     fn deny_all_probe_request() -> OwnedProbeRequest {
         OwnedProbeRequest {
             policy: SandboxPolicy::deny_all(),

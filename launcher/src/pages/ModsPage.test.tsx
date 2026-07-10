@@ -87,6 +87,41 @@ describe("ModsPage provider API key staging readiness", () => {
     });
   });
 
+  it("persists a completed mod scan as one Supabase batch", async () => {
+    const installedMods = [
+      {
+        enabled: true,
+        gameId: "game-1",
+        id: "mod-1",
+        installId: "install-1",
+        installedAt: 1_788_000_000,
+        installedFiles: ["mods/one.pak"],
+        provider: "local_folder" as const,
+        targetPath: "C:/Games/CyberDrift/mods/one",
+        title: "One",
+      },
+      {
+        enabled: false,
+        gameId: "game-1",
+        id: "mod-2",
+        installId: "install-2",
+        installedAt: 1_788_000_100,
+        installedFiles: ["mods/two.pak"],
+        provider: "local_folder" as const,
+        targetPath: "C:/Games/CyberDrift/mods/two",
+        title: "Two",
+      },
+    ];
+    launcherMocks.scanGameMods.mockResolvedValue(installedMods);
+
+    renderModsRoute("/mods");
+
+    await waitFor(() => {
+      expect(supabaseModMocks.recordUserModInstall).toHaveBeenCalledWith(installedMods);
+    });
+    expect(supabaseModMocks.recordUserModInstall).toHaveBeenCalledTimes(1);
+  });
+
   it("renders local readiness on the verify route without live provider calls", async () => {
     renderModsRoute("/mods?verify=provider-api-key-staging");
 

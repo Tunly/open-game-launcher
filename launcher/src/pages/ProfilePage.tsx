@@ -13,12 +13,18 @@ import {
   createVerifyProfilePrivacyGuardData,
 } from "../lib/profile-privacy-guard";
 import { isSupabaseConfigured } from "../lib/supabase/client";
-import { getProfilePageData } from "../lib/supabase/profile";
+import { getProfilePageData, isCurrentUserFriendWith } from "../lib/supabase/profile";
 import type { ProfilePageData } from "../lib/types/profile";
 
 type LoadState =
   | { status: "loading"; data: null; error: null; isMock: false }
-  | { status: "ready"; data: ProfilePageData; error: null; isMock: boolean }
+  | {
+      status: "ready";
+      data: ProfilePageData;
+      error: null;
+      isFriend: boolean;
+      isMock: boolean;
+    }
   | { status: "empty"; data: null; error: null; isMock: false }
   | { status: "error"; data: null; error: string; isMock: false };
 
@@ -50,6 +56,7 @@ export function ProfilePage() {
         status: "ready",
         data: createVerifyProfilePrivacyGuardData(),
         error: null,
+        isFriend: false,
         isMock: true,
       });
       return;
@@ -60,6 +67,7 @@ export function ProfilePage() {
         status: "ready",
         data: createMockProfilePageData(resolvedUsername),
         error: null,
+        isFriend: false,
         isMock: true,
       });
       return;
@@ -67,16 +75,30 @@ export function ProfilePage() {
 
     setState({ status: "loading", data: null, error: null, isMock: false });
 
-    void getProfilePageData(resolvedUsername)
-      .then((data) => {
+    void (async () => {
+      try {
+        const data = await getProfilePageData(resolvedUsername);
         if (!isMounted) return;
+
+        let isFriend = false;
+        if (data && user?.id && user.id !== data.profile.id) {
+          try {
+            isFriend = await isCurrentUserFriendWith(data.profile.id);
+          } catch (friendshipError: unknown) {
+            console.warn(
+              "Profile friendship viewer context could not be resolved",
+              friendshipError,
+            );
+          }
+        }
+        if (!isMounted) return;
+
         setState(
           data
-            ? { status: "ready", data, error: null, isMock: false }
+            ? { status: "ready", data, error: null, isFriend, isMock: false }
             : { status: "empty", data: null, error: null, isMock: false },
         );
-      })
-      .catch((error: unknown) => {
+      } catch (error: unknown) {
         if (!isMounted) return;
         setState({
           status: "error",
@@ -84,12 +106,13 @@ export function ProfilePage() {
           error: error instanceof Error ? error.message : String(error),
           isMock: false,
         });
-      });
+      }
+    })();
 
     return () => {
       isMounted = false;
     };
-  }, [isPrivacyGuardVerify, username]);
+  }, [isPrivacyGuardVerify, user?.id, username]);
 
   if (state.status === "loading") {
     return (
@@ -128,7 +151,7 @@ export function ProfilePage() {
   const route = `/u/${state.data.profile.username}`;
   const isOwnProfile = user?.id === state.data.profile.id;
   const viewerContext = {
-    isFriend: false,
+    isFriend: state.isFriend,
     isOwnProfile,
     route,
   };

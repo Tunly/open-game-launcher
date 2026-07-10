@@ -91,7 +91,7 @@ export function useDynamicCollections(
       return [...filtered, newCol];
     });
     setNewCollectionName("");
-    applyDynamicCollection(trimmedName);
+    setSelectedCollectionName(trimmedName);
   }
 
   return {

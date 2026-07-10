@@ -194,8 +194,7 @@ against `GITHUB_REF_NAME` and `GITHUB_SHA`, and blocks common raw secret shapes
 such as Stripe live/test and restricted keys, webhook secrets, bearer tokens,
 JWT-like tokens, RAWG/Steam/mod provider keys, provider API-key headers, the
 `OGL_LICENSE_SIGNING_KEY` runtime secret, Supabase service-role/auth/access
-tokens, bare `sbp_...` deploy tokens, hosted scheduler secrets, mobile
-push/provider secrets, private keys, device tokens, and unredacted secret fixtures. Unchecked template rows,
+tokens, bare `sbp_...` deploy tokens, hosted scheduler secrets, private keys, and unredacted secret fixtures. Unchecked template rows,
 checked rows inside fenced/commented/indented examples, missing per-artifact
 proof coverage, checked proof rows without specific matching proof evidence
 mappings, placeholder/copied env values, malformed env values,
@@ -234,8 +233,8 @@ such as `stripe-webhook`, `stripe-tax-invoice`,
 `provider-approved-catalog-cloud-transfer`,
 `achievement-provider-cache-real-client`, `fullscreen-anti-cheat-overlay`,
 `backup-restore`, `client-mount-apply-provider-client`,
-`community-artwork-screenshot-rollout`, `plugin-marketplace-execution-update`,
-`mobile-push-provider-store-distribution`, or `hosted-deploy`. Bare `evt_...`
+`community-artwork-rollout`, `plugin-marketplace-execution-update`,
+`hosted-deploy`. Bare `evt_...`
 values are accepted only for the Stripe webhook signature proof. Syntactically
 specific but generic IDs such as `run-generic-1` stay blocked. Compound proof
 values must include every required term in the same value: mod-provider evidence
@@ -453,17 +452,14 @@ Required artifacts:
 
 Proof required:
 
-- Hosted community artwork/screenshots rollout is exercised beyond fixtures.
+- Hosted community artwork rollout is exercised beyond fixtures.
 - Plugin marketplace execution/update channels are externally reviewed.
-- Native mobile apps, push-provider delivery, and store distribution are verified.
 - Hosted production deployment evidence is attached.
 
 Gate-specific evidence rows:
 
 - Community rollout evidence.
 - Marketplace evidence.
-- Mobile distribution evidence.
-- Push-provider evidence.
 - Hosted deploy evidence.
 
 Hosted deploy proof comes from the GitHub Actions `CI` workflow run from
@@ -477,9 +473,6 @@ https://github.com/<owner>/<repo>/actions/runs/<id>` into both `Evidence for
 Hosted production deployment evidence is attached.` and `Hosted deploy
 evidence`; a bare Actions URL or standalone workflow ID lacks the lane label and
 production inputs required by preflight.
-
-Here, screenshots means hosted community screenshot content, not
-`docs/verification/screenshots/*` artifacts.
 
 ## Rules
 
@@ -526,8 +519,7 @@ Here, screenshots means hosted community screenshot content, not
   `artifact:`, `log:`, `signed-log:`, or a full `sha256:<64-hex>` reference, or
   use a recognized dashboard/deployment host and path such as Supabase Dashboard,
   Stripe Dashboard, GitHub Actions/release/deployment, Vercel, Netlify,
-  Cloudflare, App Store Connect, Google Play Console, Firebase Console, or
-  OneSignal. Accepted dashboard/deployment URLs must not include userinfo,
+  Cloudflare, App Store Connect, and Google Play Console. Accepted dashboard/deployment URLs must not include userinfo,
   query strings, or fragments.
 - Fill `Captured at` with a freshly captured current UTC ISO-8601 timestamp;
   the timestamp must be within 30 days and not more than 10 minutes in the

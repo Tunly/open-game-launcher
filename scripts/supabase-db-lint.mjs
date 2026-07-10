@@ -22,7 +22,25 @@ export function supabaseArgs(args) {
 
 function exitCodeFor(result) {
   if (typeof result.status === "number") return result.status;
-  return result.signal ? 1 : 0;
+  return result.signal || result.error ? 1 : 0;
+}
+
+export function pnpmExecutable(platform = process.platform) {
+  return platform === "win32" ? "pnpm.cmd" : "pnpm";
+}
+
+export function pnpmInvocation(
+  args,
+  { platform = process.platform, comspec = process.env.ComSpec } = {},
+) {
+  const executable = pnpmExecutable(platform);
+  if (platform === "win32") {
+    return {
+      command: comspec || "cmd.exe",
+      args: ["/d", "/s", "/c", executable, ...args],
+    };
+  }
+  return { command: executable, args };
 }
 
 function writeRedacted(stream, value) {
@@ -33,14 +51,17 @@ function writeRedacted(stream, value) {
 export function runSupabaseCommand(args, options = {}) {
   const {
     cwd = process.cwd(),
+    platform = process.platform,
     print = true,
     runCommand = spawnSync,
     stderr = process.stderr,
     stdout = process.stdout,
   } = options;
-  const result = runCommand("pnpm", supabaseArgs(args), {
+  const invocation = pnpmInvocation(supabaseArgs(args), { platform });
+  const result = runCommand(invocation.command, invocation.args, {
     cwd,
     encoding: "utf8",
+    windowsHide: true,
   });
   if (print) {
     writeRedacted(stdout, result.stdout ?? "");
@@ -54,11 +75,20 @@ export function runSupabaseDbLint(options = {}) {
   const run = (args, print = true) =>
     runSupabaseCommand(args, { ...options, print, runCommand });
 
-  const statusResult = run(["status", "--workdir", "..", "--output", "json"], false);
+  const statusResult = run(
+    ["status", "--workdir", "..", "--output", "json"],
+    false,
+  );
   const wasAlreadyRunning = exitCodeFor(statusResult) === 0;
 
   if (!wasAlreadyRunning) {
-    const startResult = run(["start", "--workdir", "..", "--no-api"]);
+    const startResult = run([
+      "start",
+      "--workdir",
+      "..",
+      "--exclude",
+      "edge-runtime,gotrue,imgproxy,kong,logflare,mailpit,postgres-meta,postgrest,realtime,storage-api,studio,supavisor,vector",
+    ]);
     const startExit = exitCodeFor(startResult);
     if (startExit !== 0) return startExit;
   }

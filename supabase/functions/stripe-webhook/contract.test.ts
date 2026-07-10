@@ -4,7 +4,7 @@ Deno.test("Stripe webhook verifies signatures before claiming event ids", async 
   );
 
   assertOrdered(source, [
-    "const event = deps.constructEvent(body, signature, secret);",
+    "const event = await deps.constructEvent(body, signature, secret);",
     "const claimedEvent = await deps.claimStoreStripeWebhookEvent(",
     "switch (event.type)",
     "deps.markStoreStripeWebhookEventProcessed(claimedEvent)",
@@ -17,6 +17,23 @@ Deno.test("Stripe webhook verifies signatures before claiming event ids", async 
     source,
     "deps.markStoreStripeWebhookEventFailed(claimedWebhookEvent, err)",
   );
+});
+
+Deno.test("Stripe webhook classifies signature failures without dereferencing the lazy client", async () => {
+  const indexSource = await Deno.readTextFile(
+    new URL("./index.ts", import.meta.url),
+  );
+
+  assertIncludes(
+    indexSource,
+    "isSignatureVerificationError: isStripeSignatureVerificationError",
+  );
+  assertIncludes(indexSource, "stripe.webhooks.constructEventAsync(");
+  if (indexSource.includes("stripe.errors")) {
+    throw new Error(
+      "Webhook error handling must not dereference stripe.errors",
+    );
+  }
 });
 
 Deno.test("Stripe webhook event ledger is service-role only and replay-safe", async () => {

@@ -421,7 +421,7 @@ const CLIENT_UPDATE_SCHEDULER_STATUS_FILE: &str = "client-update-scheduler-statu
 const HEADLESS_CLIENT_UPDATE_SCHEDULER_ARG: &str = "--og-client-update-scheduler-run";
 #[cfg(any(target_os = "linux", test))]
 const LINUX_CLIENT_UPDATE_SERVICE_FILE: &str = "og-launcher-client-updates.service";
-#[cfg(any(target_os = "linux", test))]
+#[cfg(target_os = "linux")]
 const LINUX_CLIENT_UPDATE_TIMER_FILE: &str = "og-launcher-client-updates.timer";
 #[cfg(target_os = "macos")]
 const MACOS_CLIENT_UPDATE_LAUNCH_AGENT_FILE: &str = "com.opengamelauncher.client-updates.plist";
@@ -2457,6 +2457,7 @@ fn macos_client_update_launch_agent_plist(exe: &Path) -> String {
     )
 }
 
+#[cfg(any(target_os = "linux", test))]
 fn escape_client_update_systemd_exec_path(path: &Path) -> String {
     path_to_string(path)
         .unwrap_or_else(|| path.display().to_string())
@@ -3644,10 +3645,7 @@ fn collect_process_windows() -> HashMap<u32, ClientWindowInfo> {
         }
 
         let title = read_window_title(hwnd);
-        if title
-            .as_deref()
-            .map_or(true, |value| value.trim().is_empty())
-        {
+        if title.as_deref().is_none_or(|value| value.trim().is_empty()) {
             return 1;
         }
 
@@ -3731,6 +3729,7 @@ fn has_install_signal(platform_id: &str) -> bool {
 
 fn known_install_paths(platform_id: &str) -> Vec<PathBuf> {
     let mut paths = Vec::new();
+    #[cfg(any(target_os = "macos", target_os = "linux"))]
     let home = dirs::home_dir();
 
     #[cfg(target_os = "windows")]
@@ -3911,7 +3910,7 @@ fn known_install_signal_paths(platform_id: &str) -> Vec<PathBuf> {
             _ => {}
         }
 
-        return paths;
+        paths
     }
 
     #[cfg(not(target_os = "windows"))]
@@ -4411,11 +4410,12 @@ mod tests {
         fs::create_dir_all(&local_targets_root).unwrap();
         let installer = local_targets_root.join("SteamSetup.exe");
         fs::write(&installer, b"installer").unwrap();
-        let installer_path = path_to_lossy_string(&installer);
+        let installer_input_path = path_to_lossy_string(&installer);
+        let installer_path = path_to_lossy_string(&installer.canonicalize().unwrap());
         let input = ClientModificationConfig {
             platform_id: "steam".to_string(),
             display_name: "ignored".to_string(),
-            local_installer_path: Some(format!("  {installer_path}  ")),
+            local_installer_path: Some(format!("  {installer_input_path}  ")),
             local_updater_path: Some("  ".to_string()),
             latest_known_version: Some("  3.1.4 ".to_string()),
             update_policy: "manual".to_string(),
@@ -4860,6 +4860,8 @@ mod tests {
             .iter()
             .find(|candidate| candidate.platform_id == "steam")
             .unwrap();
+        let target_path = path_to_lossy_string(&env::temp_dir().join("steam"));
+        let mount_point = path_to_lossy_string(&env::temp_dir());
         let mut config = default_client_config(client);
         config.update_policy = AUTO_APPLY_UPDATE_POLICY.to_string();
         let status = test_update_status(client, AUTO_APPLY_UPDATE_POLICY, true);
@@ -4870,21 +4872,24 @@ mod tests {
             client,
             &health,
             &plan,
-            Some("/opt/steam".to_string()),
+            Some(target_path.clone()),
             Some(ClientManagerAutoApplyCapabilityDisk {
                 available_space: 128 * 1024 * 1024 * 1024,
                 is_read_only: false,
                 is_removable: false,
-                mount_point: "/opt".to_string(),
+                mount_point: mount_point.clone(),
             }),
             CLIENT_MANAGER_AUTO_APPLY_CAPABILITY_DEFAULT_REQUIRED_BYTES,
             "2026-06-10T10:00:00Z".to_string(),
         );
 
         assert_eq!(preview.platform_id, "steam");
-        assert_eq!(preview.target_path.as_deref(), Some("/opt/steam"));
+        assert_eq!(preview.target_path.as_deref(), Some(target_path.as_str()));
         assert_eq!(preview.available_disk_bytes, Some(128 * 1024 * 1024 * 1024));
-        assert_eq!(preview.disk_mount_point.as_deref(), Some("/opt"));
+        assert_eq!(
+            preview.disk_mount_point.as_deref(),
+            Some(mount_point.as_str())
+        );
         assert!(!preview.can_auto_apply);
         assert!(preview.message.contains("remains blocked"));
         assert!(preview

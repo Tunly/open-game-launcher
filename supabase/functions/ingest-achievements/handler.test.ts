@@ -87,6 +87,45 @@ Deno.test("achievement ingestion handler blocks unknown catalog games", async ()
   });
 });
 
+Deno.test("achievement ingestion handler keeps ordinary client payloads local-only", async () => {
+  const definitions: NormalizedAchievement[][] = [];
+  const recordedUnlocks: NormalizedAchievement[][] = [];
+  const response = await handleAchievementIngestion(
+    jsonRequest({
+      achievements: [{
+        id: "FORGED",
+        name: "Forged official unlock",
+        unlockedAt: "2026-06-15T10:00:00.000Z",
+      }],
+      gameId: catalogGameId,
+      provider: "steam",
+      providerConfidence: "official",
+      syncedAt: "2026-06-15T10:05:00.000Z",
+    }),
+    stubDeps({
+      definitions,
+      hasTrustedAttestation: false,
+      recordedUnlocks,
+    }),
+  );
+
+  assertEquals(response.status, 202);
+  assertEquals(await response.json(), {
+    achievementsSynced: 0,
+    newUnlocks: 0,
+    ok: true,
+    persistence: "local_only",
+    receivedAchievements: 1,
+    receivedUnlocks: 1,
+    trust: "unverified",
+    unlockedCount: 0,
+    userId,
+    xpDelta: 0,
+  });
+  assertEquals(definitions, []);
+  assertEquals(recordedUnlocks, []);
+});
+
 Deno.test(
   "achievement ingestion handler reports unresolved definitions",
   async () => {
@@ -95,6 +134,7 @@ Deno.test(
         achievements: [{ id: "FIRST_WIN", name: "First Win" }],
         gameId: catalogGameId,
         provider: "steam",
+        syncedAt: "2026-06-15T10:05:00.000Z",
       }),
       stubDeps({ definitionIdsByKey: new Map() }),
     );
@@ -133,6 +173,7 @@ Deno.test(
         launcherDeviceId: "device-1",
         provider: "steam",
         providerConfidence: "official",
+        syncedAt: "2026-06-15T10:05:00.000Z",
       }),
       stubDeps({
         definitions,
@@ -162,6 +203,37 @@ Deno.test(
   },
 );
 
+Deno.test("achievement ingestion handler rejects stale attested snapshots", async () => {
+  const recordedUnlocks: NormalizedAchievement[][] = [];
+  const response = await handleAchievementIngestion(
+    jsonRequest({
+      achievements: [{ id: "FIRST_WIN", name: "First Win" }],
+      gameId: catalogGameId,
+      provider: "steam",
+      providerConfidence: "official",
+      syncedAt: "2026-06-15T10:05:00.000Z",
+    }),
+    stubDeps({
+      definitionAccepted: false,
+      recordedUnlocks,
+    }),
+  );
+
+  assertEquals(response.status, 202);
+  assertEquals(await response.json(), {
+    achievementsSynced: 0,
+    ignored: true,
+    newUnlocks: 0,
+    ok: true,
+    reason: "out_of_order",
+    trust: "attested",
+    unlockedCount: 0,
+    userId,
+    xpDelta: 0,
+  });
+  assertEquals(recordedUnlocks, []);
+});
+
 function jsonRequest(body: Record<string, unknown>) {
   return new Request("https://functions.example/ingest-achievements", {
     body: JSON.stringify(body),
@@ -178,7 +250,9 @@ function stubDeps(
     authResponse?: Response;
     catalogGame?: AchievementCatalogGame | null;
     definitionIdsByKey?: Map<string, string>;
+    definitionAccepted?: boolean;
     definitions?: NormalizedAchievement[][];
+    hasTrustedAttestation?: boolean;
     insertedUnlockKeys?: Set<string>;
     recordCalls?: Array<{ gameTitle: string | null }>;
     recordedUnlocks?: NormalizedAchievement[][];
@@ -186,7 +260,11 @@ function stubDeps(
 ): AchievementIngestionHandlerDeps {
   return {
     authenticateRequest: async () =>
-      options.authResponse ?? { adminClient: "stub", userId },
+      options.authResponse ?? {
+        adminClient: "stub",
+        hasTrustedAttestation: options.hasTrustedAttestation ?? true,
+        userId,
+      },
     getCatalogGame: async (auth, gameId) => {
       assertAuth(auth);
       assertEquals(gameId, catalogGameId);
@@ -206,19 +284,33 @@ function stubDeps(
       options.recordedUnlocks?.push(achievements);
       return options.insertedUnlockKeys ?? new Set();
     },
-    upsertAchievementDefinitions: async (auth, gameId, achievements) => {
+    upsertAchievementDefinitions: async (
+      auth,
+      gameId,
+      provider,
+      syncedAt,
+      achievements,
+    ) => {
       assertAuth(auth);
       assertEquals(gameId, catalogGameId);
+      assertEquals(provider, "steam");
+      assertEquals(typeof syncedAt, "string");
       options.definitions?.push(achievements);
       if (options.definitionIdsByKey) {
-        return options.definitionIdsByKey;
+        return {
+          accepted: options.definitionAccepted ?? true,
+          achievementIdsByKey: options.definitionIdsByKey,
+        };
       }
-      return new Map(
-        achievements.map((achievement, index) => [
-          achievement.key,
-          `achievement-${index + 1}`,
-        ]),
-      );
+      return {
+        accepted: options.definitionAccepted ?? true,
+        achievementIdsByKey: new Map(
+          achievements.map((achievement, index) => [
+            achievement.key,
+            `achievement-${index + 1}`,
+          ]),
+        ),
+      };
     },
   };
 }

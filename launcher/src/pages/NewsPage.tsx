@@ -6,60 +6,9 @@ import { listPublishedNews } from "../lib/supabase/news";
 import type { NewsItem } from "../lib/types/news";
 
 type NewsState =
-  | { status: "loading"; items: NewsItem[]; error: null; isFallback: false }
-  | { status: "ready"; items: NewsItem[]; error: null; isFallback: false }
-  | { status: "error"; items: NewsItem[]; error: string; isFallback: true };
-
-const fallbackNews: NewsItem[] = [
-  {
-    id: "local-patch-wire",
-    title: "Patch Wire: Client Health Relay",
-    slug: "local-patch-wire-client-health",
-    body: "Platform client status, updater readiness, and local integrity checks are now collected into denser launcher panels for offline-first review.",
-    excerpt:
-      "Platform client status, updater readiness, and local integrity checks now share one dense launcher relay.",
-    authorId: "local",
-    gameId: null,
-    tags: ["Patch", "Client Manager", "Offline"],
-    coverImageUrl: null,
-    isPublished: true,
-    publishedAt: "2026-06-10T12:00:00.000Z",
-    createdAt: "2026-06-10T12:00:00.000Z",
-    updatedAt: "2026-06-10T12:00:00.000Z",
-  },
-  {
-    id: "local-store-desk",
-    title: "Store Desk: Review Replies Live",
-    slug: "local-store-desk-review-replies",
-    body: "Developers can stage replies for verified store reviews, while reports and purchase checks keep the storefront controlled.",
-    excerpt:
-      "Developer replies, verified purchases, reports, and purchase checks are aligned for the store desk.",
-    authorId: "local",
-    gameId: null,
-    tags: ["Store", "Reviews", "RLS"],
-    coverImageUrl: null,
-    isPublished: true,
-    publishedAt: "2026-06-09T18:30:00.000Z",
-    createdAt: "2026-06-09T18:30:00.000Z",
-    updatedAt: "2026-06-09T18:30:00.000Z",
-  },
-  {
-    id: "local-overlay-guard",
-    title: "Overlay Guard: Safety Fallback",
-    slug: "local-overlay-guard-safety-fallback",
-    body: "Anti-cheat detection now routes blocked overlays into a clear fallback deck with FPS HUD actions.",
-    excerpt:
-      "Blocked overlays now show a clear anti-cheat fallback deck with FPS HUD and capture actions.",
-    authorId: "local",
-    gameId: null,
-    tags: ["Overlay", "Anti-Cheat", "Safety"],
-    coverImageUrl: null,
-    isPublished: true,
-    publishedAt: "2026-06-08T10:15:00.000Z",
-    createdAt: "2026-06-08T10:15:00.000Z",
-    updatedAt: "2026-06-08T10:15:00.000Z",
-  },
-];
+  | { status: "loading"; items: NewsItem[]; error: null }
+  | { status: "ready"; items: NewsItem[]; error: null }
+  | { status: "error"; items: NewsItem[]; error: string };
 
 const artClasses = ["library-art-tokyo", "library-art-mech", "library-art-phantom"];
 
@@ -83,8 +32,8 @@ export function NewsPage() {
     status: "loading",
     items: [],
     error: null,
-    isFallback: false,
   });
+  const [requestVersion, setRequestVersion] = useState(0);
 
   useEffect(() => {
     let isActive = true;
@@ -92,22 +41,21 @@ export function NewsPage() {
     listPublishedNews()
       .then((items) => {
         if (!isActive) return;
-        setState({ status: "ready", items, error: null, isFallback: false });
+        setState({ status: "ready", items, error: null });
       })
       .catch((error: unknown) => {
         if (!isActive) return;
         setState({
           status: "error",
-          items: fallbackNews,
+          items: [],
           error: getErrorMessage(error),
-          isFallback: true,
         });
       });
 
     return () => {
       isActive = false;
     };
-  }, []);
+  }, [requestVersion]);
 
   const featured = state.items[0] ?? null;
   const tagCount = useMemo(
@@ -149,7 +97,7 @@ export function NewsPage() {
             {[
               ["Posts", state.items.length.toString().padStart(2, "0"), Newspaper],
               ["Tags", tagCount.toString().padStart(2, "0"), Tags],
-              ["Mode", state.isFallback ? "Local" : "Live", Radio],
+              ["Mode", state.status === "error" ? "Unavailable" : "Hosted", Radio],
             ].map(([label, value, Icon]) => (
               <div
                 key={label as string}
@@ -183,7 +131,8 @@ export function NewsPage() {
                 Patch Radio
               </h2>
               <p className="neo-copy mt-2 max-w-[280px] text-[10px] font-black uppercase leading-5 text-[#f5eedf]">
-                Remote articles fall back to a local bulletin deck when Supabase is unavailable.
+                Published articles load from the hosted news catalog. Missing or failed reads stay
+                visibly empty.
               </p>
             </div>
           </div>
@@ -191,11 +140,19 @@ export function NewsPage() {
       </div>
 
       {state.status === "error" ? (
-        <div className="neo-copy flex gap-3 border-[3px] border-black bg-[#f5d6d9] p-3 text-[10px] font-black uppercase leading-5 text-[#77101f] shadow-[3px_3px_0_#171411]">
+        <div className="neo-copy flex flex-wrap items-center gap-3 border-[3px] border-black bg-[#f5d6d9] p-3 text-[10px] font-black uppercase leading-5 text-[#77101f] shadow-[3px_3px_0_#171411]">
           <AlertTriangle className="h-5 w-5 shrink-0" />
-          <span>
-            Live news unavailable: {sentence(state.error)}. Showing local bulletin fallback.
-          </span>
+          <span className="min-w-0 flex-1">Hosted news unavailable: {sentence(state.error)}.</span>
+          <button
+            className="border-2 border-black bg-[#fff9ed] px-3 py-2 text-[#171411] shadow-[2px_2px_0_#171411]"
+            type="button"
+            onClick={() => {
+              setState({ status: "loading", items: [], error: null });
+              setRequestVersion((version) => version + 1);
+            }}
+          >
+            Retry news
+          </button>
         </div>
       ) : null}
 
@@ -224,7 +181,7 @@ export function NewsPage() {
         </article>
       ) : null}
 
-      {state.items.length === 0 ? (
+      {state.status === "ready" && state.items.length === 0 ? (
         <div className="grid min-h-[220px] place-items-center border-4 border-black bg-[#f5eedf] p-6 text-center shadow-[6px_6px_0_#171411]">
           <div>
             <Newspaper className="mx-auto h-12 w-12 text-[#087d6d]" />
@@ -234,7 +191,7 @@ export function NewsPage() {
             </p>
           </div>
         </div>
-      ) : (
+      ) : state.items.length > 0 ? (
         <div className="grid gap-4 lg:grid-cols-3">
           {state.items.map((item, index) => (
             <article
@@ -264,7 +221,7 @@ export function NewsPage() {
             </article>
           ))}
         </div>
-      )}
+      ) : null}
     </section>
   );
 }

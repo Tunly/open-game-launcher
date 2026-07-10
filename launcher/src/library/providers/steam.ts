@@ -9,7 +9,11 @@ import {
   ownedGameToGame,
   readLocalStorageString,
 } from "../../lib/library-providers";
-import { STEAM_OWNED_GAMES_CACHE_VERSION, STORAGE_KEYS } from "../../lib/storage-keys";
+import {
+  readSteamOwnedGamesCache,
+  writeSteamOwnedGamesCache,
+} from "../../lib/steam-owned-games-cache";
+import { STORAGE_KEYS } from "../../lib/storage-keys";
 import type { Game } from "../../lib/types";
 import type { MergeContext, ProviderResult } from "./types";
 
@@ -24,33 +28,47 @@ export async function mergeSteamOwned(
   if (!steamId) {
     return { games, warnings, statusMessage };
   }
+  const accountIsCurrent = () =>
+    context.shouldApplyResult() && readLocalStorageString(STORAGE_KEYS.STEAM_ID) === steamId;
 
   let ownedRaw: OwnedGame[] = [];
+  let loadedFromAccountCache = false;
   try {
-    const cacheStr = localStorage.getItem(STORAGE_KEYS.STEAM_OWNED_GAMES_CACHE);
-    const cacheVersion = localStorage.getItem(STORAGE_KEYS.STEAM_OWNED_GAMES_CACHE_VERSION);
-    if (!context.forceRefresh && cacheVersion === STEAM_OWNED_GAMES_CACHE_VERSION && cacheStr) {
+    const cacheStr = context.forceRefresh ? null : readSteamOwnedGamesCache(steamId);
+    if (cacheStr !== null) {
       try {
-        ownedRaw = normalizeSteamOwnedGames(JSON.parse(cacheStr));
+        const parsed: unknown = JSON.parse(cacheStr);
+        const normalized = normalizeSteamOwnedGames(parsed);
+        if (Array.isArray(parsed) && (parsed.length === 0 || normalized.length > 0)) {
+          ownedRaw = normalized;
+          loadedFromAccountCache = true;
+        } else {
+          warnings.push("Steam owned-games cache is malformed and will be refreshed.");
+        }
       } catch (err) {
         warnings.push(`Failed to parse steamOwnedGamesCache: ${err}`);
       }
     }
 
-    if (ownedRaw.length === 0) {
+    if (!loadedFromAccountCache) {
       ownedRaw = normalizeSteamOwnedGames(await fetchSteamOwnedGames(steamId));
+      if (!accountIsCurrent()) {
+        return { games, warnings, statusMessage };
+      }
       if (ownedRaw.length > 0) {
-        localStorage.setItem(STORAGE_KEYS.STEAM_OWNED_GAMES_CACHE, JSON.stringify(ownedRaw));
-        localStorage.setItem(
-          STORAGE_KEYS.STEAM_OWNED_GAMES_CACHE_VERSION,
-          STEAM_OWNED_GAMES_CACHE_VERSION,
-        );
+        writeSteamOwnedGamesCache(steamId, ownedRaw);
       }
     }
 
-    void openSteamScraperWindow(steamId).catch((err) => {
-      console.warn("Failed to open silent steam scraper window:", err);
-    });
+    if (!accountIsCurrent()) {
+      return { games, warnings, statusMessage };
+    }
+
+    if (!loadedFromAccountCache) {
+      void openSteamScraperWindow(steamId).catch((err) => {
+        console.warn("Failed to open silent steam scraper window:", err);
+      });
+    }
 
     if (ownedRaw.length > 0) {
       const ownedGames = ownedRaw.map(ownedGameToGame);
@@ -68,6 +86,9 @@ export async function mergeSteamOwned(
 
     return { games, warnings, statusMessage };
   } catch (err) {
+    if (!accountIsCurrent()) {
+      return { games, warnings, statusMessage };
+    }
     const msg = String(err);
     warnings.push(`Failed to fetch owned steam games during load: ${msg}`);
     if (msg.includes("400") || msg.includes("403") || msg.includes("Game Details")) {

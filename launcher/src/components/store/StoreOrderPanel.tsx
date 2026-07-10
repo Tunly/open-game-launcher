@@ -126,13 +126,13 @@ export const StoreOrderPanel = ({
                   <div className="flex items-center gap-3">
                     <span
                       className={`neo-copy inline-flex items-center gap-1 border-2 border-black px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] ${
-                        order.status === "paid" || order.status === "fulfilled"
+                        order.status === "fulfilled"
                           ? "bg-[#8cf5e4] text-[#171411]"
                           : "bg-[#fff9ed] text-[#171411]"
                       }`}
                     >
                       <CheckCircle2 className="h-3 w-3" />
-                      {order.status}
+                      {order.status === "paid" ? "Paid / Fulfillment Pending" : order.status}
                     </span>
                     <p className="text-2xl font-black text-[#171411]">
                       {formatCurrency((order.totalCents ?? 0) / 100)}
@@ -437,7 +437,7 @@ function OrderItemsTape({ items }: { items: StoreOrderItem[] }) {
   return (
     <div className="neo-copy mt-3 grid gap-2 border-2 border-black bg-[#fff9ed] p-3 text-[10px] font-black uppercase tracking-[0.08em] text-[#655f58]">
       <div className="flex items-center justify-between border-b-2 border-black pb-2">
-        <span>Unlocked Products</span>
+        <span>Order Products</span>
         <span className="text-[#171411]">{items.length}</span>
       </div>
       {items.map((item) => (

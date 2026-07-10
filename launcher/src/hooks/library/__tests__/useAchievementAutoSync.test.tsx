@@ -1,4 +1,4 @@
-import { renderHook, waitFor } from "@testing-library/react";
+import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
@@ -9,14 +9,9 @@ import { useAchievementAutoSync } from "../useAchievementAutoSync";
 
 const providerState = vi.hoisted(() => ({
   ingestTrustedAchievements: vi.fn(),
+  emitAchievementPopup: vi.fn(),
   syncByProvider: new Map<string, ReturnType<typeof vi.fn>>(),
   updateAchievementProviderStatus: vi.fn(),
-}));
-
-vi.mock("../../useActivityLogger", () => ({
-  useActivityLogger: () => ({
-    logAchievement: vi.fn(),
-  }),
 }));
 
 vi.mock("../../../lib/achievement-providers", () => ({
@@ -45,6 +40,10 @@ vi.mock("../../../lib/achievement-providers", () => ({
 vi.mock("../../../lib/launcher", () => ({
   updateAchievementProviderStatus: (...args: unknown[]) =>
     providerState.updateAchievementProviderStatus(...args),
+}));
+
+vi.mock("../../../lib/overlay", () => ({
+  emitAchievementPopup: (...args: unknown[]) => providerState.emitAchievementPopup(...args),
 }));
 
 vi.mock("../../../lib/supabase/achievements", () => ({
@@ -118,6 +117,7 @@ function renderSyncHook(selectedGroup: GameGroup, initialGames: Game[]) {
       (props: { selectedGroup: GameGroup }) => {
         const [games, setGames] = useState(initialGames);
         const sync = useAchievementAutoSync({
+          installedGames: games,
           selectedGroup: props.selectedGroup,
           setInstalledGames: setGames as Dispatch<SetStateAction<Game[]>>,
           setStatusMessage: (message) => {
@@ -137,14 +137,59 @@ describe("useAchievementAutoSync", () => {
     providerState.ingestTrustedAchievements.mockResolvedValue({
       achievementsSynced: 0,
       newUnlocks: 0,
-      ok: false,
-      skipped: true,
+      ok: true,
+      persistence: "hosted",
+      skipped: false,
       unlockedCount: 0,
       xpDelta: 0,
     });
+    providerState.emitAchievementPopup.mockReset();
+    providerState.emitAchievementPopup.mockResolvedValue(undefined);
     providerState.syncByProvider.clear();
     providerState.updateAchievementProviderStatus.mockReset();
     providerState.updateAchievementProviderStatus.mockResolvedValue(undefined);
+  });
+
+  it("does nothing without a selected group or a supported provider candidate", () => {
+    const setInstalledGames = vi.fn();
+    const setStatusMessage = vi.fn();
+    const emptySelection = renderHook(() =>
+      useAchievementAutoSync({
+        selectedGroup: null,
+        setInstalledGames,
+        setStatusMessage,
+      }),
+    );
+
+    expect(emptySelection.result.current.syncingAchievementGameId).toBeNull();
+    expect(setInstalledGames).not.toHaveBeenCalled();
+
+    const unsupportedGame = game({ id: "manual-1", launcher: "manual" });
+    renderSyncHook(group([unsupportedGame]), [unsupportedGame]);
+
+    expect(providerState.updateAchievementProviderStatus).not.toHaveBeenCalled();
+    expect(setStatusMessage).not.toHaveBeenCalled();
+  });
+
+  it("does not repeat an auto-sync for the same provider identity", async () => {
+    const steamGame = game({
+      id: "steam-1",
+      launcher: "steam",
+      externalId: "123",
+    });
+    const steamSync = vi.fn().mockResolvedValue(syncResponse(steamGame));
+    providerState.syncByProvider.set("steam", steamSync);
+
+    const { hook } = renderSyncHook(group([steamGame]), [steamGame]);
+    await waitFor(() => {
+      expect(steamSync).toHaveBeenCalledTimes(1);
+    });
+
+    hook.rerender({ selectedGroup: group([{ ...steamGame }]) });
+
+    await waitFor(() => {
+      expect(steamSync).toHaveBeenCalledTimes(1);
+    });
   });
 
   it("auto-syncs every supported provider in the selected group without user status messages", async () => {
@@ -347,5 +392,76 @@ describe("useAchievementAutoSync", () => {
       ).toHaveLength(1);
     });
     expect(statusMessages).toEqual([]);
+  });
+
+  it("keeps locally synced achievements and exposes a manual retry when hosted ingestion fails", async () => {
+    vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const steamGame = game({ id: "steam-1", launcher: "steam" });
+    providerState.syncByProvider.set("steam", vi.fn().mockResolvedValue(syncResponse(steamGame)));
+    providerState.ingestTrustedAchievements
+      .mockRejectedValueOnce(new Error("attestation required"))
+      .mockResolvedValueOnce({
+        achievementsSynced: 1,
+        newUnlocks: 0,
+        ok: true,
+        persistence: "hosted",
+        skipped: false,
+        unlockedCount: 1,
+        xpDelta: 0,
+      });
+
+    const { hook } = renderSyncHook(group([steamGame]), [steamGame]);
+    await waitFor(() => {
+      expect(hook.result.current.games[0]?.achievements).toHaveLength(1);
+      expect(hook.result.current.games[0]?.achievementProviderStatuses?.[0]).toMatchObject({
+        status: "failed",
+        message: expect.stringContaining("synced locally"),
+      });
+    });
+
+    await act(async () => {
+      await hook.result.current.sync.syncAchievementsForGame(steamGame);
+    });
+
+    expect(providerState.syncByProvider.get("steam")).toHaveBeenCalledTimes(2);
+    expect(hook.result.current.games[0]?.achievementProviderStatuses?.[0]).toMatchObject({
+      status: "available",
+      message: "steam synced",
+    });
+  });
+
+  it("tracks concurrent loading by game id and emits a camelCase popup for a new unlock", async () => {
+    const steamGame = game({ id: "steam-1", launcher: "steam" });
+    let resolveSync: (response: SyncGameAchievementsResponse) => void = () => undefined;
+    providerState.syncByProvider.set(
+      "steam",
+      vi.fn(
+        () =>
+          new Promise<SyncGameAchievementsResponse>((resolve) => {
+            resolveSync = resolve;
+          }),
+      ),
+    );
+
+    const { hook } = renderSyncHook(group([steamGame]), [steamGame]);
+    await waitFor(() => {
+      expect(hook.result.current.sync.syncingAchievementGameIds.has("steam-1")).toBe(true);
+      expect(hook.result.current.sync.syncingAchievementGameId).toBe("steam-1");
+    });
+
+    await act(async () => {
+      resolveSync(syncResponse(steamGame));
+    });
+
+    await waitFor(() => {
+      expect(hook.result.current.sync.syncingAchievementGameIds.has("steam-1")).toBe(false);
+      expect(providerState.emitAchievementPopup).toHaveBeenCalledWith({
+        achievementName: "First Win",
+        description: "",
+        gameTitle: "Game",
+        iconUrl: null,
+        rarity: "",
+      });
+    });
   });
 });

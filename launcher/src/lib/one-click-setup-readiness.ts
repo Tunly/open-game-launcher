@@ -10,6 +10,7 @@ export interface OneClickSetupPlatformEvidence {
 export interface OneClickSetupReadinessInput {
   backupReminderConfigured: boolean;
   installDir: string | null;
+  installDirApplied?: boolean;
   isDesktopRuntime: boolean;
   librarySnapshotCount: number;
   platforms: OneClickSetupPlatformEvidence[];
@@ -38,6 +39,7 @@ export function buildOneClickSetupReadiness(
   input: OneClickSetupReadinessInput,
 ): OneClickSetupReadiness {
   const linkedPlatforms = input.platforms.filter((platform) => platform.linked);
+  const installDirApplied = Boolean(input.installDir && input.installDirApplied !== false);
   const importedGamesCount = input.platforms.reduce(
     (sum, platform) => sum + Math.max(0, platform.gamesCount ?? 0),
     0,
@@ -55,13 +57,19 @@ export function buildOneClickSetupReadiness(
       status: input.isDesktopRuntime ? "ready" : "blocked",
     },
     {
-      action: input.installDir
-        ? "Use this folder for first installs."
-        : "Choose a default game folder.",
-      detail: input.installDir ?? "No install target has been loaded yet.",
+      action: !input.installDir
+        ? "Choose a default game folder."
+        : installDirApplied
+          ? "Use this folder for first installs."
+          : "Keep this selection in review until a native install-path setter consumes it.",
+      detail: !input.installDir
+        ? "No install target has been loaded yet."
+        : installDirApplied
+          ? input.installDir
+          : `${input.installDir} is selected for review only and is not applied to installs.`,
       id: "install-target",
       label: "Install Target",
-      status: input.installDir ? "ready" : "warning",
+      status: installDirApplied ? "ready" : "warning",
     },
     {
       action:

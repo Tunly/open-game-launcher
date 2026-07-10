@@ -5,9 +5,7 @@ use crate::commands::downloads::external_dispatch;
 use crate::commands::downloads::external_download;
 use crate::commands::downloads::history::remember_download_item;
 use crate::commands::downloads::internal_lifecycle;
-use crate::commands::downloads::lifecycle::{
-    DownloadLifecycle, ExternalTracker, InternalDownloadTerminalHook,
-};
+use crate::commands::downloads::lifecycle::{DownloadLifecycle, ExternalTracker};
 use crate::commands::downloads::types::{
     get_download_manager, payload_from_active_download, ActiveDownload, DownloadStartStatus,
     InternalDownloadSource, StartDownloadResponse,
@@ -93,34 +91,11 @@ pub async fn start_download(
         game_id,
         title,
         lifecycle,
-        None,
         if is_external_download {
             external_message
         } else {
             "Download started.".to_string()
         },
-    )
-    .await
-}
-
-pub(crate) async fn start_trusted_internal_download(
-    app: AppHandle,
-    game_id: String,
-    game_title: Option<String>,
-    source: InternalDownloadSource,
-    terminal_hook: Option<InternalDownloadTerminalHook>,
-) -> Result<StartDownloadResponse, String> {
-    let game_id = normalize_game_id(game_id)?;
-    let title = resolve_download_title(&game_id, game_title);
-    start_download_lifecycle(
-        app,
-        game_id,
-        title,
-        DownloadLifecycle::Internal {
-            source: Some(source),
-        },
-        terminal_hook,
-        "Download started.".to_string(),
     )
     .await
 }
@@ -154,7 +129,6 @@ async fn start_download_lifecycle(
     game_id: String,
     title: String,
     lifecycle: DownloadLifecycle,
-    terminal_hook: Option<InternalDownloadTerminalHook>,
     message: String,
 ) -> Result<StartDownloadResponse, String> {
     let download_id = format!("download-{game_id}");
@@ -226,7 +200,6 @@ async fn start_download_lifecycle(
                     source,
                     pause_rx,
                     cancel_rx,
-                    terminal_hook,
                 )
                 .await;
             }

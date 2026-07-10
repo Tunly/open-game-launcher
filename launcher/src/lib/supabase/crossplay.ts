@@ -16,6 +16,8 @@ const REPORT_SELECT = `
   status, created_at, updated_at
 `;
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 interface CrossPlayRow {
   id: string;
   game_id: string;
@@ -75,6 +77,7 @@ function rowToReport(row: CrossPlayReportRow): GameCrossPlayReport {
 }
 
 export async function listGameCrossPlay(gameId: string): Promise<GameCrossPlay[]> {
+  if (!UUID_PATTERN.test(gameId)) return [];
   const client = getSupabaseClient();
   if (!client) return [];
   const { data, error } = await client

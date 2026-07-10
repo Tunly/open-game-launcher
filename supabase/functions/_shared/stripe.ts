@@ -2,10 +2,29 @@
 import Stripe from "https://esm.sh/stripe@17.7.0?target=deno";
 import { requireEnv } from "./env.ts";
 
-const STRIPE_SECRET_KEY = requireEnv("STRIPE_SECRET_KEY");
 export const STRIPE_API_VERSION = "2026-05-27.dahlia";
 
-export const stripe = new Stripe(STRIPE_SECRET_KEY, {
-  httpClient: Stripe.createFetchHttpClient(),
-  apiVersion: STRIPE_API_VERSION,
+let stripeClient: Stripe | null = null;
+
+export function getStripeClient(): Stripe {
+  stripeClient ??= new Stripe(requireEnv("STRIPE_SECRET_KEY"), {
+    httpClient: Stripe.createFetchHttpClient(),
+    apiVersion: STRIPE_API_VERSION,
+  });
+  return stripeClient;
+}
+
+// Keep existing adapters injectable while delaying secret validation until an
+// authenticated Stripe operation is actually attempted. CORS preflights and
+// missing-signature webhook requests must not cold-start with a 500 merely
+// because an external Stripe credential has not been configured yet.
+export const stripe = new Proxy({} as Stripe, {
+  get(_target, property) {
+    const client = getStripeClient();
+    const value = Reflect.get(client, property, client);
+    return typeof value === "function" ? value.bind(client) : value;
+  },
+  set(_target, property, value) {
+    return Reflect.set(getStripeClient(), property, value);
+  },
 });

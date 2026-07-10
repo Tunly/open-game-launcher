@@ -1,10 +1,14 @@
-import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import type { ReactNode } from "react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 
-import { STORAGE_KEYS } from "../lib/storage-keys";
-import type { StoreProduct } from "../lib/types/store";
+import type {
+  StoreLicense,
+  StoreOrder,
+  StoreOrderInvoice,
+  StoreProduct,
+  StoreRefundRequest,
+} from "../lib/types/store";
 import { StorePage } from "./StorePage";
 
 const storeMocks = vi.hoisted(() => ({
@@ -16,7 +20,6 @@ const storeMocks = vi.hoisted(() => ({
   getMyOrderByStripeSession: vi.fn(),
   getMyStoreReview: vi.fn(),
   getLatestStorePriceDropNotificationRunEvidence: vi.fn(),
-  getStoreProductPriceHistory: vi.fn(),
   isTrustedStorePriceDropNotificationRunEvidence: vi.fn(),
   listMyOrderItems: vi.fn(),
   listMyOrders: vi.fn(),
@@ -45,18 +48,31 @@ const launcherMocks = vi.hoisted(() => ({
   validateLicense: vi.fn(),
 }));
 
-vi.mock("recharts", () => ({
-  CartesianGrid: () => null,
-  Line: () => null,
-  LineChart: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
-  ResponsiveContainer: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
-  Tooltip: () => null,
-  XAxis: () => null,
-  YAxis: () => null,
+const authMocks = vi.hoisted(() => ({
+  isLoading: false,
+  user: { id: "user-1" } as { id: string } | null,
 }));
 
 vi.mock("../components/launcher/StoreGameCard", () => ({
-  StoreGameCard: ({ game }: { game: { title: string } }) => <article>{game.title}</article>,
+  StoreGameCard: ({ game, isProcessing }: { game: { title: string }; isProcessing: boolean }) => (
+    <article>
+      {game.title}
+      <button aria-label={`Card buy ${game.title}`} disabled={isProcessing} type="button">
+        Card Buy
+      </button>
+    </article>
+  ),
+}));
+
+vi.mock("../hooks/useCurrentUser", () => ({
+  useCurrentUser: () => ({
+    error: null,
+    isConfigured: true,
+    isLoading: authMocks.isLoading,
+    session: null,
+    signOut: vi.fn(),
+    user: authMocks.user,
+  }),
 }));
 
 vi.mock("../lib/launcher", () => ({
@@ -79,14 +95,26 @@ vi.mock("../lib/supabase/client", () => ({
 
 vi.mock("../lib/supabase/store", () => storeMocks);
 
-function renderStoreRoute(initialEntry = "/store") {
-  return render(
+function StoreRoute({ initialEntry = "/store" }: { initialEntry?: string }) {
+  return (
     <MemoryRouter initialEntries={[initialEntry]}>
       <Routes>
         <Route element={<StorePage />} path="/store" />
       </Routes>
-    </MemoryRouter>,
+    </MemoryRouter>
   );
+}
+
+function renderStoreRoute(initialEntry = "/store") {
+  return render(<StoreRoute initialEntry={initialEntry} />);
+}
+
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  const promise = new Promise<T>((promiseResolve) => {
+    resolve = promiseResolve;
+  });
+  return { promise, resolve };
 }
 
 function makeStoreProduct(overrides: Partial<StoreProduct> = {}): StoreProduct {
@@ -108,7 +136,6 @@ function makeStoreProduct(overrides: Partial<StoreProduct> = {}): StoreProduct {
     ratingsCount: 0,
     recSystemRequirements: {},
     releaseDate: "2026-06-20",
-    screenshots: [],
     shortDescription: "Hosted hero product.",
     slug: "hosted-hero-product",
     status: "published",
@@ -120,10 +147,88 @@ function makeStoreProduct(overrides: Partial<StoreProduct> = {}): StoreProduct {
   };
 }
 
-describe("StorePage price-drop scheduler readiness", () => {
+function makeStoreOrder(overrides: Partial<StoreOrder> = {}): StoreOrder {
+  return {
+    createdAt: "2026-06-20T10:00:00.000Z",
+    currency: "eur",
+    id: "22222222-2222-4222-8222-222222222222",
+    paidAt: "2026-06-20T10:01:00.000Z",
+    paymentMethod: "card",
+    status: "fulfilled",
+    stripePaymentIntent: "pi_old_account",
+    stripeSessionId: "cs_old_account",
+    subtotalCents: 1234,
+    taxCents: 0,
+    totalCents: 1234,
+    updatedAt: "2026-06-20T10:01:00.000Z",
+    userId: "user-1",
+    ...overrides,
+  };
+}
+
+function makeStoreLicense(productId: string): StoreLicense {
+  return {
+    activationsLeft: 2,
+    createdAt: "2026-06-20T10:01:00.000Z",
+    deviceId: "device-old-account",
+    expiresAt: null,
+    id: "license-old-account",
+    isRevoked: false,
+    licenseKey: "OLD-ACCOUNT-LICENSE",
+    orderId: "22222222-2222-4222-8222-222222222222",
+    platform: "windows",
+    productId,
+    userId: "user-1",
+  };
+}
+
+function makeStoreInvoice(orderId: string): StoreOrderInvoice {
+  return {
+    createdAt: "2026-06-20T10:02:00.000Z",
+    hostedInvoiceUrl: null,
+    id: "invoice-old-account",
+    invoiceNumber: "OLD-ACCOUNT-INVOICE",
+    issuedAt: "2026-06-20T10:02:00.000Z",
+    metadata: {},
+    orderId,
+    pdfUrl: null,
+    provider: "stripe",
+    providerInvoiceId: "in_old_account",
+    status: "available",
+    updatedAt: "2026-06-20T10:02:00.000Z",
+    userId: "user-1",
+  };
+}
+
+function makeStoreRefundRequest(orderId: string): StoreRefundRequest {
+  return {
+    cancelledAt: null,
+    createdAt: "2026-06-20T10:03:00.000Z",
+    details: "Old account refund details",
+    failureReason: null,
+    id: "refund-old-account",
+    metadata: {},
+    orderId,
+    processedAt: null,
+    provider: "stripe",
+    providerRefundId: "re_old_account",
+    providerRefundStatus: "pending",
+    reason: "duplicate_purchase",
+    refundAmountCents: 1234,
+    requestedAt: "2026-06-20T10:03:00.000Z",
+    reviewedAt: null,
+    status: "requested",
+    updatedAt: "2026-06-20T10:03:00.000Z",
+    userId: "user-1",
+  };
+}
+
+describe("StorePage", () => {
   beforeEach(() => {
     localStorage.clear();
     vi.clearAllMocks();
+    authMocks.isLoading = false;
+    authMocks.user = { id: "user-1" };
     launcherMocks.getLicenseDeviceId.mockResolvedValue("device-test");
     launcherMocks.validateLicense.mockResolvedValue({ ok: true });
     storeMocks.addToStoreWishlist.mockResolvedValue(undefined);
@@ -136,7 +241,6 @@ describe("StorePage price-drop scheduler readiness", () => {
     storeMocks.getMyOrderByStripeSession.mockResolvedValue(null);
     storeMocks.getMyStoreReview.mockResolvedValue(null);
     storeMocks.getLatestStorePriceDropNotificationRunEvidence.mockResolvedValue(null);
-    storeMocks.getStoreProductPriceHistory.mockResolvedValue([]);
     storeMocks.isTrustedStorePriceDropNotificationRunEvidence.mockReturnValue(false);
     storeMocks.listMyOrderItems.mockResolvedValue([]);
     storeMocks.listMyOrders.mockResolvedValue([]);
@@ -175,93 +279,33 @@ describe("StorePage price-drop scheduler readiness", () => {
     storeMocks.upsertStoreReviewReply.mockResolvedValue(null);
   });
 
-  it("wires local and remote price alert counts into the readiness panel", async () => {
-    localStorage.setItem(STORAGE_KEYS.STORE_PRICE_ALERTS, JSON.stringify({ "deep-signal": 15 }));
-
-    renderStoreRoute();
-
-    const panel = await screen.findByRole("region", {
-      name: /price-drop scheduler readiness/i,
-    });
-
-    await waitFor(() => {
-      expect(within(panel).getByText("Cron rows").parentElement).toHaveTextContent("1");
-    });
-
-    expect(within(panel).getByText("Local alerts").parentElement).toHaveTextContent("2");
-    expect(within(panel).getByText("Cron rows").parentElement).toHaveTextContent("1");
-    expect(within(panel).getByText("Remote sync")).toBeInTheDocument();
-    expect(within(panel).getByText("Needs hosted cron")).toBeInTheDocument();
-  });
-
-  it("keeps the scheduled-evidence verify route local-only until trusted evidence exists", async () => {
+  it("does not render or load store price-alert scheduler UI", async () => {
     renderStoreRoute("/store?verify=price-drop-scheduled-evidence");
 
-    const panel = await screen.findByRole("region", {
-      name: /price-drop scheduler readiness/i,
+    await screen.findByRole("region", {
+      name: /store catalog source/i,
+    });
+    await waitFor(() => {
+      expect(storeMocks.getCartItems).toHaveBeenCalled();
     });
 
-    await waitFor(() => {
-      expect(within(panel).getByText("Needs hosted cron")).toBeInTheDocument();
-    });
-    expect(within(panel).getByText("Cron rows").parentElement).toHaveTextContent("1");
-    expect(within(panel).getByText("Hosted cron")).toBeInTheDocument();
-    expect(within(panel).getByText("Hosted Scheduler Proof")).toBeInTheDocument();
-    expect(within(panel).getByText("price-drop-scheduled-fixture")).toBeInTheDocument();
-    expect(within(panel).getByText("Run evidence row")).toBeInTheDocument();
-    expect(within(panel).getByText("Trusted scheduled row")).toBeInTheDocument();
-    expect(within(panel).getByText("No-write verify route")).toBeInTheDocument();
-    expect(within(panel).getAllByText("No verify-route notification write")).toHaveLength(2);
     expect(
-      within(panel).getByText("No hosted cron success claim without trusted row"),
-    ).toBeInTheDocument();
-    expect(within(panel).queryByText("Ready")).not.toBeInTheDocument();
-    expect(within(panel).getByText(/real hosted Supabase Scheduled Function/i)).toBeInTheDocument();
-    expect(panel).not.toHaveTextContent(
-      /PRICE_DROP_NOTIFY_SECRET=|notification body:|@example\.|hosted cron ready/i,
-    );
-  });
-
-  it("shows real scheduled price-drop evidence as hosted cron ready", async () => {
-    storeMocks.getLatestStorePriceDropNotificationRunEvidence.mockResolvedValue({
-      alertsMarkedCount: 1,
-      candidateCount: 1,
-      completedAt: "2026-06-15T00:00:00.000Z",
-      dryRun: false,
-      limit: 500,
-      notificationsRecordedCount: 1,
-      requestedAlertCount: 0,
-      requestedProductCount: 0,
-      requestedUserCount: 0,
-      runId: "price-drop-run-1",
-      scannedCount: 1,
-      status: "completed",
-      triggerSource: "scheduled",
-    });
-    storeMocks.isTrustedStorePriceDropNotificationRunEvidence.mockReturnValue(true);
-
-    renderStoreRoute();
-
-    const panel = await screen.findByRole("region", {
-      name: /price-drop scheduler readiness/i,
-    });
-
-    await waitFor(() => {
-      expect(within(panel).getByText("Ready")).toBeInTheDocument();
-    });
-    expect(within(panel).getByText("Cron rows").parentElement).toHaveTextContent("1");
-    expect(within(panel).getByText("Hosted cron")).toBeInTheDocument();
-    expect(within(panel).getByText("price-drop-run-1")).toBeInTheDocument();
-    expect(within(panel).getByText("Trusted scheduled row")).toBeInTheDocument();
-    expect(within(panel).getByText(/sanitized run rows/i)).toBeInTheDocument();
+      screen.queryByRole("region", { name: /price-drop scheduler readiness/i }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("Price Alerts")).not.toBeInTheDocument();
+    expect(storeMocks.listMyStorePriceAlerts).not.toHaveBeenCalled();
+    expect(storeMocks.getLatestStorePriceDropNotificationRunEvidence).not.toHaveBeenCalled();
   });
 
   it("sends a checkout attempt UUID when starting Stripe checkout", async () => {
+    const hostedProduct = makeStoreProduct({ priceCents: 1999 });
+    storeMocks.listPublishedProducts.mockResolvedValue([hostedProduct]);
     renderStoreRoute();
 
     const buyNow = await screen.findByRole("button", {
       name: /buy now -/i,
     });
+    await waitFor(() => expect(buyNow).toBeEnabled());
     expect(buyNow).toHaveTextContent("19.99");
     fireEvent.click(buyNow);
 
@@ -273,14 +317,14 @@ describe("StorePage price-drop scheduler readiness", () => {
             checkout_attempt_id: expect.stringMatching(
               /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
             ),
-            product_ids: ["deep-signal"],
+            product_ids: [hostedProduct.id],
           }),
         }),
       );
     });
   });
 
-  it("labels empty hosted catalogs as local preview and disables missing trailers", async () => {
+  it("shows an honest empty hosted catalog without fictional products", async () => {
     renderStoreRoute();
 
     const sourcePanel = await screen.findByRole("region", {
@@ -290,17 +334,61 @@ describe("StorePage price-drop scheduler readiness", () => {
     await waitFor(() => {
       expect(within(sourcePanel).getByText("Hosted Empty")).toBeInTheDocument();
     });
-    expect(within(sourcePanel).getByText(/local preview fixtures only/i)).toBeInTheDocument();
+    expect(
+      within(sourcePanel).getByText(/no local product data is substituted/i),
+    ).toBeInTheDocument();
+    expect(screen.getAllByText("No published products are currently available.")).not.toHaveLength(
+      0,
+    );
     expect(screen.getByRole("button", { name: /trailer unavailable/i })).toBeDisabled();
+    expect(screen.queryByText("Wasteland Drifter")).not.toBeInTheDocument();
+    expect(screen.queryByText("System Crash")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /preview only/i })).not.toBeInTheDocument();
+    expect(storeMocks.invokeFunction).not.toHaveBeenCalled();
     expect(screen.queryByText(/live sample/i)).not.toBeInTheDocument();
   });
 
-  it("drives the hero title, price, checkout product, and trailer from the hosted product", async () => {
-    const hostedProduct = makeStoreProduct();
+  it("renders no products while the hosted catalog is still loading", async () => {
+    const catalog = deferred<StoreProduct[]>();
+    storeMocks.listPublishedProducts.mockReturnValue(catalog.promise);
+
+    renderStoreRoute();
+
+    const sourcePanel = await screen.findByRole("region", { name: /store catalog source/i });
+    expect(within(sourcePanel).getByText("Loading Catalog")).toBeInTheDocument();
+    expect(screen.getByText("Loading the hosted catalog.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /preview only/i })).not.toBeInTheDocument();
+    expect(screen.queryByText("Wasteland Drifter")).not.toBeInTheDocument();
+
+    await act(async () => {
+      catalog.resolve([]);
+      await catalog.promise;
+    });
+  });
+
+  it("shows a catalog error without substituting local products", async () => {
+    storeMocks.listPublishedProducts.mockRejectedValue(new Error("catalog offline"));
+
+    renderStoreRoute();
+
+    const sourcePanel = await screen.findByRole("region", { name: /store catalog source/i });
+    await waitFor(() => expect(within(sourcePanel).getByText("Hosted Error")).toBeInTheDocument());
+    expect(within(sourcePanel).getByText(/catalog offline/i)).toBeInTheDocument();
+    expect(screen.getByText(/no local products are shown/i)).toBeInTheDocument();
+    expect(screen.queryByText("Wasteland Drifter")).not.toBeInTheDocument();
+  });
+
+  it("drives the hero metadata, price, checkout product, and trailer from the hosted product", async () => {
+    const hostedProduct = makeStoreProduct({
+      coverImageUrl: "https://media.example.com/hosted-cover.jpg",
+      description: "Full hosted product description.",
+      publisher: "Hosted Publisher",
+      shortDescription: "Short hosted summary.",
+    });
     const openSpy = vi.spyOn(window, "open").mockReturnValue(null);
     storeMocks.listPublishedProducts.mockResolvedValue([hostedProduct]);
 
-    renderStoreRoute();
+    const { container } = renderStoreRoute();
 
     expect(await screen.findAllByRole("heading", { name: "Hosted Hero Product" })).toHaveLength(2);
 
@@ -308,8 +396,15 @@ describe("StorePage price-drop scheduler readiness", () => {
       name: /store catalog source/i,
     });
     expect(within(sourcePanel).getByText("Hosted Catalog")).toBeInTheDocument();
+    expect(screen.getAllByText("Full hosted product description.")).not.toHaveLength(0);
+    expect(screen.getAllByText("Hosted Publisher")).not.toHaveLength(0);
+    expect(screen.queryByText(/built for players who want/i)).not.toBeInTheDocument();
+    expect(
+      container.querySelectorAll('img[src="https://media.example.com/hosted-cover.jpg"]'),
+    ).not.toHaveLength(0);
 
     const buyNow = screen.getByRole("button", { name: /buy now -/i });
+    await waitFor(() => expect(buyNow).toBeEnabled());
     expect(buyNow).toHaveTextContent("12.34");
     fireEvent.click(buyNow);
 
@@ -327,6 +422,169 @@ describe("StorePage price-drop scheduler readiness", () => {
     fireEvent.click(screen.getByRole("button", { name: /watch trailer/i }));
     expect(openSpy).toHaveBeenCalledWith(hostedProduct.trailerUrl, "_blank", "noopener,noreferrer");
     openSpy.mockRestore();
+  });
+
+  it("never falls back to global local orders for a signed-in account", async () => {
+    localStorage.setItem(
+      "og-launcher:store:orders",
+      JSON.stringify([
+        makeStoreOrder({
+          id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+          userId: "another-user",
+        }),
+      ]),
+    );
+    localStorage.setItem("og-launcher:store:owned", JSON.stringify(["foreign-product"]));
+
+    renderStoreRoute("/store?tab=orders");
+
+    expect(await screen.findByText("No orders yet.")).toBeInTheDocument();
+    expect(screen.queryByText("Order aaaaaaaa")).not.toBeInTheDocument();
+    expect(localStorage.getItem("og-launcher:store:orders")).toBeNull();
+    expect(localStorage.getItem("og-launcher:store:owned")).toBeNull();
+  });
+
+  it("clears every account-bound store lane on account switch and logout", async () => {
+    const hostedProduct = makeStoreProduct();
+    const cartProduct = makeStoreProduct({
+      id: "33333333-3333-4333-8333-333333333333",
+      slug: "cart-product",
+      title: "Cart Product",
+    });
+    const order = makeStoreOrder();
+    storeMocks.listPublishedProducts.mockResolvedValue([hostedProduct, cartProduct]);
+    storeMocks.getCartItems.mockResolvedValue([{ productId: cartProduct.id }]);
+    storeMocks.getMyLicenses.mockResolvedValue([makeStoreLicense(hostedProduct.id)]);
+    storeMocks.listMyOrders.mockResolvedValue([order]);
+    storeMocks.listMyStoreOrderInvoices.mockResolvedValue([makeStoreInvoice(order.id)]);
+    storeMocks.listMyStoreRefundRequests.mockResolvedValue([makeStoreRefundRequest(order.id)]);
+    storeMocks.listMyStoreWishlist.mockResolvedValue([{ productId: hostedProduct.id }]);
+
+    const view = renderStoreRoute("/store?tab=orders");
+
+    expect(await screen.findByText("OLD-ACCOUNT-INVOICE")).toBeInTheDocument();
+    expect(screen.getByText("1 Licenses")).toBeInTheDocument();
+    expect(screen.getByText("re_old_account")).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: "Owned" })).not.toHaveLength(0);
+    expect(screen.getByRole("button", { name: "Open Cart" })).toHaveTextContent("1");
+
+    const nextAccountLoad = deferred<void>();
+    storeMocks.getCartItems.mockImplementation(() => nextAccountLoad.promise.then(() => []));
+    storeMocks.getMyLicenses.mockImplementation(() => nextAccountLoad.promise.then(() => []));
+    storeMocks.listMyOrders.mockImplementation(() => nextAccountLoad.promise.then(() => []));
+    storeMocks.listMyStoreOrderInvoices.mockImplementation(() =>
+      nextAccountLoad.promise.then(() => []),
+    );
+    storeMocks.listMyStoreRefundRequests.mockImplementation(() =>
+      nextAccountLoad.promise.then(() => []),
+    );
+    storeMocks.listMyStoreWishlist.mockImplementation(() => nextAccountLoad.promise.then(() => []));
+
+    await act(async () => {
+      authMocks.user = { id: "user-2" };
+      view.rerender(<StoreRoute initialEntry="/store?tab=orders" />);
+      await Promise.resolve();
+    });
+
+    expect(screen.queryByText("OLD-ACCOUNT-INVOICE")).not.toBeInTheDocument();
+    expect(screen.queryByText("re_old_account")).not.toBeInTheDocument();
+    expect(screen.getByText("0 Licenses")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Owned" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Open Cart" })).toHaveTextContent("0");
+    expect(screen.queryByText(`Order ${order.id.slice(0, 8)}`)).not.toBeInTheDocument();
+
+    await act(async () => {
+      nextAccountLoad.resolve(undefined);
+      await nextAccountLoad.promise;
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    await waitFor(() => expect(screen.getByText("No orders yet.")).toBeInTheDocument());
+    expect(screen.getByText("0 Licenses")).toBeInTheDocument();
+
+    const orderCallsBeforeLogout = storeMocks.listMyOrders.mock.calls.length;
+    await act(async () => {
+      authMocks.user = null;
+      view.rerender(<StoreRoute initialEntry="/store?tab=orders" />);
+      await Promise.resolve();
+      await Promise.resolve();
+    });
+
+    expect(screen.getByText("0 Licenses")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Open Cart" })).toHaveTextContent("0");
+    expect(storeMocks.listMyOrders).toHaveBeenCalledTimes(orderCallsBeforeLogout);
+  });
+
+  it("guards checkout reentrancy and disables every purchase surface while processing", async () => {
+    const hostedProduct = makeStoreProduct({ priceCents: 1999 });
+    const checkout = deferred<{
+      data: { id: null; order_id: string; status: "fulfilled"; url: null };
+      error: null;
+    }>();
+    storeMocks.listPublishedProducts.mockResolvedValue([hostedProduct]);
+    storeMocks.invokeFunction.mockReturnValue(checkout.promise);
+
+    renderStoreRoute();
+
+    const heroBuy = await screen.findByRole("button", { name: /buy now -/i });
+    await waitFor(() => expect(heroBuy).toBeEnabled());
+
+    act(() => {
+      heroBuy.click();
+      heroBuy.click();
+    });
+
+    await waitFor(() => expect(storeMocks.invokeFunction).toHaveBeenCalledTimes(1));
+    for (const button of screen.getAllByRole("button", { name: /buy|claim/i })) {
+      expect(button).toBeDisabled();
+    }
+    expect(screen.getByRole("button", { name: "Add To Cart" })).toBeDisabled();
+
+    await act(async () => {
+      checkout.resolve({
+        data: { id: null, order_id: "order-free", status: "fulfilled", url: null },
+        error: null,
+      });
+      await checkout.promise;
+    });
+  });
+
+  it("does not claim free checkout added a game to the library", async () => {
+    const hostedProduct = makeStoreProduct({ priceCents: 0 });
+    storeMocks.listPublishedProducts.mockResolvedValue([hostedProduct]);
+    renderStoreRoute();
+
+    const claim = await screen.findByRole("button", { name: /claim -/i });
+    await waitFor(() => expect(claim).toBeEnabled());
+    fireEvent.click(claim);
+
+    expect(
+      await screen.findByText(
+        "Free checkout fulfilled. Account licenses refreshed; library handoff remains separate.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/added to (your )?library/i)).not.toBeInTheDocument();
+  });
+
+  it("keeps paid checkout returns pending until fulfillment issues a license", async () => {
+    const paidOrder = makeStoreOrder({
+      status: "paid",
+      stripeSessionId: "cs_paid_return",
+    });
+    storeMocks.getMyOrderByStripeSession.mockResolvedValue(paidOrder);
+    storeMocks.listMyOrders.mockResolvedValue([paidOrder]);
+
+    renderStoreRoute("/store?session_id=cs_paid_return");
+
+    expect(
+      await screen.findByText(
+        "Payment confirmed. Fulfillment and license issuance are still pending.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Paid / Fulfillment Pending")).toBeInTheDocument();
+    expect(screen.queryByText(/licenses and downloads are unlocked/i)).not.toBeInTheDocument();
+    expect(screen.queryByText("Unlocked Products")).not.toBeInTheDocument();
   });
 
   it("shows the Stripe live-staging contract on the verify route without live secret claims", async () => {

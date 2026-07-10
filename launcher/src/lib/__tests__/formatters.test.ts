@@ -75,10 +75,10 @@ describe("executableTitleFromPath", () => {
 });
 
 describe("formatLastPlayed", () => {
-  it("returns 'Not played' for null/undefined", () => {
-    expect(formatLastPlayed()).toBe("Not played");
-    expect(formatLastPlayed(null)).toBe("Not played");
-    expect(formatLastPlayed("")).toBe("Not played");
+  it("keeps missing activity honest", () => {
+    expect(formatLastPlayed()).toBe("Unknown");
+    expect(formatLastPlayed(null)).toBe("Unknown");
+    expect(formatLastPlayed("")).toBe("Unknown");
   });
 
   it("returns the raw string for invalid dates", () => {
@@ -93,10 +93,13 @@ describe("formatLastPlayed", () => {
 });
 
 describe("formatPlayTime", () => {
-  it("returns '0 hours' for missing/zero playtime", () => {
-    expect(formatPlayTime()).toBe("0 hours");
+  it("does not turn missing or invalid playtime into a measured zero", () => {
+    expect(formatPlayTime()).toBe("Unknown");
+    expect(formatPlayTime(-10)).toBe("Unknown");
+  });
+
+  it("keeps a provider-confirmed zero distinct from unknown playtime", () => {
     expect(formatPlayTime(0)).toBe("0 hours");
-    expect(formatPlayTime(-10)).toBe("0 hours");
   });
 
   it("returns one decimal hour for small values", () => {
@@ -111,8 +114,9 @@ describe("formatPlayTime", () => {
 });
 
 describe("formatAchievementProgress", () => {
-  it("returns 0/0 when there are no achievements", () => {
-    expect(formatAchievementProgress(makeGame())).toBe("0/0");
+  it("distinguishes unavailable achievement metadata from an empty catalog", () => {
+    expect(formatAchievementProgress(makeGame({ achievements: undefined }))).toBe("Unavailable");
+    expect(formatAchievementProgress(makeGame({ achievements: [] }))).toBe("0/0");
   });
 
   it("counts unlocked achievements", () => {

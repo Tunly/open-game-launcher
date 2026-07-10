@@ -274,9 +274,9 @@ Deno.test("store order support handler rejects staged refund after Stripe errors
   );
 
   assertEquals(response.status, 500);
-  assertEquals(await response.json(), { error: "Stripe refund failed hard" });
+  assertEquals(await response.json(), { error: "Store order support failed." });
   assertEquals(rejected, [
-    { message: "Stripe refund failed hard", orderId },
+    { message: "Stripe refund request failed.", orderId },
   ]);
   assertEquals(logged.length, 1);
 });

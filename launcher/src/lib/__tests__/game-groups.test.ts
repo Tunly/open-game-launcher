@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { aggregateGameGroup } from "../game-groups";
+import { aggregateGameGroup, groupGames } from "../game-groups";
 import type { Game, UnifiedAchievement } from "../types";
 
 function achievement(overrides: Partial<UnifiedAchievement>): UnifiedAchievement {
@@ -26,6 +26,15 @@ function makeGame(overrides: Partial<Game>): Game {
 }
 
 describe("aggregateGameGroup achievements", () => {
+  it("does not group an unknown product category as a game", () => {
+    const groups = groupGames([
+      makeGame({ id: "unknown", productCategory: undefined }),
+      makeGame({ id: "game", productCategory: "game" }),
+    ]);
+
+    expect(groups).toHaveLength(2);
+  });
+
   it("uses the platform variant with the most achievements as basis", () => {
     const steam = makeGame({
       id: "steam-1",

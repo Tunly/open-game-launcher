@@ -1,4 +1,4 @@
-import type { RealtimeChannel } from "@supabase/supabase-js";
+import type { RealtimeChannel, RealtimePostgresChangesPayload } from "@supabase/supabase-js";
 
 import { getSupabaseClient, supabase } from "./client";
 import type { ChatMessage, ChatRoom, GameInvite } from "../types/profile";
@@ -33,6 +33,11 @@ export interface GameInviteShareToken {
   platform: PlatformType | null;
   token: string;
   tokenHint: string;
+}
+
+export interface InviteFeasibilityResult {
+  compatibleSenderPlatform: PlatformType | null;
+  feasibility: InviteFeasibility;
 }
 
 export interface ResolvedShareToken {
@@ -344,18 +349,40 @@ export function subscribeToGameInvites(userId: string, onInvite: (invite: GameIn
   }
 
   const client = supabase;
-  const channel: RealtimeChannel = client
-    .channel(`og-invites-${userId}`)
-    .on("postgres_changes", { event: "*", schema: "public", table: "game_invites" }, (payload) => {
-      const row = (
-        payload.new && Object.keys(payload.new).length > 0 ? payload.new : payload.old
-      ) as UnknownRecord;
-      const invite = toInvite(row);
-      if (invite.senderId === userId || invite.receiverId === userId) {
-        onInvite(invite);
-      }
-    })
-    .subscribe();
+  const handleInviteChange = (payload: RealtimePostgresChangesPayload<UnknownRecord>) => {
+    const row = (
+      payload.new && Object.keys(payload.new).length > 0 ? payload.new : payload.old
+    ) as UnknownRecord;
+    const invite = toInvite(row);
+    if (invite.senderId === userId || invite.receiverId === userId) {
+      onInvite(invite);
+    }
+  };
+  let channel: RealtimeChannel = client.channel(`og-invites-${userId}`);
+  for (const event of ["INSERT", "UPDATE"] as const) {
+    channel = channel
+      .on(
+        "postgres_changes",
+        {
+          event,
+          filter: `receiver_id=eq.${userId}`,
+          schema: "public",
+          table: "game_invites",
+        },
+        handleInviteChange,
+      )
+      .on(
+        "postgres_changes",
+        {
+          event,
+          filter: `sender_id=eq.${userId}`,
+          schema: "public",
+          table: "game_invites",
+        },
+        handleInviteChange,
+      );
+  }
+  channel = channel.subscribe();
 
   return () => {
     void client.removeChannel(channel);
@@ -546,6 +573,7 @@ function toCrossPlatformInvite(row: UnknownRecord): CrossPlatformInvite {
 }
 
 export async function sendCrossplatformInvite(
+  expectedUserId: string,
   receiverId: string | null,
   gameTitle: string,
   platform: PlatformType | null,
@@ -557,11 +585,14 @@ export async function sendCrossplatformInvite(
   const { data: userData, error: authError } = await client.auth.getUser();
   handleError(authError);
   if (!userData.user) throw new Error("You must be signed in.");
+  if (userData.user.id !== expectedUserId) {
+    throw new Error("Your signed-in account changed. Please try again.");
+  }
 
   const { data, error } = await client
     .from("game_invites")
     .insert({
-      sender_id: userData.user.id,
+      sender_id: expectedUserId,
       receiver_id: receiverId,
       game_title: gameTitle.trim(),
       launch_uri: launchUri,
@@ -632,11 +663,19 @@ function toInviteHostedReplayProof(row: UnknownRecord): InviteHostedReplayProof 
 }
 
 export async function createGameInviteShareToken(
+  expectedUserId: string,
   inviteId: string,
   platform: PlatformType | null,
   ttlSeconds = 1800,
 ): Promise<GameInviteShareToken | null> {
   const client = getSupabaseClient();
+  const { data: userData, error: authError } = await client.auth.getUser();
+  handleError(authError);
+  if (!userData.user) throw new Error("You must be signed in.");
+  if (userData.user.id !== expectedUserId) {
+    throw new Error("Your signed-in account changed. Please try again.");
+  }
+
   const { data, error } = await client
     .rpc("create_game_invite_share_token", {
       invite_id_input: inviteId,
@@ -736,7 +775,7 @@ export async function checkInviteFeasibility(
   gameTitle: string,
   senderPlatforms: PlatformType[],
   receiverPlatforms: PlatformType[],
-): Promise<InviteFeasibility> {
+): Promise<InviteFeasibilityResult> {
   const client = getSupabaseClient();
 
   // Try to find the game in our catalog
@@ -748,7 +787,7 @@ export async function checkInviteFeasibility(
 
   if (!games || games.length === 0) {
     // Can't determine feasibility without game data
-    return "uncertain";
+    return { compatibleSenderPlatform: null, feasibility: "uncertain" };
   }
 
   const gameId = rowString(games[0] as UnknownRecord, "id");
@@ -761,16 +800,21 @@ export async function checkInviteFeasibility(
     .eq("is_enabled", true);
 
   if (!crossPlay || crossPlay.length === 0) {
-    return "uncertain";
+    return { compatibleSenderPlatform: null, feasibility: "uncertain" };
   }
 
   const enabledPlatforms = new Set(crossPlay.map((r) => rowString(r as UnknownRecord, "platform")));
 
   // Check if both sender and receiver have at least one matching enabled platform
-  const senderMatch = senderPlatforms.some((p) => enabledPlatforms.has(p));
-  const receiverMatch = receiverPlatforms.some((p) => enabledPlatforms.has(p));
+  const senderMatch = senderPlatforms.find((platform) => enabledPlatforms.has(platform)) ?? null;
+  const receiverMatch =
+    receiverPlatforms.find((platform) => enabledPlatforms.has(platform)) ?? null;
 
-  if (senderMatch && receiverMatch) return "possible";
-  if (!senderMatch && !receiverMatch) return "impossible";
-  return "uncertain";
+  if (senderMatch && receiverMatch) {
+    return { compatibleSenderPlatform: senderMatch, feasibility: "possible" };
+  }
+  if (!senderMatch && !receiverMatch) {
+    return { compatibleSenderPlatform: null, feasibility: "impossible" };
+  }
+  return { compatibleSenderPlatform: null, feasibility: "uncertain" };
 }

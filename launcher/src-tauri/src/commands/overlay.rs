@@ -5,7 +5,31 @@ use tauri_plugin_global_shortcut::GlobalShortcutExt;
 
 #[cfg(test)]
 mod overlay_settings_tests {
-    use super::{normalize_overlay_settings, OverlaySettingsPayload};
+    use super::{
+        enforce_noninteractive_fps_hud, ensure_fps_hud_enabled, fps_hud_position,
+        fps_hud_should_be_closed, normalize_overlay_settings, FpsHudWindowControl,
+        OverlaySettingsPayload,
+    };
+    use std::cell::Cell;
+
+    struct FakeFpsHudWindow {
+        ignore_error: Option<&'static str>,
+        close_error: Option<&'static str>,
+        close_calls: Cell<u32>,
+    }
+
+    impl FpsHudWindowControl for FakeFpsHudWindow {
+        type Error = &'static str;
+
+        fn ignore_pointer_input(&self) -> Result<(), Self::Error> {
+            self.ignore_error.map_or(Ok(()), Err)
+        }
+
+        fn close_window(&self) -> Result<(), Self::Error> {
+            self.close_calls.set(self.close_calls.get() + 1);
+            self.close_error.map_or(Ok(()), Err)
+        }
+    }
 
     fn payload() -> OverlaySettingsPayload {
         OverlaySettingsPayload {
@@ -46,6 +70,72 @@ mod overlay_settings_tests {
         let error = normalize_overlay_settings(input).unwrap_err();
         assert!(error.contains("Unsupported overlay position"));
     }
+
+    #[test]
+    fn positions_the_external_fps_hud_in_each_configured_corner() {
+        let screen = (100.0, 50.0, 1000.0, 700.0);
+        let hud = (140.0, 40.0);
+
+        assert_eq!(
+            fps_hud_position("top_left", screen, hud, 12.0),
+            (112.0, 62.0)
+        );
+        assert_eq!(
+            fps_hud_position("top_right", screen, hud, 12.0),
+            (948.0, 62.0)
+        );
+        assert_eq!(
+            fps_hud_position("bottom_left", screen, hud, 12.0),
+            (112.0, 698.0)
+        );
+        assert_eq!(
+            fps_hud_position("bottom_right", screen, hud, 12.0),
+            (948.0, 698.0)
+        );
+    }
+
+    #[test]
+    fn blocks_opening_the_external_fps_hud_while_disabled() {
+        let mut settings = payload();
+        settings.fps_hud_enabled = Some(false);
+
+        assert!(fps_hud_should_be_closed(&settings));
+        assert!(ensure_fps_hud_enabled(&settings)
+            .unwrap_err()
+            .contains("disabled"));
+        settings.fps_hud_enabled = Some(true);
+        assert!(!fps_hud_should_be_closed(&settings));
+        assert!(ensure_fps_hud_enabled(&settings).is_ok());
+    }
+
+    #[test]
+    fn closes_the_fps_hud_when_pointer_passthrough_cannot_be_enabled() {
+        let window = FakeFpsHudWindow {
+            ignore_error: Some("pointer setup failed"),
+            close_error: None,
+            close_calls: Cell::new(0),
+        };
+
+        let error = enforce_noninteractive_fps_hud(&window).unwrap_err();
+
+        assert!(error.contains("pointer setup failed"));
+        assert_eq!(window.close_calls.get(), 1);
+    }
+
+    #[test]
+    fn reports_both_pointer_and_fail_closed_errors() {
+        let window = FakeFpsHudWindow {
+            ignore_error: Some("pointer setup failed"),
+            close_error: Some("close failed"),
+            close_calls: Cell::new(0),
+        };
+
+        let error = enforce_noninteractive_fps_hud(&window).unwrap_err();
+
+        assert!(error.contains("pointer setup failed"));
+        assert!(error.contains("close failed"));
+        assert_eq!(window.close_calls.get(), 1);
+    }
 }
 
 #[tauri::command]
@@ -55,6 +145,10 @@ pub fn toggle_in_game_overlay(app: tauri::AppHandle) -> Result<bool, String> {
         let _ = window.close();
         Ok(false)
     } else {
+        let settings = read_overlay_settings().unwrap_or_else(|_| default_overlay_settings());
+        if !settings.is_enabled.unwrap_or(true) {
+            return Err("Overlay is disabled in Overlay Settings.".to_string());
+        }
         let monitor = app
             .primary_monitor()
             .map_err(|e| e.to_string())?
@@ -84,23 +178,53 @@ pub fn toggle_in_game_overlay(app: tauri::AppHandle) -> Result<bool, String> {
     }
 }
 
+/// Make the external overlay window pass pointer input through to the game
+/// while pinned panels are displayed without the interactive launcher chrome.
+#[tauri::command]
+pub fn set_in_game_overlay_click_through(
+    app: tauri::AppHandle,
+    enabled: bool,
+) -> Result<(), String> {
+    let window = app
+        .get_webview_window("in_game_overlay")
+        .ok_or_else(|| "Overlay window is not open.".to_string())?;
+    window
+        .set_ignore_cursor_events(enabled)
+        .map_err(|error| format!("Could not update overlay pointer handling: {error}"))
+}
+
 /// Toggle a minimal FPS-HUD window (no interaction, tiny, always-on-top).
 #[tauri::command]
 pub fn toggle_fps_hud(app: tauri::AppHandle) -> Result<bool, String> {
     let label = "fps_hud";
     if let Some(window) = app.get_webview_window(label) {
-        let _ = window.close();
+        window
+            .close()
+            .map_err(|error| format!("Could not close FPS HUD: {error}"))?;
         Ok(false)
     } else {
+        let settings = read_overlay_settings().unwrap_or_else(|_| default_overlay_settings());
+        ensure_fps_hud_enabled(&settings)?;
         let monitor = app
             .primary_monitor()
             .map_err(|e| e.to_string())?
             .ok_or("No primary monitor")?;
+        let scale_factor = monitor.scale_factor();
+        let origin = monitor.position();
         let size = monitor.size();
+        let logical_screen = (
+            origin.x as f64 / scale_factor,
+            origin.y as f64 / scale_factor,
+            size.width as f64 / scale_factor,
+            size.height as f64 / scale_factor,
+        );
         let w = 140.0;
         let h = 40.0;
-        let x = (size.width as f64) - w - 12.0;
-        let y = 12.0;
+        let position = settings
+            .position
+            .as_deref()
+            .unwrap_or(DEFAULT_OVERLAY_POSITION);
+        let (x, y) = fps_hud_position(position, logical_screen, (w, h), 12.0);
 
         let window = WebviewWindowBuilder::new(&app, label, floating_window_url(&app, "fps-hud"))
             .title("OGL FPS")
@@ -113,8 +237,75 @@ pub fn toggle_fps_hud(app: tauri::AppHandle) -> Result<bool, String> {
             .transparent(false)
             .build()
             .map_err(|e| format!("Failed to create FPS HUD: {e}"))?;
+        enforce_noninteractive_fps_hud(&window)?;
         install_floating_window_guard(&window, "FPS-HUD");
         Ok(true)
+    }
+}
+
+trait FpsHudWindowControl {
+    type Error: std::fmt::Display;
+
+    fn ignore_pointer_input(&self) -> Result<(), Self::Error>;
+    fn close_window(&self) -> Result<(), Self::Error>;
+}
+
+impl FpsHudWindowControl for tauri::WebviewWindow {
+    type Error = tauri::Error;
+
+    fn ignore_pointer_input(&self) -> Result<(), Self::Error> {
+        self.set_ignore_cursor_events(true)
+    }
+
+    fn close_window(&self) -> Result<(), Self::Error> {
+        self.close()
+    }
+}
+
+fn enforce_noninteractive_fps_hud<W: FpsHudWindowControl>(window: &W) -> Result<(), String> {
+    window.ignore_pointer_input().map_err(|pointer_error| {
+        let close_error = window.close_window().err();
+        match close_error {
+            Some(close_error) => format!(
+                "Could not make FPS HUD non-interactive: {pointer_error}. Fail-closed window cleanup also failed: {close_error}"
+            ),
+            None => format!(
+                "Could not make FPS HUD non-interactive: {pointer_error}. The window was closed."
+            ),
+        }
+    })
+}
+
+fn ensure_fps_hud_enabled(settings: &OverlaySettingsPayload) -> Result<(), String> {
+    if fps_hud_should_be_closed(settings) {
+        Err("FPS HUD is disabled in Overlay Settings.".to_string())
+    } else {
+        Ok(())
+    }
+}
+
+fn fps_hud_should_be_closed(settings: &OverlaySettingsPayload) -> bool {
+    !settings.fps_hud_enabled.unwrap_or(false)
+}
+
+fn fps_hud_position(
+    position: &str,
+    screen: (f64, f64, f64, f64),
+    hud: (f64, f64),
+    margin: f64,
+) -> (f64, f64) {
+    let (screen_x, screen_y, screen_width, screen_height) = screen;
+    let (hud_width, hud_height) = hud;
+    let left = screen_x + margin;
+    let right = screen_x + screen_width - hud_width - margin;
+    let top = screen_y + margin;
+    let bottom = screen_y + screen_height - hud_height - margin;
+
+    match position {
+        "top_left" => (left, top),
+        "top_right" => (right, top),
+        "bottom_left" => (left, bottom),
+        _ => (right, bottom),
     }
 }
 
@@ -203,8 +394,28 @@ pub fn save_overlay_settings(
     let previous = read_overlay_settings().unwrap_or_else(|_| default_overlay_settings());
     let normalized = normalize_overlay_settings(settings)?;
     write_overlay_settings(&normalized)?;
-    register_configured_overlay_hotkey(&app, previous.hotkey.as_deref())?;
+    let fps_hud_close_result = close_fps_hud_if_disabled(&app, &normalized);
+    let hotkey_result = register_configured_overlay_hotkey(&app, previous.hotkey.as_deref());
+    let _ = app.emit("overlay-settings-updated", normalized.clone());
+    fps_hud_close_result?;
+    hotkey_result?;
     Ok(normalized)
+}
+
+fn close_fps_hud_if_disabled(
+    app: &tauri::AppHandle,
+    settings: &OverlaySettingsPayload,
+) -> Result<(), String> {
+    if !fps_hud_should_be_closed(settings) {
+        return Ok(());
+    }
+
+    if let Some(window) = app.get_webview_window("fps_hud") {
+        window
+            .close()
+            .map_err(|error| format!("Could not close disabled FPS HUD: {error}"))?;
+    }
+    Ok(())
 }
 
 pub fn register_configured_overlay_hotkey(
@@ -357,6 +568,6 @@ pub fn emit_achievement_popup(
     app: tauri::AppHandle,
     payload: AchievementPopupPayload,
 ) -> Result<(), String> {
-    let _ = app.emit("achievement-unlocked", payload);
-    Ok(())
+    app.emit("achievement-unlocked", payload)
+        .map_err(|error| format!("Could not emit achievement popup: {error}"))
 }

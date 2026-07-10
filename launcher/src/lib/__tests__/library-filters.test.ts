@@ -75,6 +75,13 @@ describe("matchesSizeQuery", () => {
     expect(matchesSizeQuery(1, "<2048mb")).toBe(true);
     expect(matchesSizeQuery(0.5, ">100mb")).toBe(true);
   });
+
+  it("does not treat an unknown size as a measured zero", () => {
+    expect(matchesSizeQuery(undefined, "")).toBe(true);
+    expect(matchesSizeQuery(undefined, "<5gb")).toBe(false);
+    expect(matchesSizeQuery(undefined, ">5gb")).toBe(false);
+    expect(matchesSizeQuery(undefined, "=0gb")).toBe(false);
+  });
 });
 
 describe("matchesSearchQuery", () => {
@@ -110,6 +117,37 @@ describe("gamePassesAdvancedFilters", () => {
   it("rejects games whose productCategory is not in the filter", () => {
     const game = makeGame({ productCategory: "dlc" });
     expect(gamePassesAdvancedFilters(game, defaults, context)).toBe(false);
+  });
+
+  it("does not classify a missing product category as a game", () => {
+    const game = makeGame({ productCategory: undefined });
+
+    expect(gamePassesAdvancedFilters(game, defaults, context)).toBe(false);
+    expect(
+      gamePassesAdvancedFilters(
+        game,
+        { ...defaults, productCategories: ["game", "unknown"] },
+        context,
+      ),
+    ).toBe(true);
+  });
+
+  it("distinguishes unknown playtime from an explicit never-played value", () => {
+    const neverPlayed = { ...defaults, status: ["never played"] };
+    const played = { ...defaults, status: ["played"] };
+
+    expect(
+      gamePassesAdvancedFilters(makeGame({ playtimeMinutes: undefined }), neverPlayed, context),
+    ).toBe(false);
+    expect(gamePassesAdvancedFilters(makeGame({ playtimeMinutes: 0 }), neverPlayed, context)).toBe(
+      true,
+    );
+    expect(
+      gamePassesAdvancedFilters(makeGame({ playtimeMinutes: undefined }), played, context),
+    ).toBe(false);
+    expect(gamePassesAdvancedFilters(makeGame({ playtimeMinutes: 12 }), played, context)).toBe(
+      true,
+    );
   });
 
   it("filters by launcher source", () => {

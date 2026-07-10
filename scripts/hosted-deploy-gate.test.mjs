@@ -359,7 +359,7 @@ test("CI workflow gates production hosted deploy and smoke to main", () => {
   assert.doesNotMatch(step, /git merge-base --is-ancestor HEAD origin\/main/);
   assert.match(
     ciWorkflow,
-    /hosted-deploy-gate:[\s\S]*actions\/checkout@[0-9a-f]{40} # v6\n        with:\n          fetch-depth: 0/,
+    /hosted-deploy-gate:[\s\S]*actions\/checkout@[0-9a-f]{40} # v[0-9][^\n]*\n        with:\n          fetch-depth: 0/,
   );
   assert.ok(
     ciWorkflow.indexOf("- name: Validate hosted production source") <
@@ -430,7 +430,7 @@ test("hosted deploy gate packet summarizes handoff without secret values", () =>
 
   assert.match(output, /Hosted deploy gate operator packet/);
   assert.match(output, /Function base URL: configured/);
-  assert.match(output, /Deploy functions: 17\/17 selected/);
+  assert.match(output, /Deploy functions: 15\/15 selected/);
   assert.match(output, /Runtime Secret Names Checked By Preflight/);
   assert.match(output, /stripe-webhook \(verify_jwt=false\)/);
   assert.match(
@@ -490,7 +490,7 @@ test("hosted deploy gate packet mirrors scoped smoke plan", () => {
     SUPABASE_PROJECT_REF: "awebfvfyqzwapcgixdfj",
   });
 
-  assert.match(output, /Deploy functions: 1\/17 selected/);
+  assert.match(output, /Deploy functions: 1\/15 selected/);
   assert.match(output, /rawg-assets \(verify_jwt=true\)/);
   assert.match(output, /rawg-assets: OPTIONS module\/env sanity/);
   assert.doesNotMatch(output, /notify-price-drop: POST dry-run/);
@@ -1409,20 +1409,6 @@ test("direct deploy dry-run rejects short fake project refs before commands", ()
   );
 });
 
-test("deploy plan includes mobile push registration as caller-authenticated", () => {
-  assert.deepEqual(
-    deployFunctions.find((fn) => fn.name === "mobile-push-registration"),
-    {
-      name: "mobile-push-registration",
-      verifyJwt: true,
-    },
-  );
-  assert.ok(
-    optionsSmokes.some((smoke) => smoke.name === "mobile-push-registration"),
-    "mobile-push-registration should have a non-mutating OPTIONS smoke",
-  );
-});
-
 test("deploy plan covers every Supabase Edge Function directory", () => {
   const functionDirs = readdirSync(functionsDir, { withFileTypes: true })
     .filter((entry) => entry.isDirectory() && !entry.name.startsWith("_"))
@@ -1508,6 +1494,7 @@ test("account deletion dry-run bucket expectation mirrors the Edge Function cont
     accountDeletionUserStorageBuckets,
     accountDeletionBucketsFromContract(accountDeletionContract),
   );
+  assert.equal(accountDeletionUserStorageBuckets.includes("screenshots"), false);
 });
 
 test("deploy function override rejects unknown function names", () => {

@@ -15,6 +15,7 @@ export type NormalizedAchievement = {
   provider: string;
   providerConfidence: AchievementProviderConfidence;
   rarity: AchievementRarity;
+  rarityPercent: number | null;
   sourceAchievementId: string;
   unlockedAt: string | null;
 };
@@ -146,22 +147,34 @@ function normalizeProviderConfidence(
   return validProviderConfidences.has(normalized) ? normalized : "local";
 }
 
-function normalizeRarity(value: unknown): AchievementRarity {
+function normalizeRarity(value: unknown): {
+  rarity: AchievementRarity;
+  rarityPercent: number | null;
+} {
   if (typeof value === "string") {
     const normalized = value.trim().toLowerCase() as AchievementRarity;
     if (normalized in rarityBasePoints) {
-      return normalized;
+      return { rarity: normalized, rarityPercent: null };
     }
   }
 
   if (typeof value === "number" && Number.isFinite(value)) {
-    if (value <= 1) return "legendary";
-    if (value <= 5) return "epic";
-    if (value <= 15) return "rare";
-    if (value <= 40) return "uncommon";
+    const rarity = value <= 1
+      ? "legendary"
+      : value <= 5
+      ? "epic"
+      : value <= 15
+      ? "rare"
+      : value <= 40
+      ? "uncommon"
+      : "common";
+    return {
+      rarity,
+      rarityPercent: value >= 0 && value <= 100 ? value : null,
+    };
   }
 
-  return "common";
+  return { rarity: "common", rarityPercent: null };
 }
 
 export function calculateAchievementPoints(
@@ -222,7 +235,13 @@ function normalizeAchievement(
   const unlockedAt = readIsoDate(record, "unlockedAt", achievementErrors) ??
     readIsoDate(record, "unlocked_at", achievementErrors) ??
     null;
-  const rarity = normalizeRarity(record.rarity);
+  const { rarity, rarityPercent } = normalizeRarity(record.rarity);
+  if (
+    typeof record.rarity === "number" &&
+    (!Number.isFinite(record.rarity) || rarityPercent === null)
+  ) {
+    achievementErrors.push(`${prefix}rarity must be between 0 and 100.`);
+  }
   const key = sourceAchievementId ? `${provider}:${sourceAchievementId}` : "";
 
   if (key.length > 240) {
@@ -245,6 +264,7 @@ function normalizeAchievement(
     provider,
     providerConfidence,
     rarity,
+    rarityPercent,
     sourceAchievementId,
     unlockedAt,
   };

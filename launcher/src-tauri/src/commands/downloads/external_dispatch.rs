@@ -1,7 +1,7 @@
 use crate::commands::uri_safety::validate_slug;
 
 /// Result of dispatching a download request to an external launcher
-/// (Steam, Epic, EA, Ubisoft, Battle.net).
+/// (Steam, Epic, EA, Ubisoft, Battle.net, Xbox).
 pub struct ExternalDispatch {
     pub steam_tracker_id: Option<String>,
     pub epic_tracker_id: Option<String>,
@@ -16,6 +16,8 @@ pub fn is_external_launcher_game_id(game_id: &str) -> bool {
         || game_id.starts_with("ea-owned-")
         || game_id.starts_with("ubisoft-owned-")
         || game_id.starts_with("battlenet-owned-")
+        || game_id.starts_with("xbox-owned-")
+        || game_id.starts_with("xbox-")
 }
 
 /// Inspect `game_id` for external-launcher prefixes and open the
@@ -145,6 +147,34 @@ where
                 result.external_message = format!("Battle.net install link rejected: {error}");
             }
         }
+    } else if game_id.starts_with("xbox-owned-") || game_id.starts_with("xbox-") {
+        let xbox_id = game_id
+            .strip_prefix("xbox-owned-")
+            .or_else(|| game_id.strip_prefix("xbox-"))
+            .unwrap_or(game_id);
+        match validate_slug(xbox_id) {
+            Ok(safe_xbox_id) => {
+                let uri = if safe_xbox_id.contains('_') {
+                    format!("ms-windows-store://pdp/?PFN={safe_xbox_id}")
+                } else {
+                    format!("ms-windows-store://pdp/?ProductId={safe_xbox_id}")
+                };
+                match open_uri(&uri) {
+                    Ok(()) => {
+                        result.is_external_download = true;
+                        result.external_message =
+                            "Installation opened in Xbox App / Microsoft Store. Check Xbox App for progress."
+                                .to_string();
+                    }
+                    Err(error) => {
+                        result.external_message = format!("Xbox install link failed: {error}");
+                    }
+                }
+            }
+            Err(error) => {
+                result.external_message = format!("Xbox install link rejected: {error}");
+            }
+        }
     }
 
     result
@@ -214,6 +244,7 @@ mod tests {
                 "battlenet-owned-product;shutdown",
                 "Battle.net install link rejected:",
             ),
+            ("xbox-owned-product;shutdown", "Xbox install link rejected:"),
         ] {
             let result = dispatch_external_launcher_with_open_uri(game_id, |_| {
                 panic!("rejected external launcher payload should not open a URI")
@@ -245,6 +276,55 @@ mod tests {
             result.external_message,
             "Installation started in Ubisoft Connect. Check Ubisoft Connect for progress."
         );
+    }
+
+    #[test]
+    fn safe_xbox_ids_open_microsoft_store_uri() {
+        for (game_id, expected_uri) in [
+            (
+                "xbox-owned-Microsoft.ForzaHorizon5_8wekyb3d8bbwe",
+                "ms-windows-store://pdp/?PFN=Microsoft.ForzaHorizon5_8wekyb3d8bbwe",
+            ),
+            (
+                "xbox-9NBLGGH4R315",
+                "ms-windows-store://pdp/?ProductId=9NBLGGH4R315",
+            ),
+        ] {
+            let mut opened_uris = Vec::new();
+
+            let result = dispatch_external_launcher_with_open_uri(game_id, |uri| {
+                opened_uris.push(uri.to_string());
+                Ok(())
+            });
+
+            assert_eq!(result.steam_tracker_id, None);
+            assert_eq!(result.epic_tracker_id, None);
+            assert!(result.is_external_download);
+            assert_eq!(opened_uris, vec![expected_uri]);
+            assert_eq!(
+                result.external_message,
+                "Installation opened in Xbox App / Microsoft Store. Check Xbox App for progress."
+            );
+        }
+    }
+
+    #[test]
+    fn supported_external_prefixes_are_detected() {
+        for game_id in [
+            "steam-440",
+            "steam-owned-1245620",
+            "epic-owned-fortnite",
+            "ea-owned-offer",
+            "ubisoft-owned-635",
+            "battlenet-owned-wow",
+            "xbox-owned-Microsoft.ForzaHorizon5_8wekyb3d8bbwe",
+            "xbox-9NBLGGH4R315",
+        ] {
+            assert!(
+                is_external_launcher_game_id(game_id),
+                "{game_id:?} should be detected as external"
+            );
+        }
     }
 
     #[test]

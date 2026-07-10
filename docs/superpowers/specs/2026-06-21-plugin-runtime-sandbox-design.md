@@ -44,7 +44,7 @@ plugin code or claiming third-party plugin execution readiness.
 - Do not claim OS-level filesystem or network sandboxing beyond what is actually
   enforced by this slice.
 - Do not replace external release gates. External provider, hosted, hardware,
-  marketplace, mobile-store, and rollout evidence remains separate.
+  marketplace, and rollout evidence remains separate.
 
 ## Current Callers
 

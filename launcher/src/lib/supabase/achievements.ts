@@ -1,5 +1,4 @@
 import type { Game, UnifiedAchievement } from "../types";
-import { getLauncherDeviceId } from "../launcher";
 import { getCurrentSessionUserId, getSupabaseClient, isSupabaseConfigured } from "./client";
 import {
   handleError,
@@ -24,7 +23,6 @@ type TrustedAchievementPayload = {
     unlockedAt?: string | null;
   }>;
   gameId: string;
-  launcherDeviceId?: string | null;
   provider: string;
   providerConfidence: AchievementProviderConfidence;
   syncedAt?: string | null;
@@ -53,7 +51,9 @@ export type TrustedAchievementIngestionResult = {
   achievementsSynced: number;
   newUnlocks: number;
   ok: boolean;
+  persistence?: string;
   skipped?: boolean;
+  trust?: string;
   unlockedCount: number;
   xpDelta: number;
 };
@@ -64,6 +64,7 @@ type RemoteAchievementDefinition = {
   id: string;
   key: string;
   name: string;
+  rarityPercent: number | null;
 };
 
 type RemoteAchievementUnlock = {
@@ -149,12 +150,14 @@ function providerConfidenceFromMetadata(
 }
 
 function toRemoteAchievementDefinition(row: UnknownRecord): RemoteAchievementDefinition {
+  const rarityPercent = row.rarity_percent;
   return {
     description: rowNullableString(row, "description"),
     iconUrl: rowNullableString(row, "icon_url"),
     id: rowString(row, "id"),
     key: rowString(row, "key"),
     name: rowString(row, "name", "Achievement"),
+    rarityPercent: typeof rarityPercent === "number" ? rarityPercent : null,
   };
 }
 
@@ -189,6 +192,9 @@ function remoteDefinitionToAchievement(
   if (definition.iconUrl) {
     achievement.iconUrl = definition.iconUrl;
   }
+  if (definition.rarityPercent !== null) {
+    achievement.rarity = definition.rarityPercent;
+  }
 
   return achievement;
 }
@@ -222,6 +228,7 @@ function mergeAchievements(
       description: current.description ?? remote.description,
       iconUrl: current.iconUrl ?? remote.iconUrl,
       providerConfidence: current.providerConfidence ?? remote.providerConfidence,
+      rarity: current.rarity ?? remote.rarity,
       source: current.source ?? remote.source,
       sourceAchievementId: current.sourceAchievementId ?? remote.sourceAchievementId,
       unlockedAt: current.unlockedAt ?? remote.unlockedAt ?? null,
@@ -242,15 +249,6 @@ function skippedResult(): TrustedAchievementIngestionResult {
     unlockedCount: 0,
     xpDelta: 0,
   };
-}
-
-async function readLauncherDeviceId() {
-  try {
-    return await getLauncherDeviceId();
-  } catch (error) {
-    console.warn("[OG-Launcher] Launcher device id unavailable for achievement ingestion:", error);
-    return null;
-  }
 }
 
 export async function ingestTrustedAchievements(
@@ -286,25 +284,35 @@ export async function ingestTrustedAchievements(
     }
     return skippedResult();
   }
-  const launcherDeviceId = await readLauncherDeviceId();
-
   const { data, error } = await invokeFunction("ingest-achievements", {
     body: {
       achievements: achievements.map(toTrustedAchievementRow),
       gameId: catalogGameId,
-      launcherDeviceId,
       provider: normalizeProvider(input.provider, input.game),
       providerConfidence: input.providerConfidence ?? "local",
       syncedAt: input.syncedAt ?? input.game.achievementsSyncedAt ?? null,
     },
   });
   if (!error) {
-    return {
+    const result: TrustedAchievementIngestionResult = {
       ...skippedResult(),
       ...((data ?? {}) as Partial<TrustedAchievementIngestionResult>),
-      ok: true,
-      skipped: false,
+      ok:
+        typeof (data as Partial<TrustedAchievementIngestionResult> | null)?.ok === "boolean"
+          ? Boolean((data as Partial<TrustedAchievementIngestionResult>).ok)
+          : true,
+      skipped:
+        typeof (data as Partial<TrustedAchievementIngestionResult> | null)?.skipped === "boolean"
+          ? Boolean((data as Partial<TrustedAchievementIngestionResult>).skipped)
+          : false,
     };
+    if (isTrustedIngestionStrictMode() && (result.skipped || result.persistence === "local_only")) {
+      throw trustedIngestionStrictModeError(
+        "achievement",
+        "server accepted only local-only, unattested achievement evidence",
+      );
+    }
+    return result;
   }
 
   if (isTrustedAchievementIngestionUnavailable(error)) {
@@ -326,22 +334,35 @@ async function listRemoteAchievementsForGame(
   catalogGameId: string,
   provider: string,
 ): Promise<UnifiedAchievement[]> {
-  const definitionsResult = await client
+  const definitionsWithRarityResult = await client
     .from("achievements")
-    .select("id, key, name, description, icon_url")
+    .select("id, key, name, description, icon_url, rarity_percent")
     .eq("game_id", catalogGameId)
     .eq("is_active", true);
-  if (isMissingSchemaError(definitionsResult.error)) {
+  let definitionRows = (definitionsWithRarityResult.data ?? []) as UnknownRecord[];
+  let definitionsError = definitionsWithRarityResult.error;
+  if (
+    definitionsError &&
+    isMissingSchemaError(definitionsError) &&
+    definitionsError.message.toLowerCase().includes("rarity_percent")
+  ) {
+    const legacyDefinitionsResult = await client
+      .from("achievements")
+      .select("id, key, name, description, icon_url")
+      .eq("game_id", catalogGameId)
+      .eq("is_active", true);
+    definitionRows = (legacyDefinitionsResult.data ?? []) as UnknownRecord[];
+    definitionsError = legacyDefinitionsResult.error;
+  }
+  if (isMissingSchemaError(definitionsError)) {
     return [];
   }
-  handleError(definitionsResult.error);
+  handleError(definitionsError);
 
-  const definitions = ((definitionsResult.data ?? []) as UnknownRecord[])
-    .map(toRemoteAchievementDefinition)
-    .filter((definition) => {
-      const parsed = parseProviderKey(definition.key);
-      return Boolean(definition.id && parsed?.provider === provider);
-    });
+  const definitions = definitionRows.map(toRemoteAchievementDefinition).filter((definition) => {
+    const parsed = parseProviderKey(definition.key);
+    return Boolean(definition.id && parsed?.provider === provider);
+  });
   if (definitions.length === 0) {
     return [];
   }
@@ -400,27 +421,31 @@ export async function hydrateGamesWithRemoteAchievements(games: Game[]): Promise
   const hydratedGames: Game[] = [];
 
   for (const game of games) {
-    const provider = normalizeProvider(null, game);
-    const catalogGameId = await resolveCatalogGameId(game);
-    if (!catalogGameId || provider === "manual" || provider === "unknown") {
-      hydratedGames.push(game);
-      continue;
-    }
+    try {
+      const provider = normalizeProvider(null, game);
+      const catalogGameId = await resolveCatalogGameId(game);
+      if (!catalogGameId || provider === "manual" || provider === "unknown") {
+        hydratedGames.push(game);
+        continue;
+      }
 
-    const remoteAchievements = await listRemoteAchievementsForGame(
-      client,
-      userId,
-      catalogGameId,
-      provider,
-    );
-    hydratedGames.push(
-      remoteAchievements.length > 0
-        ? {
-            ...game,
-            achievements: mergeAchievements(game, remoteAchievements, provider),
-          }
-        : game,
-    );
+      const remoteAchievements = await listRemoteAchievementsForGame(
+        client,
+        userId,
+        catalogGameId,
+        provider,
+      );
+      hydratedGames.push(game);
+      if (remoteAchievements.length > 0) {
+        hydratedGames[hydratedGames.length - 1] = {
+          ...game,
+          achievements: mergeAchievements(game, remoteAchievements, provider),
+        };
+      }
+    } catch (error) {
+      console.warn(`[OG-Launcher] Remote achievements unavailable for ${game.title}:`, error);
+      hydratedGames.push(game);
+    }
   }
 
   return hydratedGames;

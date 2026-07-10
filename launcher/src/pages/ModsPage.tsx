@@ -338,7 +338,7 @@ export function ModsPage() {
     try {
       const mods = await scanGameMods(gameId);
       setInstalledMods(mods);
-      await Promise.allSettled(mods.map((mod) => recordUserModInstall(mod)));
+      await recordUserModInstall(mods);
     } catch (err) {
       setError(getErrorMessage(err));
     }

@@ -210,12 +210,17 @@ export function DownloadCard({
           {/* Archive / Clear Button */}
           {isTerminal || isComplete ? (
             <button
-              className="neo-copy flex items-center justify-center gap-1.5 border-2 border-black bg-[#efe6d4] px-3 py-2 text-xs font-bold uppercase text-[#171411] shadow-[2px_2px_0_#171411] hover:bg-[#e2d8c3] active:translate-x-[1px] active:translate-y-[1px] active:shadow-[1px_1px_0_#171411]"
+              className={`neo-copy flex items-center justify-center gap-1.5 border-2 border-black px-3 py-2 text-xs font-bold uppercase ${
+                commandPending
+                  ? "cursor-not-allowed bg-[#efe6d4] text-[#55504a]"
+                  : "bg-[#efe6d4] text-[#171411] shadow-[2px_2px_0_#171411] hover:bg-[#e2d8c3] active:translate-x-[1px] active:translate-y-[1px] active:shadow-[1px_1px_0_#171411]"
+              }`}
+              disabled={commandPending}
               type="button"
               onClick={() => onArchive(item.id)}
             >
               <RotateCcw className="h-3.5 w-3.5" />
-              {archiveLabel}
+              {commandPending ? "Busy" : archiveLabel}
             </button>
           ) : null}
         </div>

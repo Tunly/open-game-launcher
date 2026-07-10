@@ -50,6 +50,7 @@ export function LibraryPage() {
     currentSortOption: filters.sortOption,
   });
   const achievements = useAchievementAutoSync({
+    installedGames: sync.installedGames,
     selectedGroup: filters.selectedGroup,
     setInstalledGames: sync.setInstalledGames,
     setStatusMessage,
@@ -58,6 +59,24 @@ export function LibraryPage() {
     selectedGroup: filters.selectedGroup,
     setStatusMessage,
   });
+
+  useEffect(() => {
+    const requestedGameId = searchParams.get("game");
+    if (!requestedGameId) return;
+
+    const match = sync.installedGames.find((game) => game.id === requestedGameId);
+    if (match) {
+      filters.setPendingSelectedGameId(match.id);
+    } else if (sync.shouldShowLibraryLoading || sync.isDiscoveringGames) {
+      return;
+    } else {
+      setStatusMessage("The requested achievement game is no longer in this library.");
+    }
+
+    const next = new URLSearchParams(searchParams);
+    next.delete("game");
+    setSearchParams(next, { replace: true });
+  }, [filters, searchParams, setSearchParams, sync]);
 
   // Deep-link `?join=...&platform=...&invite=...` from a universallauncher://join URL.
   // The Rust deep-link handler navigates here, but this is where we actually trigger
@@ -198,7 +217,6 @@ export function LibraryPage() {
             favorites={manual.favorites}
             gameRuntimeById={sync.gameRuntimeById}
             runningGameIds={sync.runningGameIds}
-            fallbackMockGames={filters.fallbackMockGames}
             listScrollRef={gameListScrollRef}
             setIsAddGameOpen={setIsAddGameOpen}
             onArtworkDrop={sync.handleArtworkDrop}

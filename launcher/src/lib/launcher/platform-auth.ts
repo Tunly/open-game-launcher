@@ -1,6 +1,57 @@
 import { isTauri } from "@tauri-apps/api/core";
+import type { UnifiedAchievement } from "../types";
 import type { EaToken, GogToken, OwnedGame, XboxFetchResult } from "./types";
 import { invokeCommand } from "./shared";
+
+export interface SteamScrapedGamesEvent {
+  games: unknown[];
+  steamId: string;
+}
+
+export interface SteamScrapeErrorEvent {
+  message: string;
+  steamId: string;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function isScrapedSteamGame(value: unknown) {
+  if (!isRecord(value)) return false;
+  const appId = value.appid ?? value.appId ?? value.app_id ?? value.id;
+  const title = value.title ?? value.name;
+  const hasAppId =
+    (typeof appId === "number" && Number.isFinite(appId)) ||
+    (typeof appId === "string" && /^(?:steam-owned-)?\d+$/.test(appId));
+  return hasAppId && typeof title === "string" && title.trim().length > 0;
+}
+
+export function isSteamScrapedGamesEventForAccount(
+  payload: unknown,
+  currentSteamId: string,
+): payload is SteamScrapedGamesEvent {
+  return (
+    isRecord(payload) &&
+    Array.isArray(payload.games) &&
+    payload.games.every(isScrapedSteamGame) &&
+    typeof payload.steamId === "string" &&
+    payload.steamId === currentSteamId.trim()
+  );
+}
+
+export function isSteamScrapeErrorEventForAccount(
+  payload: unknown,
+  currentSteamId: string,
+): payload is SteamScrapeErrorEvent {
+  return (
+    isRecord(payload) &&
+    typeof payload.message === "string" &&
+    payload.message.length > 0 &&
+    typeof payload.steamId === "string" &&
+    payload.steamId === currentSteamId.trim()
+  );
+}
 
 export function openSteamLoginWindow(): Promise<void> {
   if (!isTauri()) {
@@ -114,7 +165,7 @@ function readString(record: SteamRawGame, keys: string[]) {
     if (typeof value === "string" && value.trim()) {
       return value.trim();
     }
-    if (typeof value === "number" && Number.isFinite(value)) {
+    if (typeof value === "number" && Number.isFinite(value) && value >= 0) {
       return String(value);
     }
   }
@@ -125,18 +176,67 @@ function readString(record: SteamRawGame, keys: string[]) {
 function readNumber(record: SteamRawGame, keys: string[]) {
   for (const key of keys) {
     const value = record[key];
-    if (typeof value === "number" && Number.isFinite(value)) {
+    if (typeof value === "number" && Number.isFinite(value) && value >= 0) {
       return value;
     }
     if (typeof value === "string" && value.trim()) {
       const parsed = Number.parseFloat(value.replace(/,/g, ""));
-      if (Number.isFinite(parsed)) {
+      if (Number.isFinite(parsed) && parsed >= 0) {
         return parsed;
       }
     }
   }
 
-  return 0;
+  return undefined;
+}
+
+function readCachedSteamAchievements(
+  record: SteamRawGame,
+): NonNullable<OwnedGame["achievements"]> | undefined {
+  if (!Array.isArray(record.achievements)) {
+    return undefined;
+  }
+
+  const achievements = record.achievements.slice(0, 500).flatMap((value) => {
+    if (!isRecord(value)) return [];
+    const id = readString(value, ["id"]);
+    const name = readString(value, ["name"]);
+    if (!id || !name) return [];
+
+    const unlockedAt = readString(value, ["unlockedAt", "unlocked_at"]);
+    const rarity = readNumber(value, ["rarity"]);
+    const providerConfidence = readString(value, ["providerConfidence", "provider_confidence"]);
+
+    const achievement: UnifiedAchievement = {
+      id,
+      name,
+      ...(readString(value, ["description"])
+        ? { description: readString(value, ["description"]) }
+        : {}),
+      ...(readString(value, ["iconUrl", "icon_url"])
+        ? { iconUrl: readString(value, ["iconUrl", "icon_url"]) }
+        : {}),
+      unlockedAt: unlockedAt && Number.isFinite(Date.parse(unlockedAt)) ? unlockedAt : null,
+      ...(rarity === undefined ? {} : { rarity }),
+      source: readString(value, ["source"]) || "steam",
+      ...(readString(value, ["sourceAchievementId", "source_achievement_id"])
+        ? {
+            sourceAchievementId: readString(value, [
+              "sourceAchievementId",
+              "source_achievement_id",
+            ]),
+          }
+        : {}),
+      ...(providerConfidence === "official" ||
+      providerConfidence === "unofficial" ||
+      providerConfidence === "local"
+        ? { providerConfidence }
+        : {}),
+    };
+    return [achievement];
+  });
+
+  return achievements.length > 0 ? achievements : undefined;
 }
 
 function steamImageUrl(appId: string, asset: string) {
@@ -165,22 +265,32 @@ export function normalizeSteamOwnedGames(games: unknown): OwnedGame[] {
 
     const existingId = readString(record, ["id"]);
     const hours = readNumber(record, ["hours_forever", "hours", "playtimeHours"]);
+    const explicitPlaytimeMinutes = readNumber(record, ["playtimeMinutes", "playtime_minutes"]);
     const playtimeMinutes =
-      readNumber(record, ["playtimeMinutes", "playtime_minutes"]) || Math.round(hours * 60);
+      explicitPlaytimeMinutes ?? (hours === undefined ? undefined : Math.round(hours * 60));
+    const achievements = readCachedSteamAchievements(record);
+    const achievementsSyncedAt = readString(record, [
+      "achievementsSyncedAt",
+      "achievements_synced_at",
+    ]);
 
     return [
       {
         id: existingId.startsWith("steam-owned-") ? existingId : `steam-owned-${appId}`,
         title,
-        description: readString(record, ["description"]) || `Steam game (Owned). AppID: ${appId}`,
+        description: readString(record, ["description"]),
         coverUrl:
           readString(record, ["heroUrl", "hero_url", "bannerUrl", "banner_url"]) ||
           steamImageUrl(appId, "library_hero.jpg"),
         logoUrl: readString(record, ["logoUrl", "logo_url"]) || steamImageUrl(appId, "header.jpg"),
         iconUrl: readString(record, ["iconUrl", "icon_url"]) || undefined,
         externalId: readString(record, ["externalId", "external_id"]) || appId,
-        playtimeMinutes,
+        ...(playtimeMinutes === undefined ? {} : { playtimeMinutes }),
         lastPlayedAt: readString(record, ["lastPlayedAt", "last_played_at"]) || null,
+        ...(achievements ? { achievements } : {}),
+        ...(achievementsSyncedAt && Number.isFinite(Date.parse(achievementsSyncedAt))
+          ? { achievementsSyncedAt }
+          : {}),
       },
     ];
   });

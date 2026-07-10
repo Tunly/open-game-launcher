@@ -12,6 +12,21 @@
   "app": {
     "windows": [
       {
+        "label": "splashscreen",
+        "title": "OG-Launcher startet",
+        "url": "splashscreen.html",
+        "width": 480,
+        "height": 250,
+        "center": true,
+        "resizable": false,
+        "decorations": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "shadow": true,
+        "fullscreen": false,
+        "visible": true
+      },
+      {
         "label": "main",
         "title": "Open Game Launcher",
         "width": 1280,
@@ -55,8 +70,7 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ]
-  }
-,
+  },
   "plugins": {
     "deep-link": {
       "desktop": {

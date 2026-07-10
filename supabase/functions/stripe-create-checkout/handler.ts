@@ -338,7 +338,7 @@ export async function handleStripeCreateCheckout(
       console.error("Stripe checkout error:", error);
     }
     return jsonResponse(
-      { error: error instanceof Error ? error.message : String(error) },
+      { error: "Checkout could not be completed." },
       500,
     );
   }

@@ -17,8 +17,6 @@ function makeGame(overrides: Partial<Game> = {}): Game {
   };
 }
 
-const fallbackMockGames: Game[] = [makeGame({ id: "manual-1", title: "Fallback" })];
-
 function renderSidebar(overrides: Partial<React.ComponentProps<typeof LibrarySidebar>> = {}) {
   const gameA = makeGame({ id: "steam-10", title: "Alpha" });
   const gameB = makeGame({ id: "gog-20", title: "Beta" });
@@ -40,7 +38,6 @@ function renderSidebar(overrides: Partial<React.ComponentProps<typeof LibrarySid
       sizeQuery: "",
       status: [],
     },
-    fallbackMockGames,
     favorites: {},
     filteredGames: games,
     games,
@@ -67,8 +64,9 @@ describe("LibrarySidebar", () => {
     renderSidebar();
 
     // The header shows "Library (count)" without filter indication when none are active.
-    const headerButton = screen.getByRole("button", { name: /Library \(2/ });
-    expect(headerButton).toBeInTheDocument();
+    expect(screen.getByText(/Library \(2\)/)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Library \(2/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Grid view/i })).not.toBeInTheDocument();
   });
 
   it("emits a selection when a game row is clicked", () => {
@@ -103,6 +101,20 @@ describe("LibrarySidebar", () => {
     fireEvent.click(filterButton);
 
     expect(setIsFilterPopupOpen).toHaveBeenCalledWith(true);
+  });
+
+  it("keeps sorting and filters in the header above the search field", () => {
+    const { container } = renderSidebar();
+
+    const sortSelect = screen.getByRole("combobox", { name: "Sort library" });
+    const filterButton = screen.getByRole("button", { name: "Advanced filters" });
+    const searchInput = screen.getByRole("searchbox", { name: "Search library" });
+
+    expect(sortSelect.compareDocumentPosition(searchInput)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(filterButton.compareDocumentPosition(searchInput)).toBe(
+      Node.DOCUMENT_POSITION_FOLLOWING,
+    );
+    expect(container.querySelector('label input[aria-label="Search library"]')).toBe(searchInput);
   });
 
   it("shows a reset filters button only when filters are active", () => {

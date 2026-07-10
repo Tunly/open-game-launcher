@@ -75,13 +75,22 @@ export function run(
   args,
   { cwd = repoRoot, env = process.env, stdio = "inherit" } = {},
 ) {
+  const usesWindowsCmdShim =
+    process.platform === "win32" &&
+    ["npm", "npx", "pnpm", "yarn"].includes(command);
+  const spawnCommand = usesWindowsCmdShim
+    ? process.env.ComSpec || "cmd.exe"
+    : command;
+  const spawnArgs = usesWindowsCmdShim
+    ? ["/d", "/s", "/c", command, ...args]
+    : args;
   const options = {
     cwd,
     env,
     stdio,
   };
   if (stdio === "pipe") options.encoding = "utf8";
-  return spawnSync(command, args, options);
+  return spawnSync(spawnCommand, spawnArgs, options);
 }
 
 function parseDenoVersion(output) {

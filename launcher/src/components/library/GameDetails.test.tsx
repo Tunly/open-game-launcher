@@ -37,7 +37,28 @@ describe("GameDetails actions", () => {
     renderGameDetails();
 
     expect(screen.getByText(/achievement auto-sync runs/i)).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /sync now|retry sync|syncing/i }),
+    ).not.toBeInTheDocument();
     expect(screen.queryByText(/trophy button/i)).not.toBeInTheDocument();
+  });
+
+  it("shows the concrete provider reason when achievement sync is unavailable", () => {
+    renderGameDetails({
+      achievementProviderStatuses: [
+        {
+          message: "Connect Steam in Settings before syncing achievements.",
+          source: "steam",
+          stability: "official",
+          status: "not_connected",
+        },
+      ],
+    });
+
+    expect(
+      screen.getByText("Connect Steam in Settings before syncing achievements."),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/achievement auto-sync runs/i)).not.toBeInTheDocument();
   });
 
   it("does not render the red achievement progress bar", () => {
@@ -63,6 +84,27 @@ describe("GameDetails actions", () => {
         element.className.includes("bg-[#c20b2f]"),
       ),
     ).toBe(false);
+  });
+
+  it("does not fabricate friend play or wishlist activity", () => {
+    renderGameDetails();
+
+    expect(screen.queryByText("Friends Who Play")).not.toBeInTheDocument();
+    expect(screen.queryByText(/friends have played previously/i)).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /view all friends who play/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("does not render the metadata information card", () => {
+    renderGameDetails();
+
+    expect(screen.queryByText("Metadaten & Infos")).not.toBeInTheDocument();
+    expect(screen.queryByText("Provider and scanner data only.")).not.toBeInTheDocument();
+    expect(screen.queryByText("Move Folder")).not.toBeInTheDocument();
+    expect(screen.getByText("Not detected")).toBeInTheDocument();
+    expect(screen.getByText("Unavailable")).toBeInTheDocument();
+    expect(screen.queryByText("Up to date")).not.toBeInTheDocument();
   });
 });
 
@@ -102,12 +144,9 @@ function renderGameDetails(gameOverrides: Partial<Game> = {}) {
         setCustomCategories={stateSetter<Record<string, string[]>>()}
         manualCollections={{}}
         setManualCollections={stateSetter<Record<string, string[]>>()}
-        setActivePlatformFilter={noop}
-        clearCollectionSelection={noop}
         detailScrollRef={{ current: null } as RefObject<HTMLElement | null>}
         isDiscoveringGames={false}
         discoveryMessage={null}
-        moveGame={vi.fn().mockResolvedValue(undefined)}
         runAutomaticLibrarySync={vi.fn().mockResolvedValue(undefined)}
         customArtwork={null}
         onSelectCustomArtwork={noop}

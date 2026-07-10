@@ -8,7 +8,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::Emitter;
 
 use super::games::core::open_game_launcher_data_dir;
-use super::games::detect::{get_ea_assets, read_ea_registry_installs};
+use super::games::detect::get_ea_assets;
 use super::system::OwnedGame;
 
 const EA_LOGIN_URL: &str = "https://www.ea.com/login";
@@ -112,7 +112,7 @@ struct LegacyOffer {
 }
 
 struct PlaytimeEntry {
-    minutes: u64,
+    minutes: Option<u64>,
     last_played_at: Option<String>,
 }
 
@@ -555,13 +555,12 @@ async fn fetch_playtimes(
             }
             let seconds = item
                 .get("totalPlayTimeSeconds")
-                .and_then(|value| value.as_u64())
-                .unwrap_or(0);
+                .and_then(|value| value.as_u64());
             let last_played_at = json_string_at(&item, &["lastSessionEndDate"]);
             output.insert(
                 slug.clone(),
                 PlaytimeEntry {
-                    minutes: seconds / 60,
+                    minutes: seconds.map(|value| value / 60),
                     last_played_at,
                 },
             );
@@ -582,9 +581,6 @@ fn owned_item_to_game(
         .or_else(|| legacy.and_then(|entry| entry.display_name.clone()))
         .unwrap_or_else(|| format!("EA Game {offer_id}"));
 
-    let slug = product
-        .and_then(|value| json_string_at(value, &["gameSlug"]))
-        .unwrap_or_default();
     let content_id = legacy
         .and_then(|entry| entry.content_id.clone())
         .filter(|value| !value.is_empty());
@@ -600,17 +596,13 @@ fn owned_item_to_game(
 
     let (playtime_minutes, last_played_at) = playtime
         .map(|entry| (entry.minutes, entry.last_played_at.clone()))
-        .unwrap_or((0, None));
+        .unwrap_or((None, None));
 
     Some(OwnedGame {
         id: format!("ea-owned-{offer_id}"),
         external_id: content_id,
         title,
-        description: if slug.is_empty() {
-            format!("EA App game (owned). Offer: {offer_id}")
-        } else {
-            format!("EA App game (owned). Offer: {offer_id}, slug: {slug}")
-        },
+        description: String::new(),
         cover_url,
         logo_url,
         icon_url,
@@ -752,11 +744,6 @@ pub async fn ea_fetch_owned_games() -> Result<Vec<OwnedGame>, String> {
         }
     };
 
-    let registry_titles: std::collections::HashSet<String> = read_ea_registry_installs()
-        .into_iter()
-        .map(|install| install.title.to_lowercase())
-        .collect();
-
     let mut games = Vec::new();
     for item in &owned_items {
         let offer_id = match json_string_at(item, &["originOfferId"]) {
@@ -768,14 +755,10 @@ pub async fn ea_fetch_owned_games() -> Result<Vec<OwnedGame>, String> {
             .and_then(|product| json_string_at(product, &["gameSlug"]));
         let playtime = slug.as_ref().and_then(|value| playtimes.get(value));
         let legacy = legacy_map.get(&offer_id);
-        let Some(mut owned) = owned_item_to_game(item, legacy, playtime) else {
+        let Some(owned) = owned_item_to_game(item, legacy, playtime) else {
             eprintln!("[EA] Skipped item without originOfferId: {item}");
             continue;
         };
-
-        if registry_titles.contains(&owned.title.to_lowercase()) {
-            owned.description = format!("{} (installed locally detected)", owned.description);
-        }
 
         games.push(owned);
     }

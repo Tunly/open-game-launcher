@@ -19,8 +19,7 @@ stored outside Git; no live external evidence was collected in this workspace.
   evidence are the parts that can be completed in this workspace.
 - `FEATURE_PLAN.md` remains the source of truth for work that needs external
   systems. Items that require live provider credentials, physical devices,
-  hosted cron rows, production dashboards, marketplace review, app-store
-  distribution, or provider terms approval stay open until that evidence exists.
+  hosted cron rows, production dashboards, marketplace review, or provider terms approval stay open until that evidence exists.
 - Readiness panels and verify routes may show local fixtures, dry-runs, staging
   packets, and no-write contract evidence. They must not be described as live
   success unless the backing external evidence exists.
@@ -52,8 +51,7 @@ stored outside Git; no live external evidence was collected in this workspace.
 - Edge Function coverage includes checkout/webhook/order support, store license
   signing, price-drop cron contracts, presence polling, account export/deletion,
   hosted community artwork moderation, RAWG assets, trusted playtime and
-  achievement ingestion, invite hosted proof, remote companion relay, mobile
-  push registration, and shared privacy/store boundaries without live secrets.
+  achievement ingestion, invite hosted proof, and shared privacy/store boundaries without live secrets.
 - Native Rust coverage includes external launcher dispatch URI validation with a
   test-injected opener, no-process rejection of unsafe Steam/EA/Ubisoft/Battle.net
   input labels, filtering for unknown or empty virtual input bindings before
@@ -65,8 +63,7 @@ stored outside Git; no live external evidence was collected in this workspace.
 - Frontend verification includes screenshots for routed Retro Manga launcher
   states, component tests for selected modal backdrops, static class checks for
   non-route-mounted overlays, cart/checkout, auth username setup, Library
-  desktop/mobile, local hosted-readiness panels, mobile session/library/chat contract
-  proofs, One-Click Setup rollback/audit no-write contract desktop/mobile
+  desktop/mobile, local hosted-readiness panels, One-Click Setup rollback/audit no-write contract desktop/mobile
   evidence, Hosted Cron Evidence Summary desktop/mobile evidence, External
   Completion Evidence Summary desktop/mobile evidence, Broadcasting Audience Status
   Contract desktop/mobile evidence, AI Recommendations Consent Audit/Gateway
@@ -127,8 +124,7 @@ stored outside Git; no live external evidence was collected in this workspace.
   non-empty, specific, non-placeholder captured evidence detail fields outside
   inactive Markdown, a fresh UTC ISO-8601 `Captured at` timestamp, and no
   secret-shaped Stripe, bearer, JWT, provider API key/token, provider API-key
-  header, Supabase service-role/auth/access token, hosted scheduler secret,
-  mobile push/provider secret, private key, device token, or fixture-secret
+  header, Supabase service-role/auth/access token, hosted scheduler secret, private key, or fixture-secret
   content before an external gate can pass; unchecked template
   rows, fenced/commented/indented examples, missing per-artifact proof coverage,
   missing or generic per-proof evidence mappings, placeholder/copied env values,
@@ -177,13 +173,14 @@ stored outside Git; no live external evidence was collected in this workspace.
   order, redacted failure packets, empty writes/deletes/live-calls ledgers, and
   unknown-step blockers; real rollback proof still requires external
   hosted/provider evidence.
-- Cross-Store Save Sync local evidence includes a provider save-mapping fixture
-  layer that reviews Steam/GOG/Epic external IDs, install paths, relative path
-  mapping rules, save-root shapes, and save-file counts, then shows those rules
-  in the Cloud Saves panel only as local suggestions and metadata provenance.
-  This is local fixture review plus an `accepted=false` automatic path-map apply
-  request template only, not provider API validation, provider cloud transfer,
-  live Supabase/keychain E2E, or a real migration run.
+- First-party Cloud Saves are removed: the launcher does not expose its former
+  upload/download/restore/conflict UI or use the removed Supabase tables and
+  bucket. The cloud-save removal and forward-verification migrations are covered
+  by static contract tests.
+- The remaining Cross-Store Save Copy evidence is limited to explicit local file
+  actions, consent-gated native apply/rollback, hashes/manifests, and a temporary
+  sandbox proof. It does not upload saves, use Supabase/keychain staging, call a
+  provider cloud API, or claim a real migration run.
 - Performance polling is locally gated: active game attribution polls native
   metrics at 1Hz, while standalone/idle overlay attribution uses local preview
   without native polling.
@@ -267,8 +264,8 @@ branch tip.
   overlay sessions, protected-title validation, external-drive backup/restore
   E2E on Windows/macOS/Linux, and real client mount/apply behavior against
   provider clients.
-- Rollout tracks (`rollout-tracks`): community-wide hosted artwork/screenshots rollout,
-  channels, native mobile apps, push-provider delivery, app-store distribution,
+- Rollout tracks (`rollout-tracks`): community-wide hosted artwork rollout,
+  channels,
   and hosted production deployment. Use
   `docs/runbooks/external-completion-evidence.md` plus
   `pnpm external:evidence:worklist` and `pnpm external:evidence:preflight` to

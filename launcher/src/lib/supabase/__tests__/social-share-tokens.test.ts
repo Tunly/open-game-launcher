@@ -1,12 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
+  from: vi.fn(),
+  getUser: vi.fn(),
   invoke: vi.fn(),
   rpc: vi.fn(),
 }));
 
 vi.mock("../client", () => ({
   getSupabaseClient: () => ({
+    auth: {
+      getUser: mocks.getUser,
+    },
+    from: mocks.from,
     functions: {
       invoke: mocks.invoke,
     },
@@ -28,8 +34,14 @@ const shareTokenHint = `${shareToken.slice(0, 10)}...${shareToken.slice(-6)}`;
 describe("social share tokens", () => {
   beforeEach(() => {
     vi.resetModules();
+    mocks.from.mockReset();
+    mocks.getUser.mockReset();
     mocks.invoke.mockReset();
     mocks.rpc.mockReset();
+    mocks.getUser.mockResolvedValue({
+      data: { user: { id: "user-1" } },
+      error: null,
+    });
   });
 
   it("creates a game invite share token through the RPC and maps the returned row", async () => {
@@ -42,7 +54,7 @@ describe("social share tokens", () => {
     });
 
     const { createGameInviteShareToken } = await import("../social");
-    const result = await createGameInviteShareToken("invite-123", "steam");
+    const result = await createGameInviteShareToken("user-1", "invite-123", "steam");
 
     expect(mocks.rpc).toHaveBeenCalledWith("create_game_invite_share_token", {
       invite_id_input: "invite-123",
@@ -56,6 +68,82 @@ describe("social share tokens", () => {
       token: shareToken,
       tokenHint: shareTokenHint,
     });
+  });
+
+  it("binds share-token creation to the expected signed-in account", async () => {
+    mocks.getUser.mockResolvedValueOnce({
+      data: { user: { id: "user-2" } },
+      error: null,
+    });
+
+    const { createGameInviteShareToken } = await import("../social");
+
+    await expect(createGameInviteShareToken("user-1", "invite-123", "steam")).rejects.toThrow(
+      "Your signed-in account changed. Please try again.",
+    );
+    expect(mocks.rpc).not.toHaveBeenCalled();
+  });
+
+  it("writes the expected account id into a cross-platform invite", async () => {
+    const single = vi.fn().mockResolvedValue({
+      data: {
+        created_at: "2026-06-10T15:30:00.000Z",
+        expires_at: "2026-06-10T16:00:00.000Z",
+        game_title: "Steel Battalion X",
+        id: "invite-123",
+        receiver_id: "friend-1",
+        sender_id: "user-1",
+        status: "pending",
+        updated_at: "2026-06-10T15:30:00.000Z",
+      },
+      error: null,
+    });
+    const select = vi.fn(() => ({ single }));
+    const insert = vi.fn(() => ({ select }));
+    mocks.from.mockReturnValue({ insert });
+
+    const { sendCrossplatformInvite } = await import("../social");
+    await sendCrossplatformInvite(
+      "user-1",
+      "friend-1",
+      "  Steel Battalion X  ",
+      "steam",
+      null,
+      "possible",
+    );
+
+    expect(mocks.from).toHaveBeenCalledWith("game_invites");
+    expect(insert).toHaveBeenCalledWith({
+      game_title: "Steel Battalion X",
+      launch_uri: null,
+      message: null,
+      receiver_id: "friend-1",
+      sender_id: "user-1",
+    });
+  });
+
+  it("never inserts as a new account when the session changes during auth lookup", async () => {
+    let resolveAuth: ((value: { data: { user: { id: string } }; error: null }) => void) | undefined;
+    mocks.getUser.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveAuth = resolve;
+      }),
+    );
+
+    const { sendCrossplatformInvite } = await import("../social");
+    const request = sendCrossplatformInvite(
+      "user-1",
+      "friend-1",
+      "Steel Battalion X",
+      "steam",
+      null,
+      "possible",
+    );
+
+    resolveAuth?.({ data: { user: { id: "user-2" } }, error: null });
+
+    await expect(request).rejects.toThrow("Your signed-in account changed. Please try again.");
+    expect(mocks.from).not.toHaveBeenCalled();
   });
 
   it("resolves a trimmed share token through the RPC and maps invite context", async () => {
@@ -84,7 +172,7 @@ describe("social share tokens", () => {
     mockRpcResult(null, { code: "PGRST202", message: "Could not find the function" });
 
     const { createGameInviteShareToken } = await import("../social");
-    const result = await createGameInviteShareToken("invite-123", "steam");
+    const result = await createGameInviteShareToken("user-1", "invite-123", "steam");
 
     expect(result).toBeNull();
   });
@@ -179,5 +267,32 @@ describe("social share tokens", () => {
     const result = await proveInviteHostedReplay(shareToken);
 
     expect(result).toBeNull();
+  });
+
+  it("returns the compatible sender platform instead of the first linked platform", async () => {
+    const gameLimit = vi.fn().mockResolvedValue({ data: [{ id: "game-1" }] });
+    const gameIlike = vi.fn(() => ({ limit: gameLimit }));
+    const gameSelect = vi.fn(() => ({ ilike: gameIlike }));
+    const enabledEq = vi.fn().mockResolvedValue({
+      data: [
+        { is_enabled: true, platform: "steam" },
+        { is_enabled: true, platform: "xbox" },
+      ],
+    });
+    const gameIdEq = vi.fn(() => ({ eq: enabledEq }));
+    const crossPlaySelect = vi.fn(() => ({ eq: gameIdEq }));
+    mocks.from
+      .mockReturnValueOnce({ select: gameSelect })
+      .mockReturnValueOnce({ select: crossPlaySelect });
+
+    const { checkInviteFeasibility } = await import("../social");
+    const result = await checkInviteFeasibility("Steel Battalion X", ["gog", "steam"], ["xbox"]);
+
+    expect(result).toEqual({
+      compatibleSenderPlatform: "steam",
+      feasibility: "possible",
+    });
+    expect(mocks.from).toHaveBeenNthCalledWith(1, "games");
+    expect(mocks.from).toHaveBeenNthCalledWith(2, "game_cross_play");
   });
 });

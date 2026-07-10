@@ -12,7 +12,6 @@ import {
 import type { LibrarySortOption } from "../../lib/library-sort";
 import {
   enrichGameWithMetadata,
-  FALLBACK_MOCK_GAMES,
   parseLibrarySearchQuery,
   shouldHideNonGameLibraryEntry,
   sortGameGroups,
@@ -43,7 +42,6 @@ export interface UseLibraryFilterPipelineResult {
   filteredGroups: GameGroup[];
   selectedGroup: GameGroup | null;
   activeAdvancedFilterCount: number;
-  fallbackMockGames: Game[];
 }
 
 export function useLibraryFilterPipeline(
@@ -66,7 +64,7 @@ export function useLibraryFilterPipeline(
 
   const baseLibraryGames = useMemo(
     () =>
-      (installedGames.length > 0 ? installedGames : FALLBACK_MOCK_GAMES)
+      installedGames
         .filter((game) => !shouldHideNonGameLibraryEntry(game))
         .map((game) => applyCustomArtwork(game, customArtwork[game.id])),
     [customArtwork, installedGames],
@@ -104,7 +102,7 @@ export function useLibraryFilterPipeline(
       }
 
       const sizeQ = advancedFilters.sizeQuery || activeSizeQueryFromSearch;
-      if (sizeQ && !matchesSizeQuery(game.sizeGb || 0, sizeQ)) {
+      if (sizeQ && !matchesSizeQuery(game.sizeGb, sizeQ)) {
         return false;
       }
 
@@ -155,6 +153,5 @@ export function useLibraryFilterPipeline(
     filteredGroups,
     selectedGroup,
     activeAdvancedFilterCount,
-    fallbackMockGames: FALLBACK_MOCK_GAMES,
   };
 }

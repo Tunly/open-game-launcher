@@ -1,5 +1,5 @@
 import { getSupabaseClient } from "./client";
-import type { PriceAlert, PriceHistory } from "../types/prices";
+import type { PriceAlert } from "../types/prices";
 
 export async function getMyPriceAlerts(): Promise<PriceAlert[]> {
   const client = getSupabaseClient();
@@ -30,16 +30,4 @@ export async function createPriceAlert(
   await client
     .from("price_alerts")
     .insert({ user_id: user.id, game_id: gameId, platform, target_price_cents: targetPriceCents });
-}
-export async function getPriceHistory(gameId: string): Promise<PriceHistory[]> {
-  const client = getSupabaseClient();
-  if (!client) return [];
-  const { data, error } = await client
-    .from("price_history")
-    .select("*")
-    .eq("game_id", gameId)
-    .order("recorded_at", { ascending: false })
-    .limit(100);
-  if (error) return [];
-  return (data ?? []) as unknown as PriceHistory[];
 }

@@ -2,13 +2,7 @@ import { useEffect, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import { useSearchParams } from "react-router-dom";
 
-import {
-  installXboxGame,
-  launchGame,
-  launchXboxGame,
-  launchCrossPlayJoin,
-  startDownload,
-} from "../../lib/launcher";
+import { launchGame, launchXboxGame, launchCrossPlayJoin, startDownload } from "../../lib/launcher";
 import { syncGamePlaytimeStats } from "../../lib/supabase/playtime";
 import { writeActivePerformanceGameContext } from "../../lib/performance-context";
 import { isInstallableGame, isPlayableGame, type GameGroup } from "../../lib/game-groups";
@@ -21,6 +15,36 @@ type ProviderPickerState = {
   title: string;
   variants: Game[];
 } | null;
+
+const EXTERNAL_INSTALL_PREFIXES = [
+  "steam-owned-",
+  "steam-",
+  "gog-owned-",
+  "gog-",
+  "epic-owned-",
+  "ea-owned-",
+  "ubisoft-owned-",
+  "battlenet-owned-",
+  "xbox-owned-",
+  "xbox-",
+];
+
+function shouldQueueExternalInstall(game: Game) {
+  return (
+    game.status !== "installed" &&
+    EXTERNAL_INSTALL_PREFIXES.some((prefix) => game.id.startsWith(prefix))
+  );
+}
+
+function getXboxPackageId(gameId: string) {
+  if (gameId.startsWith("xbox-owned-")) {
+    return gameId.replace("xbox-owned-", "");
+  }
+  if (gameId.startsWith("xbox-")) {
+    return gameId.replace("xbox-", "");
+  }
+  return null;
+}
 
 function trackPlaySessionStart(game: Game) {
   return syncGamePlaytimeStats({
@@ -82,32 +106,7 @@ export function useProviderPicking({
     setStatusMessage(null);
 
     try {
-      if (game.id.startsWith("xbox-owned-")) {
-        const pfn = game.id.replace("xbox-owned-", "");
-        await installXboxGame(pfn);
-        setStatusMessage("Opened Microsoft Store for installation.");
-        return;
-      }
-
-      if (game.id.startsWith("xbox-")) {
-        const pfn = game.id.replace("xbox-", "");
-        await launchXboxGame(pfn);
-        setStatusMessage("Launching Xbox game...");
-        trackActivePerformanceGame(game);
-        void logGameStart(game.id, game.title, { launcher: "xbox" });
-        void trackPlaySessionStart(game);
-        return;
-      }
-
-      if (
-        game.status !== "installed" &&
-        (game.id.startsWith("steam-owned-") ||
-          game.id.startsWith("gog-owned-") ||
-          game.id.startsWith("epic-owned-") ||
-          game.id.startsWith("ea-owned-") ||
-          game.id.startsWith("ubisoft-owned-") ||
-          game.id.startsWith("battlenet-owned-"))
-      ) {
+      if (shouldQueueExternalInstall(game)) {
         const response = await startDownload(
           game.id,
           game.title,
@@ -115,6 +114,16 @@ export function useProviderPicking({
           game.downloadSha256,
         );
         setStatusMessage(response.message);
+        return;
+      }
+
+      const xboxPackageId = getXboxPackageId(game.id);
+      if (xboxPackageId) {
+        await launchXboxGame(xboxPackageId);
+        setStatusMessage("Launching Xbox game...");
+        trackActivePerformanceGame(game);
+        void logGameStart(game.id, game.title, { launcher: "xbox" });
+        void trackPlaySessionStart(game);
         return;
       }
 

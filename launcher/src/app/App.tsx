@@ -1,4 +1,4 @@
-import { lazy, Suspense, useCallback, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect } from "react";
 import { RouterProvider } from "react-router-dom";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import type { DeepLinkParams } from "../hooks/useDeepLink";
@@ -6,10 +6,10 @@ import { AuthProvider } from "./providers/AuthProvider";
 import { router } from "./router";
 import { handleInstallDeepLink } from "./deep-link-handlers";
 import { useDeepLink } from "../hooks/useDeepLink";
-import { useOverlayHotkey, useFpsHudHotkey, useAchievementPopup } from "../lib/overlay";
-import type { AchievementPopupPayload } from "../lib/types/overlay";
-import { Trophy, X } from "lucide-react";
+import { useOverlayHotkey, useFpsHudHotkey } from "../lib/overlay";
 import { AppErrorBoundary } from "../components/ui/AppErrorBoundary";
+import { AchievementPopupLayer } from "../components/achievements/AchievementPopupLayer";
+import { completeDesktopStartup } from "../lib/startup-window";
 
 // Lazy-loaded for overlay/FPS windows only
 const OverlayPage = lazy(() =>
@@ -55,6 +55,16 @@ function MainWindowHandlers() {
   return null;
 }
 
+function StartupWindowCoordinator() {
+  useEffect(() => {
+    void completeDesktopStartup().catch((error: unknown) => {
+      console.error("Desktop startup handoff failed", error);
+    });
+  }, []);
+
+  return null;
+}
+
 function DeepLinkHandler() {
   const handleLink = useCallback((link: DeepLinkParams) => {
     const { action, params } = link;
@@ -74,7 +84,7 @@ function DeepLinkHandler() {
         if (game) router.navigate(`/store?slug=${game}`);
         break;
       case "install":
-        void handleInstallDeepLink(params, game);
+        void handleInstallDeepLink(params, params.game || "");
         break;
       default:
         console.warn("[deep-link] Unknown action:", action);
@@ -83,53 +93,6 @@ function DeepLinkHandler() {
 
   useDeepLink(handleLink);
   return null;
-}
-
-function AchievementPopupLayer() {
-  const [popups, setPopups] = useState<AchievementPopupPayload[]>([]);
-
-  useAchievementPopup(
-    useCallback((payload: AchievementPopupPayload) => {
-      setPopups((prev) => [...prev, payload]);
-      setTimeout(() => {
-        setPopups((prev) => prev.filter((p) => p !== payload));
-      }, 5000);
-    }, []),
-  );
-
-  if (popups.length === 0) return null;
-
-  return (
-    <div className="fixed right-4 top-4 z-[9999] flex flex-col gap-2">
-      {popups.map((p, i) => (
-        <div
-          key={`${p.achievement_name}-${i}`}
-          className="neo-dots flex w-72 items-center gap-3 border-[3px] border-[#171411] bg-[#fbf8ef] px-3 py-2 shadow-[4px_4px_0_#1f1c0f]"
-        >
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center border-2 border-[#171411] bg-[#b7102a] shadow-[2px_2px_0_#1f1c0f]">
-            <Trophy size={20} className="text-white" />
-          </div>
-          <div className="min-w-0">
-            <div className="neo-copy text-[9px] font-black uppercase text-[#b7102a]">
-              Achievement unlocked
-            </div>
-            <div className="truncate text-[12px] font-bold text-[#171411]">
-              {p.achievement_name}
-            </div>
-            <div className="neo-copy truncate text-[10px] font-bold text-[#655f58]">
-              {p.game_title}
-            </div>
-          </div>
-          <button
-            onClick={() => setPopups((prev) => prev.filter((_, idx) => idx !== i))}
-            className="ml-auto shrink-0 text-[#655f58] hover:text-[#171411]"
-          >
-            <X size={14} />
-          </button>
-        </div>
-      ))}
-    </div>
-  );
 }
 
 export default function App() {
@@ -172,6 +135,7 @@ export default function App() {
   return (
     <AppErrorBoundary>
       <AuthProvider>
+        <StartupWindowCoordinator />
         <MainWindowHandlers />
         <DeepLinkHandler />
         <AchievementPopupLayer />

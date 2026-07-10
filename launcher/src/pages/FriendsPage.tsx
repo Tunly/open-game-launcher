@@ -5,12 +5,20 @@ import {
   MessageSquare,
   Send,
   Shield,
-  ThumbsUp,
   UserPlus,
   Users,
   Activity,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from "react";
 import { useSearchParams } from "react-router-dom";
 
 import { FriendRequestList } from "../components/friends/FriendRequestList";
@@ -36,7 +44,11 @@ import {
   unblockUser,
 } from "../lib/supabase/profile";
 import { getVisiblePresence, subscribeToPresenceChanges } from "../lib/supabase/presence";
-import { getMyPlatformAccounts } from "../lib/supabase/platform-accounts";
+import {
+  getMyPlatformAccounts,
+  getPlatformAccountsForUser,
+} from "../lib/supabase/platform-accounts";
+import { postActivity } from "../lib/supabase/activity";
 import { launchCrossPlayJoin } from "../lib/launcher";
 import { getCrossPlayPlatforms } from "../lib/supabase/crossplay";
 import {
@@ -318,7 +330,7 @@ const LOCAL_ACTIVITY: LocalActivityItem[] = [
     timeLabel: "22:03",
   },
   {
-    action: "synced screenshots",
+    action: "updated their showcase",
     actor: "Arcade Witch",
     artClass: "library-art-phantom",
     comments: [
@@ -328,11 +340,11 @@ const LOCAL_ACTIVITY: LocalActivityItem[] = [
       },
     ],
     dayLabel: "Yesterday",
-    detail: "Phantom Arcade save data and two gallery shots landed in the activity lane.",
+    detail: "Phantom Arcade challenge notes landed in the activity lane.",
     gameTitle: "Phantom Arcade",
     handle: "arcadewitch",
     id: "activity-arcade-witch-phantom",
-    meta: "Cloud save verified / 2 images",
+    meta: "Challenge route verified",
     platform: "Steam",
     reactions: 13,
     timeLabel: "19:41",
@@ -340,7 +352,31 @@ const LOCAL_ACTIVITY: LocalActivityItem[] = [
 ];
 
 export function FriendsPage() {
-  const { isConfigured, isLoading: isAuthLoading, user } = useCurrentUser();
+  const auth = useCurrentUser();
+
+  return <FriendsPageForAccount key={auth.user?.id ?? "signed-out"} auth={auth} />;
+}
+
+function FriendsPageForAccount({ auth }: { auth: ReturnType<typeof useCurrentUser> }) {
+  const { isConfigured, isLoading: isAuthLoading, user } = auth;
+  const accountUserId = user?.id ?? null;
+  const accountRef = useRef({ active: true, userId: accountUserId });
+
+  useLayoutEffect(() => {
+    const accountInstance = { active: true, userId: accountUserId };
+    accountRef.current = accountInstance;
+    return () => {
+      if (accountRef.current === accountInstance) {
+        accountInstance.active = false;
+      }
+    };
+  }, [accountUserId]);
+
+  const isCurrentAccount = useCallback(
+    (expectedUserId: string | null) =>
+      accountRef.current.active && accountRef.current.userId === expectedUserId,
+    [],
+  );
   const [searchParams, setSearchParams] = useSearchParams();
   const initialTab = (searchParams.get("tab") as TabKey | null) ?? "friends";
   const [activeTab, setActiveTab] = useState<TabKey>(
@@ -389,6 +425,13 @@ export function FriendsPage() {
   const [invites, setInvites] = useState<GameInvite[]>([]);
   const [inviteGameTitle, setInviteGameTitle] = useState("");
   const [myPlatforms, setMyPlatforms] = useState<PlatformAccount[]>([]);
+  const [receiverPlatforms, setReceiverPlatforms] = useState<PlatformType[]>([]);
+  const [activityFeedVersion, setActivityFeedVersion] = useState(0);
+
+  function selectFriend(friendId: string | null) {
+    setThread(null);
+    setSelectedFriendId(friendId);
+  }
 
   async function handleJoinGame(gameId: string) {
     try {
@@ -405,12 +448,12 @@ export function FriendsPage() {
   }
 
   function openFriendChat(friendId: string) {
-    setSelectedFriendId(friendId);
+    selectFriend(friendId);
     switchTab("chat");
   }
 
   function openFriendInvite(friendId: string) {
-    setSelectedFriendId(friendId);
+    selectFriend(friendId);
     const gameTitle = presenceByUserId[friendId]?.currentGameTitle?.trim();
     setInviteGameTitle(gameTitle ?? "");
     switchTab("invites");
@@ -444,7 +487,8 @@ export function FriendsPage() {
   >({});
 
   const refreshBlocks = useCallback(async () => {
-    if (!isConfigured) {
+    const expectedUserId = accountUserId;
+    if (!isConfigured || !expectedUserId) {
       setBlockedIds([]);
       setBlockedProfiles({});
       return;
@@ -452,9 +496,11 @@ export function FriendsPage() {
     try {
       const blocks = await getMyBlocks();
       const ids = blocks.map((block) => block.blockedId);
+      if (!isCurrentAccount(expectedUserId)) return;
       setBlockedIds(ids);
       if (ids.length > 0) {
         const profiles = await getProfilesForUsers(ids).catch(() => new Map());
+        if (!isCurrentAccount(expectedUserId)) return;
         const next: Record<
           string,
           { username: string; displayName: string | null; avatarUrl: string | null }
@@ -474,26 +520,29 @@ export function FriendsPage() {
         setBlockedProfiles({});
       }
     } catch {
+      if (!isCurrentAccount(expectedUserId)) return;
       setBlockedIds([]);
       setBlockedProfiles({});
     }
-  }, [isConfigured]);
+  }, [accountUserId, isConfigured, isCurrentAccount]);
 
   useEffect(() => {
     void refreshBlocks();
   }, [refreshBlocks]);
 
   const refresh = useCallback(async () => {
-    if (!user) return;
+    const expectedUserId = accountUserId;
+    if (!expectedUserId || !isCurrentAccount(expectedUserId)) return;
     const [loadedFriends, loadedRequests, loadedInvites] = await Promise.all([
-      getFriends(user.id),
+      getFriends(expectedUserId),
       getMyFriendRequests(),
       getMyGameInvites(),
     ]);
+    if (!isCurrentAccount(expectedUserId)) return;
     setFriends(loadedFriends);
     setRequests(loadedRequests);
     setInvites(loadedInvites);
-  }, [user]);
+  }, [accountUserId, isCurrentAccount]);
 
   useEffect(() => {
     if (!isConfigured || !user) {
@@ -505,15 +554,15 @@ export function FriendsPage() {
     setIsLoading(true);
     void Promise.all([refresh(), getMyPlatformAccounts().catch(() => [])])
       .then(([, platforms]) => {
-        if (isMounted) setMyPlatforms(platforms);
+        if (isMounted && isCurrentAccount(accountUserId)) setMyPlatforms(platforms);
       })
       .catch((error: unknown) => {
-        if (isMounted) {
+        if (isMounted && isCurrentAccount(accountUserId)) {
           setErrorMessage(error instanceof Error ? error.message : String(error));
         }
       })
       .finally(() => {
-        if (isMounted) {
+        if (isMounted && isCurrentAccount(accountUserId)) {
           setIsLoading(false);
         }
       });
@@ -521,7 +570,7 @@ export function FriendsPage() {
     return () => {
       isMounted = false;
     };
-  }, [isConfigured, refresh, user]);
+  }, [accountUserId, isConfigured, isCurrentAccount, refresh, user]);
 
   useEffect(() => {
     let isMounted = true;
@@ -539,13 +588,17 @@ export function FriendsPage() {
     const timeout = window.setTimeout(() => {
       void searchProfiles(trimmed)
         .then((profiles) => {
-          if (isMounted) setResults(profiles.filter((profile) => profile.id !== user?.id));
+          if (isMounted && isCurrentAccount(accountUserId)) {
+            setResults(profiles.filter((profile) => profile.id !== accountUserId));
+          }
         })
         .catch((error: unknown) => {
-          if (isMounted) setErrorMessage(error instanceof Error ? error.message : String(error));
+          if (isMounted && isCurrentAccount(accountUserId)) {
+            setErrorMessage(error instanceof Error ? error.message : String(error));
+          }
         })
         .finally(() => {
-          if (isMounted) setIsSearching(false);
+          if (isMounted && isCurrentAccount(accountUserId)) setIsSearching(false);
         });
     }, 250);
 
@@ -553,7 +606,7 @@ export function FriendsPage() {
       isMounted = false;
       window.clearTimeout(timeout);
     };
-  }, [isConfigured, query, user?.id]);
+  }, [accountUserId, isConfigured, isCurrentAccount, query]);
 
   useEffect(() => {
     if (!isConfigured || !user || friendIds.length === 0) {
@@ -565,17 +618,19 @@ export function FriendsPage() {
 
     void getVisiblePresence(friendIds)
       .then((presences) => {
-        if (!isMounted) return;
+        if (!isMounted || !isCurrentAccount(accountUserId)) return;
         setPresenceByUserId(
           Object.fromEntries(presences.map((presence) => [presence.userId, presence])),
         );
       })
       .catch((error: unknown) => {
-        if (isMounted) setErrorMessage(error instanceof Error ? error.message : String(error));
+        if (isMounted && isCurrentAccount(accountUserId)) {
+          setErrorMessage(error instanceof Error ? error.message : String(error));
+        }
       });
 
     const unsubscribe = subscribeToPresenceChanges(friendIds, (presence) => {
-      if (!isMounted) return;
+      if (!isMounted || !isCurrentAccount(accountUserId)) return;
       setPresenceByUserId((current) => ({ ...current, [presence.userId]: presence }));
     });
 
@@ -583,7 +638,7 @@ export function FriendsPage() {
       isMounted = false;
       unsubscribe();
     };
-  }, [friendIds, isConfigured, user]);
+  }, [accountUserId, friendIds, isConfigured, isCurrentAccount, user]);
 
   useEffect(() => {
     if (friendIds.length === 0) {
@@ -593,6 +648,7 @@ export function FriendsPage() {
     }
 
     if (!selectedFriendId || !friendIds.includes(selectedFriendId)) {
+      setThread(null);
       setSelectedFriendId(friendIds[0]);
     }
   }, [friendIds, selectedFriendId]);
@@ -602,15 +658,17 @@ export function FriendsPage() {
       return;
     }
 
-    const unsubscribe = subscribeToGameInvites(user.id, (invite) => {
+    const expectedUserId = user.id;
+    const unsubscribe = subscribeToGameInvites(expectedUserId, (invite) => {
+      if (!isCurrentAccount(expectedUserId)) return;
       setInvites((current) => [invite, ...current.filter((item) => item.id !== invite.id)]);
     });
 
     return unsubscribe;
-  }, [isConfigured, user]);
+  }, [isConfigured, isCurrentAccount, user]);
 
   useEffect(() => {
-    if (!isConfigured || !selectedFriendId) {
+    if (!isConfigured || !accountUserId || !selectedFriendId) {
       setThread(null);
       return;
     }
@@ -618,15 +676,18 @@ export function FriendsPage() {
     let isMounted = true;
     let unsubscribe: (() => void) | null = null;
     const friendId = selectedFriendId;
+    const expectedUserId = accountUserId;
+    setThread(null);
 
     void getDirectThread(friendId)
       .then((loadedThread) => {
-        if (!isMounted) {
+        if (!isMounted || !isCurrentAccount(expectedUserId)) {
           return;
         }
 
         setThread(loadedThread);
         unsubscribe = subscribeToRoomMessages(loadedThread.room.id, (nextMessage) => {
+          if (!isMounted || !isCurrentAccount(expectedUserId)) return;
           setThread((current) => {
             if (
               !current ||
@@ -641,27 +702,58 @@ export function FriendsPage() {
         });
       })
       .catch((error: unknown) => {
-        if (isMounted) setErrorMessage(error instanceof Error ? error.message : String(error));
+        if (isMounted && isCurrentAccount(expectedUserId)) {
+          setThread(null);
+          setErrorMessage(error instanceof Error ? error.message : String(error));
+        }
       });
 
     return () => {
       isMounted = false;
       unsubscribe?.();
     };
+  }, [accountUserId, isConfigured, isCurrentAccount, selectedFriendId]);
+
+  useEffect(() => {
+    if (!isConfigured || !selectedFriendId) {
+      setReceiverPlatforms([]);
+      return;
+    }
+
+    let isMounted = true;
+    void getPlatformAccountsForUser(selectedFriendId)
+      .then((accounts) => {
+        if (!isMounted) return;
+        setReceiverPlatforms(Array.from(new Set(accounts.map((account) => account.platform))));
+      })
+      .catch((error: unknown) => {
+        if (!isMounted) return;
+        setReceiverPlatforms([]);
+        setErrorMessage(error instanceof Error ? error.message : String(error));
+      });
+
+    return () => {
+      isMounted = false;
+    };
   }, [isConfigured, selectedFriendId]);
 
   async function runMutation(action: () => Promise<unknown>, success: string) {
+    const expectedUserId = accountUserId;
+    if (!isCurrentAccount(expectedUserId)) return;
     setIsMutating(true);
     setMessage(null);
     setErrorMessage(null);
     try {
       await action();
+      if (!isCurrentAccount(expectedUserId)) return;
       await Promise.all([refresh(), refreshBlocks()]);
+      if (!isCurrentAccount(expectedUserId)) return;
       setMessage(success);
     } catch (error) {
+      if (!isCurrentAccount(expectedUserId)) return;
       setErrorMessage(error instanceof Error ? error.message : String(error));
     } finally {
-      setIsMutating(false);
+      if (isCurrentAccount(expectedUserId)) setIsMutating(false);
     }
   }
 
@@ -671,11 +763,14 @@ export function FriendsPage() {
     }
 
     const content = chatText;
+    const recipientId = selectedFriendId;
     setChatText("");
     await runMutation(async () => {
-      const nextMessage = await sendDirectMessage(selectedFriendId, content);
+      const nextMessage = await sendDirectMessage(recipientId, content);
       setThread((current) =>
-        current && !current.messages.some((item) => item.id === nextMessage.id)
+        current &&
+        current.room.id === nextMessage.roomId &&
+        !current.messages.some((item) => item.id === nextMessage.id)
           ? { ...current, messages: [...current.messages, nextMessage] }
           : current,
       );
@@ -763,7 +858,7 @@ export function FriendsPage() {
                     }
                     onOpenChat={openFriendChat}
                     onOpenInvite={openFriendInvite}
-                    onSelectFriend={setSelectedFriendId}
+                    onSelectFriend={selectFriend}
                     onJoinGame={handleJoinGame}
                   />
                 </Panel>
@@ -922,7 +1017,7 @@ export function FriendsPage() {
                         <select
                           className="neo-copy w-full border-2 border-black bg-[#fff9ed] px-2 py-1.5 text-[10px] font-bold"
                           value={selectedFriendId ?? ""}
-                          onChange={(e) => setSelectedFriendId(e.target.value || null)}
+                          onChange={(event) => selectFriend(event.target.value || null)}
                         >
                           {friendIds.map((id) => {
                             const profile = friendProfileById[id];
@@ -1000,10 +1095,25 @@ export function FriendsPage() {
               onlineCount={onlineFriends}
               totalFriends={friendIds.length}
               onComposerPost={(copy) => {
-                setMessage(`Activity post staged: ${copy.slice(0, 72)}`);
+                setErrorMessage(null);
+                return postActivity("status", {
+                  gameId: null,
+                  gameTitle: null,
+                  metadata: { text: copy },
+                  visibility: "friends_only",
+                })
+                  .then(() => {
+                    setMessage("Status posted to friend activity.");
+                    setActivityFeedVersion((version) => version + 1);
+                  })
+                  .catch((error: unknown) => {
+                    setErrorMessage(error instanceof Error ? error.message : String(error));
+                    throw error;
+                  });
               }}
+              onSwitchTab={switchTab}
             >
-              <ActivityFeed friendIds={friendIds} />
+              <ActivityFeed friendIds={friendIds} key={activityFeedVersion} />
               {errorMessage ? <Status tone="error" message={errorMessage} /> : null}
               {message ? <Status tone="success" message={message} /> : null}
             </ActivityTabShell>
@@ -1014,7 +1124,7 @@ export function FriendsPage() {
               <Panel title="Cross-Platform Invites">
                 <CrossPlatformInvite
                   currentUserId={user.id}
-                  receiverPlatforms={[]}
+                  receiverPlatforms={receiverPlatforms}
                   selectedFriendId={selectedFriendId}
                   senderPlatforms={myPlatformTypes}
                 />
@@ -1114,162 +1224,148 @@ function getLocalActivityFriends(): ActivitySidebarFriend[] {
 
 function ActivityTabShell({
   children,
+  composerEnabled = true,
   friends,
   modeLabel,
   onComposerPost,
+  onSwitchTab,
   onlineCount,
   totalFriends,
 }: {
   children: ReactNode;
+  composerEnabled?: boolean;
   friends: ActivitySidebarFriend[];
   modeLabel: string;
-  onComposerPost: (copy: string) => void;
+  onComposerPost?: (copy: string) => Promise<void> | void;
+  onSwitchTab?: (tab: TabKey) => void;
   onlineCount: number;
   totalFriends: number;
 }) {
   const [composerText, setComposerText] = useState("");
+  const [composerBusy, setComposerBusy] = useState(false);
   const spotlightFriend =
     friends.find((friend) => friend.status === "online" || friend.status === "busy") ?? friends[0];
-
-  function submitComposer(event: FormEvent<HTMLFormElement>) {
+  async function submitComposer(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const copy = composerText.trim();
-    if (!copy) return;
-    onComposerPost(copy);
-    setComposerText("");
+    if (!copy || !onComposerPost || composerBusy) return;
+    setComposerBusy(true);
+    try {
+      await onComposerPost(copy);
+      setComposerText("");
+    } finally {
+      setComposerBusy(false);
+    }
   }
 
   return (
     <section
       aria-label="Friend activity tab"
-      className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px]"
+      className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_318px]"
     >
-      <div className="min-w-0 space-y-4">
+      <div className="min-w-0">
         <section className="border-[5px] border-black bg-[#f5eedf] shadow-[6px_6px_0_#171411]">
-          <div className="grid gap-4 border-b-[5px] border-black p-4 lg:grid-cols-[minmax(0,1fr)_260px]">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b-[5px] border-black bg-[#171411] px-4 py-3 text-[#fff9ed]">
             <div className="min-w-0">
-              <p className="neo-copy inline-flex border-2 border-black bg-[#007166] px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-white shadow-[2px_2px_0_#171411]">
+              <h2 className="neo-title text-4xl leading-none text-[#fff9ed]">Friend Activity</h2>
+              <p className="neo-copy mt-1 text-[10px] font-black uppercase leading-4 text-[#8cf5e4]">
                 {modeLabel}
               </p>
-              <h2 className="neo-title mt-3 text-5xl leading-none text-[#171411]">
-                Friend Activity
-              </h2>
-              <p className="neo-copy mt-2 text-[11px] font-bold uppercase leading-5 text-[#5b403f]">
-                Recent games, unlocks, comments, and quick reactions from your launcher network.
-              </p>
-            </div>
-            <div className="grid grid-cols-2 gap-2 text-center">
-              <div className="border-[3px] border-black bg-[#fff9ed] p-3 shadow-[3px_3px_0_#171411]">
-                <p className="neo-title text-3xl leading-none text-[#b7102a]">{onlineCount}</p>
-                <p className="neo-copy mt-1 text-[9px] font-black uppercase tracking-[0.12em] text-[#5b403f]">
-                  Online
-                </p>
-              </div>
-              <div className="border-[3px] border-black bg-[#fff9ed] p-3 shadow-[3px_3px_0_#171411]">
-                <p className="neo-title text-3xl leading-none text-[#007166]">{totalFriends}</p>
-                <p className="neo-copy mt-1 text-[9px] font-black uppercase tracking-[0.12em] text-[#5b403f]">
-                  Friends
-                </p>
-              </div>
             </div>
           </div>
 
-          <form
-            className="grid gap-3 p-4 sm:grid-cols-[56px_minmax(0,1fr)]"
-            onSubmit={submitComposer}
-          >
-            <div className="neo-title flex h-14 w-14 items-center justify-center border-[3px] border-black bg-[#b7102a] text-2xl leading-none text-white shadow-[3px_3px_0_#171411]">
-              OG
-            </div>
-            <div className="min-w-0">
-              <textarea
-                className="neo-copy min-h-20 w-full resize-none border-[3px] border-black bg-[#fff9ed] px-3 py-2 text-[11px] font-bold uppercase leading-5 outline-none placeholder:text-[#655f58]"
-                maxLength={240}
-                placeholder="What's new, commander?"
-                value={composerText}
-                onChange={(event) => setComposerText(event.target.value)}
-              />
-              <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-                <div className="flex flex-wrap gap-2">
-                  {["Screenshot", "Achievement", "Review"].map((label) => (
+          <div className="border-b-[5px] border-black bg-[#efe6d4] p-3">
+            {composerEnabled ? (
+              <form
+                aria-label="Friend activity status composer"
+                className="grid gap-3 sm:grid-cols-[48px_minmax(0,1fr)]"
+                onSubmit={(event) => void submitComposer(event)}
+              >
+                <ActivityAvatar name="OG" tone="red" />
+                <div className="min-w-0">
+                  <label className="sr-only" htmlFor="friend-activity-status">
+                    Post a status to your friends
+                  </label>
+                  <textarea
+                    className="neo-copy min-h-16 w-full resize-none border-[3px] border-black bg-[#fff9ed] px-3 py-2 text-[11px] font-black uppercase leading-5 text-[#171411] shadow-[3px_3px_0_#171411] outline-none placeholder:text-[#655f58] focus:bg-[#8cf5e4]"
+                    disabled={composerBusy}
+                    id="friend-activity-status"
+                    maxLength={240}
+                    placeholder="Post a status to your friends..."
+                    value={composerText}
+                    onChange={(event) => setComposerText(event.target.value)}
+                  />
+                  <div className="mt-2 flex justify-end">
                     <button
-                      key={label}
-                      className="neo-copy border-2 border-black bg-[#fff9ed] px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] shadow-[1px_1px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#8cf5e4]"
-                      type="button"
-                      onClick={() =>
-                        setComposerText((current) => `${current}${current ? " " : ""}${label}: `)
-                      }
+                      className="neo-copy inline-flex h-9 items-center border-[3px] border-black bg-[#b7102a] px-5 text-[10px] font-black uppercase text-white shadow-[3px_3px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#087d6d] disabled:cursor-not-allowed disabled:bg-[#d8cbb7] disabled:text-[#655f58]"
+                      disabled={!composerText.trim() || composerBusy}
+                      type="submit"
                     >
-                      {label}
+                      {composerBusy ? "Posting..." : "Post Status"}
                     </button>
-                  ))}
+                  </div>
                 </div>
-                <button
-                  className="neo-copy border-[3px] border-black bg-[#b7102a] px-4 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-white shadow-[3px_3px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#007166] disabled:opacity-50"
-                  disabled={!composerText.trim()}
-                  type="submit"
-                >
-                  Post Activity
-                </button>
-              </div>
-            </div>
-          </form>
-        </section>
+              </form>
+            ) : (
+              <p className="neo-copy border-[3px] border-black bg-[#fff9ed] p-3 text-[10px] font-black uppercase leading-5 text-[#5b403f] shadow-[3px_3px_0_#171411]">
+                Sign in to post activity. Local preview entries are read-only and are never saved.
+              </p>
+            )}
+          </div>
 
-        {children}
+          <div className="grid gap-3 border-b-[5px] border-black bg-[#fff9ed] p-3 sm:grid-cols-3">
+            <ActivityMiniStat label="Online" value={onlineCount} />
+            <ActivityMiniStat label="Friends" value={totalFriends} />
+            <ActivityMiniStat
+              label="Spotlight"
+              value={spotlightFriend ? spotlightFriend.status : "idle"}
+            />
+          </div>
+
+          <div className="bg-[#f5eedf] p-3">{children}</div>
+        </section>
       </div>
 
-      <aside className="space-y-4">
-        <section className="border-4 border-black bg-[#fff9ed] p-4 shadow-[5px_5px_0_#171411]">
-          <p className="neo-copy inline-flex border-2 border-black bg-[#171411] px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-[#fff9ed]">
-            Playing Now
-          </p>
-          {spotlightFriend ? (
-            <div className="mt-3 border-[3px] border-black bg-[#f6edd8] p-3 shadow-[3px_3px_0_#171411]">
-              <p className="neo-title text-3xl leading-none text-[#171411]">
-                {spotlightFriend.name}
-              </p>
-              <p className="neo-copy mt-2 text-[10px] font-black uppercase leading-5 text-[#5b403f]">
-                {spotlightFriend.detail}
-              </p>
-              <p className={activityStatusClassName(spotlightFriend.status)}>
-                {spotlightFriend.status}
-              </p>
-            </div>
-          ) : (
-            <p className="neo-copy mt-3 border-2 border-dashed border-black bg-[#f6edd8] p-3 text-[11px] font-bold uppercase leading-5 text-[#655f58]">
-              No friends loaded yet.
+      <aside className="space-y-3">
+        <section className="border-4 border-black bg-[#fff9ed] shadow-[5px_5px_0_#171411]">
+          <div className="border-b-4 border-black bg-[#171411] p-3 text-[#fff9ed]">
+            <h3 className="neo-title text-3xl leading-none">Welcome to the OG Friends</h3>
+            <p className="neo-copy mt-2 text-[9px] font-black uppercase leading-4 text-[#8cf5e4]">
+              Real launcher status posts and provider activity are grouped in one feed.
             </p>
-          )}
+          </div>
+          <div className="grid gap-2 p-3">
+            <ActivitySidebarButton
+              icon={<Users aria-hidden="true" className="h-4 w-4" />}
+              label="View Friends List"
+              meta={`${onlineCount} of ${totalFriends} online`}
+              onClick={() => onSwitchTab?.("friends")}
+            />
+            <ActivitySidebarButton
+              icon={<UserPlus aria-hidden="true" className="h-4 w-4" />}
+              label="Add Friends"
+              meta="Search launcher accounts"
+              onClick={() => onSwitchTab?.("friends")}
+            />
+            <ActivitySidebarButton
+              icon={<Shield aria-hidden="true" className="h-4 w-4" />}
+              label="Import Provider Friends"
+              meta="Steam, Epic, and GOG"
+              onClick={() => onSwitchTab?.("import")}
+            />
+          </div>
         </section>
 
-        <section className="border-4 border-black bg-[#fff9ed] p-4 shadow-[5px_5px_0_#171411]">
+        <section className="border-4 border-black bg-[#fff9ed] p-3 shadow-[5px_5px_0_#171411]">
           <div className="flex items-center justify-between gap-3 border-b-[3px] border-black pb-3">
             <h3 className="neo-title text-3xl leading-none text-[#171411]">Friends Online</h3>
-            <span className="neo-copy border-2 border-black bg-[#007166] px-2 py-1 text-[10px] font-black uppercase text-white">
+            <span className="neo-copy border-2 border-black bg-[#087d6d] px-2 py-1 text-[10px] font-black uppercase text-white shadow-[2px_2px_0_#171411]">
               {onlineCount}
             </span>
           </div>
           <div className="mt-3 space-y-2">
             {friends.length > 0 ? (
-              friends.map((friend) => (
-                <div
-                  key={friend.id}
-                  className="grid grid-cols-[34px_minmax(0,1fr)] gap-2 border-2 border-black bg-[#f6edd8] p-2 shadow-[2px_2px_0_#171411]"
-                >
-                  <div className="neo-title flex h-8 w-8 items-center justify-center border-2 border-black bg-[#171411] text-sm text-[#fff9ed]">
-                    {friend.name.slice(0, 2).toUpperCase()}
-                  </div>
-                  <div className="min-w-0">
-                    <p className="neo-copy truncate text-[10px] font-black uppercase text-[#171411]">
-                      {friend.name}
-                    </p>
-                    <p className="neo-copy truncate text-[9px] font-bold uppercase text-[#5b403f]">
-                      {friend.detail}
-                    </p>
-                  </div>
-                </div>
-              ))
+              friends.map((friend) => <ActivityFriendRow friend={friend} key={friend.id} />)
             ) : (
               <p className="neo-copy border-2 border-dashed border-black bg-[#f6edd8] p-3 text-[11px] font-bold uppercase leading-5 text-[#655f58]">
                 Add friends to fill the activity rail.
@@ -1277,8 +1373,99 @@ function ActivityTabShell({
             )}
           </div>
         </section>
+
+        <section className="border-4 border-black bg-[#171411] p-3 text-[#fff9ed] shadow-[5px_5px_0_#171411]">
+          <h3 className="neo-title border-b-2 border-[#fff9ed] pb-2 text-3xl leading-none">
+            Upcoming Events
+          </h3>
+          <div className="mt-3 space-y-2">
+            {["No events in the next 30 days", "Group announcements: none"].map((event) => (
+              <p
+                className="neo-copy border-2 border-[#fff9ed] bg-[#24201c] px-2 py-2 text-[9px] font-black uppercase leading-4 text-[#f5eedf]"
+                key={event}
+              >
+                {event}
+              </p>
+            ))}
+          </div>
+        </section>
       </aside>
     </section>
+  );
+}
+
+function ActivityMiniStat({ label, value }: { label: string; value: number | string }) {
+  return (
+    <div className="border-[3px] border-black bg-[#f5eedf] px-3 py-2 shadow-[3px_3px_0_#171411]">
+      <p className="neo-title text-3xl leading-none text-[#171411]">{value}</p>
+      <p className="neo-copy text-[8px] font-black uppercase text-[#5b403f]">{label}</p>
+    </div>
+  );
+}
+
+function ActivityAvatar({ name, tone }: { name: string; tone: "ink" | "red" | "teal" }) {
+  const toneClassName =
+    tone === "red"
+      ? "bg-[#b7102a] text-white"
+      : tone === "teal"
+        ? "bg-[#8cf5e4] text-[#171411]"
+        : "bg-[#171411] text-[#fff9ed]";
+
+  return (
+    <div
+      className={`neo-title flex h-12 w-12 shrink-0 items-center justify-center border-[3px] border-black text-lg leading-none shadow-[3px_3px_0_#171411] ${toneClassName}`}
+    >
+      {name.slice(0, 2).toUpperCase()}
+    </div>
+  );
+}
+
+function ActivitySidebarButton({
+  icon,
+  label,
+  meta,
+  onClick,
+}: {
+  icon: ReactNode;
+  label: string;
+  meta: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      className="grid grid-cols-[34px_minmax(0,1fr)] items-center gap-2 border-2 border-black bg-[#f6edd8] p-2 text-left shadow-[2px_2px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#8cf5e4]"
+      type="button"
+      onClick={onClick}
+    >
+      <span className="flex h-8 w-8 items-center justify-center border-2 border-black bg-[#fff9ed] text-[#b7102a]">
+        {icon}
+      </span>
+      <span className="min-w-0">
+        <span className="neo-copy block truncate text-[10px] font-black uppercase text-[#171411]">
+          {label}
+        </span>
+        <span className="neo-copy block truncate text-[8px] font-black uppercase text-[#5b403f]">
+          {meta}
+        </span>
+      </span>
+    </button>
+  );
+}
+
+function ActivityFriendRow({ friend }: { friend: ActivitySidebarFriend }) {
+  return (
+    <div className="grid grid-cols-[48px_minmax(0,1fr)] gap-2 border-2 border-black bg-[#f6edd8] p-2 shadow-[2px_2px_0_#171411]">
+      <ActivityAvatar name={friend.name} tone={friend.status === "away" ? "teal" : "ink"} />
+      <div className="min-w-0">
+        <p className="neo-copy truncate text-[10px] font-black uppercase text-[#171411]">
+          {friend.name}
+        </p>
+        <p className="neo-copy truncate text-[9px] font-bold uppercase text-[#5b403f]">
+          {friend.detail}
+        </p>
+        <p className={activityStatusClassName(friend.status)}>{friend.status}</p>
+      </div>
+    </div>
   );
 }
 
@@ -1295,22 +1482,17 @@ function activityStatusClassName(status: ActivitySidebarFriend["status"]) {
 
 function LocalActivityFeed({ items }: { items: LocalActivityItem[] }) {
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       {items.map((item, index) => {
         const previousDay = index > 0 ? items[index - 1].dayLabel : null;
+        const progress = Math.min(92, 34 + item.reactions * 3);
 
         return (
           <div className="space-y-3" key={item.id}>
-            {item.dayLabel !== previousDay ? (
-              <div className="neo-copy border-y-[3px] border-black bg-[#171411] px-3 py-2 text-[10px] font-black uppercase tracking-[0.14em] text-[#fff9ed]">
-                {item.dayLabel}
-              </div>
-            ) : null}
-            <article className="border-[3px] border-black bg-[#fff9ed] p-3 shadow-[3px_3px_0_#171411]">
-              <div className="flex items-start gap-3">
-                <div className="neo-title flex h-12 w-12 shrink-0 items-center justify-center border-[3px] border-black bg-[#171411] text-xl leading-none text-[#fff9ed] shadow-[2px_2px_0_#b7102a]">
-                  {item.actor.slice(0, 2).toUpperCase()}
-                </div>
+            {item.dayLabel !== previousDay ? <ActivityDateDivider label={item.dayLabel} /> : null}
+            <article className="border-[3px] border-black bg-[#fff9ed] shadow-[3px_3px_0_#171411]">
+              <div className="grid gap-3 border-b-[3px] border-black bg-[#f6edd8] p-3 sm:grid-cols-[48px_minmax(0,1fr)_auto]">
+                <ActivityAvatar name={item.actor} tone="ink" />
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                     <p className="neo-copy text-[11px] font-black uppercase tracking-[0.08em] text-[#171411]">
@@ -1322,53 +1504,53 @@ function LocalActivityFeed({ items }: { items: LocalActivityItem[] }) {
                   </div>
                   <p className="mt-1 text-sm font-bold leading-5 text-[#5b403f]">{item.action}</p>
                 </div>
-                <span className="neo-copy shrink-0 border-2 border-black bg-[#8cf5e4] px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] shadow-[1px_1px_0_#171411]">
+                <span className="neo-copy h-fit shrink-0 border-2 border-black bg-[#8cf5e4] px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] shadow-[1px_1px_0_#171411]">
                   {item.platform}
                 </span>
               </div>
 
-              <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(190px,270px)_minmax(0,1fr)]">
+              <div className="grid gap-3 p-3 lg:grid-cols-[minmax(190px,280px)_minmax(0,1fr)]">
                 <div
                   aria-label={`${item.gameTitle} activity artwork`}
-                  className={`min-h-32 border-[3px] border-black shadow-[3px_3px_0_#171411] ${item.artClass}`}
+                  className={`min-h-36 border-[3px] border-black shadow-[3px_3px_0_#171411] ${item.artClass}`}
                   role="img"
-                />
-                <div className="min-w-0 border-[3px] border-black bg-[#f6edd8] p-3">
-                  <p className="neo-title truncate text-4xl leading-none text-[#171411]">
-                    {item.gameTitle}
-                  </p>
-                  <p className="neo-copy mt-2 text-[10px] font-black uppercase leading-5 text-[#b7102a]">
-                    {item.meta}
-                  </p>
-                  <p className="mt-2 text-sm font-bold leading-5 text-[#5b403f]">{item.detail}</p>
-                  <div className="mt-3 h-4 border-2 border-black bg-[#fff9ed]">
-                    <div
-                      aria-hidden="true"
-                      className="h-full bg-[#007166]"
-                      style={{ width: `${Math.min(92, 32 + item.reactions * 3)}%` }}
-                    />
+                >
+                  <div className="flex h-full min-h-36 items-end p-3">
+                    <span className="neo-copy border-2 border-black bg-[#171411] px-2 py-1 text-[9px] font-black uppercase text-[#8cf5e4] shadow-[2px_2px_0_#b7102a]">
+                      {item.gameTitle}
+                    </span>
                   </div>
+                </div>
+                <div className="min-w-0 border-[3px] border-black bg-[#f6edd8] p-3 shadow-[2px_2px_0_#171411]">
+                  <div className="flex flex-wrap items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="neo-title truncate text-4xl leading-none text-[#171411]">
+                        {item.gameTitle}
+                      </p>
+                      <p className="neo-copy mt-2 text-[10px] font-black uppercase leading-5 text-[#b7102a]">
+                        {item.meta}
+                      </p>
+                    </div>
+                    <span className="neo-copy border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] font-black uppercase text-[#171411]">
+                      Activity Progress
+                    </span>
+                  </div>
+                  <p className="mt-2 text-sm font-bold leading-5 text-[#5b403f]">{item.detail}</p>
+                  <ActivityProgressBar value={progress} />
+                  <p className="neo-copy mt-2 text-[9px] font-black uppercase text-[#5b403f]">
+                    {item.reactions} ratings // {Math.max(1, Math.round(progress / 12))} feed
+                    signals
+                  </p>
                 </div>
               </div>
 
-              <div className="mt-3 flex flex-wrap items-center gap-2 border-t-2 border-black pt-3">
-                <button
-                  className="neo-copy inline-flex items-center gap-1 border-2 border-black bg-[#fff9ed] px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] shadow-[1px_1px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#8cf5e4]"
-                  type="button"
-                >
-                  <ThumbsUp className="h-3 w-3" />
-                  Rate Up {item.reactions}
-                </button>
-                <button
-                  className="neo-copy inline-flex items-center gap-1 border-2 border-black bg-[#fff9ed] px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] shadow-[1px_1px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#f6edd8]"
-                  type="button"
-                >
-                  <MessageSquare className="h-3 w-3" />
-                  Comment
-                </button>
+              <div className="flex flex-wrap items-center gap-2 border-t-[3px] border-black bg-[#efe6d4] px-3 py-2">
+                <span className="neo-copy text-[9px] font-black uppercase text-[#5b403f]">
+                  Preview record // {item.timeLabel} // {item.platform}
+                </span>
               </div>
 
-              <div className="mt-3 space-y-2">
+              <div className="space-y-2 p-3">
                 {item.comments.map((comment) => (
                   <div
                     key={`${item.id}-${comment.author}`}
@@ -1387,6 +1569,29 @@ function LocalActivityFeed({ items }: { items: LocalActivityItem[] }) {
           </div>
         );
       })}
+    </div>
+  );
+}
+
+function ActivityDateDivider({ label }: { label: string }) {
+  return (
+    <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-3">
+      <span className="neo-copy border-2 border-black bg-[#171411] px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-[#fff9ed] shadow-[2px_2px_0_#b7102a]">
+        {label}
+      </span>
+      <span className="h-[3px] bg-[#171411]" aria-hidden="true" />
+    </div>
+  );
+}
+
+function ActivityProgressBar({ value }: { value: number }) {
+  return (
+    <div className="mt-3 h-5 border-2 border-black bg-[#fff9ed] p-0.5">
+      <div
+        aria-hidden="true"
+        className="h-full border-r-2 border-black bg-[#087d6d]"
+        style={{ width: `${Math.max(8, Math.min(100, value))}%` }}
+      />
     </div>
   );
 }
@@ -1812,11 +2017,12 @@ function LocalFriendsHub({
 
       {activeTab === "activity" ? (
         <ActivityTabShell
+          composerEnabled={false}
           friends={getLocalActivityFriends()}
           modeLabel="Local Activity Relay"
           onlineCount={LOCAL_FRIENDS.filter((friend) => friend.status === "online").length}
           totalFriends={LOCAL_FRIENDS.length}
-          onComposerPost={(copy) => stagePlayerAction(`Activity post: ${copy.slice(0, 72)}`)}
+          onSwitchTab={onSwitchTab}
         >
           <LocalActivityFeed items={LOCAL_ACTIVITY} />
         </ActivityTabShell>

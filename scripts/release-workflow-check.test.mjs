@@ -1,12 +1,19 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { readFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 
 import {
   assertReleaseWorkflow,
   releaseWorkflowReport,
   workflowJobBlock,
 } from "./release-workflow-check.mjs";
+
+const releaseWorkflowScriptPath = fileURLToPath(
+  new URL("./release-workflow-check.mjs", import.meta.url),
+);
 
 const ciWorkflow = readFileSync(
   new URL("../.github/workflows/ci.yml", import.meta.url),
@@ -263,4 +270,18 @@ test("release workflow contract requires CI to run its test file", () => {
   assert.deepEqual(errorsFor(broken), [
     "script validation must run release workflow contract tests",
   ]);
+});
+
+test("release workflow CLI runs from any working directory", () => {
+  const result = spawnSync(process.execPath, [releaseWorkflowScriptPath], {
+    cwd: tmpdir(),
+    encoding: "utf8",
+  });
+
+  assert.equal(result.status, 0);
+  assert.equal(result.stderr, "");
+  assert.match(
+    result.stdout,
+    /\.github\/workflows\/ci\.yml preserves release workflow contract\./,
+  );
 });

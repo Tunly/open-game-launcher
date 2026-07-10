@@ -622,11 +622,11 @@ async fn epic_owned_game_from_draft(draft: EpicOwnedGameDraft) -> OwnedGame {
         id: format!("epic-owned-{}", draft.app_name),
         external_id: Some(draft.app_name.clone()),
         title: draft.title.clone(),
-        description: format!("Epic Games game (Owned). ID: {}", draft.app_name),
+        description: String::new(),
         cover_url,
         logo_url,
         icon_url,
-        playtime_minutes: 0,
+        playtime_minutes: None,
         last_played_at: None,
         cloud_gaming_url: None,
     }

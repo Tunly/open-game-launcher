@@ -10,12 +10,10 @@ export const deployFunctions = Object.freeze([
   { name: "ingest-achievements", verifyJwt: true },
   { name: "ingest-playtime", verifyJwt: true },
   { name: "invite-hosted-proof", verifyJwt: true },
-  { name: "mobile-push-registration", verifyJwt: true },
   { name: "notify-price-drop", verifyJwt: false },
   { name: "poll-platform-presence", verifyJwt: false },
   { name: "process-account-deletions", verifyJwt: false },
   { name: "rawg-assets", verifyJwt: true },
-  { name: "remote-companion-relay", verifyJwt: true },
   { name: "request-account-deletion", verifyJwt: true },
   { name: "store-download-build", verifyJwt: true },
   { name: "store-order-support", verifyJwt: true },
@@ -56,7 +54,6 @@ export const accountDeletionUserStorageBuckets = Object.freeze([
   "avatars",
   "profile-banners",
   "profile-showcases",
-  "screenshots",
   "game-artwork",
 ]);
 
@@ -202,6 +199,13 @@ export const runtimeSecretNames = Object.freeze([
   "STEAM_WEB_API_KEY",
   "PRESENCE_PROVIDER_TOKEN",
 ]);
+
+function spawnCommand(spawnImpl, command, args, options) {
+  if (process.platform === "win32" && spawnImpl === spawnSync) {
+    return spawnImpl(process.env.ComSpec || "cmd.exe", ["/d", "/s", "/c", command, ...args], options);
+  }
+  return spawnImpl(command, args, options);
+}
 
 const actions = new Set([
   "plan",
@@ -702,7 +706,8 @@ export function runRuntimeSecretsPreflight(
     );
   }
 
-  const result = spawnImpl(
+  const result = spawnCommand(
+    spawnImpl,
     "pnpm",
     [
       "--dir",
@@ -1126,7 +1131,7 @@ function runDeploy(env = process.env, dryRunDeploy = false) {
     const { command, args } = buildDeployCommand(fn, env);
     console.log(`$ ${command} ${args.join(" ")}`);
     if (dryRunDeploy) continue;
-    const result = spawnSync(command, args, {
+    const result = spawnCommand(spawnSync, command, args, {
       env,
       stdio: "inherit",
     });

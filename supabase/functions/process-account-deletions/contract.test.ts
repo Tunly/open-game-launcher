@@ -131,6 +131,7 @@ Deno.test("account deletion dry-run response is non-destructive", () => {
   assertEquals(response.failedCount, 0);
   assertEquals(response.storageBuckets, ACCOUNT_DELETION_USER_STORAGE_BUCKETS);
   assertEquals(response.storageBuckets.includes("game-artwork"), true);
+  assertEquals(response.storageBuckets.includes("screenshots"), false);
   assertEquals(response.wouldProcess?.length, 2);
   assertEquals(stableJson(response).includes("source"), false);
 });

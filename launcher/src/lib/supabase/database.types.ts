@@ -160,6 +160,9 @@ export type Database = {
           name: string
           points: number
           rarity: string
+          rarity_percent: number | null
+          source_provider: string | null
+          source_synced_at: string | null
           updated_at: string
         }
         Insert: {
@@ -174,6 +177,9 @@ export type Database = {
           name: string
           points?: number
           rarity?: string
+          rarity_percent?: number | null
+          source_provider?: string | null
+          source_synced_at?: string | null
           updated_at?: string
         }
         Update: {
@@ -188,6 +194,9 @@ export type Database = {
           name?: string
           points?: number
           rarity?: string
+          rarity_percent?: number | null
+          source_provider?: string | null
+          source_synced_at?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -215,7 +224,6 @@ export type Database = {
           game_title: string | null
           id: string
           metadata: Json
-          screenshot_url: string | null
           type: string
           user_id: string
           visibility: string
@@ -227,7 +235,6 @@ export type Database = {
           game_title?: string | null
           id?: string
           metadata?: Json
-          screenshot_url?: string | null
           type: string
           user_id: string
           visibility?: string
@@ -239,7 +246,6 @@ export type Database = {
           game_title?: string | null
           id?: string
           metadata?: Json
-          screenshot_url?: string | null
           type?: string
           user_id?: string
           visibility?: string
@@ -1251,7 +1257,6 @@ export type Database = {
           metadata: Json
           name: string
           provider: string
-          screenshots: string[]
           slug: string
           source_url: string | null
           status: string
@@ -1273,7 +1278,6 @@ export type Database = {
           metadata?: Json
           name: string
           provider: string
-          screenshots?: string[]
           slug: string
           source_url?: string | null
           status?: string
@@ -1295,7 +1299,6 @@ export type Database = {
           metadata?: Json
           name?: string
           provider?: string
-          screenshots?: string[]
           slug?: string
           source_url?: string | null
           status?: string
@@ -2048,48 +2051,6 @@ export type Database = {
           },
         ]
       }
-      price_history: {
-        Row: {
-          discount_percent: number
-          game_id: string
-          id: string
-          platform: string
-          price_cents: number
-          recorded_at: string
-        }
-        Insert: {
-          discount_percent?: number
-          game_id: string
-          id?: string
-          platform: string
-          price_cents: number
-          recorded_at?: string
-        }
-        Update: {
-          discount_percent?: number
-          game_id?: string
-          id?: string
-          platform?: string
-          price_cents?: number
-          recorded_at?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "price_history_game_id_fkey"
-            columns: ["game_id"]
-            isOneToOne: false
-            referencedRelation: "game_cross_play_slugs"
-            referencedColumns: ["game_id"]
-          },
-          {
-            foreignKeyName: "price_history_game_id_fkey"
-            columns: ["game_id"]
-            isOneToOne: false
-            referencedRelation: "games"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
       profile_comments: {
         Row: {
           author_id: string
@@ -2373,234 +2334,6 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
-      }
-      remote_companion_devices: {
-        Row: {
-          created_at: string
-          device_kind: string
-          device_label: string
-          device_secret_hash: string
-          device_secret_hint: string
-          id: string
-          last_seen_at: string | null
-          metadata: Json
-          paired_at: string | null
-          pairing_code_hash: string
-          pairing_code_hint: string
-          pairing_expires_at: string
-          revoked_at: string | null
-          updated_at: string
-          user_id: string
-        }
-        Insert: {
-          created_at?: string
-          device_kind?: string
-          device_label: string
-          device_secret_hash: string
-          device_secret_hint: string
-          id?: string
-          last_seen_at?: string | null
-          metadata?: Json
-          paired_at?: string | null
-          pairing_code_hash: string
-          pairing_code_hint: string
-          pairing_expires_at: string
-          revoked_at?: string | null
-          updated_at?: string
-          user_id: string
-        }
-        Update: {
-          created_at?: string
-          device_kind?: string
-          device_label?: string
-          device_secret_hash?: string
-          device_secret_hint?: string
-          id?: string
-          last_seen_at?: string | null
-          metadata?: Json
-          paired_at?: string | null
-          pairing_code_hash?: string
-          pairing_code_hint?: string
-          pairing_expires_at?: string
-          revoked_at?: string | null
-          updated_at?: string
-          user_id?: string
-        }
-        Relationships: []
-      }
-      remote_install_jobs: {
-        Row: {
-          accepted_at: string | null
-          build_id: string | null
-          cancelled_at: string | null
-          companion_device_id: string | null
-          completed_at: string | null
-          created_at: string
-          error_message: string | null
-          expires_at: string
-          failed_at: string | null
-          game_id: string
-          id: string
-          package_ref: Json
-          platform: string | null
-          product_id: string | null
-          source: string
-          started_at: string | null
-          status: string
-          title: string
-          updated_at: string
-          user_id: string
-        }
-        Insert: {
-          accepted_at?: string | null
-          build_id?: string | null
-          cancelled_at?: string | null
-          companion_device_id?: string | null
-          completed_at?: string | null
-          created_at?: string
-          error_message?: string | null
-          expires_at?: string
-          failed_at?: string | null
-          game_id: string
-          id?: string
-          package_ref?: Json
-          platform?: string | null
-          product_id?: string | null
-          source?: string
-          started_at?: string | null
-          status?: string
-          title: string
-          updated_at?: string
-          user_id: string
-        }
-        Update: {
-          accepted_at?: string | null
-          build_id?: string | null
-          cancelled_at?: string | null
-          companion_device_id?: string | null
-          completed_at?: string | null
-          created_at?: string
-          error_message?: string | null
-          expires_at?: string
-          failed_at?: string | null
-          game_id?: string
-          id?: string
-          package_ref?: Json
-          platform?: string | null
-          product_id?: string | null
-          source?: string
-          started_at?: string | null
-          status?: string
-          title?: string
-          updated_at?: string
-          user_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "remote_install_jobs_build_id_fkey"
-            columns: ["build_id"]
-            isOneToOne: false
-            referencedRelation: "store_builds"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "remote_install_jobs_companion_device_id_fkey"
-            columns: ["companion_device_id"]
-            isOneToOne: false
-            referencedRelation: "remote_companion_devices"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "remote_install_jobs_product_id_fkey"
-            columns: ["product_id"]
-            isOneToOne: false
-            referencedRelation: "store_products"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      screenshot_likes: {
-        Row: {
-          created_at: string
-          screenshot_id: string
-          user_id: string
-        }
-        Insert: {
-          created_at?: string
-          screenshot_id: string
-          user_id: string
-        }
-        Update: {
-          created_at?: string
-          screenshot_id?: string
-          user_id?: string
-        }
-        Relationships: [
-          {
-            foreignKeyName: "screenshot_likes_screenshot_id_fkey"
-            columns: ["screenshot_id"]
-            isOneToOne: false
-            referencedRelation: "screenshots"
-            referencedColumns: ["id"]
-          },
-        ]
-      }
-      screenshots: {
-        Row: {
-          caption: string | null
-          created_at: string
-          game_id: string | null
-          height: number | null
-          id: string
-          is_public: boolean
-          size_bytes: number | null
-          storage_path: string
-          thumbnail_path: string | null
-          user_id: string
-          width: number | null
-        }
-        Insert: {
-          caption?: string | null
-          created_at?: string
-          game_id?: string | null
-          height?: number | null
-          id?: string
-          is_public?: boolean
-          size_bytes?: number | null
-          storage_path: string
-          thumbnail_path?: string | null
-          user_id: string
-          width?: number | null
-        }
-        Update: {
-          caption?: string | null
-          created_at?: string
-          game_id?: string | null
-          height?: number | null
-          id?: string
-          is_public?: boolean
-          size_bytes?: number | null
-          storage_path?: string
-          thumbnail_path?: string | null
-          user_id?: string
-          width?: number | null
-        }
-        Relationships: [
-          {
-            foreignKeyName: "screenshots_game_id_fkey"
-            columns: ["game_id"]
-            isOneToOne: false
-            referencedRelation: "game_cross_play_slugs"
-            referencedColumns: ["game_id"]
-          },
-          {
-            foreignKeyName: "screenshots_game_id_fkey"
-            columns: ["game_id"]
-            isOneToOne: false
-            referencedRelation: "games"
-            referencedColumns: ["id"]
-          },
-        ]
       }
       share_tokens: {
         Row: {
@@ -3137,7 +2870,6 @@ export type Database = {
           ratings_count: number
           rec_system_requirements: Json
           release_date: string | null
-          screenshots: string[]
           short_description: string | null
           slug: string
           status: string
@@ -3164,7 +2896,6 @@ export type Database = {
           ratings_count?: number
           rec_system_requirements?: Json
           release_date?: string | null
-          screenshots?: string[]
           short_description?: string | null
           slug: string
           status?: string
@@ -3191,7 +2922,6 @@ export type Database = {
           ratings_count?: number
           rec_system_requirements?: Json
           release_date?: string | null
-          screenshots?: string[]
           short_description?: string | null
           slug?: string
           status?: string
@@ -4147,6 +3877,7 @@ export type Database = {
           platform_game_id: string | null
           platform_last_polled_at: string | null
           platform_source: string | null
+          session_generation: string | null
           status: string
           updated_at: string
           user_id: string
@@ -4160,6 +3891,7 @@ export type Database = {
           platform_game_id?: string | null
           platform_last_polled_at?: string | null
           platform_source?: string | null
+          session_generation?: string | null
           status?: string
           updated_at?: string
           user_id: string
@@ -4173,6 +3905,7 @@ export type Database = {
           platform_game_id?: string | null
           platform_last_polled_at?: string | null
           platform_source?: string | null
+          session_generation?: string | null
           status?: string
           updated_at?: string
           user_id?: string
@@ -4483,26 +4216,6 @@ export type Database = {
           vote_score: number
         }[]
       }
-      claim_remote_install_jobs: {
-        Args: {
-          device_id_input: string
-          device_secret_input: string
-          limit_input?: number
-        }
-        Returns: {
-          build_id: string
-          created_at: string
-          expires_at: string
-          game_id: string
-          job_id: string
-          package_ref: Json
-          platform: string
-          product_id: string
-          source: string
-          status: string
-          title: string
-        }[]
-      }
       create_game_invite_share_token: {
         Args: {
           invite_id_input: string
@@ -4517,66 +4230,12 @@ export type Database = {
           token_hint: string
         }[]
       }
-      create_remote_companion_pairing: {
-        Args: {
-          device_kind_input?: string
-          device_label_input?: string
-          ttl_seconds_input?: number
-        }
-        Returns: {
-          device_id: string
-          device_secret: string
-          device_secret_hint: string
-          expires_at: string
-          pairing_code: string
-          pairing_code_hint: string
-        }[]
-      }
-      enqueue_remote_install_job: {
-        Args: {
-          build_id_input: string
-          companion_device_id_input: string
-          game_id_input: string
-          package_ref_input?: Json
-          platform_input?: string
-          product_id_input: string
-          source_input?: string
-          title_input: string
-        }
-        Returns: {
-          expires_at: string
-          job_id: string
-          status: string
-        }[]
-      }
       generate_family_invite_code: { Args: never; Returns: string }
       is_blocked: { Args: { user_a: string; user_b: string }; Returns: boolean }
       is_friend: { Args: { user_a: string; user_b: string }; Returns: boolean }
       is_username_available: {
         Args: { username_input: string }
         Returns: boolean
-      }
-      record_remote_companion_ping: {
-        Args: { device_id_input: string; device_secret_input: string }
-        Returns: {
-          device_id: string
-          last_seen_at: string
-          status: string
-        }[]
-      }
-      redeem_remote_companion_pairing: {
-        Args: {
-          device_kind_input?: string
-          device_label_input?: string
-          pairing_code_input: string
-        }
-        Returns: {
-          device_id: string
-          device_kind: string
-          device_label: string
-          expires_at: string
-          paired_at: string
-        }[]
       }
       redeem_share_token: {
         Args: { token_input: string }
@@ -4625,21 +4284,6 @@ export type Database = {
       sync_community_artwork_vote_score: {
         Args: { p_artwork_id: string }
         Returns: undefined
-      }
-      update_remote_install_job_status: {
-        Args: {
-          device_id_input: string
-          device_secret_input: string
-          job_id_input: string
-          local_queue_id_input?: string
-          message_input?: string
-          status_input: string
-        }
-        Returns: {
-          job_id: string
-          status: string
-          updated_at: string
-        }[]
       }
       vote_community_artwork: {
         Args: { p_artwork_id: string; p_vote: number }

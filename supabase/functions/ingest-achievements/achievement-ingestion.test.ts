@@ -50,11 +50,13 @@ Deno.test("normalizes trusted achievement payloads for catalog ingestion", () =>
     provider: "steam",
     providerConfidence: "official",
     rarity: "epic",
+    rarityPercent: 3.2,
     sourceAchievementId: "FIRST_WIN",
     unlockedAt: "2026-06-10T08:15:00.000Z",
   });
   assertEquals(result.achievements[1].key, "steam:LOCAL_HINT");
   assertEquals(result.achievements[1].points, 25);
+  assertEquals(result.achievements[1].rarityPercent, null);
   assertEquals(result.achievements[1].unlockedAt, null);
 });
 
@@ -114,6 +116,22 @@ Deno.test("rejects duplicate achievement ids within one payload", () => {
 
   assertEquals(error.details, [
     "achievements[1].id duplicates another achievement in this payload.",
+  ]);
+});
+
+Deno.test("rejects invalid numeric rarity percentages", () => {
+  const error = assertThrows(
+    () =>
+      normalizeAchievementIngestionPayload({
+        achievements: [{ id: "BAD_RARITY", name: "Bad", rarity: 101 }],
+        gameId: catalogGameId,
+        provider: "steam",
+      }),
+    AchievementIngestionValidationError,
+  );
+
+  assertEquals(error.details, [
+    "achievements[0].rarity must be between 0 and 100.",
   ]);
 });
 
@@ -192,3 +210,37 @@ Deno.test(
     assertStringIncludes(migration, "to service_role");
   },
 );
+
+Deno.test("hardened achievement migration protects trust and privacy boundaries", async () => {
+  const migration = await Deno.readTextFile(
+    new URL(
+      "../../migrations/20260710130000_harden_achievement_ingestion.sql",
+      import.meta.url,
+    ),
+  );
+
+  assertStringIncludes(
+    migration,
+    "create or replace function public.upsert_trusted_achievement_definitions(",
+  );
+  assertStringIncludes(
+    migration,
+    "upsert_trusted_achievement_definitions requires service_role",
+  );
+  assertStringIncludes(
+    migration,
+    "achievement_ingestion_cursors.last_synced_at <= excluded.last_synced_at",
+  );
+  assertStringIncludes(migration, "definition.points");
+  assertStringIncludes(migration, "rarity_percent numeric");
+  assertStringIncludes(migration, "metadata = metadata - 'launcher_device_id'");
+  assertStringIncludes(migration, "and definition.is_hidden = false");
+  assertStringIncludes(
+    migration,
+    "grant select on public.games, public.achievements",
+  );
+  assertStringIncludes(
+    migration,
+    "grant select on public.user_achievements",
+  );
+});

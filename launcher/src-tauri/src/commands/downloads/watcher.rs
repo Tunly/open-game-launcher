@@ -111,6 +111,7 @@ pub fn start_global_download_watcher(app: AppHandle) {
                                                     tokio::spawn(async move {
                                                         let pause_rx = pause_rx;
                                                         let mut current_progress = progress;
+                                                        let mut manifest_read_failures = 0u8;
                                                         loop {
                                                             while *pause_rx.borrow() {
                                                                 let (
@@ -147,6 +148,7 @@ pub fn start_global_download_watcher(app: AppHandle) {
                                                                     &manifest_path,
                                                                 )
                                                             {
+                                                                manifest_read_failures = 0;
                                                                 if is_download_control_pending(
                                                                     &game_id_clone,
                                                                 ) {
@@ -165,6 +167,40 @@ pub fn start_global_download_watcher(app: AppHandle) {
                                                                     get_dir_size(
                                                                         &downloading_dir_clone,
                                                                     );
+
+                                                                if let Some(error) = steam_state
+                                                                    .terminal_error(
+                                                                        downloading_dir_size,
+                                                                    )
+                                                                {
+                                                                    update_download_status(
+                                                                        &game_id_clone,
+                                                                        "error",
+                                                                        error,
+                                                                        current_progress,
+                                                                        0,
+                                                                    );
+                                                                    emit_download_progress(
+                                                                        &app_clone,
+                                                                        &game_id_clone,
+                                                                        current_progress,
+                                                                        error,
+                                                                        "error",
+                                                                        0,
+                                                                    );
+                                                                    tokio::time::sleep(
+                                                                        tokio::time::Duration::from_secs(2),
+                                                                    )
+                                                                    .await;
+                                                                    if let Ok(mut guard) =
+                                                                        get_download_manager()
+                                                                            .lock()
+                                                                    {
+                                                                        guard
+                                                                            .remove(&game_id_clone);
+                                                                    }
+                                                                    return;
+                                                                }
 
                                                                 if steam_state.is_fully_installed(
                                                                     downloading_dir_size,
@@ -234,7 +270,48 @@ pub fn start_global_download_watcher(app: AppHandle) {
                                                                     );
                                                                 }
                                                             } else {
-                                                                break;
+                                                                manifest_read_failures =
+                                                                    manifest_read_failures
+                                                                        .saturating_add(1);
+                                                                if manifest_read_failures < 3 {
+                                                                    tokio::time::sleep(
+                                                                        tokio::time::Duration::from_millis(500),
+                                                                    )
+                                                                    .await;
+                                                                    continue;
+                                                                }
+                                                                let error = if manifest_path
+                                                                    .exists()
+                                                                {
+                                                                    "Steam manifest could not be read; completion was not confirmed."
+                                                                } else {
+                                                                    "Steam manifest disappeared before completion was confirmed."
+                                                                };
+                                                                update_download_status(
+                                                                    &game_id_clone,
+                                                                    "error",
+                                                                    error,
+                                                                    current_progress,
+                                                                    0,
+                                                                );
+                                                                emit_download_progress(
+                                                                    &app_clone,
+                                                                    &game_id_clone,
+                                                                    current_progress,
+                                                                    error,
+                                                                    "error",
+                                                                    0,
+                                                                );
+                                                                tokio::time::sleep(
+                                                                    tokio::time::Duration::from_secs(2),
+                                                                )
+                                                                .await;
+                                                                if let Ok(mut guard) =
+                                                                    get_download_manager().lock()
+                                                                {
+                                                                    guard.remove(&game_id_clone);
+                                                                }
+                                                                return;
                                                             }
                                                             tokio::time::sleep(
                                                                 tokio::time::Duration::from_secs(2),

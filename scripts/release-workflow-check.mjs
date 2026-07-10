@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 export const repoRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 export const releaseWorkflowRelativePath = ".github/workflows/ci.yml";
@@ -567,7 +567,10 @@ export function assertReleaseWorkflow(options) {
   return report;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (
+  process.argv[1] &&
+  import.meta.url === pathToFileURL(process.argv[1]).href
+) {
   try {
     const report = assertReleaseWorkflow();
     console.log(`${report.path} preserves release workflow contract.`);

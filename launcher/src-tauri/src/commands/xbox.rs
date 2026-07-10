@@ -115,12 +115,6 @@ struct TitleHistoryDetail {
     last_time_played: Option<String>,
 }
 
-#[derive(Deserialize, Debug)]
-struct AppxPackage {
-    #[serde(rename = "PackageFamilyName")]
-    package_family_name: Option<String>,
-}
-
 fn start_xbox_callback_server(app: tauri::AppHandle) {
     thread::spawn(move || {
         let listener = match TcpListener::bind("127.0.0.1:18236") {
@@ -395,50 +389,6 @@ async fn authorize_xsts(user_token: &str) -> Result<AuthResponse, String> {
         .map_err(|e| format!("Failed to parse XSTS auth: {}", e))
 }
 
-fn get_installed_uwp_apps() -> Vec<AppxPackage> {
-    if !cfg!(target_os = "windows") {
-        return Vec::new();
-    }
-
-    // We run a quick powershell script to get all AppxPackages for the current user
-    let script = "Get-AppxPackage -User $env:USERNAME | Select-Object PackageFamilyName, InstallLocation | ConvertTo-Json -Compress -Depth 2";
-    let output = match Command::new("powershell")
-        .args(["-NoProfile", "-NonInteractive", "-Command", script])
-        .output()
-    {
-        Ok(out) => out,
-        Err(e) => {
-            println!("[Xbox] Failed to run Get-AppxPackage: {}", e);
-            return Vec::new();
-        }
-    };
-
-    if !output.status.success() {
-        println!(
-            "[Xbox] Get-AppxPackage returned error: {}",
-            String::from_utf8_lossy(&output.stderr)
-        );
-        return Vec::new();
-    }
-
-    let json_str = String::from_utf8_lossy(&output.stdout);
-    // If multiple apps, it's an array; if one, it's an object; if none, empty.
-    let trimmed = json_str.trim();
-    if trimmed.is_empty() {
-        return Vec::new();
-    }
-
-    if trimmed.starts_with('[') {
-        serde_json::from_str::<Vec<AppxPackage>>(trimmed).unwrap_or_default()
-    } else if trimmed.starts_with('{') {
-        serde_json::from_str::<AppxPackage>(trimmed)
-            .map(|p| vec![p])
-            .unwrap_or_default()
-    } else {
-        Vec::new()
-    }
-}
-
 #[tauri::command]
 pub async fn fetch_xbox_owned_games(code: String) -> Result<XboxFetchResult, String> {
     println!(
@@ -528,14 +478,6 @@ pub async fn fetch_xbox_owned_games(code: String) -> Result<XboxFetchResult, Str
         .map_err(|e| format!("Failed to parse title history: {}", e))?;
 
     let mut games = Vec::new();
-    let installed_apps = get_installed_uwp_apps();
-
-    // Create a set of installed PFNs for fast lookup (case-insensitive)
-    let installed_pfns: HashSet<String> = installed_apps
-        .iter()
-        .filter_map(|app| app.package_family_name.as_ref().map(|s| s.to_lowercase()))
-        .collect();
-
     for title in history.titles {
         // Filter like Playnite: type == Game and devices contains PC
         if title.item_type.as_deref() != Some("Game") {
@@ -564,27 +506,25 @@ pub async fn fetch_xbox_owned_games(code: String) -> Result<XboxFetchResult, Str
 
         let last_played = title.title_history.and_then(|th| th.last_time_played);
 
-        let is_installed = installed_pfns.contains(&pfn.to_lowercase());
-
-        let mut playtime_minutes = 0;
+        let mut playtime_minutes = None;
         if let Some(stats) = &title.stats {
             if let Some(statlist) = stats.get("statlist").and_then(|s| s.as_array()) {
                 for stat in statlist {
                     if stat.get("name").and_then(|n| n.as_str()) == Some("MinutesPlayed") {
                         if let Some(val) = stat.get("value").and_then(|v| v.as_u64()) {
-                            playtime_minutes = val;
+                            playtime_minutes = Some(val);
                         }
                     }
                 }
             } else if let Some(val) = stats.get("minutesPlayed").and_then(|v| v.as_u64()) {
-                playtime_minutes = val;
+                playtime_minutes = Some(val);
             } else if let Some(groups) = stats.get("groups").and_then(|g| g.as_array()) {
                 for group in groups {
                     if let Some(group_stats) = group.get("statlist").and_then(|s| s.as_array()) {
                         for stat in group_stats {
                             if stat.get("name").and_then(|n| n.as_str()) == Some("MinutesPlayed") {
                                 if let Some(val) = stat.get("value").and_then(|v| v.as_u64()) {
-                                    playtime_minutes = val;
+                                    playtime_minutes = Some(val);
                                 }
                             }
                         }
@@ -597,11 +537,7 @@ pub async fn fetch_xbox_owned_games(code: String) -> Result<XboxFetchResult, Str
             id: format!("xbox-{}", pfn), // We use the PFN as the unique identifier
             external_id: Some(title.title_id.clone()),
             title: clean_name,
-            description: if is_installed {
-                "Xbox Game (Installed)".to_string()
-            } else {
-                "Xbox Game (Not Installed)".to_string()
-            },
+            description: String::new(),
             cover_url: None, // Could be fetched via titlehub details if needed
             logo_url: None,
             icon_url: None,
@@ -620,13 +556,8 @@ pub async fn launch_xbox_game(pfn: String) -> Result<(), String> {
         return Err("Only supported on Windows".into());
     }
 
-    // PFN is something like "Microsoft.FlightSimulator_8wekyb3d8bbwe"
-    // Usually the AppUserModelId (AUMID) is PFN!App
-    // Let's assume "!App" for now, which covers 90% of games.
-    // Playnite parses the AppxManifest.xml to find the exact Application ID.
-    // We will try "!App" as a quick default, but falling back to exploring it if needed.
-    // For simplicity:
-    let aumid = format!("{}!App", pfn);
+    let pfn = validate_xbox_package_family_name(&pfn)?;
+    let aumid = resolve_xbox_aumid(&pfn)?;
     let target = format!("shell:AppsFolder\\{}", aumid);
 
     Command::new("explorer.exe")
@@ -635,6 +566,74 @@ pub async fn launch_xbox_game(pfn: String) -> Result<(), String> {
         .map_err(|e| format!("Failed to launch Xbox game: {}", e))?;
 
     Ok(())
+}
+
+fn validate_xbox_package_family_name(value: &str) -> Result<String, String> {
+    let value = value.trim();
+    if value.is_empty()
+        || !value.contains('_')
+        || !value.chars().all(|character| {
+            character.is_ascii_alphanumeric() || matches!(character, '.' | '_' | '-')
+        })
+    {
+        return Err("Xbox launch requires a valid installed Package Family Name.".to_string());
+    }
+
+    Ok(value.to_string())
+}
+
+fn resolve_xbox_aumid(pfn: &str) -> Result<String, String> {
+    let script = r#"
+$ErrorActionPreference = 'Stop'
+$pfn = $env:OGL_XBOX_PFN
+$ids = @(Get-StartApps | ForEach-Object { $_.AppID } | Where-Object { $_ -like "${pfn}!*" } | Sort-Object -Unique)
+if ($ids.Count -eq 0) {
+  $package = Get-AppxPackage | Where-Object { $_.PackageFamilyName -eq $pfn } | Select-Object -First 1
+  if (-not $package) { throw "Installed package was not found." }
+  $manifest = Get-AppxPackageManifest -Package $package.PackageFullName
+  $ids = @($manifest.Package.Applications.Application | ForEach-Object { if ($_.Id) { "${pfn}!$($_.Id)" } } | Sort-Object -Unique)
+}
+$ids | ForEach-Object { Write-Output $_ }
+"#;
+
+    let output = Command::new("powershell")
+        .args(["-NoProfile", "-NonInteractive", "-Command", script])
+        .env("OGL_XBOX_PFN", pfn)
+        .output()
+        .map_err(|error| format!("Could not inspect the Xbox application manifest: {error}"))?;
+
+    if !output.status.success() {
+        let detail = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        return Err(if detail.is_empty() {
+            "Could not resolve the installed Xbox application's AUMID.".to_string()
+        } else {
+            format!("Could not resolve the installed Xbox application's AUMID: {detail}")
+        });
+    }
+
+    parse_resolved_xbox_aumid(pfn, &String::from_utf8_lossy(&output.stdout))
+}
+
+fn parse_resolved_xbox_aumid(pfn: &str, output: &str) -> Result<String, String> {
+    let expected_prefix = format!("{pfn}!");
+    let mut matches = output
+        .lines()
+        .map(str::trim)
+        .filter(|line| line.starts_with(&expected_prefix) && line.len() > expected_prefix.len())
+        .map(str::to_string)
+        .collect::<Vec<_>>();
+    matches.sort();
+    matches.dedup();
+
+    match matches.as_slice() {
+        [aumid] => Ok(aumid.clone()),
+        [] => Err(format!(
+            "Xbox package '{pfn}' has no registered launchable application."
+        )),
+        _ => Err(format!(
+            "Xbox package '{pfn}' exposes multiple launchable applications; refusing to guess the AUMID."
+        )),
+    }
 }
 
 #[tauri::command]
@@ -782,7 +781,7 @@ async fn resolve_xbox_title_id(
         return Ok(title_hint.to_string());
     }
 
-    let games = crate::commands::games::core::read_installed_games_cache().unwrap_or_default();
+    let games = crate::commands::games::core::read_installed_games_cache_result()?;
     let game = games.iter().find(|game| game.id == game_id);
     let mut hints: HashSet<String> = HashSet::new();
 
@@ -927,24 +926,17 @@ pub async fn sync_xbox_achievements(
         });
     }
 
-    // Now update the game in the local cache
-    let mut games = crate::commands::games::core::read_installed_games_cache().unwrap_or_default();
-    let game_index = games
-        .iter()
-        .position(|g| g.id == game_id)
-        .ok_or_else(|| format!("Game '{}' not found in library cache", game_id))?;
-
-    let mut game = games[game_index].clone();
     let unlocked_achievements = unified.iter().filter(|a| a.unlocked_at.is_some()).count();
     let synced_achievements = unified.len();
-    game.achievements =
-        crate::commands::games::core::preserve_known_unlocks(unified, &game.achievements);
-    game.achievements_synced_at = Some(crate::commands::games::core::unix_timestamp_to_iso(
+    let synced_at = crate::commands::games::core::unix_timestamp_to_iso(
         crate::commands::games::core::current_unix_timestamp(),
-    ));
-
-    games[game_index] = game.clone();
-    crate::commands::games::core::write_installed_games_cache(&games);
+    );
+    let game = crate::commands::games::core::update_installed_game_cache(&game_id, move |game| {
+        game.achievements =
+            crate::commands::games::core::preserve_known_unlocks(unified, &game.achievements);
+        game.achievements_synced_at = Some(synced_at);
+        Ok(())
+    })?;
 
     Ok(
         crate::commands::games::types::SyncGameAchievementsResponse {
@@ -1044,5 +1036,26 @@ mod tests {
             &title,
             &hints(&["Halo Infinite"])
         ));
+    }
+
+    #[test]
+    fn parses_exact_xbox_aumid_from_manifest_output() {
+        let pfn = "Microsoft.Test_8wekyb3d8bbwe";
+        assert_eq!(
+            parse_resolved_xbox_aumid(pfn, "Microsoft.Test_8wekyb3d8bbwe!Game\n").unwrap(),
+            "Microsoft.Test_8wekyb3d8bbwe!Game"
+        );
+    }
+
+    #[test]
+    fn refuses_to_guess_between_multiple_xbox_applications() {
+        let pfn = "Microsoft.Test_8wekyb3d8bbwe";
+        let error = parse_resolved_xbox_aumid(
+            pfn,
+            "Microsoft.Test_8wekyb3d8bbwe!Game\nMicrosoft.Test_8wekyb3d8bbwe!Editor\n",
+        )
+        .unwrap_err();
+
+        assert!(error.contains("multiple launchable applications"));
     }
 }

@@ -69,6 +69,23 @@ describe("achievement providers", () => {
     expect(syncableAchievementGames([steamGame])).toEqual([steamGame]);
   });
 
+  it("syncs Steam-owned entries without requiring a local installation", () => {
+    const steamOwnedGame = game({
+      id: "steam-owned-792100",
+      title: "Steam Owned Game",
+      launcher: "steam",
+      externalId: "792100",
+      status: "not_installed",
+    });
+    window.localStorage.setItem(STORAGE_KEYS.STEAM_ID, JSON.stringify("76561198000000000"));
+
+    expect(achievementProviderStatusForGame(steamOwnedGame)).toMatchObject({
+      provider: "steam",
+      status: "available",
+    });
+    expect(syncableAchievementGames([steamOwnedGame])).toEqual([steamOwnedGame]);
+  });
+
   it("marks unofficial providers as visible best-effort statuses", () => {
     const ubisoftGame = game({
       id: "ubisoft-game",

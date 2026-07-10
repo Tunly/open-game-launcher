@@ -11,6 +11,10 @@ export async function toggleFpsHud(): Promise<boolean> {
   return invoke("toggle_fps_hud");
 }
 
+export async function setInGameOverlayClickThrough(enabled: boolean): Promise<void> {
+  return invoke("set_in_game_overlay_click_through", { enabled });
+}
+
 export async function getOverlaySettings(): Promise<NativeOverlaySettings> {
   return invoke("get_overlay_settings");
 }
@@ -22,6 +26,7 @@ export async function saveOverlaySettings(
 }
 
 export async function emitAchievementPopup(payload: AchievementPopupPayload): Promise<void> {
+  if (!isTauri()) return;
   return invoke("emit_achievement_popup", { payload });
 }
 

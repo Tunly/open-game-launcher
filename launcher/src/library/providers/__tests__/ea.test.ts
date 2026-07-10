@@ -44,7 +44,6 @@ function toOwnedGame(entries: Array<{ id: string; title: string; externalId?: st
     description: "",
     coverUrl: null,
     logoUrl: null,
-    playtimeMinutes: 0,
   }));
 }
 

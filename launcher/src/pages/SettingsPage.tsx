@@ -17,6 +17,8 @@ import { useLocalStorageState } from "../hooks/useLocalStorageState";
 import {
   getDefaultInstallDir,
   getSystemInfo,
+  isSteamScrapedGamesEventForAccount,
+  isSteamScrapeErrorEventForAccount,
   openSteamLoginWindow,
   openGogLoginWindow,
   openEpicLoginWindow,
@@ -42,7 +44,13 @@ import {
   scanLocalPluginManifests,
   stageSignedPluginPackage,
 } from "../lib/launcher";
-import { STEAM_OWNED_GAMES_CACHE_VERSION, STORAGE_KEYS } from "../lib/storage-keys";
+import { readLocalStorageString } from "../lib/library-providers";
+import {
+  activateSteamAccount,
+  clearSteamAccount,
+  writeSteamOwnedGamesCache,
+} from "../lib/steam-owned-games-cache";
+import { STORAGE_KEYS } from "../lib/storage-keys";
 import {
   clearEpicSessionMarker,
   clearLegacyEaTokenCopy,
@@ -220,8 +228,6 @@ const pluginSignedPackageStagingStateSchema: z.ZodType<LocalPluginSignedPackageS
   });
 
 const settingSchemas = {
-  startWithSystem: z.boolean(),
-  autoUpdateGames: z.boolean(),
   steamId: z.string().max(64),
   steamUsername: z.string().max(128),
 };
@@ -397,11 +403,12 @@ const presenceScheduledEvidencePresence: PresenceReadinessUserPresence = {
 interface NeoToggleProps {
   checked: boolean;
   description: string;
+  disabled?: boolean;
   label: string;
   onChange: (checked: boolean) => void;
 }
 
-function NeoToggle({ checked, description, label, onChange }: NeoToggleProps) {
+function NeoToggle({ checked, description, disabled = false, label, onChange }: NeoToggleProps) {
   return (
     <div className="grid gap-4 border-4 border-black bg-[#f5eedf] p-5 shadow-[4px_4px_0_#171411] sm:grid-cols-[1fr_110px] sm:items-center">
       <div>
@@ -413,9 +420,10 @@ function NeoToggle({ checked, description, label, onChange }: NeoToggleProps) {
       <button
         aria-checked={checked}
         aria-label={label}
-        className={`neo-copy h-12 border-2 border-black text-xs font-bold uppercase shadow-[3px_3px_0_#171411] ${
+        className={`neo-copy h-12 border-2 border-black text-xs font-bold uppercase shadow-[3px_3px_0_#171411] disabled:cursor-not-allowed disabled:opacity-60 ${
           checked ? "bg-[#087d6d] text-white" : "bg-[#efe6d4] text-[#171411]"
         }`}
+        disabled={disabled}
         role="switch"
         type="button"
         onClick={() => onChange(!checked)}
@@ -477,16 +485,9 @@ export function SettingsPage() {
     searchParams.get("verify") === "backup-external-drive-eject-safety-proof";
   const isBackupExternalDriveOsEjectFixture =
     searchParams.get("verify") === "backup-external-drive-os-eject-proof";
-  const [startWithSystem, setStartWithSystem] = useLocalStorageState(
-    "launcher.startWithSystem",
-    false,
-    settingSchemas.startWithSystem,
-  );
-  const [autoUpdateGames, setAutoUpdateGames] = useLocalStorageState(
-    "launcher.autoUpdateGames",
-    true,
-    settingSchemas.autoUpdateGames,
-  );
+  const [startWithSystem, setStartWithSystem] = useState(false);
+  const [autostartBusy, setAutostartBusy] = useState(false);
+  const [autostartMessage, setAutostartMessage] = useState<string | null>(null);
   const [installDir, setInstallDir] = useState<string | null>(null);
   const [systemInfo, setSystemInfo] = useState<SystemInfo | null>(null);
   const [commandError, setCommandError] = useState<string | null>(null);
@@ -786,28 +787,32 @@ export function SettingsPage() {
       unlistenPromise = listen<string>("steam_login_success", async (event) => {
         if (!isMounted) return;
         const steamIdVal = event.payload;
+        activateSteamAccount(steamIdVal);
         setSteamId(steamIdVal);
+        const isCurrentSteamLogin = () =>
+          isMounted && readLocalStorageString(STORAGE_KEYS.STEAM_ID) === steamIdVal;
         try {
           const name = await fetchSteamProfileName(steamIdVal);
-          if (isMounted) setSteamUsername(name ?? "Steam User");
+          if (!isCurrentSteamLogin()) return;
+          setSteamUsername(name ?? "Steam User");
         } catch (err) {
           console.warn("Failed to fetch steam username:", err);
-          if (isMounted) setSteamUsername("Steam User");
+          if (!isCurrentSteamLogin()) return;
+          setSteamUsername("Steam User");
         }
+        if (!isCurrentSteamLogin()) return;
         setTestResult({
           success: true,
           message: "Login successful. Your game list is now being fetched...",
         });
       });
 
-      unlistenScrapedPromise = listen<unknown[]>("steam_scraped_games_success", (event) => {
+      unlistenScrapedPromise = listen<unknown>("steam_scraped_games_success", (event) => {
         if (!isMounted) return;
-        const ownedGames = normalizeSteamOwnedGames(event.payload);
-        localStorage.setItem(STORAGE_KEYS.STEAM_OWNED_GAMES_CACHE, JSON.stringify(ownedGames));
-        localStorage.setItem(
-          STORAGE_KEYS.STEAM_OWNED_GAMES_CACHE_VERSION,
-          STEAM_OWNED_GAMES_CACHE_VERSION,
-        );
+        const currentSteamId = readLocalStorageString(STORAGE_KEYS.STEAM_ID) ?? "";
+        if (!isSteamScrapedGamesEventForAccount(event.payload, currentSteamId)) return;
+        const ownedGames = normalizeSteamOwnedGames(event.payload.games);
+        writeSteamOwnedGamesCache(event.payload.steamId, ownedGames);
 
         setTestResult({
           success: true,
@@ -815,13 +820,15 @@ export function SettingsPage() {
         });
       });
 
-      unlistenErrorPromise = listen<string>("steam_scraped_games_error", (event) => {
+      unlistenErrorPromise = listen<unknown>("steam_scraped_games_error", (event) => {
         if (!isMounted) return;
-        console.warn("[Settings] Scraper failed:", event.payload);
+        const currentSteamId = readLocalStorageString(STORAGE_KEYS.STEAM_ID) ?? "";
+        if (!isSteamScrapeErrorEventForAccount(event.payload, currentSteamId)) return;
+        console.warn("[Settings] Scraper failed:", event.payload.message);
 
         setTestResult({
           success: false,
-          message: `Steam sync failed: ${event.payload}`,
+          message: `Steam sync failed: ${event.payload.message}`,
         });
       });
     } catch (err) {
@@ -1008,7 +1015,58 @@ export function SettingsPage() {
     };
   }, [isDesktopRuntime]);
 
-  function handleChooseInstallFolder() {
+  useEffect(() => {
+    let isMounted = true;
+
+    if (!isDesktopRuntime) {
+      setStartWithSystem(false);
+      setAutostartMessage("Login autostart is available in the desktop app.");
+      return () => {
+        isMounted = false;
+      };
+    }
+
+    void import("@tauri-apps/plugin-autostart")
+      .then(({ isEnabled }) => isEnabled())
+      .then((enabled) => {
+        if (!isMounted) return;
+        setStartWithSystem(enabled);
+        setAutostartMessage(null);
+      })
+      .catch((error: unknown) => {
+        if (isMounted) setAutostartMessage(`Autostart status failed: ${getErrorMessage(error)}`);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [isDesktopRuntime]);
+
+  async function handleStartWithSystemChange(enabled: boolean) {
+    if (!isDesktopRuntime) {
+      setAutostartMessage("Login autostart is available in the desktop app.");
+      return;
+    }
+
+    setAutostartBusy(true);
+    try {
+      const autostart = await import("@tauri-apps/plugin-autostart");
+      if (enabled) {
+        await autostart.enable();
+      } else {
+        await autostart.disable();
+      }
+      const actualState = await autostart.isEnabled();
+      setStartWithSystem(actualState);
+      setAutostartMessage(actualState ? "Login autostart enabled." : "Login autostart disabled.");
+    } catch (error) {
+      setAutostartMessage(`Autostart update failed: ${getErrorMessage(error)}`);
+    } finally {
+      setAutostartBusy(false);
+    }
+  }
+
+  async function handleChooseInstallFolder() {
     if (!isDesktopRuntime) {
       setFolderMessage(
         "Folder picker is available in the desktop app. Browser preview keeps native paths read-only.",
@@ -1016,7 +1074,27 @@ export function SettingsPage() {
       return;
     }
 
-    setFolderMessage("Native folder dialog is prepared and waiting for Tauri integration.");
+    setFolderMessage(null);
+    try {
+      const { open } = await import("@tauri-apps/plugin-dialog");
+      const selectedPath = await open({
+        directory: true,
+        multiple: false,
+        title: "Choose OG install target",
+      });
+
+      if (typeof selectedPath !== "string") {
+        setFolderMessage("Install folder selection cancelled.");
+        return;
+      }
+
+      setInstallDir(selectedPath);
+      setFolderMessage(
+        "Install target selected for setup review. Provider clients and current download commands may still use their own native paths.",
+      );
+    } catch (error) {
+      setFolderMessage(`Folder picker failed: ${getErrorMessage(error)}`);
+    }
   }
 
   function handleReloadPath() {
@@ -1521,6 +1599,7 @@ export function SettingsPage() {
     installDir: isOneClickSetupFixtureVerify
       ? "D:\\OGLauncher\\Games"
       : normalizedOneClickInstallDir,
+    installDirApplied: false,
     isDesktopRuntime: isOneClickSetupFixtureVerify || isDesktopRuntime,
     librarySnapshotCount: isOneClickSetupFixtureVerify ? 18 : librarySnapshotCount,
     platforms: oneClickSetupPlatforms,
@@ -1605,7 +1684,7 @@ export function SettingsPage() {
             <div className="p-5">
               <div className="border-2 border-black bg-[#efe6d4] p-4">
                 <p className="neo-copy text-[10px] font-bold uppercase text-[#55504a]">
-                  Default install folder
+                  Install target review
                 </p>
                 <p className="mt-2 break-all text-lg font-black text-[#171411]">
                   {installDir ??
@@ -1683,6 +1762,7 @@ export function SettingsPage() {
                           className="neo-copy flex h-8 w-full items-center justify-center gap-2 border-2 border-black bg-[#c20b2f] px-3 text-[10px] font-bold uppercase text-white shadow-[1px_1px_0_#171411] transition hover:bg-[#a10825]"
                           type="button"
                           onClick={() => {
+                            clearSteamAccount();
                             setSteamId("");
                             setSteamUsername("");
                             setTestResult(null);
@@ -2131,16 +2211,20 @@ export function SettingsPage() {
 
           <NeoToggle
             checked={startWithSystem}
-            description="Local launcher preference in browser storage"
+            description={
+              isDesktopRuntime
+                ? "Controls the native OS login entry"
+                : "Desktop app required for native login autostart"
+            }
+            disabled={!isDesktopRuntime || autostartBusy}
             label="Start With System"
-            onChange={setStartWithSystem}
+            onChange={(enabled) => void handleStartWithSystemChange(enabled)}
           />
-          <NeoToggle
-            checked={autoUpdateGames}
-            description="Automatically queue updates in the download queue"
-            label="Auto-Update Games"
-            onChange={setAutoUpdateGames}
-          />
+          {autostartMessage ? (
+            <p className="neo-copy border-2 border-black bg-[#f5eedf] px-3 py-2 text-[10px] font-bold uppercase text-[#55504a] shadow-[2px_2px_0_#171411]">
+              {autostartMessage}
+            </p>
+          ) : null}
 
           <ClientUpdateSchedulerSettings />
 

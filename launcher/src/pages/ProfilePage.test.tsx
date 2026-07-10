@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const currentUserMock = vi.hoisted(() => vi.fn());
 const profileMocks = vi.hoisted(() => ({
   getProfilePageData: vi.fn(),
+  isCurrentUserFriendWith: vi.fn(),
 }));
 const supabaseClientMock = vi.hoisted(() => ({
   isSupabaseConfigured: false,
@@ -46,6 +47,8 @@ describe("ProfilePage privacy guard verify route", () => {
       user: null,
     });
     profileMocks.getProfilePageData.mockReset();
+    profileMocks.isCurrentUserFriendWith.mockReset();
+    profileMocks.isCurrentUserFriendWith.mockResolvedValue(false);
     supabaseClientMock.isSupabaseConfigured = false;
   });
 
@@ -75,5 +78,25 @@ describe("ProfilePage privacy guard verify route", () => {
 
     expect(await screen.findByText("Private Profile")).toBeVisible();
     expect(document.body).not.toHaveTextContent(privateFixtureTerms);
+    expect(profileMocks.isCurrentUserFriendWith).not.toHaveBeenCalled();
+  });
+
+  it("shows friends-only profiles when the signed-in viewer is an accepted friend", async () => {
+    const data = createVerifyProfilePrivacyGuardData();
+    data.profile.profileVisibility = "friends_only";
+    currentUserMock.mockReturnValue({
+      isConfigured: true,
+      isLoading: false,
+      user: { id: "viewer-1" },
+    });
+    supabaseClientMock.isSupabaseConfigured = true;
+    profileMocks.getProfilePageData.mockResolvedValue(data);
+    profileMocks.isCurrentUserFriendWith.mockResolvedValue(true);
+
+    renderProfileRoute("/u/localprivacy");
+
+    expect((await screen.findAllByText("Local Privacy Guard")).length).toBeGreaterThan(0);
+    expect(screen.queryByText("Private Profile")).not.toBeInTheDocument();
+    expect(profileMocks.isCurrentUserFriendWith).toHaveBeenCalledWith("privacy-guard-user");
   });
 });

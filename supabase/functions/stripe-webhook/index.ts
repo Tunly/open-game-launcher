@@ -9,6 +9,7 @@ import {
 } from "../_shared/store.ts";
 import { createStripeWebhookAdapters } from "./adapters.ts";
 import { handleStripeWebhook } from "./handler.ts";
+import { isStripeSignatureVerificationError } from "./signature-error.ts";
 
 const adapters = createStripeWebhookAdapters({
   issueStoreLicenses,
@@ -22,9 +23,8 @@ Deno.serve((req) =>
   handleStripeWebhook(req, {
     ...adapters,
     constructEvent: (body, signature, secret) =>
-      stripe.webhooks.constructEvent(body, signature, secret),
-    isSignatureVerificationError: (error) =>
-      error instanceof stripe.errors.StripeSignatureVerificationError,
+      stripe.webhooks.constructEventAsync(body, signature, secret),
+    isSignatureVerificationError: isStripeSignatureVerificationError,
     logError: (...args) => console.error(...args),
     logUnhandledEvent: (eventType) =>
       console.log(`Unhandled event type: ${eventType}`),

@@ -426,7 +426,12 @@ interface UserModInstallRow {
   checked_at: string;
 }
 
-export async function recordUserModInstall(install: InstalledModInfo): Promise<void> {
+export async function recordUserModInstall(
+  installOrInstalls: InstalledModInfo | InstalledModInfo[],
+): Promise<void> {
+  const installs = Array.isArray(installOrInstalls) ? installOrInstalls : [installOrInstalls];
+  if (installs.length === 0) return;
+
   // eslint-disable-next-line @typescript-eslint/no-explicit-any -- user_mod_installs not yet in Database types
   const client = getSupabaseClient() as any;
   if (!client) return;
@@ -434,7 +439,8 @@ export async function recordUserModInstall(install: InstalledModInfo): Promise<v
     data: { user },
   } = await client.auth.getUser();
   if (!user) return;
-  const payload: UserModInstallRow = {
+  const checkedAt = new Date().toISOString();
+  const payload: UserModInstallRow[] = installs.map((install) => ({
     user_id: user.id,
     local_install_id: install.installId,
     local_game_id: install.gameId,
@@ -451,8 +457,8 @@ export async function recordUserModInstall(install: InstalledModInfo): Promise<v
       provider: install.provider,
     },
     installed_at: new Date(install.installedAt * 1000).toISOString(),
-    checked_at: new Date().toISOString(),
-  };
+    checked_at: checkedAt,
+  }));
   const { error } = await client
     .from("user_mod_installs")
     .upsert(payload, { onConflict: "user_id,local_install_id" });

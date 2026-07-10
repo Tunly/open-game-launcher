@@ -283,7 +283,7 @@ Deno.test("stripe webhook handler marks claimed events failed on processing erro
   );
 
   assertEquals(response.status, 500);
-  assertEquals(await response.json(), { error: "fulfillment failed" });
+  assertEquals(await response.json(), { error: "Webhook processing failed." });
   assertEquals(calls.processed, []);
   assertEquals(calls.failed.length, 1);
   assertEquals(calls.failed[0].claim, claim);
@@ -303,7 +303,7 @@ Deno.test("stripe webhook handler returns generic errors before claiming without
   );
 
   assertEquals(response.status, 500);
-  assertEquals(await response.json(), { error: "missing secret" });
+  assertEquals(await response.json(), { error: "Webhook processing failed." });
   assertEquals(calls.claims, []);
   assertEquals(calls.failed, []);
 });

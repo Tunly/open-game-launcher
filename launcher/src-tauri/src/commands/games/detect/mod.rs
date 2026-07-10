@@ -24,8 +24,8 @@ const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 use super::core::{
     apply_battlenet_assets, current_unix_timestamp, env_path, epic_catalog_asset_cache_path,
-    get_dir_last_modified, installed_game, is_ignored_game_directory, local_drive_roots,
-    path_to_string, rawg_asset_cache_path, unix_timestamp_to_iso,
+    installed_game, is_ignored_game_directory, local_drive_roots, path_to_string,
+    rawg_asset_cache_path,
 };
 use super::types::*;
 
@@ -314,10 +314,6 @@ pub fn scan_gog_games() -> Vec<InstalledGame> {
         game.external_id = game_id.clone();
         // Note: GOG games do not use logos or icons (only banner/cover) as requested by the user.
 
-        if let Some(timestamp) = get_dir_last_modified(&install.install_dir) {
-            game.last_played_at = Some(unix_timestamp_to_iso(timestamp));
-        }
-
         games.push(game);
     }
 
@@ -369,10 +365,6 @@ pub fn scan_gog_games() -> Vec<InstalledGame> {
             );
             game.external_id = game_id.clone();
             // Note: GOG games do not use logos or icons (only banner/cover) as requested by the user.
-
-            if let Some(timestamp) = get_dir_last_modified(&path) {
-                game.last_played_at = Some(unix_timestamp_to_iso(timestamp));
-            }
 
             games.push(game);
         }
@@ -1279,10 +1271,6 @@ pub fn scan_battlenet_games() -> Vec<InstalledGame> {
         game.launch_uri = Some(format!("battlenet://{}", install.uid));
         game = apply_battlenet_assets(game, install.icon_path.as_deref());
 
-        if let Some(timestamp) = get_dir_last_modified(&install.install_dir) {
-            game.last_played_at = Some(unix_timestamp_to_iso(timestamp));
-        }
-
         games.push(game);
     }
 
@@ -1398,10 +1386,6 @@ pub fn scan_ubisoft_games() -> Vec<InstalledGame> {
         game.logo_urls = logo_url.into_iter().collect();
         game.icon_url = icon_url.clone();
         game.icon_urls = icon_url.into_iter().collect();
-        if let Some(timestamp) = get_dir_last_modified(&install.install_dir) {
-            game.last_played_at = Some(unix_timestamp_to_iso(timestamp));
-        }
-
         games.push(game);
     }
 
@@ -1555,10 +1539,6 @@ fn collect_xbox_games_from_roots(roots: Vec<(PathBuf, Option<String>)>) -> Vec<I
                     );
                 }
             }
-        }
-
-        if let Some(timestamp) = get_dir_last_modified(&root) {
-            game.last_played_at = Some(unix_timestamp_to_iso(timestamp));
         }
 
         games.push(game);
@@ -1721,10 +1701,6 @@ fn collect_directory_games_with_title_resolver(
             );
             game.logo_url = find_local_logo_asset(&path);
             game.icon_url = find_local_icon_asset(&path);
-            if let Some(timestamp) = get_dir_last_modified(&path) {
-                game.last_played_at = Some(unix_timestamp_to_iso(timestamp));
-            }
-
             games.push(game);
         }
     }
@@ -2817,10 +2793,6 @@ pub fn scan_ea_games() -> Vec<InstalledGame> {
 
         if !content_id.is_empty() {
             game.launch_uri = Some(format!("origin://launchgame/{}", content_id));
-        }
-
-        if let Some(timestamp) = get_dir_last_modified(&install.install_dir) {
-            game.last_played_at = Some(unix_timestamp_to_iso(timestamp));
         }
 
         games.push(game);

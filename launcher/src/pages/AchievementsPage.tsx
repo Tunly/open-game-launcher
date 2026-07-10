@@ -1,16 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "react-router-dom";
-import {
-  Award,
-  ChevronDown,
-  FolderOpen,
-  Gamepad2,
-  Loader2,
-  MoreHorizontal,
-  Search,
-  Settings,
-  Trophy,
-} from "lucide-react";
+import { Link, useSearchParams } from "react-router-dom";
+import { Award, FolderOpen, Gamepad2, Loader2, Search, Settings, Trophy } from "lucide-react";
 
 import { getGameAssetUrl, getGameBannerStyle } from "../lib/assets";
 import { AchievementCacheReadinessPanel } from "../components/achievements/AchievementCacheReadinessPanel";
@@ -28,6 +18,7 @@ import { listInstalledGames, openAchievementCacheFolder } from "../lib/launcher"
 import { hydrateGamesWithRemoteAchievements } from "../lib/supabase/achievements";
 import type { Game } from "../lib/types";
 import { PlatformSourceIcon } from "../components/library/PlatformIcons";
+import { useCurrentUser } from "../hooks/useCurrentUser";
 
 type GameTab = "recent" | "all" | "perfect" | "unfinished";
 type GameSort = "playtime" | "name" | "completion";
@@ -65,6 +56,10 @@ function formatDate(value?: string | null): string {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) return value;
   return parsed.toLocaleDateString("en", { day: "numeric", month: "short", year: "numeric" });
+}
+
+function readPlayerLabel(value: unknown): string | null {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
 function buildRow(group: GameGroup): GameAchievementRow {
@@ -205,10 +200,15 @@ function ProgressBar({ value }: { value: number }) {
 function GameRow({ row }: { row: GameAchievementRow }) {
   const { group, total, unlocked, completion, recentAchievements } = row;
   const isPerfect = total > 0 && unlocked === total;
+  const attentionStatus = group.achievementProviderStatuses?.find(
+    (provider) => provider.status !== "available",
+  );
+  const libraryGameId = group.achievementBasisGameId ?? group.primaryGame.id;
+  const actionLabel = attentionStatus?.status === "failed" ? "Retry in Library" : "Open in Library";
 
   return (
     <article className="border-4 border-black bg-[#f6edd8] shadow-[5px_5px_0_#171411]">
-      <div className="grid gap-3 p-2 md:grid-cols-[280px_minmax(0,1fr)_36px]">
+      <div className="grid gap-3 p-2 md:grid-cols-[280px_minmax(0,1fr)]">
         <ArtworkPanel group={group} />
 
         <div className="min-w-0 py-1">
@@ -270,23 +270,6 @@ function GameRow({ row }: { row: GameAchievementRow }) {
             </div>
           </div>
 
-          <div className="mt-3 flex flex-wrap gap-2">
-            <button
-              className="neo-copy inline-flex h-8 items-center gap-2 border-2 border-black bg-[#171411] px-3 text-[10px] font-black uppercase text-[#fbf4e7] shadow-[2px_2px_0_#171411]"
-              type="button"
-            >
-              My Game Stats
-              <ChevronDown className="h-3.5 w-3.5" />
-            </button>
-            <button
-              className="neo-copy inline-flex h-8 items-center gap-2 border-2 border-black bg-[#fbf4e7] px-3 text-[10px] font-black uppercase text-[#171411] shadow-[2px_2px_0_#171411]"
-              type="button"
-            >
-              My Game Content
-              <ChevronDown className="h-3.5 w-3.5" />
-            </button>
-          </div>
-
           {recentAchievements.length > 0 ? (
             <div className="mt-3 flex flex-wrap gap-1.5">
               {recentAchievements.map((achievement) => (
@@ -301,15 +284,28 @@ function GameRow({ row }: { row: GameAchievementRow }) {
               ))}
             </div>
           ) : null}
-        </div>
 
-        <button
-          type="button"
-          className="grid h-8 w-8 place-items-center justify-self-end border-2 border-black bg-[#fbf4e7] text-[#171411] shadow-[2px_2px_0_#171411]"
-          aria-label={`More actions for ${group.title}`}
-        >
-          <MoreHorizontal className="h-5 w-5" />
-        </button>
+          {total === 0 || attentionStatus ? (
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-2 border-black bg-[#fbf4e7] px-2 py-1.5">
+              <p className="neo-copy min-w-0 flex-1 text-[9px] font-black uppercase leading-4 text-[#5b403f]">
+                {attentionStatus?.message ?? "No achievements have been synced for this game yet."}
+              </p>
+              <Link
+                className="neo-copy shrink-0 border-2 border-black bg-[#b7102a] px-2 py-1 text-[9px] font-black uppercase text-white shadow-[2px_2px_0_#171411] hover:-translate-y-0.5"
+                to={`/library?game=${encodeURIComponent(libraryGameId)}`}
+              >
+                {actionLabel}
+              </Link>
+            </div>
+          ) : (
+            <Link
+              className="neo-copy mt-3 inline-flex border-2 border-black bg-[#171411] px-2 py-1 text-[9px] font-black uppercase text-[#fbf4e7] shadow-[2px_2px_0_#171411] hover:-translate-y-0.5"
+              to={`/library?game=${encodeURIComponent(libraryGameId)}`}
+            >
+              View Full List
+            </Link>
+          )}
+        </div>
       </div>
     </article>
   );
@@ -342,6 +338,7 @@ function StatCard({
 }
 
 export function AchievementsPage() {
+  const { isLoading: isAuthLoading, user } = useCurrentUser();
   const [searchParams] = useSearchParams();
   const verifyMode = searchParams.get("verify");
   const isAchievementCacheReadinessVerify = verifyMode === "achievement-cache-readiness";
@@ -357,9 +354,25 @@ export function AchievementsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [sourceFilter, setSourceFilter] = useState("all");
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const playerLabel =
+    readPlayerLabel(user?.user_metadata.display_name) ??
+    readPlayerLabel(user?.user_metadata.full_name) ??
+    readPlayerLabel(user?.user_metadata.username) ??
+    readPlayerLabel(user?.email?.split("@", 1)[0]) ??
+    "Local Player";
 
   useEffect(() => {
     let mounted = true;
+    if (isAuthLoading && !shouldSkipRemoteHydration) {
+      setGames([]);
+      setIsLoading(true);
+      return () => {
+        mounted = false;
+      };
+    }
+
+    setGames([]);
+    setError(null);
     setIsLoading(true);
     void (async () => {
       try {
@@ -386,12 +399,20 @@ export function AchievementsPage() {
     return () => {
       mounted = false;
     };
-  }, [shouldSkipRemoteHydration]);
+  }, [isAuthLoading, shouldSkipRemoteHydration, user?.id]);
 
   const rows = useMemo(
     () =>
       groupGames(games)
-        .filter((group) => group.achievements.length > 0)
+        .filter(
+          (group) =>
+            group.achievements.length > 0 ||
+            group.sources.some((source) =>
+              ["steam", "xbox", "gog", "epic", "ea", "ubisoft", "battlenet"].includes(
+                source.toLowerCase(),
+              ),
+            ),
+        )
         .map(buildRow),
     [games],
   );
@@ -407,7 +428,12 @@ export function AchievementsPage() {
   const sourceFilters = useMemo(
     () =>
       Array.from(
-        new Set(rows.flatMap((row) => row.group.achievements.flatMap((a) => a.sourceLabels))),
+        new Set(
+          rows.flatMap((row) => [
+            ...row.group.sources,
+            ...row.group.achievements.flatMap((achievement) => achievement.sourceLabels),
+          ]),
+        ),
       ).sort(),
     [rows],
   );
@@ -427,10 +453,12 @@ export function AchievementsPage() {
     let next = rows.filter((row) => gameMatchesSearch(row, searchQuery));
 
     if (sourceFilter !== "all") {
-      next = next.filter((row) =>
-        row.group.achievements.some((achievement) =>
-          achievement.sourceLabels.includes(sourceFilter),
-        ),
+      next = next.filter(
+        (row) =>
+          row.group.sources.includes(sourceFilter) ||
+          row.group.achievements.some((achievement) =>
+            achievement.sourceLabels.includes(sourceFilter),
+          ),
       );
     }
 
@@ -446,16 +474,17 @@ export function AchievementsPage() {
     if (sortMode === "name") {
       next.sort((left, right) => left.group.title.localeCompare(right.group.title));
     } else if (sortMode === "playtime") {
-      next.sort((left, right) => right.group.playtimeMinutes - left.group.playtimeMinutes);
+      next.sort(
+        (left, right) =>
+          right.group.playtimeMinutes - left.group.playtimeMinutes ||
+          left.group.title.localeCompare(right.group.title),
+      );
     } else {
       next.sort(
-        (left, right) => right.completion - left.completion || right.unlocked - left.unlocked,
-      );
-    }
-
-    if (activeTab === "recent" && sortMode !== "name") {
-      next.sort(
-        (left, right) => parseTime(right.group.lastPlayedAt) - parseTime(left.group.lastPlayedAt),
+        (left, right) =>
+          right.completion - left.completion ||
+          right.unlocked - left.unlocked ||
+          left.group.title.localeCompare(right.group.title),
       );
     }
 
@@ -493,7 +522,7 @@ export function AchievementsPage() {
               Player Archive
             </p>
             <h1 className="neo-title truncate text-4xl leading-none">
-              Daniel <span className="text-xl text-[#8cf5e4]">/ Games</span>
+              {playerLabel} <span className="text-xl text-[#8cf5e4]">/ Games</span>
             </h1>
           </div>
           <div className="ml-auto flex flex-wrap gap-2">

@@ -1,13 +1,136 @@
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const useCurrentUserMock = vi.hoisted(() => vi.fn());
+const profileMocks = vi.hoisted(() => ({ getFriends: vi.fn() }));
+const activityMocks = vi.hoisted(() => ({ postActivity: vi.fn() }));
+const activityFeedPropsMock = vi.hoisted(() => vi.fn());
+
+vi.mock("../hooks/useCurrentUser", () => ({
+  useCurrentUser: () => useCurrentUserMock(),
+}));
+
+vi.mock("../lib/supabase/profile", () => ({
+  getFriends: (...args: unknown[]) => profileMocks.getFriends(...args),
+}));
+
+vi.mock("../lib/supabase/activity", () => ({
+  postActivity: (...args: unknown[]) => activityMocks.postActivity(...args),
+}));
+
+vi.mock("../components/friends/ActivityFeed", () => ({
+  ActivityFeed: ({ friendIds }: { friendIds: string[] }) => {
+    activityFeedPropsMock(friendIds);
+    return <div data-testid="live-activity-feed">Live friend IDs: {friendIds.join(", ")}</div>;
+  },
+}));
 
 import { CommunityPage } from "./CommunityPage";
 
 const COMMUNITY_LOCAL_POSTS_STORAGE_KEY = "og-launcher:community-posts:v1";
 
-describe("CommunityPage activity shell", () => {
+describe("CommunityPage live activity", () => {
   beforeEach(() => {
+    vi.clearAllMocks();
     window.history.replaceState(null, "", "/community");
+    useCurrentUserMock.mockReturnValue({
+      error: null,
+      isConfigured: true,
+      isLoading: false,
+      session: null,
+      signOut: vi.fn(),
+      user: { id: "user-current" },
+    });
+    profileMocks.getFriends.mockResolvedValue([
+      {
+        addresseeId: "friend-2",
+        requesterId: "user-current",
+      },
+      {
+        addresseeId: "user-current",
+        requesterId: "friend-1",
+      },
+    ]);
+    activityMocks.postActivity.mockResolvedValue({ id: "status-live-1" });
+  });
+
+  it("loads accepted friends into the real activity feed without default demo surfaces", async () => {
+    render(<CommunityPage />);
+
+    expect(screen.getByRole("heading", { name: /community activity/i })).toBeInTheDocument();
+    expect(profileMocks.getFriends).toHaveBeenCalledWith("user-current");
+    expect(await screen.findByTestId("live-activity-feed")).toHaveTextContent("friend-2, friend-1");
+    expect(activityFeedPropsMock).toHaveBeenLastCalledWith(["friend-2", "friend-1"]);
+    expect(screen.queryByRole("region", { name: /popular hubs/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: /community workshop/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: /community market/i })).not.toBeInTheDocument();
+    expect(screen.queryByText("Neo-Tokyo Drift")).not.toBeInTheDocument();
+  });
+
+  it("publishes a trimmed friends-only status and refreshes the activity feed", async () => {
+    render(<CommunityPage />);
+    await screen.findByTestId("live-activity-feed");
+    const feedRenderCountBeforePost = activityFeedPropsMock.mock.calls.length;
+
+    const composer = screen.getByRole("form", { name: /friends-only status composer/i });
+    fireEvent.change(within(composer).getByRole("textbox", { name: /status for accepted/i }), {
+      target: { value: "  Ready for co-op  " },
+    });
+    fireEvent.click(within(composer).getByRole("button", { name: /post status/i }));
+
+    await waitFor(() => {
+      expect(activityMocks.postActivity).toHaveBeenCalledWith("status", {
+        metadata: { text: "Ready for co-op" },
+        visibility: "friends_only",
+      });
+    });
+    expect(await screen.findByRole("status", { name: "" })).toHaveTextContent(
+      "Status posted to your accepted friends.",
+    );
+    expect(within(composer).getByRole("textbox", { name: /status for accepted/i })).toHaveValue("");
+    expect(activityFeedPropsMock.mock.calls.length).toBeGreaterThan(feedRenderCountBeforePost);
+    expect(activityFeedPropsMock).toHaveBeenLastCalledWith(["friend-2", "friend-1"]);
+  });
+
+  it("shows an honest unavailable state when Supabase is not configured", () => {
+    useCurrentUserMock.mockReturnValue({
+      error: null,
+      isConfigured: false,
+      isLoading: false,
+      session: null,
+      signOut: vi.fn(),
+      user: null,
+    });
+
+    render(<CommunityPage />);
+
+    expect(screen.getByRole("region", { name: /community feed/i })).toHaveTextContent(
+      "Supabase is not configured",
+    );
+    expect(screen.getByRole("textbox", { name: /status for accepted/i })).toBeDisabled();
+    expect(profileMocks.getFriends).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("live-activity-feed")).not.toBeInTheDocument();
+  });
+
+  it("reports friend-feed loading failures and offers a real retry", async () => {
+    profileMocks.getFriends
+      .mockRejectedValueOnce(new Error("friend query denied"))
+      .mockResolvedValueOnce([]);
+
+    render(<CommunityPage />);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("friend query denied");
+    fireEvent.click(screen.getByRole("button", { name: /retry live feed/i }));
+
+    await waitFor(() => expect(profileMocks.getFriends).toHaveBeenCalledTimes(2));
+    expect(await screen.findByTestId("live-activity-feed")).toBeInTheDocument();
+    expect(screen.getByText(/you have no accepted friends yet/i)).toBeInTheDocument();
+  });
+});
+
+describe("CommunityPage verification preview activity shell", () => {
+  beforeEach(() => {
+    window.history.replaceState(null, "", "/community?verify=community-preview");
     window.localStorage.clear();
   });
 
@@ -41,9 +164,6 @@ describe("CommunityPage activity shell", () => {
       "aria-pressed",
       "true",
     );
-    expect(
-      within(contentTypeGroup).queryByRole("button", { name: "Screenshots" }),
-    ).not.toBeInTheDocument();
     expect(within(contentTypeGroup).getByRole("button", { name: "Artwork" })).toBeInTheDocument();
     expect(
       within(contentTypeGroup).getByRole("button", { name: "Broadcasts" }),
@@ -61,6 +181,15 @@ describe("CommunityPage activity shell", () => {
     const feed = screen.getByRole("region", { name: /community feed/i });
     expect(feed).toHaveTextContent("Netrunner Phantom Cup locks Friday");
     expect(feed).not.toHaveTextContent("Neo-Tokyo Drift ranked queue opens");
+  });
+
+  it("does not expose screenshot product surfaces", () => {
+    window.history.replaceState(null, "", "/community");
+    render(<CommunityPage />);
+
+    expect(screen.queryByRole("button", { name: "Screenshots" })).not.toBeInTheDocument();
+    expect(screen.queryByText(/public screenshot feed/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/screenshot set/i)).not.toBeInTheDocument();
   });
 
   it("filters popular hubs from the hub search", () => {
@@ -114,6 +243,76 @@ describe("CommunityPage activity shell", () => {
       "Steel Battalion zine cover wins",
     );
   });
+
+  it("switches game hub details from the popular hub cards", () => {
+    render(<CommunityPage />);
+
+    const popular = screen.getByRole("region", { name: /popular hubs/i });
+    fireEvent.click(within(popular).getByRole("button", { name: /Steel Battalion X/i }));
+
+    const hubDetails = screen.getByRole("region", { name: /game community hub details/i });
+    expect(hubDetails).toHaveTextContent("Steel Battalion X");
+    expect(hubDetails).toHaveTextContent("24");
+    expect(hubDetails).toHaveTextContent("Workshop");
+    expect(hubDetails).toHaveTextContent("9");
+    expect(hubDetails).toHaveTextContent("Market");
+  });
+
+  it("stages local community content into the selected content lane", () => {
+    render(<CommunityPage />);
+
+    const studio = screen.getByRole("region", { name: /community content studio/i });
+    fireEvent.click(within(studio).getByRole("button", { name: /upload local/i }));
+
+    const form = within(studio).getByRole("form", { name: /local community content upload/i });
+    fireEvent.change(within(form).getByRole("textbox", { name: /content title/i }), {
+      target: { value: "Local boss artwork" },
+    });
+    expect(within(form).getByRole("button", { name: "Artwork" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    fireEvent.click(within(form).getByRole("button", { name: /stage content/i }));
+
+    expect(studio).toHaveTextContent("Artwork staged locally for Neo-Tokyo Drift.");
+    expect(screen.getByRole("region", { name: /community feed/i })).toHaveTextContent(
+      "Local boss artwork",
+    );
+  });
+
+  it("adds a browser-local reply to the active discussion topic", () => {
+    render(<CommunityPage />);
+
+    const discussions = screen.getByRole("region", { name: /community discussions/i });
+    fireEvent.change(within(discussions).getByRole("textbox", { name: /topic reply/i }), {
+      target: { value: "Local reply card" },
+    });
+    fireEvent.click(within(discussions).getByRole("button", { name: "Reply" }));
+
+    expect(discussions).toHaveTextContent("Local reply card");
+  });
+
+  it("toggles workshop subscription, market watch, and moderation status locally", () => {
+    render(<CommunityPage />);
+
+    const workshop = screen.getByRole("region", { name: /community workshop/i });
+    fireEvent.click(within(workshop).getByRole("button", { name: "Subscribe" }));
+    expect(within(workshop).getByRole("button", { name: "Subscribed locally" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+
+    const market = screen.getByRole("region", { name: /community market/i });
+    fireEvent.click(within(market).getByRole("button", { name: "Watch" }));
+    expect(within(market).getByRole("button", { name: "Watching locally" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+
+    const moderation = screen.getByRole("region", { name: /community moderation queue/i });
+    fireEvent.click(within(moderation).getAllByRole("button", { name: "Hide" })[0]);
+    expect(moderation).toHaveTextContent("hidden // Missing spoiler tag");
+  });
 });
 
 describe("CommunityPage broadcast readiness", () => {
@@ -155,8 +354,8 @@ describe("CommunityPage broadcast readiness", () => {
     expect(panel).not.toHaveTextContent(/(^|[^a-z-])ready \/\/ \d+ kbps headroom/i);
   });
 
-  it("does not treat the default local preview as desktop vault evidence", () => {
-    window.history.replaceState(null, "", "/community");
+  it("does not treat the explicit local preview as desktop vault evidence", () => {
+    window.history.replaceState(null, "", "/community?verify=community-preview");
 
     render(<CommunityPage />);
 
@@ -256,17 +455,6 @@ describe("CommunityPage broadcast readiness", () => {
     expect(within(panel).getByText("No audience status")).toBeInTheDocument();
     expect(panel).not.toHaveTextContent("live_123456789_abcdef");
     expect(panel).not.toHaveTextContent(falseLiveProviderClaim);
-  });
-
-  it("does not render the removed public screenshot feed", () => {
-    window.history.replaceState(null, "", "/community?verify=public-screenshot-feed");
-
-    render(<CommunityPage />);
-
-    expect(
-      screen.queryByRole("region", { name: /public screenshot feed preview/i }),
-    ).not.toBeInTheDocument();
-    expect(screen.queryByText(/public screenshot feed/i)).not.toBeInTheDocument();
   });
 
   it("renders local chat moderation shadow queue without provider enforcement claims", () => {
@@ -462,7 +650,7 @@ describe("CommunityPage broadcast readiness", () => {
 
 describe("CommunityPage local create post composer", () => {
   beforeEach(() => {
-    window.history.replaceState(null, "", "/community");
+    window.history.replaceState(null, "", "/community?verify=community-preview");
     window.localStorage.clear();
   });
 

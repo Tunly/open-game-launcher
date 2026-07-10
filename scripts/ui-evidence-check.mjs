@@ -33,6 +33,7 @@ export function parseGitStatusPaths(output) {
     .split(/\r?\n/)
     .map((line) => line.trimEnd())
     .filter(Boolean)
+    .filter((line) => line[0] !== "D" && line[1] !== "D")
     .map((line) => {
       const path = line.slice(3);
       const renamedPath = path.includes(" -> ")
@@ -129,7 +130,7 @@ const pageRouteTokens = Object.freeze({
   DownloadsPage: ["/downloads"],
   EditProfilePage: ["/settings/profile"],
   FamilyPage: ["/family"],
-  FpsHudPage: ["/fps"],
+  FpsHudPage: ["/fps-hud"],
   FriendsPage: ["/friends", "/invite/"],
   GameActivityDashboardPage: ["/activity"],
   HomePage: ["/home"],
@@ -143,7 +144,6 @@ const pageRouteTokens = Object.freeze({
   PrivacySettingsPage: ["/settings/privacy"],
   ProfileCustomizePage: ["/settings/profile/customize"],
   ProfilePage: ["/u/"],
-  RemoteInstallDashboardPage: ["/downloads/remote"],
   SettingsPage: ["/settings"],
   StorePage: ["/store"],
 });
@@ -194,7 +194,7 @@ function expectedRouteTokensForUiPath(path) {
   if (/^launcher\/src\/lib\/(?:store|prices?)/.test(path)) {
     return ["/store"];
   }
-  if (/^launcher\/src\/lib\/(?:remote-|lan-|mobile-)/.test(path)) {
+  if (/^launcher\/src\/lib\/(?:remote-|lan-)/.test(path)) {
     return ["/downloads"];
   }
   if (/^launcher\/src\/lib\/(?:performance|overlay)/.test(path)) {

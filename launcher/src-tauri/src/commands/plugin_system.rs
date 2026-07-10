@@ -2658,9 +2658,7 @@ mod tests {
         assert_eq!(result.plugin_id, "library-tags-exporter");
         assert_eq!(result.key_id, "local-trusted");
         assert_eq!(result.file_count, 1);
-        assert!(result
-            .registry_path
-            .starts_with(&registry_root.display().to_string()));
+        assert!(Path::new(&result.registry_path).starts_with(registry_root.canonicalize().unwrap()));
         assert!(registry_root
             .join("library-tags-exporter")
             .join("1.0.0")
@@ -3236,9 +3234,7 @@ mod tests {
         assert_eq!(review.plugin_id, "library-tags-exporter");
         assert_eq!(review.version, "1.0.0");
         assert_eq!(review.entrypoint, "dist/main.js");
-        assert!(review
-            .registry_path
-            .starts_with(&registry_root.display().to_string()));
+        assert!(Path::new(&review.registry_path).starts_with(registry_root.canonicalize().unwrap()));
         assert_eq!(review.manifest_hash, expected_manifest_hash);
         assert!(!review.code_executed);
         assert!(!review.download_attempted);

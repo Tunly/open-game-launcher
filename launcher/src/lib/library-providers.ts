@@ -14,6 +14,7 @@ export function ownedGameToGame(og: OwnedGame): Game {
   const gogLaunchId = og.externalId ?? og.id.replace(/^gog-owned-/, "");
   const eaLaunchId = og.externalId ?? og.id.replace(/^ea-owned-/, "");
   const steamLaunchId = og.externalId ?? og.id.replace(/^steam-owned-/, "");
+  const productCategory = og.id.startsWith("steam-owned-") ? "game" : undefined;
 
   return {
     id: og.id,
@@ -28,7 +29,7 @@ export function ownedGameToGame(og: OwnedGame): Game {
             ? `origin://launchgame/${eaLaunchId}`
             : undefined,
     description: og.description,
-    version: "1.0",
+    version: "",
     coverUrl: og.coverUrl ?? undefined,
     logoUrl: og.logoUrl ?? undefined,
     iconUrl: og.iconUrl ?? undefined,
@@ -38,10 +39,13 @@ export function ownedGameToGame(og: OwnedGame): Game {
     status: "not_installed",
     platform: "windows",
     launcher,
-    playtimeMinutes: og.playtimeMinutes,
+    ...(productCategory ? { productCategory } : {}),
+    ...(og.playtimeMinutes == null ? {} : { playtimeMinutes: og.playtimeMinutes }),
     lastPlayedAt: og.lastPlayedAt,
     lastPlayed: og.lastPlayedAt ?? undefined,
     cloudGamingUrl: og.cloudGamingUrl ?? undefined,
+    achievements: og.achievements,
+    achievementsSyncedAt: og.achievementsSyncedAt,
   } as Game;
 }
 

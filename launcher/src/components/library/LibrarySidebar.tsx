@@ -1,7 +1,7 @@
-import { Search, SlidersHorizontal, Grid2X2 } from "lucide-react";
+import { Search, SlidersHorizontal } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import type { RefObject } from "react";
-import type { Game, GameRuntimeStatus } from "../../lib/types";
+import type { GameRuntimeStatus } from "../../lib/types";
 import type { GameGroup } from "../../lib/game-groups";
 import type { LibraryAdvancedFilters } from "../../lib/library-filters";
 import type { LibrarySortOption } from "../../lib/library-sort";
@@ -33,7 +33,6 @@ export interface LibrarySidebarProps {
   favorites: Record<string, boolean>;
   gameRuntimeById?: Record<string, GameRuntimeStatus>;
   runningGameIds?: Set<string>;
-  fallbackMockGames: Game[];
   listScrollRef: RefObject<HTMLDivElement | null>;
   setIsAddGameOpen: (open: boolean) => void;
   setAddGameError?: (err: string | null) => void;
@@ -60,7 +59,6 @@ export function LibrarySidebar({
   favorites,
   gameRuntimeById = {},
   runningGameIds = new Set(),
-  fallbackMockGames,
   listScrollRef,
   setIsAddGameOpen,
   setAddGameError,
@@ -173,37 +171,18 @@ export function LibrarySidebar({
     <aside className="flex min-h-0 flex-col justify-between border-b-4 border-black bg-[#efe3cf] md:border-b-0 md:border-r-4">
       <div className="flex min-h-0 flex-1 flex-col">
         <div className="flex h-11 items-center justify-between border-b-4 border-black bg-[#f4ead8]">
-          <button className="h-full flex-1 px-3 text-left text-[16px] font-black" type="button">
+          <div className="flex h-full min-w-0 flex-1 items-center px-3 text-left text-[16px] font-black">
             <span className="block min-w-0 truncate">
               Library ({filteredGames.length}
-              {hasActiveFilters ? ` / ${games.length || fallbackMockGames.length}` : ""})
+              {hasActiveFilters ? ` / ${games.length}` : ""})
             </span>
-          </button>
-          <button
-            className="grid h-full w-11 place-items-center border-l-4 border-black"
-            type="button"
-            aria-label="Grid view"
-          >
-            <Grid2X2 className="h-6 w-6" />
-          </button>
-        </div>
-
-        {/* Search Input Row */}
-        <div className="space-y-2 p-2 pb-1">
-          <label className="flex h-9 items-center gap-2 border-2 border-black bg-[#fbf8ef] px-2.5">
-            <Search className="h-4 w-4 text-[#686157]" />
-            <input
-              className="neo-copy min-w-0 flex-1 bg-transparent text-[11px] font-black tracking-[0.08em] text-[#171411] outline-none placeholder:text-[#686157]"
-              aria-label="Search library"
-              placeholder="Search..."
-              type="search"
-              value={searchQuery}
-              onChange={(event) => setSearchQuery(event.target.value)}
-            />
+          </div>
+          <div className="flex shrink-0 items-center gap-2 pr-2">
             <select
               value={sortOption}
-              onChange={(e) => setSortOption(e.target.value as LibrarySortOption)}
+              onChange={(event) => setSortOption(event.target.value as LibrarySortOption)}
               className="neo-copy h-6 cursor-pointer border-2 border-black bg-[#d8cbb7] text-[10px] font-black uppercase tracking-wider outline-none"
+              aria-label="Sort library"
               title="Sort"
             >
               <option value="alphabetical">A-Z</option>
@@ -219,10 +198,26 @@ export function LibrarySidebar({
                   ? "bg-[#139a82] text-[#fffaf0]"
                   : "bg-[#e8c843] text-[#171411] hover:bg-[#f0d95a]"
               }`}
+              aria-label="Advanced filters"
               title="Advanced Filters"
             >
               <SlidersHorizontal className="h-3.5 w-3.5" />
             </button>
+          </div>
+        </div>
+
+        {/* Search Input Row */}
+        <div className="space-y-2 p-2 pb-1">
+          <label className="flex h-9 items-center gap-2 border-2 border-black bg-[#fbf8ef] px-2.5">
+            <Search className="h-4 w-4 text-[#686157]" />
+            <input
+              className="neo-copy min-w-0 flex-1 bg-transparent text-[11px] font-black tracking-[0.08em] text-[#171411] outline-none placeholder:text-[#686157]"
+              aria-label="Search library"
+              placeholder="Search..."
+              type="search"
+              value={searchQuery}
+              onChange={(event) => setSearchQuery(event.target.value)}
+            />
           </label>
         </div>
 

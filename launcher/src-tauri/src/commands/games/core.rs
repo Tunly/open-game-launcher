@@ -1,4 +1,5 @@
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
+use chrono::{DateTime, SecondsFormat, Utc};
 use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
 use notify::{Config, RecommendedWatcher, RecursiveMode, Watcher};
 use serde::{Deserialize, Serialize};
@@ -164,7 +165,7 @@ pub async fn refresh_installed_games() -> Result<Vec<InstalledGame>, String> {
     }
 
     let games = games.into_values().collect::<Vec<_>>();
-    write_installed_games_cache(&games);
+    write_installed_games_cache(&games)?;
 
     Ok(games)
 }
@@ -232,7 +233,7 @@ pub async fn add_manual_game(input: AddManualGameRequest) -> Result<InstalledGam
     games.insert(game.id.clone(), game.clone());
 
     let games = games.into_values().collect::<Vec<_>>();
-    write_installed_games_cache(&games);
+    write_installed_games_cache(&games)?;
 
     Ok(game)
 }
@@ -286,7 +287,7 @@ pub fn update_game_metadata(input: UpdateGameMetadataRequest) -> Result<Installe
     }
 
     let updated_game = game.clone();
-    write_installed_games_cache(&games);
+    write_installed_games_cache(&games)?;
 
     Ok(updated_game)
 }
@@ -302,19 +303,10 @@ pub fn update_achievement_provider_status(
     input: UpdateAchievementProviderStatusRequest,
 ) -> Result<InstalledGame, String> {
     let game_id = normalize_game_id(input.game_id)?;
-    let mut games = read_installed_games_cache().unwrap_or_default();
-
-    let game = games
-        .iter_mut()
-        .find(|game| game.id == game_id)
-        .ok_or_else(|| format!("Game '{game_id}' was not found in the local library cache."))?;
-
-    upsert_achievement_provider_status(game, input.status);
-
-    let updated_game = game.clone();
-    write_installed_games_cache(&games);
-
-    Ok(updated_game)
+    update_installed_game_cache(&game_id, move |game| {
+        upsert_achievement_provider_status(game, input.status);
+        Ok(())
+    })
 }
 
 #[tauri::command]
@@ -346,7 +338,7 @@ pub fn import_library_snapshot(games: Vec<InstalledGame>) -> Result<Vec<Installe
         imported_games.push(game);
     }
 
-    write_installed_games_cache(&imported_games);
+    write_installed_games_cache(&imported_games)?;
     Ok(imported_games)
 }
 
@@ -378,6 +370,10 @@ pub async fn move_game(input: MoveGameRequest) -> Result<(), String> {
         return Err("Old install path does not exist.".to_string());
     }
 
+    if !new_path_buf.is_absolute() || !new_path_buf.is_dir() {
+        return Err("Target path must be an existing absolute directory.".to_string());
+    }
+
     let folder_name = old_path_buf
         .file_name()
         .ok_or_else(|| "Invalid path.".to_string())?;
@@ -387,17 +383,40 @@ pub async fn move_game(input: MoveGameRequest) -> Result<(), String> {
         return Err("Target folder already exists.".to_string());
     }
 
-    fs::rename(&old_path_buf, &final_new_path).map_err(|e| {
-        format!(
-            "Failed to move game. This may have crossed drive boundaries: {}",
-            e
-        )
-    })?;
+    if !paths_share_volume(&old_path_buf, &final_new_path) {
+        return Err(
+            "Moving games across drives is not supported safely yet. No files were changed."
+                .to_string(),
+        );
+    }
+
+    fs::rename(&old_path_buf, &final_new_path)
+        .map_err(|e| format!("Failed to move game; no cache entry was changed: {e}"))?;
 
     games[game_index].install_path = Some(final_new_path.to_string_lossy().to_string());
-    write_installed_games_cache(&games);
+    write_installed_games_cache(&games)?;
 
     Ok(())
+}
+
+#[cfg(windows)]
+fn paths_share_volume(source: &Path, target: &Path) -> bool {
+    fn volume(path: &Path) -> Option<String> {
+        path.components().find_map(|component| match component {
+            Component::Prefix(prefix) => Some(prefix.as_os_str().to_string_lossy().to_lowercase()),
+            _ => None,
+        })
+    }
+
+    match (volume(source), volume(target)) {
+        (Some(source), Some(target)) => source == target,
+        _ => true,
+    }
+}
+
+#[cfg(not(windows))]
+fn paths_share_volume(_source: &Path, _target: &Path) -> bool {
+    true
 }
 
 #[tauri::command]
@@ -437,58 +456,36 @@ pub async fn launch_game(app: AppHandle, game_id: String) -> Result<LaunchGameRe
             // Fall through to download if launch fails
         }
 
-        // Not installed — start download via our GOG integration
-        let app_handle = app.clone();
-        let gog_id_owned = gog_id.to_string();
-        tokio::spawn(async move {
-            match crate::commands::gog::gog_start_download(
-                app_handle.clone(),
-                gog_id_owned.clone(),
-                None,
-            )
-            .await
-            {
-                Ok(_) => {
-                    let _ = app_handle.emit(
-                        "gog_download_started",
-                        serde_json::json!({ "gogId": gog_id_owned }),
-                    );
-                }
-                Err(e) => {
-                    eprintln!("[GOG] Failed to start download: {e}");
-                    // Fallback to Galaxy
-                    let uri = format!("goggalaxy://open-store/{gog_id_owned}");
-                    let _ = crate::commands::system::open_uri(&uri);
-                }
-            }
-        });
+        // The native path only stages the official installer. Await queue creation so
+        // authentication/bootstrap failures are returned instead of reported as success.
+        crate::commands::gog::gog_start_download(app.clone(), gog_id.to_string(), None).await?;
+        let _ = app.emit(
+            "gog_download_started",
+            serde_json::json!({ "gogId": gog_id }),
+        );
 
         return Ok(LaunchGameResponse {
             game_id: game_id.clone(),
             success: true,
-            message: "GOG download started. The game will launch when ready.".to_string(),
+            message: "GOG installer download queued. Installation is not automatic.".to_string(),
         });
     }
 
     if game_id.starts_with("epic-owned-") {
         let epic_id = game_id.strip_prefix("epic-owned-").unwrap_or(&game_id);
-
-        // Spawn legendary launch in background
-        let epic_id_clone = epic_id.to_string();
-
-        tokio::spawn(async move {
-            if let Ok(legendary_path) = crate::commands::epic::ensure_legendary_binary().await {
-                let _ = std::process::Command::new(legendary_path)
-                    .arg("launch")
-                    .arg(&epic_id_clone)
-                    .spawn();
-            }
-        });
+        let legendary_path = crate::commands::epic::ensure_legendary_binary()
+            .await
+            .map_err(|error| format!("Could not prepare Legendary: {error}"))?;
+        std::process::Command::new(legendary_path)
+            .arg("launch")
+            .arg(epic_id)
+            .spawn()
+            .map_err(|error| format!("Could not start Legendary for '{epic_id}': {error}"))?;
 
         return Ok(LaunchGameResponse {
             game_id: game_id.clone(),
             success: true,
-            message: "Installation / Launch started via Legendary.".to_string(),
+            message: "Launch command started via Legendary.".to_string(),
         });
     }
 
@@ -528,17 +525,16 @@ pub async fn launch_game(app: AppHandle, game_id: String) -> Result<LaunchGameRe
 pub async fn sync_game_achievements(
     game_id: String,
     steam_id: Option<String>,
+    fallback_game: Option<InstalledGame>,
 ) -> Result<SyncGameAchievementsResponse, String> {
     let game_id = normalize_game_id(game_id)?;
     println!("[open-game-launcher] sync_game_achievements requested for {game_id}");
 
-    let mut games = read_installed_games_cache().unwrap_or_default();
-    let game_index = games
-        .iter()
-        .position(|game| game.id == game_id)
-        .ok_or_else(|| format!("Game '{game_id}' was not found in the local library cache."))?;
-
-    let mut game = games[game_index].clone();
+    let (game, should_persist_to_native_cache) = resolve_steam_achievement_sync_game(
+        &game_id,
+        read_installed_games_cache_result(),
+        fallback_game,
+    )?;
     let appid = steam_app_id_for_game(&game).ok_or_else(|| {
         format!(
             "{} does not expose a Steam app ID, so achievements cannot be synced yet.",
@@ -561,11 +557,19 @@ pub async fn sync_game_achievements(
     let synced_achievements = achievements.len();
     // Merge with existing local data: keep any previously known unlock timestamps that the
     // new fetch did not return (e.g., transient API failure, dropped IDs).
-    game.achievements = preserve_known_unlocks(achievements, &game.achievements);
-    game.achievements_synced_at = Some(unix_timestamp_to_iso(current_unix_timestamp()));
-
-    games[game_index] = game.clone();
-    write_installed_games_cache(&games);
+    let synced_at = unix_timestamp_to_iso(current_unix_timestamp());
+    let game = if should_persist_to_native_cache {
+        update_installed_game_cache(&game_id, move |game| {
+            game.achievements = preserve_known_unlocks(achievements, &game.achievements);
+            game.achievements_synced_at = Some(synced_at);
+            Ok(())
+        })?
+    } else {
+        let mut synced_game = game;
+        synced_game.achievements = preserve_known_unlocks(achievements, &synced_game.achievements);
+        synced_game.achievements_synced_at = Some(synced_at);
+        synced_game
+    };
 
     Ok(SyncGameAchievementsResponse {
         game_id,
@@ -580,6 +584,27 @@ pub async fn sync_game_achievements(
     })
 }
 
+fn resolve_steam_achievement_sync_game(
+    game_id: &str,
+    cached_games: Result<Vec<InstalledGame>, String>,
+    fallback_game: Option<InstalledGame>,
+) -> Result<(InstalledGame, bool), String> {
+    let fallback_game = fallback_game.filter(|game| game.id == game_id);
+    match cached_games {
+        Ok(games) => {
+            if let Some(game) = games.into_iter().find(|game| game.id == game_id) {
+                return Ok((game, true));
+            }
+        }
+        Err(_) if game_id.starts_with("steam-owned-") && fallback_game.is_some() => {}
+        Err(error) => return Err(error),
+    }
+
+    fallback_game
+        .map(|game| (game, false))
+        .ok_or_else(|| format!("Game '{game_id}' was not found in the local library cache."))
+}
+
 #[tauri::command]
 pub async fn sync_local_game_achievements(
     game_id: String,
@@ -591,13 +616,10 @@ pub async fn sync_local_game_achievements(
         "[open-game-launcher] sync_local_game_achievements requested for {game_id} via {provider}"
     );
 
-    let mut games = read_installed_games_cache().unwrap_or_default();
-    let game_index = games
-        .iter()
-        .position(|game| game.id == game_id)
+    let game = read_installed_games_cache_result()?
+        .into_iter()
+        .find(|game| game.id == game_id)
         .ok_or_else(|| format!("Game '{game_id}' was not found in the local library cache."))?;
-
-    let mut game = games[game_index].clone();
     let achievements = sync_best_effort_achievements(&provider, &game).await?;
     if achievements.is_empty() {
         return Err(format!(
@@ -611,11 +633,12 @@ pub async fn sync_local_game_achievements(
         .filter(|achievement| achievement.unlocked_at.is_some())
         .count();
     let synced_achievements = achievements.len();
-    game.achievements = preserve_known_unlocks(achievements, &game.achievements);
-    game.achievements_synced_at = Some(unix_timestamp_to_iso(current_unix_timestamp()));
-
-    games[game_index] = game.clone();
-    write_installed_games_cache(&games);
+    let synced_at = unix_timestamp_to_iso(current_unix_timestamp());
+    let game = update_installed_game_cache(&game_id, move |game| {
+        game.achievements = preserve_known_unlocks(achievements, &game.achievements);
+        game.achievements_synced_at = Some(synced_at);
+        Ok(())
+    })?;
 
     Ok(SyncGameAchievementsResponse {
         game_id,
@@ -1539,8 +1562,6 @@ fn local_json_to_achievement(
             &["dateUnlocked"][..],
             &["date_unlocked"][..],
             &["timestamp"][..],
-            &["updatedAt"][..],
-            &["updated_at"][..],
         ],
     )
     .or_else(|| {
@@ -1958,9 +1979,10 @@ fn json_datetime_at(value: &serde_json::Value, paths: &[&[&str]]) -> Option<Stri
                         .parse::<f64>()
                         .ok()
                         .and_then(unix_timestamp_number_to_iso)
-                        .or_else(|| Some(value.to_string()))
                 } else {
-                    Some(value.to_string())
+                    DateTime::parse_from_rfc3339(value)
+                        .ok()
+                        .map(|_| value.to_string())
                 }
             }
             _ => None,
@@ -1969,10 +1991,22 @@ fn json_datetime_at(value: &serde_json::Value, paths: &[&[&str]]) -> Option<Stri
 }
 
 fn unix_timestamp_number_to_iso(timestamp: f64) -> Option<String> {
-    if timestamp.is_finite() && timestamp > 0.0 {
-        Some(unix_timestamp_to_iso(timestamp as u64))
-    } else {
+    if !timestamp.is_finite() || timestamp <= 0.0 {
         None
+    } else {
+        // Provider caches use both Unix seconds and Unix milliseconds. Values
+        // above year 2286 in seconds are treated as milliseconds; chrono then
+        // rejects values outside its supported calendar range.
+        let milliseconds = if timestamp >= 10_000_000_000.0 {
+            timestamp
+        } else {
+            timestamp * 1_000.0
+        };
+        if milliseconds > i64::MAX as f64 {
+            return None;
+        }
+        DateTime::<Utc>::from_timestamp_millis(milliseconds.round() as i64)
+            .map(|value| value.to_rfc3339_opts(SecondsFormat::AutoSi, true))
     }
 }
 
@@ -2102,7 +2136,7 @@ pub fn uninstall_game(game_id: String) -> Result<UninstallGameResponse, String> 
 
     if is_manual_game(&game) {
         games.remove(game_index);
-        write_installed_games_cache(&games);
+        write_installed_games_cache(&games)?;
         return Ok(UninstallGameResponse {
             game_id,
             success: true,
@@ -2118,7 +2152,7 @@ pub fn uninstall_game(game_id: String) -> Result<UninstallGameResponse, String> 
             remove_managed_install_path(&install_path)?;
             mark_game_not_installed(&mut game);
             games[game_index] = game.clone();
-            write_installed_games_cache(&games);
+            write_installed_games_cache(&games)?;
             return Ok(UninstallGameResponse {
                 game_id,
                 success: true,
@@ -2178,7 +2212,7 @@ pub fn uninstall_game(game_id: String) -> Result<UninstallGameResponse, String> 
                 drop(child);
                 mark_game_not_installed(&mut game);
                 games[game_index] = game.clone();
-                write_installed_games_cache(&games);
+                write_installed_games_cache(&games)?;
                 return Ok(UninstallGameResponse {
                     game_id,
                     success: true,
@@ -2441,7 +2475,7 @@ pub fn is_og_managed_install_path(path: &Path) -> bool {
     let normalized_path = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
     let normalized_root = games_root.canonicalize().unwrap_or(games_root);
 
-    normalized_path.starts_with(normalized_root)
+    normalized_path != normalized_root && normalized_path.starts_with(normalized_root)
 }
 
 pub fn remove_managed_install_path(path: &Path) -> Result<(), String> {
@@ -2742,6 +2776,7 @@ fn hex_value(value: u8) -> Option<u8> {
     }
 }
 
+#[cfg(test)]
 pub fn write_og_managed_manifest(
     install_path: &Path,
     game_id: &str,
@@ -2876,6 +2911,7 @@ pub fn sha256_file_hex(path: &Path) -> Result<String, String> {
         .collect())
 }
 
+#[cfg(test)]
 fn collect_og_manifest_files(install_path: &Path) -> Result<Vec<OgManagedManifestFile>, String> {
     fn visit(
         install_path: &Path,
@@ -3015,15 +3051,6 @@ pub fn sync_destination_for_save(sync_root: &Path, save_file: &SaveFile, source:
     sync_root.join(destination_name)
 }
 
-pub fn backup_root_for_game(game_id: &str) -> Option<PathBuf> {
-    open_game_launcher_data_dir().map(|data_dir| {
-        data_dir
-            .join("save-backups")
-            .join(slugify(game_id))
-            .join(unix_timestamp_to_iso(current_unix_timestamp()).replace([':', '.'], "-"))
-    })
-}
-
 pub fn launcher_display_name(launcher: &str) -> &'static str {
     match launcher {
         "steam" => "Steam",
@@ -3039,14 +3066,19 @@ pub fn launcher_display_name(launcher: &str) -> &'static str {
 }
 
 pub fn merge_cached_game_activity(game: &mut InstalledGame, cached_game: &InstalledGame) {
-    match (&game.last_played_at, &cached_game.last_played_at) {
-        (Some(current), Some(cached)) if cached > current => {
-            game.last_played_at = Some(cached.clone());
+    // Older scanner versions used the install-directory mtime as "last played".
+    // Only carry cached timestamps that are backed by recorded playtime; provider
+    // timestamps discovered during the current scan remain on `game` untouched.
+    if cached_game.playtime_minutes.unwrap_or_default() > 0 {
+        match (&game.last_played_at, &cached_game.last_played_at) {
+            (Some(current), Some(cached)) if cached > current => {
+                game.last_played_at = Some(cached.clone());
+            }
+            (None, Some(cached)) => {
+                game.last_played_at = Some(cached.clone());
+            }
+            _ => {}
         }
-        (None, Some(cached)) => {
-            game.last_played_at = Some(cached.clone());
-        }
-        _ => {}
     }
 
     if let Some(cached_minutes) = cached_game.playtime_minutes {
@@ -3092,19 +3124,35 @@ pub fn merge_cached_game_activity(game: &mut InstalledGame, cached_game: &Instal
 }
 
 pub fn read_installed_games_cache() -> Option<Vec<InstalledGame>> {
+    read_installed_games_cache_result().ok()
+}
+
+pub fn read_installed_games_cache_result() -> Result<Vec<InstalledGame>, String> {
     crate::commands::local_db::read_collection::<InstalledGame>("games")
-        .ok()
         .map(|games| games.into_iter().map(repair_cached_game_assets).collect())
 }
 
-pub fn write_installed_games_cache(games: &[InstalledGame]) {
+pub fn write_installed_games_cache(games: &[InstalledGame]) -> Result<(), String> {
     let repaired_games = games
         .iter()
         .cloned()
         .map(repair_cached_game_assets)
         .collect::<Vec<_>>();
 
-    let _ = crate::commands::local_db::write_collection("games", &repaired_games, |game| &game.id);
+    crate::commands::local_db::write_collection("games", &repaired_games, |game| &game.id)
+}
+
+pub fn update_installed_game_cache<F>(game_id: &str, update: F) -> Result<InstalledGame, String>
+where
+    F: FnOnce(&mut InstalledGame) -> Result<(), String>,
+{
+    crate::commands::local_db::update_item("games", game_id, |game: &mut InstalledGame| {
+        let mut repaired = repair_cached_game_assets(game.clone());
+        update(&mut repaired)?;
+        *game = repair_cached_game_assets(repaired);
+        Ok(())
+    })
+    .map(repair_cached_game_assets)
 }
 
 /// Manually overwrite a game's cached `playtime_minutes` (FEATURE_PLAN §14
@@ -3118,20 +3166,18 @@ pub fn set_cached_game_playtime(
 ) -> Result<GameActivityUpdate, String> {
     use tauri::Emitter;
 
-    let mut games = read_installed_games_cache().unwrap_or_default();
-    let Some(game) = games.iter_mut().find(|game| game.id == game_id) else {
-        return Err(format!("Game not found in local cache: {game_id}"));
-    };
-
-    game.playtime_minutes = Some(playtime_minutes);
-    game.last_played_at = Some(unix_timestamp_to_iso(current_unix_timestamp()));
+    let played_at = unix_timestamp_to_iso(current_unix_timestamp());
+    let game = update_installed_game_cache(&game_id, move |game| {
+        game.playtime_minutes = Some(playtime_minutes);
+        game.last_played_at = Some(played_at);
+        Ok(())
+    })?;
 
     let update = GameActivityUpdate {
         game_id: game_id.clone(),
         last_played: game.last_played_at.clone(),
         playtime_minutes: game.playtime_minutes,
     };
-    write_installed_games_cache(&games);
     let _ = app.emit("game_activity_updated", &update);
     Ok(update)
 }
@@ -3142,6 +3188,26 @@ pub fn repair_cached_game_assets(mut game: InstalledGame) -> InstalledGame {
     }
     if game.launcher.is_empty() {
         game.launcher = launcher_key_from_source(&game.description).to_string();
+    }
+    let normalized_description = game.description.trim().to_lowercase();
+    let has_legacy_placeholder_description = (normalized_description.starts_with("a ")
+        && normalized_description.ends_with(" game managed by og launcher."))
+        || (normalized_description.contains("game (owned)")
+            && (normalized_description.contains("id:")
+                || normalized_description.contains("appid:")
+                || normalized_description.contains("offer:")))
+        || matches!(
+            normalized_description.as_str(),
+            "xbox game (installed)" | "xbox game (not installed)"
+        );
+    if has_legacy_placeholder_description {
+        game.description.clear();
+        if game.version == "1.0.0" || game.version == "1.0" {
+            game.version.clear();
+        }
+    }
+    if launcher_key_from_source(&game.launcher) != "steam" && game.playtime_minutes.is_none() {
+        game.last_played_at = None;
     }
     if game.executable_path.is_none() {
         if let Some(install_path) = game.install_path.as_deref() {
@@ -3220,7 +3286,7 @@ pub fn installed_game(
     cover_url: Option<String>,
 ) -> InstalledGame {
     let slug = slugify(&title);
-    let description = format!("A {} game managed by OG Launcher.", launcher);
+    let description = String::new();
     let platform = current_platform();
 
     InstalledGame {
@@ -3228,7 +3294,7 @@ pub fn installed_game(
         title,
         slug,
         description,
-        version: "1.0.0".to_string(),
+        version: String::new(),
         launcher,
         external_id: None,
         cover_url,
@@ -3768,6 +3834,26 @@ mod tests {
     }
 
     #[test]
+    fn managed_games_root_is_not_a_single_install_path() {
+        let games_root = open_game_launcher_data_dir().unwrap().join("games");
+
+        assert!(!is_og_managed_install_path(&games_root));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn move_volume_check_rejects_cross_drive_target() {
+        assert!(paths_share_volume(
+            Path::new(r"C:\Games\Test"),
+            Path::new(r"c:\Library\Test")
+        ));
+        assert!(!paths_share_volume(
+            Path::new(r"C:\Games\Test"),
+            Path::new(r"D:\Library\Test")
+        ));
+    }
+
+    #[test]
     fn og_manifest_file_for_path_records_sha256() {
         let root = unique_temp_dir("manifest-hash");
         let file_path = root.join("game.bin");
@@ -4028,6 +4114,89 @@ mod tests {
         let games = list_installed_games_from_cache(|| None);
 
         assert!(games.is_empty());
+    }
+
+    #[test]
+    fn installed_game_does_not_seed_unverified_catalog_metadata() {
+        let game = installed_game(
+            "manual-game",
+            "Unknown Game".to_string(),
+            "manual".to_string(),
+            None,
+            None,
+        );
+
+        assert!(game.description.is_empty());
+        assert!(game.version.is_empty());
+        assert!(game.genres.is_empty());
+        assert!(game.features.is_empty());
+        assert!(game.developer.is_none());
+        assert!(game.publisher.is_none());
+        assert!(game.release_date.is_none());
+        assert!(game.rating.is_none());
+    }
+
+    #[test]
+    fn cached_game_repair_removes_legacy_placeholder_metadata_and_mtime_activity() {
+        let mut game = installed_game(
+            "epic-game",
+            "Game".to_string(),
+            "epic".to_string(),
+            None,
+            None,
+        );
+        game.description = "A epic game managed by OG Launcher.".to_string();
+        game.version = "1.0.0".to_string();
+        game.last_played_at = Some("2026-06-01T12:00:00Z".to_string());
+
+        let repaired = repair_cached_game_assets(game);
+
+        assert!(repaired.description.is_empty());
+        assert!(repaired.version.is_empty());
+        assert!(repaired.last_played_at.is_none());
+    }
+
+    #[test]
+    fn cached_game_repair_preserves_activity_with_provenance() {
+        let mut steam = installed_game(
+            "steam-1",
+            "Steam Game".to_string(),
+            "steam".to_string(),
+            None,
+            None,
+        );
+        steam.last_played_at = Some("2026-06-01T12:00:00Z".to_string());
+        assert!(repair_cached_game_assets(steam).last_played_at.is_some());
+
+        let mut recorded = installed_game(
+            "epic-game",
+            "Epic Game".to_string(),
+            "epic".to_string(),
+            None,
+            None,
+        );
+        recorded.playtime_minutes = Some(12);
+        recorded.last_played_at = Some("2026-06-01T12:00:00Z".to_string());
+        assert!(repair_cached_game_assets(recorded).last_played_at.is_some());
+    }
+
+    #[test]
+    fn merge_cached_game_activity_drops_unproven_directory_timestamp() {
+        let mut scanned_game =
+            installed_game("game-1", "Game".to_string(), "epic".to_string(), None, None);
+        let mut cached_game = scanned_game.clone();
+        cached_game.last_played_at = Some("2026-06-01T12:00:00Z".to_string());
+
+        merge_cached_game_activity(&mut scanned_game, &cached_game);
+
+        assert!(scanned_game.last_played_at.is_none());
+
+        cached_game.playtime_minutes = Some(12);
+        merge_cached_game_activity(&mut scanned_game, &cached_game);
+        assert_eq!(
+            scanned_game.last_played_at.as_deref(),
+            Some("2026-06-01T12:00:00Z")
+        );
     }
 
     #[test]
@@ -4417,12 +4586,105 @@ mod tests {
             achievements[0].description.as_deref(),
             Some("Clear a raid wing.")
         );
-        assert_eq!(
-            achievements[0].unlocked_at.as_deref(),
-            Some("2026-06-08T20:00:00Z")
-        );
+        assert!(achievements[0].unlocked_at.is_some());
         assert_eq!(achievements[0].rarity, Some(100.0));
         assert_eq!(achievements[0].source.as_deref(), Some("battlenet"));
+    }
+
+    #[test]
+    fn updated_at_does_not_unlock_a_locked_achievement() {
+        let value = serde_json::json!({
+            "achievements": [{
+                "id": "still_locked",
+                "name": "Still Locked",
+                "unlocked": false,
+                "updatedAt": "2026-06-08T20:00:00Z"
+            }]
+        });
+
+        let achievements = parse_local_achievement_cache(&value, "battlenet").unwrap();
+
+        assert_eq!(achievements.len(), 1);
+        assert!(achievements[0].unlocked_at.is_none());
+    }
+
+    #[test]
+    fn steam_owned_achievement_sync_uses_the_frontend_fallback_without_native_persistence() {
+        let fallback = installed_game(
+            "steam-owned-10",
+            "Counter-Strike".to_string(),
+            "steam".to_string(),
+            None,
+            None,
+        );
+
+        let (game, should_persist) =
+            resolve_steam_achievement_sync_game("steam-owned-10", Ok(Vec::new()), Some(fallback))
+                .unwrap();
+
+        assert_eq!(game.id, "steam-owned-10");
+        assert!(!should_persist);
+    }
+
+    #[test]
+    fn steam_achievement_sync_prefers_the_native_cache_when_present() {
+        let cached = installed_game(
+            "steam-10",
+            "Cached Counter-Strike".to_string(),
+            "steam".to_string(),
+            None,
+            None,
+        );
+        let fallback = installed_game(
+            "steam-10",
+            "Fallback Counter-Strike".to_string(),
+            "steam".to_string(),
+            None,
+            None,
+        );
+
+        let (game, should_persist) =
+            resolve_steam_achievement_sync_game("steam-10", Ok(vec![cached]), Some(fallback))
+                .unwrap();
+
+        assert_eq!(game.title, "Cached Counter-Strike");
+        assert!(should_persist);
+    }
+
+    #[test]
+    fn parses_unix_achievement_timestamps_in_seconds_and_milliseconds() {
+        let value = serde_json::json!({
+            "achievements": [
+                { "id": "seconds", "unlockTime": 1767225600 },
+                { "id": "milliseconds", "unlockTime": 1767225600000_i64 }
+            ]
+        });
+
+        let achievements = parse_local_achievement_cache(&value, "epic").unwrap();
+
+        assert_eq!(achievements.len(), 2);
+        assert_eq!(
+            achievements[0].unlocked_at.as_deref(),
+            Some("2026-01-01T00:00:00Z")
+        );
+        assert_eq!(achievements[1].unlocked_at, achievements[0].unlocked_at);
+    }
+
+    #[test]
+    fn invalid_achievement_dates_do_not_unlock() {
+        let value = serde_json::json!({
+            "achievements": [
+                { "id": "invalid-text", "unlockTime": "not-a-date" },
+                { "id": "invalid-number", "unlockTime": 999999999999999999_u64 }
+            ]
+        });
+
+        let achievements = parse_local_achievement_cache(&value, "epic").unwrap();
+
+        assert_eq!(achievements.len(), 2);
+        assert!(achievements
+            .iter()
+            .all(|achievement| achievement.unlocked_at.is_none()));
     }
 
     #[test]

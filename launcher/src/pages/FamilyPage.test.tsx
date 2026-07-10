@@ -57,7 +57,10 @@ describe("FamilyPage local relay fallback", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: /create relay/i }));
 
-    expect(await screen.findByText("Family relay created: Arcade Household")).toBeInTheDocument();
+    expect(
+      await screen.findByText(/Local preview relay created: Arcade Household/i),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Local preview only/i)).toBeVisible();
     expect(screen.getByRole("heading", { name: "Arcade Household" })).toBeInTheDocument();
     expect(screen.getByText("1/6")).toBeInTheDocument();
     expect(screen.getByText("local-preview-player")).toBeInTheDocument();
@@ -110,7 +113,9 @@ describe("FamilyPage local relay fallback", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: /join relay/i }));
 
-    expect(await screen.findByText("Joined family relay: Cartridge Coop")).toBeInTheDocument();
+    expect(
+      await screen.findByText(/Joined local preview relay: Cartridge Coop/i),
+    ).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Cartridge Coop" })).toBeInTheDocument();
     expect(screen.getByText("2/6")).toBeInTheDocument();
 

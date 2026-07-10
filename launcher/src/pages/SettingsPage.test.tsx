@@ -5,6 +5,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const presencePollingReadinessPanelMock = vi.hoisted(() => vi.fn());
 const tauriIsTauriMock = vi.hoisted(() => vi.fn(() => false));
+const nativeSettingsMocks = vi.hoisted(() => ({
+  dialogOpen: vi.fn(),
+  disableAutostart: vi.fn(),
+  enableAutostart: vi.fn(),
+  isAutostartEnabled: vi.fn(),
+}));
 
 const launcherMocks = vi.hoisted(() => ({
   auditStagedPluginRegistry: vi.fn(() =>
@@ -251,6 +257,16 @@ vi.mock("@tauri-apps/api/core", () => ({
 
 vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn(() => Promise.resolve(() => undefined)),
+}));
+
+vi.mock("@tauri-apps/plugin-dialog", () => ({
+  open: nativeSettingsMocks.dialogOpen,
+}));
+
+vi.mock("@tauri-apps/plugin-autostart", () => ({
+  disable: nativeSettingsMocks.disableAutostart,
+  enable: nativeSettingsMocks.enableAutostart,
+  isEnabled: nativeSettingsMocks.isAutostartEnabled,
 }));
 
 vi.mock("../components/settings/ActivitySection", () => ({
@@ -510,6 +526,14 @@ describe("SettingsPage One-Click Setup E2E readiness", () => {
     launcherMocks.reviewPluginMarketplaceUpdateIndexTrust.mockClear();
     launcherMocks.reviewPluginUpdateSigningEnvelope.mockClear();
     launcherMocks.stageSignedPluginPackage.mockClear();
+    nativeSettingsMocks.dialogOpen.mockReset();
+    nativeSettingsMocks.dialogOpen.mockResolvedValue(null);
+    nativeSettingsMocks.disableAutostart.mockReset();
+    nativeSettingsMocks.disableAutostart.mockResolvedValue(undefined);
+    nativeSettingsMocks.enableAutostart.mockReset();
+    nativeSettingsMocks.enableAutostart.mockResolvedValue(undefined);
+    nativeSettingsMocks.isAutostartEnabled.mockReset();
+    nativeSettingsMocks.isAutostartEnabled.mockResolvedValue(false);
     window.localStorage.clear();
   });
 
@@ -518,6 +542,58 @@ describe("SettingsPage One-Click Setup E2E readiness", () => {
 
     expect(screen.queryByText("E2E Cloud Saves")).not.toBeInTheDocument();
     expect(screen.queryByRole("region", { name: /cloud saves mock/i })).not.toBeInTheDocument();
+  });
+
+  it("keeps native autostart disabled in browser preview and removes the fake game-update toggle", async () => {
+    renderSettingsRoute("/settings");
+
+    expect(screen.getByRole("switch", { name: "Start With System" })).toBeDisabled();
+    expect(screen.queryByRole("switch", { name: "Auto-Update Games" })).not.toBeInTheDocument();
+    expect(
+      await screen.findByText(/login autostart is available in the desktop app/i),
+    ).toBeVisible();
+  });
+
+  it("uses the native folder picker for the install target", async () => {
+    tauriIsTauriMock.mockReturnValue(true);
+    nativeSettingsMocks.dialogOpen.mockResolvedValueOnce("D:\\OG Games");
+    renderSettingsRoute("/settings");
+
+    fireEvent.click(await screen.findByRole("button", { name: "Choose Folder" }));
+
+    await waitFor(() => {
+      expect(nativeSettingsMocks.dialogOpen).toHaveBeenCalledWith({
+        directory: true,
+        multiple: false,
+        title: "Choose OG install target",
+      });
+    });
+    expect((await screen.findAllByText("D:\\OG Games")).length).toBeGreaterThan(0);
+    expect(screen.getByText(/install target selected for setup review/i)).toBeVisible();
+    const installTarget = screen
+      .getByRole("heading", { name: "Install Target" })
+      .closest("article");
+    expect(installTarget).not.toBeNull();
+    expect(within(installTarget as HTMLElement).getByText("warning")).toBeVisible();
+    expect(installTarget).toHaveTextContent(
+      "D:\\OG Games is selected for review only and is not applied to installs.",
+    );
+  });
+
+  it("updates the real desktop autostart entry and verifies its state", async () => {
+    tauriIsTauriMock.mockReturnValue(true);
+    nativeSettingsMocks.isAutostartEnabled.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+    renderSettingsRoute("/settings");
+
+    const autostartSwitch = await screen.findByRole("switch", { name: "Start With System" });
+    await waitFor(() => expect(nativeSettingsMocks.isAutostartEnabled).toHaveBeenCalledTimes(1));
+    fireEvent.click(autostartSwitch);
+
+    await waitFor(() => {
+      expect(nativeSettingsMocks.enableAutostart).toHaveBeenCalledTimes(1);
+      expect(autostartSwitch).toHaveAttribute("aria-checked", "true");
+    });
+    expect(screen.getByText("Login autostart enabled.")).toBeVisible();
   });
 
   it("mounts hosted/provider E2E readiness only on the verify route", async () => {
@@ -532,7 +608,12 @@ describe("SettingsPage One-Click Setup E2E readiness", () => {
 
     expect(await screen.findByRole("region", { name: /one-click setup readiness/i })).toBeVisible();
     expect(screen.getByText("New PC Setup Tape")).toBeInTheDocument();
-    expect(screen.getByText("100%")).toBeInTheDocument();
+    expect(screen.getByText("83%")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "D:\\OGLauncher\\Games is selected for review only and is not applied to installs.",
+      ),
+    ).toBeInTheDocument();
     expect(
       screen.queryByRole("region", { name: /one-click setup e2e readiness/i }),
     ).not.toBeInTheDocument();

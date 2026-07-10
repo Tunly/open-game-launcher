@@ -1,19 +1,30 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useSearchParams } from "react-router-dom";
-import { Heart, Play, ReceiptText, ShoppingCart, Tags } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  Clock,
+  Flame,
+  Heart,
+  Play,
+  ReceiptText,
+  Search,
+  ShoppingCart,
+  SlidersHorizontal,
+  Sparkles,
+  Tags,
+  Trophy,
+} from "lucide-react";
 import { StoreGameCard } from "../components/launcher/StoreGameCard";
 import { CartDrawer, CartPanel } from "../components/store/StoreCartPanels";
 import { EmptyStorePanel } from "../components/store/EmptyStorePanel";
 import { StoreOrderPanel } from "../components/store/StoreOrderPanel";
 import { STORE_REFUND_REASON_OPTIONS } from "../components/store/storeOrderOptions";
 import { ProductDetailPanel } from "../components/store/StoreProductDetailPanel";
-import {
-  CatalogSourceTape,
-  PriceDropSchedulerReadinessPanel,
-  StoreMetric,
-} from "../components/store/StoreReadinessPanels";
+import { CatalogSourceTape, StoreMetric } from "../components/store/StoreReadinessPanels";
 import { StoreReviewsPanel } from "../components/store/StoreReviewsPanel";
-import { storeGames } from "../lib/mock-data";
+import { useCurrentUser } from "../hooks/useCurrentUser";
 import { getSupabaseClient } from "../lib/supabase/client";
 import {
   addToStoreWishlist,
@@ -23,12 +34,8 @@ import {
   getMyLicenses,
   getMyOrderByStripeSession,
   getMyStoreReview,
-  getLatestStorePriceDropNotificationRunEvidence,
-  getStoreProductPriceHistory,
-  isTrustedStorePriceDropNotificationRunEvidence,
   listMyOrderItems,
   listMyStoreOrderInvoices,
-  listMyStorePriceAlerts,
   listMyStoreRefundRequests,
   listMyStoreReviewReports,
   listMyStoreWishlist,
@@ -39,18 +46,14 @@ import {
   reportStoreReview,
   removeFromStoreWishlist,
   removeFromCart as removeStoreCartItem,
-  removeStorePriceAlert,
   requestStoreOrderRefund,
   syncStoreOrderInvoice,
-  upsertStorePriceAlert,
   upsertStoreReviewReply,
   upsertStoreReview,
-  type StorePriceDropNotificationRunEvidence,
 } from "../lib/supabase/store";
 import { getLicenseDeviceId, validateLicense } from "../lib/launcher";
 import { STORAGE_KEYS } from "../lib/storage-keys";
 import { canSyncStoreInvoice, getStoreInvoiceStatusLabel } from "../lib/store-support";
-import { getStorePriceDropSchedulerReadiness } from "../lib/store-price-drop-readiness";
 import {
   formatCurrency,
   formatDateTime,
@@ -64,7 +67,6 @@ import type {
   StoreOrder,
   StoreOrderInvoice,
   StoreOrderItem,
-  StorePricePoint,
   StoreProduct,
   StoreReview,
   StoreReviewReply,
@@ -74,7 +76,10 @@ import type {
 } from "../lib/types/store";
 
 type StoreTab = "browse" | "wishlist" | "cart" | "orders";
-type StoreCatalogSource = "hosted" | "local-preview" | "empty" | "error";
+type StoreCatalogSource = "loading" | "hosted" | "empty" | "error";
+type StorePlatformFilter = "all" | Platform;
+type StorePriceFilter = "all" | "discounts" | "free" | "under-15";
+type StoreSortMode = "featured" | "newest" | "price-asc" | "price-desc" | "discount";
 type CheckoutResponse = {
   id: string | null;
   url: string | null;
@@ -183,24 +188,6 @@ function createStripeLiveStagingVerifyState(): {
   };
 }
 
-function createPriceDropScheduledEvidenceVerifyRun(): StorePriceDropNotificationRunEvidence {
-  return {
-    alertsMarkedCount: 1,
-    candidateCount: 2,
-    completedAt: "2026-06-15T10:05:00.000Z",
-    dryRun: false,
-    limit: 500,
-    notificationsRecordedCount: 1,
-    requestedAlertCount: 0,
-    requestedProductCount: 0,
-    requestedUserCount: 0,
-    runId: "price-drop-scheduled-fixture",
-    scannedCount: 7,
-    status: "completed",
-    triggerSource: "scheduled",
-  };
-}
-
 function mapProductToStoreGame(product: StoreProduct): StoreGame {
   const originalPrice = product.priceCents / 100;
   const discountMultiplier = Math.max(0, 100 - product.discountPercent) / 100;
@@ -216,13 +203,17 @@ function mapProductToStoreGame(product: StoreProduct): StoreGame {
     id: product.id,
     slug: product.slug,
     title: product.title,
-    description: firstText(product.shortDescription, product.description, tagLine) ?? tagLine,
+    description: firstText(product.description, product.shortDescription) ?? "",
+    coverImageUrl: product.coverImageUrl ?? undefined,
+    downloadsCount: product.downloadsCount,
     price,
     originalPrice: product.discountPercent > 0 ? originalPrice : undefined,
     discountPercent: product.discountPercent || undefined,
     isFree: product.priceCents === 0,
     platform: product.platforms.filter(isPlatform),
-    developer: product.publisher ?? undefined,
+    publisher: product.publisher ?? undefined,
+    rating: product.rating ?? undefined,
+    ratingsCount: product.ratingsCount,
     releaseDate: product.releaseDate ?? undefined,
     genres: product.genres.length > 0 ? product.genres : undefined,
     tagLine,
@@ -232,99 +223,14 @@ function mapProductToStoreGame(product: StoreProduct): StoreGame {
 const ownedKey = STORAGE_KEYS.STORE_OWNED;
 const wishlistKey = STORAGE_KEYS.STORE_WISHLIST;
 const cartKey = STORAGE_KEYS.STORE_CART;
-const priceAlertsKey = STORAGE_KEYS.STORE_PRICE_ALERTS;
 const ordersKey = STORAGE_KEYS.STORE_ORDERS;
-
-function readStringArray(key: string) {
+const legacyStoreAccountKeys = [ownedKey, wishlistKey, cartKey, ordersKey] as const;
+const emptyStoreIds = new Set<string>();
+function clearLegacyLocalStoreAccountState() {
   try {
-    const value = localStorage.getItem(key);
-    const parsed = value ? JSON.parse(value) : [];
-    return Array.isArray(parsed)
-      ? parsed.filter((item): item is string => typeof item === "string")
-      : [];
+    legacyStoreAccountKeys.forEach((key) => localStorage.removeItem(key));
   } catch {
-    return [];
-  }
-}
-
-function readPriceAlerts() {
-  try {
-    const value = localStorage.getItem(priceAlertsKey);
-    const parsed = value ? JSON.parse(value) : {};
-    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
-      ? (parsed as Record<string, number>)
-      : {};
-  } catch {
-    return {};
-  }
-}
-
-function readStringField(row: Record<string, unknown>, key: string, fallback = "") {
-  const value = row[key];
-  return typeof value === "string" ? value : fallback;
-}
-
-function readNumberField(row: Record<string, unknown>, key: string, fallback = 0) {
-  const value = row[key];
-  return typeof value === "number" && Number.isFinite(value) ? value : fallback;
-}
-
-function readOrderStatus(row: Record<string, unknown>): StoreOrder["status"] {
-  const value = readStringField(row, "status");
-  return ["pending", "paid", "fulfilled", "refunded", "failed", "expired"].includes(value)
-    ? (value as StoreOrder["status"])
-    : "pending";
-}
-
-function normalizeStoredOrder(row: unknown): StoreOrder | null {
-  if (!row || typeof row !== "object" || Array.isArray(row)) {
-    return null;
-  }
-
-  const order = row as Record<string, unknown>;
-  const id = readStringField(order, "id");
-  if (!id) {
-    return null;
-  }
-
-  return {
-    id,
-    userId: readStringField(order, "userId", readStringField(order, "user_id")),
-    stripeSessionId:
-      readStringField(order, "stripeSessionId", readStringField(order, "stripe_session_id")) ||
-      null,
-    stripePaymentIntent:
-      readStringField(
-        order,
-        "stripePaymentIntent",
-        readStringField(order, "stripe_payment_intent"),
-      ) || null,
-    subtotalCents: readNumberField(
-      order,
-      "subtotalCents",
-      readNumberField(order, "subtotal_cents"),
-    ),
-    taxCents: readNumberField(order, "taxCents", readNumberField(order, "tax_cents")),
-    totalCents: readNumberField(order, "totalCents", readNumberField(order, "total_cents")),
-    currency: readStringField(order, "currency", "eur"),
-    status: readOrderStatus(order),
-    paymentMethod:
-      readStringField(order, "paymentMethod", readStringField(order, "payment_method")) || null,
-    paidAt: readStringField(order, "paidAt", readStringField(order, "paid_at")) || null,
-    createdAt: readStringField(order, "createdAt", readStringField(order, "created_at")) || id,
-    updatedAt: readStringField(order, "updatedAt", readStringField(order, "updated_at")) || id,
-  };
-}
-
-function readLocalOrders() {
-  try {
-    const value = localStorage.getItem(ordersKey);
-    const parsed = value ? JSON.parse(value) : [];
-    return Array.isArray(parsed)
-      ? parsed.map(normalizeStoredOrder).filter((order): order is StoreOrder => order !== null)
-      : [];
-  } catch {
-    return [];
+    // Storage can be unavailable in hardened webviews. In-memory account isolation still applies.
   }
 }
 
@@ -334,25 +240,69 @@ function formatStorePrice(game: StoreGame) {
 
 function catalogSourceLabel(source: StoreCatalogSource) {
   switch (source) {
+    case "loading":
+      return "Loading Catalog";
     case "hosted":
       return "Hosted Catalog";
     case "empty":
       return "Hosted Empty";
     case "error":
       return "Hosted Error";
-    case "local-preview":
-      return "Local Preview";
   }
 }
 
 function heroAccentLabel(game: StoreGame) {
   if (game.discountPercent) return `${game.discountPercent}% Off`;
   if (game.isFree || game.price <= 0) return "Free";
-  return "Featured";
+  return "Published";
 }
 
 function heroGenreLabel(game: StoreGame) {
   return game.genres?.[0] ?? game.tagLine.split("/")[0]?.trim() ?? "Store";
+}
+
+function releaseTime(game: StoreGame) {
+  const timestamp = game.releaseDate ? new Date(game.releaseDate).getTime() : 0;
+  return Number.isFinite(timestamp) ? timestamp : 0;
+}
+
+function storeScore(game: StoreGame) {
+  return (
+    (game.downloadsCount ?? 0) * 10 +
+    (game.ratingsCount ?? 0) * 2 +
+    (game.rating ?? 0) * 10 +
+    (game.discountPercent ?? 0)
+  );
+}
+
+function gameSearchText(game: StoreGame) {
+  return [
+    game.title,
+    game.description,
+    game.publisher,
+    game.tagLine,
+    ...(game.genres ?? []),
+    ...game.platform,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+}
+
+function sortedStoreGames(games: StoreGame[], sortMode: StoreSortMode) {
+  const sorted = [...games];
+  switch (sortMode) {
+    case "newest":
+      return sorted.sort((a, b) => releaseTime(b) - releaseTime(a));
+    case "price-asc":
+      return sorted.sort((a, b) => a.price - b.price);
+    case "price-desc":
+      return sorted.sort((a, b) => b.price - a.price);
+    case "discount":
+      return sorted.sort((a, b) => (b.discountPercent ?? 0) - (a.discountPercent ?? 0));
+    case "featured":
+      return sorted.sort((a, b) => storeScore(b) - storeScore(a));
+  }
 }
 
 function indexDeveloperReplyDrafts(replies: StoreReviewReply[]) {
@@ -363,17 +313,14 @@ function indexDeveloperReplyDrafts(replies: StoreReviewReply[]) {
 }
 
 export function StorePage() {
+  const { isLoading: isStoreAuthLoading, user: storeUser } = useCurrentUser();
+  const storeUserId = storeUser?.id ?? null;
+  const isStoreSignedIn = storeUserId !== null;
   const [activeTab, setActiveTab] = useState<StoreTab>("browse");
-  const [ownedIds, setOwnedIds] = useState<Set<string>>(() => new Set(readStringArray(ownedKey)));
-  const [wishlistIds, setWishlistIds] = useState<Set<string>>(
-    () => new Set(readStringArray(wishlistKey)),
-  );
-  const [cartIds, setCartIds] = useState<Set<string>>(() => new Set(readStringArray(cartKey)));
-  const [priceAlerts, setPriceAlerts] = useState<Record<string, number>>(readPriceAlerts);
-  const [remotePriceAlertIds, setRemotePriceAlertIds] = useState<Set<string>>(() => new Set());
-  const [priceDropNotificationRunEvidence, setPriceDropNotificationRunEvidence] =
-    useState<StorePriceDropNotificationRunEvidence | null>(null);
-  const [orders, setOrders] = useState<StoreOrder[]>(readLocalOrders);
+  const [ownedIds, setOwnedIds] = useState<Set<string>>(new Set());
+  const [wishlistIds, setWishlistIds] = useState<Set<string>>(new Set());
+  const [cartIds, setCartIds] = useState<Set<string>>(new Set());
+  const [orders, setOrders] = useState<StoreOrder[]>([]);
   const [orderItemsByOrderId, setOrderItemsByOrderId] = useState<Record<string, StoreOrderItem[]>>(
     {},
   );
@@ -382,18 +329,16 @@ export function StorePage() {
   const [licenses, setLicenses] = useState<StoreLicense[]>([]);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [searchParams, setSearchParams] = useSearchParams();
-  const isPriceDropScheduledEvidenceVerify =
-    searchParams.get("verify") === "price-drop-scheduled-evidence";
   const isStripeLiveStagingContractVerify =
     searchParams.get("verify") === "stripe-live-staging-contract";
   const [isProcessing, setIsProcessing] = useState(false);
-  const [products, setProducts] = useState<StoreGame[]>(storeGames);
+  const [products, setProducts] = useState<StoreGame[]>([]);
   const [storeProducts, setStoreProducts] = useState<StoreProduct[]>([]);
-  const [catalogSource, setCatalogSource] = useState<StoreCatalogSource>("local-preview");
+  const [catalogSource, setCatalogSource] = useState<StoreCatalogSource>("loading");
+  const [catalogError, setCatalogError] = useState<string | null>(null);
   const [ordersLoading, setOrdersLoading] = useState(true);
-  const [selectedProductId, setSelectedProductId] = useState(storeGames[0]?.id ?? null);
-  const [isStoreSignedIn, setIsStoreSignedIn] = useState(false);
-  const [storeUserId, setStoreUserId] = useState<string | null>(null);
+  const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
+  const [accountStateUserId, setAccountStateUserId] = useState<string | null>(null);
   const [reviews, setReviews] = useState<StoreReview[]>([]);
   const [myReview, setMyReview] = useState<StoreReview | null>(null);
   const [reviewReplies, setReviewReplies] = useState<StoreReviewReply[]>([]);
@@ -411,8 +356,6 @@ export function StorePage() {
   const [developerReplySavingReviewId, setDeveloperReplySavingReviewId] = useState<string | null>(
     null,
   );
-  const [priceHistory, setPriceHistory] = useState<StorePricePoint[]>([]);
-  const [priceHistoryLoading, setPriceHistoryLoading] = useState(false);
   const [isCartDrawerOpen, setIsCartDrawerOpen] = useState(false);
   const [licenseToken, setLicenseToken] = useState("");
   const [licenseValidationResults, setLicenseValidationResults] = useState<
@@ -425,39 +368,82 @@ export function StorePage() {
   const [refundSavingOrderId, setRefundSavingOrderId] = useState<string | null>(null);
   const [invoiceSyncingOrderId, setInvoiceSyncingOrderId] = useState<string | null>(null);
   const [downloadPreparingLicenseId, setDownloadPreparingLicenseId] = useState<string | null>(null);
+  const [storeSearch, setStoreSearch] = useState("");
+  const [selectedGenre, setSelectedGenre] = useState("all");
+  const [selectedPlatform, setSelectedPlatform] = useState<StorePlatformFilter>("all");
+  const [priceFilter, setPriceFilter] = useState<StorePriceFilter>("all");
+  const [sortMode, setSortMode] = useState<StoreSortMode>("featured");
+  const activeStoreUserIdRef = useRef(storeUserId);
+  const checkoutInFlightRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    activeStoreUserIdRef.current = storeUserId;
+  }, [storeUserId]);
+
+  const clearStoreAccountState = useCallback(() => {
+    setAccountStateUserId(null);
+    setOwnedIds(new Set());
+    setWishlistIds(new Set());
+    setCartIds(new Set());
+    setOrders([]);
+    setOrderItemsByOrderId({});
+    setRefundRequests([]);
+    setOrderInvoices([]);
+    setLicenses([]);
+    setLicenseToken("");
+    setLicenseValidationResults({});
+    setRefundDraftOrderId(null);
+    setRefundDetails("");
+    setIsCartDrawerOpen(false);
+    checkoutInFlightRef.current = null;
+    setIsProcessing(false);
+  }, []);
 
   const refreshStorePurchaseState = useCallback(async () => {
-    const [remoteOrders, remoteRefundRequests, remoteInvoices, latestLicenses, cartItems] =
-      await Promise.all([
-        listMyOrders(),
-        listMyStoreRefundRequests(),
-        listMyStoreOrderInvoices(),
-        getMyLicenses(),
-        getCartItems(),
-      ]);
+    const requestedUserId = storeUserId;
+    if (!requestedUserId) {
+      clearStoreAccountState();
+      return [];
+    }
 
-    setOrders(remoteOrders.length > 0 ? remoteOrders : readLocalOrders());
+    const [
+      remoteOrders,
+      remoteRefundRequests,
+      remoteInvoices,
+      latestLicenses,
+      cartItems,
+      wishlistItems,
+    ] = await Promise.all([
+      listMyOrders(),
+      listMyStoreRefundRequests(),
+      listMyStoreOrderInvoices(),
+      getMyLicenses(),
+      getCartItems(),
+      listMyStoreWishlist(),
+    ]);
+
+    if (activeStoreUserIdRef.current !== requestedUserId) {
+      return [];
+    }
+
+    setOrders(remoteOrders);
     setRefundRequests(remoteRefundRequests);
     setOrderInvoices(remoteInvoices);
     setLicenses(latestLicenses);
     setCartIds(new Set(cartItems.map((item) => item.productId)));
-    if (latestLicenses.length > 0) {
-      setOwnedIds((current) => {
-        const next = new Set(current);
-        for (const license of latestLicenses) {
-          next.add(license.productId);
-        }
-        return next;
-      });
-    }
+    setWishlistIds(new Set(wishlistItems.map((item) => item.productId)));
+    setOwnedIds(new Set(latestLicenses.map((license) => license.productId)));
+    setAccountStateUserId(requestedUserId);
 
     return remoteOrders;
-  }, []);
+  }, [clearStoreAccountState, storeUserId]);
 
   useEffect(() => {
     let cancelled = false;
 
     async function loadProducts() {
+      setCatalogSource("loading");
+      setCatalogError(null);
       try {
         const publishedProducts = await listPublishedProducts();
 
@@ -465,7 +451,8 @@ export function StorePage() {
 
         if (publishedProducts.length === 0) {
           setStoreProducts([]);
-          setProducts(storeGames);
+          setProducts([]);
+          setSelectedProductId(null);
           setCatalogSource("empty");
         } else {
           const mapped = publishedProducts.map(mapProductToStoreGame);
@@ -476,10 +463,12 @@ export function StorePage() {
             setSelectedProductId(mapped[0].id);
           }
         }
-      } catch {
+      } catch (error) {
         if (!cancelled) {
           setStoreProducts([]);
-          setProducts(storeGames);
+          setProducts([]);
+          setSelectedProductId(null);
+          setCatalogError(error instanceof Error ? error.message : String(error));
           setCatalogSource("error");
         }
       }
@@ -494,211 +483,157 @@ export function StorePage() {
   useEffect(() => {
     let cancelled = false;
 
-    async function loadUserStoreState() {
-      try {
-        const {
-          data: { user },
-        } = await getSupabaseClient().auth.getUser();
-        if (cancelled) return;
+    clearStoreAccountState();
+    clearLegacyLocalStoreAccountState();
 
-        setIsStoreSignedIn(Boolean(user));
-        setStoreUserId(user?.id ?? null);
-        if (!user) {
-          setLicenses([]);
-          setRemotePriceAlertIds(new Set());
-          setPriceDropNotificationRunEvidence(null);
-          return;
-        }
-
-        const [cartItems, licenses, wishlistItems, remotePriceAlerts, latestPriceDropRunEvidence] =
-          await Promise.all([
-            getCartItems(),
-            getMyLicenses(),
-            listMyStoreWishlist(),
-            listMyStorePriceAlerts(),
-            getLatestStorePriceDropNotificationRunEvidence(),
-          ]);
-        if (cancelled) return;
-
-        setLicenses(licenses);
-        setPriceDropNotificationRunEvidence(latestPriceDropRunEvidence);
-        setRemotePriceAlertIds(
-          new Set(
-            remotePriceAlerts
-              .filter(
-                (alert) => alert.isActive && alert.targetPriceCents > 0 && isUuid(alert.productId),
-              )
-              .map((alert) => alert.productId),
-          ),
-        );
-
-        if (cartItems.length > 0) {
-          setCartIds(new Set(cartItems.map((item) => item.productId)));
-        }
-
-        if (wishlistItems.length > 0) {
-          setWishlistIds((current) => {
-            const next = new Set(current);
-            for (const item of wishlistItems) {
-              next.add(item.productId);
-            }
-            return next;
-          });
-        }
-
-        if (remotePriceAlerts.length > 0) {
-          setPriceAlerts((current) => {
-            const next = { ...current };
-            for (const alert of remotePriceAlerts) {
-              next[alert.productId] = alert.targetPriceCents / 100;
-            }
-            return next;
-          });
-        }
-
-        if (licenses.length > 0) {
-          setOwnedIds((current) => {
-            const next = new Set(current);
-            for (const license of licenses) {
-              next.add(license.productId);
-            }
-            return next;
-          });
-        }
-      } catch (error) {
-        if (!cancelled) {
-          setIsStoreSignedIn(false);
-          setStoreUserId(null);
-          setLicenses([]);
-          setRemotePriceAlertIds(new Set());
-          setPriceDropNotificationRunEvidence(null);
-          setStatusMessage(
-            error instanceof Error
-              ? `Store account sync unavailable: ${error.message}`
-              : "Store account sync unavailable.",
-          );
-        }
-      }
-    }
-
-    loadUserStoreState();
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function loadOrders() {
+    if (isStoreAuthLoading) {
       setOrdersLoading(true);
-      try {
-        const [remoteOrders, remoteRefundRequests, remoteInvoices] = await Promise.all([
-          listMyOrders(),
-          listMyStoreRefundRequests(),
-          listMyStoreOrderInvoices(),
-        ]);
-
-        if (cancelled) return;
-
-        if (remoteOrders.length === 0) {
-          setOrders(readLocalOrders());
-        } else {
-          setOrders(remoteOrders);
-        }
-        setRefundRequests(remoteRefundRequests);
-        setOrderInvoices(remoteInvoices);
-      } catch {
-        if (!cancelled) {
-          setOrders(readLocalOrders());
-          setRefundRequests([]);
-          setOrderInvoices([]);
-        }
-      } finally {
-        if (!cancelled) setOrdersLoading(false);
-      }
+      return () => {
+        cancelled = true;
+      };
     }
 
-    loadOrders();
+    if (!storeUserId) {
+      setOrdersLoading(false);
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    setOrdersLoading(true);
+    void refreshStorePurchaseState()
+      .catch((error: unknown) => {
+        if (cancelled || activeStoreUserIdRef.current !== storeUserId) return;
+        clearStoreAccountState();
+        setStatusMessage(
+          error instanceof Error
+            ? `Store account sync unavailable: ${error.message}`
+            : "Store account sync unavailable.",
+        );
+      })
+      .finally(() => {
+        if (!cancelled && activeStoreUserIdRef.current === storeUserId) {
+          setOrdersLoading(false);
+        }
+      });
+
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [clearStoreAccountState, isStoreAuthLoading, refreshStorePurchaseState, storeUserId]);
 
+  const availableGenres = useMemo(
+    () =>
+      Array.from(new Set(products.flatMap((game) => game.genres ?? [game.tagLine])))
+        .filter(Boolean)
+        .sort((a, b) => a.localeCompare(b)),
+    [products],
+  );
+  const filteredProducts = useMemo(() => {
+    const normalizedSearch = storeSearch.trim().toLowerCase();
+    const filtered = products.filter((game) => {
+      const matchesSearch =
+        normalizedSearch.length === 0 || gameSearchText(game).includes(normalizedSearch);
+      const matchesGenre =
+        selectedGenre === "all" || (game.genres ?? [game.tagLine]).includes(selectedGenre);
+      const matchesPlatform =
+        selectedPlatform === "all" || game.platform.includes(selectedPlatform);
+      const matchesPrice =
+        priceFilter === "all" ||
+        (priceFilter === "discounts" && Boolean(game.discountPercent)) ||
+        (priceFilter === "free" && (game.isFree || game.price <= 0)) ||
+        (priceFilter === "under-15" && game.price > 0 && game.price < 15);
+
+      return matchesSearch && matchesGenre && matchesPlatform && matchesPrice;
+    });
+
+    return sortedStoreGames(filtered, sortMode);
+  }, [priceFilter, products, selectedGenre, selectedPlatform, sortMode, storeSearch]);
+  const hasCurrentStoreAccount =
+    storeUserId !== null && accountStateUserId === storeUserId && !isStoreAuthLoading;
+  const purchaseActionsDisabled = isProcessing || !hasCurrentStoreAccount;
+  const scopedOwnedIds = hasCurrentStoreAccount ? ownedIds : emptyStoreIds;
+  const scopedWishlistIds = hasCurrentStoreAccount ? wishlistIds : emptyStoreIds;
+  const scopedCartIds = hasCurrentStoreAccount ? cartIds : emptyStoreIds;
+  const scopedOrders = useMemo(
+    () => (hasCurrentStoreAccount ? orders : []),
+    [hasCurrentStoreAccount, orders],
+  );
+  const scopedRefundRequests = hasCurrentStoreAccount ? refundRequests : [];
+  const scopedOrderInvoices = hasCurrentStoreAccount ? orderInvoices : [];
+  const scopedLicenses = hasCurrentStoreAccount ? licenses : [];
+  const scopedOrderItemsByOrderId = hasCurrentStoreAccount ? orderItemsByOrderId : {};
   const wishlistGames = useMemo(
-    () => products.filter((game) => wishlistIds.has(game.id)),
-    [wishlistIds, products],
+    () => products.filter((game) => scopedWishlistIds.has(game.id)),
+    [products, scopedWishlistIds],
+  );
+  const filteredWishlistGames = useMemo(
+    () => filteredProducts.filter((game) => scopedWishlistIds.has(game.id)),
+    [filteredProducts, scopedWishlistIds],
   );
   const cartGames = useMemo(
-    () => products.filter((game) => cartIds.has(game.id) && !ownedIds.has(game.id)),
-    [cartIds, ownedIds, products],
+    () => products.filter((game) => scopedCartIds.has(game.id) && !scopedOwnedIds.has(game.id)),
+    [products, scopedCartIds, scopedOwnedIds],
   );
   const cartTotal = cartGames.reduce((total, game) => total + game.price, 0);
-  const activeGames = activeTab === "wishlist" ? wishlistGames : products;
-  const activePriceAlertHits = products.filter((game) => {
-    const alertPrice = priceAlerts[game.id];
-    return typeof alertPrice === "number" && game.price <= alertPrice;
-  });
-  const activeLocalPriceAlertCount = Object.values(priceAlerts).filter(
-    (value) => typeof value === "number" && Number.isFinite(value) && value > 0,
-  ).length;
-  const activeRemotePriceAlertCount = remotePriceAlertIds.size;
-  const effectiveRemotePriceAlertCount = isPriceDropScheduledEvidenceVerify
-    ? Math.max(activeRemotePriceAlertCount, 1)
-    : activeRemotePriceAlertCount;
-  const effectiveStoreSignedIn = isStoreSignedIn || isPriceDropScheduledEvidenceVerify;
-  const priceDropScheduledEvidenceVerifyRun = useMemo(
-    createPriceDropScheduledEvidenceVerifyRun,
-    [],
+  const activeGames = activeTab === "wishlist" ? filteredWishlistGames : filteredProducts;
+  const discoveryGames = filteredProducts.length > 0 ? filteredProducts : products;
+  const specialOfferGames = useMemo(
+    () =>
+      sortedStoreGames(
+        products.filter((game) => game.discountPercent),
+        "discount",
+      ).slice(0, 4),
+    [products],
   );
-  const visiblePriceDropRunEvidence =
-    isPriceDropScheduledEvidenceVerify && !priceDropNotificationRunEvidence
-      ? priceDropScheduledEvidenceVerifyRun
-      : priceDropNotificationRunEvidence;
+  const topSellerGames = useMemo(
+    () =>
+      [...products]
+        .filter((game) => (game.downloadsCount ?? 0) > 0)
+        .sort((a, b) => (b.downloadsCount ?? 0) - (a.downloadsCount ?? 0))
+        .slice(0, 4),
+    [products],
+  );
+  const newReleaseGames = useMemo(
+    () => sortedStoreGames(products, "newest").slice(0, 4),
+    [products],
+  );
   const stripeLiveStagingVerifyState = useMemo(createStripeLiveStagingVerifyState, []);
   const visibleOrders = isStripeLiveStagingContractVerify
     ? stripeLiveStagingVerifyState.orders
-    : orders;
+    : scopedOrders;
   const visibleOrderInvoices = isStripeLiveStagingContractVerify
     ? stripeLiveStagingVerifyState.invoices
-    : orderInvoices;
+    : scopedOrderInvoices;
   const visibleRefundRequests = isStripeLiveStagingContractVerify
     ? stripeLiveStagingVerifyState.refundRequests
-    : refundRequests;
+    : scopedRefundRequests;
   const visibleOrderItemsByOrderId = isStripeLiveStagingContractVerify
     ? stripeLiveStagingVerifyState.orderItemsByOrderId
-    : orderItemsByOrderId;
-  const hasTrustedPriceDropEvidence =
-    !isPriceDropScheduledEvidenceVerify &&
-    isTrustedStorePriceDropNotificationRunEvidence(visiblePriceDropRunEvidence);
-  const priceDropSchedulerReadiness = useMemo(
-    () =>
-      getStorePriceDropSchedulerReadiness({
-        hostedRunEvidence: visiblePriceDropRunEvidence,
-        localAlertCount: activeLocalPriceAlertCount,
-        remoteAlertCount: effectiveRemotePriceAlertCount,
-        isSignedIn: effectiveStoreSignedIn,
-        trustedEvidence: hasTrustedPriceDropEvidence,
-      }),
-    [
-      activeLocalPriceAlertCount,
-      effectiveRemotePriceAlertCount,
-      effectiveStoreSignedIn,
-      hasTrustedPriceDropEvidence,
-      visiblePriceDropRunEvidence,
-    ],
-  );
+    : scopedOrderItemsByOrderId;
   const selectedProduct =
     products.find((game) => game.id === selectedProductId) ?? products[0] ?? null;
   const selectedStoreProduct =
     selectedProduct === null
       ? null
       : (storeProducts.find((product) => product.id === selectedProduct.id) ?? null);
-  const selectedProductOwned = selectedProduct ? ownedIds.has(selectedProduct.id) : false;
+  const selectedProductOwned = selectedProduct ? scopedOwnedIds.has(selectedProduct.id) : false;
+  const commerceEnabled = catalogSource === "hosted";
   const heroTrailerUrl = firstText(selectedStoreProduct?.trailerUrl) ?? null;
   const canManageSelectedProductReplies =
     Boolean(storeUserId && selectedStoreProduct?.developerId === storeUserId) &&
     Boolean(selectedProduct && isUuid(selectedProduct.id));
+  const selectedDiscoveryIndex =
+    selectedProduct === null
+      ? -1
+      : discoveryGames.findIndex((game) => game.id === selectedProduct.id);
+  const activeFilterCount = [
+    storeSearch.trim().length > 0,
+    selectedGenre !== "all",
+    selectedPlatform !== "all",
+    priceFilter !== "all",
+    sortMode !== "featured",
+  ].filter(Boolean).length;
   const reviewRepliesByReviewId = useMemo(
     () => new Map(reviewReplies.map((reply) => [reply.reviewId, reply])),
     [reviewReplies],
@@ -712,33 +647,6 @@ export function StorePage() {
       ),
     [reviewReports],
   );
-
-  useEffect(() => {
-    if (!selectedProduct || !isUuid(selectedProduct.id)) {
-      setPriceHistory([]);
-      setPriceHistoryLoading(false);
-      return;
-    }
-
-    let cancelled = false;
-
-    async function loadPriceHistory() {
-      setPriceHistoryLoading(true);
-      try {
-        const history = await getStoreProductPriceHistory(selectedProduct.id);
-        if (!cancelled) setPriceHistory(history);
-      } catch {
-        if (!cancelled) setPriceHistory([]);
-      } finally {
-        if (!cancelled) setPriceHistoryLoading(false);
-      }
-    }
-
-    loadPriceHistory();
-    return () => {
-      cancelled = true;
-    };
-  }, [selectedProduct]);
 
   useEffect(() => {
     if (!selectedProduct || !isUuid(selectedProduct.id)) {
@@ -797,27 +705,7 @@ export function StorePage() {
     return () => {
       cancelled = true;
     };
-  }, [selectedProduct]);
-
-  useEffect(() => {
-    localStorage.setItem(ownedKey, JSON.stringify([...ownedIds]));
-  }, [ownedIds]);
-
-  useEffect(() => {
-    localStorage.setItem(wishlistKey, JSON.stringify([...wishlistIds]));
-  }, [wishlistIds]);
-
-  useEffect(() => {
-    localStorage.setItem(cartKey, JSON.stringify([...cartIds]));
-  }, [cartIds]);
-
-  useEffect(() => {
-    localStorage.setItem(priceAlertsKey, JSON.stringify(priceAlerts));
-  }, [priceAlerts]);
-
-  useEffect(() => {
-    localStorage.setItem(ordersKey, JSON.stringify(orders));
-  }, [orders]);
+  }, [selectedProduct, storeUserId]);
 
   useEffect(() => {
     const tab = searchParams.get("tab");
@@ -834,7 +722,7 @@ export function StorePage() {
 
   useEffect(() => {
     const sessionId = searchParams.get("session_id");
-    if (!sessionId) return;
+    if (!sessionId || isStoreAuthLoading || !storeUserId) return;
     const checkoutSessionId = sessionId;
 
     let cancelled = false;
@@ -859,8 +747,12 @@ export function StorePage() {
           setStatusMessage(
             "Checkout returned. Waiting for the Stripe webhook to create the order.",
           );
-        } else if (order.status === "fulfilled" || order.status === "paid") {
-          setStatusMessage("Checkout confirmed. Licenses and downloads are unlocked.");
+        } else if (order.status === "fulfilled") {
+          setStatusMessage("Checkout fulfilled. Issued licenses and downloads are now available.");
+        } else if (order.status === "paid") {
+          setStatusMessage(
+            "Payment confirmed. Fulfillment and license issuance are still pending.",
+          );
         } else if (order.status === "pending") {
           setStatusMessage("Checkout received. Fulfillment is still pending.");
         } else {
@@ -889,10 +781,10 @@ export function StorePage() {
     return () => {
       cancelled = true;
     };
-  }, [refreshStorePurchaseState, searchParams, setSearchParams]);
+  }, [isStoreAuthLoading, refreshStorePurchaseState, searchParams, setSearchParams, storeUserId]);
 
   useEffect(() => {
-    const orderIds = orders.map((order) => order.id).filter(isUuid);
+    const orderIds = scopedOrders.map((order) => order.id).filter(isUuid);
     if (orderIds.length === 0) {
       setOrderItemsByOrderId({});
       return;
@@ -901,11 +793,12 @@ export function StorePage() {
     let cancelled = false;
     async function loadOrderItems() {
       try {
-        const entries = await Promise.all(
-          orderIds.map(async (orderId) => [orderId, await listMyOrderItems(orderId)] as const),
+        const items = await listMyOrderItems(orderIds);
+        const entries = Object.fromEntries(
+          orderIds.map((orderId) => [orderId, items.filter((item) => item.orderId === orderId)]),
         );
         if (!cancelled) {
-          setOrderItemsByOrderId(Object.fromEntries(entries));
+          setOrderItemsByOrderId(entries);
         }
       } catch {
         if (!cancelled) setOrderItemsByOrderId({});
@@ -916,7 +809,7 @@ export function StorePage() {
     return () => {
       cancelled = true;
     };
-  }, [orders]);
+  }, [scopedOrders]);
 
   useEffect(() => {
     const slug = searchParams.get("slug");
@@ -956,92 +849,144 @@ export function StorePage() {
   }, [searchParams, setSearchParams, setStatusMessage, products]);
 
   async function toggleWishlist(gameId: string) {
-    const wasWishlisted = wishlistIds.has(gameId);
-
-    setWishlistIds((current) => {
-      const next = new Set(current);
-      if (next.has(gameId)) {
-        next.delete(gameId);
-        setStatusMessage("Removed from wishlist.");
-      } else {
-        next.add(gameId);
-        setStatusMessage("Added to wishlist.");
-      }
-      return next;
-    });
-
-    if (!isStoreSignedIn || !isUuid(gameId)) {
+    if (!commerceEnabled) {
+      setStatusMessage("Preview items cannot be wishlisted. A hosted catalog product is required.");
       return;
     }
 
+    if (!isStoreSignedIn || !hasCurrentStoreAccount) {
+      setStatusMessage("Sign in and wait for account sync before changing your wishlist.");
+      return;
+    }
+
+    if (!isUuid(gameId)) {
+      setStatusMessage("Wishlist sync requires a hosted product ID.");
+      return;
+    }
+
+    const requestedUserId = storeUserId;
+    const wasWishlisted = scopedWishlistIds.has(gameId);
     try {
       if (wasWishlisted) {
         await removeFromStoreWishlist(gameId);
-        setStatusMessage("Wishlist removed and synced.");
       } else {
         await addToStoreWishlist(gameId);
-        setStatusMessage("Wishlist saved and synced.");
       }
+      if (activeStoreUserIdRef.current !== requestedUserId) return;
+
+      setWishlistIds((current) => {
+        const next = new Set(current);
+        if (wasWishlisted) next.delete(gameId);
+        else next.add(gameId);
+        return next;
+      });
+      setStatusMessage(
+        wasWishlisted ? "Wishlist removed and synced." : "Wishlist saved and synced.",
+      );
     } catch (error) {
+      if (activeStoreUserIdRef.current !== requestedUserId) return;
       setStatusMessage(
         error instanceof Error
-          ? `${
-              wasWishlisted ? "Removed locally" : "Added locally"
-            }. Store wishlist sync failed: ${error.message}`
-          : `${wasWishlisted ? "Removed locally" : "Added locally"}. Store wishlist sync failed.`,
+          ? `Store wishlist sync failed: ${error.message}`
+          : "Store wishlist sync failed.",
       );
     }
   }
 
   async function handleAddToCart(gameId: string) {
-    if (ownedIds.has(gameId)) {
+    if (!commerceEnabled) {
+      setStatusMessage(
+        "Preview items cannot be added to cart. A hosted catalog product is required.",
+      );
+      return;
+    }
+
+    if (!isStoreSignedIn || !hasCurrentStoreAccount) {
+      setStatusMessage("Sign in and wait for account sync before changing your cart.");
+      return;
+    }
+
+    if (scopedOwnedIds.has(gameId)) {
       setStatusMessage("This game is already owned.");
       return;
     }
 
-    setCartIds((current) => new Set(current).add(gameId));
-    setIsCartDrawerOpen(true);
+    const requestedUserId = storeUserId;
     try {
       await addStoreCartItem(gameId);
+      if (activeStoreUserIdRef.current !== requestedUserId) return;
+      setCartIds((current) => new Set(current).add(gameId));
+      setIsCartDrawerOpen(true);
       setStatusMessage("Added to cart.");
     } catch (error) {
+      if (activeStoreUserIdRef.current !== requestedUserId) return;
       setStatusMessage(
         error instanceof Error
-          ? `Added locally. Store cart sync failed: ${error.message}`
-          : "Added locally. Store cart sync failed.",
+          ? `Store cart sync failed: ${error.message}`
+          : "Store cart sync failed.",
       );
     }
   }
 
   async function handleRemoveFromCart(gameId: string) {
-    setCartIds((current) => {
-      const next = new Set(current);
-      next.delete(gameId);
-      return next;
-    });
+    if (!isStoreSignedIn || !hasCurrentStoreAccount) {
+      setStatusMessage("Sign in and wait for account sync before changing your cart.");
+      return;
+    }
 
+    const requestedUserId = storeUserId;
     try {
       await removeStoreCartItem(gameId);
+      if (activeStoreUserIdRef.current !== requestedUserId) return;
+      setCartIds((current) => {
+        const next = new Set(current);
+        next.delete(gameId);
+        return next;
+      });
       setStatusMessage("Removed from cart.");
     } catch (error) {
+      if (activeStoreUserIdRef.current !== requestedUserId) return;
       setStatusMessage(
         error instanceof Error
-          ? `Removed locally. Store cart sync failed: ${error.message}`
-          : "Removed locally. Store cart sync failed.",
+          ? `Store cart sync failed: ${error.message}`
+          : "Store cart sync failed.",
       );
     }
   }
 
   async function startCheckout(productIds: string[]) {
+    if (!commerceEnabled) {
+      setStatusMessage("Preview items cannot be purchased. A hosted catalog product is required.");
+      return;
+    }
+
+    if (!isStoreSignedIn || !hasCurrentStoreAccount || !storeUserId) {
+      setStatusMessage("Sign in and wait for account sync before starting checkout.");
+      return;
+    }
+
+    if (productIds.length === 0 || checkoutInFlightRef.current) {
+      return;
+    }
+
+    const checkoutUserId = storeUserId;
+    const checkoutAttemptId = createCheckoutAttemptId();
+    checkoutInFlightRef.current = checkoutAttemptId;
     setIsProcessing(true);
     try {
       const licenseDeviceId = await getLicenseDeviceId().catch(() => null);
+      if (
+        activeStoreUserIdRef.current !== checkoutUserId ||
+        checkoutInFlightRef.current !== checkoutAttemptId
+      ) {
+        return;
+      }
       const { data, error } = await getSupabaseClient().functions.invoke<CheckoutResponse>(
         "stripe-create-checkout",
         {
           body: {
             product_ids: productIds,
-            checkout_attempt_id: createCheckoutAttemptId(),
+            checkout_attempt_id: checkoutAttemptId,
             ...(licenseDeviceId ? { device_id: licenseDeviceId } : {}),
             success_url:
               window.location.origin + "/store?tab=orders&session_id={CHECKOUT_SESSION_ID}",
@@ -1049,6 +994,13 @@ export function StorePage() {
           },
         },
       );
+
+      if (
+        activeStoreUserIdRef.current !== checkoutUserId ||
+        checkoutInFlightRef.current !== checkoutAttemptId
+      ) {
+        return;
+      }
 
       if (error) {
         setStatusMessage(error.message);
@@ -1061,30 +1013,42 @@ export function StorePage() {
       }
 
       if (data?.status === "fulfilled") {
-        await refreshStorePurchaseState().catch(() => []);
-        setOwnedIds((current) => {
-          const next = new Set(current);
-          productIds.forEach((productId) => next.add(productId));
-          return next;
-        });
-        setCartIds((current) => {
-          const next = new Set(current);
-          productIds.forEach((productId) => next.delete(productId));
-          return next;
-        });
-        setStatusMessage("Free checkout completed. Added to your library.");
+        const didRefresh = await refreshStorePurchaseState()
+          .then(() => true)
+          .catch(() => false);
+        if (
+          activeStoreUserIdRef.current !== checkoutUserId ||
+          checkoutInFlightRef.current !== checkoutAttemptId
+        ) {
+          return;
+        }
+        setStatusMessage(
+          didRefresh
+            ? "Free checkout fulfilled. Account licenses refreshed; library handoff remains separate."
+            : "Free checkout fulfilled. License refresh is still pending; check Orders again shortly.",
+        );
       } else {
         setStatusMessage("Checkout session created but no URL was returned.");
       }
     } catch (err) {
-      setStatusMessage(err instanceof Error ? err.message : "Checkout failed.");
+      if (activeStoreUserIdRef.current === checkoutUserId) {
+        setStatusMessage(err instanceof Error ? err.message : "Checkout failed.");
+      }
     } finally {
-      setIsProcessing(false);
+      if (checkoutInFlightRef.current === checkoutAttemptId) {
+        checkoutInFlightRef.current = null;
+        setIsProcessing(false);
+      }
     }
   }
 
   async function buyNow(gameId: string) {
-    if (ownedIds.has(gameId)) {
+    if (!commerceEnabled) {
+      setStatusMessage("Preview items cannot be purchased. A hosted catalog product is required.");
+      return;
+    }
+
+    if (scopedOwnedIds.has(gameId)) {
       setStatusMessage("This game is already in your library.");
       return;
     }
@@ -1099,7 +1063,14 @@ export function StorePage() {
   }
 
   async function completeCheckout(gameIds = cartGames.map((game) => game.id)) {
-    const purchasableIds = gameIds.filter((gameId) => !ownedIds.has(gameId));
+    if (!commerceEnabled) {
+      setStatusMessage(
+        "Preview items cannot be checked out. A hosted catalog product is required.",
+      );
+      return;
+    }
+
+    const purchasableIds = gameIds.filter((gameId) => !scopedOwnedIds.has(gameId));
     if (purchasableIds.length === 0) {
       setStatusMessage("Your cart is empty.");
       return;
@@ -1138,54 +1109,8 @@ export function StorePage() {
     }
   }
 
-  async function setPriceAlert(gameId: string, value: number | null) {
-    setPriceAlerts((current) => {
-      const next = { ...current };
-      if (value === null) {
-        delete next[gameId];
-        setStatusMessage("Price alert cleared.");
-      } else {
-        next[gameId] = value;
-        setStatusMessage("Price alert saved.");
-      }
-      return next;
-    });
-
-    if (!isStoreSignedIn || !isUuid(gameId)) {
-      return;
-    }
-
-    try {
-      if (value === null) {
-        await removeStorePriceAlert(gameId);
-        setRemotePriceAlertIds((current) => {
-          const next = new Set(current);
-          next.delete(gameId);
-          return next;
-        });
-        setStatusMessage("Price alert cleared and synced.");
-      } else {
-        await upsertStorePriceAlert(gameId, Math.round(value * 100));
-        setRemotePriceAlertIds((current) => {
-          const next = new Set(current);
-          next.add(gameId);
-          return next;
-        });
-        setStatusMessage("Price alert saved and synced.");
-      }
-    } catch (error) {
-      setStatusMessage(
-        error instanceof Error
-          ? `${
-              value === null ? "Cleared locally" : "Saved locally"
-            }. Store price alert sync failed: ${error.message}`
-          : `${value === null ? "Cleared locally" : "Saved locally"}. Store price alert sync failed.`,
-      );
-    }
-  }
-
   async function handleSubmitReview(gameId: string) {
-    if (!ownedIds.has(gameId)) {
+    if (!scopedOwnedIds.has(gameId)) {
       setStatusMessage("Reviews require an active store license.");
       return;
     }
@@ -1332,7 +1257,7 @@ export function StorePage() {
   }
 
   async function handleRequestRefund(orderId: string) {
-    const order = orders.find((item) => item.id === orderId);
+    const order = scopedOrders.find((item) => item.id === orderId);
     if (!order || !["paid", "fulfilled"].includes(order.status) || order.totalCents <= 0) {
       setStatusMessage("Refund execution requires a paid or fulfilled order.");
       return;
@@ -1373,7 +1298,7 @@ export function StorePage() {
       setRefundDetails("");
       if (updatedOrder?.status === "refunded") {
         const refundedProductIds =
-          orderItemsByOrderId[orderId]?.map((item) => item.productId) ?? [];
+          scopedOrderItemsByOrderId[orderId]?.map((item) => item.productId) ?? [];
         if (refundedProductIds.length > 0) {
           setOwnedIds((current) => {
             const next = new Set(current);
@@ -1400,7 +1325,7 @@ export function StorePage() {
   }
 
   async function handleSyncInvoice(orderId: string) {
-    const order = orders.find((item) => item.id === orderId);
+    const order = scopedOrders.find((item) => item.id === orderId);
     if (!order || !canSyncStoreInvoice(order.status)) {
       setStatusMessage("Invoice sync requires a paid, fulfilled, or refunded Stripe order.");
       return;
@@ -1455,10 +1380,184 @@ export function StorePage() {
     window.open(heroTrailerUrl, "_blank", "noopener,noreferrer");
   }
 
+  function resetStoreBrowseFilters() {
+    setStoreSearch("");
+    setSelectedGenre("all");
+    setSelectedPlatform("all");
+    setPriceFilter("all");
+    setSortMode("featured");
+  }
+
+  function moveDiscoveryQueue(offset: number) {
+    if (discoveryGames.length === 0) return;
+    const startIndex = selectedDiscoveryIndex >= 0 ? selectedDiscoveryIndex : 0;
+    const nextIndex = (startIndex + offset + discoveryGames.length) % discoveryGames.length;
+    setSelectedProductId(discoveryGames[nextIndex].id);
+  }
+
   return (
     <div className="min-h-[600px]">
       <section className="space-y-7">
+        <nav
+          aria-label="Store section navigation"
+          className="neo-copy border-[3px] border-black bg-[#171411] text-[10px] font-black uppercase tracking-[0.08em] text-[#fff9ed] shadow-[4px_4px_0_#171411]"
+        >
+          <div className="grid gap-0 lg:grid-cols-[auto_auto_auto_auto_auto_auto_minmax(220px,1fr)_auto]">
+            <button
+              className={`flex h-12 items-center justify-center gap-1 border-b-2 border-black px-4 lg:border-b-0 lg:border-r-2 ${
+                activeTab === "browse" ? "bg-[#8cf5e4] text-[#171411]" : "bg-[#171411]"
+              }`}
+              type="button"
+              onClick={() => setActiveTab("browse")}
+            >
+              Browse
+              <ChevronDown className="h-3.5 w-3.5" />
+            </button>
+            <button
+              className="flex h-12 items-center justify-center gap-1 border-b-2 border-black bg-[#242019] px-4 hover:bg-[#30291f] lg:border-b-0 lg:border-r-2"
+              type="button"
+              onClick={() => {
+                setActiveTab("browse");
+                setSortMode("featured");
+              }}
+            >
+              Published
+              <ChevronDown className="h-3.5 w-3.5" />
+            </button>
+            <label className="relative flex h-12 items-center border-b-2 border-black bg-[#171411] lg:border-b-0 lg:border-r-2">
+              <span className="sr-only">Store categories</span>
+              <select
+                className="h-full w-full appearance-none bg-transparent px-4 pr-8 text-[#fff9ed] outline-none"
+                value={selectedGenre}
+                onChange={(event) => {
+                  setActiveTab("browse");
+                  setSelectedGenre(event.target.value);
+                }}
+              >
+                <option className="bg-[#fff9ed] text-[#171411]" value="all">
+                  Categories
+                </option>
+                {availableGenres.map((genre) => (
+                  <option className="bg-[#fff9ed] text-[#171411]" key={genre} value={genre}>
+                    {genre}
+                  </option>
+                ))}
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-3 h-3.5 w-3.5" />
+            </label>
+            <label className="relative flex h-12 items-center border-b-2 border-black bg-[#242019] lg:border-b-0 lg:border-r-2">
+              <span className="sr-only">Store platforms</span>
+              <select
+                className="h-full w-full appearance-none bg-transparent px-4 pr-8 text-[#fff9ed] outline-none"
+                value={selectedPlatform}
+                onChange={(event) => {
+                  setActiveTab("browse");
+                  setSelectedPlatform(event.target.value as StorePlatformFilter);
+                }}
+              >
+                <option className="bg-[#fff9ed] text-[#171411]" value="all">
+                  Platforms
+                </option>
+                <option className="bg-[#fff9ed] text-[#171411]" value="windows">
+                  Windows
+                </option>
+                <option className="bg-[#fff9ed] text-[#171411]" value="linux">
+                  Linux
+                </option>
+                <option className="bg-[#fff9ed] text-[#171411]" value="macos">
+                  macOS
+                </option>
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-3 h-3.5 w-3.5" />
+            </label>
+            <label className="relative flex h-12 items-center border-b-2 border-black bg-[#171411] lg:border-b-0 lg:border-r-2">
+              <span className="sr-only">Store ways to play</span>
+              <select
+                className="h-full w-full appearance-none bg-transparent px-4 pr-8 text-[#fff9ed] outline-none"
+                value={priceFilter}
+                onChange={(event) => {
+                  setActiveTab("browse");
+                  setPriceFilter(event.target.value as StorePriceFilter);
+                }}
+              >
+                <option className="bg-[#fff9ed] text-[#171411]" value="all">
+                  Ways To Play
+                </option>
+                <option className="bg-[#fff9ed] text-[#171411]" value="discounts">
+                  Specials
+                </option>
+                <option className="bg-[#fff9ed] text-[#171411]" value="free">
+                  Free
+                </option>
+                <option className="bg-[#fff9ed] text-[#171411]" value="under-15">
+                  Under 15
+                </option>
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-3 h-3.5 w-3.5" />
+            </label>
+            <label className="relative flex h-12 items-center border-b-2 border-black bg-[#242019] lg:border-b-0 lg:border-r-2">
+              <span className="sr-only">Store special sections</span>
+              <select
+                className="h-full w-full appearance-none bg-transparent px-4 pr-8 text-[#fff9ed] outline-none"
+                value={sortMode}
+                onChange={(event) => {
+                  setActiveTab("browse");
+                  setSortMode(event.target.value as StoreSortMode);
+                }}
+              >
+                <option className="bg-[#fff9ed] text-[#171411]" value="featured">
+                  Special Sections
+                </option>
+                <option className="bg-[#fff9ed] text-[#171411]" value="discount">
+                  Special Offers
+                </option>
+                <option className="bg-[#fff9ed] text-[#171411]" value="newest">
+                  New Releases
+                </option>
+                <option className="bg-[#fff9ed] text-[#171411]" value="price-asc">
+                  Price Low
+                </option>
+                <option className="bg-[#fff9ed] text-[#171411]" value="price-desc">
+                  Price High
+                </option>
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-3 h-3.5 w-3.5" />
+            </label>
+            <label className="flex h-12 min-w-0 items-center border-b-2 border-black bg-[#f6edd8] text-[#171411] lg:border-b-0 lg:border-r-2">
+              <span className="sr-only">Search the store</span>
+              <input
+                className="h-full min-w-0 flex-1 bg-transparent px-4 text-[11px] font-black uppercase text-[#171411] outline-none placeholder:text-[#655f58]"
+                placeholder="Search the store"
+                value={storeSearch}
+                onChange={(event) => {
+                  setActiveTab("browse");
+                  setStoreSearch(event.target.value);
+                }}
+              />
+              <Search className="mr-3 h-4 w-4 text-[#b7102a]" />
+            </label>
+            <button
+              className={`flex h-12 items-center justify-center gap-2 px-4 ${
+                activeTab === "wishlist" ? "bg-[#b7102a] text-white" : "bg-[#087d6d] text-white"
+              }`}
+              type="button"
+              onClick={() => setActiveTab("wishlist")}
+            >
+              <Heart className="h-4 w-4 fill-current" />
+              Wishlist {wishlistGames.length}
+            </button>
+          </div>
+        </nav>
+
         <div className="hero-art relative min-h-[420px] overflow-hidden border-4 border-black shadow-[5px_5px_0_#171411] sm:min-h-[340px] sm:shadow-[6px_6px_0_#171411]">
+          {selectedProduct?.coverImageUrl ? (
+            <img
+              alt=""
+              className="absolute inset-0 h-full w-full object-cover"
+              src={selectedProduct.coverImageUrl}
+            />
+          ) : null}
+          <div className="absolute inset-0 bg-black/55" />
           <div className="absolute inset-x-0 top-0 h-24 bg-black/35" />
           <div className="neo-dots-ink relative m-4 flex min-h-[330px] items-center border-l-4 border-[#c20b2f] p-5 sm:m-6 sm:min-h-[280px] sm:p-9">
             <div className="max-w-[590px]">
@@ -1478,26 +1577,39 @@ export function StorePage() {
               </h1>
               <p className="mt-4 max-w-[560px] text-base leading-7 text-[#fffaf0] sm:text-lg">
                 {selectedProduct
-                  ? selectedProduct.description
-                  : "Store catalog is still loading. Local preview fixtures stay labelled until hosted products arrive."}
+                  ? selectedProduct.description || "No product description has been published."
+                  : catalogSource === "loading"
+                    ? "Loading published products from the hosted catalog."
+                    : catalogSource === "error"
+                      ? "The hosted catalog could not be loaded. No local product data is substituted."
+                      : "No published products are currently available."}
               </p>
               <div className="mt-8 grid gap-3 sm:flex sm:flex-wrap sm:items-center sm:gap-5">
                 <button
                   className="neo-copy flex h-12 items-center justify-center gap-3 border-2 border-black bg-[#c20b2f] px-5 text-xs font-bold uppercase text-[#fffaf0] shadow-[4px_4px_0_#171411] disabled:opacity-50 sm:px-7"
                   type="button"
-                  disabled={!selectedProduct || selectedProductOwned || isProcessing}
+                  disabled={
+                    !commerceEnabled ||
+                    !selectedProduct ||
+                    selectedProductOwned ||
+                    purchaseActionsDisabled
+                  }
                   onClick={() => {
                     if (selectedProduct) buyNow(selectedProduct.id);
                   }}
                 >
                   <Play className="h-4 w-4 fill-current" />
-                  {selectedProductOwned
-                    ? "Owned"
-                    : selectedProduct
-                      ? `${selectedProduct.isFree ? "Claim" : "Buy Now"} - ${formatStorePrice(
-                          selectedProduct,
-                        )}`
-                      : "Store Loading"}
+                  {!selectedProduct
+                    ? catalogSource === "loading"
+                      ? "Store Loading"
+                      : "Unavailable"
+                    : selectedProductOwned
+                      ? "Owned"
+                      : selectedProduct
+                        ? `${selectedProduct.isFree ? "Claim" : "Buy Now"} - ${formatStorePrice(
+                            selectedProduct,
+                          )}`
+                        : "Unavailable"}
                 </button>
                 <button
                   className="neo-copy h-12 border-2 border-[#fffaf0] bg-black/35 px-5 text-xs font-bold uppercase text-[#fffaf0] disabled:cursor-not-allowed disabled:opacity-60"
@@ -1512,7 +1624,191 @@ export function StorePage() {
           </div>
         </div>
 
-        <CatalogSourceTape productCount={products.length} source={catalogSource} />
+        <CatalogSourceTape
+          errorMessage={catalogError}
+          productCount={products.length}
+          source={catalogSource}
+        />
+
+        <section
+          aria-label="Store discovery controls"
+          className="border-[3px] border-black bg-[#fff9ed] p-3 shadow-[4px_4px_0_#171411]"
+        >
+          <div className="grid gap-3 lg:grid-cols-[1fr_260px]">
+            <div>
+              <div className="flex flex-col gap-3 border-b-2 border-black pb-3 md:flex-row md:items-end md:justify-between">
+                <div>
+                  <p className="neo-copy text-[10px] font-black uppercase tracking-[0.14em] text-[#b7102a]">
+                    Discovery Queue
+                  </p>
+                  <h2 className="neo-title text-3xl leading-none text-[#171411]">
+                    Browse The Store
+                  </h2>
+                </div>
+                <div className="neo-copy grid grid-cols-2 gap-2 text-[10px] font-black uppercase tracking-[0.1em] sm:flex">
+                  {[
+                    {
+                      icon: <Sparkles className="h-3.5 w-3.5" />,
+                      label: "Discover",
+                      tab: "browse" as const,
+                    },
+                    {
+                      icon: <Heart className="h-3.5 w-3.5" />,
+                      label: "Wishlist",
+                      tab: "wishlist" as const,
+                    },
+                    {
+                      icon: <ShoppingCart className="h-3.5 w-3.5" />,
+                      label: "Cart",
+                      tab: "cart" as const,
+                    },
+                    {
+                      icon: <ReceiptText className="h-3.5 w-3.5" />,
+                      label: "Orders",
+                      tab: "orders" as const,
+                    },
+                  ].map((item) => (
+                    <button
+                      className={`flex items-center justify-center gap-2 border-2 border-black px-3 py-2 shadow-[2px_2px_0_#171411] ${
+                        activeTab === item.tab
+                          ? "bg-[#171411] text-[#fff9ed]"
+                          : "bg-[#f6edd8] text-[#171411]"
+                      }`}
+                      key={item.label}
+                      type="button"
+                      onClick={() => setActiveTab(item.tab)}
+                    >
+                      {item.icon}
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="mt-3 grid gap-3 xl:grid-cols-[minmax(0,1fr)_220px_180px_170px]">
+                <label className="neo-copy block border-2 border-black bg-[#f6edd8] p-2 text-[10px] font-black uppercase tracking-[0.1em] text-[#171411] shadow-[2px_2px_0_#171411]">
+                  <span className="flex items-center gap-2 text-[#b7102a]">
+                    <Search className="h-4 w-4" />
+                    Search
+                  </span>
+                  <input
+                    className="mt-2 h-10 w-full border-2 border-black bg-[#fff9ed] px-3 text-[12px] font-black uppercase text-[#171411] outline-none"
+                    placeholder="Find games, tags, studios"
+                    value={storeSearch}
+                    onChange={(event) => setStoreSearch(event.target.value)}
+                  />
+                </label>
+                <label className="neo-copy block border-2 border-black bg-[#f6edd8] p-2 text-[10px] font-black uppercase tracking-[0.1em] text-[#171411] shadow-[2px_2px_0_#171411]">
+                  <span className="flex items-center gap-2 text-[#b7102a]">
+                    <Tags className="h-4 w-4" />
+                    Genre
+                  </span>
+                  <select
+                    className="mt-2 h-10 w-full border-2 border-black bg-[#fff9ed] px-2 text-[11px] font-black uppercase text-[#171411]"
+                    value={selectedGenre}
+                    onChange={(event) => setSelectedGenre(event.target.value)}
+                  >
+                    <option value="all">All Genres</option>
+                    {availableGenres.map((genre) => (
+                      <option key={genre} value={genre}>
+                        {genre}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="neo-copy block border-2 border-black bg-[#f6edd8] p-2 text-[10px] font-black uppercase tracking-[0.1em] text-[#171411] shadow-[2px_2px_0_#171411]">
+                  <span className="flex items-center gap-2 text-[#b7102a]">
+                    <SlidersHorizontal className="h-4 w-4" />
+                    Price
+                  </span>
+                  <select
+                    className="mt-2 h-10 w-full border-2 border-black bg-[#fff9ed] px-2 text-[11px] font-black uppercase text-[#171411]"
+                    value={priceFilter}
+                    onChange={(event) => setPriceFilter(event.target.value as StorePriceFilter)}
+                  >
+                    <option value="all">Any Price</option>
+                    <option value="discounts">Specials</option>
+                    <option value="free">Free</option>
+                    <option value="under-15">Under 15</option>
+                  </select>
+                </label>
+                <label className="neo-copy block border-2 border-black bg-[#f6edd8] p-2 text-[10px] font-black uppercase tracking-[0.1em] text-[#171411] shadow-[2px_2px_0_#171411]">
+                  <span className="flex items-center gap-2 text-[#b7102a]">
+                    <Trophy className="h-4 w-4" />
+                    Sort
+                  </span>
+                  <select
+                    className="mt-2 h-10 w-full border-2 border-black bg-[#fff9ed] px-2 text-[11px] font-black uppercase text-[#171411]"
+                    value={sortMode}
+                    onChange={(event) => setSortMode(event.target.value as StoreSortMode)}
+                  >
+                    <option value="featured">Featured</option>
+                    <option value="newest">New Releases</option>
+                    <option value="discount">Discount</option>
+                    <option value="price-asc">Price Low</option>
+                    <option value="price-desc">Price High</option>
+                  </select>
+                </label>
+              </div>
+
+              <div className="mt-3 flex flex-wrap gap-2">
+                {(["all", "windows", "linux", "macos"] as const).map((platform) => (
+                  <button
+                    className={`neo-copy border-2 border-black px-3 py-2 text-[10px] font-black uppercase tracking-[0.1em] shadow-[2px_2px_0_#171411] ${
+                      selectedPlatform === platform
+                        ? "bg-[#087d6d] text-white"
+                        : "bg-[#fff9ed] text-[#171411]"
+                    }`}
+                    key={platform}
+                    type="button"
+                    onClick={() => setSelectedPlatform(platform)}
+                  >
+                    {platform === "all" ? "All Platforms" : platform}
+                  </button>
+                ))}
+                <button
+                  className="neo-copy border-2 border-black bg-[#171411] px-3 py-2 text-[10px] font-black uppercase tracking-[0.1em] text-[#fff9ed] shadow-[2px_2px_0_#171411]"
+                  type="button"
+                  onClick={resetStoreBrowseFilters}
+                >
+                  Reset {activeFilterCount > 0 ? `(${activeFilterCount})` : ""}
+                </button>
+              </div>
+            </div>
+
+            <div className="neo-dots border-2 border-black bg-[#f6edd8] p-3 shadow-[3px_3px_0_#171411]">
+              <p className="neo-copy text-[10px] font-black uppercase tracking-[0.14em] text-[#b7102a]">
+                Queue Slot
+              </p>
+              <p className="neo-title mt-1 text-3xl leading-none text-[#171411]">
+                {selectedDiscoveryIndex >= 0 ? selectedDiscoveryIndex + 1 : 1}/
+                {Math.max(discoveryGames.length, 1)}
+              </p>
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <button
+                  aria-label="Previous discovery game"
+                  className="flex h-10 items-center justify-center border-2 border-black bg-[#fff9ed] text-[#171411] shadow-[2px_2px_0_#171411]"
+                  type="button"
+                  onClick={() => moveDiscoveryQueue(-1)}
+                >
+                  <ChevronLeft className="h-5 w-5" />
+                </button>
+                <button
+                  aria-label="Next discovery game"
+                  className="flex h-10 items-center justify-center border-2 border-black bg-[#8cf5e4] text-[#171411] shadow-[2px_2px_0_#171411]"
+                  type="button"
+                  onClick={() => moveDiscoveryQueue(1)}
+                >
+                  <ChevronRight className="h-5 w-5" />
+                </button>
+              </div>
+              <p className="neo-copy mt-3 border-2 border-black bg-[#fff9ed] p-2 text-[9px] font-black uppercase leading-4 tracking-[0.08em] text-[#655f58]">
+                {filteredProducts.length} matches / {wishlistGames.length} wishlisted /{" "}
+                {cartGames.length} cart
+              </p>
+            </div>
+          </div>
+        </section>
 
         {statusMessage ? (
           <div className="neo-copy border-[3px] border-black bg-[#8cf5e4] p-3 text-[11px] font-black uppercase tracking-[0.12em] text-[#171411] shadow-[4px_4px_0_#171411]">
@@ -1529,7 +1825,7 @@ export function StorePage() {
           <StoreMetric
             icon={<Heart className="h-4 w-4" />}
             label="Wishlist"
-            value={wishlistIds.size}
+            value={scopedWishlistIds.size}
           />
           <StoreMetric
             icon={<ShoppingCart className="h-4 w-4" />}
@@ -1540,25 +1836,42 @@ export function StorePage() {
           <StoreMetric
             icon={<ReceiptText className="h-4 w-4" />}
             label="Orders"
-            value={orders.length}
+            value={scopedOrders.length}
           />
         </div>
 
-        {activePriceAlertHits.length > 0 ? (
-          <div className="border-4 border-black bg-[#8cf5e4] p-4 shadow-[5px_5px_0_#171411]">
-            <h2 className="neo-title text-3xl leading-none text-[#171411]">Price Alerts</h2>
-            <p className="neo-copy mt-2 text-[11px] font-black uppercase leading-5 text-[#171411]">
-              {activePriceAlertHits.map((game) => game.title).join(", ")} reached your target price.
-            </p>
-          </div>
-        ) : null}
-
-        <PriceDropSchedulerReadinessPanel readiness={priceDropSchedulerReadiness} />
+        <div className="grid gap-4 xl:grid-cols-3">
+          <StoreShelf
+            games={specialOfferGames}
+            icon={<Flame className="h-4 w-4" />}
+            isProcessing={purchaseActionsDisabled}
+            title="Special Offers"
+            onBuyNow={buyNow}
+            onSelect={setSelectedProductId}
+          />
+          <StoreShelf
+            games={topSellerGames}
+            icon={<Trophy className="h-4 w-4" />}
+            isProcessing={purchaseActionsDisabled}
+            title="Top Sellers"
+            onBuyNow={buyNow}
+            onSelect={setSelectedProductId}
+          />
+          <StoreShelf
+            games={newReleaseGames}
+            icon={<Clock className="h-4 w-4" />}
+            isProcessing={purchaseActionsDisabled}
+            title="New Releases"
+            onBuyNow={buyNow}
+            onSelect={setSelectedProductId}
+          />
+        </div>
 
         <CartDrawer
           cartGames={cartGames}
+          commerceEnabled={commerceEnabled}
           isOpen={isCartDrawerOpen}
-          isProcessing={isProcessing}
+          isProcessing={purchaseActionsDisabled}
           total={cartTotal}
           onCheckout={() => completeCheckout()}
           onClose={() => setIsCartDrawerOpen(false)}
@@ -1574,11 +1887,9 @@ export function StorePage() {
             <ProductDetailPanel
               game={selectedProduct}
               storeProduct={selectedStoreProduct}
-              isOwned={ownedIds.has(selectedProduct.id)}
-              isWishlisted={wishlistIds.has(selectedProduct.id)}
-              isProcessing={isProcessing}
-              priceHistory={priceHistory}
-              priceHistoryLoading={priceHistoryLoading}
+              isOwned={scopedOwnedIds.has(selectedProduct.id)}
+              isWishlisted={scopedWishlistIds.has(selectedProduct.id)}
+              isProcessing={purchaseActionsDisabled}
               onAddToCart={handleAddToCart}
               onBuyNow={buyNow}
               onToggleWishlist={toggleWishlist}
@@ -1590,7 +1901,7 @@ export function StorePage() {
               developerReplyDrafts={developerReplyDrafts}
               developerReplySavingReviewId={developerReplySavingReviewId}
               game={selectedProduct}
-              isOwned={ownedIds.has(selectedProduct.id)}
+              isOwned={scopedOwnedIds.has(selectedProduct.id)}
               isSignedIn={isStoreSignedIn}
               loading={reviewsLoading}
               rating={reviewRating}
@@ -1623,7 +1934,7 @@ export function StorePage() {
         <div>
           <div className="mb-6 flex flex-col gap-3 border-b-4 border-black pb-3 lg:flex-row lg:items-end lg:justify-between">
             <h2 className="neo-title bg-black px-4 pb-1 text-[2.6rem] leading-none text-[#fffaf0] sm:text-[3rem]">
-              Store Desk
+              Browse Catalog
             </h2>
             <div className="neo-copy grid grid-cols-2 gap-2 text-[11px] font-bold uppercase sm:flex">
               {(["browse", "wishlist", "cart", "orders"] as const).map((tab) => (
@@ -1646,8 +1957,9 @@ export function StorePage() {
           {activeTab === "cart" ? (
             <CartPanel
               cartGames={cartGames}
+              commerceEnabled={commerceEnabled}
               total={cartTotal}
-              isProcessing={isProcessing}
+              isProcessing={purchaseActionsDisabled}
               onCheckout={() => completeCheckout()}
               onRemove={handleRemoveFromCart}
             />
@@ -1655,7 +1967,7 @@ export function StorePage() {
             <StoreOrderPanel
               downloadPreparingLicenseId={downloadPreparingLicenseId}
               invoiceSyncingOrderId={invoiceSyncingOrderId}
-              licenses={licenses}
+              licenses={scopedLicenses}
               licenseToken={licenseToken}
               loading={isStripeLiveStagingContractVerify ? false : ordersLoading}
               invoices={visibleOrderInvoices}
@@ -1683,28 +1995,142 @@ export function StorePage() {
               onValidateLicense={handleValidateLicense}
             />
           ) : activeGames.length > 0 ? (
-            <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
               {activeGames.map((game) => (
                 <StoreGameCard
                   key={game.id}
                   game={game}
-                  isAdded={ownedIds.has(game.id)}
-                  isInCart={cartIds.has(game.id)}
-                  isWishlisted={wishlistIds.has(game.id)}
-                  priceAlert={priceAlerts[game.id] ?? null}
+                  isAdded={scopedOwnedIds.has(game.id)}
+                  isInCart={scopedCartIds.has(game.id)}
+                  isProcessing={purchaseActionsDisabled}
+                  isWishlisted={scopedWishlistIds.has(game.id)}
                   onAddToCart={handleAddToCart}
                   onBuyNow={buyNow}
-                  onSetPriceAlert={setPriceAlert}
                   onToggleWishlist={toggleWishlist}
                   onViewDetails={setSelectedProductId}
                 />
               ))}
             </div>
           ) : (
-            <EmptyStorePanel label="No wishlist games yet." />
+            <EmptyStorePanel
+              label={
+                activeTab === "wishlist"
+                  ? "No wishlist matches yet."
+                  : catalogSource === "loading"
+                    ? "Loading the hosted catalog."
+                    : catalogSource === "error"
+                      ? "The hosted catalog could not be loaded. No local products are shown."
+                      : catalogSource === "empty"
+                        ? "No published products are currently available."
+                        : "No games match filters."
+              }
+            />
           )}
         </div>
       </section>
     </div>
+  );
+}
+
+function StoreShelf({
+  games,
+  icon,
+  isProcessing,
+  title,
+  onBuyNow,
+  onSelect,
+}: {
+  games: StoreGame[];
+  icon: ReactNode;
+  isProcessing: boolean;
+  title: string;
+  onBuyNow: (gameId: string) => void;
+  onSelect: (gameId: string) => void;
+}) {
+  return (
+    <section
+      aria-label={title}
+      className="border-[3px] border-black bg-[#fff9ed] p-3 shadow-[4px_4px_0_#171411]"
+    >
+      <div className="flex items-center justify-between gap-3 border-b-2 border-black pb-2">
+        <div>
+          <p className="neo-copy flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.12em] text-[#b7102a]">
+            {icon}
+            Store Rail
+          </p>
+          <h2 className="neo-title text-2xl leading-none text-[#171411]">{title}</h2>
+        </div>
+        <span className="neo-copy border-2 border-black bg-[#8cf5e4] px-2 py-1 text-[10px] font-black uppercase text-[#171411]">
+          {games.length}
+        </span>
+      </div>
+      <div className="mt-3 grid gap-2">
+        {games.length > 0 ? (
+          games.map((game) => (
+            <article
+              className="grid grid-cols-[70px_minmax(0,1fr)] gap-3 border-2 border-black bg-[#f6edd8] p-2 shadow-[2px_2px_0_#171411]"
+              key={`${title}-${game.id}`}
+            >
+              <button
+                aria-label={`View ${game.title}`}
+                className="relative min-h-16 overflow-hidden border-2 border-black bg-[#171411]"
+                type="button"
+                onClick={() => onSelect(game.id)}
+              >
+                {game.coverImageUrl ? (
+                  <img
+                    alt=""
+                    className="absolute inset-0 h-full w-full object-cover"
+                    src={game.coverImageUrl}
+                  />
+                ) : (
+                  <span className="neo-copy grid h-full min-h-16 place-items-center bg-[#efe6d4] p-1 text-[8px] font-black uppercase text-[#655f58]">
+                    No cover
+                  </span>
+                )}
+              </button>
+              <div className="min-w-0">
+                <button
+                  className="block max-w-full text-left"
+                  type="button"
+                  onClick={() => onSelect(game.id)}
+                >
+                  <span className="neo-title block truncate text-xl leading-none text-[#171411]">
+                    {game.title}
+                  </span>
+                </button>
+                <div className="mt-1 flex flex-wrap gap-1">
+                  {(game.genres ?? [game.tagLine]).slice(0, 2).map((genre) => (
+                    <span
+                      className="neo-copy border border-black bg-[#fff9ed] px-1.5 py-0.5 text-[8px] font-black uppercase tracking-[0.08em] text-[#655f58]"
+                      key={`${game.id}-${genre}`}
+                    >
+                      {genre}
+                    </span>
+                  ))}
+                </div>
+                <div className="mt-2 flex items-center justify-between gap-2">
+                  <span className="text-lg font-black text-[#171411]">
+                    {formatStorePrice(game)}
+                  </span>
+                  <button
+                    className="neo-copy border-2 border-black bg-[#b7102a] px-2 py-1 text-[9px] font-black uppercase tracking-[0.08em] text-white shadow-[2px_2px_0_#171411] disabled:opacity-50"
+                    type="button"
+                    disabled={isProcessing}
+                    onClick={() => onBuyNow(game.id)}
+                  >
+                    {game.isFree ? "Claim" : "Buy"}
+                  </button>
+                </div>
+              </div>
+            </article>
+          ))
+        ) : (
+          <p className="neo-copy border-2 border-dashed border-black bg-[#f6edd8] p-3 text-[10px] font-black uppercase leading-5 text-[#655f58]">
+            No catalog rows.
+          </p>
+        )}
+      </div>
+    </section>
   );
 }

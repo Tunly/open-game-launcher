@@ -51,7 +51,7 @@ function normalizeFilterToken(value: string): string {
 }
 
 function getGameProductCategory(game: Game): string {
-  return (game.productCategory || "game").toLowerCase();
+  return (game.productCategory || "unknown").toLowerCase();
 }
 
 function matchesSidebarPlatform(game: Game, filter: LibraryPlatformFilter): boolean {
@@ -233,10 +233,10 @@ function matchesPlayStatus(
     return game.status === "not_installed";
   }
   if (token === "played") {
-    return (game.playtimeMinutes || 0) > 0;
+    return typeof game.playtimeMinutes === "number" && game.playtimeMinutes > 0;
   }
   if (token === "never played") {
-    return (game.playtimeMinutes || 0) === 0;
+    return game.playtimeMinutes === 0;
   }
   if (token === "favorites") {
     return favorites[game.id] === true;
@@ -265,7 +265,7 @@ function matchesHiddenVisibility(
   return true;
 }
 
-export function matchesSizeQuery(gameSizeGb: number, query: string): boolean {
+export function matchesSizeQuery(gameSizeGb: number | null | undefined, query: string): boolean {
   const trimmed = query.trim().toLowerCase();
   if (!trimmed) {
     return true;
@@ -275,6 +275,10 @@ export function matchesSizeQuery(gameSizeGb: number, query: string): boolean {
   const match = trimmed.match(sizeRegex);
   if (!match) {
     return true;
+  }
+
+  if (typeof gameSizeGb !== "number" || !Number.isFinite(gameSizeGb)) {
+    return false;
   }
 
   const operator = match[1];

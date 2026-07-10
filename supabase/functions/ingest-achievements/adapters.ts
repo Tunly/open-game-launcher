@@ -2,6 +2,7 @@ import type { AuthenticatedRequest } from "../_shared/privacy.ts";
 import type { NormalizedAchievement } from "./achievement-ingestion.ts";
 import type {
   AchievementCatalogGame,
+  AchievementDefinitionUpsertResult,
   AchievementIngestionAuthContext,
   AchievementIngestionHandlerDeps,
 } from "./handler.ts";
@@ -48,6 +49,7 @@ export type AchievementIngestionAdapterDeps = {
   authenticateRequest: (
     request: Request,
   ) => Promise<AuthenticatedRequestResult>;
+  getEnv?: (name: string) => string | undefined;
 };
 
 export function createAchievementIngestionAdapters(
@@ -74,17 +76,25 @@ export function createAchievementIngestionAdapters(
         achievementIdsByKey,
         launcherDeviceId,
       ),
-    upsertAchievementDefinitions: (auth, gameId, achievements) =>
+    upsertAchievementDefinitions: (
+      auth,
+      gameId,
+      provider,
+      syncedAt,
+      achievements,
+    ) =>
       upsertAchievementDefinitions(
         adminClientFromAuth(auth),
         gameId,
+        provider,
+        syncedAt,
         achievements,
       ),
   };
 }
 
 async function authenticateRequest(
-  deps: Pick<AchievementIngestionAdapterDeps, "authenticateRequest">,
+  deps: AchievementIngestionAdapterDeps,
   request: Request,
 ): Promise<AchievementIngestionAuthContext | Response> {
   const authResult = await deps.authenticateRequest(request);
@@ -94,8 +104,35 @@ async function authenticateRequest(
 
   return {
     adminClient: authResult.adminClient,
+    hasTrustedAttestation: hasTrustedAttestation(request, deps.getEnv),
     userId: authResult.user.id,
   };
+}
+
+function hasTrustedAttestation(
+  request: Request,
+  getEnv: AchievementIngestionAdapterDeps["getEnv"],
+) {
+  const expected = getEnv?.("ACHIEVEMENT_INGESTION_ATTESTATION_SECRET")
+    ?.trim() ?? "";
+  const supplied = request.headers.get("x-achievement-attestation")?.trim() ??
+    "";
+
+  // Short secrets are treated as a deployment misconfiguration. This secret
+  // belongs only in a trusted provider-verification relay, never in launcher
+  // binaries or browser bundles.
+  if (expected.length < 32 || supplied.length === 0) {
+    return false;
+  }
+
+  const expectedBytes = new TextEncoder().encode(expected);
+  const suppliedBytes = new TextEncoder().encode(supplied);
+  const length = Math.max(expectedBytes.length, suppliedBytes.length);
+  let mismatch = expectedBytes.length ^ suppliedBytes.length;
+  for (let index = 0; index < length; index += 1) {
+    mismatch |= (expectedBytes[index] ?? 0) ^ (suppliedBytes[index] ?? 0);
+  }
+  return mismatch === 0;
 }
 
 function adminClientFromAuth(
@@ -127,44 +164,56 @@ async function getCatalogGame(
 async function upsertAchievementDefinitions(
   adminClient: SupabaseAdminClient,
   gameId: string,
+  provider: string,
+  syncedAt: string,
   achievements: NormalizedAchievement[],
-): Promise<Map<string, string>> {
+): Promise<AchievementDefinitionUpsertResult> {
   const rows = achievements.map((achievement) => ({
     description: achievement.description,
-    game_id: gameId,
     icon_url: achievement.iconUrl,
-    is_active: true,
     key: achievement.key,
     name: achievement.name,
     points: achievement.points,
     rarity: achievement.rarity,
-    updated_at: new Date().toISOString(),
+    rarity_percent: achievement.rarityPercent,
   }));
 
-  const { error: upsertError } = await tableClient(adminClient, "achievements")
-    .upsert(rows, { onConflict: "game_id,key" });
-  if (upsertError) {
-    throw upsertError;
-  }
-
-  const { data, error } = await tableClient(adminClient, "achievements")
-    .select("id, key")
-    .eq("game_id", gameId)
-    .in<Array<{ id?: unknown; key?: unknown }>>(
-      "key",
-      achievements.map((achievement) => achievement.key),
-    );
+  const { data, error } = await adminClient.rpc(
+    "upsert_trusted_achievement_definitions",
+    {
+      p_achievements: rows,
+      p_game_id: gameId,
+      p_provider: provider,
+      p_synced_at: syncedAt,
+    },
+  );
   if (error) {
     throw error;
   }
 
-  return new Map(
-    (data ?? [])
-      .filter((row) =>
-        typeof row.id === "string" && typeof row.key === "string"
-      )
-      .map((row) => [row.key as string, row.id as string]),
-  );
+  const resultRows = Array.isArray(data)
+    ? data as Array<{
+      achievement_id?: unknown;
+      achievement_key?: unknown;
+      ingestion_accepted?: unknown;
+    }>
+    : [];
+  const accepted = resultRows.some((row) => row.ingestion_accepted === true);
+
+  return {
+    accepted,
+    achievementIdsByKey: new Map(
+      resultRows
+        .filter((row) =>
+          typeof row.achievement_id === "string" &&
+          typeof row.achievement_key === "string"
+        )
+        .map((row) => [
+          row.achievement_key as string,
+          row.achievement_id as string,
+        ]),
+    ),
+  };
 }
 
 async function recordNewAchievementUnlocks(
@@ -174,7 +223,7 @@ async function recordNewAchievementUnlocks(
   gameTitle: string | null,
   achievements: NormalizedAchievement[],
   achievementIdsByKey: Map<string, string>,
-  launcherDeviceId: string | null,
+  _launcherDeviceId: string | null,
 ): Promise<Set<string>> {
   const unlocks = achievements
     .map((achievement) => {
@@ -206,7 +255,8 @@ async function recordNewAchievementUnlocks(
     .rpc("record_trusted_achievement_unlocks", {
       p_game_id: gameId,
       p_game_title: gameTitle,
-      p_launcher_device_id: launcherDeviceId,
+      // Device ids are deliberately not forwarded into a public-data RPC.
+      p_launcher_device_id: null,
       p_unlocks: unlocks,
       p_user_id: userId,
     });

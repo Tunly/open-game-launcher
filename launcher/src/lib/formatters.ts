@@ -93,7 +93,7 @@ export function getLogoPlacementStyle(game: Game) {
 
 export function formatLastPlayed(lastPlayed?: string | null): string {
   if (!lastPlayed) {
-    return "Not played";
+    return "Unknown";
   }
 
   const date = new Date(lastPlayed);
@@ -108,7 +108,11 @@ export function formatLastPlayed(lastPlayed?: string | null): string {
 }
 
 export function formatPlayTime(playtimeMinutes?: number): string {
-  if (!playtimeMinutes || playtimeMinutes <= 0) {
+  if (playtimeMinutes === undefined || !Number.isFinite(playtimeMinutes) || playtimeMinutes < 0) {
+    return "Unknown";
+  }
+
+  if (playtimeMinutes === 0) {
     return "0 hours";
   }
 
@@ -117,6 +121,10 @@ export function formatPlayTime(playtimeMinutes?: number): string {
 }
 
 export function formatAchievementProgress(game: Game): string {
+  if (!game.achievements) {
+    return "Unavailable";
+  }
+
   const total = game.achievements?.length ?? 0;
   const unlocked = game.achievements?.filter((achievement) => achievement.unlockedAt).length ?? 0;
   return `${unlocked}/${total}`;

@@ -5,7 +5,7 @@ use tauri::{AppHandle, Emitter};
 
 use super::core::{
     current_unix_timestamp, read_installed_games_cache, unix_timestamp_to_iso,
-    write_installed_games_cache,
+    update_installed_game_cache,
 };
 use super::types::*;
 
@@ -58,7 +58,7 @@ pub fn start_playtime_poller(app_handle: AppHandle) {
                 }
             }
 
-            let mut games_updated = false;
+            let mut activity_updates = HashMap::<String, (Option<String>, u32)>::new();
             let mut updated_cache = cached_games.clone();
             let last_input_seconds = Some(super::idle::seconds_since_last_input());
 
@@ -105,7 +105,7 @@ pub fn start_playtime_poller(app_handle: AppHandle) {
                         let current_min = game.playtime_minutes.unwrap_or_default();
                         game.playtime_minutes = Some(current_min + 1);
                         session.accumulated_seconds = 0; // reset seconds accumulator
-                        games_updated = true;
+                        activity_updates.insert(game.id.clone(), (game.last_played_at.clone(), 1));
                     }
                 } else {
                     // Game is not running. If it was previously running, we reset session
@@ -120,21 +120,36 @@ pub fn start_playtime_poller(app_handle: AppHandle) {
                         ) {
                             emit_game_lifecycle_event(&app_handle, &event);
                         }
-                        games_updated = true; // save stopped state/last updated playtime
+                        activity_updates.insert(game.id.clone(), (game.last_played_at.clone(), 0));
                     }
                 }
             }
 
-            if games_updated {
-                write_installed_games_cache(&updated_cache);
-                // Emit event for all games that had changes
-                for game in updated_cache {
-                    let update = GameActivityUpdate {
-                        game_id: game.id.clone(),
-                        last_played: game.last_played_at.clone(),
-                        playtime_minutes: game.playtime_minutes,
-                    };
-                    let _ = app_handle.emit("game_activity_updated", &update);
+            for (game_id, (last_played, add_playtime_minutes)) in activity_updates {
+                match update_installed_game_cache(&game_id, move |game| {
+                    if last_played.is_some() {
+                        game.last_played_at = last_played;
+                    }
+                    if add_playtime_minutes > 0 {
+                        game.playtime_minutes = Some(
+                            game.playtime_minutes
+                                .unwrap_or_default()
+                                .saturating_add(add_playtime_minutes),
+                        );
+                    }
+                    Ok(())
+                }) {
+                    Ok(game) => {
+                        let update = GameActivityUpdate {
+                            game_id: game.id,
+                            last_played: game.last_played_at,
+                            playtime_minutes: game.playtime_minutes,
+                        };
+                        let _ = app_handle.emit("game_activity_updated", &update);
+                    }
+                    Err(error) => eprintln!(
+                        "[open-game-launcher] Could not persist activity for {game_id}: {error}"
+                    ),
                 }
             }
         }
@@ -212,28 +227,31 @@ fn find_running_game_process<'a>(
         return None;
     }
 
+    let has_path_identity = install_path.is_some() || executable_path.is_some();
+
     running_processes.iter().find(|process| {
-        if process_names.iter().any(|name| name == &process.name) {
-            return true;
+        if let Some(process_path) = &process.exe_path {
+            if executable_path
+                .as_ref()
+                .is_some_and(|path| process_path == path)
+            {
+                return true;
+            }
+
+            if install_path.as_ref().is_some_and(|path| {
+                process_path == path
+                    || process_path
+                        .strip_prefix(path)
+                        .is_some_and(|rest| rest.starts_with('/'))
+            }) {
+                return true;
+            }
         }
 
-        let Some(process_path) = &process.exe_path else {
-            return false;
-        };
-
-        if executable_path
-            .as_ref()
-            .is_some_and(|path| process_path == path)
-        {
-            return true;
-        }
-
-        install_path.as_ref().is_some_and(|path| {
-            process_path == path
-                || process_path
-                    .strip_prefix(path)
-                    .is_some_and(|rest| rest.starts_with('/'))
-        })
+        // A launcher-provided executable path or install root is a stronger identity
+        // than a generic process filename such as game.exe. Falling back to the name
+        // in that case can attribute another game's process and playtime to this game.
+        !has_path_identity && process_names.iter().any(|name| name == &process.name)
     })
 }
 
@@ -323,10 +341,7 @@ fn collect_process_windows() -> HashMap<u32, GameWindowInfo> {
         }
 
         let title = read_window_title(hwnd);
-        if title
-            .as_deref()
-            .map_or(true, |value| value.trim().is_empty())
-        {
+        if title.as_deref().is_none_or(|value| value.trim().is_empty()) {
             return 1;
         }
 
@@ -399,29 +414,29 @@ pub fn update_cached_game_activity(
     last_played: Option<u64>,
     add_playtime_minutes: Option<u32>,
 ) -> Option<GameActivityUpdate> {
-    let mut games = read_installed_games_cache().unwrap_or_default();
-    let game = match games.iter_mut().find(|game| game.id == game_id) {
-        Some(game) => game,
-        None => return None,
-    };
-
-    if let Some(timestamp) = last_played {
-        game.last_played_at = Some(unix_timestamp_to_iso(timestamp));
+    let last_played = last_played.map(unix_timestamp_to_iso);
+    match update_installed_game_cache(game_id, move |game| {
+        if last_played.is_some() {
+            game.last_played_at = last_played;
+        }
+        if let Some(minutes) = add_playtime_minutes {
+            let current = game.playtime_minutes.unwrap_or_default();
+            game.playtime_minutes = Some(current.saturating_add(minutes));
+        }
+        Ok(())
+    }) {
+        Ok(game) => Some(GameActivityUpdate {
+            game_id: game.id,
+            last_played: game.last_played_at,
+            playtime_minutes: game.playtime_minutes,
+        }),
+        Err(error) => {
+            eprintln!(
+                "[open-game-launcher] Could not update cached activity for {game_id}: {error}"
+            );
+            None
+        }
     }
-
-    if let Some(minutes) = add_playtime_minutes {
-        let current = game.playtime_minutes.unwrap_or_default();
-        game.playtime_minutes = Some(current.saturating_add(minutes));
-    }
-
-    let update = GameActivityUpdate {
-        game_id: game_id.to_string(),
-        last_played: game.last_played_at.clone(),
-        playtime_minutes: game.playtime_minutes,
-    };
-
-    write_installed_games_cache(&games);
-    Some(update)
 }
 
 pub fn emit_game_activity_update(app: &AppHandle, update: &GameActivityUpdate) {
@@ -602,5 +617,55 @@ mod tests {
             "2026-06-10T10:00:00Z"
         )
         .is_none());
+    }
+
+    #[test]
+    fn process_match_rejects_same_name_from_another_install_path() {
+        let game = test_game();
+        let processes = vec![RunningProcess {
+            exe_path: Some("/games/other/game.exe".to_string()),
+            name: "game.exe".to_string(),
+            pid: Some(99),
+            uptime_seconds: Some(10),
+            window: None,
+        }];
+
+        assert!(find_running_game_process(&game, &processes).is_none());
+    }
+
+    #[test]
+    fn process_match_accepts_normalized_executable_path() {
+        let game = test_game();
+        let processes = vec![RunningProcess {
+            exe_path: Some("/games/test/game.exe".to_string()),
+            name: "game.exe".to_string(),
+            pid: Some(42),
+            uptime_seconds: Some(10),
+            window: None,
+        }];
+
+        assert_eq!(
+            find_running_game_process(&game, &processes).and_then(|process| process.pid),
+            Some(42)
+        );
+    }
+
+    #[test]
+    fn process_match_uses_name_only_when_no_path_identity_exists() {
+        let mut game = test_game();
+        game.install_path = None;
+        game.executable_path = None;
+        let processes = vec![RunningProcess {
+            exe_path: Some("/unknown/game.exe".to_string()),
+            name: "game.exe".to_string(),
+            pid: Some(7),
+            uptime_seconds: Some(10),
+            window: None,
+        }];
+
+        assert_eq!(
+            find_running_game_process(&game, &processes).and_then(|process| process.pid),
+            Some(7)
+        );
     }
 }

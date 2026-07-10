@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { CrossPlatformInvite } from "./CrossPlatformInvite";
@@ -18,15 +18,27 @@ vi.mock("../../lib/supabase/social", () => ({
     senderPlatforms: PlatformType[],
     receiverPlatforms: PlatformType[],
   ) => checkInviteFeasibility(gameTitle, senderPlatforms, receiverPlatforms),
-  createGameInviteShareToken: (inviteId: string, platform: PlatformType | null) =>
-    createGameInviteShareToken(inviteId, platform),
+  createGameInviteShareToken: (
+    expectedUserId: string,
+    inviteId: string,
+    platform: PlatformType | null,
+  ) => createGameInviteShareToken(expectedUserId, inviteId, platform),
   sendCrossplatformInvite: (
+    expectedUserId: string,
     receiverId: string | null,
     gameTitle: string,
     platform: PlatformType | null,
     launchUri: string | null,
     feasibility: InviteFeasibility,
-  ) => sendCrossplatformInvite(receiverId, gameTitle, platform, launchUri, feasibility),
+  ) =>
+    sendCrossplatformInvite(
+      expectedUserId,
+      receiverId,
+      gameTitle,
+      platform,
+      launchUri,
+      feasibility,
+    ),
 }));
 
 describe("CrossPlatformInvite", () => {
@@ -34,7 +46,10 @@ describe("CrossPlatformInvite", () => {
     checkInviteFeasibility.mockReset();
     createGameInviteShareToken.mockReset();
     sendCrossplatformInvite.mockReset();
-    checkInviteFeasibility.mockResolvedValue("possible");
+    checkInviteFeasibility.mockResolvedValue({
+      compatibleSenderPlatform: "steam",
+      feasibility: "possible",
+    });
     createGameInviteShareToken.mockResolvedValue({
       expiresAt: "2026-06-10T16:00:00.000Z",
       gameTitle: "Steel Battalion X",
@@ -55,7 +70,7 @@ describe("CrossPlatformInvite", () => {
         currentUserId="user-1"
         receiverPlatforms={["xbox"]}
         selectedFriendId="friend-1"
-        senderPlatforms={["steam"]}
+        senderPlatforms={["gog", "steam"]}
       />,
     );
 
@@ -78,6 +93,7 @@ describe("CrossPlatformInvite", () => {
     expect(await screen.findByText("Custom Link Ready")).toBeInTheDocument();
     await waitFor(() => {
       expect(sendCrossplatformInvite).toHaveBeenCalledWith(
+        "user-1",
         "friend-1",
         "Steel Battalion X",
         "steam",
@@ -85,9 +101,13 @@ describe("CrossPlatformInvite", () => {
         "possible",
       );
     });
-    expect(checkInviteFeasibility).toHaveBeenCalledWith("Steel Battalion X", ["steam"], ["xbox"]);
+    expect(checkInviteFeasibility).toHaveBeenCalledWith(
+      "Steel Battalion X",
+      ["gog", "steam"],
+      ["xbox"],
+    );
     await waitFor(() => {
-      expect(createGameInviteShareToken).toHaveBeenCalledWith("invite-123", "steam");
+      expect(createGameInviteShareToken).toHaveBeenCalledWith("user-1", "invite-123", "steam");
       expect(screen.getByText(`Server Token ${shareTokenHint}`)).toBeInTheDocument();
     });
     expect(screen.getByText(/Web Fallback/i).parentElement).toHaveTextContent(
@@ -98,7 +118,7 @@ describe("CrossPlatformInvite", () => {
     );
   });
 
-  it("keeps the legacy invite link when server token creation returns null", async () => {
+  it("fails closed without showing a claimable legacy link when token creation returns null", async () => {
     createGameInviteShareToken.mockResolvedValue(null);
 
     render(
@@ -127,15 +147,12 @@ describe("CrossPlatformInvite", () => {
     fireEvent.click(screen.getByRole("button", { name: /send invite/i }));
 
     await waitFor(() => {
-      expect(screen.getByText(/Legacy Link invite-/i)).toBeInTheDocument();
-      expect(createGameInviteShareToken).toHaveBeenCalledWith("invite-123", "steam");
+      expect(createGameInviteShareToken).toHaveBeenCalledWith("user-1", "invite-123", "steam");
     });
-    expect(screen.getByText(/Web Fallback/i).parentElement).toHaveTextContent(
-      "/invite/invite-123?game=Steel+Battalion+X&platform=steam",
-    );
-    expect(screen.getByText(/App Deep Link/i).parentElement).toHaveTextContent(
-      "oglauncher://join?game=Steel+Battalion+X&platform=steam&invite=invite-123",
-    );
+    expect(screen.getByText(/Invite sent, but no optional share link was created/i)).toBeVisible();
+    expect(screen.queryByText(/Legacy Link/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Web Fallback/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/App Deep Link/i)).not.toBeInTheDocument();
   });
 
   it("creates a claimable open invite link when no friend is selected", async () => {
@@ -150,7 +167,7 @@ describe("CrossPlatformInvite", () => {
 
     expect(
       await screen.findByText(
-        "Any signed-in OG Launcher player with this link can accept it. First accept claims it.",
+        "A one-use server token is required. If token creation fails, no claimable link is shown.",
       ),
     ).toBeInTheDocument();
 
@@ -167,16 +184,198 @@ describe("CrossPlatformInvite", () => {
     expect(await screen.findByText("Share link ready!")).toBeInTheDocument();
     await waitFor(() => {
       expect(sendCrossplatformInvite).toHaveBeenCalledWith(
+        "user-1",
         null,
         "Steel Battalion X",
-        "steam",
+        null,
         null,
         "uncertain",
       );
     });
     await waitFor(() => {
-      expect(createGameInviteShareToken).toHaveBeenCalledWith("invite-123", "steam");
+      expect(createGameInviteShareToken).toHaveBeenCalledWith("user-1", "invite-123", null);
       expect(screen.getByText(`Server Token ${shareTokenHint}`)).toBeInTheDocument();
     });
+  });
+
+  it("clears a generated link when its recipient, game, or platform context changes", async () => {
+    const view = render(
+      <CrossPlatformInvite
+        currentUserId="user-1"
+        receiverPlatforms={["xbox"]}
+        selectedFriendId="friend-1"
+        senderPlatforms={["steam"]}
+      />,
+    );
+    const gameInput = screen.getByPlaceholderText("Game title...");
+
+    fireEvent.change(gameInput, { target: { value: "Steel Battalion X" } });
+    fireEvent.click(screen.getByRole("button", { name: /send invite/i }));
+    expect(await screen.findByText("Custom Link Ready")).toBeInTheDocument();
+
+    view.rerender(
+      <CrossPlatformInvite
+        currentUserId="user-1"
+        receiverPlatforms={["xbox"]}
+        selectedFriendId="friend-2"
+        senderPlatforms={["steam"]}
+      />,
+    );
+    await waitFor(() => expect(screen.queryByText("Custom Link Ready")).not.toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: /send invite/i }));
+    expect(await screen.findByText("Custom Link Ready")).toBeInTheDocument();
+    fireEvent.change(gameInput, { target: { value: "Neon Circuit" } });
+    await waitFor(() => expect(screen.queryByText("Custom Link Ready")).not.toBeInTheDocument());
+
+    fireEvent.click(screen.getByRole("button", { name: /send invite/i }));
+    expect(await screen.findByText("Custom Link Ready")).toBeInTheDocument();
+    view.rerender(
+      <CrossPlatformInvite
+        currentUserId="user-1"
+        receiverPlatforms={["xbox"]}
+        selectedFriendId="friend-2"
+        senderPlatforms={["gog"]}
+      />,
+    );
+    await waitFor(() => expect(screen.queryByText("Custom Link Ready")).not.toBeInTheDocument());
+  });
+
+  it("does not report an open share link as ready when the token RPC is unavailable", async () => {
+    createGameInviteShareToken.mockRejectedValueOnce(new Error("RPC missing"));
+    render(
+      <CrossPlatformInvite
+        currentUserId="user-1"
+        receiverPlatforms={[]}
+        selectedFriendId={null}
+        senderPlatforms={["steam"]}
+      />,
+    );
+
+    fireEvent.change(screen.getByPlaceholderText("Game title..."), {
+      target: { value: "Steel Battalion X" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /create share link/i }));
+
+    expect(await screen.findByText(/No claimable share link was created/i)).toBeVisible();
+    expect(screen.queryByText("Share link ready!")).not.toBeInTheDocument();
+    expect(screen.queryByText("Custom Link Ready")).not.toBeInTheDocument();
+  });
+
+  it("binds a feasibility result to the exact signed-in user context", async () => {
+    const view = render(
+      <CrossPlatformInvite
+        currentUserId="user-1"
+        receiverPlatforms={["xbox"]}
+        selectedFriendId="friend-1"
+        senderPlatforms={["steam"]}
+      />,
+    );
+
+    fireEvent.change(screen.getByPlaceholderText("Game title..."), {
+      target: { value: "Steel Battalion X" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /check feasibility/i }));
+    expect(await screen.findByText("Cross-Play OK")).toBeInTheDocument();
+
+    view.rerender(
+      <CrossPlatformInvite
+        currentUserId="user-2"
+        receiverPlatforms={["xbox"]}
+        selectedFriendId="friend-1"
+        senderPlatforms={["steam"]}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /send invite/i }));
+
+    await waitFor(() => {
+      expect(sendCrossplatformInvite).toHaveBeenLastCalledWith(
+        "user-2",
+        "friend-1",
+        "Steel Battalion X",
+        null,
+        null,
+        "uncertain",
+      );
+    });
+  });
+
+  it("synchronously blocks duplicate sends before React can disable the button", async () => {
+    let resolveInvite: ((value: { id: string }) => void) | undefined;
+    sendCrossplatformInvite.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveInvite = resolve;
+      }),
+    );
+
+    render(
+      <CrossPlatformInvite
+        currentUserId="user-1"
+        receiverPlatforms={["xbox"]}
+        selectedFriendId="friend-1"
+        senderPlatforms={["steam"]}
+      />,
+    );
+    fireEvent.change(screen.getByPlaceholderText("Game title..."), {
+      target: { value: "Steel Battalion X" },
+    });
+    const sendButton = screen.getByRole("button", { name: /send invite/i });
+
+    act(() => {
+      sendButton.click();
+      sendButton.click();
+    });
+
+    expect(sendCrossplatformInvite).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("button", { name: /sending/i })).toBeDisabled();
+    expect(screen.getByPlaceholderText("Game title...")).toBeDisabled();
+    expect(screen.getByRole("button", { name: /friend invite/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /share link/i })).toBeDisabled();
+    expect(screen.getByRole("button", { name: /check feasibility/i })).toBeDisabled();
+
+    await act(async () => {
+      resolveInvite?.({ id: "invite-123" });
+      await Promise.resolve();
+    });
+    expect(await screen.findByText("Custom Link Ready")).toBeInTheDocument();
+  });
+
+  it("does not mint or display a link after the submitted context becomes stale", async () => {
+    let resolveInvite: ((value: { id: string }) => void) | undefined;
+    sendCrossplatformInvite.mockReturnValueOnce(
+      new Promise((resolve) => {
+        resolveInvite = resolve;
+      }),
+    );
+
+    const view = render(
+      <CrossPlatformInvite
+        currentUserId="user-1"
+        receiverPlatforms={["xbox"]}
+        selectedFriendId="friend-1"
+        senderPlatforms={["steam"]}
+      />,
+    );
+    const gameInput = screen.getByPlaceholderText("Game title...");
+    fireEvent.change(gameInput, { target: { value: "Steel Battalion X" } });
+    fireEvent.click(screen.getByRole("button", { name: /send invite/i }));
+    view.rerender(
+      <CrossPlatformInvite
+        currentUserId="user-2"
+        receiverPlatforms={["xbox"]}
+        selectedFriendId="friend-1"
+        senderPlatforms={["steam"]}
+      />,
+    );
+
+    await act(async () => {
+      resolveInvite?.({ id: "stale-invite" });
+      await Promise.resolve();
+    });
+
+    expect(createGameInviteShareToken).not.toHaveBeenCalled();
+    expect(screen.queryByText("Invite sent!")).not.toBeInTheDocument();
+    expect(screen.queryByText("Custom Link Ready")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /send invite/i })).not.toBeDisabled();
   });
 });

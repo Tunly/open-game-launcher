@@ -62,17 +62,18 @@ describe("useDownloadStore", () => {
     expect(useDownloadStore.getState().items.map((item) => item.gameId)).toEqual(["b"]);
   });
 
-  it("setItems keeps terminal items that are not in the incoming batch (capped at 100)", () => {
-    // First call from empty state just stores everything (no prior terminal items to cap).
+  it("setItems caps terminal items even when the native queue returns many old rows", () => {
     const initial: DownloadItem[] = Array.from({ length: 150 }, (_, index) =>
       makeItem({ gameId: `done-${index}`, status: "completed" }),
     );
     act(() => {
       useDownloadStore.getState().setItems(initial);
     });
-    expect(useDownloadStore.getState().items).toHaveLength(150);
+    expect(useDownloadStore.getState().items).toHaveLength(100);
+    expect(useDownloadStore.getState().items.map((item) => item.gameId)).toContain("done-149");
+    expect(useDownloadStore.getState().items.map((item) => item.gameId)).not.toContain("done-0");
 
-    // Second call with a fresh active item keeps up to 100 of the prior terminal items.
+    // Second call with a fresh active item keeps up to 100 of the prior terminal items too.
     act(() => {
       useDownloadStore.getState().setItems([makeItem({ gameId: "fresh" })]);
     });
@@ -84,6 +85,40 @@ describe("useDownloadStore", () => {
     expect(retainedIds).toContain("done-149");
     expect(retainedIds).not.toContain("done-0");
     expect(retainedIds).not.toContain("done-49");
+  });
+
+  it("upsertItem caps terminal items during long event streams", () => {
+    act(() => {
+      for (let index = 0; index < 140; index += 1) {
+        useDownloadStore
+          .getState()
+          .upsertItem(makeItem({ gameId: `stream-done-${index}`, status: "completed" }));
+      }
+      useDownloadStore.getState().upsertItem(makeItem({ gameId: "active", status: "downloading" }));
+    });
+
+    const ids = useDownloadStore.getState().items.map((item) => item.gameId);
+    expect(ids).toHaveLength(101);
+    expect(ids).toContain("active");
+    expect(ids).toContain("stream-done-139");
+    expect(ids).not.toContain("stream-done-0");
+  });
+
+  it("upsertItems batches progress updates and keeps the latest event per game", () => {
+    act(() => {
+      useDownloadStore
+        .getState()
+        .upsertItems([
+          makeItem({ gameId: "game-1", progress: 10, status: "downloading" }),
+          makeItem({ gameId: "game-2", progress: 25, status: "queued" }),
+          makeItem({ gameId: "game-1", progress: 80, status: "downloading" }),
+        ]);
+    });
+
+    const state = useDownloadStore.getState();
+    expect(state.items).toHaveLength(2);
+    expect(state.items.find((item) => item.gameId === "game-1")?.progress).toBe(80);
+    expect(state.items.find((item) => item.gameId === "game-2")?.progress).toBe(25);
   });
 
   it("clamps NaN/Infinity progress to 0", () => {

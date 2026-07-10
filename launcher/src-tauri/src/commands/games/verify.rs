@@ -10,7 +10,7 @@ use super::core::{
     og_managed_manifest_trust_status, og_manifest_file_for_path, og_manifest_path_for_entry,
     og_manifest_relative_path, open_uri, path_to_string, read_installed_games_cache,
     read_og_managed_manifest, read_og_managed_version, sha256_file_hex, update_uri_for_game,
-    verify_og_managed_manifest_signature, write_installed_games_cache, write_og_managed_manifest,
+    verify_og_managed_manifest_signature, write_installed_games_cache,
     write_og_managed_manifest_details, OgManagedManifest, OgManagedManifestFile,
     OgManifestTrustStatus, OG_MANAGED_LATEST_VERSION,
 };
@@ -327,7 +327,7 @@ pub fn repair_game_files(game_id: String) -> Result<RepairGameFilesResponse, Str
         .unwrap_or_default();
 
     games[game_index] = game.clone();
-    write_installed_games_cache(&games);
+    write_installed_games_cache(&games)?;
 
     Ok(RepairGameFilesResponse {
         game_id,
@@ -365,7 +365,7 @@ pub fn check_game_updates() -> Result<CheckGameUpdatesResponse, String> {
         }
     }
 
-    write_installed_games_cache(&games);
+    write_installed_games_cache(&games)?;
 
     let message = if update_count == 0 {
         "All OG-managed games are up to date.".to_string()
@@ -385,13 +385,13 @@ pub fn install_game_update(game_id: String) -> Result<InstallGameUpdateResponse,
     let game_id = normalize_game_id(game_id)?;
     println!("[open-game-launcher] install_game_update requested for {game_id}");
 
-    let mut games = read_installed_games_cache().unwrap_or_default();
+    let games = read_installed_games_cache().unwrap_or_default();
     let game_index = games
         .iter()
         .position(|game| game.id == game_id)
         .ok_or_else(|| format!("Game '{game_id}' was not found in the local library cache."))?;
 
-    let mut game = games[game_index].clone();
+    let game = games[game_index].clone();
 
     if !matches!(game.status, GameStatus::UpdateAvailable) {
         return Ok(InstallGameUpdateResponse {
@@ -430,43 +430,10 @@ pub fn install_game_update(game_id: String) -> Result<InstallGameUpdateResponse,
         ));
     }
 
-    fs::create_dir_all(&install_path)
-        .map_err(|error| format!("Could not create install folder: {error}"))?;
-    let executable_path = install_path.join(if cfg!(target_os = "windows") {
-        "game.exe"
-    } else {
-        "game"
-    });
-    fs::write(
-        &executable_path,
-        format!("OG Launcher managed game executable // version {OG_MANAGED_LATEST_VERSION}"),
-    )
-    .map_err(|error| format!("Could not write updated executable: {error}"))?;
-    write_og_managed_manifest(
-        &install_path,
-        &game.id,
-        &game.title,
-        OG_MANAGED_LATEST_VERSION,
-    )?;
-
-    game.status = GameStatus::Installed;
-    game.version = OG_MANAGED_LATEST_VERSION.to_string();
-    game.executable_path = Some(path_to_string(executable_path.clone()));
-    game.process_names = executable_path
-        .file_name()
-        .and_then(|name| name.to_str())
-        .map(|name| vec![name.to_string()])
-        .unwrap_or_default();
-
-    games[game_index] = game.clone();
-    write_installed_games_cache(&games);
-
-    Ok(InstallGameUpdateResponse {
-        game_id,
-        success: true,
-        game: game.clone(),
-        message: format!("{} updated to version {}.", game.title, game.version),
-    })
+    Err(format!(
+        "{} cannot be updated automatically yet. The managed installer has no signed update package, so no files were changed. Re-download a verified package instead.",
+        game.title
+    ))
 }
 
 #[cfg(test)]

@@ -10,7 +10,6 @@ export * from "./backup";
 export * from "./games";
 export * from "./cloud-saves";
 export * from "./downloads";
-export * from "./lan";
 export * from "./cross-store";
 export * from "./platform-auth";
 export * from "./friends";

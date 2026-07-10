@@ -5,6 +5,8 @@ import { listen } from "@tauri-apps/api/event";
 
 import {
   addManualGame,
+  isSteamScrapedGamesEventForAccount,
+  isSteamScrapeErrorEventForAccount,
   listInstalledGames,
   normalizeSteamOwnedGames,
   refreshInstalledGames,
@@ -19,7 +21,12 @@ import { compressAndReadImage, isAllowedImageType } from "../../lib/image-compre
 import { getGameLogoCandidates } from "../../lib/formatters";
 import { syncGamePlaytimeStats } from "../../lib/supabase/playtime";
 import { getProviderErrorMessage, readLocalStorageString } from "../../lib/library-providers";
-import { STEAM_OWNED_GAMES_CACHE_VERSION, STORAGE_KEYS } from "../../lib/storage-keys";
+import {
+  activateSteamAccount,
+  STEAM_ACCOUNT_CHANGED_EVENT,
+  writeSteamOwnedGamesCache,
+} from "../../lib/steam-owned-games-cache";
+import { STORAGE_KEYS } from "../../lib/storage-keys";
 import type {
   Game,
   GameLifecycleEvent,
@@ -176,6 +183,8 @@ export function useLibrarySync({ setStatusMessage }: UseLibrarySyncOptions): Use
   const [pendingArtworkKind, setPendingArtworkKind] = useState<CustomArtworkKind>("cover");
   const [pendingArtworkGameId, setPendingArtworkGameId] = useState<string | null>(null);
   const automaticSyncInFlightRef = useRef(false);
+  const automaticSyncPendingRef = useRef(false);
+  const automaticSyncPendingForceRefreshRef = useRef(false);
   const lastFocusSyncAtRef = useRef(0);
 
   useEffect(() => {
@@ -249,7 +258,9 @@ export function useLibrarySync({ setStatusMessage }: UseLibrarySyncOptions): Use
       setDiscoveryMessage(
         visibleGames.length > 0
           ? null
-          : "No installed Steam, Epic, or GOG games found. Local preview shelf loaded.",
+          : isTauri()
+            ? "No installed games were detected on this PC."
+            : "Open the desktop app to scan installed games. This browser preview stays empty.",
       );
     } catch {
       if (!shouldApplyResult()) {
@@ -259,8 +270,8 @@ export function useLibrarySync({ setStatusMessage }: UseLibrarySyncOptions): Use
       setInstalledGames([]);
       setDiscoveryMessage(
         forceRefresh
-          ? "Automatic sync is unavailable in this session. Showing the local preview shelf."
-          : "Saved library is unavailable in this session. Showing the local preview shelf.",
+          ? "Automatic sync is unavailable in this session. No games were added."
+          : "Saved library is unavailable in this session. No games were loaded.",
       );
     } finally {
       if (showLoading && shouldApplyResult()) {
@@ -287,12 +298,21 @@ export function useLibrarySync({ setStatusMessage }: UseLibrarySyncOptions): Use
   const runAutomaticLibrarySync = useCallback(
     async (forceRefresh = false) => {
       if (automaticSyncInFlightRef.current) {
+        automaticSyncPendingRef.current = true;
+        automaticSyncPendingForceRefreshRef.current ||= forceRefresh;
         return;
       }
 
       automaticSyncInFlightRef.current = true;
+      let nextForceRefresh = forceRefresh;
       try {
-        await loadInstalledGames(forceRefresh, () => true, false);
+        while (true) {
+          automaticSyncPendingRef.current = false;
+          automaticSyncPendingForceRefreshRef.current = false;
+          await loadInstalledGames(nextForceRefresh, () => true, false);
+          if (!automaticSyncPendingRef.current) break;
+          nextForceRefresh = automaticSyncPendingForceRefreshRef.current;
+        }
       } finally {
         automaticSyncInFlightRef.current = false;
       }
@@ -305,7 +325,14 @@ export function useLibrarySync({ setStatusMessage }: UseLibrarySyncOptions): Use
     let startupRefreshTimeout: number | null = null;
 
     async function loadLibrary() {
-      if (automaticSyncInFlightRef.current) return;
+      if (automaticSyncInFlightRef.current) {
+        // React StrictMode replays effects during development. Queue the second
+        // pass and release the initial empty-library spinner; the first pass
+        // will run the queued sync after its cancelled result settles.
+        automaticSyncPendingRef.current = true;
+        setIsDiscoveringGames(false);
+        return;
+      }
       automaticSyncInFlightRef.current = true;
       try {
         if (initialLibrarySnapshot.length === 0) {
@@ -313,6 +340,13 @@ export function useLibrarySync({ setStatusMessage }: UseLibrarySyncOptions): Use
         }
       } finally {
         automaticSyncInFlightRef.current = false;
+      }
+
+      if (automaticSyncPendingRef.current) {
+        const pendingForceRefresh = automaticSyncPendingForceRefreshRef.current;
+        automaticSyncPendingRef.current = false;
+        automaticSyncPendingForceRefreshRef.current = false;
+        await runAutomaticLibrarySync(pendingForceRefresh);
       }
 
       if (!isMounted) {
@@ -498,9 +532,11 @@ export function useLibrarySync({ setStatusMessage }: UseLibrarySyncOptions): Use
       : null;
 
     const unlistenSteam = isTauri()
-      ? listen<string>("steam_login_success", () => {
+      ? listen<string>("steam_login_success", (event) => {
           if (!isMounted) return;
-          void runAutomaticLibrarySync(false);
+          if (!activateSteamAccount(event.payload)) {
+            void runAutomaticLibrarySync(false);
+          }
         })
       : null;
 
@@ -522,26 +558,31 @@ export function useLibrarySync({ setStatusMessage }: UseLibrarySyncOptions): Use
       if (!isMounted) return;
       void runAutomaticLibrarySync(false);
     };
+    const handleSteamAccountChanged = () => {
+      if (!isMounted) return;
+      void runAutomaticLibrarySync(false);
+    };
     window.addEventListener("battlenet_library_updated", handleBattlenetUpdated);
+    window.addEventListener(STEAM_ACCOUNT_CHANGED_EVENT, handleSteamAccountChanged);
 
     const unlistenScrapedSuccess = isTauri()
-      ? listen<unknown[]>("steam_scraped_games_success", (event) => {
+      ? listen<unknown>("steam_scraped_games_success", (event) => {
           if (!isMounted) return;
-          const ownedGames = normalizeSteamOwnedGames(event.payload);
-          localStorage.setItem(STORAGE_KEYS.STEAM_OWNED_GAMES_CACHE, JSON.stringify(ownedGames));
-          localStorage.setItem(
-            STORAGE_KEYS.STEAM_OWNED_GAMES_CACHE_VERSION,
-            STEAM_OWNED_GAMES_CACHE_VERSION,
-          );
+          const currentSteamId = readLocalStorageString(STORAGE_KEYS.STEAM_ID) ?? "";
+          if (!isSteamScrapedGamesEventForAccount(event.payload, currentSteamId)) return;
+          const ownedGames = normalizeSteamOwnedGames(event.payload.games);
+          writeSteamOwnedGamesCache(event.payload.steamId, ownedGames);
           void runAutomaticLibrarySync(false);
         })
       : null;
 
     const unlistenScrapedError = isTauri()
-      ? listen<string>("steam_scraped_games_error", (event) => {
+      ? listen<unknown>("steam_scraped_games_error", (event) => {
           if (!isMounted) return;
-          console.warn("[OG-Launcher] Silent scraper failed:", event.payload);
-          setStatusMessage(`Warning: Steam: ${event.payload}`);
+          const currentSteamId = readLocalStorageString(STORAGE_KEYS.STEAM_ID) ?? "";
+          if (!isSteamScrapeErrorEventForAccount(event.payload, currentSteamId)) return;
+          console.warn("[OG-Launcher] Silent scraper failed:", event.payload.message);
+          setStatusMessage(`Warning: Steam: ${event.payload.message}`);
         })
       : null;
 
@@ -552,6 +593,7 @@ export function useLibrarySync({ setStatusMessage }: UseLibrarySyncOptions): Use
       void unlistenGog?.then((u) => u());
       void unlistenEa?.then((u) => u());
       window.removeEventListener("battlenet_library_updated", handleBattlenetUpdated);
+      window.removeEventListener(STEAM_ACCOUNT_CHANGED_EVENT, handleSteamAccountChanged);
       void unlistenScrapedSuccess?.then((u) => u());
       void unlistenScrapedError?.then((u) => u());
     };

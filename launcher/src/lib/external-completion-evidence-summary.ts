@@ -92,8 +92,6 @@ const hardwareEvidenceFields = [
 const rolloutEvidenceFields = [
   "Community rollout evidence",
   "Marketplace evidence",
-  "Mobile distribution evidence",
-  "Push-provider evidence",
   "Hosted deploy evidence",
 ] as const;
 
@@ -248,7 +246,6 @@ export const EXTERNAL_COMPLETION_EVIDENCE_BLOCKED_CLAIMS = [
   "No live provider credential rendered",
   "No hardware proof",
   "No production deployment proof",
-  "No app-store distribution proof",
   "No marketplace execution proof",
   "No live Stripe webhook or Dashboard proof",
   "No hosted cron scheduled-row proof",
@@ -405,15 +402,14 @@ export const EXTERNAL_COMPLETION_EVIDENCE_GATE_INPUTS: ExternalCompletionEvidenc
     id: "rollout-tracks",
     label: "Rollout tracks",
     localEvidence:
-      "Community, plugin, mobile, push, and hosted deployment readiness are covered by local contracts.",
+      "Community, plugin, and hosted deployment readiness are covered by local contracts.",
     proofRequirements: [
-      "Hosted community artwork/screenshots rollout is exercised beyond fixtures.",
+      "Hosted community artwork rollout is exercised beyond fixtures.",
       "Plugin marketplace execution/update channels are externally reviewed.",
-      "Native mobile apps, push-provider delivery, and store distribution are verified.",
       "Hosted production deployment evidence is attached.",
     ],
     requiredEnv: [],
-    skippedProof: "No community rollout, marketplace run, app-store, or deployment packet.",
+    skippedProof: "No community rollout, marketplace run, or deployment packet.",
     surface: "Rollout Gate",
   },
 ];
@@ -797,16 +793,6 @@ const forbiddenArtifactPatterns = [
     pattern: /\bsbp_[a-z0-9_=-]{20,}\b/i,
   },
   {
-    label: "Raw mobile push secret",
-    pattern:
-      /\b(?:APNS_AUTH_KEY|APNS_PRIVATE_KEY|FCM_SERVER_KEY|FCM_SERVICE_ACCOUNT|FIREBASE_SERVICE_ACCOUNT|FIREBASE_PRIVATE_KEY|GOOGLE_SERVICE_ACCOUNT_JSON|GOOGLE_APPLICATION_CREDENTIALS_JSON)\s*[:=]\s*(?!(?:\[?redacted\]?|<redacted>|\*{3,})(?:\s|$))[^\n`]{8,}/i,
-  },
-  {
-    label: "Raw mobile device token",
-    pattern:
-      /\b(?:APNS_DEVICE_TOKEN|FCM_DEVICE_TOKEN|DEVICE_PUSH_TOKEN|MOBILE_PUSH_TOKEN)\s*[:=]\s*(?!(?:\[?redacted\]?|<redacted>|\*{3,})(?:\s|$))[^\s`"'<>]{16,}/i,
-  },
-  {
     label: "Raw private key",
     pattern: /-----BEGIN (?:EC |RSA |)PRIVATE KEY-----/,
   },
@@ -1184,14 +1170,6 @@ const allowedEvidenceUrlPatterns = [
     host: /^play\.google\.com$/i,
     path: /^\/console\/.+/i,
   },
-  {
-    host: /^console\.firebase\.google\.com$/i,
-    path: /^\/.+/i,
-  },
-  {
-    host: /^(?:app\.)?onesignal\.com$/i,
-    path: /^\/.+/i,
-  },
 ] as const;
 
 function evidenceUrlIsAllowed(url: URL) {
@@ -1438,12 +1416,7 @@ type EvidenceDetailFieldValidator = (
 const fieldSpecificEvidenceValidators: Partial<Record<string, EvidenceDetailFieldValidator>> = {
   "Commit SHA": commitShaValueIsValid,
   "Community rollout evidence": (value) =>
-    evidenceIdentifierValueMatchesAll(value, [
-      /community/i,
-      /artwork/i,
-      /screenshots?/i,
-      /rollout/i,
-    ]),
+    evidenceIdentifierValueMatchesAll(value, [/community/i, /artwork/i, /rollout/i]),
   "Hosted deploy evidence": hostedDeployWorkflowEvidenceValueIsSpecific,
   "Hardware profile": (value) => evidenceIdentifierValueMatches(value, [/hardware/i, /profile/i]),
   "License key custody evidence": (value) =>
@@ -1453,8 +1426,6 @@ const fieldSpecificEvidenceValidators: Partial<Record<string, EvidenceDetailFiel
     evidenceIdentifierValueMatchesAll(value, [/live/i, /license/i, /issuance/i]),
   "Marketplace evidence": (value) =>
     evidenceIdentifierValueMatches(value, [/marketplace/i, /plugin/i]),
-  "Mobile distribution evidence": (value) =>
-    evidenceIdentifierValueMatches(value, [/mobile/i, /distribution/i, /store/i]),
   "OS/title/client matrix": (value) =>
     evidenceIdentifierValueMatchesAll(value, [/matrix/i, /windows/i, /mac\s?os/i, /linux/i]),
   "Provider response evidence": (value) =>
@@ -1467,8 +1438,6 @@ const fieldSpecificEvidenceValidators: Partial<Record<string, EvidenceDetailFiel
       /mod[._\s-]?io/i,
       /curseforge/i,
     ]),
-  "Push-provider evidence": (value) =>
-    evidenceIdentifierValueMatches(value, [/push/i, /provider/i, /firebase/i, /onesignal/i]),
   "Release ref": releaseRefValueIsValid,
   "Run ID": evidenceIdentifierValueIsSpecific,
   "Session/run ID": (value) =>
@@ -1602,8 +1571,8 @@ function expectedProofEvidenceValuePattern(proof: string) {
   if (/real client mount\/apply/.test(normalizedProof)) {
     return [/client[-_\s]?mount/i, /mount[-_\s]?apply/i, /provider[-_\s]?clients?/i];
   }
-  if (/hosted community artwork\/screenshots/.test(normalizedProof)) {
-    return [/community/i, /artwork/i, /screenshots?/i, /rollout/i];
+  if (/hosted community artwork rollout/.test(normalizedProof)) {
+    return [/community/i, /artwork/i, /rollout/i];
   }
   if (/plugin marketplace/.test(normalizedProof)) {
     return [
@@ -1611,9 +1580,6 @@ function expectedProofEvidenceValuePattern(proof: string) {
       /marketplace[-_\s]?execution/i,
       /(?:marketplace[-_\s]?update|plugin[-_\s]?update|execution[-_\s]?update)/i,
     ];
-  }
-  if (/native mobile apps/.test(normalizedProof)) {
-    return [/mobile/i, /push[-_\s]?provider/i, /store[-_\s]?distribution/i];
   }
   if (/hosted production deployment/.test(normalizedProof)) {
     return /(?:hosted[-_\s]?(?:production[-_\s]?)?deploy|production[-_\s]?deployment|deployment)/i;

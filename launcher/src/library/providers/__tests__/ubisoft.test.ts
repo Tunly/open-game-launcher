@@ -30,10 +30,9 @@ function ownedGame(id = "635", title = "Rainbow Six Siege") {
     id: `ubisoft-owned-${id}`,
     externalId: id,
     title,
-    description: `Ubisoft Connect game (Owned). ID: ${id}`,
+    description: "",
     coverUrl: null,
     logoUrl: null,
-    playtimeMinutes: 0,
     lastPlayedAt: null,
   };
 }

@@ -4,6 +4,7 @@ import { handleAchievementIngestion } from "./handler.ts";
 
 const adapters = createAchievementIngestionAdapters({
   authenticateRequest: requireAuthenticatedRequest,
+  getEnv: (name) => Deno.env.get(name),
 });
 
 Deno.serve((request) => handleAchievementIngestion(request, adapters));

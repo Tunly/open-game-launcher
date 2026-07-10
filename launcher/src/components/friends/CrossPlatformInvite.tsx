@@ -1,11 +1,12 @@
 import { AlertTriangle, CheckCircle, Copy, ExternalLink, HelpCircle, Send } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import type { InviteFeasibility, PlatformType } from "../../lib/types/friends";
 import {
   checkInviteFeasibility,
   createGameInviteShareToken,
   sendCrossplatformInvite,
+  type InviteFeasibilityResult,
 } from "../../lib/supabase/social";
 import { buildInviteDeepLink, buildInviteFallbackUrl } from "../../lib/invite-links";
 
@@ -21,10 +22,15 @@ interface SentInviteLink {
   expiresAt: string | null;
   gameTitle: string;
   platform: PlatformType | null;
-  source: "legacy" | "server";
+  source: "server";
   token: string;
   tokenHint: string;
   webUrl: string;
+}
+
+interface ContextBoundValue<T> {
+  contextKey: string;
+  value: T;
 }
 
 type InviteMode = "friend" | "share";
@@ -84,6 +90,7 @@ function FeasibilityBadge({ feasibility }: { feasibility: InviteFeasibility }) {
 }
 
 export function CrossPlatformInvite({
+  currentUserId,
   selectedFriendId,
   senderPlatforms,
   receiverPlatforms,
@@ -91,12 +98,33 @@ export function CrossPlatformInvite({
   const [inviteMode, setInviteMode] = useState<InviteMode>(selectedFriendId ? "friend" : "share");
   const isOpenRecipientLink = inviteMode === "share" || !selectedFriendId;
   const [gameTitle, setGameTitle] = useState("");
-  const [feasibility, setFeasibility] = useState<InviteFeasibility | null>(null);
+  const [feasibilityResult, setFeasibilityResult] =
+    useState<ContextBoundValue<InviteFeasibilityResult> | null>(null);
   const [checking, setChecking] = useState(false);
-  const [sent, setSent] = useState(false);
+  const [sentContextKey, setSentContextKey] = useState<string | null>(null);
+  const [sending, setSending] = useState(false);
   const [copiedLink, setCopiedLink] = useState<string | null>(null);
-  const [sentInviteLink, setSentInviteLink] = useState<SentInviteLink | null>(null);
+  const [sentInviteLink, setSentInviteLink] = useState<ContextBoundValue<SentInviteLink> | null>(
+    null,
+  );
   const [error, setError] = useState<string | null>(null);
+  const inviteContextKey = JSON.stringify({
+    currentUserId,
+    gameTitle: gameTitle.trim(),
+    inviteMode,
+    isOpenRecipientLink,
+    receiverPlatforms,
+    selectedFriendId,
+    senderPlatforms,
+  });
+  const currentInviteContextKey = useRef(inviteContextKey);
+  const sendInFlight = useRef(false);
+  currentInviteContextKey.current = inviteContextKey;
+  const activeFeasibilityResult =
+    feasibilityResult?.contextKey === inviteContextKey ? feasibilityResult.value : null;
+  const activeSentInviteLink =
+    sentInviteLink?.contextKey === inviteContextKey ? sentInviteLink.value : null;
+  const sent = sentContextKey === inviteContextKey;
 
   useEffect(() => {
     if (!selectedFriendId) {
@@ -104,66 +132,102 @@ export function CrossPlatformInvite({
     }
   }, [selectedFriendId]);
 
+  useEffect(() => {
+    setSentInviteLink(null);
+    setSentContextKey(null);
+    setCopiedLink(null);
+    setFeasibilityResult(null);
+    setError(null);
+    setChecking(false);
+  }, [inviteContextKey]);
+
   async function handleCheckFeasibility() {
-    if (!gameTitle.trim()) return;
+    const checkedGameTitle = gameTitle.trim();
+    if (!checkedGameTitle) return;
+    const checkedContextKey = inviteContextKey;
+    const checkedSenderPlatforms = [...senderPlatforms];
+    const checkedReceiverPlatforms = [...receiverPlatforms];
     setChecking(true);
-    setFeasibility(null);
+    setFeasibilityResult(null);
+    setError(null);
     try {
-      const result = await checkInviteFeasibility(gameTitle, senderPlatforms, receiverPlatforms);
-      setFeasibility(result);
+      const result = await checkInviteFeasibility(
+        checkedGameTitle,
+        checkedSenderPlatforms,
+        checkedReceiverPlatforms,
+      );
+      if (currentInviteContextKey.current !== checkedContextKey) return;
+      setFeasibilityResult({ contextKey: checkedContextKey, value: result });
     } catch (err) {
+      if (currentInviteContextKey.current !== checkedContextKey) return;
       setError(err instanceof Error ? err.message : String(err));
     } finally {
-      setChecking(false);
+      if (currentInviteContextKey.current === checkedContextKey) setChecking(false);
     }
   }
 
   async function handleSend() {
-    if (!gameTitle.trim()) return;
+    const submittedGameTitle = gameTitle.trim();
+    if (!submittedGameTitle || sendInFlight.current) return;
+
+    const submittedContextKey = inviteContextKey;
+    const submittedUserId = currentUserId;
+    const submittedReceiverId = isOpenRecipientLink ? null : selectedFriendId;
+    const submittedFeasibilityResult =
+      feasibilityResult?.contextKey === submittedContextKey ? feasibilityResult.value : null;
+    sendInFlight.current = true;
+    setSending(true);
     setError(null);
-    setSent(false);
+    setSentContextKey(null);
+    setSentInviteLink(null);
     setCopiedLink(null);
     try {
-      const selectedPlatform = senderPlatforms[0] ?? null;
-      const submittedGameTitle = gameTitle.trim();
+      const selectedPlatform = submittedFeasibilityResult?.compatibleSenderPlatform ?? null;
       const invite = await sendCrossplatformInvite(
-        isOpenRecipientLink ? null : selectedFriendId,
+        submittedUserId,
+        submittedReceiverId,
         submittedGameTitle,
         selectedPlatform,
         null,
-        feasibility ?? "uncertain",
+        submittedFeasibilityResult?.feasibility ?? "uncertain",
       );
-      setSent(true);
-      setSentInviteLink(
-        buildSentInviteLink({
-          gameTitle: submittedGameTitle,
-          platform: selectedPlatform,
-          source: "legacy",
-          token: invite.id,
-        }),
-      );
-      setGameTitle("");
-      setFeasibility(null);
+      if (currentInviteContextKey.current !== submittedContextKey) return;
 
-      void createGameInviteShareToken(invite.id, selectedPlatform)
-        .then((shareToken) => {
-          if (!shareToken) return;
-          setSentInviteLink(
-            buildSentInviteLink({
-              expiresAt: shareToken.expiresAt,
-              gameTitle: shareToken.gameTitle || submittedGameTitle,
-              platform: shareToken.platform ?? selectedPlatform,
-              source: "server",
-              token: shareToken.token,
-              tokenHint: shareToken.tokenHint,
-            }),
-          );
-        })
-        .catch(() => {
-          // The invite was sent successfully; keep the local fallback link if token RPC fails.
-        });
+      const shareToken = await createGameInviteShareToken(
+        submittedUserId,
+        invite.id,
+        selectedPlatform,
+      ).catch(() => null);
+      if (currentInviteContextKey.current !== submittedContextKey) return;
+      if (!shareToken) {
+        setSentContextKey(submittedReceiverId === null ? null : submittedContextKey);
+        setSentInviteLink(null);
+        setError(
+          submittedReceiverId === null
+            ? "No claimable share link was created. The server token service is unavailable."
+            : "Invite sent, but no optional share link was created.",
+        );
+        return;
+      }
+
+      setSentContextKey(submittedContextKey);
+      setSentInviteLink({
+        contextKey: submittedContextKey,
+        value: buildSentInviteLink({
+          expiresAt: shareToken.expiresAt,
+          gameTitle: shareToken.gameTitle || submittedGameTitle,
+          platform: shareToken.platform ?? selectedPlatform,
+          source: "server",
+          token: shareToken.token,
+          tokenHint: shareToken.tokenHint,
+        }),
+      });
     } catch (err) {
+      if (currentInviteContextKey.current !== submittedContextKey) return;
       setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      sendInFlight.current = false;
+      setSending(false);
     }
   }
 
@@ -192,11 +256,9 @@ export function CrossPlatformInvite({
           maxLength={160}
           placeholder="Game title..."
           value={gameTitle}
+          disabled={sending}
           onChange={(e) => {
             setGameTitle(e.target.value);
-            setFeasibility(null);
-            setSent(false);
-            setCopiedLink(null);
           }}
         />
 
@@ -208,7 +270,7 @@ export function CrossPlatformInvite({
                 ? "bg-[#087d6d] text-white"
                 : "bg-[#fff9ed] text-[#171411] disabled:text-[#8a8177]"
             }`}
-            disabled={!selectedFriendId}
+            disabled={!selectedFriendId || sending}
             type="button"
             onClick={() => setInviteMode("friend")}
           >
@@ -219,6 +281,7 @@ export function CrossPlatformInvite({
             className={`neo-copy h-7 border-2 border-black text-[8px] font-black uppercase tracking-[0.08em] ${
               isOpenRecipientLink ? "bg-[#b7102a] text-white" : "bg-[#fff9ed] text-[#171411]"
             }`}
+            disabled={sending}
             type="button"
             onClick={() => setInviteMode("share")}
           >
@@ -228,14 +291,14 @@ export function CrossPlatformInvite({
 
         {isOpenRecipientLink ? (
           <p className="neo-copy border-2 border-black bg-[#efe6d4] px-2 py-1 text-[9px] font-black uppercase tracking-[0.08em] text-[#5b403f]">
-            Any signed-in OG Launcher player with this link can accept it. First accept claims it.
+            A one-use server token is required. If token creation fails, no claimable link is shown.
           </p>
         ) : null}
 
         <div className="flex gap-2">
           <button
             className="neo-copy h-8 border-2 border-black bg-[#efe6d4] px-3 text-[9px] font-black uppercase text-[#171411] shadow-[1px_1px_0_#171411] disabled:opacity-50"
-            disabled={!gameTitle.trim() || checking}
+            disabled={!gameTitle.trim() || checking || sending}
             type="button"
             onClick={() => void handleCheckFeasibility()}
           >
@@ -243,23 +306,29 @@ export function CrossPlatformInvite({
           </button>
           <button
             className="neo-copy h-8 border-2 border-black bg-[#087d6d] px-3 text-[9px] font-black uppercase text-white shadow-[1px_1px_0_#171411] disabled:opacity-50"
-            disabled={!gameTitle.trim()}
+            disabled={!gameTitle.trim() || sending}
             type="button"
             onClick={() => void handleSend()}
           >
-            {isOpenRecipientLink ? "Create Share Link" : "Send Invite"}
+            {sending
+              ? isOpenRecipientLink
+                ? "Creating..."
+                : "Sending..."
+              : isOpenRecipientLink
+                ? "Create Share Link"
+                : "Send Invite"}
           </button>
         </div>
 
-        {feasibility && (
+        {activeFeasibilityResult && (
           <div className="flex items-center gap-2">
-            <FeasibilityBadge feasibility={feasibility} />
-            {feasibility === "impossible" && (
+            <FeasibilityBadge feasibility={activeFeasibilityResult.feasibility} />
+            {activeFeasibilityResult.feasibility === "impossible" && (
               <p className="neo-copy text-[9px] font-bold text-[#b7102a]">
                 This game may not support cross-platform play between your platforms.
               </p>
             )}
-            {feasibility === "uncertain" && (
+            {activeFeasibilityResult.feasibility === "uncertain" && (
               <p className="neo-copy text-[9px] font-bold text-[#55504a]">
                 Cannot verify cross-play support. Link created as-is.
               </p>
@@ -272,7 +341,7 @@ export function CrossPlatformInvite({
             {isOpenRecipientLink ? "Share link ready!" : "Invite sent!"}
           </p>
         )}
-        {sentInviteLink && (
+        {activeSentInviteLink && (
           <div className="neo-dots border-[3px] border-black bg-[#fff9ed] p-3 shadow-[3px_3px_0_#171411]">
             <div className="flex flex-wrap items-center justify-between gap-2 border-b-2 border-black pb-2">
               <p className="neo-copy flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.12em] text-[#171411]">
@@ -280,24 +349,24 @@ export function CrossPlatformInvite({
                 Custom Link Ready
               </p>
               <span className="neo-copy border-2 border-black bg-[#8cf5e4] px-2 py-1 text-[8px] font-black uppercase text-[#171411]">
-                {sentInviteLink.source === "server" ? "Server Token" : "Legacy Link"}{" "}
-                {sentInviteLink.tokenHint}
+                Server Token {activeSentInviteLink.tokenHint}
               </span>
             </div>
             <div className="mt-3 grid gap-2">
-              <LinkReadout label="Web Fallback" value={sentInviteLink.webUrl} />
-              <LinkReadout label="App Deep Link" value={sentInviteLink.deepLink} />
+              <LinkReadout label="Web Fallback" value={activeSentInviteLink.webUrl} />
+              <LinkReadout label="App Deep Link" value={activeSentInviteLink.deepLink} />
             </div>
-            {sentInviteLink.source === "server" && sentInviteLink.expiresAt ? (
+            {activeSentInviteLink.source === "server" && activeSentInviteLink.expiresAt ? (
               <p className="neo-copy mt-2 border-2 border-black bg-[#efe6d4] px-2 py-1 text-[8px] font-black uppercase tracking-[0.08em] text-[#655f58]">
-                One-use share link expires {new Date(sentInviteLink.expiresAt).toLocaleString()}
+                One-use share link expires{" "}
+                {new Date(activeSentInviteLink.expiresAt).toLocaleString()}
               </p>
             ) : null}
             <div className="mt-3 flex flex-wrap gap-2">
               <button
                 className="neo-copy inline-flex h-8 items-center gap-2 border-2 border-black bg-[#efe6d4] px-3 text-[9px] font-black uppercase text-[#171411] shadow-[2px_2px_0_#171411]"
                 type="button"
-                onClick={() => void copyLink(sentInviteLink.webUrl, "Web")}
+                onClick={() => void copyLink(activeSentInviteLink.webUrl, "Web")}
               >
                 <Copy className="h-3 w-3" />
                 Copy Web
@@ -305,14 +374,14 @@ export function CrossPlatformInvite({
               <button
                 className="neo-copy inline-flex h-8 items-center gap-2 border-2 border-black bg-[#efe6d4] px-3 text-[9px] font-black uppercase text-[#171411] shadow-[2px_2px_0_#171411]"
                 type="button"
-                onClick={() => void copyLink(sentInviteLink.deepLink, "App")}
+                onClick={() => void copyLink(activeSentInviteLink.deepLink, "App")}
               >
                 <Copy className="h-3 w-3" />
                 Copy App
               </button>
               <a
                 className="neo-copy inline-flex h-8 items-center gap-2 border-2 border-black bg-[#087d6d] px-3 text-[9px] font-black uppercase text-white shadow-[2px_2px_0_#171411]"
-                href={sentInviteLink.deepLink}
+                href={activeSentInviteLink.deepLink}
               >
                 <ExternalLink className="h-3 w-3" />
                 Open App

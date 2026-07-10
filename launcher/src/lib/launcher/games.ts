@@ -12,10 +12,18 @@ import { writeActivePerformanceGameContext } from "../performance-context";
 import { invokeCommand } from "./shared";
 
 export function listInstalledGames(): Promise<Game[]> {
+  if (!isTauri()) {
+    return Promise.resolve([]);
+  }
+
   return invokeCommand<Game[]>("list_installed_games");
 }
 
 export function refreshInstalledGames(): Promise<Game[]> {
+  if (!isTauri()) {
+    return Promise.resolve([]);
+  }
+
   return invokeCommand<Game[]>("refresh_installed_games");
 }
 
@@ -27,6 +35,10 @@ export function updateAchievementProviderStatus(input: {
 }
 
 export function openAchievementCacheFolder(provider?: string): Promise<string> {
+  if (!isTauri()) {
+    return Promise.reject(new Error("Achievement cache folders are available in the desktop app."));
+  }
+
   return invokeCommand<string>("open_achievement_cache_folder", { provider });
 }
 
@@ -85,6 +97,7 @@ export function syncGameAchievements(
     });
   }
   return invokeCommand<SyncGameAchievementsResponse>("sync_game_achievements", {
+    fallbackGame: game,
     gameId: game.id,
     steamId,
   });

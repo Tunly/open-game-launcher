@@ -1,8 +1,10 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
+import { fileURLToPath } from "node:url";
 
 import {
   assertReleaseTag,
@@ -10,6 +12,10 @@ import {
   releaseVersionFromTag,
   releaseVersionReport,
 } from "./release-tag-check.mjs";
+
+const releaseTagScriptPath = fileURLToPath(
+  new URL("./release-tag-check.mjs", import.meta.url),
+);
 
 function writeVersionFixture(version) {
   const root = mkdtempSync(join(tmpdir(), "ogl-release-tag-"));
@@ -89,4 +95,19 @@ test("release tag report names invalid tags without reading secrets", () => {
 
   assert.equal(report.ok, false);
   assert.deepEqual(report.errors, ["release tag must match v<semver>"]);
+});
+
+test("release tag CLI rejects an invalid tag from any working directory", () => {
+  const result = spawnSync(
+    process.execPath,
+    [releaseTagScriptPath, "definitely-not-a-release-tag"],
+    {
+      cwd: tmpdir(),
+      encoding: "utf8",
+    },
+  );
+
+  assert.equal(result.status, 1);
+  assert.equal(result.stdout, "");
+  assert.match(result.stderr, /Release tag validation failed:/);
 });

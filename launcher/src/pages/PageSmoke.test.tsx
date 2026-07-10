@@ -26,7 +26,6 @@ import { PerfHistoryPage } from "./PerfHistoryPage";
 import { PrivacySettingsPage } from "./PrivacySettingsPage";
 import { ProfileCustomizePage } from "./ProfileCustomizePage";
 import { ProfilePage } from "./ProfilePage";
-import { RemoteInstallDashboardPage } from "./RemoteInstallDashboardPage";
 import { SettingsPage } from "./SettingsPage";
 import { StorePage } from "./StorePage";
 import type { NewsItem } from "../lib/types/news";
@@ -49,7 +48,6 @@ const launcherMocks = vi.hoisted(() => ({
   archiveDownload: vi.fn(),
   authenticateEpicLegendary: vi.fn(),
   cancelDownload: vi.fn(),
-  cancelLanTransferCopyJob: vi.fn(),
   cancelModInstall: vi.fn(),
   clearBroadcastStreamKeySecret: vi.fn(),
   detectHardwareInfo: vi.fn(),
@@ -63,7 +61,6 @@ const launcherMocks = vi.hoisted(() => ({
   getDefaultInstallDir: vi.fn(),
   getDownloadQueue: vi.fn(),
   getLicenseDeviceId: vi.fn(),
-  getRemoteCompanionDeviceSecretStatus: vi.fn(),
   getSystemInfo: vi.fn(),
   gogExchangeCode: vi.fn(),
   gogGetToken: vi.fn(),
@@ -80,12 +77,7 @@ const launcherMocks = vi.hoisted(() => ({
   openSteamLoginWindow: vi.fn(),
   openXboxLoginWindow: vi.fn(),
   pauseDownload: vi.fn(),
-  previewLanTransferCopy: vi.fn(),
-  previewLanTransferResumeCancelLedger: vi.fn(),
   processBattleNetGamesPayload: vi.fn(),
-  runLanTransferCleanupCandidates: vi.fn(),
-  runLanTransferCopy: vi.fn(),
-  runLanTransferResumeCopy: vi.fn(),
   scanGameMods: vi.fn(),
   scanLocalPluginManifests: vi.fn(),
   scrapeNexusModInfo: vi.fn(),
@@ -93,7 +85,6 @@ const launcherMocks = vi.hoisted(() => ({
   setBroadcastStreamKeySecret: vi.fn(),
   setModProviderSecret: vi.fn(),
   stageSignedPluginPackage: vi.fn(),
-  startLanTransferCopyJob: vi.fn(),
   startModInstall: vi.fn(),
   uninstallMod: vi.fn(),
   validateLicense: vi.fn(),
@@ -116,7 +107,6 @@ const storeMocks = vi.hoisted(() => ({
   getMyOrderByStripeSession: vi.fn(),
   getMyStoreReview: vi.fn(),
   getLatestStorePriceDropNotificationRunEvidence: vi.fn(),
-  getStoreProductPriceHistory: vi.fn(),
   isTrustedStorePriceDropNotificationRunEvidence: vi.fn(),
   listMyOrderItems: vi.fn(),
   listMyOrders: vi.fn(),
@@ -149,10 +139,6 @@ const modMocks = vi.hoisted(() => ({
 
 const nativeModSearchMocks = vi.hoisted(() => ({
   searchNativeMods: vi.fn(),
-}));
-
-const remoteCompanionMocks = vi.hoisted(() => ({
-  enqueueRemoteCompanionInstallJob: vi.fn(),
 }));
 
 const performanceMocks = vi.hoisted(() => ({
@@ -415,8 +401,6 @@ vi.mock("../lib/mod-provider-search", () => nativeModSearchMocks);
 
 vi.mock("../lib/supabase/performance", () => performanceMocks);
 
-vi.mock("../lib/supabase/remote-companion", () => remoteCompanionMocks);
-
 vi.mock("../lib/supabase/store", () => storeMocks);
 
 vi.mock("../lib/supabase/social", () => socialMocks);
@@ -536,7 +520,6 @@ describe("routed page smoke coverage", () => {
     launcherMocks.archiveDownload.mockResolvedValue(undefined);
     launcherMocks.authenticateEpicLegendary.mockResolvedValue("Epic authenticated.");
     launcherMocks.cancelDownload.mockResolvedValue(undefined);
-    launcherMocks.cancelLanTransferCopyJob.mockResolvedValue(null);
     launcherMocks.cancelModInstall.mockResolvedValue(undefined);
     launcherMocks.clearBroadcastStreamKeySecret.mockResolvedValue({
       configured: false,
@@ -556,12 +539,6 @@ describe("routed page smoke coverage", () => {
     launcherMocks.getDefaultInstallDir.mockResolvedValue("/games");
     launcherMocks.getDownloadQueue.mockResolvedValue([]);
     launcherMocks.getLicenseDeviceId.mockResolvedValue("device-test");
-    launcherMocks.getRemoteCompanionDeviceSecretStatus.mockResolvedValue({
-      deviceId: null,
-      deviceSecretHint: null,
-      hasSecret: false,
-      updatedAtEpochMs: null,
-    });
     launcherMocks.getSystemInfo.mockResolvedValue({
       appVersion: "0.1.0",
       arch: "web",
@@ -582,12 +559,7 @@ describe("routed page smoke coverage", () => {
     launcherMocks.openSteamLoginWindow.mockResolvedValue(undefined);
     launcherMocks.openXboxLoginWindow.mockResolvedValue(undefined);
     launcherMocks.pauseDownload.mockResolvedValue(undefined);
-    launcherMocks.previewLanTransferCopy.mockResolvedValue(null);
-    launcherMocks.previewLanTransferResumeCancelLedger.mockResolvedValue(null);
     launcherMocks.processBattleNetGamesPayload.mockResolvedValue([]);
-    launcherMocks.runLanTransferCleanupCandidates.mockResolvedValue(null);
-    launcherMocks.runLanTransferCopy.mockResolvedValue(null);
-    launcherMocks.runLanTransferResumeCopy.mockResolvedValue(null);
     launcherMocks.scanGameMods.mockResolvedValue([]);
     launcherMocks.scrapeNexusModInfo.mockResolvedValue(null);
     launcherMocks.searchNexusMods.mockResolvedValue([]);
@@ -596,7 +568,6 @@ describe("routed page smoke coverage", () => {
       message: "Stream-key vault staged.",
     });
     launcherMocks.setModProviderSecret.mockResolvedValue(undefined);
-    launcherMocks.startLanTransferCopyJob.mockResolvedValue(null);
     launcherMocks.startModInstall.mockResolvedValue(undefined);
     launcherMocks.uninstallMod.mockResolvedValue(undefined);
     launcherMocks.validateLicense.mockResolvedValue({ ok: true });
@@ -614,7 +585,6 @@ describe("routed page smoke coverage", () => {
     storeMocks.getMyOrderByStripeSession.mockResolvedValue(null);
     storeMocks.getMyStoreReview.mockResolvedValue(null);
     storeMocks.getLatestStorePriceDropNotificationRunEvidence.mockResolvedValue(null);
-    storeMocks.getStoreProductPriceHistory.mockResolvedValue([]);
     storeMocks.isTrustedStorePriceDropNotificationRunEvidence.mockReturnValue(false);
     storeMocks.listMyOrderItems.mockResolvedValue([]);
     storeMocks.listMyOrders.mockResolvedValue([]);
@@ -641,7 +611,6 @@ describe("routed page smoke coverage", () => {
     modMocks.recordUserModInstall.mockResolvedValue(null);
     modMocks.upsertSharedModProviderGameMapping.mockResolvedValue(null);
     nativeModSearchMocks.searchNativeMods.mockResolvedValue([]);
-    remoteCompanionMocks.enqueueRemoteCompanionInstallJob.mockResolvedValue(null);
     performanceMocks.listPerformanceSessions.mockResolvedValue([]);
     performanceMocks.listPerformanceSnapshots.mockResolvedValue([]);
     performanceMocks.savePerformanceSession.mockResolvedValue(true);
@@ -709,26 +678,25 @@ describe("routed page smoke coverage", () => {
     });
   });
 
-  it("renders the store discovery shelf", async () => {
+  it("renders the honest empty hosted store shelf", async () => {
     renderRoutedPage(<StorePage />, "/store");
     await act(async () => {
       await Promise.resolve();
       await Promise.resolve();
     });
 
-    expect(screen.getAllByRole("heading", { name: /wasteland drifter/i }).length).toBeGreaterThan(
-      0,
-    );
+    expect(screen.queryByRole("heading", { name: /wasteland drifter/i })).not.toBeInTheDocument();
     expect(screen.getByRole("region", { name: /store catalog source/i })).toHaveTextContent(
       /hosted empty/i,
     );
     expect(
-      screen.getByRole("region", { name: /price-drop scheduler readiness/i }),
-    ).toBeInTheDocument();
+      screen.queryByRole("region", { name: /price-drop scheduler readiness/i }),
+    ).not.toBeInTheDocument();
     await waitFor(() => {
       expect(storeMocks.listPublishedProducts).toHaveBeenCalled();
-      expect(storeMocks.listMyOrders).toHaveBeenCalled();
     });
+    expect(storeMocks.listMyOrders).not.toHaveBeenCalled();
+    expect(storeMocks.listMyStorePriceAlerts).not.toHaveBeenCalled();
   });
 
   it("renders the community activity board", () => {
@@ -759,18 +727,8 @@ describe("routed page smoke coverage", () => {
   it("renders the downloads queue route", async () => {
     renderRoutedPage(<DownloadsPage />, "/downloads");
 
-    expect(screen.getByRole("region", { name: /remote download readiness/i })).toBeInTheDocument();
     expect(screen.getByText(/there are no downloads in the queue/i)).toBeInTheDocument();
-    await waitFor(() => {
-      expect(launcherMocks.getDownloadQueue).toHaveBeenCalled();
-    });
-  });
-
-  it("renders the remote downloads dashboard route", () => {
-    renderRoutedPage(<RemoteInstallDashboardPage />, "/downloads/remote");
-
-    expect(screen.getByRole("heading", { level: 1, name: /remote install/i })).toBeInTheDocument();
-    expect(screen.getByText(/remote install web dashboard/i)).toBeInTheDocument();
+    expect(launcherMocks.getDownloadQueue).not.toHaveBeenCalled();
   });
 
   it("renders the mods manager route after local library load", async () => {
@@ -891,6 +849,16 @@ describe("routed page smoke coverage", () => {
 
   it("renders realtime metrics in the FPS HUD", async () => {
     vi.mocked(isTauri).mockReturnValue(true);
+    vi.mocked(invoke).mockImplementation((command) => {
+      if (command === "get_overlay_settings") {
+        return Promise.resolve({
+          fpsHudEnabled: true,
+          opacity: 0.95,
+          showGpu: true,
+        });
+      }
+      return Promise.resolve(metrics);
+    });
     writeActivePerformanceGameContext({
       gameId: "page-smoke-game",
       gameTitle: "Page Smoke Game",
@@ -976,6 +944,42 @@ describe("routed page smoke coverage", () => {
     expect(screen.getByText("OG-Launcher")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Friends" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Screenshots" })).not.toBeInTheDocument();
+  });
+
+  it("makes the external overlay click-through while only pinned panels remain", async () => {
+    vi.mocked(isTauri).mockReturnValue(true);
+    vi.mocked(invoke).mockImplementation((command) => {
+      if (command === "get_overlay_settings") {
+        return Promise.resolve({
+          fpsHudEnabled: false,
+          isEnabled: true,
+          opacity: 0.95,
+          position: "bottom_right",
+          showGpu: true,
+        });
+      }
+      if (command === "detect_anti_cheat_processes") return Promise.resolve([]);
+      return Promise.resolve(undefined);
+    });
+
+    renderRoute(<OverlayPage />);
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith("set_in_game_overlay_click_through", {
+        enabled: false,
+      }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Friends" }));
+    fireEvent.click(await screen.findByTitle("Pin panel"));
+    fireEvent.click(screen.getByRole("button", { name: "Back to Game" }));
+
+    await waitFor(() =>
+      expect(invoke).toHaveBeenCalledWith("set_in_game_overlay_click_through", {
+        enabled: true,
+      }),
+    );
+    expect(screen.queryByRole("button", { name: "Back to Game" })).not.toBeInTheDocument();
+    expect(screen.getByTitle("Unpin")).toBeInTheDocument();
   });
 
   it("sends overlay friend invites from an inline form without native prompts", async () => {

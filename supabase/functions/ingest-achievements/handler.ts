@@ -12,7 +12,13 @@ export type AchievementCatalogGame = {
 
 export type AchievementIngestionAuthContext = {
   adminClient?: unknown;
+  hasTrustedAttestation: boolean;
   userId: string;
+};
+
+export type AchievementDefinitionUpsertResult = {
+  accepted: boolean;
+  achievementIdsByKey: Map<string, string>;
 };
 
 type AchievementIngestionAuthResult =
@@ -38,14 +44,16 @@ export interface AchievementIngestionHandlerDeps {
   upsertAchievementDefinitions: (
     auth: AchievementIngestionAuthContext,
     gameId: string,
+    provider: string,
+    syncedAt: string,
     achievements: NormalizedAchievement[],
-  ) => Promise<Map<string, string>>;
+  ) => Promise<AchievementDefinitionUpsertResult>;
 }
 
 const achievementIngestionCorsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers":
-    "authorization, x-account-deletion-secret, x-client-info, apikey, content-type",
+    "authorization, x-achievement-attestation, x-client-info, apikey, content-type",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
 };
 
@@ -99,11 +107,56 @@ export async function handleAchievementIngestion(
     );
   }
 
-  const achievementIdsByKey = await deps.upsertAchievementDefinitions(
+  const unlockedAchievements = ingestion.achievements.filter((achievement) =>
+    Boolean(achievement.unlockedAt)
+  );
+
+  // A user JWT proves who is calling, not that Steam/Xbox (or any other
+  // provider) vouched for the supplied catalog and unlock ids. Keep these
+  // payloads local-only until a trusted server-side relay attests them.
+  if (!authResult.hasTrustedAttestation) {
+    return jsonResponse({
+      achievementsSynced: 0,
+      newUnlocks: 0,
+      ok: true,
+      persistence: "local_only",
+      receivedAchievements: ingestion.achievements.length,
+      receivedUnlocks: unlockedAchievements.length,
+      trust: "unverified",
+      unlockedCount: 0,
+      userId: authResult.userId,
+      xpDelta: 0,
+    }, 202);
+  }
+
+  if (!ingestion.syncedAt) {
+    return jsonResponse({
+      error: "syncedAt is required for attested achievement ingestion.",
+    }, 400);
+  }
+
+  const definitionResult = await deps.upsertAchievementDefinitions(
     authResult,
     ingestion.gameId,
+    ingestion.provider,
+    ingestion.syncedAt,
     ingestion.achievements,
   );
+  if (!definitionResult.accepted) {
+    return jsonResponse({
+      achievementsSynced: 0,
+      ignored: true,
+      newUnlocks: 0,
+      ok: true,
+      reason: "out_of_order",
+      trust: "attested",
+      unlockedCount: 0,
+      userId: authResult.userId,
+      xpDelta: 0,
+    }, 202);
+  }
+
+  const achievementIdsByKey = definitionResult.achievementIdsByKey;
   const missingDefinitionKeys = ingestion.achievements
     .map((achievement) => achievement.key)
     .filter((key) => !achievementIdsByKey.has(key));
@@ -117,9 +170,6 @@ export async function handleAchievementIngestion(
     );
   }
 
-  const unlockedAchievements = ingestion.achievements.filter((achievement) =>
-    Boolean(achievement.unlockedAt)
-  );
   const insertedUnlockKeys = unlockedAchievements.length > 0
     ? await deps.recordNewAchievementUnlocks(
       authResult,

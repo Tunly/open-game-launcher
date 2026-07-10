@@ -6,9 +6,14 @@ use std::{
     net::TcpListener,
     path::{Path, PathBuf},
     process::Command,
+    sync::{
+        atomic::{AtomicBool, AtomicU64, Ordering},
+        Mutex,
+    },
     thread,
 };
 use tauri::Manager;
+use uuid::Uuid;
 
 #[cfg(windows)]
 use winreg::{
@@ -19,6 +24,11 @@ use winreg::{
 const LAUNCHER_DIR: &str = "open-game-launcher";
 const PRODUCT_DIR: &str = "Open Game Launcher";
 const STEAM_ID64_BASE: u64 = 76_561_197_960_265_728;
+static STEAM_CALLBACK_SERVER_STARTED: AtomicBool = AtomicBool::new(false);
+static STEAM_WINDOW_OPEN_LOCK: Mutex<()> = Mutex::new(());
+static ACTIVE_STEAM_SCRAPE_REQUEST: Mutex<Option<SteamScrapeRequest>> = Mutex::new(None);
+static ACTIVE_STEAM_LOGIN_STATE: Mutex<Option<String>> = Mutex::new(None);
+static NEXT_STEAM_SCRAPE_GENERATION: AtomicU64 = AtomicU64::new(1);
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -296,8 +306,360 @@ pub fn open_external_url(url: String) -> Result<(), String> {
     }
 }
 
+fn claim_callback_server_start(gate: &AtomicBool) -> bool {
+    gate.compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+        .is_ok()
+}
+
+fn release_callback_server_start(gate: &AtomicBool) {
+    gate.store(false, Ordering::Release);
+}
+
+struct CallbackServerStartLease(&'static AtomicBool);
+
+impl Drop for CallbackServerStartLease {
+    fn drop(&mut self) {
+        release_callback_server_start(self.0);
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum SteamScrapeSource {
+    Login,
+    Silent,
+}
+
+impl SteamScrapeSource {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Login => "login",
+            Self::Silent => "silent",
+        }
+    }
+
+    fn parse(value: &str) -> Option<Self> {
+        match value {
+            "login" => Some(Self::Login),
+            "silent" => Some(Self::Silent),
+            _ => None,
+        }
+    }
+
+    fn window_label(self) -> &'static str {
+        match self {
+            Self::Login => "steam-login",
+            Self::Silent => "steam-silent-scraper",
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct SteamScrapeRequest {
+    generation: u64,
+    request_id: String,
+    source: SteamScrapeSource,
+    steam_id: String,
+}
+
+fn next_steam_scrape_request(steam_id: &str, source: SteamScrapeSource) -> SteamScrapeRequest {
+    SteamScrapeRequest {
+        generation: NEXT_STEAM_SCRAPE_GENERATION.fetch_add(1, Ordering::Relaxed),
+        request_id: Uuid::new_v4().to_string(),
+        source,
+        steam_id: steam_id.to_string(),
+    }
+}
+
+fn set_active_steam_scrape_request(
+    state: &Mutex<Option<SteamScrapeRequest>>,
+    request: SteamScrapeRequest,
+) {
+    let mut active = state
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if active
+        .as_ref()
+        .is_none_or(|current| current.generation <= request.generation)
+    {
+        *active = Some(request);
+    }
+}
+
+fn active_steam_scrape_request_matches(
+    state: &Mutex<Option<SteamScrapeRequest>>,
+    request: &SteamScrapeRequest,
+) -> bool {
+    state
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .as_ref()
+        == Some(request)
+}
+
+fn has_active_login_scrape(state: &Mutex<Option<SteamScrapeRequest>>) -> bool {
+    state
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .as_ref()
+        .is_some_and(|request| request.source == SteamScrapeSource::Login)
+}
+
+fn clear_active_steam_scrape_request(
+    state: &Mutex<Option<SteamScrapeRequest>>,
+    request: &SteamScrapeRequest,
+) {
+    let mut active = state
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if active.as_ref() == Some(request) {
+        *active = None;
+    }
+}
+
+fn invalidate_active_steam_scrape_request(state: &Mutex<Option<SteamScrapeRequest>>) {
+    *state
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
+}
+
+fn claim_active_steam_scrape_result(
+    state: &Mutex<Option<SteamScrapeRequest>>,
+    request_id: &str,
+    steam_id: &str,
+    source: SteamScrapeSource,
+) -> bool {
+    let mut active = state
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    let matches = active.as_ref().is_some_and(|request| {
+        request.request_id == request_id && request.steam_id == steam_id && request.source == source
+    });
+    if matches {
+        *active = None;
+    }
+    matches
+}
+
+fn park_steam_window(app: &tauri::AppHandle, source: SteamScrapeSource) {
+    let Ok(blank_url) = "about:blank".parse::<reqwest::Url>() else {
+        return;
+    };
+
+    if let Some(window) = app.get_webview_window(source.window_label()) {
+        let _ = window.navigate(blank_url);
+        let _ = window.hide();
+    }
+}
+
+enum SteamScrapePayload<'a> {
+    Games(&'a Vec<serde_json::Value>),
+    Private,
+}
+
+fn steam_scrape_payload(value: &serde_json::Value) -> Option<SteamScrapePayload<'_>> {
+    if let Some(games) = value.get("games").and_then(|games| games.as_array()) {
+        return Some(SteamScrapePayload::Games(games));
+    }
+    if value.get("isPrivate").and_then(|flag| flag.as_bool()) == Some(true) {
+        return Some(SteamScrapePayload::Private);
+    }
+    None
+}
+
+const STEAM_OPENID_ENDPOINT: &str = "https://steamcommunity.com/openid/login";
+const STEAM_OPENID_NAMESPACE: &str = "http://specs.openid.net/auth/2.0";
+const STEAM_OPENID_ID_PREFIXES: [&str; 2] = [
+    "https://steamcommunity.com/openid/id/",
+    "http://steamcommunity.com/openid/id/",
+];
+
+fn steam_login_callback_url(state: &str) -> Result<String, String> {
+    let mut url = reqwest::Url::parse("http://localhost:18234/")
+        .map_err(|error| format!("Failed to build Steam callback URL: {error}"))?;
+    url.query_pairs_mut().append_pair("state", state);
+    Ok(url.to_string())
+}
+
+fn steam_login_url(state: &str) -> Result<reqwest::Url, String> {
+    let return_to = steam_login_callback_url(state)?;
+    let mut url = reqwest::Url::parse(STEAM_OPENID_ENDPOINT)
+        .map_err(|error| format!("Failed to build Steam login URL: {error}"))?;
+    url.query_pairs_mut()
+        .append_pair("openid.ns", STEAM_OPENID_NAMESPACE)
+        .append_pair("openid.mode", "checkid_setup")
+        .append_pair("openid.return_to", &return_to)
+        .append_pair("openid.realm", "http://localhost:18234/")
+        .append_pair(
+            "openid.identity",
+            "http://specs.openid.net/auth/2.0/identifier_select",
+        )
+        .append_pair(
+            "openid.claimed_id",
+            "http://specs.openid.net/auth/2.0/identifier_select",
+        );
+    Ok(url)
+}
+
+fn set_active_steam_login_state(state: String) {
+    *ACTIVE_STEAM_LOGIN_STATE
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(state);
+}
+
+fn claim_active_steam_login_state(expected: &str) -> bool {
+    let mut active = ACTIVE_STEAM_LOGIN_STATE
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if active.as_deref() != Some(expected) {
+        return false;
+    }
+    *active = None;
+    true
+}
+
+fn request_target(headers: &str) -> Option<&str> {
+    let mut parts = headers.lines().next()?.split_whitespace();
+    if parts.next()? != "GET" {
+        return None;
+    }
+    let target = parts.next()?;
+    if !parts.next()?.starts_with("HTTP/1.") || parts.next().is_some() {
+        return None;
+    }
+    Some(target)
+}
+
+fn verify_steam_openid_callback_with(
+    target: &str,
+    expected_state: &str,
+    verifier: impl FnOnce(&[(String, String)]) -> Result<bool, String>,
+) -> Result<String, String> {
+    if !target.starts_with('/') {
+        return Err("Steam OpenID callback target is invalid.".to_string());
+    }
+    let callback = reqwest::Url::parse(&format!("http://localhost:18234{target}"))
+        .map_err(|error| format!("Steam OpenID callback URL is invalid: {error}"))?;
+    if callback.path() != "/" {
+        return Err("Steam OpenID callback path is invalid.".to_string());
+    }
+
+    let mut parameters = BTreeMap::new();
+    for (key, value) in callback.query_pairs() {
+        if parameters
+            .insert(key.into_owned(), value.into_owned())
+            .is_some()
+        {
+            return Err("Steam OpenID callback contains duplicate parameters.".to_string());
+        }
+    }
+
+    let required = |key: &str| {
+        parameters
+            .get(key)
+            .map(String::as_str)
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| format!("Steam OpenID callback is missing {key}."))
+    };
+    if required("state")? != expected_state
+        || required("openid.ns")? != STEAM_OPENID_NAMESPACE
+        || required("openid.mode")? != "id_res"
+        || required("openid.op_endpoint")? != STEAM_OPENID_ENDPOINT
+        || required("openid.return_to")? != steam_login_callback_url(expected_state)?
+    {
+        return Err("Steam OpenID callback metadata is invalid.".to_string());
+    }
+
+    let claimed_id = required("openid.claimed_id")?;
+    if required("openid.identity")? != claimed_id {
+        return Err("Steam OpenID identity does not match the claimed ID.".to_string());
+    }
+    let steam_id = STEAM_OPENID_ID_PREFIXES
+        .iter()
+        .find_map(|prefix| claimed_id.strip_prefix(prefix))
+        .filter(|value| {
+            value.len() == 17 && value.chars().all(|character| character.is_ascii_digit())
+        })
+        .ok_or_else(|| "Steam OpenID claimed ID is invalid.".to_string())?;
+
+    for key in ["openid.response_nonce", "openid.assoc_handle", "openid.sig"] {
+        required(key)?;
+    }
+    let signed_fields = required("openid.signed")?
+        .split(',')
+        .collect::<BTreeSet<_>>();
+    for field in [
+        "op_endpoint",
+        "claimed_id",
+        "identity",
+        "return_to",
+        "response_nonce",
+        "assoc_handle",
+    ] {
+        if !signed_fields.contains(field) {
+            return Err(format!("Steam OpenID response did not sign {field}."));
+        }
+    }
+
+    let verification_parameters = parameters
+        .iter()
+        .filter(|(key, _)| key.starts_with("openid."))
+        .map(|(key, value)| {
+            (
+                key.clone(),
+                if key == "openid.mode" {
+                    "check_authentication".to_string()
+                } else {
+                    value.clone()
+                },
+            )
+        })
+        .collect::<Vec<_>>();
+
+    if !verifier(&verification_parameters)? {
+        return Err("Steam rejected the OpenID callback assertion.".to_string());
+    }
+    Ok(steam_id.to_string())
+}
+
+fn verify_steam_openid_callback(target: &str) -> Result<String, String> {
+    let expected_state = ACTIVE_STEAM_LOGIN_STATE
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .clone()
+        .ok_or_else(|| "No Steam login is pending.".to_string())?;
+
+    let steam_id = verify_steam_openid_callback_with(target, &expected_state, |parameters| {
+        let response = ureq::post(STEAM_OPENID_ENDPOINT)
+            .send_form(
+                parameters
+                    .iter()
+                    .map(|(key, value)| (key.as_str(), value.as_str())),
+            )
+            .map_err(|error| format!("Could not verify Steam OpenID callback: {error}"))?;
+        let mut body = String::new();
+        response
+            .into_body()
+            .into_reader()
+            .read_to_string(&mut body)
+            .map_err(|error| format!("Could not read Steam OpenID verification: {error}"))?;
+        Ok(body.lines().any(|line| line.trim() == "is_valid:true"))
+    })?;
+
+    if !claim_active_steam_login_state(&expected_state) {
+        return Err("Steam login was superseded by a newer request.".to_string());
+    }
+    Ok(steam_id)
+}
+
 fn start_local_callback_server(app: tauri::AppHandle) {
-    thread::spawn(move || {
+    if !claim_callback_server_start(&STEAM_CALLBACK_SERVER_STARTED) {
+        return;
+    }
+
+    let spawn_result = thread::Builder::new()
+        .name("steam-callback-server".to_string())
+        .spawn(move || {
+        let _lease = CallbackServerStartLease(&STEAM_CALLBACK_SERVER_STARTED);
         let listener = match TcpListener::bind("127.0.0.1:18234") {
             Ok(l) => l,
             Err(e) => {
@@ -367,7 +729,13 @@ fn start_local_callback_server(app: tauri::AppHandle) {
 
             // Read the remaining body bytes
             let body_start = h_end + 4;
-            while buffer.len() < body_start + content_length {
+            let Some(body_end) = body_start.checked_add(content_length) else {
+                continue;
+            };
+            if content_length > 8 * 1024 * 1024 {
+                continue;
+            }
+            while buffer.len() < body_end {
                 let mut chunk = [0u8; 4096];
                 let bytes_read = match stream.read(&mut chunk) {
                     Ok(0) => break,
@@ -377,52 +745,83 @@ fn start_local_callback_server(app: tauri::AppHandle) {
                 buffer.extend_from_slice(&chunk[..bytes_read]);
             }
 
-            let body_str =
-                String::from_utf8_lossy(&buffer[body_start..body_start + content_length]);
+            if body_end > buffer.len() {
+                continue;
+            }
+            let body_str = String::from_utf8_lossy(&buffer[body_start..body_end]);
 
             // CASE 1: POST /scraped (scraped games list from WebView)
             if headers_str.starts_with("POST /scraped") {
                 if let Ok(parsed_data) = serde_json::from_str::<serde_json::Value>(&body_str) {
                     use tauri::Emitter;
 
-                    if let Some(games_array) = parsed_data
-                        .get("games")
-                        .and_then(|value| value.as_array())
-                        .filter(|games| !games.is_empty())
-                    {
-                        println!(
-                            "[Steam Scraper] Received {} owned games from Webview!",
-                            games_array.len()
-                        );
-                        let _ = app.emit("steam_scraped_games_success", games_array.clone());
+                    let request_id = parsed_data.get("requestId").and_then(|value| value.as_str());
+                    let reported_steam_id =
+                        parsed_data.get("steamId").and_then(|value| value.as_str());
+                    let source = parsed_data
+                        .get("source")
+                        .and_then(|value| value.as_str())
+                        .and_then(SteamScrapeSource::parse);
+                    let payload = steam_scrape_payload(&parsed_data);
+                    let has_payload = payload.is_some();
 
-                        // Close both standard login window and silent scraper if present
-                        if let Some(login_window) = app.get_webview_window("steam-login") {
-                            let _ = login_window.close();
-                        }
-                        if let Some(scraper_window) = app.get_webview_window("steam-silent-scraper")
-                        {
-                            let _ = scraper_window.close();
-                        }
-                    } else if let Some(is_private) =
-                        parsed_data.get("isPrivate").and_then(|v| v.as_bool())
+                    if let (
+                        Some(request_id),
+                        Some(reported_steam_id),
+                        Some(source),
+                        Some(payload),
+                    ) = (request_id, reported_steam_id, source, payload)
                     {
-                        if is_private {
-                            println!("[Steam Scraper] Scraper reported profile or game details are private.");
-                            let _ = app.emit(
-                                "steam_scraped_games_error",
-                                "Steam profile or game details are private.".to_string(),
+                        let accepted = with_steam_window_open_lock(|| {
+                            if !claim_active_steam_scrape_result(
+                                &ACTIVE_STEAM_SCRAPE_REQUEST,
+                                request_id,
+                                reported_steam_id,
+                                source,
+                            ) {
+                                return Ok(false);
+                            }
+
+                            match payload {
+                                SteamScrapePayload::Games(games_array) => {
+                                    println!(
+                                        "[Steam Scraper] Received {} owned games from Webview for SteamID64 {}!",
+                                        games_array.len(), reported_steam_id
+                                    );
+                                    let _ = app.emit(
+                                        "steam_scraped_games_success",
+                                        serde_json::json!({
+                                            "steamId": reported_steam_id,
+                                            "games": games_array,
+                                        }),
+                                    );
+                                }
+                                SteamScrapePayload::Private => {
+                                    println!("[Steam Scraper] Scraper reported profile or game details are private.");
+                                    let _ = app.emit(
+                                        "steam_scraped_games_error",
+                                        serde_json::json!({
+                                            "steamId": reported_steam_id,
+                                            "message": "Steam profile or game details are private.",
+                                        }),
+                                    );
+                                }
+                            }
+
+                            park_steam_window(&app, source);
+                            Ok(true)
+                        })
+                        .unwrap_or(false);
+
+                        if !accepted {
+                            println!(
+                                "[Steam Scraper] Ignored stale result for SteamID64 {reported_steam_id}."
                             );
-
-                            if let Some(login_window) = app.get_webview_window("steam-login") {
-                                let _ = login_window.close();
-                            }
-                            if let Some(scraper_window) =
-                                app.get_webview_window("steam-silent-scraper")
-                            {
-                                let _ = scraper_window.close();
-                            }
                         }
+                    } else if has_payload {
+                        println!(
+                            "[Steam Scraper] Ignored result without request correlation metadata."
+                        );
                     }
                 }
 
@@ -435,30 +834,36 @@ fn start_local_callback_server(app: tauri::AppHandle) {
             }
 
             // CASE 2: GET / (OpenID Login Redirect)
-            let mut steam_id = None;
-            if let Some(pos) = headers_str.find("openid%2Fid%2F") {
-                let start_idx = pos + "openid%2Fid%2F".len();
-                if headers_str.len() >= start_idx + 17 {
-                    steam_id = Some(&headers_str[start_idx..start_idx + 17]);
+            let steam_id = request_target(&headers_str).and_then(|target| {
+                match verify_steam_openid_callback(target) {
+                    Ok(steam_id) => Some(steam_id),
+                    Err(error) => {
+                        println!("[Steam Login] Rejected callback: {error}");
+                        None
+                    }
                 }
-            } else if let Some(pos) = headers_str.find("openid%2fid%2f") {
-                let start_idx = pos + "openid%2fid%2f".len();
-                if headers_str.len() >= start_idx + 17 {
-                    steam_id = Some(&headers_str[start_idx..start_idx + 17]);
-                }
-            } else if let Some(pos) = headers_str.find("openid/id/") {
-                let start_idx = pos + "openid/id/".len();
-                if headers_str.len() >= start_idx + 17 {
-                    steam_id = Some(&headers_str[start_idx..start_idx + 17]);
-                }
-            }
+            });
 
             if let Some(sid) = steam_id {
-                if sid.chars().all(|c| c.is_ascii_digit()) {
                     println!("[Steam Login] Extracted SteamID64: {}", sid);
 
+                    let scrape_request =
+                        next_steam_scrape_request(&sid, SteamScrapeSource::Login);
+                    let Ok(games_url) = steam_scraper_url(
+                        &scrape_request.steam_id,
+                        &scrape_request.request_id,
+                        scrape_request.source,
+                    )
+                    else {
+                        continue;
+                    };
+                    set_active_steam_scrape_request(
+                        &ACTIVE_STEAM_SCRAPE_REQUEST,
+                        scrape_request,
+                    );
+
                     use tauri::Emitter;
-                    let _ = app.emit("steam_login_success", sid.to_string());
+                    let _ = app.emit("steam_login_success", sid.clone());
 
                     // Respond with a page that immediately redirects to their games list.
                     // Since they just logged in inside the Webview, cookies are fully active!
@@ -502,12 +907,12 @@ fn start_local_callback_server(app: tauri::AppHandle) {
                                 <p>Your Steam game list is loading...</p>
                             </div>
                             <script>
-                                window.location.href = "https://steamcommunity.com/profiles/{}/games/?tab=all";
+                                window.location.href = "{}";
                             </script>
                         </body>
                         </html>
                     "#,
-                        sid
+                        games_url
                     );
 
                     let response = format!(
@@ -519,7 +924,6 @@ fn start_local_callback_server(app: tauri::AppHandle) {
                     let _ = stream.write_all(response.as_bytes());
                     let _ = stream.flush();
                     continue;
-                }
             }
 
             let response_body =
@@ -527,12 +931,24 @@ fn start_local_callback_server(app: tauri::AppHandle) {
             let _ = stream.write_all(response_body.as_bytes());
         }
     });
+
+    if let Err(error) = spawn_result {
+        release_callback_server_start(&STEAM_CALLBACK_SERVER_STARTED);
+        println!("[Steam Login] Failed to start local server thread: {error}");
+    }
 }
 
 fn steam_scraper_script() -> &'static str {
     r#"
         (function() {
             console.log("[Steam Scraper] Active!");
+
+            const pageUrl = new URL(window.location.href);
+            const requestId = pageUrl.searchParams.get("ogl_request_id") || "";
+            const source = pageUrl.searchParams.get("ogl_source") || "";
+            const profileMatch = pageUrl.pathname.match(/^\/profiles\/(\d+)\/games\/?$/i);
+            const steamId = profileMatch ? profileMatch[1] : "";
+            if (!requestId || !steamId || !["login", "silent"].includes(source)) return;
 
             function appIdFromValue(value) {
                 if (!value) return "";
@@ -553,9 +969,15 @@ fn steam_scraper_script() -> &'static str {
                 if (!appid || !title || map.has(appid)) return;
                 const game = {
                     appid,
-                    name: title,
-                    hours_forever: playtimeHours || "0"
+                    name: title
                 };
+                if (
+                    playtimeHours !== undefined &&
+                    playtimeHours !== null &&
+                    String(playtimeHours).trim() !== ""
+                ) {
+                    game.hours_forever = playtimeHours;
+                }
                 const parsedLastPlayed = Number(lastPlayed || 0);
                 if (Number.isFinite(parsedLastPlayed) && parsedLastPlayed > 0) {
                     game.last_played = parsedLastPlayed;
@@ -572,11 +994,21 @@ fn steam_scraper_script() -> &'static str {
                             map,
                             game && (game.appid || game.app_id || game.id),
                             game && (game.name || game.title),
-                            game && (game.hours_forever || game.hours || game.playtime_forever),
+                            game && (game.hours_forever ?? game.hours ?? game.playtime_forever),
                             game && (game.last_played || game.lastPlayed || game.rtime_last_played)
                         );
                     }
                 }
+            }
+
+            function hasExplicitEmptyLibrary() {
+                const gameArrays = [window.rgGames, window.g_rgGames, window.g_rgGameList]
+                    .filter(Array.isArray);
+                if (gameArrays.length > 0 && gameArrays.every((games) => games.length === 0)) {
+                    return true;
+                }
+                const text = document.body ? document.body.innerText || "" : "";
+                return /(?:no games|does not own any games|has no games)/i.test(text);
             }
 
             function collectFromDom(map) {
@@ -614,7 +1046,7 @@ fn steam_scraper_script() -> &'static str {
                         ) ||
                         row.textContent ||
                         "";
-                    pushGame(map, appid, title, "0");
+                    pushGame(map, appid, title);
                 });
             }
 
@@ -633,7 +1065,7 @@ fn steam_scraper_script() -> &'static str {
                                 map,
                                 game && (game.appid || game.app_id || game.id),
                                 game && (game.name || game.title),
-                                game && (game.hours_forever || game.hours || game.playtime_forever),
+                                game && (game.hours_forever ?? game.hours ?? game.playtime_forever),
                                 game && (game.last_played || game.lastPlayed || game.rtime_last_played)
                             );
                         }
@@ -649,7 +1081,7 @@ fn steam_scraper_script() -> &'static str {
                 fetch("http://127.0.0.1:18234/scraped", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(payload)
+                    body: JSON.stringify({ ...payload, requestId, source, steamId })
                 }).catch((error) => {
                     window.__ogSteamScraperPosted = false;
                     console.error("[Steam Scraper] Fetch error:", error);
@@ -664,6 +1096,8 @@ fn steam_scraper_script() -> &'static str {
                 if (!url.includes("/games")) {
                     return;
                 }
+
+                window.__ogSteamScraperAttempts = (window.__ogSteamScraperAttempts || 0) + 1;
 
                 const map = new Map();
                 collectFromGlobals(map);
@@ -684,6 +1118,13 @@ fn steam_scraper_script() -> &'static str {
                 } else if (isPrivate) {
                     console.log("[Steam Scraper] Profile is private or requires login, reporting to backend...");
                     post({ isPrivate: true });
+                } else if (
+                    document.readyState === "complete" &&
+                    window.__ogSteamScraperAttempts >= 5 &&
+                    hasExplicitEmptyLibrary()
+                ) {
+                    console.log("[Steam Scraper] Library is empty, posting terminal result...");
+                    post({ games: [] });
                 }
             }
 
@@ -698,26 +1139,79 @@ fn steam_scraper_script() -> &'static str {
 pub async fn open_steam_login_window(app: tauri::AppHandle) -> Result<(), String> {
     start_local_callback_server(app.clone());
 
-    let url = "https://steamcommunity.com/openid/login?openid.ns=http://specs.openid.net/auth/2.0&openid.mode=checkid_setup&openid.return_to=http://localhost:18234/&openid.realm=http://localhost:18234/&openid.identity=http://specs.openid.net/auth/2.0/identifier_select&openid.claimed_id=http://specs.openid.net/auth/2.0/identifier_select";
+    let login_state = Uuid::new_v4().to_string();
+    let parsed_url = steam_login_url(&login_state)?;
+    set_active_steam_login_state(login_state.clone());
+    invalidate_active_steam_scrape_request(&ACTIVE_STEAM_SCRAPE_REQUEST);
 
-    // Create a native Tauri window for logging in, sharing cookies
-    let _window = tauri::WebviewWindowBuilder::new(
-        &app,
-        "steam-login",
-        tauri::WebviewUrl::External(
-            url.parse()
-                .map_err(|e| format!("Failed to parse login URL: {e}"))?,
-        ),
-    )
-    .title("Steam Login")
-    .inner_size(800.0, 600.0)
-    .center()
-    .resizable(true)
-    .initialization_script(steam_scraper_script())
-    .build()
-    .map_err(|e| format!("Failed to create login window: {e}"))?;
+    let result = with_steam_window_open_lock(|| {
+        park_steam_window(&app, SteamScrapeSource::Silent);
 
-    Ok(())
+        if let Some(existing_window) = app.get_webview_window("steam-login") {
+            existing_window
+                .navigate(parsed_url)
+                .map_err(|error| format!("Failed to navigate Steam login window: {error}"))?;
+            existing_window
+                .show()
+                .map_err(|error| format!("Failed to show Steam login window: {error}"))?;
+            existing_window
+                .set_focus()
+                .map_err(|error| format!("Failed to focus Steam login window: {error}"))?;
+            return Ok(());
+        }
+
+        tauri::WebviewWindowBuilder::new(
+            &app,
+            "steam-login",
+            tauri::WebviewUrl::External(parsed_url),
+        )
+        .title("Steam Login")
+        .inner_size(800.0, 600.0)
+        .center()
+        .resizable(true)
+        .initialization_script(steam_scraper_script())
+        .build()
+        .map_err(|error| format!("Failed to create login window: {error}"))?;
+
+        Ok(())
+    });
+
+    if result.is_err() {
+        claim_active_steam_login_state(&login_state);
+    }
+    result
+}
+
+fn steam_scraper_url(
+    steam_id: &str,
+    request_id: &str,
+    source: SteamScrapeSource,
+) -> Result<String, String> {
+    let steam_id = steam_id.trim();
+    if steam_id.is_empty() || !steam_id.chars().all(|character| character.is_ascii_digit()) {
+        return Err("SteamID64 ist ungueltig.".to_string());
+    }
+    let request_id = request_id.trim();
+    if request_id.is_empty() {
+        return Err("Steam scrape request ID is empty.".to_string());
+    }
+
+    let mut url = reqwest::Url::parse(&format!(
+        "https://steamcommunity.com/profiles/{steam_id}/games/"
+    ))
+    .map_err(|error| format!("Failed to build Steam games URL: {error}"))?;
+    url.query_pairs_mut()
+        .append_pair("tab", "all")
+        .append_pair("ogl_request_id", request_id)
+        .append_pair("ogl_source", source.as_str());
+    Ok(url.to_string())
+}
+
+fn with_steam_window_open_lock<T>(action: impl FnOnce() -> Result<T, String>) -> Result<T, String> {
+    let _guard = STEAM_WINDOW_OPEN_LOCK
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    action()
 }
 
 #[tauri::command]
@@ -725,34 +1219,50 @@ pub async fn open_steam_scraper_window(
     app: tauri::AppHandle,
     steam_id: String,
 ) -> Result<(), String> {
-    let steam_id = steam_id.trim();
-    if steam_id.is_empty() || !steam_id.chars().all(|c| c.is_ascii_digit()) {
-        return Err("SteamID64 ist ungueltig.".to_string());
+    let steam_id = steam_id.trim().to_string();
+    if has_active_login_scrape(&ACTIVE_STEAM_SCRAPE_REQUEST) {
+        return Ok(());
     }
+    let request = next_steam_scrape_request(&steam_id, SteamScrapeSource::Silent);
+    let url = steam_scraper_url(&request.steam_id, &request.request_id, request.source)?;
+    set_active_steam_scrape_request(&ACTIVE_STEAM_SCRAPE_REQUEST, request.clone());
 
     start_local_callback_server(app.clone());
 
-    if let Some(existing_window) = app.get_webview_window("steam-silent-scraper") {
-        let _ = existing_window.close();
+    let result = with_steam_window_open_lock(|| {
+        if !active_steam_scrape_request_matches(&ACTIVE_STEAM_SCRAPE_REQUEST, &request) {
+            return Ok(());
+        }
+
+        let parsed_url = url
+            .parse()
+            .map_err(|error| format!("Failed to parse Steam games URL: {error}"))?;
+
+        if let Some(existing_window) = app.get_webview_window("steam-silent-scraper") {
+            return existing_window
+                .navigate(parsed_url)
+                .map_err(|error| format!("Failed to navigate Steam sync window: {error}"));
+        }
+
+        tauri::WebviewWindowBuilder::new(
+            &app,
+            "steam-silent-scraper",
+            tauri::WebviewUrl::External(parsed_url),
+        )
+        .title("Steam Library Sync")
+        .inner_size(900.0, 700.0)
+        .visible(false)
+        .initialization_script(steam_scraper_script())
+        .build()
+        .map_err(|error| format!("Failed to create Steam sync window: {error}"))?;
+
+        Ok(())
+    });
+
+    if result.is_err() {
+        clear_active_steam_scrape_request(&ACTIVE_STEAM_SCRAPE_REQUEST, &request);
     }
-
-    let url = format!("https://steamcommunity.com/profiles/{steam_id}/games/?tab=all");
-    let _window = tauri::WebviewWindowBuilder::new(
-        &app,
-        "steam-silent-scraper",
-        tauri::WebviewUrl::External(
-            url.parse()
-                .map_err(|e| format!("Failed to parse Steam games URL: {e}"))?,
-        ),
-    )
-    .title("Steam Library Sync")
-    .inner_size(900.0, 700.0)
-    .visible(false)
-    .initialization_script(steam_scraper_script())
-    .build()
-    .map_err(|e| format!("Failed to create Steam sync window: {e}"))?;
-
-    Ok(())
+    result
 }
 
 // =====================================================================
@@ -769,14 +1279,15 @@ pub struct OwnedGame {
     pub cover_url: Option<String>,
     pub logo_url: Option<String>,
     pub icon_url: Option<String>,
-    pub playtime_minutes: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub playtime_minutes: Option<u64>,
     pub last_played_at: Option<String>,
     pub cloud_gaming_url: Option<String>,
 }
 
 #[derive(Debug, Default, Clone)]
 struct LocalSteamOwnedActivity {
-    playtime_minutes: u64,
+    playtime_minutes: Option<u64>,
     last_played: Option<u64>,
 }
 
@@ -829,7 +1340,7 @@ fn fetch_local_steam_owned_games(steam_id: &str) -> Vec<OwnedGame> {
             id: format!("steam-owned-{app_id}"),
             external_id: Some(app_id.clone()),
             title: title.clone(),
-            description: format!("Steam game (Owned). AppID: {app_id}"),
+            description: String::new(),
             last_played_at: app_activity
                 .last_played
                 .map(crate::commands::games::unix_timestamp_to_iso),
@@ -1208,7 +1719,11 @@ fn read_steam_owned_activity(
                     | "PlaytimeLinux"
             ) {
                 if let Ok(minutes) = value.parse::<u64>() {
-                    entry.playtime_minutes = entry.playtime_minutes.max(minutes);
+                    entry.playtime_minutes = Some(
+                        entry
+                            .playtime_minutes
+                            .map_or(minutes, |existing| existing.max(minutes)),
+                    );
                 }
             } else if matches!(key.as_str(), "LastPlayed" | "LastPlayedTime") {
                 if let Ok(timestamp) = value.parse::<u64>() {
@@ -1450,8 +1965,7 @@ fn parse_rg_games_json(json: &str, _steam_id: &str) -> Vec<OwnedGame> {
             let playtime = item
                 .get("hours_forever")
                 .or_else(|| item.get("hours"))
-                .and_then(json_hours_to_minutes)
-                .unwrap_or_default();
+                .and_then(json_hours_to_minutes);
 
             let last_played_at = item
                 .get("last_played")
@@ -1463,7 +1977,7 @@ fn parse_rg_games_json(json: &str, _steam_id: &str) -> Vec<OwnedGame> {
                 id: format!("steam-owned-{appid}"),
                 external_id: Some(appid.clone()),
                 title: name.to_string(),
-                description: format!("Steam game (Owned). AppID: {appid}"),
+                description: String::new(),
                 cover_url: Some(format!(
                     "https://cdn.cloudflare.steamstatic.com/steam/apps/{appid}/library_hero.jpg"
                 )),
@@ -1563,11 +2077,11 @@ pub async fn fetch_gog_owned_games(access_token: String) -> Result<Vec<OwnedGame
                         id: format!("gog-owned-{id}"),
                         external_id: Some(id.to_string()),
                         title,
-                        description: format!("GOG game (Owned). ID: {id}"),
+                        description: String::new(),
                         cover_url: logo2x.clone(),
                         logo_url: logo2x,
                         icon_url: icon,
-                        playtime_minutes: 0,
+                        playtime_minutes: None,
                         last_played_at: None,
                         cloud_gaming_url: None,
                     });
@@ -1664,20 +2178,209 @@ mod tests {
     use super::*;
 
     #[test]
+    fn callback_server_start_gate_allows_only_one_owner_until_released() {
+        let gate = std::sync::atomic::AtomicBool::new(false);
+
+        assert!(claim_callback_server_start(&gate));
+        assert!(!claim_callback_server_start(&gate));
+        release_callback_server_start(&gate);
+        assert!(claim_callback_server_start(&gate));
+    }
+
+    #[test]
+    fn steam_scraper_url_tracks_the_requested_account() {
+        assert_eq!(
+            steam_scraper_url(
+                " 76561198000000001 ",
+                "request-123",
+                SteamScrapeSource::Silent,
+            )
+            .unwrap(),
+            "https://steamcommunity.com/profiles/76561198000000001/games/?tab=all&ogl_request_id=request-123&ogl_source=silent"
+        );
+        assert!(
+            steam_scraper_url("not-a-steam-id", "request-123", SteamScrapeSource::Silent,).is_err()
+        );
+        assert!(steam_scraper_url("76561198000000001", "", SteamScrapeSource::Silent).is_err());
+    }
+
+    #[test]
+    fn steam_scraper_script_correlates_results_with_the_current_request() {
+        let script = steam_scraper_script();
+
+        assert!(script.contains("ogl_request_id"));
+        assert!(script.contains("ogl_source"));
+        assert!(script.contains("requestId"));
+        assert!(script.contains("source"));
+        assert!(script.contains("steamId"));
+    }
+
+    #[test]
+    fn empty_steam_library_is_a_terminal_scrape_result() {
+        let payload = serde_json::json!({
+            "games": [],
+            "requestId": "request-empty",
+            "source": "silent",
+            "steamId": "76561198000000001",
+        });
+
+        assert!(matches!(
+            steam_scrape_payload(&payload),
+            Some(SteamScrapePayload::Games(games)) if games.is_empty()
+        ));
+    }
+
+    #[test]
+    fn stale_steam_scraper_results_cannot_claim_a_newer_request() {
+        let state = Mutex::new(None);
+        set_active_steam_scrape_request(
+            &state,
+            SteamScrapeRequest {
+                generation: 2,
+                request_id: "request-new".to_string(),
+                source: SteamScrapeSource::Silent,
+                steam_id: "76561198000000002".to_string(),
+            },
+        );
+        set_active_steam_scrape_request(
+            &state,
+            SteamScrapeRequest {
+                generation: 1,
+                request_id: "request-old".to_string(),
+                source: SteamScrapeSource::Silent,
+                steam_id: "76561198000000001".to_string(),
+            },
+        );
+
+        assert!(!claim_active_steam_scrape_result(
+            &state,
+            "request-old",
+            "76561198000000001",
+            SteamScrapeSource::Silent,
+        ));
+        assert!(claim_active_steam_scrape_result(
+            &state,
+            "request-new",
+            "76561198000000002",
+            SteamScrapeSource::Silent,
+        ));
+        assert!(!claim_active_steam_scrape_result(
+            &state,
+            "request-new",
+            "76561198000000002",
+            SteamScrapeSource::Silent,
+        ));
+    }
+
+    #[test]
+    fn silent_scraper_cannot_supersede_an_active_login_scrape() {
+        let state = Mutex::new(Some(SteamScrapeRequest {
+            generation: 1,
+            request_id: "request-login".to_string(),
+            source: SteamScrapeSource::Login,
+            steam_id: "76561198000000001".to_string(),
+        }));
+
+        assert!(has_active_login_scrape(&state));
+    }
+
+    #[test]
+    fn steam_openid_callback_requires_provider_verification() {
+        let steam_id = "76561198000000001";
+        let state = "login-state-123";
+        let identity = format!("http://steamcommunity.com/openid/id/{steam_id}");
+        let mut callback = reqwest::Url::parse("http://localhost:18234/").unwrap();
+        callback
+            .query_pairs_mut()
+            .append_pair("state", state)
+            .append_pair("openid.ns", "http://specs.openid.net/auth/2.0")
+            .append_pair("openid.mode", "id_res")
+            .append_pair(
+                "openid.op_endpoint",
+                "https://steamcommunity.com/openid/login",
+            )
+            .append_pair("openid.claimed_id", &identity)
+            .append_pair("openid.identity", &identity)
+            .append_pair(
+                "openid.return_to",
+                &steam_login_callback_url(state).unwrap(),
+            )
+            .append_pair("openid.response_nonce", "2026-07-09T20:00:00Znonce")
+            .append_pair("openid.assoc_handle", "handle")
+            .append_pair(
+                "openid.signed",
+                "op_endpoint,claimed_id,identity,return_to,response_nonce,assoc_handle",
+            )
+            .append_pair("openid.sig", "signature");
+        let target = format!("{}?{}", callback.path(), callback.query().unwrap());
+
+        let verified = verify_steam_openid_callback_with(&target, state, |parameters| {
+            assert!(parameters
+                .iter()
+                .any(|(key, value)| key == "openid.mode" && value == "check_authentication"));
+            Ok(true)
+        })
+        .unwrap();
+        assert_eq!(verified, steam_id);
+
+        assert!(verify_steam_openid_callback_with(&target, state, |_| Ok(false)).is_err());
+        assert!(
+            verify_steam_openid_callback_with("/?openid.mode=id_res", state, |_| Ok(true)).is_err()
+        );
+    }
+
+    #[test]
+    fn steam_scraper_window_open_actions_are_serialized() {
+        let start = std::sync::Arc::new(std::sync::Barrier::new(3));
+        let active = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let overlapped = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let mut handles = Vec::new();
+
+        for _ in 0..2 {
+            let start = start.clone();
+            let active = active.clone();
+            let overlapped = overlapped.clone();
+            handles.push(std::thread::spawn(move || {
+                start.wait();
+                with_steam_window_open_lock(|| {
+                    if active.fetch_add(1, std::sync::atomic::Ordering::SeqCst) != 0 {
+                        overlapped.store(true, std::sync::atomic::Ordering::SeqCst);
+                    }
+                    std::thread::sleep(std::time::Duration::from_millis(20));
+                    active.fetch_sub(1, std::sync::atomic::Ordering::SeqCst);
+                    Ok(())
+                })
+                .unwrap();
+            }));
+        }
+
+        start.wait();
+        for handle in handles {
+            handle.join().unwrap();
+        }
+
+        assert!(!overlapped.load(std::sync::atomic::Ordering::SeqCst));
+    }
+
+    #[test]
     fn parses_steam_rg_games_with_numeric_and_string_fields() {
         let json = r#"[
             {"appid": 4000, "name": "Garry's Mod", "hours_forever": "225.3", "last_played": 1764709295},
-            {"appid": "730", "name": "Counter-Strike 2", "hours": 1.5}
+            {"appid": "730", "name": "Counter-Strike 2", "hours": 1.5},
+            {"appid": "10", "name": "Counter-Strike", "hours": 0},
+            {"appid": "20", "name": "Team Fortress Classic"}
         ]"#;
 
         let games = parse_rg_games_json(json, "76561198000000000");
 
-        assert_eq!(games.len(), 2);
+        assert_eq!(games.len(), 4);
         assert_eq!(games[0].id, "steam-owned-4000");
-        assert_eq!(games[0].playtime_minutes, 13_518);
+        assert_eq!(games[0].playtime_minutes, Some(13_518));
         assert!(games[0].last_played_at.is_some());
         assert_eq!(games[1].external_id.as_deref(), Some("730"));
-        assert_eq!(games[1].playtime_minutes, 90);
+        assert_eq!(games[1].playtime_minutes, Some(90));
+        assert_eq!(games[2].playtime_minutes, Some(0));
+        assert_eq!(games[3].playtime_minutes, None);
     }
 
     #[test]
@@ -1745,7 +2448,7 @@ mod tests {
 
         let activity = read_steam_owned_activity(&config_dir);
         let garrys_mod = activity.get("4000").expect("missing app activity");
-        assert_eq!(garrys_mod.playtime_minutes, 13_519);
+        assert_eq!(garrys_mod.playtime_minutes, Some(13_519));
         assert_eq!(garrys_mod.last_played, Some(1_764_709_295));
 
         let _ = fs::remove_dir_all(temp);

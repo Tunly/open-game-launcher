@@ -296,7 +296,9 @@ pub(crate) fn update_installed_games_cache_for_download(
         games.push(game);
     }
 
-    write_installed_games_cache(&games);
+    if let Err(error) = write_installed_games_cache(&games) {
+        eprintln!("[open-game-launcher] Could not persist installed game '{game_id}': {error}");
+    }
 }
 
 #[cfg(test)]

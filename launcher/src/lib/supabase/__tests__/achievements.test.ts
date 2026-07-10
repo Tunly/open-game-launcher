@@ -6,8 +6,7 @@ const mocks = vi.hoisted(() => {
   const authGetUser = vi.fn();
   const from = vi.fn();
   const functionsInvoke = vi.fn();
-  const getLauncherDeviceId = vi.fn();
-  return { authGetUser, from, functionsInvoke, getLauncherDeviceId };
+  return { authGetUser, from, functionsInvoke };
 });
 
 vi.mock("../client", () => ({
@@ -25,10 +24,6 @@ vi.mock("../client", () => ({
     return result.data.user?.id ?? null;
   },
   isSupabaseConfigured: true,
-}));
-
-vi.mock("../../launcher", () => ({
-  getLauncherDeviceId: mocks.getLauncherDeviceId,
 }));
 
 type QueryError = { code?: string; message: string } | null;
@@ -147,8 +142,6 @@ describe("ingestTrustedAchievements", () => {
     mocks.authGetUser.mockReset();
     mocks.from.mockReset();
     mocks.functionsInvoke.mockReset();
-    mocks.getLauncherDeviceId.mockReset();
-    mocks.getLauncherDeviceId.mockResolvedValue("device-1");
     mockAuthedUser();
     mockCatalogGame();
   });
@@ -194,7 +187,6 @@ describe("ingestTrustedAchievements", () => {
           },
         ],
         gameId: "catalog-1",
-        launcherDeviceId: "device-1",
         provider: "steam",
         providerConfidence: "official",
         syncedAt: "2026-06-10T08:30:00.000Z",
@@ -219,6 +211,48 @@ describe("ingestTrustedAchievements", () => {
     expect(mocks.from).not.toHaveBeenCalledWith("achievements");
     expect(mocks.from).not.toHaveBeenCalledWith("user_achievements");
     expect(mocks.from).not.toHaveBeenCalledWith("profiles");
+  });
+
+  it("maps the server local-only trust result without claiming hosted persistence", async () => {
+    mocks.functionsInvoke.mockResolvedValue({
+      data: {
+        achievementsSynced: 0,
+        newUnlocks: 0,
+        ok: true,
+        persistence: "local_only",
+        trust: "unverified",
+        unlockedCount: 0,
+        xpDelta: 0,
+      },
+      error: null,
+    });
+
+    const { ingestTrustedAchievements } = await import("../achievements");
+    await expect(
+      ingestTrustedAchievements({ game, provider: "steam", providerConfidence: "official" }),
+    ).resolves.toMatchObject({
+      ok: true,
+      persistence: "local_only",
+      skipped: false,
+      trust: "unverified",
+    });
+  });
+
+  it("rejects a local-only acknowledgement when trusted ingestion strict mode is enabled", async () => {
+    vi.stubEnv("VITE_OG_TRUSTED_INGESTION_STRICT", "true");
+    mocks.functionsInvoke.mockResolvedValue({
+      data: {
+        ok: true,
+        persistence: "local_only",
+        trust: "unverified",
+      },
+      error: null,
+    });
+
+    const { ingestTrustedAchievements } = await import("../achievements");
+    await expect(
+      ingestTrustedAchievements({ game, provider: "steam", providerConfidence: "official" }),
+    ).rejects.toThrow(/local-only, unattested achievement evidence/i);
   });
 
   it("rejects unavailable trusted achievement ingestion in strict mode", async () => {
@@ -286,6 +320,7 @@ describe("ingestTrustedAchievements", () => {
             id: "definition-1",
             key: "steam:ACH_REMOTE",
             name: "Remote Win",
+            rarity_percent: 3.5,
           },
           {
             id: "definition-2",
@@ -319,6 +354,7 @@ describe("ingestTrustedAchievements", () => {
         id: "ACH_REMOTE",
         name: "Remote Win",
         providerConfidence: "official",
+        rarity: 3.5,
         source: "steam",
         sourceAchievementId: "ACH_REMOTE",
         unlockedAt: "2026-06-10T09:15:00.000Z",
@@ -378,5 +414,75 @@ describe("ingestTrustedAchievements", () => {
         unlockedAt: "2026-06-10T10:00:00.000Z",
       },
     ]);
+  });
+
+  it("keeps hydrating later games when one remote game query fails", async () => {
+    let definitionQueryCount = 0;
+    mocks.from.mockImplementation((table: string) => {
+      if (table === "games") {
+        return {
+          select: () => ({
+            eq: () => ({
+              limit: () => ({
+                maybeSingle: () =>
+                  Promise.resolve(makeQueryResult({ id: "catalog-1", slug: "half-life-2" })),
+              }),
+            }),
+          }),
+        };
+      }
+      if (table === "achievements") {
+        const chain = {
+          select: vi.fn(() => chain),
+          eq: vi.fn((column: string) => {
+            if (column !== "is_active") return chain;
+            definitionQueryCount += 1;
+            return Promise.resolve(
+              definitionQueryCount === 1
+                ? makeQueryResult(null, { message: "temporary achievement read failure" })
+                : makeQueryResult([
+                    {
+                      id: "definition-1",
+                      key: "steam:ACH_REMOTE",
+                      name: "Remote Win",
+                    },
+                  ]),
+            );
+          }),
+        };
+        return chain;
+      }
+      if (table === "user_achievements") {
+        return {
+          select: () => ({
+            eq: () => ({
+              eq: () => ({
+                in: () => Promise.resolve(makeQueryResult([])),
+              }),
+            }),
+          }),
+        };
+      }
+      return {};
+    });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const first: Game = { ...game, achievements: [], id: "steam-first", launcher: "steam" };
+    const second: Game = {
+      ...game,
+      achievements: [],
+      id: "steam-second",
+      launcher: "steam",
+      slug: "half-life-2-second",
+    };
+
+    const { hydrateGamesWithRemoteAchievements } = await import("../achievements");
+    const hydrated = await hydrateGamesWithRemoteAchievements([first, second]);
+
+    expect(hydrated[0]?.achievements).toEqual([]);
+    expect(hydrated[1]?.achievements?.[0]).toMatchObject({ id: "ACH_REMOTE", name: "Remote Win" });
+    expect(warn).toHaveBeenCalledWith(
+      "[OG-Launcher] Remote achievements unavailable for Half-Life 2:",
+      expect.any(Error),
+    );
   });
 });

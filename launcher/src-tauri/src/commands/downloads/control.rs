@@ -3,8 +3,9 @@ use tauri::AppHandle;
 use crate::commands::downloads::history::remove_download_history_item;
 use crate::commands::downloads::steam_cef::toggle_steam_download_pause;
 use crate::commands::downloads::types::{
-    emit_download_progress, get_download_manager, is_terminal_download_status,
-    DOWNLOAD_STATUS_CANCELLED, DOWNLOAD_STATUS_DOWNLOADING, DOWNLOAD_STATUS_PAUSED,
+    emit_download_progress, emit_download_removed, get_download_manager,
+    is_terminal_download_status, DOWNLOAD_STATUS_CANCELLED, DOWNLOAD_STATUS_DOWNLOADING,
+    DOWNLOAD_STATUS_PAUSED,
 };
 use crate::commands::downloads::utils::{
     is_external_tracker_game_id, normalize_game_id, steam_app_id_from_download_id,
@@ -82,20 +83,30 @@ pub fn cancel_download(app: AppHandle, game_id: String) -> Result<(), String> {
     Ok(())
 }
 
-pub fn archive_download(game_id: String) -> Result<(), String> {
+pub async fn archive_download(app: AppHandle, game_id: String) -> Result<(), String> {
     let game_id = normalize_game_id(game_id)?;
-    remove_download_history_item(&game_id);
+    let archived_game_id = game_id.clone();
 
-    let map = get_download_manager();
-    let mut guard = map
-        .lock()
-        .map_err(|error| format!("Download manager lock poisoned: {error}"))?;
-    let should_remove = guard
-        .get(&game_id)
-        .is_some_and(|download| download.external || is_terminal_download_status(&download.status));
-    if should_remove {
-        guard.remove(&game_id);
-    }
+    tauri::async_runtime::spawn_blocking(move || {
+        remove_download_history_item(&archived_game_id);
+
+        let map = get_download_manager();
+        let mut guard = map
+            .lock()
+            .map_err(|error| format!("Download manager lock poisoned: {error}"))?;
+        let should_remove = guard.get(&archived_game_id).is_some_and(|download| {
+            download.external || is_terminal_download_status(&download.status)
+        });
+        if should_remove {
+            guard.remove(&archived_game_id);
+        }
+
+        Ok::<(), String>(())
+    })
+    .await
+    .map_err(|error| format!("Archive task failed: {error}"))??;
+
+    emit_download_removed(&app, &game_id);
 
     Ok(())
 }

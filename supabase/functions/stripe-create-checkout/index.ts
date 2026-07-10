@@ -27,7 +27,7 @@ Deno.serve((request) =>
   handleStripeCreateCheckout(request, {
     ...adapters,
     checkoutUrlFallback: CHECKOUT_URL_FALLBACK,
-    createOrRetrieveCustomer,
+    createOrRetrieveCustomer: (userId) => createOrRetrieveCustomer(userId, { stripe }),
     getLicenseSigningConfig: () => ({
       allowUnsignedFallback:
         Deno.env.get("OGL_LICENSE_ALLOW_UNSIGNED_FALLBACK") === "true",

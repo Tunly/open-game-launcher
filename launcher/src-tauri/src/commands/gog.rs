@@ -119,11 +119,11 @@ fn gog_catalog_product_to_owned(product: GogCatalogProduct) -> Option<super::sys
         id: format!("gog-owned-{}", product.id),
         external_id: Some(product.id.to_string()),
         title,
-        description: format!("GOG game (Owned). ID: {}", product.id),
+        description: String::new(),
         cover_url: cover_url.clone(),
         logo_url: cover_url.clone(),
         icon_url: cover_url,
-        playtime_minutes: 0,
+        playtime_minutes: None,
         last_played_at: None,
         cloud_gaming_url: None,
     })
@@ -671,13 +671,11 @@ async fn fetch_gog_owned_games_from_user_data(
             id: format!("gog-owned-{id}"),
             external_id: Some(id.to_string()),
             title,
-            description: detail
-                .description
-                .unwrap_or_else(|| format!("GOG game (Owned). ID: {id}")),
+            description: detail.description.unwrap_or_default(),
             cover_url: cover_url.clone(),
             logo_url: cover_url.clone(),
             icon_url: normalize_gog_image_url(icon),
-            playtime_minutes: 0,
+            playtime_minutes: None,
             last_played_at: None,
             cloud_gaming_url: None,
         });
@@ -895,6 +893,12 @@ struct GogActiveDownload {
     cancel_tx: watch::Sender<bool>,
 }
 
+#[derive(Debug, Clone)]
+struct GogStagedInstaller {
+    file_count: usize,
+    checksums_verified: bool,
+}
+
 type GogDownloadMap = Arc<Mutex<HashMap<String, GogActiveDownload>>>;
 
 fn get_gog_download_manager() -> &'static GogDownloadMap {
@@ -941,7 +945,7 @@ pub async fn gog_start_download(
             .or_else(dirs::data_dir)
             .unwrap_or_else(|| PathBuf::from("."))
             .join("open-game-launcher")
-            .join("games")
+            .join("installer-staging")
             .join(&game_id)
     });
 
@@ -989,41 +993,44 @@ pub async fn gog_start_download(
             &pause_rx,
             &cancel_rx,
         )
-        .await;
+        .await
+        .and_then(|staged| {
+            write_gog_installer_stage_manifest(
+                &install_dir_clone,
+                &game_id_clone,
+                &title_clone,
+                &gog_id,
+                &download_info_clone,
+                &staged,
+            )?;
+            Ok(staged)
+        });
 
         match result {
-            Ok(()) => {
-                // Write manifest
-                let manifest = serde_json::json!({
-                    "gameId": game_id_clone,
-                    "title": title_clone,
-                    "gogId": gog_id,
-                    "version": download_info.version,
-                    "managedBy": "OG-Launcher",
-                    "managedByGog": true
-                });
-                if let Ok(contents) = serde_json::to_string_pretty(&manifest) {
-                    let _ = fs::write(install_dir_clone.join("og-manifest.json"), contents);
-                }
-
-                // Update installed games cache
-                update_installed_games_cache(&game_id_clone, &title_clone, &install_dir_clone);
-
+            Ok(staged) => {
                 let _ = app_clone.emit(
-                    "library_inventory_changed",
+                    "gog_installer_staged",
                     serde_json::json!({
-                        "reason": "gog_download_completed",
-                        "gameCount": 0
+                        "gameId": game_id_clone,
+                        "path": install_dir_clone,
+                        "fileCount": staged.file_count,
+                        "checksumsVerified": staged.checksums_verified,
+                        "installed": false
                     }),
                 );
 
-                update_gog_download_status(&game_id_clone, "completed", "Done", 100, 0);
+                let status_message = if staged.checksums_verified {
+                    "Installer staged and verified (not installed)"
+                } else {
+                    "Installer staged (checksum format not verified; not installed)"
+                };
+                update_gog_download_status(&game_id_clone, "completed", status_message, 100, 0);
                 emit_gog_download_progress(
                     &app_clone,
                     &game_id_clone,
                     &title_clone,
                     100,
-                    "Complete",
+                    status_message,
                     "completed",
                     0,
                 );
@@ -1036,7 +1043,7 @@ pub async fn gog_start_download(
                     &game_id_clone,
                     &title_clone,
                     0,
-                    "Error",
+                    &e,
                     "error",
                     0,
                 );
@@ -1054,7 +1061,10 @@ pub async fn gog_start_download(
         game_id,
         download_id,
         status: super::downloads::DownloadStartStatus::Started,
-        message: format!("GOG download started for {}.", title_for_response),
+        message: format!(
+            "GOG installer download started for {}. It will be staged, not marked installed.",
+            title_for_response
+        ),
     })
 }
 
@@ -1068,14 +1078,24 @@ async fn download_gog_game_files(
     token: &mut GogToken,
     pause_rx: &watch::Receiver<bool>,
     cancel_rx: &watch::Receiver<bool>,
-) -> Result<(), String> {
+) -> Result<GogStagedInstaller, String> {
     let client = Client::new();
     let total_size = download_info.files.iter().map(|f| f.size).sum::<u64>();
+    if download_info.files.is_empty() || total_size == 0 {
+        return Err("GOG returned no non-empty installer files to stage.".to_string());
+    }
     let mut completed_bytes: u64 = 0;
     let mut current_progress: u32 = 0;
+    let mut checksums_verified = true;
 
     for file in &download_info.files {
-        let file_path = install_dir.join(&file.name);
+        let file_path = staged_gog_installer_path(install_dir, &file.name)?;
+        if file.size == 0 {
+            return Err(format!(
+                "GOG installer file '{}' has no declared size.",
+                file.name
+            ));
+        }
         let completed_before_file = completed_bytes;
         let mut file_downloaded: u64 = 0;
 
@@ -1083,6 +1103,8 @@ async fn download_gog_game_files(
         if let Ok(metadata) = fs::metadata(&file_path) {
             file_downloaded = metadata.len().min(file.size);
             if file_downloaded >= file.size {
+                checksums_verified &=
+                    verify_staged_gog_file(&file_path, file.size, &file.checksum)?;
                 completed_bytes = completed_bytes.saturating_add(file.size);
                 continue; // File already fully downloaded
             }
@@ -1126,27 +1148,24 @@ async fn download_gog_game_files(
                 }
             }
 
-            // Get chunk download URL
-            let chunk_url = format!(
-                "{GOG_EMBED_BASE}/games/{gog_id}/builds/{build_id}/installers/{installer_id}/{file_id}/{chunk_id}",
-                gog_id = download_info.game_id,
-                build_id = "", // Will be resolved via API
-                installer_id = download_info.installer_id,
-                file_id = file.id,
-                chunk_id = chunk.id,
-            );
+            if file_downloaded < chunk.byte_offset {
+                return Err(format!(
+                    "GOG installer '{}' is missing bytes before chunk {}.",
+                    file.name, chunk.id
+                ));
+            }
 
-            // Try to resolve the actual download URL via the GOG API
-            let resolved_url = resolve_chunk_url(
+            // Resolve the authenticated CDN URL. A synthetic fallback URL cannot be
+            // trusted because it omits the build ID, so failure is terminal.
+            let url = resolve_chunk_url(
                 token,
                 &download_info.game_id,
                 &download_info.installer_id,
                 &file.id,
                 &chunk.id,
             )
-            .await;
-
-            let url = resolved_url.unwrap_or(chunk_url);
+            .await
+            .ok_or_else(|| format!("Could not resolve GOG chunk URL for {}.", chunk.id))?;
 
             // Download the chunk
             let resp = client
@@ -1193,6 +1212,13 @@ async fn download_gog_game_files(
                     Ok(c) => c,
                     Err(e) => return Err(format!("Download stream error: {e}")),
                 };
+
+                if file_downloaded.saturating_add(chunk_data.len() as u64) > chunk_end {
+                    return Err(format!(
+                        "GOG chunk {} exceeded its declared byte range.",
+                        chunk.id
+                    ));
+                }
 
                 file_handle
                     .write_all(&chunk_data)
@@ -1247,17 +1273,103 @@ async fn download_gog_game_files(
                 }
             }
 
-            // Verify chunk checksum if available
-            if !chunk.checksum.is_empty() {
-                // Note: checksum verification would require reading back the file
-                // For now we trust the CDN integrity
+            if file_downloaded != chunk_end {
+                return Err(format!(
+                    "GOG chunk {} ended at byte {}, expected {}.",
+                    chunk.id, file_downloaded, chunk_end
+                ));
             }
         }
 
+        checksums_verified &= verify_staged_gog_file(&file_path, file.size, &file.checksum)?;
         completed_bytes = completed_before_file.saturating_add(file.size);
     }
 
-    Ok(())
+    Ok(GogStagedInstaller {
+        file_count: download_info.files.len(),
+        checksums_verified,
+    })
+}
+
+fn staged_gog_installer_path(root: &Path, file_name: &str) -> Result<PathBuf, String> {
+    let mut components = Path::new(file_name).components();
+    let file_name = match (components.next(), components.next()) {
+        (Some(std::path::Component::Normal(file_name)), None) => file_name,
+        _ => {
+            return Err(format!(
+                "GOG returned an unsafe installer filename: {file_name}"
+            ))
+        }
+    };
+
+    Ok(root.join(file_name))
+}
+
+fn verify_staged_gog_file(
+    path: &Path,
+    expected_size: u64,
+    expected_checksum: &str,
+) -> Result<bool, String> {
+    let actual_size = fs::metadata(path)
+        .map_err(|error| format!("Could not inspect staged GOG installer: {error}"))?
+        .len();
+    if actual_size != expected_size {
+        return Err(format!(
+            "Staged GOG installer size mismatch for {}: expected {expected_size}, got {actual_size}.",
+            path.display()
+        ));
+    }
+
+    let checksum = expected_checksum
+        .trim()
+        .strip_prefix("sha256:")
+        .unwrap_or(expected_checksum.trim());
+    if checksum.len() != 64
+        || !checksum
+            .chars()
+            .all(|character| character.is_ascii_hexdigit())
+    {
+        // GOG also returns legacy checksum formats. They are retained in the stage
+        // manifest, but an installer with such a checksum is never called installed.
+        return Ok(false);
+    }
+
+    let actual = crate::commands::games::core::sha256_file_hex(path)?;
+    if !actual.eq_ignore_ascii_case(checksum) {
+        return Err(format!(
+            "Staged GOG installer checksum mismatch for {}.",
+            path.display()
+        ));
+    }
+
+    Ok(true)
+}
+
+fn write_gog_installer_stage_manifest(
+    install_dir: &Path,
+    game_id: &str,
+    title: &str,
+    gog_id: &str,
+    download_info: &GogDownloadInfoPayload,
+    staged: &GogStagedInstaller,
+) -> Result<(), String> {
+    let manifest = serde_json::json!({
+        "kind": "gog_installer_stage",
+        "gameId": game_id,
+        "title": title,
+        "gogId": gog_id,
+        "version": download_info.version,
+        "installerId": download_info.installer_id,
+        "files": download_info.files,
+        "fileCount": staged.file_count,
+        "checksumsVerified": staged.checksums_verified,
+        "installed": false,
+        "managedBy": "OG-Launcher"
+    });
+    let contents = serde_json::to_string_pretty(&manifest)
+        .map_err(|error| format!("Could not serialize GOG installer stage: {error}"))?;
+    fs::write(install_dir.join("og-gog-installer-stage.json"), contents)
+        .map_err(|error| format!("Could not write GOG installer stage manifest: {error}"))
 }
 
 async fn resolve_chunk_url(
@@ -1448,34 +1560,6 @@ pub(crate) fn emit_gog_download_progress(
 }
 
 // ============================================================================
-// Installed Games Cache Update
-// ============================================================================
-
-fn update_installed_games_cache(game_id: &str, title: &str, install_dir: &Path) {
-    let mut games = crate::commands::games::core::read_installed_games_cache().unwrap_or_default();
-    let install_path = install_dir.to_string_lossy().to_string();
-
-    if let Some(game) = games.iter_mut().find(|game| game.id == game_id) {
-        game.status = crate::commands::games::types::GameStatus::Installed;
-        game.install_path = Some(install_path);
-        game.playtime_minutes = Some(game.playtime_minutes.unwrap_or(0));
-    } else {
-        let mut game = crate::commands::games::core::installed_game(
-            game_id,
-            title.to_string(),
-            "gog".to_string(),
-            Some(install_path),
-            None,
-        );
-        game.description = format!("GOG game: {title}");
-        game.playtime_minutes = Some(0);
-        games.push(game);
-    }
-
-    crate::commands::games::core::write_installed_games_cache(&games);
-}
-
-// ============================================================================
 // GOG Cloud Saves
 // ============================================================================
 
@@ -1605,5 +1689,78 @@ mod tests {
             Some("https://images.gog.com/locked.jpg")
         );
         assert!(achievements[0].unlocked_at.is_none());
+    }
+
+    #[test]
+    fn staged_installer_path_rejects_traversal() {
+        let root = std::env::temp_dir();
+        assert!(staged_gog_installer_path(&root, "../setup.exe").is_err());
+        assert!(staged_gog_installer_path(&root, "subdir/setup.exe").is_err());
+        assert_eq!(
+            staged_gog_installer_path(&root, "setup.exe").unwrap(),
+            root.join("setup.exe")
+        );
+    }
+
+    #[test]
+    fn staged_installer_verifies_size_and_sha256() {
+        let root = std::env::temp_dir().join(format!(
+            "ogl-gog-stage-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(&root).unwrap();
+        let installer = root.join("setup.exe");
+        fs::write(&installer, b"abc").unwrap();
+
+        assert!(verify_staged_gog_file(
+            &installer,
+            3,
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        )
+        .unwrap());
+        assert!(verify_staged_gog_file(&installer, 4, "").is_err());
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn stage_manifest_never_claims_installed() {
+        let root = std::env::temp_dir().join(format!(
+            "ogl-gog-stage-manifest-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(&root).unwrap();
+        let info = GogDownloadInfoPayload {
+            game_id: "123".to_string(),
+            title: "Test".to_string(),
+            installer_id: "installer".to_string(),
+            version: "1.0".to_string(),
+            total_size: 3,
+            files: vec![],
+            download_url: None,
+        };
+        let staged = GogStagedInstaller {
+            file_count: 1,
+            checksums_verified: false,
+        };
+
+        write_gog_installer_stage_manifest(&root, "gog-123", "Test", "123", &info, &staged)
+            .unwrap();
+        let manifest: serde_json::Value = serde_json::from_str(
+            &fs::read_to_string(root.join("og-gog-installer-stage.json")).unwrap(),
+        )
+        .unwrap();
+
+        assert_eq!(manifest["installed"], false);
+        assert!(!root.join("og-manifest.json").exists());
+        let _ = fs::remove_dir_all(root);
     }
 }

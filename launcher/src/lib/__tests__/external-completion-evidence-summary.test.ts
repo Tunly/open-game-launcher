@@ -33,6 +33,8 @@ const evidenceDetails: Record<ExternalCompletionEvidenceDetailField, string> = {
 };
 const validHostedDeployEvidence =
   "hosted-deploy CI main hosted_deploy_gate=true hosted_environment=hosted-production hosted_deploy_action=all hosted_deploy_dry_run=false workflow: https://github.com/open-game-collective/open-game-launcher/actions/runs/12345";
+const rolloutProof = "Hosted community artwork rollout is exercised beyond fixtures.";
+const rolloutEvidence = "run-community-artwork-rollout-123";
 
 function envEvidenceFor(gate: ExternalCompletionEvidenceGateInput) {
   return gate.requiredEnv.map((name) => ({
@@ -177,11 +179,9 @@ function externalProofEvidenceFor(proof: string, fallback = "run-external-eviden
     return "run-client-mount-apply-provider-client-123";
   }
   if (proof.includes("Hosted community artwork")) {
-    return "run-community-artwork-screenshot-rollout-123";
+    return rolloutEvidence;
   }
   if (proof.includes("Plugin marketplace")) return "run-plugin-marketplace-execution-update-123";
-  if (proof.includes("Native mobile apps"))
-    return "run-mobile-push-provider-store-distribution-123";
   if (proof.includes("Hosted production deployment")) return validHostedDeployEvidence;
   return fallback;
 }
@@ -206,10 +206,8 @@ function rolloutArtifactContent(
     "- Environment: hosted staging",
     "- Redacted run IDs, dashboard links, screenshots, or signed deployment logs: workflow-rollout-123",
     "- Redaction notes: Raw secrets removed before commit",
-    "- Community rollout evidence: community artwork screenshot rollout workflow-123",
+    `- Community rollout evidence: ${rolloutEvidence}`,
     "- Marketplace evidence: plugin marketplace execution update workflow-123",
-    "- Mobile distribution evidence: mobile push provider store distribution workflow-123",
-    "- Push-provider evidence: push provider firebase onesignal workflow-123",
     `- Hosted deploy evidence: ${hostedDeployLocator}`,
   ].join("\n");
 }
@@ -484,11 +482,9 @@ describe("external completion evidence summary", () => {
               checkedProofs: rolloutGate.proofRequirements,
               evidenceDetails: {
                 ...evidenceDetails,
-                "Community rollout evidence": "community-artwork-screenshot-rollout-run-123",
+                "Community rollout evidence": rolloutEvidence,
                 "Hosted deploy evidence": validHostedDeployEvidence,
                 "Marketplace evidence": "plugin-marketplace-update-run-123",
-                "Mobile distribution evidence": "mobile-store-distribution-run-123",
-                "Push-provider evidence": "firebase-push-provider-run-123",
               },
               path: rolloutGate.artifactPaths[0],
               proofEvidence: Object.fromEntries(
@@ -1359,11 +1355,9 @@ describe("external completion evidence summary", () => {
               checkedProofs: rolloutGate!.proofRequirements,
               evidenceDetails: {
                 ...evidenceDetails,
-                "Community rollout evidence": "community-artwork-screenshot-rollout-run-123",
+                "Community rollout evidence": rolloutEvidence,
                 "Hosted deploy evidence": "run-generic-field-123",
                 "Marketplace evidence": "run-generic-field-456",
-                "Mobile distribution evidence": "mobile-distribution-run-123",
-                "Push-provider evidence": "push-provider-run-123",
               },
               path: rolloutGate!.artifactPaths[0],
               proofEvidence: Object.fromEntries(
@@ -2203,12 +2197,12 @@ describe("external completion evidence summary", () => {
     });
   });
 
-  it("reports mobile push secret blockers from rollout artifacts", () => {
+  it("reports private key secret blockers from rollout artifacts", () => {
     const rolloutGate = EXTERNAL_COMPLETION_EVIDENCE_GATE_INPUTS.find(
       (gate) => gate.id === "rollout-tracks",
     );
     expect(rolloutGate).toBeDefined();
-    const rawSecret = "FCM_SERVER_KEY=fcm_live_super_secret_1234567890";
+    const rawSecret = "-----BEGIN PRIVATE KEY-----";
 
     const summary = buildExternalCompletionEvidenceSummary({
       createdAt: "2026-06-16T00:00:00.000Z",
@@ -2226,8 +2220,6 @@ describe("external completion evidence summary", () => {
                 ...evidenceDetails,
                 "Hosted deploy evidence": validHostedDeployEvidence,
                 "Marketplace evidence": "marketplace-review-live-123",
-                "Mobile distribution evidence": "mobile-store-review-live-123",
-                "Push-provider evidence": "push-provider-live-123",
               },
               path: rolloutGate!.artifactPaths[0],
               proofEvidence: Object.fromEntries(
@@ -2242,14 +2234,14 @@ describe("external completion evidence summary", () => {
           envEvidence: envEvidenceFor(rolloutGate!),
         },
       ],
-      packetId: "external-evidence-mobile-push-secret-scan-test",
+      packetId: "external-evidence-private-key-secret-scan-test",
       validationNow,
     });
 
     expect(summary.gates[0].secretFindingCount).toBe(1);
     expect(summary.gates[0].blockers).toContain("1 blocked secret-scan finding(s)");
-    expect(JSON.stringify(summary)).toContain("Raw mobile push secret");
-    expect(JSON.stringify(summary)).not.toContain("fcm_live_super_secret");
+    expect(JSON.stringify(summary)).toContain("Raw private key");
+    expect(JSON.stringify(summary)).not.toContain("BEGIN PRIVATE KEY");
   });
 
   it("keeps rollout evidence fields aligned with release lanes", () => {
@@ -2260,9 +2252,12 @@ describe("external completion evidence summary", () => {
     expect(rolloutGate?.artifactEvidenceFields?.[0]?.requiredFields).toEqual([
       "Community rollout evidence",
       "Marketplace evidence",
-      "Mobile distribution evidence",
-      "Push-provider evidence",
       "Hosted deploy evidence",
     ]);
+    expect(rolloutGate?.proofRequirements[0]).toBe(rolloutProof);
+    const summary = createVerifyExternalCompletionEvidenceSummary();
+    expect(JSON.stringify(summary)).not.toMatch(
+      /community artwork\/screenshots|screenshot-rollout/i,
+    );
   });
 });

@@ -10,12 +10,11 @@ Deno.test(
       "store_customers",
       "store_wishlist",
       "store_price_alerts",
-      "remote_companion_devices",
-      "remote_install_jobs",
       "performance_sessions",
       "launcher_local_entities",
       "community_artwork_votes",
     ]);
+    assertExcludesAll(exportOwnUserIdTables, ["screenshots", "screenshot_likes"]);
   },
 );
 
@@ -31,7 +30,6 @@ Deno.test(
       "community_artwork_reports.reporter_user_id",
       "community_artwork_moderation_audit.reviewer_user_id",
       "share_tokens.created_by",
-      "mobile_push_registrations.owner_id",
       "store_products.developer_id",
     ]);
   },
@@ -41,6 +39,14 @@ function assertIncludesAll(actual: readonly string[], expected: string[]) {
   for (const value of expected) {
     if (!actual.includes(value)) {
       throw new Error(`Expected ${JSON.stringify(actual)} to include ${value}`);
+    }
+  }
+}
+
+function assertExcludesAll(actual: readonly string[], forbidden: string[]) {
+  for (const value of forbidden) {
+    if (actual.includes(value)) {
+      throw new Error(`Expected ${JSON.stringify(actual)} not to include ${value}`);
     }
   }
 }

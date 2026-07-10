@@ -42,11 +42,6 @@ const NotFoundPage = lazy(() =>
 const PerfHistoryPage = lazy(() =>
   import("../pages/PerfHistoryPage").then((page) => ({ default: page.PerfHistoryPage })),
 );
-const RemoteInstallDashboardPage = lazy(() =>
-  import("../pages/RemoteInstallDashboardPage").then((page) => ({
-    default: page.RemoteInstallDashboardPage,
-  })),
-);
 const PrivacySettingsPage = lazy(() =>
   import("../pages/PrivacySettingsPage").then((page) => ({ default: page.PrivacySettingsPage })),
 );
@@ -117,7 +112,6 @@ export const router = createBrowserRouter([
       { path: "/store", element: page(<StorePage />) },
       { path: "/community", element: page(<CommunityPage />) },
       { path: "/downloads", element: page(<DownloadsPage />) },
-      { path: "/downloads/remote", element: page(<RemoteInstallDashboardPage />) },
       { path: "/achievements", element: page(<AchievementsPage />) },
       { path: "/activity", element: page(<GameActivityDashboardPage />) },
       { path: "/mods", element: page(<ModsPage />) },

@@ -127,11 +127,7 @@ export async function handleStoreOrderSupport(
       console.error("Store order support error:", error);
     }
     return jsonResponse(
-      {
-        error: error instanceof Error
-          ? error.message
-          : "Store order support failed",
-      },
+      { error: "Store order support failed." },
       500,
     );
   }
@@ -199,9 +195,7 @@ async function executeRefund(
 
     return jsonResponse(await deps.readSupportState(order.id, order.user_id));
   } catch (error) {
-    const message = error instanceof Error
-      ? error.message
-      : "Stripe refund failed";
+    const message = "Stripe refund request failed.";
     await deps.rejectStagedRefund(order.id, message);
     throw error;
   }

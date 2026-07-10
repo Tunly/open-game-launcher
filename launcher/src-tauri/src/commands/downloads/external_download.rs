@@ -47,25 +47,59 @@ pub async fn run_external_download(
 
     let mut epic_child = None;
     let mut epic_stderr = None;
+    let mut epic_failure = None;
     if let Some(epic_id) = epic_tracker_id {
-        if let Ok(legendary_path) = crate::commands::epic::ensure_legendary_binary().await {
-            if let Ok(mut c) = tokio::process::Command::new(legendary_path)
-                .arg("install")
-                .arg(&epic_id)
-                .arg("--yes")
-                .stdout(std::process::Stdio::null())
-                .stderr(std::process::Stdio::piped())
-                .spawn()
-            {
-                if let Some(err) = c.stderr.take() {
-                    epic_stderr = Some(tokio::io::BufReader::new(err));
-                }
-                epic_child = Some(c);
+        let legendary_path = match crate::commands::epic::ensure_legendary_binary().await {
+            Ok(path) => path,
+            Err(error) => {
+                fail_external_download(
+                    &app,
+                    &game_id,
+                    progress,
+                    &format!("Could not prepare Legendary: {error}"),
+                );
+                remove_external_download(&game_id);
+                return;
             }
+        };
+        let mut child = match tokio::process::Command::new(legendary_path)
+            .arg("install")
+            .arg(&epic_id)
+            .arg("--yes")
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+        {
+            Ok(child) => child,
+            Err(error) => {
+                fail_external_download(
+                    &app,
+                    &game_id,
+                    progress,
+                    &format!("Could not start Legendary: {error}"),
+                );
+                remove_external_download(&game_id);
+                return;
+            }
+        };
+        if let Some(stderr) = child.stderr.take() {
+            epic_stderr = Some(tokio::io::BufReader::new(stderr));
+        } else {
+            fail_external_download(
+                &app,
+                &game_id,
+                progress,
+                "Legendary did not expose an output stream for progress tracking.",
+            );
+            let _ = child.kill().await;
+            remove_external_download(&game_id);
+            return;
         }
+        epic_child = Some(child);
     }
 
     let mut steam_manifest_path: Option<std::path::PathBuf> = None;
+    let mut steam_manifest_read_failures = 0u8;
     let external_started_at = Instant::now();
     let mut external_installed_seen_count = 0u8;
 
@@ -142,7 +176,8 @@ pub async fn run_external_download(
                         }
                     }
                 }
-            } else if let Ok(Err(_)) = res {
+            } else if let Ok(Err(error)) = res {
+                epic_failure = Some(format!("Could not read Legendary output: {error}"));
                 break;
             }
         } else if let Some(ref appid) = steam_tracker_id {
@@ -151,6 +186,7 @@ pub async fn run_external_download(
                 continue;
             }
 
+            let manifest_was_known = steam_manifest_path.is_some();
             let mut path_found = None;
             if let Some(ref path) = steam_manifest_path {
                 if path.exists() {
@@ -185,11 +221,18 @@ pub async fn run_external_download(
 
             if let Some(ref path) = path_found {
                 if let Ok(contents) = std::fs::read_to_string(path) {
+                    steam_manifest_read_failures = 0;
                     let steam_state = parse_steam_download_state(&contents);
 
                     let downloading_dir_size = steam_downloading_dir_for_manifest(path, appid)
                         .map(get_dir_size)
                         .unwrap_or(0);
+
+                    if let Some(error) = steam_state.terminal_error(downloading_dir_size) {
+                        fail_external_download(&app, &game_id, progress, error);
+                        remove_external_download(&game_id);
+                        return;
+                    }
 
                     if steam_state.is_fully_installed(downloading_dir_size) {
                         break;
@@ -230,10 +273,30 @@ pub async fn run_external_download(
                         );
                     }
                 } else {
+                    steam_manifest_read_failures = steam_manifest_read_failures.saturating_add(1);
+                    if steam_manifest_read_failures >= 3 {
+                        fail_external_download(
+                            &app,
+                            &game_id,
+                            progress,
+                            "Steam manifest could not be read; completion was not confirmed.",
+                        );
+                        remove_external_download(&game_id);
+                        return;
+                    }
                     let speed_str = "Steam (Connecting...)";
                     update_download_status(&game_id, "downloading", speed_str, progress, 999);
                     emit_download_progress(&app, &game_id, progress, speed_str, "downloading", 999);
                 }
+            } else if manifest_was_known {
+                fail_external_download(
+                    &app,
+                    &game_id,
+                    progress,
+                    "Steam manifest disappeared before completion was confirmed.",
+                );
+                remove_external_download(&game_id);
+                return;
             } else {
                 let speed_str = "Steam (Starting...)";
                 update_download_status(&game_id, "downloading", speed_str, progress, 999);
@@ -287,12 +350,28 @@ pub async fn run_external_download(
 
     if let Some(mut child) = epic_child.take() {
         match tokio::time::timeout(std::time::Duration::from_secs(10), child.wait()).await {
-            Ok(_) => {}
+            Ok(Ok(status)) => {
+                if let Some(error) = legendary_exit_error(status.success(), status.code()) {
+                    epic_failure = Some(error);
+                }
+            }
+            Ok(Err(error)) => {
+                epic_failure = Some(format!("Could not read Legendary exit status: {error}"));
+            }
             Err(_) => {
                 let _ = child.kill().await;
                 let _ = child.wait().await;
+                epic_failure = Some(
+                    "Legendary did not exit cleanly after its output stream closed.".to_string(),
+                );
             }
         }
+    }
+
+    if let Some(error) = epic_failure {
+        fail_external_download(&app, &game_id, progress, &error);
+        remove_external_download(&game_id);
+        return;
     }
 
     let _ = app.emit(
@@ -309,5 +388,41 @@ pub async fn run_external_download(
     let _ = cancellable_sleep(&cancel_rx, tokio::time::Duration::from_secs(2)).await;
     if let Ok(mut guard) = get_download_manager().lock() {
         guard.remove(&game_id);
+    }
+}
+
+fn legendary_exit_error(success: bool, code: Option<i32>) -> Option<String> {
+    if success {
+        return None;
+    }
+
+    Some(match code {
+        Some(code) => format!("Legendary exited with status code {code}."),
+        None => "Legendary terminated without a successful exit status.".to_string(),
+    })
+}
+
+fn fail_external_download(app: &AppHandle, game_id: &str, progress: u32, message: &str) {
+    update_download_status(game_id, "error", message, progress, 0);
+    emit_download_progress(app, game_id, progress, message, "error", 0);
+}
+
+fn remove_external_download(game_id: &str) {
+    if let Ok(mut guard) = get_download_manager().lock() {
+        guard.remove(game_id);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn legendary_nonzero_exit_is_not_success() {
+        assert_eq!(
+            legendary_exit_error(false, Some(7)).as_deref(),
+            Some("Legendary exited with status code 7.")
+        );
+        assert!(legendary_exit_error(true, Some(0)).is_none());
     }
 }

@@ -51,4 +51,31 @@ describe("overlay desktop commands", () => {
     expect(mocks.invoke).toHaveBeenCalledWith("save_overlay_settings", { settings });
     expect(result).toEqual(settings);
   });
+
+  it("controls click-through only on the external overlay window command", async () => {
+    mocks.invoke.mockResolvedValue(undefined);
+
+    const { setInGameOverlayClickThrough } = await import("../overlay");
+    await setInGameOverlayClickThrough(true);
+
+    expect(mocks.invoke).toHaveBeenCalledWith("set_in_game_overlay_click_through", {
+      enabled: true,
+    });
+  });
+
+  it("emits achievement popups with the native camelCase payload", async () => {
+    mocks.invoke.mockResolvedValue(undefined);
+    const payload = {
+      achievementName: "First Win",
+      description: "Win one match",
+      gameTitle: "Neon Arena",
+      iconUrl: null,
+      rarity: "4.2% rarity",
+    };
+
+    const { emitAchievementPopup } = await import("../overlay");
+    await emitAchievementPopup(payload);
+
+    expect(mocks.invoke).toHaveBeenCalledWith("emit_achievement_popup", { payload });
+  });
 });

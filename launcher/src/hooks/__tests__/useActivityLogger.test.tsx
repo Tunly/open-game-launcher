@@ -52,21 +52,6 @@ describe("useActivityLogger", () => {
         },
       ],
     },
-    {
-      name: "logAchievement",
-      call: (logger: ActivityLogger) =>
-        logger.logAchievement("game-2", "Sky Keep", "First Clear", { rarity: "rare" }),
-      expected: [
-        "achievement_unlocked",
-        {
-          achievementName: "First Clear",
-          gameId: "game-2",
-          gameTitle: "Sky Keep",
-          metadata: { rarity: "rare" },
-          visibility: "friends_only",
-        },
-      ],
-    },
   ])("posts the $name payload", async ({ call, expected }) => {
     const { result } = renderHook(() => useActivityLogger());
 

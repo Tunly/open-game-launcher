@@ -8,6 +8,9 @@ use crate::commands::downloads::utils::{
 };
 use crate::commands::games::detect;
 
+const STEAM_STATE_FILES_MISSING: u64 = 32;
+const STEAM_STATE_FILES_CORRUPT: u64 = 128;
+
 pub(crate) fn has_active_download_work(item: &DownloadItemPayload) -> bool {
     if let Some(app_id) = steam_app_id_from_download_id(&item.game_id) {
         return steam_download_work_exists(app_id);
@@ -98,6 +101,24 @@ impl SteamDownloadState {
                 || self.bytes_to_download > 0
                 || self.bytes_to_stage > 0
                 || (self.state_flags & STEAM_STATE_UPDATE_REQUIRED) != 0)
+    }
+
+    pub(crate) fn terminal_error(&self, downloading_dir_size: u64) -> Option<&'static str> {
+        let transfer_can_recover = downloading_dir_size > 0
+            || self.bytes_to_download > self.bytes_downloaded
+            || self.bytes_to_stage > self.bytes_staged;
+        if transfer_can_recover {
+            return None;
+        }
+
+        if (self.state_flags & STEAM_STATE_FILES_CORRUPT) != 0 {
+            return Some("Steam reports corrupt game files.");
+        }
+        if (self.state_flags & STEAM_STATE_FILES_MISSING) != 0 {
+            return Some("Steam reports missing game files.");
+        }
+
+        None
     }
 }
 
@@ -327,5 +348,25 @@ mod tests {
         assert!(installed.has_active_work(1));
         assert!(update_required.has_active_work(0));
         assert!(install_download.has_active_work(0));
+    }
+
+    #[test]
+    fn steam_terminal_error_requires_no_recovery_transfer() {
+        let corrupt = SteamDownloadState {
+            state_flags: STEAM_STATE_FILES_CORRUPT,
+            ..Default::default()
+        };
+        let recovering = SteamDownloadState {
+            state_flags: STEAM_STATE_FILES_MISSING,
+            bytes_downloaded: 50,
+            bytes_to_download: 100,
+            ..Default::default()
+        };
+
+        assert_eq!(
+            corrupt.terminal_error(0),
+            Some("Steam reports corrupt game files.")
+        );
+        assert_eq!(recovering.terminal_error(0), None);
     }
 }

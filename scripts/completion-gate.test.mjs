@@ -135,15 +135,15 @@ const externalEvidenceRunbook = readFileSync(
 const expectedCiActionRefs = Object.freeze({
   "Swatinem/rust-cache": {
     label: "v2",
-    ref: "42dc69e1aa15d09112580998cf2ef0119e2e91ae",
+    ref: "e18b497796c12c097a38f9edb9d0641fb99eee32",
   },
   "actions/checkout": {
-    label: "v6",
-    ref: "df4cb1c069e1874edd31b4311f1884172cec0e10",
+    label: "v7.0.0",
+    ref: "9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0",
   },
   "actions/download-artifact": {
-    label: "v4",
-    ref: "d3f86a106a0bac45b974a628896c90dbdf5c8093",
+    label: "v8.0.1",
+    ref: "3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c",
   },
   "actions/setup-node": {
     label: "v6",
@@ -166,12 +166,12 @@ const expectedCiActionRefs = Object.freeze({
     ref: "b0f76dfb45f55f8421693e4803ac7bb65143bd34",
   },
   "softprops/action-gh-release": {
-    label: "v2",
-    ref: "3bb12739c298aeb8a4eeaf626c5b8d85266b0e65",
+    label: "v3.0.1",
+    ref: "718ea10b132b3b2eba29c1007bb80653f286566b",
   },
   "supabase/setup-cli": {
-    label: "v1",
-    ref: "ab058987d8d6c725971f6cf9d0b5c98467e30bd1",
+    label: "v2.1.1",
+    ref: "3c2f5e2ae34c34e428e8e206e2c4d21fa2d20fbf",
   },
 });
 
@@ -1037,7 +1037,7 @@ test("release tags require external evidence gate before draft artifacts", () =>
   assert.match(releaseGateJob, /^    environment: hosted-production$/m);
   assert.match(
     releaseGateJob,
-    /actions\/checkout@[0-9a-f]{40} # v6\n        with:\n          fetch-depth: 0/,
+    /actions\/checkout@[0-9a-f]{40} # v7\.0\.0\n        with:\n          fetch-depth: 0/,
   );
   assert.ok(
     releaseGateJob.indexOf(
@@ -1167,12 +1167,8 @@ test("README documents current-main release tag boundary", () => {
   assert.doesNotMatch(readme, /reachable from `main`/i);
 });
 
-test("README Supabase migration count matches the repository", () => {
-  const migrationCount = readdirSync(
-    new URL("../supabase/migrations", import.meta.url),
-  ).filter((name) => name.endsWith(".sql")).length;
-
-  assert.match(readme, new RegExp(`# ${migrationCount} migrations \\(`));
+test("README does not publish a hard-coded Supabase migration count", () => {
+  assert.doesNotMatch(readme, /# \d+ migrations \(/i);
 });
 
 test("release boundary external checks ignore scoped evidence and freshness override env", () => {

@@ -1,4 +1,4 @@
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{params, Connection, OptionalExtension, TransactionBehavior};
 use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -69,6 +69,72 @@ where
 
     tx.commit()
         .map_err(|error| format!("Could not commit local DB {kind} write: {error}"))
+}
+
+pub fn update_item<T, F>(kind: &str, id: &str, update: F) -> Result<T, String>
+where
+    T: DeserializeOwned + Serialize,
+    F: FnOnce(&mut T) -> Result<(), String>,
+{
+    let id = id.trim();
+    if id.is_empty() {
+        return Err(format!(
+            "Could not update local DB {kind} item with an empty ID."
+        ));
+    }
+
+    let mut conn = open_connection()?;
+    update_item_with_connection(&mut conn, kind, id, update)
+}
+
+fn update_item_with_connection<T, F>(
+    conn: &mut Connection,
+    kind: &str,
+    id: &str,
+    update: F,
+) -> Result<T, String>
+where
+    T: DeserializeOwned + Serialize,
+    F: FnOnce(&mut T) -> Result<(), String>,
+{
+    // Acquire the SQLite writer lock before reading. The mutation therefore always
+    // starts from the latest committed row instead of a stale collection snapshot.
+    let tx = conn
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .map_err(|error| format!("Could not start local DB {kind} item transaction: {error}"))?;
+    let json = tx
+        .query_row(
+            "SELECT json FROM local_entities WHERE kind = ?1 AND id = ?2",
+            params![kind, id],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()
+        .map_err(|error| format!("Could not read local DB {kind} item '{id}': {error}"))?
+        .ok_or_else(|| format!("Local DB {kind} item '{id}' was not found."))?;
+    let mut item = serde_json::from_str::<T>(&json)
+        .map_err(|error| format!("Could not decode local DB {kind} item '{id}': {error}"))?;
+
+    update(&mut item)?;
+
+    let json = serde_json::to_string(&item)
+        .map_err(|error| format!("Could not encode local DB {kind} item '{id}': {error}"))?;
+    let changed = tx
+        .execute(
+            "UPDATE local_entities
+             SET json = ?3, updated_at = ?4, dirty = 1, sync_status = 'pending'
+             WHERE kind = ?1 AND id = ?2",
+            params![kind, id, json, now_unix_secs()],
+        )
+        .map_err(|error| format!("Could not write local DB {kind} item '{id}': {error}"))?;
+    if changed != 1 {
+        return Err(format!(
+            "Could not write local DB {kind} item '{id}': row disappeared during update."
+        ));
+    }
+
+    tx.commit()
+        .map_err(|error| format!("Could not commit local DB {kind} item '{id}': {error}"))?;
+    Ok(item)
 }
 
 pub fn remove_item(kind: &str, id: &str) -> Result<(), String> {
@@ -270,6 +336,8 @@ fn open_connection() -> Result<Connection, String> {
             path.to_string_lossy()
         )
     })?;
+    conn.busy_timeout(std::time::Duration::from_secs(5))
+        .map_err(|error| format!("Could not configure local DB busy timeout: {error}"))?;
     conn.pragma_update(None, "journal_mode", "WAL")
         .map_err(|error| format!("Could not enable local DB WAL mode: {error}"))?;
     conn.pragma_update(None, "foreign_keys", "ON")
@@ -346,4 +414,222 @@ fn now_unix_secs() -> i64 {
         .duration_since(UNIX_EPOCH)
         .map(|duration| duration.as_secs() as i64)
         .unwrap_or(0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::{Arc, Barrier};
+
+    #[derive(Debug, Deserialize, Serialize)]
+    struct TestGame {
+        id: String,
+        achievements: Vec<String>,
+        statuses: Vec<String>,
+        playtime: u32,
+    }
+
+    fn insert_test_game(conn: &Connection, game: &TestGame) {
+        conn.execute(
+            "INSERT INTO local_entities (kind, id, json, updated_at, dirty, sync_status)
+             VALUES ('games', ?1, ?2, 1, 0, 'synced')",
+            params![game.id, serde_json::to_string(game).unwrap()],
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn item_updates_compose_from_the_latest_row_and_preserve_other_games() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        migrate(&conn).unwrap();
+        insert_test_game(
+            &conn,
+            &TestGame {
+                id: "game-a".to_string(),
+                achievements: Vec::new(),
+                statuses: Vec::new(),
+                playtime: 42,
+            },
+        );
+        insert_test_game(
+            &conn,
+            &TestGame {
+                id: "game-b".to_string(),
+                achievements: vec!["untouched".to_string()],
+                statuses: Vec::new(),
+                playtime: 7,
+            },
+        );
+
+        update_item_with_connection::<TestGame, _>(&mut conn, "games", "game-a", |game| {
+            game.achievements.push("first".to_string());
+            Ok(())
+        })
+        .unwrap();
+        let updated =
+            update_item_with_connection::<TestGame, _>(&mut conn, "games", "game-a", |game| {
+                game.statuses.push("steam-ready".to_string());
+                Ok(())
+            })
+            .unwrap();
+
+        assert_eq!(updated.achievements, ["first"]);
+        assert_eq!(updated.statuses, ["steam-ready"]);
+        assert_eq!(updated.playtime, 42);
+
+        let other: String = conn
+            .query_row(
+                "SELECT json FROM local_entities WHERE kind = 'games' AND id = 'game-b'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let other: TestGame = serde_json::from_str(&other).unwrap();
+        assert_eq!(other.achievements, ["untouched"]);
+        assert_eq!(other.playtime, 7);
+    }
+
+    #[test]
+    fn concurrent_item_updates_do_not_lose_each_others_fields() {
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let path = std::env::temp_dir().join(format!(
+            "ogl-local-db-concurrency-{}-{unique}.sqlite3",
+            std::process::id()
+        ));
+        let conn = Connection::open(&path).unwrap();
+        migrate(&conn).unwrap();
+        insert_test_game(
+            &conn,
+            &TestGame {
+                id: "game-a".to_string(),
+                achievements: Vec::new(),
+                statuses: Vec::new(),
+                playtime: 42,
+            },
+        );
+        drop(conn);
+
+        let barrier = Arc::new(Barrier::new(2));
+        let achievement_path = path.clone();
+        let achievement_barrier = Arc::clone(&barrier);
+        let achievement_update = std::thread::spawn(move || {
+            let mut conn = Connection::open(achievement_path).unwrap();
+            conn.busy_timeout(std::time::Duration::from_secs(5))
+                .unwrap();
+            achievement_barrier.wait();
+            update_item_with_connection::<TestGame, _>(&mut conn, "games", "game-a", |game| {
+                game.achievements.push("unlocked".to_string());
+                Ok(())
+            })
+            .unwrap();
+        });
+        let status_path = path.clone();
+        let status_update = std::thread::spawn(move || {
+            let mut conn = Connection::open(status_path).unwrap();
+            conn.busy_timeout(std::time::Duration::from_secs(5))
+                .unwrap();
+            barrier.wait();
+            update_item_with_connection::<TestGame, _>(&mut conn, "games", "game-a", |game| {
+                game.statuses.push("provider-ready".to_string());
+                Ok(())
+            })
+            .unwrap();
+        });
+
+        achievement_update.join().unwrap();
+        status_update.join().unwrap();
+
+        let conn = Connection::open(&path).unwrap();
+        let json: String = conn
+            .query_row(
+                "SELECT json FROM local_entities WHERE kind = 'games' AND id = 'game-a'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let game: TestGame = serde_json::from_str(&json).unwrap();
+        assert_eq!(game.achievements, ["unlocked"]);
+        assert_eq!(game.statuses, ["provider-ready"]);
+        assert_eq!(game.playtime, 42);
+        drop(conn);
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn item_update_failure_rolls_back_the_mutation() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        migrate(&conn).unwrap();
+        insert_test_game(
+            &conn,
+            &TestGame {
+                id: "game-a".to_string(),
+                achievements: vec!["original".to_string()],
+                statuses: Vec::new(),
+                playtime: 1,
+            },
+        );
+
+        let result =
+            update_item_with_connection::<TestGame, _>(&mut conn, "games", "game-a", |game| {
+                game.achievements.clear();
+                Err("injected failure".to_string())
+            });
+
+        assert_eq!(result.unwrap_err(), "injected failure");
+        let json: String = conn
+            .query_row(
+                "SELECT json FROM local_entities WHERE kind = 'games' AND id = 'game-a'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let game: TestGame = serde_json::from_str(&json).unwrap();
+        assert_eq!(game.achievements, ["original"]);
+    }
+
+    #[test]
+    fn item_database_write_failure_is_returned_and_rolled_back() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        migrate(&conn).unwrap();
+        insert_test_game(
+            &conn,
+            &TestGame {
+                id: "game-a".to_string(),
+                achievements: vec!["original".to_string()],
+                statuses: Vec::new(),
+                playtime: 1,
+            },
+        );
+        conn.execute_batch(
+            "CREATE TRIGGER fail_game_json_update
+             BEFORE UPDATE OF json ON local_entities
+             WHEN OLD.kind = 'games'
+             BEGIN
+               SELECT RAISE(FAIL, 'injected write failure');
+             END;",
+        )
+        .unwrap();
+
+        let result =
+            update_item_with_connection::<TestGame, _>(&mut conn, "games", "game-a", |game| {
+                game.achievements.push("must-not-persist".to_string());
+                Ok(())
+            });
+
+        let error = result.unwrap_err();
+        assert!(error.contains("Could not write local DB games item 'game-a'"));
+        assert!(error.contains("injected write failure"));
+        let json: String = conn
+            .query_row(
+                "SELECT json FROM local_entities WHERE kind = 'games' AND id = 'game-a'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let game: TestGame = serde_json::from_str(&json).unwrap();
+        assert_eq!(game.achievements, ["original"]);
+    }
 }

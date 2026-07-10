@@ -1030,7 +1030,7 @@ If Task 8 Step 4 made no file changes, do not create an empty commit.
 ## Self-Review Checklist
 
 - Spec coverage: Tasks 1-4 cover Rust Module, process proof, safe probe request, activation blocked semantics, and headless adapter. Tasks 5-7 cover frontend readiness, UI copy, screenshot evidence, and Retro Manga verification. Task 8 covers local gates.
-- Scope boundary: The plan never executes plugin entrypoints and never claims marketplace, hosted, provider, hardware, mobile-store, or production release evidence.
+- Scope boundary: The plan never executes plugin entrypoints and never claims marketplace, hosted, provider, hardware, or production release evidence.
 - TDD: Rust and frontend behavior changes start with failing tests before implementation steps.
 - Frequent commits: each task ends with a focused commit.
 - External blockers: `pnpm completion:gate:external` is not expected to pass without live secrets and redacted external evidence.

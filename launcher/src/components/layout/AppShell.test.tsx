@@ -35,10 +35,6 @@ vi.mock("../../lib/launcher", () => ({
   ),
 }));
 
-vi.mock("./RemoteCompanionAutoPollHost", () => ({
-  RemoteCompanionAutoPollHost: () => null,
-}));
-
 describe("AppShell browser-local shell skins", () => {
   it("applies the stored shell skin to the shell root and document", () => {
     window.localStorage.setItem(APP_SHELL_SKIN_STORAGE_KEY, "teal-print");
@@ -96,6 +92,23 @@ describe("AppShell browser-local shell skins", () => {
     expect(brandRow?.nextElementSibling).toBe(navRow);
   });
 
+  it("shows an honest empty notification feed without invented account events", () => {
+    window.localStorage.clear();
+    renderShell({ isAuthenticated: true });
+
+    fireEvent.click(screen.getByRole("button", { name: "Notifications" }));
+
+    const dialog = screen.getByRole("dialog", { name: "Notifications" });
+    expect(within(dialog).getByText(/no launcher notifications yet/i)).toBeInTheDocument();
+    expect(
+      within(dialog).queryByText("Akira's Revenge is ready to launch."),
+    ).not.toBeInTheDocument();
+    expect(
+      within(dialog).queryByText("Neo-Tokyo Drift has a new content pack."),
+    ).not.toBeInTheDocument();
+    expect(within(dialog).queryByText(/three new indie titles/i)).not.toBeInTheDocument();
+  });
+
   it("places desktop window controls in the header brand row without a separate title bar", async () => {
     const { container } = renderShell({ isDesktop: true });
 
@@ -139,7 +152,13 @@ describe("AppShell browser-local shell skins", () => {
   });
 });
 
-function renderShell({ isDesktop = false }: { isDesktop?: boolean } = {}) {
+function renderShell({
+  isDesktop = false,
+  isAuthenticated = false,
+}: {
+  isDesktop?: boolean;
+  isAuthenticated?: boolean;
+} = {}) {
   vi.mocked(isTauri).mockReturnValue(isDesktop);
 
   return render(
@@ -153,7 +172,7 @@ function renderShell({ isDesktop = false }: { isDesktop?: boolean } = {}) {
       isAuthConfigured={false}
       isAuthLoading={false}
       isAuthProfileLoading={false}
-      isAuthenticated={false}
+      isAuthenticated={isAuthenticated}
       subtitle="Local shell skin test"
       title="OG-Launcher"
       onLogout={() => Promise.resolve()}

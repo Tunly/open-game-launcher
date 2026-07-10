@@ -34,15 +34,11 @@ export const STORAGE_KEYS = {
   PLUGIN_MANIFEST_DISCOVERY: "og-launcher:plugin-manifest-discovery:v1",
   PLUGIN_SIGNED_PACKAGE_STAGING: "og-launcher:plugin-signed-package-staging:v1",
 
-  REMOTE_DOWNLOAD_ALWAYS_ON_CONFIGURED: "og-launcher:remote-download:always-on:v1",
-  REMOTE_DOWNLOAD_COMPANION_HANDSHAKE: "og-launcher:remote-download:companion-handshake:v1",
-  REMOTE_DOWNLOAD_COMPANION_LINKED: "og-launcher:remote-download:companion-linked:v1",
-  REMOTE_INSTALL_HANDOFF_HISTORY: "og-launcher:remote-install:handoff-history:v1",
-
   STARTUP_LIBRARY_RESCAN_DONE: "launcher_startup_library_rescan_done",
 
   STEAM_ID: "launcher.steamId",
   STEAM_OWNED_GAMES_CACHE: "launcher.steamOwnedGamesCache",
+  STEAM_OWNED_GAMES_CACHE_ACCOUNT: "launcher.steamOwnedGamesCacheAccount",
   STEAM_OWNED_GAMES_CACHE_VERSION: "launcher.steamOwnedGamesCacheVersion",
   BATTLENET_GAMES_CACHE: "launcher.battlenetGamesCache",
   XBOX_GAMES_CACHE: "launcher.xboxGamesCache",
@@ -55,4 +51,4 @@ export const STORAGE_KEYS = {
   STORE_WISHLIST: "og-launcher:store:wishlist",
 } as const;
 
-export const STEAM_OWNED_GAMES_CACHE_VERSION = "3";
+export const STEAM_OWNED_GAMES_CACHE_VERSION = "4";

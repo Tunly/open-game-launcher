@@ -13,7 +13,7 @@ revoke all on private.share_token_signing_keys from public, anon, authenticated;
 grant all on private.share_token_signing_keys to service_role;
 
 insert into private.share_token_signing_keys (kid, key_secret)
-values ('share-token-v1', gen_random_bytes(32))
+values ('share-token-v1', extensions.gen_random_bytes(32))
 on conflict (kid) do nothing;
 
 create or replace function private.share_token_base64url(value bytea)

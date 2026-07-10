@@ -11,7 +11,7 @@ export type PlatformType =
   | "og";
 export type MatchMethod = "linked_account" | "heuristic" | "manual";
 export type MergeSuggestionStatus = "pending" | "accepted" | "rejected";
-export type ActivityType = "game_start" | "game_stop" | "achievement_unlocked";
+export type ActivityType = "status" | "game_start" | "game_stop" | "achievement_unlocked";
 export type InviteFeasibility = "possible" | "uncertain" | "impossible";
 
 export interface PlatformAccount {
@@ -124,7 +124,12 @@ export interface AggregatedPresence {
 }
 
 export interface ActivityFeedMetadata extends Record<string, unknown> {
+  externalGameId?: string | null;
+  launcher?: string | null;
+  localGameId?: string | null;
   platform?: PlatformType | string | null;
+  platformGameId?: string | null;
   platformSource?: string | null;
   platform_source?: string | null;
+  text?: string | null;
 }

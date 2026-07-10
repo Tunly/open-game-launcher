@@ -46,9 +46,14 @@ Deno.test("createOrRetrieveCustomer reuses an existing store customer", async ()
 Deno.test("createOrRetrieveCustomer creates Stripe and store rows without profiles metadata", async () => {
   const operations: Operation[] = [];
   const stripeCalls: StripeCreateParams[] = [];
+  const stripeIdempotencyKeys: string[] = [];
 
   const customerId = await createOrRetrieveCustomer("user-1", {
-    stripe: stripeStub({ calls: stripeCalls, customerId: "cus_created" }),
+    stripe: stripeStub({
+      calls: stripeCalls,
+      customerId: "cus_created",
+      idempotencyKeys: stripeIdempotencyKeys,
+    }),
     supabaseAdmin: supabaseStub({
       operations,
       userEmail: "player@example.test",
@@ -60,6 +65,7 @@ Deno.test("createOrRetrieveCustomer creates Stripe and store rows without profil
     email: "player@example.test",
     metadata: { user_id: "user-1" },
   }]);
+  assertEquals(stripeIdempotencyKeys, ["og-store-customer:user-1"]);
   assertNoProfileReads(operations);
   assertEquals(operations, [
     { args: ["store_customers"], method: "from" },
@@ -77,14 +83,41 @@ Deno.test("createOrRetrieveCustomer creates Stripe and store rows without profil
     { args: ["user-1"], method: "getUserById" },
     { args: ["store_customers"], method: "from" },
     {
-      args: [{
-        stripe_customer_id: "cus_created",
-        user_id: "user-1",
-      }],
+      args: [
+        {
+          stripe_customer_id: "cus_created",
+          user_id: "user-1",
+        },
+        { ignoreDuplicates: true, onConflict: "user_id" },
+      ],
       method: "upsert",
       table: "store_customers",
     },
+    { args: ["store_customers"], method: "from" },
+    {
+      args: ["stripe_customer_id"],
+      method: "select",
+      table: "store_customers",
+    },
+    {
+      args: ["user_id", "user-1"],
+      method: "eq",
+      table: "store_customers",
+    },
+    { args: [], method: "maybeSingle", table: "store_customers" },
   ]);
+});
+
+Deno.test("createOrRetrieveCustomer returns a concurrent mapping winner", async () => {
+  const stripeCalls: StripeCreateParams[] = [];
+
+  const customerId = await createOrRetrieveCustomer("user-1", {
+    stripe: stripeStub({ calls: stripeCalls, customerId: "cus_candidate" }),
+    supabaseAdmin: supabaseStub({ persistedCustomerId: "cus_winner" }),
+  });
+
+  assertEquals(customerId, "cus_winner");
+  assertEquals(stripeCalls.length, 1);
 });
 
 Deno.test("createOrRetrieveCustomer logs and propagates customer read errors", async () => {
@@ -104,7 +137,7 @@ Deno.test("createOrRetrieveCustomer logs and propagates customer read errors", a
 
   assertStringIncludes(
     error.message,
-    "Failed to read Stripe customer mapping: read failed",
+    "Store customer lookup failed.",
   );
   assertEquals(stripeCalls, []);
   assertEquals(logger.logs, [{
@@ -130,7 +163,7 @@ Deno.test("createOrRetrieveCustomer logs and propagates checkout user read error
 
   assertStringIncludes(
     error.message,
-    "Failed to read checkout user: auth read failed",
+    "Checkout account lookup failed.",
   );
   assertEquals(stripeCalls, []);
   assertEquals(logger.logs, [{
@@ -156,7 +189,7 @@ Deno.test("createOrRetrieveCustomer logs and propagates store customer write err
 
   assertStringIncludes(
     error.message,
-    "Failed to persist Stripe customer mapping: write failed",
+    "Store customer mapping write failed.",
   );
   assertEquals(stripeCalls, [{
     email: "player@example.test",
@@ -185,7 +218,7 @@ Deno.test("createOrRetrieveCustomer logs and propagates Stripe customer errors",
 
   assertStringIncludes(
     error.message,
-    "Failed to create Stripe customer: Stripe down",
+    "Stripe customer creation failed.",
   );
   assertEquals(stripeCalls, [{
     email: "player@example.test",
@@ -213,11 +246,14 @@ function supabaseStub(options: {
   customerReadError?: DbError | null;
   existingCustomerId?: unknown;
   operations?: Operation[];
+  persistedCustomerId?: string;
   upsertError?: DbError | null;
   userEmail?: string | null;
   userError?: DbError | null;
 } = {}) {
   const operations = options.operations ?? [];
+  let didUpsert = false;
+  let upsertedCustomerId: string | null = null;
 
   return {
     auth: {
@@ -250,9 +286,12 @@ function supabaseStub(options: {
         },
         maybeSingle() {
           operations.push({ args: [], method: "maybeSingle", table });
-          const data = typeof options.existingCustomerId === "undefined"
+          const customerId = didUpsert
+            ? options.persistedCustomerId ?? upsertedCustomerId
+            : options.existingCustomerId;
+          const data = typeof customerId === "undefined" || customerId === null
             ? null
-            : { stripe_customer_id: options.existingCustomerId };
+            : { stripe_customer_id: customerId };
           return Promise.resolve({
             data,
             error: options.customerReadError ?? null,
@@ -262,8 +301,15 @@ function supabaseStub(options: {
           operations.push({ args: [columns], method: "select", table });
           return query;
         },
-        upsert(value: unknown) {
-          operations.push({ args: [value], method: "upsert", table });
+        upsert(value: unknown, upsertOptions: unknown) {
+          operations.push({
+            args: [value, upsertOptions],
+            method: "upsert",
+            table,
+          });
+          didUpsert = true;
+          upsertedCustomerId = (value as { stripe_customer_id?: string })
+            .stripe_customer_id ?? null;
           return Promise.resolve({
             data: null,
             error: options.upsertError ?? null,
@@ -280,11 +326,16 @@ function stripeStub(options: {
   calls?: StripeCreateParams[];
   customerId?: string;
   error?: unknown;
+  idempotencyKeys?: string[];
 } = {}) {
   return {
     customers: {
-      create: (input: StripeCreateParams) => {
+      create: (
+        input: StripeCreateParams,
+        requestOptions: { idempotencyKey: string },
+      ) => {
         options.calls?.push(input);
+        options.idempotencyKeys?.push(requestOptions.idempotencyKey);
         if (options.error) {
           throw options.error;
         }

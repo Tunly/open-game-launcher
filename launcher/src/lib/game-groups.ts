@@ -134,7 +134,7 @@ function shouldGroupTogether(left: Game, right: Game): boolean {
     return false;
   }
 
-  if ((left.productCategory || "game") !== (right.productCategory || "game")) {
+  if ((left.productCategory || "unknown") !== (right.productCategory || "unknown")) {
     return false;
   }
 
@@ -399,7 +399,7 @@ function achievementProviderStatusForSource(
 
 function groupIdentity(primaryGame: Game): string {
   const key = normalizeToken(primaryGame.title);
-  const category = primaryGame.productCategory || "game";
+  const category = primaryGame.productCategory || "unknown";
   const year = releaseYear(primaryGame) || "unknown-year";
   const studio = normalizeToken(primaryGame.developer || primaryGame.publisher) || "unknown-studio";
   return [key, category, year, studio].join(":");

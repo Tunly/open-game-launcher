@@ -137,6 +137,11 @@ describe("modInstallStore derived counts", () => {
       useModInstallStore.getState().setItems([makeItem({ installId: "c", status: "completed" })]);
     });
     expect(selectModInstallTotalProgress(useModInstallStore.getState())).toBe(100);
+
+    act(() => {
+      useModInstallStore.getState().setItems([]);
+    });
+    expect(selectModInstallTotalProgress(useModInstallStore.getState())).toBe(0);
   });
 });
 

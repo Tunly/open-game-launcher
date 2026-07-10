@@ -1,5 +1,5 @@
-import { Gamepad2, Loader2, MessageSquare, ThumbsUp, Trophy } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { Gamepad2, Loader2, MessageSquare, Trophy } from "lucide-react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { ActivityFeedItem } from "../../lib/types/friends";
 import { getFriendActivityFeed, subscribeToFriendActivity } from "../../lib/supabase/activity";
@@ -59,6 +59,8 @@ function ActivityIcon({ type }: { type: string }) {
       return <Gamepad2 className="h-4 w-4 text-[#087d6d]" />;
     case "achievement_unlocked":
       return <Trophy className="h-4 w-4 text-[#c20b2f]" />;
+    case "status":
+      return <MessageSquare className="h-4 w-4 text-[#087d6d]" />;
     default:
       return <Gamepad2 className="h-4 w-4 text-[#55504a]" />;
   }
@@ -77,6 +79,8 @@ function activityDescription(item: ActivityFeedItem): string {
         `Unlocked "${item.achievementName ?? "achievement"}" in ${item.gameTitle ?? "a game"}`,
         platformLabel,
       );
+    case "status":
+      return "Posted a status";
     default:
       return "Activity";
   }
@@ -86,12 +90,18 @@ function appendPlatform(copy: string, platformLabel: string | null) {
   return platformLabel ? `${copy} on ${platformLabel}` : copy;
 }
 
+function statusText(item: ActivityFeedItem) {
+  const text = item.metadata.text;
+  return typeof text === "string" && text.trim() ? text.trim() : "Status text unavailable.";
+}
+
 function ActivityFeedArticle({ index, item }: { index: number; item: ActivityFeedItem }) {
   const platformLabel = getActivityPlatformLabel(item.metadata);
   const showPlatformBadge = item.gameTitle || platformLabel;
   const gameTitle = item.gameTitle ?? "Unknown game";
   const player = playerLabel(item.userId);
   const artClassName = gameArtClassName(item.gameTitle, index);
+  const isStatus = item.type === "status";
 
   return (
     <article className="border-[3px] border-black bg-[#fff9ed] p-3 shadow-[3px_3px_0_#171411]">
@@ -117,54 +127,49 @@ function ActivityFeedArticle({ index, item }: { index: number; item: ActivityFee
         </span>
       </div>
 
-      <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(180px,260px)_minmax(0,1fr)]">
-        <div
-          aria-label={`${gameTitle} activity artwork`}
-          className={`min-h-28 border-[3px] border-black shadow-[3px_3px_0_#171411] ${artClassName}`}
-          role="img"
-        />
-        <div className="min-w-0 border-[3px] border-black bg-[#f6edd8] p-3">
-          <p className="neo-title truncate text-3xl leading-none text-[#171411]">{gameTitle}</p>
-          <div className="mt-2 flex flex-wrap gap-2">
-            {showPlatformBadge ? (
-              <span className={platformBadgeClassName(Boolean(platformLabel))}>
-                {platformLabel ?? "Source unknown"}
-              </span>
-            ) : null}
-            <span className="neo-copy border-2 border-black bg-[#fff9ed] px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-[#171411] shadow-[1px_1px_0_#171411]">
-              {item.visibility}
-            </span>
-          </div>
-          <div className="mt-3 h-4 border-2 border-black bg-[#fff9ed]">
-            <div
-              aria-hidden="true"
-              className="h-full bg-[#087d6d]"
-              style={{ width: item.type === "achievement_unlocked" ? "72%" : "48%" }}
-            />
-          </div>
-          <p className="neo-copy mt-2 text-[10px] font-black uppercase leading-4 text-[#655f58]">
-            {item.type === "achievement_unlocked"
-              ? `Achievement progress updated: ${item.achievementName ?? "Unlocked"}`
-              : "Session activity posted from launcher presence."}
-          </p>
+      {isStatus ? (
+        <div className="mt-3 border-[3px] border-black bg-[#f6edd8] p-4 shadow-[3px_3px_0_#171411]">
+          <p className="text-sm font-black leading-6 text-[#171411]">{statusText(item)}</p>
+          <span className="neo-copy mt-3 inline-flex border-2 border-black bg-[#fff9ed] px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-[#171411] shadow-[1px_1px_0_#171411]">
+            {item.visibility}
+          </span>
         </div>
-      </div>
+      ) : (
+        <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(180px,260px)_minmax(0,1fr)]">
+          <div
+            aria-label={`${gameTitle} activity artwork`}
+            className={`min-h-28 border-[3px] border-black shadow-[3px_3px_0_#171411] ${artClassName}`}
+            role="img"
+          />
+          <div className="min-w-0 border-[3px] border-black bg-[#f6edd8] p-3">
+            <p className="neo-title truncate text-3xl leading-none text-[#171411]">{gameTitle}</p>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {showPlatformBadge ? (
+                <span className={platformBadgeClassName(Boolean(platformLabel))}>
+                  {platformLabel ?? "Source unknown"}
+                </span>
+              ) : null}
+              <span className="neo-copy border-2 border-black bg-[#fff9ed] px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-[#171411] shadow-[1px_1px_0_#171411]">
+                {item.visibility}
+              </span>
+            </div>
+            <div className="mt-3 h-4 border-2 border-black bg-[#fff9ed]">
+              <div
+                aria-hidden="true"
+                className="h-full bg-[#087d6d]"
+                style={{ width: item.type === "achievement_unlocked" ? "72%" : "48%" }}
+              />
+            </div>
+            <p className="neo-copy mt-2 text-[10px] font-black uppercase leading-4 text-[#655f58]">
+              {item.type === "achievement_unlocked"
+                ? `Achievement progress updated: ${item.achievementName ?? "Unlocked"}`
+                : "Session activity posted from launcher presence."}
+            </p>
+          </div>
+        </div>
+      )}
 
       <div className="mt-3 flex flex-wrap items-center gap-2 border-t-2 border-black pt-3">
-        <button
-          className="neo-copy inline-flex items-center gap-1 border-2 border-black bg-[#fff9ed] px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] shadow-[1px_1px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#8cf5e4]"
-          type="button"
-        >
-          <ThumbsUp className="h-3 w-3" />
-          Rate Up
-        </button>
-        <button
-          className="neo-copy inline-flex items-center gap-1 border-2 border-black bg-[#fff9ed] px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] shadow-[1px_1px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#f6edd8]"
-          type="button"
-        >
-          <MessageSquare className="h-3 w-3" />
-          Comment
-        </button>
         <span className="neo-copy text-[9px] font-black uppercase tracking-[0.12em] text-[#655f58]">
           Live feed item #{String(index + 1).padStart(2, "0")}
         </span>
@@ -176,18 +181,39 @@ function ActivityFeedArticle({ index, item }: { index: number; item: ActivityFee
 export function ActivityFeed({ friendIds }: ActivityFeedProps) {
   const [items, setItems] = useState<ActivityFeedItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const requestIdRef = useRef(0);
 
   const loadFeed = useCallback(async () => {
+    const requestId = ++requestIdRef.current;
+    const requestedFriendIds = Array.from(new Set(friendIds.filter((friendId) => friendId.trim())));
+
+    setItems([]);
+    setLoadError(null);
+
+    if (requestedFriendIds.length === 0) {
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     try {
-      const feed = await getFriendActivityFeed(30);
+      const feed = await getFriendActivityFeed(requestedFriendIds, 30);
+      if (requestId !== requestIdRef.current) return;
       setItems(feed);
-    } catch {
-      // ignore
+    } catch (error) {
+      if (requestId !== requestIdRef.current) return;
+      setLoadError(
+        error instanceof Error && error.message.trim()
+          ? error.message
+          : "Unknown friend activity error.",
+      );
     } finally {
-      setLoading(false);
+      if (requestId === requestIdRef.current) {
+        setLoading(false);
+      }
     }
-  }, []);
+  }, [friendIds]);
 
   useEffect(() => {
     void loadFeed();
@@ -207,6 +233,27 @@ export function ActivityFeed({ friendIds }: ActivityFeedProps) {
     return (
       <div className="grid min-h-40 place-items-center">
         <Loader2 className="h-6 w-6 animate-spin text-[#b7102a]" />
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div
+        className="border-[3px] border-black bg-[#f3c3c9] p-4 shadow-[4px_4px_0_#171411]"
+        role="alert"
+      >
+        <p className="neo-title text-2xl leading-none text-[#171411]">
+          Friend activity could not be loaded.
+        </p>
+        <p className="neo-copy mt-2 text-[11px] font-bold leading-5 text-[#5b403f]">{loadError}</p>
+        <button
+          className="neo-copy mt-3 border-2 border-black bg-[#b7102a] px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-white shadow-[2px_2px_0_#171411] transition hover:-translate-y-0.5 disabled:opacity-60"
+          type="button"
+          onClick={() => void loadFeed()}
+        >
+          Retry activity feed
+        </button>
       </div>
     );
   }

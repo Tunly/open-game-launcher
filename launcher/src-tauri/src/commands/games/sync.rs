@@ -4,10 +4,9 @@ use std::{
 };
 
 use super::core::{
-    backup_root_for_game, current_unix_timestamp, ensure_path_inside_root, get_dir_last_modified,
-    normalize_game_id, path_size_bytes, path_to_string, read_installed_games_cache,
-    save_sync_root_for_game, sync_destination_for_save, unix_timestamp_to_iso,
-    write_installed_games_cache,
+    current_unix_timestamp, ensure_path_inside_root, get_dir_last_modified, normalize_game_id,
+    path_size_bytes, path_to_string, read_installed_games_cache, save_sync_root_for_game,
+    sync_destination_for_save, unix_timestamp_to_iso, write_installed_games_cache,
 };
 use super::types::*;
 
@@ -48,7 +47,7 @@ pub fn sync_game_saves(game_id: String) -> Result<SyncGameSavesResponse, String>
     }
 
     games[game_index] = game.clone();
-    write_installed_games_cache(&games);
+    write_installed_games_cache(&games)?;
 
     let message = if missing_files.is_empty() {
         format!("{} save sync completed.", game.title)

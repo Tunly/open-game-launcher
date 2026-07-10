@@ -65,6 +65,7 @@ const ALLOWED_URI_SCHEMES: &[&str] = &[
     "steam://",
     "com.epicgames.launcher://",
     "goggalaxy://",
+    "ms-windows-store://",
     "ms-xbl-38966778-3f57-4f6e-a6e9-3b81c79fbb3f://",
     "battlenet://",
     "origin2://",
@@ -185,6 +186,10 @@ mod tests {
     fn uri_accepts_known_schemes() {
         assert!(validate_uri_scheme("steam://run/440").is_ok());
         assert!(validate_uri_scheme("com.epicgames.launcher://apps/abc?action=launch").is_ok());
+        assert!(validate_uri_scheme(
+            "ms-windows-store://pdp/?PFN=Microsoft.ForzaHorizon5_8wekyb3d8bbwe"
+        )
+        .is_ok());
         assert!(validate_uri_scheme("https://example.com/").is_ok());
         assert!(validate_uri_scheme("http://localhost:1420/").is_ok());
     }

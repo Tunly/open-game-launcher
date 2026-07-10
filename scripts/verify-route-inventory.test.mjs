@@ -89,17 +89,16 @@ function writeScreenshot(root, screenshotPath, bytes) {
 test("collectVerifyFlagsFromText extracts route and branch literals", () => {
   const flags = collectVerifyFlagsFromText(`
     const verifyMode = searchParams.get("verify");
-    const ready = verifyMode === "lan-transfer-readiness";
+    const ready = verifyMode === "example-readiness";
     const alsoReady = searchParams.get("verify") === "hosted-cron-evidence-summary";
-    renderRoute("/downloads?verify=mobile-app-readiness");
+    renderRoute("/downloads?verify=example-readiness");
     renderWithLibrary(<GameDetailPanel verifyMode="backlog-priority" />);
   `);
 
   assert.deepEqual([...flags.keys()].sort(), [
     "backlog-priority",
+    "example-readiness",
     "hosted-cron-evidence-summary",
-    "lan-transfer-readiness",
-    "mobile-app-readiness",
   ]);
 });
 
@@ -110,7 +109,7 @@ test("collectAppRoutePathsFromText extracts router paths", () => {
         { path: "/", element: <Navigate to="/library" replace /> },
         { path: "relative-child", element: page(<RelativePage />) },
         { path: "/home", element: page(<HomePage />) },
-        { path: "/downloads/remote", element: page(<RemotePage />) },
+        { path: "/activity", element: page(<ActivityPage />) },
         { path: "/u/:username", element: page(<ProfilePage />) },
         { path: "*", element: page(<NotFoundPage />) },
       ]);
@@ -120,7 +119,7 @@ test("collectAppRoutePathsFromText extracts router paths", () => {
 
   assert.deepEqual(
     [...routePaths.keys()],
-    ["/downloads/remote", "/home", "/u/:username", "relative-child"],
+    ["/activity", "/home", "/u/:username", "relative-child"],
   );
   assert.deepEqual(routePaths.get("/home"), ["launcher/src/app/router.tsx:5"]);
 });
@@ -130,9 +129,9 @@ test("verifyRouteInventory accepts documented verify routes", () => {
   try {
     writeFixture(
       root,
-      'const isReady = searchParams.get("verify") === "mobile-app-readiness";',
-      "- `screenshots/downloads-mobile-app-readiness-local.png` - `/downloads?verify=mobile-app-readiness` documented.",
-      ["screenshots/downloads-mobile-app-readiness-local.png"],
+      'const isReady = searchParams.get("verify") === "example-readiness";',
+      "- `screenshots/example-readiness-local.png` - `/downloads?verify=example-readiness` documented.",
+      ["screenshots/example-readiness-local.png"],
     );
 
     assert.deepEqual(verifyRouteInventory(root).errors, []);
@@ -232,8 +231,8 @@ test("collectSourceVerifyFlags ignores test files and resolves verify constants"
     writeFixture(
       root,
       [
-        'const REMOTE_HOSTED_RELAY_VERIFY_MODE = "remote-hosted-contract-ready";',
-        "const isRemoteHostedVerify = verifyMode === REMOTE_HOSTED_RELAY_VERIFY_MODE;",
+        'const PROVIDER_TELEMETRY_VERIFY_MODE = "example-readiness";',
+        "const isProviderTelemetryVerify = verifyMode === PROVIDER_TELEMETRY_VERIFY_MODE;",
       ].join("\n"),
       "",
     );
@@ -244,7 +243,7 @@ test("collectSourceVerifyFlags ignores test files and resolves verify constants"
 
     const flags = collectSourceVerifyFlags(root);
 
-    assert.deepEqual([...flags.keys()], ["remote-hosted-contract-ready"]);
+    assert.deepEqual([...flags.keys()], ["example-readiness"]);
   } finally {
     cleanup();
   }
@@ -255,13 +254,13 @@ test("verifyRouteInventory rejects undocumented verify routes", () => {
   try {
     writeFixture(
       root,
-      'const isReady = searchParams.get("verify") === "mobile-app-readiness";',
+      'const isReady = searchParams.get("verify") === "example-readiness";',
       "- Downloads local readiness screenshot exists.",
     );
 
     assert.match(
       verifyRouteInventory(root).errors[0],
-      /mobile-app-readiness.*missing.*\?verify=mobile-app-readiness/,
+      /example-readiness.*missing.*\?verify=example-readiness/,
     );
   } finally {
     cleanup();
@@ -273,13 +272,13 @@ test("verifyRouteInventory rejects routes without screenshot artifact lines", ()
   try {
     writeFixture(
       root,
-      'const isReady = searchParams.get("verify") === "mobile-app-readiness";',
-      "- `/downloads?verify=mobile-app-readiness` documented.",
+      'const isReady = searchParams.get("verify") === "example-readiness";',
+      "- `/downloads?verify=example-readiness` documented.",
     );
 
     assert.match(
       verifyRouteInventory(root).errors[0],
-      /mobile-app-readiness.*missing.*screenshot artifact line/,
+      /example-readiness.*missing.*screenshot artifact line/,
     );
   } finally {
     cleanup();
@@ -310,13 +309,13 @@ test("verifyRouteInventory rejects missing screenshot artifact files", () => {
   try {
     writeFixture(
       root,
-      'const isReady = searchParams.get("verify") === "mobile-app-readiness";',
-      "- `screenshots/downloads-mobile-app-readiness-local.png` - `/downloads?verify=mobile-app-readiness` documented.",
+      'const isReady = searchParams.get("verify") === "example-readiness";',
+      "- `screenshots/example-readiness-local.png` - `/downloads?verify=example-readiness` documented.",
     );
 
     assert.match(
       verifyRouteInventory(root).errors.join("\n"),
-      /mobile-app-readiness.*missing screenshot artifact.*downloads-mobile-app-readiness-local\.png/,
+      /example-readiness.*missing screenshot artifact.*example-readiness-local\.png/,
     );
   } finally {
     cleanup();
@@ -380,9 +379,9 @@ test("verifyRouteInventory rejects invalid PNG screenshot artifacts", () => {
   try {
     writeFixture(
       root,
-      'const isReady = searchParams.get("verify") === "mobile-app-readiness";',
+      'const isReady = searchParams.get("verify") === "example-readiness";',
       [
-        "- `screenshots/empty.png` - `/downloads?verify=mobile-app-readiness` documented.",
+        "- `screenshots/empty.png` - `/downloads?verify=example-readiness` documented.",
         "- `screenshots/not-png.png` - documented screenshot.",
         "- `screenshots/tiny.png` - documented screenshot.",
         "- `screenshots/zero-width.png` - documented screenshot.",
@@ -453,16 +452,16 @@ test("verifyRouteInventory allows legacy aliases only when canonical route is do
 test("current verify route inventory is documented with explicit legacy aliases", () => {
   const result = verifyRouteInventory();
 
-  assert.equal(result.sourceFlags.size, 66);
-  assert.equal(result.appRoutePaths.size, 24);
-  assert.equal(result.appRouteArtifacts.size, 24);
+  assert.equal(result.sourceFlags.size, 48);
+  assert.equal(result.appRoutePaths.size, 22);
+  assert.equal(result.appRouteArtifacts.size, 22);
   assert.deepEqual(result.errors, []);
   assert.equal(
     result.documentedScreenshots.size,
     result.existingScreenshots.size,
   );
-  assert.equal(result.existingScreenshots.size, 383);
-  assert.equal(result.screenshotIntegrity.size, 383);
+  assert.equal(result.existingScreenshots.size, 305);
+  assert.equal(result.screenshotIntegrity.size, 305);
   assert.equal(
     [...result.screenshotIntegrity.values()].every(
       (inspection) =>
@@ -470,27 +469,19 @@ test("current verify route inventory is documented with explicit legacy aliases"
     ),
     true,
   );
-  assert.equal(
-    result.screenshotArtifacts.has("remote-companion-poll-redaction"),
-    true,
-  );
   assert.deepEqual(Object.keys(legacyVerifyFlags).sort(), [
     "invite-hosted-ready",
     "plugin-system-native-disabled-registry-audit",
     "public-profile-privacy-guard",
   ]);
-  assert.equal(
-    result.documentedFlags.has("remote-companion-poll-redaction"),
-    true,
-  );
   assert.equal(result.documentedFlags.has("remote-hydration"), false);
   assert.deepEqual(
     inventorySummary(result).filter((line) =>
       line.includes("normal app route paths"),
     ),
     [
-      "Discovered 24 normal app route paths in launcher/src/app/router.tsx.",
-      "Verified screenshot artifact coverage for 24 normal app route paths.",
+      "Discovered 22 normal app route paths in launcher/src/app/router.tsx.",
+      "Verified screenshot artifact coverage for 22 normal app route paths.",
     ],
   );
 });
@@ -527,18 +518,18 @@ test("documentedVerifyScreenshotArtifacts reads concrete route screenshot lines"
       root,
       "",
       [
-        "- Screenshot name contains mobile-app-readiness but no route.",
-        "- `/downloads?verify=mobile-push-dry-run` documented without screenshot.",
-        "- `screenshots/downloads-mobile-app-readiness-local.png` - `/downloads?verify=mobile-app-readiness` documented.",
+        "- Screenshot name contains example-readiness but no route.",
+        "- `/downloads?verify=provider-telemetry-dry-run` documented without screenshot.",
+        "- `screenshots/example-readiness-local.png` - `/downloads?verify=example-readiness` documented.",
       ].join("\n"),
-      ["screenshots/downloads-mobile-app-readiness-local.png"],
+      ["screenshots/example-readiness-local.png"],
     );
 
     const artifacts = documentedVerifyScreenshotArtifacts(root);
-    assert.equal(artifacts.has("mobile-push-dry-run"), false);
-    assert.deepEqual(artifacts.get("mobile-app-readiness"), [
+    assert.equal(artifacts.has("provider-telemetry-dry-run"), false);
+    assert.deepEqual(artifacts.get("example-readiness"), [
       {
-        artifactPath: "screenshots/downloads-mobile-app-readiness-local.png",
+        artifactPath: "screenshots/example-readiness-local.png",
         exists: true,
         location: "docs/verification/README.md:3",
       },
@@ -556,22 +547,22 @@ test("documentedScreenshotArtifacts ignores wildcard examples and existingScreen
       "",
       [
         "- Store verification screenshots under `docs/verification/screenshots/*.png`.",
-        "- `docs/verification/screenshots/mobile-app-readiness.png` - concrete screenshot.",
+        "- `docs/verification/screenshots/example-readiness.png` - concrete screenshot.",
       ].join("\n"),
-      ["screenshots/mobile-app-readiness.png"],
+      ["screenshots/example-readiness.png"],
     );
 
     assert.deepEqual(
       [...documentedScreenshotArtifacts(root).keys()],
-      ["screenshots/mobile-app-readiness.png"],
+      ["screenshots/example-readiness.png"],
     );
     assert.deepEqual(
       [...existingScreenshotArtifacts(root)],
-      ["screenshots/mobile-app-readiness.png"],
+      ["screenshots/example-readiness.png"],
     );
     assert.deepEqual(
       [...screenshotArtifactIntegrity(root).keys()],
-      ["screenshots/mobile-app-readiness.png"],
+      ["screenshots/example-readiness.png"],
     );
   } finally {
     cleanup();
@@ -585,12 +576,12 @@ test("documentedVerifyFlags reads concrete query routes only", () => {
       root,
       "",
       [
-        "- Screenshot name contains mobile-app-readiness but no route.",
-        "- `/downloads?verify=mobile-push-dry-run` documented.",
+        "- Screenshot name contains example-readiness but no route.",
+        "- `/downloads?verify=provider-telemetry-dry-run` documented.",
       ].join("\n"),
     );
 
-    assert.deepEqual([...documentedVerifyFlags(root)], ["mobile-push-dry-run"]);
+    assert.deepEqual([...documentedVerifyFlags(root)], ["provider-telemetry-dry-run"]);
   } finally {
     cleanup();
   }

@@ -11,6 +11,7 @@ import {
 import { ExternalCompletionEvidenceSummaryPanel } from "./ExternalCompletionEvidenceSummaryPanel";
 
 const validationNow = "2026-06-17T12:00:00.000Z";
+const rolloutProof = "Hosted community artwork rollout is exercised beyond fixtures.";
 const evidenceDetails: Record<ExternalCompletionEvidenceDetailField, string> = {
   "Captured at": "2026-06-16T12:00:00.000Z",
   "Commit SHA": "0123456789abcdef0123456789abcdef01234567",
@@ -106,6 +107,8 @@ describe("ExternalCompletionEvidenceSummaryPanel", () => {
     expect(within(panel).getAllByText("Provider live integrations").length).toBeGreaterThan(0);
     expect(within(panel).getAllByText("Hardware and OS E2E").length).toBeGreaterThan(0);
     expect(within(panel).getAllByText("Rollout tracks").length).toBeGreaterThan(0);
+    expect(within(panel).getAllByText(rolloutProof).length).toBeGreaterThan(0);
+    expect(panel).not.toHaveTextContent(/community artwork\/screenshots|screenshot-rollout/i);
     expect(within(panel).getByText("STRIPE_WEBHOOK_SECRET")).toBeInTheDocument();
     expect(within(panel).getByText("ACCOUNT_DELETION_PROCESSOR_SECRET")).toBeInTheDocument();
     expect(within(panel).getByText("No external proof claim")).toBeInTheDocument();
@@ -132,10 +135,10 @@ describe("ExternalCompletionEvidenceSummaryPanel", () => {
       within(artifactSnapshot).getByRole("article", { name: "Artifact Ready: 0/6" }),
     ).toBeVisible();
     expect(
-      within(artifactSnapshot).getByRole("article", { name: "Proof Rows Missing: 19" }),
+      within(artifactSnapshot).getByRole("article", { name: "Proof Rows Missing: 18" }),
     ).toBeVisible();
     expect(
-      within(artifactSnapshot).getByRole("article", { name: "Details Missing: 82" }),
+      within(artifactSnapshot).getByRole("article", { name: "Details Missing: 80" }),
     ).toBeVisible();
     expect(within(artifactSnapshot).getAllByText("Yes")).toHaveLength(6);
     expect(within(artifactSnapshot).getAllByText("blocked").length).toBeGreaterThan(0);

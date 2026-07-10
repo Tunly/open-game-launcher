@@ -6,11 +6,35 @@ import { invoke, isTauri } from "@tauri-apps/api/core";
 import { FpsHudPage } from "./FpsHudPage";
 import { writeActivePerformanceGameContext } from "../lib/performance-context";
 import { ACTIVE_GAME_PERFORMANCE_POLL_INTERVAL_MS } from "../lib/performance-polling";
+import type { NativeOverlaySettings } from "../lib/types/overlay";
 import type { RealtimeMetrics } from "../lib/types/performance";
+
+const eventMocks = vi.hoisted(() => ({
+  listeners: new Map<string, (event: { payload: unknown }) => void>(),
+}));
+
+const windowMocks = vi.hoisted(() => ({
+  close: vi.fn(),
+  currentLabel: "fps_hud",
+}));
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
   isTauri: vi.fn(),
+}));
+
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: vi.fn((event: string, handler: (event: { payload: unknown }) => void) => {
+    eventMocks.listeners.set(event, handler);
+    return Promise.resolve(vi.fn());
+  }),
+}));
+
+vi.mock("@tauri-apps/api/window", () => ({
+  getCurrentWindow: vi.fn(() => ({
+    label: windowMocks.currentLabel,
+    close: windowMocks.close,
+  })),
 }));
 
 const metrics: RealtimeMetrics = {
@@ -32,8 +56,17 @@ function pollCallCount() {
 describe("FpsHudPage performance polling", () => {
   beforeEach(() => {
     window.localStorage.clear();
+    eventMocks.listeners.clear();
+    windowMocks.currentLabel = "fps_hud";
+    windowMocks.close.mockReset().mockResolvedValue(undefined);
     vi.mocked(invoke).mockReset();
-    vi.mocked(invoke).mockResolvedValue(metrics);
+    vi.mocked(invoke).mockImplementation((command) =>
+      Promise.resolve(
+        command === "get_overlay_settings"
+          ? { fpsHudEnabled: true, opacity: 0.72, showGpu: false }
+          : metrics,
+      ),
+    );
     vi.mocked(isTauri).mockReturnValue(true);
     vi.stubGlobal(
       "requestAnimationFrame",
@@ -62,6 +95,8 @@ describe("FpsHudPage performance polling", () => {
       await Promise.resolve();
     });
     expect(screen.getByText("61 FPS")).toBeInTheDocument();
+    expect(screen.queryByText("42% GPU")).not.toBeInTheDocument();
+    expect(screen.getByText("61 FPS").parentElement).toHaveStyle({ opacity: "0.72" });
     expect(pollCallCount()).toBe(1);
 
     await act(async () => {
@@ -92,6 +127,55 @@ describe("FpsHudPage performance polling", () => {
       vi.advanceTimersByTime(5_000);
       await Promise.resolve();
     });
+    expect(pollCallCount()).toBe(0);
+  });
+
+  it("closes and clears the external HUD when settings disable it", async () => {
+    vi.useFakeTimers();
+    writeActivePerformanceGameContext({
+      gameId: "game-1",
+      gameTitle: "Game 1",
+      launcher: "steam",
+    });
+
+    render(<FpsHudPage />);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(screen.getByText("61 FPS")).toBeInTheDocument();
+    const pollCountBeforeDisable = pollCallCount();
+
+    const settingsListener = eventMocks.listeners.get("overlay-settings-updated") as
+      | ((event: { payload: NativeOverlaySettings }) => void)
+      | undefined;
+    expect(settingsListener).toBeDefined();
+    act(() => {
+      settingsListener?.({ payload: { fpsHudEnabled: false } });
+    });
+
+    expect(windowMocks.close).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText("61 FPS")).not.toBeInTheDocument();
+
+    await act(async () => {
+      vi.advanceTimersByTime(ACTIVE_GAME_PERFORMANCE_POLL_INTERVAL_MS * 2);
+      await Promise.resolve();
+    });
+    expect(pollCallCount()).toBe(pollCountBeforeDisable);
+  });
+
+  it("stays blank without closing the launcher when the route is not the external HUD", async () => {
+    windowMocks.currentLabel = "main";
+    vi.mocked(invoke).mockImplementation((command) =>
+      Promise.resolve(command === "get_overlay_settings" ? { fpsHudEnabled: false } : metrics),
+    );
+
+    const { container } = render(<FpsHudPage />);
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(windowMocks.close).not.toHaveBeenCalled();
+    expect(container).toBeEmptyDOMElement();
     expect(pollCallCount()).toBe(0);
   });
 });

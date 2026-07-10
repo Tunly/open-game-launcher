@@ -219,6 +219,60 @@ describe("store wishlist and price alerts", () => {
     expect(updateChain.eq).toHaveBeenNthCalledWith(1, "user_id", "user-1");
     expect(updateChain.eq).toHaveBeenNthCalledWith(2, "product_id", "product-1");
   });
+
+  it("loads order items for multiple orders in one query", async () => {
+    const chain = {
+      in: vi.fn(() =>
+        Promise.resolve({
+          data: [
+            {
+              id: "item-1",
+              order_id: "order-1",
+              price_cents_snapshot: 1299,
+              product_id: "product-1",
+              quantity: 1,
+              title_snapshot: "Cyber Drift",
+            },
+          ],
+          error: null,
+        }),
+      ),
+      select: vi.fn(),
+    };
+    chain.select.mockReturnValue(chain);
+    mocks.from.mockReturnValue(chain);
+
+    const { listMyOrderItems } = await import("../store");
+    const result = await listMyOrderItems(["order-1", "order-2", "order-1"]);
+
+    expect(mocks.from).toHaveBeenCalledTimes(1);
+    expect(chain.in).toHaveBeenCalledWith("order_id", ["order-1", "order-2"]);
+    expect(result).toEqual([
+      expect.objectContaining({ id: "item-1", orderId: "order-1", productId: "product-1" }),
+    ]);
+  });
+
+  it("reuses the published product catalog across repeated reads", async () => {
+    const chain = makeSelectChain([
+      {
+        created_at: "2026-07-10T10:00:00.000Z",
+        developer_id: "developer-1",
+        id: "product-1",
+        platforms: ["windows"],
+        slug: "cyber-drift",
+        status: "published",
+        title: "Cyber Drift",
+        updated_at: "2026-07-10T10:00:00.000Z",
+      },
+    ]);
+    mocks.from.mockReturnValue(chain);
+
+    const { listPublishedProducts } = await import("../store");
+    await Promise.all([listPublishedProducts(), listPublishedProducts()]);
+    await listPublishedProducts();
+
+    expect(mocks.from).toHaveBeenCalledTimes(1);
+  });
 });
 
 function makeMaybeSingleChain(

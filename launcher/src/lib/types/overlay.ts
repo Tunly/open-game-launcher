@@ -22,9 +22,9 @@ export interface NativeOverlaySettings {
 }
 
 export interface AchievementPopupPayload {
-  game_title: string;
-  achievement_name: string;
+  gameTitle: string;
+  achievementName: string;
   description: string;
   rarity: string;
-  icon_url: string | null;
+  iconUrl: string | null;
 }

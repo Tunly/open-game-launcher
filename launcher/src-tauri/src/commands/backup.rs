@@ -27,7 +27,7 @@ const SCHEDULER_STATUS_FILE: &str = "backup-scheduler-status.json";
 const HEADLESS_BACKUP_SCHEDULER_ARG: &str = "--og-backup-scheduler-run";
 #[cfg(any(target_os = "linux", test))]
 const LINUX_SYSTEMD_SERVICE_FILE: &str = "og-launcher-backup.service";
-#[cfg(any(target_os = "linux", test))]
+#[cfg(target_os = "linux")]
 const LINUX_SYSTEMD_TIMER_FILE: &str = "og-launcher-backup.timer";
 #[cfg(target_os = "macos")]
 const MACOS_LAUNCH_AGENT_FILE: &str = "com.opengamelauncher.backup.plist";
@@ -1279,6 +1279,7 @@ fn macos_launch_agent_plist(exe: &Path, cadence: &BackupSchedulerCadence) -> Str
     )
 }
 
+#[cfg(any(target_os = "linux", test))]
 fn escape_systemd_exec_path(path: &Path) -> String {
     path_to_string(path.to_path_buf())
         .replace('\\', "\\\\")
@@ -2067,11 +2068,20 @@ fn normalize_backup_mount_match_path(path: &str) -> Option<String> {
     if trimmed.is_empty() {
         return None;
     }
-    let mut normalized = trimmed.replace('\\', "/");
+    let normalized = trimmed.replace('\\', "/");
+    let mut normalized = match normalized.strip_prefix("//?/") {
+        Some(path) => path
+            .strip_prefix("UNC/")
+            .map(|path| format!("//{path}"))
+            .unwrap_or_else(|| path.to_string()),
+        None => normalized,
+    };
     while normalized.len() > 1 && normalized.ends_with('/') {
         normalized.pop();
     }
-    if normalized.len() >= 2 && normalized.as_bytes()[1] == b':' {
+    if (normalized.len() >= 2 && normalized.as_bytes()[1] == b':')
+        || (cfg!(target_os = "windows") && normalized.starts_with("//"))
+    {
         normalized = normalized.to_ascii_lowercase();
     }
     Some(normalized)
@@ -3015,6 +3025,40 @@ mod tests {
         }
     }
 
+    fn platform_valid_os_eject_fixture(
+        target: &Path,
+    ) -> (
+        BackupExternalDriveOsEjectRequest,
+        Vec<BackupWriteProofDiskEvidence>,
+    ) {
+        let mut disk = removable_write_proof_disk(target);
+        #[cfg(target_os = "windows")]
+        {
+            let mount_root = target.ancestors().last().unwrap_or(target);
+            disk.mount_point = path_to_string(mount_root.to_path_buf());
+        }
+        let mut request = os_eject_request(path_to_string(target.to_path_buf()));
+        request.expected_mount_point = disk.mount_point.clone();
+        (request, vec![disk])
+    }
+
+    #[test]
+    fn windows_verbatim_target_matches_regular_mount_path() {
+        assert!(backup_mount_points_equal(
+            r"\\?\C:\Backups\Games",
+            r"C:\Backups\Games"
+        ));
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn windows_unc_mount_matching_is_case_insensitive() {
+        assert!(backup_mount_points_equal(
+            r"\\?\UNC\SERVER\Share\Games",
+            r"\\server\share\games"
+        ));
+    }
+
     #[test]
     fn safe_join_rejects_path_escape() {
         let root = PathBuf::from("/tmp/og-backup-root");
@@ -3310,8 +3354,7 @@ mod tests {
     fn external_drive_os_eject_does_not_claim_success_when_command_fails() {
         let temp = env::temp_dir().join(format!("ogl-backup-os-eject-fail-{}", Uuid::new_v4()));
         fs::create_dir_all(&temp).unwrap();
-        let request = os_eject_request(path_to_string(temp.clone()));
-        let disks = vec![removable_write_proof_disk(&temp)];
+        let (request, disks) = platform_valid_os_eject_fixture(&temp);
 
         let error = eject_backup_external_drive_with_runner(
             &request,
@@ -3329,8 +3372,7 @@ mod tests {
     fn external_drive_os_eject_requires_mount_disappearance_after_command() {
         let temp = env::temp_dir().join(format!("ogl-backup-os-eject-still-{}", Uuid::new_v4()));
         fs::create_dir_all(&temp).unwrap();
-        let request = os_eject_request(path_to_string(temp.clone()));
-        let disks = vec![removable_write_proof_disk(&temp)];
+        let (request, disks) = platform_valid_os_eject_fixture(&temp);
         let refreshed = disks.clone();
 
         let error = eject_backup_external_drive_with_runner(
@@ -3349,8 +3391,7 @@ mod tests {
     fn external_drive_os_eject_reports_success_only_after_mount_disappears() {
         let temp = env::temp_dir().join(format!("ogl-backup-os-eject-ok-{}", Uuid::new_v4()));
         fs::create_dir_all(&temp).unwrap();
-        let request = os_eject_request(path_to_string(temp.clone()));
-        let disks = vec![removable_write_proof_disk(&temp)];
+        let (request, disks) = platform_valid_os_eject_fixture(&temp);
         let command_label = std::cell::RefCell::new(String::new());
 
         let result = eject_backup_external_drive_with_runner(
@@ -3456,18 +3497,19 @@ mod tests {
 
     #[test]
     fn scheduler_config_normalizes_target_and_defaults_enabled_state() {
+        let target_path = path_to_string(env::temp_dir().join("og-backups"));
         let config = normalize_scheduler_config(BackupSchedulerConfig {
             cadence: BackupSchedulerCadence::Daily,
             compression: BackupCompressionMode::Zip,
             enabled: true,
             include_library_data: false,
-            target_path: "  /tmp/og-backups  ".to_string(),
+            target_path: format!("  {target_path}  "),
             updated_at: Some("2026-06-10T12:00:00Z".to_string()),
         })
         .unwrap();
 
         assert!(config.enabled);
-        assert_eq!(config.target_path, "/tmp/og-backups");
+        assert_eq!(config.target_path, target_path);
         assert_eq!(config.compression, BackupCompressionMode::Zip);
         assert_eq!(config.cadence, BackupSchedulerCadence::Daily);
         assert_eq!(config.updated_at.as_deref(), Some("2026-06-10T12:00:00Z"));

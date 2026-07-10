@@ -108,23 +108,19 @@ describe("updateMyAppShellSkin", () => {
     expect(profile.appShellSkinId).toBe("retro-paper");
   });
 
-  it("falls back to the current profile when the hosted shell-skin column is absent", async () => {
+  it("fails closed when the hosted shell-skin column is absent", async () => {
     const updateChain = createUpdateChain({
       data: null,
       error: { code: "42703", message: "column app_shell_skin does not exist" },
     });
-    const selectChain = createSelectChain({
-      data: makeProfileRow({ app_shell_skin: null }),
-      error: null,
-    });
-    mocks.from.mockReturnValueOnce(updateChain).mockReturnValueOnce(selectChain);
+    mocks.from.mockReturnValue(updateChain);
 
-    const profile = await updateMyAppShellSkin("redline-print");
+    await expect(updateMyAppShellSkin("redline-print")).rejects.toThrow(
+      "Supabase profiles.app_shell_skin is unavailable",
+    );
 
     expect(updateChain.update).toHaveBeenCalledWith({ app_shell_skin: "redline-print" });
-    expect(selectChain.select).toHaveBeenCalled();
-    expect(profile.id).toBe("user-1");
-    expect(profile.appShellSkinId).toBeNull();
+    expect(mocks.from).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -194,18 +190,16 @@ describe("updateMyCustomTheme", () => {
     expect(profile.profileThemeId).toBe("catalog-theme");
   });
 
-  it("falls back to the current profile when the hosted custom-theme column is absent", async () => {
+  it("fails closed when the hosted custom-theme column is absent", async () => {
     const updateChain = createUpdateChain({
       data: null,
       error: { code: "42703", message: "column custom_theme_json does not exist" },
     });
-    const selectChain = createSelectChain({
-      data: makeProfileRow({ custom_theme_json: null }),
-      error: null,
-    });
-    mocks.from.mockReturnValueOnce(updateChain).mockReturnValueOnce(selectChain);
+    mocks.from.mockReturnValue(updateChain);
 
-    const profile = await updateMyCustomTheme(makeTheme());
+    await expect(updateMyCustomTheme(makeTheme())).rejects.toThrow(
+      "Supabase profiles.custom_theme_json is unavailable",
+    );
 
     expect(updateChain.update).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -213,9 +207,7 @@ describe("updateMyCustomTheme", () => {
         profile_theme_id: null,
       }),
     );
-    expect(selectChain.select).toHaveBeenCalled();
-    expect(profile.id).toBe("user-1");
-    expect(profile.customTheme).toBeNull();
+    expect(mocks.from).toHaveBeenCalledTimes(1);
   });
 });
 

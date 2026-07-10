@@ -37,12 +37,47 @@ Deno.test("achievement ingestion adapters bridge auth responses and admin client
         headers: { Authorization: "Bearer user-jwt" },
       }),
     ),
-    { adminClient, userId },
+    { adminClient, hasTrustedAttestation: false, userId },
   );
   assertEquals(calls, [
     "https://example.test/",
     "https://example.test/achievements",
   ]);
+});
+
+Deno.test("achievement ingestion adapters trust only a configured server relay secret", async () => {
+  const secret = "server-only-achievement-relay-secret-123456";
+  const adapters = createAchievementIngestionAdapters({
+    authenticateRequest: async () => authResult(supabaseStub()),
+    getEnv: (name) =>
+      name === "ACHIEVEMENT_INGESTION_ATTESTATION_SECRET" ? secret : undefined,
+  });
+
+  const trusted = await adapters.authenticateRequest(
+    new Request("https://example.test", {
+      headers: {
+        Authorization: "Bearer user-jwt",
+        "x-achievement-attestation": secret,
+      },
+    }),
+  );
+  if (trusted instanceof Response) {
+    throw new Error("Expected authenticated context.");
+  }
+  assertEquals(trusted.hasTrustedAttestation, true);
+
+  const spoofed = await adapters.authenticateRequest(
+    new Request("https://example.test", {
+      headers: {
+        Authorization: "Bearer user-jwt",
+        "x-achievement-attestation": "device-derived-or-wrong-secret",
+      },
+    }),
+  );
+  if (spoofed instanceof Response) {
+    throw new Error("Expected authenticated context.");
+  }
+  assertEquals(spoofed.hasTrustedAttestation, false);
 });
 
 Deno.test("achievement ingestion adapters read catalog games by id", async () => {
@@ -103,11 +138,23 @@ Deno.test("achievement ingestion adapters upsert definitions and return id map",
   const adapters = createAchievementIngestionAdapters({
     authenticateRequest: async () =>
       authResult(supabaseStub({
-        dataByMethod: {
-          in: [
-            { id: "achievement-1", key: "steam:FIRST_WIN" },
-            { id: null, key: "steam:IGNORED" },
-            { id: "achievement-2", key: "steam:LOCKED_HINT" },
+        dataByRpc: {
+          upsert_trusted_achievement_definitions: [
+            {
+              achievement_id: "achievement-1",
+              achievement_key: "steam:FIRST_WIN",
+              ingestion_accepted: true,
+            },
+            {
+              achievement_id: null,
+              achievement_key: "steam:IGNORED",
+              ingestion_accepted: true,
+            },
+            {
+              achievement_id: "achievement-2",
+              achievement_key: "steam:LOCKED_HINT",
+              ingestion_accepted: true,
+            },
           ],
         },
         operations,
@@ -117,6 +164,8 @@ Deno.test("achievement ingestion adapters upsert definitions and return id map",
   const ids = await adapters.upsertAchievementDefinitions(
     await authenticatedContext(adapters),
     gameId,
+    "steam",
+    "2026-06-15T10:05:00.000Z",
     [
       achievement({
         description: "Win once.",
@@ -133,34 +182,29 @@ Deno.test("achievement ingestion adapters upsert definitions and return id map",
     ],
   );
 
-  assertEquals(Array.from(ids.entries()), [
+  assertEquals(ids.accepted, true);
+  assertEquals(Array.from(ids.achievementIdsByKey.entries()), [
     ["steam:FIRST_WIN", "achievement-1"],
     ["steam:LOCKED_HINT", "achievement-2"],
   ]);
-  const upsert = operations.find((operation) => operation.method === "upsert");
-  const rows = upsert?.args[0] as Array<Record<string, unknown>>;
-  assertEquals(upsert?.args[1], { onConflict: "game_id,key" });
+  const upsert = operations.find((operation) => operation.method === "rpc");
+  const rpcArgs = upsert?.args[1] as Record<string, unknown>;
+  const rows = rpcArgs.p_achievements as Array<Record<string, unknown>>;
+  assertEquals(upsert?.args[0], "upsert_trusted_achievement_definitions");
   assertObjectMatch(rows[0], {
     description: "Win once.",
-    game_id: gameId,
     icon_url: "https://cdn.example/first.png",
-    is_active: true,
     key: "steam:FIRST_WIN",
     name: "First Win",
     points: 25,
     rarity: "uncommon",
+    rarity_percent: null,
   });
-  assertEquals(typeof rows[0].updated_at, "string");
-  assertEquals(operations.slice(2), [
-    { args: ["achievements"], method: "from" },
-    { args: ["id, key"], method: "select", table: "achievements" },
-    { args: ["game_id", gameId], method: "eq", table: "achievements" },
-    {
-      args: ["key", ["steam:FIRST_WIN", "steam:LOCKED_HINT"]],
-      method: "in",
-      table: "achievements",
-    },
-  ]);
+  assertObjectMatch(rpcArgs, {
+    p_game_id: gameId,
+    p_provider: "steam",
+    p_synced_at: "2026-06-15T10:05:00.000Z",
+  });
 });
 
 Deno.test("achievement ingestion adapters skip RPC when no unlock rows resolve", async () => {
@@ -231,7 +275,7 @@ Deno.test("achievement ingestion adapters call trusted unlock RPC with sanitized
         {
           p_game_id: gameId,
           p_game_title: "Fixture Game",
-          p_launcher_device_id: "device-1",
+          p_launcher_device_id: null,
           p_unlocks: [
             {
               achievement_id: "achievement-1",
@@ -268,6 +312,7 @@ Deno.test("achievement ingestion adapters surface Supabase errors", async () => 
           adminClient: supabaseStub({
             errorByMethod: { maybeSingle: new Error("game read failed") },
           }),
+          hasTrustedAttestation: true,
           userId,
         },
         gameId,
@@ -279,7 +324,11 @@ Deno.test("achievement ingestion adapters surface Supabase errors", async () => 
   const upsertAdapters = createAchievementIngestionAdapters({
     authenticateRequest: async () =>
       authResult(supabaseStub({
-        errorByMethod: { upsert: new Error("definition upsert failed") },
+        errorByRpc: {
+          upsert_trusted_achievement_definitions: new Error(
+            "definition upsert failed",
+          ),
+        },
       })),
   });
   await assertRejects(
@@ -287,6 +336,8 @@ Deno.test("achievement ingestion adapters surface Supabase errors", async () => 
       upsertAdapters.upsertAchievementDefinitions(
         await authenticatedContext(upsertAdapters),
         gameId,
+        "steam",
+        "2026-06-15T10:05:00.000Z",
         [achievement()],
       ),
     Error,
@@ -356,6 +407,7 @@ function achievement(
     provider: "steam",
     providerConfidence: "official",
     rarity: "common",
+    rarityPercent: null,
     sourceAchievementId: "FIRST_WIN",
     unlockedAt: null,
     ...overrides,

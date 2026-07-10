@@ -39,7 +39,13 @@ import {
 } from "../lib/supabase/social";
 import { getVisiblePresence, subscribeToPresenceChanges } from "../lib/supabase/presence";
 import { launchCrossPlayJoin, listInstalledGames } from "../lib/launcher";
-import { getOverlaySettings, saveOverlaySettings } from "../lib/overlay";
+import { groupGames } from "../lib/game-groups";
+import { hydrateGamesWithRemoteAchievements } from "../lib/supabase/achievements";
+import {
+  getOverlaySettings,
+  saveOverlaySettings,
+  setInGameOverlayClickThrough,
+} from "../lib/overlay";
 import { getMyFriendLinks } from "../lib/supabase/friend-links";
 import { sendGameInvite } from "../lib/supabase/social";
 import {
@@ -65,6 +71,8 @@ import type { UserPresence, ChatMessage } from "../lib/types/profile";
 import type { Game, UnifiedAchievement } from "../lib/types";
 import type { RealtimeMetrics } from "../lib/types/performance";
 import type { FriendLink } from "../lib/types/friends";
+import type { NativeOverlaySettings } from "../lib/types/overlay";
+import { AchievementPopupLayer } from "../components/achievements/AchievementPopupLayer";
 
 interface AntiCheatInfo {
   name: string;
@@ -82,6 +90,7 @@ type PerformanceChartPoint = {
 };
 
 const PERFORMANCE_CHART_SAMPLE_LIMIT = 60;
+const PERFORMANCE_SNAPSHOT_INTERVAL_MS = 5 * 60_000;
 const OVERLAY_SETTINGS_PREVIEW_KEY = "og-launcher:overlay-settings-preview";
 const OVERLAY_POSITIONS: OverlayPosition[] = [
   "top_left",
@@ -98,6 +107,42 @@ interface OverlayPanelState {
   y: number;
 }
 
+interface RuntimeOverlaySettings {
+  fpsHudEnabled: boolean;
+  isEnabled: boolean;
+  opacity: number;
+  position: OverlayPosition;
+  showGpu: boolean;
+}
+
+const DEFAULT_RUNTIME_OVERLAY_SETTINGS: RuntimeOverlaySettings = {
+  fpsHudEnabled: false,
+  isEnabled: true,
+  opacity: 0.95,
+  position: "bottom_right",
+  showGpu: true,
+};
+
+function normalizeRuntimeOverlaySettings(
+  settings: NativeOverlaySettings | null | undefined,
+): RuntimeOverlaySettings {
+  const position = OVERLAY_POSITIONS.includes(settings?.position as OverlayPosition)
+    ? (settings?.position as OverlayPosition)
+    : DEFAULT_RUNTIME_OVERLAY_SETTINGS.position;
+  const opacity =
+    typeof settings?.opacity === "number"
+      ? Math.min(1, Math.max(0.5, settings.opacity))
+      : DEFAULT_RUNTIME_OVERLAY_SETTINGS.opacity;
+
+  return {
+    fpsHudEnabled: settings?.fpsHudEnabled ?? DEFAULT_RUNTIME_OVERLAY_SETTINGS.fpsHudEnabled,
+    isEnabled: settings?.isEnabled ?? DEFAULT_RUNTIME_OVERLAY_SETTINGS.isEnabled,
+    opacity,
+    position,
+    showGpu: settings?.showGpu ?? DEFAULT_RUNTIME_OVERLAY_SETTINGS.showGpu,
+  };
+}
+
 export function OverlayPage() {
   const sessionStartedAt = useRef(Date.now());
   const [openPanels, setOpenPanels] = useState<OverlayPanel[]>([]);
@@ -107,6 +152,42 @@ export function OverlayPage() {
   const [acList, setAcList] = useState<AntiCheatInfo[]>([]);
   const [isChromeVisible, setIsChromeVisible] = useState(true);
   const [now, setNow] = useState(() => new Date());
+  const [runtimeSettings, setRuntimeSettings] = useState<RuntimeOverlaySettings>(
+    DEFAULT_RUNTIME_OVERLAY_SETTINGS,
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    let unlisten: (() => void) | undefined;
+    const applySettings = (settings: NativeOverlaySettings) => {
+      if (!cancelled) setRuntimeSettings(normalizeRuntimeOverlaySettings(settings));
+    };
+
+    if (isTauri()) {
+      void getOverlaySettings()
+        .then(applySettings)
+        .catch((error) => {
+          console.warn("[overlay] settings load failed:", error);
+        });
+      void listen<NativeOverlaySettings>("overlay-settings-updated", (event) => {
+        applySettings(event.payload);
+      }).then((cleanup) => {
+        unlisten = cleanup;
+      });
+    } else {
+      try {
+        const stored = localStorage.getItem(OVERLAY_SETTINGS_PREVIEW_KEY);
+        if (stored) applySettings(JSON.parse(stored) as NativeOverlaySettings);
+      } catch {
+        // Invalid browser preview state falls back to the safe defaults above.
+      }
+    }
+
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, []);
 
   useEffect(() => {
     if (!isTauri()) {
@@ -193,6 +274,16 @@ export function OverlayPage() {
     closeOverlayWindow();
   }, [closeOverlayWindow, isChromeVisible, openPanels, panelStates]);
 
+  useEffect(() => {
+    if (!isTauri()) return;
+
+    const hasPinnedPanel = openPanels.some((panel) => panelStates[panel]?.pinned);
+    const clickThrough = !isChromeVisible && hasPinnedPanel;
+    void setInGameOverlayClickThrough(clickThrough).catch((error) => {
+      console.warn("[overlay] pointer handling update failed:", error);
+    });
+  }, [isChromeVisible, openPanels, panelStates]);
+
   const blocked = acList.some((ac) => ac.blocks_overlay);
   const sessionSeconds = Math.max(0, Math.floor((now.getTime() - sessionStartedAt.current) / 1000));
 
@@ -275,20 +366,27 @@ export function OverlayPage() {
     { type: "panel", panel: "chat", label: "Chat", icon: MessageSquare },
     { type: "panel", panel: "achievements", label: "Achievements", icon: Trophy },
     { type: "panel", panel: "perf", label: "Performance", icon: Activity },
-    {
-      type: "action",
-      id: "fps",
-      label: "FPS-HUD",
-      icon: Monitor,
-      onClick: handleToggleFpsHud,
-    },
+    ...(runtimeSettings.fpsHudEnabled
+      ? [
+          {
+            type: "action" as const,
+            id: "fps",
+            label: "FPS-HUD",
+            icon: Monitor,
+            onClick: handleToggleFpsHud,
+          },
+        ]
+      : []),
     { type: "panel", panel: "settings", label: "Settings", icon: Settings },
   ];
 
   return (
     <div
       className={`relative h-screen w-screen overflow-hidden text-white ${isChromeVisible ? "bg-black/70" : "bg-transparent"}`}
+      data-overlay-position={runtimeSettings.position}
+      style={{ opacity: runtimeSettings.opacity }}
     >
+      <AchievementPopupLayer />
       {isChromeVisible && (
         <>
           <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle,rgba(255,249,237,0.11)_1px,transparent_1px)] bg-[length:10px_10px] opacity-40" />
@@ -373,14 +471,23 @@ export function OverlayPage() {
             {panel === "friends" && <OverlayFriendsTab />}
             {panel === "chat" && <OverlayChatTab />}
             {panel === "achievements" && <OverlayAchievementsTab />}
-            {panel === "perf" && <OverlayPerfTab />}
-            {panel === "settings" && <OverlaySettingsPanel onClose={() => closePanel(panel)} />}
+            {panel === "perf" && <OverlayPerfTab showGpu={runtimeSettings.showGpu} />}
+            {panel === "settings" && (
+              <OverlaySettingsPanel
+                onClose={() => closePanel(panel)}
+                onSaved={(settings) =>
+                  setRuntimeSettings(normalizeRuntimeOverlaySettings(settings))
+                }
+              />
+            )}
           </OverlayPanelShell>
         );
       })}
 
       {isChromeVisible && (
-        <nav className="absolute bottom-5 left-1/2 z-30 flex max-w-[calc(100vw-24px)] -translate-x-1/2 items-center gap-1 overflow-x-auto border-[3px] border-[#171411] bg-[#fff9ed] p-1.5 shadow-[5px_5px_0_#000]">
+        <nav
+          className={`absolute z-30 flex max-w-[calc(100vw-24px)] items-center gap-1 overflow-x-auto border-[3px] border-[#171411] bg-[#fff9ed] p-1.5 shadow-[5px_5px_0_#000] ${overlayDockPositionClass(runtimeSettings.position)}`}
+        >
           {dockItems.map((item) => {
             const Icon = item.icon;
             const isActive = item.type === "panel" && openPanels.includes(item.panel);
@@ -415,6 +522,19 @@ export function OverlayPage() {
       )}
     </div>
   );
+}
+
+function overlayDockPositionClass(position: OverlayPosition) {
+  switch (position) {
+    case "top_left":
+      return "left-5 top-20";
+    case "top_right":
+      return "right-5 top-20";
+    case "bottom_left":
+      return "bottom-5 left-5";
+    case "bottom_right":
+      return "bottom-5 right-5";
+  }
 }
 
 function OverlayFallbackDeck({
@@ -466,7 +586,7 @@ function OverlayFallbackDeck({
       </div>
       <div className="neo-copy mt-3 border-2 border-[#171411] bg-[#171411] px-3 py-2 text-[9px] font-black uppercase leading-4 text-[#fff9ed]">
         Fullscreen fallback: use Windowed/Borderless mode or the external HUD/notification path.
-        True injected in-game overlay remains a separate anti-cheat research track.
+        OG-Launcher never injects into or attaches to the game process.
       </div>
     </section>
   );
@@ -785,10 +905,18 @@ function clampPanelState(state: OverlayPanelState): OverlayPanelState {
 }
 
 /* ========== SETTINGS PANEL ========== */
-function OverlaySettingsPanel({ onClose }: { onClose: () => void }) {
+function OverlaySettingsPanel({
+  onClose,
+  onSaved,
+}: {
+  onClose: () => void;
+  onSaved: (settings: NativeOverlaySettings) => void;
+}) {
   const [hotkey, setHotkey] = useState("Shift+F1");
   const [opacity, setOpacity] = useState(95);
   const [pos, setPos] = useState<OverlayPosition>("bottom_right");
+  const [fpsHudEnabled, setFpsHudEnabled] = useState(false);
+  const [showGpu, setShowGpu] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
   const [status, setStatus] = useState("Loading settings...");
@@ -796,7 +924,7 @@ function OverlaySettingsPanel({ onClose }: { onClose: () => void }) {
   useEffect(() => {
     let cancelled = false;
 
-    function applySettings(settings: { hotkey?: string; opacity?: number; position?: string }) {
+    function applySettings(settings: NativeOverlaySettings) {
       const nextHotkey = settings.hotkey?.trim() || "Shift+F1";
       const rawOpacity = typeof settings.opacity === "number" ? settings.opacity : 0.95;
       const nextOpacity = rawOpacity <= 1 ? Math.round(rawOpacity * 100) : Math.round(rawOpacity);
@@ -807,6 +935,8 @@ function OverlaySettingsPanel({ onClose }: { onClose: () => void }) {
       setHotkey(nextHotkey);
       setOpacity(Math.min(100, Math.max(50, nextOpacity)));
       setPos(nextPosition);
+      setFpsHudEnabled(settings.fpsHudEnabled ?? false);
+      setShowGpu(settings.showGpu ?? true);
     }
 
     async function loadSettings() {
@@ -819,9 +949,7 @@ function OverlaySettingsPanel({ onClose }: { onClose: () => void }) {
 
         const stored = localStorage.getItem(OVERLAY_SETTINGS_PREVIEW_KEY);
         if (stored) {
-          applySettings(
-            JSON.parse(stored) as { hotkey?: string; opacity?: number; position?: string },
-          );
+          applySettings(JSON.parse(stored) as NativeOverlaySettings);
         }
         if (!cancelled) setStatus("Settings loaded for preview.");
       } catch (error) {
@@ -846,12 +974,12 @@ function OverlaySettingsPanel({ onClose }: { onClose: () => void }) {
   async function handleSave() {
     const nextHotkey = hotkey.trim() || "Shift+F1";
     const settings = {
-      fpsHudEnabled: false,
+      fpsHudEnabled,
       hotkey: nextHotkey,
       isEnabled: true,
       opacity: opacity / 100,
       position: pos,
-      showGpu: true,
+      showGpu,
     };
 
     setIsSaving(true);
@@ -863,8 +991,12 @@ function OverlaySettingsPanel({ onClose }: { onClose: () => void }) {
         setHotkey(saved.hotkey ?? nextHotkey);
         setOpacity(Math.min(100, Math.max(50, savedOpacity)));
         setPos(saved.position ?? pos);
+        setFpsHudEnabled(saved.fpsHudEnabled ?? fpsHudEnabled);
+        setShowGpu(saved.showGpu ?? showGpu);
+        onSaved(saved);
       } else {
         localStorage.setItem(OVERLAY_SETTINGS_PREVIEW_KEY, JSON.stringify(settings));
+        onSaved(settings);
       }
 
       setStatus(`Saved // ${nextHotkey} // ${opacity}% // ${pos.replace("_", " ")}`);
@@ -925,6 +1057,24 @@ function OverlaySettingsPanel({ onClose }: { onClose: () => void }) {
               </button>
             ))}
           </div>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            aria-pressed={fpsHudEnabled}
+            className={`neo-copy border-2 border-[#171411] px-2 py-1 text-[9px] font-black uppercase shadow-[2px_2px_0_#1f1c0f] ${fpsHudEnabled ? "bg-[#087d6d] text-white" : "bg-[#fff9ed] text-[#171411]"}`}
+            onClick={() => setFpsHudEnabled((enabled) => !enabled)}
+            type="button"
+          >
+            FPS HUD {fpsHudEnabled ? "On" : "Off"}
+          </button>
+          <button
+            aria-pressed={showGpu}
+            className={`neo-copy border-2 border-[#171411] px-2 py-1 text-[9px] font-black uppercase shadow-[2px_2px_0_#1f1c0f] ${showGpu ? "bg-[#087d6d] text-white" : "bg-[#fff9ed] text-[#171411]"}`}
+            onClick={() => setShowGpu((visible) => !visible)}
+            type="button"
+          >
+            GPU {showGpu ? "Shown" : "Hidden"}
+          </button>
         </div>
         <div className="flex justify-end gap-2 pt-1">
           <button
@@ -1406,35 +1556,74 @@ function OverlayChatTab() {
 }
 
 /* ========== ACHIEVEMENTS TAB ========== */
-function OverlayAchievementsTab() {
+export function OverlayAchievementsTab() {
+  const { isLoading: isAuthLoading, user } = useCurrentUser();
   const [games, setGames] = useState<Game[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [expandedGame, setExpandedGame] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
 
   useEffect(() => {
     let mounted = true;
-    listInstalledGames()
-      .then((g) => {
+    if (isAuthLoading) {
+      setGames([]);
+      setError(null);
+      setLoading(true);
+      return () => {
+        mounted = false;
+      };
+    }
+
+    setGames([]);
+    setError(null);
+    setLoading(true);
+    void (async () => {
+      try {
+        const localGames = await listInstalledGames();
+        const hydratedGames = await hydrateGamesWithRemoteAchievements(localGames);
+        const groupedGames = groupGames(hydratedGames)
+          .filter((group) => group.achievements.length > 0)
+          .map((group) => group.displayGame);
+        if (mounted) setGames(groupedGames);
+      } catch (loadError) {
         if (mounted) {
-          setGames(g.filter((game) => (game.achievements?.length ?? 0) > 0));
-          setLoading(false);
+          setError(loadError instanceof Error ? loadError.message : String(loadError));
         }
-      })
-      .catch((err) => {
-        if (mounted) {
-          console.error("[overlay] listInstalledGames failed:", err);
-          setLoading(false);
-        }
-      });
+      } finally {
+        if (mounted) setLoading(false);
+      }
+    })();
     return () => {
       mounted = false;
     };
-  }, []);
+  }, [isAuthLoading, reloadKey, user?.id]);
 
   if (loading)
     return (
       <div className="grid h-full place-items-center">
         <Loader2 className="animate-spin text-[#655f58]" size={20} />
+      </div>
+    );
+  if (error)
+    return (
+      <div className="space-y-3 border-[3px] border-[#171411] bg-[#fff9ed] p-3 text-[#171411] shadow-[3px_3px_0_#1f1c0f]">
+        <div className="flex items-start gap-2">
+          <ShieldAlert className="mt-0.5 shrink-0 text-[#b7102a]" size={18} />
+          <div>
+            <p className="neo-copy text-[10px] font-black uppercase text-[#b7102a]">
+              Achievement load failed
+            </p>
+            <p className="mt-1 text-[11px] font-bold text-[#5b403f]">{error}</p>
+          </div>
+        </div>
+        <button
+          className="neo-copy border-2 border-[#171411] bg-[#b7102a] px-3 py-1 text-[9px] font-black uppercase text-white shadow-[2px_2px_0_#1f1c0f]"
+          onClick={() => setReloadKey((current) => current + 1)}
+          type="button"
+        >
+          Retry Achievement Load
+        </button>
       </div>
     );
   if (games.length === 0)
@@ -1540,7 +1729,7 @@ function AchievementRow({ achievement }: { achievement: UnifiedAchievement }) {
   );
 }
 
-function OverlayPerfTab() {
+function OverlayPerfTab({ showGpu }: { showGpu: boolean }) {
   const [metrics, setMetrics] = useState<RealtimeMetrics | null>(null);
   const [history, setHistory] = useState<RealtimeMetrics[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -1592,7 +1781,7 @@ function OverlayPerfTab() {
       if (shouldPersist) {
         flushedSessionRef.current = false;
         sessionBufferRef.current = appendPerformanceSessionSample(sessionBufferRef.current, m);
-        if (now - lastPersistedAtRef.current > 30_000) {
+        if (now - lastPersistedAtRef.current > PERFORMANCE_SNAPSHOT_INTERVAL_MS) {
           lastPersistedAtRef.current = now;
           void savePerformanceSnapshotFromMetrics(m, {
             gameId: performanceGameId,
@@ -1657,7 +1846,7 @@ function OverlayPerfTab() {
       sample: index,
       value: selector(sample) ?? null,
     }));
-  const performanceCharts: Array<{
+  const allPerformanceCharts: Array<{
     color: string;
     data: PerformanceChartPoint[];
     fallbackDomain: [number, number];
@@ -1693,6 +1882,9 @@ function OverlayPerfTab() {
       value: `${latest.frameTimeMs.toFixed(1)} ms`,
     },
   ];
+  const performanceCharts = allPerformanceCharts.filter(
+    (chart) => showGpu || chart.label !== "GPU",
+  );
 
   return (
     <div className="space-y-3">
@@ -1733,7 +1925,7 @@ function OverlayPerfTab() {
           icon={Clock}
           color="#1f1c0f"
         />
-        {latest.gpuPercent != null && (
+        {showGpu && latest.gpuPercent != null && (
           <MetricCard
             label="GPU"
             value={`${latest.gpuPercent.toFixed(0)}%`}
@@ -1741,7 +1933,7 @@ function OverlayPerfTab() {
             color="#087d6d"
           />
         )}
-        {latest.gpuVramMb != null && (
+        {showGpu && latest.gpuVramMb != null && (
           <MetricCard
             label="VRAM"
             value={`${(latest.gpuVramMb / 1024).toFixed(1)} GB`}
@@ -1749,12 +1941,12 @@ function OverlayPerfTab() {
             color="#b7102a"
           />
         )}
-        {latest.gpuTempC != null && (
+        {showGpu && latest.gpuTempC != null && (
           <MetricCard
             label="GPU Temp"
             value={`${latest.gpuTempC.toFixed(0)} °C`}
             icon={Flame}
-            color="#f56c2d"
+            color="#b7102a"
           />
         )}
       </div>
