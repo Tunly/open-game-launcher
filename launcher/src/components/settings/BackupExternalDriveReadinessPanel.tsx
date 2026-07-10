@@ -20,10 +20,10 @@ export function BackupExternalDriveReadinessPanel({
       className="neo-dots border-[3px] border-black bg-[#fbf4e7] shadow-[3px_3px_0_#171411]"
     >
       <div className="border-b-2 border-black bg-[#171411] px-3 py-2 text-[#fbf4e7]">
-        <p className="neo-copy text-[9px] font-black uppercase tracking-[0.16em] text-[#8cf5e4]">
+        <p className="neo-copy text-[9px] font-black tracking-[0.16em] text-[#8cf5e4] uppercase">
           Removable Drive E2E
         </p>
-        <h3 className="mt-1 flex items-center gap-2 text-xl font-black uppercase leading-none">
+        <h3 className="mt-1 flex items-center gap-2 text-xl leading-none font-black uppercase">
           <HardDrive aria-hidden="true" className="h-5 w-5" />
           External Drive Backup Readiness
         </h3>
@@ -33,10 +33,10 @@ export function BackupExternalDriveReadinessPanel({
         <div className="border-2 border-black bg-[#efe6d4] p-3 shadow-[2px_2px_0_#171411]">
           <div className="flex flex-wrap items-start justify-between gap-2">
             <div>
-              <p className="neo-copy text-[9px] font-black uppercase text-[#55504a]">
+              <p className="neo-copy text-[9px] font-black text-[#55504a] uppercase">
                 {readiness.statusLabel}
               </p>
-              <p className="neo-title mt-1 text-4xl uppercase leading-none text-[#171411]">
+              <p className="neo-title mt-1 text-4xl leading-none text-[#171411] uppercase">
                 {readiness.readyCount}/{readiness.gates.length}
               </p>
             </div>
@@ -48,10 +48,10 @@ export function BackupExternalDriveReadinessPanel({
               {readiness.progress}%
             </span>
           </div>
-          <p className="neo-copy mt-2 text-[10px] font-black uppercase leading-5 text-[#55504a]">
+          <p className="neo-copy mt-2 text-[10px] leading-5 font-black text-[#55504a] uppercase">
             {readiness.summary}
           </p>
-          <p className="neo-copy mt-2 border-2 border-black bg-[#fff9ed] px-2 py-1 text-[9px] font-black uppercase leading-4 text-[#171411]">
+          <p className="neo-copy mt-2 border-2 border-black bg-[#fff9ed] px-2 py-1 text-[9px] leading-4 font-black text-[#171411] uppercase">
             Next: {readiness.nextAction}
           </p>
         </div>
@@ -64,7 +64,7 @@ export function BackupExternalDriveReadinessPanel({
 
         {readiness.removableMediaWriteProof ? (
           <div className="border-2 border-black bg-[#fff9ed] p-3 shadow-[2px_2px_0_#171411]">
-            <p className="neo-copy flex items-center gap-2 text-[10px] font-black uppercase text-[#087d6d]">
+            <p className="neo-copy flex items-center gap-2 text-[10px] font-black text-[#087d6d] uppercase">
               <HardDrive aria-hidden="true" className="h-4 w-4" />
               Sentinel Write Proof
             </p>
@@ -115,10 +115,10 @@ export function BackupExternalDriveReadinessPanel({
                 }
               />
             </div>
-            <p className="neo-copy mt-2 break-words border-2 border-black bg-[#efe6d4] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#171411]">
+            <p className="neo-copy mt-2 border-2 border-black bg-[#efe6d4] px-2 py-1 text-[8px] leading-4 font-black break-words text-[#171411] uppercase">
               SHA-256: {readiness.removableMediaWriteProof.sha256}
             </p>
-            <p className="neo-copy mt-2 break-words border-2 border-black bg-[#efe6d4] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#171411]">
+            <p className="neo-copy mt-2 border-2 border-black bg-[#efe6d4] px-2 py-1 text-[8px] leading-4 font-black break-words text-[#171411] uppercase">
               Proof file: {readiness.removableMediaWriteProof.proofPath}
             </p>
           </div>
@@ -126,7 +126,7 @@ export function BackupExternalDriveReadinessPanel({
 
         {readiness.removableMediaEjectProof ? (
           <div className="border-2 border-black bg-[#fff9ed] p-3 shadow-[2px_2px_0_#171411]">
-            <p className="neo-copy flex items-center gap-2 text-[10px] font-black uppercase text-[#087d6d]">
+            <p className="neo-copy flex items-center gap-2 text-[10px] font-black text-[#087d6d] uppercase">
               <ArchiveRestore aria-hidden="true" className="h-4 w-4" />
               Eject-Safety Proof
             </p>
@@ -170,13 +170,13 @@ export function BackupExternalDriveReadinessPanel({
               />
               <ProofStat label="Verified" value={readiness.removableMediaEjectProof.verifiedAt} />
             </div>
-            <p className="neo-copy mt-2 break-words border-2 border-black bg-[#efe6d4] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#171411]">
+            <p className="neo-copy mt-2 border-2 border-black bg-[#efe6d4] px-2 py-1 text-[8px] leading-4 font-black break-words text-[#171411] uppercase">
               SHA-256: {readiness.removableMediaEjectProof.sha256}
             </p>
-            <p className="neo-copy mt-2 break-words border-2 border-black bg-[#efe6d4] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#171411]">
+            <p className="neo-copy mt-2 border-2 border-black bg-[#efe6d4] px-2 py-1 text-[8px] leading-4 font-black break-words text-[#171411] uppercase">
               Proof file: {readiness.removableMediaEjectProof.proofPath}
             </p>
-            <p className="neo-copy mt-2 border-2 border-black bg-[#efe6d4] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#171411]">
+            <p className="neo-copy mt-2 border-2 border-black bg-[#efe6d4] px-2 py-1 text-[8px] leading-4 font-black text-[#171411] uppercase">
               Next: {readiness.removableMediaEjectProof.recommendedNextStep}
             </p>
           </div>
@@ -184,7 +184,7 @@ export function BackupExternalDriveReadinessPanel({
 
         {readiness.removableMediaOsEject ? (
           <div className="border-2 border-black bg-[#fff9ed] p-3 shadow-[2px_2px_0_#171411]">
-            <p className="neo-copy flex items-center gap-2 text-[10px] font-black uppercase text-[#087d6d]">
+            <p className="neo-copy flex items-center gap-2 text-[10px] font-black text-[#087d6d] uppercase">
               <ArchiveRestore aria-hidden="true" className="h-4 w-4" />
               OS Eject / Unmount
             </p>
@@ -206,24 +206,24 @@ export function BackupExternalDriveReadinessPanel({
               />
               <ProofStat label="Verified" value={readiness.removableMediaOsEject.verifiedAt} />
             </div>
-            <p className="neo-copy mt-2 border-2 border-black bg-[#efe6d4] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#171411]">
+            <p className="neo-copy mt-2 border-2 border-black bg-[#efe6d4] px-2 py-1 text-[8px] leading-4 font-black text-[#171411] uppercase">
               Next: {readiness.removableMediaOsEject.recommendedNextStep}
             </p>
           </div>
         ) : null}
 
         <div className="border-2 border-black bg-[#171411] p-3 text-[#fbf4e7] shadow-[2px_2px_0_#b7102a]">
-          <p className="neo-copy flex items-center gap-2 text-[10px] font-black uppercase text-[#8cf5e4]">
+          <p className="neo-copy flex items-center gap-2 text-[10px] font-black text-[#8cf5e4] uppercase">
             <ShieldCheck aria-hidden="true" className="h-4 w-4" />
             External-Drive Guard
           </p>
-          <p className="neo-copy mt-2 border-2 border-[#fbf4e7] bg-[#2a221b] px-2 py-1 text-[9px] font-black uppercase leading-4">
+          <p className="neo-copy mt-2 border-2 border-[#fbf4e7] bg-[#2a221b] px-2 py-1 text-[9px] leading-4 font-black uppercase">
             {readiness.guardCopy}
           </p>
           <div className="mt-2 grid gap-1.5 md:grid-cols-2">
             {readiness.guards.map((guard) => (
               <p
-                className="neo-copy border-2 border-[#fbf4e7] bg-[#2a221b] px-2 py-1 text-[8px] font-black uppercase leading-4"
+                className="neo-copy border-2 border-[#fbf4e7] bg-[#2a221b] px-2 py-1 text-[8px] leading-4 font-black uppercase"
                 key={guard}
               >
                 {guard}
@@ -239,8 +239,8 @@ export function BackupExternalDriveReadinessPanel({
 function ProofStat({ label, value }: { label: string; value: string }) {
   return (
     <div className="min-w-0 border-2 border-black bg-[#efe6d4] px-2 py-1 shadow-[1px_1px_0_#171411]">
-      <p className="neo-copy text-[8px] font-black uppercase text-[#55504a]">{label}</p>
-      <p className="neo-copy mt-1 truncate text-[10px] font-black uppercase text-[#171411]">
+      <p className="neo-copy text-[8px] font-black text-[#55504a] uppercase">{label}</p>
+      <p className="neo-copy mt-1 truncate text-[10px] font-black text-[#171411] uppercase">
         {value}
       </p>
     </div>
@@ -254,20 +254,20 @@ function BackupExternalDriveGateCard({ gate }: { gate: BackupExternalDriveGate }
         gate.status,
       )}`}
     >
-      <p className="neo-copy text-[8px] font-black uppercase tracking-[0.12em] text-[#55504a]">
+      <p className="neo-copy text-[8px] font-black tracking-[0.12em] text-[#55504a] uppercase">
         Backup Gate
       </p>
-      <h4 className="mt-1 flex items-center gap-1.5 text-sm font-black uppercase leading-tight text-[#171411]">
+      <h4 className="mt-1 flex items-center gap-1.5 text-sm leading-tight font-black text-[#171411] uppercase">
         <ArchiveRestore aria-hidden="true" className="h-4 w-4 shrink-0" />
         {gate.label}
       </h4>
-      <span className="neo-copy mt-2 inline-block border-2 border-black bg-[#fff9ed] px-1.5 py-0.5 text-[8px] font-black uppercase text-[#171411]">
+      <span className="neo-copy mt-2 inline-block border-2 border-black bg-[#fff9ed] px-1.5 py-0.5 text-[8px] font-black text-[#171411] uppercase">
         {gate.status}
       </span>
-      <p className="neo-copy mt-2 text-[8px] font-black uppercase leading-4 text-[#55504a]">
+      <p className="neo-copy mt-2 text-[8px] leading-4 font-black text-[#55504a] uppercase">
         {gate.detail}
       </p>
-      <p className="neo-copy mt-2 border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#171411]">
+      <p className="neo-copy mt-2 border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] leading-4 font-black text-[#171411] uppercase">
         {gate.action}
       </p>
     </article>

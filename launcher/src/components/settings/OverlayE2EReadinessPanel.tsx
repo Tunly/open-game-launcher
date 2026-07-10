@@ -16,7 +16,7 @@ export function OverlayE2EReadinessPanel({ readiness }: { readiness: OverlayE2ER
       className="neo-dots border-4 border-black bg-[#f5eedf] shadow-[5px_5px_0_#171411]"
     >
       <div className="border-b-4 border-black bg-[#171411] p-5 text-white">
-        <p className="neo-copy text-[10px] font-bold uppercase tracking-[0.16em] text-[#8cf5e4]">
+        <p className="neo-copy text-[10px] font-bold tracking-[0.16em] text-[#8cf5e4] uppercase">
           External Overlay Proof
         </p>
         <h2 className="neo-title mt-1 flex items-center gap-2 text-3xl leading-none">
@@ -29,10 +29,10 @@ export function OverlayE2EReadinessPanel({ readiness }: { readiness: OverlayE2ER
         <div className="border-2 border-black bg-[#efe6d4] p-3 shadow-[3px_3px_0_#171411]">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <p className="neo-copy text-[10px] font-black uppercase text-[#55504a]">
+              <p className="neo-copy text-[10px] font-black text-[#55504a] uppercase">
                 {readiness.statusLabel}
               </p>
-              <p className="neo-title mt-1 text-5xl uppercase leading-none text-[#171411]">
+              <p className="neo-title mt-1 text-5xl leading-none text-[#171411] uppercase">
                 {readiness.readyCount}/{readiness.gates.length}
               </p>
             </div>
@@ -44,10 +44,10 @@ export function OverlayE2EReadinessPanel({ readiness }: { readiness: OverlayE2ER
               {readiness.progress}%
             </span>
           </div>
-          <p className="neo-copy mt-3 text-[10px] font-black uppercase leading-5 text-[#55504a]">
+          <p className="neo-copy mt-3 text-[10px] leading-5 font-black text-[#55504a] uppercase">
             {readiness.summary}
           </p>
-          <p className="neo-copy mt-2 border-2 border-black bg-[#fff9ed] px-3 py-2 text-[9px] font-black uppercase leading-4 text-[#171411]">
+          <p className="neo-copy mt-2 border-2 border-black bg-[#fff9ed] px-3 py-2 text-[9px] leading-4 font-black text-[#171411] uppercase">
             Next: {readiness.nextAction}
           </p>
         </div>
@@ -62,25 +62,25 @@ export function OverlayE2EReadinessPanel({ readiness }: { readiness: OverlayE2ER
           <div className="border-2 border-black bg-[#fff9ed] p-3 shadow-[3px_3px_0_#171411]">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <p className="neo-copy flex items-center gap-2 text-[10px] font-black uppercase text-[#55504a]">
+                <p className="neo-copy flex items-center gap-2 text-[10px] font-black text-[#55504a] uppercase">
                   <TimerReset aria-hidden="true" className="h-4 w-4" />
                   Local Flush Proof
                 </p>
-                <h3 className="neo-title mt-1 text-2xl uppercase leading-none text-[#171411]">
+                <h3 className="neo-title mt-1 text-2xl leading-none text-[#171411] uppercase">
                   {readiness.sessionFlushProof.bufferLimit} sample cap
                 </h3>
               </div>
-              <span className="neo-copy border-2 border-black bg-[#8cf5e4] px-3 py-2 text-[9px] font-black uppercase text-[#171411] shadow-[2px_2px_0_#171411]">
+              <span className="neo-copy border-2 border-black bg-[#8cf5e4] px-3 py-2 text-[9px] font-black text-[#171411] uppercase shadow-[2px_2px_0_#171411]">
                 warning
               </span>
             </div>
-            <p className="neo-copy mt-2 border-2 border-black bg-[#efe6d4] px-3 py-2 text-[9px] font-black uppercase leading-4 text-[#171411]">
+            <p className="neo-copy mt-2 border-2 border-black bg-[#efe6d4] px-3 py-2 text-[9px] leading-4 font-black text-[#171411] uppercase">
               {readiness.sessionFlushProof.flushEventName}
             </p>
             <div className="mt-3 grid gap-2 md:grid-cols-3">
               {readiness.sessionFlushProof.triggers.map((trigger) => (
                 <p
-                  className="neo-copy border-2 border-black bg-[#f5eedf] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#171411]"
+                  className="neo-copy border-2 border-black bg-[#f5eedf] px-2 py-1 text-[8px] leading-4 font-black text-[#171411] uppercase"
                   key={trigger}
                 >
                   {trigger}
@@ -90,7 +90,7 @@ export function OverlayE2EReadinessPanel({ readiness }: { readiness: OverlayE2ER
             <div className="mt-3 grid gap-2 md:grid-cols-3">
               {readiness.sessionFlushProof.guards.map((guard) => (
                 <p
-                  className="neo-copy border-2 border-black bg-[#171411] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#fbf4e7]"
+                  className="neo-copy border-2 border-black bg-[#171411] px-2 py-1 text-[8px] leading-4 font-black text-[#fbf4e7] uppercase"
                   key={guard}
                 >
                   {guard}
@@ -101,17 +101,17 @@ export function OverlayE2EReadinessPanel({ readiness }: { readiness: OverlayE2ER
         )}
 
         <div className="border-2 border-black bg-[#171411] p-3 text-[#fbf4e7] shadow-[3px_3px_0_#b7102a]">
-          <p className="neo-copy flex items-center gap-2 text-[10px] font-black uppercase text-[#8cf5e4]">
+          <p className="neo-copy flex items-center gap-2 text-[10px] font-black text-[#8cf5e4] uppercase">
             <ShieldCheck aria-hidden="true" className="h-4 w-4" />
             Overlay Guard
           </p>
-          <p className="neo-copy mt-2 border-2 border-[#fbf4e7] bg-[#2a221b] px-3 py-2 text-[9px] font-black uppercase leading-4">
+          <p className="neo-copy mt-2 border-2 border-[#fbf4e7] bg-[#2a221b] px-3 py-2 text-[9px] leading-4 font-black uppercase">
             {readiness.guardCopy}
           </p>
           <div className="mt-2 grid gap-1.5 md:grid-cols-3">
             {readiness.guards.map((guard) => (
               <p
-                className="neo-copy border-2 border-[#fbf4e7] bg-[#2a221b] px-2 py-1 text-[8px] font-black uppercase leading-4"
+                className="neo-copy border-2 border-[#fbf4e7] bg-[#2a221b] px-2 py-1 text-[8px] leading-4 font-black uppercase"
                 key={guard}
               >
                 {guard}
@@ -131,20 +131,20 @@ function OverlayE2EGateCard({ gate }: { gate: OverlayE2EReadinessGate }) {
         gate.status,
       )}`}
     >
-      <p className="neo-copy text-[8px] font-black uppercase tracking-[0.12em] text-[#55504a]">
+      <p className="neo-copy text-[8px] font-black tracking-[0.12em] text-[#55504a] uppercase">
         Overlay Gate
       </p>
-      <h3 className="mt-1 flex items-center gap-1.5 text-sm font-black uppercase leading-tight text-[#171411]">
+      <h3 className="mt-1 flex items-center gap-1.5 text-sm leading-tight font-black text-[#171411] uppercase">
         <Zap aria-hidden="true" className="h-4 w-4 shrink-0" />
         {gate.label}
       </h3>
-      <span className="neo-copy mt-2 inline-block border-2 border-black bg-[#fff9ed] px-1.5 py-0.5 text-[8px] font-black uppercase text-[#171411]">
+      <span className="neo-copy mt-2 inline-block border-2 border-black bg-[#fff9ed] px-1.5 py-0.5 text-[8px] font-black text-[#171411] uppercase">
         {gate.status}
       </span>
-      <p className="neo-copy mt-2 text-[8px] font-black uppercase leading-4 text-[#55504a]">
+      <p className="neo-copy mt-2 text-[8px] leading-4 font-black text-[#55504a] uppercase">
         {gate.detail}
       </p>
-      <p className="neo-copy mt-2 border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#171411]">
+      <p className="neo-copy mt-2 border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] leading-4 font-black text-[#171411] uppercase">
         {gate.action}
       </p>
     </article>

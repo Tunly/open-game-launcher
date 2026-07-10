@@ -106,8 +106,8 @@ export function ClientUpdateSchedulerSettings() {
     <section className="border-4 border-black bg-[#f5eedf] shadow-[4px_4px_0_#171411]">
       <div className="flex flex-col gap-3 border-b-4 border-black p-5 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <p className="neo-copy text-[10px] font-bold uppercase text-[#55504a]">Client Manager</p>
-          <h2 className="text-3xl font-black uppercase text-[#171411]">Platform Client Timer</h2>
+          <p className="neo-copy text-[10px] font-bold text-[#55504a] uppercase">Client Manager</p>
+          <h2 className="text-3xl font-black text-[#171411] uppercase">Platform Client Timer</h2>
         </div>
         <Timer className="h-10 w-10 text-[#c20b2f]" />
       </div>
@@ -120,16 +120,16 @@ export function ClientUpdateSchedulerSettings() {
         >
           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div className="min-w-0">
-              <p className="neo-copy text-[10px] font-black uppercase text-[#55504a]">
+              <p className="neo-copy text-[10px] font-black text-[#55504a] uppercase">
                 Headless Update Check
               </p>
-              <h3 className="mt-1 text-xl font-black uppercase text-[#171411]">
+              <h3 className="mt-1 text-xl font-black text-[#171411] uppercase">
                 {installed ? "Timer Armed" : "Timer Not Installed"}
               </h3>
-              <p className="neo-copy mt-1 break-words text-[10px] font-bold uppercase leading-4 text-[#55504a]">
+              <p className="neo-copy mt-1 text-[10px] leading-4 font-bold break-words text-[#55504a] uppercase">
                 {status?.message ?? "Checking platform-client timer status."}
               </p>
-              <p className="neo-copy mt-2 break-words text-[9px] font-black uppercase leading-4 text-[#55504a]">
+              <p className="neo-copy mt-2 text-[9px] leading-4 font-black break-words text-[#55504a] uppercase">
                 Notify Only records due checks. Open Client opens the configured updater only after
                 a detected version gap.
               </p>
@@ -160,10 +160,10 @@ export function ClientUpdateSchedulerSettings() {
           </div>
 
           <div className="mt-2 grid gap-2 md:grid-cols-2">
-            <p className="neo-copy truncate border-2 border-black bg-[#fff9ed] px-3 py-2 text-[9px] font-bold uppercase text-[#55504a]">
+            <p className="neo-copy truncate border-2 border-black bg-[#fff9ed] px-3 py-2 text-[9px] font-bold text-[#55504a] uppercase">
               Config: {status?.configPath ?? "not loaded"}
             </p>
-            <p className="neo-copy truncate border-2 border-black bg-[#fff9ed] px-3 py-2 text-[9px] font-bold uppercase text-[#55504a]">
+            <p className="neo-copy truncate border-2 border-black bg-[#fff9ed] px-3 py-2 text-[9px] font-bold text-[#55504a] uppercase">
               Last Result:{" "}
               {status?.lastRun
                 ? `${status.lastRun.success ? "success" : "failed"} / ${status.lastRun.checkedCount} checked / ${status.lastRun.updateCount} updates`
@@ -200,7 +200,7 @@ export function ClientUpdateSchedulerSettings() {
         </div>
 
         {message ? (
-          <div className="neo-copy border-2 border-black bg-[#087d6d] px-3 py-2 text-[10px] font-black uppercase text-white shadow-[2px_2px_0_#171411]">
+          <div className="neo-copy border-2 border-black bg-[#087d6d] px-3 py-2 text-[10px] font-black text-white uppercase shadow-[2px_2px_0_#171411]">
             {message}
           </div>
         ) : null}
@@ -208,14 +208,14 @@ export function ClientUpdateSchedulerSettings() {
         <div className="border-2 border-black bg-[#fff9ed] p-3 shadow-[2px_2px_0_#171411]">
           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div className="min-w-0">
-              <p className="neo-copy text-[10px] font-black uppercase text-[#55504a]">
+              <p className="neo-copy text-[10px] font-black text-[#55504a] uppercase">
                 Local Usage Stats
               </p>
-              <h3 className="mt-1 flex items-center gap-2 text-xl font-black uppercase text-[#171411]">
+              <h3 className="mt-1 flex items-center gap-2 text-xl font-black text-[#171411] uppercase">
                 <BarChart3 className="h-5 w-5 text-[#087d6d]" />
                 Platform Counters
               </h3>
-              <p className="neo-copy mt-1 text-[10px] font-bold uppercase leading-4 text-[#55504a]">
+              <p className="neo-copy mt-1 text-[10px] leading-4 font-bold text-[#55504a] uppercase">
                 Opt-in only. Stored locally. No network telemetry.
               </p>
             </div>
@@ -240,7 +240,7 @@ export function ClientUpdateSchedulerSettings() {
                   />
                 ))
             ) : (
-              <div className="neo-copy border-2 border-dashed border-black bg-[#f6edd8] p-2 text-[9px] font-bold uppercase leading-4 text-[#55504a] md:col-span-3">
+              <div className="neo-copy border-2 border-dashed border-black bg-[#f6edd8] p-2 text-[9px] leading-4 font-bold text-[#55504a] uppercase md:col-span-3">
                 No local samples recorded yet.
               </div>
             )}
@@ -279,7 +279,7 @@ function SchedulerButton({
 }) {
   return (
     <button
-      className="neo-copy flex h-10 items-center justify-center gap-2 border-2 border-black bg-[#171411] px-3 text-[9px] font-black uppercase text-white shadow-[2px_2px_0_#171411] disabled:cursor-not-allowed disabled:bg-[#8f887d] disabled:opacity-70"
+      className="neo-copy flex h-10 items-center justify-center gap-2 border-2 border-black bg-[#171411] px-3 text-[9px] font-black text-white uppercase shadow-[2px_2px_0_#171411] disabled:cursor-not-allowed disabled:bg-[#8f887d] disabled:opacity-70"
       disabled={disabled}
       type="button"
       onClick={onClick}
@@ -293,8 +293,8 @@ function SchedulerButton({
 function SchedulerStat({ label, value }: { label: string; value: string }) {
   return (
     <div className="border-2 border-black bg-[#fff9ed] p-2 shadow-[2px_2px_0_#171411]">
-      <p className="neo-copy text-[8px] font-black uppercase text-[#55504a]">{label}</p>
-      <p className="neo-copy mt-1 truncate text-[10px] font-black uppercase leading-4 text-[#171411]">
+      <p className="neo-copy text-[8px] font-black text-[#55504a] uppercase">{label}</p>
+      <p className="neo-copy mt-1 truncate text-[10px] leading-4 font-black text-[#171411] uppercase">
         {value}
       </p>
     </div>

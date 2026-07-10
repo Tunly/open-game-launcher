@@ -18,7 +18,7 @@ export function WishlistShowcase({ items }: { items: WishlistPreviewItem[] }) {
                 <p className="neo-title truncate text-2xl leading-none text-[#171411]">
                   {item.title}
                 </p>
-                <p className="neo-copy mt-1 text-[10px] font-black uppercase text-[#5b403f]">
+                <p className="neo-copy mt-1 text-[10px] font-black text-[#5b403f] uppercase">
                   Price watch armed
                 </p>
               </div>

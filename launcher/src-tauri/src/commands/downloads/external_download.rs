@@ -76,7 +76,7 @@ where
 {
     let clean_id = game_id.replace("-owned-", "-");
     let normalized_requested_title = xbox_product_id_from_game_id(game_id)
-        .and_then(|_| requested_title)
+        .and(requested_title)
         .and_then(normalize_game_title)
         .filter(|title| title != "unknown game");
     let mut exact_id_match = false;

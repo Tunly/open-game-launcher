@@ -47,21 +47,21 @@ export function CatalogSourceTape({
       className="grid gap-3 border-[3px] border-black bg-[#fff9ed] p-3 shadow-[3px_3px_0_#171411] md:grid-cols-[220px_1fr_150px]"
     >
       <div>
-        <p className="neo-copy text-[9px] font-black uppercase tracking-[0.16em] text-[#b7102a]">
+        <p className="neo-copy text-[9px] font-black tracking-[0.16em] text-[#b7102a] uppercase">
           Catalog Source
         </p>
         <h2 className="neo-title mt-1 text-2xl leading-none text-[#171411]">
           {catalogSourceLabel(source)}
         </h2>
       </div>
-      <p className="neo-copy border-2 border-black bg-[#f6edd8] p-2 text-[10px] font-black uppercase leading-5 tracking-[0.08em] text-[#171411]">
+      <p className="neo-copy border-2 border-black bg-[#f6edd8] p-2 text-[10px] leading-5 font-black tracking-[0.08em] text-[#171411] uppercase">
         {catalogSourceDetail(source)}
         {source === "error" && errorMessage ? ` Error: ${errorMessage}` : ""}
       </p>
       <div className="grid grid-cols-2 gap-2 md:grid-cols-1">
         <SupportStamp label="Products" value={String(productCount)} />
         <span
-          className={`neo-copy inline-flex items-center justify-center border-2 border-black px-2 py-1 text-[10px] font-black uppercase tracking-[0.1em] shadow-[2px_2px_0_#171411] ${
+          className={`neo-copy inline-flex items-center justify-center border-2 border-black px-2 py-1 text-[10px] font-black tracking-[0.1em] uppercase shadow-[2px_2px_0_#171411] ${
             isHosted ? "bg-[#8cf5e4] text-[#171411]" : "bg-[#f6edd8] text-[#171411]"
           }`}
         >
@@ -85,7 +85,7 @@ export function StoreMetric({
 }) {
   const content = (
     <>
-      <div className="neo-copy flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.12em] text-[#b7102a]">
+      <div className="neo-copy flex items-center gap-2 text-[10px] font-black tracking-[0.12em] text-[#b7102a] uppercase">
         {icon}
         {label}
       </div>

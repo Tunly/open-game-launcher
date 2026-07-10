@@ -480,7 +480,7 @@ export function AppShell({
         >
           <div className="app-shell-brand-row flex min-w-0 items-center gap-3">
             <button
-              className="neo-title app-shell-brand min-w-0 max-w-[min(65vw,420px)] shrink truncate text-left text-[1.75rem] leading-none sm:text-[2rem] lg:text-[2.5rem] xl:text-[3rem]"
+              className="neo-title app-shell-brand max-w-[min(65vw,420px)] min-w-0 shrink truncate text-left text-[1.75rem] leading-none sm:text-[2rem] lg:text-[2.5rem] xl:text-[3rem]"
               type="button"
               onClick={() => onNavigate("store")}
             >
@@ -508,7 +508,7 @@ export function AppShell({
                   }}
                 >
                   {unreadNotificationCount > 0 ? (
-                    <span className="neo-copy app-shell-primary absolute -right-2 -top-2 flex h-5 min-w-5 items-center justify-center border-2 border-black px-1 text-[10px] font-black">
+                    <span className="neo-copy app-shell-primary absolute -top-2 -right-2 flex h-5 min-w-5 items-center justify-center border-2 border-black px-1 text-[10px] font-black">
                       {unreadNotificationCount}
                     </span>
                   ) : null}
@@ -651,12 +651,12 @@ function NotificationMenu({
   return (
     <div
       aria-label="Notifications"
-      className="app-shell-surface absolute right-0 top-full z-50 mt-3 w-[min(22rem,calc(100vw-2rem))] border-4 border-black p-3 shadow-[7px_7px_0_#1f1c0f]"
+      className="app-shell-surface absolute top-full right-0 z-50 mt-3 w-[min(22rem,calc(100vw-2rem))] border-4 border-black p-3 shadow-[7px_7px_0_#1f1c0f]"
       role="dialog"
     >
       <div className="mb-3 flex items-start justify-between gap-3 border-b-2 border-black pb-3">
         <div>
-          <p className="neo-copy text-[10px] font-black uppercase tracking-[0.14em] text-[#b7102a]">
+          <p className="neo-copy text-[10px] font-black tracking-[0.14em] text-[#b7102a] uppercase">
             Launcher Feed
           </p>
           <h2 className="neo-title text-3xl leading-none text-[#1f1c0f]">Notifications</h2>
@@ -682,7 +682,7 @@ function NotificationMenu({
             />
           ))
         ) : (
-          <p className="neo-copy border-2 border-dashed border-black bg-[#f6edd8] p-4 text-[10px] font-black uppercase leading-5 text-[#5b403f]">
+          <p className="neo-copy border-2 border-dashed border-black bg-[#f6edd8] p-4 text-[10px] leading-5 font-black text-[#5b403f] uppercase">
             No launcher notifications yet. Real download, backup, and client-update events will
             appear here.
           </p>
@@ -690,7 +690,7 @@ function NotificationMenu({
       </div>
 
       <button
-        className="neo-copy mt-3 h-10 w-full border-2 border-black bg-[#1f1c0f] px-3 text-[11px] font-black uppercase tracking-[0.1em] text-[#fff9ed] shadow-[2px_2px_0_#1f1c0f] disabled:cursor-not-allowed disabled:opacity-45"
+        className="neo-copy mt-3 h-10 w-full border-2 border-black bg-[#1f1c0f] px-3 text-[11px] font-black tracking-[0.1em] text-[#fff9ed] uppercase shadow-[2px_2px_0_#1f1c0f] disabled:cursor-not-allowed disabled:opacity-45"
         disabled={unreadNotificationCount === 0}
         type="button"
         onClick={onMarkAllRead}
@@ -722,17 +722,17 @@ function NotificationCard({
         <NotificationIcon type={item.type} />
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-2">
-            <h3 className="neo-copy text-[11px] font-black uppercase text-[#1f1c0f]">
+            <h3 className="neo-copy text-[11px] font-black text-[#1f1c0f] uppercase">
               {item.title}
             </h3>
-            <span className="neo-copy shrink-0 text-[10px] font-bold uppercase text-[#5b403f]">
+            <span className="neo-copy shrink-0 text-[10px] font-bold text-[#5b403f] uppercase">
               {item.time}
             </span>
           </div>
           <p className="mt-1 text-sm leading-5 text-[#5b403f]">{item.message}</p>
           {action ? (
             <button
-              className="neo-copy app-shell-secondary app-shell-secondary-hover mt-3 border-2 border-black px-3 py-2 text-[10px] font-black uppercase tracking-[0.1em] shadow-[2px_2px_0_#1f1c0f] transition hover:-translate-y-0.5"
+              className="neo-copy app-shell-secondary app-shell-secondary-hover mt-3 border-2 border-black px-3 py-2 text-[10px] font-black tracking-[0.1em] uppercase shadow-[2px_2px_0_#1f1c0f] transition hover:-translate-y-0.5"
               type="button"
               onClick={() => onAction(action.page)}
             >
@@ -805,7 +805,7 @@ function ProfileMenu({
 }) {
   return (
     <div
-      className="app-shell-surface absolute right-0 top-full z-50 mt-3 w-72 border-4 border-black p-3 shadow-[7px_7px_0_#1f1c0f]"
+      className="app-shell-surface absolute top-full right-0 z-50 mt-3 w-72 border-4 border-black p-3 shadow-[7px_7px_0_#1f1c0f]"
       role="menu"
     >
       <div className="mb-3 flex min-w-0 items-center gap-3 border-b-2 border-black pb-3">
@@ -816,7 +816,7 @@ function ProfileMenu({
           size="lg"
         />
         <div className="min-w-0">
-          <p className="neo-copy truncate text-[11px] font-black uppercase text-[#1f1c0f]">
+          <p className="neo-copy truncate text-[11px] font-black text-[#1f1c0f] uppercase">
             {usernameLabel}
           </p>
         </div>
@@ -916,7 +916,7 @@ function ProfileMenuItem({
 }) {
   return (
     <button
-      className={`neo-copy flex h-11 w-full items-center gap-3 border-2 border-black px-3 text-left text-[11px] font-black uppercase tracking-[0.1em] shadow-[2px_2px_0_#1f1c0f] transition hover:-translate-y-0.5 ${
+      className={`neo-copy flex h-11 w-full items-center gap-3 border-2 border-black px-3 text-left text-[11px] font-black tracking-[0.1em] uppercase shadow-[2px_2px_0_#1f1c0f] transition hover:-translate-y-0.5 ${
         tone === "danger" ? "app-shell-primary" : "app-shell-surface-dim"
       } disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0`}
       disabled={disabled}

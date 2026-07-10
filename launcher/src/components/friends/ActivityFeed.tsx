@@ -111,14 +111,14 @@ function ActivityFeedArticle({ index, item }: { index: number; item: ActivityFee
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-            <p className="neo-copy text-[11px] font-black uppercase tracking-[0.08em] text-[#171411]">
+            <p className="neo-copy text-[11px] font-black tracking-[0.08em] text-[#171411] uppercase">
               {player}
             </p>
-            <span className="neo-copy text-[10px] font-black uppercase text-[#655f58]">
+            <span className="neo-copy text-[10px] font-black text-[#655f58] uppercase">
               {timeAgo(item.createdAt)}
             </span>
           </div>
-          <p className="mt-1 text-sm font-bold leading-5 text-[#5b403f]">
+          <p className="mt-1 text-sm leading-5 font-bold text-[#5b403f]">
             {activityDescription(item)}
           </p>
         </div>
@@ -129,8 +129,8 @@ function ActivityFeedArticle({ index, item }: { index: number; item: ActivityFee
 
       {isStatus ? (
         <div className="mt-3 border-[3px] border-black bg-[#f6edd8] p-4 shadow-[3px_3px_0_#171411]">
-          <p className="text-sm font-black leading-6 text-[#171411]">{statusText(item)}</p>
-          <span className="neo-copy mt-3 inline-flex border-2 border-black bg-[#fff9ed] px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-[#171411] shadow-[1px_1px_0_#171411]">
+          <p className="text-sm leading-6 font-black text-[#171411]">{statusText(item)}</p>
+          <span className="neo-copy mt-3 inline-flex border-2 border-black bg-[#fff9ed] px-2 py-1 text-[9px] font-black tracking-[0.12em] text-[#171411] uppercase shadow-[1px_1px_0_#171411]">
             {item.visibility}
           </span>
         </div>
@@ -149,7 +149,7 @@ function ActivityFeedArticle({ index, item }: { index: number; item: ActivityFee
                   {platformLabel ?? "Source unknown"}
                 </span>
               ) : null}
-              <span className="neo-copy border-2 border-black bg-[#fff9ed] px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-[#171411] shadow-[1px_1px_0_#171411]">
+              <span className="neo-copy border-2 border-black bg-[#fff9ed] px-2 py-1 text-[9px] font-black tracking-[0.12em] text-[#171411] uppercase shadow-[1px_1px_0_#171411]">
                 {item.visibility}
               </span>
             </div>
@@ -160,7 +160,7 @@ function ActivityFeedArticle({ index, item }: { index: number; item: ActivityFee
                 style={{ width: item.type === "achievement_unlocked" ? "72%" : "48%" }}
               />
             </div>
-            <p className="neo-copy mt-2 text-[10px] font-black uppercase leading-4 text-[#655f58]">
+            <p className="neo-copy mt-2 text-[10px] leading-4 font-black text-[#655f58] uppercase">
               {item.type === "achievement_unlocked"
                 ? `Achievement progress updated: ${item.achievementName ?? "Unlocked"}`
                 : "Session activity posted from launcher presence."}
@@ -170,7 +170,7 @@ function ActivityFeedArticle({ index, item }: { index: number; item: ActivityFee
       )}
 
       <div className="mt-3 flex flex-wrap items-center gap-2 border-t-2 border-black pt-3">
-        <span className="neo-copy text-[9px] font-black uppercase tracking-[0.12em] text-[#655f58]">
+        <span className="neo-copy text-[9px] font-black tracking-[0.12em] text-[#655f58] uppercase">
           Live feed item #{String(index + 1).padStart(2, "0")}
         </span>
       </div>
@@ -246,9 +246,9 @@ export function ActivityFeed({ friendIds }: ActivityFeedProps) {
         <p className="neo-title text-2xl leading-none text-[#171411]">
           Friend activity could not be loaded.
         </p>
-        <p className="neo-copy mt-2 text-[11px] font-bold leading-5 text-[#5b403f]">{loadError}</p>
+        <p className="neo-copy mt-2 text-[11px] leading-5 font-bold text-[#5b403f]">{loadError}</p>
         <button
-          className="neo-copy mt-3 border-2 border-black bg-[#b7102a] px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-white shadow-[2px_2px_0_#171411] transition hover:-translate-y-0.5 disabled:opacity-60"
+          className="neo-copy mt-3 border-2 border-black bg-[#b7102a] px-3 py-2 text-[10px] font-black tracking-[0.12em] text-white uppercase shadow-[2px_2px_0_#171411] transition hover:-translate-y-0.5 disabled:opacity-60"
           type="button"
           onClick={() => void loadFeed()}
         >
@@ -260,7 +260,7 @@ export function ActivityFeed({ friendIds }: ActivityFeedProps) {
 
   if (items.length === 0) {
     return (
-      <p className="neo-copy border-2 border-dashed border-black bg-[#f6edd8] p-4 text-center text-[11px] font-bold uppercase text-[#655f58]">
+      <p className="neo-copy border-2 border-dashed border-black bg-[#f6edd8] p-4 text-center text-[11px] font-bold text-[#655f58] uppercase">
         No recent activity from friends.
       </p>
     );
@@ -275,7 +275,7 @@ export function ActivityFeed({ friendIds }: ActivityFeedProps) {
         return (
           <div className="space-y-3" key={item.id}>
             {day !== previousDay ? (
-              <div className="neo-copy border-y-[3px] border-black bg-[#171411] px-3 py-2 text-[10px] font-black uppercase tracking-[0.14em] text-[#fff9ed]">
+              <div className="neo-copy border-y-[3px] border-black bg-[#171411] px-3 py-2 text-[10px] font-black tracking-[0.14em] text-[#fff9ed] uppercase">
                 {day}
               </div>
             ) : null}

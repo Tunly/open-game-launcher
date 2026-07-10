@@ -23,14 +23,14 @@ export function FavoriteGamesShowcase({ games }: { games: LibraryPreviewItem[] }
                 <div
                   className={`${artClasses[index % artClasses.length]} grid h-24 place-items-end border-b-[3px] border-black p-2`}
                 >
-                  <span className="neo-copy border-2 border-black bg-[#fff9ed] px-2 py-1 text-[9px] font-black uppercase text-[#171411] shadow-[2px_2px_0_#171411]">
+                  <span className="neo-copy border-2 border-black bg-[#fff9ed] px-2 py-1 text-[9px] font-black text-[#171411] uppercase shadow-[2px_2px_0_#171411]">
                     Slot {index + 1}
                   </span>
                 </div>
               )}
               <div className="p-3">
                 <p className="neo-title text-2xl leading-none text-[#171411]">{game.title}</p>
-                <p className="neo-copy mt-2 text-[11px] font-black uppercase text-[#5b403f]">
+                <p className="neo-copy mt-2 text-[11px] font-black text-[#5b403f] uppercase">
                   {Math.floor(game.playtimeMinutes / 60)}h played
                 </p>
               </div>

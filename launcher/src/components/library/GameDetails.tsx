@@ -580,7 +580,7 @@ function ClientPathOverlayPreflightPanel({ preflight }: { preflight: ClientPathO
         </span>
       </div>
       <div className="space-y-2 pt-2">
-        <p className="neo-copy border-2 border-black bg-[#fbf4e7] px-2 py-1.5 text-[9px] font-black uppercase leading-4 text-[#171411]">
+        <p className="neo-copy border-2 border-black bg-[#fbf4e7] px-2 py-1.5 text-[9px] leading-4 font-black text-[#171411] uppercase">
           {preflight.message}
         </p>
         <div className="grid gap-1.5 sm:grid-cols-4">
@@ -591,10 +591,10 @@ function ClientPathOverlayPreflightPanel({ preflight }: { preflight: ClientPathO
             { label: "Blocked", value: String(preflight.blockedCount) },
           ].map((item) => (
             <div key={item.label} className="border-2 border-black bg-[#f6edd8] px-2 py-1">
-              <span className="neo-copy block text-[8px] font-black uppercase text-[#655f58]">
+              <span className="neo-copy block text-[8px] font-black text-[#655f58] uppercase">
                 {item.label}
               </span>
-              <strong className="neo-copy mt-0.5 block truncate text-[9px] font-black uppercase text-[#171411]">
+              <strong className="neo-copy mt-0.5 block truncate text-[9px] font-black text-[#171411] uppercase">
                 {item.value}
               </strong>
             </div>
@@ -606,10 +606,10 @@ function ClientPathOverlayPreflightPanel({ preflight }: { preflight: ClientPathO
               <div key={entry.id} className="border-2 border-black bg-[#fbf4e7] p-2">
                 <div className="flex min-w-0 items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <p className="truncate text-[11px] font-black uppercase text-[#171411]">
+                    <p className="truncate text-[11px] font-black text-[#171411] uppercase">
                       {entry.label}
                     </p>
-                    <p className="neo-copy mt-1 truncate text-[8px] font-bold uppercase text-[#655f58]">
+                    <p className="neo-copy mt-1 truncate text-[8px] font-bold text-[#655f58] uppercase">
                       {entry.mode === "readOnly"
                         ? "Read-only"
                         : entry.mode === "writable"
@@ -632,7 +632,7 @@ function ClientPathOverlayPreflightPanel({ preflight }: { preflight: ClientPathO
                       className="grid grid-cols-[92px_64px_minmax(0,1fr)] items-center gap-1 border border-black bg-[#f6edd8] px-1.5 py-1"
                       key={`${entry.id}-${check.label}-${check.detail}`}
                     >
-                      <span className="neo-copy truncate text-[8px] font-black uppercase text-[#171411]">
+                      <span className="neo-copy truncate text-[8px] font-black text-[#171411] uppercase">
                         {check.label}
                       </span>
                       <span
@@ -642,7 +642,7 @@ function ClientPathOverlayPreflightPanel({ preflight }: { preflight: ClientPathO
                       >
                         {check.status}
                       </span>
-                      <span className="neo-copy truncate text-[8px] font-bold uppercase text-[#655f58]">
+                      <span className="neo-copy truncate text-[8px] font-bold text-[#655f58] uppercase">
                         {check.detail}
                       </span>
                     </div>
@@ -652,7 +652,7 @@ function ClientPathOverlayPreflightPanel({ preflight }: { preflight: ClientPathO
             ))}
           </div>
         ) : null}
-        <p className="neo-copy border-2 border-black bg-[#b7102a] px-2 py-1.5 text-[9px] font-black uppercase leading-4 text-white">
+        <p className="neo-copy border-2 border-black bg-[#b7102a] px-2 py-1.5 text-[9px] leading-4 font-black text-white uppercase">
           Preflight only. Real path overlay application stays gated until provider-approved mount or
           OS-safe apply support exists.
         </p>
@@ -1581,7 +1581,7 @@ export function GameDetails({
       <div className="library-scroll-frame relative z-10 min-h-0 min-w-0">
         <main
           ref={detailScrollRef}
-          className="library-detail-scroll h-full min-h-0 min-w-0 overflow-y-auto overflow-x-hidden"
+          className="library-detail-scroll h-full min-h-0 min-w-0 overflow-x-hidden overflow-y-auto"
         >
           {shouldShowLibraryLoading ? (
             <section
@@ -1590,11 +1590,11 @@ export function GameDetails({
             >
               <div className="max-w-[560px] border-4 border-black bg-[#fbf4e7] p-8 shadow-[8px_8px_0_#171411]">
                 <Settings className="mx-auto mb-4 h-10 w-10 animate-[spin_4s_linear_infinite] text-[#087d6d]" />
-                <h2 className="neo-title mb-2 text-3xl uppercase text-[#171411]">
+                <h2 className="neo-title mb-2 text-3xl text-[#171411] uppercase">
                   LOADING LIBRARY
                 </h2>
                 <div className="neo-dots mx-auto mb-4 h-1.5 w-12 bg-black" />
-                <p className="neo-copy text-[14px] font-black uppercase text-[#6c675e]">
+                <p className="neo-copy text-[14px] font-black text-[#6c675e] uppercase">
                   Reading saved games. Library sync watches installs automatically.
                 </p>
               </div>
@@ -1627,7 +1627,7 @@ export function GameDetails({
                     <div
                       role="region"
                       aria-label="Drop zone for cover artwork"
-                      className={`${getPlatformBannerClass(enrichedSelectedGame)} relative overflow-hidden bg-[#0f141b] ${getFallbackBannerClass(enrichedSelectedGame)} ${isBannerDragOver ? "ring-4 ring-inset ring-[#169b83]" : ""}`}
+                      className={`${getPlatformBannerClass(enrichedSelectedGame)} relative overflow-hidden bg-[#0f141b] ${getFallbackBannerClass(enrichedSelectedGame)} ${isBannerDragOver ? "ring-4 ring-[#169b83] ring-inset" : ""}`}
                       style={getGameBannerStyle(enrichedSelectedGame.coverUrl, {
                         backgroundPosition: gameSource === "epic" ? "center 24%" : undefined,
                       })}
@@ -1638,18 +1638,18 @@ export function GameDetails({
                       <div className="absolute inset-0 bg-[radial-gradient(circle,rgba(255,255,255,0.025)_1px,transparent_1px)] bg-[length:9px_9px]" />
                       {isBannerDragOver && (
                         <div className="absolute inset-0 z-20 flex items-center justify-center bg-[#087d6d]/85 bg-[radial-gradient(circle,rgba(255,249,237,0.18)_1px,transparent_1px)] bg-[length:8px_8px]">
-                          <span className="border-2 border-black bg-[#fbf4e7] px-4 py-2 text-[12px] font-black uppercase text-[#171411] shadow-[3px_3px_0_#171411]">
+                          <span className="border-2 border-black bg-[#fbf4e7] px-4 py-2 text-[12px] font-black text-[#171411] uppercase shadow-[3px_3px_0_#171411]">
                             Drop for cover
                           </span>
                         </div>
                       )}
                       {shouldShowTextFallback ? (
-                        <h1 className="absolute left-1/2 top-1/2 max-w-[min(62%,720px)] -translate-x-1/2 -translate-y-1/2 text-center text-[2.4rem] font-black uppercase leading-none tracking-normal text-white drop-shadow-[5px_5px_0_#171411] sm:text-[3.5rem] lg:text-[4.5rem] xl:text-[5.4rem]">
+                        <h1 className="absolute top-1/2 left-1/2 max-w-[min(62%,720px)] -translate-x-1/2 -translate-y-1/2 text-center text-[2.4rem] leading-none font-black tracking-normal text-white uppercase drop-shadow-[5px_5px_0_#171411] sm:text-[3.5rem] lg:text-[4.5rem] xl:text-[5.4rem]">
                           {enrichedSelectedGame.title}
                         </h1>
                       ) : null}
                       {crossPlayPlatforms.length > 0 && (
-                        <div className="absolute left-1/2 top-[calc(50%+3.4rem)] z-10 -translate-x-1/2">
+                        <div className="absolute top-[calc(50%+3.4rem)] left-1/2 z-10 -translate-x-1/2">
                           <CrossPlayBadge platforms={crossPlayPlatforms} />
                         </div>
                       )}
@@ -1675,10 +1675,10 @@ export function GameDetails({
                   {activeDownload ? (
                     <div className="flex min-w-0 flex-1 flex-col gap-2 sm:min-w-[205px] sm:flex-none">
                       <div className="flex items-center justify-between gap-2">
-                        <span className="neo-copy text-[10px] font-bold uppercase text-[#55504a]">
+                        <span className="neo-copy text-[10px] font-bold text-[#55504a] uppercase">
                           Downloading {activeDownload.progress}%
                         </span>
-                        <span className="neo-copy text-[10px] font-bold uppercase text-[#c20b2f]">
+                        <span className="neo-copy text-[10px] font-bold text-[#c20b2f] uppercase">
                           {activeDownload.speed}
                         </span>
                       </div>
@@ -1689,7 +1689,7 @@ export function GameDetails({
                         />
                       </div>
                       <button
-                        className="neo-copy h-9 border-2 border-black bg-[#171411] px-3 text-[10px] font-bold uppercase text-white transition-colors hover:bg-[#333]"
+                        className="neo-copy h-9 border-2 border-black bg-[#171411] px-3 text-[10px] font-bold text-white uppercase transition-colors hover:bg-[#333]"
                         type="button"
                         onClick={() => navigate("/downloads")}
                       >
@@ -1698,7 +1698,7 @@ export function GameDetails({
                     </div>
                   ) : enrichedSelectedGame.status === "not_installed" ? (
                     <button
-                      className="flex h-[64px] min-w-[205px] flex-1 items-center justify-center gap-3 border-4 border-black bg-[#b7102a] px-5 text-[22px] font-black uppercase text-white shadow-[3px_3px_0_#171411] transition-colors hover:bg-[#990a20] sm:flex-none xl:text-[26px]"
+                      className="flex h-[64px] min-w-[205px] flex-1 items-center justify-center gap-3 border-4 border-black bg-[#b7102a] px-5 text-[22px] font-black text-white uppercase shadow-[3px_3px_0_#171411] transition-colors hover:bg-[#990a20] sm:flex-none xl:text-[26px]"
                       type="button"
                       onClick={() => void handlePlay()}
                     >
@@ -1707,7 +1707,7 @@ export function GameDetails({
                     </button>
                   ) : (
                     <button
-                      className="flex h-[64px] min-w-[205px] flex-1 items-center justify-center gap-3 border-4 border-black bg-[#169b83] px-5 text-[22px] font-black uppercase text-white shadow-[3px_3px_0_#171411] transition-colors hover:bg-[#087d6d] disabled:cursor-default disabled:bg-[#087d6d] sm:flex-none sm:text-[26px]"
+                      className="flex h-[64px] min-w-[205px] flex-1 items-center justify-center gap-3 border-4 border-black bg-[#169b83] px-5 text-[22px] font-black text-white uppercase shadow-[3px_3px_0_#171411] transition-colors hover:bg-[#087d6d] disabled:cursor-default disabled:bg-[#087d6d] sm:flex-none sm:text-[26px]"
                       type="button"
                       disabled={isGameRunning}
                       onClick={() => void handlePlay()}
@@ -1720,7 +1720,7 @@ export function GameDetails({
                       <span className="min-w-0 leading-none">
                         <span className="block truncate">{isGameRunning ? "Running" : "Play"}</span>
                         {isGameRunning && gameRuntime ? (
-                          <span className="neo-copy mt-1 block max-w-[130px] truncate text-[8px] font-black uppercase text-[#d8fff7] sm:max-w-[145px]">
+                          <span className="neo-copy mt-1 block max-w-[130px] truncate text-[8px] font-black text-[#d8fff7] uppercase sm:max-w-[145px]">
                             {gameRuntimeButtonDetail}
                           </span>
                         ) : null}
@@ -1742,7 +1742,7 @@ export function GameDetails({
                   </button>
                   {enrichedSelectedGame.status !== "not_installed" ? (
                     <button
-                      className="flex h-[64px] min-w-0 flex-1 items-center justify-center gap-2 border-4 border-black bg-[#fbf4e7] px-3 text-[18px] font-black uppercase text-[#171411] shadow-[3px_3px_0_#171411] transition-colors hover:bg-[#8cf5e4]"
+                      className="flex h-[64px] min-w-0 flex-1 items-center justify-center gap-2 border-4 border-black bg-[#fbf4e7] px-3 text-[18px] font-black text-[#171411] uppercase shadow-[3px_3px_0_#171411] transition-colors hover:bg-[#8cf5e4]"
                       type="button"
                       onClick={() =>
                         navigate(`/mods?gameId=${encodeURIComponent(enrichedSelectedGame.id)}`)
@@ -1756,7 +1756,7 @@ export function GameDetails({
                   hasInstallableVariants &&
                   onInstallFromProvider ? (
                     <button
-                      className="flex h-[64px] min-w-0 flex-1 items-center justify-center gap-2 border-4 border-black bg-[#e8c843] px-3 text-[16px] font-black uppercase text-[#171411] shadow-[3px_3px_0_#171411] transition-colors hover:bg-[#f0d95a]"
+                      className="flex h-[64px] min-w-0 flex-1 items-center justify-center gap-2 border-4 border-black bg-[#e8c843] px-3 text-[16px] font-black text-[#171411] uppercase shadow-[3px_3px_0_#171411] transition-colors hover:bg-[#f0d95a]"
                       type="button"
                       onClick={() => void onInstallFromProvider()}
                     >
@@ -1776,24 +1776,24 @@ export function GameDetails({
                         <Power className="h-4 w-4 shrink-0 text-[#087d6d]" />
                         <div className="min-w-0">
                           <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-                            <span className="neo-copy text-[9px] font-black uppercase text-[#55504a]">
+                            <span className="neo-copy text-[9px] font-black text-[#55504a] uppercase">
                               Game Runtime
                             </span>
-                            <span className="neo-copy truncate text-[11px] font-black uppercase text-[#171411]">
+                            <span className="neo-copy truncate text-[11px] font-black text-[#171411] uppercase">
                               {gameRuntime.processName ?? "Process active"}
                             </span>
                             {gameRuntimeSourceBadge ? (
-                              <span className="neo-copy border-2 border-black bg-[#e8c843] px-1.5 py-0.5 text-[8px] font-black uppercase text-[#171411] shadow-[1px_1px_0_#171411]">
+                              <span className="neo-copy border-2 border-black bg-[#e8c843] px-1.5 py-0.5 text-[8px] font-black text-[#171411] uppercase shadow-[1px_1px_0_#171411]">
                                 {gameRuntimeSourceBadge}
                               </span>
                             ) : null}
                             {gameRuntime.windowHandle ? (
-                              <span className="neo-copy border-2 border-black bg-[#171411] px-1.5 py-0.5 text-[8px] font-black uppercase text-white shadow-[1px_1px_0_#171411]">
+                              <span className="neo-copy border-2 border-black bg-[#171411] px-1.5 py-0.5 text-[8px] font-black text-white uppercase shadow-[1px_1px_0_#171411]">
                                 HWND {gameRuntime.windowHandle}
                               </span>
                             ) : null}
                           </div>
-                          <p className="neo-copy mt-0.5 truncate text-[9px] font-bold uppercase text-[#655f58]">
+                          <p className="neo-copy mt-0.5 truncate text-[9px] font-bold text-[#655f58] uppercase">
                             {[
                               gameRuntime.pid ? `PID ${gameRuntime.pid}` : null,
                               formatRuntimeDuration(gameRuntime.uptimeSeconds)
@@ -1807,7 +1807,7 @@ export function GameDetails({
                           </p>
                         </div>
                       </div>
-                      <span className="neo-copy shrink-0 border-2 border-black bg-[#087d6d] px-1.5 py-0.5 text-[8px] font-black uppercase text-white shadow-[1px_1px_0_#171411]">
+                      <span className="neo-copy shrink-0 border-2 border-black bg-[#087d6d] px-1.5 py-0.5 text-[8px] font-black text-white uppercase shadow-[1px_1px_0_#171411]">
                         Running
                       </span>
                     </div>
@@ -1817,10 +1817,10 @@ export function GameDetails({
                     <section className="neo-dots min-w-0 border-4 border-black bg-[#fbf4e7] shadow-[4px_4px_0_#171411]">
                       <div className="flex flex-wrap items-center justify-between gap-2 border-b-2 border-black bg-[#171411] px-3 py-2 text-white">
                         <div className="min-w-0">
-                          <h3 className="neo-title text-[17px] uppercase leading-none">
+                          <h3 className="neo-title text-[17px] leading-none uppercase">
                             Client Manager
                           </h3>
-                          <p className="neo-copy mt-1 truncate text-[9px] font-black uppercase text-[#f6edd8]">
+                          <p className="neo-copy mt-1 truncate text-[9px] font-black text-[#f6edd8] uppercase">
                             {selectedSourceClientName} / local install signal / safe updater path
                           </p>
                         </div>
@@ -1835,7 +1835,7 @@ export function GameDetails({
                         <div className="min-w-0 space-y-3">
                           <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
                             <div className="border-2 border-black bg-[#efe6d4] p-2 shadow-[2px_2px_0_#171411]">
-                              <span className="neo-copy block text-[8px] font-black uppercase text-[#655f58]">
+                              <span className="neo-copy block text-[8px] font-black text-[#655f58] uppercase">
                                 Installed
                               </span>
                               <strong className="neo-title mt-1 block truncate text-[16px] uppercase">
@@ -1843,7 +1843,7 @@ export function GameDetails({
                               </strong>
                             </div>
                             <div className="border-2 border-black bg-[#efe6d4] p-2 shadow-[2px_2px_0_#171411]">
-                              <span className="neo-copy block text-[8px] font-black uppercase text-[#655f58]">
+                              <span className="neo-copy block text-[8px] font-black text-[#655f58] uppercase">
                                 Version
                               </span>
                               <strong className="neo-title mt-1 block truncate text-[16px] uppercase">
@@ -1851,7 +1851,7 @@ export function GameDetails({
                               </strong>
                             </div>
                             <div className="border-2 border-black bg-[#efe6d4] p-2 shadow-[2px_2px_0_#171411]">
-                              <span className="neo-copy block text-[8px] font-black uppercase text-[#655f58]">
+                              <span className="neo-copy block text-[8px] font-black text-[#655f58] uppercase">
                                 Latest
                               </span>
                               <strong className="neo-title mt-1 block truncate text-[16px] uppercase">
@@ -1859,13 +1859,13 @@ export function GameDetails({
                               </strong>
                             </div>
                             <div className="border-2 border-black bg-[#efe6d4] p-2 shadow-[2px_2px_0_#171411]">
-                              <span className="neo-copy block text-[8px] font-black uppercase text-[#655f58]">
+                              <span className="neo-copy block text-[8px] font-black text-[#655f58] uppercase">
                                 Scheduler
                               </span>
                               <strong className="neo-title mt-1 block truncate text-[16px] uppercase">
                                 {clientUpdateStatus?.schedulerEnabled ? "24h" : "Manual"}
                               </strong>
-                              <span className="neo-copy mt-1 block truncate text-[8px] font-black uppercase text-[#655f58]">
+                              <span className="neo-copy mt-1 block truncate text-[8px] font-black text-[#655f58] uppercase">
                                 {clientUpdateStatus?.schedulerEnabled
                                   ? `Next ${formatScheduleTime(clientUpdateStatus.nextScheduledCheckAt)}`
                                   : "Auto check off"}
@@ -1874,7 +1874,7 @@ export function GameDetails({
                           </div>
 
                           <div className="border-2 border-black bg-[#f6edd8] p-2">
-                            <p className="neo-copy text-[10px] font-black uppercase leading-5 text-[#171411]">
+                            <p className="neo-copy text-[10px] leading-5 font-black text-[#171411] uppercase">
                               {isClientManagerLoading
                                 ? "Loading client-manager metadata"
                                 : (clientUpdateStatus?.detail ??
@@ -1882,12 +1882,12 @@ export function GameDetails({
                                   "Client-manager metadata is not loaded.")}
                             </p>
                             {clientManagerError ? (
-                              <p className="neo-copy mt-2 border-2 border-black bg-[#b7102a] px-2 py-1 text-[9px] font-black uppercase text-white">
+                              <p className="neo-copy mt-2 border-2 border-black bg-[#b7102a] px-2 py-1 text-[9px] font-black text-white uppercase">
                                 {clientManagerError}
                               </p>
                             ) : null}
                             {clientUpdateStatus?.schedulerEnabled ? (
-                              <p className="neo-copy mt-2 border-2 border-black bg-[#fbf4e7] px-2 py-1 text-[9px] font-black uppercase text-[#655f58]">
+                              <p className="neo-copy mt-2 border-2 border-black bg-[#fbf4e7] px-2 py-1 text-[9px] font-black text-[#655f58] uppercase">
                                 Scheduled update check: last{" "}
                                 {formatRelativeTime(clientUpdateStatus.lastScheduledCheckAt)} / next{" "}
                                 {formatScheduleTime(clientUpdateStatus.nextScheduledCheckAt)}
@@ -1897,7 +1897,7 @@ export function GameDetails({
 
                           <div className="flex flex-wrap gap-2">
                             <button
-                              className="neo-copy inline-flex h-9 items-center gap-1.5 border-2 border-black bg-[#b7102a] px-3 text-[10px] font-black uppercase text-white shadow-[2px_2px_0_#171411] hover:bg-[#990a20] disabled:cursor-not-allowed disabled:bg-[#d8cbb7] disabled:text-[#655f58]"
+                              className="neo-copy inline-flex h-9 items-center gap-1.5 border-2 border-black bg-[#b7102a] px-3 text-[10px] font-black text-white uppercase shadow-[2px_2px_0_#171411] hover:bg-[#990a20] disabled:cursor-not-allowed disabled:bg-[#d8cbb7] disabled:text-[#655f58]"
                               type="button"
                               disabled={isClientManagerBusy}
                               onClick={() => void handleOpenClientInstaller()}
@@ -1912,7 +1912,7 @@ export function GameDetails({
                               {clientInstallActionLabel}
                             </button>
                             <button
-                              className="neo-copy inline-flex h-9 items-center gap-1.5 border-2 border-black bg-[#fbf4e7] px-3 text-[10px] font-black uppercase text-[#171411] shadow-[2px_2px_0_#171411] hover:bg-[#8cf5e4] disabled:cursor-not-allowed disabled:bg-[#d8cbb7] disabled:text-[#655f58]"
+                              className="neo-copy inline-flex h-9 items-center gap-1.5 border-2 border-black bg-[#fbf4e7] px-3 text-[10px] font-black text-[#171411] uppercase shadow-[2px_2px_0_#171411] hover:bg-[#8cf5e4] disabled:cursor-not-allowed disabled:bg-[#d8cbb7] disabled:text-[#655f58]"
                               type="button"
                               disabled={isClientManagerBusy || !clientUpdateStatus?.canOpenUpdater}
                               onClick={() => void handleOpenClientUpdater()}
@@ -1925,7 +1925,7 @@ export function GameDetails({
                               {clientUpdateActionLabel}
                             </button>
                             <button
-                              className="neo-copy inline-flex h-9 items-center gap-1.5 border-2 border-black bg-[#e8c843] px-3 text-[10px] font-black uppercase text-[#171411] shadow-[2px_2px_0_#171411] hover:bg-[#8cf5e4] disabled:cursor-not-allowed disabled:bg-[#d8cbb7] disabled:text-[#655f58]"
+                              className="neo-copy inline-flex h-9 items-center gap-1.5 border-2 border-black bg-[#e8c843] px-3 text-[10px] font-black text-[#171411] uppercase shadow-[2px_2px_0_#171411] hover:bg-[#8cf5e4] disabled:cursor-not-allowed disabled:bg-[#d8cbb7] disabled:text-[#655f58]"
                               type="button"
                               disabled={isClientManagerBusy}
                               onClick={() => void handleCheckClientUpdate()}
@@ -2059,7 +2059,7 @@ export function GameDetails({
                                     </div>
                                   ))
                                 ) : (
-                                  <p className="neo-copy border-2 border-black bg-[#fbf4e7] px-2 py-3 text-[10px] font-black uppercase text-[#655f58]">
+                                  <p className="neo-copy border-2 border-black bg-[#fbf4e7] px-2 py-3 text-[10px] font-black text-[#655f58] uppercase">
                                     No path overlays configured.
                                   </p>
                                 )}
@@ -2162,7 +2162,7 @@ export function GameDetails({
                                     </div>
                                   ))
                                 ) : (
-                                  <p className="neo-copy border-2 border-black bg-[#fbf4e7] px-2 py-3 text-[10px] font-black uppercase text-[#655f58]">
+                                  <p className="neo-copy border-2 border-black bg-[#fbf4e7] px-2 py-3 text-[10px] font-black text-[#655f58] uppercase">
                                     No mod roots configured.
                                   </p>
                                 )}
@@ -2182,7 +2182,7 @@ export function GameDetails({
                               Asset cache lookup
                             </h4>
                             <div className="flex items-center gap-1.5">
-                              <span className="neo-copy border-2 border-black bg-[#fbf4e7] px-1.5 py-0.5 text-[8px] font-black uppercase text-[#171411]">
+                              <span className="neo-copy border-2 border-black bg-[#fbf4e7] px-1.5 py-0.5 text-[8px] font-black text-[#171411] uppercase">
                                 {selectedClientAssetCacheEntries.length} keys
                               </span>
                               <button
@@ -2304,7 +2304,7 @@ export function GameDetails({
                                   </div>
                                 ))
                               ) : (
-                                <p className="neo-copy border-2 border-black bg-[#fbf4e7] px-2 py-3 text-[10px] font-black uppercase text-[#655f58]">
+                                <p className="neo-copy border-2 border-black bg-[#fbf4e7] px-2 py-3 text-[10px] font-black text-[#655f58] uppercase">
                                   No asset caches configured.
                                 </p>
                               )}
@@ -2313,10 +2313,10 @@ export function GameDetails({
                             <div className="space-y-2">
                               <div className="border-2 border-black bg-[#f6edd8] px-2 py-1.5">
                                 <div className="flex items-center justify-between gap-2">
-                                  <span className="neo-copy text-[8px] font-black uppercase text-[#655f58]">
+                                  <span className="neo-copy text-[8px] font-black text-[#655f58] uppercase">
                                     Lookup winners
                                   </span>
-                                  <span className="neo-copy border border-black bg-[#087d6d] px-1.5 py-0.5 text-[7px] font-black uppercase text-white">
+                                  <span className="neo-copy border border-black bg-[#087d6d] px-1.5 py-0.5 text-[7px] font-black text-white uppercase">
                                     {clientAssetCacheLookup ? "Ready" : "Local"}
                                   </span>
                                 </div>
@@ -2328,10 +2328,10 @@ export function GameDetails({
                                         className="border-2 border-black bg-[#fbf4e7] px-2 py-1"
                                       >
                                         <div className="flex min-w-0 items-center justify-between gap-2">
-                                          <strong className="neo-copy truncate text-[9px] font-black uppercase text-[#171411]">
+                                          <strong className="neo-copy truncate text-[9px] font-black text-[#171411] uppercase">
                                             {entry.cacheKey}
                                           </strong>
-                                          <span className="neo-copy shrink-0 text-[8px] font-black uppercase text-[#087d6d]">
+                                          <span className="neo-copy shrink-0 text-[8px] font-black text-[#087d6d] uppercase">
                                             P{entry.priority}
                                           </span>
                                         </div>
@@ -2344,7 +2344,7 @@ export function GameDetails({
                                       </div>
                                     ))
                                   ) : (
-                                    <p className="neo-copy border-2 border-black bg-[#fbf4e7] px-2 py-2 text-[9px] font-black uppercase text-[#655f58]">
+                                    <p className="neo-copy border-2 border-black bg-[#fbf4e7] px-2 py-2 text-[9px] font-black text-[#655f58] uppercase">
                                       No winning cache keys.
                                     </p>
                                   )}
@@ -2353,7 +2353,7 @@ export function GameDetails({
 
                               <div className="border-2 border-black bg-[#f6edd8] px-2 py-1.5">
                                 <div className="flex items-center justify-between gap-2">
-                                  <span className="neo-copy text-[8px] font-black uppercase text-[#655f58]">
+                                  <span className="neo-copy text-[8px] font-black text-[#655f58] uppercase">
                                     Conflicts
                                   </span>
                                   <span
@@ -2373,10 +2373,10 @@ export function GameDetails({
                                         key={conflict.cacheKey}
                                         className="border-2 border-black bg-[#fbf4e7] px-2 py-1"
                                       >
-                                        <strong className="neo-copy block truncate text-[9px] font-black uppercase text-[#171411]">
+                                        <strong className="neo-copy block truncate text-[9px] font-black text-[#171411] uppercase">
                                           {conflict.cacheKey}
                                         </strong>
-                                        <p className="neo-copy mt-0.5 line-clamp-2 text-[8px] font-bold uppercase leading-3 text-[#655f58]">
+                                        <p className="neo-copy mt-0.5 line-clamp-2 text-[8px] leading-3 font-bold text-[#655f58] uppercase">
                                           {conflict.entries
                                             .map(
                                               (entry) =>
@@ -2387,7 +2387,7 @@ export function GameDetails({
                                       </div>
                                     ))
                                   ) : (
-                                    <p className="neo-copy border-2 border-black bg-[#fbf4e7] px-2 py-2 text-[9px] font-black uppercase text-[#655f58]">
+                                    <p className="neo-copy border-2 border-black bg-[#fbf4e7] px-2 py-2 text-[9px] font-black text-[#655f58] uppercase">
                                       No cache conflicts.
                                     </p>
                                   )}
@@ -2411,7 +2411,7 @@ export function GameDetails({
                               </span>
                             </div>
                             <div className="space-y-2 pt-2">
-                              <p className="neo-copy border-2 border-black bg-[#fbf4e7] px-2 py-1.5 text-[9px] font-black uppercase leading-4 text-[#171411]">
+                              <p className="neo-copy border-2 border-black bg-[#fbf4e7] px-2 py-1.5 text-[9px] leading-4 font-black text-[#171411] uppercase">
                                 {clientInstallStagePlan?.message ??
                                   "Resolving safe platform-client install staging plan."}
                               </p>
@@ -2445,10 +2445,10 @@ export function GameDetails({
                                     key={item.label}
                                     className="border-2 border-black bg-[#f6edd8] px-2 py-1"
                                   >
-                                    <span className="neo-copy block text-[8px] font-black uppercase text-[#655f58]">
+                                    <span className="neo-copy block text-[8px] font-black text-[#655f58] uppercase">
                                       {item.label}
                                     </span>
-                                    <strong className="neo-copy mt-0.5 block truncate text-[9px] font-black uppercase text-[#171411]">
+                                    <strong className="neo-copy mt-0.5 block truncate text-[9px] font-black text-[#171411] uppercase">
                                       {item.value}
                                     </strong>
                                   </div>
@@ -2456,7 +2456,7 @@ export function GameDetails({
                               </div>
 
                               <div className="border-2 border-black bg-[#f6edd8] px-2 py-1.5">
-                                <span className="neo-copy block text-[8px] font-black uppercase text-[#655f58]">
+                                <span className="neo-copy block text-[8px] font-black text-[#655f58] uppercase">
                                   Staged target
                                 </span>
                                 <p
@@ -2486,25 +2486,25 @@ export function GameDetails({
                                           {check.status}
                                         </span>
                                       </div>
-                                      <p className="neo-copy mt-1 line-clamp-2 text-[8px] font-bold uppercase leading-3 text-[#655f58]">
+                                      <p className="neo-copy mt-1 line-clamp-2 text-[8px] leading-3 font-bold text-[#655f58] uppercase">
                                         {check.detail}
                                       </p>
                                     </div>
                                   ))
                                 ) : (
-                                  <p className="neo-copy border-2 border-black bg-[#fbf4e7] px-2 py-3 text-[9px] font-black uppercase text-[#655f58]">
+                                  <p className="neo-copy border-2 border-black bg-[#fbf4e7] px-2 py-3 text-[9px] font-black text-[#655f58] uppercase">
                                     Waiting for staging checks.
                                   </p>
                                 )}
                               </div>
 
-                              <p className="neo-copy border-2 border-black bg-[#b7102a] px-2 py-1.5 text-[9px] font-black uppercase leading-4 text-white">
+                              <p className="neo-copy border-2 border-black bg-[#b7102a] px-2 py-1.5 text-[9px] leading-4 font-black text-white uppercase">
                                 No silent download. No auto-apply. OG-Launcher only opens the staged
                                 provider source after your click.
                               </p>
 
                               <button
-                                className="neo-copy inline-flex h-9 w-full items-center justify-center gap-1.5 border-2 border-black bg-[#e8c843] px-3 text-[10px] font-black uppercase text-[#171411] shadow-[2px_2px_0_#171411] hover:bg-[#8cf5e4] disabled:cursor-not-allowed disabled:bg-[#d8cbb7] disabled:text-[#655f58]"
+                                className="neo-copy inline-flex h-9 w-full items-center justify-center gap-1.5 border-2 border-black bg-[#e8c843] px-3 text-[10px] font-black text-[#171411] uppercase shadow-[2px_2px_0_#171411] hover:bg-[#8cf5e4] disabled:cursor-not-allowed disabled:bg-[#d8cbb7] disabled:text-[#655f58]"
                                 type="button"
                                 disabled={
                                   !clientInstallStagePlan?.canProceed || isClientManagerBusy
@@ -2536,7 +2536,7 @@ export function GameDetails({
                               </span>
                             </div>
                             <div className="space-y-2 pt-2">
-                              <p className="neo-copy border-2 border-black bg-[#fbf4e7] px-2 py-1.5 text-[9px] font-black uppercase leading-4 text-[#171411]">
+                              <p className="neo-copy border-2 border-black bg-[#fbf4e7] px-2 py-1.5 text-[9px] leading-4 font-black text-[#171411] uppercase">
                                 {clientAutoApplyPlan?.message ??
                                   "Resolving guarded auto-apply readiness."}
                               </p>
@@ -2572,10 +2572,10 @@ export function GameDetails({
                                     key={item.label}
                                     className="border-2 border-black bg-[#f6edd8] px-2 py-1"
                                   >
-                                    <span className="neo-copy block text-[8px] font-black uppercase text-[#655f58]">
+                                    <span className="neo-copy block text-[8px] font-black text-[#655f58] uppercase">
                                       {item.label}
                                     </span>
-                                    <strong className="neo-copy mt-0.5 block truncate text-[9px] font-black uppercase text-[#171411]">
+                                    <strong className="neo-copy mt-0.5 block truncate text-[9px] font-black text-[#171411] uppercase">
                                       {item.value}
                                     </strong>
                                   </div>
@@ -2583,7 +2583,7 @@ export function GameDetails({
                               </div>
 
                               <div className="border-2 border-black bg-[#f6edd8] px-2 py-1.5">
-                                <span className="neo-copy block text-[8px] font-black uppercase text-[#655f58]">
+                                <span className="neo-copy block text-[8px] font-black text-[#655f58] uppercase">
                                   Safe fallback target
                                 </span>
                                 <p
@@ -2613,19 +2613,19 @@ export function GameDetails({
                                           {check.status}
                                         </span>
                                       </div>
-                                      <p className="neo-copy mt-1 line-clamp-2 text-[8px] font-bold uppercase leading-3 text-[#655f58]">
+                                      <p className="neo-copy mt-1 line-clamp-2 text-[8px] leading-3 font-bold text-[#655f58] uppercase">
                                         {check.detail}
                                       </p>
                                     </div>
                                   ))
                                 ) : (
-                                  <p className="neo-copy border-2 border-black bg-[#fbf4e7] px-2 py-3 text-[9px] font-black uppercase text-[#655f58]">
+                                  <p className="neo-copy border-2 border-black bg-[#fbf4e7] px-2 py-3 text-[9px] font-black text-[#655f58] uppercase">
                                     Waiting for auto-apply guard checks.
                                   </p>
                                 )}
                               </div>
 
-                              <p className="neo-copy border-2 border-black bg-[#b7102a] px-2 py-1.5 text-[9px] font-black uppercase leading-4 text-white">
+                              <p className="neo-copy border-2 border-black bg-[#b7102a] px-2 py-1.5 text-[9px] leading-4 font-black text-white uppercase">
                                 Auto-apply never uses download pages, local installer paths, silent
                                 flags, or background elevation. Provider-approved update mechanisms
                                 only.
@@ -2637,7 +2637,7 @@ export function GameDetails({
                             <h4 className="neo-copy mb-2 text-[10px] font-black uppercase">
                               Update metadata
                             </h4>
-                            <label className="neo-copy mb-2 block text-[9px] font-black uppercase text-[#655f58]">
+                            <label className="neo-copy mb-2 block text-[9px] font-black text-[#655f58] uppercase">
                               Latest known version
                               <input
                                 className="mt-1 h-8 w-full border-2 border-black bg-[#f6edd8] px-2 text-[10px] font-bold text-[#171411] outline-none"
@@ -2649,7 +2649,7 @@ export function GameDetails({
                                 }
                               />
                             </label>
-                            <label className="neo-copy mb-2 block text-[9px] font-black uppercase text-[#655f58]">
+                            <label className="neo-copy mb-2 block text-[9px] font-black text-[#655f58] uppercase">
                               Local installer path
                               <input
                                 className="mt-1 h-8 w-full border-2 border-black bg-[#f6edd8] px-2 text-[10px] font-bold text-[#171411] outline-none"
@@ -2661,7 +2661,7 @@ export function GameDetails({
                                 }
                               />
                             </label>
-                            <label className="neo-copy mb-2 block text-[9px] font-black uppercase text-[#655f58]">
+                            <label className="neo-copy mb-2 block text-[9px] font-black text-[#655f58] uppercase">
                               Local updater path
                               <input
                                 className="mt-1 h-8 w-full border-2 border-black bg-[#f6edd8] px-2 text-[10px] font-bold text-[#171411] outline-none"
@@ -2673,10 +2673,10 @@ export function GameDetails({
                                 }
                               />
                             </label>
-                            <label className="neo-copy mb-2 block text-[9px] font-black uppercase text-[#655f58]">
+                            <label className="neo-copy mb-2 block text-[9px] font-black text-[#655f58] uppercase">
                               Update policy
                               <select
-                                className="mt-1 h-8 w-full border-2 border-black bg-[#f6edd8] px-2 text-[10px] font-black uppercase text-[#171411] outline-none"
+                                className="mt-1 h-8 w-full border-2 border-black bg-[#f6edd8] px-2 text-[10px] font-black text-[#171411] uppercase outline-none"
                                 value={clientModificationConfig?.updatePolicy ?? "manual"}
                                 onChange={(event) =>
                                   patchClientConfigDraft({
@@ -2692,7 +2692,7 @@ export function GameDetails({
                               </select>
                             </label>
                             <button
-                              className="neo-copy inline-flex h-9 w-full items-center justify-center gap-1.5 border-2 border-black bg-[#087d6d] px-3 text-[10px] font-black uppercase text-white shadow-[2px_2px_0_#171411] hover:bg-[#00695f] disabled:cursor-not-allowed disabled:bg-[#d8cbb7] disabled:text-[#655f58]"
+                              className="neo-copy inline-flex h-9 w-full items-center justify-center gap-1.5 border-2 border-black bg-[#087d6d] px-3 text-[10px] font-black text-white uppercase shadow-[2px_2px_0_#171411] hover:bg-[#00695f] disabled:cursor-not-allowed disabled:bg-[#d8cbb7] disabled:text-[#655f58]"
                               type="button"
                               disabled={!clientModificationConfig || isClientManagerBusy}
                               onClick={() => void handleSaveClientConfig()}
@@ -2705,7 +2705,7 @@ export function GameDetails({
                               Save manager config
                             </button>
                             {clientInstallerMetadata ? (
-                              <p className="neo-copy mt-2 text-[9px] font-black uppercase leading-4 text-[#655f58]">
+                              <p className="neo-copy mt-2 text-[9px] leading-4 font-black text-[#655f58] uppercase">
                                 {clientInstallerMetadata.installNotes}
                               </p>
                             ) : null}
@@ -2730,21 +2730,21 @@ export function GameDetails({
                                         <span className="neo-copy truncate text-[9px] font-black uppercase">
                                           {clientManagerActionLabel(item.action)}
                                         </span>
-                                        <span className="neo-copy shrink-0 border border-black bg-[#e8c843] px-1.5 py-0.5 text-[7px] font-black uppercase text-[#171411]">
+                                        <span className="neo-copy shrink-0 border border-black bg-[#e8c843] px-1.5 py-0.5 text-[7px] font-black text-[#171411] uppercase">
                                           {clientManagerHistoryStatusLabel(item.status)}
                                         </span>
                                       </div>
-                                      <span className="neo-copy shrink-0 text-[8px] font-black uppercase text-[#655f58]">
+                                      <span className="neo-copy shrink-0 text-[8px] font-black text-[#655f58] uppercase">
                                         {formatRelativeTime(item.checkedAt)}
                                       </span>
                                     </div>
-                                    <p className="neo-copy mt-1 line-clamp-2 text-[9px] font-bold uppercase leading-4 text-[#655f58]">
+                                    <p className="neo-copy mt-1 line-clamp-2 text-[9px] leading-4 font-bold text-[#655f58] uppercase">
                                       {item.message}
                                     </p>
                                   </div>
                                 ))
                               ) : (
-                                <p className="neo-copy border-2 border-black bg-[#fbf4e7] px-2 py-3 text-[10px] font-black uppercase text-[#655f58]">
+                                <p className="neo-copy border-2 border-black bg-[#fbf4e7] px-2 py-3 text-[10px] font-black text-[#655f58] uppercase">
                                   No update actions recorded.
                                 </p>
                               )}
@@ -2899,7 +2899,7 @@ export function GameDetails({
                               setUninstallError(null);
                               setIsUninstallDialogOpen(true);
                             }}
-                            className="w-full border-2 border-black bg-[#b7102a] py-1 text-[10px] font-black uppercase text-white shadow-[1px_1px_0_#000] transition hover:bg-[#990a20]"
+                            className="w-full border-2 border-black bg-[#b7102a] py-1 text-[10px] font-black text-white uppercase shadow-[1px_1px_0_#000] transition hover:bg-[#990a20]"
                           >
                             Uninstall Game
                           </button>
@@ -2947,11 +2947,11 @@ export function GameDetails({
                           {getVerificationSummary(fileIntegrityResult)}
                         </div>
                         <div className="mt-1 flex items-center justify-between gap-2 border-2 border-black bg-[#fbf4e7] px-2 py-1 shadow-[1px_1px_0_#000]">
-                          <span className="text-[8px] font-black uppercase text-[#171411]">
+                          <span className="text-[8px] font-black text-[#171411] uppercase">
                             Manifest
                           </span>
                           <span
-                            className={`border-2 border-black px-1.5 py-0.5 text-right text-[8px] font-black uppercase leading-none ${getManifestTrustClasses(fileIntegrityResult)}`}
+                            className={`border-2 border-black px-1.5 py-0.5 text-right text-[8px] leading-none font-black uppercase ${getManifestTrustClasses(fileIntegrityResult)}`}
                           >
                             {getManifestTrustLabel(fileIntegrityResult)}
                           </span>
@@ -2961,7 +2961,7 @@ export function GameDetails({
                             {fileIntegrityResult.missingFiles.slice(0, 2).map((file) => (
                               <p
                                 key={file}
-                                className="break-words text-[8px] font-bold uppercase leading-3 text-[#b7102a]"
+                                className="text-[8px] leading-3 font-bold break-words text-[#b7102a] uppercase"
                                 title={file}
                               >
                                 {file}
@@ -3029,7 +3029,7 @@ export function GameDetails({
                         </div>
                         {autoArtworkCandidates.length > 0 && (
                           <div className="mt-2">
-                            <span className="neo-copy mb-1 block text-[9px] font-black uppercase text-[#171411]">
+                            <span className="neo-copy mb-1 block text-[9px] font-black text-[#171411] uppercase">
                               Auto Artwork
                             </span>
                             <div className="grid grid-cols-2 gap-1">
@@ -3052,13 +3052,13 @@ export function GameDetails({
                                       />
                                     </span>
                                     <span className="min-w-0">
-                                      <span className="block truncate text-[8px] font-black uppercase text-[#b7102a]">
+                                      <span className="block truncate text-[8px] font-black text-[#b7102a] uppercase">
                                         {hasKind ? "Replace" : "Apply"}
                                       </span>
-                                      <span className="block truncate text-[9px] font-black uppercase text-[#171411]">
+                                      <span className="block truncate text-[9px] font-black text-[#171411] uppercase">
                                         {getArtworkKindLabel(candidate.kind)}
                                       </span>
-                                      <span className="block truncate text-[8px] font-black uppercase text-[#655f58]">
+                                      <span className="block truncate text-[8px] font-black text-[#655f58] uppercase">
                                         {getArtworkSourceBadge(candidate.sourceLabel)}
                                       </span>
                                     </span>
@@ -3107,7 +3107,7 @@ export function GameDetails({
                             Reset Artwork
                           </button>
                         ) : (
-                          <p className="mt-2 text-[10px] font-bold uppercase text-[#655f58]">
+                          <p className="mt-2 text-[10px] font-bold text-[#655f58] uppercase">
                             Uses scanned launcher art.
                           </p>
                         )}
@@ -3142,7 +3142,7 @@ export function GameDetails({
                               });
                               setNewCategoryInput("");
                             }}
-                            className="border-2 border-black bg-black px-2 text-[10px] font-black uppercase text-white hover:bg-[#2c2c2c]"
+                            className="border-2 border-black bg-black px-2 text-[10px] font-black text-white uppercase hover:bg-[#2c2c2c]"
                           >
                             +
                           </button>
@@ -3176,7 +3176,7 @@ export function GameDetails({
                             ))}
                           </div>
                         ) : (
-                          <p className="text-[10px] italic text-[#5b403f]">
+                          <p className="text-[10px] text-[#5b403f] italic">
                             No categories assigned.
                           </p>
                         )}
@@ -3232,7 +3232,7 @@ export function GameDetails({
                               });
                               input.value = "";
                             }}
-                            className="border-2 border-black bg-black px-2 text-[10px] font-black uppercase text-white hover:bg-[#2c2c2c]"
+                            className="border-2 border-black bg-black px-2 text-[10px] font-black text-white uppercase hover:bg-[#2c2c2c]"
                           >
                             +
                           </button>
@@ -3255,7 +3255,7 @@ export function GameDetails({
                   {/* Left Column: Activity Feed */}
                   <section className="min-w-0">
                     <div className="mb-2">
-                      <h2 className="text-[15px] font-black uppercase leading-none">Activity</h2>
+                      <h2 className="text-[15px] leading-none font-black uppercase">Activity</h2>
                     </div>
 
                     <GameUpdateFeed game={enrichedSelectedGame} />
@@ -3287,11 +3287,11 @@ export function GameDetails({
 
                     <section className="border-4 border-black bg-[#fbf4e7] shadow-[3px_3px_0_#171411]">
                       <div className="flex items-center justify-between gap-2 border-b-2 border-black px-3 py-2">
-                        <h2 className="text-[15px] font-black uppercase leading-none">
+                        <h2 className="text-[15px] leading-none font-black uppercase">
                           Achievements
                         </h2>
                         <div className="flex items-center gap-1.5">
-                          <span className="neo-copy border-2 border-black bg-[#087d6d] px-2 py-0.5 text-[10px] font-black uppercase text-white">
+                          <span className="neo-copy border-2 border-black bg-[#087d6d] px-2 py-0.5 text-[10px] font-black text-white uppercase">
                             {unlockedAchievementCount}/{achievements.length} ·{" "}
                             {achievementProgressPercent}%
                           </span>
@@ -3341,7 +3341,7 @@ export function GameDetails({
                               </button>
                             ))}
                             <div className="ml-auto flex items-center gap-1">
-                              <span className="neo-copy text-[9px] font-black uppercase text-[#55504a]">
+                              <span className="neo-copy text-[9px] font-black text-[#55504a] uppercase">
                                 Sort
                               </span>
                               <select
@@ -3357,7 +3357,7 @@ export function GameDetails({
                               </select>
                             </div>
                             {enrichedSelectedGame?.achievementsSyncedAt ? (
-                              <span className="neo-copy w-full text-right text-[9px] font-bold uppercase text-[#55504a]">
+                              <span className="neo-copy w-full text-right text-[9px] font-bold text-[#55504a] uppercase">
                                 Synced{" "}
                                 {formatRelativeTime(enrichedSelectedGame.achievementsSyncedAt)}
                               </span>
@@ -3399,16 +3399,16 @@ export function GameDetails({
                                     )}
                                   </div>
                                   <div className="min-w-0">
-                                    <h3 className="truncate text-[12px] font-black uppercase leading-tight">
+                                    <h3 className="truncate text-[12px] leading-tight font-black uppercase">
                                       {achievement.name}
                                     </h3>
                                     {achievement.description ? (
-                                      <p className="mt-1 line-clamp-2 text-[11px] font-bold leading-4 text-[#55504a]">
+                                      <p className="mt-1 line-clamp-2 text-[11px] leading-4 font-bold text-[#55504a]">
                                         {achievement.description}
                                       </p>
                                     ) : null}
                                     {typeof achievement.rarity === "number" ? (
-                                      <p className="mt-1 text-[10px] font-black uppercase text-[#087d6d]">
+                                      <p className="mt-1 text-[10px] font-black text-[#087d6d] uppercase">
                                         {achievement.rarity.toFixed(1)}% of players
                                       </p>
                                     ) : null}
@@ -3417,18 +3417,18 @@ export function GameDetails({
                                         {achievementSources.map((source) => (
                                           <span
                                             key={source}
-                                            className="neo-copy border border-black bg-[#fbf4e7] px-1 py-0.5 text-[8px] font-black uppercase text-[#171411]"
+                                            className="neo-copy border border-black bg-[#fbf4e7] px-1 py-0.5 text-[8px] font-black text-[#171411] uppercase"
                                           >
                                             {source}
                                           </span>
                                         ))}
                                         {achievementMeta.isAdditional ? (
-                                          <span className="neo-copy border border-black bg-[#e8c843] px-1 py-0.5 text-[8px] font-black uppercase text-[#171411]">
+                                          <span className="neo-copy border border-black bg-[#e8c843] px-1 py-0.5 text-[8px] font-black text-[#171411] uppercase">
                                             extra
                                           </span>
                                         ) : null}
                                         {achievementMeta.matchConfidence ? (
-                                          <span className="neo-copy border border-black bg-[#171411] px-1 py-0.5 text-[8px] font-black uppercase text-[#fbf4e7]">
+                                          <span className="neo-copy border border-black bg-[#171411] px-1 py-0.5 text-[8px] font-black text-[#fbf4e7] uppercase">
                                             {achievementMeta.matchConfidence}
                                           </span>
                                         ) : null}
@@ -3437,7 +3437,7 @@ export function GameDetails({
                                   </div>
                                   <div className="flex flex-col items-end gap-1">
                                     {isUnlocked && achievement.unlockedAt ? (
-                                      <span className="neo-copy text-[9px] font-bold uppercase text-[#55504a]">
+                                      <span className="neo-copy text-[9px] font-bold text-[#55504a] uppercase">
                                         {formatShortDate(achievement.unlockedAt)}
                                       </span>
                                     ) : null}
@@ -3460,14 +3460,14 @@ export function GameDetails({
                               achievementFilter,
                               achievementSort,
                             ).length === 0 ? (
-                              <div className="py-4 text-center text-[11px] font-bold uppercase text-[#55504a]">
+                              <div className="py-4 text-center text-[11px] font-bold text-[#55504a] uppercase">
                                 No achievements match this filter.
                               </div>
                             ) : null}
                           </div>
                         </>
                       ) : (
-                        <div className="p-3 text-[12px] font-bold leading-5 text-[#55504a]">
+                        <div className="p-3 text-[12px] leading-5 font-bold text-[#55504a]">
                           {achievementAttentionMessage ??
                             "No achievements synced yet. Achievement auto-sync runs when a supported provider is available."}
                         </div>
@@ -3495,13 +3495,13 @@ export function GameDetails({
           ) : (
             <section className="grid min-h-[calc(100vh-124px)] place-items-center border-b-4 border-black bg-[#f8f0df] px-4 text-center">
               <div className="max-w-[560px] border-4 border-black bg-[#fbf4e7] p-6 shadow-[4px_4px_0_#171411]">
-                <h1 className="text-[2.4rem] font-black uppercase leading-none sm:text-[3.25rem] lg:text-[4rem]">
+                <h1 className="text-[2.4rem] leading-none font-black uppercase sm:text-[3.25rem] lg:text-[4rem]">
                   No Games Detected
                 </h1>
-                <p className="neo-copy mt-4 text-[13px] font-bold uppercase leading-6 text-[#55504a]">
+                <p className="neo-copy mt-4 text-[13px] leading-6 font-bold text-[#55504a] uppercase">
                   {isDiscoveringGames ? "Loading library..." : discoveryMessage}
                 </p>
-                <p className="neo-copy mt-3 text-[11px] font-bold uppercase leading-5 text-[#55504a]">
+                <p className="neo-copy mt-3 text-[11px] leading-5 font-bold text-[#55504a] uppercase">
                   Auto-sync watches Steam, Epic Games, GOG, Ubisoft, Xbox, Battle.net, and EA App
                   installations on this PC.
                 </p>

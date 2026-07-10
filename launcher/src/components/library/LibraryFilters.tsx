@@ -90,7 +90,7 @@ export function LibraryFilters({ isOpen, onClose }: LibraryFiltersProps) {
 
   return (
     <div
-      className="absolute left-2 right-2 top-12 z-50 max-h-[82vh] overflow-y-auto border-4 border-black bg-[#fbf4e7] p-4 shadow-[6px_6px_0_#171411] sm:left-[260px] sm:right-auto sm:w-[380px] lg:left-[290px]"
+      className="absolute top-12 right-2 left-2 z-50 max-h-[82vh] overflow-y-auto border-4 border-black bg-[#fbf4e7] p-4 shadow-[6px_6px_0_#171411] sm:right-auto sm:left-[260px] sm:w-[380px] lg:left-[290px]"
       style={{ fontFamily: '"Arial Narrow", Impact, sans-serif' }}
     >
       <div className="mb-4 flex items-center justify-between gap-2 border-b-4 border-black pb-2">
@@ -163,10 +163,10 @@ export function LibraryFilters({ isOpen, onClose }: LibraryFiltersProps) {
 
         <div className="border-[3px] border-black bg-[#f5eedf] shadow-[3px_3px_0_#171411]">
           <div className="flex items-center justify-between gap-2 border-b-2 border-black bg-[#171411] px-2 py-1 text-[#fff9ed]">
-            <h4 className="neo-copy text-[10px] font-black uppercase tracking-[0.12em]">
+            <h4 className="neo-copy text-[10px] font-black tracking-[0.12em] uppercase">
               Xbox // Catalog
             </h4>
-            <span className="neo-copy bg-[#8cf5e4] px-1.5 py-0.5 text-[8px] font-black uppercase text-[#171411]">
+            <span className="neo-copy bg-[#8cf5e4] px-1.5 py-0.5 text-[8px] font-black text-[#171411] uppercase">
               PC Game Pass
             </span>
           </div>
@@ -183,7 +183,7 @@ export function LibraryFilters({ isOpen, onClose }: LibraryFiltersProps) {
               }
               className="h-4 w-4 shrink-0 border-2 border-black accent-[#087d6d]"
             />
-            <span className="neo-copy min-w-0 flex-1 text-[10px] font-black uppercase tracking-[0.08em] text-[#171411]">
+            <span className="neo-copy min-w-0 flex-1 text-[10px] font-black tracking-[0.08em] text-[#171411] uppercase">
               Show catalog games
             </span>
             <span
@@ -420,7 +420,7 @@ export function LibraryFilters({ isOpen, onClose }: LibraryFiltersProps) {
         )}
 
         <div className="mt-4 border-4 border-[#b7102a] bg-[#fbf4e7] p-2 shadow-[2px_2px_0_#000]">
-          <h4 className="mb-1.5 flex items-center gap-1.5 text-[11px] font-black uppercase text-[#b7102a]">
+          <h4 className="mb-1.5 flex items-center gap-1.5 text-[11px] font-black text-[#b7102a] uppercase">
             <Sparkles className="h-3.5 w-3.5" />
             Save as Dynamic Collection
           </h4>
@@ -435,7 +435,7 @@ export function LibraryFilters({ isOpen, onClose }: LibraryFiltersProps) {
             <button
               onClick={() => saveCurrentFilterAsCollection(newCollectionName)}
               disabled={!newCollectionName.trim()}
-              className="border-2 border-black bg-[#b7102a] px-3 py-1 text-[10px] font-black uppercase text-white hover:bg-[#9a0b20] disabled:opacity-45"
+              className="border-2 border-black bg-[#b7102a] px-3 py-1 text-[10px] font-black text-white uppercase hover:bg-[#9a0b20] disabled:opacity-45"
               type="button"
             >
               Save
@@ -454,7 +454,7 @@ export function LibraryFilters({ isOpen, onClose }: LibraryFiltersProps) {
         </button>
         <button
           onClick={onClose}
-          className="flex-1 border-2 border-black bg-black py-1.5 text-[11px] font-black uppercase text-white hover:bg-[#2c2c2c]"
+          className="flex-1 border-2 border-black bg-black py-1.5 text-[11px] font-black text-white uppercase hover:bg-[#2c2c2c]"
           type="button"
         >
           Apply

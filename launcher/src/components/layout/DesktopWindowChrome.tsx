@@ -67,7 +67,7 @@ export function DesktopWindowChrome() {
   }
 
   return (
-    <div className="ml-auto flex min-h-8 min-w-0 flex-1 select-none items-center justify-end gap-3">
+    <div className="ml-auto flex min-h-8 min-w-0 flex-1 items-center justify-end gap-3 select-none">
       {/* Tauri drag region: keyboard handlers are intentionally omitted because
           window-drag is a native OS gesture, not a user-facing control. */}
       {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions */}

@@ -805,7 +805,7 @@ function FriendsPageForAccount({ auth }: { auth: ReturnType<typeof useCurrentUse
     <div className="mx-auto w-full max-w-[1220px] px-0 py-2">
       <div className="mb-7 flex flex-col gap-4 border-b-4 border-black pb-5 md:flex-row md:items-end md:justify-between">
         <div>
-          <p className="neo-copy inline-flex border-2 border-black bg-[#b7102a] px-3 py-1 text-[11px] font-black uppercase tracking-[0.14em] text-white shadow-[3px_3px_0_#171411]">
+          <p className="neo-copy inline-flex border-2 border-black bg-[#b7102a] px-3 py-1 text-[11px] font-black tracking-[0.14em] text-white uppercase shadow-[3px_3px_0_#171411]">
             Social
           </p>
           <h1 className="neo-title mt-3 text-[3.8rem] leading-[0.82] text-[#171411] sm:text-[4.8rem] lg:text-[5.8rem] xl:text-[6.5rem]">
@@ -894,7 +894,7 @@ function FriendsPageForAccount({ auth }: { auth: ReturnType<typeof useCurrentUse
                   <UserSearch query={query} onQueryChange={setQuery} />
                   <div className="mt-4 space-y-3">
                     {isSearching ? (
-                      <p className="neo-copy border-2 border-dashed border-black bg-[#f6edd8] p-3 text-[12px] font-bold uppercase leading-5 text-[#655f58]">
+                      <p className="neo-copy border-2 border-dashed border-black bg-[#f6edd8] p-3 text-[12px] leading-5 font-bold text-[#655f58] uppercase">
                         Searching...
                       </p>
                     ) : results.length > 0 ? (
@@ -906,12 +906,12 @@ function FriendsPageForAccount({ auth }: { auth: ReturnType<typeof useCurrentUse
                           <p className="neo-title text-2xl leading-none text-[#171411]">
                             {profile.displayName ?? profile.username}
                           </p>
-                          <p className="neo-copy mt-1 text-[10px] font-black uppercase tracking-[0.12em] text-[#5b403f]">
+                          <p className="neo-copy mt-1 text-[10px] font-black tracking-[0.12em] text-[#5b403f] uppercase">
                             @{profile.username}
                           </p>
                           <div className="mt-3 flex gap-2">
                             <button
-                              className="neo-copy border-2 border-black bg-[#007166] px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-white shadow-[2px_2px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#b7102a] disabled:opacity-60"
+                              className="neo-copy border-2 border-black bg-[#007166] px-3 py-2 text-[10px] font-black tracking-[0.12em] text-white uppercase shadow-[2px_2px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#b7102a] disabled:opacity-60"
                               disabled={isMutating}
                               type="button"
                               onClick={() =>
@@ -924,7 +924,7 @@ function FriendsPageForAccount({ auth }: { auth: ReturnType<typeof useCurrentUse
                               Add
                             </button>
                             <button
-                              className="neo-copy border-2 border-black bg-[#fff9ed] px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-[#b7102a] shadow-[2px_2px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#f3c3c9] disabled:opacity-60"
+                              className="neo-copy border-2 border-black bg-[#fff9ed] px-3 py-2 text-[10px] font-black tracking-[0.12em] text-[#b7102a] uppercase shadow-[2px_2px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#f3c3c9] disabled:opacity-60"
                               disabled={isMutating}
                               type="button"
                               onClick={() =>
@@ -937,14 +937,14 @@ function FriendsPageForAccount({ auth }: { auth: ReturnType<typeof useCurrentUse
                         </div>
                       ))
                     ) : (
-                      <p className="neo-copy border-2 border-dashed border-black bg-[#f6edd8] p-3 text-[12px] font-bold uppercase leading-5 text-[#655f58]">
+                      <p className="neo-copy border-2 border-dashed border-black bg-[#f6edd8] p-3 text-[12px] leading-5 font-bold text-[#655f58] uppercase">
                         Search by username or display name.
                       </p>
                     )}
                   </div>
                   {blockedIds.length > 0 ? (
                     <div className="mt-5 border-t-2 border-black pt-4">
-                      <p className="neo-copy mb-2 text-[10px] font-black uppercase tracking-[0.12em] text-[#171411]">
+                      <p className="neo-copy mb-2 text-[10px] font-black tracking-[0.12em] text-[#171411] uppercase">
                         Blocked players
                       </p>
                       <div className="space-y-2">
@@ -957,17 +957,17 @@ function FriendsPageForAccount({ auth }: { auth: ReturnType<typeof useCurrentUse
                               className="flex items-center justify-between gap-2 border-2 border-black bg-[#fff9ed] p-2 shadow-[1px_1px_0_#171411]"
                             >
                               <div className="min-w-0">
-                                <p className="neo-copy truncate text-[11px] font-black uppercase text-[#171411]">
+                                <p className="neo-copy truncate text-[11px] font-black text-[#171411] uppercase">
                                   {label ?? `Player ${id.slice(0, 8)}`}
                                 </p>
                                 {profile?.username ? (
-                                  <p className="neo-copy truncate text-[9px] font-bold uppercase tracking-[0.12em] text-[#5b403f]">
+                                  <p className="neo-copy truncate text-[9px] font-bold tracking-[0.12em] text-[#5b403f] uppercase">
                                     @{profile.username}
                                   </p>
                                 ) : null}
                               </div>
                               <button
-                                className="neo-copy shrink-0 border-2 border-black bg-[#007166] px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-white shadow-[1px_1px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#065e53] disabled:opacity-60"
+                                className="neo-copy shrink-0 border-2 border-black bg-[#007166] px-2 py-1 text-[10px] font-black tracking-[0.12em] text-white uppercase shadow-[1px_1px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#065e53] disabled:opacity-60"
                                 disabled={isMutating}
                                 type="button"
                                 onClick={() =>
@@ -991,7 +991,7 @@ function FriendsPageForAccount({ auth }: { auth: ReturnType<typeof useCurrentUse
 
           {activeTab === "import" && (
             <Panel title="Import Platform Friends">
-              <p className="neo-copy mb-4 text-[11px] font-bold uppercase leading-5 text-[#55504a]">
+              <p className="neo-copy mb-4 text-[11px] leading-5 font-bold text-[#55504a] uppercase">
                 Import your friends from connected gaming platforms. Deduplication runs
                 automatically (linked accounts) and via heuristic name matching.
               </p>
@@ -1007,13 +1007,13 @@ function FriendsPageForAccount({ auth }: { auth: ReturnType<typeof useCurrentUse
                   <div className="border-[3px] border-black bg-[#f6edd8] p-3 shadow-[3px_3px_0_#171411]">
                     <div className="flex items-center gap-2 border-b-2 border-black pb-2">
                       <MessageSquare className="h-4 w-4 text-[#b7102a]" />
-                      <p className="neo-copy text-[10px] font-black uppercase tracking-[0.12em] text-[#171411]">
+                      <p className="neo-copy text-[10px] font-black tracking-[0.12em] text-[#171411] uppercase">
                         Direct Message
                       </p>
                     </div>
                     {/* Friend selector */}
                     {friendIds.length > 0 && (
-                      <div className="mb-2 mt-2">
+                      <div className="mt-2 mb-2">
                         <select
                           className="neo-copy w-full border-2 border-black bg-[#fff9ed] px-2 py-1.5 text-[10px] font-bold"
                           value={selectedFriendId ?? ""}
@@ -1044,7 +1044,7 @@ function FriendsPageForAccount({ auth }: { auth: ReturnType<typeof useCurrentUse
                           </div>
                         ))
                       ) : (
-                        <p className="neo-copy border-2 border-dashed border-black bg-[#fff9ed] p-3 text-[11px] font-bold uppercase leading-5 text-[#655f58]">
+                        <p className="neo-copy border-2 border-dashed border-black bg-[#fff9ed] p-3 text-[11px] leading-5 font-bold text-[#655f58] uppercase">
                           Pick a friend and start a text chat.
                         </p>
                       )}
@@ -1145,7 +1145,7 @@ function FriendsPageForAccount({ auth }: { auth: ReturnType<typeof useCurrentUse
                       onChange={(event) => setInviteGameTitle(event.target.value)}
                     />
                     <button
-                      className="neo-copy h-10 shrink-0 border-2 border-black bg-[#b7102a] px-3 text-[10px] font-black uppercase tracking-[0.12em] text-white shadow-[2px_2px_0_#171411] disabled:opacity-50"
+                      className="neo-copy h-10 shrink-0 border-2 border-black bg-[#b7102a] px-3 text-[10px] font-black tracking-[0.12em] text-white uppercase shadow-[2px_2px_0_#171411] disabled:opacity-50"
                       disabled={!selectedFriendId || !inviteGameTitle.trim() || isMutating}
                       type="submit"
                     >
@@ -1268,7 +1268,7 @@ function ActivityTabShell({
           <div className="flex flex-wrap items-center justify-between gap-3 border-b-[5px] border-black bg-[#171411] px-4 py-3 text-[#fff9ed]">
             <div className="min-w-0">
               <h2 className="neo-title text-4xl leading-none text-[#fff9ed]">Friend Activity</h2>
-              <p className="neo-copy mt-1 text-[10px] font-black uppercase leading-4 text-[#8cf5e4]">
+              <p className="neo-copy mt-1 text-[10px] leading-4 font-black text-[#8cf5e4] uppercase">
                 {modeLabel}
               </p>
             </div>
@@ -1287,7 +1287,7 @@ function ActivityTabShell({
                     Post a status to your friends
                   </label>
                   <textarea
-                    className="neo-copy min-h-16 w-full resize-none border-[3px] border-black bg-[#fff9ed] px-3 py-2 text-[11px] font-black uppercase leading-5 text-[#171411] shadow-[3px_3px_0_#171411] outline-none placeholder:text-[#655f58] focus:bg-[#8cf5e4]"
+                    className="neo-copy min-h-16 w-full resize-none border-[3px] border-black bg-[#fff9ed] px-3 py-2 text-[11px] leading-5 font-black text-[#171411] uppercase shadow-[3px_3px_0_#171411] outline-none placeholder:text-[#655f58] focus:bg-[#8cf5e4]"
                     disabled={composerBusy}
                     id="friend-activity-status"
                     maxLength={240}
@@ -1297,7 +1297,7 @@ function ActivityTabShell({
                   />
                   <div className="mt-2 flex justify-end">
                     <button
-                      className="neo-copy inline-flex h-9 items-center border-[3px] border-black bg-[#b7102a] px-5 text-[10px] font-black uppercase text-white shadow-[3px_3px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#087d6d] disabled:cursor-not-allowed disabled:bg-[#d8cbb7] disabled:text-[#655f58]"
+                      className="neo-copy inline-flex h-9 items-center border-[3px] border-black bg-[#b7102a] px-5 text-[10px] font-black text-white uppercase shadow-[3px_3px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#087d6d] disabled:cursor-not-allowed disabled:bg-[#d8cbb7] disabled:text-[#655f58]"
                       disabled={!composerText.trim() || composerBusy}
                       type="submit"
                     >
@@ -1307,7 +1307,7 @@ function ActivityTabShell({
                 </div>
               </form>
             ) : (
-              <p className="neo-copy border-[3px] border-black bg-[#fff9ed] p-3 text-[10px] font-black uppercase leading-5 text-[#5b403f] shadow-[3px_3px_0_#171411]">
+              <p className="neo-copy border-[3px] border-black bg-[#fff9ed] p-3 text-[10px] leading-5 font-black text-[#5b403f] uppercase shadow-[3px_3px_0_#171411]">
                 Sign in to post activity. Local preview entries are read-only and are never saved.
               </p>
             )}
@@ -1330,7 +1330,7 @@ function ActivityTabShell({
         <section className="border-4 border-black bg-[#fff9ed] shadow-[5px_5px_0_#171411]">
           <div className="border-b-4 border-black bg-[#171411] p-3 text-[#fff9ed]">
             <h3 className="neo-title text-3xl leading-none">Welcome to the OG Friends</h3>
-            <p className="neo-copy mt-2 text-[9px] font-black uppercase leading-4 text-[#8cf5e4]">
+            <p className="neo-copy mt-2 text-[9px] leading-4 font-black text-[#8cf5e4] uppercase">
               Real launcher status posts and provider activity are grouped in one feed.
             </p>
           </div>
@@ -1359,7 +1359,7 @@ function ActivityTabShell({
         <section className="border-4 border-black bg-[#fff9ed] p-3 shadow-[5px_5px_0_#171411]">
           <div className="flex items-center justify-between gap-3 border-b-[3px] border-black pb-3">
             <h3 className="neo-title text-3xl leading-none text-[#171411]">Friends Online</h3>
-            <span className="neo-copy border-2 border-black bg-[#087d6d] px-2 py-1 text-[10px] font-black uppercase text-white shadow-[2px_2px_0_#171411]">
+            <span className="neo-copy border-2 border-black bg-[#087d6d] px-2 py-1 text-[10px] font-black text-white uppercase shadow-[2px_2px_0_#171411]">
               {onlineCount}
             </span>
           </div>
@@ -1367,7 +1367,7 @@ function ActivityTabShell({
             {friends.length > 0 ? (
               friends.map((friend) => <ActivityFriendRow friend={friend} key={friend.id} />)
             ) : (
-              <p className="neo-copy border-2 border-dashed border-black bg-[#f6edd8] p-3 text-[11px] font-bold uppercase leading-5 text-[#655f58]">
+              <p className="neo-copy border-2 border-dashed border-black bg-[#f6edd8] p-3 text-[11px] leading-5 font-bold text-[#655f58] uppercase">
                 Add friends to fill the activity rail.
               </p>
             )}
@@ -1381,7 +1381,7 @@ function ActivityTabShell({
           <div className="mt-3 space-y-2">
             {["No events in the next 30 days", "Group announcements: none"].map((event) => (
               <p
-                className="neo-copy border-2 border-[#fff9ed] bg-[#24201c] px-2 py-2 text-[9px] font-black uppercase leading-4 text-[#f5eedf]"
+                className="neo-copy border-2 border-[#fff9ed] bg-[#24201c] px-2 py-2 text-[9px] leading-4 font-black text-[#f5eedf] uppercase"
                 key={event}
               >
                 {event}
@@ -1398,7 +1398,7 @@ function ActivityMiniStat({ label, value }: { label: string; value: number | str
   return (
     <div className="border-[3px] border-black bg-[#f5eedf] px-3 py-2 shadow-[3px_3px_0_#171411]">
       <p className="neo-title text-3xl leading-none text-[#171411]">{value}</p>
-      <p className="neo-copy text-[8px] font-black uppercase text-[#5b403f]">{label}</p>
+      <p className="neo-copy text-[8px] font-black text-[#5b403f] uppercase">{label}</p>
     </div>
   );
 }
@@ -1441,10 +1441,10 @@ function ActivitySidebarButton({
         {icon}
       </span>
       <span className="min-w-0">
-        <span className="neo-copy block truncate text-[10px] font-black uppercase text-[#171411]">
+        <span className="neo-copy block truncate text-[10px] font-black text-[#171411] uppercase">
           {label}
         </span>
-        <span className="neo-copy block truncate text-[8px] font-black uppercase text-[#5b403f]">
+        <span className="neo-copy block truncate text-[8px] font-black text-[#5b403f] uppercase">
           {meta}
         </span>
       </span>
@@ -1457,10 +1457,10 @@ function ActivityFriendRow({ friend }: { friend: ActivitySidebarFriend }) {
     <div className="grid grid-cols-[48px_minmax(0,1fr)] gap-2 border-2 border-black bg-[#f6edd8] p-2 shadow-[2px_2px_0_#171411]">
       <ActivityAvatar name={friend.name} tone={friend.status === "away" ? "teal" : "ink"} />
       <div className="min-w-0">
-        <p className="neo-copy truncate text-[10px] font-black uppercase text-[#171411]">
+        <p className="neo-copy truncate text-[10px] font-black text-[#171411] uppercase">
           {friend.name}
         </p>
-        <p className="neo-copy truncate text-[9px] font-bold uppercase text-[#5b403f]">
+        <p className="neo-copy truncate text-[9px] font-bold text-[#5b403f] uppercase">
           {friend.detail}
         </p>
         <p className={activityStatusClassName(friend.status)}>{friend.status}</p>
@@ -1495,16 +1495,16 @@ function LocalActivityFeed({ items }: { items: LocalActivityItem[] }) {
                 <ActivityAvatar name={item.actor} tone="ink" />
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                    <p className="neo-copy text-[11px] font-black uppercase tracking-[0.08em] text-[#171411]">
+                    <p className="neo-copy text-[11px] font-black tracking-[0.08em] text-[#171411] uppercase">
                       {item.actor}
                     </p>
-                    <p className="neo-copy text-[10px] font-black uppercase text-[#655f58]">
+                    <p className="neo-copy text-[10px] font-black text-[#655f58] uppercase">
                       @{item.handle} / {item.timeLabel}
                     </p>
                   </div>
-                  <p className="mt-1 text-sm font-bold leading-5 text-[#5b403f]">{item.action}</p>
+                  <p className="mt-1 text-sm leading-5 font-bold text-[#5b403f]">{item.action}</p>
                 </div>
-                <span className="neo-copy h-fit shrink-0 border-2 border-black bg-[#8cf5e4] px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] shadow-[1px_1px_0_#171411]">
+                <span className="neo-copy h-fit shrink-0 border-2 border-black bg-[#8cf5e4] px-2 py-1 text-[9px] font-black tracking-[0.12em] uppercase shadow-[1px_1px_0_#171411]">
                   {item.platform}
                 </span>
               </div>
@@ -1516,7 +1516,7 @@ function LocalActivityFeed({ items }: { items: LocalActivityItem[] }) {
                   role="img"
                 >
                   <div className="flex h-full min-h-36 items-end p-3">
-                    <span className="neo-copy border-2 border-black bg-[#171411] px-2 py-1 text-[9px] font-black uppercase text-[#8cf5e4] shadow-[2px_2px_0_#b7102a]">
+                    <span className="neo-copy border-2 border-black bg-[#171411] px-2 py-1 text-[9px] font-black text-[#8cf5e4] uppercase shadow-[2px_2px_0_#b7102a]">
                       {item.gameTitle}
                     </span>
                   </div>
@@ -1527,17 +1527,17 @@ function LocalActivityFeed({ items }: { items: LocalActivityItem[] }) {
                       <p className="neo-title truncate text-4xl leading-none text-[#171411]">
                         {item.gameTitle}
                       </p>
-                      <p className="neo-copy mt-2 text-[10px] font-black uppercase leading-5 text-[#b7102a]">
+                      <p className="neo-copy mt-2 text-[10px] leading-5 font-black text-[#b7102a] uppercase">
                         {item.meta}
                       </p>
                     </div>
-                    <span className="neo-copy border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] font-black uppercase text-[#171411]">
+                    <span className="neo-copy border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] font-black text-[#171411] uppercase">
                       Activity Progress
                     </span>
                   </div>
-                  <p className="mt-2 text-sm font-bold leading-5 text-[#5b403f]">{item.detail}</p>
+                  <p className="mt-2 text-sm leading-5 font-bold text-[#5b403f]">{item.detail}</p>
                   <ActivityProgressBar value={progress} />
-                  <p className="neo-copy mt-2 text-[9px] font-black uppercase text-[#5b403f]">
+                  <p className="neo-copy mt-2 text-[9px] font-black text-[#5b403f] uppercase">
                     {item.reactions} ratings // {Math.max(1, Math.round(progress / 12))} feed
                     signals
                   </p>
@@ -1545,7 +1545,7 @@ function LocalActivityFeed({ items }: { items: LocalActivityItem[] }) {
               </div>
 
               <div className="flex flex-wrap items-center gap-2 border-t-[3px] border-black bg-[#efe6d4] px-3 py-2">
-                <span className="neo-copy text-[9px] font-black uppercase text-[#5b403f]">
+                <span className="neo-copy text-[9px] font-black text-[#5b403f] uppercase">
                   Preview record // {item.timeLabel} // {item.platform}
                 </span>
               </div>
@@ -1556,10 +1556,10 @@ function LocalActivityFeed({ items }: { items: LocalActivityItem[] }) {
                     key={`${item.id}-${comment.author}`}
                     className="border-2 border-black bg-[#f6edd8] p-2 shadow-[1px_1px_0_#171411]"
                   >
-                    <p className="neo-copy text-[9px] font-black uppercase tracking-[0.12em] text-[#b7102a]">
+                    <p className="neo-copy text-[9px] font-black tracking-[0.12em] text-[#b7102a] uppercase">
                       {comment.author}
                     </p>
-                    <p className="mt-1 text-sm font-bold leading-5 text-[#5b403f]">
+                    <p className="mt-1 text-sm leading-5 font-bold text-[#5b403f]">
                       {comment.copy}
                     </p>
                   </div>
@@ -1576,7 +1576,7 @@ function LocalActivityFeed({ items }: { items: LocalActivityItem[] }) {
 function ActivityDateDivider({ label }: { label: string }) {
   return (
     <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-3">
-      <span className="neo-copy border-2 border-black bg-[#171411] px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-[#fff9ed] shadow-[2px_2px_0_#b7102a]">
+      <span className="neo-copy border-2 border-black bg-[#171411] px-3 py-1 text-[10px] font-black tracking-[0.14em] text-[#fff9ed] uppercase shadow-[2px_2px_0_#b7102a]">
         {label}
       </span>
       <span className="h-[3px] bg-[#171411]" aria-hidden="true" />
@@ -1608,7 +1608,7 @@ function TabNavigation({
       {TABS.map((tab) => (
         <button
           key={tab.key}
-          className={`neo-copy flex items-center gap-1.5 border-2 border-black px-3 py-2 text-[10px] font-black uppercase tracking-[0.1em] shadow-[2px_2px_0_#171411] transition ${
+          className={`neo-copy flex items-center gap-1.5 border-2 border-black px-3 py-2 text-[10px] font-black tracking-[0.1em] uppercase shadow-[2px_2px_0_#171411] transition ${
             activeTab === tab.key
               ? "bg-[#b7102a] text-white"
               : "bg-[#fff9ed] text-[#171411] hover:bg-[#f6edd8]"
@@ -1741,23 +1741,23 @@ function LocalFriendsHub({
     <div className="space-y-5">
       <section className="grid gap-4 border-4 border-black bg-[#fff9ed] p-4 shadow-[6px_6px_0_#171411] lg:grid-cols-[minmax(0,1fr)_320px]">
         <div>
-          <p className="neo-copy inline-flex border-2 border-black bg-[#007166] px-3 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-white shadow-[2px_2px_0_#171411]">
+          <p className="neo-copy inline-flex border-2 border-black bg-[#007166] px-3 py-1 text-[10px] font-black tracking-[0.12em] text-white uppercase shadow-[2px_2px_0_#171411]">
             Local Relay Preview
           </p>
           <h2 className="neo-title mt-3 text-4xl leading-none text-[#171411]">
             Offline Social Board
           </h2>
-          <p className="neo-copy mt-2 max-w-3xl text-[12px] font-bold uppercase leading-6 text-[#5b403f]">
+          <p className="neo-copy mt-2 max-w-3xl text-[12px] leading-6 font-bold text-[#5b403f] uppercase">
             Friends, chat, imports, activity, and invites stay usable as a launcher preview while
             the public Supabase keys are absent.
           </p>
         </div>
         <div className="border-[3px] border-black bg-[#f6edd8] p-3 shadow-[3px_3px_0_#171411]">
-          <p className="neo-copy text-[10px] font-black uppercase tracking-[0.12em] text-[#171411]">
+          <p className="neo-copy text-[10px] font-black tracking-[0.12em] text-[#171411] uppercase">
             Relay Signal
           </p>
           <p className="neo-title mt-2 text-3xl leading-none text-[#b7102a]">Local Only</p>
-          <p className="neo-copy mt-2 text-[11px] font-bold uppercase leading-5 text-[#5b403f]">
+          <p className="neo-copy mt-2 text-[11px] leading-5 font-bold text-[#5b403f] uppercase">
             {localMessage}
           </p>
         </div>
@@ -1794,19 +1794,19 @@ function LocalFriendsHub({
                     key={request.id}
                     className="border-[3px] border-black bg-[#f6edd8] p-3 shadow-[3px_3px_0_#171411]"
                   >
-                    <p className="neo-copy inline-flex border-2 border-black bg-[#fff9ed] px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-[#171411]">
+                    <p className="neo-copy inline-flex border-2 border-black bg-[#fff9ed] px-2 py-1 text-[9px] font-black tracking-[0.12em] text-[#171411] uppercase">
                       {request.direction === "incoming" ? "Incoming" : "Outgoing"}
                     </p>
                     <p className="neo-title mt-3 text-3xl leading-none text-[#171411]">
                       {request.displayName}
                     </p>
-                    <p className="neo-copy mt-1 text-[10px] font-black uppercase tracking-[0.12em] text-[#655f58]">
+                    <p className="neo-copy mt-1 text-[10px] font-black tracking-[0.12em] text-[#655f58] uppercase">
                       @{request.username}
                     </p>
                     <p className="mt-3 text-sm leading-5 text-[#5b403f]">{request.copy}</p>
                     <div className="mt-3 flex flex-wrap gap-2">
                       <button
-                        className="neo-copy border-2 border-black bg-[#007166] px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-white shadow-[2px_2px_0_#171411]"
+                        className="neo-copy border-2 border-black bg-[#007166] px-3 py-2 text-[10px] font-black tracking-[0.12em] text-white uppercase shadow-[2px_2px_0_#171411]"
                         type="button"
                         onClick={() => stagePlayerAction(`${request.displayName} request action`)}
                       >
@@ -1814,7 +1814,7 @@ function LocalFriendsHub({
                       </button>
                       {request.direction === "incoming" ? (
                         <button
-                          className="neo-copy border-2 border-black bg-[#b7102a] px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-white shadow-[2px_2px_0_#171411]"
+                          className="neo-copy border-2 border-black bg-[#b7102a] px-3 py-2 text-[10px] font-black tracking-[0.12em] text-white uppercase shadow-[2px_2px_0_#171411]"
                           type="button"
                           onClick={() => stagePlayerAction(`${request.displayName} decline`)}
                         >
@@ -1846,20 +1846,20 @@ function LocalFriendsHub({
                       <p className="neo-title text-2xl leading-none text-[#171411]">
                         {result.displayName}
                       </p>
-                      <p className="neo-copy mt-1 text-[10px] font-black uppercase tracking-[0.12em] text-[#5b403f]">
+                      <p className="neo-copy mt-1 text-[10px] font-black tracking-[0.12em] text-[#5b403f] uppercase">
                         @{result.handle}
                       </p>
                       <p className="mt-2 text-sm leading-5 text-[#5b403f]">{result.copy}</p>
                       <div className="mt-3 flex gap-2">
                         <button
-                          className="neo-copy border-2 border-black bg-[#007166] px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-white shadow-[2px_2px_0_#171411]"
+                          className="neo-copy border-2 border-black bg-[#007166] px-3 py-2 text-[10px] font-black tracking-[0.12em] text-white uppercase shadow-[2px_2px_0_#171411]"
                           type="button"
                           onClick={() => stagePlayerAction(`${result.displayName} add`)}
                         >
                           Add
                         </button>
                         <button
-                          className="neo-copy border-2 border-black bg-[#fff9ed] px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-[#b7102a] shadow-[2px_2px_0_#171411]"
+                          className="neo-copy border-2 border-black bg-[#fff9ed] px-3 py-2 text-[10px] font-black tracking-[0.12em] text-[#b7102a] uppercase shadow-[2px_2px_0_#171411]"
                           type="button"
                           onClick={() => stagePlayerAction(`${result.displayName} block`)}
                         >
@@ -1869,7 +1869,7 @@ function LocalFriendsHub({
                     </div>
                   ))
                 ) : (
-                  <p className="neo-copy border-2 border-dashed border-black bg-[#f6edd8] p-3 text-[11px] font-bold uppercase leading-5 text-[#655f58]">
+                  <p className="neo-copy border-2 border-dashed border-black bg-[#f6edd8] p-3 text-[11px] leading-5 font-bold text-[#655f58] uppercase">
                     No local relay matches.
                   </p>
                 )}
@@ -1879,15 +1879,15 @@ function LocalFriendsHub({
             <Panel title="Muted Relay">
               <div className="flex items-center justify-between gap-3 border-2 border-black bg-[#f6edd8] p-3 shadow-[2px_2px_0_#171411]">
                 <div className="min-w-0">
-                  <p className="neo-copy truncate text-[11px] font-black uppercase text-[#171411]">
+                  <p className="neo-copy truncate text-[11px] font-black text-[#171411] uppercase">
                     Static Knight
                   </p>
-                  <p className="neo-copy truncate text-[9px] font-bold uppercase tracking-[0.12em] text-[#5b403f]">
+                  <p className="neo-copy truncate text-[9px] font-bold tracking-[0.12em] text-[#5b403f] uppercase">
                     @staticknight
                   </p>
                 </div>
                 <button
-                  className="neo-copy shrink-0 border-2 border-black bg-[#007166] px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-white shadow-[1px_1px_0_#171411]"
+                  className="neo-copy shrink-0 border-2 border-black bg-[#007166] px-2 py-1 text-[10px] font-black tracking-[0.12em] text-white uppercase shadow-[1px_1px_0_#171411]"
                   type="button"
                   onClick={() => stagePlayerAction("Static Knight unblock")}
                 >
@@ -1908,20 +1908,20 @@ function LocalFriendsHub({
                 className="border-[3px] border-black bg-[#f6edd8] p-4 shadow-[3px_3px_0_#171411]"
               >
                 <p className="neo-title text-3xl leading-none text-[#171411]">{account.label}</p>
-                <p className="neo-copy mt-1 text-[10px] font-black uppercase tracking-[0.12em] text-[#655f58]">
+                <p className="neo-copy mt-1 text-[10px] font-black tracking-[0.12em] text-[#655f58] uppercase">
                   {account.status}
                 </p>
                 <p className="neo-title mt-4 text-4xl leading-none text-[#b7102a]">
                   {account.count}
                 </p>
-                <p className="neo-copy mt-1 text-[10px] font-black uppercase tracking-[0.12em] text-[#171411]">
+                <p className="neo-copy mt-1 text-[10px] font-black tracking-[0.12em] text-[#171411] uppercase">
                   Friends queued
                 </p>
               </div>
             ))}
           </div>
           <div className="mt-4 border-[3px] border-black bg-[#fff9ed] p-3 shadow-[3px_3px_0_#171411]">
-            <p className="neo-copy text-[10px] font-black uppercase tracking-[0.12em] text-[#171411]">
+            <p className="neo-copy text-[10px] font-black tracking-[0.12em] text-[#171411] uppercase">
               Deduplication Strip
             </p>
             <div className="mt-3 grid gap-2 md:grid-cols-3">
@@ -1930,10 +1930,10 @@ function LocalFriendsHub({
                   key={item.label}
                   className={`${item.accent} min-w-0 border-2 border-black p-2 shadow-[2px_2px_0_#171411]`}
                 >
-                  <p className="neo-copy break-words text-[9px] font-black uppercase tracking-[0.1em] text-[#5b403f]">
+                  <p className="neo-copy text-[9px] font-black tracking-[0.1em] break-words text-[#5b403f] uppercase">
                     {item.label}
                   </p>
-                  <p className="neo-copy mt-1 break-words text-[10px] font-black uppercase leading-4 tracking-[0.1em] text-[#171411]">
+                  <p className="neo-copy mt-1 text-[10px] leading-4 font-black tracking-[0.1em] break-words text-[#171411] uppercase">
                     {item.copy}
                   </p>
                 </div>
@@ -1998,11 +1998,11 @@ function LocalFriendsHub({
                   className="border-[3px] border-black bg-[#f6edd8] p-3 shadow-[3px_3px_0_#171411]"
                 >
                   <p className="neo-title text-2xl leading-none text-[#171411]">{room}</p>
-                  <p className="neo-copy mt-1 text-[10px] font-black uppercase tracking-[0.12em] text-[#655f58]">
+                  <p className="neo-copy mt-1 text-[10px] font-black tracking-[0.12em] text-[#655f58] uppercase">
                     {index === 0 ? "3 players / Neon Drift" : "2 players / Phantom Arcade"}
                   </p>
                   <button
-                    className="neo-copy mt-3 border-2 border-black bg-[#b7102a] px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-white shadow-[2px_2px_0_#171411]"
+                    className="neo-copy mt-3 border-2 border-black bg-[#b7102a] px-3 py-2 text-[10px] font-black tracking-[0.12em] text-white uppercase shadow-[2px_2px_0_#171411]"
                     type="button"
                     onClick={() => stagePlayerAction(`${room} group ping`)}
                   >
@@ -2037,13 +2037,13 @@ function LocalFriendsHub({
                 aria-hidden="true"
               />
               <div>
-                <p className="neo-copy inline-flex border-2 border-black bg-[#007166] px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-white">
+                <p className="neo-copy inline-flex border-2 border-black bg-[#007166] px-2 py-1 text-[9px] font-black tracking-[0.12em] text-white uppercase">
                   Selected Friend
                 </p>
                 <p className="neo-title mt-3 text-4xl leading-none text-[#171411]">
                   {selectedFriend.displayName}
                 </p>
-                <p className="neo-copy mt-2 text-[11px] font-black uppercase leading-5 tracking-[0.12em] text-[#5b403f]">
+                <p className="neo-copy mt-2 text-[11px] leading-5 font-black tracking-[0.12em] text-[#5b403f] uppercase">
                   {selectedFriend.platforms.join(" / ")} · {selectedFriend.signal}
                 </p>
                 <form className="mt-4 flex flex-col gap-2 sm:flex-row" onSubmit={submitLocalInvite}>
@@ -2055,7 +2055,7 @@ function LocalFriendsHub({
                     onChange={(event) => setInviteGameTitle(event.target.value)}
                   />
                   <button
-                    className="neo-copy shrink-0 border-2 border-black bg-[#b7102a] px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-white shadow-[2px_2px_0_#171411] disabled:opacity-50"
+                    className="neo-copy shrink-0 border-2 border-black bg-[#b7102a] px-3 py-2 text-[10px] font-black tracking-[0.12em] text-white uppercase shadow-[2px_2px_0_#171411] disabled:opacity-50"
                     disabled={!inviteGameTitle.trim()}
                     type="submit"
                   >
@@ -2076,25 +2076,25 @@ function LocalFriendsHub({
                   <p className="neo-title text-2xl leading-none text-[#171411]">
                     {invite.gameTitle}
                   </p>
-                  <p className="neo-copy mt-1 text-[10px] font-black uppercase tracking-[0.12em] text-[#655f58]">
+                  <p className="neo-copy mt-1 text-[10px] font-black tracking-[0.12em] text-[#655f58] uppercase">
                     {invite.direction === "incoming" ? "From" : "To"} {invite.friendName} ·{" "}
                     {invite.platform}
                   </p>
                   <p className="mt-2 text-sm leading-5 text-[#5b403f]">{invite.message}</p>
-                  <p className="neo-copy mt-2 inline-flex border-2 border-black bg-[#8cf5e4] px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-[#171411]">
+                  <p className="neo-copy mt-2 inline-flex border-2 border-black bg-[#8cf5e4] px-2 py-1 text-[9px] font-black tracking-[0.12em] text-[#171411] uppercase">
                     {invite.status}
                   </p>
                   {invite.direction === "incoming" && invite.status === "pending" ? (
                     <div className="mt-3 flex gap-2">
                       <button
-                        className="neo-copy border-2 border-black bg-[#007166] px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-white shadow-[2px_2px_0_#171411]"
+                        className="neo-copy border-2 border-black bg-[#007166] px-3 py-2 text-[10px] font-black tracking-[0.12em] text-white uppercase shadow-[2px_2px_0_#171411]"
                         type="button"
                         onClick={() => updateLocalInviteStatus(invite.id, "accepted")}
                       >
                         Accept
                       </button>
                       <button
-                        className="neo-copy border-2 border-black bg-[#b7102a] px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-white shadow-[2px_2px_0_#171411]"
+                        className="neo-copy border-2 border-black bg-[#b7102a] px-3 py-2 text-[10px] font-black tracking-[0.12em] text-white uppercase shadow-[2px_2px_0_#171411]"
                         type="button"
                         onClick={() => updateLocalInviteStatus(invite.id, "declined")}
                       >
@@ -2149,17 +2149,17 @@ function LocalFriendCard({
           <p className="neo-title truncate text-3xl leading-none text-[#171411]">
             {friend.displayName}
           </p>
-          <p className="neo-copy mt-1 truncate text-[10px] font-black uppercase tracking-[0.12em] text-[#655f58]">
+          <p className="neo-copy mt-1 truncate text-[10px] font-black tracking-[0.12em] text-[#655f58] uppercase">
             @{friend.username}
           </p>
         </div>
         <p
-          className={`neo-copy shrink-0 border-2 border-black px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] shadow-[1px_1px_0_#171411] ${statusClass}`}
+          className={`neo-copy shrink-0 border-2 border-black px-2 py-1 text-[9px] font-black tracking-[0.12em] uppercase shadow-[1px_1px_0_#171411] ${statusClass}`}
         >
           {friend.status}
         </p>
       </div>
-      <p className="neo-copy mt-3 text-[11px] font-black uppercase leading-5 tracking-[0.08em] text-[#171411]">
+      <p className="neo-copy mt-3 text-[11px] leading-5 font-black tracking-[0.08em] text-[#171411] uppercase">
         {friend.gameTitle}
       </p>
       <p className="mt-1 text-sm leading-5 text-[#5b403f]">{friend.note}</p>
@@ -2167,7 +2167,7 @@ function LocalFriendCard({
         {friend.platforms.map((platform) => (
           <span
             key={platform}
-            className="neo-copy border-2 border-black bg-[#f6edd8] px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-[#171411]"
+            className="neo-copy border-2 border-black bg-[#f6edd8] px-2 py-1 text-[9px] font-black tracking-[0.12em] text-[#171411] uppercase"
           >
             {platform}
           </span>
@@ -2175,7 +2175,7 @@ function LocalFriendCard({
       </div>
       <div className="mt-3 grid grid-cols-2 gap-2">
         <button
-          className="neo-copy inline-flex items-center justify-center gap-1 border-2 border-black bg-[#fff9ed] px-2 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-[#171411] shadow-[2px_2px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#8cf5e4]"
+          className="neo-copy inline-flex items-center justify-center gap-1 border-2 border-black bg-[#fff9ed] px-2 py-2 text-[10px] font-black tracking-[0.12em] text-[#171411] uppercase shadow-[2px_2px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#8cf5e4]"
           type="button"
           onClick={onSelect}
         >
@@ -2183,7 +2183,7 @@ function LocalFriendCard({
           Focus
         </button>
         <button
-          className="neo-copy inline-flex items-center justify-center gap-1 border-2 border-black bg-[#fff9ed] px-2 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-[#171411] shadow-[2px_2px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#8cf5e4]"
+          className="neo-copy inline-flex items-center justify-center gap-1 border-2 border-black bg-[#fff9ed] px-2 py-2 text-[10px] font-black tracking-[0.12em] text-[#171411] uppercase shadow-[2px_2px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#8cf5e4]"
           type="button"
           onClick={onChat}
         >
@@ -2191,7 +2191,7 @@ function LocalFriendCard({
           Chat
         </button>
         <button
-          className="neo-copy inline-flex items-center justify-center gap-1 border-2 border-black bg-[#007166] px-2 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-white shadow-[2px_2px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#065e53]"
+          className="neo-copy inline-flex items-center justify-center gap-1 border-2 border-black bg-[#007166] px-2 py-2 text-[10px] font-black tracking-[0.12em] text-white uppercase shadow-[2px_2px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#065e53]"
           type="button"
           onClick={onJoin}
         >
@@ -2199,7 +2199,7 @@ function LocalFriendCard({
           Smart Join
         </button>
         <button
-          className="neo-copy inline-flex items-center justify-center gap-1 border-2 border-black bg-[#b7102a] px-2 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-white shadow-[2px_2px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#8b0c20]"
+          className="neo-copy inline-flex items-center justify-center gap-1 border-2 border-black bg-[#b7102a] px-2 py-2 text-[10px] font-black tracking-[0.12em] text-white uppercase shadow-[2px_2px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#8b0c20]"
           type="button"
           onClick={onInvite}
         >
@@ -2233,7 +2233,7 @@ function InviteList({
 
   if (pendingInvites.length === 0) {
     return (
-      <p className="neo-copy border-2 border-dashed border-black bg-[#fff9ed] p-3 text-[11px] font-bold uppercase leading-5 text-[#655f58]">
+      <p className="neo-copy border-2 border-dashed border-black bg-[#fff9ed] p-3 text-[11px] leading-5 font-bold text-[#655f58] uppercase">
         No pending invites.
       </p>
     );
@@ -2254,7 +2254,7 @@ function InviteList({
             className="border-2 border-black bg-[#fff9ed] p-3 shadow-[2px_2px_0_#171411]"
           >
             <p className="neo-title text-2xl leading-none text-[#171411]">{invite.gameTitle}</p>
-            <p className="neo-copy mt-1 truncate text-[10px] font-black uppercase tracking-[0.12em] text-[#655f58]">
+            <p className="neo-copy mt-1 truncate text-[10px] font-black tracking-[0.12em] text-[#655f58] uppercase">
               {isIncoming ? `From ${otherLabel}` : `To ${otherLabel}`}
             </p>
             {invite.message ? (
@@ -2263,7 +2263,7 @@ function InviteList({
             {isIncoming ? (
               <div className="mt-3 flex gap-2">
                 <button
-                  className="neo-copy border-2 border-black bg-[#007166] px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-white shadow-[2px_2px_0_#171411] disabled:opacity-50"
+                  className="neo-copy border-2 border-black bg-[#007166] px-3 py-2 text-[10px] font-black tracking-[0.12em] text-white uppercase shadow-[2px_2px_0_#171411] disabled:opacity-50"
                   disabled={isMutating}
                   type="button"
                   onClick={() => onAccept(invite)}
@@ -2271,7 +2271,7 @@ function InviteList({
                   Accept
                 </button>
                 <button
-                  className="neo-copy border-2 border-black bg-[#b7102a] px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-white shadow-[2px_2px_0_#171411] disabled:opacity-50"
+                  className="neo-copy border-2 border-black bg-[#b7102a] px-3 py-2 text-[10px] font-black tracking-[0.12em] text-white uppercase shadow-[2px_2px_0_#171411] disabled:opacity-50"
                   disabled={isMutating}
                   type="button"
                   onClick={() => onDecline(invite)}
@@ -2292,7 +2292,7 @@ function Metric({ icon, label, value }: { icon: ReactNode; label: string; value:
     <div className="border-[3px] border-black bg-[#fff9ed] px-4 py-3 shadow-[4px_4px_0_#171411]">
       <div className="flex items-center justify-center gap-2 text-[#b7102a]">
         {icon}
-        <span className="neo-copy text-[10px] font-black uppercase tracking-[0.12em]">{label}</span>
+        <span className="neo-copy text-[10px] font-black tracking-[0.12em] uppercase">{label}</span>
       </div>
       <p className="neo-title mt-1 text-3xl leading-none text-[#171411]">{value}</p>
     </div>
@@ -2314,7 +2314,7 @@ function Notice({ body, title }: { body: string; title: string }) {
   return (
     <div className="border-4 border-black bg-[#fff9ed] p-6 shadow-[6px_6px_0_#171411]">
       <h2 className="neo-title text-4xl leading-none text-[#171411]">{title}</h2>
-      <p className="neo-copy mt-3 text-[12px] font-bold uppercase leading-6 text-[#5b403f]">
+      <p className="neo-copy mt-3 text-[12px] leading-6 font-bold text-[#5b403f] uppercase">
         {body}
       </p>
     </div>
@@ -2326,8 +2326,8 @@ function Status({ message, tone }: { message: string; tone: "error" | "success" 
     <div
       className={
         tone === "error"
-          ? "neo-copy border-2 border-black bg-[#b7102a] p-4 text-[11px] font-black uppercase tracking-[0.1em] text-white shadow-[3px_3px_0_#171411]"
-          : "neo-copy border-2 border-black bg-[#007166] p-4 text-[11px] font-black uppercase tracking-[0.1em] text-white shadow-[3px_3px_0_#171411]"
+          ? "neo-copy border-2 border-black bg-[#b7102a] p-4 text-[11px] font-black tracking-[0.1em] text-white uppercase shadow-[3px_3px_0_#171411]"
+          : "neo-copy border-2 border-black bg-[#007166] p-4 text-[11px] font-black tracking-[0.1em] text-white uppercase shadow-[3px_3px_0_#171411]"
       }
     >
       {message}

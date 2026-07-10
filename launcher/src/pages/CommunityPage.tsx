@@ -614,7 +614,7 @@ function CommunityArtPanel() {
     <div className="hero-art relative min-h-[250px] overflow-hidden border-4 border-black p-4 shadow-[6px_6px_0_#171411]">
       <div className="absolute inset-0 bg-[radial-gradient(circle,rgba(255,249,237,0.16)_1px,transparent_1px)] bg-[length:8px_8px]" />
       <div className="relative flex h-full min-h-[218px] flex-col justify-between">
-        <span className="neo-copy w-fit border-2 border-black bg-[#8cf5e4] px-3 py-1 text-[9px] font-black uppercase text-[#171411] shadow-[2px_2px_0_#171411]">
+        <span className="neo-copy w-fit border-2 border-black bg-[#8cf5e4] px-3 py-1 text-[9px] font-black text-[#171411] uppercase shadow-[2px_2px_0_#171411]">
           Community relay
         </span>
 
@@ -625,7 +625,7 @@ function CommunityArtPanel() {
           <h2 className="neo-title text-4xl leading-none text-[#fff9ed] [text-shadow:3px_3px_0_#171411]">
             Live Arcade
           </h2>
-          <p className="neo-copy mt-2 max-w-[290px] text-[10px] font-black uppercase leading-5 text-[#f5eedf]">
+          <p className="neo-copy mt-2 max-w-[290px] text-[10px] leading-5 font-black text-[#f5eedf] uppercase">
             Feed, squads, rankings, and event slots in one launcher board.
           </p>
         </div>
@@ -648,13 +648,13 @@ function RelayCard({
   return (
     <div className="border-4 border-black bg-[#f5eedf] p-4 shadow-[4px_4px_0_#171411]">
       <div className="flex items-center justify-between gap-3">
-        <p className="neo-copy text-[10px] font-black uppercase tracking-[0.12em] text-[#5b403f]">
+        <p className="neo-copy text-[10px] font-black tracking-[0.12em] text-[#5b403f] uppercase">
           {label}
         </p>
         <Icon className="h-5 w-5 text-[#b7102a]" />
       </div>
       <p className="neo-title mt-3 text-5xl leading-none text-[#171411]">{value}</p>
-      <p className="neo-copy mt-1 text-[9px] font-black uppercase text-[#5b403f]">{meta}</p>
+      <p className="neo-copy mt-1 text-[9px] font-black text-[#5b403f] uppercase">{meta}</p>
     </div>
   );
 }
@@ -775,7 +775,7 @@ function CommunityLivePage() {
           tone="error"
         />
         <button
-          className="neo-copy inline-flex h-10 items-center border-[3px] border-black bg-[#8cf5e4] px-4 text-[10px] font-black uppercase text-[#171411] shadow-[3px_3px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#fff9ed]"
+          className="neo-copy inline-flex h-10 items-center border-[3px] border-black bg-[#8cf5e4] px-4 text-[10px] font-black text-[#171411] uppercase shadow-[3px_3px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#fff9ed]"
           onClick={() => setFriendsRefreshVersion((version) => version + 1)}
           type="button"
         >
@@ -802,19 +802,19 @@ function CommunityLivePage() {
       >
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <p className="neo-copy inline-flex border-2 border-black bg-[#8cf5e4] px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-[#171411] shadow-[2px_2px_0_#000]">
+            <p className="neo-copy inline-flex border-2 border-black bg-[#8cf5e4] px-3 py-1 text-[10px] font-black tracking-[0.14em] text-[#171411] uppercase shadow-[2px_2px_0_#000]">
               Supabase live relay
             </p>
             <h1 className="neo-title mt-3 text-5xl leading-none text-[#fff9ed] md:text-7xl">
               Community Activity
             </h1>
-            <p className="neo-copy mt-3 max-w-2xl text-[11px] font-black uppercase leading-5 text-[#8cf5e4]">
+            <p className="neo-copy mt-3 max-w-2xl text-[11px] leading-5 font-black text-[#8cf5e4] uppercase">
               Real launcher activity shared under your account and privacy rules. No local hub,
               market, workshop, or moderation fixtures are shown here.
             </p>
           </div>
           <div className="border-[3px] border-black bg-[#f5eedf] px-4 py-3 text-[#171411] shadow-[3px_3px_0_#8cf5e4]">
-            <p className="neo-copy text-[9px] font-black uppercase tracking-[0.14em] text-[#5b403f]">
+            <p className="neo-copy text-[9px] font-black tracking-[0.14em] text-[#5b403f] uppercase">
               Accepted friends
             </p>
             <p className="neo-title mt-1 text-4xl leading-none">{friendCountLabel}</p>
@@ -828,7 +828,7 @@ function CommunityLivePage() {
           className="border-4 border-black bg-[#f5eedf] shadow-[5px_5px_0_#171411]"
         >
           <div className="border-b-4 border-black bg-[#efe6d4] p-4">
-            <p className="neo-copy text-[10px] font-black uppercase tracking-[0.14em] text-[#b7102a]">
+            <p className="neo-copy text-[10px] font-black tracking-[0.14em] text-[#b7102a] uppercase">
               Friends-only data lane
             </p>
             <h2 className="neo-title mt-1 text-4xl leading-none text-[#171411]">Activity Feed</h2>
@@ -847,20 +847,20 @@ function CommunityLivePage() {
                 <MessageSquare aria-hidden="true" className="h-5 w-5" />
               </span>
               <div>
-                <p className="neo-copy text-[9px] font-black uppercase tracking-[0.14em] text-[#b7102a]">
+                <p className="neo-copy text-[9px] font-black tracking-[0.14em] text-[#b7102a] uppercase">
                   Real account post
                 </p>
                 <h2 className="neo-title text-3xl leading-none text-[#171411]">Share Status</h2>
               </div>
             </div>
             <label
-              className="neo-copy mt-4 block text-[10px] font-black uppercase tracking-[0.12em] text-[#171411]"
+              className="neo-copy mt-4 block text-[10px] font-black tracking-[0.12em] text-[#171411] uppercase"
               htmlFor="community-live-status"
             >
               Status for accepted friends
             </label>
             <textarea
-              className="mt-2 min-h-32 w-full resize-y border-[3px] border-black bg-[#f5eedf] p-3 text-sm font-bold leading-5 text-[#171411] shadow-[3px_3px_0_#171411] outline-none focus:bg-[#8cf5e4] disabled:cursor-not-allowed disabled:opacity-60"
+              className="mt-2 min-h-32 w-full resize-y border-[3px] border-black bg-[#f5eedf] p-3 text-sm leading-5 font-bold text-[#171411] shadow-[3px_3px_0_#171411] outline-none focus:bg-[#8cf5e4] disabled:cursor-not-allowed disabled:opacity-60"
               disabled={!canUseCommunity || isPostingStatus}
               id="community-live-status"
               maxLength={COMMUNITY_STATUS_MAX_LENGTH}
@@ -869,11 +869,11 @@ function CommunityLivePage() {
               value={statusDraft}
             />
             <div className="mt-3 flex items-center justify-between gap-3">
-              <span className="neo-copy text-[9px] font-black uppercase text-[#655f58]">
+              <span className="neo-copy text-[9px] font-black text-[#655f58] uppercase">
                 {statusDraft.length}/{COMMUNITY_STATUS_MAX_LENGTH} // friends only
               </span>
               <button
-                className="neo-copy inline-flex h-10 items-center gap-2 border-[3px] border-black bg-[#b7102a] px-4 text-[10px] font-black uppercase text-white shadow-[3px_3px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#087d6d] disabled:cursor-not-allowed disabled:bg-[#d8cbb7] disabled:text-[#655f58]"
+                className="neo-copy inline-flex h-10 items-center gap-2 border-[3px] border-black bg-[#b7102a] px-4 text-[10px] font-black text-white uppercase shadow-[3px_3px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#087d6d] disabled:cursor-not-allowed disabled:bg-[#d8cbb7] disabled:text-[#655f58]"
                 disabled={!canUseCommunity || !trimmedStatusDraft || isPostingStatus}
                 type="submit"
               >
@@ -884,7 +884,7 @@ function CommunityLivePage() {
             {postMessage ? (
               <p
                 aria-live="polite"
-                className="neo-copy mt-4 border-[3px] border-black bg-[#8cf5e4] p-3 text-[10px] font-black uppercase leading-5 text-[#171411]"
+                className="neo-copy mt-4 border-[3px] border-black bg-[#8cf5e4] p-3 text-[10px] leading-5 font-black text-[#171411] uppercase"
                 role="status"
               >
                 {postMessage}
@@ -892,7 +892,7 @@ function CommunityLivePage() {
             ) : null}
             {postError ? (
               <p
-                className="neo-copy mt-4 border-[3px] border-black bg-[#b7102a] p-3 text-[10px] font-black uppercase leading-5 text-white"
+                className="neo-copy mt-4 border-[3px] border-black bg-[#b7102a] p-3 text-[10px] leading-5 font-black text-white uppercase"
                 role="alert"
               >
                 Status could not be posted: {postError}
@@ -905,7 +905,7 @@ function CommunityLivePage() {
               <Shield aria-hidden="true" className="h-6 w-6 text-[#171411]" />
               <h2 className="neo-title text-3xl leading-none text-[#171411]">Privacy Lane</h2>
             </div>
-            <p className="neo-copy mt-3 text-[10px] font-black uppercase leading-5 text-[#171411]">
+            <p className="neo-copy mt-3 text-[10px] leading-5 font-black text-[#171411] uppercase">
               Status posts use friends-only visibility. Feed rows are loaded from Supabase under the
               signed-in user's row-level security policy.
             </p>
@@ -925,7 +925,7 @@ function CommunityLiveNotice({
 }) {
   return (
     <p
-      className={`neo-copy border-[3px] border-black p-4 text-[10px] font-black uppercase leading-5 shadow-[3px_3px_0_#171411] ${
+      className={`neo-copy border-[3px] border-black p-4 text-[10px] leading-5 font-black uppercase shadow-[3px_3px_0_#171411] ${
         tone === "error" ? "bg-[#b7102a] text-white" : "bg-[#fff9ed] text-[#5b403f]"
       }`}
       role={tone === "error" ? "alert" : "status"}
@@ -1256,7 +1256,7 @@ function CommunityVerificationPage() {
         >
           <div className="border-b-4 border-black bg-[#171411] px-4 py-3 text-[#fbf4e7]">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="neo-copy inline-flex border-2 border-black bg-[#b7102a] px-3 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-white shadow-[3px_3px_0_#000]">
+              <span className="neo-copy inline-flex border-2 border-black bg-[#b7102a] px-3 py-1 text-[10px] font-black tracking-[0.12em] text-white uppercase shadow-[3px_3px_0_#000]">
                 Community
               </span>
               <nav aria-label="Community sections" className="flex flex-wrap gap-2 text-[#171411]">
@@ -1280,7 +1280,7 @@ function CommunityVerificationPage() {
             <h1 className="neo-title mt-3 text-5xl leading-none text-[#fbf4e7] md:text-7xl">
               Community Activity
             </h1>
-            <p className="neo-copy mt-3 max-w-2xl text-[11px] font-black uppercase leading-5 text-[#8cf5e4]">
+            <p className="neo-copy mt-3 max-w-2xl text-[11px] leading-5 font-black text-[#8cf5e4] uppercase">
               {activeCommunitySectionData.description}
             </p>
           </div>
@@ -1314,12 +1314,12 @@ function CommunityVerificationPage() {
         >
           <div className="flex flex-wrap items-center justify-between gap-3 border-b-4 border-black bg-[#efe6d4] p-4">
             <div>
-              <p className="neo-copy text-[10px] font-black uppercase tracking-[0.12em] text-[#b7102a]">
+              <p className="neo-copy text-[10px] font-black tracking-[0.12em] text-[#b7102a] uppercase">
                 Browse hubs
               </p>
               <h2 className="neo-title text-4xl leading-none text-[#171411]">Popular Hubs</h2>
             </div>
-            <span className="neo-copy inline-flex border-2 border-black bg-[#8cf5e4] px-3 py-2 text-[10px] font-black uppercase text-[#171411] shadow-[2px_2px_0_#171411]">
+            <span className="neo-copy inline-flex border-2 border-black bg-[#8cf5e4] px-3 py-2 text-[10px] font-black text-[#171411] uppercase shadow-[2px_2px_0_#171411]">
               Updated this week
             </span>
           </div>
@@ -1334,7 +1334,7 @@ function CommunityVerificationPage() {
                 />
               ))
             ) : (
-              <p className="neo-copy border-2 border-black bg-[#fff9ed] p-4 text-[10px] font-black uppercase leading-5 text-[#5b403f] shadow-[3px_3px_0_#171411] md:col-span-3">
+              <p className="neo-copy border-2 border-black bg-[#fff9ed] p-4 text-[10px] leading-5 font-black text-[#5b403f] uppercase shadow-[3px_3px_0_#171411] md:col-span-3">
                 No hubs match that search.
               </p>
             )}
@@ -1465,7 +1465,7 @@ function CommunityVerificationPage() {
         >
           <div className="flex flex-wrap items-center justify-between gap-3 border-b-4 border-black bg-[#efe6d4] p-4">
             <div>
-              <p className="neo-copy text-[10px] font-black uppercase tracking-[0.12em] text-[#b7102a]">
+              <p className="neo-copy text-[10px] font-black tracking-[0.12em] text-[#b7102a] uppercase">
                 Viewing // {activeSort === "popular" ? "Most Popular" : "Most Recent"}
               </p>
               <h2 className="neo-title text-4xl leading-none text-[#171411]">Activity Feed</h2>
@@ -1473,7 +1473,7 @@ function CommunityVerificationPage() {
             <button
               aria-controls="community-local-post-composer"
               aria-expanded={isLocalPostComposerOpen}
-              className="neo-copy inline-flex h-10 items-center gap-2 border-[3px] border-black bg-[#087d6d] px-4 text-[10px] font-black uppercase text-white shadow-[3px_3px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#b7102a]"
+              className="neo-copy inline-flex h-10 items-center gap-2 border-[3px] border-black bg-[#087d6d] px-4 text-[10px] font-black text-white uppercase shadow-[3px_3px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#b7102a]"
               onClick={() => setIsLocalPostComposerOpen(true)}
               type="button"
             >
@@ -1490,25 +1490,25 @@ function CommunityVerificationPage() {
               onSubmit={handleCreateLocalPost}
             >
               <label
-                className="neo-copy block text-[10px] font-black uppercase tracking-[0.16em] text-[#b7102a]"
+                className="neo-copy block text-[10px] font-black tracking-[0.16em] text-[#b7102a] uppercase"
                 htmlFor="community-local-post"
               >
                 Local Post
               </label>
               <textarea
-                className="neo-copy mt-2 min-h-24 w-full resize-none border-[3px] border-black bg-[#f5eedf] p-3 text-[12px] font-black uppercase leading-5 text-[#171411] shadow-[3px_3px_0_#171411] outline-none focus:bg-[#8cf5e4]"
+                className="neo-copy mt-2 min-h-24 w-full resize-none border-[3px] border-black bg-[#f5eedf] p-3 text-[12px] leading-5 font-black text-[#171411] uppercase shadow-[3px_3px_0_#171411] outline-none focus:bg-[#8cf5e4]"
                 id="community-local-post"
                 maxLength={COMMUNITY_LOCAL_POST_MAX_LENGTH}
                 onChange={(event) => setLocalPostDraft(event.target.value)}
                 value={localPostDraft}
               />
               <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-                <p className="neo-copy border-2 border-black bg-[#8cf5e4] px-3 py-2 text-[9px] font-black uppercase text-[#171411] shadow-[2px_2px_0_#171411]">
+                <p className="neo-copy border-2 border-black bg-[#8cf5e4] px-3 py-2 text-[9px] font-black text-[#171411] uppercase shadow-[2px_2px_0_#171411]">
                   Browser Local // Draft only
                 </p>
                 <div className="flex flex-wrap gap-2">
                   <button
-                    className="neo-copy inline-flex h-10 items-center gap-2 border-[3px] border-black bg-[#efe6d4] px-4 text-[10px] font-black uppercase text-[#171411] shadow-[3px_3px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#fff9ed]"
+                    className="neo-copy inline-flex h-10 items-center gap-2 border-[3px] border-black bg-[#efe6d4] px-4 text-[10px] font-black text-[#171411] uppercase shadow-[3px_3px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#fff9ed]"
                     onClick={handleCancelLocalPost}
                     type="button"
                   >
@@ -1516,7 +1516,7 @@ function CommunityVerificationPage() {
                     Cancel
                   </button>
                   <button
-                    className="neo-copy inline-flex h-10 items-center gap-2 border-[3px] border-black bg-[#b7102a] px-4 text-[10px] font-black uppercase text-white shadow-[3px_3px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#087d6d] disabled:cursor-not-allowed disabled:bg-[#d8cbb7] disabled:text-[#655f58]"
+                    className="neo-copy inline-flex h-10 items-center gap-2 border-[3px] border-black bg-[#b7102a] px-4 text-[10px] font-black text-white uppercase shadow-[3px_3px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#087d6d] disabled:cursor-not-allowed disabled:bg-[#d8cbb7] disabled:text-[#655f58]"
                     disabled={trimmedLocalPostDraft.length === 0}
                     type="submit"
                   >
@@ -1531,7 +1531,7 @@ function CommunityVerificationPage() {
           {localPostMessage ? (
             <p
               aria-live="polite"
-              className="neo-copy border-b-4 border-black bg-[#8cf5e4] px-4 py-3 text-[10px] font-black uppercase leading-5 text-[#171411]"
+              className="neo-copy border-b-4 border-black bg-[#8cf5e4] px-4 py-3 text-[10px] leading-5 font-black text-[#171411] uppercase"
               role="status"
             >
               {localPostMessage}
@@ -1549,7 +1549,7 @@ function CommunityVerificationPage() {
             ))}
             {displayedActivityFeed.length === 0 &&
             (!shouldShowLocalPosts || localPosts.length === 0) ? (
-              <p className="neo-copy bg-[#fff9ed] p-4 text-[10px] font-black uppercase leading-5 text-[#5b403f]">
+              <p className="neo-copy bg-[#fff9ed] p-4 text-[10px] leading-5 font-black text-[#5b403f] uppercase">
                 No more content. Switch filters or create a browser-local post.
               </p>
             ) : null}
@@ -1586,8 +1586,8 @@ function CommunityVerificationPage() {
             <div className="divide-y-4 divide-black">
               {squads.map(([name, online, genre]) => (
                 <div key={name} className="p-4">
-                  <h3 className="text-xl font-black uppercase text-[#171411]">{name}</h3>
-                  <p className="neo-copy mt-2 text-[10px] font-black uppercase text-[#5b403f]">
+                  <h3 className="text-xl font-black text-[#171411] uppercase">{name}</h3>
+                  <p className="neo-copy mt-2 text-[10px] font-black text-[#5b403f] uppercase">
                     {online} // {genre}
                   </p>
                 </div>
@@ -1608,13 +1608,13 @@ function CommunityWelcomePanel() {
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="neo-copy text-[10px] font-black uppercase tracking-[0.16em] text-[#b7102a]">
+          <p className="neo-copy text-[10px] font-black tracking-[0.16em] text-[#b7102a] uppercase">
             Welcome to the OG Community
           </p>
           <h2 className="neo-title mt-2 text-4xl leading-none text-[#171411]">
             Hubs, posts, guides, broadcasts
           </h2>
-          <p className="neo-copy mt-3 max-w-2xl text-[10px] font-black uppercase leading-5 text-[#5b403f]">
+          <p className="neo-copy mt-3 max-w-2xl text-[10px] leading-5 font-black text-[#5b403f] uppercase">
             Browse game hubs, find players, inspect workshop-style drops, and keep local posts in
             this browser.
           </p>
@@ -1624,20 +1624,20 @@ function CommunityWelcomePanel() {
 
       <div className="mt-4 flex flex-wrap items-center gap-2">
         <a
-          className="neo-copy inline-flex h-10 items-center gap-2 border-[3px] border-black bg-[#b7102a] px-4 text-[10px] font-black uppercase text-white shadow-[3px_3px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#087d6d]"
+          className="neo-copy inline-flex h-10 items-center gap-2 border-[3px] border-black bg-[#b7102a] px-4 text-[10px] font-black text-white uppercase shadow-[3px_3px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#087d6d]"
           href="/auth"
         >
           <Users aria-hidden="true" className="h-4 w-4" />
           Sign In
         </a>
         <a
-          className="neo-copy inline-flex h-10 items-center gap-2 border-[3px] border-black bg-[#087d6d] px-4 text-[10px] font-black uppercase text-white shadow-[3px_3px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#b7102a]"
+          className="neo-copy inline-flex h-10 items-center gap-2 border-[3px] border-black bg-[#087d6d] px-4 text-[10px] font-black text-white uppercase shadow-[3px_3px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#b7102a]"
           href="/settings/profile"
         >
           <Star aria-hidden="true" className="h-4 w-4" />
           Join OG-Launcher
         </a>
-        <span className="neo-copy border-2 border-black bg-[#fff9ed] px-3 py-2 text-[9px] font-black uppercase text-[#5b403f] shadow-[2px_2px_0_#171411]">
+        <span className="neo-copy border-2 border-black bg-[#fff9ed] px-3 py-2 text-[9px] font-black text-[#5b403f] uppercase shadow-[2px_2px_0_#171411]">
           New here? Build your player card first.
         </span>
       </div>
@@ -1662,13 +1662,13 @@ function CommunitySectionBoard({ section }: { section: CommunitySection }) {
         </div>
         <div className="border-2 border-black bg-[#f5eedf] px-3 py-2 text-right shadow-[2px_2px_0_#171411]">
           <p className="neo-title text-3xl leading-none text-[#171411]">{section.stat}</p>
-          <p className="neo-copy text-[8px] font-black uppercase text-[#5b403f]">
+          <p className="neo-copy text-[8px] font-black text-[#5b403f] uppercase">
             {section.statLabel}
           </p>
         </div>
       </div>
 
-      <p className="neo-copy mt-3 text-[10px] font-black uppercase leading-5 text-[#5b403f]">
+      <p className="neo-copy mt-3 text-[10px] leading-5 font-black text-[#5b403f] uppercase">
         {section.description}
       </p>
 
@@ -1678,13 +1678,13 @@ function CommunitySectionBoard({ section }: { section: CommunitySection }) {
             className="min-w-0 border-2 border-black bg-[#f5eedf] p-3 shadow-[3px_3px_0_#171411]"
             key={`${section.id}-${card.label}`}
           >
-            <p className="neo-copy text-[8px] font-black uppercase tracking-[0.14em] text-[#b7102a]">
+            <p className="neo-copy text-[8px] font-black tracking-[0.14em] text-[#b7102a] uppercase">
               {card.label}
             </p>
-            <h3 className="mt-2 truncate text-lg font-black uppercase leading-tight text-[#171411]">
+            <h3 className="mt-2 truncate text-lg leading-tight font-black text-[#171411] uppercase">
               {card.value}
             </h3>
-            <p className="neo-copy mt-2 text-[9px] font-black uppercase leading-4 text-[#5b403f]">
+            <p className="neo-copy mt-2 text-[9px] leading-4 font-black text-[#5b403f] uppercase">
               {card.meta}
             </p>
           </article>
@@ -1715,14 +1715,14 @@ function PopularHubCard({
       <div
         className={`${hub.artClass} grid aspect-[16/9] place-items-end border-[3px] border-black p-3 text-[#fff9ed] shadow-[3px_3px_0_#171411]`}
       >
-        <span className="neo-copy border-2 border-black bg-[#171411] px-2 py-1 text-[9px] font-black uppercase text-[#8cf5e4]">
+        <span className="neo-copy border-2 border-black bg-[#171411] px-2 py-1 text-[9px] font-black text-[#8cf5e4] uppercase">
           {hub.stat}
         </span>
       </div>
-      <h3 className="mt-3 truncate text-2xl font-black uppercase leading-tight text-[#171411]">
+      <h3 className="mt-3 truncate text-2xl leading-tight font-black text-[#171411] uppercase">
         {hub.title}
       </h3>
-      <p className="neo-copy mt-2 text-[10px] font-black uppercase leading-5 text-[#5b403f]">
+      <p className="neo-copy mt-2 text-[10px] leading-5 font-black text-[#5b403f] uppercase">
         {hub.meta}
       </p>
     </button>
@@ -1749,7 +1749,7 @@ function CommunityHubDetailPanel({
         <div
           className={`${hub.artClass} min-h-52 border-[3px] border-black p-4 text-[#fff9ed] shadow-[4px_4px_0_#171411]`}
         >
-          <span className="neo-copy inline-flex border-2 border-black bg-[#171411] px-3 py-1 text-[9px] font-black uppercase text-[#8cf5e4]">
+          <span className="neo-copy inline-flex border-2 border-black bg-[#171411] px-3 py-1 text-[9px] font-black text-[#8cf5e4] uppercase">
             Game Hub
           </span>
           <h2 className="neo-title mt-16 text-4xl leading-none [text-shadow:3px_3px_0_#171411]">
@@ -1760,17 +1760,17 @@ function CommunityHubDetailPanel({
         <div className="min-w-0">
           <div className="flex flex-wrap items-start justify-between gap-3 border-b-4 border-black pb-3">
             <div>
-              <p className="neo-copy text-[10px] font-black uppercase tracking-[0.16em] text-[#b7102a]">
+              <p className="neo-copy text-[10px] font-black tracking-[0.16em] text-[#b7102a] uppercase">
                 Per-game community hub
               </p>
               <h2 className="neo-title mt-1 text-4xl leading-none text-[#171411]">{hub.title}</h2>
             </div>
-            <span className="neo-copy border-2 border-black bg-[#8cf5e4] px-3 py-2 text-[10px] font-black uppercase text-[#171411] shadow-[2px_2px_0_#171411]">
+            <span className="neo-copy border-2 border-black bg-[#8cf5e4] px-3 py-2 text-[10px] font-black text-[#171411] uppercase shadow-[2px_2px_0_#171411]">
               {hub.members} members
             </span>
           </div>
 
-          <p className="neo-copy mt-3 text-[10px] font-black uppercase leading-5 text-[#5b403f]">
+          <p className="neo-copy mt-3 text-[10px] leading-5 font-black text-[#5b403f] uppercase">
             {hub.description}
           </p>
 
@@ -1785,7 +1785,7 @@ function CommunityHubDetailPanel({
           <div className="mt-3 flex flex-wrap gap-2">
             {hub.tags.map((tag) => (
               <span
-                className="neo-copy border-2 border-black bg-[#f5eedf] px-3 py-1 text-[9px] font-black uppercase text-[#171411] shadow-[2px_2px_0_#171411]"
+                className="neo-copy border-2 border-black bg-[#f5eedf] px-3 py-1 text-[9px] font-black text-[#171411] uppercase shadow-[2px_2px_0_#171411]"
                 key={tag}
               >
                 {tag}
@@ -1820,7 +1820,7 @@ function HubStat({ label, value }: { label: string; value: number }) {
   return (
     <article className="border-2 border-black bg-[#f5eedf] p-3 shadow-[2px_2px_0_#171411]">
       <p className="neo-title text-3xl leading-none text-[#171411]">{value}</p>
-      <p className="neo-copy mt-1 text-[8px] font-black uppercase text-[#5b403f]">{label}</p>
+      <p className="neo-copy mt-1 text-[8px] font-black text-[#5b403f] uppercase">{label}</p>
     </article>
   );
 }
@@ -1858,14 +1858,14 @@ function CommunityContentStudioPanel({
     >
       <div className="flex flex-wrap items-center justify-between gap-3 border-b-4 border-black bg-[#efe6d4] p-4">
         <div>
-          <p className="neo-copy text-[10px] font-black uppercase tracking-[0.16em] text-[#b7102a]">
+          <p className="neo-copy text-[10px] font-black tracking-[0.16em] text-[#b7102a] uppercase">
             Artwork Videos Guides Reviews
           </p>
           <h2 className="neo-title text-4xl leading-none text-[#171411]">Share Content</h2>
         </div>
         <button
           aria-expanded={isOpen}
-          className="neo-copy inline-flex h-10 items-center gap-2 border-[3px] border-black bg-[#b7102a] px-4 text-[10px] font-black uppercase text-white shadow-[3px_3px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#087d6d]"
+          className="neo-copy inline-flex h-10 items-center gap-2 border-[3px] border-black bg-[#b7102a] px-4 text-[10px] font-black text-white uppercase shadow-[3px_3px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#087d6d]"
           type="button"
           onClick={onToggleOpen}
         >
@@ -1880,13 +1880,13 @@ function CommunityContentStudioPanel({
           className="grid gap-3 p-4"
           onSubmit={onSubmit}
         >
-          <p className="neo-copy border-2 border-black bg-[#8cf5e4] px-3 py-2 text-[9px] font-black uppercase leading-5 text-[#171411] shadow-[2px_2px_0_#171411]">
+          <p className="neo-copy border-2 border-black bg-[#8cf5e4] px-3 py-2 text-[9px] leading-5 font-black text-[#171411] uppercase shadow-[2px_2px_0_#171411]">
             Local draft for {selectedHub.title} // no hosted upload, CDN publish, or provider sync.
           </p>
-          <label className="neo-copy text-[10px] font-black uppercase tracking-[0.16em] text-[#b7102a]">
+          <label className="neo-copy text-[10px] font-black tracking-[0.16em] text-[#b7102a] uppercase">
             Content title
             <input
-              className="mt-2 w-full border-[3px] border-black bg-[#fff9ed] px-3 py-2 text-[12px] font-black uppercase text-[#171411] shadow-[3px_3px_0_#171411] outline-none focus:bg-[#8cf5e4]"
+              className="mt-2 w-full border-[3px] border-black bg-[#fff9ed] px-3 py-2 text-[12px] font-black text-[#171411] uppercase shadow-[3px_3px_0_#171411] outline-none focus:bg-[#8cf5e4]"
               maxLength={COMMUNITY_LOCAL_POST_MAX_LENGTH}
               onChange={(event) => onContentDraftTitleChange(event.target.value)}
               placeholder="Name the artwork, guide, video, or review"
@@ -1914,7 +1914,7 @@ function CommunityContentStudioPanel({
           </div>
 
           <button
-            className="neo-copy inline-flex h-10 w-fit items-center gap-2 border-[3px] border-black bg-[#b7102a] px-4 text-[10px] font-black uppercase text-white shadow-[3px_3px_0_#171411] disabled:cursor-not-allowed disabled:bg-[#d8cbb7] disabled:text-[#655f58]"
+            className="neo-copy inline-flex h-10 w-fit items-center gap-2 border-[3px] border-black bg-[#b7102a] px-4 text-[10px] font-black text-white uppercase shadow-[3px_3px_0_#171411] disabled:cursor-not-allowed disabled:bg-[#d8cbb7] disabled:text-[#655f58]"
             disabled={contentDraftTitle.trim().length === 0}
             type="submit"
           >
@@ -1925,7 +1925,7 @@ function CommunityContentStudioPanel({
       ) : null}
 
       {message ? (
-        <p className="neo-copy border-t-4 border-black bg-[#8cf5e4] px-4 py-3 text-[10px] font-black uppercase text-[#171411]">
+        <p className="neo-copy border-t-4 border-black bg-[#8cf5e4] px-4 py-3 text-[10px] font-black text-[#171411] uppercase">
           {message}
         </p>
       ) : null}
@@ -1958,7 +1958,7 @@ function CommunityDiscussionPanel({
       className="border-4 border-black bg-[#fff9ed] shadow-[5px_5px_0_#171411]"
     >
       <div className="border-b-4 border-black bg-[#171411] p-4 text-[#fff9ed]">
-        <p className="neo-copy text-[10px] font-black uppercase tracking-[0.16em] text-[#8cf5e4]">
+        <p className="neo-copy text-[10px] font-black tracking-[0.16em] text-[#8cf5e4] uppercase">
           Forum topics replies reports
         </p>
         <h2 className="neo-title text-4xl leading-none">Discussions</h2>
@@ -1976,13 +1976,13 @@ function CommunityDiscussionPanel({
               type="button"
               onClick={() => onSelectTopic(topic.id)}
             >
-              <p className="neo-copy text-[8px] font-black uppercase text-[#b7102a]">
+              <p className="neo-copy text-[8px] font-black text-[#b7102a] uppercase">
                 {topic.status} // {topic.updated}
               </p>
-              <h3 className="mt-1 text-base font-black uppercase leading-tight text-[#171411]">
+              <h3 className="mt-1 text-base leading-tight font-black text-[#171411] uppercase">
                 {topic.title}
               </h3>
-              <p className="neo-copy mt-1 text-[9px] font-black uppercase text-[#5b403f]">
+              <p className="neo-copy mt-1 text-[9px] font-black text-[#5b403f] uppercase">
                 by {topic.author}
               </p>
             </button>
@@ -1990,14 +1990,14 @@ function CommunityDiscussionPanel({
         </div>
 
         <div className="border-2 border-black bg-[#f5eedf] p-3 shadow-[3px_3px_0_#171411]">
-          <p className="neo-copy text-[9px] font-black uppercase text-[#b7102a]">Active topic</p>
-          <h3 className="mt-1 text-2xl font-black uppercase leading-tight text-[#171411]">
+          <p className="neo-copy text-[9px] font-black text-[#b7102a] uppercase">Active topic</p>
+          <h3 className="mt-1 text-2xl leading-tight font-black text-[#171411] uppercase">
             {selectedTopic.title}
           </h3>
           <div className="mt-3 grid gap-2">
             {replies.map((reply, index) => (
               <p
-                className="neo-copy border-2 border-black bg-[#fff9ed] px-3 py-2 text-[10px] font-black uppercase leading-5 text-[#171411]"
+                className="neo-copy border-2 border-black bg-[#fff9ed] px-3 py-2 text-[10px] leading-5 font-black text-[#171411] uppercase"
                 key={`${selectedTopic.id}-${index}-${reply}`}
               >
                 {reply}
@@ -2009,7 +2009,7 @@ function CommunityDiscussionPanel({
               Topic reply
             </label>
             <input
-              className="neo-copy min-w-[220px] flex-1 border-[3px] border-black bg-[#fff9ed] px-3 py-2 text-[11px] font-black uppercase text-[#171411] outline-none focus:bg-[#8cf5e4]"
+              className="neo-copy min-w-[220px] flex-1 border-[3px] border-black bg-[#fff9ed] px-3 py-2 text-[11px] font-black text-[#171411] uppercase outline-none focus:bg-[#8cf5e4]"
               id="community-topic-reply"
               maxLength={COMMUNITY_LOCAL_POST_MAX_LENGTH}
               onChange={(event) => onReplyDraftChange(event.target.value)}
@@ -2017,7 +2017,7 @@ function CommunityDiscussionPanel({
               value={replyDraft}
             />
             <button
-              className="neo-copy border-[3px] border-black bg-[#087d6d] px-4 text-[10px] font-black uppercase text-white shadow-[2px_2px_0_#171411] disabled:cursor-not-allowed disabled:bg-[#d8cbb7] disabled:text-[#655f58]"
+              className="neo-copy border-[3px] border-black bg-[#087d6d] px-4 text-[10px] font-black text-white uppercase shadow-[2px_2px_0_#171411] disabled:cursor-not-allowed disabled:bg-[#d8cbb7] disabled:text-[#655f58]"
               disabled={replyDraft.trim().length === 0}
               type="submit"
             >
@@ -2056,10 +2056,10 @@ function CommunityWorkshopPanel({
               className="border-2 border-black bg-[#fff9ed] p-3 shadow-[2px_2px_0_#171411]"
               key={item.id}
             >
-              <p className="neo-copy text-[8px] font-black uppercase text-[#b7102a]">
+              <p className="neo-copy text-[8px] font-black text-[#b7102a] uppercase">
                 {item.downloads} local installs // {item.creator}
               </p>
-              <h3 className="mt-1 text-lg font-black uppercase leading-tight text-[#171411]">
+              <h3 className="mt-1 text-lg leading-tight font-black text-[#171411] uppercase">
                 {item.title}
               </h3>
               <button
@@ -2107,10 +2107,10 @@ function CommunityMarketPanel({
               className="border-2 border-black bg-[#f5eedf] p-3 shadow-[2px_2px_0_#171411]"
               key={listing.id}
             >
-              <p className="neo-copy text-[8px] font-black uppercase text-[#5b403f]">
+              <p className="neo-copy text-[8px] font-black text-[#5b403f] uppercase">
                 {listing.seller} // {listing.price}
               </p>
-              <h3 className="mt-1 text-lg font-black uppercase leading-tight text-[#171411]">
+              <h3 className="mt-1 text-lg leading-tight font-black text-[#171411] uppercase">
                 {listing.title}
               </h3>
               <button
@@ -2154,13 +2154,13 @@ function CommunityModerationPanel({
       <div className="mt-3 grid gap-2">
         {items.map((item) => (
           <article className="border-2 border-[#f5eedf] bg-[#24201c] p-3" key={item.id}>
-            <p className="neo-copy text-[8px] font-black uppercase text-[#8cf5e4]">
+            <p className="neo-copy text-[8px] font-black text-[#8cf5e4] uppercase">
               {item.status} // {item.reason}
             </p>
-            <h3 className="mt-1 text-base font-black uppercase leading-tight">{item.content}</h3>
+            <h3 className="mt-1 text-base leading-tight font-black uppercase">{item.content}</h3>
             <div className="mt-3 flex flex-wrap gap-2">
               <button
-                className="neo-copy border-2 border-black bg-[#8cf5e4] px-3 py-1 text-[9px] font-black uppercase text-[#171411] shadow-[2px_2px_0_#fff9ed]"
+                className="neo-copy border-2 border-black bg-[#8cf5e4] px-3 py-1 text-[9px] font-black text-[#171411] uppercase shadow-[2px_2px_0_#fff9ed]"
                 disabled={item.status === "cleared"}
                 type="button"
                 onClick={() => onSetStatus(item.id, "cleared")}
@@ -2168,7 +2168,7 @@ function CommunityModerationPanel({
                 Clear
               </button>
               <button
-                className="neo-copy border-2 border-black bg-[#b7102a] px-3 py-1 text-[9px] font-black uppercase text-white shadow-[2px_2px_0_#fff9ed]"
+                className="neo-copy border-2 border-black bg-[#b7102a] px-3 py-1 text-[9px] font-black text-white uppercase shadow-[2px_2px_0_#fff9ed]"
                 disabled={item.status === "hidden"}
                 type="button"
                 onClick={() => onSetStatus(item.id, "hidden")}
@@ -2207,10 +2207,10 @@ function CommunitySearchPanel({
           <Search aria-hidden="true" className="h-6 w-6 text-[#8cf5e4]" />
           <h2 className="neo-title text-3xl leading-none">Find Hubs</h2>
         </div>
-        <label className="neo-copy mt-4 block text-[10px] font-black uppercase tracking-[0.16em] text-[#8cf5e4]">
+        <label className="neo-copy mt-4 block text-[10px] font-black tracking-[0.16em] text-[#8cf5e4] uppercase">
           Hub name
           <input
-            className="mt-2 w-full border-[3px] border-black bg-[#fff9ed] px-3 py-2 text-[11px] font-black uppercase text-[#171411] shadow-[3px_3px_0_#b7102a] outline-none focus:bg-[#8cf5e4]"
+            className="mt-2 w-full border-[3px] border-black bg-[#fff9ed] px-3 py-2 text-[11px] font-black text-[#171411] uppercase shadow-[3px_3px_0_#b7102a] outline-none focus:bg-[#8cf5e4]"
             onChange={(event) => onHubSearchChange(event.target.value)}
             placeholder="Search game hubs"
             value={hubSearch}
@@ -2227,10 +2227,10 @@ function CommunitySearchPanel({
           <Users aria-hidden="true" className="h-6 w-6 text-[#087d6d]" />
           <h2 className="neo-title text-3xl leading-none text-[#171411]">Find People</h2>
         </div>
-        <label className="neo-copy mt-4 block text-[10px] font-black uppercase tracking-[0.16em] text-[#b7102a]">
+        <label className="neo-copy mt-4 block text-[10px] font-black tracking-[0.16em] text-[#b7102a] uppercase">
           Player name
           <input
-            className="mt-2 w-full border-[3px] border-black bg-[#fff9ed] px-3 py-2 text-[11px] font-black uppercase text-[#171411] shadow-[3px_3px_0_#171411] outline-none focus:bg-[#8cf5e4]"
+            className="mt-2 w-full border-[3px] border-black bg-[#fff9ed] px-3 py-2 text-[11px] font-black text-[#171411] uppercase shadow-[3px_3px_0_#171411] outline-none focus:bg-[#8cf5e4]"
             onChange={(event) => onPeopleSearchChange(event.target.value)}
             placeholder="Search players"
             value={peopleSearch}
@@ -2241,7 +2241,7 @@ function CommunitySearchPanel({
             peopleMatches.map(([name, status, presence]) => (
               <div className="grid gap-1 p-3" key={name}>
                 <div className="flex items-center justify-between gap-2">
-                  <p className="truncate text-sm font-black uppercase text-[#171411]">{name}</p>
+                  <p className="truncate text-sm font-black text-[#171411] uppercase">{name}</p>
                   <span
                     className={`neo-copy border-2 border-black px-2 py-1 text-[8px] font-black uppercase ${
                       presence === "online"
@@ -2252,11 +2252,11 @@ function CommunitySearchPanel({
                     {presence}
                   </span>
                 </div>
-                <p className="neo-copy text-[9px] font-black uppercase text-[#5b403f]">{status}</p>
+                <p className="neo-copy text-[9px] font-black text-[#5b403f] uppercase">{status}</p>
               </div>
             ))
           ) : (
-            <p className="neo-copy p-3 text-[10px] font-black uppercase text-[#5b403f]">
+            <p className="neo-copy p-3 text-[10px] font-black text-[#5b403f] uppercase">
               No player matches.
             </p>
           )}
@@ -2284,7 +2284,7 @@ function CommunityFilterDock({
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="neo-copy text-[10px] font-black uppercase tracking-[0.16em] text-[#b7102a]">
+          <p className="neo-copy text-[10px] font-black tracking-[0.16em] text-[#b7102a] uppercase">
             Community content
           </p>
           <h2 className="neo-title mt-1 text-3xl leading-none text-[#171411]">
@@ -2346,13 +2346,13 @@ function CommunityActivityArticle({ item, rank }: { item: CommunityActivityItem;
         >
           {item.channel}
         </span>
-        <h3 className="mt-3 text-2xl font-black uppercase leading-tight text-[#171411]">
+        <h3 className="mt-3 text-2xl leading-tight font-black text-[#171411] uppercase">
           {item.headline}
         </h3>
-        <p className="neo-copy mt-2 text-[10px] font-black uppercase leading-5 text-[#5b403f]">
+        <p className="neo-copy mt-2 text-[10px] leading-5 font-black text-[#5b403f] uppercase">
           {item.summary}
         </p>
-        <p className="neo-copy mt-2 text-[10px] font-black uppercase text-[#5b403f]">
+        <p className="neo-copy mt-2 text-[10px] font-black text-[#5b403f] uppercase">
           {item.meta} // heat {item.heat}
         </p>
       </div>
@@ -2371,13 +2371,13 @@ function CommunityLocalPostArticle({ index, post }: { index: number; post: Commu
         <span className="neo-title text-4xl leading-none">L{index + 1}</span>
       </div>
       <div className="min-w-0">
-        <span className="neo-copy inline-flex border-2 border-black bg-[#b7102a] px-3 py-1 text-[10px] font-black uppercase text-white shadow-[2px_2px_0_#171411]">
+        <span className="neo-copy inline-flex border-2 border-black bg-[#b7102a] px-3 py-1 text-[10px] font-black text-white uppercase shadow-[2px_2px_0_#171411]">
           Local Post
         </span>
-        <h3 className="mt-3 text-2xl font-black uppercase leading-tight text-[#171411]">
+        <h3 className="mt-3 text-2xl leading-tight font-black text-[#171411] uppercase">
           {post.body}
         </h3>
-        <p className="neo-copy mt-2 text-[10px] font-black uppercase text-[#5b403f]">
+        <p className="neo-copy mt-2 text-[10px] font-black text-[#5b403f] uppercase">
           {localPostMeta}
         </p>
       </div>
@@ -2415,14 +2415,14 @@ function BroadcastStreamKeyVaultPanel({
     >
       <div className="flex flex-wrap items-start justify-between gap-3 border-b-4 border-black pb-3">
         <div>
-          <p className="neo-copy text-[10px] font-black uppercase tracking-[0.22em] text-[#b7102a]">
+          <p className="neo-copy text-[10px] font-black tracking-[0.22em] text-[#b7102a] uppercase">
             Desktop Secret Vault
           </p>
-          <h2 className="neo-title mt-1 flex items-center gap-2 text-3xl uppercase text-[#171411]">
+          <h2 className="neo-title mt-1 flex items-center gap-2 text-3xl text-[#171411] uppercase">
             <KeyRound aria-hidden="true" className="h-8 w-8" />
             Stream-Key Vault
           </h2>
-          <p className="neo-copy mt-2 max-w-3xl text-xs font-bold uppercase leading-5 text-[#5f574d]">
+          <p className="neo-copy mt-2 max-w-3xl text-xs leading-5 font-bold text-[#5f574d] uppercase">
             Store a local Twitch staging key in the desktop vault. This does not start RTMP, OAuth,
             live output, chat moderation, VOD sync, or audience status.
           </p>
@@ -2438,15 +2438,15 @@ function BroadcastStreamKeyVaultPanel({
 
       <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_300px]">
         <div className="grid gap-3 md:grid-cols-2">
-          <label className="neo-copy border-2 border-black bg-[#fff9ed] p-3 text-[9px] font-black uppercase tracking-[0.12em] text-[#5b403f] shadow-[3px_3px_0_#171411]">
+          <label className="neo-copy border-2 border-black bg-[#fff9ed] p-3 text-[9px] font-black tracking-[0.12em] text-[#5b403f] uppercase shadow-[3px_3px_0_#171411]">
             Channel ID
             <input
-              className="mt-2 w-full border-2 border-black bg-[#f5eedf] px-3 py-2 text-[11px] font-black uppercase text-[#171411]"
+              className="mt-2 w-full border-2 border-black bg-[#f5eedf] px-3 py-2 text-[11px] font-black text-[#171411] uppercase"
               readOnly
               value={BROADCAST_VAULT_CHANNEL_ID}
             />
           </label>
-          <label className="neo-copy border-2 border-black bg-[#fff9ed] p-3 text-[9px] font-black uppercase tracking-[0.12em] text-[#5b403f] shadow-[3px_3px_0_#171411]">
+          <label className="neo-copy border-2 border-black bg-[#fff9ed] p-3 text-[9px] font-black tracking-[0.12em] text-[#5b403f] uppercase shadow-[3px_3px_0_#171411]">
             Broadcast Stream Key
             <input
               aria-label="Broadcast stream key"
@@ -2460,8 +2460,8 @@ function BroadcastStreamKeyVaultPanel({
         </div>
 
         <div className="border-2 border-black bg-[#171411] p-3 text-[#fff9ed] shadow-[3px_3px_0_#b7102a]">
-          <p className="neo-copy text-[10px] font-black uppercase text-[#8cf5e4]">Vault Consent</p>
-          <label className="neo-copy mt-3 flex items-start gap-2 border-2 border-[#fff9ed] bg-[#2a221b] p-2 text-[9px] font-black uppercase leading-5">
+          <p className="neo-copy text-[10px] font-black text-[#8cf5e4] uppercase">Vault Consent</p>
+          <label className="neo-copy mt-3 flex items-start gap-2 border-2 border-[#fff9ed] bg-[#2a221b] p-2 text-[9px] leading-5 font-black uppercase">
             <input
               checked={consentAccepted}
               className="mt-1 h-4 w-4 accent-[#8cf5e4]"
@@ -2472,7 +2472,7 @@ function BroadcastStreamKeyVaultPanel({
           </label>
           <div className="mt-3 grid gap-2">
             <button
-              className="neo-copy flex h-10 items-center justify-center gap-2 border-2 border-black bg-[#8cf5e4] text-[10px] font-black uppercase text-[#171411] shadow-[2px_2px_0_#fff9ed] disabled:cursor-not-allowed disabled:bg-[#5f574d] disabled:text-[#fff9ed]"
+              className="neo-copy flex h-10 items-center justify-center gap-2 border-2 border-black bg-[#8cf5e4] text-[10px] font-black text-[#171411] uppercase shadow-[2px_2px_0_#fff9ed] disabled:cursor-not-allowed disabled:bg-[#5f574d] disabled:text-[#fff9ed]"
               disabled={busy || !consentAccepted || secret.trim().length === 0}
               onClick={onSave}
               type="button"
@@ -2481,7 +2481,7 @@ function BroadcastStreamKeyVaultPanel({
               {busy ? "Saving" : "Save Key"}
             </button>
             <button
-              className="neo-copy flex h-10 items-center justify-center gap-2 border-2 border-black bg-[#b7102a] text-[10px] font-black uppercase text-white shadow-[2px_2px_0_#fff9ed] disabled:cursor-not-allowed disabled:bg-[#5f574d]"
+              className="neo-copy flex h-10 items-center justify-center gap-2 border-2 border-black bg-[#b7102a] text-[10px] font-black text-white uppercase shadow-[2px_2px_0_#fff9ed] disabled:cursor-not-allowed disabled:bg-[#5f574d]"
               disabled={busy || !consentAccepted || !configured}
               onClick={onClear}
               type="button"
@@ -2499,7 +2499,7 @@ function BroadcastStreamKeyVaultPanel({
         <VaultStat label="Storage" value={status?.storage ?? "Desktop keychain slot"} />
       </div>
 
-      <p className="neo-copy mt-3 border-2 border-black bg-[#8cf5e4] px-3 py-2 text-[10px] font-black uppercase leading-5 text-[#171411] shadow-[2px_2px_0_#171411]">
+      <p className="neo-copy mt-3 border-2 border-black bg-[#8cf5e4] px-3 py-2 text-[10px] leading-5 font-black text-[#171411] uppercase shadow-[2px_2px_0_#171411]">
         {message ?? "Checking desktop stream-key vault status."}
       </p>
     </section>
@@ -2509,10 +2509,10 @@ function BroadcastStreamKeyVaultPanel({
 function VaultStat({ label, value }: { label: string; value: string }) {
   return (
     <article className="border-2 border-black bg-[#fff9ed] p-3 shadow-[3px_3px_0_#171411]">
-      <p className="neo-copy text-[9px] font-black uppercase tracking-[0.16em] text-[#b7102a]">
+      <p className="neo-copy text-[9px] font-black tracking-[0.16em] text-[#b7102a] uppercase">
         {label}
       </p>
-      <p className="neo-copy mt-2 text-[11px] font-black uppercase leading-5 text-[#171411]">
+      <p className="neo-copy mt-2 text-[11px] leading-5 font-black text-[#171411] uppercase">
         {value}
       </p>
     </article>
@@ -2527,35 +2527,35 @@ function BroadcastReadinessPanel({ plan }: { plan: BroadcastReadinessPlan }) {
     >
       <div className="flex flex-wrap items-start justify-between gap-3 border-b-4 border-black pb-3">
         <div>
-          <p className="neo-copy text-[10px] font-black uppercase tracking-[0.22em] text-[#b7102a]">
+          <p className="neo-copy text-[10px] font-black tracking-[0.22em] text-[#b7102a] uppercase">
             Local Stream Preflight
           </p>
           <h2 className="neo-title mt-1 flex items-center gap-2 text-3xl leading-none text-[#171411]">
             <Video aria-hidden="true" className="h-8 w-8" /> Broadcasting Readiness
           </h2>
-          <p className="neo-copy mt-2 max-w-3xl text-xs font-bold uppercase leading-5 text-[#5f574d]">
+          <p className="neo-copy mt-2 max-w-3xl text-xs leading-5 font-bold text-[#5f574d] uppercase">
             Rank local broadcast preflight lanes from account evidence, desktop vault, capture
             source, upload headroom, chat controls, VOD policy, and overlay safety.
           </p>
         </div>
-        <span className="neo-copy border-2 border-black bg-[#8cf5e4] px-3 py-2 text-[10px] font-black uppercase text-[#171411] shadow-[3px_3px_0_#171411]">
+        <span className="neo-copy border-2 border-black bg-[#8cf5e4] px-3 py-2 text-[10px] font-black text-[#171411] uppercase shadow-[3px_3px_0_#171411]">
           Local Preview Only
         </span>
       </div>
 
       <div className="mt-4 grid gap-3 lg:grid-cols-[280px_minmax(0,1fr)]">
         <div className="border-2 border-black bg-[#efe3cf] p-3 shadow-[3px_3px_0_#171411]">
-          <p className="neo-copy text-[10px] font-black uppercase text-[#5f574d]">Local Lanes</p>
+          <p className="neo-copy text-[10px] font-black text-[#5f574d] uppercase">Local Lanes</p>
           <p className="neo-title mt-1 text-5xl leading-none text-[#171411]">
             {plan.readyCount}/{plan.channels.length}
           </p>
-          <p className="neo-copy mt-2 text-[10px] font-black uppercase leading-5 text-[#5f574d]">
+          <p className="neo-copy mt-2 text-[10px] leading-5 font-black text-[#5f574d] uppercase">
             {plan.summary}
           </p>
         </div>
 
         <div className="border-2 border-black bg-[#171411] p-3 text-[#fff9ed] shadow-[3px_3px_0_#b7102a]">
-          <p className="neo-copy text-[10px] font-black uppercase text-[#8cf5e4]">Live Guard</p>
+          <p className="neo-copy text-[10px] font-black text-[#8cf5e4] uppercase">Live Guard</p>
           <div className="mt-3 grid gap-2">
             {[
               "Provider OAuth not executed",
@@ -2564,7 +2564,7 @@ function BroadcastReadinessPanel({ plan }: { plan: BroadcastReadinessPlan }) {
               "No VOD provider sync",
             ].map((item) => (
               <p
-                className="neo-copy border-2 border-[#fff9ed] bg-[#2a221b] px-3 py-2 text-[10px] font-black uppercase leading-5"
+                className="neo-copy border-2 border-[#fff9ed] bg-[#2a221b] px-3 py-2 text-[10px] leading-5 font-black uppercase"
                 key={item}
               >
                 {item}
@@ -2581,13 +2581,13 @@ function BroadcastReadinessPanel({ plan }: { plan: BroadcastReadinessPlan }) {
       </div>
 
       <div className="mt-4 border-2 border-black bg-[#efe3cf] p-3 shadow-[3px_3px_0_#171411]">
-        <p className="neo-copy text-[10px] font-black uppercase tracking-[0.18em] text-[#b7102a]">
+        <p className="neo-copy text-[10px] font-black tracking-[0.18em] text-[#b7102a] uppercase">
           Broadcast Checklist
         </p>
         <div className="mt-3 grid gap-2 md:grid-cols-2">
           {plan.checklist.map((item) => (
             <p
-              className="neo-copy border-2 border-black bg-[#fff9ed] px-3 py-2 text-[10px] font-black uppercase leading-5 text-[#171411]"
+              className="neo-copy border-2 border-black bg-[#fff9ed] px-3 py-2 text-[10px] leading-5 font-black text-[#171411] uppercase"
               key={item}
             >
               {item}
@@ -2608,23 +2608,23 @@ function BroadcastChannelCard({ channel }: { channel: BroadcastPlannedChannel })
     >
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="neo-copy text-[9px] font-black uppercase tracking-[0.16em] text-[#5f574d]">
+          <p className="neo-copy text-[9px] font-black tracking-[0.16em] text-[#5f574d] uppercase">
             {channel.provider} // {channel.captureSource}
           </p>
-          <h3 className="mt-1 text-lg font-black uppercase leading-tight text-[#171411]">
+          <h3 className="mt-1 text-lg leading-tight font-black text-[#171411] uppercase">
             {channel.label}
           </h3>
         </div>
         <UploadCloud aria-hidden="true" className="h-6 w-6 text-[#087d6d]" />
       </div>
-      <p className="neo-title mt-3 text-3xl uppercase text-[#171411]">{channel.score}</p>
-      <p className="neo-copy text-[9px] font-black uppercase text-[#5f574d]">
+      <p className="neo-title mt-3 text-3xl text-[#171411] uppercase">{channel.score}</p>
+      <p className="neo-copy text-[9px] font-black text-[#5f574d] uppercase">
         {getBroadcastStatusLabel(channel.status)} // {channel.uploadHeadroomKbps} kbps headroom
       </p>
       <div className="mt-3 space-y-2">
         {[...channel.blockers, ...channel.warnings].slice(0, 3).map((item) => (
           <p
-            className="neo-copy border-2 border-black bg-[#fff9ed] px-2 py-1 text-[9px] font-black uppercase leading-4 text-[#171411]"
+            className="neo-copy border-2 border-black bg-[#fff9ed] px-2 py-1 text-[9px] leading-4 font-black text-[#171411] uppercase"
             key={item}
           >
             {item}

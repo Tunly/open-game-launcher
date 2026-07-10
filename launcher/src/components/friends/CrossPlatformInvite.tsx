@@ -67,21 +67,21 @@ function FeasibilityBadge({ feasibility }: { feasibility: InviteFeasibility }) {
   switch (feasibility) {
     case "possible":
       return (
-        <span className="inline-flex items-center gap-1 border border-black bg-[#087d6d] px-2 py-0.5 text-[8px] font-black uppercase text-white">
+        <span className="inline-flex items-center gap-1 border border-black bg-[#087d6d] px-2 py-0.5 text-[8px] font-black text-white uppercase">
           <CheckCircle className="h-2.5 w-2.5" />
           Cross-Play OK
         </span>
       );
     case "uncertain":
       return (
-        <span className="inline-flex items-center gap-1 border border-black bg-[#f56c2d] px-2 py-0.5 text-[8px] font-black uppercase text-white">
+        <span className="inline-flex items-center gap-1 border border-black bg-[#f56c2d] px-2 py-0.5 text-[8px] font-black text-white uppercase">
           <HelpCircle className="h-2.5 w-2.5" />
           Uncertain
         </span>
       );
     case "impossible":
       return (
-        <span className="inline-flex items-center gap-1 border border-black bg-[#b7102a] px-2 py-0.5 text-[8px] font-black uppercase text-white">
+        <span className="inline-flex items-center gap-1 border border-black bg-[#b7102a] px-2 py-0.5 text-[8px] font-black text-white uppercase">
           <AlertTriangle className="h-2.5 w-2.5" />
           Not Supported
         </span>
@@ -245,7 +245,7 @@ export function CrossPlatformInvite({
     <div className="space-y-3">
       <div className="flex items-center gap-2 border-b-2 border-black pb-2">
         <Send className="h-4 w-4 text-[#b7102a]" />
-        <p className="neo-copy text-[10px] font-black uppercase tracking-[0.12em] text-[#171411]">
+        <p className="neo-copy text-[10px] font-black tracking-[0.12em] text-[#171411] uppercase">
           Cross-Platform Invite
         </p>
       </div>
@@ -265,7 +265,7 @@ export function CrossPlatformInvite({
         <div className="grid grid-cols-2 border-2 border-black bg-[#efe6d4] p-1 shadow-[1px_1px_0_#171411]">
           <button
             aria-pressed={!isOpenRecipientLink}
-            className={`neo-copy h-7 border-2 border-black text-[8px] font-black uppercase tracking-[0.08em] ${
+            className={`neo-copy h-7 border-2 border-black text-[8px] font-black tracking-[0.08em] uppercase ${
               !isOpenRecipientLink
                 ? "bg-[#087d6d] text-white"
                 : "bg-[#fff9ed] text-[#171411] disabled:text-[#8a8177]"
@@ -278,7 +278,7 @@ export function CrossPlatformInvite({
           </button>
           <button
             aria-pressed={isOpenRecipientLink}
-            className={`neo-copy h-7 border-2 border-black text-[8px] font-black uppercase tracking-[0.08em] ${
+            className={`neo-copy h-7 border-2 border-black text-[8px] font-black tracking-[0.08em] uppercase ${
               isOpenRecipientLink ? "bg-[#b7102a] text-white" : "bg-[#fff9ed] text-[#171411]"
             }`}
             disabled={sending}
@@ -290,14 +290,14 @@ export function CrossPlatformInvite({
         </div>
 
         {isOpenRecipientLink ? (
-          <p className="neo-copy border-2 border-black bg-[#efe6d4] px-2 py-1 text-[9px] font-black uppercase tracking-[0.08em] text-[#5b403f]">
+          <p className="neo-copy border-2 border-black bg-[#efe6d4] px-2 py-1 text-[9px] font-black tracking-[0.08em] text-[#5b403f] uppercase">
             A one-use server token is required. If token creation fails, no claimable link is shown.
           </p>
         ) : null}
 
         <div className="flex gap-2">
           <button
-            className="neo-copy h-8 border-2 border-black bg-[#efe6d4] px-3 text-[9px] font-black uppercase text-[#171411] shadow-[1px_1px_0_#171411] disabled:opacity-50"
+            className="neo-copy h-8 border-2 border-black bg-[#efe6d4] px-3 text-[9px] font-black text-[#171411] uppercase shadow-[1px_1px_0_#171411] disabled:opacity-50"
             disabled={!gameTitle.trim() || checking || sending}
             type="button"
             onClick={() => void handleCheckFeasibility()}
@@ -305,7 +305,7 @@ export function CrossPlatformInvite({
             {checking ? "Checking..." : "Check Feasibility"}
           </button>
           <button
-            className="neo-copy h-8 border-2 border-black bg-[#087d6d] px-3 text-[9px] font-black uppercase text-white shadow-[1px_1px_0_#171411] disabled:opacity-50"
+            className="neo-copy h-8 border-2 border-black bg-[#087d6d] px-3 text-[9px] font-black text-white uppercase shadow-[1px_1px_0_#171411] disabled:opacity-50"
             disabled={!gameTitle.trim() || sending}
             type="button"
             onClick={() => void handleSend()}
@@ -337,18 +337,18 @@ export function CrossPlatformInvite({
         )}
 
         {sent && (
-          <p className="neo-copy border-2 border-black bg-[#087d6d] p-2 text-[10px] font-bold uppercase text-white">
+          <p className="neo-copy border-2 border-black bg-[#087d6d] p-2 text-[10px] font-bold text-white uppercase">
             {isOpenRecipientLink ? "Share link ready!" : "Invite sent!"}
           </p>
         )}
         {activeSentInviteLink && (
           <div className="neo-dots border-[3px] border-black bg-[#fff9ed] p-3 shadow-[3px_3px_0_#171411]">
             <div className="flex flex-wrap items-center justify-between gap-2 border-b-2 border-black pb-2">
-              <p className="neo-copy flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.12em] text-[#171411]">
+              <p className="neo-copy flex items-center gap-2 text-[10px] font-black tracking-[0.12em] text-[#171411] uppercase">
                 <ExternalLink className="h-3.5 w-3.5 text-[#b7102a]" />
                 Custom Link Ready
               </p>
-              <span className="neo-copy border-2 border-black bg-[#8cf5e4] px-2 py-1 text-[8px] font-black uppercase text-[#171411]">
+              <span className="neo-copy border-2 border-black bg-[#8cf5e4] px-2 py-1 text-[8px] font-black text-[#171411] uppercase">
                 Server Token {activeSentInviteLink.tokenHint}
               </span>
             </div>
@@ -357,14 +357,14 @@ export function CrossPlatformInvite({
               <LinkReadout label="App Deep Link" value={activeSentInviteLink.deepLink} />
             </div>
             {activeSentInviteLink.source === "server" && activeSentInviteLink.expiresAt ? (
-              <p className="neo-copy mt-2 border-2 border-black bg-[#efe6d4] px-2 py-1 text-[8px] font-black uppercase tracking-[0.08em] text-[#655f58]">
+              <p className="neo-copy mt-2 border-2 border-black bg-[#efe6d4] px-2 py-1 text-[8px] font-black tracking-[0.08em] text-[#655f58] uppercase">
                 One-use share link expires{" "}
                 {new Date(activeSentInviteLink.expiresAt).toLocaleString()}
               </p>
             ) : null}
             <div className="mt-3 flex flex-wrap gap-2">
               <button
-                className="neo-copy inline-flex h-8 items-center gap-2 border-2 border-black bg-[#efe6d4] px-3 text-[9px] font-black uppercase text-[#171411] shadow-[2px_2px_0_#171411]"
+                className="neo-copy inline-flex h-8 items-center gap-2 border-2 border-black bg-[#efe6d4] px-3 text-[9px] font-black text-[#171411] uppercase shadow-[2px_2px_0_#171411]"
                 type="button"
                 onClick={() => void copyLink(activeSentInviteLink.webUrl, "Web")}
               >
@@ -372,7 +372,7 @@ export function CrossPlatformInvite({
                 Copy Web
               </button>
               <button
-                className="neo-copy inline-flex h-8 items-center gap-2 border-2 border-black bg-[#efe6d4] px-3 text-[9px] font-black uppercase text-[#171411] shadow-[2px_2px_0_#171411]"
+                className="neo-copy inline-flex h-8 items-center gap-2 border-2 border-black bg-[#efe6d4] px-3 text-[9px] font-black text-[#171411] uppercase shadow-[2px_2px_0_#171411]"
                 type="button"
                 onClick={() => void copyLink(activeSentInviteLink.deepLink, "App")}
               >
@@ -380,14 +380,14 @@ export function CrossPlatformInvite({
                 Copy App
               </button>
               <a
-                className="neo-copy inline-flex h-8 items-center gap-2 border-2 border-black bg-[#087d6d] px-3 text-[9px] font-black uppercase text-white shadow-[2px_2px_0_#171411]"
+                className="neo-copy inline-flex h-8 items-center gap-2 border-2 border-black bg-[#087d6d] px-3 text-[9px] font-black text-white uppercase shadow-[2px_2px_0_#171411]"
                 href={activeSentInviteLink.deepLink}
               >
                 <ExternalLink className="h-3 w-3" />
                 Open App
               </a>
               {copiedLink ? (
-                <span className="neo-copy inline-flex h-8 items-center border-2 border-black bg-[#8cf5e4] px-3 text-[9px] font-black uppercase text-[#171411]">
+                <span className="neo-copy inline-flex h-8 items-center border-2 border-black bg-[#8cf5e4] px-3 text-[9px] font-black text-[#171411] uppercase">
                   {copiedLink} copied
                 </span>
               ) : null}
@@ -395,7 +395,7 @@ export function CrossPlatformInvite({
           </div>
         )}
         {error && (
-          <p className="neo-copy border-2 border-black bg-[#b7102a] p-2 text-[10px] font-bold uppercase text-white">
+          <p className="neo-copy border-2 border-black bg-[#b7102a] p-2 text-[10px] font-bold text-white uppercase">
             {error}
           </p>
         )}
@@ -407,10 +407,10 @@ export function CrossPlatformInvite({
 function LinkReadout({ label, value }: { label: string; value: string }) {
   return (
     <div className="min-w-0 border-2 border-black bg-[#f5eedf] p-2">
-      <p className="neo-copy text-[8px] font-black uppercase tracking-[0.12em] text-[#655f58]">
+      <p className="neo-copy text-[8px] font-black tracking-[0.12em] text-[#655f58] uppercase">
         {label}
       </p>
-      <p className="neo-copy mt-1 break-all text-[9px] font-bold leading-4 text-[#171411]">
+      <p className="neo-copy mt-1 text-[9px] leading-4 font-bold break-all text-[#171411]">
         {value}
       </p>
     </div>

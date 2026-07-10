@@ -58,7 +58,7 @@ export function ConfirmDialog({
             {destructive ? (
               <AlertTriangle className="h-5 w-5 text-[#c20b2f]" aria-hidden="true" />
             ) : null}
-            <h2 className="neo-title text-xl uppercase leading-none text-[#171411]">{title}</h2>
+            <h2 className="neo-title text-xl leading-none text-[#171411] uppercase">{title}</h2>
           </div>
           <button
             aria-label="Close dialog"
@@ -71,7 +71,7 @@ export function ConfirmDialog({
         </div>
 
         <div className="px-4 py-4">
-          <p className="neo-copy text-xs font-bold uppercase leading-6 text-[#55504a]">{message}</p>
+          <p className="neo-copy text-xs leading-6 font-bold text-[#55504a] uppercase">{message}</p>
         </div>
 
         <div className="flex items-center justify-end gap-2 border-t-2 border-black bg-[#fbf4e7] px-4 py-3">

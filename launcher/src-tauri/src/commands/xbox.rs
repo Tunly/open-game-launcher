@@ -904,8 +904,8 @@ fn normalize_catalog_asset_url(value: &str) -> Option<String> {
     }
 
     let lowercase = value.to_ascii_lowercase();
-    let remainder = if value.starts_with("//") {
-        &value[2..]
+    let remainder = if let Some(remainder) = value.strip_prefix("//") {
+        remainder
     } else if lowercase.starts_with("https://") {
         &value[8..]
     } else if lowercase.starts_with("http://") {
@@ -1210,8 +1210,7 @@ pub async fn fetch_game_pass_catalog(
     let product_ids = parse_game_pass_catalog_ids(&body)
         .map_err(|error| format!("PC Game Pass SIGL could not be parsed: {error}"))?;
     let requested_product_ids = product_ids.iter().cloned().collect::<HashSet<_>>();
-    let batch_count =
-        (product_ids.len() + DISPLAY_CATALOG_BATCH_SIZE - 1) / DISPLAY_CATALOG_BATCH_SIZE;
+    let batch_count = product_ids.len().div_ceil(DISPLAY_CATALOG_BATCH_SIZE);
     let mut products_by_id = HashMap::new();
     let mut batch_errors = Vec::new();
 

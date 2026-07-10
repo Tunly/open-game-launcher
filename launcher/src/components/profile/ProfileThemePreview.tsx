@@ -14,11 +14,11 @@ export function ProfileThemePreview({ theme }: { theme: ProfileTheme }) {
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="neo-title text-3xl leading-none text-[#171411]">{theme.name}</p>
-          <p className="mt-2 text-sm font-semibold leading-6 text-[#5b403f]">
+          <p className="mt-2 text-sm leading-6 font-semibold text-[#5b403f]">
             {theme.description ?? "Profile theme preview."}
           </p>
         </div>
-        <span className="neo-copy shrink-0 border-2 border-black bg-[#fff9ed] px-2 py-1 text-[9px] font-black uppercase text-[#171411]">
+        <span className="neo-copy shrink-0 border-2 border-black bg-[#fff9ed] px-2 py-1 text-[9px] font-black text-[#171411] uppercase">
           {theme.cardStyle}
         </span>
       </div>
@@ -34,7 +34,7 @@ function ThemeSwatch({ label, value }: { label: string; value: string }) {
   return (
     <div className="border-2 border-black bg-[#fff9ed] p-2">
       <div className="h-6 border-2 border-black" style={{ background: value }} />
-      <p className="neo-copy mt-2 truncate text-[9px] font-black uppercase text-[#5b403f]">
+      <p className="neo-copy mt-2 truncate text-[9px] font-black text-[#5b403f] uppercase">
         {label} / {value}
       </p>
     </div>

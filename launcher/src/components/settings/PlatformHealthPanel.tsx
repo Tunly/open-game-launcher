@@ -124,10 +124,10 @@ export function PlatformHealthPanel({ loginStatuses = {} }: PlatformHealthPanelP
     <div className="border-4 border-black bg-[#f5eedf] shadow-[4px_4px_0_#171411]">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b-4 border-black p-5">
         <div>
-          <p className="neo-copy text-[10px] font-bold uppercase text-[#55504a]">
+          <p className="neo-copy text-[10px] font-bold text-[#55504a] uppercase">
             System Compatibility
           </p>
-          <h2 className="text-3xl font-black uppercase text-[#171411]">Platform Health Score</h2>
+          <h2 className="text-3xl font-black text-[#171411] uppercase">Platform Health Score</h2>
         </div>
         <div className="flex items-center gap-2">
           <span
@@ -154,19 +154,19 @@ export function PlatformHealthPanel({ loginStatuses = {} }: PlatformHealthPanelP
       <div className="space-y-4 p-5">
         <div className="grid gap-2 sm:grid-cols-3">
           <div className="border-2 border-black bg-[#fbf4e7] p-3 shadow-[2px_2px_0_#171411]">
-            <span className="neo-copy block text-[9px] font-black uppercase text-[#55504a]">
+            <span className="neo-copy block text-[9px] font-black text-[#55504a] uppercase">
               Running
             </span>
             <strong className="block text-2xl font-black text-[#171411]">{runningCount}</strong>
           </div>
           <div className="border-2 border-black bg-[#fbf4e7] p-3 shadow-[2px_2px_0_#171411]">
-            <span className="neo-copy block text-[9px] font-black uppercase text-[#55504a]">
+            <span className="neo-copy block text-[9px] font-black text-[#55504a] uppercase">
               Updates
             </span>
             <strong className="block text-2xl font-black text-[#171411]">{updateCount}</strong>
           </div>
           <div className="border-2 border-black bg-[#fbf4e7] p-3 shadow-[2px_2px_0_#171411]">
-            <span className="neo-copy block text-[9px] font-black uppercase text-[#55504a]">
+            <span className="neo-copy block text-[9px] font-black text-[#55504a] uppercase">
               Scanned
             </span>
             <strong className="block text-2xl font-black text-[#171411]">
@@ -174,7 +174,7 @@ export function PlatformHealthPanel({ loginStatuses = {} }: PlatformHealthPanelP
             </strong>
           </div>
           <div className="border-2 border-black bg-[#fbf4e7] p-3 shadow-[2px_2px_0_#171411]">
-            <span className="neo-copy block text-[9px] font-black uppercase text-[#55504a]">
+            <span className="neo-copy block text-[9px] font-black text-[#55504a] uppercase">
               Logins
             </span>
             <strong className="block text-2xl font-black text-[#171411]">
@@ -182,7 +182,7 @@ export function PlatformHealthPanel({ loginStatuses = {} }: PlatformHealthPanelP
             </strong>
           </div>
           <div className="border-2 border-black bg-[#fbf4e7] p-3 shadow-[2px_2px_0_#171411]">
-            <span className="neo-copy block text-[9px] font-black uppercase text-[#55504a]">
+            <span className="neo-copy block text-[9px] font-black text-[#55504a] uppercase">
               Current
             </span>
             <strong className="block text-2xl font-black text-[#171411]">
@@ -193,18 +193,18 @@ export function PlatformHealthPanel({ loginStatuses = {} }: PlatformHealthPanelP
 
         <div className="grid gap-2 border-2 border-black bg-[#efe6d4] p-3 shadow-[2px_2px_0_#171411] md:grid-cols-[minmax(0,1fr)_auto]">
           <div className="min-w-0">
-            <span className="neo-copy block text-[9px] font-black uppercase text-[#55504a]">
+            <span className="neo-copy block text-[9px] font-black text-[#55504a] uppercase">
               Client poll interval
             </span>
-            <strong className="neo-copy mt-1 block text-xl font-black uppercase text-[#171411]">
+            <strong className="neo-copy mt-1 block text-xl font-black text-[#171411] uppercase">
               {pollingSettings?.lifecyclePollIntervalSeconds ?? 10}s
             </strong>
-            <p className="neo-copy mt-1 truncate text-[9px] font-bold uppercase text-[#55504a]">
+            <p className="neo-copy mt-1 truncate text-[9px] font-bold text-[#55504a] uppercase">
               Lifecycle events refresh every saved interval
             </p>
           </div>
           <div className="flex items-end gap-2">
-            <label className="neo-copy block text-[9px] font-black uppercase text-[#55504a]">
+            <label className="neo-copy block text-[9px] font-black text-[#55504a] uppercase">
               Seconds
               <input
                 className="mt-1 h-10 w-24 border-2 border-black bg-[#fbf4e7] px-2 text-[12px] font-black text-[#171411] outline-none"
@@ -217,7 +217,7 @@ export function PlatformHealthPanel({ loginStatuses = {} }: PlatformHealthPanelP
               />
             </label>
             <button
-              className="neo-copy inline-flex h-10 items-center gap-1.5 border-2 border-black bg-[#087d6d] px-3 text-[10px] font-black uppercase text-white shadow-[2px_2px_0_#171411] hover:bg-[#00695f] disabled:cursor-not-allowed disabled:bg-[#d8cbb7] disabled:text-[#655f58]"
+              className="neo-copy inline-flex h-10 items-center gap-1.5 border-2 border-black bg-[#087d6d] px-3 text-[10px] font-black text-white uppercase shadow-[2px_2px_0_#171411] hover:bg-[#00695f] disabled:cursor-not-allowed disabled:bg-[#d8cbb7] disabled:text-[#655f58]"
               type="button"
               disabled={isSavingPolling}
               onClick={() => void savePollingSettings()}
@@ -236,10 +236,10 @@ export function PlatformHealthPanel({ loginStatuses = {} }: PlatformHealthPanelP
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <span className="block truncate text-sm font-black uppercase text-[#171411]">
+                  <span className="block truncate text-sm font-black text-[#171411] uppercase">
                     {card.label}
                   </span>
-                  <span className="neo-copy mt-1 block text-[8px] font-bold uppercase leading-tight text-[#55504a]">
+                  <span className="neo-copy mt-1 block text-[8px] leading-tight font-bold text-[#55504a] uppercase">
                     {card.detail}
                   </span>
                 </div>
@@ -265,7 +265,7 @@ export function PlatformHealthPanel({ loginStatuses = {} }: PlatformHealthPanelP
                     </span>
                   ))}
                 </div>
-                <p className="neo-copy truncate text-[9px] font-bold uppercase text-[#55504a]">
+                <p className="neo-copy truncate text-[9px] font-bold text-[#55504a] uppercase">
                   {card.statusLabel} // {card.detailLine}
                 </p>
               </div>
@@ -274,7 +274,7 @@ export function PlatformHealthPanel({ loginStatuses = {} }: PlatformHealthPanelP
         </div>
 
         {message ? (
-          <p className="neo-copy border-2 border-black bg-[#fbf4e7] px-3 py-2 text-[10px] font-bold uppercase text-[#171411] shadow-[2px_2px_0_#171411]">
+          <p className="neo-copy border-2 border-black bg-[#fbf4e7] px-3 py-2 text-[10px] font-bold text-[#171411] uppercase shadow-[2px_2px_0_#171411]">
             {message}
           </p>
         ) : null}

@@ -169,7 +169,7 @@ export function LibrarySidebar({
   );
 
   return (
-    <aside className="flex min-h-0 flex-col justify-between border-b-4 border-black bg-[#efe3cf] md:border-b-0 md:border-r-4">
+    <aside className="flex min-h-0 flex-col justify-between border-b-4 border-black bg-[#efe3cf] md:border-r-4 md:border-b-0">
       <div className="flex min-h-0 flex-1 flex-col">
         <div className="flex h-11 items-center justify-between border-b-4 border-black bg-[#f4ead8]">
           <div className="flex h-full min-w-0 flex-1 items-center px-3 text-left text-[16px] font-black">
@@ -182,7 +182,7 @@ export function LibrarySidebar({
             <select
               value={sortOption}
               onChange={(event) => setSortOption(event.target.value as LibrarySortOption)}
-              className="neo-copy h-6 cursor-pointer border-2 border-black bg-[#d8cbb7] text-[10px] font-black uppercase tracking-wider outline-none"
+              className="neo-copy h-6 cursor-pointer border-2 border-black bg-[#d8cbb7] text-[10px] font-black tracking-wider uppercase outline-none"
               aria-label="Sort library"
               title="Sort"
             >
@@ -226,17 +226,17 @@ export function LibrarySidebar({
         <div className="library-scroll-frame library-sidebar-scroll-frame min-h-0 flex-1 border-t-2 border-black">
           <div
             ref={listScrollRef}
-            className="library-game-list-scroll h-full min-h-0 space-y-1 overflow-y-auto overflow-x-hidden py-0 pl-0 pr-0"
+            className="library-game-list-scroll h-full min-h-0 space-y-1 overflow-x-hidden overflow-y-auto py-0 pr-0 pl-0"
           >
             {groupOption !== "none" ? (
               Object.entries(groupedGames).length === 0 ? (
-                <div className="py-8 text-center text-[12px] font-black uppercase text-[#686157]">
+                <div className="py-8 text-center text-[12px] font-black text-[#686157] uppercase">
                   No games found
                 </div>
               ) : (
                 Object.entries(groupedGames).map(([groupName, groupGames]) => (
                   <div key={groupName} className="mb-4">
-                    <h3 className="sticky top-0 z-10 mb-2 border-b-2 border-black bg-[#efe3cf] py-1 text-[11px] font-black uppercase tracking-wider text-[#b7102a] shadow-[0_2px_0_#171411]">
+                    <h3 className="sticky top-0 z-10 mb-2 border-b-2 border-black bg-[#efe3cf] py-1 text-[11px] font-black tracking-wider text-[#b7102a] uppercase shadow-[0_2px_0_#171411]">
                       {groupName} ({groupGames.length})
                     </h3>
                     <div className="space-y-1">{groupGames.map(renderLibraryRow)}</div>
@@ -245,7 +245,7 @@ export function LibrarySidebar({
               )
             ) : filteredGames.length === 0 ? (
               <div className="space-y-4 px-4 py-12 text-center">
-                <p className="text-[12px] font-black uppercase text-[#686157]">
+                <p className="text-[12px] font-black text-[#686157] uppercase">
                   {hasActiveFilters ? "No games match active filters" : "No games found"}
                 </p>
                 {hasActiveFilters && onResetFilters && (
@@ -279,7 +279,7 @@ export function LibrarySidebar({
       <div className="shrink-0 border-t-4 border-black bg-[#f4ead8] px-4 py-2 text-[14px] font-black">
         <button
           type="button"
-          className="text-left uppercase leading-none hover:text-[#b7102a]"
+          className="text-left leading-none uppercase hover:text-[#b7102a]"
           onClick={() => {
             clearAddGameError(null);
             setIsAddGameOpen(true);

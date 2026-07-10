@@ -167,13 +167,13 @@ export function AccountDataPrivacyPanel({
     <div className="border-4 border-black bg-[#f5eedf] shadow-[5px_5px_0_#171411]">
       <div className="flex flex-col gap-4 border-b-4 border-black bg-[#171411] p-5 text-white sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <p className="neo-copy text-[10px] font-bold uppercase text-[#8cf5e4]">
+          <p className="neo-copy text-[10px] font-bold text-[#8cf5e4] uppercase">
             {isLocalMode ? "Local DSGVO Console" : "DSGVO Data Console"}
           </p>
           <h2 className="neo-title mt-1 text-3xl leading-none">Account Data</h2>
         </div>
         <button
-          className="neo-copy flex h-11 items-center justify-center gap-2 border-2 border-black bg-[#087d6d] px-4 text-xs font-black uppercase text-white shadow-[3px_3px_0_#000] disabled:opacity-60"
+          className="neo-copy flex h-11 items-center justify-center gap-2 border-2 border-black bg-[#087d6d] px-4 text-xs font-black text-white uppercase shadow-[3px_3px_0_#000] disabled:opacity-60"
           disabled={busyAction !== null || isLoading}
           type="button"
           onClick={handleExport}
@@ -189,10 +189,10 @@ export function AccountDataPrivacyPanel({
 
       {isLocalMode ? (
         <div className="mx-5 mt-5 border-[3px] border-black bg-[#fff9ed] p-3 shadow-[3px_3px_0_#171411]">
-          <p className="neo-copy text-[10px] font-black uppercase tracking-[0.12em] text-[#c20b2f]">
+          <p className="neo-copy text-[10px] font-black tracking-[0.12em] text-[#c20b2f] uppercase">
             Local Account Preview
           </p>
-          <p className="neo-copy mt-2 text-[11px] font-bold uppercase leading-5 text-[#5b403f]">
+          <p className="neo-copy mt-2 text-[11px] leading-5 font-bold text-[#5b403f] uppercase">
             Export, deletion request, and cancel actions are stored in this browser session while
             Supabase is disconnected.
           </p>
@@ -202,7 +202,7 @@ export function AccountDataPrivacyPanel({
       <div className="grid gap-4 p-5 lg:grid-cols-[1fr_300px]">
         <div className="border-2 border-black bg-[#efe6d4] p-4">
           <label
-            className="neo-copy text-[10px] font-bold uppercase text-[#55504a]"
+            className="neo-copy text-[10px] font-bold text-[#55504a] uppercase"
             htmlFor="deletion-reason"
           >
             Deletion note
@@ -218,7 +218,7 @@ export function AccountDataPrivacyPanel({
           />
           <div className="mt-3 flex flex-col gap-3 sm:flex-row">
             <button
-              className="neo-copy flex h-11 flex-1 items-center justify-center gap-2 border-2 border-black bg-[#c20b2f] px-4 text-xs font-black uppercase text-white shadow-[3px_3px_0_#171411] disabled:opacity-60"
+              className="neo-copy flex h-11 flex-1 items-center justify-center gap-2 border-2 border-black bg-[#c20b2f] px-4 text-xs font-black text-white uppercase shadow-[3px_3px_0_#171411] disabled:opacity-60"
               disabled={isActiveDeletion || busyAction !== null || isLoading}
               type="button"
               onClick={handleRequestDeletion}
@@ -231,7 +231,7 @@ export function AccountDataPrivacyPanel({
               Request Deletion
             </button>
             <button
-              className="neo-copy flex h-11 flex-1 items-center justify-center gap-2 border-2 border-black bg-[#fff9ed] px-4 text-xs font-black uppercase text-[#171411] shadow-[3px_3px_0_#171411] disabled:opacity-60"
+              className="neo-copy flex h-11 flex-1 items-center justify-center gap-2 border-2 border-black bg-[#fff9ed] px-4 text-xs font-black text-[#171411] uppercase shadow-[3px_3px_0_#171411] disabled:opacity-60"
               disabled={!isPendingDeletion || busyAction !== null || isLoading}
               type="button"
               onClick={handleCancelDeletion}
@@ -247,54 +247,54 @@ export function AccountDataPrivacyPanel({
         </div>
 
         <div className="border-2 border-black bg-[#fff9ed] p-4 shadow-[2px_2px_0_#171411]">
-          <p className="neo-copy text-[10px] font-bold uppercase text-[#55504a]">Queue Status</p>
+          <p className="neo-copy text-[10px] font-bold text-[#55504a] uppercase">Queue Status</p>
           {isLoading ? (
-            <div className="mt-5 flex items-center gap-2 text-sm font-black uppercase text-[#171411]">
+            <div className="mt-5 flex items-center gap-2 text-sm font-black text-[#171411] uppercase">
               <Loader2 className="h-4 w-4 animate-spin text-[#087d6d]" />
               Loading
             </div>
           ) : isPendingDeletion && deletionRequest ? (
             <div className="mt-4 space-y-3">
-              <span className="neo-copy inline-flex border-2 border-black bg-[#c20b2f] px-2 py-1 text-[10px] font-black uppercase text-white">
+              <span className="neo-copy inline-flex border-2 border-black bg-[#c20b2f] px-2 py-1 text-[10px] font-black text-white uppercase">
                 Pending
               </span>
-              <p className="text-sm font-black uppercase text-[#171411]">
+              <p className="text-sm font-black text-[#171411] uppercase">
                 Scheduled {formatDateTime(deletionRequest.scheduled_at)}
               </p>
-              <p className="neo-copy text-[10px] font-bold uppercase leading-relaxed text-[#55504a]">
+              <p className="neo-copy text-[10px] leading-relaxed font-bold text-[#55504a] uppercase">
                 Auth deletion is not executed by the request function.
               </p>
             </div>
           ) : isProcessingDeletion && deletionRequest ? (
             <div className="mt-4 space-y-3">
-              <span className="neo-copy inline-flex border-2 border-black bg-[#fff9ed] px-2 py-1 text-[10px] font-black uppercase text-[#171411]">
+              <span className="neo-copy inline-flex border-2 border-black bg-[#fff9ed] px-2 py-1 text-[10px] font-black text-[#171411] uppercase">
                 Processing
               </span>
-              <p className="text-sm font-black uppercase text-[#171411]">
+              <p className="text-sm font-black text-[#171411] uppercase">
                 Processor claimed {formatDateTime(deletionRequest.updated_at)}
               </p>
-              <p className="neo-copy text-[10px] font-bold uppercase leading-relaxed text-[#55504a]">
+              <p className="neo-copy text-[10px] leading-relaxed font-bold text-[#55504a] uppercase">
                 Cancellation is closed once the trusted processor has claimed the request.
               </p>
             </div>
           ) : isFailedDeletion && deletionRequest ? (
             <div className="mt-4 space-y-3">
-              <span className="neo-copy inline-flex border-2 border-black bg-[#fff9ed] px-2 py-1 text-[10px] font-black uppercase text-[#171411]">
+              <span className="neo-copy inline-flex border-2 border-black bg-[#fff9ed] px-2 py-1 text-[10px] font-black text-[#171411] uppercase">
                 Failed
               </span>
-              <p className="text-sm font-black uppercase text-[#171411]">
+              <p className="text-sm font-black text-[#171411] uppercase">
                 Failed {deletionRequest.failed_at ? formatDateTime(deletionRequest.failed_at) : ""}
               </p>
-              <p className="neo-copy text-[10px] font-bold uppercase leading-relaxed text-[#55504a]">
+              <p className="neo-copy text-[10px] leading-relaxed font-bold text-[#55504a] uppercase">
                 {deletionRequest.error_message ?? "Processor could not complete the deletion."}
               </p>
             </div>
           ) : (
             <div className="mt-4 space-y-3">
-              <span className="neo-copy inline-flex border-2 border-black bg-[#087d6d] px-2 py-1 text-[10px] font-black uppercase text-white">
+              <span className="neo-copy inline-flex border-2 border-black bg-[#087d6d] px-2 py-1 text-[10px] font-black text-white uppercase">
                 Clear
               </span>
-              <p className="neo-copy text-[10px] font-bold uppercase leading-relaxed text-[#55504a]">
+              <p className="neo-copy text-[10px] leading-relaxed font-bold text-[#55504a] uppercase">
                 No pending account deletion request.
               </p>
             </div>
@@ -334,7 +334,7 @@ function DeletionProcessorReadinessPanel({
     <section className="mx-5 mb-5 border-2 border-black bg-[#fff9ed] p-4 shadow-[3px_3px_0_#171411]">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
-          <p className="neo-copy text-[10px] font-bold uppercase text-[#c20b2f]">
+          <p className="neo-copy text-[10px] font-bold text-[#c20b2f] uppercase">
             Deletion processor readiness
           </p>
           <h3 className="neo-title mt-1 flex items-center gap-2 text-2xl leading-none text-[#171411]">
@@ -343,13 +343,13 @@ function DeletionProcessorReadinessPanel({
           </h3>
         </div>
         <span
-          className={`neo-copy inline-flex border-2 border-black px-2 py-1 text-[10px] font-black uppercase tracking-[0.1em] shadow-[2px_2px_0_#171411] ${statusClass}`}
+          className={`neo-copy inline-flex border-2 border-black px-2 py-1 text-[10px] font-black tracking-[0.1em] uppercase shadow-[2px_2px_0_#171411] ${statusClass}`}
         >
           {readiness.statusLabel}
         </span>
       </div>
 
-      <p className="neo-copy mt-3 border-2 border-black bg-[#f5eedf] p-2 text-[10px] font-black uppercase leading-5 tracking-[0.08em] text-[#171411]">
+      <p className="neo-copy mt-3 border-2 border-black bg-[#f5eedf] p-2 text-[10px] leading-5 font-black tracking-[0.08em] text-[#171411] uppercase">
         {readiness.summary}
       </p>
 
@@ -363,18 +363,18 @@ function DeletionProcessorReadinessPanel({
         {readiness.checks.map((check) => (
           <div key={check.label} className="border-2 border-black bg-[#f5eedf] p-2">
             <div className="flex min-w-0 items-center justify-between gap-2">
-              <span className="neo-copy truncate text-[10px] font-black uppercase tracking-[0.1em] text-[#171411]">
+              <span className="neo-copy truncate text-[10px] font-black tracking-[0.1em] text-[#171411] uppercase">
                 {check.label}
               </span>
               <span
-                className={`neo-copy shrink-0 border border-black px-1.5 py-0.5 text-[8px] font-black uppercase tracking-[0.08em] ${privacyReadinessCheckClass(
+                className={`neo-copy shrink-0 border border-black px-1.5 py-0.5 text-[8px] font-black tracking-[0.08em] uppercase ${privacyReadinessCheckClass(
                   check.status,
                 )}`}
               >
                 {check.status}
               </span>
             </div>
-            <p className="neo-copy mt-1 line-clamp-2 text-[9px] font-black uppercase leading-4 tracking-[0.06em] text-[#55504a]">
+            <p className="neo-copy mt-1 line-clamp-2 text-[9px] leading-4 font-black tracking-[0.06em] text-[#55504a] uppercase">
               {check.detail}
             </p>
           </div>
@@ -384,14 +384,14 @@ function DeletionProcessorReadinessPanel({
       <div className="mt-3 border-2 border-black bg-[#efe6d4] p-3 shadow-[2px_2px_0_#171411]">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <p className="neo-copy text-[9px] font-black uppercase tracking-[0.12em] text-[#c20b2f]">
+            <p className="neo-copy text-[9px] font-black tracking-[0.12em] text-[#c20b2f] uppercase">
               Cron Dry-run Packet
             </p>
-            <h4 className="mt-1 text-base font-black uppercase leading-tight text-[#171411]">
+            <h4 className="mt-1 text-base leading-tight font-black text-[#171411] uppercase">
               {readiness.cronDryRunPacket.method} {readiness.cronDryRunPacket.endpointPath}
             </h4>
           </div>
-          <span className="neo-copy inline-flex w-fit border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] font-black uppercase text-[#171411]">
+          <span className="neo-copy inline-flex w-fit border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] font-black text-[#171411] uppercase">
             Writes disabled
           </span>
         </div>
@@ -410,7 +410,7 @@ function DeletionProcessorReadinessPanel({
           />
         </div>
 
-        <p className="neo-copy mt-2 border-2 border-black bg-[#fff9ed] p-2 text-[9px] font-black uppercase leading-4 tracking-[0.06em] text-[#55504a]">
+        <p className="neo-copy mt-2 border-2 border-black bg-[#fff9ed] p-2 text-[9px] leading-4 font-black tracking-[0.06em] text-[#55504a] uppercase">
           {readiness.cronDryRunPacket.scheduleHint} This local packet does not call hosted cron,
           delete storage, or delete auth users.
         </p>
@@ -419,13 +419,13 @@ function DeletionProcessorReadinessPanel({
       <div className="mt-3 border-2 border-black bg-[#efe6d4] p-3 shadow-[2px_2px_0_#171411]">
         <div className="flex flex-col gap-3 border-b-2 border-black pb-3 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0">
-            <p className="neo-copy text-[9px] font-black uppercase tracking-[0.16em] text-[#c20b2f]">
+            <p className="neo-copy text-[9px] font-black tracking-[0.16em] text-[#c20b2f] uppercase">
               Hosted Cron Staging Proof
             </p>
             <h4 className="neo-title mt-1 text-2xl leading-none text-[#171411]">
               {readiness.hostedCronStagingProof.functionName}
             </h4>
-            <p className="neo-copy mt-2 max-w-4xl text-[10px] font-black uppercase leading-5 tracking-[0.06em] text-[#55504a]">
+            <p className="neo-copy mt-2 max-w-4xl text-[10px] leading-5 font-black tracking-[0.06em] text-[#55504a] uppercase">
               {readiness.hostedCronStagingProof.guardCopy}
             </p>
           </div>
@@ -458,18 +458,18 @@ function DeletionProcessorReadinessPanel({
           {readiness.hostedCronStagingProof.rows.map((row) => (
             <div key={row.id} className="border-2 border-black bg-[#fff9ed] p-2">
               <div className="flex items-start justify-between gap-2">
-                <span className="neo-copy text-[9px] font-black uppercase tracking-[0.08em] text-[#171411]">
+                <span className="neo-copy text-[9px] font-black tracking-[0.08em] text-[#171411] uppercase">
                   {row.label}
                 </span>
                 <span
-                  className={`neo-copy shrink-0 border border-black px-1.5 py-0.5 text-[8px] font-black uppercase tracking-[0.08em] ${privacyReadinessCheckClass(
+                  className={`neo-copy shrink-0 border border-black px-1.5 py-0.5 text-[8px] font-black tracking-[0.08em] uppercase ${privacyReadinessCheckClass(
                     row.status,
                   )}`}
                 >
                   {row.status}
                 </span>
               </div>
-              <p className="neo-copy mt-2 text-[9px] font-black uppercase leading-4 tracking-[0.06em] text-[#55504a]">
+              <p className="neo-copy mt-2 text-[9px] leading-4 font-black tracking-[0.06em] text-[#55504a] uppercase">
                 {row.detail}
               </p>
             </div>
@@ -479,7 +479,7 @@ function DeletionProcessorReadinessPanel({
         <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
           {readiness.hostedCronStagingProof.guards.map((guard) => (
             <p
-              className="neo-copy border-2 border-black bg-[#171411] px-2 py-2 text-[8px] font-black uppercase leading-4 tracking-[0.08em] text-[#fff9ed]"
+              className="neo-copy border-2 border-black bg-[#171411] px-2 py-2 text-[8px] leading-4 font-black tracking-[0.08em] text-[#fff9ed] uppercase"
               key={guard}
             >
               {guard}
@@ -488,7 +488,7 @@ function DeletionProcessorReadinessPanel({
         </div>
       </div>
 
-      <p className="neo-copy mt-3 border-2 border-black bg-[#c20b2f] p-2 text-[10px] font-black uppercase leading-5 tracking-[0.08em] text-white">
+      <p className="neo-copy mt-3 border-2 border-black bg-[#c20b2f] p-2 text-[10px] leading-5 font-black tracking-[0.08em] text-white uppercase">
         Final DSGVO processor go-live still needs hosted cron delivery with a real
         ACCOUNT_DELETION_PROCESSOR_SECRET against a staging Supabase project.
       </p>
@@ -499,10 +499,10 @@ function DeletionProcessorReadinessPanel({
 function PrivacyPacketCell({ label, value }: { label: string; value: string }) {
   return (
     <div className="min-w-0 border-2 border-black bg-[#fff9ed] p-2">
-      <p className="neo-copy text-[8px] font-black uppercase tracking-[0.1em] text-[#55504a]">
+      <p className="neo-copy text-[8px] font-black tracking-[0.1em] text-[#55504a] uppercase">
         {label}
       </p>
-      <p className="neo-copy mt-1 break-words text-[8px] font-black uppercase leading-4 tracking-[0.05em] text-[#171411]">
+      <p className="neo-copy mt-1 text-[8px] leading-4 font-black tracking-[0.05em] break-words text-[#171411] uppercase">
         {value}
       </p>
     </div>
@@ -512,10 +512,10 @@ function PrivacyPacketCell({ label, value }: { label: string; value: string }) {
 function PrivacyProofStamp({ label, value }: { label: string; value: string }) {
   return (
     <div className="min-w-0 border-2 border-black bg-[#f5eedf] p-2 shadow-[2px_2px_0_#171411]">
-      <p className="neo-copy text-[8px] font-black uppercase tracking-[0.1em] text-[#55504a]">
+      <p className="neo-copy text-[8px] font-black tracking-[0.1em] text-[#55504a] uppercase">
         {label}
       </p>
-      <p className="neo-copy mt-1 break-words text-[9px] font-black uppercase leading-4 tracking-[0.05em] text-[#171411]">
+      <p className="neo-copy mt-1 text-[9px] leading-4 font-black tracking-[0.05em] break-words text-[#171411] uppercase">
         {value}
       </p>
     </div>
@@ -525,10 +525,10 @@ function PrivacyProofStamp({ label, value }: { label: string; value: string }) {
 function PrivacyReadinessStamp({ label, value }: { label: string; value: string }) {
   return (
     <div className="border-2 border-black bg-[#f5eedf] p-2 shadow-[2px_2px_0_#171411]">
-      <p className="neo-copy text-[9px] font-black uppercase tracking-[0.1em] text-[#55504a]">
+      <p className="neo-copy text-[9px] font-black tracking-[0.1em] text-[#55504a] uppercase">
         {label}
       </p>
-      <p className="mt-1 text-2xl font-black leading-none text-[#171411]">{value}</p>
+      <p className="mt-1 text-2xl leading-none font-black text-[#171411]">{value}</p>
     </div>
   );
 }

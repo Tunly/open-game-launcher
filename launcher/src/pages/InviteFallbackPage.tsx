@@ -216,7 +216,7 @@ export function InviteFallbackPage() {
     <div className="mx-auto w-full max-w-[1220px] px-0 py-2">
       <div className="mb-7 flex flex-col gap-4 border-b-4 border-black pb-5 md:flex-row md:items-end md:justify-between">
         <div>
-          <p className="neo-copy inline-flex border-2 border-black bg-[#007166] px-3 py-1 text-[11px] font-black uppercase tracking-[0.14em] text-white shadow-[3px_3px_0_#171411]">
+          <p className="neo-copy inline-flex border-2 border-black bg-[#007166] px-3 py-1 text-[11px] font-black tracking-[0.14em] text-white uppercase shadow-[3px_3px_0_#171411]">
             Web Invite Fallback
           </p>
           <h1 className="neo-title mt-3 max-w-[760px] text-[3.4rem] leading-[0.82] text-[#171411] sm:text-[4.5rem] lg:text-[5.3rem] xl:text-[6rem]">
@@ -224,7 +224,7 @@ export function InviteFallbackPage() {
           </h1>
         </div>
         <div className="neo-dots border-[3px] border-black bg-[#fff9ed] px-4 py-3 shadow-[4px_4px_0_#171411]">
-          <p className="neo-copy text-[10px] font-black uppercase tracking-[0.14em] text-[#5b403f]">
+          <p className="neo-copy text-[10px] font-black tracking-[0.14em] text-[#5b403f] uppercase">
             Invite Token
           </p>
           <p className="neo-title mt-1 max-w-[260px] truncate text-2xl leading-none text-[#171411]">
@@ -241,7 +241,7 @@ export function InviteFallbackPage() {
           </div>
           <div className="grid gap-5 p-5 md:grid-cols-[minmax(0,1fr)_220px]">
             <div>
-              <p className="neo-copy max-w-2xl text-sm font-bold leading-6 text-[#5b403f]">
+              <p className="neo-copy max-w-2xl text-sm leading-6 font-bold text-[#5b403f]">
                 This share link resolves on the server. Sign in to claim it; the first successful
                 acceptance consumes the one-use token.
               </p>
@@ -250,7 +250,7 @@ export function InviteFallbackPage() {
                 <InviteFact label="Platform" value={displayPlatform} />
               </div>
               {lookupState !== "idle" ? (
-                <p className="neo-copy mt-3 border-2 border-black bg-[#efe6d4] px-3 py-2 text-[9px] font-black uppercase tracking-[0.08em] text-[#5b403f]">
+                <p className="neo-copy mt-3 border-2 border-black bg-[#efe6d4] px-3 py-2 text-[9px] font-black tracking-[0.08em] text-[#5b403f] uppercase">
                   Token Lookup //{" "}
                   {lookupState === "loading"
                     ? "checking"
@@ -260,20 +260,20 @@ export function InviteFallbackPage() {
                 </p>
               ) : null}
               <div className="mt-5 border-[3px] border-black bg-[#efe6d4] p-3 shadow-[3px_3px_0_#171411]">
-                <p className="neo-copy text-[10px] font-black uppercase tracking-[0.14em] text-[#5b403f]">
+                <p className="neo-copy text-[10px] font-black tracking-[0.14em] text-[#5b403f] uppercase">
                   Deep Link
                 </p>
-                <code className="mt-2 block break-all border-2 border-black bg-[#fff9ed] px-3 py-2 text-[12px] font-black text-[#171411]">
+                <code className="mt-2 block border-2 border-black bg-[#fff9ed] px-3 py-2 text-[12px] font-black break-all text-[#171411]">
                   {inviteLink}
                 </code>
               </div>
             </div>
 
             <div className="card-art-drift relative min-h-[220px] overflow-hidden border-[3px] border-black shadow-[4px_4px_0_#171411]">
-              <div className="absolute left-3 top-3 border-2 border-black bg-[#b7102a] px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-white">
+              <div className="absolute top-3 left-3 border-2 border-black bg-[#b7102a] px-2 py-1 text-[10px] font-black tracking-[0.12em] text-white uppercase">
                 Join Relay
               </div>
-              <div className="absolute bottom-3 right-3 border-2 border-black bg-[#8cf5e4] px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-[#171411]">
+              <div className="absolute right-3 bottom-3 border-2 border-black bg-[#8cf5e4] px-2 py-1 text-[10px] font-black tracking-[0.12em] text-[#171411] uppercase">
                 App Link
               </div>
             </div>
@@ -283,12 +283,12 @@ export function InviteFallbackPage() {
         <aside className="space-y-4">
           {isConfigured ? (
             isAuthLoading ? (
-              <p className="neo-copy border-2 border-black bg-[#efe6d4] px-3 py-2 text-xs font-black uppercase tracking-[0.08em] text-[#5b403f] shadow-[2px_2px_0_#171411]">
+              <p className="neo-copy border-2 border-black bg-[#efe6d4] px-3 py-2 text-xs font-black tracking-[0.08em] text-[#5b403f] uppercase shadow-[2px_2px_0_#171411]">
                 Checking login state.
               </p>
             ) : user ? (
               <button
-                className="neo-copy flex w-full items-center justify-center gap-2 border-[3px] border-black bg-[#007166] px-4 py-3 text-sm font-black uppercase tracking-[0.1em] text-white shadow-[4px_4px_0_#171411] transition hover:-translate-y-0.5 hover:shadow-[6px_6px_0_#171411] disabled:cursor-not-allowed disabled:bg-[#d8cbb7] disabled:text-[#655f58]"
+                className="neo-copy flex w-full items-center justify-center gap-2 border-[3px] border-black bg-[#007166] px-4 py-3 text-sm font-black tracking-[0.1em] text-white uppercase shadow-[4px_4px_0_#171411] transition hover:-translate-y-0.5 hover:shadow-[6px_6px_0_#171411] disabled:cursor-not-allowed disabled:bg-[#d8cbb7] disabled:text-[#655f58]"
                 disabled={lookupState !== "resolved" || redeemState === "loading"}
                 type="button"
                 onClick={() => void acceptInvite()}
@@ -302,11 +302,11 @@ export function InviteFallbackPage() {
               </button>
             ) : (
               <div className="border-[3px] border-black bg-[#fff9ed] p-3 shadow-[4px_4px_0_#171411]">
-                <p className="neo-copy text-[10px] font-black uppercase tracking-[0.1em] text-[#5b403f]">
+                <p className="neo-copy text-[10px] font-black tracking-[0.1em] text-[#5b403f] uppercase">
                   Login required to claim this share link
                 </p>
                 <Link
-                  className="neo-copy mt-3 flex h-10 items-center justify-center border-2 border-black bg-[#007166] text-[10px] font-black uppercase tracking-[0.1em] text-white shadow-[2px_2px_0_#171411]"
+                  className="neo-copy mt-3 flex h-10 items-center justify-center border-2 border-black bg-[#007166] text-[10px] font-black tracking-[0.1em] text-white uppercase shadow-[2px_2px_0_#171411]"
                   to="/auth"
                 >
                   Login
@@ -314,13 +314,13 @@ export function InviteFallbackPage() {
               </div>
             )
           ) : (
-            <p className="neo-copy border-2 border-black bg-[#efe6d4] px-3 py-2 text-xs font-black uppercase tracking-[0.08em] text-[#5b403f] shadow-[2px_2px_0_#171411]">
+            <p className="neo-copy border-2 border-black bg-[#efe6d4] px-3 py-2 text-xs font-black tracking-[0.08em] text-[#5b403f] uppercase shadow-[2px_2px_0_#171411]">
               Supabase required to accept invites.
             </p>
           )}
           {redeemMessage ? (
             <p
-              className={`neo-copy border-2 border-black px-3 py-2 text-xs font-black uppercase tracking-[0.08em] shadow-[2px_2px_0_#171411] ${
+              className={`neo-copy border-2 border-black px-3 py-2 text-xs font-black tracking-[0.08em] uppercase shadow-[2px_2px_0_#171411] ${
                 redeemState === "accepted"
                   ? "bg-[#8cf5e4] text-[#171411]"
                   : "bg-[#b7102a] text-white"
@@ -330,14 +330,14 @@ export function InviteFallbackPage() {
             </p>
           ) : null}
           <a
-            className="neo-copy flex w-full items-center justify-center gap-2 border-[3px] border-black bg-[#b7102a] px-4 py-3 text-sm font-black uppercase tracking-[0.1em] text-white shadow-[4px_4px_0_#171411] transition hover:-translate-y-0.5 hover:shadow-[6px_6px_0_#171411]"
+            className="neo-copy flex w-full items-center justify-center gap-2 border-[3px] border-black bg-[#b7102a] px-4 py-3 text-sm font-black tracking-[0.1em] text-white uppercase shadow-[4px_4px_0_#171411] transition hover:-translate-y-0.5 hover:shadow-[6px_6px_0_#171411]"
             href={inviteLink}
           >
             <ExternalLink className="h-4 w-4" />
             Open Launcher
           </a>
           <button
-            className="neo-copy flex w-full items-center justify-center gap-2 border-[3px] border-black bg-[#007166] px-4 py-3 text-sm font-black uppercase tracking-[0.1em] text-white shadow-[4px_4px_0_#171411] transition hover:-translate-y-0.5 hover:shadow-[6px_6px_0_#171411]"
+            className="neo-copy flex w-full items-center justify-center gap-2 border-[3px] border-black bg-[#007166] px-4 py-3 text-sm font-black tracking-[0.1em] text-white uppercase shadow-[4px_4px_0_#171411] transition hover:-translate-y-0.5 hover:shadow-[6px_6px_0_#171411]"
             type="button"
             onClick={copyInviteLink}
           >
@@ -345,12 +345,12 @@ export function InviteFallbackPage() {
             {copyState === "copied" ? "Copied" : "Copy Link"}
           </button>
           {copyState === "failed" ? (
-            <p className="neo-copy border-2 border-black bg-[#fff9ed] px-3 py-2 text-xs font-bold uppercase tracking-[0.08em] text-[#b7102a] shadow-[2px_2px_0_#171411]">
+            <p className="neo-copy border-2 border-black bg-[#fff9ed] px-3 py-2 text-xs font-bold tracking-[0.08em] text-[#b7102a] uppercase shadow-[2px_2px_0_#171411]">
               Clipboard unavailable. Select the deep link manually.
             </p>
           ) : null}
           <Link
-            className="neo-copy flex items-center justify-center gap-2 border-[3px] border-black bg-[#fff9ed] px-4 py-3 text-sm font-black uppercase tracking-[0.1em] text-[#171411] shadow-[4px_4px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#f6edd8] hover:shadow-[6px_6px_0_#171411]"
+            className="neo-copy flex items-center justify-center gap-2 border-[3px] border-black bg-[#fff9ed] px-4 py-3 text-sm font-black tracking-[0.1em] text-[#171411] uppercase shadow-[4px_4px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#f6edd8] hover:shadow-[6px_6px_0_#171411]"
             to="/friends?tab=invites"
           >
             <LinkIcon className="h-4 w-4" />
@@ -382,24 +382,24 @@ function InviteHostedReplayProofPanel({
     >
       <div className="flex items-start justify-between gap-3 border-b-2 border-black pb-2">
         <div>
-          <p className="neo-copy inline-flex border-2 border-black bg-[#b7102a] px-2 py-1 text-[8px] font-black uppercase tracking-[0.12em] text-white">
+          <p className="neo-copy inline-flex border-2 border-black bg-[#b7102a] px-2 py-1 text-[8px] font-black tracking-[0.12em] text-white uppercase">
             Hosted Proof Packet
           </p>
           <h2 className="neo-title mt-2 text-3xl leading-none text-[#171411]">Replay Origin</h2>
         </div>
         <span
-          className={`neo-copy shrink-0 border-2 border-black px-2 py-1 text-[8px] font-black uppercase tracking-[0.1em] shadow-[2px_2px_0_#171411] ${readinessToneClass(
+          className={`neo-copy shrink-0 border-2 border-black px-2 py-1 text-[8px] font-black tracking-[0.1em] uppercase shadow-[2px_2px_0_#171411] ${readinessToneClass(
             readiness.tone,
           )}`}
         >
           {readiness.statusLabel}
         </span>
       </div>
-      <p className="neo-copy mt-3 border-2 border-black bg-[#efe6d4] px-3 py-2 text-[9px] font-black uppercase leading-5 text-[#5b403f]">
+      <p className="neo-copy mt-3 border-2 border-black bg-[#efe6d4] px-3 py-2 text-[9px] leading-5 font-black text-[#5b403f] uppercase">
         {readiness.summary}
       </p>
       {message ? (
-        <p className="neo-copy mt-2 border-2 border-black bg-[#171411] px-3 py-2 text-[9px] font-black uppercase leading-5 text-[#fff9ed]">
+        <p className="neo-copy mt-2 border-2 border-black bg-[#171411] px-3 py-2 text-[9px] leading-5 font-black text-[#fff9ed] uppercase">
           {message}
         </p>
       ) : null}
@@ -410,7 +410,7 @@ function InviteHostedReplayProofPanel({
             style={{ width: `${readiness.progress}%` }}
           />
         </div>
-        <span className="neo-copy text-right text-[9px] font-black uppercase text-[#171411]">
+        <span className="neo-copy text-right text-[9px] font-black text-[#171411] uppercase">
           {readiness.progress}%
         </span>
       </div>
@@ -427,7 +427,7 @@ function InviteHostedReplayProofPanel({
       <div className="mt-3 grid gap-2">
         {readiness.guards.map((guard) => (
           <p
-            className="neo-copy border-2 border-black bg-[#171411] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#8cf5e4]"
+            className="neo-copy border-2 border-black bg-[#171411] px-2 py-1 text-[8px] leading-4 font-black text-[#8cf5e4] uppercase"
             key={guard}
           >
             {guard}
@@ -450,20 +450,20 @@ function InviteHostedStagingRehearsalPanel({
     >
       <div className="flex items-start justify-between gap-3 border-b-2 border-[#fff9ed] pb-2">
         <div>
-          <p className="neo-copy inline-flex border-2 border-[#fff9ed] bg-[#2a221b] px-2 py-1 text-[8px] font-black uppercase tracking-[0.12em] text-[#8cf5e4]">
+          <p className="neo-copy inline-flex border-2 border-[#fff9ed] bg-[#2a221b] px-2 py-1 text-[8px] font-black tracking-[0.12em] text-[#8cf5e4] uppercase">
             Hosted E2E Packet
           </p>
           <h2 className="neo-title mt-2 text-3xl leading-none">Token Rehearsal</h2>
         </div>
         <span
-          className={`neo-copy shrink-0 border-2 border-black px-2 py-1 text-[8px] font-black uppercase tracking-[0.1em] shadow-[2px_2px_0_#fff9ed] ${readinessToneClass(
+          className={`neo-copy shrink-0 border-2 border-black px-2 py-1 text-[8px] font-black tracking-[0.1em] uppercase shadow-[2px_2px_0_#fff9ed] ${readinessToneClass(
             rehearsal.tone,
           )}`}
         >
           {rehearsal.statusLabel}
         </span>
       </div>
-      <p className="neo-copy mt-3 border-2 border-[#fff9ed] bg-[#2a221b] px-3 py-2 text-[9px] font-black uppercase leading-5 text-[#fff9ed]">
+      <p className="neo-copy mt-3 border-2 border-[#fff9ed] bg-[#2a221b] px-3 py-2 text-[9px] leading-5 font-black text-[#fff9ed] uppercase">
         {rehearsal.summary}
       </p>
       <div className="mt-3 grid grid-cols-[1fr_42px] items-center gap-2">
@@ -473,7 +473,7 @@ function InviteHostedStagingRehearsalPanel({
             style={{ width: `${rehearsal.progress}%` }}
           />
         </div>
-        <span className="neo-copy text-right text-[9px] font-black uppercase text-[#fff9ed]">
+        <span className="neo-copy text-right text-[9px] font-black text-[#fff9ed] uppercase">
           {rehearsal.progress}%
         </span>
       </div>
@@ -485,7 +485,7 @@ function InviteHostedStagingRehearsalPanel({
       <div className="mt-3 grid gap-2">
         {rehearsal.guards.map((guard) => (
           <p
-            className="neo-copy border-2 border-[#fff9ed] bg-[#2a221b] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#8cf5e4]"
+            className="neo-copy border-2 border-[#fff9ed] bg-[#2a221b] px-2 py-1 text-[8px] leading-4 font-black text-[#8cf5e4] uppercase"
             key={guard}
           >
             {guard}
@@ -504,13 +504,13 @@ function InviteHostedReadinessPanel({ readiness }: { readiness: InviteHostedRead
     >
       <div className="flex items-start justify-between gap-3 border-b-2 border-black pb-2">
         <div>
-          <p className="neo-copy inline-flex border-2 border-black bg-[#171411] px-2 py-1 text-[8px] font-black uppercase tracking-[0.12em] text-[#fff9ed]">
+          <p className="neo-copy inline-flex border-2 border-black bg-[#171411] px-2 py-1 text-[8px] font-black tracking-[0.12em] text-[#fff9ed] uppercase">
             Share Link Relay
           </p>
           <h2 className="neo-title mt-2 text-3xl leading-none text-[#171411]">Invite Readiness</h2>
         </div>
         <span
-          className={`neo-copy shrink-0 border-2 border-black px-2 py-1 text-[8px] font-black uppercase tracking-[0.1em] shadow-[2px_2px_0_#171411] ${readinessToneClass(
+          className={`neo-copy shrink-0 border-2 border-black px-2 py-1 text-[8px] font-black tracking-[0.1em] uppercase shadow-[2px_2px_0_#171411] ${readinessToneClass(
             readiness.tone,
           )}`}
         >
@@ -524,7 +524,7 @@ function InviteHostedReadinessPanel({ readiness }: { readiness: InviteHostedRead
             style={{ width: `${readiness.progress}%` }}
           />
         </div>
-        <span className="neo-copy text-right text-[9px] font-black uppercase text-[#171411]">
+        <span className="neo-copy text-right text-[9px] font-black text-[#171411] uppercase">
           {readiness.progress}%
         </span>
       </div>
@@ -546,7 +546,7 @@ function InviteReadinessRowCard({
   return (
     <div className="border-2 border-black bg-[#f5eedf] p-2 shadow-[2px_2px_0_#171411]">
       <div className="flex items-center justify-between gap-2">
-        <p className="neo-copy flex min-w-0 items-center gap-2 text-[9px] font-black uppercase tracking-[0.1em] text-[#171411]">
+        <p className="neo-copy flex min-w-0 items-center gap-2 text-[9px] font-black tracking-[0.1em] text-[#171411] uppercase">
           <Icon className="h-3.5 w-3.5 shrink-0" />
           <span className="truncate">{row.label}</span>
         </p>
@@ -558,7 +558,7 @@ function InviteReadinessRowCard({
           {row.status}
         </span>
       </div>
-      <p className="neo-copy mt-1 text-[9px] font-bold uppercase leading-4 tracking-[0.04em] text-[#5b403f]">
+      <p className="neo-copy mt-1 text-[9px] leading-4 font-bold tracking-[0.04em] text-[#5b403f] uppercase">
         {row.detail}
       </p>
     </div>
@@ -568,7 +568,7 @@ function InviteReadinessRowCard({
 function InviteFact({ label, value }: { label: string; value: string }) {
   return (
     <div className="neo-dots border-[3px] border-black bg-[#f5eedf] p-3 shadow-[3px_3px_0_#171411]">
-      <p className="neo-copy text-[10px] font-black uppercase tracking-[0.14em] text-[#5b403f]">
+      <p className="neo-copy text-[10px] font-black tracking-[0.14em] text-[#5b403f] uppercase">
         {label}
       </p>
       <p className="neo-title mt-1 truncate text-2xl leading-none text-[#171411]">{value}</p>
@@ -579,10 +579,10 @@ function InviteFact({ label, value }: { label: string; value: string }) {
 function InviteProofFact({ label, value }: { label: string; value: string }) {
   return (
     <div className="grid gap-1">
-      <p className="neo-copy text-[8px] font-black uppercase tracking-[0.12em] text-[#5b403f]">
+      <p className="neo-copy text-[8px] font-black tracking-[0.12em] text-[#5b403f] uppercase">
         {label}
       </p>
-      <p className="neo-copy break-all text-[10px] font-black uppercase leading-4 text-[#171411]">
+      <p className="neo-copy text-[10px] leading-4 font-black break-all text-[#171411] uppercase">
         {value}
       </p>
     </div>

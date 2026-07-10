@@ -1,5 +1,5 @@
 use aes_gcm::aead::{Aead, KeyInit};
-use aes_gcm::{Aes256Gcm, Key, Nonce};
+use aes_gcm::{Aes256Gcm, Key};
 use argon2::{Algorithm, Argon2, Params, Version};
 use keyring::Entry;
 use rand::{rngs::SysRng, TryRng};
@@ -113,8 +113,8 @@ fn derive_fallback_key() -> [u8; 32] {
 
 fn cipher() -> Aes256Gcm {
     let key_bytes = derive_fallback_key();
-    let key = Key::<Aes256Gcm>::from_slice(&key_bytes);
-    Aes256Gcm::new(key)
+    let key: Key<Aes256Gcm> = key_bytes.into();
+    Aes256Gcm::new(&key)
 }
 
 fn encrypt(plaintext: &[u8]) -> Result<String, String> {
@@ -122,9 +122,9 @@ fn encrypt(plaintext: &[u8]) -> Result<String, String> {
     SysRng
         .try_fill_bytes(&mut nonce_bytes)
         .expect("OS RNG failed");
-    let nonce = Nonce::from_slice(&nonce_bytes);
+    let nonce = nonce_bytes.into();
     let ct = cipher()
-        .encrypt(nonce, plaintext)
+        .encrypt(&nonce, plaintext)
         .map_err(|e| format!("Encrypt fallback: {e}"))?;
     let mut combined = Vec::with_capacity(12 + ct.len());
     combined.extend_from_slice(&nonce_bytes);
@@ -143,9 +143,12 @@ fn decrypt(blob: &str) -> Result<Vec<u8>, String> {
         return Err("Decrypt fallback: blob too short".to_string());
     }
     let (nonce_bytes, ct) = combined.split_at(12);
-    let nonce = Nonce::from_slice(nonce_bytes);
+    let nonce_bytes: [u8; 12] = nonce_bytes
+        .try_into()
+        .map_err(|_| "Decrypt fallback: invalid nonce length".to_string())?;
+    let nonce = nonce_bytes.into();
     cipher()
-        .decrypt(nonce, ct)
+        .decrypt(&nonce, ct)
         .map_err(|e| format!("Decrypt fallback: {e}"))
 }
 

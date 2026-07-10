@@ -209,7 +209,7 @@ function StatPanel({ icon, label, value }: { icon: ReactNode; label: string; val
           {icon}
         </span>
         <div className="min-w-0">
-          <p className="neo-copy text-[10px] font-black uppercase text-[#655f58]">{label}</p>
+          <p className="neo-copy text-[10px] font-black text-[#655f58] uppercase">{label}</p>
           <p className="neo-title mt-1 truncate text-3xl leading-none text-[#171411]">{value}</p>
         </div>
       </div>
@@ -237,10 +237,10 @@ function MonthlyTape({ buckets }: { buckets: GameActivityRecapBucket[] }) {
               />
             </div>
             <div className="min-w-0 text-center">
-              <p className="neo-copy truncate text-[10px] font-black uppercase text-[#171411]">
+              <p className="neo-copy truncate text-[10px] font-black text-[#171411] uppercase">
                 {bucket.label}
               </p>
-              <p className="neo-copy text-[9px] font-black uppercase text-[#655f58]">
+              <p className="neo-copy text-[9px] font-black text-[#655f58] uppercase">
                 {formatPlayTimeMinutes(bucket.minutes)}
               </p>
             </div>
@@ -261,7 +261,7 @@ function TopGamesPanel({
   if (games.length === 0) {
     return (
       <div className="border-[3px] border-black bg-[#fff9ed] p-5 shadow-[4px_4px_0_#1f1c0f]">
-        <p className="neo-copy text-[11px] font-black uppercase text-[#655f58]">
+        <p className="neo-copy text-[11px] font-black text-[#655f58] uppercase">
           No yearly game sessions recorded yet.
         </p>
       </div>
@@ -282,10 +282,10 @@ function TopGamesPanel({
             </div>
             <div className="min-w-0">
               <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-                <p className="truncate text-base font-black uppercase text-[#171411]">
+                <p className="truncate text-base font-black text-[#171411] uppercase">
                   {game.title}
                 </p>
-                <p className="neo-copy text-[10px] font-black uppercase text-[#c20b2f]">
+                <p className="neo-copy text-[10px] font-black text-[#c20b2f] uppercase">
                   {formatNumber(game.percent)}%
                 </p>
               </div>
@@ -296,7 +296,7 @@ function TopGamesPanel({
                   style={{ width: `${percent}%` }}
                 />
               </div>
-              <p className="neo-copy mt-1 text-[10px] font-black uppercase text-[#655f58]">
+              <p className="neo-copy mt-1 text-[10px] font-black text-[#655f58] uppercase">
                 {formatPlayTimeMinutes(game.minutes)} / {game.sessions} sessions
               </p>
             </div>
@@ -319,7 +319,7 @@ function PatternStrip({ buckets, title }: { buckets: GameActivityRecapBucket[]; 
   const peak = maxMinutes(buckets);
   return (
     <div className="border-[3px] border-black bg-[#fff9ed] p-4 shadow-[4px_4px_0_#1f1c0f]">
-      <h3 className="neo-copy text-[11px] font-black uppercase text-[#171411]">{title}</h3>
+      <h3 className="neo-copy text-[11px] font-black text-[#171411] uppercase">{title}</h3>
       <div className="mt-4 space-y-2">
         {buckets.map((bucket) => {
           const width = bucket.minutes > 0 ? Math.max(6, (bucket.minutes / peak) * 100) : 0;
@@ -328,7 +328,7 @@ function PatternStrip({ buckets, title }: { buckets: GameActivityRecapBucket[]; 
               className="grid grid-cols-[82px_minmax(0,1fr)_72px] items-center gap-2"
               key={bucket.key}
             >
-              <span className="neo-copy truncate text-[10px] font-black uppercase text-[#171411]">
+              <span className="neo-copy truncate text-[10px] font-black text-[#171411] uppercase">
                 {bucket.label}
               </span>
               <div className="h-4 border-2 border-black bg-[#efe6d4]">
@@ -338,7 +338,7 @@ function PatternStrip({ buckets, title }: { buckets: GameActivityRecapBucket[]; 
                   style={{ width: `${width}%` }}
                 />
               </div>
-              <span className="neo-copy text-right text-[10px] font-black uppercase text-[#655f58]">
+              <span className="neo-copy text-right text-[10px] font-black text-[#655f58] uppercase">
                 {formatPlayTimeMinutes(bucket.minutes)}
               </span>
             </div>
@@ -353,39 +353,39 @@ function RecapSummaryPanel({ recap }: { recap: GameActivityRecap }) {
   return (
     <div className="grid gap-3 border-[3px] border-black bg-[#f5eedf] p-4 shadow-[4px_4px_0_#1f1c0f] md:grid-cols-2">
       <div className="border-2 border-black bg-[#fff9ed] p-3">
-        <p className="neo-copy text-[10px] font-black uppercase text-[#655f58]">Top Game</p>
-        <p className="mt-1 text-lg font-black uppercase text-[#171411]">
+        <p className="neo-copy text-[10px] font-black text-[#655f58] uppercase">Top Game</p>
+        <p className="mt-1 text-lg font-black text-[#171411] uppercase">
           {recap.topGame?.title ?? "No champion yet"}
         </p>
-        <p className="neo-copy mt-1 text-[10px] font-black uppercase text-[#c20b2f]">
+        <p className="neo-copy mt-1 text-[10px] font-black text-[#c20b2f] uppercase">
           {recap.topGame ? formatPlayTimeMinutes(recap.topGame.minutes) : "0m"}
         </p>
       </div>
       <div className="border-2 border-black bg-[#fff9ed] p-3">
-        <p className="neo-copy text-[10px] font-black uppercase text-[#655f58]">Prime Window</p>
-        <p className="mt-1 text-lg font-black uppercase text-[#171411]">
+        <p className="neo-copy text-[10px] font-black text-[#655f58] uppercase">Prime Window</p>
+        <p className="mt-1 text-lg font-black text-[#171411] uppercase">
           {recap.favoriteTimeOfDay?.label ?? "No pattern yet"}
         </p>
-        <p className="neo-copy mt-1 text-[10px] font-black uppercase text-[#087d6d]">
+        <p className="neo-copy mt-1 text-[10px] font-black text-[#087d6d] uppercase">
           {recap.favoriteWeekday?.label ?? "No day"} / {recap.bestMonth?.label ?? "No month"}
         </p>
       </div>
       <div className="border-2 border-black bg-[#fff9ed] p-3">
-        <p className="neo-copy text-[10px] font-black uppercase text-[#655f58]">Longest Run</p>
-        <p className="mt-1 text-lg font-black uppercase text-[#171411]">
+        <p className="neo-copy text-[10px] font-black text-[#655f58] uppercase">Longest Run</p>
+        <p className="mt-1 text-lg font-black text-[#171411] uppercase">
           {recap.longestSession?.title ?? "No session yet"}
         </p>
-        <p className="neo-copy mt-1 text-[10px] font-black uppercase text-[#c20b2f]">
+        <p className="neo-copy mt-1 text-[10px] font-black text-[#c20b2f] uppercase">
           {recap.longestSession ? formatPlayTimeMinutes(recap.longestSession.minutes) : "0m"}
         </p>
       </div>
       <div className="border-2 border-black bg-[#fff9ed] p-3">
-        <p className="neo-copy text-[10px] font-black uppercase text-[#655f58]">Active Streak</p>
-        <p className="mt-1 text-lg font-black uppercase text-[#171411]">
+        <p className="neo-copy text-[10px] font-black text-[#655f58] uppercase">Active Streak</p>
+        <p className="mt-1 text-lg font-black text-[#171411] uppercase">
           {recap.longestActiveDayStreak} day
           {recap.longestActiveDayStreak === 1 ? "" : "s"}
         </p>
-        <p className="neo-copy mt-1 text-[10px] font-black uppercase text-[#087d6d]">
+        <p className="neo-copy mt-1 text-[10px] font-black text-[#087d6d] uppercase">
           {recap.activeDayCount} active days
         </p>
       </div>
@@ -437,18 +437,18 @@ function RecapShareCardPanel({
       className="grid gap-4 border-[4px] border-black bg-[#fff9ed] p-4 shadow-[5px_5px_0_#1f1c0f] lg:grid-cols-[minmax(0,1fr)_220px]"
     >
       <div className="min-w-0">
-        <p className="neo-copy inline-flex border-2 border-black bg-[#171411] px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-[#fff9ed]">
+        <p className="neo-copy inline-flex border-2 border-black bg-[#171411] px-2 py-1 text-[9px] font-black tracking-[0.12em] text-[#fff9ed] uppercase">
           Share Card
         </p>
         <h2 className="neo-title mt-2 text-4xl leading-none text-[#171411]">Export Recap</h2>
-        <pre className="neo-copy mt-4 overflow-hidden whitespace-pre-wrap border-[3px] border-black bg-[#f5eedf] p-3 text-[11px] font-black uppercase leading-6 text-[#171411] shadow-[3px_3px_0_#1f1c0f]">
+        <pre className="neo-copy mt-4 overflow-hidden border-[3px] border-black bg-[#f5eedf] p-3 text-[11px] leading-6 font-black whitespace-pre-wrap text-[#171411] uppercase shadow-[3px_3px_0_#1f1c0f]">
           {shareCard.text}
         </pre>
       </div>
       <div className="grid content-start gap-3">
         <button
           aria-label="Copy activity recap share card"
-          className="neo-copy inline-flex h-11 items-center justify-center gap-2 border-[3px] border-black bg-[#087d6d] px-3 text-[10px] font-black uppercase tracking-[0.08em] text-white shadow-[3px_3px_0_#1f1c0f] transition hover:-translate-y-0.5 hover:shadow-[5px_5px_0_#1f1c0f]"
+          className="neo-copy inline-flex h-11 items-center justify-center gap-2 border-[3px] border-black bg-[#087d6d] px-3 text-[10px] font-black tracking-[0.08em] text-white uppercase shadow-[3px_3px_0_#1f1c0f] transition hover:-translate-y-0.5 hover:shadow-[5px_5px_0_#1f1c0f]"
           type="button"
           onClick={onCopy}
         >
@@ -457,7 +457,7 @@ function RecapShareCardPanel({
         </button>
         <button
           aria-label="Open browser share handoff for activity recap"
-          className="neo-copy inline-flex h-11 items-center justify-center gap-2 border-[3px] border-black bg-[#171411] px-3 text-[10px] font-black uppercase tracking-[0.08em] text-[#fff9ed] shadow-[3px_3px_0_#1f1c0f] transition hover:-translate-y-0.5 hover:shadow-[5px_5px_0_#1f1c0f]"
+          className="neo-copy inline-flex h-11 items-center justify-center gap-2 border-[3px] border-black bg-[#171411] px-3 text-[10px] font-black tracking-[0.08em] text-[#fff9ed] uppercase shadow-[3px_3px_0_#1f1c0f] transition hover:-translate-y-0.5 hover:shadow-[5px_5px_0_#1f1c0f]"
           type="button"
           onClick={onShare}
         >
@@ -465,7 +465,7 @@ function RecapShareCardPanel({
           Browser Share
         </button>
         <a
-          className="neo-copy inline-flex h-11 items-center justify-center gap-2 border-[3px] border-black bg-[#c20b2f] px-3 text-[10px] font-black uppercase tracking-[0.08em] text-white shadow-[3px_3px_0_#1f1c0f] transition hover:-translate-y-0.5 hover:shadow-[5px_5px_0_#1f1c0f]"
+          className="neo-copy inline-flex h-11 items-center justify-center gap-2 border-[3px] border-black bg-[#c20b2f] px-3 text-[10px] font-black tracking-[0.08em] text-white uppercase shadow-[3px_3px_0_#1f1c0f] transition hover:-translate-y-0.5 hover:shadow-[5px_5px_0_#1f1c0f]"
           download={shareCard.fileName}
           href={href}
         >
@@ -473,7 +473,7 @@ function RecapShareCardPanel({
           Export TXT
         </a>
         <a
-          className="neo-copy inline-flex h-11 items-center justify-center gap-2 border-[3px] border-black bg-[#f5eedf] px-3 text-[10px] font-black uppercase tracking-[0.08em] text-[#171411] shadow-[3px_3px_0_#1f1c0f] transition hover:-translate-y-0.5 hover:bg-[#8cf5e4] hover:shadow-[5px_5px_0_#1f1c0f]"
+          className="neo-copy inline-flex h-11 items-center justify-center gap-2 border-[3px] border-black bg-[#f5eedf] px-3 text-[10px] font-black tracking-[0.08em] text-[#171411] uppercase shadow-[3px_3px_0_#1f1c0f] transition hover:-translate-y-0.5 hover:bg-[#8cf5e4] hover:shadow-[5px_5px_0_#1f1c0f]"
           download={shareImage.fileName}
           href={svgHref}
         >
@@ -481,7 +481,7 @@ function RecapShareCardPanel({
           Export SVG
         </a>
         <p
-          className={`neo-copy border-2 border-black px-2 py-2 text-[9px] font-black uppercase tracking-[0.08em] shadow-[2px_2px_0_#1f1c0f] ${
+          className={`neo-copy border-2 border-black px-2 py-2 text-[9px] font-black tracking-[0.08em] uppercase shadow-[2px_2px_0_#1f1c0f] ${
             statusTone === "success"
               ? "bg-[#8cf5e4] text-[#171411]"
               : statusTone === "danger"
@@ -625,19 +625,19 @@ export function GameActivityDashboardPage() {
       <div className="border-[5px] border-black bg-[#f5eedf] shadow-[7px_7px_0_#171411]">
         <div className="grid gap-5 border-b-[5px] border-black p-5 lg:grid-cols-[minmax(0,1fr)_320px]">
           <div className="min-w-0">
-            <p className="neo-copy text-[11px] font-black uppercase tracking-[0.14em] text-[#c20b2f]">
+            <p className="neo-copy text-[11px] font-black tracking-[0.14em] text-[#c20b2f] uppercase">
               Game Activity Dashboard
             </p>
             <h1 className="neo-title mt-2 text-5xl leading-none text-[#171411] sm:text-6xl">
               {selectedYear} Gaming Year
             </h1>
-            <p className="neo-copy mt-3 max-w-3xl text-[11px] font-bold uppercase leading-relaxed text-[#655f58]">
+            <p className="neo-copy mt-3 max-w-3xl text-[11px] leading-relaxed font-bold text-[#655f58] uppercase">
               Session tape, top games, peak month, and daily rhythm built from launcher playtime
               rows.
             </p>
           </div>
           <div className="border-[3px] border-black bg-[#171411] p-4 text-[#fff9ed] shadow-[4px_4px_0_#c20b2f]">
-            <p className="neo-copy text-[10px] font-black uppercase tracking-[0.14em] text-[#8cf5e4]">
+            <p className="neo-copy text-[10px] font-black tracking-[0.14em] text-[#8cf5e4] uppercase">
               Recap Deck
             </p>
             <div className="mt-4 grid grid-cols-2 gap-2">
@@ -689,10 +689,10 @@ export function GameActivityDashboardPage() {
               aria-label="Activity verification preview"
               className="flex flex-wrap items-center gap-2 border-[3px] border-black bg-[#171411] p-2 shadow-[3px_3px_0_#c20b2f]"
             >
-              <span className="neo-copy border-2 border-[#fff9ed] bg-[#c20b2f] px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-white">
+              <span className="neo-copy border-2 border-[#fff9ed] bg-[#c20b2f] px-2 py-1 text-[9px] font-black tracking-[0.12em] text-white uppercase">
                 Verification Preview
               </span>
-              <span className="neo-copy border-2 border-[#fff9ed] bg-[#8cf5e4] px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-[#171411]">
+              <span className="neo-copy border-2 border-[#fff9ed] bg-[#8cf5e4] px-2 py-1 text-[9px] font-black tracking-[0.12em] text-[#171411] uppercase">
                 Sample Data
               </span>
             </div>
@@ -704,7 +704,7 @@ export function GameActivityDashboardPage() {
         <div className="border-[4px] border-black bg-[#fff9ed] shadow-[5px_5px_0_#1f1c0f]">
           <div className="flex items-center gap-3 border-b-[3px] border-black bg-[#171411] px-4 py-3 text-[#fff9ed]">
             <CloudOff aria-hidden="true" className="h-5 w-5 text-[#8cf5e4]" />
-            <p className="neo-copy text-[10px] font-black uppercase tracking-[0.14em]">
+            <p className="neo-copy text-[10px] font-black tracking-[0.14em] uppercase">
               Supabase Required / Local Activity Relay Disabled
             </p>
           </div>
@@ -712,7 +712,7 @@ export function GameActivityDashboardPage() {
             <h2 className="neo-title text-3xl leading-none text-[#171411]">
               Activity data service unavailable
             </h2>
-            <p className="neo-copy mt-3 max-w-2xl text-[11px] font-bold uppercase leading-relaxed text-[#655f58]">
+            <p className="neo-copy mt-3 max-w-2xl text-[11px] leading-relaxed font-bold text-[#655f58] uppercase">
               Configure the hosted Supabase data service to load real launcher play sessions. This
               page never substitutes sample history.
             </p>
@@ -720,17 +720,17 @@ export function GameActivityDashboardPage() {
         </div>
       ) : !isVerificationPreview && !isAuthenticated && !isLoading ? (
         <div className="border-[4px] border-black bg-[#fff9ed] p-6 shadow-[5px_5px_0_#1f1c0f]">
-          <p className="neo-copy inline-flex border-2 border-black bg-[#087d6d] px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-white">
+          <p className="neo-copy inline-flex border-2 border-black bg-[#087d6d] px-2 py-1 text-[9px] font-black tracking-[0.12em] text-white uppercase">
             Account Link Required
           </p>
           <h2 className="neo-title mt-3 text-3xl leading-none text-[#171411]">
             Sign in to load activity
           </h2>
-          <p className="neo-copy mt-3 max-w-2xl text-[11px] font-bold uppercase leading-relaxed text-[#655f58]">
+          <p className="neo-copy mt-3 max-w-2xl text-[11px] leading-relaxed font-bold text-[#655f58] uppercase">
             Your yearly recap is built from play sessions synchronized to your OG-Launcher account.
           </p>
           <Link
-            className="neo-copy mt-5 inline-flex h-11 items-center justify-center border-[3px] border-black bg-[#c20b2f] px-5 text-[10px] font-black uppercase tracking-[0.1em] text-white shadow-[3px_3px_0_#1f1c0f] transition hover:-translate-y-0.5 hover:shadow-[5px_5px_0_#1f1c0f]"
+            className="neo-copy mt-5 inline-flex h-11 items-center justify-center border-[3px] border-black bg-[#c20b2f] px-5 text-[10px] font-black tracking-[0.1em] text-white uppercase shadow-[3px_3px_0_#1f1c0f] transition hover:-translate-y-0.5 hover:shadow-[5px_5px_0_#1f1c0f]"
             to="/auth"
           >
             Sign In
@@ -738,7 +738,7 @@ export function GameActivityDashboardPage() {
         </div>
       ) : !isVerificationPreview && isLoading ? (
         <div className="border-[3px] border-black bg-[#fff9ed] p-6 shadow-[4px_4px_0_#1f1c0f]">
-          <p className="neo-copy text-[11px] font-black uppercase text-[#655f58]">
+          <p className="neo-copy text-[11px] font-black text-[#655f58] uppercase">
             Loading yearly activity tape...
           </p>
         </div>
@@ -747,14 +747,14 @@ export function GameActivityDashboardPage() {
           className="border-[4px] border-black bg-[#fff9ed] p-5 shadow-[5px_5px_0_#c20b2f]"
           role="alert"
         >
-          <p className="neo-copy inline-flex border-2 border-black bg-[#c20b2f] px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-white">
+          <p className="neo-copy inline-flex border-2 border-black bg-[#c20b2f] px-2 py-1 text-[9px] font-black tracking-[0.12em] text-white uppercase">
             Activity load failed
           </p>
-          <p className="neo-copy mt-4 text-[11px] font-black uppercase leading-relaxed text-[#5b403f]">
+          <p className="neo-copy mt-4 text-[11px] leading-relaxed font-black text-[#5b403f] uppercase">
             {error}
           </p>
           <button
-            className="neo-copy mt-5 inline-flex h-10 items-center justify-center border-[3px] border-black bg-[#087d6d] px-5 text-[10px] font-black uppercase tracking-[0.1em] text-white shadow-[3px_3px_0_#1f1c0f] transition hover:-translate-y-0.5 hover:shadow-[5px_5px_0_#1f1c0f]"
+            className="neo-copy mt-5 inline-flex h-10 items-center justify-center border-[3px] border-black bg-[#087d6d] px-5 text-[10px] font-black tracking-[0.1em] text-white uppercase shadow-[3px_3px_0_#1f1c0f] transition hover:-translate-y-0.5 hover:shadow-[5px_5px_0_#1f1c0f]"
             type="button"
             onClick={refetch}
           >
@@ -766,7 +766,7 @@ export function GameActivityDashboardPage() {
           <h2 className="neo-title text-3xl leading-none text-[#171411]">
             No sessions recorded in {selectedYear}
           </h2>
-          <p className="neo-copy mt-2 text-[11px] font-bold uppercase leading-relaxed text-[#655f58]">
+          <p className="neo-copy mt-2 text-[11px] leading-relaxed font-bold text-[#655f58] uppercase">
             Supabase has no play sessions for this calendar year. Select another available year or
             launch a game to begin a real activity tape.
           </p>
@@ -807,7 +807,7 @@ export function GameActivityDashboardPage() {
           <div>
             <div className="mb-3 flex items-center gap-2">
               <Zap aria-hidden="true" className="h-5 w-5 text-[#087d6d]" />
-              <h2 className="neo-copy text-[12px] font-black uppercase text-[#171411]">
+              <h2 className="neo-copy text-[12px] font-black text-[#171411] uppercase">
                 Month Tape
               </h2>
             </div>
@@ -818,7 +818,7 @@ export function GameActivityDashboardPage() {
             <div>
               <div className="mb-3 flex items-center gap-2">
                 <Trophy aria-hidden="true" className="h-5 w-5 text-[#c20b2f]" />
-                <h2 className="neo-copy text-[12px] font-black uppercase text-[#171411]">
+                <h2 className="neo-copy text-[12px] font-black text-[#171411] uppercase">
                   Top Games
                 </h2>
               </div>

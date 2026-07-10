@@ -20,10 +20,10 @@ export function IgdbCrossPlayReadinessPanel({ plan }: { plan: IgdbCrossPlayReadi
       className="neo-dots border-4 border-black bg-[#fbf4e7] shadow-[3px_3px_0_#171411]"
     >
       <div className="border-b-2 border-black bg-[#171411] px-3 py-2 text-[#fbf4e7]">
-        <p className="neo-copy text-[9px] font-black uppercase tracking-[0.14em] text-[#8cf5e4]">
+        <p className="neo-copy text-[9px] font-black tracking-[0.14em] text-[#8cf5e4] uppercase">
           Local Import Preflight
         </p>
-        <h2 className="mt-1 flex items-center gap-2 text-[15px] font-black uppercase leading-none">
+        <h2 className="mt-1 flex items-center gap-2 text-[15px] leading-none font-black uppercase">
           <Database aria-hidden="true" className="h-4 w-4" />
           IGDB Cross-Play
         </h2>
@@ -33,21 +33,21 @@ export function IgdbCrossPlayReadinessPanel({ plan }: { plan: IgdbCrossPlayReadi
         <div className="border-2 border-black bg-[#efe3cf] p-3 shadow-[2px_2px_0_#171411]">
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
-              <p className="neo-copy text-[9px] font-black uppercase text-[#5b403f]">
+              <p className="neo-copy text-[9px] font-black text-[#5b403f] uppercase">
                 {plan.statusLabel}
               </p>
               <p className="neo-title mt-1 text-3xl leading-none text-[#171411]">
                 {plan.stageableCount}/{plan.candidates.length}
               </p>
             </div>
-            <span className="neo-copy shrink-0 border-2 border-black bg-[#8cf5e4] px-2 py-1 text-[8px] font-black uppercase text-[#171411] shadow-[1px_1px_0_#171411]">
+            <span className="neo-copy shrink-0 border-2 border-black bg-[#8cf5e4] px-2 py-1 text-[8px] font-black text-[#171411] uppercase shadow-[1px_1px_0_#171411]">
               {plan.progress}%
             </span>
           </div>
-          <p className="neo-copy mt-2 text-[9px] font-black uppercase leading-4 text-[#5b403f]">
+          <p className="neo-copy mt-2 text-[9px] leading-4 font-black text-[#5b403f] uppercase">
             {plan.summary}
           </p>
-          <p className="neo-copy mt-2 border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#171411]">
+          <p className="neo-copy mt-2 border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] leading-4 font-black text-[#171411] uppercase">
             Next: {plan.nextAction}
           </p>
         </div>
@@ -62,17 +62,17 @@ export function IgdbCrossPlayReadinessPanel({ plan }: { plan: IgdbCrossPlayReadi
         <IgdbSyncContract syncPlan={plan.syncPlan} />
 
         <div className="border-2 border-black bg-[#171411] p-3 text-[#fbf4e7] shadow-[2px_2px_0_#b7102a]">
-          <p className="neo-copy flex items-center gap-2 text-[9px] font-black uppercase text-[#8cf5e4]">
+          <p className="neo-copy flex items-center gap-2 text-[9px] font-black text-[#8cf5e4] uppercase">
             <ShieldCheck aria-hidden="true" className="h-4 w-4" />
             Import Guard
           </p>
-          <p className="neo-copy mt-2 border-2 border-[#fbf4e7] bg-[#2a221b] px-2 py-1 text-[8px] font-black uppercase leading-4">
+          <p className="neo-copy mt-2 border-2 border-[#fbf4e7] bg-[#2a221b] px-2 py-1 text-[8px] leading-4 font-black uppercase">
             {plan.guardCopy}
           </p>
           <div className="mt-2 grid gap-1.5">
             {plan.guards.map((item) => (
               <p
-                className="neo-copy border-2 border-[#fbf4e7] bg-[#2a221b] px-2 py-1 text-[8px] font-black uppercase leading-4"
+                className="neo-copy border-2 border-[#fbf4e7] bg-[#2a221b] px-2 py-1 text-[8px] leading-4 font-black uppercase"
                 key={item}
               >
                 {item}
@@ -90,15 +90,15 @@ function IgdbSyncContract({ syncPlan }: { syncPlan: IgdbCrossPlayImportSyncPlan 
     <div className="border-2 border-black bg-[#efe3cf] p-3 shadow-[2px_2px_0_#171411]">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="neo-copy flex items-center gap-2 text-[9px] font-black uppercase tracking-[0.12em] text-[#b7102a]">
+          <p className="neo-copy flex items-center gap-2 text-[9px] font-black tracking-[0.12em] text-[#b7102a] uppercase">
             <ShieldCheck aria-hidden="true" className="h-4 w-4" />
             Sync Contract
           </p>
-          <p className="neo-copy mt-2 text-[8px] font-black uppercase leading-4 text-[#5b403f]">
+          <p className="neo-copy mt-2 text-[8px] leading-4 font-black text-[#5b403f] uppercase">
             Local planner only. Supabase writes are blocked and hosted sync is not claimed.
           </p>
         </div>
-        <span className="neo-copy border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] font-black uppercase text-[#171411] shadow-[1px_1px_0_#171411]">
+        <span className="neo-copy border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] font-black text-[#171411] uppercase shadow-[1px_1px_0_#171411]">
           {syncPlan.mode.replace(/-/g, " ")}
         </span>
       </div>
@@ -130,16 +130,16 @@ function IgdbImportPreviewLedger({ preview }: { preview: IgdbCrossPlayImportPrev
     <div className="border-2 border-black bg-[#fff9ed] p-3 shadow-[2px_2px_0_#171411]">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="neo-copy flex items-center gap-2 text-[9px] font-black uppercase tracking-[0.12em] text-[#b7102a]">
+          <p className="neo-copy flex items-center gap-2 text-[9px] font-black tracking-[0.12em] text-[#b7102a] uppercase">
             <ListChecks aria-hidden="true" className="h-4 w-4" />
             Staged Import Preview
           </p>
-          <p className="neo-copy mt-2 text-[8px] font-black uppercase leading-4 text-[#5b403f]">
+          <p className="neo-copy mt-2 text-[8px] leading-4 font-black text-[#5b403f] uppercase">
             No rows are written. This is a local review envelope for game_cross_play and
             games.external_ids only.
           </p>
         </div>
-        <span className="neo-copy border-2 border-black bg-[#8cf5e4] px-2 py-1 text-[8px] font-black uppercase text-[#171411] shadow-[1px_1px_0_#171411]">
+        <span className="neo-copy border-2 border-black bg-[#8cf5e4] px-2 py-1 text-[8px] font-black text-[#171411] uppercase shadow-[1px_1px_0_#171411]">
           {preview.writeMode.replace("-", " ")}
         </span>
       </div>
@@ -167,7 +167,7 @@ function IgdbImportPreviewLedger({ preview }: { preview: IgdbCrossPlayImportPrev
             className="border-2 border-black bg-[#f5eedf] p-2 shadow-[1px_1px_0_#171411]"
             key={`${source}-${value}`}
           >
-            <p className="neo-copy text-[8px] font-black uppercase tracking-[0.1em] text-[#171411]">
+            <p className="neo-copy text-[8px] font-black tracking-[0.1em] text-[#171411] uppercase">
               games.external_ids // {source}:{value}
             </p>
           </article>
@@ -183,8 +183,8 @@ function IgdbImportPreviewLedger({ preview }: { preview: IgdbCrossPlayImportPrev
 function PreviewStat({ label, value }: { label: string; value: number | string }) {
   return (
     <div className="border-2 border-black bg-[#f5eedf] px-2 py-1 shadow-[1px_1px_0_#171411]">
-      <span className="neo-copy block text-[7px] font-black uppercase text-[#b7102a]">{label}</span>
-      <strong className="neo-copy block text-[10px] font-black uppercase leading-4 text-[#171411]">
+      <span className="neo-copy block text-[7px] font-black text-[#b7102a] uppercase">{label}</span>
+      <strong className="neo-copy block text-[10px] leading-4 font-black text-[#171411] uppercase">
         {value}
       </strong>
     </div>
@@ -195,7 +195,7 @@ function IgdbImportIssueRowCard({ row }: { row: IgdbCrossPlayImportIssueRow }) {
   return (
     <article className="border-2 border-black bg-[#efe3cf] p-2 shadow-[1px_1px_0_#b7102a]">
       <div className="flex flex-wrap items-start justify-between gap-2">
-        <p className="neo-copy text-[8px] font-black uppercase tracking-[0.1em] text-[#171411]">
+        <p className="neo-copy text-[8px] font-black tracking-[0.1em] text-[#171411] uppercase">
           {row.targetTable} issue // {row.targetKey}
         </p>
         <span
@@ -222,10 +222,10 @@ function IgdbImportPreviewRowCard({ row }: { row: IgdbCrossPlayImportPreviewRow 
   return (
     <article className="border-2 border-black bg-[#f5eedf] p-2 shadow-[1px_1px_0_#171411]">
       <div className="flex flex-wrap items-start justify-between gap-2">
-        <p className="neo-copy text-[8px] font-black uppercase tracking-[0.1em] text-[#171411]">
+        <p className="neo-copy text-[8px] font-black tracking-[0.1em] text-[#171411] uppercase">
           game_cross_play // {row.mappedPlatform} // unverified
         </p>
-        <span className="neo-copy border-2 border-black bg-[#fff9ed] px-1.5 py-0.5 text-[8px] font-black uppercase text-[#171411]">
+        <span className="neo-copy border-2 border-black bg-[#fff9ed] px-1.5 py-0.5 text-[8px] font-black text-[#171411] uppercase">
           Would Insert
         </span>
       </div>
@@ -243,14 +243,14 @@ function IgdbImportSkippedRowCard({ row }: { row: IgdbCrossPlayImportSkippedRow 
   return (
     <article className="border-2 border-black bg-[#efe3cf] p-2 shadow-[1px_1px_0_#171411]">
       <div className="flex flex-wrap items-start justify-between gap-2">
-        <p className="neo-copy text-[8px] font-black uppercase tracking-[0.1em] text-[#171411]">
+        <p className="neo-copy text-[8px] font-black tracking-[0.1em] text-[#171411] uppercase">
           {row.label} // {row.reason}
         </p>
-        <span className="neo-copy border-2 border-black bg-[#fff9ed] px-1.5 py-0.5 text-[8px] font-black uppercase text-[#171411]">
+        <span className="neo-copy border-2 border-black bg-[#fff9ed] px-1.5 py-0.5 text-[8px] font-black text-[#171411] uppercase">
           {row.status}
         </span>
       </div>
-      <p className="neo-copy mt-2 border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#171411]">
+      <p className="neo-copy mt-2 border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] leading-4 font-black text-[#171411] uppercase">
         {row.reason}
       </p>
     </article>
@@ -259,7 +259,7 @@ function IgdbImportSkippedRowCard({ row }: { row: IgdbCrossPlayImportSkippedRow 
 
 function PreviewLine({ label, value }: { label: string; value: string }) {
   return (
-    <p className="neo-copy border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#171411] [overflow-wrap:anywhere]">
+    <p className="neo-copy border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] leading-4 font-black [overflow-wrap:anywhere] text-[#171411] uppercase">
       {label}: {value}
     </p>
   );
@@ -290,22 +290,22 @@ function IgdbCrossPlayCandidateRow({ candidate }: { candidate: IgdbCrossPlayCand
     >
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="neo-copy text-[8px] font-black uppercase tracking-[0.1em] text-[#5b403f]">
+          <p className="neo-copy text-[8px] font-black tracking-[0.1em] text-[#5b403f] uppercase">
             {candidate.igdbPlatformName} // {candidate.status}
           </p>
-          <h3 className="mt-1 flex items-center gap-1.5 text-sm font-black uppercase text-[#171411]">
+          <h3 className="mt-1 flex items-center gap-1.5 text-sm font-black text-[#171411] uppercase">
             <Gamepad2 aria-hidden="true" className="h-4 w-4 shrink-0" />
             <span className="truncate">{candidate.label}</span>
           </h3>
         </div>
-        <span className="neo-copy shrink-0 border-2 border-black bg-[#fff9ed] px-1.5 py-0.5 text-[8px] font-black uppercase text-[#171411]">
+        <span className="neo-copy shrink-0 border-2 border-black bg-[#fff9ed] px-1.5 py-0.5 text-[8px] font-black text-[#171411] uppercase">
           {candidate.mappedPlatform ?? "unmapped"}
         </span>
       </div>
-      <p className="neo-copy mt-2 text-[8px] font-black uppercase leading-4 text-[#5b403f]">
+      <p className="neo-copy mt-2 text-[8px] leading-4 font-black text-[#5b403f] uppercase">
         {candidate.detail}
       </p>
-      <p className="neo-copy mt-2 border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#171411]">
+      <p className="neo-copy mt-2 border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] leading-4 font-black text-[#171411] uppercase">
         {candidate.action}
       </p>
     </article>

@@ -87,23 +87,23 @@ export function GameUpdateFeed({ game }: GameUpdateFeedProps) {
               {formatUpdateDate(item.publishedAt)}
             </span>
             <span
-              className={`neo-copy border-2 border-black px-2 py-0.5 text-[10px] font-black uppercase text-white ${badgeClass(item.kind)}`}
+              className={`neo-copy border-2 border-black px-2 py-0.5 text-[10px] font-black text-white uppercase ${badgeClass(item.kind)}`}
             >
               {kindLabel(item.kind)}
             </span>
           </div>
           <div className="p-3">
-            <h3 className="break-words text-[16px] font-black uppercase leading-tight">
+            <h3 className="text-[16px] leading-tight font-black break-words uppercase">
               {item.title}
             </h3>
             {item.excerpt ? (
-              <p className="mt-2 line-clamp-3 text-[13px] font-bold leading-5 text-[#4f4942]">
+              <p className="mt-2 line-clamp-3 text-[13px] leading-5 font-bold text-[#4f4942]">
                 {item.excerpt}
               </p>
             ) : null}
             {item.url ? (
               <button
-                className="neo-copy mt-3 inline-flex items-center gap-1 border-2 border-black bg-[#171411] px-2 py-1 text-[10px] font-black uppercase text-white shadow-[2px_2px_0_#b7102a] hover:bg-[#087d6d]"
+                className="neo-copy mt-3 inline-flex items-center gap-1 border-2 border-black bg-[#171411] px-2 py-1 text-[10px] font-black text-white uppercase shadow-[2px_2px_0_#b7102a] hover:bg-[#087d6d]"
                 type="button"
                 onClick={() => {
                   if (!item.url) return;
@@ -130,8 +130,8 @@ function FeedNotice({ title, body }: { title: string; body: string }) {
         <Newspaper className="h-5 w-5 text-[#087d6d]" />
       </div>
       <div className="min-w-0">
-        <h3 className="text-[13px] font-black uppercase leading-tight">{title}</h3>
-        <p className="neo-copy mt-1 text-[10px] font-bold uppercase leading-4 text-[#655f58]">
+        <h3 className="text-[13px] leading-tight font-black uppercase">{title}</h3>
+        <p className="neo-copy mt-1 text-[10px] leading-4 font-bold text-[#655f58] uppercase">
           {body}
         </p>
       </div>

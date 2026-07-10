@@ -123,7 +123,7 @@ export function FpsHudPage() {
 
   if (!metrics) {
     return (
-      <div className="neo-copy flex h-full items-center justify-center text-[10px] font-black uppercase text-[#655f58]">
+      <div className="neo-copy flex h-full items-center justify-center text-[10px] font-black text-[#655f58] uppercase">
         •••
       </div>
     );

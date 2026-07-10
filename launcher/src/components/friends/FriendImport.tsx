@@ -196,17 +196,17 @@ export function FriendImport({ onImported }: FriendImportProps) {
                 ) : (
                   <Download className="h-3.5 w-3.5 shrink-0 text-[#b7102a]" />
                 )}
-                <span className="neo-copy truncate text-[10px] font-black uppercase tracking-[0.12em] text-[#171411]">
+                <span className="neo-copy truncate text-[10px] font-black tracking-[0.12em] text-[#171411] uppercase">
                   {label}
                 </span>
               </span>
               <span
-                className={`neo-copy shrink-0 border-2 border-black px-1.5 py-0.5 text-[8px] font-black uppercase tracking-[0.1em] text-white ${accentClass}`}
+                className={`neo-copy shrink-0 border-2 border-black px-1.5 py-0.5 text-[8px] font-black tracking-[0.1em] text-white uppercase ${accentClass}`}
               >
                 {badge}
               </span>
             </span>
-            <span className="neo-copy mt-2 block text-[8px] font-bold uppercase leading-4 text-[#5b403f]">
+            <span className="neo-copy mt-2 block text-[8px] leading-4 font-bold text-[#5b403f] uppercase">
               {detail}
             </span>
           </button>
@@ -214,12 +214,12 @@ export function FriendImport({ onImported }: FriendImportProps) {
       </div>
 
       {message && (
-        <div className="neo-copy border-2 border-black bg-[#087d6d] p-3 text-[11px] font-bold uppercase text-white shadow-[2px_2px_0_#171411]">
+        <div className="neo-copy border-2 border-black bg-[#087d6d] p-3 text-[11px] font-bold text-white uppercase shadow-[2px_2px_0_#171411]">
           {message}
         </div>
       )}
       {error && (
-        <div className="neo-copy border-2 border-black bg-[#b7102a] p-3 text-[11px] font-bold uppercase text-white shadow-[2px_2px_0_#171411]">
+        <div className="neo-copy border-2 border-black bg-[#b7102a] p-3 text-[11px] font-bold text-white uppercase shadow-[2px_2px_0_#171411]">
           {error}
         </div>
       )}

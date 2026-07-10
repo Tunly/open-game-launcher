@@ -42,26 +42,26 @@ export function FriendRequestList({
                     username={username ?? null}
                   />
                   <div className="min-w-0 flex-1">
-                    <p className="neo-copy inline-flex border-2 border-black bg-[#b7102a] px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-white">
+                    <p className="neo-copy inline-flex border-2 border-black bg-[#b7102a] px-2 py-1 text-[10px] font-black tracking-[0.12em] text-white uppercase">
                       {isIncoming ? "Incoming request" : "Sent request"}
                     </p>
                     <p className="neo-title mt-2 truncate text-2xl leading-none text-[#171411]">
                       {displayName ?? "Unknown player"}
                     </p>
                     {username ? (
-                      <p className="neo-copy mt-1 truncate text-[10px] font-black uppercase tracking-[0.12em] text-[#5b403f]">
+                      <p className="neo-copy mt-1 truncate text-[10px] font-black tracking-[0.12em] text-[#5b403f] uppercase">
                         @{username}
                       </p>
                     ) : null}
                   </div>
                 </div>
                 <div className="flex shrink-0 flex-col items-stretch gap-2 sm:items-end">
-                  <p className="neo-copy inline-flex border-2 border-black bg-[#fff9ed] px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-[#171411]">
+                  <p className="neo-copy inline-flex border-2 border-black bg-[#fff9ed] px-2 py-1 text-[10px] font-black tracking-[0.12em] text-[#171411] uppercase">
                     {request.status}
                   </p>
                   {username ? (
                     <Link
-                      className="neo-copy inline-flex items-center justify-center border-2 border-black bg-[#fff9ed] px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-[#171411] shadow-[1px_1px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#8cf5e4]"
+                      className="neo-copy inline-flex items-center justify-center border-2 border-black bg-[#fff9ed] px-2 py-1 text-[10px] font-black tracking-[0.12em] text-[#171411] uppercase shadow-[1px_1px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#8cf5e4]"
                       to={`/u/${username}`}
                     >
                       Profile
@@ -73,7 +73,7 @@ export function FriendRequestList({
               {isIncoming ? (
                 <div className="mt-4 flex flex-wrap gap-2">
                   <button
-                    className="neo-copy inline-flex items-center gap-1 border-2 border-black bg-[#007166] px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-white shadow-[2px_2px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#b7102a] disabled:opacity-60"
+                    className="neo-copy inline-flex items-center gap-1 border-2 border-black bg-[#007166] px-3 py-2 text-[10px] font-black tracking-[0.12em] text-white uppercase shadow-[2px_2px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#b7102a] disabled:opacity-60"
                     disabled={isMutating}
                     type="button"
                     onClick={() => onAccept(request)}
@@ -82,7 +82,7 @@ export function FriendRequestList({
                     Accept
                   </button>
                   <button
-                    className="neo-copy inline-flex items-center gap-1 border-2 border-black bg-[#fff9ed] px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-[#171411] shadow-[2px_2px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#8cf5e4] disabled:opacity-60"
+                    className="neo-copy inline-flex items-center gap-1 border-2 border-black bg-[#fff9ed] px-3 py-2 text-[10px] font-black tracking-[0.12em] text-[#171411] uppercase shadow-[2px_2px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#8cf5e4] disabled:opacity-60"
                     disabled={isMutating}
                     type="button"
                     onClick={() => onDecline(request)}
@@ -94,7 +94,7 @@ export function FriendRequestList({
               ) : (
                 <div className="mt-4 flex flex-wrap gap-2">
                   <button
-                    className="neo-copy inline-flex items-center gap-1 border-2 border-black bg-[#fff9ed] px-3 py-2 text-[10px] font-black uppercase tracking-[0.12em] text-[#b7102a] shadow-[2px_2px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#f3c3c9] disabled:opacity-60"
+                    className="neo-copy inline-flex items-center gap-1 border-2 border-black bg-[#fff9ed] px-3 py-2 text-[10px] font-black tracking-[0.12em] text-[#b7102a] uppercase shadow-[2px_2px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#f3c3c9] disabled:opacity-60"
                     disabled={isMutating}
                     type="button"
                     onClick={() => onCancel(request)}
@@ -106,7 +106,7 @@ export function FriendRequestList({
               )}
 
               {!username ? (
-                <p className="neo-copy mt-2 text-[9px] font-bold uppercase tracking-[0.12em] text-[#655f58]">
+                <p className="neo-copy mt-2 text-[9px] font-bold tracking-[0.12em] text-[#655f58] uppercase">
                   ID: {otherUserId}
                 </p>
               ) : null}
@@ -114,7 +114,7 @@ export function FriendRequestList({
           );
         })
       ) : (
-        <p className="neo-copy border-2 border-dashed border-black bg-[#f6edd8] p-3 text-[12px] font-bold uppercase leading-5 text-[#655f58]">
+        <p className="neo-copy border-2 border-dashed border-black bg-[#f6edd8] p-3 text-[12px] leading-5 font-bold text-[#655f58] uppercase">
           No pending requests.
         </p>
       )}
@@ -142,7 +142,7 @@ function Avatar({
     );
   }
   return (
-    <div className="grid h-12 w-12 shrink-0 place-items-center border-2 border-black bg-[#b7102a] text-[12px] font-black uppercase text-white shadow-[2px_2px_0_#171411]">
+    <div className="grid h-12 w-12 shrink-0 place-items-center border-2 border-black bg-[#b7102a] text-[12px] font-black text-white uppercase shadow-[2px_2px_0_#171411]">
       {initials}
     </div>
   );

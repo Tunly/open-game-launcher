@@ -106,13 +106,13 @@ export function PrivacySettingsPage() {
       <div className="mb-8 border-b-4 border-black pb-4">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
           <div className="min-w-0">
-            <span className="neo-copy inline-flex border-2 border-black bg-[#171411] px-3 py-1 text-xs font-bold uppercase text-white shadow-[3px_3px_0_#171411]">
+            <span className="neo-copy inline-flex border-2 border-black bg-[#171411] px-3 py-1 text-xs font-bold text-white uppercase shadow-[3px_3px_0_#171411]">
               Settings
             </span>
             <h1 className="neo-title mt-2 max-w-[760px] text-[3.5rem] leading-[0.82] text-[#171411] sm:text-[4.5rem] lg:text-[5.4rem] xl:text-[6rem]">
               Privacy Deck
             </h1>
-            <p className="neo-copy mt-3 text-xs font-bold uppercase text-[#55504a]">
+            <p className="neo-copy mt-3 text-xs font-bold text-[#55504a] uppercase">
               Visibility rules // account data // deletion queue
             </p>
           </div>
@@ -186,23 +186,23 @@ function PrivacySettingsContent({
       {isLocalFallback ? (
         <section className="grid gap-4 border-4 border-black bg-[#fff9ed] p-5 shadow-[5px_5px_0_#171411] lg:grid-cols-[minmax(0,1fr)_300px]">
           <div>
-            <p className="neo-copy inline-flex border-2 border-black bg-[#087d6d] px-3 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-white shadow-[2px_2px_0_#171411]">
+            <p className="neo-copy inline-flex border-2 border-black bg-[#087d6d] px-3 py-1 text-[10px] font-black tracking-[0.12em] text-white uppercase shadow-[2px_2px_0_#171411]">
               Local Privacy Preview
             </p>
             <h2 className="neo-title mt-3 text-4xl leading-none text-[#171411]">
               Broadcast Rules Stay Editable
             </h2>
-            <p className="neo-copy mt-2 max-w-3xl text-[12px] font-bold uppercase leading-6 text-[#5b403f]">
+            <p className="neo-copy mt-2 max-w-3xl text-[12px] leading-6 font-bold text-[#5b403f] uppercase">
               Supabase is absent, so this deck writes visibility and account-data actions to this
               browser only.
             </p>
           </div>
           <div className="border-[3px] border-black bg-[#f6edd8] p-3 shadow-[3px_3px_0_#171411]">
-            <p className="neo-copy text-[10px] font-black uppercase tracking-[0.12em] text-[#171411]">
+            <p className="neo-copy text-[10px] font-black tracking-[0.12em] text-[#171411] uppercase">
               Sync Target
             </p>
             <p className="neo-title mt-2 text-3xl leading-none text-[#c20b2f]">Local Only</p>
-            <p className="neo-copy mt-2 text-[11px] font-bold uppercase leading-5 text-[#5b403f]">
+            <p className="neo-copy mt-2 text-[11px] leading-5 font-bold text-[#5b403f] uppercase">
               No Supabase error is shown because the fallback owns the offline state.
             </p>
           </div>
@@ -211,7 +211,7 @@ function PrivacySettingsContent({
 
       <div className="border-4 border-black bg-[#f5eedf] shadow-[5px_5px_0_#171411]">
         <div className="border-b-4 border-black bg-[#171411] p-5 text-white">
-          <p className="neo-copy text-[10px] font-bold uppercase text-[#8cf5e4]">
+          <p className="neo-copy text-[10px] font-bold text-[#8cf5e4] uppercase">
             Profile Broadcast
           </p>
           <h2 className="neo-title mt-1 text-3xl leading-none">Visibility Matrix</h2>
@@ -221,7 +221,7 @@ function PrivacySettingsContent({
           {errorMessage ? <Status tone="error" message={errorMessage} /> : null}
           {message ? <Status tone="success" message={message} /> : null}
           <button
-            className="neo-copy flex h-12 w-full items-center justify-center gap-2 border-2 border-black bg-[#c20b2f] px-4 text-xs font-black uppercase text-white shadow-[3px_3px_0_#171411] hover:-translate-y-0.5 disabled:opacity-60"
+            className="neo-copy flex h-12 w-full items-center justify-center gap-2 border-2 border-black bg-[#c20b2f] px-4 text-xs font-black text-white uppercase shadow-[3px_3px_0_#171411] hover:-translate-y-0.5 disabled:opacity-60"
             disabled={isSaving}
             type="button"
             onClick={onSave}
@@ -241,7 +241,7 @@ function Notice({ body, title }: { body: string; title: string }) {
   return (
     <div className="border-4 border-black bg-[#f5eedf] p-6 shadow-[5px_5px_0_#171411]">
       <h2 className="neo-title text-3xl leading-none text-[#171411]">{title}</h2>
-      <p className="neo-copy mt-3 text-xs font-bold uppercase leading-6 text-[#55504a]">{body}</p>
+      <p className="neo-copy mt-3 text-xs leading-6 font-bold text-[#55504a] uppercase">{body}</p>
     </div>
   );
 }
@@ -251,8 +251,8 @@ function Status({ message, tone }: { message: string; tone: "error" | "success" 
     <div
       className={
         tone === "error"
-          ? "neo-copy border-2 border-black bg-[#c20b2f] p-3 text-[11px] font-black uppercase tracking-[0.08em] text-white"
-          : "neo-copy border-2 border-black bg-[#087d6d] p-3 text-[11px] font-black uppercase tracking-[0.08em] text-white"
+          ? "neo-copy border-2 border-black bg-[#c20b2f] p-3 text-[11px] font-black tracking-[0.08em] text-white uppercase"
+          : "neo-copy border-2 border-black bg-[#087d6d] p-3 text-[11px] font-black tracking-[0.08em] text-white uppercase"
       }
     >
       {message}

@@ -22,7 +22,7 @@ export function ProfileCustomizeForm({
         >
           <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_180px_auto] sm:items-center">
             <label className="min-w-0">
-              <span className="neo-copy text-[10px] font-black uppercase tracking-[0.12em] text-[#b7102a]">
+              <span className="neo-copy text-[10px] font-black tracking-[0.12em] text-[#b7102a] uppercase">
                 {showcase.type.replace(/_/g, " ")}
               </span>
               <input
@@ -34,11 +34,11 @@ export function ProfileCustomizeForm({
               />
             </label>
             <label>
-              <span className="neo-copy text-[10px] font-black uppercase tracking-[0.12em] text-[#5b403f]">
+              <span className="neo-copy text-[10px] font-black tracking-[0.12em] text-[#5b403f] uppercase">
                 Visibility
               </span>
               <select
-                className="neo-copy mt-1 h-10 w-full border-2 border-black bg-[#f6edd8] px-3 text-[11px] font-black uppercase tracking-[0.08em] text-[#171411] shadow-[2px_2px_0_#1f1c0f] outline-none focus:bg-[#8cf5e4]"
+                className="neo-copy mt-1 h-10 w-full border-2 border-black bg-[#f6edd8] px-3 text-[11px] font-black tracking-[0.08em] text-[#171411] uppercase shadow-[2px_2px_0_#1f1c0f] outline-none focus:bg-[#8cf5e4]"
                 value={showcase.visibility}
                 onChange={(event) =>
                   onChange(showcase.id, {
@@ -56,7 +56,7 @@ export function ProfileCustomizeForm({
             <div className="pt-5">
               <button
                 aria-pressed={showcase.isEnabled}
-                className={`neo-copy h-10 w-full border-2 border-black px-3 text-[10px] font-black uppercase tracking-[0.12em] shadow-[2px_2px_0_#1f1c0f] transition hover:-translate-y-0.5 ${
+                className={`neo-copy h-10 w-full border-2 border-black px-3 text-[10px] font-black tracking-[0.12em] uppercase shadow-[2px_2px_0_#1f1c0f] transition hover:-translate-y-0.5 ${
                   showcase.isEnabled
                     ? "bg-[#007166] text-white hover:bg-[#b7102a]"
                     : "bg-[#efe6d4] text-[#655f58] hover:bg-[#8cf5e4] hover:text-[#171411]"

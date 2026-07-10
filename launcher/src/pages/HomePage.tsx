@@ -105,20 +105,20 @@ export function HomePage() {
         <section className="neo-dots border-[4px] border-black bg-[#fff9ed] p-4 shadow-[6px_6px_0_#171411]">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b-[3px] border-black pb-3">
             <div>
-              <span className="neo-copy inline-flex border-2 border-black bg-[#b7102a] px-3 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-white shadow-[3px_3px_0_#171411]">
+              <span className="neo-copy inline-flex border-2 border-black bg-[#b7102a] px-3 py-1 text-[10px] font-black tracking-[0.12em] text-white uppercase shadow-[3px_3px_0_#171411]">
                 Launcher HQ
               </span>
               <h1 className="neo-title mt-3 text-[3.2rem] leading-[0.82] text-[#171411] sm:text-[4.5rem] lg:text-[5.6rem] xl:text-[6.3rem]">
                 Play Desk
               </h1>
-              <p className="neo-copy mt-3 max-w-2xl text-[12px] font-black uppercase leading-5 text-[#5b403f]">
+              <p className="neo-copy mt-3 max-w-2xl text-[12px] leading-5 font-black text-[#5b403f] uppercase">
                 Game library, social layer, mod deck, downloads, store, and profile ops in one dense
                 launcher board.
               </p>
             </div>
             <div className="max-w-[270px] border-[3px] border-black bg-[#171411] p-4 text-white shadow-[4px_4px_0_#171411]">
               <p className="neo-title text-3xl leading-none text-[#8cf5e4]">Route Index</p>
-              <p className="neo-copy mt-2 text-[9px] font-black uppercase leading-4 text-[#f5eedf]">
+              <p className="neo-copy mt-2 text-[9px] leading-4 font-black text-[#f5eedf] uppercase">
                 Live counts and runtime state appear inside their owning pages. This desk shows no
                 synthetic telemetry.
               </p>
@@ -135,12 +135,12 @@ export function HomePage() {
         <section className="grid gap-3">
           <div className="hero-art min-h-[260px] border-[4px] border-black p-4 shadow-[6px_6px_0_#171411]">
             <div className="flex h-full flex-col justify-between">
-              <span className="neo-copy w-fit border-2 border-black bg-[#8cf5e4] px-3 py-1 text-[9px] font-black uppercase text-[#171411] shadow-[2px_2px_0_#171411]">
+              <span className="neo-copy w-fit border-2 border-black bg-[#8cf5e4] px-3 py-1 text-[9px] font-black text-[#171411] uppercase shadow-[2px_2px_0_#171411]">
                 Cover Signal
               </span>
               <div>
                 <h2 className="neo-title text-4xl leading-none text-[#fff9ed]">Neo Queue</h2>
-                <p className="neo-copy mt-2 max-w-[260px] text-[10px] font-black uppercase leading-5 text-[#f5eedf]">
+                <p className="neo-copy mt-2 max-w-[260px] text-[10px] leading-5 font-black text-[#f5eedf] uppercase">
                   Launch-ready cards, active routes, and system signals stay visible before the
                   first click.
                 </p>
@@ -163,13 +163,13 @@ export function HomePage() {
         <section className="border-[4px] border-black bg-[#f5eedf] p-4 shadow-[5px_5px_0_#171411]">
           <div className="flex flex-wrap items-center justify-between gap-3 border-b-2 border-black pb-3">
             <div>
-              <p className="neo-copy text-[10px] font-black uppercase tracking-[0.12em] text-[#b7102a]">
+              <p className="neo-copy text-[10px] font-black tracking-[0.12em] text-[#b7102a] uppercase">
                 System Board
               </p>
               <h2 className="neo-title text-3xl leading-none text-[#171411]">Feature Routes</h2>
             </div>
             <Link
-              className="neo-copy inline-flex h-10 items-center gap-2 border-2 border-black bg-[#007166] px-3 text-[10px] font-black uppercase text-white shadow-[3px_3px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#b7102a]"
+              className="neo-copy inline-flex h-10 items-center gap-2 border-2 border-black bg-[#007166] px-3 text-[10px] font-black text-white uppercase shadow-[3px_3px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#b7102a]"
               to="/community"
             >
               <MessageSquareMore className="h-4 w-4" />
@@ -186,7 +186,7 @@ export function HomePage() {
         <section className="border-[4px] border-black bg-[#fff9ed] p-4 shadow-[5px_5px_0_#171411]">
           <div className="flex items-center justify-between gap-3 border-b-2 border-black pb-3">
             <div>
-              <p className="neo-copy text-[10px] font-black uppercase tracking-[0.12em] text-[#5b403f]">
+              <p className="neo-copy text-[10px] font-black tracking-[0.12em] text-[#5b403f] uppercase">
                 Route Directory
               </p>
               <h2 className="neo-title text-3xl leading-none text-[#171411]">Quick Links</h2>
@@ -200,13 +200,13 @@ export function HomePage() {
                 className="grid grid-cols-[82px_1fr_auto] gap-2 p-3 hover:bg-[#8cf5e4]"
                 to={to}
               >
-                <span className="neo-copy text-[9px] font-black uppercase text-[#b7102a]">
+                <span className="neo-copy text-[9px] font-black text-[#b7102a] uppercase">
                   {label}
                 </span>
-                <span className="neo-copy min-w-0 truncate text-[10px] font-black uppercase text-[#171411]">
+                <span className="neo-copy min-w-0 truncate text-[10px] font-black text-[#171411] uppercase">
                   {title}
                 </span>
-                <span className="neo-copy text-[9px] font-black uppercase text-[#5b403f]">
+                <span className="neo-copy text-[9px] font-black text-[#5b403f] uppercase">
                   Open
                 </span>
               </Link>
@@ -239,13 +239,13 @@ function QuickActionCard({ action }: { action: QuickAction }) {
           <Icon className="h-5 w-5" />
         </span>
         <div className="min-w-0">
-          <p className="neo-copy text-[9px] font-black uppercase tracking-[0.12em] text-[#5b403f]">
+          <p className="neo-copy text-[9px] font-black tracking-[0.12em] text-[#5b403f] uppercase">
             {action.meta}
           </p>
           <h2 className="neo-title mt-1 text-2xl leading-none text-[#171411] group-hover:text-[#b7102a]">
             {action.label}
           </h2>
-          <p className="neo-copy mt-2 text-[10px] font-black uppercase leading-5 text-[#5b403f]">
+          <p className="neo-copy mt-2 text-[10px] leading-5 font-black text-[#5b403f] uppercase">
             {action.body}
           </p>
         </div>
@@ -270,7 +270,7 @@ function ArtTile({
       className={`${className} min-h-[110px] border-[3px] border-black p-3 shadow-[4px_4px_0_#171411]`}
       to={to}
     >
-      <span className="neo-copy inline-flex border-2 border-black bg-[#fff9ed] px-2 py-1 text-[9px] font-black uppercase text-[#171411] shadow-[2px_2px_0_#171411]">
+      <span className="neo-copy inline-flex border-2 border-black bg-[#fff9ed] px-2 py-1 text-[9px] font-black text-[#171411] uppercase shadow-[2px_2px_0_#171411]">
         {label}
       </span>
       <p className="neo-title mt-8 text-2xl leading-none text-white [text-shadow:2px_2px_0_#171411]">
@@ -292,15 +292,15 @@ function SurfaceCard({ panel }: { panel: SurfaceLink }) {
         <span className="grid h-9 w-9 place-items-center border-2 border-black bg-[#171411] text-[#8cf5e4]">
           <Icon className="h-4 w-4" />
         </span>
-        <span className="neo-copy border-2 border-black bg-[#007166] px-2 py-1 text-[8px] font-black uppercase text-white">
+        <span className="neo-copy border-2 border-black bg-[#007166] px-2 py-1 text-[8px] font-black text-white uppercase">
           Open
         </span>
       </div>
-      <p className="neo-copy mt-3 text-[9px] font-black uppercase tracking-[0.12em] text-[#b7102a]">
+      <p className="neo-copy mt-3 text-[9px] font-black tracking-[0.12em] text-[#b7102a] uppercase">
         {panel.label}
       </p>
       <h3 className="neo-title mt-1 text-2xl leading-none text-[#171411]">{panel.title}</h3>
-      <p className="neo-copy mt-2 text-[9px] font-black uppercase leading-4 text-[#5b403f]">
+      <p className="neo-copy mt-2 text-[9px] leading-4 font-black text-[#5b403f] uppercase">
         {panel.description}
       </p>
     </Link>

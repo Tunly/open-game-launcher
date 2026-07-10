@@ -255,13 +255,13 @@ export function PerfHistoryPage() {
       <div className="mb-8 border-b-4 border-black pb-4">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
           <div className="min-w-0">
-            <span className="neo-copy inline-flex border-2 border-black bg-[#171411] px-3 py-1 text-xs font-bold uppercase text-white shadow-[3px_3px_0_#171411]">
+            <span className="neo-copy inline-flex border-2 border-black bg-[#171411] px-3 py-1 text-xs font-bold text-white uppercase shadow-[3px_3px_0_#171411]">
               System Tape
             </span>
             <h1 className="neo-title mt-2 max-w-[780px] text-[3.3rem] leading-[0.82] text-[#171411] sm:text-[4.5rem] lg:text-[5.4rem] xl:text-[6rem]">
               Perf History
             </h1>
-            <p className="neo-copy mt-3 text-xs font-bold uppercase text-[#55504a]">
+            <p className="neo-copy mt-3 text-xs font-bold text-[#55504a] uppercase">
               Overlay samples // fps trace // hardware readout
             </p>
           </div>
@@ -287,7 +287,7 @@ export function PerfHistoryPage() {
               <label className="flex h-11 items-center gap-2 border-2 border-black bg-[#f5eedf] px-3 shadow-[3px_3px_0_#171411]">
                 <Filter className="h-4 w-4 text-[#c20b2f]" />
                 <select
-                  className="neo-copy min-w-0 flex-1 bg-transparent text-[10px] font-black uppercase text-[#171411] outline-none"
+                  className="neo-copy min-w-0 flex-1 bg-transparent text-[10px] font-black text-[#171411] uppercase outline-none"
                   value={selectedGameId}
                   onChange={(event) => handleGameFilterChange(event.target.value)}
                 >
@@ -302,7 +302,7 @@ export function PerfHistoryPage() {
               <label className="flex h-11 items-center gap-2 border-2 border-black bg-[#f5eedf] px-3 shadow-[3px_3px_0_#171411]">
                 <CalendarDays className="h-4 w-4 text-[#087d6d]" />
                 <select
-                  className="neo-copy min-w-0 flex-1 bg-transparent text-[10px] font-black uppercase text-[#171411] outline-none"
+                  className="neo-copy min-w-0 flex-1 bg-transparent text-[10px] font-black text-[#171411] uppercase outline-none"
                   value={bucketMode}
                   onChange={(event) =>
                     handleBucketModeChange(event.target.value as PerformanceBucketMode)
@@ -316,7 +316,7 @@ export function PerfHistoryPage() {
                 </select>
               </label>
               <button
-                className="neo-copy flex h-11 items-center justify-center gap-2 border-2 border-black bg-[#c20b2f] px-4 text-[10px] font-black uppercase text-white shadow-[3px_3px_0_#171411] disabled:cursor-not-allowed disabled:bg-[#8f887c] disabled:text-white disabled:opacity-100"
+                className="neo-copy flex h-11 items-center justify-center gap-2 border-2 border-black bg-[#c20b2f] px-4 text-[10px] font-black text-white uppercase shadow-[3px_3px_0_#171411] disabled:cursor-not-allowed disabled:bg-[#8f887c] disabled:text-white disabled:opacity-100"
                 disabled={isLoading || isLocalPreview}
                 type="button"
                 onClick={handleReload}
@@ -326,7 +326,7 @@ export function PerfHistoryPage() {
               </button>
             </div>
             {isActivityCrossFilter && (
-              <div className="neo-copy border-2 border-black bg-[#fff9ed] px-3 py-2 text-[10px] font-black uppercase text-[#171411] shadow-[3px_3px_0_#171411]">
+              <div className="neo-copy border-2 border-black bg-[#fff9ed] px-3 py-2 text-[10px] font-black text-[#171411] uppercase shadow-[3px_3px_0_#171411]">
                 <span className="text-[#c20b2f]">Activity Filter</span>
                 <span className="mx-2 text-[#55504a]">//</span>
                 <span>{formatPerformanceGameLabel(selectedGameId)}</span>
@@ -372,7 +372,7 @@ export function PerfHistoryPage() {
               >
                 <div className="flex items-center justify-between border-b-4 border-black bg-[#171411] p-5 text-white">
                   <div>
-                    <p className="neo-copy text-[10px] font-bold uppercase text-[#8cf5e4]">
+                    <p className="neo-copy text-[10px] font-bold text-[#8cf5e4] uppercase">
                       Frame Tape
                     </p>
                     <h2 className="neo-title mt-1 text-3xl leading-none">FPS / CPU Trace</h2>
@@ -399,10 +399,10 @@ export function PerfHistoryPage() {
               <section className="border-4 border-black bg-[#f5eedf] shadow-[5px_5px_0_#171411]">
                 <div className="flex items-center justify-between border-b-4 border-black p-5">
                   <div>
-                    <p className="neo-copy text-[10px] font-bold uppercase text-[#55504a]">
+                    <p className="neo-copy text-[10px] font-bold text-[#55504a] uppercase">
                       Run Buckets
                     </p>
-                    <h2 className="text-3xl font-black uppercase text-[#171411]">
+                    <h2 className="text-3xl font-black text-[#171411] uppercase">
                       Spielzeit / Detail
                     </h2>
                   </div>
@@ -445,7 +445,7 @@ export function PerfHistoryPage() {
                                   key={bucket.key}
                                   className="border-b-2 border-black last:border-b-0"
                                 >
-                                  <td className="px-3 py-3 text-xs font-black uppercase text-[#171411]">
+                                  <td className="px-3 py-3 text-xs font-black text-[#171411] uppercase">
                                     {bucket.label}
                                   </td>
                                   <td className="px-3 py-3 text-sm font-black text-[#171411]">
@@ -478,10 +478,10 @@ export function PerfHistoryPage() {
               <section className="border-4 border-black bg-[#f5eedf] shadow-[5px_5px_0_#171411]">
                 <div className="flex items-center justify-between border-b-4 border-black p-5">
                   <div>
-                    <p className="neo-copy text-[10px] font-bold uppercase text-[#55504a]">
+                    <p className="neo-copy text-[10px] font-bold text-[#55504a] uppercase">
                       Raw Table
                     </p>
-                    <h2 className="text-3xl font-black uppercase text-[#171411]">Snapshot Rows</h2>
+                    <h2 className="text-3xl font-black text-[#171411] uppercase">Snapshot Rows</h2>
                   </div>
                   <Database className="h-9 w-9 text-[#c20b2f]" />
                 </div>
@@ -506,11 +506,11 @@ export function PerfHistoryPage() {
                             {formatDateTime(snapshot.createdAt)}
                           </td>
                           <td className="max-w-[190px] px-3 py-3">
-                            <p className="neo-copy truncate text-[10px] font-bold uppercase text-[#55504a]">
+                            <p className="neo-copy truncate text-[10px] font-bold text-[#55504a] uppercase">
                               {formatPerformanceGameLabel(snapshot.gameId)}
                             </p>
                             {isStandalonePerformanceGameId(snapshot.gameId) && (
-                              <p className="neo-copy mt-1 text-[8px] font-black uppercase text-[#b7102a]">
+                              <p className="neo-copy mt-1 text-[8px] font-black text-[#b7102a] uppercase">
                                 {OVERLAY_RUNTIME_GAME_ID}
                               </p>
                             )}
@@ -559,10 +559,10 @@ export function PerfHistoryPage() {
               <div className="border-4 border-black bg-[#f5eedf] p-5 shadow-[5px_5px_0_#171411]">
                 <div className="flex items-center justify-between gap-4">
                   <div>
-                    <p className="neo-copy text-[10px] font-bold uppercase text-[#55504a]">
+                    <p className="neo-copy text-[10px] font-bold text-[#55504a] uppercase">
                       Source Attribution
                     </p>
-                    <h2 className="mt-2 text-2xl font-black uppercase text-[#171411]">
+                    <h2 className="mt-2 text-2xl font-black text-[#171411] uppercase">
                       {attributionStats.statusLabel}
                     </h2>
                   </div>
@@ -570,52 +570,52 @@ export function PerfHistoryPage() {
                 </div>
                 <div className="mt-4 grid grid-cols-2 gap-3 border-y-2 border-black py-3">
                   <div>
-                    <p className="neo-copy text-[9px] font-bold uppercase text-[#55504a]">
+                    <p className="neo-copy text-[9px] font-bold text-[#55504a] uppercase">
                       Active Games
                     </p>
-                    <p className="mt-1 text-xl font-black uppercase text-[#087d6d]">
+                    <p className="mt-1 text-xl font-black text-[#087d6d] uppercase">
                       {attributionStats.activeGameCount}
                     </p>
                   </div>
                   <div>
-                    <p className="neo-copy text-[9px] font-bold uppercase text-[#55504a]">
+                    <p className="neo-copy text-[9px] font-bold text-[#55504a] uppercase">
                       Standalone Rows
                     </p>
-                    <p className="mt-1 text-xl font-black uppercase text-[#b7102a]">
+                    <p className="mt-1 text-xl font-black text-[#b7102a] uppercase">
                       {attributionStats.standaloneRowCount}
                     </p>
                   </div>
                 </div>
                 <div className="mt-3 border-2 border-black bg-[#fff9ed] p-3">
-                  <p className="neo-copy text-[9px] font-black uppercase text-[#55504a]">
+                  <p className="neo-copy text-[9px] font-black text-[#55504a] uppercase">
                     Fallback ID
                   </p>
-                  <p className="mt-1 break-words text-sm font-black uppercase text-[#171411]">
+                  <p className="mt-1 text-sm font-black break-words text-[#171411] uppercase">
                     {OVERLAY_RUNTIME_GAME_ID}
                   </p>
                 </div>
               </div>
               <div className="border-4 border-black bg-[#f5eedf] p-5 shadow-[5px_5px_0_#171411]">
-                <p className="neo-copy text-[10px] font-bold uppercase text-[#55504a]">
+                <p className="neo-copy text-[10px] font-bold text-[#55504a] uppercase">
                   Session Aggregates
                 </p>
-                <h2 className="mt-2 text-3xl font-black uppercase text-[#171411]">
+                <h2 className="mt-2 text-3xl font-black text-[#171411] uppercase">
                   {sessionStats.count} Runs
                 </h2>
                 <div className="mt-4 grid grid-cols-2 gap-3 border-y-2 border-black py-3">
                   <div>
-                    <p className="neo-copy text-[9px] font-bold uppercase text-[#55504a]">
+                    <p className="neo-copy text-[9px] font-bold text-[#55504a] uppercase">
                       Avg FPS
                     </p>
-                    <p className="mt-1 text-xl font-black uppercase text-[#b7102a]">
+                    <p className="mt-1 text-xl font-black text-[#b7102a] uppercase">
                       {formatNumber(sessionStats.avgFps, 0)}
                     </p>
                   </div>
                   <div>
-                    <p className="neo-copy text-[9px] font-bold uppercase text-[#55504a]">
+                    <p className="neo-copy text-[9px] font-bold text-[#55504a] uppercase">
                       Peak RAM
                     </p>
-                    <p className="mt-1 text-xl font-black uppercase text-[#087d6d]">
+                    <p className="mt-1 text-xl font-black text-[#087d6d] uppercase">
                       {formatNumber(sessionStats.peakRamMb, 0)} MB
                     </p>
                   </div>
@@ -627,40 +627,40 @@ export function PerfHistoryPage() {
                       className="border-b-2 border-black pb-2 last:border-b-0 last:pb-0"
                     >
                       <div className="flex items-center justify-between gap-3">
-                        <p className="truncate text-sm font-black uppercase text-[#171411]">
+                        <p className="truncate text-sm font-black text-[#171411] uppercase">
                           {formatPerformanceGameLabel(session.gameId)}
                         </p>
-                        <p className="neo-copy shrink-0 text-[9px] font-black uppercase text-[#55504a]">
+                        <p className="neo-copy shrink-0 text-[9px] font-black text-[#55504a] uppercase">
                           {formatDuration(session.durationSeconds)}
                         </p>
                       </div>
-                      <p className="neo-copy mt-1 text-[9px] font-bold uppercase text-[#55504a]">
+                      <p className="neo-copy mt-1 text-[9px] font-bold text-[#55504a] uppercase">
                         {session.sampleCount} samples // avg{" "}
                         {formatNumber(session.avgCpuPercent, 0)}% cpu //{" "}
                         {formatNumber(session.avgFps, 0)} fps
                       </p>
                       {isStandalonePerformanceGameId(session.gameId) && (
-                        <p className="neo-copy mt-1 text-[8px] font-black uppercase text-[#b7102a]">
+                        <p className="neo-copy mt-1 text-[8px] font-black text-[#b7102a] uppercase">
                           standalone source // {OVERLAY_RUNTIME_GAME_ID}
                         </p>
                       )}
                     </div>
                   ))}
                   {filteredSessions.length === 0 && (
-                    <p className="neo-copy text-[10px] font-bold uppercase leading-relaxed text-[#55504a]">
+                    <p className="neo-copy text-[10px] leading-relaxed font-bold text-[#55504a] uppercase">
                       No flushed sessions yet.
                     </p>
                   )}
                 </div>
               </div>
               <div className="border-4 border-black bg-[#171411] p-5 text-[#f5eedf] shadow-[5px_5px_0_#171411]">
-                <p className="neo-copy text-[10px] font-bold uppercase text-[#8cf5e4]">
+                <p className="neo-copy text-[10px] font-bold text-[#8cf5e4] uppercase">
                   Write Source
                 </p>
                 <h2 className="mt-2 text-2xl font-black uppercase">
                   {isLocalPreview ? "Local Preview" : "Overlay Monitor"}
                 </h2>
-                <p className="neo-copy mt-4 text-[10px] font-bold uppercase leading-relaxed text-[#f5eedf]">
+                <p className="neo-copy mt-4 text-[10px] leading-relaxed font-bold text-[#f5eedf] uppercase">
                   {isLocalPreview
                     ? "Sample rows are generated locally because Supabase env vars are missing."
                     : "Persisted samples are written from the performance overlay at a throttled cadence."}
@@ -839,7 +839,7 @@ function BucketBars({ buckets }: { buckets: PerformanceBucket[] }) {
           );
         })}
       </svg>
-      <div className="neo-copy mt-3 flex justify-between gap-3 text-[9px] font-black uppercase text-[#55504a]">
+      <div className="neo-copy mt-3 flex justify-between gap-3 text-[9px] font-black text-[#55504a] uppercase">
         <span>{visibleBuckets[0]?.label ?? "N/A"}</span>
         <span>{visibleBuckets[visibleBuckets.length - 1]?.label ?? "N/A"}</span>
       </div>
@@ -873,7 +873,7 @@ function toPoints(
 
 function Legend({ color, label }: { color: string; label: string }) {
   return (
-    <span className="neo-copy inline-flex items-center gap-2 border-2 border-black bg-[#f5eedf] px-2 py-1 text-[10px] font-black uppercase text-[#171411]">
+    <span className="neo-copy inline-flex items-center gap-2 border-2 border-black bg-[#f5eedf] px-2 py-1 text-[10px] font-black text-[#171411] uppercase">
       <span className="h-3 w-5 border-2 border-black" style={{ backgroundColor: color }} />
       {label}
     </span>
@@ -883,8 +883,8 @@ function Legend({ color, label }: { color: string; label: string }) {
 function Readout({ label, value }: { label: string; value: string }) {
   return (
     <div className="border-2 border-black bg-[#efe6d4] p-3 shadow-[2px_2px_0_#171411]">
-      <p className="neo-copy text-[9px] font-bold uppercase text-[#55504a]">{label}</p>
-      <p className="mt-1 text-2xl font-black uppercase text-[#171411]">{value}</p>
+      <p className="neo-copy text-[9px] font-bold text-[#55504a] uppercase">{label}</p>
+      <p className="mt-1 text-2xl font-black text-[#171411] uppercase">{value}</p>
     </div>
   );
 }
@@ -901,10 +901,10 @@ function ReadoutPanel({
   return (
     <div className="border-4 border-black bg-[#f5eedf] p-5 shadow-[5px_5px_0_#171411]">
       <div className="flex items-center justify-between gap-4">
-        <p className="neo-copy text-[10px] font-bold uppercase text-[#55504a]">{label}</p>
+        <p className="neo-copy text-[10px] font-bold text-[#55504a] uppercase">{label}</p>
         {icon}
       </div>
-      <p className="mt-4 break-words text-3xl font-black uppercase text-[#171411]">{value}</p>
+      <p className="mt-4 text-3xl font-black break-words text-[#171411] uppercase">{value}</p>
     </div>
   );
 }
@@ -916,13 +916,13 @@ function LocalPerformancePreviewNotice() {
         <CloudOff aria-hidden="true" className="h-5 w-5" />
       </span>
       <div className="min-w-0 flex-1">
-        <p className="neo-copy text-[10px] font-black uppercase tracking-[0.12em] text-[#c20b2f]">
+        <p className="neo-copy text-[10px] font-black tracking-[0.12em] text-[#c20b2f] uppercase">
           Browser Performance Relay
         </p>
-        <h2 className="mt-1 text-2xl font-black uppercase text-[#171411]">
+        <h2 className="mt-1 text-2xl font-black text-[#171411] uppercase">
           Local Performance Preview
         </h2>
-        <p className="neo-copy mt-2 text-[10px] font-bold uppercase leading-relaxed text-[#55504a]">
+        <p className="neo-copy mt-2 text-[10px] leading-relaxed font-bold text-[#55504a] uppercase">
           Supabase is not configured, so this route renders local performance samples instead of
           opening an empty settings dead end.
         </p>
@@ -944,13 +944,13 @@ function MissingSelectedGameHistoryNotice({
         <Filter aria-hidden="true" className="h-5 w-5" />
       </span>
       <div className="min-w-0 flex-1">
-        <p className="neo-copy text-[10px] font-black uppercase tracking-[0.12em] text-[#c20b2f]">
+        <p className="neo-copy text-[10px] font-black tracking-[0.12em] text-[#c20b2f] uppercase">
           {isActivityCrossFilter ? "Activity Crossfilter" : "Game Filter"}
         </p>
-        <h2 className="mt-1 text-2xl font-black uppercase text-[#171411]">
+        <h2 className="mt-1 text-2xl font-black text-[#171411] uppercase">
           No Performance Rows For {label}
         </h2>
-        <p className="neo-copy mt-2 text-[10px] font-bold uppercase leading-relaxed text-[#55504a]">
+        <p className="neo-copy mt-2 text-[10px] leading-relaxed font-bold text-[#55504a] uppercase">
           The selected game stays pinned so the mismatch is visible. Launch this game with the
           overlay monitor active, or switch the game filter back to all games.
         </p>
@@ -971,11 +971,11 @@ function Notice({
   return (
     <div className="border-4 border-black bg-[#f5eedf] p-6 shadow-[5px_5px_0_#171411]">
       <p
-        className={`neo-copy inline-flex border-2 border-black px-3 py-1 text-[10px] font-black uppercase text-white ${tone === "error" ? "bg-[#c20b2f]" : "bg-[#087d6d]"}`}
+        className={`neo-copy inline-flex border-2 border-black px-3 py-1 text-[10px] font-black text-white uppercase ${tone === "error" ? "bg-[#c20b2f]" : "bg-[#087d6d]"}`}
       >
         {title}
       </p>
-      <p className="neo-copy mt-4 text-xs font-bold uppercase leading-relaxed text-[#55504a]">
+      <p className="neo-copy mt-4 text-xs leading-relaxed font-bold text-[#55504a] uppercase">
         {body}
       </p>
     </div>
@@ -985,8 +985,8 @@ function Notice({
 function EmptyHistory() {
   return (
     <div className="border-2 border-black bg-[#efe6d4] p-6 text-center shadow-[3px_3px_0_#171411]">
-      <p className="text-3xl font-black uppercase text-[#171411]">No Samples Yet</p>
-      <p className="neo-copy mx-auto mt-3 max-w-[520px] text-[10px] font-bold uppercase leading-relaxed text-[#55504a]">
+      <p className="text-3xl font-black text-[#171411] uppercase">No Samples Yet</p>
+      <p className="neo-copy mx-auto mt-3 max-w-[520px] text-[10px] leading-relaxed font-bold text-[#55504a] uppercase">
         Open the performance overlay while signed in. New samples will appear here after the next
         write interval.
       </p>

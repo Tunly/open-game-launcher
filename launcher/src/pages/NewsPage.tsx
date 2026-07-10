@@ -69,7 +69,7 @@ export function NewsPage() {
         <div className="border-4 border-black bg-[#f4ead8] px-5 py-4 shadow-[6px_6px_0_#171411]">
           <div className="flex items-center gap-3">
             <Loader2 className="h-6 w-6 animate-spin text-[#087d6d]" />
-            <p className="neo-copy text-[12px] font-black uppercase text-[#171411]">
+            <p className="neo-copy text-[12px] font-black text-[#171411] uppercase">
               Loading news relay
             </p>
           </div>
@@ -83,11 +83,11 @@ export function NewsPage() {
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
         <div className="border-4 border-black bg-[#fff9ed] shadow-[6px_6px_0_#171411]">
           <div className="border-b-4 border-black bg-[#171411] px-4 py-3 text-[#fbf4e7]">
-            <span className="neo-copy inline-flex border-2 border-black bg-[#b7102a] px-3 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-white shadow-[3px_3px_0_#000]">
+            <span className="neo-copy inline-flex border-2 border-black bg-[#b7102a] px-3 py-1 text-[10px] font-black tracking-[0.12em] text-white uppercase shadow-[3px_3px_0_#000]">
               Bulletin Relay
             </span>
             <h1 className="neo-title mt-3 text-5xl leading-none md:text-7xl">News Feed</h1>
-            <p className="neo-copy mt-3 max-w-2xl text-[11px] font-black uppercase leading-5 text-[#8cf5e4]">
+            <p className="neo-copy mt-3 max-w-2xl text-[11px] leading-5 font-black text-[#8cf5e4] uppercase">
               Patch notes, platform updates, store desk notices, and community signals in one
               launcher board.
             </p>
@@ -104,7 +104,7 @@ export function NewsPage() {
                 className="border-[3px] border-black bg-[#f6edd8] p-3 shadow-[3px_3px_0_#171411]"
               >
                 <div className="flex items-center justify-between gap-3">
-                  <p className="neo-copy text-[9px] font-black uppercase tracking-[0.12em] text-[#5b403f]">
+                  <p className="neo-copy text-[9px] font-black tracking-[0.12em] text-[#5b403f] uppercase">
                     {label as string}
                   </p>
                   <Icon className="h-5 w-5 text-[#b7102a]" />
@@ -120,7 +120,7 @@ export function NewsPage() {
         <div className="hero-art relative min-h-[250px] overflow-hidden border-4 border-black p-4 shadow-[6px_6px_0_#171411]">
           <div className="absolute inset-0 bg-[radial-gradient(circle,rgba(255,249,237,0.16)_1px,transparent_1px)] bg-[length:8px_8px]" />
           <div className="relative flex h-full min-h-[218px] flex-col justify-between">
-            <span className="neo-copy w-fit border-2 border-black bg-[#8cf5e4] px-3 py-1 text-[9px] font-black uppercase text-[#171411] shadow-[2px_2px_0_#171411]">
+            <span className="neo-copy w-fit border-2 border-black bg-[#8cf5e4] px-3 py-1 text-[9px] font-black text-[#171411] uppercase shadow-[2px_2px_0_#171411]">
               Wire Desk
             </span>
             <div>
@@ -130,7 +130,7 @@ export function NewsPage() {
               <h2 className="neo-title text-4xl leading-none text-[#fff9ed] [text-shadow:3px_3px_0_#171411]">
                 Patch Radio
               </h2>
-              <p className="neo-copy mt-2 max-w-[280px] text-[10px] font-black uppercase leading-5 text-[#f5eedf]">
+              <p className="neo-copy mt-2 max-w-[280px] text-[10px] leading-5 font-black text-[#f5eedf] uppercase">
                 Published articles load from the hosted news catalog. Missing or failed reads stay
                 visibly empty.
               </p>
@@ -140,7 +140,7 @@ export function NewsPage() {
       </div>
 
       {state.status === "error" ? (
-        <div className="neo-copy flex flex-wrap items-center gap-3 border-[3px] border-black bg-[#f5d6d9] p-3 text-[10px] font-black uppercase leading-5 text-[#77101f] shadow-[3px_3px_0_#171411]">
+        <div className="neo-copy flex flex-wrap items-center gap-3 border-[3px] border-black bg-[#f5d6d9] p-3 text-[10px] leading-5 font-black text-[#77101f] uppercase shadow-[3px_3px_0_#171411]">
           <AlertTriangle className="h-5 w-5 shrink-0" />
           <span className="min-w-0 flex-1">Hosted news unavailable: {sentence(state.error)}.</span>
           <button
@@ -159,7 +159,7 @@ export function NewsPage() {
       {featured ? (
         <article className="grid gap-4 border-4 border-black bg-[#f5eedf] shadow-[6px_6px_0_#171411] lg:grid-cols-[340px_minmax(0,1fr)]">
           <div
-            className={`relative min-h-[220px] border-b-4 border-black lg:border-b-0 lg:border-r-4 ${artClasses[0]}`}
+            className={`relative min-h-[220px] border-b-4 border-black lg:border-r-4 lg:border-b-0 ${artClasses[0]}`}
           >
             <div className="absolute inset-0 bg-[radial-gradient(circle,rgba(255,249,237,0.18)_1px,transparent_1px)] bg-[length:8px_8px]" />
             <div className="absolute bottom-4 left-4 border-2 border-black bg-[#b7102a] px-3 py-1 text-white shadow-[2px_2px_0_#171411]">
@@ -167,13 +167,13 @@ export function NewsPage() {
             </div>
           </div>
           <div className="min-w-0 p-4">
-            <p className="neo-copy text-[10px] font-black uppercase tracking-[0.12em] text-[#087d6d]">
+            <p className="neo-copy text-[10px] font-black tracking-[0.12em] text-[#087d6d] uppercase">
               {formatDate(featured.publishedAt)}
             </p>
             <h2 className="neo-title mt-2 text-4xl leading-none text-[#171411] md:text-5xl">
               {featured.title}
             </h2>
-            <p className="neo-copy mt-3 max-w-3xl text-[12px] font-black uppercase leading-5 text-[#5b403f]">
+            <p className="neo-copy mt-3 max-w-3xl text-[12px] leading-5 font-black text-[#5b403f] uppercase">
               {excerptFor(featured)}
             </p>
             <TagRow tags={featured.tags} />
@@ -186,7 +186,7 @@ export function NewsPage() {
           <div>
             <Newspaper className="mx-auto h-12 w-12 text-[#087d6d]" />
             <h2 className="neo-title mt-3 text-3xl leading-none text-[#171411]">No Bulletins</h2>
-            <p className="neo-copy mt-2 text-[10px] font-black uppercase text-[#5b403f]">
+            <p className="neo-copy mt-2 text-[10px] font-black text-[#5b403f] uppercase">
               No published news articles yet. Check back from the launcher board.
             </p>
           </div>
@@ -207,13 +207,13 @@ export function NewsPage() {
                 </span>
               </div>
               <div className="p-4">
-                <p className="neo-copy text-[9px] font-black uppercase tracking-[0.12em] text-[#b7102a]">
+                <p className="neo-copy text-[9px] font-black tracking-[0.12em] text-[#b7102a] uppercase">
                   {formatDate(item.publishedAt)}
                 </p>
-                <h3 className="mt-2 text-2xl font-black uppercase leading-tight text-[#171411]">
+                <h3 className="mt-2 text-2xl leading-tight font-black text-[#171411] uppercase">
                   {item.title}
                 </h3>
-                <p className="neo-copy mt-3 text-[10px] font-black uppercase leading-5 text-[#5b403f]">
+                <p className="neo-copy mt-3 text-[10px] leading-5 font-black text-[#5b403f] uppercase">
                   {excerptFor(item)}
                 </p>
                 <TagRow tags={item.tags} />
@@ -233,7 +233,7 @@ function TagRow({ tags }: { tags: string[] }) {
       {tags.map((tag) => (
         <span
           key={tag}
-          className="neo-copy border-2 border-black bg-[#8cf5e4] px-2 py-1 text-[9px] font-black uppercase text-[#171411] shadow-[2px_2px_0_#171411]"
+          className="neo-copy border-2 border-black bg-[#8cf5e4] px-2 py-1 text-[9px] font-black text-[#171411] uppercase shadow-[2px_2px_0_#171411]"
         >
           {tag}
         </span>

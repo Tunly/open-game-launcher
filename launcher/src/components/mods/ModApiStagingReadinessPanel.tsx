@@ -27,13 +27,13 @@ export function ModApiStagingReadinessPanel({
     >
       <div className="flex flex-wrap items-start justify-between gap-3 border-b-4 border-black pb-3">
         <div>
-          <p className="neo-copy text-[10px] font-black uppercase tracking-[0.22em] text-[#b7102a]">
+          <p className="neo-copy text-[10px] font-black tracking-[0.22em] text-[#b7102a] uppercase">
             mod.io // CurseForge Preflight
           </p>
-          <h2 className="neo-title mt-1 flex items-center gap-2 text-3xl uppercase text-[#171411]">
+          <h2 className="neo-title mt-1 flex items-center gap-2 text-3xl text-[#171411] uppercase">
             <KeyRound aria-hidden="true" className="h-8 w-8" /> API Staging Readiness
           </h2>
-          <p className="neo-copy mt-2 max-w-3xl text-xs font-bold uppercase leading-5 text-[#5f574d]">
+          <p className="neo-copy mt-2 max-w-3xl text-xs leading-5 font-bold text-[#5f574d] uppercase">
             {readiness.summary}
           </p>
         </div>
@@ -52,11 +52,11 @@ export function ModApiStagingReadinessPanel({
 
       <div className="mt-4 grid gap-3 lg:grid-cols-[280px_minmax(0,1fr)_280px]">
         <div className="border-2 border-black bg-[#efe3cf] p-3 shadow-[3px_3px_0_#171411]">
-          <p className="neo-copy text-[10px] font-black uppercase text-[#5f574d]">Staging Score</p>
-          <p className="neo-title mt-1 text-5xl uppercase text-[#171411]">
+          <p className="neo-copy text-[10px] font-black text-[#5f574d] uppercase">Staging Score</p>
+          <p className="neo-title mt-1 text-5xl text-[#171411] uppercase">
             {readiness.readyCount}/{readiness.gates.length}
           </p>
-          <p className="neo-copy mt-2 text-[10px] font-black uppercase leading-5 text-[#5f574d]">
+          <p className="neo-copy mt-2 text-[10px] leading-5 font-black text-[#5f574d] uppercase">
             Next: {readiness.nextAction}
           </p>
           <div className="mt-3 h-3 border-2 border-black bg-[#fff9ed]">
@@ -71,16 +71,16 @@ export function ModApiStagingReadinessPanel({
         </div>
 
         <div className="border-2 border-black bg-[#171411] p-3 text-[#fff9ed] shadow-[3px_3px_0_#b7102a]">
-          <p className="neo-copy flex items-center gap-2 text-[10px] font-black uppercase text-[#8cf5e4]">
+          <p className="neo-copy flex items-center gap-2 text-[10px] font-black text-[#8cf5e4] uppercase">
             <ShieldCheck aria-hidden="true" className="h-4 w-4" /> Provider Guard
           </p>
-          <p className="neo-copy mt-2 border-2 border-[#fff9ed] bg-[#2a221b] px-3 py-2 text-[9px] font-black uppercase leading-5">
+          <p className="neo-copy mt-2 border-2 border-[#fff9ed] bg-[#2a221b] px-3 py-2 text-[9px] leading-5 font-black uppercase">
             {readiness.guardCopy}
           </p>
           <div className="mt-3 grid gap-2">
             {readiness.guards.map((guard) => (
               <p
-                className="neo-copy border-2 border-[#fff9ed] bg-[#2a221b] px-3 py-2 text-[9px] font-black uppercase leading-5"
+                className="neo-copy border-2 border-[#fff9ed] bg-[#2a221b] px-3 py-2 text-[9px] leading-5 font-black uppercase"
                 key={guard}
               >
                 {guard}
@@ -106,10 +106,10 @@ function ModApiStagingPolicyCard({ policy }: { policy: ModApiStagingPolicyEviden
     <div className="mt-4 border-2 border-black bg-[#fff9ed] p-3 shadow-[3px_3px_0_#171411]">
       <div className="flex flex-wrap items-start justify-between gap-3 border-b-2 border-black pb-3">
         <div>
-          <p className="neo-copy text-[10px] font-black uppercase tracking-[0.18em] text-[#087d6d]">
+          <p className="neo-copy text-[10px] font-black tracking-[0.18em] text-[#087d6d] uppercase">
             Local Policy Packet
           </p>
-          <h3 className="neo-title mt-1 flex items-center gap-2 text-2xl uppercase text-[#171411]">
+          <h3 className="neo-title mt-1 flex items-center gap-2 text-2xl text-[#171411] uppercase">
             <ShieldCheck aria-hidden="true" className="h-6 w-6" />
             {policy.label}
           </h3>
@@ -123,7 +123,7 @@ function ModApiStagingPolicyCard({ policy }: { policy: ModApiStagingPolicyEviden
         </span>
       </div>
 
-      <p className="neo-copy mt-3 border-2 border-black bg-[#8cf5e4] px-3 py-2 text-[9px] font-black uppercase leading-5 text-[#171411]">
+      <p className="neo-copy mt-3 border-2 border-black bg-[#8cf5e4] px-3 py-2 text-[9px] leading-5 font-black text-[#171411] uppercase">
         {policy.guardCopy}
       </p>
 
@@ -136,7 +136,7 @@ function ModApiStagingPolicyCard({ policy }: { policy: ModApiStagingPolicyEviden
       <div className="mt-3 grid gap-2 md:grid-cols-3">
         {policy.guards.map((guard) => (
           <p
-            className="neo-copy border-2 border-black bg-[#171411] px-3 py-2 text-[9px] font-black uppercase leading-5 text-[#fff9ed]"
+            className="neo-copy border-2 border-black bg-[#171411] px-3 py-2 text-[9px] leading-5 font-black text-[#fff9ed] uppercase"
             key={guard}
           >
             {guard}
@@ -150,7 +150,7 @@ function ModApiStagingPolicyCard({ policy }: { policy: ModApiStagingPolicyEviden
 function ModApiStagingProviderRuleCard({ rule }: { rule: ModApiStagingPolicyProviderRule }) {
   return (
     <article className="border-2 border-black bg-[#f5eedf] p-3 shadow-[2px_2px_0_#171411]">
-      <p className="neo-copy text-[9px] font-black uppercase tracking-[0.14em] text-[#5f574d]">
+      <p className="neo-copy text-[9px] font-black tracking-[0.14em] text-[#5f574d] uppercase">
         {rule.provider === "modio" ? "mod.io" : "CurseForge"}
       </p>
       <div className="mt-3 grid gap-2">
@@ -166,7 +166,7 @@ function ModApiStagingProviderRuleCard({ rule }: { rule: ModApiStagingPolicyProv
 
 function PolicyLine({ label, value }: { label: string; value: string }) {
   return (
-    <p className="neo-copy border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#171411]">
+    <p className="neo-copy border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] leading-4 font-black text-[#171411] uppercase">
       <span className="text-[#b7102a]">{label}:</span> {value}
     </p>
   );
@@ -177,10 +177,10 @@ function ModProviderResponseReviewGrid({ reviews }: { reviews: ModApiStagingResp
     <div className="mt-4 border-2 border-black bg-[#efe3cf] p-3 shadow-[3px_3px_0_#171411]">
       <div className="flex flex-wrap items-start justify-between gap-3 border-b-2 border-black pb-3">
         <div>
-          <p className="neo-copy text-[10px] font-black uppercase tracking-[0.18em] text-[#b7102a]">
+          <p className="neo-copy text-[10px] font-black tracking-[0.18em] text-[#b7102a] uppercase">
             Local Response Fixture
           </p>
-          <h3 className="neo-title mt-1 flex items-center gap-2 text-2xl uppercase text-[#171411]">
+          <h3 className="neo-title mt-1 flex items-center gap-2 text-2xl text-[#171411] uppercase">
             <Search aria-hidden="true" className="h-6 w-6" />
             Provider Response Review
           </h3>
@@ -198,10 +198,10 @@ function ModProviderResponseReviewGrid({ reviews }: { reviews: ModApiStagingResp
           >
             <div className="flex flex-wrap items-start justify-between gap-2">
               <div>
-                <p className="neo-copy text-[9px] font-black uppercase tracking-[0.14em] text-[#5f574d]">
+                <p className="neo-copy text-[9px] font-black tracking-[0.14em] text-[#5f574d] uppercase">
                   {review.provider === "modio" ? "mod.io" : "CurseForge"}
                 </p>
-                <h4 className="neo-title mt-1 text-xl uppercase text-[#171411]">{review.label}</h4>
+                <h4 className="neo-title mt-1 text-xl text-[#171411] uppercase">{review.label}</h4>
               </div>
               <span
                 className={`neo-copy border-2 border-black px-2 py-1 text-[8px] font-black uppercase shadow-[1px_1px_0_#171411] ${statusClass(
@@ -211,7 +211,7 @@ function ModProviderResponseReviewGrid({ reviews }: { reviews: ModApiStagingResp
                 {review.status}
               </span>
             </div>
-            <p className="neo-copy mt-2 text-[10px] font-black uppercase leading-5 text-[#5f574d]">
+            <p className="neo-copy mt-2 text-[10px] leading-5 font-black text-[#5f574d] uppercase">
               {review.detail}
             </p>
             <ResponseReviewChipList label="Safe fields" values={review.safeFields} />
@@ -220,10 +220,10 @@ function ModProviderResponseReviewGrid({ reviews }: { reviews: ModApiStagingResp
               tone="blocked"
               values={review.blockedFields}
             />
-            <p className="neo-copy mt-3 border-2 border-black bg-[#8cf5e4] px-3 py-2 text-[9px] font-black uppercase leading-5 text-[#171411]">
+            <p className="neo-copy mt-3 border-2 border-black bg-[#8cf5e4] px-3 py-2 text-[9px] leading-5 font-black text-[#171411] uppercase">
               {review.handoffPolicy}
             </p>
-            <p className="neo-copy mt-2 border-2 border-black bg-[#171411] px-3 py-2 text-[9px] font-black uppercase leading-5 text-[#fff9ed]">
+            <p className="neo-copy mt-2 border-2 border-black bg-[#171411] px-3 py-2 text-[9px] leading-5 font-black text-[#fff9ed] uppercase">
               {review.redaction}
             </p>
           </article>
@@ -244,7 +244,7 @@ function ResponseReviewChipList({
 }) {
   return (
     <div className="mt-3">
-      <p className="neo-copy text-[8px] font-black uppercase tracking-[0.12em] text-[#5f574d]">
+      <p className="neo-copy text-[8px] font-black tracking-[0.12em] text-[#5f574d] uppercase">
         {label}
       </p>
       <div className="mt-1 flex flex-wrap gap-1.5">
@@ -268,10 +268,10 @@ function ModProviderStagingProbeCard({ probe }: { probe: ModProviderStagingProbe
     <div className="mt-4 border-2 border-black bg-[#fff9ed] p-3 shadow-[3px_3px_0_#171411]">
       <div className="flex flex-wrap items-start justify-between gap-3 border-b-2 border-black pb-3">
         <div>
-          <p className="neo-copy text-[10px] font-black uppercase tracking-[0.18em] text-[#b7102a]">
+          <p className="neo-copy text-[10px] font-black tracking-[0.18em] text-[#b7102a] uppercase">
             Provider Staging Probe
           </p>
-          <h3 className="neo-title mt-1 flex items-center gap-2 text-2xl uppercase text-[#171411]">
+          <h3 className="neo-title mt-1 flex items-center gap-2 text-2xl text-[#171411] uppercase">
             <RadioTower aria-hidden="true" className="h-6 w-6" />
             {probe.provider === "modio" ? "mod.io" : "CurseForge"} Redacted Packet
           </h3>
@@ -285,7 +285,7 @@ function ModProviderStagingProbeCard({ probe }: { probe: ModProviderStagingProbe
         </span>
       </div>
 
-      <p className="neo-copy mt-3 border-2 border-black bg-[#8cf5e4] px-3 py-2 text-[10px] font-black uppercase leading-5 text-[#171411]">
+      <p className="neo-copy mt-3 border-2 border-black bg-[#8cf5e4] px-3 py-2 text-[10px] leading-5 font-black text-[#171411] uppercase">
         {probe.message}
       </p>
 
@@ -296,14 +296,14 @@ function ModProviderStagingProbeCard({ probe }: { probe: ModProviderStagingProbe
         <ProbeStat label="App Handoffs" value={String(probe.providerAppHandoffCount)} />
       </div>
 
-      <p className="neo-copy mt-3 break-all border-2 border-black bg-[#171411] px-3 py-2 text-[9px] font-black uppercase leading-5 text-[#fff9ed]">
+      <p className="neo-copy mt-3 border-2 border-black bg-[#171411] px-3 py-2 text-[9px] leading-5 font-black break-all text-[#fff9ed] uppercase">
         {probe.redactedRequest}
       </p>
 
       <div className="mt-3 grid gap-2 md:grid-cols-2">
         {probe.guards.map((guard) => (
           <p
-            className="neo-copy border-2 border-black bg-[#efe3cf] px-3 py-2 text-[9px] font-black uppercase leading-5 text-[#171411]"
+            className="neo-copy border-2 border-black bg-[#efe3cf] px-3 py-2 text-[9px] leading-5 font-black text-[#171411] uppercase"
             key={guard}
           >
             {guard}
@@ -317,10 +317,10 @@ function ModProviderStagingProbeCard({ probe }: { probe: ModProviderStagingProbe
 function ProbeStat({ label, value }: { label: string; value: string }) {
   return (
     <div className="border-2 border-black bg-[#f5eedf] p-2 shadow-[2px_2px_0_#171411]">
-      <p className="neo-copy text-[8px] font-black uppercase tracking-[0.12em] text-[#5f574d]">
+      <p className="neo-copy text-[8px] font-black tracking-[0.12em] text-[#5f574d] uppercase">
         {label}
       </p>
-      <p className="neo-title mt-1 text-3xl uppercase text-[#171411]">{value}</p>
+      <p className="neo-title mt-1 text-3xl text-[#171411] uppercase">{value}</p>
     </div>
   );
 }
@@ -334,22 +334,22 @@ function ModApiStagingGateCard({ gate }: { gate: ModApiStagingGate }) {
     >
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="neo-copy text-[9px] font-black uppercase tracking-[0.16em] text-[#5f574d]">
+          <p className="neo-copy text-[9px] font-black tracking-[0.16em] text-[#5f574d] uppercase">
             Provider Gate
           </p>
-          <h3 className="mt-1 flex items-center gap-1.5 text-base font-black uppercase leading-tight text-[#171411]">
+          <h3 className="mt-1 flex items-center gap-1.5 text-base leading-tight font-black text-[#171411] uppercase">
             <Search aria-hidden="true" className="h-4 w-4 shrink-0" />
             <span>{gate.label}</span>
           </h3>
         </div>
-        <span className="neo-copy border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] font-black uppercase text-[#171411]">
+        <span className="neo-copy border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] font-black text-[#171411] uppercase">
           {gate.status}
         </span>
       </div>
-      <p className="neo-copy mt-3 text-[10px] font-black uppercase leading-5 text-[#5f574d]">
+      <p className="neo-copy mt-3 text-[10px] leading-5 font-black text-[#5f574d] uppercase">
         {gate.detail}
       </p>
-      <p className="neo-copy mt-3 border-2 border-black bg-[#fff9ed] px-2 py-1 text-[9px] font-black uppercase leading-4 text-[#171411]">
+      <p className="neo-copy mt-3 border-2 border-black bg-[#fff9ed] px-2 py-1 text-[9px] leading-4 font-black text-[#171411] uppercase">
         {gate.action}
       </p>
     </article>

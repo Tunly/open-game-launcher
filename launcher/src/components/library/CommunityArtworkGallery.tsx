@@ -87,17 +87,17 @@ export function CommunityArtworkGallery({
     >
       <div className="mb-2 flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <span className="neo-copy block text-[9px] font-black uppercase text-[#171411]">
+          <span className="neo-copy block text-[9px] font-black text-[#171411] uppercase">
             Community Art Deck
           </span>
-          <span className="neo-copy block text-[8px] font-black uppercase text-[#655f58]">
+          <span className="neo-copy block text-[8px] font-black text-[#655f58] uppercase">
             {hostedStatus?.loading
               ? "Syncing Hosted Deck"
               : hasHostedCandidates
                 ? "Hosted + Local Votes"
                 : "Local Votes"}
           </span>
-          <span className="neo-copy mt-1 block text-[8px] font-black uppercase leading-4 text-[#655f58]">
+          <span className="neo-copy mt-1 block text-[8px] leading-4 font-black text-[#655f58] uppercase">
             {hostedStatus?.message ??
               (hasHostedCandidates
                 ? "Approved hosted rows use Supabase votes, reports, moderation, and ranking. Local fallback rows keep browser-local votes."
@@ -105,7 +105,7 @@ export function CommunityArtworkGallery({
           </span>
         </div>
         <span
-          className={`inline-flex items-center gap-1 border-2 border-black px-1.5 py-0.5 text-[8px] font-black uppercase text-[#171411] ${
+          className={`inline-flex items-center gap-1 border-2 border-black px-1.5 py-0.5 text-[8px] font-black text-[#171411] uppercase ${
             hostedStatus?.mode === "hosted" ? "bg-[#8cf5e4]" : "bg-[#efe3cf]"
           }`}
         >
@@ -136,10 +136,10 @@ export function CommunityArtworkGallery({
                 />
               </span>
               <span className="min-w-0">
-                <span className="block truncate text-[9px] font-black uppercase text-[#171411]">
+                <span className="block truncate text-[9px] font-black text-[#171411] uppercase">
                   {candidate.title}
                 </span>
-                <span className="block truncate text-[8px] font-black uppercase text-[#b7102a]">
+                <span className="block truncate text-[8px] font-black text-[#b7102a] uppercase">
                   {getArtworkKindLabel(candidate.kind)} - {candidate.artist}
                 </span>
                 <span className="mt-1 flex flex-wrap gap-1">
@@ -204,7 +204,7 @@ export function CommunityArtworkGallery({
         })}
       </div>
       {voteMessage ? (
-        <p className="neo-copy mt-2 border-2 border-black bg-[#8cf5e4] p-1.5 text-[8px] font-black uppercase leading-4 text-[#171411]">
+        <p className="neo-copy mt-2 border-2 border-black bg-[#8cf5e4] p-1.5 text-[8px] leading-4 font-black text-[#171411] uppercase">
           {voteMessage}
         </p>
       ) : null}

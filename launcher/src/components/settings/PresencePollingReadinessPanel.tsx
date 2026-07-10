@@ -160,10 +160,10 @@ export function PresencePollingReadinessPanel({
     >
       <div className="flex flex-wrap items-center justify-between gap-3 border-b-4 border-black p-5">
         <div>
-          <p className="neo-copy text-[10px] font-bold uppercase text-[#55504a]">
+          <p className="neo-copy text-[10px] font-bold text-[#55504a] uppercase">
             Realtime Presence
           </p>
-          <h2 className="text-3xl font-black uppercase text-[#171411]">
+          <h2 className="text-3xl font-black text-[#171411] uppercase">
             Presence Polling Readiness
           </h2>
         </div>
@@ -192,11 +192,11 @@ export function PresencePollingReadinessPanel({
       </div>
 
       <div className="space-y-4 p-5">
-        <p className="neo-copy border-2 border-black bg-[#efe6d4] p-3 text-[10px] font-black uppercase leading-relaxed text-[#55504a] shadow-[2px_2px_0_#171411]">
+        <p className="neo-copy border-2 border-black bg-[#efe6d4] p-3 text-[10px] leading-relaxed font-black text-[#55504a] uppercase shadow-[2px_2px_0_#171411]">
           {readiness.summary}
         </p>
         {evidenceState.loading ? (
-          <p className="neo-copy border-2 border-black bg-[#fff9ed] p-2 text-[9px] font-black uppercase tracking-[0.08em] text-[#171411]">
+          <p className="neo-copy border-2 border-black bg-[#fff9ed] p-2 text-[9px] font-black tracking-[0.08em] text-[#171411] uppercase">
             Loading latest poll evidence...
           </p>
         ) : null}
@@ -250,17 +250,17 @@ function PresenceHostedCronStagingPacket({
     >
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
-          <p className="neo-copy text-[9px] font-black uppercase tracking-[0.14em] text-[#b7102a]">
+          <p className="neo-copy text-[9px] font-black tracking-[0.14em] text-[#b7102a] uppercase">
             Hosted Cron Staging Packet
           </p>
-          <p className="neo-copy mt-1 text-[9px] font-black uppercase leading-relaxed text-[#55504a]">
+          <p className="neo-copy mt-1 text-[9px] leading-relaxed font-black text-[#55504a] uppercase">
             Manual deploy-gate evidence stages poll-platform-presence before scheduler handoff. It
             does not claim a live scheduled run, provider bridge execution, user_presence writeback,
             or activity inserts.
           </p>
         </div>
         <span
-          className={`neo-copy border-2 border-black px-2 py-1 text-[8px] font-black uppercase text-[#171411] shadow-[1px_1px_0_#171411] ${statusClass(
+          className={`neo-copy border-2 border-black px-2 py-1 text-[8px] font-black text-[#171411] uppercase shadow-[1px_1px_0_#171411] ${statusClass(
             evidence.status,
           )}`}
         >
@@ -285,7 +285,7 @@ function PresenceHostedCronStagingPacket({
       <div className="mt-2 grid gap-1.5 md:grid-cols-3">
         {evidence.expectedNoWriteKeys.map((key) => (
           <p
-            className="neo-copy border-2 border-black bg-[#efe6d4] px-2 py-1 text-[8px] font-black uppercase leading-relaxed text-[#55504a]"
+            className="neo-copy border-2 border-black bg-[#efe6d4] px-2 py-1 text-[8px] leading-relaxed font-black text-[#55504a] uppercase"
             key={key}
           >
             {key}
@@ -293,7 +293,7 @@ function PresenceHostedCronStagingPacket({
         ))}
       </div>
 
-      <p className="neo-copy mt-2 border-2 border-black bg-[#efe6d4] px-2 py-1 text-[8px] font-black uppercase leading-relaxed text-[#55504a]">
+      <p className="neo-copy mt-2 border-2 border-black bg-[#efe6d4] px-2 py-1 text-[8px] leading-relaxed font-black text-[#55504a] uppercase">
         Runbook: {evidence.runbookPath}
       </p>
     </div>
@@ -302,7 +302,7 @@ function PresenceHostedCronStagingPacket({
 
 function PresenceStagingLine({ label, value }: { label: string; value: string }) {
   return (
-    <p className="neo-copy border-2 border-black bg-[#fbf4e7] px-2 py-1 text-[8px] font-black uppercase leading-relaxed text-[#55504a] [overflow-wrap:anywhere]">
+    <p className="neo-copy border-2 border-black bg-[#fbf4e7] px-2 py-1 text-[8px] leading-relaxed font-black [overflow-wrap:anywhere] text-[#55504a] uppercase">
       {label}: {value}
     </p>
   );
@@ -310,7 +310,7 @@ function PresenceStagingLine({ label, value }: { label: string; value: string })
 
 function PresenceStagingBlock({ label, value }: { label: string; value: string }) {
   return (
-    <p className="neo-copy border-2 border-black bg-[#efe6d4] px-2 py-1 text-[8px] font-black uppercase leading-relaxed text-[#55504a] [overflow-wrap:anywhere]">
+    <p className="neo-copy border-2 border-black bg-[#efe6d4] px-2 py-1 text-[8px] leading-relaxed font-black [overflow-wrap:anywhere] text-[#55504a] uppercase">
       {label}: {value}
     </p>
   );
@@ -332,16 +332,16 @@ function PresenceProviderBridgeMatrix({
     >
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
-          <p className="neo-copy text-[9px] font-black uppercase tracking-[0.14em] text-[#b7102a]">
+          <p className="neo-copy text-[9px] font-black tracking-[0.14em] text-[#b7102a] uppercase">
             Provider Bridge Contract Matrix
           </p>
-          <p className="neo-copy mt-1 text-[9px] font-black uppercase leading-relaxed text-[#55504a]">
+          <p className="neo-copy mt-1 text-[9px] leading-relaxed font-black text-[#55504a] uppercase">
             Local request/response fixtures review Epic, GOG, EA, Xbox, Battle.net, and Ubisoft
             bridge boundaries. No live provider coverage, user_presence writeback, activity insert,
             or token exposure is claimed.
           </p>
         </div>
-        <span className="neo-copy border-2 border-black bg-[#8cf5e4] px-2 py-1 text-[8px] font-black uppercase text-[#171411] shadow-[1px_1px_0_#171411]">
+        <span className="neo-copy border-2 border-black bg-[#8cf5e4] px-2 py-1 text-[8px] font-black text-[#171411] uppercase shadow-[1px_1px_0_#171411]">
           {readyCount}/{totalCount} staged
         </span>
       </div>
@@ -352,7 +352,7 @@ function PresenceProviderBridgeMatrix({
             <tr>
               {["Platform", "Request", "Response", "Evidence", "Token", "Result"].map((label) => (
                 <th
-                  className="neo-copy border-r-2 border-[#fff9ed] px-2 py-2 text-[8px] font-black uppercase tracking-[0.12em] last:border-r-0"
+                  className="neo-copy border-r-2 border-[#fff9ed] px-2 py-2 text-[8px] font-black tracking-[0.12em] uppercase last:border-r-0"
                   key={label}
                   scope="col"
                 >
@@ -367,7 +367,7 @@ function PresenceProviderBridgeMatrix({
             ) : (
               <tr>
                 <td
-                  className="neo-copy px-2 py-3 text-[9px] font-black uppercase leading-relaxed text-[#55504a]"
+                  className="neo-copy px-2 py-3 text-[9px] leading-relaxed font-black text-[#55504a] uppercase"
                   colSpan={6}
                 >
                   No non-Steam provider bridge contract fixtures staged.
@@ -384,19 +384,19 @@ function PresenceProviderBridgeMatrix({
 function PresenceProviderBridgeMatrixRow({ row }: { row: PresenceProviderBridgeContractRow }) {
   return (
     <tr className="border-t-2 border-black">
-      <td className="neo-copy border-r-2 border-black px-2 py-2 text-[9px] font-black uppercase text-[#171411]">
+      <td className="neo-copy border-r-2 border-black px-2 py-2 text-[9px] font-black text-[#171411] uppercase">
         {row.platform}
       </td>
-      <td className="neo-copy border-r-2 border-black px-2 py-2 text-[8px] font-black uppercase leading-relaxed text-[#55504a] [overflow-wrap:anywhere]">
+      <td className="neo-copy border-r-2 border-black px-2 py-2 text-[8px] leading-relaxed font-black [overflow-wrap:anywhere] text-[#55504a] uppercase">
         {row.requestShape}
       </td>
-      <td className="neo-copy border-r-2 border-black px-2 py-2 text-[8px] font-black uppercase leading-relaxed text-[#55504a] [overflow-wrap:anywhere]">
+      <td className="neo-copy border-r-2 border-black px-2 py-2 text-[8px] leading-relaxed font-black [overflow-wrap:anywhere] text-[#55504a] uppercase">
         {row.responseShape}
       </td>
-      <td className="neo-copy border-r-2 border-black px-2 py-2 text-[8px] font-black uppercase leading-relaxed text-[#55504a] [overflow-wrap:anywhere]">
+      <td className="neo-copy border-r-2 border-black px-2 py-2 text-[8px] leading-relaxed font-black [overflow-wrap:anywhere] text-[#55504a] uppercase">
         {row.evidence}
       </td>
-      <td className="neo-copy border-r-2 border-black px-2 py-2 text-[8px] font-black uppercase leading-relaxed text-[#55504a] [overflow-wrap:anywhere]">
+      <td className="neo-copy border-r-2 border-black px-2 py-2 text-[8px] leading-relaxed font-black [overflow-wrap:anywhere] text-[#55504a] uppercase">
         {row.tokenHandling}
       </td>
       <td className="px-2 py-2">
@@ -420,15 +420,15 @@ function PresenceDryRunEvidenceLedger({ rows }: { rows: PresencePollDryRunEviden
     >
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div>
-          <p className="neo-copy text-[9px] font-black uppercase tracking-[0.14em] text-[#b7102a]">
+          <p className="neo-copy text-[9px] font-black tracking-[0.14em] text-[#b7102a] uppercase">
             Trusted Dry-Run Review
           </p>
-          <p className="neo-copy mt-1 text-[9px] font-black uppercase leading-relaxed text-[#55504a]">
+          <p className="neo-copy mt-1 text-[9px] leading-relaxed font-black text-[#55504a] uppercase">
             Secret-gated dry-run packets can be reviewed before hosted cron writes. They do not
             claim user_presence writeback, activity inserts, or live provider coverage.
           </p>
         </div>
-        <span className="neo-copy border-2 border-black bg-[#8cf5e4] px-2 py-1 text-[8px] font-black uppercase text-[#171411] shadow-[1px_1px_0_#171411]">
+        <span className="neo-copy border-2 border-black bg-[#8cf5e4] px-2 py-1 text-[8px] font-black text-[#171411] uppercase shadow-[1px_1px_0_#171411]">
           Review only
         </span>
       </div>
@@ -437,7 +437,7 @@ function PresenceDryRunEvidenceLedger({ rows }: { rows: PresencePollDryRunEviden
         {rows.length > 0 ? (
           rows.map((row) => <PresenceDryRunEvidenceCard key={row.runId} row={row} />)
         ) : (
-          <p className="neo-copy border-2 border-black bg-[#efe6d4] px-2 py-1 text-[9px] font-black uppercase leading-relaxed text-[#55504a]">
+          <p className="neo-copy border-2 border-black bg-[#efe6d4] px-2 py-1 text-[9px] leading-relaxed font-black text-[#55504a] uppercase">
             No trusted dry-run packet staged.
           </p>
         )}
@@ -450,10 +450,10 @@ function PresenceDryRunEvidenceCard({ row }: { row: PresencePollDryRunEvidenceRo
   return (
     <article className="border-2 border-black bg-[#efe6d4] p-2 shadow-[1px_1px_0_#171411]">
       <div className="flex flex-wrap items-start justify-between gap-2">
-        <p className="neo-copy text-[8px] font-black uppercase tracking-[0.12em] text-[#171411]">
+        <p className="neo-copy text-[8px] font-black tracking-[0.12em] text-[#171411] uppercase">
           {row.platform} // {row.writeMode}
         </p>
-        <span className="neo-copy border-2 border-black bg-[#fff9ed] px-1.5 py-0.5 text-[8px] font-black uppercase text-[#171411]">
+        <span className="neo-copy border-2 border-black bg-[#fff9ed] px-1.5 py-0.5 text-[8px] font-black text-[#171411] uppercase">
           {row.runId}
         </span>
       </div>
@@ -469,7 +469,7 @@ function PresenceDryRunEvidenceCard({ row }: { row: PresencePollDryRunEvidenceRo
 
 function PresenceDryRunLine({ label, value }: { label: string; value: string }) {
   return (
-    <p className="neo-copy border-2 border-black bg-[#fbf4e7] px-2 py-1 text-[8px] font-black uppercase leading-relaxed text-[#55504a] [overflow-wrap:anywhere]">
+    <p className="neo-copy border-2 border-black bg-[#fbf4e7] px-2 py-1 text-[8px] leading-relaxed font-black [overflow-wrap:anywhere] text-[#55504a] uppercase">
       {label}: {value}
     </p>
   );
@@ -478,8 +478,8 @@ function PresenceDryRunLine({ label, value }: { label: string; value: string }) 
 function PresenceReadinessMetric({ label, value }: { label: string; value: string }) {
   return (
     <div className="border-2 border-black bg-[#fbf4e7] p-3 shadow-[2px_2px_0_#171411]">
-      <span className="neo-copy block text-[9px] font-black uppercase text-[#55504a]">{label}</span>
-      <strong className="mt-1 block text-2xl font-black uppercase text-[#171411]">{value}</strong>
+      <span className="neo-copy block text-[9px] font-black text-[#55504a] uppercase">{label}</span>
+      <strong className="mt-1 block text-2xl font-black text-[#171411] uppercase">{value}</strong>
     </div>
   );
 }
@@ -488,7 +488,7 @@ function PresenceReadinessCheckCard({ check }: { check: PresencePollingReadiness
   return (
     <article className="border-2 border-black bg-[#efe6d4] p-3 shadow-[2px_2px_0_#171411]">
       <div className="flex items-start justify-between gap-2">
-        <h3 className="text-sm font-black uppercase leading-none text-[#171411]">{check.label}</h3>
+        <h3 className="text-sm leading-none font-black text-[#171411] uppercase">{check.label}</h3>
         <span
           className={`neo-copy shrink-0 border-2 border-black px-2 py-1 text-[8px] font-black uppercase shadow-[1px_1px_0_#171411] ${statusClass(
             check.status,
@@ -497,7 +497,7 @@ function PresenceReadinessCheckCard({ check }: { check: PresencePollingReadiness
           {check.status}
         </span>
       </div>
-      <p className="neo-copy mt-2 text-[9px] font-black uppercase leading-relaxed text-[#55504a]">
+      <p className="neo-copy mt-2 text-[9px] leading-relaxed font-black text-[#55504a] uppercase">
         {check.detail}
       </p>
       {check.status === "pass" ? (

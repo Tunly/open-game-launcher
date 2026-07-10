@@ -33,10 +33,10 @@ export function CrossStoreSaveSyncPlanner({ plan }: { plan: CrossStoreSaveSyncPl
       className="neo-dots border-4 border-black bg-[#fbf4e7] shadow-[3px_3px_0_#171411]"
     >
       <div className="border-b-2 border-black bg-[#171411] px-3 py-2 text-[#fbf4e7]">
-        <p className="neo-copy text-[9px] font-black uppercase tracking-[0.14em] text-[#8cf5e4]">
+        <p className="neo-copy text-[9px] font-black tracking-[0.14em] text-[#8cf5e4] uppercase">
           Local Save Review
         </p>
-        <h2 className="mt-1 flex items-center gap-2 text-[15px] font-black uppercase leading-none">
+        <h2 className="mt-1 flex items-center gap-2 text-[15px] leading-none font-black uppercase">
           <ArrowRightLeft aria-hidden="true" className="h-4 w-4" />
           Cross-Store Saves
         </h2>
@@ -46,10 +46,10 @@ export function CrossStoreSaveSyncPlanner({ plan }: { plan: CrossStoreSaveSyncPl
         <div className="border-2 border-black bg-[#efe3cf] p-3 shadow-[2px_2px_0_#171411]">
           <div className="flex items-start justify-between gap-2">
             <div className="min-w-0">
-              <p className="neo-copy text-[9px] font-black uppercase text-[#5b403f]">
+              <p className="neo-copy text-[9px] font-black text-[#5b403f] uppercase">
                 {plan.title}
               </p>
-              <p className="neo-copy mt-2 text-[9px] font-black uppercase leading-4 text-[#5b403f]">
+              <p className="neo-copy mt-2 text-[9px] leading-4 font-black text-[#5b403f] uppercase">
                 {plan.summary}
               </p>
             </div>
@@ -82,13 +82,13 @@ export function CrossStoreSaveSyncPlanner({ plan }: { plan: CrossStoreSaveSyncPl
             <SaveLaneRow key={lane.id} lane={lane} />
           ))}
           {plan.lanes.length > 2 ? (
-            <p className="neo-copy border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#5b403f] shadow-[2px_2px_0_#171411]">
+            <p className="neo-copy border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] leading-4 font-black text-[#5b403f] uppercase shadow-[2px_2px_0_#171411]">
               {plan.lanes.length - 2} more local lane{plan.lanes.length - 2 === 1 ? "" : "s"} stay
               in the review plan.
             </p>
           ) : null}
           {plan.lanes.length === 0 ? (
-            <p className="neo-copy border-2 border-black bg-[#fff9ed] px-2 py-2 text-[9px] font-black uppercase leading-4 text-[#5b403f] shadow-[2px_2px_0_#171411]">
+            <p className="neo-copy border-2 border-black bg-[#fff9ed] px-2 py-2 text-[9px] leading-4 font-black text-[#5b403f] uppercase shadow-[2px_2px_0_#171411]">
               No source/target save lane can be planned from the selected local metadata.
             </p>
           ) : null}
@@ -125,14 +125,14 @@ export function CrossStoreSaveSyncPlanner({ plan }: { plan: CrossStoreSaveSyncPl
         ) : null}
 
         <div className="border-2 border-black bg-[#171411] p-3 text-[#fbf4e7] shadow-[2px_2px_0_#b7102a]">
-          <p className="neo-copy flex items-center gap-2 text-[9px] font-black uppercase text-[#8cf5e4]">
+          <p className="neo-copy flex items-center gap-2 text-[9px] font-black text-[#8cf5e4] uppercase">
             <ShieldCheck aria-hidden="true" className="h-4 w-4" />
             No-Write Guard
           </p>
           <div className="mt-2 grid gap-1.5">
             {plan.guards.map((item) => (
               <p
-                className="neo-copy border-2 border-[#fbf4e7] bg-[#2a221b] px-2 py-1 text-[8px] font-black uppercase leading-4"
+                className="neo-copy border-2 border-[#fbf4e7] bg-[#2a221b] px-2 py-1 text-[8px] leading-4 font-black uppercase"
                 key={item}
               >
                 {item}
@@ -143,14 +143,14 @@ export function CrossStoreSaveSyncPlanner({ plan }: { plan: CrossStoreSaveSyncPl
 
         {[...plan.blockers, ...plan.warnings].length > 0 ? (
           <div className="border-2 border-black bg-[#f3e8d7] p-2 shadow-[2px_2px_0_#171411]">
-            <p className="neo-copy flex items-center gap-2 text-[9px] font-black uppercase text-[#b7102a]">
+            <p className="neo-copy flex items-center gap-2 text-[9px] font-black text-[#b7102a] uppercase">
               <Cloud aria-hidden="true" className="h-4 w-4" />
               Manual Review
             </p>
             <div className="mt-2 grid gap-1.5">
               {[...plan.blockers, ...plan.warnings].slice(0, 3).map((item) => (
                 <p
-                  className="neo-copy border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#171411]"
+                  className="neo-copy border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] leading-4 font-black text-[#171411] uppercase"
                   key={item}
                 >
                   {item}
@@ -173,15 +173,15 @@ function MigrationSessionRehearsalPanel({
     <div className="border-2 border-black bg-[#fff9ed] p-3 shadow-[2px_2px_0_#171411]">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="neo-copy flex items-center gap-2 text-[9px] font-black uppercase text-[#087d6d]">
+          <p className="neo-copy flex items-center gap-2 text-[9px] font-black text-[#087d6d] uppercase">
             <ListChecks aria-hidden="true" className="h-4 w-4" />
             Migration Session Rehearsal
           </p>
-          <p className="neo-copy mt-2 text-[8px] font-black uppercase leading-4 text-[#5b403f]">
+          <p className="neo-copy mt-2 text-[8px] leading-4 font-black text-[#5b403f] uppercase">
             {proof.summary} {proof.guard}
           </p>
         </div>
-        <span className="neo-copy border-2 border-black bg-[#f7d04a] px-2 py-1 text-[8px] font-black uppercase text-[#171411] shadow-[1px_1px_0_#171411]">
+        <span className="neo-copy border-2 border-black bg-[#f7d04a] px-2 py-1 text-[8px] font-black text-[#171411] uppercase shadow-[1px_1px_0_#171411]">
           Rehearsal Only
         </span>
       </div>
@@ -210,21 +210,21 @@ function MigrationSessionRehearsalPanel({
             key={step.id}
           >
             <div className="flex flex-wrap items-start justify-between gap-2">
-              <p className="neo-copy text-[8px] font-black uppercase tracking-[0.1em] text-[#5b403f]">
+              <p className="neo-copy text-[8px] font-black tracking-[0.1em] text-[#5b403f] uppercase">
                 {step.label}
               </p>
               <span
-                className={`neo-copy border-2 border-black px-1.5 py-0.5 text-[8px] font-black uppercase text-[#171411] ${
+                className={`neo-copy border-2 border-black px-1.5 py-0.5 text-[8px] font-black text-[#171411] uppercase ${
                   step.status === "local_evidence" ? "bg-[#8cf5e4]" : "bg-[#f7d04a]"
                 }`}
               >
                 {step.status === "local_evidence" ? "Local Evidence" : "External Blocked"}
               </span>
             </div>
-            <p className="neo-copy mt-2 border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#171411]">
+            <p className="neo-copy mt-2 border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] leading-4 font-black text-[#171411] uppercase">
               {step.evidence}
             </p>
-            <p className="neo-copy mt-2 text-[8px] font-black uppercase leading-4 text-[#5b403f]">
+            <p className="neo-copy mt-2 text-[8px] leading-4 font-black text-[#5b403f] uppercase">
               {step.action}
             </p>
           </article>
@@ -232,13 +232,13 @@ function MigrationSessionRehearsalPanel({
       </div>
 
       <div className="mt-3 border-2 border-black bg-[#171411] p-2 text-[#fbf4e7] shadow-[2px_2px_0_#b7102a]">
-        <p className="neo-copy text-[8px] font-black uppercase text-[#8cf5e4]">
+        <p className="neo-copy text-[8px] font-black text-[#8cf5e4] uppercase">
           Still Blocked After Rehearsal Packet
         </p>
         <div className="mt-2 grid gap-1.5">
           {proof.blockedAfterProof.map((item) => (
             <p
-              className="neo-copy border-2 border-[#fbf4e7] bg-[#2a221b] px-2 py-1 text-[8px] font-black uppercase leading-4"
+              className="neo-copy border-2 border-[#fbf4e7] bg-[#2a221b] px-2 py-1 text-[8px] leading-4 font-black uppercase"
               key={item}
             >
               {item}
@@ -259,17 +259,17 @@ function ProviderCloudContractPanel({
     <div className="border-2 border-black bg-[#8cf5e4] p-3 shadow-[2px_2px_0_#171411]">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="neo-copy flex items-center gap-2 text-[9px] font-black uppercase text-[#171411]">
+          <p className="neo-copy flex items-center gap-2 text-[9px] font-black text-[#171411] uppercase">
             <Cloud aria-hidden="true" className="h-4 w-4" />
             Provider Cloud Contract
           </p>
-          <p className="neo-copy mt-2 text-[8px] font-black uppercase leading-4 text-[#17413b]">
+          <p className="neo-copy mt-2 text-[8px] leading-4 font-black text-[#17413b] uppercase">
             {proof.entries.length} provider variant{proof.entries.length === 1 ? "" : "s"} need{" "}
             {proof.requiredContractCount} import/export contract
             {proof.requiredContractCount === 1 ? "" : "s"} for {proof.title}. {proof.guard}
           </p>
         </div>
-        <span className="neo-copy border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] font-black uppercase text-[#171411] shadow-[1px_1px_0_#171411]">
+        <span className="neo-copy border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] font-black text-[#171411] uppercase shadow-[1px_1px_0_#171411]">
           Transfer Blocked
         </span>
       </div>
@@ -296,26 +296,26 @@ function ProviderCloudContractPanel({
             key={entry.id}
           >
             <div className="flex flex-wrap items-start justify-between gap-2">
-              <p className="neo-copy text-[8px] font-black uppercase tracking-[0.1em] text-[#5b403f]">
+              <p className="neo-copy text-[8px] font-black tracking-[0.1em] text-[#5b403f] uppercase">
                 {entry.provider} // {entry.catalogKey}
               </p>
-              <span className="neo-copy border-2 border-black bg-[#f7d04a] px-1.5 py-0.5 text-[8px] font-black uppercase text-[#171411]">
+              <span className="neo-copy border-2 border-black bg-[#f7d04a] px-1.5 py-0.5 text-[8px] font-black text-[#171411] uppercase">
                 Contract Required
               </span>
             </div>
-            <p className="neo-copy mt-2 border-2 border-black bg-[#fbf4e7] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#171411]">
+            <p className="neo-copy mt-2 border-2 border-black bg-[#fbf4e7] px-2 py-1 text-[8px] leading-4 font-black text-[#171411] uppercase">
               Scope: {entry.accountScope}
             </p>
             <div className="mt-2 grid gap-1">
-              <p className="neo-copy border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#171411]">
+              <p className="neo-copy border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] leading-4 font-black text-[#171411] uppercase">
                 Export: {entry.exportContract}
               </p>
-              <p className="neo-copy border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#171411]">
+              <p className="neo-copy border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] leading-4 font-black text-[#171411] uppercase">
                 Import: {entry.importContract}
               </p>
               {entry.blockers.slice(0, 2).map((blocker) => (
                 <p
-                  className="neo-copy border-2 border-black bg-[#fbf4e7] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#5b403f]"
+                  className="neo-copy border-2 border-black bg-[#fbf4e7] px-2 py-1 text-[8px] leading-4 font-black text-[#5b403f] uppercase"
                   key={blocker}
                 >
                   {blocker}
@@ -327,20 +327,20 @@ function ProviderCloudContractPanel({
       </div>
 
       <div className="mt-3 border-2 border-black bg-[#171411] p-2 text-[#fbf4e7] shadow-[2px_2px_0_#b7102a]">
-        <p className="neo-copy text-[8px] font-black uppercase text-[#8cf5e4]">
+        <p className="neo-copy text-[8px] font-black text-[#8cf5e4] uppercase">
           Still Blocked After Contract Packet
         </p>
         <div className="mt-2 grid gap-1.5">
           {proof.blockedAfterProof.slice(0, 3).map((item) => (
             <p
-              className="neo-copy border-2 border-[#fbf4e7] bg-[#2a221b] px-2 py-1 text-[8px] font-black uppercase leading-4"
+              className="neo-copy border-2 border-[#fbf4e7] bg-[#2a221b] px-2 py-1 text-[8px] leading-4 font-black uppercase"
               key={item}
             >
               {item}
             </p>
           ))}
           {proof.blockedAfterProof.length > 3 ? (
-            <p className="neo-copy border-2 border-[#fbf4e7] bg-[#2a221b] px-2 py-1 text-[8px] font-black uppercase leading-4">
+            <p className="neo-copy border-2 border-[#fbf4e7] bg-[#2a221b] px-2 py-1 text-[8px] leading-4 font-black uppercase">
               {proof.blockedAfterProof.length - 3} more provider/live gate
               {proof.blockedAfterProof.length - 3 === 1 ? "" : "s"} remain.
             </p>
@@ -356,16 +356,16 @@ function ProviderCatalogProofPanel({ proof }: { proof: CrossStoreSaveProviderCat
     <div className="border-2 border-black bg-[#f7d04a] p-3 shadow-[2px_2px_0_#171411]">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="neo-copy flex items-center gap-2 text-[9px] font-black uppercase text-[#171411]">
+          <p className="neo-copy flex items-center gap-2 text-[9px] font-black text-[#171411] uppercase">
             <Database aria-hidden="true" className="h-4 w-4" />
             Provider Catalog
           </p>
-          <p className="neo-copy mt-2 text-[8px] font-black uppercase leading-4 text-[#5b403f]">
+          <p className="neo-copy mt-2 text-[8px] leading-4 font-black text-[#5b403f] uppercase">
             {proof.coveredVariantCount}/{proof.entries.length} variants have local catalog metadata
             for {proof.title}. {proof.guard}
           </p>
         </div>
-        <span className="neo-copy border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] font-black uppercase text-[#171411] shadow-[1px_1px_0_#171411]">
+        <span className="neo-copy border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] font-black text-[#171411] uppercase shadow-[1px_1px_0_#171411]">
           Local IDs
         </span>
       </div>
@@ -396,20 +396,20 @@ function ProviderCatalogProofPanel({ proof }: { proof: CrossStoreSaveProviderCat
             key={entry.id}
           >
             <div className="flex flex-wrap items-start justify-between gap-2">
-              <p className="neo-copy text-[8px] font-black uppercase tracking-[0.1em] text-[#5b403f]">
+              <p className="neo-copy text-[8px] font-black tracking-[0.1em] text-[#5b403f] uppercase">
                 {entry.provider} // {entry.catalogKey}
               </p>
-              <span className="neo-copy border-2 border-black bg-[#fbf4e7] px-1.5 py-0.5 text-[8px] font-black uppercase text-[#171411]">
+              <span className="neo-copy border-2 border-black bg-[#fbf4e7] px-1.5 py-0.5 text-[8px] font-black text-[#171411] uppercase">
                 {entry.status === "covered" ? "local covered" : "manual review"}
               </span>
             </div>
-            <p className="neo-copy mt-2 break-all border-2 border-black bg-[#fbf4e7] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#171411]">
+            <p className="neo-copy mt-2 border-2 border-black bg-[#fbf4e7] px-2 py-1 text-[8px] leading-4 font-black break-all text-[#171411] uppercase">
               External: {entry.externalId ?? "manual review"} // Saves: {entry.saveFileCount}
             </p>
             <div className="mt-2 grid gap-1">
               {entry.checks.slice(0, 2).map((check) => (
                 <p
-                  className="neo-copy border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#171411]"
+                  className="neo-copy border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] leading-4 font-black text-[#171411] uppercase"
                   key={check}
                 >
                   {check}
@@ -421,20 +421,20 @@ function ProviderCatalogProofPanel({ proof }: { proof: CrossStoreSaveProviderCat
       </div>
 
       <div className="mt-3 border-2 border-black bg-[#fff9ed] p-2 shadow-[1px_1px_0_#171411]">
-        <p className="neo-copy text-[8px] font-black uppercase text-[#087d6d]">
+        <p className="neo-copy text-[8px] font-black text-[#087d6d] uppercase">
           Local Pairing Matrix
         </p>
         <div className="mt-2 grid gap-1">
           {proof.pairings.slice(0, 2).map((pairing) => (
             <p
-              className="neo-copy break-all border-2 border-black bg-[#fbf4e7] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#171411]"
+              className="neo-copy border-2 border-black bg-[#fbf4e7] px-2 py-1 text-[8px] leading-4 font-black break-all text-[#171411] uppercase"
               key={pairing.id}
             >
               {pairing.label} // {pairing.sourceCatalogKey} -&gt; {pairing.targetCatalogKey}
             </p>
           ))}
           {proof.pairings.length > 2 ? (
-            <p className="neo-copy border-2 border-black bg-[#fbf4e7] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#5b403f]">
+            <p className="neo-copy border-2 border-black bg-[#fbf4e7] px-2 py-1 text-[8px] leading-4 font-black text-[#5b403f] uppercase">
               {proof.pairings.length - 2} more local catalog pairing
               {proof.pairings.length - 2 === 1 ? "" : "s"} stay in review.
             </p>
@@ -443,20 +443,20 @@ function ProviderCatalogProofPanel({ proof }: { proof: CrossStoreSaveProviderCat
       </div>
 
       <div className="mt-3 border-2 border-black bg-[#171411] p-2 text-[#fbf4e7] shadow-[2px_2px_0_#b7102a]">
-        <p className="neo-copy text-[8px] font-black uppercase text-[#8cf5e4]">
+        <p className="neo-copy text-[8px] font-black text-[#8cf5e4] uppercase">
           Still Blocked After Catalog Packet
         </p>
         <div className="mt-2 grid gap-1.5">
           {proof.blockedAfterProof.slice(0, 2).map((item) => (
             <p
-              className="neo-copy border-2 border-[#fbf4e7] bg-[#2a221b] px-2 py-1 text-[8px] font-black uppercase leading-4"
+              className="neo-copy border-2 border-[#fbf4e7] bg-[#2a221b] px-2 py-1 text-[8px] leading-4 font-black uppercase"
               key={item}
             >
               {item}
             </p>
           ))}
           {proof.blockedAfterProof.length > 2 ? (
-            <p className="neo-copy border-2 border-[#fbf4e7] bg-[#2a221b] px-2 py-1 text-[8px] font-black uppercase leading-4">
+            <p className="neo-copy border-2 border-[#fbf4e7] bg-[#2a221b] px-2 py-1 text-[8px] leading-4 font-black uppercase">
               {proof.blockedAfterProof.length - 2} more external catalog/migration gate
               {proof.blockedAfterProof.length - 2 === 1 ? "" : "s"} remain.
             </p>
@@ -476,16 +476,16 @@ function ProviderPathIdMappingProofPanel({
     <div className="border-2 border-black bg-[#8cf5e4] p-3 shadow-[2px_2px_0_#171411]">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="neo-copy flex items-center gap-2 text-[9px] font-black uppercase text-[#171411]">
+          <p className="neo-copy flex items-center gap-2 text-[9px] font-black text-[#171411] uppercase">
             <FileSearch aria-hidden="true" className="h-4 w-4" />
             Provider Path/ID Fixtures
           </p>
-          <p className="neo-copy mt-2 text-[8px] font-black uppercase leading-4 text-[#5b403f]">
+          <p className="neo-copy mt-2 text-[8px] leading-4 font-black text-[#5b403f] uppercase">
             {proof.mappedVariantCount}/{proof.entries.length} variants have local provider ID,
             install path, save root, and save count evidence for {proof.title}. {proof.guard}
           </p>
         </div>
-        <span className="neo-copy border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] font-black uppercase text-[#171411] shadow-[1px_1px_0_#171411]">
+        <span className="neo-copy border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] font-black text-[#171411] uppercase shadow-[1px_1px_0_#171411]">
           Fixture Review
         </span>
       </div>
@@ -512,10 +512,10 @@ function ProviderPathIdMappingProofPanel({
             key={entry.id}
           >
             <div className="flex flex-wrap items-start justify-between gap-2">
-              <p className="neo-copy break-all text-[8px] font-black uppercase tracking-[0.1em] text-[#5b403f]">
+              <p className="neo-copy text-[8px] font-black tracking-[0.1em] break-all text-[#5b403f] uppercase">
                 {entry.provider} // {entry.catalogKey}
               </p>
-              <span className="neo-copy border-2 border-black bg-[#fbf4e7] px-1.5 py-0.5 text-[8px] font-black uppercase text-[#171411]">
+              <span className="neo-copy border-2 border-black bg-[#fbf4e7] px-1.5 py-0.5 text-[8px] font-black text-[#171411] uppercase">
                 {entry.status === "mapped" ? "mapped" : "manual review"}
               </span>
             </div>
@@ -551,7 +551,7 @@ function ProviderPathIdMappingProofPanel({
               <div className="mt-2 grid gap-1">
                 {entry.blockers.slice(0, 2).map((blocker) => (
                   <p
-                    className="neo-copy border-2 border-black bg-[#f7d04a] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#171411]"
+                    className="neo-copy border-2 border-black bg-[#f7d04a] px-2 py-1 text-[8px] leading-4 font-black text-[#171411] uppercase"
                     key={blocker}
                   >
                     {blocker}
@@ -564,20 +564,20 @@ function ProviderPathIdMappingProofPanel({
       </div>
 
       <div className="mt-3 border-2 border-black bg-[#171411] p-2 text-[#fbf4e7] shadow-[2px_2px_0_#b7102a]">
-        <p className="neo-copy text-[8px] font-black uppercase text-[#8cf5e4]">
+        <p className="neo-copy text-[8px] font-black text-[#8cf5e4] uppercase">
           Still Blocked After Fixture Packet
         </p>
         <div className="mt-2 grid gap-1.5">
           {proof.blockedAfterProof.slice(0, 3).map((item) => (
             <p
-              className="neo-copy border-2 border-[#fbf4e7] bg-[#2a221b] px-2 py-1 text-[8px] font-black uppercase leading-4"
+              className="neo-copy border-2 border-[#fbf4e7] bg-[#2a221b] px-2 py-1 text-[8px] leading-4 font-black uppercase"
               key={item}
             >
               {item}
             </p>
           ))}
           {proof.blockedAfterProof.length > 3 ? (
-            <p className="neo-copy border-2 border-[#fbf4e7] bg-[#2a221b] px-2 py-1 text-[8px] font-black uppercase leading-4">
+            <p className="neo-copy border-2 border-[#fbf4e7] bg-[#2a221b] px-2 py-1 text-[8px] leading-4 font-black uppercase">
               {proof.blockedAfterProof.length - 3} more provider/migration gate
               {proof.blockedAfterProof.length - 3 === 1 ? "" : "s"} remain.
             </p>
@@ -593,15 +593,15 @@ function PostCopyVerificationPanel({ proof }: { proof: CrossStoreSavePostCopyVer
     <div className="border-2 border-black bg-[#fff9ed] p-3 shadow-[2px_2px_0_#171411]">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="neo-copy flex items-center gap-2 text-[9px] font-black uppercase text-[#087d6d]">
+          <p className="neo-copy flex items-center gap-2 text-[9px] font-black text-[#087d6d] uppercase">
             <ClipboardCheck aria-hidden="true" className="h-4 w-4" />
             Post-Copy Verification
           </p>
-          <p className="neo-copy mt-2 text-[8px] font-black uppercase leading-4 text-[#5b403f]">
+          <p className="neo-copy mt-2 text-[8px] leading-4 font-black text-[#5b403f] uppercase">
             {proof.summary}
           </p>
         </div>
-        <span className="neo-copy border-2 border-black bg-[#f7d04a] px-2 py-1 text-[8px] font-black uppercase text-[#171411] shadow-[1px_1px_0_#171411]">
+        <span className="neo-copy border-2 border-black bg-[#f7d04a] px-2 py-1 text-[8px] font-black text-[#171411] uppercase shadow-[1px_1px_0_#171411]">
           Review Packet
         </span>
       </div>
@@ -621,7 +621,7 @@ function PostCopyVerificationPanel({ proof }: { proof: CrossStoreSavePostCopyVer
         </div>
       </dl>
 
-      <p className="neo-copy mt-3 border-2 border-black bg-[#171411] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#fbf4e7]">
+      <p className="neo-copy mt-3 border-2 border-black bg-[#171411] px-2 py-1 text-[8px] leading-4 font-black text-[#fbf4e7] uppercase">
         {proof.guard}
       </p>
 
@@ -632,26 +632,26 @@ function PostCopyVerificationPanel({ proof }: { proof: CrossStoreSavePostCopyVer
             key={item.id}
           >
             <div className="flex flex-wrap items-start justify-between gap-2">
-              <p className="neo-copy text-[8px] font-black uppercase tracking-[0.1em] text-[#5b403f]">
+              <p className="neo-copy text-[8px] font-black tracking-[0.1em] text-[#5b403f] uppercase">
                 {item.status === "overwrite_snapshot_review" ? "Snapshot Review" : "Hash Review"} //{" "}
                 {item.label}
               </p>
               {item.conflictId ? (
-                <span className="neo-copy border-2 border-black bg-[#f7d04a] px-1.5 py-0.5 text-[8px] font-black uppercase text-[#171411]">
+                <span className="neo-copy border-2 border-black bg-[#f7d04a] px-1.5 py-0.5 text-[8px] font-black text-[#171411] uppercase">
                   {item.conflictId}
                 </span>
               ) : null}
             </div>
-            <p className="neo-copy mt-2 break-all border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#171411]">
+            <p className="neo-copy mt-2 border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] leading-4 font-black break-all text-[#171411] uppercase">
               {item.sourceRelativePath} -&gt; {item.targetRelativePath}
             </p>
-            <p className="neo-copy mt-1 break-all text-[8px] font-black uppercase leading-4 text-[#5b403f]">
+            <p className="neo-copy mt-1 text-[8px] leading-4 font-black break-all text-[#5b403f] uppercase">
               Expected target: {item.expectedTargetPath}
             </p>
             <div className="mt-2 grid gap-1">
               {item.checks.slice(0, 3).map((check) => (
                 <p
-                  className="neo-copy border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#171411]"
+                  className="neo-copy border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] leading-4 font-black text-[#171411] uppercase"
                   key={check}
                 >
                   {check}
@@ -663,20 +663,20 @@ function PostCopyVerificationPanel({ proof }: { proof: CrossStoreSavePostCopyVer
       </div>
 
       <div className="mt-3 border-2 border-black bg-[#171411] p-2 text-[#fbf4e7] shadow-[2px_2px_0_#b7102a]">
-        <p className="neo-copy text-[8px] font-black uppercase text-[#8cf5e4]">
+        <p className="neo-copy text-[8px] font-black text-[#8cf5e4] uppercase">
           Still Blocked After Verification Packet
         </p>
         <div className="mt-2 grid gap-1.5">
           {proof.blockedAfterProof.slice(0, 2).map((item) => (
             <p
-              className="neo-copy border-2 border-[#fbf4e7] bg-[#2a221b] px-2 py-1 text-[8px] font-black uppercase leading-4"
+              className="neo-copy border-2 border-[#fbf4e7] bg-[#2a221b] px-2 py-1 text-[8px] leading-4 font-black uppercase"
               key={item}
             >
               {item}
             </p>
           ))}
           {proof.blockedAfterProof.length > 2 ? (
-            <p className="neo-copy border-2 border-[#fbf4e7] bg-[#2a221b] px-2 py-1 text-[8px] font-black uppercase leading-4">
+            <p className="neo-copy border-2 border-[#fbf4e7] bg-[#2a221b] px-2 py-1 text-[8px] leading-4 font-black uppercase">
               {proof.blockedAfterProof.length - 2} more external gate
               {proof.blockedAfterProof.length - 2 === 1 ? "" : "s"} remain in readiness.
             </p>
@@ -692,15 +692,15 @@ function PathMappingProofPanel({ proof }: { proof: CrossStoreSavePathMappingProo
     <div className="border-2 border-black bg-[#f7d04a] p-3 shadow-[2px_2px_0_#171411]">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="neo-copy flex items-center gap-2 text-[9px] font-black uppercase text-[#171411]">
+          <p className="neo-copy flex items-center gap-2 text-[9px] font-black text-[#171411] uppercase">
             <MapIcon aria-hidden="true" className="h-4 w-4" />
             Provider Path Map
           </p>
-          <p className="neo-copy mt-2 text-[8px] font-black uppercase leading-4 text-[#5b403f]">
+          <p className="neo-copy mt-2 text-[8px] leading-4 font-black text-[#5b403f] uppercase">
             {proof.sourceProvider} -&gt; {proof.targetProvider} // {proof.guard}
           </p>
         </div>
-        <span className="neo-copy border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] font-black uppercase text-[#171411] shadow-[1px_1px_0_#171411]">
+        <span className="neo-copy border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] font-black text-[#171411] uppercase shadow-[1px_1px_0_#171411]">
           Review Only
         </span>
       </div>
@@ -727,24 +727,24 @@ function PathMappingProofPanel({ proof }: { proof: CrossStoreSavePathMappingProo
             key={action.id}
           >
             <div className="flex flex-wrap items-start justify-between gap-2">
-              <p className="neo-copy text-[8px] font-black uppercase tracking-[0.1em] text-[#5b403f]">
+              <p className="neo-copy text-[8px] font-black tracking-[0.1em] text-[#5b403f] uppercase">
                 {action.status === "conflict_review" ? "Conflict Review" : "Mapped"} //{" "}
                 {action.label}
               </p>
               {action.conflictId ? (
-                <span className="neo-copy border-2 border-black bg-[#f7d04a] px-1.5 py-0.5 text-[8px] font-black uppercase text-[#171411]">
+                <span className="neo-copy border-2 border-black bg-[#f7d04a] px-1.5 py-0.5 text-[8px] font-black text-[#171411] uppercase">
                   {action.conflictId}
                 </span>
               ) : null}
             </div>
-            <p className="neo-copy mt-2 break-all border-2 border-black bg-[#fbf4e7] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#171411]">
+            <p className="neo-copy mt-2 border-2 border-black bg-[#fbf4e7] px-2 py-1 text-[8px] leading-4 font-black break-all text-[#171411] uppercase">
               {action.sourceRelativePath} -&gt; {action.targetRelativePath}
             </p>
-            <p className="neo-copy mt-1 break-all text-[8px] font-black uppercase leading-4 text-[#5b403f]">
+            <p className="neo-copy mt-1 text-[8px] leading-4 font-black break-all text-[#5b403f] uppercase">
               Target: {action.targetPath}
             </p>
             {action.mappingRuleId ? (
-              <p className="neo-copy mt-1 break-all text-[8px] font-black uppercase leading-4 text-[#087d6d]">
+              <p className="neo-copy mt-1 text-[8px] leading-4 font-black break-all text-[#087d6d] uppercase">
                 Rule: {action.mappingRuleId}
               </p>
             ) : null}
@@ -752,7 +752,7 @@ function PathMappingProofPanel({ proof }: { proof: CrossStoreSavePathMappingProo
         ))}
       </div>
 
-      <p className="neo-copy mt-3 border-2 border-black bg-[#171411] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#fbf4e7]">
+      <p className="neo-copy mt-3 border-2 border-black bg-[#171411] px-2 py-1 text-[8px] leading-4 font-black text-[#fbf4e7] uppercase">
         {proof.nativeApplyHint}
       </p>
     </div>
@@ -768,15 +768,15 @@ function AutomaticPathMapApplyPanel({
     <div className="border-2 border-black bg-[#8cf5e4] p-3 shadow-[2px_2px_0_#171411]">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="neo-copy flex items-center gap-2 text-[9px] font-black uppercase text-[#171411]">
+          <p className="neo-copy flex items-center gap-2 text-[9px] font-black text-[#171411] uppercase">
             <MapIcon aria-hidden="true" className="h-4 w-4" />
             Automatic Path-Map Apply
           </p>
-          <p className="neo-copy mt-2 text-[8px] font-black uppercase leading-4 text-[#17413b]">
+          <p className="neo-copy mt-2 text-[8px] leading-4 font-black text-[#17413b] uppercase">
             {proof.summary} {proof.guard}
           </p>
         </div>
-        <span className="neo-copy border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] font-black uppercase text-[#171411] shadow-[1px_1px_0_#171411]">
+        <span className="neo-copy border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] font-black text-[#171411] uppercase shadow-[1px_1px_0_#171411]">
           Consent Required
         </span>
       </div>
@@ -802,7 +802,7 @@ function AutomaticPathMapApplyPanel({
         </div>
       </dl>
 
-      <p className="neo-copy mt-3 border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#171411]">
+      <p className="neo-copy mt-3 border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] leading-4 font-black text-[#171411] uppercase">
         {proof.writeBoundary}
       </p>
 
@@ -813,21 +813,21 @@ function AutomaticPathMapApplyPanel({
             key={action.id}
           >
             <div className="flex flex-wrap items-start justify-between gap-2">
-              <p className="neo-copy text-[8px] font-black uppercase tracking-[0.1em] text-[#5b403f]">
+              <p className="neo-copy text-[8px] font-black tracking-[0.1em] text-[#5b403f] uppercase">
                 {action.mode === "overwrite_review" ? "Overwrite Review" : "Copy"} //{" "}
                 {action.sourceRelativePath}
               </p>
-              <span className="neo-copy border-2 border-black bg-[#fff9ed] px-1.5 py-0.5 text-[8px] font-black uppercase text-[#171411]">
+              <span className="neo-copy border-2 border-black bg-[#fff9ed] px-1.5 py-0.5 text-[8px] font-black text-[#171411] uppercase">
                 {action.expectedSizeBytes ?? "hash-only"} bytes
               </span>
             </div>
-            <p className="neo-copy mt-2 break-all border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#171411]">
+            <p className="neo-copy mt-2 border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] leading-4 font-black break-all text-[#171411] uppercase">
               {action.sourceRelativePath} -&gt; {action.targetRelativePath}
             </p>
-            <p className="neo-copy mt-1 break-all text-[8px] font-black uppercase leading-4 text-[#5b403f]">
+            <p className="neo-copy mt-1 text-[8px] leading-4 font-black break-all text-[#5b403f] uppercase">
               Source: {action.sourcePath}
             </p>
-            <p className="neo-copy mt-1 break-all text-[8px] font-black uppercase leading-4 text-[#5b403f]">
+            <p className="neo-copy mt-1 text-[8px] leading-4 font-black break-all text-[#5b403f] uppercase">
               Target: {action.targetPath}
             </p>
           </article>
@@ -835,13 +835,13 @@ function AutomaticPathMapApplyPanel({
       </div>
 
       <div className="mt-3 border-2 border-black bg-[#171411] p-2 text-[#fbf4e7] shadow-[2px_2px_0_#b7102a]">
-        <p className="neo-copy text-[8px] font-black uppercase text-[#8cf5e4]">
+        <p className="neo-copy text-[8px] font-black text-[#8cf5e4] uppercase">
           Still Blocked After Request Template
         </p>
         <div className="mt-2 grid gap-1.5">
           {proof.blockedAfterProof.map((item) => (
             <p
-              className="neo-copy border-2 border-[#fbf4e7] bg-[#2a221b] px-2 py-1 text-[8px] font-black uppercase leading-4"
+              className="neo-copy border-2 border-[#fbf4e7] bg-[#2a221b] px-2 py-1 text-[8px] leading-4 font-black uppercase"
               key={item}
             >
               {item}
@@ -858,15 +858,15 @@ function NativeApplyProofPanel({ proof }: { proof: CrossStoreSaveNativeApplyProo
     <div className="border-2 border-black bg-[#8cf5e4] p-3 shadow-[2px_2px_0_#171411]">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="neo-copy flex items-center gap-2 text-[9px] font-black uppercase text-[#171411]">
+          <p className="neo-copy flex items-center gap-2 text-[9px] font-black text-[#171411] uppercase">
             <FileCheck2 aria-hidden="true" className="h-4 w-4" />
             {proof.label}
           </p>
-          <p className="neo-copy mt-2 text-[8px] font-black uppercase leading-4 text-[#17413b]">
+          <p className="neo-copy mt-2 text-[8px] leading-4 font-black text-[#17413b] uppercase">
             {proof.sourceLabel} -&gt; {proof.targetLabel} // {proof.detail}
           </p>
         </div>
-        <span className="neo-copy border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] font-black uppercase text-[#171411] shadow-[1px_1px_0_#171411]">
+        <span className="neo-copy border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] font-black text-[#171411] uppercase shadow-[1px_1px_0_#171411]">
           Desktop Consent
         </span>
       </div>
@@ -886,18 +886,18 @@ function NativeApplyProofPanel({ proof }: { proof: CrossStoreSaveNativeApplyProo
         </div>
       </dl>
 
-      <p className="neo-copy mt-3 border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#171411]">
+      <p className="neo-copy mt-3 border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] leading-4 font-black text-[#171411] uppercase">
         {proof.backupPolicy}
       </p>
 
       <div className="mt-3 border-2 border-black bg-[#fff9ed] p-2 shadow-[1px_1px_0_#171411]">
-        <p className="neo-copy text-[8px] font-black uppercase text-[#087d6d]">
+        <p className="neo-copy text-[8px] font-black text-[#087d6d] uppercase">
           Native Rollback Proof
         </p>
-        <p className="neo-copy mt-2 break-all text-[8px] font-black uppercase leading-4 text-[#171411]">
+        <p className="neo-copy mt-2 text-[8px] leading-4 font-black break-all text-[#171411] uppercase">
           {proof.rollbackConsentOperation}
         </p>
-        <p className="neo-copy mt-2 border-2 border-black bg-[#fbf4e7] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#5b403f]">
+        <p className="neo-copy mt-2 border-2 border-black bg-[#fbf4e7] px-2 py-1 text-[8px] leading-4 font-black text-[#5b403f] uppercase">
           {proof.rollbackPolicy}
         </p>
       </div>
@@ -905,7 +905,7 @@ function NativeApplyProofPanel({ proof }: { proof: CrossStoreSaveNativeApplyProo
       <div className="mt-3 grid gap-1.5">
         {proof.expectedVerification.map((item) => (
           <p
-            className="neo-copy border-2 border-black bg-[#fbf4e7] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#171411]"
+            className="neo-copy border-2 border-black bg-[#fbf4e7] px-2 py-1 text-[8px] leading-4 font-black text-[#171411] uppercase"
             key={item}
           >
             {item}
@@ -914,13 +914,13 @@ function NativeApplyProofPanel({ proof }: { proof: CrossStoreSaveNativeApplyProo
       </div>
 
       <div className="mt-3 border-2 border-black bg-[#171411] p-2 text-[#fbf4e7] shadow-[2px_2px_0_#b7102a]">
-        <p className="neo-copy text-[8px] font-black uppercase text-[#8cf5e4]">
+        <p className="neo-copy text-[8px] font-black text-[#8cf5e4] uppercase">
           Still Blocked After Native Copy
         </p>
         <div className="mt-2 grid gap-1.5">
           {proof.blockedAfterProof.map((item) => (
             <p
-              className="neo-copy border-2 border-[#fbf4e7] bg-[#2a221b] px-2 py-1 text-[8px] font-black uppercase leading-4"
+              className="neo-copy border-2 border-[#fbf4e7] bg-[#2a221b] px-2 py-1 text-[8px] leading-4 font-black uppercase"
               key={item}
             >
               {item}
@@ -937,15 +937,15 @@ function DryRunAuditPanel({ audit }: { audit: CrossStoreSaveSyncAudit }) {
     <div className="border-2 border-black bg-[#fff9ed] p-3 shadow-[2px_2px_0_#171411]">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="neo-copy flex items-center gap-2 text-[9px] font-black uppercase text-[#087d6d]">
+          <p className="neo-copy flex items-center gap-2 text-[9px] font-black text-[#087d6d] uppercase">
             <FileSearch aria-hidden="true" className="h-4 w-4" />
             Dry-Run Audit Packet
           </p>
-          <p className="neo-copy mt-2 text-[8px] font-black uppercase leading-4 text-[#5b403f]">
+          <p className="neo-copy mt-2 text-[8px] leading-4 font-black text-[#5b403f] uppercase">
             {audit.sourceLabel} -&gt; {audit.targetLabel} // {audit.guard}
           </p>
         </div>
-        <span className="neo-copy border-2 border-black bg-[#8cf5e4] px-2 py-1 text-[8px] font-black uppercase text-[#171411] shadow-[1px_1px_0_#171411]">
+        <span className="neo-copy border-2 border-black bg-[#8cf5e4] px-2 py-1 text-[8px] font-black text-[#171411] uppercase shadow-[1px_1px_0_#171411]">
           No copy performed
         </span>
       </div>
@@ -971,18 +971,18 @@ function DryRunAuditPanel({ audit }: { audit: CrossStoreSaveSyncAudit }) {
             className="border-2 border-black bg-[#fbf4e7] p-2 shadow-[1px_1px_0_#171411]"
             key={`${action.sourcePath}-${action.targetPathHint}`}
           >
-            <p className="neo-copy text-[8px] font-black uppercase tracking-[0.1em] text-[#5b403f]">
+            <p className="neo-copy text-[8px] font-black tracking-[0.1em] text-[#5b403f] uppercase">
               {action.action === "review_overwrite" ? "Conflict review" : "Copy intent"} //{" "}
               {formatBytes(action.sizeBytes)}
             </p>
-            <p className="neo-copy mt-1 break-all text-[8px] font-black uppercase leading-4 text-[#171411]">
+            <p className="neo-copy mt-1 text-[8px] leading-4 font-black break-all text-[#171411] uppercase">
               {action.label}: {action.sourcePath}
             </p>
-            <p className="neo-copy mt-1 break-all border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#5b403f]">
+            <p className="neo-copy mt-1 border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] leading-4 font-black break-all text-[#5b403f] uppercase">
               Target hint: {action.targetPathHint}
             </p>
             {action.conflictId ? (
-              <p className="neo-copy mt-1 border-2 border-black bg-[#f7d04a] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#171411]">
+              <p className="neo-copy mt-1 border-2 border-black bg-[#f7d04a] px-2 py-1 text-[8px] leading-4 font-black text-[#171411] uppercase">
                 Conflict ID: {action.conflictId}
               </p>
             ) : null}
@@ -991,15 +991,15 @@ function DryRunAuditPanel({ audit }: { audit: CrossStoreSaveSyncAudit }) {
       </div>
 
       <div className="mt-3 border-2 border-black bg-[#171411] p-2 text-[#fbf4e7]">
-        <p className="neo-copy flex items-center gap-2 text-[8px] font-black uppercase text-[#8cf5e4]">
+        <p className="neo-copy flex items-center gap-2 text-[8px] font-black text-[#8cf5e4] uppercase">
           <RotateCcw aria-hidden="true" className="h-4 w-4" />
           Rollback Manifest Preview
         </p>
-        <p className="neo-copy mt-2 break-all text-[8px] font-black uppercase leading-4">
+        <p className="neo-copy mt-2 text-[8px] leading-4 font-black break-all uppercase">
           {audit.rollbackPreview.manifestId} // {audit.rollbackPreview.snapshotLabel} //{" "}
           {formatBytes(audit.rollbackPreview.totalSizeBytes)}
         </p>
-        <p className="neo-copy mt-2 border-2 border-[#fbf4e7] bg-[#2a221b] px-2 py-1 text-[8px] font-black uppercase leading-4">
+        <p className="neo-copy mt-2 border-2 border-[#fbf4e7] bg-[#2a221b] px-2 py-1 text-[8px] leading-4 font-black uppercase">
           {audit.rollbackPreview.restoreStrategy}
         </p>
       </div>
@@ -1007,7 +1007,7 @@ function DryRunAuditPanel({ audit }: { audit: CrossStoreSaveSyncAudit }) {
       <div className="mt-3 grid gap-1.5">
         {audit.skippedActions.slice(0, 3).map((item) => (
           <p
-            className="neo-copy border-2 border-black bg-[#fbf4e7] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#171411]"
+            className="neo-copy border-2 border-black bg-[#fbf4e7] px-2 py-1 text-[8px] leading-4 font-black text-[#171411] uppercase"
             key={item.id}
           >
             Skipped {item.label}: {item.reason}
@@ -1032,25 +1032,25 @@ function SaveLaneRow({ lane }: { lane: CrossStoreSaveSyncLane }) {
     >
       <div className="grid gap-2">
         <div className="min-w-0">
-          <p className="neo-copy text-[8px] font-black uppercase tracking-[0.1em] text-[#5b403f]">
+          <p className="neo-copy text-[8px] font-black tracking-[0.1em] text-[#5b403f] uppercase">
             {laneStatusLabel(lane.status)} // {formatBytes(lane.totalSaveSizeBytes)}
           </p>
-          <h3 className="mt-1 truncate text-sm font-black uppercase text-[#171411]">
+          <h3 className="mt-1 truncate text-sm font-black text-[#171411] uppercase">
             {lane.sourceLabel} -&gt; {lane.targetLabel}
           </h3>
         </div>
-        <span className="neo-copy w-fit border-2 border-black bg-[#fff9ed] px-1.5 py-0.5 text-[8px] font-black uppercase text-[#171411]">
+        <span className="neo-copy w-fit border-2 border-black bg-[#fff9ed] px-1.5 py-0.5 text-[8px] font-black text-[#171411] uppercase">
           {lane.saveFileCount} files
         </span>
       </div>
-      <p className="neo-copy mt-2 text-[8px] font-black uppercase leading-4 text-[#5b403f]">
+      <p className="neo-copy mt-2 text-[8px] leading-4 font-black text-[#5b403f] uppercase">
         {lane.summary}
       </p>
-      <p className="neo-copy mt-2 break-all border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#171411]">
+      <p className="neo-copy mt-2 border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] leading-4 font-black break-all text-[#171411] uppercase">
         {lane.sourcePathPreview ?? lane.targetPathHint}
       </p>
       {reviewNote ? (
-        <p className="neo-copy mt-2 border-2 border-black bg-[#fbf4e7] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#171411]">
+        <p className="neo-copy mt-2 border-2 border-black bg-[#fbf4e7] px-2 py-1 text-[8px] leading-4 font-black text-[#171411] uppercase">
           {reviewNote}
         </p>
       ) : null}

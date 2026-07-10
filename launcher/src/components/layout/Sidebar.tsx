@@ -58,7 +58,7 @@ export function Sidebar({
 }: SidebarProps) {
   return (
     <nav className="min-w-0 overflow-hidden">
-      <div className="scrollbar-none flex gap-1 overflow-x-auto px-0.5 pb-1 sm:gap-2 sm:px-1">
+      <div className="flex scrollbar-none gap-1 overflow-x-auto px-0.5 pb-1 sm:gap-2 sm:px-1">
         {navItems.map((item) => {
           const Icon = item.icon;
           const isActive = item.key && activePage === item.key;
@@ -82,7 +82,7 @@ export function Sidebar({
               <Icon className="h-5 w-5" />
               <span className="xs:inline hidden xl:inline">{item.label}</span>
               {showBadge ? (
-                <span className="neo-copy app-shell-primary absolute -right-1 top-0 flex h-5 min-w-5 items-center justify-center border-2 border-black px-1 text-[10px] font-black">
+                <span className="neo-copy app-shell-primary absolute top-0 -right-1 flex h-5 min-w-5 items-center justify-center border-2 border-black px-1 text-[10px] font-black">
                   {downloadCount}
                 </span>
               ) : null}

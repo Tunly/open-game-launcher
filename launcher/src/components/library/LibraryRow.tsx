@@ -122,12 +122,12 @@ function LibraryRowBase({
         )}
       </span>
       <span className="flex min-w-0 flex-1 flex-col justify-center">
-        <span className="block truncate text-[14px] font-black leading-none">{group.title}</span>
+        <span className="block truncate text-[14px] leading-none font-black">{group.title}</span>
         {group.variants.length > 1 || isInPcGamePass ? (
           <span className="mt-0.5 flex min-w-0 items-center gap-1">
             {group.variants.length > 1 ? (
               <span
-                className={`truncate text-[9px] font-bold uppercase tracking-wider ${
+                className={`truncate text-[9px] font-bold tracking-wider uppercase ${
                   selected ? "text-[#f4ead8]" : "text-[#087d6d]"
                 }`}
               >
@@ -135,7 +135,7 @@ function LibraryRowBase({
               </span>
             ) : null}
             {isInPcGamePass ? (
-              <span className="neo-copy shrink-0 border border-black bg-[#8cf5e4] px-1 py-px text-[7px] font-black uppercase leading-none tracking-[0.08em] text-[#171411] shadow-[1px_1px_0_#171411]">
+              <span className="neo-copy shrink-0 border border-black bg-[#8cf5e4] px-1 py-px text-[7px] leading-none font-black tracking-[0.08em] text-[#171411] uppercase shadow-[1px_1px_0_#171411]">
                 PC Game Pass
               </span>
             ) : null}
@@ -168,7 +168,7 @@ function LibraryRowBase({
 
       {isRunning ? (
         <span
-          className="neo-copy max-w-[112px] shrink-0 truncate border border-black bg-[#087d6d] px-1.5 py-0.5 text-[8px] font-black uppercase text-white shadow-[1px_1px_0_#171411]"
+          className="neo-copy max-w-[112px] shrink-0 truncate border border-black bg-[#087d6d] px-1.5 py-0.5 text-[8px] font-black text-white uppercase shadow-[1px_1px_0_#171411]"
           title={`Running${runtime ? `: ${runtimeSummary(runtime, group)}` : ""}`}
         >
           {runtime ? runtimeSummary(runtime, group) : "Running"}

@@ -106,7 +106,7 @@ export default function App() {
           <Suspense
             fallback={
               <div className="grid h-screen w-screen place-items-center bg-black/70">
-                <div className="neo-copy border-[3px] border-[#171411] bg-[#171411]/80 px-4 py-3 text-sm font-black uppercase text-[#fff9ed] shadow-[4px_4px_0_#000]">
+                <div className="neo-copy border-[3px] border-[#171411] bg-[#171411]/80 px-4 py-3 text-sm font-black text-[#fff9ed] uppercase shadow-[4px_4px_0_#000]">
                   Loading overlay...
                 </div>
               </div>

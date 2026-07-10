@@ -42,7 +42,7 @@ export function CartDrawer({
       >
         <div className="flex items-center justify-between border-b-4 border-black bg-[#171411] px-4 py-3">
           <div>
-            <p className="neo-copy text-[10px] font-black uppercase tracking-[0.12em] text-[#8cf5e4]">
+            <p className="neo-copy text-[10px] font-black tracking-[0.12em] text-[#8cf5e4] uppercase">
               Cart Drawer
             </p>
             <h2 className="neo-title text-3xl leading-none text-[#fff9ed]">Checkout Tape</h2>
@@ -71,7 +71,7 @@ export function CartDrawer({
                     <p className="neo-title truncate text-2xl leading-none text-[#171411]">
                       {game.title}
                     </p>
-                    <p className="neo-copy mt-1 text-[10px] font-black uppercase tracking-[0.08em] text-[#655f58]">
+                    <p className="neo-copy mt-1 text-[10px] font-black tracking-[0.08em] text-[#655f58] uppercase">
                       {game.tagLine}
                     </p>
                   </div>
@@ -85,7 +85,7 @@ export function CartDrawer({
                   </button>
                 </div>
                 <div className="mt-3 flex items-center justify-between border-t-2 border-black pt-2">
-                  <span className="neo-copy text-[10px] font-black uppercase tracking-[0.12em] text-[#655f58]">
+                  <span className="neo-copy text-[10px] font-black tracking-[0.12em] text-[#655f58] uppercase">
                     Price
                   </span>
                   <span className="text-xl font-black text-[#171411]">
@@ -99,7 +99,7 @@ export function CartDrawer({
 
         <div className="border-t-4 border-black bg-[#f6edd8] p-4">
           <div className="flex items-center justify-between border-y-2 border-black py-3">
-            <span className="neo-copy text-[10px] font-black uppercase tracking-[0.12em] text-[#655f58]">
+            <span className="neo-copy text-[10px] font-black tracking-[0.12em] text-[#655f58] uppercase">
               Total
             </span>
             <span className="neo-title text-3xl leading-none text-[#171411]">
@@ -108,14 +108,14 @@ export function CartDrawer({
           </div>
           <div className="mt-4 grid grid-cols-2 gap-2">
             <button
-              className="neo-copy h-11 border-2 border-black bg-[#fff9ed] text-[10px] font-black uppercase tracking-[0.1em] text-[#171411] shadow-[3px_3px_0_#171411]"
+              className="neo-copy h-11 border-2 border-black bg-[#fff9ed] text-[10px] font-black tracking-[0.1em] text-[#171411] uppercase shadow-[3px_3px_0_#171411]"
               type="button"
               onClick={onViewCart}
             >
               Cart Tab
             </button>
             <button
-              className="neo-copy h-11 border-2 border-black bg-[#b7102a] text-[10px] font-black uppercase tracking-[0.1em] text-white shadow-[3px_3px_0_#171411] disabled:opacity-50"
+              className="neo-copy h-11 border-2 border-black bg-[#b7102a] text-[10px] font-black tracking-[0.1em] text-white uppercase shadow-[3px_3px_0_#171411] disabled:opacity-50"
               disabled={!commerceEnabled || cartGames.length === 0 || isProcessing}
               type="button"
               onClick={onCheckout}
@@ -158,7 +158,7 @@ export function CartPanel({
           >
             <div>
               <p className="neo-title text-2xl leading-none text-[#171411]">{game.title}</p>
-              <p className="neo-copy mt-1 text-[10px] font-black uppercase tracking-[0.12em] text-[#655f58]">
+              <p className="neo-copy mt-1 text-[10px] font-black tracking-[0.12em] text-[#655f58] uppercase">
                 {game.tagLine}
               </p>
             </div>
@@ -182,7 +182,7 @@ export function CartPanel({
         <h3 className="neo-title border-b-[3px] border-black pb-3 text-3xl leading-none text-[#171411]">
           Checkout
         </h3>
-        <p className="neo-copy mt-4 text-[10px] font-black uppercase tracking-[0.12em] text-[#655f58]">
+        <p className="neo-copy mt-4 text-[10px] font-black tracking-[0.12em] text-[#655f58] uppercase">
           Checkout via Stripe. You'll be redirected to complete payment.
         </p>
         <div className="my-4 flex justify-between border-y-2 border-black py-3 text-xl font-black">
@@ -190,7 +190,7 @@ export function CartPanel({
           <span>{formatCurrency(total)}</span>
         </div>
         <button
-          className="neo-copy h-12 w-full border-2 border-black bg-[#b7102a] text-[11px] font-black uppercase tracking-[0.12em] text-white shadow-[3px_3px_0_#171411] disabled:opacity-50"
+          className="neo-copy h-12 w-full border-2 border-black bg-[#b7102a] text-[11px] font-black tracking-[0.12em] text-white uppercase shadow-[3px_3px_0_#171411] disabled:opacity-50"
           disabled={!commerceEnabled || isProcessing}
           type="button"
           onClick={onCheckout}

@@ -466,7 +466,7 @@ export function ProfileCustomizePage() {
   return (
     <Frame title="Customize Profile" eyebrow={`@${profile?.username ?? "local-editor"}`}>
       {isLocalFallback ? (
-        <div className="neo-copy mb-5 border-[3px] border-black bg-[#8cf5e4] p-4 text-[11px] font-black uppercase leading-5 text-[#171411] shadow-[4px_4px_0_#171411]">
+        <div className="neo-copy mb-5 border-[3px] border-black bg-[#8cf5e4] p-4 text-[11px] leading-5 font-black text-[#171411] uppercase shadow-[4px_4px_0_#171411]">
           {localFallbackReason
             ? "Profile showcase schema fallback active: Supabase is configured, but showcase tables are unavailable, so edits save as local browser drafts."
             : "Local customization relay active: Supabase is not configured, so this editor uses deterministic profile/showcase/theme data and saves drafts to this browser."}
@@ -476,7 +476,7 @@ export function ProfileCustomizePage() {
         <section className="border-4 border-black bg-[#fff9ed] p-5 shadow-[6px_6px_0_#171411]">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <p className="neo-copy inline-block border-2 border-black bg-[#b7102a] px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-white shadow-[2px_2px_0_#171411]">
+              <p className="neo-copy inline-block border-2 border-black bg-[#b7102a] px-2 py-1 text-[10px] font-black tracking-[0.12em] text-white uppercase shadow-[2px_2px_0_#171411]">
                 Panels
               </p>
               <h2 className="neo-title mt-2 text-4xl leading-none text-[#171411]">Showcases</h2>
@@ -487,7 +487,7 @@ export function ProfileCustomizePage() {
             <div className="flex flex-wrap gap-2">
               {!hasHardwareShowcase ? (
                 <button
-                  className="neo-copy inline-flex h-10 items-center gap-2 border-2 border-black bg-[#007166] px-3 text-[10px] font-black uppercase tracking-[0.12em] text-white shadow-[3px_3px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#b7102a]"
+                  className="neo-copy inline-flex h-10 items-center gap-2 border-2 border-black bg-[#007166] px-3 text-[10px] font-black tracking-[0.12em] text-white uppercase shadow-[3px_3px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#b7102a]"
                   disabled={isSaving}
                   type="button"
                   onClick={() => void handleCreateHardwareShowcase()}
@@ -497,7 +497,7 @@ export function ProfileCustomizePage() {
                 </button>
               ) : null}
               <button
-                className="neo-copy inline-flex h-10 items-center gap-2 border-2 border-black bg-[#fff9ed] px-3 text-[10px] font-black uppercase tracking-[0.12em] text-[#171411] shadow-[3px_3px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#8cf5e4]"
+                className="neo-copy inline-flex h-10 items-center gap-2 border-2 border-black bg-[#fff9ed] px-3 text-[10px] font-black tracking-[0.12em] text-[#171411] uppercase shadow-[3px_3px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#8cf5e4]"
                 disabled={isSaving}
                 type="button"
                 onClick={() => void handleCreateCustomText()}
@@ -525,12 +525,12 @@ export function ProfileCustomizePage() {
 
         <aside className="space-y-5">
           <section className="border-4 border-black bg-[#fff9ed] p-5 shadow-[6px_6px_0_#171411]">
-            <p className="neo-copy inline-block border-2 border-black bg-[#171411] px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-[#fff9ed]">
+            <p className="neo-copy inline-block border-2 border-black bg-[#171411] px-2 py-1 text-[10px] font-black tracking-[0.12em] text-[#fff9ed] uppercase">
               Cosmetic
             </p>
             <h2 className="neo-title mt-2 text-4xl leading-none text-[#171411]">Theme</h2>
             <select
-              className="neo-copy mt-4 h-11 w-full border-2 border-black bg-[#f6edd8] px-3 text-xs font-black uppercase tracking-[0.08em] text-[#171411] shadow-[2px_2px_0_#171411] outline-none focus:bg-[#8cf5e4]"
+              className="neo-copy mt-4 h-11 w-full border-2 border-black bg-[#f6edd8] px-3 text-xs font-black tracking-[0.08em] text-[#171411] uppercase shadow-[2px_2px_0_#171411] outline-none focus:bg-[#8cf5e4]"
               value={selectedThemeId}
               onChange={(event) => setSelectedThemeId(event.target.value)}
             >
@@ -556,16 +556,16 @@ export function ProfileCustomizePage() {
               className="mt-4 border-[3px] border-black bg-[#efe3cf] p-3 shadow-[3px_3px_0_#171411]"
             >
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="neo-copy border-2 border-black bg-[#8cf5e4] px-2 py-1 text-[9px] font-black uppercase text-[#171411]">
+                <p className="neo-copy border-2 border-black bg-[#8cf5e4] px-2 py-1 text-[9px] font-black text-[#171411] uppercase">
                   Theme Exchange
                 </p>
-                <p className="neo-copy border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] font-black uppercase text-[#171411]">
+                <p className="neo-copy border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] font-black text-[#171411] uppercase">
                   Schema v1
                 </p>
               </div>
               <div className="mt-3 grid gap-2 sm:grid-cols-2">
                 <button
-                  className="neo-copy inline-flex h-10 items-center justify-center gap-2 border-2 border-black bg-[#007166] px-3 text-[9px] font-black uppercase tracking-[0.1em] text-white shadow-[3px_3px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#b7102a] disabled:opacity-60"
+                  className="neo-copy inline-flex h-10 items-center justify-center gap-2 border-2 border-black bg-[#007166] px-3 text-[9px] font-black tracking-[0.1em] text-white uppercase shadow-[3px_3px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#b7102a] disabled:opacity-60"
                   disabled={!selectedTheme}
                   type="button"
                   onClick={handleExportTheme}
@@ -573,7 +573,7 @@ export function ProfileCustomizePage() {
                   <Download className="h-4 w-4" />
                   Export JSON
                 </button>
-                <label className="neo-copy inline-flex h-10 cursor-pointer items-center justify-center gap-2 border-2 border-black bg-[#fff9ed] px-3 text-[9px] font-black uppercase tracking-[0.1em] text-[#171411] shadow-[3px_3px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#8cf5e4]">
+                <label className="neo-copy inline-flex h-10 cursor-pointer items-center justify-center gap-2 border-2 border-black bg-[#fff9ed] px-3 text-[9px] font-black tracking-[0.1em] text-[#171411] uppercase shadow-[3px_3px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#8cf5e4]">
                   <Upload className="h-4 w-4" />
                   Import JSON
                   <input
@@ -600,7 +600,7 @@ export function ProfileCustomizePage() {
           {errorMessage ? <Status tone="error" message={errorMessage} /> : null}
           {message ? <Status tone="success" message={message} /> : null}
           <button
-            className="neo-copy flex h-12 w-full items-center justify-center gap-2 border-[3px] border-black bg-[#b7102a] px-4 text-[12px] font-black uppercase tracking-[0.16em] text-white shadow-[5px_5px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#007166] disabled:opacity-60"
+            className="neo-copy flex h-12 w-full items-center justify-center gap-2 border-[3px] border-black bg-[#b7102a] px-4 text-[12px] font-black tracking-[0.16em] text-white uppercase shadow-[5px_5px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#007166] disabled:opacity-60"
             disabled={isSaving}
             type="button"
             onClick={() => void handleSave()}
@@ -627,7 +627,7 @@ function Frame({
     <div className="mx-auto w-full max-w-[1220px] px-0 py-2">
       <div className="mb-7 border-b-4 border-black pb-5">
         {eyebrow ? (
-          <p className="neo-copy inline-flex border-2 border-black bg-[#b7102a] px-3 py-1 text-[11px] font-black uppercase tracking-[0.14em] text-white shadow-[3px_3px_0_#171411]">
+          <p className="neo-copy inline-flex border-2 border-black bg-[#b7102a] px-3 py-1 text-[11px] font-black tracking-[0.14em] text-white uppercase shadow-[3px_3px_0_#171411]">
             {eyebrow}
           </p>
         ) : null}
@@ -652,7 +652,7 @@ function Notice({ body, title }: { body: string; title: string }) {
   return (
     <div className="border-[3px] border-black bg-[#f6edd8] p-4 shadow-[3px_3px_0_#171411]">
       <h3 className="neo-title text-3xl leading-none text-[#171411]">{title}</h3>
-      <p className="mt-2 text-sm font-semibold leading-6 text-[#5b403f]">{body}</p>
+      <p className="mt-2 text-sm leading-6 font-semibold text-[#5b403f]">{body}</p>
     </div>
   );
 }
@@ -662,8 +662,8 @@ function Status({ message, tone }: { message: string; tone: "error" | "success" 
     <div
       className={
         tone === "error"
-          ? "neo-copy border-2 border-black bg-[#b7102a] p-4 text-[11px] font-black uppercase tracking-[0.1em] text-white shadow-[3px_3px_0_#171411]"
-          : "neo-copy border-2 border-black bg-[#007166] p-4 text-[11px] font-black uppercase tracking-[0.1em] text-white shadow-[3px_3px_0_#171411]"
+          ? "neo-copy border-2 border-black bg-[#b7102a] p-4 text-[11px] font-black tracking-[0.1em] text-white uppercase shadow-[3px_3px_0_#171411]"
+          : "neo-copy border-2 border-black bg-[#007166] p-4 text-[11px] font-black tracking-[0.1em] text-white uppercase shadow-[3px_3px_0_#171411]"
       }
     >
       {message}
@@ -687,19 +687,19 @@ function AppShellSkinSelector({
     >
       <div className="flex items-start justify-between gap-3 border-b-2 border-black pb-3">
         <div>
-          <p className="neo-copy text-[9px] font-black uppercase tracking-[0.14em] text-[#b7102a]">
+          <p className="neo-copy text-[9px] font-black tracking-[0.14em] text-[#b7102a] uppercase">
             Shell Skin
           </p>
           <h2 className="neo-title mt-1 flex items-center gap-2 text-3xl leading-none text-[#171411]">
             <Palette aria-hidden="true" className="h-7 w-7" /> App Shell
           </h2>
         </div>
-        <span className="neo-copy border-2 border-black bg-[#8cf5e4] px-2 py-1 text-[9px] font-black uppercase text-[#171411] shadow-[2px_2px_0_#171411]">
+        <span className="neo-copy border-2 border-black bg-[#8cf5e4] px-2 py-1 text-[9px] font-black text-[#171411] uppercase shadow-[2px_2px_0_#171411]">
           Browser only
         </span>
       </div>
 
-      <p className="neo-copy mt-3 border-2 border-black bg-[#efe3cf] px-3 py-2 text-[9px] font-black uppercase leading-5 text-[#5b403f] shadow-[2px_2px_0_#171411]">
+      <p className="neo-copy mt-3 border-2 border-black bg-[#efe3cf] px-3 py-2 text-[9px] leading-5 font-black text-[#5b403f] uppercase shadow-[2px_2px_0_#171411]">
         Stored on this device and, when signed in, as a built-in skin ID. No marketplace install or
         profile_theme_id write.
       </p>
@@ -716,7 +716,7 @@ function AppShellSkinSelector({
       </div>
 
       <button
-        className="neo-copy mt-3 flex h-10 w-full items-center justify-center gap-2 border-2 border-black bg-[#171411] px-3 text-[10px] font-black uppercase tracking-[0.1em] text-[#fff9ed] shadow-[3px_3px_0_#b7102a] transition hover:-translate-y-0.5 hover:bg-[#b7102a]"
+        className="neo-copy mt-3 flex h-10 w-full items-center justify-center gap-2 border-2 border-black bg-[#171411] px-3 text-[10px] font-black tracking-[0.1em] text-[#fff9ed] uppercase shadow-[3px_3px_0_#b7102a] transition hover:-translate-y-0.5 hover:bg-[#b7102a]"
         type="button"
         onClick={onReset}
       >
@@ -741,8 +741,8 @@ function AppShellSkinButton({
       aria-pressed={isSelected}
       className={
         isSelected
-          ? "neo-copy flex min-h-16 w-full items-center gap-3 border-2 border-black bg-[#007166] px-3 py-2 text-left text-[10px] font-black uppercase text-white shadow-[3px_3px_0_#171411] transition hover:-translate-y-0.5"
-          : "neo-copy flex min-h-16 w-full items-center gap-3 border-2 border-black bg-[#fff9ed] px-3 py-2 text-left text-[10px] font-black uppercase text-[#171411] shadow-[3px_3px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#8cf5e4]"
+          ? "neo-copy flex min-h-16 w-full items-center gap-3 border-2 border-black bg-[#007166] px-3 py-2 text-left text-[10px] font-black text-white uppercase shadow-[3px_3px_0_#171411] transition hover:-translate-y-0.5"
+          : "neo-copy flex min-h-16 w-full items-center gap-3 border-2 border-black bg-[#fff9ed] px-3 py-2 text-left text-[10px] font-black text-[#171411] uppercase shadow-[3px_3px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#8cf5e4]"
       }
       type="button"
       onClick={() => onSelect(skin.id)}
@@ -758,8 +758,8 @@ function AppShellSkinButton({
         <span
           className={
             isSelected
-              ? "mt-1 block text-[8px] font-black uppercase leading-4 text-[#fff9ed]"
-              : "mt-1 block text-[8px] font-black uppercase leading-4 text-[#5b403f]"
+              ? "mt-1 block text-[8px] leading-4 font-black text-[#fff9ed] uppercase"
+              : "mt-1 block text-[8px] leading-4 font-black text-[#5b403f] uppercase"
           }
         >
           {skin.description}
@@ -786,24 +786,24 @@ function ThemeSkinReadinessPanel({ plan }: { plan: ThemeSkinReadinessPlan }) {
     >
       <div className="flex items-start justify-between gap-3 border-b-2 border-black pb-3">
         <div>
-          <p className="neo-copy text-[9px] font-black uppercase tracking-[0.14em] text-[#b7102a]">
+          <p className="neo-copy text-[9px] font-black tracking-[0.14em] text-[#b7102a] uppercase">
             Local Skin Check
           </p>
           <h2 className="neo-title mt-1 flex items-center gap-2 text-3xl leading-none text-[#171411]">
             <Palette aria-hidden="true" className="h-7 w-7" /> Theme Skin Readiness
           </h2>
         </div>
-        <span className="neo-copy border-2 border-black bg-[#8cf5e4] px-2 py-1 text-[9px] font-black uppercase text-[#171411] shadow-[2px_2px_0_#171411]">
+        <span className="neo-copy border-2 border-black bg-[#8cf5e4] px-2 py-1 text-[9px] font-black text-[#171411] uppercase shadow-[2px_2px_0_#171411]">
           Local only
         </span>
       </div>
 
       <div className="mt-3 border-2 border-black bg-[#efe3cf] p-3 shadow-[2px_2px_0_#171411]">
-        <p className="neo-copy text-[9px] font-black uppercase text-[#5b403f]">Profile Theme</p>
+        <p className="neo-copy text-[9px] font-black text-[#5b403f] uppercase">Profile Theme</p>
         <p className="neo-title mt-1 text-3xl leading-none text-[#171411]">
           {plan.selectedThemeName}
         </p>
-        <p className="neo-copy mt-2 text-[9px] font-black uppercase leading-4 text-[#5b403f]">
+        <p className="neo-copy mt-2 text-[9px] leading-4 font-black text-[#5b403f] uppercase">
           {plan.summary}
         </p>
       </div>
@@ -811,7 +811,7 @@ function ThemeSkinReadinessPanel({ plan }: { plan: ThemeSkinReadinessPlan }) {
       <div className="mt-3 grid gap-2">
         {[...plan.blockers, ...plan.warnings].slice(0, 4).map((item) => (
           <p
-            className="neo-copy border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#171411]"
+            className="neo-copy border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] leading-4 font-black text-[#171411] uppercase"
             key={item}
           >
             {item}
@@ -822,7 +822,7 @@ function ThemeSkinReadinessPanel({ plan }: { plan: ThemeSkinReadinessPlan }) {
       <div className="mt-3 grid gap-2">
         {plan.checklist.map((item) => (
           <p
-            className="neo-copy border-2 border-black bg-[#f6edd8] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#171411]"
+            className="neo-copy border-2 border-black bg-[#f6edd8] px-2 py-1 text-[8px] leading-4 font-black text-[#171411] uppercase"
             key={item}
           >
             {item}

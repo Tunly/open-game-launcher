@@ -174,7 +174,7 @@ export function ProfilePage() {
   return (
     <ProfileShell>
       {state.isMock ? (
-        <div className="neo-copy mb-4 border-[3px] border-black bg-[#8cf5e4] p-4 text-[11px] font-black uppercase tracking-[0.08em] text-[#171411] shadow-[4px_4px_0_#1f1c0f]">
+        <div className="neo-copy mb-4 border-[3px] border-black bg-[#8cf5e4] p-4 text-[11px] font-black tracking-[0.08em] text-[#171411] uppercase shadow-[4px_4px_0_#1f1c0f]">
           Local profile relay active: Supabase env vars are missing, so this public route is using
           deterministic launcher fallback data.
         </div>
@@ -221,7 +221,7 @@ export function ProfilePage() {
                     {visibleData.socialLinks.map((link) => (
                       <a
                         key={link.id}
-                        className="neo-copy flex items-center justify-between gap-3 border-[3px] border-black bg-[#f6edd8] px-3 py-2 text-[11px] font-black uppercase tracking-[0.08em] text-[#171411] shadow-[3px_3px_0_#1f1c0f] transition hover:-translate-y-0.5 hover:bg-[#8cf5e4]"
+                        className="neo-copy flex items-center justify-between gap-3 border-[3px] border-black bg-[#f6edd8] px-3 py-2 text-[11px] font-black tracking-[0.08em] text-[#171411] uppercase shadow-[3px_3px_0_#1f1c0f] transition hover:-translate-y-0.5 hover:bg-[#8cf5e4]"
                         href={link.url}
                         rel="noreferrer"
                         target="_blank"
@@ -232,7 +232,7 @@ export function ProfilePage() {
                     ))}
                   </div>
                 ) : (
-                  <p className="neo-copy border-2 border-dashed border-black bg-[#f6edd8] p-3 text-[12px] font-bold uppercase leading-5 text-[#655f58]">
+                  <p className="neo-copy border-2 border-dashed border-black bg-[#f6edd8] p-3 text-[12px] leading-5 font-bold text-[#655f58] uppercase">
                     No public social links yet.
                   </p>
                 )}
@@ -251,7 +251,7 @@ export function ProfilePage() {
             />
           ) : (
             <ProfileSidePanel title="Guestbook">
-              <p className="neo-copy border-2 border-dashed border-black bg-[#f6edd8] p-3 text-[12px] font-bold uppercase leading-5 text-[#655f58]">
+              <p className="neo-copy border-2 border-dashed border-black bg-[#f6edd8] p-3 text-[12px] leading-5 font-bold text-[#655f58] uppercase">
                 Comments are private for this profile.
               </p>
             </ProfileSidePanel>
@@ -287,21 +287,21 @@ function ProfileIntelDeck({
     <section className="overflow-hidden border-4 border-black bg-[#171411] shadow-[7px_7px_0_#1f1c0f]">
       <div className="grid gap-0 lg:grid-cols-[minmax(0,1fr)_420px]">
         <div className="p-5 text-[#fff9ed] sm:p-6">
-          <span className="neo-copy inline-flex border-2 border-black bg-[#b7102a] px-3 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-white shadow-[3px_3px_0_#000]">
+          <span className="neo-copy inline-flex border-2 border-black bg-[#b7102a] px-3 py-1 text-[10px] font-black tracking-[0.12em] text-white uppercase shadow-[3px_3px_0_#000]">
             Public Player Card
           </span>
           <h1 className="neo-title mt-3 text-5xl leading-none md:text-7xl">
             {profile.displayName ?? profile.username}
           </h1>
-          <p className="neo-copy mt-3 max-w-3xl text-[11px] font-black uppercase leading-5 text-[#8cf5e4]">
+          <p className="neo-copy mt-3 max-w-3xl text-[11px] leading-5 font-black text-[#8cf5e4] uppercase">
             Manga-profile dossier for library flex, rare unlocks, hardware rig, social links, and
             guestbook activity inside the OG-Launcher network.
           </p>
         </div>
-        <div className="grid grid-cols-2 border-t-4 border-black bg-[#fff9ed] lg:border-l-4 lg:border-t-0">
+        <div className="grid grid-cols-2 border-t-4 border-black bg-[#fff9ed] lg:border-t-0 lg:border-l-4">
           {readouts.map(([label, value]) => (
-            <div key={label} className="min-w-0 border-b-[3px] border-r-[3px] border-black p-4">
-              <p className="neo-copy text-[9px] font-black uppercase tracking-[0.12em] text-[#5b403f]">
+            <div key={label} className="min-w-0 border-r-[3px] border-b-[3px] border-black p-4">
+              <p className="neo-copy text-[9px] font-black tracking-[0.12em] text-[#5b403f] uppercase">
                 {label}
               </p>
               <p className="neo-title mt-2 truncate text-2xl leading-none text-[#171411]">
@@ -317,7 +317,7 @@ function ProfileIntelDeck({
             ].map(([label, value]) => (
               <div key={label} className="border-r-[3px] border-black bg-[#f6edd8] p-4">
                 <p className="neo-title text-3xl leading-none text-[#b7102a]">{value}</p>
-                <p className="neo-copy mt-1 text-[9px] font-black uppercase text-[#5b403f]">
+                <p className="neo-copy mt-1 text-[9px] font-black text-[#5b403f] uppercase">
                   {label}
                 </p>
               </div>
@@ -337,7 +337,7 @@ function EmptyPanel({ body, icon, title }: { body: string; icon: ReactNode; titl
           {icon}
         </div>
         <h1 className="neo-title mt-5 text-5xl leading-none text-[#171411]">{title}</h1>
-        <p className="mt-3 text-sm font-semibold leading-6 text-[#5b403f]">{body}</p>
+        <p className="mt-3 text-sm leading-6 font-semibold text-[#5b403f]">{body}</p>
       </div>
     </div>
   );
@@ -353,13 +353,13 @@ function PrivateProfileState({ data }: { data: ProfilePageData }) {
             {data.profile.username.slice(0, 2).toUpperCase()}
           </div>
           <div>
-            <p className="neo-copy inline-block border-2 border-black bg-[#f6edd8] px-2 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-[#171411]">
+            <p className="neo-copy inline-block border-2 border-black bg-[#f6edd8] px-2 py-1 text-[10px] font-black tracking-[0.12em] text-[#171411] uppercase">
               @{data.profile.username}
             </p>
             <h1 className="neo-title mt-2 text-5xl leading-none text-[#171411]">Private Profile</h1>
           </div>
         </div>
-        <p className="mt-5 max-w-xl text-sm font-semibold leading-6 text-[#5b403f]">
+        <p className="mt-5 max-w-xl text-sm leading-6 font-semibold text-[#5b403f]">
           This player keeps their room private. Library, activity, achievements, and comments are
           hidden by profile visibility rules.
         </p>
@@ -383,7 +383,7 @@ function FeaturedText({ body, title }: { body: string; title: string }) {
   return (
     <div>
       <p className="neo-title text-2xl leading-none text-[#171411]">{title}</p>
-      <p className="mt-2 text-sm font-semibold leading-6 text-[#5b403f]">{body}</p>
+      <p className="mt-2 text-sm leading-6 font-semibold text-[#5b403f]">{body}</p>
     </div>
   );
 }

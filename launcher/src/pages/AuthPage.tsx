@@ -166,13 +166,13 @@ export function AuthPage() {
   return (
     <section className="grid min-h-[calc(100vh-150px)] content-center gap-6 py-4 sm:py-6 lg:min-h-[calc(100vh-112px)] lg:grid-cols-[minmax(0,1fr)_390px] lg:items-center">
       <div className="max-w-[680px]">
-        <span className="neo-copy inline-flex border-2 border-black bg-[#171411] px-3 py-1 text-xs font-bold uppercase text-white shadow-[3px_3px_0_#171411]">
+        <span className="neo-copy inline-flex border-2 border-black bg-[#171411] px-3 py-1 text-xs font-bold text-white uppercase shadow-[3px_3px_0_#171411]">
           Supabase Auth
         </span>
         <h1 className="neo-title mt-4 max-w-[620px] text-[3.5rem] leading-[0.82] text-[#171411] sm:text-[4.5rem] lg:text-[5.4rem] xl:text-[6rem]">
           Launcher Account
         </h1>
-        <p className="neo-copy mt-5 max-w-[560px] text-xs font-bold uppercase leading-6 text-[#55504a]">
+        <p className="neo-copy mt-5 max-w-[560px] text-xs leading-6 font-bold text-[#55504a] uppercase">
           Library, downloads, and community features are account-bound. Store browsing and local
           settings stay available without login.
         </p>
@@ -205,7 +205,7 @@ export function AuthPage() {
         {mode === "sign-up" && (
           <div className="mb-4">
             <label className="grid gap-2">
-              <span className="neo-copy text-[10px] font-bold uppercase text-[#55504a]">
+              <span className="neo-copy text-[10px] font-bold text-[#55504a] uppercase">
                 Username
               </span>
               <span className="flex h-12 items-center gap-3 border-2 border-black bg-[#fbf8ef] px-3">
@@ -255,7 +255,7 @@ export function AuthPage() {
         )}
 
         <label className="grid gap-2">
-          <span className="neo-copy text-[10px] font-bold uppercase text-[#55504a]">Email</span>
+          <span className="neo-copy text-[10px] font-bold text-[#55504a] uppercase">Email</span>
           <span className="flex h-12 items-center gap-3 border-2 border-black bg-[#fbf8ef] px-3">
             <Mail className="h-5 w-5 shrink-0" />
             <input
@@ -270,7 +270,7 @@ export function AuthPage() {
         </label>
 
         <label className="mt-4 grid gap-2">
-          <span className="neo-copy text-[10px] font-bold uppercase text-[#55504a]">Password</span>
+          <span className="neo-copy text-[10px] font-bold text-[#55504a] uppercase">Password</span>
           <span className="flex h-12 items-center gap-3 border-2 border-black bg-[#fbf8ef] px-3">
             <KeyRound className="h-5 w-5 shrink-0" />
             <input
@@ -287,7 +287,7 @@ export function AuthPage() {
 
         {mode === "sign-up" && (
           <label className="mt-4 grid gap-2">
-            <span className="neo-copy text-[10px] font-bold uppercase text-[#55504a]">
+            <span className="neo-copy text-[10px] font-bold text-[#55504a] uppercase">
               Repeat Password
             </span>
             <span className="flex h-12 items-center gap-3 border-2 border-black bg-[#fbf8ef] px-3">
@@ -306,19 +306,19 @@ export function AuthPage() {
         )}
 
         {errorMessage && (
-          <p className="neo-copy mt-4 border-2 border-black bg-[#c20b2f] p-3 text-[10px] font-bold uppercase text-white">
+          <p className="neo-copy mt-4 border-2 border-black bg-[#c20b2f] p-3 text-[10px] font-bold text-white uppercase">
             {errorMessage}
           </p>
         )}
 
         {message && (
-          <p className="neo-copy mt-4 border-2 border-black bg-[#087d6d] p-3 text-[10px] font-bold uppercase text-white">
+          <p className="neo-copy mt-4 border-2 border-black bg-[#087d6d] p-3 text-[10px] font-bold text-white uppercase">
             {message}
           </p>
         )}
 
         <button
-          className="neo-copy mt-5 flex h-12 w-full items-center justify-center gap-3 border-2 border-black bg-[#c20b2f] px-5 text-xs font-bold uppercase text-white shadow-[3px_3px_0_#171411] disabled:opacity-60"
+          className="neo-copy mt-5 flex h-12 w-full items-center justify-center gap-3 border-2 border-black bg-[#c20b2f] px-5 text-xs font-bold text-white uppercase shadow-[3px_3px_0_#171411] disabled:opacity-60"
           disabled={isSubmitting}
           type="submit"
         >

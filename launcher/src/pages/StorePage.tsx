@@ -1400,11 +1400,11 @@ export function StorePage() {
       <section className="space-y-7">
         <nav
           aria-label="Store section navigation"
-          className="neo-copy border-[3px] border-black bg-[#171411] text-[10px] font-black uppercase tracking-[0.08em] text-[#fff9ed] shadow-[4px_4px_0_#171411]"
+          className="neo-copy border-[3px] border-black bg-[#171411] text-[10px] font-black tracking-[0.08em] text-[#fff9ed] uppercase shadow-[4px_4px_0_#171411]"
         >
           <div className="grid gap-0 lg:grid-cols-[auto_auto_auto_auto_auto_auto_minmax(220px,1fr)_auto]">
             <button
-              className={`flex h-12 items-center justify-center gap-1 border-b-2 border-black px-4 lg:border-b-0 lg:border-r-2 ${
+              className={`flex h-12 items-center justify-center gap-1 border-b-2 border-black px-4 lg:border-r-2 lg:border-b-0 ${
                 activeTab === "browse" ? "bg-[#8cf5e4] text-[#171411]" : "bg-[#171411]"
               }`}
               type="button"
@@ -1414,7 +1414,7 @@ export function StorePage() {
               <ChevronDown className="h-3.5 w-3.5" />
             </button>
             <button
-              className="flex h-12 items-center justify-center gap-1 border-b-2 border-black bg-[#242019] px-4 hover:bg-[#30291f] lg:border-b-0 lg:border-r-2"
+              className="flex h-12 items-center justify-center gap-1 border-b-2 border-black bg-[#242019] px-4 hover:bg-[#30291f] lg:border-r-2 lg:border-b-0"
               type="button"
               onClick={() => {
                 setActiveTab("browse");
@@ -1424,7 +1424,7 @@ export function StorePage() {
               Published
               <ChevronDown className="h-3.5 w-3.5" />
             </button>
-            <label className="relative flex h-12 items-center border-b-2 border-black bg-[#171411] lg:border-b-0 lg:border-r-2">
+            <label className="relative flex h-12 items-center border-b-2 border-black bg-[#171411] lg:border-r-2 lg:border-b-0">
               <span className="sr-only">Store categories</span>
               <select
                 className="h-full w-full appearance-none bg-transparent px-4 pr-8 text-[#fff9ed] outline-none"
@@ -1445,7 +1445,7 @@ export function StorePage() {
               </select>
               <ChevronDown className="pointer-events-none absolute right-3 h-3.5 w-3.5" />
             </label>
-            <label className="relative flex h-12 items-center border-b-2 border-black bg-[#242019] lg:border-b-0 lg:border-r-2">
+            <label className="relative flex h-12 items-center border-b-2 border-black bg-[#242019] lg:border-r-2 lg:border-b-0">
               <span className="sr-only">Store platforms</span>
               <select
                 className="h-full w-full appearance-none bg-transparent px-4 pr-8 text-[#fff9ed] outline-none"
@@ -1470,7 +1470,7 @@ export function StorePage() {
               </select>
               <ChevronDown className="pointer-events-none absolute right-3 h-3.5 w-3.5" />
             </label>
-            <label className="relative flex h-12 items-center border-b-2 border-black bg-[#171411] lg:border-b-0 lg:border-r-2">
+            <label className="relative flex h-12 items-center border-b-2 border-black bg-[#171411] lg:border-r-2 lg:border-b-0">
               <span className="sr-only">Store ways to play</span>
               <select
                 className="h-full w-full appearance-none bg-transparent px-4 pr-8 text-[#fff9ed] outline-none"
@@ -1495,7 +1495,7 @@ export function StorePage() {
               </select>
               <ChevronDown className="pointer-events-none absolute right-3 h-3.5 w-3.5" />
             </label>
-            <label className="relative flex h-12 items-center border-b-2 border-black bg-[#242019] lg:border-b-0 lg:border-r-2">
+            <label className="relative flex h-12 items-center border-b-2 border-black bg-[#242019] lg:border-r-2 lg:border-b-0">
               <span className="sr-only">Store special sections</span>
               <select
                 className="h-full w-full appearance-none bg-transparent px-4 pr-8 text-[#fff9ed] outline-none"
@@ -1523,10 +1523,10 @@ export function StorePage() {
               </select>
               <ChevronDown className="pointer-events-none absolute right-3 h-3.5 w-3.5" />
             </label>
-            <label className="flex h-12 min-w-0 items-center border-b-2 border-black bg-[#f6edd8] text-[#171411] lg:border-b-0 lg:border-r-2">
+            <label className="flex h-12 min-w-0 items-center border-b-2 border-black bg-[#f6edd8] text-[#171411] lg:border-r-2 lg:border-b-0">
               <span className="sr-only">Search the store</span>
               <input
-                className="h-full min-w-0 flex-1 bg-transparent px-4 text-[11px] font-black uppercase text-[#171411] outline-none placeholder:text-[#655f58]"
+                className="h-full min-w-0 flex-1 bg-transparent px-4 text-[11px] font-black text-[#171411] uppercase outline-none placeholder:text-[#655f58]"
                 placeholder="Search the store"
                 value={storeSearch}
                 onChange={(event) => {
@@ -1586,7 +1586,7 @@ export function StorePage() {
               </p>
               <div className="mt-8 grid gap-3 sm:flex sm:flex-wrap sm:items-center sm:gap-5">
                 <button
-                  className="neo-copy flex h-12 items-center justify-center gap-3 border-2 border-black bg-[#c20b2f] px-5 text-xs font-bold uppercase text-[#fffaf0] shadow-[4px_4px_0_#171411] disabled:opacity-50 sm:px-7"
+                  className="neo-copy flex h-12 items-center justify-center gap-3 border-2 border-black bg-[#c20b2f] px-5 text-xs font-bold text-[#fffaf0] uppercase shadow-[4px_4px_0_#171411] disabled:opacity-50 sm:px-7"
                   type="button"
                   disabled={
                     !commerceEnabled ||
@@ -1612,7 +1612,7 @@ export function StorePage() {
                         : "Unavailable"}
                 </button>
                 <button
-                  className="neo-copy h-12 border-2 border-[#fffaf0] bg-black/35 px-5 text-xs font-bold uppercase text-[#fffaf0] disabled:cursor-not-allowed disabled:opacity-60"
+                  className="neo-copy h-12 border-2 border-[#fffaf0] bg-black/35 px-5 text-xs font-bold text-[#fffaf0] uppercase disabled:cursor-not-allowed disabled:opacity-60"
                   disabled={!heroTrailerUrl}
                   type="button"
                   onClick={handleOpenHeroTrailer}
@@ -1638,14 +1638,14 @@ export function StorePage() {
             <div>
               <div className="flex flex-col gap-3 border-b-2 border-black pb-3 md:flex-row md:items-end md:justify-between">
                 <div>
-                  <p className="neo-copy text-[10px] font-black uppercase tracking-[0.14em] text-[#b7102a]">
+                  <p className="neo-copy text-[10px] font-black tracking-[0.14em] text-[#b7102a] uppercase">
                     Discovery Queue
                   </p>
                   <h2 className="neo-title text-3xl leading-none text-[#171411]">
                     Browse The Store
                   </h2>
                 </div>
-                <div className="neo-copy grid grid-cols-2 gap-2 text-[10px] font-black uppercase tracking-[0.1em] sm:flex">
+                <div className="neo-copy grid grid-cols-2 gap-2 text-[10px] font-black tracking-[0.1em] uppercase sm:flex">
                   {[
                     {
                       icon: <Sparkles className="h-3.5 w-3.5" />,
@@ -1686,25 +1686,25 @@ export function StorePage() {
               </div>
 
               <div className="mt-3 grid gap-3 xl:grid-cols-[minmax(0,1fr)_220px_180px_170px]">
-                <label className="neo-copy block border-2 border-black bg-[#f6edd8] p-2 text-[10px] font-black uppercase tracking-[0.1em] text-[#171411] shadow-[2px_2px_0_#171411]">
+                <label className="neo-copy block border-2 border-black bg-[#f6edd8] p-2 text-[10px] font-black tracking-[0.1em] text-[#171411] uppercase shadow-[2px_2px_0_#171411]">
                   <span className="flex items-center gap-2 text-[#b7102a]">
                     <Search className="h-4 w-4" />
                     Search
                   </span>
                   <input
-                    className="mt-2 h-10 w-full border-2 border-black bg-[#fff9ed] px-3 text-[12px] font-black uppercase text-[#171411] outline-none"
+                    className="mt-2 h-10 w-full border-2 border-black bg-[#fff9ed] px-3 text-[12px] font-black text-[#171411] uppercase outline-none"
                     placeholder="Find games, tags, studios"
                     value={storeSearch}
                     onChange={(event) => setStoreSearch(event.target.value)}
                   />
                 </label>
-                <label className="neo-copy block border-2 border-black bg-[#f6edd8] p-2 text-[10px] font-black uppercase tracking-[0.1em] text-[#171411] shadow-[2px_2px_0_#171411]">
+                <label className="neo-copy block border-2 border-black bg-[#f6edd8] p-2 text-[10px] font-black tracking-[0.1em] text-[#171411] uppercase shadow-[2px_2px_0_#171411]">
                   <span className="flex items-center gap-2 text-[#b7102a]">
                     <Tags className="h-4 w-4" />
                     Genre
                   </span>
                   <select
-                    className="mt-2 h-10 w-full border-2 border-black bg-[#fff9ed] px-2 text-[11px] font-black uppercase text-[#171411]"
+                    className="mt-2 h-10 w-full border-2 border-black bg-[#fff9ed] px-2 text-[11px] font-black text-[#171411] uppercase"
                     value={selectedGenre}
                     onChange={(event) => setSelectedGenre(event.target.value)}
                   >
@@ -1716,13 +1716,13 @@ export function StorePage() {
                     ))}
                   </select>
                 </label>
-                <label className="neo-copy block border-2 border-black bg-[#f6edd8] p-2 text-[10px] font-black uppercase tracking-[0.1em] text-[#171411] shadow-[2px_2px_0_#171411]">
+                <label className="neo-copy block border-2 border-black bg-[#f6edd8] p-2 text-[10px] font-black tracking-[0.1em] text-[#171411] uppercase shadow-[2px_2px_0_#171411]">
                   <span className="flex items-center gap-2 text-[#b7102a]">
                     <SlidersHorizontal className="h-4 w-4" />
                     Price
                   </span>
                   <select
-                    className="mt-2 h-10 w-full border-2 border-black bg-[#fff9ed] px-2 text-[11px] font-black uppercase text-[#171411]"
+                    className="mt-2 h-10 w-full border-2 border-black bg-[#fff9ed] px-2 text-[11px] font-black text-[#171411] uppercase"
                     value={priceFilter}
                     onChange={(event) => setPriceFilter(event.target.value as StorePriceFilter)}
                   >
@@ -1732,13 +1732,13 @@ export function StorePage() {
                     <option value="under-15">Under 15</option>
                   </select>
                 </label>
-                <label className="neo-copy block border-2 border-black bg-[#f6edd8] p-2 text-[10px] font-black uppercase tracking-[0.1em] text-[#171411] shadow-[2px_2px_0_#171411]">
+                <label className="neo-copy block border-2 border-black bg-[#f6edd8] p-2 text-[10px] font-black tracking-[0.1em] text-[#171411] uppercase shadow-[2px_2px_0_#171411]">
                   <span className="flex items-center gap-2 text-[#b7102a]">
                     <Trophy className="h-4 w-4" />
                     Sort
                   </span>
                   <select
-                    className="mt-2 h-10 w-full border-2 border-black bg-[#fff9ed] px-2 text-[11px] font-black uppercase text-[#171411]"
+                    className="mt-2 h-10 w-full border-2 border-black bg-[#fff9ed] px-2 text-[11px] font-black text-[#171411] uppercase"
                     value={sortMode}
                     onChange={(event) => setSortMode(event.target.value as StoreSortMode)}
                   >
@@ -1754,7 +1754,7 @@ export function StorePage() {
               <div className="mt-3 flex flex-wrap gap-2">
                 {(["all", "windows", "linux", "macos"] as const).map((platform) => (
                   <button
-                    className={`neo-copy border-2 border-black px-3 py-2 text-[10px] font-black uppercase tracking-[0.1em] shadow-[2px_2px_0_#171411] ${
+                    className={`neo-copy border-2 border-black px-3 py-2 text-[10px] font-black tracking-[0.1em] uppercase shadow-[2px_2px_0_#171411] ${
                       selectedPlatform === platform
                         ? "bg-[#087d6d] text-white"
                         : "bg-[#fff9ed] text-[#171411]"
@@ -1767,7 +1767,7 @@ export function StorePage() {
                   </button>
                 ))}
                 <button
-                  className="neo-copy border-2 border-black bg-[#171411] px-3 py-2 text-[10px] font-black uppercase tracking-[0.1em] text-[#fff9ed] shadow-[2px_2px_0_#171411]"
+                  className="neo-copy border-2 border-black bg-[#171411] px-3 py-2 text-[10px] font-black tracking-[0.1em] text-[#fff9ed] uppercase shadow-[2px_2px_0_#171411]"
                   type="button"
                   onClick={resetStoreBrowseFilters}
                 >
@@ -1777,7 +1777,7 @@ export function StorePage() {
             </div>
 
             <div className="neo-dots border-2 border-black bg-[#f6edd8] p-3 shadow-[3px_3px_0_#171411]">
-              <p className="neo-copy text-[10px] font-black uppercase tracking-[0.14em] text-[#b7102a]">
+              <p className="neo-copy text-[10px] font-black tracking-[0.14em] text-[#b7102a] uppercase">
                 Queue Slot
               </p>
               <p className="neo-title mt-1 text-3xl leading-none text-[#171411]">
@@ -1802,7 +1802,7 @@ export function StorePage() {
                   <ChevronRight className="h-5 w-5" />
                 </button>
               </div>
-              <p className="neo-copy mt-3 border-2 border-black bg-[#fff9ed] p-2 text-[9px] font-black uppercase leading-4 tracking-[0.08em] text-[#655f58]">
+              <p className="neo-copy mt-3 border-2 border-black bg-[#fff9ed] p-2 text-[9px] leading-4 font-black tracking-[0.08em] text-[#655f58] uppercase">
                 {filteredProducts.length} matches / {wishlistGames.length} wishlisted /{" "}
                 {cartGames.length} cart
               </p>
@@ -1811,7 +1811,7 @@ export function StorePage() {
         </section>
 
         {statusMessage ? (
-          <div className="neo-copy border-[3px] border-black bg-[#8cf5e4] p-3 text-[11px] font-black uppercase tracking-[0.12em] text-[#171411] shadow-[4px_4px_0_#171411]">
+          <div className="neo-copy border-[3px] border-black bg-[#8cf5e4] p-3 text-[11px] font-black tracking-[0.12em] text-[#171411] uppercase shadow-[4px_4px_0_#171411]">
             {statusMessage}
           </div>
         ) : null}
@@ -2054,13 +2054,13 @@ function StoreShelf({
     >
       <div className="flex items-center justify-between gap-3 border-b-2 border-black pb-2">
         <div>
-          <p className="neo-copy flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.12em] text-[#b7102a]">
+          <p className="neo-copy flex items-center gap-2 text-[10px] font-black tracking-[0.12em] text-[#b7102a] uppercase">
             {icon}
             Store Rail
           </p>
           <h2 className="neo-title text-2xl leading-none text-[#171411]">{title}</h2>
         </div>
-        <span className="neo-copy border-2 border-black bg-[#8cf5e4] px-2 py-1 text-[10px] font-black uppercase text-[#171411]">
+        <span className="neo-copy border-2 border-black bg-[#8cf5e4] px-2 py-1 text-[10px] font-black text-[#171411] uppercase">
           {games.length}
         </span>
       </div>
@@ -2084,7 +2084,7 @@ function StoreShelf({
                     src={game.coverImageUrl}
                   />
                 ) : (
-                  <span className="neo-copy grid h-full min-h-16 place-items-center bg-[#efe6d4] p-1 text-[8px] font-black uppercase text-[#655f58]">
+                  <span className="neo-copy grid h-full min-h-16 place-items-center bg-[#efe6d4] p-1 text-[8px] font-black text-[#655f58] uppercase">
                     No cover
                   </span>
                 )}
@@ -2102,7 +2102,7 @@ function StoreShelf({
                 <div className="mt-1 flex flex-wrap gap-1">
                   {(game.genres ?? [game.tagLine]).slice(0, 2).map((genre) => (
                     <span
-                      className="neo-copy border border-black bg-[#fff9ed] px-1.5 py-0.5 text-[8px] font-black uppercase tracking-[0.08em] text-[#655f58]"
+                      className="neo-copy border border-black bg-[#fff9ed] px-1.5 py-0.5 text-[8px] font-black tracking-[0.08em] text-[#655f58] uppercase"
                       key={`${game.id}-${genre}`}
                     >
                       {genre}
@@ -2114,7 +2114,7 @@ function StoreShelf({
                     {formatStorePrice(game)}
                   </span>
                   <button
-                    className="neo-copy border-2 border-black bg-[#b7102a] px-2 py-1 text-[9px] font-black uppercase tracking-[0.08em] text-white shadow-[2px_2px_0_#171411] disabled:opacity-50"
+                    className="neo-copy border-2 border-black bg-[#b7102a] px-2 py-1 text-[9px] font-black tracking-[0.08em] text-white uppercase shadow-[2px_2px_0_#171411] disabled:opacity-50"
                     type="button"
                     disabled={isProcessing}
                     onClick={() => onBuyNow(game.id)}
@@ -2126,7 +2126,7 @@ function StoreShelf({
             </article>
           ))
         ) : (
-          <p className="neo-copy border-2 border-dashed border-black bg-[#f6edd8] p-3 text-[10px] font-black uppercase leading-5 text-[#655f58]">
+          <p className="neo-copy border-2 border-dashed border-black bg-[#f6edd8] p-3 text-[10px] leading-5 font-black text-[#655f58] uppercase">
             No catalog rows.
           </p>
         )}

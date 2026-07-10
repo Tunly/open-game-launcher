@@ -55,7 +55,7 @@ export function StoreGameCard({
           />
         ) : (
           <div className="absolute inset-0 grid place-items-center bg-[#efe6d4]">
-            <span className="neo-copy border-2 border-black bg-[#fff9ed] px-3 py-2 text-[9px] font-black uppercase text-[#655f58] shadow-[2px_2px_0_#171411]">
+            <span className="neo-copy border-2 border-black bg-[#fff9ed] px-3 py-2 text-[9px] font-black text-[#655f58] uppercase shadow-[2px_2px_0_#171411]">
               No cover published
             </span>
           </div>
@@ -66,22 +66,22 @@ export function StoreGameCard({
           <h3 className="neo-title text-[1.85rem] leading-none text-[#fff9ed] drop-shadow-[2px_2px_0_#171411]">
             {game.title}
           </h3>
-          <p className="neo-copy mt-1 line-clamp-1 text-[9px] font-black uppercase tracking-[0.08em] text-[#fff9ed]">
+          <p className="neo-copy mt-1 line-clamp-1 text-[9px] font-black tracking-[0.08em] text-[#fff9ed] uppercase">
             {game.publisher ?? game.tagLine}
           </p>
         </div>
-        <div className="absolute left-2 top-2 flex max-w-[calc(100%-84px)] flex-wrap gap-1.5">
+        <div className="absolute top-2 left-2 flex max-w-[calc(100%-84px)] flex-wrap gap-1.5">
           {(game.genres ?? [game.tagLine]).slice(0, 3).map((genre) => (
             <span
               key={genre}
-              className="neo-copy border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] font-black uppercase tracking-[0.08em] text-[#171411] shadow-[2px_2px_0_#171411]"
+              className="neo-copy border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] font-black tracking-[0.08em] text-[#171411] uppercase shadow-[2px_2px_0_#171411]"
             >
               {genre}
             </span>
           ))}
         </div>
       </button>
-      <div className="absolute right-2 top-2 z-10 flex gap-1.5">
+      <div className="absolute top-2 right-2 z-10 flex gap-1.5">
         <button
           aria-label={
             isWishlisted ? `Remove ${game.title} from wishlist` : `Wishlist ${game.title}`
@@ -110,7 +110,7 @@ export function StoreGameCard({
       </div>
       <button
         aria-label={`${isAdded ? "Owned" : game.isFree ? "Claim" : "Buy now"} - ${priceLabel}`}
-        className="neo-copy absolute bottom-2 right-2 z-10 min-w-24 border-2 border-black bg-[#171411] text-right text-[10px] font-black uppercase tracking-[0.08em] text-[#fff9ed] shadow-[2px_2px_0_#171411] disabled:opacity-70"
+        className="neo-copy absolute right-2 bottom-2 z-10 min-w-24 border-2 border-black bg-[#171411] text-right text-[10px] font-black tracking-[0.08em] text-[#fff9ed] uppercase shadow-[2px_2px_0_#171411] disabled:opacity-70"
         disabled={isAdded || isProcessing}
         type="button"
         onClick={() => onBuyNow(game.id)}
@@ -126,7 +126,7 @@ export function StoreGameCard({
         <span className="block bg-[#b7102a] px-2 py-1 text-sm leading-none">{buyLabel}</span>
       </button>
       {game.discountPercent ? (
-        <span className="neo-copy absolute bottom-2 left-2 z-10 border-2 border-black bg-[#8cf5e4] px-2 py-1 text-[11px] font-black uppercase leading-none text-[#171411] shadow-[2px_2px_0_#171411]">
+        <span className="neo-copy absolute bottom-2 left-2 z-10 border-2 border-black bg-[#8cf5e4] px-2 py-1 text-[11px] leading-none font-black text-[#171411] uppercase shadow-[2px_2px_0_#171411]">
           -{game.discountPercent}%
         </span>
       ) : null}

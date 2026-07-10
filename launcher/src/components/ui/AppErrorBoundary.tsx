@@ -26,18 +26,18 @@ function ErrorPanel({ message }: { message: string }) {
       <section className="w-full max-w-[620px] border-4 border-black bg-[#f6edd8] shadow-[8px_8px_0_#171411]">
         <div className="flex items-center gap-3 border-b-4 border-black bg-[#b7102a] px-4 py-3 text-white">
           <AlertTriangle className="h-7 w-7" />
-          <h1 className="neo-title text-3xl uppercase leading-none">Launcher Fault</h1>
+          <h1 className="neo-title text-3xl leading-none uppercase">Launcher Fault</h1>
         </div>
         <div className="space-y-4 p-4">
-          <p className="neo-copy text-[12px] font-black uppercase leading-5 text-[#5b403f]">
+          <p className="neo-copy text-[12px] leading-5 font-black text-[#5b403f] uppercase">
             OG-Launcher caught a startup error instead of closing the app.
           </p>
-          <pre className="max-h-[180px] overflow-auto whitespace-pre-wrap border-2 border-black bg-[#fff9ed] p-3 text-[11px] font-bold text-[#171411]">
+          <pre className="max-h-[180px] overflow-auto border-2 border-black bg-[#fff9ed] p-3 text-[11px] font-bold whitespace-pre-wrap text-[#171411]">
             {message}
           </pre>
           <button
             type="button"
-            className="neo-copy inline-flex h-10 items-center gap-2 border-2 border-black bg-[#087d6d] px-4 text-[11px] font-black uppercase text-white shadow-[3px_3px_0_#171411]"
+            className="neo-copy inline-flex h-10 items-center gap-2 border-2 border-black bg-[#087d6d] px-4 text-[11px] font-black text-white uppercase shadow-[3px_3px_0_#171411]"
             onClick={() => window.location.reload()}
           >
             <RotateCcw className="h-4 w-4" />

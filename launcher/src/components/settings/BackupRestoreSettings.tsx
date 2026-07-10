@@ -939,8 +939,8 @@ export function BackupRestoreSettings({
     <section className="border-4 border-black bg-[#f5eedf] shadow-[4px_4px_0_#171411]">
       <div className="flex flex-col gap-3 border-b-4 border-black p-5 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <p className="neo-copy text-[10px] font-bold uppercase text-[#55504a]">Local Safety</p>
-          <h2 className="text-3xl font-black uppercase text-[#171411]">Backup & Restore</h2>
+          <p className="neo-copy text-[10px] font-bold text-[#55504a] uppercase">Local Safety</p>
+          <h2 className="text-3xl font-black text-[#171411] uppercase">Backup & Restore</h2>
         </div>
         <DatabaseBackup className="h-10 w-10 text-[#c20b2f]" />
       </div>
@@ -948,10 +948,10 @@ export function BackupRestoreSettings({
       <div className="space-y-4 p-5">
         {!isDesktopRuntime ? (
           <div className="border-[3px] border-black bg-[#fff9ed] p-3 shadow-[3px_3px_0_#171411]">
-            <p className="neo-copy text-[10px] font-black uppercase tracking-[0.12em] text-[#c20b2f]">
+            <p className="neo-copy text-[10px] font-black tracking-[0.12em] text-[#c20b2f] uppercase">
               Browser Backup Guard
             </p>
-            <p className="neo-copy mt-2 text-[11px] font-bold uppercase leading-5 text-[#55504a]">
+            <p className="neo-copy mt-2 text-[11px] leading-5 font-bold text-[#55504a] uppercase">
               Preview, Backup, Restore, folder picker, and OS timer commands are disabled here so
               browser preview never touches the filesystem. Reminder settings still save locally.
             </p>
@@ -968,16 +968,16 @@ export function BackupRestoreSettings({
             className="grid gap-3 border-[3px] border-black bg-[#fff9ed] p-3 shadow-[3px_3px_0_#171411] md:grid-cols-[1fr_auto] md:items-center"
           >
             <div>
-              <p className="neo-copy text-[9px] font-black uppercase tracking-[0.14em] text-[#c20b2f]">
+              <p className="neo-copy text-[9px] font-black tracking-[0.14em] text-[#c20b2f] uppercase">
                 Drive Scan
               </p>
-              <p className="neo-copy mt-1 text-[10px] font-black uppercase leading-5 text-[#55504a]">
+              <p className="neo-copy mt-1 text-[10px] leading-5 font-black text-[#55504a] uppercase">
                 {driveScanCopy}
               </p>
             </div>
             <div className="flex flex-wrap gap-2">
               <button
-                className="neo-copy flex h-10 items-center justify-center gap-2 border-2 border-black bg-[#087d6d] px-4 text-[10px] font-black uppercase text-white shadow-[2px_2px_0_#171411] disabled:cursor-not-allowed disabled:bg-[#8f887c] disabled:text-white disabled:opacity-100"
+                className="neo-copy flex h-10 items-center justify-center gap-2 border-2 border-black bg-[#087d6d] px-4 text-[10px] font-black text-white uppercase shadow-[2px_2px_0_#171411] disabled:cursor-not-allowed disabled:bg-[#8f887c] disabled:text-white disabled:opacity-100"
                 disabled={
                   !isDesktopRuntime ||
                   externalDriveDetectionFixture ||
@@ -993,7 +993,7 @@ export function BackupRestoreSettings({
                 Refresh Drives
               </button>
               <button
-                className="neo-copy flex h-10 items-center justify-center gap-2 border-2 border-black bg-[#c20b2f] px-4 text-[10px] font-black uppercase text-white shadow-[2px_2px_0_#171411] disabled:cursor-not-allowed disabled:bg-[#8f887c] disabled:text-white disabled:opacity-100"
+                className="neo-copy flex h-10 items-center justify-center gap-2 border-2 border-black bg-[#c20b2f] px-4 text-[10px] font-black text-white uppercase shadow-[2px_2px_0_#171411] disabled:cursor-not-allowed disabled:bg-[#8f887c] disabled:text-white disabled:opacity-100"
                 disabled={
                   busyAction !== null ||
                   !isDesktopRuntime ||
@@ -1011,7 +1011,7 @@ export function BackupRestoreSettings({
                 Write Proof
               </button>
               <button
-                className="neo-copy flex h-10 items-center justify-center gap-2 border-2 border-black bg-[#171411] px-4 text-[10px] font-black uppercase text-white shadow-[2px_2px_0_#171411] disabled:cursor-not-allowed disabled:bg-[#8f887c] disabled:text-white disabled:opacity-100"
+                className="neo-copy flex h-10 items-center justify-center gap-2 border-2 border-black bg-[#171411] px-4 text-[10px] font-black text-white uppercase shadow-[2px_2px_0_#171411] disabled:cursor-not-allowed disabled:bg-[#8f887c] disabled:text-white disabled:opacity-100"
                 disabled={
                   busyAction !== null ||
                   !isDesktopRuntime ||
@@ -1030,7 +1030,7 @@ export function BackupRestoreSettings({
                 Eject Proof
               </button>
               <button
-                className="neo-copy flex h-10 items-center justify-center gap-2 border-2 border-black bg-[#087d6d] px-4 text-[10px] font-black uppercase text-white shadow-[2px_2px_0_#171411] disabled:cursor-not-allowed disabled:bg-[#8f887c] disabled:text-white disabled:opacity-100"
+                className="neo-copy flex h-10 items-center justify-center gap-2 border-2 border-black bg-[#087d6d] px-4 text-[10px] font-black text-white uppercase shadow-[2px_2px_0_#171411] disabled:cursor-not-allowed disabled:bg-[#8f887c] disabled:text-white disabled:opacity-100"
                 disabled={
                   busyAction !== null ||
                   !isDesktopRuntime ||
@@ -1053,7 +1053,7 @@ export function BackupRestoreSettings({
         ) : null}
 
         <div className="grid gap-3 lg:grid-cols-[1fr_auto_auto] lg:items-end">
-          <label className="neo-copy block text-[10px] font-black uppercase text-[#55504a]">
+          <label className="neo-copy block text-[10px] font-black text-[#55504a] uppercase">
             Target Path
             <input
               className="mt-1 h-11 w-full border-2 border-black bg-[#fff9ed] px-3 text-[12px] font-black text-[#171411] shadow-[2px_2px_0_#171411] outline-none"
@@ -1069,7 +1069,7 @@ export function BackupRestoreSettings({
             />
           </label>
           <button
-            className="neo-copy flex h-11 items-center justify-center gap-2 border-2 border-black bg-[#087d6d] px-4 text-[10px] font-black uppercase text-white shadow-[2px_2px_0_#171411] disabled:cursor-not-allowed disabled:bg-[#8f887c] disabled:text-white disabled:opacity-100"
+            className="neo-copy flex h-11 items-center justify-center gap-2 border-2 border-black bg-[#087d6d] px-4 text-[10px] font-black text-white uppercase shadow-[2px_2px_0_#171411] disabled:cursor-not-allowed disabled:bg-[#8f887c] disabled:text-white disabled:opacity-100"
             disabled={busyAction !== null || !isDesktopRuntime}
             type="button"
             onClick={() => void handleChooseTargetPath()}
@@ -1078,7 +1078,7 @@ export function BackupRestoreSettings({
             Browse
           </button>
           <button
-            className="neo-copy flex h-11 items-center justify-center gap-2 border-2 border-black bg-[#171411] px-4 text-[10px] font-black uppercase text-white shadow-[2px_2px_0_#171411] disabled:cursor-not-allowed disabled:bg-[#8f887c] disabled:text-white disabled:opacity-100"
+            className="neo-copy flex h-11 items-center justify-center gap-2 border-2 border-black bg-[#171411] px-4 text-[10px] font-black text-white uppercase shadow-[2px_2px_0_#171411] disabled:cursor-not-allowed disabled:bg-[#8f887c] disabled:text-white disabled:opacity-100"
             disabled={busyAction !== null || !targetPath.trim() || !isDesktopRuntime}
             type="button"
             onClick={() => void refreshStatus()}
@@ -1089,7 +1089,7 @@ export function BackupRestoreSettings({
         </div>
 
         <div className="flex flex-wrap gap-2">
-          <label className="neo-copy flex w-fit items-center gap-2 border-2 border-black bg-[#efe6d4] px-3 py-2 text-[10px] font-black uppercase text-[#171411] shadow-[2px_2px_0_#171411]">
+          <label className="neo-copy flex w-fit items-center gap-2 border-2 border-black bg-[#efe6d4] px-3 py-2 text-[10px] font-black text-[#171411] uppercase shadow-[2px_2px_0_#171411]">
             <input
               checked={includeLibraryData}
               className="h-4 w-4 accent-[#087d6d]"
@@ -1101,7 +1101,7 @@ export function BackupRestoreSettings({
             />
             Include Library DB
           </label>
-          <label className="neo-copy flex w-fit items-center gap-2 border-2 border-black bg-[#fff9ed] px-3 py-2 text-[10px] font-black uppercase text-[#171411] shadow-[2px_2px_0_#171411]">
+          <label className="neo-copy flex w-fit items-center gap-2 border-2 border-black bg-[#fff9ed] px-3 py-2 text-[10px] font-black text-[#171411] uppercase shadow-[2px_2px_0_#171411]">
             <input
               checked={compressionMode === "zip"}
               className="h-4 w-4 accent-[#c20b2f]"
@@ -1126,24 +1126,24 @@ export function BackupRestoreSettings({
         >
           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div className="min-w-0">
-              <p className="neo-copy text-[10px] font-black uppercase text-[#55504a]">
+              <p className="neo-copy text-[10px] font-black text-[#55504a] uppercase">
                 Backup Reminder
               </p>
-              <h3 className="mt-1 text-xl font-black uppercase text-[#171411]">
+              <h3 className="mt-1 text-xl font-black text-[#171411] uppercase">
                 {reminderStatus.title}
               </h3>
-              <p className="neo-copy mt-1 break-words text-[10px] font-bold uppercase leading-4 text-[#55504a]">
+              <p className="neo-copy mt-1 text-[10px] leading-4 font-bold break-words text-[#55504a] uppercase">
                 {reminderStatus.message}
               </p>
             </div>
             <div className="flex shrink-0 items-center gap-2">
               {reminderFormChanged ? (
-                <span className="neo-copy border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] font-black uppercase text-[#171411]">
+                <span className="neo-copy border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] font-black text-[#171411] uppercase">
                   Unsaved
                 </span>
               ) : null}
               {reminderIsDue ? (
-                <span className="neo-copy border-2 border-black bg-[#c20b2f] px-2 py-1 text-[8px] font-black uppercase text-white">
+                <span className="neo-copy border-2 border-black bg-[#c20b2f] px-2 py-1 text-[8px] font-black text-white uppercase">
                   Due
                 </span>
               ) : null}
@@ -1152,10 +1152,10 @@ export function BackupRestoreSettings({
           </div>
 
           <div className="mt-3 grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)]">
-            <label className="neo-copy block text-[9px] font-black uppercase text-[#55504a]">
+            <label className="neo-copy block text-[9px] font-black text-[#55504a] uppercase">
               Cadence
               <select
-                className="mt-1 h-10 w-full border-2 border-black bg-[#fff9ed] px-3 text-[11px] font-black uppercase text-[#171411] shadow-[2px_2px_0_#171411] outline-none"
+                className="mt-1 h-10 w-full border-2 border-black bg-[#fff9ed] px-3 text-[11px] font-black text-[#171411] uppercase shadow-[2px_2px_0_#171411] outline-none"
                 value={reminderCadence}
                 onChange={(event) =>
                   setReminderCadence(event.currentTarget.value as BackupReminderCadence | "off")
@@ -1176,12 +1176,12 @@ export function BackupRestoreSettings({
             />
           </div>
 
-          <p className="neo-copy mt-2 truncate text-[9px] font-bold uppercase text-[#55504a]">
+          <p className="neo-copy mt-2 truncate text-[9px] font-bold text-[#55504a] uppercase">
             Saved Target: {reminderSettings.targetPath || "None"}
           </p>
 
           <div className="mt-3 flex flex-wrap gap-2">
-            <label className="neo-copy flex w-fit items-center gap-2 border-2 border-black bg-[#fff9ed] px-3 py-2 text-[9px] font-black uppercase text-[#171411] shadow-[2px_2px_0_#171411]">
+            <label className="neo-copy flex w-fit items-center gap-2 border-2 border-black bg-[#fff9ed] px-3 py-2 text-[9px] font-black text-[#171411] uppercase shadow-[2px_2px_0_#171411]">
               <input
                 checked={autoRunWhenDue}
                 className="h-4 w-4 accent-[#c20b2f]"
@@ -1237,19 +1237,19 @@ export function BackupRestoreSettings({
         >
           <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
             <div className="min-w-0">
-              <p className="neo-copy text-[10px] font-black uppercase text-[#55504a]">
+              <p className="neo-copy text-[10px] font-black text-[#55504a] uppercase">
                 Headless OS Timer
               </p>
-              <h3 className="mt-1 text-xl font-black uppercase text-[#171411]">
+              <h3 className="mt-1 text-xl font-black text-[#171411] uppercase">
                 {schedulerStatus?.installed ? "Timer Armed" : "Timer Not Installed"}
               </h3>
-              <p className="neo-copy mt-1 break-words text-[10px] font-bold uppercase leading-4 text-[#55504a]">
+              <p className="neo-copy mt-1 text-[10px] leading-4 font-bold break-words text-[#55504a] uppercase">
                 {schedulerStatus?.message ?? "Checking backup timer status."}
               </p>
             </div>
             <div className="flex shrink-0 items-center gap-2">
               {schedulerFormChanged ? (
-                <span className="neo-copy border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] font-black uppercase text-[#171411]">
+                <span className="neo-copy border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] font-black text-[#171411] uppercase">
                   Unsaved
                 </span>
               ) : null}
@@ -1267,10 +1267,10 @@ export function BackupRestoreSettings({
           </div>
 
           <div className="mt-3 grid gap-2 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)]">
-            <label className="neo-copy block text-[9px] font-black uppercase text-[#55504a]">
+            <label className="neo-copy block text-[9px] font-black text-[#55504a] uppercase">
               Timer Cadence
               <select
-                className="mt-1 h-10 w-full border-2 border-black bg-[#fff9ed] px-3 text-[11px] font-black uppercase text-[#171411] shadow-[2px_2px_0_#171411] outline-none"
+                className="mt-1 h-10 w-full border-2 border-black bg-[#fff9ed] px-3 text-[11px] font-black text-[#171411] uppercase shadow-[2px_2px_0_#171411] outline-none"
                 value={schedulerCadence}
                 onChange={(event) =>
                   setSchedulerCadence(event.currentTarget.value as BackupSchedulerCadence)
@@ -1288,10 +1288,10 @@ export function BackupRestoreSettings({
           </div>
 
           <div className="mt-2 grid gap-2 md:grid-cols-2">
-            <p className="neo-copy truncate border-2 border-black bg-[#fff9ed] px-3 py-2 text-[9px] font-bold uppercase text-[#55504a]">
+            <p className="neo-copy truncate border-2 border-black bg-[#fff9ed] px-3 py-2 text-[9px] font-bold text-[#55504a] uppercase">
               Config: {schedulerStatus?.configPath ?? "not loaded"}
             </p>
-            <p className="neo-copy truncate border-2 border-black bg-[#fff9ed] px-3 py-2 text-[9px] font-bold uppercase text-[#55504a]">
+            <p className="neo-copy truncate border-2 border-black bg-[#fff9ed] px-3 py-2 text-[9px] font-bold text-[#55504a] uppercase">
               Last Result:{" "}
               {schedulerStatus?.lastRun?.success
                 ? "Success"
@@ -1386,7 +1386,7 @@ export function BackupRestoreSettings({
         </div>
 
         {message ? (
-          <div className="neo-copy border-2 border-black bg-[#087d6d] px-3 py-2 text-[10px] font-black uppercase text-white shadow-[2px_2px_0_#171411]">
+          <div className="neo-copy border-2 border-black bg-[#087d6d] px-3 py-2 text-[10px] font-black text-white uppercase shadow-[2px_2px_0_#171411]">
             {message}
           </div>
         ) : null}
@@ -1407,14 +1407,14 @@ export function BackupRestoreSettings({
           <div className="border-2 border-black bg-[#fff9ed] p-3 shadow-[2px_2px_0_#171411]">
             <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
               <div className="min-w-0">
-                <h3 className="neo-copy text-[11px] font-black uppercase text-[#171411]">
+                <h3 className="neo-copy text-[11px] font-black text-[#171411] uppercase">
                   ZIP Archive Ready
                 </h3>
-                <p className="neo-copy mt-1 truncate text-[9px] font-bold uppercase text-[#55504a]">
+                <p className="neo-copy mt-1 truncate text-[9px] font-bold text-[#55504a] uppercase">
                   {backupResult.archivePath}
                 </p>
               </div>
-              <span className="neo-title text-2xl uppercase text-[#171411]">
+              <span className="neo-title text-2xl text-[#171411] uppercase">
                 {formatBackupBytes(backupResult.archiveBytes ?? 0)}
               </span>
             </div>
@@ -1449,7 +1449,7 @@ export function BackupRestoreSettings({
 
         {restoreAttentionRows.length > 0 ? (
           <div className="border-2 border-black bg-[#fff9ed] p-3 shadow-[2px_2px_0_#171411]">
-            <h3 className="neo-copy text-[11px] font-black uppercase text-[#c20b2f]">
+            <h3 className="neo-copy text-[11px] font-black text-[#c20b2f] uppercase">
               Restore Review Issues
             </h3>
             <div className="mt-2 grid gap-2">
@@ -1459,14 +1459,14 @@ export function BackupRestoreSettings({
                   className="grid gap-2 border-2 border-black bg-[#f5eedf] p-2 md:grid-cols-[1fr_auto]"
                 >
                   <div className="min-w-0">
-                    <p className="truncate text-[11px] font-black uppercase text-[#171411]">
+                    <p className="truncate text-[11px] font-black text-[#171411] uppercase">
                       {file.restorePath}
                     </p>
-                    <p className="neo-copy mt-1 truncate text-[9px] font-bold uppercase text-[#55504a]">
+                    <p className="neo-copy mt-1 truncate text-[9px] font-bold text-[#55504a] uppercase">
                       {file.message}
                     </p>
                   </div>
-                  <span className="neo-copy h-fit border border-black bg-[#c20b2f] px-2 py-1 text-[8px] font-black uppercase text-white">
+                  <span className="neo-copy h-fit border border-black bg-[#c20b2f] px-2 py-1 text-[8px] font-black text-white uppercase">
                     {getRestoreActionLabel(file.action)}
                   </span>
                 </div>
@@ -1489,17 +1489,17 @@ export function BackupRestoreSettings({
                 }`}
               >
                 <div className="flex items-center justify-between gap-2">
-                  <h3 className="neo-copy text-[10px] font-black uppercase text-[#171411]">
+                  <h3 className="neo-copy text-[10px] font-black text-[#171411] uppercase">
                     {detail.label}
                   </h3>
-                  <span className="neo-title text-xl uppercase text-[#171411]">{detail.count}</span>
+                  <span className="neo-title text-xl text-[#171411] uppercase">{detail.count}</span>
                 </div>
                 {detail.paths.length > 0 ? (
-                  <p className="neo-copy mt-2 truncate text-[9px] font-bold uppercase text-[#55504a]">
+                  <p className="neo-copy mt-2 truncate text-[9px] font-bold text-[#55504a] uppercase">
                     {detail.paths[0]}
                   </p>
                 ) : (
-                  <p className="neo-copy mt-2 text-[9px] font-bold uppercase text-[#55504a]">
+                  <p className="neo-copy mt-2 text-[9px] font-bold text-[#55504a] uppercase">
                     No files in this group.
                   </p>
                 )}
@@ -1516,10 +1516,10 @@ export function BackupRestoreSettings({
                 className="grid gap-2 border-2 border-black bg-[#fff9ed] p-3 shadow-[2px_2px_0_#171411] md:grid-cols-[1fr_auto]"
               >
                 <div className="min-w-0">
-                  <h3 className="truncate text-sm font-black uppercase text-[#171411]">
+                  <h3 className="truncate text-sm font-black text-[#171411] uppercase">
                     {row.label}
                   </h3>
-                  <p className="neo-copy mt-1 truncate text-[9px] font-bold uppercase text-[#55504a]">
+                  <p className="neo-copy mt-1 truncate text-[9px] font-bold text-[#55504a] uppercase">
                     {row.path}
                   </p>
                 </div>
@@ -1529,7 +1529,7 @@ export function BackupRestoreSettings({
                     .map(([action, count]) => (
                       <span
                         key={action}
-                        className="neo-copy border border-black bg-[#efe6d4] px-2 py-1 text-[8px] font-black uppercase text-[#171411]"
+                        className="neo-copy border border-black bg-[#efe6d4] px-2 py-1 text-[8px] font-black text-[#171411] uppercase"
                       >
                         {getBackupActionLabel(action as Parameters<typeof getBackupActionLabel>[0])}{" "}
                         {count}
@@ -1548,10 +1548,10 @@ export function BackupRestoreSettings({
                 key={`${file.restorePath}-${file.backupRelativePath}`}
                 className="grid gap-2 border-2 border-black bg-[#fff9ed] p-3 shadow-[2px_2px_0_#171411] md:grid-cols-[1fr_auto]"
               >
-                <p className="truncate text-sm font-black uppercase text-[#171411]">
+                <p className="truncate text-sm font-black text-[#171411] uppercase">
                   {file.restorePath}
                 </p>
-                <span className="neo-copy border border-black bg-[#efe6d4] px-2 py-1 text-[8px] font-black uppercase text-[#171411]">
+                <span className="neo-copy border border-black bg-[#efe6d4] px-2 py-1 text-[8px] font-black text-[#171411] uppercase">
                   {getRestoreActionLabel(file.action)}
                 </span>
               </div>
@@ -1606,7 +1606,7 @@ function ReminderButton({
 }) {
   return (
     <button
-      className="neo-copy flex h-10 items-center justify-center gap-2 border-2 border-black bg-[#171411] px-3 text-[9px] font-black uppercase text-white shadow-[2px_2px_0_#171411] disabled:cursor-not-allowed disabled:opacity-50"
+      className="neo-copy flex h-10 items-center justify-center gap-2 border-2 border-black bg-[#171411] px-3 text-[9px] font-black text-white uppercase shadow-[2px_2px_0_#171411] disabled:cursor-not-allowed disabled:opacity-50"
       disabled={disabled}
       type="button"
       onClick={onClick}
@@ -1620,8 +1620,8 @@ function ReminderButton({
 function ReminderStat({ label, value }: { label: string; value: string }) {
   return (
     <div className="border-2 border-black bg-[#fff9ed] p-2 shadow-[2px_2px_0_#171411]">
-      <p className="neo-copy text-[8px] font-black uppercase text-[#55504a]">{label}</p>
-      <p className="neo-copy mt-1 truncate text-[10px] font-black uppercase leading-4 text-[#171411]">
+      <p className="neo-copy text-[8px] font-black text-[#55504a] uppercase">{label}</p>
+      <p className="neo-copy mt-1 truncate text-[10px] leading-4 font-black text-[#171411] uppercase">
         {value}
       </p>
     </div>
@@ -1639,9 +1639,9 @@ function Metric({
 }) {
   return (
     <div className="border-2 border-black bg-[#efe6d4] p-3 shadow-[2px_2px_0_#171411]">
-      <p className="neo-copy text-[8px] font-black uppercase text-[#55504a]">{label}</p>
+      <p className="neo-copy text-[8px] font-black text-[#55504a] uppercase">{label}</p>
       <p
-        className={`mt-1 truncate font-black uppercase text-[#171411] ${
+        className={`mt-1 truncate font-black text-[#171411] uppercase ${
           compact ? "text-xl" : "text-2xl"
         }`}
       >

@@ -412,8 +412,8 @@ function NeoToggle({ checked, description, disabled = false, label, onChange }: 
   return (
     <div className="grid gap-4 border-4 border-black bg-[#f5eedf] p-5 shadow-[4px_4px_0_#171411] sm:grid-cols-[1fr_110px] sm:items-center">
       <div>
-        <h3 className="text-2xl font-black uppercase leading-none text-[#171411]">{label}</h3>
-        <p className="neo-copy mt-2 text-[10px] font-bold uppercase text-[#55504a]">
+        <h3 className="text-2xl leading-none font-black text-[#171411] uppercase">{label}</h3>
+        <p className="neo-copy mt-2 text-[10px] font-bold text-[#55504a] uppercase">
           {description}
         </p>
       </div>
@@ -1646,13 +1646,13 @@ export function SettingsPage() {
       <div className="mb-8 border-b-4 border-black pb-4">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
           <div className="min-w-0">
-            <span className="neo-copy inline-flex border-2 border-black bg-[#171411] px-3 py-1 text-xs font-bold uppercase text-white shadow-[3px_3px_0_#171411]">
+            <span className="neo-copy inline-flex border-2 border-black bg-[#171411] px-3 py-1 text-xs font-bold text-white uppercase shadow-[3px_3px_0_#171411]">
               System Configuration
             </span>
             <h1 className="neo-title mt-2 max-w-[680px] text-[3.5rem] leading-[0.82] text-[#171411] sm:text-[4.5rem] lg:text-[5.4rem] xl:text-[6rem]">
               Settings Panel
             </h1>
-            <p className="neo-copy mt-3 text-xs font-bold uppercase text-[#55504a]">
+            <p className="neo-copy mt-3 text-xs font-bold text-[#55504a] uppercase">
               Launcher runtime // local storage // native paths
             </p>
           </div>
@@ -1673,27 +1673,27 @@ export function SettingsPage() {
           <div className="border-4 border-black bg-[#f5eedf] shadow-[4px_4px_0_#171411]">
             <div className="flex items-center justify-between border-b-4 border-black p-5">
               <div>
-                <p className="neo-copy text-[10px] font-bold uppercase text-[#55504a]">
+                <p className="neo-copy text-[10px] font-bold text-[#55504a] uppercase">
                   Install Target
                 </p>
-                <h2 className="text-3xl font-black uppercase text-[#171411]">Game Storage</h2>
+                <h2 className="text-3xl font-black text-[#171411] uppercase">Game Storage</h2>
               </div>
               <HardDrive className="h-10 w-10 text-[#c20b2f]" />
             </div>
 
             <div className="p-5">
               <div className="border-2 border-black bg-[#efe6d4] p-4">
-                <p className="neo-copy text-[10px] font-bold uppercase text-[#55504a]">
+                <p className="neo-copy text-[10px] font-bold text-[#55504a] uppercase">
                   Install target review
                 </p>
-                <p className="mt-2 break-all text-lg font-black text-[#171411]">
+                <p className="mt-2 text-lg font-black break-all text-[#171411]">
                   {installDir ??
                     (isDesktopRuntime
                       ? "Loading native path..."
                       : "Desktop app manages native install folders.")}
                 </p>
                 {!isDesktopRuntime ? (
-                  <p className="neo-copy mt-3 inline-flex border-2 border-black bg-[#fff9ed] px-2 py-1 text-[9px] font-black uppercase tracking-[0.1em] text-[#c20b2f]">
+                  <p className="neo-copy mt-3 inline-flex border-2 border-black bg-[#fff9ed] px-2 py-1 text-[9px] font-black tracking-[0.1em] text-[#c20b2f] uppercase">
                     Browser Preview · Native Path Read-Only
                   </p>
                 ) : null}
@@ -1701,7 +1701,7 @@ export function SettingsPage() {
 
               <div className="mt-4 flex flex-col gap-3 sm:flex-row">
                 <button
-                  className="neo-copy flex h-11 items-center justify-center gap-3 border-2 border-black bg-[#c20b2f] px-5 text-xs font-bold uppercase text-white shadow-[3px_3px_0_#171411]"
+                  className="neo-copy flex h-11 items-center justify-center gap-3 border-2 border-black bg-[#c20b2f] px-5 text-xs font-bold text-white uppercase shadow-[3px_3px_0_#171411]"
                   type="button"
                   onClick={handleChooseInstallFolder}
                 >
@@ -1719,7 +1719,7 @@ export function SettingsPage() {
               </div>
 
               {folderMessage ? (
-                <p className="neo-copy mt-4 border-2 border-black bg-[#087d6d] px-3 py-2 text-[10px] font-bold uppercase text-white">
+                <p className="neo-copy mt-4 border-2 border-black bg-[#087d6d] px-3 py-2 text-[10px] font-bold text-white uppercase">
                   {folderMessage}
                 </p>
               ) : null}
@@ -1730,10 +1730,10 @@ export function SettingsPage() {
           <div className="border-4 border-black bg-[#f5eedf] shadow-[4px_4px_0_#171411]">
             <div className="flex items-center justify-between border-b-4 border-black p-5">
               <div>
-                <p className="neo-copy text-[10px] font-bold uppercase text-[#55504a]">
+                <p className="neo-copy text-[10px] font-bold text-[#55504a] uppercase">
                   Third-Party Integration
                 </p>
-                <h2 className="text-3xl font-black uppercase text-[#171411]">Cloud Account Link</h2>
+                <h2 className="text-3xl font-black text-[#171411] uppercase">Cloud Account Link</h2>
               </div>
               <LinkIcon className="h-10 w-10 text-[#087d6d]" />
             </div>
@@ -1743,8 +1743,8 @@ export function SettingsPage() {
                 {/* STEAM CARD */}
                 <div className="flex flex-col justify-between border-2 border-black bg-[#efe6d4] p-4 shadow-[2px_2px_0_#171411]">
                   <div>
-                    <h3 className="mb-1 text-xl font-black uppercase text-[#171411]">Steam</h3>
-                    <p className="neo-copy mb-4 text-[9px] font-bold uppercase leading-relaxed text-[#55504a]">
+                    <h3 className="mb-1 text-xl font-black text-[#171411] uppercase">Steam</h3>
+                    <p className="neo-copy mb-4 text-[9px] leading-relaxed font-bold text-[#55504a] uppercase">
                       Syncs your Steam library through secure login and local Steam cache. No API
                       key required.
                     </p>
@@ -1752,14 +1752,14 @@ export function SettingsPage() {
                   <div>
                     {steamId ? (
                       <div className="space-y-2 border border-black bg-[#f5eedf] p-3">
-                        <span className="neo-copy block text-[8px] font-bold uppercase text-[#55504a]">
+                        <span className="neo-copy block text-[8px] font-bold text-[#55504a] uppercase">
                           Signed in as
                         </span>
                         <span className="block truncate text-xs font-black text-[#087d6d]">
                           {steamUsername || "Steam User"}
                         </span>
                         <button
-                          className="neo-copy flex h-8 w-full items-center justify-center gap-2 border-2 border-black bg-[#c20b2f] px-3 text-[10px] font-bold uppercase text-white shadow-[1px_1px_0_#171411] transition hover:bg-[#a10825]"
+                          className="neo-copy flex h-8 w-full items-center justify-center gap-2 border-2 border-black bg-[#c20b2f] px-3 text-[10px] font-bold text-white uppercase shadow-[1px_1px_0_#171411] transition hover:bg-[#a10825]"
                           type="button"
                           onClick={() => {
                             clearSteamAccount();
@@ -1774,7 +1774,7 @@ export function SettingsPage() {
                       </div>
                     ) : (
                       <button
-                        className="neo-copy flex h-10 w-full items-center justify-center gap-2 border-2 border-black bg-[#c20b2f] px-4 text-xs font-black uppercase text-white shadow-[2px_2px_0_#171411] transition hover:bg-[#a10825]"
+                        className="neo-copy flex h-10 w-full items-center justify-center gap-2 border-2 border-black bg-[#c20b2f] px-4 text-xs font-black text-white uppercase shadow-[2px_2px_0_#171411] transition hover:bg-[#a10825]"
                         type="button"
                         onClick={() => {
                           openDesktopLogin("Steam", openSteamLoginWindow);
@@ -1790,22 +1790,22 @@ export function SettingsPage() {
                 {/* GOG CARD */}
                 <div className="flex flex-col justify-between border-2 border-black bg-[#efe6d4] p-4 shadow-[2px_2px_0_#171411]">
                   <div>
-                    <h3 className="mb-1 text-xl font-black uppercase text-[#171411]">GOG Galaxy</h3>
-                    <p className="neo-copy mb-4 text-[9px] font-bold uppercase leading-relaxed text-[#55504a]">
+                    <h3 className="mb-1 text-xl font-black text-[#171411] uppercase">GOG Galaxy</h3>
+                    <p className="neo-copy mb-4 text-[9px] leading-relaxed font-bold text-[#55504a] uppercase">
                       Fully automatic synchronization of your GOG games through secure login.
                     </p>
                   </div>
                   <div>
                     {gogConnected ? (
                       <div className="space-y-2 border border-black bg-[#f5eedf] p-3">
-                        <span className="neo-copy block text-[8px] font-bold uppercase text-[#55504a]">
+                        <span className="neo-copy block text-[8px] font-bold text-[#55504a] uppercase">
                           Status
                         </span>
                         <span className="block truncate text-xs font-black text-[#087d6d]">
                           Successfully Connected
                         </span>
                         <button
-                          className="neo-copy flex h-8 w-full items-center justify-center gap-2 border-2 border-black bg-[#c20b2f] px-3 text-[10px] font-bold uppercase text-white shadow-[1px_1px_0_#171411] transition hover:bg-[#a10825]"
+                          className="neo-copy flex h-8 w-full items-center justify-center gap-2 border-2 border-black bg-[#c20b2f] px-3 text-[10px] font-bold text-white uppercase shadow-[1px_1px_0_#171411] transition hover:bg-[#a10825]"
                           type="button"
                           onClick={() => {
                             if (isDesktopRuntime) void gogLogout().catch(() => {});
@@ -1820,7 +1820,7 @@ export function SettingsPage() {
                       </div>
                     ) : (
                       <button
-                        className="neo-copy flex h-10 w-full items-center justify-center gap-2 border-2 border-black bg-[#087d6d] px-4 text-xs font-black uppercase text-white shadow-[2px_2px_0_#171411] transition hover:bg-[#066154]"
+                        className="neo-copy flex h-10 w-full items-center justify-center gap-2 border-2 border-black bg-[#087d6d] px-4 text-xs font-black text-white uppercase shadow-[2px_2px_0_#171411] transition hover:bg-[#066154]"
                         type="button"
                         onClick={() => {
                           openDesktopLogin("GOG", openGogLoginWindow);
@@ -1836,8 +1836,8 @@ export function SettingsPage() {
                 {/* EA APP CARD */}
                 <div className="flex flex-col justify-between border-2 border-black bg-[#efe6d4] p-4 shadow-[2px_2px_0_#171411]">
                   <div>
-                    <h3 className="mb-1 text-xl font-black uppercase text-[#171411]">EA App</h3>
-                    <p className="neo-copy mb-4 text-[9px] font-bold uppercase leading-relaxed text-[#55504a]">
+                    <h3 className="mb-1 text-xl font-black text-[#171411] uppercase">EA App</h3>
+                    <p className="neo-copy mb-4 text-[9px] leading-relaxed font-bold text-[#55504a] uppercase">
                       Sync your EA library via secure browser login (same flow as Playnite).
                       Installed EA games are still detected locally.
                     </p>
@@ -1845,14 +1845,14 @@ export function SettingsPage() {
                   <div>
                     {eaConnected ? (
                       <div className="space-y-2 border border-black bg-[#f5eedf] p-3">
-                        <span className="neo-copy block text-[8px] font-bold uppercase text-[#55504a]">
+                        <span className="neo-copy block text-[8px] font-bold text-[#55504a] uppercase">
                           Status
                         </span>
                         <span className="block truncate text-xs font-black text-[#087d6d]">
                           Successfully Connected
                         </span>
                         <button
-                          className="neo-copy flex h-8 w-full items-center justify-center gap-2 border-2 border-black bg-[#c20b2f] px-3 text-[10px] font-bold uppercase text-white shadow-[1px_1px_0_#171411] transition hover:bg-[#a10825]"
+                          className="neo-copy flex h-8 w-full items-center justify-center gap-2 border-2 border-black bg-[#c20b2f] px-3 text-[10px] font-bold text-white uppercase shadow-[1px_1px_0_#171411] transition hover:bg-[#a10825]"
                           type="button"
                           onClick={() => {
                             if (isDesktopRuntime) void eaLogout().catch(() => {});
@@ -1867,7 +1867,7 @@ export function SettingsPage() {
                       </div>
                     ) : (
                       <button
-                        className="neo-copy flex h-10 w-full items-center justify-center gap-2 border-2 border-black bg-[#c20b2f] px-4 text-xs font-black uppercase text-white shadow-[2px_2px_0_#171411] transition hover:bg-[#a10825]"
+                        className="neo-copy flex h-10 w-full items-center justify-center gap-2 border-2 border-black bg-[#c20b2f] px-4 text-xs font-black text-white uppercase shadow-[2px_2px_0_#171411] transition hover:bg-[#a10825]"
                         type="button"
                         onClick={() => {
                           openDesktopLogin("EA App", openEaLoginWindow);
@@ -1883,8 +1883,8 @@ export function SettingsPage() {
                 {/* EPIC GAMES CARD */}
                 <div className="flex flex-col justify-between border-2 border-black bg-[#efe6d4] p-4 shadow-[2px_2px_0_#171411]">
                   <div>
-                    <h3 className="mb-1 text-xl font-black uppercase text-[#171411]">Epic Games</h3>
-                    <p className="neo-copy mb-4 text-[9px] font-bold uppercase leading-relaxed text-[#55504a]">
+                    <h3 className="mb-1 text-xl font-black text-[#171411] uppercase">Epic Games</h3>
+                    <p className="neo-copy mb-4 text-[9px] leading-relaxed font-bold text-[#55504a] uppercase">
                       Import your Epic library. Sign in through the browser to automatically
                       connect.
                     </p>
@@ -1892,14 +1892,14 @@ export function SettingsPage() {
                   <div>
                     {epicConnected ? (
                       <div className="space-y-2 border border-black bg-[#f5eedf] p-3">
-                        <span className="neo-copy block text-[8px] font-bold uppercase text-[#55504a]">
+                        <span className="neo-copy block text-[8px] font-bold text-[#55504a] uppercase">
                           Signed in as
                         </span>
                         <span className="block truncate text-xs font-black text-[#087d6d]">
                           {epicDisplayName || "Epic User"}
                         </span>
                         <button
-                          className="neo-copy flex h-8 w-full items-center justify-center gap-2 border-2 border-black bg-[#c20b2f] px-3 text-[10px] font-bold uppercase text-white shadow-[1px_1px_0_#171411] transition hover:bg-[#a10825]"
+                          className="neo-copy flex h-8 w-full items-center justify-center gap-2 border-2 border-black bg-[#c20b2f] px-3 text-[10px] font-bold text-white uppercase shadow-[1px_1px_0_#171411] transition hover:bg-[#a10825]"
                           type="button"
                           onClick={() => {
                             clearEpicSessionMarker();
@@ -1914,7 +1914,7 @@ export function SettingsPage() {
                       </div>
                     ) : (
                       <button
-                        className="neo-copy flex h-10 w-full items-center justify-center gap-2 border-2 border-black bg-[#171411] px-4 text-xs font-black uppercase text-white shadow-[2px_2px_0_#171411] transition hover:bg-[#333]"
+                        className="neo-copy flex h-10 w-full items-center justify-center gap-2 border-2 border-black bg-[#171411] px-4 text-xs font-black text-white uppercase shadow-[2px_2px_0_#171411] transition hover:bg-[#333]"
                         type="button"
                         onClick={() => {
                           openDesktopLogin("Epic Games", openEpicLoginWindow);
@@ -1930,10 +1930,10 @@ export function SettingsPage() {
                 {/* XBOX CARD */}
                 <div className="flex flex-col justify-between border-2 border-black bg-[#efe6d4] p-4 shadow-[2px_2px_0_#171411]">
                   <div>
-                    <h3 className="mb-1 text-xl font-black uppercase text-[#171411]">
+                    <h3 className="mb-1 text-xl font-black text-[#171411] uppercase">
                       Xbox App / PC Game Pass
                     </h3>
-                    <p className="neo-copy mb-4 text-[9px] font-bold uppercase leading-relaxed text-[#55504a]">
+                    <p className="neo-copy mb-4 text-[9px] leading-relaxed font-bold text-[#55504a] uppercase">
                       Link Xbox title history. The localized PC Game Pass catalog syncs
                       automatically in your library.
                     </p>
@@ -1941,7 +1941,7 @@ export function SettingsPage() {
                   <div>
                     {xboxConnected ? (
                       <div className="space-y-2 border border-black bg-[#f5eedf] p-3">
-                        <span className="neo-copy block text-[8px] font-bold uppercase text-[#55504a]">
+                        <span className="neo-copy block text-[8px] font-bold text-[#55504a] uppercase">
                           Status
                         </span>
                         <div className="flex flex-col gap-1">
@@ -1955,7 +1955,7 @@ export function SettingsPage() {
                           )}
                         </div>
                         <button
-                          className="neo-copy flex h-8 w-full items-center justify-center gap-2 border-2 border-black bg-[#c20b2f] px-3 text-[10px] font-bold uppercase text-white shadow-[1px_1px_0_#171411] transition hover:bg-[#a10825]"
+                          className="neo-copy flex h-8 w-full items-center justify-center gap-2 border-2 border-black bg-[#c20b2f] px-3 text-[10px] font-bold text-white uppercase shadow-[1px_1px_0_#171411] transition hover:bg-[#a10825]"
                           type="button"
                           onClick={() => {
                             localStorage.removeItem(STORAGE_KEYS.XBOX_GAMES_CACHE);
@@ -1972,7 +1972,7 @@ export function SettingsPage() {
                       </div>
                     ) : (
                       <button
-                        className="neo-copy flex h-10 w-full items-center justify-center gap-2 border-2 border-black bg-[#087d6d] px-4 text-xs font-black uppercase text-white shadow-[2px_2px_0_#171411] transition hover:bg-[#066154]"
+                        className="neo-copy flex h-10 w-full items-center justify-center gap-2 border-2 border-black bg-[#087d6d] px-4 text-xs font-black text-white uppercase shadow-[2px_2px_0_#171411] transition hover:bg-[#066154]"
                         type="button"
                         onClick={() => {
                           openDesktopLogin("Xbox", openXboxLoginWindow);
@@ -1988,22 +1988,22 @@ export function SettingsPage() {
                 {/* BATTLENET CARD */}
                 <div className="flex flex-col justify-between border-2 border-black bg-[#efe6d4] p-4 shadow-[2px_2px_0_#171411]">
                   <div>
-                    <h3 className="mb-1 text-xl font-black uppercase text-[#171411]">Battle.net</h3>
-                    <p className="neo-copy mb-4 text-[9px] font-bold uppercase leading-relaxed text-[#55504a]">
+                    <h3 className="mb-1 text-xl font-black text-[#171411] uppercase">Battle.net</h3>
+                    <p className="neo-copy mb-4 text-[9px] leading-relaxed font-bold text-[#55504a] uppercase">
                       Import your Blizzard library via web login.
                     </p>
                   </div>
                   <div>
                     {battlenetConnected ? (
                       <div className="space-y-2 border border-black bg-[#f5eedf] p-3">
-                        <span className="neo-copy block text-[8px] font-bold uppercase text-[#55504a]">
+                        <span className="neo-copy block text-[8px] font-bold text-[#55504a] uppercase">
                           Status
                         </span>
                         <span className="block truncate text-xs font-black text-[#087d6d]">
                           Connected ({battlenetGamesCount} games)
                         </span>
                         <button
-                          className="neo-copy flex h-8 w-full items-center justify-center gap-2 border-2 border-black bg-[#c20b2f] px-3 text-[10px] font-bold uppercase text-white shadow-[1px_1px_0_#171411] transition hover:bg-[#a10825]"
+                          className="neo-copy flex h-8 w-full items-center justify-center gap-2 border-2 border-black bg-[#c20b2f] px-3 text-[10px] font-bold text-white uppercase shadow-[1px_1px_0_#171411] transition hover:bg-[#a10825]"
                           type="button"
                           onClick={() => {
                             localStorage.removeItem(STORAGE_KEYS.BATTLENET_GAMES_CACHE);
@@ -2018,7 +2018,7 @@ export function SettingsPage() {
                       </div>
                     ) : (
                       <button
-                        className="neo-copy flex h-10 w-full items-center justify-center gap-2 border-2 border-black bg-[#171411] px-4 text-xs font-black uppercase text-white shadow-[2px_2px_0_#171411] transition hover:bg-[#333]"
+                        className="neo-copy flex h-10 w-full items-center justify-center gap-2 border-2 border-black bg-[#171411] px-4 text-xs font-black text-white uppercase shadow-[2px_2px_0_#171411] transition hover:bg-[#333]"
                         type="button"
                         onClick={() => {
                           openDesktopLogin("Battle.net", openBattleNetLoginWindow);
@@ -2034,7 +2034,7 @@ export function SettingsPage() {
 
               {testResult ? (
                 <div
-                  className={`neo-copy border-2 border-black px-3 py-2 text-xs font-bold uppercase text-white shadow-[2px_2px_0_#171411] ${
+                  className={`neo-copy border-2 border-black px-3 py-2 text-xs font-bold text-white uppercase shadow-[2px_2px_0_#171411] ${
                     testResult.success ? "bg-[#087d6d]" : "bg-[#c20b2f]"
                   }`}
                 >
@@ -2222,7 +2222,7 @@ export function SettingsPage() {
             onChange={(enabled) => void handleStartWithSystemChange(enabled)}
           />
           {autostartMessage ? (
-            <p className="neo-copy border-2 border-black bg-[#f5eedf] px-3 py-2 text-[10px] font-bold uppercase text-[#55504a] shadow-[2px_2px_0_#171411]">
+            <p className="neo-copy border-2 border-black bg-[#f5eedf] px-3 py-2 text-[10px] font-bold text-[#55504a] uppercase shadow-[2px_2px_0_#171411]">
               {autostartMessage}
             </p>
           ) : null}
@@ -2242,22 +2242,22 @@ export function SettingsPage() {
           <div className="border-4 border-black bg-[#f5eedf] shadow-[4px_4px_0_#171411]">
             <div className="flex items-center justify-between border-b-4 border-black p-5">
               <div>
-                <p className="neo-copy text-[10px] font-bold uppercase text-[#55504a]">
+                <p className="neo-copy text-[10px] font-bold text-[#55504a] uppercase">
                   Overlay Monitor
                 </p>
-                <h2 className="text-3xl font-black uppercase text-[#171411]">
+                <h2 className="text-3xl font-black text-[#171411] uppercase">
                   Performance History
                 </h2>
               </div>
               <Activity className="h-10 w-10 text-[#c20b2f]" />
             </div>
             <div className="grid gap-4 p-5 md:grid-cols-[1fr_190px] md:items-center">
-              <p className="neo-copy text-[10px] font-bold uppercase leading-relaxed text-[#55504a]">
+              <p className="neo-copy text-[10px] leading-relaxed font-bold text-[#55504a] uppercase">
                 Review persisted overlay FPS, CPU, GPU, RAM, and frame-time samples with 7 day, 30
                 day, and all-time filters.
               </p>
               <RouterLink
-                className="neo-copy flex h-11 items-center justify-center gap-2 border-2 border-black bg-[#087d6d] px-4 text-[10px] font-black uppercase text-white shadow-[3px_3px_0_#171411]"
+                className="neo-copy flex h-11 items-center justify-center gap-2 border-2 border-black bg-[#087d6d] px-4 text-[10px] font-black text-white uppercase shadow-[3px_3px_0_#171411]"
                 to="/settings/performance"
               >
                 <Activity className="h-4 w-4" />
@@ -2302,23 +2302,23 @@ export function SettingsPage() {
               </div>
             </div>
             <div className="p-5">
-              <p className="neo-copy text-[10px] font-bold uppercase text-[#55504a]">
+              <p className="neo-copy text-[10px] font-bold text-[#55504a] uppercase">
                 Native Commands
               </p>
-              <p className="mt-2 text-3xl font-black uppercase text-[#171411]">
+              <p className="mt-2 text-3xl font-black text-[#171411] uppercase">
                 {!isDesktopRuntime ? "Browser Guard" : commandError ? "Fallback" : "Ready"}
               </p>
               {commandError ? (
-                <p className="neo-copy mt-4 border-2 border-black bg-[#efe6d4] p-3 text-[10px] font-bold uppercase text-[#55504a]">
+                <p className="neo-copy mt-4 border-2 border-black bg-[#efe6d4] p-3 text-[10px] font-bold text-[#55504a] uppercase">
                   {commandError}
                 </p>
               ) : !isDesktopRuntime ? (
-                <p className="neo-copy mt-4 border-2 border-black bg-[#fff9ed] p-3 text-[10px] font-bold uppercase leading-5 text-[#55504a]">
+                <p className="neo-copy mt-4 border-2 border-black bg-[#fff9ed] p-3 text-[10px] leading-5 font-bold text-[#55504a] uppercase">
                   Native commands are intentionally blocked in browser preview. Use the desktop app
                   for OS paths, login windows, schedulers, and keychain access.
                 </p>
               ) : (
-                <p className="neo-copy mt-4 text-[10px] font-bold uppercase text-[#55504a]">
+                <p className="neo-copy mt-4 text-[10px] font-bold text-[#55504a] uppercase">
                   System data loaded.
                 </p>
               )}

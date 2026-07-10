@@ -463,7 +463,7 @@ export function EditProfilePage() {
       title="Edit Profile"
       action={
         <Link
-          className="neo-copy border-2 border-black bg-[#fff9ed] px-4 py-2 text-[11px] font-black uppercase tracking-[0.12em] text-[#171411] shadow-[3px_3px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#8cf5e4]"
+          className="neo-copy border-2 border-black bg-[#fff9ed] px-4 py-2 text-[11px] font-black tracking-[0.12em] text-[#171411] uppercase shadow-[3px_3px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#8cf5e4]"
           to={`/u/${profile?.username ?? form.username}`}
         >
           Public Profile
@@ -471,7 +471,7 @@ export function EditProfilePage() {
       }
     >
       {isLocalFallback ? (
-        <div className="neo-copy mb-5 border-[3px] border-black bg-[#8cf5e4] p-4 text-[11px] font-black uppercase leading-5 text-[#171411] shadow-[4px_4px_0_#171411]">
+        <div className="neo-copy mb-5 border-[3px] border-black bg-[#8cf5e4] p-4 text-[11px] leading-5 font-black text-[#171411] uppercase shadow-[4px_4px_0_#171411]">
           {localFallbackBannerCopy(localFallbackReason)}
         </div>
       ) : null}
@@ -480,12 +480,12 @@ export function EditProfilePage() {
           <Panel label="Player Card" title="Identity">
             <div className="grid gap-4 sm:grid-cols-2">
               <label className="block">
-                <span className="neo-copy text-[11px] font-black uppercase tracking-[0.12em] text-[#5b403f]">
+                <span className="neo-copy text-[11px] font-black tracking-[0.12em] text-[#5b403f] uppercase">
                   Username
                 </span>
                 <span className="mt-2 flex h-11 items-center gap-2 border-2 border-black bg-[#f6edd8] px-3 shadow-[2px_2px_0_#171411] focus-within:bg-[#fff9ed]">
                   <input
-                    className="min-w-0 flex-1 bg-transparent lowercase text-[#171411] outline-none"
+                    className="min-w-0 flex-1 bg-transparent text-[#171411] lowercase outline-none"
                     maxLength={32}
                     minLength={3}
                     value={form.username}
@@ -517,12 +517,12 @@ export function EditProfilePage() {
                   </button>
                 </span>
                 {usernameStatus === "taken" && (
-                  <span className="neo-copy mt-1 block text-[10px] font-bold uppercase text-[#c20b2f]">
+                  <span className="neo-copy mt-1 block text-[10px] font-bold text-[#c20b2f] uppercase">
                     Username is taken
                   </span>
                 )}
                 {usernameStatus === "available" && form.username !== profile?.username && (
-                  <span className="neo-copy mt-1 block text-[10px] font-bold uppercase text-[#087d6d]">
+                  <span className="neo-copy mt-1 block text-[10px] font-bold text-[#087d6d] uppercase">
                     Username is available
                   </span>
                 )}
@@ -551,11 +551,11 @@ export function EditProfilePage() {
                 placeholder="Europe/Berlin"
               />
               <label>
-                <span className="neo-copy text-[11px] font-black uppercase tracking-[0.12em] text-[#5b403f]">
+                <span className="neo-copy text-[11px] font-black tracking-[0.12em] text-[#5b403f] uppercase">
                   Theme
                 </span>
                 <select
-                  className="neo-copy mt-2 h-11 w-full border-2 border-black bg-[#f6edd8] px-3 text-xs font-black uppercase tracking-[0.08em] text-[#171411] shadow-[2px_2px_0_#171411] outline-none focus:bg-[#8cf5e4]"
+                  className="neo-copy mt-2 h-11 w-full border-2 border-black bg-[#f6edd8] px-3 text-xs font-black tracking-[0.08em] text-[#171411] uppercase shadow-[2px_2px_0_#171411] outline-none focus:bg-[#8cf5e4]"
                   value={selectedThemeId}
                   onChange={(event) => setSelectedThemeId(event.target.value)}
                 >
@@ -569,7 +569,7 @@ export function EditProfilePage() {
               </label>
             </div>
             <label className="mt-4 block">
-              <span className="neo-copy text-[11px] font-black uppercase tracking-[0.12em] text-[#5b403f]">
+              <span className="neo-copy text-[11px] font-black tracking-[0.12em] text-[#5b403f] uppercase">
                 Bio
               </span>
               <textarea
@@ -606,11 +606,11 @@ export function EditProfilePage() {
                     onChange={(value) => updateSocialLink(index, { url: value }, setSocialLinks)}
                   />
                   <label>
-                    <span className="neo-copy text-[11px] font-black uppercase tracking-[0.12em] text-[#5b403f]">
+                    <span className="neo-copy text-[11px] font-black tracking-[0.12em] text-[#5b403f] uppercase">
                       Visibility
                     </span>
                     <select
-                      className="neo-copy mt-2 h-11 w-full border-2 border-black bg-[#f6edd8] px-3 text-xs font-black uppercase tracking-[0.08em] text-[#171411] shadow-[2px_2px_0_#171411] outline-none focus:bg-[#8cf5e4]"
+                      className="neo-copy mt-2 h-11 w-full border-2 border-black bg-[#f6edd8] px-3 text-xs font-black tracking-[0.08em] text-[#171411] uppercase shadow-[2px_2px_0_#171411] outline-none focus:bg-[#8cf5e4]"
                       value={link.visibility}
                       onChange={(event) =>
                         updateSocialLink(
@@ -641,7 +641,7 @@ export function EditProfilePage() {
               ))}
             </div>
             <button
-              className="neo-copy mt-4 inline-flex h-10 items-center gap-2 border-2 border-black bg-[#007166] px-3 text-[11px] font-black uppercase tracking-[0.12em] text-white shadow-[3px_3px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#b7102a]"
+              className="neo-copy mt-4 inline-flex h-10 items-center gap-2 border-2 border-black bg-[#007166] px-3 text-[11px] font-black tracking-[0.12em] text-white uppercase shadow-[3px_3px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#b7102a]"
               type="button"
               onClick={() =>
                 setSocialLinks((current) => [
@@ -657,12 +657,12 @@ export function EditProfilePage() {
 
           <Panel label="Setup" title="Hardware Rig">
             <div className="mb-4 flex flex-col gap-3 border-[3px] border-black bg-[#f6edd8] p-3 shadow-[3px_3px_0_#171411] md:flex-row md:items-center md:justify-between">
-              <p className="neo-copy text-[11px] font-black uppercase leading-5 tracking-[0.08em] text-[#5b403f]">
+              <p className="neo-copy text-[11px] leading-5 font-black tracking-[0.08em] text-[#5b403f] uppercase">
                 Desktop mode detects CPU, GPU, RAM, monitor, and input devices. Browser preview uses
                 estimated browser values.
               </p>
               <button
-                className="neo-copy inline-flex h-11 shrink-0 items-center justify-center gap-2 border-2 border-black bg-[#007166] px-3 text-[11px] font-black uppercase tracking-[0.12em] text-white shadow-[3px_3px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#b7102a] disabled:cursor-not-allowed disabled:opacity-60"
+                className="neo-copy inline-flex h-11 shrink-0 items-center justify-center gap-2 border-2 border-black bg-[#007166] px-3 text-[11px] font-black tracking-[0.12em] text-white uppercase shadow-[3px_3px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#b7102a] disabled:cursor-not-allowed disabled:opacity-60"
                 disabled={isDetectingHardware || isSaving}
                 type="button"
                 onClick={() => void handleDetectHardware()}
@@ -676,11 +676,11 @@ export function EditProfilePage() {
               </button>
             </div>
             <label className="mb-4 block">
-              <span className="neo-copy text-[11px] font-black uppercase tracking-[0.12em] text-[#5b403f]">
+              <span className="neo-copy text-[11px] font-black tracking-[0.12em] text-[#5b403f] uppercase">
                 Show Hardware On Profile
               </span>
               <select
-                className="neo-copy mt-2 h-11 w-full border-2 border-black bg-[#f6edd8] px-3 text-xs font-black uppercase tracking-[0.08em] text-[#171411] shadow-[2px_2px_0_#171411] outline-none focus:bg-[#8cf5e4]"
+                className="neo-copy mt-2 h-11 w-full border-2 border-black bg-[#f6edd8] px-3 text-xs font-black tracking-[0.08em] text-[#171411] uppercase shadow-[2px_2px_0_#171411] outline-none focus:bg-[#8cf5e4]"
                 value={form.hardwareVisibility}
                 onChange={(event) =>
                   updateField("hardwareVisibility", event.target.value as ProfileVisibility)
@@ -739,7 +739,7 @@ export function EditProfilePage() {
           {errorMessage ? <StatusPanel tone="error" message={errorMessage} /> : null}
           {message ? <StatusPanel tone="success" message={message} /> : null}
           <button
-            className="neo-copy flex h-14 w-full items-center justify-center gap-2 border-[3px] border-black bg-[#b7102a] px-4 text-[12px] font-black uppercase tracking-[0.16em] text-white shadow-[5px_5px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#007166] disabled:opacity-60"
+            className="neo-copy flex h-14 w-full items-center justify-center gap-2 border-[3px] border-black bg-[#b7102a] px-4 text-[12px] font-black tracking-[0.16em] text-white uppercase shadow-[5px_5px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#007166] disabled:opacity-60"
             disabled={isSaving}
             type="submit"
           >
@@ -1115,7 +1115,7 @@ function PageFrame({
       <div className="mb-7 flex flex-col gap-4 border-b-4 border-black pb-5 md:flex-row md:items-end md:justify-between">
         <div>
           {eyebrow ? (
-            <p className="neo-copy inline-flex border-2 border-black bg-[#b7102a] px-3 py-1 text-[11px] font-black uppercase tracking-[0.14em] text-white shadow-[3px_3px_0_#171411]">
+            <p className="neo-copy inline-flex border-2 border-black bg-[#b7102a] px-3 py-1 text-[11px] font-black tracking-[0.14em] text-white uppercase shadow-[3px_3px_0_#171411]">
               {eyebrow}
             </p>
           ) : null}
@@ -1134,7 +1134,7 @@ function Panel({ children, label, title }: { children: ReactNode; label?: string
   return (
     <section className="relative border-4 border-black bg-[#fff9ed] p-5 shadow-[6px_6px_0_#171411]">
       {label ? (
-        <span className="neo-copy absolute -top-4 left-4 border-2 border-black bg-[#171411] px-3 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-[#fff9ed]">
+        <span className="neo-copy absolute -top-4 left-4 border-2 border-black bg-[#171411] px-3 py-1 text-[10px] font-black tracking-[0.14em] text-[#fff9ed] uppercase">
           {label}
         </span>
       ) : null}
@@ -1157,7 +1157,7 @@ function TextInput({
 }) {
   return (
     <label className="block">
-      <span className="neo-copy text-[11px] font-black uppercase tracking-[0.12em] text-[#5b403f]">
+      <span className="neo-copy text-[11px] font-black tracking-[0.12em] text-[#5b403f] uppercase">
         {label}
       </span>
       <input
@@ -1178,7 +1178,7 @@ function AssetUpload({
   onChange: (event: ChangeEvent<HTMLInputElement>) => void;
 }) {
   return (
-    <label className="neo-copy mt-3 flex cursor-pointer items-center justify-between gap-3 border-2 border-black bg-[#f6edd8] px-3 py-3 text-[11px] font-black uppercase tracking-[0.12em] text-[#171411] shadow-[3px_3px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#8cf5e4]">
+    <label className="neo-copy mt-3 flex cursor-pointer items-center justify-between gap-3 border-2 border-black bg-[#f6edd8] px-3 py-3 text-[11px] font-black tracking-[0.12em] text-[#171411] uppercase shadow-[3px_3px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#8cf5e4]">
       <span>{label}</span>
       <span className="inline-flex items-center gap-2">
         <Upload className="h-4 w-4" />
@@ -1226,7 +1226,7 @@ function ProfileImagePreview({
           </div>
         )}
         <div className="min-w-0">
-          <p className="neo-copy text-[9px] font-black uppercase tracking-[0.12em] text-[#b7102a]">
+          <p className="neo-copy text-[9px] font-black tracking-[0.12em] text-[#b7102a] uppercase">
             Player-card preview
           </p>
           <p className="neo-title truncate text-3xl leading-none text-[#171411]">{displayName}</p>
@@ -1258,8 +1258,8 @@ function StatusPanel({ message, tone }: { message: string; tone: "error" | "succ
     <div
       className={
         tone === "error"
-          ? "neo-copy border-2 border-black bg-[#b7102a] p-4 text-[11px] font-black uppercase tracking-[0.1em] text-white shadow-[3px_3px_0_#171411]"
-          : "neo-copy border-2 border-black bg-[#007166] p-4 text-[11px] font-black uppercase tracking-[0.1em] text-white shadow-[3px_3px_0_#171411]"
+          ? "neo-copy border-2 border-black bg-[#b7102a] p-4 text-[11px] font-black tracking-[0.1em] text-white uppercase shadow-[3px_3px_0_#171411]"
+          : "neo-copy border-2 border-black bg-[#007166] p-4 text-[11px] font-black tracking-[0.1em] text-white uppercase shadow-[3px_3px_0_#171411]"
       }
     >
       {message}
@@ -1280,7 +1280,7 @@ function FeaturedSlotReadout({
     <div className="grid grid-cols-[76px_minmax(0,1fr)] overflow-hidden border-2 border-black bg-[#f6edd8] shadow-[2px_2px_0_#171411]">
       <div className={`${artClass ?? "hero-art"} min-h-20 border-r-2 border-black`} />
       <div className="min-w-0 p-3">
-        <p className="neo-copy text-[10px] font-black uppercase tracking-[0.14em] text-[#5b403f]">
+        <p className="neo-copy text-[10px] font-black tracking-[0.14em] text-[#5b403f] uppercase">
           {label}
         </p>
         <p className="neo-title mt-1 truncate text-2xl leading-none text-[#171411]">{value}</p>

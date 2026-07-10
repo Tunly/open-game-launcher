@@ -28,11 +28,11 @@ export function RareAchievementsShowcase({
               )}
               <div className="min-w-0">
                 <p className="neo-title text-2xl leading-none text-[#171411]">{achievement.name}</p>
-                <p className="neo-copy mt-1 text-[10px] font-black uppercase tracking-[0.12em] text-[#b7102a]">
+                <p className="neo-copy mt-1 text-[10px] font-black tracking-[0.12em] text-[#b7102a] uppercase">
                   {achievement.rarity} / {achievement.gameTitle ?? "Unknown game"}
                 </p>
                 {achievement.description ? (
-                  <p className="mt-2 text-xs font-semibold leading-5 text-[#5b403f]">
+                  <p className="mt-2 text-xs leading-5 font-semibold text-[#5b403f]">
                     {achievement.description}
                   </p>
                 ) : null}

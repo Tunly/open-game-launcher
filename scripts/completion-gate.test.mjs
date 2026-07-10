@@ -149,13 +149,13 @@ const expectedCiActionRefs = Object.freeze({
     label: "v6",
     ref: "48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e",
   },
-  "actions/upload-artifact": {
-    label: "v4",
-    ref: "ea165f8d65b6e75b540449e92b4886f43607fa02",
-  },
+    "actions/upload-artifact": {
+      label: "v7.0.1",
+      ref: "043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
+    },
   "denoland/setup-deno": {
     label: "v2",
-    ref: "667a34cdef165d8d2b2e98dde39547c9daac7282",
+    ref: "22d081ff2d3a40755e97629de92e3bcbfa7cf2ed",
   },
   "dtolnay/rust-toolchain": {
     label: "1.95.0",
@@ -163,7 +163,7 @@ const expectedCiActionRefs = Object.freeze({
   },
   "pnpm/action-setup": {
     label: "v6",
-    ref: "b0f76dfb45f55f8421693e4803ac7bb65143bd34",
+    ref: "0ebf47130e4866e96fce0953f49152a61190b271",
   },
   "softprops/action-gh-release": {
     label: "v3.0.1",

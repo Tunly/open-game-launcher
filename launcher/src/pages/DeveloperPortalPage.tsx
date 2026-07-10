@@ -56,11 +56,11 @@ export function DeveloperPortalPage() {
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_340px]">
         <div className="border-4 border-black bg-[#fff9ed] shadow-[6px_6px_0_#171411]">
           <div className="border-b-4 border-black bg-[#171411] px-4 py-3 text-[#fbf4e7]">
-            <span className="neo-copy inline-flex border-2 border-black bg-[#b7102a] px-3 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-white shadow-[3px_3px_0_#000]">
+            <span className="neo-copy inline-flex border-2 border-black bg-[#b7102a] px-3 py-1 text-[10px] font-black tracking-[0.12em] text-white uppercase shadow-[3px_3px_0_#000]">
               Publisher Intake
             </span>
             <h1 className="neo-title mt-3 text-5xl leading-none md:text-7xl">Developer Portal</h1>
-            <p className="neo-copy mt-3 max-w-2xl text-[11px] font-black uppercase leading-5 text-[#8cf5e4]">
+            <p className="neo-copy mt-3 max-w-2xl text-[11px] leading-5 font-black text-[#8cf5e4] uppercase">
               Apply for store publishing access, submit studio metadata, and unlock build tools
               after review.
             </p>
@@ -73,7 +73,7 @@ export function DeveloperPortalPage() {
                 className="border-[3px] border-black bg-[#f6edd8] p-3 shadow-[3px_3px_0_#171411]"
               >
                 <div className="flex items-center justify-between gap-3">
-                  <p className="neo-copy text-[9px] font-black uppercase tracking-[0.12em] text-[#5b403f]">
+                  <p className="neo-copy text-[9px] font-black tracking-[0.12em] text-[#5b403f] uppercase">
                     {label}
                   </p>
                   <Icon className="h-5 w-5 text-[#b7102a]" />
@@ -87,7 +87,7 @@ export function DeveloperPortalPage() {
         <div className="hero-art relative min-h-[250px] overflow-hidden border-4 border-black p-4 shadow-[6px_6px_0_#171411]">
           <div className="absolute inset-0 bg-[radial-gradient(circle,rgba(255,249,237,0.16)_1px,transparent_1px)] bg-[length:8px_8px]" />
           <div className="relative flex h-full min-h-[218px] flex-col justify-between">
-            <span className="neo-copy w-fit border-2 border-black bg-[#8cf5e4] px-3 py-1 text-[9px] font-black uppercase text-[#171411] shadow-[2px_2px_0_#171411]">
+            <span className="neo-copy w-fit border-2 border-black bg-[#8cf5e4] px-3 py-1 text-[9px] font-black text-[#171411] uppercase shadow-[2px_2px_0_#171411]">
               Build Bay
             </span>
             <div>
@@ -97,7 +97,7 @@ export function DeveloperPortalPage() {
               <h2 className="neo-title text-4xl leading-none text-[#fff9ed] [text-shadow:3px_3px_0_#171411]">
                 Ship Desk
               </h2>
-              <p className="neo-copy mt-2 max-w-[280px] text-[10px] font-black uppercase leading-5 text-[#f5eedf]">
+              <p className="neo-copy mt-2 max-w-[280px] text-[10px] leading-5 font-black text-[#f5eedf] uppercase">
                 Approved teams can stage builds, manage products, and answer store reviews.
               </p>
             </div>
@@ -111,21 +111,21 @@ export function DeveloperPortalPage() {
             <div className="flex items-center gap-3 border-b-4 border-black bg-[#087d6d] px-4 py-3 text-white">
               <CheckCircle2 className="h-7 w-7" />
               <div>
-                <p className="neo-copy text-[10px] font-black uppercase tracking-[0.12em]">
+                <p className="neo-copy text-[10px] font-black tracking-[0.12em] uppercase">
                   Application queued
                 </p>
                 <h2 className="neo-title text-4xl leading-none">Review Pending</h2>
               </div>
             </div>
             <div className="p-4">
-              <p className="neo-copy text-[11px] font-black uppercase leading-5 text-[#5b403f]">
+              <p className="neo-copy text-[11px] leading-5 font-black text-[#5b403f] uppercase">
                 We will review your application and notify you when publishing tools are unlocked.
               </p>
               <a
                 href="https://supabase.com/dashboard/project/awebfvfyqzwapcgixdfj"
                 target="_blank"
                 rel="noreferrer"
-                className="neo-copy mt-4 inline-flex h-10 items-center gap-2 border-[3px] border-black bg-[#fff9ed] px-4 text-[10px] font-black uppercase text-[#171411] shadow-[3px_3px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#8cf5e4]"
+                className="neo-copy mt-4 inline-flex h-10 items-center gap-2 border-[3px] border-black bg-[#fff9ed] px-4 text-[10px] font-black text-[#171411] uppercase shadow-[3px_3px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#8cf5e4]"
               >
                 <ExternalLink className="h-4 w-4" />
                 Supabase Dashboard
@@ -138,7 +138,7 @@ export function DeveloperPortalPage() {
             onSubmit={handleSubmit}
           >
             <div className="border-b-4 border-black bg-[#efe6d4] px-4 py-3">
-              <p className="neo-copy text-[10px] font-black uppercase tracking-[0.12em] text-[#b7102a]">
+              <p className="neo-copy text-[10px] font-black tracking-[0.12em] text-[#b7102a] uppercase">
                 Application Form
               </p>
               <h2 className="neo-title text-4xl leading-none text-[#171411]">Studio Access</h2>
@@ -146,13 +146,13 @@ export function DeveloperPortalPage() {
 
             <div className="space-y-4 p-4">
               {error ? (
-                <div className="neo-copy border-[3px] border-black bg-[#f5d6d9] p-3 text-[10px] font-black uppercase leading-5 text-[#77101f] shadow-[3px_3px_0_#171411]">
+                <div className="neo-copy border-[3px] border-black bg-[#f5d6d9] p-3 text-[10px] leading-5 font-black text-[#77101f] uppercase shadow-[3px_3px_0_#171411]">
                   {error}
                 </div>
               ) : null}
 
               <label className="block">
-                <span className="neo-copy text-[10px] font-black uppercase tracking-[0.12em] text-[#5b403f]">
+                <span className="neo-copy text-[10px] font-black tracking-[0.12em] text-[#5b403f] uppercase">
                   Studio Name
                 </span>
                 <input
@@ -166,7 +166,7 @@ export function DeveloperPortalPage() {
               </label>
 
               <label className="block">
-                <span className="neo-copy text-[10px] font-black uppercase tracking-[0.12em] text-[#5b403f]">
+                <span className="neo-copy text-[10px] font-black tracking-[0.12em] text-[#5b403f] uppercase">
                   Website
                 </span>
                 <input
@@ -180,7 +180,7 @@ export function DeveloperPortalPage() {
               </label>
 
               <label className="block">
-                <span className="neo-copy text-[10px] font-black uppercase tracking-[0.12em] text-[#5b403f]">
+                <span className="neo-copy text-[10px] font-black tracking-[0.12em] text-[#5b403f] uppercase">
                   Description
                 </span>
                 <textarea
@@ -193,7 +193,7 @@ export function DeveloperPortalPage() {
               </label>
 
               <button
-                className="neo-copy inline-flex h-11 w-full items-center justify-center gap-2 border-[3px] border-black bg-[#b7102a] px-4 text-[10px] font-black uppercase text-white shadow-[4px_4px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#087d6d] disabled:cursor-not-allowed disabled:bg-[#655f58]"
+                className="neo-copy inline-flex h-11 w-full items-center justify-center gap-2 border-[3px] border-black bg-[#b7102a] px-4 text-[10px] font-black text-white uppercase shadow-[4px_4px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#087d6d] disabled:cursor-not-allowed disabled:bg-[#655f58]"
                 disabled={isSubmitting || !studioName.trim()}
                 type="submit"
               >
@@ -205,7 +205,7 @@ export function DeveloperPortalPage() {
         )}
 
         <aside className="border-4 border-black bg-[#171411] p-4 text-[#f5eedf] shadow-[6px_6px_0_#171411]">
-          <p className="neo-copy text-[10px] font-black uppercase tracking-[0.12em] text-[#8cf5e4]">
+          <p className="neo-copy text-[10px] font-black tracking-[0.12em] text-[#8cf5e4] uppercase">
             Access Contract
           </p>
           <h2 className="neo-title mt-2 text-4xl leading-none">Approval Rules</h2>
@@ -222,7 +222,7 @@ export function DeveloperPortalPage() {
                 <span className="neo-title text-3xl leading-none text-[#8cf5e4]">
                   {String(index + 1).padStart(2, "0")}
                 </span>
-                <p className="neo-copy text-[10px] font-black uppercase leading-5">{item}</p>
+                <p className="neo-copy text-[10px] leading-5 font-black uppercase">{item}</p>
               </div>
             ))}
           </div>

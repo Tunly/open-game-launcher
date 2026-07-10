@@ -122,7 +122,7 @@ export function ProfileActions({
     <div className="space-y-3">
       <div className="flex flex-wrap gap-2">
         <button
-          className="neo-copy inline-flex h-11 items-center gap-2 border-[3px] border-black bg-[#007166] px-4 text-[11px] font-black uppercase tracking-[0.12em] text-white shadow-[4px_4px_0_#1f1c0f] transition hover:-translate-y-0.5 hover:bg-[#b7102a] disabled:cursor-not-allowed disabled:bg-[#655f58] disabled:hover:translate-y-0"
+          className="neo-copy inline-flex h-11 items-center gap-2 border-[3px] border-black bg-[#007166] px-4 text-[11px] font-black tracking-[0.12em] text-white uppercase shadow-[4px_4px_0_#1f1c0f] transition hover:-translate-y-0.5 hover:bg-[#b7102a] disabled:cursor-not-allowed disabled:bg-[#655f58] disabled:hover:translate-y-0"
           disabled={!canSubmit}
           type="button"
           onClick={() => void requestFriend()}
@@ -135,7 +135,7 @@ export function ProfileActions({
           Add Friend
         </button>
         <button
-          className="neo-copy inline-flex h-11 items-center gap-2 border-[3px] border-black bg-[#fff9ed] px-4 text-[11px] font-black uppercase tracking-[0.12em] text-[#1f1c0f] shadow-[4px_4px_0_#1f1c0f] transition hover:-translate-y-0.5 hover:bg-[#8cf5e4] disabled:cursor-not-allowed disabled:bg-[#efe6d4] disabled:text-[#655f58] disabled:hover:translate-y-0"
+          className="neo-copy inline-flex h-11 items-center gap-2 border-[3px] border-black bg-[#fff9ed] px-4 text-[11px] font-black tracking-[0.12em] text-[#1f1c0f] uppercase shadow-[4px_4px_0_#1f1c0f] transition hover:-translate-y-0.5 hover:bg-[#8cf5e4] disabled:cursor-not-allowed disabled:bg-[#efe6d4] disabled:text-[#655f58] disabled:hover:translate-y-0"
           disabled={!canSubmit}
           type="button"
           onClick={() => void openDirectMessage()}
@@ -173,7 +173,7 @@ export function ProfileActions({
           role="menu"
         >
           <div className="mb-3 border-b-2 border-black pb-2">
-            <p className="neo-copy text-[9px] font-black uppercase tracking-[0.16em] text-[#b7102a]">
+            <p className="neo-copy text-[9px] font-black tracking-[0.16em] text-[#b7102a] uppercase">
               Player Actions
             </p>
             <p className="neo-title text-2xl leading-none text-[#1f1c0f]">More</p>
@@ -200,24 +200,24 @@ export function ProfileActions({
             />
           </div>
           {!canUseSocialActions ? (
-            <p className="neo-copy mt-3 border-2 border-dashed border-black bg-[#efe6d4] p-2 text-[9px] font-black uppercase leading-4 text-[#655f58]">
+            <p className="neo-copy mt-3 border-2 border-dashed border-black bg-[#efe6d4] p-2 text-[9px] leading-4 font-black text-[#655f58] uppercase">
               Sign in to route social handoffs from this menu.
             </p>
           ) : null}
         </div>
       ) : null}
       {!canUseSocialActions ? (
-        <p className="neo-copy border-2 border-dashed border-black bg-[#efe6d4] p-2 text-[10px] font-black uppercase leading-4 text-[#655f58]">
+        <p className="neo-copy border-2 border-dashed border-black bg-[#efe6d4] p-2 text-[10px] leading-4 font-black text-[#655f58] uppercase">
           Sign in with Supabase to use social actions.
         </p>
       ) : null}
       {status ? (
-        <p className="neo-copy border-2 border-black bg-[#007166] p-2 text-[10px] font-black uppercase text-white">
+        <p className="neo-copy border-2 border-black bg-[#007166] p-2 text-[10px] font-black text-white uppercase">
           {status}
         </p>
       ) : null}
       {error ? (
-        <p className="neo-copy border-2 border-black bg-[#b7102a] p-2 text-[10px] font-black uppercase text-white">
+        <p className="neo-copy border-2 border-black bg-[#b7102a] p-2 text-[10px] font-black text-white uppercase">
           {error}
         </p>
       ) : null}
@@ -238,7 +238,7 @@ function ProfileMoreMenuItem({
 }) {
   return (
     <button
-      className="neo-copy flex min-h-11 w-full items-center gap-3 border-2 border-black bg-[#f6edd8] px-3 py-2 text-left text-[10px] font-black uppercase tracking-[0.1em] text-[#1f1c0f] shadow-[2px_2px_0_#1f1c0f] transition hover:-translate-y-0.5 hover:bg-[#8cf5e4] disabled:cursor-not-allowed disabled:bg-[#efe6d4] disabled:text-[#655f58] disabled:hover:translate-y-0"
+      className="neo-copy flex min-h-11 w-full items-center gap-3 border-2 border-black bg-[#f6edd8] px-3 py-2 text-left text-[10px] font-black tracking-[0.1em] text-[#1f1c0f] uppercase shadow-[2px_2px_0_#1f1c0f] transition hover:-translate-y-0.5 hover:bg-[#8cf5e4] disabled:cursor-not-allowed disabled:bg-[#efe6d4] disabled:text-[#655f58] disabled:hover:translate-y-0"
       disabled={disabled}
       role="menuitem"
       type="button"
@@ -258,7 +258,7 @@ function buildProfileShareUrl(pathname: string, search: string) {
 export function EditProfileButton({ className = "" }: { className?: string }) {
   return (
     <Link
-      className={`neo-copy inline-flex h-11 items-center justify-center gap-2 border-[3px] border-black bg-[#b7102a] px-4 text-[11px] font-black uppercase tracking-[0.12em] text-white shadow-[4px_4px_0_#1f1c0f] transition hover:-translate-y-0.5 hover:bg-[#007166] ${className}`}
+      className={`neo-copy inline-flex h-11 items-center justify-center gap-2 border-[3px] border-black bg-[#b7102a] px-4 text-[11px] font-black tracking-[0.12em] text-white uppercase shadow-[4px_4px_0_#1f1c0f] transition hover:-translate-y-0.5 hover:bg-[#007166] ${className}`}
       to="/settings/profile"
     >
       <Pencil className="h-4 w-4" />

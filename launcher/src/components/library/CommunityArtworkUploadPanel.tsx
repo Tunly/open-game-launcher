@@ -90,15 +90,15 @@ export function CommunityArtworkUploadPanel({
 
       <div className="mb-2 flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <span className="neo-copy block text-[9px] font-black uppercase text-[#171411]">
+          <span className="neo-copy block text-[9px] font-black text-[#171411] uppercase">
             Hosted Upload Queue
           </span>
-          <span className="neo-copy mt-1 block text-[8px] font-black uppercase leading-4 text-[#655f58]">
+          <span className="neo-copy mt-1 block text-[8px] leading-4 font-black text-[#655f58] uppercase">
             Uploads are stored in Supabase, marked pending, and require moderation before public
             ranking.
           </span>
         </div>
-        <span className="border-2 border-black bg-[#8cf5e4] px-1.5 py-0.5 text-[8px] font-black uppercase text-[#171411]">
+        <span className="border-2 border-black bg-[#8cf5e4] px-1.5 py-0.5 text-[8px] font-black text-[#171411] uppercase">
           Pending
         </span>
       </div>
@@ -157,7 +157,7 @@ export function CommunityArtworkUploadPanel({
 
         <div className="flex flex-wrap gap-1">
           <button
-            className="flex h-8 flex-1 items-center justify-center gap-1 border-2 border-black bg-[#b7102a] px-2 text-[9px] font-black uppercase text-white transition hover:-translate-y-0.5 hover:bg-[#171411] disabled:cursor-not-allowed disabled:opacity-60"
+            className="flex h-8 flex-1 items-center justify-center gap-1 border-2 border-black bg-[#b7102a] px-2 text-[9px] font-black text-white uppercase transition hover:-translate-y-0.5 hover:bg-[#171411] disabled:cursor-not-allowed disabled:opacity-60"
             disabled={!canSubmit}
             type="button"
             onClick={handleSubmit}
@@ -184,7 +184,7 @@ export function CommunityArtworkUploadPanel({
       </div>
 
       {message ? (
-        <p className="neo-copy mt-2 border-2 border-black bg-[#efe3cf] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#171411]">
+        <p className="neo-copy mt-2 border-2 border-black bg-[#efe3cf] px-2 py-1 text-[8px] leading-4 font-black text-[#171411] uppercase">
           {message}
         </p>
       ) : null}
@@ -196,13 +196,13 @@ export function CommunityArtworkUploadPanel({
               className="border-2 border-black bg-[#fff9ed] p-1.5 shadow-[1px_1px_0_#171411]"
               key={submission.id}
             >
-              <p className="neo-copy text-[8px] font-black uppercase text-[#b7102a]">
+              <p className="neo-copy text-[8px] font-black text-[#b7102a] uppercase">
                 Pending Review
               </p>
-              <p className="truncate text-[9px] font-black uppercase text-[#171411]">
+              <p className="truncate text-[9px] font-black text-[#171411] uppercase">
                 {submission.title}
               </p>
-              <p className="neo-copy text-[8px] font-black uppercase text-[#655f58]">
+              <p className="neo-copy text-[8px] font-black text-[#655f58] uppercase">
                 {getKindLabel(submission.kind)} - {submission.artist}
               </p>
             </article>

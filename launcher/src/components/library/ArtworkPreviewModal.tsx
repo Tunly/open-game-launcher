@@ -90,7 +90,7 @@ export function ArtworkPreviewModal({
     >
       <div className="w-full max-w-[520px] border-4 border-black bg-[#fbf4e7] shadow-[8px_8px_0_#171411]">
         <div className="flex items-center justify-between border-b-4 border-black bg-[#b7102a] px-4 py-3 text-white">
-          <h2 className="neo-title text-2xl uppercase leading-none">Custom Artwork</h2>
+          <h2 className="neo-title text-2xl leading-none uppercase">Custom Artwork</h2>
           <button
             type="button"
             className="grid h-8 w-8 place-items-center border-2 border-black bg-[#fbf4e7] text-[#171411] shadow-[2px_2px_0_#171411]"
@@ -121,11 +121,11 @@ export function ArtworkPreviewModal({
 
           <div className="flex min-h-[200px] items-center justify-center border-2 border-dashed border-black bg-[#efe6d4]">
             {isCompressing ? (
-              <span className="neo-copy text-[11px] font-bold uppercase text-[#55504a]">
+              <span className="neo-copy text-[11px] font-bold text-[#55504a] uppercase">
                 Processing...
               </span>
             ) : error ? (
-              <span className="neo-copy text-[11px] font-bold uppercase text-[#c20b2f]">
+              <span className="neo-copy text-[11px] font-bold text-[#c20b2f] uppercase">
                 {error}
               </span>
             ) : previewUrl ? (
@@ -139,7 +139,7 @@ export function ArtworkPreviewModal({
             )}
           </div>
 
-          <p className="neo-copy text-[10px] font-bold uppercase text-[#655f58]">
+          <p className="neo-copy text-[10px] font-bold text-[#655f58] uppercase">
             The image will be resized and saved as JPEG.
           </p>
 
@@ -154,7 +154,7 @@ export function ArtworkPreviewModal({
             <button
               type="button"
               disabled={!previewUrl || isCompressing}
-              className="border-2 border-black bg-[#169b83] px-4 py-2 text-[12px] font-black uppercase text-white shadow-[3px_3px_0_#171411] disabled:cursor-not-allowed disabled:opacity-60"
+              className="border-2 border-black bg-[#169b83] px-4 py-2 text-[12px] font-black text-white uppercase shadow-[3px_3px_0_#171411] disabled:cursor-not-allowed disabled:opacity-60"
               onClick={handleConfirm}
             >
               Save Artwork

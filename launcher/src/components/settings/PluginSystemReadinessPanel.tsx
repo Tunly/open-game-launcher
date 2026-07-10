@@ -112,12 +112,12 @@ export function PluginSystemReadinessPanel({
       <div className="grid min-w-0 gap-4 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.35fr)]">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="neo-copy inline-flex items-center gap-1 border-2 border-black bg-[#171411] px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-white">
+            <span className="neo-copy inline-flex items-center gap-1 border-2 border-black bg-[#171411] px-2 py-1 text-[9px] font-black tracking-[0.12em] text-white uppercase">
               <Plug className="h-3 w-3 text-[#8cf5e4]" />
               Plugin System
             </span>
             <span
-              className={`neo-copy border-2 border-black px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] shadow-[2px_2px_0_#171411] ${statusBadgeClass(
+              className={`neo-copy border-2 border-black px-2 py-1 text-[9px] font-black tracking-[0.12em] uppercase shadow-[2px_2px_0_#171411] ${statusBadgeClass(
                 readiness.blockedCount > 0
                   ? "blocked"
                   : readiness.warningCount > 0
@@ -129,19 +129,19 @@ export function PluginSystemReadinessPanel({
             </span>
           </div>
 
-          <h2 className="neo-title mt-3 text-2xl font-black uppercase leading-none text-[#171411] md:text-3xl">
+          <h2 className="neo-title mt-3 text-2xl leading-none font-black text-[#171411] uppercase md:text-3xl">
             Plugin Readiness
           </h2>
-          <p className="neo-copy mt-2 text-[11px] font-black uppercase leading-relaxed text-[#5b403f]">
+          <p className="neo-copy mt-2 text-[11px] leading-relaxed font-black text-[#5b403f] uppercase">
             {readiness.summary}
           </p>
 
           <div className="mt-4 border-2 border-black bg-[#fff9ed] p-3 shadow-[3px_3px_0_#171411]">
-            <p className="neo-copy text-[9px] font-black uppercase tracking-[0.12em] text-[#b7102a]">
+            <p className="neo-copy text-[9px] font-black tracking-[0.12em] text-[#b7102a] uppercase">
               Next Gate
             </p>
             <div className="mt-2 flex flex-wrap items-end justify-between gap-3">
-              <p className="neo-copy max-w-xl text-[11px] font-black uppercase leading-relaxed text-[#171411]">
+              <p className="neo-copy max-w-xl text-[11px] leading-relaxed font-black text-[#171411] uppercase">
                 {readiness.nextAction}
               </p>
               <span className="neo-title border-2 border-black bg-[#8cf5e4] px-3 py-1 text-2xl uppercase shadow-[2px_2px_0_#171411]">
@@ -163,17 +163,17 @@ export function PluginSystemReadinessPanel({
           {reviews ? <PluginReviewConsole controls={reviews} /> : null}
 
           <div className="mt-4 border-2 border-black bg-[#171411] p-3 text-[#f5eedf] shadow-[3px_3px_0_#b7102a]">
-            <p className="neo-copy flex items-center gap-2 text-[9px] font-black uppercase text-[#8cf5e4]">
+            <p className="neo-copy flex items-center gap-2 text-[9px] font-black text-[#8cf5e4] uppercase">
               <ShieldCheck className="h-4 w-4" />
               Local Guard
             </p>
-            <p className="neo-copy mt-2 border-2 border-[#f5eedf] bg-[#2a221b] px-2 py-1 text-[8px] font-black uppercase leading-4">
+            <p className="neo-copy mt-2 border-2 border-[#f5eedf] bg-[#2a221b] px-2 py-1 text-[8px] leading-4 font-black uppercase">
               {readiness.guardCopy}
             </p>
             <div className="mt-2 grid gap-1.5">
               {readiness.guards.map((guard) => (
                 <p
-                  className="neo-copy border-2 border-[#f5eedf] bg-[#2a221b] px-2 py-1 text-[8px] font-black uppercase leading-4"
+                  className="neo-copy border-2 border-[#f5eedf] bg-[#2a221b] px-2 py-1 text-[8px] leading-4 font-black uppercase"
                   key={guard}
                 >
                   {guard}
@@ -183,8 +183,8 @@ export function PluginSystemReadinessPanel({
           </div>
         </div>
 
-        <div className="grid w-full min-w-0 max-w-full gap-3">
-          <div className="grid min-w-0 max-w-full gap-2 sm:grid-cols-2">
+        <div className="grid w-full max-w-full min-w-0 gap-3">
+          <div className="grid max-w-full min-w-0 gap-2 sm:grid-cols-2">
             {readiness.checks.map((check) => (
               <PluginReadinessCheckCard check={check} key={check.id} />
             ))}
@@ -214,17 +214,17 @@ function PluginReviewConsole({ controls }: { controls: PluginSystemReviewControl
     <div className="mt-4 border-2 border-black bg-[#fff9ed] p-3 shadow-[3px_3px_0_#171411]">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="neo-copy flex items-center gap-2 text-[9px] font-black uppercase tracking-[0.12em] text-[#b7102a]">
+          <p className="neo-copy flex items-center gap-2 text-[9px] font-black tracking-[0.12em] text-[#b7102a] uppercase">
             <FileCheck2 className="h-4 w-4" />
             Native Review Commands
           </p>
-          <p className="neo-copy mt-2 break-words text-[10px] font-black uppercase leading-relaxed text-[#5b403f]">
+          <p className="neo-copy mt-2 text-[10px] leading-relaxed font-black break-words text-[#5b403f] uppercase">
             {controls.isDesktopRuntime
               ? "Review local activation plans, update envelopes, and signed marketplace indexes without downloading, installing, enabling, or executing plugin code."
               : "Browser preview keeps native plugin reviews inert; desktop app is required for local file and disabled-registry review."}
           </p>
         </div>
-        <span className="neo-copy border-2 border-black bg-[#8cf5e4] px-2 py-1 text-[8px] font-black uppercase text-[#171411] shadow-[2px_2px_0_#171411]">
+        <span className="neo-copy border-2 border-black bg-[#8cf5e4] px-2 py-1 text-[8px] font-black text-[#171411] uppercase shadow-[2px_2px_0_#171411]">
           Review Only
         </span>
       </div>
@@ -232,34 +232,34 @@ function PluginReviewConsole({ controls }: { controls: PluginSystemReviewControl
       <div className="mt-3 grid gap-3">
         <div className="grid gap-2 border-2 border-black bg-[#efe6d4] p-2 sm:grid-cols-3">
           <label className="grid gap-1">
-            <span className="neo-copy text-[8px] font-black uppercase tracking-[0.12em] text-[#171411]">
+            <span className="neo-copy text-[8px] font-black tracking-[0.12em] text-[#171411] uppercase">
               Plugin ID
             </span>
             <input
               aria-label="Plugin activation review plugin id"
-              className="neo-copy min-h-10 border-2 border-black bg-[#fff9ed] px-2 text-[10px] font-black uppercase text-[#171411] shadow-[2px_2px_0_#171411]"
+              className="neo-copy min-h-10 border-2 border-black bg-[#fff9ed] px-2 text-[10px] font-black text-[#171411] uppercase shadow-[2px_2px_0_#171411]"
               value={controls.activationPluginId}
               onChange={(event) => controls.onActivationPluginIdChange(event.currentTarget.value)}
             />
           </label>
           <label className="grid gap-1">
-            <span className="neo-copy text-[8px] font-black uppercase tracking-[0.12em] text-[#171411]">
+            <span className="neo-copy text-[8px] font-black tracking-[0.12em] text-[#171411] uppercase">
               Version
             </span>
             <input
               aria-label="Plugin activation review version"
-              className="neo-copy min-h-10 border-2 border-black bg-[#fff9ed] px-2 text-[10px] font-black uppercase text-[#171411] shadow-[2px_2px_0_#171411]"
+              className="neo-copy min-h-10 border-2 border-black bg-[#fff9ed] px-2 text-[10px] font-black text-[#171411] uppercase shadow-[2px_2px_0_#171411]"
               value={controls.activationVersion}
               onChange={(event) => controls.onActivationVersionChange(event.currentTarget.value)}
             />
           </label>
           <label className="grid gap-1">
-            <span className="neo-copy text-[8px] font-black uppercase tracking-[0.12em] text-[#171411]">
+            <span className="neo-copy text-[8px] font-black tracking-[0.12em] text-[#171411] uppercase">
               Activation Consent
             </span>
             <input
               aria-label="Plugin activation review consent operation"
-              className="neo-copy min-h-10 border-2 border-black bg-[#fff9ed] px-2 text-[10px] font-black uppercase text-[#171411] shadow-[2px_2px_0_#171411]"
+              className="neo-copy min-h-10 border-2 border-black bg-[#fff9ed] px-2 text-[10px] font-black text-[#171411] uppercase shadow-[2px_2px_0_#171411]"
               value={controls.activationConsentOperation}
               onChange={(event) =>
                 controls.onActivationConsentOperationChange(event.currentTarget.value)
@@ -267,7 +267,7 @@ function PluginReviewConsole({ controls }: { controls: PluginSystemReviewControl
             />
           </label>
           <button
-            className="neo-copy inline-flex h-10 items-center justify-center gap-2 border-2 border-black bg-[#171411] px-3 text-[9px] font-black uppercase tracking-[0.1em] text-[#8cf5e4] shadow-[3px_3px_0_#b7102a] transition hover:-translate-y-0.5 disabled:opacity-60 sm:col-span-3"
+            className="neo-copy inline-flex h-10 items-center justify-center gap-2 border-2 border-black bg-[#171411] px-3 text-[9px] font-black tracking-[0.1em] text-[#8cf5e4] uppercase shadow-[3px_3px_0_#b7102a] transition hover:-translate-y-0.5 disabled:opacity-60 sm:col-span-3"
             disabled={anyBusy}
             type="button"
             onClick={() => void controls.onReviewActivationPlan()}
@@ -283,18 +283,18 @@ function PluginReviewConsole({ controls }: { controls: PluginSystemReviewControl
 
         <div className="grid gap-2 border-2 border-black bg-[#efe6d4] p-2 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
           <label className="grid gap-1">
-            <span className="neo-copy text-[8px] font-black uppercase tracking-[0.12em] text-[#171411]">
+            <span className="neo-copy text-[8px] font-black tracking-[0.12em] text-[#171411] uppercase">
               Update Envelope
             </span>
             <input
               aria-label="Plugin update envelope path"
-              className="neo-copy min-h-10 border-2 border-black bg-[#fff9ed] px-2 text-[10px] font-black uppercase text-[#171411] shadow-[2px_2px_0_#171411]"
+              className="neo-copy min-h-10 border-2 border-black bg-[#fff9ed] px-2 text-[10px] font-black text-[#171411] uppercase shadow-[2px_2px_0_#171411]"
               value={controls.updateEnvelopePath}
               onChange={(event) => controls.onUpdateEnvelopePathChange(event.currentTarget.value)}
             />
           </label>
           <button
-            className="neo-copy inline-flex h-10 items-center justify-center gap-2 self-end border-2 border-black bg-[#f5eedf] px-3 text-[9px] font-black uppercase tracking-[0.1em] text-[#171411] shadow-[3px_3px_0_#171411] transition hover:-translate-y-0.5 disabled:opacity-60"
+            className="neo-copy inline-flex h-10 items-center justify-center gap-2 self-end border-2 border-black bg-[#f5eedf] px-3 text-[9px] font-black tracking-[0.1em] text-[#171411] uppercase shadow-[3px_3px_0_#171411] transition hover:-translate-y-0.5 disabled:opacity-60"
             disabled={anyBusy}
             type="button"
             onClick={() => void controls.onChooseUpdateEnvelope()}
@@ -303,7 +303,7 @@ function PluginReviewConsole({ controls }: { controls: PluginSystemReviewControl
             File
           </button>
           <button
-            className="neo-copy inline-flex h-10 items-center justify-center gap-2 self-end border-2 border-black bg-[#087d6d] px-3 text-[9px] font-black uppercase tracking-[0.1em] text-white shadow-[3px_3px_0_#171411] transition hover:-translate-y-0.5 disabled:opacity-60"
+            className="neo-copy inline-flex h-10 items-center justify-center gap-2 self-end border-2 border-black bg-[#087d6d] px-3 text-[9px] font-black tracking-[0.1em] text-white uppercase shadow-[3px_3px_0_#171411] transition hover:-translate-y-0.5 disabled:opacity-60"
             disabled={anyBusy}
             type="button"
             onClick={() => void controls.onReviewUpdateEnvelope()}
@@ -319,18 +319,18 @@ function PluginReviewConsole({ controls }: { controls: PluginSystemReviewControl
 
         <div className="grid gap-2 border-2 border-black bg-[#efe6d4] p-2 sm:grid-cols-[minmax(0,1fr)_auto_auto]">
           <label className="grid gap-1">
-            <span className="neo-copy text-[8px] font-black uppercase tracking-[0.12em] text-[#171411]">
+            <span className="neo-copy text-[8px] font-black tracking-[0.12em] text-[#171411] uppercase">
               Marketplace Index
             </span>
             <input
               aria-label="Plugin marketplace index path"
-              className="neo-copy min-h-10 border-2 border-black bg-[#fff9ed] px-2 text-[10px] font-black uppercase text-[#171411] shadow-[2px_2px_0_#171411]"
+              className="neo-copy min-h-10 border-2 border-black bg-[#fff9ed] px-2 text-[10px] font-black text-[#171411] uppercase shadow-[2px_2px_0_#171411]"
               value={controls.marketplaceIndexPath}
               onChange={(event) => controls.onMarketplaceIndexPathChange(event.currentTarget.value)}
             />
           </label>
           <button
-            className="neo-copy inline-flex h-10 items-center justify-center gap-2 self-end border-2 border-black bg-[#f5eedf] px-3 text-[9px] font-black uppercase tracking-[0.1em] text-[#171411] shadow-[3px_3px_0_#171411] transition hover:-translate-y-0.5 disabled:opacity-60"
+            className="neo-copy inline-flex h-10 items-center justify-center gap-2 self-end border-2 border-black bg-[#f5eedf] px-3 text-[9px] font-black tracking-[0.1em] text-[#171411] uppercase shadow-[3px_3px_0_#171411] transition hover:-translate-y-0.5 disabled:opacity-60"
             disabled={anyBusy}
             type="button"
             onClick={() => void controls.onChooseMarketplaceIndex()}
@@ -339,7 +339,7 @@ function PluginReviewConsole({ controls }: { controls: PluginSystemReviewControl
             File
           </button>
           <button
-            className="neo-copy inline-flex h-10 items-center justify-center gap-2 self-end border-2 border-black bg-[#b7102a] px-3 text-[9px] font-black uppercase tracking-[0.1em] text-white shadow-[3px_3px_0_#171411] transition hover:-translate-y-0.5 disabled:opacity-60"
+            className="neo-copy inline-flex h-10 items-center justify-center gap-2 self-end border-2 border-black bg-[#b7102a] px-3 text-[9px] font-black tracking-[0.1em] text-white uppercase shadow-[3px_3px_0_#171411] transition hover:-translate-y-0.5 disabled:opacity-60"
             disabled={anyBusy}
             type="button"
             onClick={() => void controls.onReviewMarketplaceIndex()}
@@ -355,7 +355,7 @@ function PluginReviewConsole({ controls }: { controls: PluginSystemReviewControl
       </div>
 
       {controls.message ? (
-        <p className="neo-copy mt-3 border-2 border-black bg-[#171411] px-2 py-1 text-[9px] font-black uppercase leading-relaxed text-[#f5eedf] shadow-[2px_2px_0_#b7102a]">
+        <p className="neo-copy mt-3 border-2 border-black bg-[#171411] px-2 py-1 text-[9px] leading-relaxed font-black text-[#f5eedf] uppercase shadow-[2px_2px_0_#b7102a]">
           {controls.message}
         </p>
       ) : null}
@@ -372,11 +372,11 @@ function PluginPackageStagingConsole({
     <div className="mt-4 border-2 border-black bg-[#8cf5e4] p-3 shadow-[3px_3px_0_#171411]">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="neo-copy flex items-center gap-2 text-[9px] font-black uppercase tracking-[0.12em] text-[#171411]">
+          <p className="neo-copy flex items-center gap-2 text-[9px] font-black tracking-[0.12em] text-[#171411] uppercase">
             <PackageCheck className="h-4 w-4" />
             Signed Package Staging
           </p>
-          <p className="neo-copy mt-2 break-words text-[10px] font-black uppercase leading-relaxed text-[#171411]">
+          <p className="neo-copy mt-2 text-[10px] leading-relaxed font-black break-words text-[#171411] uppercase">
             {controls.isDesktopRuntime
               ? "Desktop command validates hashes, signatures, and path containment before writing disabled registry evidence."
               : "Browser preview keeps signed package staging inert; desktop app is required for validation and disabled registry writes."}
@@ -389,23 +389,23 @@ function PluginPackageStagingConsole({
 
       <div className="mt-3 grid gap-2">
         <label className="grid gap-1">
-          <span className="neo-copy text-[8px] font-black uppercase tracking-[0.12em] text-[#171411]">
+          <span className="neo-copy text-[8px] font-black tracking-[0.12em] text-[#171411] uppercase">
             Package Folder
           </span>
           <input
             aria-label="Signed plugin package folder"
-            className="neo-copy min-h-10 border-2 border-black bg-[#fff9ed] px-2 text-[10px] font-black uppercase text-[#171411] shadow-[2px_2px_0_#171411]"
+            className="neo-copy min-h-10 border-2 border-black bg-[#fff9ed] px-2 text-[10px] font-black text-[#171411] uppercase shadow-[2px_2px_0_#171411]"
             value={controls.packagePath}
             onChange={(event) => controls.onPackagePathChange(event.currentTarget.value)}
           />
         </label>
         <label className="grid gap-1">
-          <span className="neo-copy text-[8px] font-black uppercase tracking-[0.12em] text-[#171411]">
+          <span className="neo-copy text-[8px] font-black tracking-[0.12em] text-[#171411] uppercase">
             Consent Operation
           </span>
           <input
             aria-label="Signed plugin package consent operation"
-            className="neo-copy min-h-10 border-2 border-black bg-[#fff9ed] px-2 text-[10px] font-black uppercase text-[#171411] shadow-[2px_2px_0_#171411]"
+            className="neo-copy min-h-10 border-2 border-black bg-[#fff9ed] px-2 text-[10px] font-black text-[#171411] uppercase shadow-[2px_2px_0_#171411]"
             value={controls.consentOperation}
             onChange={(event) => controls.onConsentOperationChange(event.currentTarget.value)}
           />
@@ -414,7 +414,7 @@ function PluginPackageStagingConsole({
 
       <div className="mt-3 grid gap-2 sm:grid-cols-5">
         <button
-          className="neo-copy inline-flex h-10 items-center justify-center gap-2 border-2 border-black bg-[#f5eedf] px-3 text-[9px] font-black uppercase tracking-[0.1em] text-[#171411] shadow-[3px_3px_0_#171411] transition hover:-translate-y-0.5 disabled:opacity-60"
+          className="neo-copy inline-flex h-10 items-center justify-center gap-2 border-2 border-black bg-[#f5eedf] px-3 text-[9px] font-black tracking-[0.1em] text-[#171411] uppercase shadow-[3px_3px_0_#171411] transition hover:-translate-y-0.5 disabled:opacity-60"
           disabled={controls.busy}
           type="button"
           onClick={() => void controls.onChooseFolder()}
@@ -427,7 +427,7 @@ function PluginPackageStagingConsole({
           Folder
         </button>
         <button
-          className="neo-copy inline-flex h-10 items-center justify-center gap-2 border-2 border-black bg-[#087d6d] px-3 text-[9px] font-black uppercase tracking-[0.1em] text-white shadow-[3px_3px_0_#171411] transition hover:-translate-y-0.5 disabled:opacity-60"
+          className="neo-copy inline-flex h-10 items-center justify-center gap-2 border-2 border-black bg-[#087d6d] px-3 text-[9px] font-black tracking-[0.1em] text-white uppercase shadow-[3px_3px_0_#171411] transition hover:-translate-y-0.5 disabled:opacity-60"
           disabled={controls.busy}
           type="button"
           onClick={() => void controls.onStagePackage()}
@@ -440,7 +440,7 @@ function PluginPackageStagingConsole({
           Stage Disabled
         </button>
         <button
-          className="neo-copy inline-flex h-10 items-center justify-center gap-2 border-2 border-black bg-[#f5eedf] px-3 text-[9px] font-black uppercase tracking-[0.1em] text-[#171411] shadow-[3px_3px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#8cf5e4] disabled:opacity-60"
+          className="neo-copy inline-flex h-10 items-center justify-center gap-2 border-2 border-black bg-[#f5eedf] px-3 text-[9px] font-black tracking-[0.1em] text-[#171411] uppercase shadow-[3px_3px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#8cf5e4] disabled:opacity-60"
           disabled={controls.auditBusy || controls.busy}
           type="button"
           onClick={() => void controls.onAuditRegistry?.()}
@@ -453,7 +453,7 @@ function PluginPackageStagingConsole({
           Audit Registry
         </button>
         <button
-          className="neo-copy inline-flex h-10 items-center justify-center gap-2 border-2 border-black bg-[#171411] px-3 text-[9px] font-black uppercase tracking-[0.1em] text-[#8cf5e4] shadow-[3px_3px_0_#b7102a] transition hover:-translate-y-0.5 disabled:opacity-60"
+          className="neo-copy inline-flex h-10 items-center justify-center gap-2 border-2 border-black bg-[#171411] px-3 text-[9px] font-black tracking-[0.1em] text-[#8cf5e4] uppercase shadow-[3px_3px_0_#b7102a] transition hover:-translate-y-0.5 disabled:opacity-60"
           disabled={controls.runtimeProofBusy || controls.auditBusy || controls.busy}
           type="button"
           onClick={() => void controls.onProveRuntimeSandbox?.()}
@@ -466,7 +466,7 @@ function PluginPackageStagingConsole({
           Sandbox Proof
         </button>
         <button
-          className="neo-copy inline-flex h-10 items-center justify-center gap-2 border-2 border-black bg-[#fff9ed] px-3 text-[9px] font-black uppercase tracking-[0.1em] text-[#171411] shadow-[3px_3px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#b7102a] hover:text-white"
+          className="neo-copy inline-flex h-10 items-center justify-center gap-2 border-2 border-black bg-[#fff9ed] px-3 text-[9px] font-black tracking-[0.1em] text-[#171411] uppercase shadow-[3px_3px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#b7102a] hover:text-white"
           type="button"
           onClick={controls.onReset}
         >
@@ -476,21 +476,21 @@ function PluginPackageStagingConsole({
       </div>
 
       <div className="mt-3 grid gap-2 sm:grid-cols-5">
-        <p className="neo-copy border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#171411]">
+        <p className="neo-copy border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] leading-4 font-black text-[#171411] uppercase">
           Runtime: {controls.isDesktopRuntime ? "desktop staging ready" : "browser review only"}
         </p>
-        <p className="neo-copy border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#171411]">
+        <p className="neo-copy border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] leading-4 font-black text-[#171411] uppercase">
           Ledger: {controls.stagedCount} disabled package
           {controls.stagedCount === 1 ? "" : "s"}
         </p>
-        <p className="neo-copy border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#171411]">
+        <p className="neo-copy border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] leading-4 font-black text-[#171411] uppercase">
           Updated: {controls.updatedAt ?? "not staged"}
         </p>
-        <p className="neo-copy border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#171411]">
+        <p className="neo-copy border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] leading-4 font-black text-[#171411] uppercase">
           Audit: {controls.auditPassedCount ?? 0} passed / {controls.auditFailedCount ?? 0} blocked
           {controls.auditUpdatedAt ? ` // ${controls.auditUpdatedAt}` : ""}
         </p>
-        <p className="neo-copy border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#171411]">
+        <p className="neo-copy border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] leading-4 font-black text-[#171411] uppercase">
           Sandbox: {controls.runtimeProofDeniedCount ?? 0} denied /{" "}
           {controls.runtimeProofAllowedCount ?? 0} allowed
           {controls.runtimeProofUpdatedAt ? ` // ${controls.runtimeProofUpdatedAt}` : ""}
@@ -498,7 +498,7 @@ function PluginPackageStagingConsole({
       </div>
 
       {controls.message ? (
-        <p className="neo-copy mt-3 border-2 border-black bg-[#171411] px-2 py-1 text-[9px] font-black uppercase leading-relaxed text-[#f5eedf] shadow-[2px_2px_0_#b7102a]">
+        <p className="neo-copy mt-3 border-2 border-black bg-[#171411] px-2 py-1 text-[9px] leading-relaxed font-black text-[#f5eedf] uppercase shadow-[2px_2px_0_#b7102a]">
           {controls.message}
         </p>
       ) : null}
@@ -514,17 +514,17 @@ function PluginActivationPlanReviewLedger({
   const checks = review?.checks ?? [];
 
   return (
-    <div className="min-w-0 max-w-full border-2 border-black bg-[#fff9ed] p-3 shadow-[3px_3px_0_#171411]">
+    <div className="max-w-full min-w-0 border-2 border-black bg-[#fff9ed] p-3 shadow-[3px_3px_0_#171411]">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="neo-copy flex items-center gap-2 text-[9px] font-black uppercase tracking-[0.12em] text-[#b7102a]">
+        <p className="neo-copy flex items-center gap-2 text-[9px] font-black tracking-[0.12em] text-[#b7102a] uppercase">
           <ShieldCheck className="h-4 w-4" />
           Local Activation Plan Review
         </p>
-        <span className="neo-copy border-2 border-black bg-[#8cf5e4] px-2 py-1 text-[8px] font-black uppercase text-[#171411]">
+        <span className="neo-copy border-2 border-black bg-[#8cf5e4] px-2 py-1 text-[8px] font-black text-[#171411] uppercase">
           {review ? review.status : "not reviewed"}
         </span>
       </div>
-      <p className="neo-copy mt-2 border-2 border-black bg-[#efe6d4] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#171411]">
+      <p className="neo-copy mt-2 border-2 border-black bg-[#efe6d4] px-2 py-1 text-[8px] leading-4 font-black text-[#171411] uppercase">
         Activation review re-audits the disabled registry and proves the package remains blocked: no
         download, install, permission grant, network access, or code execution is allowed from this
         panel; process boundary evidence stays review-only.
@@ -532,23 +532,23 @@ function PluginActivationPlanReviewLedger({
       {review ? (
         <div className="mt-3 grid gap-2">
           <div className="grid gap-2 sm:grid-cols-4">
-            <p className="neo-copy border-2 border-black bg-[#f5eedf] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#171411]">
+            <p className="neo-copy border-2 border-black bg-[#f5eedf] px-2 py-1 text-[8px] leading-4 font-black text-[#171411] uppercase">
               Code Executed: {String(review.codeExecuted)}
             </p>
-            <p className="neo-copy border-2 border-black bg-[#f5eedf] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#171411]">
+            <p className="neo-copy border-2 border-black bg-[#f5eedf] px-2 py-1 text-[8px] leading-4 font-black text-[#171411] uppercase">
               Download: {review.downloadAttempted ? "attempted" : "blocked"}
             </p>
-            <p className="neo-copy border-2 border-black bg-[#f5eedf] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#171411]">
+            <p className="neo-copy border-2 border-black bg-[#f5eedf] px-2 py-1 text-[8px] leading-4 font-black text-[#171411] uppercase">
               Install: {review.installApplied ? "applied" : "blocked"}
             </p>
-            <p className="neo-copy border-2 border-black bg-[#f5eedf] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#171411]">
+            <p className="neo-copy border-2 border-black bg-[#f5eedf] px-2 py-1 text-[8px] leading-4 font-black text-[#171411] uppercase">
               Process Boundary: {review.processBoundaryReady ? "review-only" : "blocked"}
             </p>
           </div>
-          <p className="neo-copy break-words border-2 border-black bg-[#f5eedf] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#5b403f]">
+          <p className="neo-copy border-2 border-black bg-[#f5eedf] px-2 py-1 text-[8px] leading-4 font-black break-words text-[#5b403f] uppercase">
             {review.sourceLabel} // {review.pluginId} // {review.version} // {review.reviewedAt}
           </p>
-          <p className="neo-copy break-all border-2 border-black bg-[#f5eedf] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#5b403f]">
+          <p className="neo-copy border-2 border-black bg-[#f5eedf] px-2 py-1 text-[8px] leading-4 font-black break-all text-[#5b403f] uppercase">
             {review.manifestHash || "no manifest hash for missing/untrusted package"}
           </p>
           {checks.map((check) => (
@@ -557,7 +557,7 @@ function PluginActivationPlanReviewLedger({
               key={check.id}
             >
               <div className="flex flex-wrap items-start justify-between gap-2">
-                <p className="neo-copy break-words text-[9px] font-black uppercase text-[#171411]">
+                <p className="neo-copy text-[9px] font-black break-words text-[#171411] uppercase">
                   {check.label}
                 </p>
                 <span
@@ -572,14 +572,14 @@ function PluginActivationPlanReviewLedger({
                   {check.status}
                 </span>
               </div>
-              <p className="neo-copy mt-2 border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#171411]">
+              <p className="neo-copy mt-2 border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] leading-4 font-black text-[#171411] uppercase">
                 {check.detail}
               </p>
             </article>
           ))}
         </div>
       ) : (
-        <p className="neo-copy mt-3 border-2 border-black bg-[#efe6d4] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#5b403f]">
+        <p className="neo-copy mt-3 border-2 border-black bg-[#efe6d4] px-2 py-1 text-[8px] leading-4 font-black text-[#5b403f] uppercase">
           No local activation plan has been reviewed. Plugin enablement, network access,
           permissions, and runtime execution remain blocked.
         </p>
@@ -592,19 +592,19 @@ function PluginMarketplaceTrustLedger({ trust }: { trust: PluginMarketplaceTrust
   const entries = trust?.entries ?? [];
 
   return (
-    <div className="min-w-0 max-w-full border-2 border-black bg-[#fff9ed] p-3 shadow-[3px_3px_0_#171411]">
+    <div className="max-w-full min-w-0 border-2 border-black bg-[#fff9ed] p-3 shadow-[3px_3px_0_#171411]">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="neo-copy flex items-center gap-2 text-[9px] font-black uppercase tracking-[0.12em] text-[#b7102a]">
+        <p className="neo-copy flex items-center gap-2 text-[9px] font-black tracking-[0.12em] text-[#b7102a] uppercase">
           <ShieldCheck className="h-4 w-4" />
           Local Marketplace Index Trust
         </p>
-        <span className="neo-copy border-2 border-black bg-[#8cf5e4] px-2 py-1 text-[8px] font-black uppercase text-[#171411]">
+        <span className="neo-copy border-2 border-black bg-[#8cf5e4] px-2 py-1 text-[8px] font-black text-[#171411] uppercase">
           {trust
             ? `${trust.catalogEntryCount} signed / ${trust.matchedDisabledPackageCount} matched`
             : "not reviewed"}
         </span>
       </div>
-      <p className="neo-copy mt-2 border-2 border-black bg-[#efe6d4] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#171411]">
+      <p className="neo-copy mt-2 border-2 border-black bg-[#efe6d4] px-2 py-1 text-[8px] leading-4 font-black text-[#171411] uppercase">
         Signed marketplace/update indexes are reviewed against disabled registry evidence only;
         marketplace downloads, installs, auto-updates, permission grants, and runtime execution
         remain blocked.
@@ -612,43 +612,43 @@ function PluginMarketplaceTrustLedger({ trust }: { trust: PluginMarketplaceTrust
       {trust ? (
         <div className="mt-3 grid gap-2">
           <div className="grid min-w-0 gap-2 sm:grid-cols-2 xl:grid-cols-3">
-            <p className="neo-copy border-2 border-black bg-[#f5eedf] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#171411]">
+            <p className="neo-copy border-2 border-black bg-[#f5eedf] px-2 py-1 text-[8px] leading-4 font-black text-[#171411] uppercase">
               Signature: {trust.signatureVerified ? "verified" : "blocked"}
             </p>
-            <p className="neo-copy border-2 border-black bg-[#f5eedf] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#171411]">
+            <p className="neo-copy border-2 border-black bg-[#f5eedf] px-2 py-1 text-[8px] leading-4 font-black text-[#171411] uppercase">
               Downloads: {trust.downloadAllowed ? "open" : "blocked"}
             </p>
-            <p className="neo-copy border-2 border-black bg-[#f5eedf] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#171411]">
+            <p className="neo-copy border-2 border-black bg-[#f5eedf] px-2 py-1 text-[8px] leading-4 font-black text-[#171411] uppercase">
               Installs: {trust.installAllowed ? "open" : "blocked"}
             </p>
-            <p className="neo-copy border-2 border-black bg-[#f5eedf] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#171411]">
+            <p className="neo-copy border-2 border-black bg-[#f5eedf] px-2 py-1 text-[8px] leading-4 font-black text-[#171411] uppercase">
               Auto Updates: {trust.autoUpdateAllowed ? "open" : "blocked"}
             </p>
-            <p className="neo-copy border-2 border-black bg-[#f5eedf] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#171411]">
+            <p className="neo-copy border-2 border-black bg-[#f5eedf] px-2 py-1 text-[8px] leading-4 font-black text-[#171411] uppercase">
               Revoked: {trust.revokedCount}
             </p>
-            <p className="neo-copy border-2 border-black bg-[#f5eedf] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#171411]">
+            <p className="neo-copy border-2 border-black bg-[#f5eedf] px-2 py-1 text-[8px] leading-4 font-black text-[#171411] uppercase">
               Blocked Rows: {trust.blockedCount}
             </p>
           </div>
-          <p className="neo-copy break-words border-2 border-black bg-[#f5eedf] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#5b403f]">
+          <p className="neo-copy border-2 border-black bg-[#f5eedf] px-2 py-1 text-[8px] leading-4 font-black break-words text-[#5b403f] uppercase">
             {trust.sourceLabel} // key {trust.signatureKeyId} // {trust.signatureIssuer} //{" "}
             {trust.reviewedAt}
           </p>
-          <p className="neo-copy break-words border-2 border-black bg-[#f5eedf] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#5b403f]">
+          <p className="neo-copy border-2 border-black bg-[#f5eedf] px-2 py-1 text-[8px] leading-4 font-black break-words text-[#5b403f] uppercase">
             Index: {trust.indexPath} // Registry: {trust.registryPath}
           </p>
           {entries.map((item) => (
             <article
-              className="min-w-0 max-w-full border-2 border-black bg-[#f5eedf] p-2 shadow-[2px_2px_0_#171411]"
+              className="max-w-full min-w-0 border-2 border-black bg-[#f5eedf] p-2 shadow-[2px_2px_0_#171411]"
               key={`${item.pluginId}-${item.version}-${item.status}`}
             >
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div className="min-w-0">
-                  <p className="neo-copy break-words text-[10px] font-black uppercase text-[#171411]">
+                  <p className="neo-copy text-[10px] font-black break-words text-[#171411] uppercase">
                     {item.pluginId} // {item.version}
                   </p>
-                  <p className="neo-copy mt-1 break-words text-[8px] font-black uppercase leading-4 text-[#5b403f]">
+                  <p className="neo-copy mt-1 text-[8px] leading-4 font-black break-words text-[#5b403f] uppercase">
                     {item.moderationStatus} // {item.channel} // {item.registryStatus} // revoked{" "}
                     {String(item.revoked)}
                   </p>
@@ -661,14 +661,14 @@ function PluginMarketplaceTrustLedger({ trust }: { trust: PluginMarketplaceTrust
                   {item.status}
                 </span>
               </div>
-              <p className="neo-copy mt-2 break-all border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#171411]">
+              <p className="neo-copy mt-2 border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] leading-4 font-black break-all text-[#171411] uppercase">
                 {item.manifestHash}
               </p>
               {item.issues.length > 0 ? (
                 <div className="mt-2 grid gap-1">
                   {item.issues.map((issue) => (
                     <p
-                      className="neo-copy border-2 border-black bg-[#fff1c7] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#5b403f]"
+                      className="neo-copy border-2 border-black bg-[#fff1c7] px-2 py-1 text-[8px] leading-4 font-black text-[#5b403f] uppercase"
                       key={issue}
                     >
                       {issue}
@@ -676,7 +676,7 @@ function PluginMarketplaceTrustLedger({ trust }: { trust: PluginMarketplaceTrust
                   ))}
                 </div>
               ) : (
-                <p className="neo-copy mt-2 border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#171411]">
+                <p className="neo-copy mt-2 border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] leading-4 font-black text-[#171411] uppercase">
                   Trust lane only: signed index matched a disabled package; catalog fetch, package
                   download, install, enablement, auto-update, and code load remain blocked.
                 </p>
@@ -685,7 +685,7 @@ function PluginMarketplaceTrustLedger({ trust }: { trust: PluginMarketplaceTrust
           ))}
         </div>
       ) : (
-        <p className="neo-copy mt-3 border-2 border-black bg-[#efe6d4] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#5b403f]">
+        <p className="neo-copy mt-3 border-2 border-black bg-[#efe6d4] px-2 py-1 text-[8px] leading-4 font-black text-[#5b403f] uppercase">
           No local signed marketplace/update index trust packet is staged. Marketplace connection,
           package download, install, auto-update, and plugin execution remain blocked.
         </p>
@@ -702,13 +702,13 @@ function PluginUpdateSigningReviewLedger({
   const entries = review?.entries ?? [];
 
   return (
-    <div className="min-w-0 max-w-full border-2 border-black bg-[#fff9ed] p-3 shadow-[3px_3px_0_#171411]">
+    <div className="max-w-full min-w-0 border-2 border-black bg-[#fff9ed] p-3 shadow-[3px_3px_0_#171411]">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="neo-copy flex items-center gap-2 text-[9px] font-black uppercase tracking-[0.12em] text-[#b7102a]">
+        <p className="neo-copy flex items-center gap-2 text-[9px] font-black tracking-[0.12em] text-[#b7102a] uppercase">
           <KeyRound className="h-4 w-4" />
           Local Update Signing Review
         </p>
-        <span className="neo-copy border-2 border-black bg-[#8cf5e4] px-2 py-1 text-[8px] font-black uppercase text-[#171411]">
+        <span className="neo-copy border-2 border-black bg-[#8cf5e4] px-2 py-1 text-[8px] font-black text-[#171411] uppercase">
           {review
             ? `${review.signatureVerifiedCount} signed / install ${
                 review.autoInstallBlocked ? "blocked" : "open"
@@ -716,37 +716,37 @@ function PluginUpdateSigningReviewLedger({
             : "not reviewed"}
         </span>
       </div>
-      <p className="neo-copy mt-2 border-2 border-black bg-[#efe6d4] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#171411]">
+      <p className="neo-copy mt-2 border-2 border-black bg-[#efe6d4] px-2 py-1 text-[8px] leading-4 font-black text-[#171411] uppercase">
         Update envelopes are reviewed for signed manifest hashes and rollback metadata only; no
         package is downloaded, installed, enabled, or auto-updated from this ledger.
       </p>
       {review ? (
         <div className="mt-3 grid gap-2">
           <div className="grid gap-2 sm:grid-cols-3">
-            <p className="neo-copy border-2 border-black bg-[#f5eedf] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#171411]">
+            <p className="neo-copy border-2 border-black bg-[#f5eedf] px-2 py-1 text-[8px] leading-4 font-black text-[#171411] uppercase">
               Manifest Hash: {review.manifestHashReady ? "ready" : "blocked"}
             </p>
-            <p className="neo-copy border-2 border-black bg-[#f5eedf] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#171411]">
+            <p className="neo-copy border-2 border-black bg-[#f5eedf] px-2 py-1 text-[8px] leading-4 font-black text-[#171411] uppercase">
               Rollback Plan: {review.rollbackPlanReady ? "ready" : "blocked"}
             </p>
-            <p className="neo-copy border-2 border-black bg-[#f5eedf] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#171411]">
+            <p className="neo-copy border-2 border-black bg-[#f5eedf] px-2 py-1 text-[8px] leading-4 font-black text-[#171411] uppercase">
               Auto Install: {review.autoInstallBlocked ? "blocked" : "open"}
             </p>
           </div>
-          <p className="neo-copy break-words border-2 border-black bg-[#f5eedf] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#5b403f]">
+          <p className="neo-copy border-2 border-black bg-[#f5eedf] px-2 py-1 text-[8px] leading-4 font-black break-words text-[#5b403f] uppercase">
             {review.sourceLabel} // {review.reviewedAt}
           </p>
           {entries.map((item) => (
             <article
-              className="min-w-0 max-w-full border-2 border-black bg-[#f5eedf] p-2 shadow-[2px_2px_0_#171411]"
+              className="max-w-full min-w-0 border-2 border-black bg-[#f5eedf] p-2 shadow-[2px_2px_0_#171411]"
               key={`${item.pluginId}-${item.currentVersion}-${item.proposedVersion}`}
             >
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div className="min-w-0">
-                  <p className="neo-copy break-words text-[10px] font-black uppercase text-[#171411]">
+                  <p className="neo-copy text-[10px] font-black break-words text-[#171411] uppercase">
                     {item.pluginId} // {item.currentVersion} -&gt; {item.proposedVersion}
                   </p>
-                  <p className="neo-copy mt-1 break-words text-[8px] font-black uppercase leading-4 text-[#5b403f]">
+                  <p className="neo-copy mt-1 text-[8px] leading-4 font-black break-words text-[#5b403f] uppercase">
                     {item.channel} // {item.signatureIssuer} // rollback{" "}
                     {item.rollbackVersion ?? "missing"}
                   </p>
@@ -759,14 +759,14 @@ function PluginUpdateSigningReviewLedger({
                   {item.status}
                 </span>
               </div>
-              <p className="neo-copy mt-2 break-words border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#171411]">
+              <p className="neo-copy mt-2 border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] leading-4 font-black break-words text-[#171411] uppercase">
                 {item.manifestHash}
               </p>
               {item.issues.length > 0 ? (
                 <div className="mt-2 grid gap-1">
                   {item.issues.map((issue) => (
                     <p
-                      className="neo-copy border-2 border-black bg-[#fff1c7] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#5b403f]"
+                      className="neo-copy border-2 border-black bg-[#fff1c7] px-2 py-1 text-[8px] leading-4 font-black text-[#5b403f] uppercase"
                       key={issue}
                     >
                       {issue}
@@ -774,7 +774,7 @@ function PluginUpdateSigningReviewLedger({
                   ))}
                 </div>
               ) : (
-                <p className="neo-copy mt-2 border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#171411]">
+                <p className="neo-copy mt-2 border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] leading-4 font-black text-[#171411] uppercase">
                   Review lane only: auto install false; package download, enablement, and runtime
                   execution remain blocked.
                 </p>
@@ -783,7 +783,7 @@ function PluginUpdateSigningReviewLedger({
           ))}
         </div>
       ) : (
-        <p className="neo-copy mt-3 border-2 border-black bg-[#efe6d4] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#5b403f]">
+        <p className="neo-copy mt-3 border-2 border-black bg-[#efe6d4] px-2 py-1 text-[8px] leading-4 font-black text-[#5b403f] uppercase">
           No local update signing review envelope is staged. Plugin updates and auto-install remain
           blocked.
         </p>
@@ -803,9 +803,9 @@ function PluginRuntimeSandboxProofLedger({
   const isReadyProof = isRuntimeSandboxProofReady(proof);
 
   return (
-    <div className="min-w-0 max-w-full border-2 border-black bg-[#fff9ed] p-3 shadow-[3px_3px_0_#171411]">
+    <div className="max-w-full min-w-0 border-2 border-black bg-[#fff9ed] p-3 shadow-[3px_3px_0_#171411]">
       <div className="flex items-center justify-between gap-3">
-        <p className="neo-copy flex items-center gap-2 text-[9px] font-black uppercase tracking-[0.12em] text-[#b7102a]">
+        <p className="neo-copy flex items-center gap-2 text-[9px] font-black tracking-[0.12em] text-[#b7102a] uppercase">
           <ShieldCheck className="h-4 w-4" />
           {isProcessProof
             ? "Native Runtime Sandbox Process Proof"
@@ -813,13 +813,13 @@ function PluginRuntimeSandboxProofLedger({
               ? "Native Runtime Sandbox Proof Blocked"
               : "Native Runtime Sandbox Dry-Run"}
         </p>
-        <span className="neo-copy border-2 border-black bg-[#8cf5e4] px-2 py-1 text-[8px] font-black uppercase text-[#171411]">
+        <span className="neo-copy border-2 border-black bg-[#8cf5e4] px-2 py-1 text-[8px] font-black text-[#171411] uppercase">
           {proof
             ? `${proof.deniedEntrypointCount} denied / ${proof.allowedExecutionCount} allowed`
             : "not run"}
         </span>
       </div>
-      <p className="neo-copy mt-2 border-2 border-black bg-[#efe6d4] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#171411]">
+      <p className="neo-copy mt-2 border-2 border-black bg-[#efe6d4] px-2 py-1 text-[8px] leading-4 font-black text-[#171411] uppercase">
         {!proof
           ? "No native runtime sandbox proof has been run. Runtime admission remains blocked."
           : isProcessProof
@@ -831,30 +831,30 @@ function PluginRuntimeSandboxProofLedger({
       {proof ? (
         <div className="mt-3 grid gap-2">
           <div className="grid gap-2 sm:grid-cols-3">
-            <p className="neo-copy border-2 border-black bg-[#f5eedf] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#171411]">
+            <p className="neo-copy border-2 border-black bg-[#f5eedf] px-2 py-1 text-[8px] leading-4 font-black text-[#171411] uppercase">
               Process Boundary: {proof.processBoundaryReady ? "ready" : "not production-ready"}
             </p>
-            <p className="neo-copy border-2 border-black bg-[#f5eedf] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#171411]">
+            <p className="neo-copy border-2 border-black bg-[#f5eedf] px-2 py-1 text-[8px] leading-4 font-black text-[#171411] uppercase">
               IPC Allowlist: {proof.ipcAllowlistReady ? "deny-all proof" : "deny all"}
             </p>
-            <p className="neo-copy border-2 border-black bg-[#f5eedf] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#171411]">
+            <p className="neo-copy border-2 border-black bg-[#f5eedf] px-2 py-1 text-[8px] leading-4 font-black text-[#171411] uppercase">
               Permission Grants: {proof.permissionGrantReady ? "ready" : "none"}
             </p>
           </div>
-          <p className="neo-copy break-words border-2 border-black bg-[#f5eedf] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#5b403f]">
+          <p className="neo-copy border-2 border-black bg-[#f5eedf] px-2 py-1 text-[8px] leading-4 font-black break-words text-[#5b403f] uppercase">
             {proof.sourceLabel} // {proof.registryPath} // {proof.provedAt} // codeExecuted{" "}
             {String(proof.codeExecuted)}
           </p>
           <div className="border-2 border-black bg-[#f5eedf] p-2 shadow-[2px_2px_0_#171411]">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="neo-copy text-[9px] font-black uppercase tracking-[0.12em] text-[#b7102a]">
+              <p className="neo-copy text-[9px] font-black tracking-[0.12em] text-[#b7102a] uppercase">
                 Escape Fixture Matrix
               </p>
-              <span className="neo-copy border-2 border-black bg-[#8cf5e4] px-2 py-1 text-[8px] font-black uppercase text-[#171411]">
+              <span className="neo-copy border-2 border-black bg-[#8cf5e4] px-2 py-1 text-[8px] font-black text-[#171411] uppercase">
                 {escapeAttempts.length} blocked
               </span>
             </div>
-            <p className="neo-copy mt-2 border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#171411]">
+            <p className="neo-copy mt-2 border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] leading-4 font-black text-[#171411] uppercase">
               Deterministic local fixtures cover path traversal, symlink entrypoints, nested
               manifest escapes, deny-all IPC, blocked network IPC, environment reads, filesystem
               writes, and permission escalation; each payload is blocked by admission before code
@@ -867,20 +867,20 @@ function PluginRuntimeSandboxProofLedger({
                   key={attempt.id}
                 >
                   <div className="flex flex-wrap items-start justify-between gap-2">
-                    <p className="neo-copy break-words text-[9px] font-black uppercase text-[#171411]">
+                    <p className="neo-copy text-[9px] font-black break-words text-[#171411] uppercase">
                       {attempt.label}
                     </p>
-                    <span className="neo-copy border-2 border-black bg-[#f5eedf] px-2 py-1 text-[8px] font-black uppercase text-[#171411]">
+                    <span className="neo-copy border-2 border-black bg-[#f5eedf] px-2 py-1 text-[8px] font-black text-[#171411] uppercase">
                       {attempt.boundary}
                     </span>
                   </div>
-                  <p className="neo-copy mt-2 break-words text-[8px] font-black uppercase leading-4 text-[#5b403f]">
+                  <p className="neo-copy mt-2 text-[8px] leading-4 font-black break-words text-[#5b403f] uppercase">
                     Payload: {attempt.payload}
                   </p>
-                  <p className="neo-copy mt-1 break-words text-[8px] font-black uppercase leading-4 text-[#5b403f]">
+                  <p className="neo-copy mt-1 text-[8px] leading-4 font-black break-words text-[#5b403f] uppercase">
                     Blocked by: {attempt.blockedBy}
                   </p>
-                  <p className="neo-copy mt-2 border-2 border-black bg-[#efe6d4] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#171411]">
+                  <p className="neo-copy mt-2 border-2 border-black bg-[#efe6d4] px-2 py-1 text-[8px] leading-4 font-black text-[#171411] uppercase">
                     Result: {attempt.result}
                   </p>
                 </article>
@@ -889,30 +889,30 @@ function PluginRuntimeSandboxProofLedger({
           </div>
           {entries.map((item) => (
             <article
-              className="min-w-0 max-w-full border-2 border-black bg-[#f5eedf] p-2 shadow-[2px_2px_0_#171411]"
+              className="max-w-full min-w-0 border-2 border-black bg-[#f5eedf] p-2 shadow-[2px_2px_0_#171411]"
               key={`${item.pluginId}-${item.version}-${item.status}`}
             >
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div className="min-w-0">
-                  <p className="neo-copy break-words text-[10px] font-black uppercase text-[#171411]">
+                  <p className="neo-copy text-[10px] font-black break-words text-[#171411] uppercase">
                     {item.pluginId} // {item.version}
                   </p>
-                  <p className="neo-copy mt-1 break-words text-[8px] font-black uppercase leading-4 text-[#5b403f]">
+                  <p className="neo-copy mt-1 text-[8px] leading-4 font-black break-words text-[#5b403f] uppercase">
                     {item.entrypoint} // {item.denyReason}
                   </p>
                 </div>
-                <span className="neo-copy border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] font-black uppercase text-[#171411] shadow-[2px_2px_0_#171411]">
+                <span className="neo-copy border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] font-black text-[#171411] uppercase shadow-[2px_2px_0_#171411]">
                   {item.status}
                 </span>
               </div>
-              <p className="neo-copy mt-2 break-words text-[8px] font-black uppercase leading-4 text-[#5b403f]">
+              <p className="neo-copy mt-2 text-[8px] leading-4 font-black break-words text-[#5b403f] uppercase">
                 Registry: {item.registryPath}
               </p>
               {item.issues.length > 0 ? (
                 <div className="mt-2 grid gap-1">
                   {item.issues.map((issue) => (
                     <p
-                      className="neo-copy border-2 border-black bg-[#fff1c7] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#5b403f]"
+                      className="neo-copy border-2 border-black bg-[#fff1c7] px-2 py-1 text-[8px] leading-4 font-black text-[#5b403f] uppercase"
                       key={issue}
                     >
                       {issue}
@@ -920,7 +920,7 @@ function PluginRuntimeSandboxProofLedger({
                   ))}
                 </div>
               ) : (
-                <p className="neo-copy mt-2 border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#171411]">
+                <p className="neo-copy mt-2 border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] leading-4 font-black text-[#171411] uppercase">
                   Runtime admission: entrypoint denied before code load; staged package remains
                   disabled.
                 </p>
@@ -929,7 +929,7 @@ function PluginRuntimeSandboxProofLedger({
           ))}
         </div>
       ) : (
-        <p className="neo-copy mt-3 border-2 border-black bg-[#efe6d4] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#5b403f]">
+        <p className="neo-copy mt-3 border-2 border-black bg-[#efe6d4] px-2 py-1 text-[8px] leading-4 font-black text-[#5b403f] uppercase">
           No native runtime sandbox dry-run proof has been run. Runtime admission remains blocked.
         </p>
       )}
@@ -945,36 +945,36 @@ function PluginDisabledRegistryAuditLedger({
   const entries = audit?.entries ?? [];
 
   return (
-    <div className="min-w-0 max-w-full border-2 border-black bg-[#fff9ed] p-3 shadow-[3px_3px_0_#171411]">
+    <div className="max-w-full min-w-0 border-2 border-black bg-[#fff9ed] p-3 shadow-[3px_3px_0_#171411]">
       <div className="flex items-center justify-between gap-3">
-        <p className="neo-copy flex items-center gap-2 text-[9px] font-black uppercase tracking-[0.12em] text-[#b7102a]">
+        <p className="neo-copy flex items-center gap-2 text-[9px] font-black tracking-[0.12em] text-[#b7102a] uppercase">
           <ShieldCheck className="h-4 w-4" />
           Native Disabled Registry Audit
         </p>
-        <span className="neo-copy border-2 border-black bg-[#8cf5e4] px-2 py-1 text-[8px] font-black uppercase text-[#171411]">
+        <span className="neo-copy border-2 border-black bg-[#8cf5e4] px-2 py-1 text-[8px] font-black text-[#171411] uppercase">
           {audit ? `${audit.passedCount} passed / ${audit.failedCount} blocked` : "not run"}
         </span>
       </div>
-      <p className="neo-copy mt-2 border-2 border-black bg-[#efe6d4] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#171411]">
+      <p className="neo-copy mt-2 border-2 border-black bg-[#efe6d4] px-2 py-1 text-[8px] leading-4 font-black text-[#171411] uppercase">
         Desktop audit re-read the disabled registry for stage-record status, hashes, signature, path
         containment, and symlink rejection without executing plugin code.
       </p>
       {audit ? (
         <div className="mt-3 grid gap-2">
-          <p className="neo-copy break-words border-2 border-black bg-[#f5eedf] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#5b403f]">
+          <p className="neo-copy border-2 border-black bg-[#f5eedf] px-2 py-1 text-[8px] leading-4 font-black break-words text-[#5b403f] uppercase">
             {audit.sourceLabel} // {audit.registryPath} // {audit.auditedAt}
           </p>
           {entries.map((item) => (
             <article
-              className="min-w-0 max-w-full border-2 border-black bg-[#f5eedf] p-2 shadow-[2px_2px_0_#171411]"
+              className="max-w-full min-w-0 border-2 border-black bg-[#f5eedf] p-2 shadow-[2px_2px_0_#171411]"
               key={`${item.pluginId}-${item.version}-${item.status}`}
             >
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div className="min-w-0">
-                  <p className="neo-copy break-words text-[10px] font-black uppercase text-[#171411]">
+                  <p className="neo-copy text-[10px] font-black break-words text-[#171411] uppercase">
                     {item.pluginId} // {item.version}
                   </p>
-                  <p className="neo-copy mt-1 break-words text-[8px] font-black uppercase leading-4 text-[#5b403f]">
+                  <p className="neo-copy mt-1 text-[8px] leading-4 font-black break-words text-[#5b403f] uppercase">
                     Key {item.keyId} // {item.signatureIssuer} // {item.fileCount} file
                     {item.fileCount === 1 ? "" : "s"} // {item.entrypoint}
                   </p>
@@ -987,14 +987,14 @@ function PluginDisabledRegistryAuditLedger({
                   {item.status}
                 </span>
               </div>
-              <p className="neo-copy mt-2 break-words text-[8px] font-black uppercase leading-4 text-[#5b403f]">
+              <p className="neo-copy mt-2 text-[8px] leading-4 font-black break-words text-[#5b403f] uppercase">
                 Registry: {item.registryPath}
               </p>
               {item.issues.length > 0 ? (
                 <div className="mt-2 grid gap-1">
                   {item.issues.map((issue) => (
                     <p
-                      className="neo-copy border-2 border-black bg-[#fff1c7] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#5b403f]"
+                      className="neo-copy border-2 border-black bg-[#fff1c7] px-2 py-1 text-[8px] leading-4 font-black text-[#5b403f] uppercase"
                       key={issue}
                     >
                       {issue}
@@ -1002,7 +1002,7 @@ function PluginDisabledRegistryAuditLedger({
                   ))}
                 </div>
               ) : (
-                <p className="neo-copy mt-2 border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#171411]">
+                <p className="neo-copy mt-2 border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] leading-4 font-black text-[#171411] uppercase">
                   Native local audit: disabled status, package hashes, Ed25519 signature, and path
                   containment verified; codeExecuted false.
                 </p>
@@ -1011,7 +1011,7 @@ function PluginDisabledRegistryAuditLedger({
           ))}
         </div>
       ) : (
-        <p className="neo-copy mt-3 border-2 border-black bg-[#efe6d4] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#5b403f]">
+        <p className="neo-copy mt-3 border-2 border-black bg-[#efe6d4] px-2 py-1 text-[8px] leading-4 font-black text-[#5b403f] uppercase">
           No native disabled registry audit has been run. Browser package rows remain display cache.
         </p>
       )}
@@ -1021,17 +1021,17 @@ function PluginDisabledRegistryAuditLedger({
 
 function PluginSignedPackageLedger({ packages }: { packages: PluginSignedPackageStageEvidence[] }) {
   return (
-    <div className="min-w-0 max-w-full border-2 border-black bg-[#fff9ed] p-3 shadow-[3px_3px_0_#171411]">
+    <div className="max-w-full min-w-0 border-2 border-black bg-[#fff9ed] p-3 shadow-[3px_3px_0_#171411]">
       <div className="flex items-center justify-between gap-3">
-        <p className="neo-copy flex items-center gap-2 text-[9px] font-black uppercase tracking-[0.12em] text-[#b7102a]">
+        <p className="neo-copy flex items-center gap-2 text-[9px] font-black tracking-[0.12em] text-[#b7102a] uppercase">
           <KeyRound className="h-4 w-4" />
           Browser Display Cache
         </p>
-        <span className="neo-copy border-2 border-black bg-[#8cf5e4] px-2 py-1 text-[8px] font-black uppercase text-[#171411]">
+        <span className="neo-copy border-2 border-black bg-[#8cf5e4] px-2 py-1 text-[8px] font-black text-[#171411] uppercase">
           {packages.length} Disabled
         </span>
       </div>
-      <p className="neo-copy mt-2 border-2 border-black bg-[#efe6d4] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#171411]">
+      <p className="neo-copy mt-2 border-2 border-black bg-[#efe6d4] px-2 py-1 text-[8px] leading-4 font-black text-[#171411] uppercase">
         Browser localStorage only reopens this display ledger; native disabled registry audit is
         required for package trust.
       </p>
@@ -1039,34 +1039,34 @@ function PluginSignedPackageLedger({ packages }: { packages: PluginSignedPackage
         <div className="mt-3 grid gap-2">
           {packages.map((item) => (
             <article
-              className="min-w-0 max-w-full border-2 border-black bg-[#f5eedf] p-2 shadow-[2px_2px_0_#171411]"
+              className="max-w-full min-w-0 border-2 border-black bg-[#f5eedf] p-2 shadow-[2px_2px_0_#171411]"
               key={`${item.pluginId}-${item.version}`}
             >
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div className="min-w-0">
-                  <p className="neo-copy break-words text-[10px] font-black uppercase text-[#171411]">
+                  <p className="neo-copy text-[10px] font-black break-words text-[#171411] uppercase">
                     {item.pluginId} // {item.version}
                   </p>
-                  <p className="neo-copy mt-1 text-[8px] font-black uppercase leading-4 text-[#5b403f]">
+                  <p className="neo-copy mt-1 text-[8px] leading-4 font-black text-[#5b403f] uppercase">
                     Key {item.keyId} // {item.signatureIssuer} // {item.fileCount} file
                     {item.fileCount === 1 ? "" : "s"}
                   </p>
                 </div>
-                <span className="neo-copy border-2 border-black bg-[#efe6d4] px-2 py-1 text-[8px] font-black uppercase text-[#171411]">
+                <span className="neo-copy border-2 border-black bg-[#efe6d4] px-2 py-1 text-[8px] font-black text-[#171411] uppercase">
                   {item.status}
                 </span>
               </div>
-              <p className="neo-copy mt-2 border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#171411]">
+              <p className="neo-copy mt-2 border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] leading-4 font-black text-[#171411] uppercase">
                 {item.detail}
               </p>
-              <p className="neo-copy mt-2 break-words text-[8px] font-black uppercase leading-4 text-[#5b403f]">
+              <p className="neo-copy mt-2 text-[8px] leading-4 font-black break-words text-[#5b403f] uppercase">
                 Registry: {item.registryPath}
               </p>
             </article>
           ))}
         </div>
       ) : (
-        <p className="neo-copy mt-3 border-2 border-black bg-[#efe6d4] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#5b403f]">
+        <p className="neo-copy mt-3 border-2 border-black bg-[#efe6d4] px-2 py-1 text-[8px] leading-4 font-black text-[#5b403f] uppercase">
           No signed plugin package has been staged into the disabled registry.
         </p>
       )}
@@ -1085,11 +1085,11 @@ function PluginDiscoveryConsole({
     <div className="mt-4 border-2 border-black bg-[#fff9ed] p-3 shadow-[3px_3px_0_#171411]">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="neo-copy flex items-center gap-2 text-[9px] font-black uppercase tracking-[0.12em] text-[#b7102a]">
+          <p className="neo-copy flex items-center gap-2 text-[9px] font-black tracking-[0.12em] text-[#b7102a] uppercase">
             <FolderOpen className="h-4 w-4" />
             Local Discovery
           </p>
-          <p className="neo-copy mt-2 break-words text-[10px] font-black uppercase leading-relaxed text-[#5b403f]">
+          <p className="neo-copy mt-2 text-[10px] leading-relaxed font-black break-words text-[#5b403f] uppercase">
             {controls.discoveryPath
               ? `${controls.sourceLabel}: ${controls.discoveryPath}`
               : controls.isDesktopRuntime
@@ -1097,7 +1097,7 @@ function PluginDiscoveryConsole({
                 : "Browser preview can import JSON; desktop app can scan plugin folders."}
           </p>
           {controls.importedAt ? (
-            <p className="neo-copy mt-1 text-[8px] font-black uppercase tracking-[0.12em] text-[#5b403f]">
+            <p className="neo-copy mt-1 text-[8px] font-black tracking-[0.12em] text-[#5b403f] uppercase">
               Loaded {controls.importedAt}
             </p>
           ) : null}
@@ -1109,7 +1109,7 @@ function PluginDiscoveryConsole({
 
       <div className="mt-3 grid gap-2 sm:grid-cols-3">
         <button
-          className="neo-copy inline-flex h-10 items-center justify-center gap-2 border-2 border-black bg-[#087d6d] px-3 text-[9px] font-black uppercase tracking-[0.1em] text-white shadow-[3px_3px_0_#171411] transition hover:-translate-y-0.5 disabled:opacity-60"
+          className="neo-copy inline-flex h-10 items-center justify-center gap-2 border-2 border-black bg-[#087d6d] px-3 text-[9px] font-black tracking-[0.1em] text-white uppercase shadow-[3px_3px_0_#171411] transition hover:-translate-y-0.5 disabled:opacity-60"
           disabled={controls.busy}
           type="button"
           onClick={() => void controls.onChooseFolder()}
@@ -1121,7 +1121,7 @@ function PluginDiscoveryConsole({
           )}
           Scan Folder
         </button>
-        <label className="neo-copy inline-flex h-10 cursor-pointer items-center justify-center gap-2 border-2 border-black bg-[#f5eedf] px-3 text-[9px] font-black uppercase tracking-[0.1em] text-[#171411] shadow-[3px_3px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#8cf5e4]">
+        <label className="neo-copy inline-flex h-10 cursor-pointer items-center justify-center gap-2 border-2 border-black bg-[#f5eedf] px-3 text-[9px] font-black tracking-[0.1em] text-[#171411] uppercase shadow-[3px_3px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#8cf5e4]">
           <Upload className="h-4 w-4" />
           Import JSON
           <input
@@ -1140,7 +1140,7 @@ function PluginDiscoveryConsole({
           />
         </label>
         <button
-          className="neo-copy inline-flex h-10 items-center justify-center gap-2 border-2 border-black bg-[#fff9ed] px-3 text-[9px] font-black uppercase tracking-[0.1em] text-[#171411] shadow-[3px_3px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#b7102a] hover:text-white"
+          className="neo-copy inline-flex h-10 items-center justify-center gap-2 border-2 border-black bg-[#fff9ed] px-3 text-[9px] font-black tracking-[0.1em] text-[#171411] uppercase shadow-[3px_3px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#b7102a] hover:text-white"
           type="button"
           onClick={controls.onReset}
         >
@@ -1150,19 +1150,19 @@ function PluginDiscoveryConsole({
       </div>
 
       <div className="mt-3 grid gap-2 sm:grid-cols-3">
-        <p className="neo-copy border-2 border-black bg-[#efe6d4] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#171411]">
+        <p className="neo-copy border-2 border-black bg-[#efe6d4] px-2 py-1 text-[8px] leading-4 font-black text-[#171411] uppercase">
           Files scanned: {controls.scannedFileCount}
         </p>
-        <p className="neo-copy border-2 border-black bg-[#efe6d4] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#171411]">
+        <p className="neo-copy border-2 border-black bg-[#efe6d4] px-2 py-1 text-[8px] leading-4 font-black text-[#171411] uppercase">
           Skipped entries: {controls.skippedEntries.length}
         </p>
-        <p className="neo-copy border-2 border-black bg-[#efe6d4] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#171411]">
+        <p className="neo-copy border-2 border-black bg-[#efe6d4] px-2 py-1 text-[8px] leading-4 font-black text-[#171411] uppercase">
           Runtime: {controls.isDesktopRuntime ? "desktop scan ready" : "browser import only"}
         </p>
       </div>
 
       {controls.message ? (
-        <p className="neo-copy mt-3 border-2 border-black bg-[#087d6d] px-2 py-1 text-[9px] font-black uppercase leading-relaxed text-white shadow-[2px_2px_0_#171411]">
+        <p className="neo-copy mt-3 border-2 border-black bg-[#087d6d] px-2 py-1 text-[9px] leading-relaxed font-black text-white uppercase shadow-[2px_2px_0_#171411]">
           {controls.message}
         </p>
       ) : null}
@@ -1171,7 +1171,7 @@ function PluginDiscoveryConsole({
         <div className="mt-3 grid gap-1">
           {controls.skippedEntries.slice(0, 4).map((entry) => (
             <p
-              className="neo-copy min-w-0 break-words border-2 border-black bg-[#fff1c7] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#5b403f]"
+              className="neo-copy min-w-0 border-2 border-black bg-[#fff1c7] px-2 py-1 text-[8px] leading-4 font-black break-words text-[#5b403f] uppercase"
               key={entry}
             >
               {entry}
@@ -1190,10 +1190,10 @@ function PluginReadinessCheckCard({ check }: { check: PluginSystemReadinessCheck
     <article className="min-w-0 border-2 border-black bg-[#fff9ed] p-3 shadow-[3px_3px_0_#171411]">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
-          <h3 className="neo-copy text-[11px] font-black uppercase text-[#171411]">
+          <h3 className="neo-copy text-[11px] font-black text-[#171411] uppercase">
             {check.label}
           </h3>
-          <p className="neo-copy mt-1 text-[9px] font-black uppercase leading-snug text-[#5b403f]">
+          <p className="neo-copy mt-1 text-[9px] leading-snug font-black text-[#5b403f] uppercase">
             {check.detail}
           </p>
         </div>
@@ -1206,7 +1206,7 @@ function PluginReadinessCheckCard({ check }: { check: PluginSystemReadinessCheck
           {check.status}
         </span>
       </div>
-      <p className="neo-copy mt-3 border-2 border-black bg-[#efe6d4] p-2 text-[9px] font-black uppercase leading-relaxed text-[#5b403f]">
+      <p className="neo-copy mt-3 border-2 border-black bg-[#efe6d4] p-2 text-[9px] leading-relaxed font-black text-[#5b403f] uppercase">
         {check.action}
       </p>
     </article>
@@ -1221,9 +1221,9 @@ function statusBadgeClass(status: PluginSystemReadinessStatus) {
 
 function PluginManifestLedger({ reviews }: { reviews: PluginManifestReview[] }) {
   return (
-    <div className="min-w-0 max-w-full border-2 border-black bg-[#fff9ed] p-3 shadow-[3px_3px_0_#171411]">
+    <div className="max-w-full min-w-0 border-2 border-black bg-[#fff9ed] p-3 shadow-[3px_3px_0_#171411]">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="neo-copy flex items-center gap-2 text-[11px] font-black uppercase text-[#171411]">
+        <h3 className="neo-copy flex items-center gap-2 text-[11px] font-black text-[#171411] uppercase">
           <FileCheck2 className="h-4 w-4 text-[#087d6d]" />
           Manifest Ledger
         </h3>
@@ -1236,7 +1236,7 @@ function PluginManifestLedger({ reviews }: { reviews: PluginManifestReview[] }) 
         {reviews.length > 0 ? (
           reviews.map((review) => <PluginManifestReviewCard key={review.id} review={review} />)
         ) : (
-          <p className="neo-copy border-2 border-black bg-[#efe6d4] p-2 text-[9px] font-black uppercase leading-relaxed text-[#5b403f]">
+          <p className="neo-copy border-2 border-black bg-[#efe6d4] p-2 text-[9px] leading-relaxed font-black text-[#5b403f] uppercase">
             No local plugin manifests are staged for review.
           </p>
         )}
@@ -1249,11 +1249,11 @@ function PluginManifestReviewCard({ review }: { review: PluginManifestReview }) 
   const StatusIcon = review.status === "ready" ? CheckCircle2 : TriangleAlert;
 
   return (
-    <article className="min-w-0 max-w-full border-2 border-black bg-[#f5eedf] p-3 shadow-[2px_2px_0_#171411]">
+    <article className="max-w-full min-w-0 border-2 border-black bg-[#f5eedf] p-3 shadow-[2px_2px_0_#171411]">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="neo-copy text-[10px] font-black uppercase text-[#171411]">{review.name}</p>
-          <p className="neo-copy mt-1 break-words text-[8px] font-black uppercase leading-4 text-[#5b403f]">
+          <p className="neo-copy text-[10px] font-black text-[#171411] uppercase">{review.name}</p>
+          <p className="neo-copy mt-1 text-[8px] leading-4 font-black break-words text-[#5b403f] uppercase">
             {review.id} // v{review.version} // {review.entrypoint}
           </p>
         </div>
@@ -1267,14 +1267,14 @@ function PluginManifestReviewCard({ review }: { review: PluginManifestReview }) 
         </span>
       </div>
 
-      <p className="neo-copy mt-2 border-2 border-black bg-[#fff9ed] p-2 text-[9px] font-black uppercase leading-relaxed text-[#5b403f]">
+      <p className="neo-copy mt-2 border-2 border-black bg-[#fff9ed] p-2 text-[9px] leading-relaxed font-black text-[#5b403f] uppercase">
         {review.detail}
       </p>
 
       <div className="mt-2 grid gap-1 sm:grid-cols-2">
         {review.reviewItems.map((item) => (
           <span
-            className="neo-copy min-w-0 break-words border-2 border-black bg-[#efe6d4] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#171411]"
+            className="neo-copy min-w-0 border-2 border-black bg-[#efe6d4] px-2 py-1 text-[8px] leading-4 font-black break-words text-[#171411] uppercase"
             key={item}
           >
             {item}
@@ -1284,7 +1284,7 @@ function PluginManifestReviewCard({ review }: { review: PluginManifestReview }) 
       <div className="mt-2 grid gap-1">
         {review.policyItems.map((item) => (
           <span
-            className="neo-copy min-w-0 break-words border-2 border-black bg-[#171411] px-2 py-1 text-[8px] font-black uppercase leading-4 text-[#f5eedf]"
+            className="neo-copy min-w-0 border-2 border-black bg-[#171411] px-2 py-1 text-[8px] leading-4 font-black break-words text-[#f5eedf] uppercase"
             key={item}
           >
             {item}
@@ -1297,8 +1297,8 @@ function PluginManifestReviewCard({ review }: { review: PluginManifestReview }) 
 
 function PluginPolicyLedger({ ledger }: { ledger: PluginPolicyLedgerItem[] }) {
   return (
-    <div className="min-w-0 max-w-full border-2 border-black bg-[#fff9ed] p-3 shadow-[3px_3px_0_#171411]">
-      <h3 className="neo-copy flex items-center gap-2 text-[11px] font-black uppercase text-[#171411]">
+    <div className="max-w-full min-w-0 border-2 border-black bg-[#fff9ed] p-3 shadow-[3px_3px_0_#171411]">
+      <h3 className="neo-copy flex items-center gap-2 text-[11px] font-black text-[#171411] uppercase">
         <ShieldCheck className="h-4 w-4 text-[#087d6d]" />
         Policy Ledger
       </h3>
@@ -1306,11 +1306,11 @@ function PluginPolicyLedger({ ledger }: { ledger: PluginPolicyLedgerItem[] }) {
       <div className="mt-3 grid gap-2 sm:grid-cols-2">
         {ledger.map((item) => (
           <article
-            className="min-w-0 max-w-full border-2 border-black bg-[#f5eedf] p-2 shadow-[2px_2px_0_#171411]"
+            className="max-w-full min-w-0 border-2 border-black bg-[#f5eedf] p-2 shadow-[2px_2px_0_#171411]"
             key={item.id}
           >
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="neo-copy break-words text-[9px] font-black uppercase text-[#171411]">
+              <p className="neo-copy text-[9px] font-black break-words text-[#171411] uppercase">
                 {item.label}
               </p>
               <span
@@ -1321,7 +1321,7 @@ function PluginPolicyLedger({ ledger }: { ledger: PluginPolicyLedgerItem[] }) {
                 {item.status}
               </span>
             </div>
-            <p className="neo-copy mt-2 text-[8px] font-black uppercase leading-4 text-[#5b403f]">
+            <p className="neo-copy mt-2 text-[8px] leading-4 font-black text-[#5b403f] uppercase">
               {item.detail}
             </p>
           </article>
@@ -1333,8 +1333,8 @@ function PluginPolicyLedger({ ledger }: { ledger: PluginPolicyLedgerItem[] }) {
 
 function PluginPermissionLedger({ ledger }: { ledger: PluginPermissionLedgerItem[] }) {
   return (
-    <div className="min-w-0 max-w-full border-2 border-black bg-[#171411] p-3 text-[#f5eedf] shadow-[3px_3px_0_#b7102a]">
-      <h3 className="neo-copy flex items-center gap-2 text-[11px] font-black uppercase text-[#8cf5e4]">
+    <div className="max-w-full min-w-0 border-2 border-black bg-[#171411] p-3 text-[#f5eedf] shadow-[3px_3px_0_#b7102a]">
+      <h3 className="neo-copy flex items-center gap-2 text-[11px] font-black text-[#8cf5e4] uppercase">
         <KeyRound className="h-4 w-4" />
         Permission Ledger
       </h3>
@@ -1346,7 +1346,7 @@ function PluginPermissionLedger({ ledger }: { ledger: PluginPermissionLedgerItem
             key={item.id}
           >
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="neo-copy break-words text-[9px] font-black uppercase text-[#f5eedf]">
+              <p className="neo-copy text-[9px] font-black break-words text-[#f5eedf] uppercase">
                 {item.label}
               </p>
               <span
@@ -1357,7 +1357,7 @@ function PluginPermissionLedger({ ledger }: { ledger: PluginPermissionLedgerItem
                 {item.count}
               </span>
             </div>
-            <p className="neo-copy mt-2 text-[8px] font-black uppercase leading-4 text-[#f5eedf]">
+            <p className="neo-copy mt-2 text-[8px] leading-4 font-black text-[#f5eedf] uppercase">
               {item.detail}
             </p>
           </article>
