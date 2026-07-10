@@ -42,6 +42,84 @@ function makeQueryResult(
   return { data, error, count };
 }
 
+type PagedQueryBuilder = PromiseLike<QueryResult> & {
+  eq: (column: string, value: unknown) => PagedQueryBuilder;
+  gte: (column: string, value: string) => PagedQueryBuilder;
+  limit: (limit: number) => PagedQueryBuilder;
+  lt: (column: string, value: string) => PagedQueryBuilder;
+  lte: (column: string, value: string) => PagedQueryBuilder;
+  or: (filters: string) => PagedQueryBuilder;
+  order: (column: string, options: { ascending: boolean }) => PagedQueryBuilder;
+  range: (from: number, to: number) => Promise<QueryResult>;
+};
+
+function makePagedGameSessionsHandler(results: QueryResult[]) {
+  const spies = {
+    eq: vi.fn(),
+    gte: vi.fn(),
+    limit: vi.fn(),
+    lt: vi.fn(),
+    lte: vi.fn(),
+    or: vi.fn(),
+    order: vi.fn(),
+    range: vi.fn(),
+    select: vi.fn(),
+  };
+  let resultIndex = 0;
+
+  const nextResult = () => results[resultIndex++] ?? makeQueryResult([]);
+  const handler: TableHandler = (table) => {
+    if (table !== "game_sessions") {
+      return {};
+    }
+
+    const builder = {} as PagedQueryBuilder;
+    builder.eq = (column, value) => {
+      spies.eq(column, value);
+      return builder;
+    };
+    builder.gte = (column, value) => {
+      spies.gte(column, value);
+      return builder;
+    };
+    builder.limit = (limit) => {
+      spies.limit(limit);
+      return builder;
+    };
+    builder.lt = (column, value) => {
+      spies.lt(column, value);
+      return builder;
+    };
+    builder.lte = (column, value) => {
+      spies.lte(column, value);
+      return builder;
+    };
+    builder.or = (filters) => {
+      spies.or(filters);
+      return builder;
+    };
+    builder.order = (column, options) => {
+      spies.order(column, options);
+      return builder;
+    };
+    builder.range = (from, to) => {
+      spies.range(from, to);
+      return Promise.resolve(nextResult());
+    };
+    builder.then = (onfulfilled, onrejected) =>
+      Promise.resolve(nextResult()).then(onfulfilled, onrejected);
+
+    return {
+      select: (columns: string) => {
+        spies.select(columns);
+        return builder;
+      },
+    };
+  };
+
+  return { handler, spies };
+}
+
 interface SessionRowRaw {
   id: string;
   user_id: string;
@@ -614,5 +692,264 @@ describe("syncGameSessions", () => {
       ]),
     ).rejects.toThrow(/Trusted playtime ingestion is required in production/);
     expect(upsert).not.toHaveBeenCalled();
+  });
+});
+
+describe("getUserPlaySessions", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.unstubAllEnvs();
+    mocks.from.mockReset();
+    mocks.functionsInvoke.mockReset();
+    mocks.authGetUser.mockReset();
+    mockAuthedUser();
+  });
+
+  it("selects relational game metadata and maps the nested title and cover", async () => {
+    const query = makePagedGameSessionsHandler([
+      makeQueryResult([
+        {
+          ...buildSessionRow(),
+          games: {
+            cover_url: "https://cdn.example/cover.jpg",
+            title: "Team Fortress 2",
+          },
+        },
+      ]),
+    ]);
+    mocks.from.mockImplementation(query.handler);
+
+    const { getUserPlaySessions } = await import("../playtime");
+    const result = await getUserPlaySessions();
+
+    expect(query.spies.select).toHaveBeenCalledWith(
+      expect.stringContaining("games(title, cover_url)"),
+    );
+    expect(result).toHaveLength(1);
+    expect(result[0]).toMatchObject({
+      gameCoverUrl: "https://cdn.example/cover.jpg",
+      gameId: "catalog-1",
+      gameTitle: "Team Fortress 2",
+    });
+  });
+
+  it("uses Unknown Game rather than a catalog UUID when related metadata is missing", async () => {
+    const query = makePagedGameSessionsHandler([
+      makeQueryResult([
+        {
+          ...buildSessionRow({ game_id: "orphaned-game-uuid" }),
+          games: null,
+        },
+      ]),
+    ]);
+    mocks.from.mockImplementation(query.handler);
+
+    const { getUserPlaySessions } = await import("../playtime");
+    const [session] = await getUserPlaySessions();
+
+    expect(session.gameId).toBe("orphaned-game-uuid");
+    expect(session.gameTitle).toBe("Unknown Game");
+    expect(session.gameTitle).not.toBe(session.gameId);
+    expect(session.gameCoverUrl).toBeNull();
+  });
+
+  it("uses a composite keyset cursor so same-timestamp sessions are not shifted", async () => {
+    const cursorStartedAt = "2025-01-01T10:00:00.000Z";
+    const firstPage = Array.from({ length: 1_000 }, (_, index) => {
+      const sequence = 1_000 - index;
+      return {
+        ...buildSessionRow({
+          id: `session-${String(sequence).padStart(4, "0")}`,
+          started_at: cursorStartedAt,
+        }),
+        games: { cover_url: null, title: `Game ${sequence}` },
+      };
+    });
+    const query = makePagedGameSessionsHandler([
+      makeQueryResult(firstPage),
+      makeQueryResult([
+        {
+          ...buildSessionRow({ id: "session-0000", started_at: cursorStartedAt }),
+          games: { cover_url: null, title: "Final Game" },
+        },
+      ]),
+    ]);
+    mocks.from.mockImplementation(query.handler);
+
+    const { getUserPlaySessions } = await import("../playtime");
+    const result = await getUserPlaySessions();
+
+    expect(result).toHaveLength(1_001);
+    expect(result.at(-1)?.gameTitle).toBe("Final Game");
+    expect(query.spies.limit.mock.calls).toEqual([[1_000], [1_000], [1_000]]);
+    expect(query.spies.range).not.toHaveBeenCalled();
+    expect(query.spies.or).toHaveBeenCalledTimes(2);
+    expect(query.spies.or).toHaveBeenCalledWith(
+      `started_at.lt.${cursorStartedAt},and(started_at.eq.${cursorStartedAt},id.lt.session-0001)`,
+    );
+    expect(query.spies.order).toHaveBeenCalledWith("started_at", { ascending: false });
+    expect(query.spies.order).toHaveBeenCalledWith("id", { ascending: false });
+    expect(mocks.from.mock.calls.filter(([table]) => table === "game_sessions")).toHaveLength(3);
+  });
+
+  it("continues after a backend-capped short page until the cursor returns no rows", async () => {
+    const firstPage = Array.from({ length: 500 }, (_, index) => ({
+      ...buildSessionRow({
+        id: `capped-session-${String(500 - index).padStart(4, "0")}`,
+        started_at: "2025-01-01T10:00:00.000Z",
+      }),
+      games: { cover_url: null, title: `Capped Game ${index}` },
+    }));
+    const query = makePagedGameSessionsHandler([
+      makeQueryResult(firstPage),
+      makeQueryResult([
+        {
+          ...buildSessionRow({
+            id: "capped-session-0000",
+            started_at: "2024-12-31T10:00:00.000Z",
+          }),
+          games: { cover_url: null, title: "Capped Final Game" },
+        },
+      ]),
+      makeQueryResult([]),
+    ]);
+    mocks.from.mockImplementation(query.handler);
+
+    const { getUserPlaySessions } = await import("../playtime");
+    const result = await getUserPlaySessions();
+
+    expect(result).toHaveLength(501);
+    expect(result.at(-1)?.gameTitle).toBe("Capped Final Game");
+    expect(query.spies.limit).toHaveBeenCalledTimes(3);
+    expect(query.spies.or).toHaveBeenCalledTimes(2);
+  });
+
+  it("applies inclusive-start and exclusive-end filters before pagination", async () => {
+    const since = new Date("2025-01-01T00:00:00.000Z");
+    const until = new Date("2026-01-01T00:00:00.000Z");
+    const query = makePagedGameSessionsHandler([
+      makeQueryResult([
+        {
+          ...buildSessionRow(),
+          games: { cover_url: null, title: "Team Fortress 2" },
+        },
+      ]),
+    ]);
+    mocks.from.mockImplementation(query.handler);
+
+    const { getUserPlaySessions } = await import("../playtime");
+    await getUserPlaySessions({ gameId: "catalog-1", limit: 1, since, until });
+
+    expect(query.spies.eq).toHaveBeenCalledWith("user_id", "user-1");
+    expect(query.spies.eq).toHaveBeenCalledWith("game_id", "catalog-1");
+    expect(query.spies.gte).toHaveBeenCalledWith("started_at", since.toISOString());
+    expect(query.spies.lt).toHaveBeenCalledWith("started_at", until.toISOString());
+    expect(query.spies.lte).not.toHaveBeenCalled();
+    expect(query.spies.limit).toHaveBeenCalledWith(1);
+    expect(query.spies.range).not.toHaveBeenCalled();
+  });
+
+  it("keeps missing-schema fallback and propagates other read errors", async () => {
+    const missingSchema = makePagedGameSessionsHandler([
+      makeQueryResult(null, { code: "42P01", message: "relation does not exist" }),
+    ]);
+    mocks.from.mockImplementation(missingSchema.handler);
+
+    const { getUserPlaySessions } = await import("../playtime");
+    await expect(getUserPlaySessions()).resolves.toEqual([]);
+
+    const failed = makePagedGameSessionsHandler([
+      makeQueryResult(null, { message: "network unavailable" }),
+    ]);
+    mocks.from.mockImplementation(failed.handler);
+    await expect(getUserPlaySessions()).rejects.toThrow("network unavailable");
+  });
+});
+
+describe("getUserPlaySessionYears", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    vi.unstubAllEnvs();
+    mocks.from.mockReset();
+    mocks.functionsInvoke.mockReset();
+    mocks.authGetUser.mockReset();
+    mockAuthedUser();
+  });
+
+  it("uses a composite cursor and returns unique non-future local years descending", async () => {
+    const currentYear = new Date().getFullYear();
+    const cursorStartedAt = `${currentYear}-06-01T12:00:00.000Z`;
+    const firstPage = Array.from({ length: 1_000 }, (_, index) => ({
+      id: `year-session-${String(1_000 - index).padStart(4, "0")}`,
+      started_at: cursorStartedAt,
+    }));
+    const query = makePagedGameSessionsHandler([
+      makeQueryResult(firstPage),
+      makeQueryResult([
+        { id: "year-session-0000", started_at: cursorStartedAt },
+        { id: "older", started_at: `${currentYear - 2}-06-01T12:00:00.000Z` },
+        { id: "future", started_at: `${currentYear + 1}-01-01T12:00:00.000Z` },
+        { id: "invalid", started_at: "not-a-date" },
+      ]),
+    ]);
+    mocks.from.mockImplementation(query.handler);
+
+    const { getUserPlaySessionYears } = await import("../playtime");
+    const result = await getUserPlaySessionYears();
+
+    expect(result).toEqual([currentYear, currentYear - 2]);
+    expect(query.spies.select).toHaveBeenCalledTimes(3);
+    expect(query.spies.select).toHaveBeenCalledWith("started_at, id");
+    expect(query.spies.limit.mock.calls).toEqual([[1_000], [1_000], [1_000]]);
+    expect(query.spies.range).not.toHaveBeenCalled();
+    expect(query.spies.or).toHaveBeenCalledTimes(2);
+    expect(query.spies.or).toHaveBeenCalledWith(
+      `started_at.lt.${cursorStartedAt},and(started_at.eq.${cursorStartedAt},id.lt.year-session-0001)`,
+    );
+    expect(query.spies.order).toHaveBeenCalledWith("started_at", { ascending: false });
+    expect(query.spies.order).toHaveBeenCalledWith("id", { ascending: false });
+  });
+
+  it("assigns a UTC year-boundary session to its local calendar year", async () => {
+    const previousTimezone = process.env.TZ;
+    process.env.TZ = "Europe/Berlin";
+
+    try {
+      const localYear = new Date().getFullYear();
+      const query = makePagedGameSessionsHandler([
+        makeQueryResult([
+          {
+            id: "year-boundary-session",
+            started_at: `${localYear - 1}-12-31T23:30:00.000Z`,
+          },
+        ]),
+      ]);
+      mocks.from.mockImplementation(query.handler);
+
+      const { getUserPlaySessionYears } = await import("../playtime");
+      await expect(getUserPlaySessionYears()).resolves.toEqual([localYear]);
+    } finally {
+      if (previousTimezone === undefined) {
+        delete process.env.TZ;
+      } else {
+        process.env.TZ = previousTimezone;
+      }
+    }
+  });
+
+  it("keeps missing-schema fallback and propagates other year-index errors", async () => {
+    const missingSchema = makePagedGameSessionsHandler([
+      makeQueryResult(null, { code: "42P01", message: "relation does not exist" }),
+    ]);
+    mocks.from.mockImplementation(missingSchema.handler);
+
+    const { getUserPlaySessionYears } = await import("../playtime");
+    await expect(getUserPlaySessionYears()).resolves.toEqual([]);
+
+    const failed = makePagedGameSessionsHandler([
+      makeQueryResult(null, { message: "year index failed" }),
+    ]);
+    mocks.from.mockImplementation(failed.handler);
+    await expect(getUserPlaySessionYears()).rejects.toThrow("year index failed");
   });
 });

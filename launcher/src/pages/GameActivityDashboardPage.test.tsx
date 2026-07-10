@@ -3,6 +3,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { UserPlaySession } from "../lib/supabase/playtime";
 import { GameActivityDashboardPage } from "./GameActivityDashboardPage";
 
 const useUserPlaySessionsMock = vi.hoisted(() => vi.fn());
@@ -12,6 +13,61 @@ vi.mock("../hooks/useUserPlaySessions", () => ({
 }));
 
 let root: Root | null = null;
+
+function makeSession({
+  durationMinutes = 125,
+  gameId = "game-joined-1",
+  id = "session-joined-1",
+  title = "Joined Archive Shift",
+  year = new Date().getFullYear(),
+}: {
+  durationMinutes?: number;
+  gameId?: string;
+  id?: string;
+  title?: string;
+  year?: number;
+} = {}): UserPlaySession {
+  const startedAt = new Date(year, 2, 1, 18, 0, 0, 0);
+  const endedAt = new Date(startedAt.getTime() + durationMinutes * 60_000);
+
+  return {
+    catalogGameId: gameId,
+    durationMinutes,
+    endedAt: endedAt.toISOString(),
+    gameCoverUrl: "https://cdn.example.test/joined-archive-shift.jpg",
+    gameId,
+    gameTitle: title,
+    id,
+    launcherDeviceId: "test-device",
+    platform: "web",
+    startedAt: startedAt.toISOString(),
+  };
+}
+
+function setHookResult(
+  overrides: Partial<{
+    availableYears: number[];
+    error: string | null;
+    isAuthenticated: boolean;
+    isConfigured: boolean;
+    isLoading: boolean;
+    refetch: () => void;
+    sessions: UserPlaySession[];
+  }> = {},
+) {
+  const result = {
+    availableYears: [],
+    error: null,
+    isAuthenticated: true,
+    isConfigured: true,
+    isLoading: false,
+    refetch: vi.fn(),
+    sessions: [makeSession()],
+    ...overrides,
+  };
+  useUserPlaySessionsMock.mockReturnValue(result);
+  return result;
+}
 
 beforeEach(() => {
   Object.assign(navigator, {
@@ -27,11 +83,9 @@ beforeEach(() => {
     configurable: true,
     value: undefined,
   });
-  useUserPlaySessionsMock.mockReturnValue({
-    error: null,
+  setHookResult({
+    isAuthenticated: false,
     isConfigured: false,
-    isLoading: false,
-    refetch: vi.fn(),
     sessions: [],
   });
 });
@@ -99,67 +153,210 @@ function findShareCard(container: HTMLElement) {
   return shareCard;
 }
 
+function yearButtonLabels(container: HTMLElement) {
+  const yearGroup = container.querySelector('[aria-label="Activity year"]');
+  if (!yearGroup) throw new Error("Activity year group not found");
+  return Array.from(yearGroup.querySelectorAll("button"), (button) =>
+    (button.textContent ?? "").trim(),
+  );
+}
+
 describe("GameActivityDashboardPage", () => {
-  it("renders the local yearly recap when Supabase is not configured", async () => {
+  it("uses a stable inclusive-start and exclusive-end calendar range", () => {
+    const currentYear = new Date().getFullYear();
+    setHookResult({ sessions: [makeSession({ year: currentYear - 2 })] });
+
+    renderActivityRoute(`/activity?year=${currentYear - 2}`);
+
+    expect(useUserPlaySessionsMock).toHaveBeenLastCalledWith({
+      includeAvailableYears: true,
+      since: new Date(currentYear - 2, 0, 1),
+      until: new Date(currentYear - 1, 0, 1),
+    });
+  });
+
+  it("never substitutes synthetic sessions on plain /activity", () => {
+    const container = renderActivityRoute();
+
+    expect(container).toHaveTextContent("Activity data service unavailable");
+    expect(container).not.toHaveTextContent("Verification Preview");
+    expect(container).not.toHaveTextContent("Sample Data");
+    expect(container).not.toHaveTextContent("Neon Runner");
+    expect(container).not.toHaveTextContent("Share Card");
+  });
+
+  it("activates sample sessions only for the explicit development verification query", () => {
+    const currentYear = new Date().getFullYear();
+    const previewYear = currentYear - 1;
+    const container = renderActivityRoute(`/activity?verify=activity-preview&year=${previewYear}`);
+
+    expect(container).toHaveTextContent("Verification Preview");
+    expect(container).toHaveTextContent("Sample Data");
+    expect(container).toHaveTextContent(`${previewYear} Gaming Year`);
+    expect(container).toHaveTextContent("Neon Runner");
+    expect(container).toHaveTextContent("Share Card");
+    expect(container).not.toHaveTextContent("Activity data service unavailable");
+
+    act(() => {
+      findButton(container, new RegExp(`^${currentYear}$`)).dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
+    });
+
+    expect(container).toHaveTextContent("Verification Preview");
+    expect(container).toHaveTextContent("Sample Data");
+    expect(container).toHaveTextContent(`${currentYear} Gaming Year`);
+    expect(container).toHaveTextContent("Neon Runner");
+  });
+
+  it("renders a distinct signed-out state with a sign-in link", () => {
+    setHookResult({
+      isAuthenticated: false,
+      sessions: [],
+    });
+
+    const container = renderActivityRoute();
+
+    expect(container).toHaveTextContent("Sign in to load activity");
+    expect(container).not.toHaveTextContent("Activity data service unavailable");
+    expect(container.querySelector<HTMLAnchorElement>('a[href="/auth"]')).toHaveTextContent(
+      "Sign In",
+    );
+  });
+
+  it("keeps the loading state visible while authentication is hydrating", () => {
+    setHookResult({
+      isAuthenticated: false,
+      isLoading: true,
+      sessions: [],
+    });
+
+    const container = renderActivityRoute();
+
+    expect(container).toHaveTextContent("Loading yearly activity tape");
+    expect(container).not.toHaveTextContent("Sign in to load activity");
+  });
+
+  it("shows load errors in the project palette and retries the real reads", () => {
+    const refetch = vi.fn();
+    setHookResult({
+      error: "playtime unavailable",
+      refetch,
+      sessions: [],
+    });
+
+    const container = renderActivityRoute();
+    const errorPanel = container.querySelector('[role="alert"]');
+
+    expect(errorPanel).toHaveTextContent("Activity load failed");
+    expect(errorPanel).toHaveTextContent("playtime unavailable");
+    expect(errorPanel?.className).toContain("bg-[#fff9ed]");
+    expect(errorPanel?.className).not.toContain("#fbd6dc");
+
+    act(() => {
+      findButton(container, /^retry$/i).dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(refetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("renders an honest empty state for the selected Supabase year", () => {
+    const currentYear = new Date().getFullYear();
+    setHookResult({ sessions: [] });
+
+    const container = renderActivityRoute(`/activity?year=${currentYear - 1}`);
+
+    expect(container).toHaveTextContent(`No sessions recorded in ${currentYear - 1}`);
+    expect(container).toHaveTextContent("Supabase has no play sessions for this calendar year");
+    expect(container).not.toHaveTextContent("Neon Runner");
+    expect(container).not.toHaveTextContent("Share Card");
+  });
+
+  it("rejects a requested future year", () => {
+    const currentYear = new Date().getFullYear();
+    setHookResult({ availableYears: [currentYear + 1], sessions: [] });
+
+    const container = renderActivityRoute(`/activity?year=${currentYear + 1}`);
+
+    expect(container).toHaveTextContent(`${currentYear} Gaming Year`);
+    expect(container).not.toHaveTextContent(`${currentYear + 1} Gaming Year`);
+    expect(yearButtonLabels(container)).not.toContain(String(currentYear + 1));
+    expect(useUserPlaySessionsMock).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        since: new Date(currentYear, 0, 1),
+        until: new Date(currentYear + 1, 0, 1),
+      }),
+    );
+  });
+
+  it("keeps current, previous, selected, and Supabase years stable without future years", () => {
+    const currentYear = new Date().getFullYear();
+    const selectedYear = currentYear - 3;
+    setHookResult({
+      availableYears: [currentYear + 2, currentYear - 2, currentYear - 4],
+      sessions: [],
+    });
+
+    const container = renderActivityRoute(`/activity?year=${selectedYear}`);
+
+    expect(yearButtonLabels(container)).toEqual([
+      String(currentYear),
+      String(currentYear - 1),
+      String(currentYear - 2),
+      String(selectedYear),
+      String(currentYear - 4),
+    ]);
+
+    act(() => {
+      findButton(container, new RegExp(`^${currentYear - 4}$`)).dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
+    });
+
+    expect(yearButtonLabels(container)).toContain(String(currentYear - 2));
+    expect(yearButtonLabels(container)).not.toContain(String(currentYear + 2));
+  });
+
+  it("renders the joined Supabase game title in the ready recap", async () => {
+    const currentYear = new Date().getFullYear();
+    setHookResult({
+      availableYears: [currentYear],
+      sessions: [
+        makeSession({
+          gameId: "6809cf82-3c64-4de6-bb53-e2ba06276780",
+          title: "Joined Supabase Title",
+          year: currentYear,
+        }),
+      ],
+    });
+
     const container = renderActivityRoute();
 
     await waitForAssertion(() => {
-      expect(container).toHaveTextContent("Game Activity Dashboard");
-      expect(container).toHaveTextContent("Local Activity Relay");
-      expect(container).toHaveTextContent("Neon Runner");
+      expect(container).toHaveTextContent("Joined Supabase Title");
+      expect(container).not.toHaveTextContent("6809cf82-3c64-4de6-bb53-e2ba06276780");
       expect(container).toHaveTextContent("Share Card");
-      expect(container).toHaveTextContent("OG-Launcher Gaming Year");
-      expect(container).toHaveTextContent("Browser Share");
-      expect(container).toHaveTextContent("Export TXT");
-      expect(container).toHaveTextContent("Export SVG");
-      expect(
-        container.querySelector<HTMLAnchorElement>('a[download^="og-launcher-activity-recap-"]'),
-      )?.toHaveAttribute("href", expect.stringContaining("data:text/plain"));
-      expect(container.querySelector<HTMLAnchorElement>('a[download$=".svg"]'))?.toHaveAttribute(
-        "href",
-        expect.stringContaining("data:image/svg+xml"),
-      );
       expect(container).toHaveTextContent("Month Tape");
-      expect(
-        container.querySelector('a[aria-label="Open performance history for Neon Runner"]'),
-      ).toHaveAttribute(
-        "href",
-        "/settings/performance?range=365d&gameId=local-demo-neon-runner&bucket=auto&source=activity#playtime-detail",
-      );
     });
   });
 
   it("filters synced sessions by the selected query year", async () => {
-    useUserPlaySessionsMock.mockReturnValue({
-      error: null,
-      isConfigured: true,
-      isLoading: false,
-      refetch: vi.fn(),
+    setHookResult({
+      availableYears: [2026, 2025],
       sessions: [
-        {
-          catalogGameId: "game-2025",
-          durationMinutes: 125,
-          endedAt: "2025-03-01T20:05:00.000Z",
-          gameCoverUrl: null,
+        makeSession({
           gameId: "game-2025",
-          gameTitle: "Archive Shift",
           id: "session-2025",
-          launcherDeviceId: "test-device",
-          platform: "web",
-          startedAt: "2025-03-01T18:00:00.000Z",
-        },
-        {
-          catalogGameId: "game-2026",
+          title: "Archive Shift",
+          year: 2025,
+        }),
+        makeSession({
           durationMinutes: 240,
-          endedAt: "2026-03-01T22:00:00.000Z",
-          gameCoverUrl: null,
           gameId: "game-2026",
-          gameTitle: "Future Shift",
           id: "session-2026",
-          launcherDeviceId: "test-device",
-          platform: "web",
-          startedAt: "2026-03-01T18:00:00.000Z",
-        },
+          title: "Future Shift",
+          year: 2026,
+        }),
       ],
     });
 
@@ -180,16 +377,85 @@ describe("GameActivityDashboardPage", () => {
     });
   });
 
+  it("resets share feedback when the recap year changes", async () => {
+    const currentYear = new Date().getFullYear();
+    setHookResult({
+      availableYears: [currentYear, currentYear - 1],
+      sessions: [
+        makeSession({ id: "current-session", title: "Current Relay", year: currentYear }),
+        makeSession({ id: "archive-session", title: "Archive Relay", year: currentYear - 1 }),
+      ],
+    });
+    const container = renderActivityRoute();
+
+    await act(async () => {
+      findButton(findShareCard(container), /copy card/i).dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
+    });
+    expect(container).toHaveTextContent("Share card copied.");
+
+    act(() => {
+      findButton(container, new RegExp(`^${currentYear - 1}$`)).dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
+    });
+
+    await waitForAssertion(() => {
+      expect(container).toHaveTextContent(`${currentYear - 1} Gaming Year`);
+      expect(container).toHaveTextContent("Archive Relay");
+      expect(container).not.toHaveTextContent("Share card copied.");
+      expect(container).toHaveTextContent(`og-launcher-activity-recap-${currentYear - 1}.txt`);
+    });
+  });
+
+  it("ignores a pending share result after the recap year changes", async () => {
+    const currentYear = new Date().getFullYear();
+    let resolveClipboard!: () => void;
+    const writeText = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          resolveClipboard = resolve;
+        }),
+    );
+    Object.assign(navigator, { clipboard: { writeText } });
+    setHookResult({
+      availableYears: [currentYear, currentYear - 1],
+      sessions: [
+        makeSession({ id: "pending-current", title: "Current Relay", year: currentYear }),
+        makeSession({ id: "pending-archive", title: "Archive Relay", year: currentYear - 1 }),
+      ],
+    });
+    const container = renderActivityRoute();
+
+    act(() => {
+      findButton(findShareCard(container), /copy card/i).dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
+    });
+    act(() => {
+      findButton(container, new RegExp(`^${currentYear - 1}$`)).dispatchEvent(
+        new MouseEvent("click", { bubbles: true }),
+      );
+    });
+
+    await act(async () => {
+      resolveClipboard();
+      await Promise.resolve();
+    });
+
+    expect(container).toHaveTextContent(`${currentYear - 1} Gaming Year`);
+    expect(container).toHaveTextContent(`og-launcher-activity-recap-${currentYear - 1}.txt`);
+    expect(container).not.toHaveTextContent("Share card copied.");
+  });
+
   it("copies the yearly share card text", async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.assign(navigator, {
       clipboard: { writeText },
     });
+    setHookResult();
     const container = renderActivityRoute();
-
-    await waitForAssertion(() => {
-      expect(container).toHaveTextContent("Copy Card");
-    });
 
     await act(async () => {
       findButton(findShareCard(container), /copy card/i).dispatchEvent(
@@ -198,7 +464,9 @@ describe("GameActivityDashboardPage", () => {
     });
 
     expect(writeText).toHaveBeenCalledWith(expect.stringContaining("OG-Launcher Gaming Year"));
-    expect(writeText).toHaveBeenCalledWith(expect.stringContaining("Top game: Neon Runner"));
+    expect(writeText).toHaveBeenCalledWith(
+      expect.stringContaining("Top game: Joined Archive Shift"),
+    );
     expect(writeText).toHaveBeenCalledWith(expect.stringContaining("Longest run:"));
     await waitForAssertion(() => {
       expect(container).toHaveTextContent("Share card copied.");
@@ -210,11 +478,8 @@ describe("GameActivityDashboardPage", () => {
     Object.assign(navigator, {
       clipboard: { writeText },
     });
+    setHookResult();
     const container = renderActivityRoute();
-
-    await waitForAssertion(() => {
-      expect(container).toHaveTextContent("Copy Card");
-    });
 
     await act(async () => {
       findButton(findShareCard(container), /copy card/i).dispatchEvent(
@@ -238,11 +503,8 @@ describe("GameActivityDashboardPage", () => {
       configurable: true,
       value: share,
     });
+    setHookResult();
     const container = renderActivityRoute();
-
-    await waitForAssertion(() => {
-      expect(container).toHaveTextContent("Browser Share");
-    });
 
     await act(async () => {
       findButton(findShareCard(container), /browser share/i).dispatchEvent(
@@ -252,7 +514,7 @@ describe("GameActivityDashboardPage", () => {
 
     expect(canShare).toHaveBeenCalledWith({
       files: [expect.any(File)],
-      text: expect.stringContaining("Top game: Neon Runner"),
+      text: expect.stringContaining("Top game: Joined Archive Shift"),
       title: expect.stringContaining("OG-Launcher Gaming Year"),
     });
     expect(share).toHaveBeenCalledWith({
@@ -279,11 +541,8 @@ describe("GameActivityDashboardPage", () => {
       configurable: true,
       value: share,
     });
+    setHookResult();
     const container = renderActivityRoute();
-
-    await waitForAssertion(() => {
-      expect(container).toHaveTextContent("Browser Share");
-    });
 
     await act(async () => {
       findButton(findShareCard(container), /browser share/i).dispatchEvent(
@@ -297,7 +556,7 @@ describe("GameActivityDashboardPage", () => {
       }),
     );
     expect(canShare).toHaveBeenCalledWith({
-      text: expect.stringContaining("Top game: Neon Runner"),
+      text: expect.stringContaining("Top game: Joined Archive Shift"),
       title: expect.stringContaining("OG-Launcher Gaming Year"),
     });
     expect(share).toHaveBeenCalledWith({
@@ -310,11 +569,8 @@ describe("GameActivityDashboardPage", () => {
   });
 
   it("keeps the TXT fallback when browser share is unavailable", async () => {
+    setHookResult();
     const container = renderActivityRoute();
-
-    await waitForAssertion(() => {
-      expect(container).toHaveTextContent("Browser Share");
-    });
 
     await act(async () => {
       findButton(findShareCard(container), /browser share/i).dispatchEvent(

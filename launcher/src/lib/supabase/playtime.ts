@@ -371,6 +371,28 @@ export type GetUserPlaySessionsOptions = {
 
 export type UserPlaySession = GameSessionRow;
 
+const userPlaySessionPageSize = 1_000;
+const userPlaySessionSelect =
+  "id, game_id, launcher_device_id, started_at, ended_at, duration_minutes, platform, games(title, cover_url)";
+
+type UserPlaySessionCursor = {
+  id: string;
+  startedAt: string;
+};
+
+function userPlaySessionCursorFilter(cursor: UserPlaySessionCursor): string {
+  return `started_at.lt.${cursor.startedAt},and(started_at.eq.${cursor.startedAt},id.lt.${cursor.id})`;
+}
+
+function lastUserPlaySessionCursor(rows: UnknownRecord[]): UserPlaySessionCursor | null {
+  const lastRow = rows.at(-1);
+  if (!lastRow) return null;
+
+  const id = rowString(lastRow, "id");
+  const startedAt = rowString(lastRow, "started_at");
+  return id && startedAt ? { id, startedAt } : null;
+}
+
 function asGameSessionRow(row: UnknownRecord): GameSessionRow {
   const platform = rowNullableString(row, "platform") as GameSessionPlatform | null;
   return {
@@ -384,6 +406,34 @@ function asGameSessionRow(row: UnknownRecord): GameSessionRow {
     platform: platform,
     gameTitle: rowNullableString(row, "game_title"),
     gameCoverUrl: rowNullableString(row, "game_cover_url"),
+  };
+}
+
+function relatedGameRecord(row: UnknownRecord): UnknownRecord | null {
+  const relatedGame = row.games;
+  if (relatedGame && typeof relatedGame === "object" && !Array.isArray(relatedGame)) {
+    return relatedGame as UnknownRecord;
+  }
+
+  const firstRelatedGame = Array.isArray(relatedGame) ? relatedGame[0] : null;
+  return firstRelatedGame && typeof firstRelatedGame === "object"
+    ? (firstRelatedGame as UnknownRecord)
+    : null;
+}
+
+function asUserPlaySessionRow(row: UnknownRecord): UserPlaySession {
+  const relatedGame = relatedGameRecord(row);
+  const relatedTitle = relatedGame ? rowNullableString(relatedGame, "title") : null;
+  const legacyTitle = rowNullableString(row, "game_title");
+  const candidateTitle = (relatedTitle ?? legacyTitle)?.trim() ?? "";
+  const gameId = rowString(row, "game_id");
+
+  return {
+    ...asGameSessionRow(row),
+    gameTitle: candidateTitle && candidateTitle !== gameId ? candidateTitle : "Unknown Game",
+    gameCoverUrl:
+      (relatedGame ? rowNullableString(relatedGame, "cover_url") : null) ??
+      rowNullableString(row, "game_cover_url"),
   };
 }
 
@@ -547,31 +597,122 @@ export async function getUserPlaySessions(
   const userId = await getCurrentSessionUserId();
   if (!userId) return [];
 
-  let query = client
-    .from("game_sessions")
-    .select("id, game_id, launcher_device_id, started_at, ended_at, duration_minutes, platform")
-    .eq("user_id", userId)
-    .order("started_at", { ascending: false });
+  const requestedLimit =
+    options.limit !== undefined && Number.isFinite(options.limit) && options.limit > 0
+      ? Math.floor(options.limit)
+      : null;
+  const rows: UnknownRecord[] = [];
+  let cursor: UserPlaySessionCursor | null = null;
 
-  if (options.since) {
-    query = query.gte("started_at", options.since.toISOString());
-  }
-  if (options.until) {
-    query = query.lte("started_at", options.until.toISOString());
-  }
-  if (options.gameId) {
-    query = query.eq("game_id", options.gameId);
-  }
-  if (options.limit) {
-    query = query.limit(options.limit);
+  while (requestedLimit === null || rows.length < requestedLimit) {
+    const pageSize = Math.min(
+      userPlaySessionPageSize,
+      requestedLimit === null ? userPlaySessionPageSize : requestedLimit - rows.length,
+    );
+    let query = client
+      .from("game_sessions")
+      .select(userPlaySessionSelect)
+      .eq("user_id", userId)
+      .order("started_at", { ascending: false })
+      .order("id", { ascending: false });
+
+    if (options.since) {
+      query = query.gte("started_at", options.since.toISOString());
+    }
+    if (options.until) {
+      query = query.lt("started_at", options.until.toISOString());
+    }
+    if (options.gameId) {
+      query = query.eq("game_id", options.gameId);
+    }
+    if (cursor) {
+      query = query.or(userPlaySessionCursorFilter(cursor));
+    }
+
+    const { data, error } = await query.limit(pageSize);
+    if (isMissingSchemaError(error)) return [];
+    handleError(error);
+
+    const pageRows = (data ?? []) as UnknownRecord[];
+    rows.push(...pageRows);
+    if (pageRows.length === 0) {
+      break;
+    }
+
+    const nextCursor = lastUserPlaySessionCursor(pageRows);
+    if (
+      !nextCursor ||
+      (cursor && nextCursor.id === cursor.id && nextCursor.startedAt === cursor.startedAt)
+    ) {
+      break;
+    }
+    cursor = nextCursor;
   }
 
-  const { data, error } = await query;
-  if (isMissingSchemaError(error)) return [];
-  handleError(error);
+  return rows.map(asUserPlaySessionRow);
+}
 
-  const rows = (data ?? []) as UnknownRecord[];
-  return rows.map(asGameSessionRow);
+/**
+ * Returns the calendar years represented in the current user's sessions.
+ * Only the timestamp and cursor columns are read so Activity can build its
+ * year selector without downloading every complete session row.
+ */
+export async function getUserPlaySessionYears(): Promise<number[]> {
+  if (!isSupabaseConfigured) return [];
+  const client = getSupabaseClient();
+  const userId = await getCurrentSessionUserId();
+  if (!userId) return [];
+
+  const years = new Set<number>();
+  const currentYear = new Date().getFullYear();
+  let cursor: UserPlaySessionCursor | null = null;
+
+  while (true) {
+    let query = client
+      .from("game_sessions")
+      .select("started_at, id")
+      .eq("user_id", userId)
+      .order("started_at", { ascending: false })
+      .order("id", { ascending: false });
+
+    if (cursor) {
+      query = query.or(userPlaySessionCursorFilter(cursor));
+    }
+
+    const { data, error } = await query.limit(userPlaySessionPageSize);
+
+    if (isMissingSchemaError(error)) return [];
+    handleError(error);
+
+    const pageRows = (data ?? []) as UnknownRecord[];
+    for (const row of pageRows) {
+      const startedAt = rowNullableString(row, "started_at");
+      if (!startedAt) continue;
+
+      const timestamp = Date.parse(startedAt);
+      if (!Number.isFinite(timestamp)) continue;
+
+      const year = new Date(timestamp).getFullYear();
+      if (Number.isInteger(year) && year > 0 && year <= currentYear) {
+        years.add(year);
+      }
+    }
+
+    if (pageRows.length === 0) {
+      break;
+    }
+
+    const nextCursor = lastUserPlaySessionCursor(pageRows);
+    if (
+      !nextCursor ||
+      (cursor && nextCursor.id === cursor.id && nextCursor.startedAt === cursor.startedAt)
+    ) {
+      break;
+    }
+    cursor = nextCursor;
+  }
+
+  return Array.from(years).sort((left, right) => right - left);
 }
 
 export type GameSessionsSyncOutcome = {

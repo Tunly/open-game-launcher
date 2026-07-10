@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import {
   BarChart3,
@@ -62,11 +62,13 @@ type ActivityRecapNavigator = Navigator & {
   share?: (data: ActivityRecapNativeShareData) => Promise<void>;
 };
 
+const MIN_ACTIVITY_YEAR = 2000;
+
 function dateInYear(year: number, month: number, day: number, hour: number, minute = 0): Date {
   return new Date(year, month, day, hour, minute, 0, 0);
 }
 
-function createSession(
+function createVerificationSession(
   id: string,
   gameId: string,
   gameTitle: string,
@@ -74,6 +76,7 @@ function createSession(
   durationMinutes: number,
 ): UserPlaySession {
   const endedAt = new Date(startedAt.getTime() + durationMinutes * 60_000);
+
   return {
     catalogGameId: gameId,
     durationMinutes,
@@ -82,87 +85,87 @@ function createSession(
     gameId,
     gameTitle,
     id,
-    launcherDeviceId: "browser-preview",
+    launcherDeviceId: "activity-verification-preview",
     platform: "web",
     startedAt: startedAt.toISOString(),
   };
 }
 
-function createLocalRecapSessions(year: number): UserPlaySession[] {
+function createVerificationPreviewSessions(year: number): UserPlaySession[] {
   return [
-    createSession(
-      "recap-neon-jan",
-      "local-demo-neon-runner",
+    createVerificationSession(
+      "preview-neon-jan",
+      "preview-neon-runner",
       "Neon Runner",
       dateInYear(year, 0, 12, 22, 10),
       95,
     ),
-    createSession(
-      "recap-neon-feb",
-      "local-demo-neon-runner",
+    createVerificationSession(
+      "preview-neon-feb",
+      "preview-neon-runner",
       "Neon Runner",
       dateInYear(year, 1, 4, 21, 30),
       122,
     ),
-    createSession(
-      "recap-mecha-mar",
-      "local-demo-mecha-shift",
+    createVerificationSession(
+      "preview-mecha-mar",
+      "preview-mecha-shift",
       "Mecha Shift",
       dateInYear(year, 2, 7, 15),
       210,
     ),
-    createSession(
-      "recap-mecha-apr",
-      "local-demo-mecha-shift",
+    createVerificationSession(
+      "preview-mecha-apr",
+      "preview-mecha-shift",
       "Mecha Shift",
       dateInYear(year, 3, 3, 16),
       98,
     ),
-    createSession(
-      "recap-paper-may",
-      "local-demo-paper-orbit",
+    createVerificationSession(
+      "preview-paper-may",
+      "preview-paper-orbit",
       "Paper Orbit",
       dateInYear(year, 4, 11, 9),
       76,
     ),
-    createSession(
-      "recap-neon-jun-a",
-      "local-demo-neon-runner",
+    createVerificationSession(
+      "preview-neon-jun-a",
+      "preview-neon-runner",
       "Neon Runner",
       dateInYear(year, 5, 8, 19),
       88,
     ),
-    createSession(
-      "recap-neon-jun-b",
-      "local-demo-neon-runner",
+    createVerificationSession(
+      "preview-neon-jun-b",
+      "preview-neon-runner",
       "Neon Runner",
       dateInYear(year, 5, 9, 19),
       64,
     ),
-    createSession(
-      "recap-neon-jun-c",
-      "local-demo-neon-runner",
+    createVerificationSession(
+      "preview-neon-jun-c",
+      "preview-neon-runner",
       "Neon Runner",
       dateInYear(year, 5, 10, 20),
       52,
     ),
-    createSession(
-      "recap-boss-oct",
-      "local-demo-boss-rush",
+    createVerificationSession(
+      "preview-boss-oct",
+      "preview-boss-rush",
       "Boss Rush EX",
       dateInYear(year, 9, 15, 23),
       130,
     ),
-    createSession(
-      "recap-boss-nov",
-      "local-demo-boss-rush",
+    createVerificationSession(
+      "preview-boss-nov",
+      "preview-boss-rush",
       "Boss Rush EX",
       dateInYear(year, 10, 1, 23),
       156,
     ),
-    createSession(
-      "recap-paper-dec",
-      "local-demo-paper-orbit",
+    createVerificationSession(
+      "preview-paper-dec",
+      "preview-paper-orbit",
       "Paper Orbit",
       dateInYear(year, 11, 6, 9, 20),
       80,
@@ -170,14 +173,27 @@ function createLocalRecapSessions(year: number): UserPlaySession[] {
   ];
 }
 
-function availableYears(sessions: UserPlaySession[], fallbackYear: number): number[] {
-  const years = new Set<number>([fallbackYear, fallbackYear - 1]);
-  for (const session of sessions) {
-    const startedAt = new Date(session.startedAt);
-    if (!Number.isNaN(startedAt.getTime())) {
-      years.add(startedAt.getFullYear());
+function isValidActivityYear(year: number, currentYear: number): boolean {
+  return Number.isInteger(year) && year >= MIN_ACTIVITY_YEAR && year <= currentYear;
+}
+
+function buildActivityYearOptions({
+  availableYears,
+  currentYear,
+  selectedYear,
+}: {
+  availableYears: number[];
+  currentYear: number;
+  selectedYear: number;
+}): number[] {
+  const years = new Set<number>([currentYear, currentYear - 1, selectedYear]);
+
+  for (const year of availableYears) {
+    if (isValidActivityYear(year, currentYear)) {
+      years.add(year);
     }
   }
+
   return Array.from(years).sort((a, b) => b - a);
 }
 
@@ -471,7 +487,7 @@ function RecapShareCardPanel({
               : statusTone === "danger"
                 ? "bg-[#c20b2f] text-white"
                 : statusTone === "warning"
-                  ? "bg-[#f5c84b] text-[#171411]"
+                  ? "bg-[#f6edd8] text-[#171411]"
                   : "bg-[#efe6d4] text-[#655f58]"
           }`}
         >
@@ -485,20 +501,43 @@ function RecapShareCardPanel({
 export function GameActivityDashboardPage() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [shareStatus, setShareStatus] = useState<ActivityRecapShareStatus>("idle");
-  const { sessions, isConfigured, isLoading, error } = useUserPlaySessions();
+  const shareOperationIdRef = useRef(0);
   const currentYear = useMemo(() => new Date().getFullYear(), []);
   const requestedYear = Number(searchParams.get("year"));
-  const selectedYear =
-    Number.isInteger(requestedYear) && requestedYear >= 2000 && requestedYear <= currentYear + 1
-      ? requestedYear
-      : currentYear;
+  const isVerificationPreview =
+    import.meta.env.DEV && searchParams.get("verify") === "activity-preview";
+  const selectedYear = isValidActivityYear(requestedYear, currentYear)
+    ? requestedYear
+    : currentYear;
+  const calendarRange = useMemo(
+    () => ({
+      includeAvailableYears: true as const,
+      since: new Date(selectedYear, 0, 1),
+      until: new Date(selectedYear + 1, 0, 1),
+    }),
+    [selectedYear],
+  );
+  const {
+    availableYears = [],
+    sessions,
+    isAuthenticated,
+    isConfigured,
+    isLoading,
+    error,
+    refetch,
+  } = useUserPlaySessions(calendarRange);
   const visibleSessions = useMemo(
-    () => (isConfigured ? sessions : createLocalRecapSessions(selectedYear)),
-    [isConfigured, selectedYear, sessions],
+    () => (isVerificationPreview ? createVerificationPreviewSessions(selectedYear) : sessions),
+    [isVerificationPreview, selectedYear, sessions],
   );
   const yearOptions = useMemo(
-    () => availableYears(visibleSessions, selectedYear),
-    [selectedYear, visibleSessions],
+    () =>
+      buildActivityYearOptions({
+        availableYears: isVerificationPreview ? [] : availableYears,
+        currentYear,
+        selectedYear,
+      }),
+    [availableYears, currentYear, isVerificationPreview, selectedYear],
   );
   const recap = useMemo(
     () => buildGameActivityYearRecap(visibleSessions, { year: selectedYear }),
@@ -507,16 +546,27 @@ export function GameActivityDashboardPage() {
   const shareCard = useMemo(() => buildGameActivityRecapShareCard(recap), [recap]);
   const shareImage = useMemo(() => buildGameActivityRecapShareImage(recap), [recap]);
 
+  useEffect(() => {
+    shareOperationIdRef.current += 1;
+    setShareStatus("idle");
+  }, [selectedYear]);
+
   async function copyShareCard() {
+    const operationId = ++shareOperationIdRef.current;
     try {
       await navigator.clipboard.writeText(shareCard.text);
-      setShareStatus("copied");
+      if (shareOperationIdRef.current === operationId) {
+        setShareStatus("copied");
+      }
     } catch {
-      setShareStatus("copy-failed");
+      if (shareOperationIdRef.current === operationId) {
+        setShareStatus("copy-failed");
+      }
     }
   }
 
   async function openBrowserShare() {
+    const operationId = ++shareOperationIdRef.current;
     const filePayload =
       typeof File === "function"
         ? {
@@ -533,7 +583,9 @@ export function GameActivityDashboardPage() {
     const shareNavigator = navigator as ActivityRecapNavigator;
 
     if (typeof shareNavigator.share !== "function") {
-      setShareStatus("share-unavailable");
+      if (shareOperationIdRef.current === operationId) {
+        setShareStatus("share-unavailable");
+      }
       return;
     }
 
@@ -544,19 +596,27 @@ export function GameActivityDashboardPage() {
         shareNavigator.canShare(filePayload)
       ) {
         await shareNavigator.share(filePayload);
-        setShareStatus("file-share-opened");
+        if (shareOperationIdRef.current === operationId) {
+          setShareStatus("file-share-opened");
+        }
         return;
       }
 
       if (typeof shareNavigator.canShare === "function" && !shareNavigator.canShare(payload)) {
-        setShareStatus("share-unavailable");
+        if (shareOperationIdRef.current === operationId) {
+          setShareStatus("share-unavailable");
+        }
         return;
       }
 
       await shareNavigator.share(payload);
-      setShareStatus("share-opened");
+      if (shareOperationIdRef.current === operationId) {
+        setShareStatus("share-opened");
+      }
     } catch {
-      setShareStatus("share-failed");
+      if (shareOperationIdRef.current === operationId) {
+        setShareStatus("share-failed");
+      }
     }
   }
 
@@ -597,7 +657,7 @@ export function GameActivityDashboardPage() {
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center justify-between gap-3 p-5">
+        <div className="flex flex-wrap items-center gap-3 p-5">
           <div aria-label="Activity year" className="flex flex-wrap gap-2" role="group">
             {yearOptions.map((year) => {
               const isActive = year === selectedYear;
@@ -611,39 +671,104 @@ export function GameActivityDashboardPage() {
                   }`}
                   key={year}
                   type="button"
-                  onClick={() => setSearchParams({ year: String(year) })}
+                  onClick={() => {
+                    shareOperationIdRef.current += 1;
+                    setShareStatus("idle");
+                    const nextSearchParams = new URLSearchParams(searchParams);
+                    nextSearchParams.set("year", String(year));
+                    setSearchParams(nextSearchParams);
+                  }}
                 >
                   {year}
                 </button>
               );
             })}
           </div>
-          {!isConfigured ? (
-            <div className="flex items-center gap-2 border-2 border-black bg-[#fff9ed] px-3 py-2 shadow-[2px_2px_0_#1f1c0f]">
-              <CloudOff aria-hidden="true" className="h-4 w-4 text-[#c20b2f]" />
-              <span className="neo-copy text-[10px] font-black uppercase text-[#171411]">
-                Local Activity Relay
+          {isVerificationPreview ? (
+            <div
+              aria-label="Activity verification preview"
+              className="flex flex-wrap items-center gap-2 border-[3px] border-black bg-[#171411] p-2 shadow-[3px_3px_0_#c20b2f]"
+            >
+              <span className="neo-copy border-2 border-[#fff9ed] bg-[#c20b2f] px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-white">
+                Verification Preview
+              </span>
+              <span className="neo-copy border-2 border-[#fff9ed] bg-[#8cf5e4] px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-[#171411]">
+                Sample Data
               </span>
             </div>
           ) : null}
         </div>
       </div>
 
-      {isLoading ? (
+      {!isVerificationPreview && !isConfigured ? (
+        <div className="border-[4px] border-black bg-[#fff9ed] shadow-[5px_5px_0_#1f1c0f]">
+          <div className="flex items-center gap-3 border-b-[3px] border-black bg-[#171411] px-4 py-3 text-[#fff9ed]">
+            <CloudOff aria-hidden="true" className="h-5 w-5 text-[#8cf5e4]" />
+            <p className="neo-copy text-[10px] font-black uppercase tracking-[0.14em]">
+              Supabase Required / Local Activity Relay Disabled
+            </p>
+          </div>
+          <div className="p-6">
+            <h2 className="neo-title text-3xl leading-none text-[#171411]">
+              Activity data service unavailable
+            </h2>
+            <p className="neo-copy mt-3 max-w-2xl text-[11px] font-bold uppercase leading-relaxed text-[#655f58]">
+              Configure the hosted Supabase data service to load real launcher play sessions. This
+              page never substitutes sample history.
+            </p>
+          </div>
+        </div>
+      ) : !isVerificationPreview && !isAuthenticated && !isLoading ? (
+        <div className="border-[4px] border-black bg-[#fff9ed] p-6 shadow-[5px_5px_0_#1f1c0f]">
+          <p className="neo-copy inline-flex border-2 border-black bg-[#087d6d] px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-white">
+            Account Link Required
+          </p>
+          <h2 className="neo-title mt-3 text-3xl leading-none text-[#171411]">
+            Sign in to load activity
+          </h2>
+          <p className="neo-copy mt-3 max-w-2xl text-[11px] font-bold uppercase leading-relaxed text-[#655f58]">
+            Your yearly recap is built from play sessions synchronized to your OG-Launcher account.
+          </p>
+          <Link
+            className="neo-copy mt-5 inline-flex h-11 items-center justify-center border-[3px] border-black bg-[#c20b2f] px-5 text-[10px] font-black uppercase tracking-[0.1em] text-white shadow-[3px_3px_0_#1f1c0f] transition hover:-translate-y-0.5 hover:shadow-[5px_5px_0_#1f1c0f]"
+            to="/auth"
+          >
+            Sign In
+          </Link>
+        </div>
+      ) : !isVerificationPreview && isLoading ? (
         <div className="border-[3px] border-black bg-[#fff9ed] p-6 shadow-[4px_4px_0_#1f1c0f]">
           <p className="neo-copy text-[11px] font-black uppercase text-[#655f58]">
             Loading yearly activity tape...
           </p>
         </div>
-      ) : error ? (
-        <div className="border-[3px] border-black bg-[#fbd6dc] p-5 shadow-[4px_4px_0_#1f1c0f]">
-          <p className="neo-copy text-[11px] font-black uppercase text-[#7a0918]">{error}</p>
+      ) : !isVerificationPreview && error ? (
+        <div
+          className="border-[4px] border-black bg-[#fff9ed] p-5 shadow-[5px_5px_0_#c20b2f]"
+          role="alert"
+        >
+          <p className="neo-copy inline-flex border-2 border-black bg-[#c20b2f] px-2 py-1 text-[9px] font-black uppercase tracking-[0.12em] text-white">
+            Activity load failed
+          </p>
+          <p className="neo-copy mt-4 text-[11px] font-black uppercase leading-relaxed text-[#5b403f]">
+            {error}
+          </p>
+          <button
+            className="neo-copy mt-5 inline-flex h-10 items-center justify-center border-[3px] border-black bg-[#087d6d] px-5 text-[10px] font-black uppercase tracking-[0.1em] text-white shadow-[3px_3px_0_#1f1c0f] transition hover:-translate-y-0.5 hover:shadow-[5px_5px_0_#1f1c0f]"
+            type="button"
+            onClick={refetch}
+          >
+            Retry
+          </button>
         </div>
       ) : recap.totalSessions === 0 ? (
         <div className="border-[3px] border-black bg-[#fff9ed] p-6 shadow-[4px_4px_0_#1f1c0f]">
-          <p className="text-lg font-black uppercase text-[#171411]">No yearly sessions yet</p>
+          <h2 className="neo-title text-3xl leading-none text-[#171411]">
+            No sessions recorded in {selectedYear}
+          </h2>
           <p className="neo-copy mt-2 text-[11px] font-bold uppercase leading-relaxed text-[#655f58]">
-            Launch a game or sync playtime sessions to fill this activity dashboard.
+            Supabase has no play sessions for this calendar year. Select another available year or
+            launch a game to begin a real activity tape.
           </p>
         </div>
       ) : (
