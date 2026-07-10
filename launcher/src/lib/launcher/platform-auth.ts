@@ -157,6 +157,19 @@ export function installXboxGame(pfn: string): Promise<void> {
   return invokeCommand<void>("install_xbox_game", { pfn });
 }
 
+export function fetchGamePassCatalog(): Promise<OwnedGame[]> {
+  const language =
+    typeof navigator === "undefined" || !navigator.language ? "en-US" : navigator.language;
+  let market = "US";
+  try {
+    market = new Intl.Locale(language).maximize().region ?? market;
+  } catch {
+    // The native command validates and falls back when the browser locale is malformed.
+  }
+
+  return invokeCommand<OwnedGame[]>("fetch_game_pass_catalog", { language, market });
+}
+
 type SteamRawGame = Record<string, unknown>;
 
 function readString(record: SteamRawGame, keys: string[]) {

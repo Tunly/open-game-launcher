@@ -37,4 +37,27 @@ describe("LibraryRow", () => {
 
     expect(screen.getByText("Running")).toBeInTheDocument();
   });
+
+  it("shows PC Game Pass membership from any grouped variant", () => {
+    const installed = makeGame({ id: "xbox-installed", launcher: "xbox" });
+    const catalog = makeGame({
+      catalogSource: "pc_game_pass",
+      id: "xbox-9NBLGGH4R315",
+      launcher: "xbox",
+      status: "not_installed",
+    });
+    const group = aggregateGameGroup([installed, catalog]);
+
+    render(<LibraryRow group={group} onSelect={vi.fn()} />);
+
+    expect(screen.getByText("PC Game Pass")).toBeInTheDocument();
+  });
+
+  it("does not label ordinary Xbox rows as Game Pass catalog entries", () => {
+    const group = aggregateGameGroup([makeGame({ id: "xbox-installed", launcher: "xbox" })]);
+
+    render(<LibraryRow group={group} onSelect={vi.fn()} />);
+
+    expect(screen.queryByText("PC Game Pass")).not.toBeInTheDocument();
+  });
 });

@@ -36,14 +36,19 @@ function shouldQueueExternalInstall(game: Game) {
   );
 }
 
-function getXboxPackageId(gameId: string) {
+const XBOX_PACKAGE_FAMILY_NAME_PATTERN = /^[a-z0-9][a-z0-9.-]*_[a-z0-9]{13}$/i;
+
+function getXboxPackageFamilyName(gameId: string) {
+  let packageFamilyName: string | null = null;
   if (gameId.startsWith("xbox-owned-")) {
-    return gameId.replace("xbox-owned-", "");
+    packageFamilyName = gameId.slice("xbox-owned-".length);
+  } else if (gameId.startsWith("xbox-")) {
+    packageFamilyName = gameId.slice("xbox-".length);
   }
-  if (gameId.startsWith("xbox-")) {
-    return gameId.replace("xbox-", "");
-  }
-  return null;
+
+  return packageFamilyName && XBOX_PACKAGE_FAMILY_NAME_PATTERN.test(packageFamilyName)
+    ? packageFamilyName
+    : null;
 }
 
 function trackPlaySessionStart(game: Game) {
@@ -117,9 +122,9 @@ export function useProviderPicking({
         return;
       }
 
-      const xboxPackageId = getXboxPackageId(game.id);
-      if (xboxPackageId) {
-        await launchXboxGame(xboxPackageId);
+      const xboxPackageFamilyName = getXboxPackageFamilyName(game.id);
+      if (xboxPackageFamilyName) {
+        await launchXboxGame(xboxPackageFamilyName);
         setStatusMessage("Launching Xbox game...");
         trackActivePerformanceGame(game);
         void logGameStart(game.id, game.title, { launcher: "xbox" });

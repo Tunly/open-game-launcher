@@ -530,7 +530,7 @@ pub async fn sync_game_achievements(
     let game_id = normalize_game_id(game_id)?;
     println!("[open-game-launcher] sync_game_achievements requested for {game_id}");
 
-    let (game, should_persist_to_native_cache) = resolve_steam_achievement_sync_game(
+    let (game, should_persist_to_native_cache) = resolve_achievement_sync_game(
         &game_id,
         read_installed_games_cache_result(),
         fallback_game,
@@ -584,12 +584,18 @@ pub async fn sync_game_achievements(
     })
 }
 
-fn resolve_steam_achievement_sync_game(
+fn resolve_achievement_sync_game(
     game_id: &str,
     cached_games: Result<Vec<InstalledGame>, String>,
     fallback_game: Option<InstalledGame>,
 ) -> Result<(InstalledGame, bool), String> {
     let fallback_game = fallback_game.filter(|game| game.id == game_id);
+    if let (Some(game), Some(provider)) = (
+        fallback_game.as_ref(),
+        achievement_provider_from_game_id(game_id),
+    ) {
+        validate_achievement_sync_game_provider(game, provider)?;
+    }
     match cached_games {
         Ok(games) => {
             if let Some(game) = games.into_iter().find(|game| game.id == game_id) {
@@ -605,10 +611,47 @@ fn resolve_steam_achievement_sync_game(
         .ok_or_else(|| format!("Game '{game_id}' was not found in the local library cache."))
 }
 
+fn achievement_provider_from_game_id(game_id: &str) -> Option<&'static str> {
+    for (prefix, provider) in [
+        ("steam-owned-", "steam"),
+        ("steam-", "steam"),
+        ("gog-owned-", "gog"),
+        ("gog-", "gog"),
+        ("epic-owned-", "epic"),
+        ("epic-", "epic"),
+        ("ea-owned-", "ea"),
+        ("ea-", "ea"),
+        ("ubisoft-owned-", "ubisoft"),
+        ("ubisoft-", "ubisoft"),
+        ("battlenet-owned-", "battlenet"),
+        ("battlenet-", "battlenet"),
+    ] {
+        if game_id.starts_with(prefix) {
+            return Some(provider);
+        }
+    }
+    None
+}
+
+fn validate_achievement_sync_game_provider(
+    game: &InstalledGame,
+    expected_provider: &str,
+) -> Result<(), String> {
+    let actual_provider = launcher_key_from_source(&game.launcher);
+    if actual_provider != expected_provider {
+        return Err(format!(
+            "Game '{}' launcher '{}' does not match provider '{expected_provider}'.",
+            game.id, game.launcher
+        ));
+    }
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn sync_local_game_achievements(
     game_id: String,
     provider: String,
+    fallback_game: Option<InstalledGame>,
 ) -> Result<SyncGameAchievementsResponse, String> {
     let game_id = normalize_game_id(game_id)?;
     let provider = normalize_local_achievement_provider(&provider)?;
@@ -616,10 +659,12 @@ pub async fn sync_local_game_achievements(
         "[open-game-launcher] sync_local_game_achievements requested for {game_id} via {provider}"
     );
 
-    let game = read_installed_games_cache_result()?
-        .into_iter()
-        .find(|game| game.id == game_id)
-        .ok_or_else(|| format!("Game '{game_id}' was not found in the local library cache."))?;
+    let (game, should_persist_to_native_cache) = resolve_achievement_sync_game(
+        &game_id,
+        read_installed_games_cache_result(),
+        fallback_game,
+    )?;
+    validate_achievement_sync_game_provider(&game, &provider)?;
     let achievements = sync_best_effort_achievements(&provider, &game).await?;
     if achievements.is_empty() {
         return Err(format!(
@@ -634,11 +679,18 @@ pub async fn sync_local_game_achievements(
         .count();
     let synced_achievements = achievements.len();
     let synced_at = unix_timestamp_to_iso(current_unix_timestamp());
-    let game = update_installed_game_cache(&game_id, move |game| {
-        game.achievements = preserve_known_unlocks(achievements, &game.achievements);
-        game.achievements_synced_at = Some(synced_at);
-        Ok(())
-    })?;
+    let game = if should_persist_to_native_cache {
+        update_installed_game_cache(&game_id, move |game| {
+            game.achievements = preserve_known_unlocks(achievements, &game.achievements);
+            game.achievements_synced_at = Some(synced_at);
+            Ok(())
+        })?
+    } else {
+        let mut synced_game = game;
+        synced_game.achievements = preserve_known_unlocks(achievements, &synced_game.achievements);
+        synced_game.achievements_synced_at = Some(synced_at);
+        synced_game
+    };
 
     Ok(SyncGameAchievementsResponse {
         game_id,
@@ -4619,11 +4671,48 @@ mod tests {
         );
 
         let (game, should_persist) =
-            resolve_steam_achievement_sync_game("steam-owned-10", Ok(Vec::new()), Some(fallback))
+            resolve_achievement_sync_game("steam-owned-10", Ok(Vec::new()), Some(fallback))
                 .unwrap();
 
         assert_eq!(game.id, "steam-owned-10");
         assert!(!should_persist);
+    }
+
+    #[test]
+    fn epic_owned_achievement_sync_does_not_hide_native_cache_read_errors() {
+        let fallback = installed_game(
+            "epic-owned-catalog-app",
+            "Epic Account Game".to_string(),
+            "epic".to_string(),
+            None,
+            None,
+        );
+
+        let error = resolve_achievement_sync_game(
+            "epic-owned-catalog-app",
+            Err("native cache unavailable".to_string()),
+            Some(fallback),
+        )
+        .unwrap_err();
+
+        assert_eq!(error, "native cache unavailable");
+    }
+
+    #[test]
+    fn epic_owned_achievement_sync_rejects_a_cross_provider_fallback() {
+        let fallback = installed_game(
+            "epic-owned-catalog-app",
+            "Cross-provider Account Game".to_string(),
+            "gog".to_string(),
+            None,
+            None,
+        );
+
+        let error =
+            resolve_achievement_sync_game("epic-owned-catalog-app", Ok(Vec::new()), Some(fallback))
+                .unwrap_err();
+
+        assert!(error.contains("does not match provider 'epic'"));
     }
 
     #[test]
@@ -4644,8 +4733,7 @@ mod tests {
         );
 
         let (game, should_persist) =
-            resolve_steam_achievement_sync_game("steam-10", Ok(vec![cached]), Some(fallback))
-                .unwrap();
+            resolve_achievement_sync_game("steam-10", Ok(vec![cached]), Some(fallback)).unwrap();
 
         assert_eq!(game.title, "Cached Counter-Strike");
         assert!(should_persist);

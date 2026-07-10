@@ -109,7 +109,19 @@ export function getXboxTitleHint(game: Game) {
   if (game.launcher !== "xbox") {
     return null;
   }
-  return game.externalId?.trim() || game.id || game.title || null;
+
+  const externalId = game.externalId?.trim() ?? "";
+  if (game.catalogSource === "pc_game_pass") {
+    if (/^\d+$/.test(externalId)) {
+      return externalId;
+    }
+    if (canTryLocalImport(game)) {
+      return game.title.trim() || game.id || null;
+    }
+    return null;
+  }
+
+  return externalId || game.id || game.title || null;
 }
 
 function unavailableProvider(
@@ -280,7 +292,9 @@ export function achievementProviderStatusForGame(game: Game): AchievementProvide
         : provider.provider === "steam" && !readLocalStorageString(STORAGE_KEYS.STEAM_ID)
           ? "Steam achievement sync needs a connected Steam account in Settings."
           : provider.provider === "xbox" && !getXboxTitleHint(game)
-            ? `${game.title} does not expose an Xbox identity hint for achievement sync.`
+            ? game.catalogSource === "pc_game_pass"
+              ? `${game.title} is a PC Game Pass catalog entry. Achievement sync starts after an installed Xbox variant or numeric TitleId is available.`
+              : `${game.title} does not expose an Xbox identity hint for achievement sync.`
             : provider.provider === "gog" &&
                 hasNonEmptyJsonArray(STORAGE_KEYS.GOG_OWNED_GAMES_CACHE)
               ? "GOG local library cache found; achievement sync will use client best-effort sources when available."

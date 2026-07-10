@@ -1,8 +1,8 @@
 use super::secure_store;
 use crate::commands::system::OwnedGame;
 use reqwest::header::{HeaderMap, HeaderValue, ACCEPT_LANGUAGE, AUTHORIZATION};
-use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
+use serde::{Deserialize, Deserializer, Serialize};
+use std::collections::{HashMap, HashSet};
 use std::io::{Read, Write};
 use std::net::TcpListener;
 use std::process::Command;
@@ -11,6 +11,13 @@ use std::thread;
 const XBOX_CLIENT_ID: &str = "38cd2fa8-66fd-4760-afb2-405eb65d5b0c";
 const XBOX_SCOPE: &str = "Xboxlive.signin Xboxlive.offline_access";
 const XBOX_REDIRECT_URI: &str = "https://login.live.com/oauth20_desktop.srf";
+const GAME_PASS_SIGL_ENDPOINT: &str = "https://catalog.gamepass.com/sigls/v2";
+const GAME_PASS_PC_SIGL_ID: &str = "fdd9e2a7-0fee-49f6-ad69-4354098401ff";
+const DISPLAY_CATALOG_ENDPOINT: &str = "https://displaycatalog.mp.microsoft.com/v7.0/products";
+const DISPLAY_CATALOG_BATCH_SIZE: usize = 50;
+const MICROSOFT_STORE_PRODUCT_ID_LENGTH: usize = 12;
+const DEFAULT_GAME_PASS_LANGUAGE: &str = "en-US";
+const DEFAULT_GAME_PASS_MARKET: &str = "US";
 
 fn save_xbox_token(refresh_token: &str) {
     let _ = secure_store::set_secret("xbox", refresh_token);
@@ -113,6 +120,126 @@ struct Title {
 struct TitleHistoryDetail {
     #[serde(rename = "lastTimePlayed")]
     last_time_played: Option<String>,
+}
+
+#[derive(Deserialize, Debug)]
+struct GamePassCatalogItem {
+    #[serde(default)]
+    id: Option<serde_json::Value>,
+}
+
+#[derive(Deserialize, Debug)]
+struct DisplayCatalogResponse {
+    #[serde(rename = "Products", alias = "products", default)]
+    products: Vec<DisplayCatalogProduct>,
+}
+
+#[derive(Deserialize, Debug)]
+struct DisplayCatalogProduct {
+    #[serde(
+        rename = "ProductId",
+        alias = "productId",
+        default,
+        deserialize_with = "deserialize_optional_string"
+    )]
+    product_id: Option<String>,
+    #[serde(rename = "LocalizedProperties", alias = "localizedProperties", default)]
+    localized_properties: Vec<DisplayCatalogLocalizedProperties>,
+    #[serde(
+        rename = "DisplaySkuAvailabilities",
+        alias = "displaySkuAvailabilities",
+        default
+    )]
+    display_sku_availabilities: Vec<DisplayCatalogSkuAvailability>,
+}
+
+#[derive(Deserialize, Debug)]
+struct DisplayCatalogSkuAvailability {
+    #[serde(rename = "Sku", alias = "sku", default)]
+    sku: Option<DisplayCatalogSku>,
+}
+
+#[derive(Deserialize, Debug)]
+struct DisplayCatalogSku {
+    #[serde(rename = "Properties", alias = "properties", default)]
+    properties: Option<DisplayCatalogSkuProperties>,
+}
+
+#[derive(Deserialize, Debug)]
+struct DisplayCatalogSkuProperties {
+    #[serde(rename = "Packages", alias = "packages", default)]
+    packages: Vec<DisplayCatalogPackage>,
+}
+
+#[derive(Deserialize, Debug)]
+struct DisplayCatalogPackage {
+    #[serde(
+        rename = "PackageFormat",
+        alias = "packageFormat",
+        default,
+        deserialize_with = "deserialize_optional_string"
+    )]
+    package_format: Option<String>,
+}
+
+#[derive(Deserialize, Debug)]
+struct DisplayCatalogLocalizedProperties {
+    #[serde(
+        rename = "ProductTitle",
+        alias = "productTitle",
+        default,
+        deserialize_with = "deserialize_optional_string"
+    )]
+    product_title: Option<String>,
+    #[serde(rename = "Images", alias = "images", default)]
+    images: Vec<DisplayCatalogImage>,
+}
+
+#[derive(Deserialize, Debug)]
+struct DisplayCatalogImage {
+    #[serde(
+        rename = "ImagePurpose",
+        alias = "imagePurpose",
+        default,
+        deserialize_with = "deserialize_optional_string"
+    )]
+    image_purpose: Option<String>,
+    #[serde(
+        rename = "Uri",
+        alias = "uri",
+        default,
+        deserialize_with = "deserialize_optional_string"
+    )]
+    uri: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DisplayCatalogPackageEvidence {
+    ExplicitWindows,
+    ExplicitConsoleOnly,
+    Unknown,
+}
+
+#[derive(Debug)]
+struct DisplayCatalogCandidate {
+    game: OwnedGame,
+    normalized_title: String,
+    package_evidence: DisplayCatalogPackageEvidence,
+}
+
+#[derive(Debug)]
+struct DisplayCatalogSelection {
+    games: Vec<OwnedGame>,
+    excluded_console_only: usize,
+    excluded_unknown_duplicates: usize,
+}
+
+fn deserialize_optional_string<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let value = Option::<serde_json::Value>::deserialize(deserializer)?;
+    Ok(value.and_then(|value| value.as_str().map(str::to_string)))
 }
 
 fn start_xbox_callback_server(app: tauri::AppHandle) {
@@ -654,6 +781,538 @@ pub async fn install_xbox_game(pfn: String) -> Result<(), String> {
     Ok(())
 }
 
+fn normalize_game_pass_language(value: Option<&str>) -> String {
+    let Some(value) = value.map(str::trim).filter(|value| !value.is_empty()) else {
+        return DEFAULT_GAME_PASS_LANGUAGE.to_string();
+    };
+    if value.len() > 35 || !value.is_ascii() {
+        return DEFAULT_GAME_PASS_LANGUAGE.to_string();
+    }
+
+    let segments = value.split('-').collect::<Vec<_>>();
+    let Some(primary_language) = segments.first() else {
+        return DEFAULT_GAME_PASS_LANGUAGE.to_string();
+    };
+    if !(2..=3).contains(&primary_language.len())
+        || !primary_language
+            .chars()
+            .all(|character| character.is_ascii_alphabetic())
+        || segments.iter().skip(1).any(|segment| {
+            segment.is_empty()
+                || segment.len() > 8
+                || !segment
+                    .chars()
+                    .all(|character| character.is_ascii_alphanumeric())
+        })
+    {
+        return DEFAULT_GAME_PASS_LANGUAGE.to_string();
+    }
+
+    segments
+        .into_iter()
+        .enumerate()
+        .map(|(index, segment)| {
+            if index == 0 {
+                segment.to_ascii_lowercase()
+            } else if segment.len() == 4
+                && segment
+                    .chars()
+                    .all(|character| character.is_ascii_alphabetic())
+            {
+                let mut characters = segment.chars();
+                let first = characters.next().unwrap_or_default().to_ascii_uppercase();
+                format!("{first}{}", characters.as_str().to_ascii_lowercase())
+            } else if segment.len() == 2
+                && segment
+                    .chars()
+                    .all(|character| character.is_ascii_alphabetic())
+            {
+                segment.to_ascii_uppercase()
+            } else {
+                segment.to_ascii_lowercase()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("-")
+}
+
+fn normalize_game_pass_market(value: Option<&str>) -> String {
+    value
+        .map(str::trim)
+        .filter(|value| {
+            value.len() == 2
+                && value
+                    .chars()
+                    .all(|character| character.is_ascii_alphabetic())
+        })
+        .map(str::to_ascii_uppercase)
+        .unwrap_or_else(|| DEFAULT_GAME_PASS_MARKET.to_string())
+}
+
+fn normalize_microsoft_store_product_id(value: &str) -> Option<String> {
+    let value = value.trim();
+    if value.len() != MICROSOFT_STORE_PRODUCT_ID_LENGTH
+        || !value
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric())
+    {
+        return None;
+    }
+
+    Some(value.to_ascii_uppercase())
+}
+
+fn parse_game_pass_catalog_ids(payload: &str) -> Result<Vec<String>, String> {
+    let items: Vec<GamePassCatalogItem> =
+        serde_json::from_str(payload).map_err(|error| format!("invalid SIGL JSON: {error}"))?;
+    let mut seen = HashSet::new();
+    let mut product_ids = Vec::new();
+
+    for item in items {
+        let Some(serde_json::Value::String(raw_id)) = item.id else {
+            continue;
+        };
+        let Some(product_id) = normalize_microsoft_store_product_id(&raw_id) else {
+            continue;
+        };
+        if seen.insert(product_id.clone()) {
+            product_ids.push(product_id);
+        }
+    }
+
+    if product_ids.is_empty() {
+        return Err("SIGL response contained no valid Microsoft Store product IDs".to_string());
+    }
+
+    Ok(product_ids)
+}
+
+fn parse_display_catalog_products(payload: &str) -> Result<Vec<DisplayCatalogProduct>, String> {
+    serde_json::from_str::<DisplayCatalogResponse>(payload)
+        .map(|response| response.products)
+        .map_err(|error| format!("invalid display catalog JSON: {error}"))
+}
+
+fn normalize_catalog_asset_url(value: &str) -> Option<String> {
+    let value = value.trim();
+    if value.is_empty()
+        || value
+            .chars()
+            .any(|character| character.is_whitespace() || character.is_control())
+    {
+        return None;
+    }
+
+    let lowercase = value.to_ascii_lowercase();
+    let remainder = if value.starts_with("//") {
+        &value[2..]
+    } else if lowercase.starts_with("https://") {
+        &value[8..]
+    } else if lowercase.starts_with("http://") {
+        &value[7..]
+    } else {
+        return None;
+    };
+
+    if remainder.is_empty() || remainder.starts_with('/') || remainder.contains('\\') {
+        return None;
+    }
+
+    Some(format!("https://{remainder}"))
+}
+
+fn find_catalog_image_url(
+    properties: &[DisplayCatalogLocalizedProperties],
+    purposes: &[&str],
+) -> Option<String> {
+    for purpose in purposes {
+        for property in properties {
+            for image in &property.images {
+                if !image
+                    .image_purpose
+                    .as_deref()
+                    .is_some_and(|candidate| candidate.eq_ignore_ascii_case(purpose))
+                {
+                    continue;
+                }
+                if let Some(url) = image.uri.as_deref().and_then(normalize_catalog_asset_url) {
+                    return Some(url);
+                }
+            }
+        }
+    }
+
+    None
+}
+
+fn display_catalog_package_evidence(
+    product: &DisplayCatalogProduct,
+) -> DisplayCatalogPackageEvidence {
+    let packages = product
+        .display_sku_availabilities
+        .iter()
+        .filter_map(|availability| availability.sku.as_ref())
+        .filter_map(|sku| sku.properties.as_ref())
+        .flat_map(|properties| properties.packages.iter())
+        .collect::<Vec<_>>();
+
+    if packages.is_empty() {
+        return DisplayCatalogPackageEvidence::Unknown;
+    }
+
+    if packages
+        .iter()
+        .filter_map(|package| package.package_format.as_deref())
+        .map(str::trim)
+        .filter(|package_format| !package_format.is_empty())
+        .any(|package_format| !package_format.eq_ignore_ascii_case("XVC"))
+    {
+        return DisplayCatalogPackageEvidence::ExplicitWindows;
+    }
+
+    if packages.iter().all(|package| {
+        package
+            .package_format
+            .as_deref()
+            .map(str::trim)
+            .is_some_and(|package_format| package_format.eq_ignore_ascii_case("XVC"))
+    }) {
+        return DisplayCatalogPackageEvidence::ExplicitConsoleOnly;
+    }
+
+    DisplayCatalogPackageEvidence::Unknown
+}
+
+fn normalize_display_catalog_title(value: &str) -> String {
+    let mut title = value.trim().to_lowercase();
+    for suffix in [
+        " (windows 11)",
+        " (windows 10)",
+        " (windows)",
+        " (pc)",
+        " for windows 11",
+        " for windows 10",
+        " for windows",
+        " - windows 11",
+        " - windows 10",
+        " - windows",
+    ] {
+        if title.ends_with(suffix) {
+            title.truncate(title.len() - suffix.len());
+            break;
+        }
+    }
+
+    let compact = title
+        .chars()
+        .filter(|character| character.is_alphanumeric())
+        .collect::<String>();
+    if compact.is_empty() {
+        title.trim().to_string()
+    } else {
+        compact
+    }
+}
+
+fn map_display_catalog_product(product: DisplayCatalogProduct) -> Option<OwnedGame> {
+    let product_id = product
+        .product_id
+        .as_deref()
+        .and_then(normalize_microsoft_store_product_id)?;
+    let title = product.localized_properties.iter().find_map(|property| {
+        property
+            .product_title
+            .as_deref()
+            .map(str::trim)
+            .filter(|title| !title.is_empty())
+            .map(str::to_string)
+    })?;
+    let cover_url = find_catalog_image_url(&product.localized_properties, &["Poster", "BoxArt"]);
+    let logo_url = find_catalog_image_url(&product.localized_properties, &["Logo"]);
+
+    Some(OwnedGame {
+        id: format!("xbox-{product_id}"),
+        external_id: Some(product_id),
+        title,
+        description: String::new(),
+        cover_url,
+        logo_url,
+        icon_url: None,
+        playtime_minutes: None,
+        last_played_at: None,
+        cloud_gaming_url: None,
+    })
+}
+
+fn map_display_catalog_candidate(
+    product: DisplayCatalogProduct,
+) -> Option<DisplayCatalogCandidate> {
+    let package_evidence = display_catalog_package_evidence(&product);
+    let game = map_display_catalog_product(product)?;
+    let normalized_title = normalize_display_catalog_title(&game.title);
+
+    Some(DisplayCatalogCandidate {
+        game,
+        normalized_title,
+        package_evidence,
+    })
+}
+
+fn select_pc_display_catalog_games(
+    candidates: Vec<DisplayCatalogCandidate>,
+) -> DisplayCatalogSelection {
+    let explicit_windows_titles = candidates
+        .iter()
+        .filter(|candidate| {
+            candidate.package_evidence == DisplayCatalogPackageEvidence::ExplicitWindows
+        })
+        .map(|candidate| candidate.normalized_title.clone())
+        .collect::<HashSet<_>>();
+    let mut games = Vec::with_capacity(candidates.len());
+    let mut excluded_console_only = 0usize;
+    let mut excluded_unknown_duplicates = 0usize;
+
+    for candidate in candidates {
+        match candidate.package_evidence {
+            DisplayCatalogPackageEvidence::ExplicitConsoleOnly => {
+                excluded_console_only = excluded_console_only.saturating_add(1);
+            }
+            DisplayCatalogPackageEvidence::Unknown
+                if explicit_windows_titles.contains(&candidate.normalized_title) =>
+            {
+                excluded_unknown_duplicates = excluded_unknown_duplicates.saturating_add(1);
+            }
+            DisplayCatalogPackageEvidence::ExplicitWindows
+            | DisplayCatalogPackageEvidence::Unknown => games.push(candidate.game),
+        }
+    }
+
+    DisplayCatalogSelection {
+        games,
+        excluded_console_only,
+        excluded_unknown_duplicates,
+    }
+}
+
+fn response_body_excerpt(body: &str) -> String {
+    let condensed = body.split_whitespace().collect::<Vec<_>>().join(" ");
+    if condensed.is_empty() {
+        return "empty response body".to_string();
+    }
+
+    let mut characters = condensed.chars();
+    let mut excerpt = characters.by_ref().take(240).collect::<String>();
+    if characters.next().is_some() {
+        excerpt.push_str("...");
+    }
+    excerpt
+}
+
+fn summarize_batch_errors(errors: &[String]) -> String {
+    let mut summary = errors
+        .iter()
+        .take(3)
+        .cloned()
+        .collect::<Vec<_>>()
+        .join(" | ");
+    if errors.len() > 3 {
+        summary.push_str(&format!(" | and {} more batch error(s)", errors.len() - 3));
+    }
+    summary
+}
+
+fn require_complete_display_catalog_batches(errors: &[String]) -> Result<(), String> {
+    if errors.is_empty() {
+        return Ok(());
+    }
+
+    Err(format!(
+        "Microsoft display catalog remained incomplete after one retry for {} batch(es): {}",
+        errors.len(),
+        summarize_batch_errors(errors)
+    ))
+}
+
+async fn fetch_display_catalog_batch(
+    client: &reqwest::Client,
+    product_ids: &[String],
+    language: &str,
+    market: &str,
+    batch_number: usize,
+    batch_count: usize,
+) -> Result<Vec<DisplayCatalogProduct>, String> {
+    let joined_ids = product_ids.join(",");
+    let response = client
+        .get(DISPLAY_CATALOG_ENDPOINT)
+        .query(&[
+            ("bigIds", joined_ids.as_str()),
+            ("market", market),
+            ("languages", language),
+            ("MS-CV", "OGLauncher.1"),
+        ])
+        .header(ACCEPT_LANGUAGE, language)
+        .send()
+        .await
+        .map_err(|error| {
+            format!("display catalog batch {batch_number}/{batch_count} request failed: {error}")
+        })?;
+    let status = response.status();
+    let body = response.text().await.map_err(|error| {
+        format!(
+            "display catalog batch {batch_number}/{batch_count} body could not be read: {error}"
+        )
+    })?;
+
+    if !status.is_success() {
+        return Err(format!(
+            "display catalog batch {batch_number}/{batch_count} returned HTTP {status}: {}",
+            response_body_excerpt(&body)
+        ));
+    }
+
+    parse_display_catalog_products(&body).map_err(|error| {
+        format!("display catalog batch {batch_number}/{batch_count} could not be parsed: {error}")
+    })
+}
+
+#[tauri::command]
+pub async fn fetch_game_pass_catalog(
+    language: Option<String>,
+    market: Option<String>,
+) -> Result<Vec<OwnedGame>, String> {
+    let language = normalize_game_pass_language(language.as_deref());
+    let market = normalize_game_pass_market(market.as_deref());
+    let client = crate::commands::http::shared_http_client();
+    let response = client
+        .get(GAME_PASS_SIGL_ENDPOINT)
+        .query(&[
+            ("id", GAME_PASS_PC_SIGL_ID),
+            ("language", language.as_str()),
+            ("market", market.as_str()),
+        ])
+        .header(ACCEPT_LANGUAGE, language.as_str())
+        .send()
+        .await
+        .map_err(|error| format!("PC Game Pass SIGL request failed: {error}"))?;
+    let status = response.status();
+    let body = response
+        .text()
+        .await
+        .map_err(|error| format!("PC Game Pass SIGL response could not be read: {error}"))?;
+
+    if !status.is_success() {
+        return Err(format!(
+            "PC Game Pass SIGL returned HTTP {status}: {}",
+            response_body_excerpt(&body)
+        ));
+    }
+
+    let product_ids = parse_game_pass_catalog_ids(&body)
+        .map_err(|error| format!("PC Game Pass SIGL could not be parsed: {error}"))?;
+    let requested_product_ids = product_ids.iter().cloned().collect::<HashSet<_>>();
+    let batch_count =
+        (product_ids.len() + DISPLAY_CATALOG_BATCH_SIZE - 1) / DISPLAY_CATALOG_BATCH_SIZE;
+    let mut products_by_id = HashMap::new();
+    let mut batch_errors = Vec::new();
+
+    for (batch_index, product_id_batch) in
+        product_ids.chunks(DISPLAY_CATALOG_BATCH_SIZE).enumerate()
+    {
+        let batch_number = batch_index + 1;
+        let products = match fetch_display_catalog_batch(
+            client,
+            product_id_batch,
+            &language,
+            &market,
+            batch_number,
+            batch_count,
+        )
+        .await
+        {
+            Ok(products) => Ok(products),
+            Err(first_error) => {
+                eprintln!(
+                    "[Xbox] Retrying PC Game Pass display catalog batch {batch_number}/{batch_count} after: {first_error}"
+                );
+                fetch_display_catalog_batch(
+                    client,
+                    product_id_batch,
+                    &language,
+                    &market,
+                    batch_number,
+                    batch_count,
+                )
+                .await
+                .map_err(|retry_error| format!("{first_error} | retry failed: {retry_error}"))
+            }
+        };
+
+        match products {
+            Ok(products) => {
+                for product in products {
+                    let Some(candidate) = map_display_catalog_candidate(product) else {
+                        continue;
+                    };
+                    let Some(product_id) = candidate.game.external_id.clone() else {
+                        continue;
+                    };
+                    if requested_product_ids.contains(&product_id) {
+                        products_by_id.entry(product_id).or_insert(candidate);
+                    }
+                }
+            }
+            Err(error) => batch_errors.push(error),
+        }
+    }
+
+    require_complete_display_catalog_batches(&batch_errors)?;
+
+    let mut candidates = Vec::with_capacity(products_by_id.len());
+    for product_id in &product_ids {
+        if let Some(candidate) = products_by_id.remove(product_id) {
+            candidates.push(candidate);
+        }
+    }
+    let mapped_product_count = candidates.len();
+    let selection = select_pc_display_catalog_games(candidates);
+    let games = selection.games;
+
+    if games.is_empty() {
+        let error_summary = if batch_errors.is_empty() {
+            String::new()
+        } else {
+            format!(" Batch errors: {}", summarize_batch_errors(&batch_errors))
+        };
+        return Err(format!(
+            "Microsoft display catalog returned no usable PC Game Pass products for {} valid product IDs.{error_summary}",
+            product_ids.len()
+        ));
+    }
+
+    let excluded_product_count = selection
+        .excluded_console_only
+        .saturating_add(selection.excluded_unknown_duplicates);
+    if excluded_product_count > 0 {
+        println!(
+            "[Xbox] PC Game Pass catalog excluded {} explicit console-only product(s) and {} ambiguous duplicate product(s).",
+            selection.excluded_console_only, selection.excluded_unknown_duplicates
+        );
+    }
+
+    let missing_product_count = product_ids.len().saturating_sub(mapped_product_count);
+    if missing_product_count > 0 || !batch_errors.is_empty() {
+        eprintln!(
+            "[Xbox] PC Game Pass catalog loaded partially: {} game(s), {} missing product(s), {} failed batch(es). {}",
+            games.len(),
+            missing_product_count,
+            batch_errors.len(),
+            summarize_batch_errors(&batch_errors)
+        );
+    }
+
+    Ok(games)
+}
+
 #[derive(Deserialize, Debug)]
 #[allow(non_snake_case)]
 struct XboxAchievementsResponse {
@@ -971,6 +1630,294 @@ mod tests {
 
     fn hints(values: &[&str]) -> HashSet<String> {
         values.iter().map(|value| value.to_lowercase()).collect()
+    }
+
+    #[test]
+    fn normalizes_supported_game_pass_locales() {
+        assert_eq!(normalize_game_pass_language(Some(" de-de ")), "de-DE");
+        assert_eq!(
+            normalize_game_pass_language(Some("zh-hans-cn")),
+            "zh-Hans-CN"
+        );
+        assert_eq!(normalize_game_pass_language(Some("es-419")), "es-419");
+        assert_eq!(normalize_game_pass_market(Some("de")), "DE");
+        assert_eq!(normalize_game_pass_market(Some(" gb ")), "GB");
+    }
+
+    #[test]
+    fn invalid_game_pass_locales_use_safe_fallbacks() {
+        for language in [
+            None,
+            Some(""),
+            Some("english"),
+            Some("en_US"),
+            Some("en--US"),
+        ] {
+            assert_eq!(
+                normalize_game_pass_language(language),
+                DEFAULT_GAME_PASS_LANGUAGE
+            );
+        }
+        for market in [None, Some(""), Some("USA"), Some("D3"), Some("U$ ")] {
+            assert_eq!(normalize_game_pass_market(market), DEFAULT_GAME_PASS_MARKET);
+        }
+    }
+
+    #[test]
+    fn parses_and_deduplicates_game_pass_sigl_product_ids() {
+        let payload = r#"[
+            {"siglId":"fdd9e2a7-0fee-49f6-ad69-4354098401ff","title":"All PC Games"},
+            {"id":"9npdn9r45jx4"},
+            {"id":" 9NPDN9R45JX4 "},
+            {"id":"CFQ7TTC0KHS0"},
+            {"id":"9NPDN9R45JX!"},
+            {"id":"short"},
+            {"id":42},
+            {"id":null}
+        ]"#;
+
+        assert_eq!(
+            parse_game_pass_catalog_ids(payload).unwrap(),
+            vec!["9NPDN9R45JX4", "CFQ7TTC0KHS0"]
+        );
+    }
+
+    #[test]
+    fn rejects_sigl_payload_without_valid_product_ids() {
+        let error = parse_game_pass_catalog_ids(
+            r#"[{"title":"metadata"},{"id":"not-a-product"},{"id":null}]"#,
+        )
+        .unwrap_err();
+
+        assert!(error.contains("no valid Microsoft Store product IDs"));
+    }
+
+    #[test]
+    fn normalizes_catalog_asset_urls_to_https() {
+        assert_eq!(
+            normalize_catalog_asset_url(" //store-images.s-microsoft.com/poster ").as_deref(),
+            Some("https://store-images.s-microsoft.com/poster")
+        );
+        assert_eq!(
+            normalize_catalog_asset_url("HTTP://store-images.s-microsoft.com/logo").as_deref(),
+            Some("https://store-images.s-microsoft.com/logo")
+        );
+        assert_eq!(
+            normalize_catalog_asset_url("https://store-images.s-microsoft.com/box").as_deref(),
+            Some("https://store-images.s-microsoft.com/box")
+        );
+        assert_eq!(normalize_catalog_asset_url("javascript:alert(1)"), None);
+        assert_eq!(normalize_catalog_asset_url("//store images/poster"), None);
+        assert_eq!(normalize_catalog_asset_url("/relative/poster"), None);
+    }
+
+    #[test]
+    fn maps_display_catalog_product_with_poster_box_art_and_logo() {
+        let mut products = parse_display_catalog_products(
+            r#"{
+                "Products": [{
+                    "ProductId": "9npdn9r45jx4",
+                    "LocalizedProperties": [{
+                        "ProductTitle": "  1000xRESIST  ",
+                        "Images": [
+                            {"ImagePurpose":"BoxArt","Uri":"//store-images.s-microsoft.com/box"},
+                            {"ImagePurpose":"Poster","Uri":"//store-images.s-microsoft.com/poster"},
+                            {"ImagePurpose":"Logo","Uri":"http://store-images.s-microsoft.com/logo"}
+                        ]
+                    }]
+                }]
+            }"#,
+        )
+        .unwrap();
+
+        let game = map_display_catalog_product(products.remove(0)).unwrap();
+        assert_eq!(game.id, "xbox-9NPDN9R45JX4");
+        assert_eq!(game.external_id.as_deref(), Some("9NPDN9R45JX4"));
+        assert_eq!(game.title, "1000xRESIST");
+        assert_eq!(
+            game.cover_url.as_deref(),
+            Some("https://store-images.s-microsoft.com/poster")
+        );
+        assert_eq!(
+            game.logo_url.as_deref(),
+            Some("https://store-images.s-microsoft.com/logo")
+        );
+        assert_eq!(game.icon_url, None);
+        assert_eq!(game.playtime_minutes, None);
+        assert_eq!(game.last_played_at, None);
+        assert_eq!(game.cloud_gaming_url, None);
+    }
+
+    #[test]
+    fn mapping_falls_back_to_valid_box_art_and_skips_malformed_leaf_values() {
+        let mut products = parse_display_catalog_products(
+            r#"{
+                "products": [{
+                    "productId": "CFQ7TTC0KHS0",
+                    "localizedProperties": [{
+                        "productTitle": "Game Preview",
+                        "images": [
+                            {"imagePurpose":"Poster","uri":"data:image/png;base64,bad"},
+                            {"imagePurpose":"BoxArt","uri":"//store-images.s-microsoft.com/box-art"},
+                            {"imagePurpose":42,"uri":false}
+                        ]
+                    }]
+                }]
+            }"#,
+        )
+        .unwrap();
+
+        let game = map_display_catalog_product(products.remove(0)).unwrap();
+        assert_eq!(
+            game.cover_url.as_deref(),
+            Some("https://store-images.s-microsoft.com/box-art")
+        );
+        assert_eq!(game.logo_url, None);
+    }
+
+    #[test]
+    fn classifies_display_catalog_package_formats_conservatively() {
+        let products = parse_display_catalog_products(
+            r#"{
+                "Products": [
+                    {
+                        "ProductId": "C3B1V55CDL0C",
+                        "LocalizedProperties": [{"ProductTitle": "Console"}],
+                        "DisplaySkuAvailabilities": [{
+                            "Sku": {"Properties": {"Packages": [{"PackageFormat": "XVC"}]}}
+                        }]
+                    },
+                    {
+                        "ProductId": "9MXMZ39GVHPG",
+                        "LocalizedProperties": [{"ProductTitle": "Windows"}],
+                        "DisplaySkuAvailabilities": [{
+                            "Sku": {"Properties": {"Packages": [
+                                {"PackageFormat": "XVC"},
+                                {"PackageFormat": "MSIXVC"}
+                            ]}}
+                        }]
+                    },
+                    {
+                        "ProductId": "9NPDN9R45JX4",
+                        "LocalizedProperties": [{"ProductTitle": "Metadata poor"}]
+                    },
+                    {
+                        "ProductId": "9P8LR42PTRGJ",
+                        "LocalizedProperties": [{"ProductTitle": "Malformed metadata"}],
+                        "DisplaySkuAvailabilities": [{
+                            "Sku": {"Properties": {"Packages": [
+                                {"PackageFormat": "XVC"},
+                                {"PackageFormat": 42}
+                            ]}}
+                        }]
+                    }
+                ]
+            }"#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            display_catalog_package_evidence(&products[0]),
+            DisplayCatalogPackageEvidence::ExplicitConsoleOnly
+        );
+        assert_eq!(
+            display_catalog_package_evidence(&products[1]),
+            DisplayCatalogPackageEvidence::ExplicitWindows
+        );
+        assert_eq!(
+            display_catalog_package_evidence(&products[2]),
+            DisplayCatalogPackageEvidence::Unknown
+        );
+        assert_eq!(
+            display_catalog_package_evidence(&products[3]),
+            DisplayCatalogPackageEvidence::Unknown
+        );
+    }
+
+    #[test]
+    fn selects_pc_catalog_rows_without_dropping_unique_unknown_products() {
+        let products = parse_display_catalog_products(
+            r#"{
+                "Products": [
+                    {
+                        "ProductId": "C3B1V55CDL0C",
+                        "LocalizedProperties": [{"ProductTitle": "Brawlhalla"}],
+                        "DisplaySkuAvailabilities": [{
+                            "Sku": {"Properties": {"Packages": [{"PackageFormat": "XVC"}]}}
+                        }]
+                    },
+                    {
+                        "ProductId": "9MXMZ39GVHPG",
+                        "LocalizedProperties": [{"ProductTitle": "Brawlhalla"}],
+                        "DisplaySkuAvailabilities": [{
+                            "Sku": {"Properties": {"Packages": [{"PackageFormat": "MSIXVC"}]}}
+                        }]
+                    },
+                    {
+                        "ProductId": "9NLFKBTNP2VJ",
+                        "LocalizedProperties": [{"ProductTitle": "Watch Dogs®2"}]
+                    },
+                    {
+                        "ProductId": "9PCKZH7M40CK",
+                        "LocalizedProperties": [{"ProductTitle": "Watch Dogs®2 (Windows 11)"}],
+                        "DisplaySkuAvailabilities": [{
+                            "Sku": {"Properties": {"Packages": [{"PackageFormat": "MSIXVC"}]}}
+                        }]
+                    },
+                    {
+                        "ProductId": "9NPDN9R45JX4",
+                        "LocalizedProperties": [{"ProductTitle": "Unique metadata-poor game"}]
+                    },
+                    {
+                        "ProductId": "9NNM7PKZN3JF",
+                        "LocalizedProperties": [{"ProductTitle": "Unknown duplicate"}]
+                    },
+                    {
+                        "ProductId": "9NGLST31DG26",
+                        "LocalizedProperties": [{"ProductTitle": "Unknown duplicate"}]
+                    }
+                ]
+            }"#,
+        )
+        .unwrap();
+        let candidates = products
+            .into_iter()
+            .filter_map(map_display_catalog_candidate)
+            .collect::<Vec<_>>();
+
+        let selection = select_pc_display_catalog_games(candidates);
+        let product_ids = selection
+            .games
+            .iter()
+            .filter_map(|game| game.external_id.as_deref())
+            .collect::<Vec<_>>();
+
+        assert_eq!(selection.excluded_console_only, 1);
+        assert_eq!(selection.excluded_unknown_duplicates, 1);
+        assert_eq!(
+            product_ids,
+            vec![
+                "9MXMZ39GVHPG",
+                "9PCKZH7M40CK",
+                "9NPDN9R45JX4",
+                "9NNM7PKZN3JF",
+                "9NGLST31DG26"
+            ]
+        );
+    }
+
+    #[test]
+    fn rejects_catalog_when_a_retried_display_batch_still_fails() {
+        assert!(require_complete_display_catalog_batches(&[]).is_ok());
+
+        let error = require_complete_display_catalog_batches(&[
+            "display catalog batch 2/11 request failed: timeout | retry failed: timeout"
+                .to_string(),
+        ])
+        .unwrap_err();
+
+        assert!(error.contains("remained incomplete after one retry"));
+        assert!(error.contains("display catalog batch 2/11"));
     }
 
     #[test]

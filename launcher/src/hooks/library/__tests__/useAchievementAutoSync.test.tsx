@@ -9,7 +9,6 @@ import { useAchievementAutoSync } from "../useAchievementAutoSync";
 
 const providerState = vi.hoisted(() => ({
   ingestTrustedAchievements: vi.fn(),
-  emitAchievementPopup: vi.fn(),
   syncByProvider: new Map<string, ReturnType<typeof vi.fn>>(),
   updateAchievementProviderStatus: vi.fn(),
 }));
@@ -40,10 +39,6 @@ vi.mock("../../../lib/achievement-providers", () => ({
 vi.mock("../../../lib/launcher", () => ({
   updateAchievementProviderStatus: (...args: unknown[]) =>
     providerState.updateAchievementProviderStatus(...args),
-}));
-
-vi.mock("../../../lib/overlay", () => ({
-  emitAchievementPopup: (...args: unknown[]) => providerState.emitAchievementPopup(...args),
 }));
 
 vi.mock("../../../lib/supabase/achievements", () => ({
@@ -143,8 +138,6 @@ describe("useAchievementAutoSync", () => {
       unlockedCount: 0,
       xpDelta: 0,
     });
-    providerState.emitAchievementPopup.mockReset();
-    providerState.emitAchievementPopup.mockResolvedValue(undefined);
     providerState.syncByProvider.clear();
     providerState.updateAchievementProviderStatus.mockReset();
     providerState.updateAchievementProviderStatus.mockResolvedValue(undefined);
@@ -327,6 +320,38 @@ describe("useAchievementAutoSync", () => {
     expect(providerState.ingestTrustedAchievements).not.toHaveBeenCalled();
   });
 
+  it("persists a safe status while logging native achievement cache diagnostics", async () => {
+    const rawFailure =
+      "sync_local_game_achievements failed: No local ubisoft achievement cache found for Rainbow Six. Checked: C:\\Users\\Danie\\AppData\\Local\\Ubisoft\\635.json; +52 more";
+    const safeMessage =
+      "No readable Ubisoft achievement data was found on this PC. Launch the game through Ubisoft Connect, then try again.";
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const ubisoftGame = game({
+      id: "ubisoft-rainbow-six",
+      launcher: "ubisoft",
+      title: "Rainbow Six",
+    });
+    providerState.syncByProvider.set("ubisoft", vi.fn().mockRejectedValue(new Error(rawFailure)));
+
+    const { hook } = renderSyncHook(group([ubisoftGame]), [ubisoftGame]);
+
+    await waitFor(() => {
+      expect(providerState.updateAchievementProviderStatus).toHaveBeenCalledWith({
+        gameId: "ubisoft-rainbow-six",
+        status: expect.objectContaining({
+          message: safeMessage,
+          source: "ubisoft",
+          status: "failed",
+        }),
+      });
+    });
+    expect(hook.result.current.games[0]?.achievementProviderStatuses?.[0]?.message).toBe(
+      safeMessage,
+    );
+    expect(warnSpy).toHaveBeenCalledWith("[OG-Launcher] Auto achievement sync failed:", rawFailure);
+    warnSpy.mockRestore();
+  });
+
   it("auto-syncs providers even when local achievements already exist", async () => {
     const steamGame = game({
       id: "steam-1",
@@ -430,7 +455,7 @@ describe("useAchievementAutoSync", () => {
     });
   });
 
-  it("tracks concurrent loading by game id and emits a camelCase popup for a new unlock", async () => {
+  it("tracks concurrent loading by game id and keeps a new unlock in synced state", async () => {
     const steamGame = game({ id: "steam-1", launcher: "steam" });
     let resolveSync: (response: SyncGameAchievementsResponse) => void = () => undefined;
     providerState.syncByProvider.set(
@@ -455,12 +480,10 @@ describe("useAchievementAutoSync", () => {
 
     await waitFor(() => {
       expect(hook.result.current.sync.syncingAchievementGameIds.has("steam-1")).toBe(false);
-      expect(providerState.emitAchievementPopup).toHaveBeenCalledWith({
-        achievementName: "First Win",
-        description: "",
-        gameTitle: "Game",
-        iconUrl: null,
-        rarity: "",
+      expect(hook.result.current.games[0]?.achievements?.[0]).toMatchObject({
+        id: "ach-1",
+        name: "First Win",
+        unlockedAt: "2026-01-01T00:00:00.000Z",
       });
     });
   });

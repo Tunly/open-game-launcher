@@ -10,6 +10,7 @@ import {
   getGameIconCandidates,
   formatLastPlayed,
   formatPlayTime,
+  normalizeLauncherKey,
 } from "../lib/formatters";
 import { createVerifyAchievementCacheReadiness } from "../lib/achievement-cache-readiness";
 import { createVerifyAchievementHostedHydrationContract } from "../lib/achievement-hosted-hydration-contract";
@@ -19,6 +20,14 @@ import { hydrateGamesWithRemoteAchievements } from "../lib/supabase/achievements
 import type { Game } from "../lib/types";
 import { PlatformSourceIcon } from "../components/library/PlatformIcons";
 import { useCurrentUser } from "../hooks/useCurrentUser";
+import {
+  getAchievementProviderDisplayName,
+  getAchievementProviderStatusMessage,
+} from "../lib/achievement-status";
+import {
+  hasPendingAchievementArchiveSync,
+  syncAchievementArchiveGames,
+} from "../lib/achievement-archive-sync";
 
 type GameTab = "recent" | "all" | "perfect" | "unfinished";
 type GameSort = "playtime" | "name" | "completion";
@@ -152,7 +161,7 @@ function ProviderStatusBadges({ group }: { group: GameGroup }) {
             provider.status,
             provider.stability,
           )}`}
-          title={provider.message}
+          title={getAchievementProviderStatusMessage(provider)}
         >
           {provider.source}: {provider.status}
         </span>
@@ -205,6 +214,14 @@ function GameRow({ row }: { row: GameAchievementRow }) {
   );
   const libraryGameId = group.achievementBasisGameId ?? group.primaryGame.id;
   const actionLabel = attentionStatus?.status === "failed" ? "Retry in Library" : "Open in Library";
+  const attentionMessage = attentionStatus
+    ? getAchievementProviderStatusMessage(attentionStatus)
+    : null;
+  const attentionProviderLabel = attentionStatus
+    ? getAchievementProviderDisplayName(attentionStatus.source)
+    : "Achievement";
+  const achievementProgressLabel =
+    total > 0 ? `${unlocked}/${total}` : attentionStatus ? "Unavailable" : "Not synced";
 
   return (
     <article className="border-4 border-black bg-[#f6edd8] shadow-[5px_5px_0_#171411]">
@@ -263,7 +280,7 @@ function GameRow({ row }: { row: GameAchievementRow }) {
                   Achievements
                 </p>
                 <p className="neo-copy text-[10px] font-black uppercase text-[#171411]">
-                  {unlocked}/{total}
+                  {achievementProgressLabel}
                 </p>
               </div>
               <ProgressBar value={completion} />
@@ -286,12 +303,16 @@ function GameRow({ row }: { row: GameAchievementRow }) {
           ) : null}
 
           {total === 0 || attentionStatus ? (
-            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-2 border-black bg-[#fbf4e7] px-2 py-1.5">
-              <p className="neo-copy min-w-0 flex-1 text-[9px] font-black uppercase leading-4 text-[#5b403f]">
-                {attentionStatus?.message ?? "No achievements have been synced for this game yet."}
+            <div
+              aria-label={`${attentionProviderLabel} achievement sync unavailable`}
+              className="mt-3 grid gap-2 border-2 border-black bg-[#fbf4e7] px-2 py-1.5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end"
+              role="status"
+            >
+              <p className="neo-copy min-w-0 text-[9px] font-black uppercase leading-4 text-[#5b403f] [overflow-wrap:anywhere]">
+                {attentionMessage ?? "No achievements have been synced for this game yet."}
               </p>
               <Link
-                className="neo-copy shrink-0 border-2 border-black bg-[#b7102a] px-2 py-1 text-[9px] font-black uppercase text-white shadow-[2px_2px_0_#171411] hover:-translate-y-0.5"
+                className="neo-copy shrink-0 justify-self-start border-2 border-black bg-[#b7102a] px-2 py-1 text-[9px] font-black uppercase text-white shadow-[2px_2px_0_#171411] hover:-translate-y-0.5 sm:justify-self-end"
                 to={`/library?game=${encodeURIComponent(libraryGameId)}`}
               >
                 {actionLabel}
@@ -346,8 +367,11 @@ export function AchievementsPage() {
     verifyMode === "achievement-hosted-hydration-contract";
   const shouldSkipRemoteHydration =
     isAchievementCacheReadinessVerify || isAchievementHostedHydrationContractVerify;
+  const [localGames, setLocalGames] = useState<Game[] | null>(null);
   const [games, setGames] = useState<Game[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [isProviderSyncing, setIsProviderSyncing] = useState(false);
+  const [isHydrating, setIsHydrating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<GameTab>("all");
   const [sortMode, setSortMode] = useState<GameSort>("completion");
@@ -363,33 +387,45 @@ export function AchievementsPage() {
 
   useEffect(() => {
     let mounted = true;
-    if (isAuthLoading && !shouldSkipRemoteHydration) {
-      setGames([]);
-      setIsLoading(true);
-      return () => {
-        mounted = false;
-      };
-    }
-
+    setLocalGames(null);
     setGames([]);
     setError(null);
     setIsLoading(true);
+    setIsProviderSyncing(false);
     void (async () => {
       try {
-        const allGames = await listInstalledGames().catch((err) => {
+        const listedGames = await listInstalledGames().catch((err) => {
           if (shouldSkipRemoteHydration) {
             console.warn("[OG-Launcher] Achievement verify route using empty local list:", err);
             return [];
           }
           throw err;
         });
-        const hydratedGames = shouldSkipRemoteHydration
-          ? allGames
-          : await hydrateGamesWithRemoteAchievements(allGames).catch((err) => {
-              console.warn("[OG-Launcher] Remote achievement hydration skipped:", err);
-              return allGames;
+        const allGames = listedGames.map((game) => {
+          const launcher = normalizeLauncherKey(game.launcher, game.id);
+          return launcher === game.launcher ? game : { ...game, launcher };
+        });
+        if (mounted) {
+          setLocalGames(allGames);
+          setGames(allGames);
+        }
+
+        if (!shouldSkipRemoteHydration && hasPendingAchievementArchiveSync(allGames) && mounted) {
+          setIsProviderSyncing(true);
+          void syncAchievementArchiveGames(allGames)
+            .then((syncedGames) => {
+              if (mounted) {
+                setLocalGames(syncedGames);
+                setGames(syncedGames);
+              }
+            })
+            .catch((err) => {
+              console.warn("[OG-Launcher] Achievement provider refresh skipped:", err);
+            })
+            .finally(() => {
+              if (mounted) setIsProviderSyncing(false);
             });
-        if (mounted) setGames(hydratedGames);
+        }
       } catch (err) {
         if (mounted) setError(err instanceof Error ? err.message : String(err));
       } finally {
@@ -399,7 +435,38 @@ export function AchievementsPage() {
     return () => {
       mounted = false;
     };
-  }, [isAuthLoading, shouldSkipRemoteHydration, user?.id]);
+  }, [shouldSkipRemoteHydration]);
+
+  useEffect(() => {
+    if (!localGames) {
+      setIsHydrating(false);
+      return;
+    }
+
+    setGames(localGames);
+    const userId = user?.id ?? null;
+    if (shouldSkipRemoteHydration || isAuthLoading || !userId || localGames.length === 0) {
+      setIsHydrating(false);
+      return;
+    }
+
+    let mounted = true;
+    setIsHydrating(true);
+    void hydrateGamesWithRemoteAchievements(localGames, { userId })
+      .then((hydratedGames) => {
+        if (mounted) setGames(hydratedGames);
+      })
+      .catch((err) => {
+        console.warn("[OG-Launcher] Remote achievement hydration skipped:", err);
+      })
+      .finally(() => {
+        if (mounted) setIsHydrating(false);
+      });
+
+    return () => {
+      mounted = false;
+    };
+  }, [isAuthLoading, localGames, shouldSkipRemoteHydration, user?.id]);
 
   const rows = useMemo(
     () =>
@@ -550,6 +617,30 @@ export function AchievementsPage() {
           </div>
         ) : null}
 
+        {isHydrating ? (
+          <div
+            aria-label="Refreshing cloud achievements"
+            aria-live="polite"
+            className="neo-copy flex items-center gap-2 border-b-4 border-black bg-[#8cf5e4] px-4 py-2 text-[10px] font-black uppercase text-[#171411]"
+            role="status"
+          >
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            Cloud archive updating / Local games ready
+          </div>
+        ) : null}
+
+        {isProviderSyncing ? (
+          <div
+            aria-label="Refreshing provider achievements"
+            aria-live="polite"
+            className="neo-copy flex items-center gap-2 border-b-4 border-black bg-[#f6edd8] px-4 py-2 text-[10px] font-black uppercase text-[#171411]"
+            role="status"
+          >
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            Xbox / GOG / Epic / EA / Ubisoft / Battle.net archive updating
+          </div>
+        ) : null}
+
         <div className="border-b-4 border-black bg-[#f6edd8] px-4 pt-3">
           <div className="flex flex-wrap gap-4">
             {TABS.map((tab) => {
@@ -631,7 +722,11 @@ export function AchievementsPage() {
 
       <div className="mx-auto max-w-[980px] space-y-3">
         {isLoading ? (
-          <div className="grid min-h-[260px] place-items-center border-4 border-black bg-[#fbf4e7] shadow-[5px_5px_0_#171411]">
+          <div
+            aria-label="Loading local achievement games"
+            className="grid min-h-[260px] place-items-center border-4 border-black bg-[#fbf4e7] shadow-[5px_5px_0_#171411]"
+            role="status"
+          >
             <Loader2 className="h-9 w-9 animate-spin text-[#5b403f]" />
           </div>
         ) : visibleRows.length === 0 ? (

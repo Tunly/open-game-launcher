@@ -163,6 +163,31 @@ describe("useLibraryFilterPipeline", () => {
       undefined,
     );
     expect(filteredIds(result.current.filteredGroups)).toEqual(["alpha"]);
+    expect(filteredIds(result.current.libraryGroups)).toEqual(["alpha", "beta"]);
+  });
+
+  it("keeps the unfiltered total separate when the Game Pass catalog is hidden", () => {
+    const games = [
+      makeGame({ id: "steam-game", title: "Installed Game" }),
+      makeGame({
+        catalogSource: "pc_game_pass",
+        id: "xbox-9NBLGGH4R315",
+        launcher: "xbox",
+        status: "not_installed",
+        title: "Catalog Game",
+      }),
+    ];
+    const { result } = renderHook(() =>
+      useLibraryFilterPipeline(
+        makeOptions({
+          advancedFilters: { ...baseAdvanced, showGamePassCatalog: false },
+          installedGames: games,
+        }),
+      ),
+    );
+
+    expect(filteredIds(result.current.libraryGroups)).toEqual(["xbox-9NBLGGH4R315", "steam-game"]);
+    expect(filteredIds(result.current.filteredGroups)).toEqual(["steam-game"]);
   });
 
   it("filters by manual collection", () => {

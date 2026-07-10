@@ -8,7 +8,6 @@ import { handleInstallDeepLink } from "./deep-link-handlers";
 import { useDeepLink } from "../hooks/useDeepLink";
 import { useOverlayHotkey, useFpsHudHotkey } from "../lib/overlay";
 import { AppErrorBoundary } from "../components/ui/AppErrorBoundary";
-import { AchievementPopupLayer } from "../components/achievements/AchievementPopupLayer";
 import { completeDesktopStartup } from "../lib/startup-window";
 
 // Lazy-loaded for overlay/FPS windows only
@@ -138,7 +137,6 @@ export default function App() {
         <StartupWindowCoordinator />
         <MainWindowHandlers />
         <DeepLinkHandler />
-        <AchievementPopupLayer />
         <RouterProvider router={router} />
       </AuthProvider>
     </AppErrorBoundary>

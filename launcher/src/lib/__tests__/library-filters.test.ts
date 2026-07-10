@@ -40,6 +40,7 @@ const defaults: LibraryAdvancedFilters = {
   categories: [],
   sizeQuery: "",
   productCategories: ["game"],
+  showGamePassCatalog: true,
 };
 
 const context: LibraryFilterContext = {
@@ -107,11 +108,55 @@ describe("matchesSearchQuery", () => {
   it("returns false when nothing matches", () => {
     expect(matchesSearchQuery(makeGame({ title: "Foo" }), "bar")).toBe(false);
   });
+
+  it("makes catalog membership searchable after artwork is merged into an Xbox game", () => {
+    const game = makeGame({
+      catalogSource: "pc_game_pass",
+      description: "",
+      id: "xbox-installed",
+      launcher: "xbox",
+      title: "Forza Horizon 5",
+    });
+
+    expect(matchesSearchQuery(game, "game pass")).toBe(true);
+  });
 });
 
 describe("gamePassesAdvancedFilters", () => {
   it("passes a vanilla game with defaults", () => {
     expect(gamePassesAdvancedFilters(makeGame(), defaults, context)).toBe(true);
+  });
+
+  it("lets the user hide PC Game Pass catalog entries without changing other Xbox games", () => {
+    const catalogGame = makeGame({
+      catalogSource: "pc_game_pass",
+      externalId: "9NBLGGH4R315",
+      id: "xbox-9NBLGGH4R315",
+      launcher: "xbox",
+      status: "not_installed",
+    });
+    const ownedXboxGame = makeGame({ id: "xbox-installed", launcher: "xbox" });
+    const installedGamePassGame = makeGame({
+      catalogSource: "pc_game_pass",
+      externalId: "9NBLGGH4R315",
+      id: "xbox-9NBLGGH4R315",
+      launcher: "xbox",
+      status: "installed",
+    });
+    const linkedGamePassGame = makeGame({
+      catalogSource: "pc_game_pass",
+      externalId: "123456789",
+      id: "xbox-Microsoft.ForzaHorizon5_8wekyb3d8bbwe",
+      launcher: "xbox",
+      status: "not_installed",
+    });
+    const hiddenCatalog = { ...defaults, showGamePassCatalog: false };
+
+    expect(gamePassesAdvancedFilters(catalogGame, defaults, context)).toBe(true);
+    expect(gamePassesAdvancedFilters(catalogGame, hiddenCatalog, context)).toBe(false);
+    expect(gamePassesAdvancedFilters(ownedXboxGame, hiddenCatalog, context)).toBe(true);
+    expect(gamePassesAdvancedFilters(installedGamePassGame, hiddenCatalog, context)).toBe(true);
+    expect(gamePassesAdvancedFilters(linkedGamePassGame, hiddenCatalog, context)).toBe(true);
   });
 
   it("rejects games whose productCategory is not in the filter", () => {
@@ -265,5 +310,11 @@ describe("countActiveAdvancedFilters", () => {
       productCategories: ["dlc", "video"],
     };
     expect(countActiveAdvancedFilters(modified, defaults)).toBe(1);
+  });
+
+  it("counts hiding the default-visible Game Pass catalog as one active filter", () => {
+    expect(countActiveAdvancedFilters({ ...defaults, showGamePassCatalog: false }, defaults)).toBe(
+      1,
+    );
   });
 });

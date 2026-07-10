@@ -46,6 +46,51 @@ describe("achievement providers", () => {
     expect(syncableAchievementGames([xboxGame])).toEqual([xboxGame]);
   });
 
+  it("does not auto-sync achievements for catalog-only Xbox ProductIds", () => {
+    const catalogGame = game({
+      catalogSource: "pc_game_pass",
+      externalId: "9NBLGGH4R315",
+      id: "xbox-9NBLGGH4R315",
+      launcher: "xbox",
+      status: "not_installed",
+      title: "Game Pass Catalog Game",
+    });
+
+    expect(getXboxTitleHint(catalogGame)).toBeNull();
+    expect(achievementProviderStatusForGame(catalogGame)).toMatchObject({
+      provider: "xbox",
+      status: "unsupported",
+    });
+    expect(achievementProviderStatusForGame(catalogGame).message).toMatch(/catalog entry/i);
+    expect(syncableAchievementGames([catalogGame])).toEqual([]);
+  });
+
+  it("allows a marked Game Pass title when an installed variant supplies a usable hint", () => {
+    const installedCatalogGame = game({
+      catalogSource: "pc_game_pass",
+      externalId: "9NBLGGH4R315",
+      id: "xbox-Forza Horizon 5",
+      launcher: "xbox",
+      status: "installed",
+      title: "Forza Horizon 5",
+    });
+    const catalogGameWithTitleId = game({
+      catalogSource: "pc_game_pass",
+      externalId: "123456789",
+      id: "xbox-9NBLGGH4R315",
+      launcher: "xbox",
+      status: "not_installed",
+      title: "Forza Horizon 5",
+    });
+
+    expect(getXboxTitleHint(installedCatalogGame)).toBe("Forza Horizon 5");
+    expect(getXboxTitleHint(catalogGameWithTitleId)).toBe("123456789");
+    expect(syncableAchievementGames([installedCatalogGame, catalogGameWithTitleId])).toEqual([
+      installedCatalogGame,
+      catalogGameWithTitleId,
+    ]);
+  });
+
   it("keeps Steam unavailable until a Steam account is connected", () => {
     const steamGame = game({
       id: "steam-123",

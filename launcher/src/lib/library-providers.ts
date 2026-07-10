@@ -20,6 +20,7 @@ export function ownedGameToGame(og: OwnedGame): Game {
     id: og.id,
     externalId: og.externalId ?? undefined,
     title: og.title,
+    catalogSource: og.catalogSource ?? undefined,
     launchUri:
       og.id.startsWith("steam-owned-") && /^\d+$/.test(steamLaunchId)
         ? `steam://install/${steamLaunchId}`

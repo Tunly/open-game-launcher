@@ -1934,7 +1934,8 @@ export function SettingsPage() {
                       Xbox App / PC Game Pass
                     </h3>
                     <p className="neo-copy mb-4 text-[9px] font-bold uppercase leading-relaxed text-[#55504a]">
-                      Import your Xbox app, PC Game Pass, and Microsoft Store games.
+                      Link Xbox title history. The localized PC Game Pass catalog syncs
+                      automatically in your library.
                     </p>
                   </div>
                   <div>

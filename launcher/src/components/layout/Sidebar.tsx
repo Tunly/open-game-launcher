@@ -82,7 +82,7 @@ export function Sidebar({
               <Icon className="h-5 w-5" />
               <span className="xs:inline hidden xl:inline">{item.label}</span>
               {showBadge ? (
-                <span className="neo-copy app-shell-primary absolute -right-1 -top-1 flex h-5 min-w-5 items-center justify-center border-2 border-black px-1 text-[10px] font-black">
+                <span className="neo-copy app-shell-primary absolute -right-1 top-0 flex h-5 min-w-5 items-center justify-center border-2 border-black px-1 text-[10px] font-black">
                   {downloadCount}
                 </span>
               ) : null}

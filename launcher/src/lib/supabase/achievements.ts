@@ -73,6 +73,36 @@ type RemoteAchievementUnlock = {
   unlockedAt: string | null;
 };
 
+export type RemoteAchievementHydrationOptions = {
+  userId?: string | null;
+};
+
+const REMOTE_ACHIEVEMENT_HYDRATION_CONCURRENCY = 4;
+const REMOTE_ACHIEVEMENT_PROVIDERS = new Set([
+  "steam",
+  "xbox",
+  "gog",
+  "epic",
+  "ea",
+  "ubisoft",
+  "battlenet",
+]);
+
+function isRemoteAchievementTransportUnavailable(error: unknown) {
+  const message =
+    error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+  return (
+    message.includes("failed to fetch") ||
+    message.includes("fetch failed") ||
+    message.includes("networkerror") ||
+    message.includes("network request failed") ||
+    message.includes("connection refused") ||
+    message.includes("connection reset") ||
+    message.includes("timed out") ||
+    message.includes("timeout")
+  );
+}
+
 function getTrustedAchievementInvoker(client: unknown): SupabaseFunctionInvoker | null {
   const functions = (client as { functions?: { invoke?: SupabaseFunctionInvoker } }).functions;
   return typeof functions?.invoke === "function" ? functions.invoke.bind(functions) : null;
@@ -407,46 +437,85 @@ async function listRemoteAchievementsForGame(
   });
 }
 
-export async function hydrateGamesWithRemoteAchievements(games: Game[]): Promise<Game[]> {
+async function hydrateGameWithRemoteAchievements(
+  client: ReturnType<typeof getSupabaseClient>,
+  game: Game,
+  userId: string,
+): Promise<{ game: Game; transportUnavailable: boolean }> {
+  const provider = normalizeProvider(null, game);
+  if (!REMOTE_ACHIEVEMENT_PROVIDERS.has(provider)) {
+    return { game, transportUnavailable: false };
+  }
+
+  try {
+    const catalogGameId = await resolveCatalogGameId(game);
+    if (!catalogGameId) {
+      return { game, transportUnavailable: false };
+    }
+
+    const remoteAchievements = await listRemoteAchievementsForGame(
+      client,
+      userId,
+      catalogGameId,
+      provider,
+    );
+    if (remoteAchievements.length === 0) {
+      return { game, transportUnavailable: false };
+    }
+
+    return {
+      game: {
+        ...game,
+        achievements: mergeAchievements(game, remoteAchievements, provider),
+      },
+      transportUnavailable: false,
+    };
+  } catch (error) {
+    console.warn(`[OG-Launcher] Remote achievements unavailable for ${game.title}:`, error);
+    return {
+      game,
+      transportUnavailable: isRemoteAchievementTransportUnavailable(error),
+    };
+  }
+}
+
+export async function hydrateGamesWithRemoteAchievements(
+  games: Game[],
+  options: RemoteAchievementHydrationOptions = {},
+): Promise<Game[]> {
   if (!isSupabaseConfigured || games.length === 0) {
     return games;
   }
 
-  const userId = await getCurrentSessionUserId();
+  const userId = "userId" in options ? (options.userId ?? null) : await getCurrentSessionUserId();
   if (!userId) {
     return games;
   }
 
   const client = getSupabaseClient();
-  const hydratedGames: Game[] = [];
+  const hydratedGames = new Array<Game>(games.length);
+  let nextGameIndex = 0;
+  let transportUnavailable = false;
 
-  for (const game of games) {
-    try {
-      const provider = normalizeProvider(null, game);
-      const catalogGameId = await resolveCatalogGameId(game);
-      if (!catalogGameId || provider === "manual" || provider === "unknown") {
-        hydratedGames.push(game);
+  const hydrateNextGame = async () => {
+    while (nextGameIndex < games.length) {
+      const gameIndex = nextGameIndex;
+      nextGameIndex += 1;
+      if (transportUnavailable) {
+        hydratedGames[gameIndex] = games[gameIndex];
         continue;
       }
 
-      const remoteAchievements = await listRemoteAchievementsForGame(
-        client,
-        userId,
-        catalogGameId,
-        provider,
-      );
-      hydratedGames.push(game);
-      if (remoteAchievements.length > 0) {
-        hydratedGames[hydratedGames.length - 1] = {
-          ...game,
-          achievements: mergeAchievements(game, remoteAchievements, provider),
-        };
+      const result = await hydrateGameWithRemoteAchievements(client, games[gameIndex], userId);
+      hydratedGames[gameIndex] = result.game;
+      if (result.transportUnavailable) {
+        transportUnavailable = true;
       }
-    } catch (error) {
-      console.warn(`[OG-Launcher] Remote achievements unavailable for ${game.title}:`, error);
-      hydratedGames.push(game);
     }
-  }
+  };
+
+  const workerCount = Math.min(REMOTE_ACHIEVEMENT_HYDRATION_CONCURRENCY, games.length);
+  await Promise.all(Array.from({ length: workerCount }, hydrateNextGame));
 
   return hydratedGames;
 }

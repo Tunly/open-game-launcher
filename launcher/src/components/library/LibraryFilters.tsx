@@ -161,6 +161,43 @@ export function LibraryFilters({ isOpen, onClose }: LibraryFiltersProps) {
           })}
         </FilterSection>
 
+        <div className="border-[3px] border-black bg-[#f5eedf] shadow-[3px_3px_0_#171411]">
+          <div className="flex items-center justify-between gap-2 border-b-2 border-black bg-[#171411] px-2 py-1 text-[#fff9ed]">
+            <h4 className="neo-copy text-[10px] font-black uppercase tracking-[0.12em]">
+              Xbox // Catalog
+            </h4>
+            <span className="neo-copy bg-[#8cf5e4] px-1.5 py-0.5 text-[8px] font-black uppercase text-[#171411]">
+              PC Game Pass
+            </span>
+          </div>
+          <label className="flex cursor-pointer items-center gap-2 p-2.5">
+            <input
+              aria-label="Show PC Game Pass catalog"
+              type="checkbox"
+              checked={advancedFilters.showGamePassCatalog}
+              onChange={(event) =>
+                setAdvancedFilters({
+                  ...advancedFilters,
+                  showGamePassCatalog: event.currentTarget.checked,
+                })
+              }
+              className="h-4 w-4 shrink-0 border-2 border-black accent-[#087d6d]"
+            />
+            <span className="neo-copy min-w-0 flex-1 text-[10px] font-black uppercase tracking-[0.08em] text-[#171411]">
+              Show catalog games
+            </span>
+            <span
+              className={`neo-copy shrink-0 border border-black px-1.5 py-0.5 text-[8px] font-black uppercase shadow-[1px_1px_0_#171411] ${
+                advancedFilters.showGamePassCatalog
+                  ? "bg-[#087d6d] text-white"
+                  : "bg-[#efe6d4] text-[#5b403f]"
+              }`}
+            >
+              {advancedFilters.showGamePassCatalog ? "Visible" : "Hidden"}
+            </span>
+          </label>
+        </div>
+
         <FilterCheckboxSection
           title="Player Count"
           values={advancedFilters.players}

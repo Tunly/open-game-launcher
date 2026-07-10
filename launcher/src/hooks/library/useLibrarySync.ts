@@ -38,6 +38,7 @@ import {
   mergeBattlenetOwned,
   mergeEaOwned,
   mergeEpicOwned,
+  mergeGamePassCatalog,
   mergeGogOwned,
   mergeSteamOwned,
   mergeUbisoftOwned,
@@ -59,12 +60,32 @@ type LibraryInventoryChanged = {
 
 type GameStatusSetter = Dispatch<SetStateAction<string | null>>;
 
-function isLegacyGamePassCatalogGame(game: Game): boolean {
-  return game.id.toLowerCase().startsWith("gamepass-");
+function normalizeLegacyGamePassCatalogGame(game: Game): Game | null {
+  if (!game.id.toLowerCase().startsWith("gamepass-")) {
+    return game;
+  }
+
+  const productId = (game.externalId ?? game.id.slice("gamepass-".length)).trim().toUpperCase();
+  if (!/^[A-Z0-9]{12}$/.test(productId)) {
+    return null;
+  }
+
+  return {
+    ...game,
+    id: `xbox-${productId}`,
+    externalId: productId,
+    launcher: "xbox",
+    catalogSource: "pc_game_pass",
+    productCategory: "game",
+    cloudGamingUrl: undefined,
+  };
 }
 
-function withoutLegacyGamePassCatalog(games: Game[]): Game[] {
-  return games.filter((game) => !isLegacyGamePassCatalogGame(game));
+function normalizeLibrarySnapshotGames(games: Game[]): Game[] {
+  return games.flatMap((game) => {
+    const normalized = normalizeLegacyGamePassCatalogGame(game);
+    return normalized ? [normalized] : [];
+  });
 }
 
 function readLibrarySnapshot(): Game[] {
@@ -75,7 +96,7 @@ function readLibrarySnapshot(): Game[] {
     }
 
     const games = JSON.parse(saved);
-    return Array.isArray(games) ? withoutLegacyGamePassCatalog(games as Game[]) : [];
+    return Array.isArray(games) ? normalizeLibrarySnapshotGames(games as Game[]) : [];
   } catch {
     return [];
   }
@@ -85,7 +106,7 @@ function writeLibrarySnapshot(games: Game[]) {
   try {
     localStorage.setItem(
       STORAGE_KEYS.LIBRARY_SNAPSHOT,
-      JSON.stringify(withoutLegacyGamePassCatalog(games)),
+      JSON.stringify(normalizeLibrarySnapshotGames(games)),
     );
   } catch {
     // The native cache is authoritative; this snapshot only prevents UI flicker.
@@ -160,6 +181,7 @@ const PROVIDER_PIPELINE: ProviderMerger[] = [
   mergeEpicOwned,
   mergeUbisoftOwned,
   mergeXboxOwned,
+  mergeGamePassCatalog,
   mergeBattlenetOwned,
 ];
 const STARTUP_LIBRARY_REFRESH_DELAY_MS = 1_500;
@@ -251,7 +273,7 @@ export function useLibrarySync({ setStatusMessage }: UseLibrarySyncOptions): Use
         return;
       }
 
-      const visibleGames = withoutLegacyGamePassCatalog(games);
+      const visibleGames = normalizeLibrarySnapshotGames(games);
       setInstalledGames((current) =>
         areGameListsEqual(current, visibleGames) ? current : visibleGames,
       );

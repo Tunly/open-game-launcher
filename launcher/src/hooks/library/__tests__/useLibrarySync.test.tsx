@@ -27,6 +27,7 @@ const mocks = vi.hoisted(() => {
   const mergeEpicOwned = vi.fn();
   const mergeUbisoftOwned = vi.fn();
   const mergeXboxOwned = vi.fn();
+  const mergeGamePassCatalog = vi.fn();
   const mergeBattlenetOwned = vi.fn();
   const listenMock = vi.fn(() => Promise.resolve(() => undefined));
   const compressAndReadImage = vi.fn();
@@ -52,6 +53,7 @@ const mocks = vi.hoisted(() => {
     mergeEpicOwned,
     mergeUbisoftOwned,
     mergeXboxOwned,
+    mergeGamePassCatalog,
     mergeBattlenetOwned,
     listenMock,
     compressAndReadImage,
@@ -87,6 +89,7 @@ vi.mock("../../../library/providers", () => ({
   mergeEpicOwned: (...args: unknown[]) => mocks.mergeEpicOwned(...args),
   mergeUbisoftOwned: (...args: unknown[]) => mocks.mergeUbisoftOwned(...args),
   mergeXboxOwned: (...args: unknown[]) => mocks.mergeXboxOwned(...args),
+  mergeGamePassCatalog: (...args: unknown[]) => mocks.mergeGamePassCatalog(...args),
   mergeBattlenetOwned: (...args: unknown[]) => mocks.mergeBattlenetOwned(...args),
 }));
 
@@ -187,6 +190,7 @@ function setupDefaultMocks() {
   mocks.mergeEpicOwned.mockReset();
   mocks.mergeUbisoftOwned.mockReset();
   mocks.mergeXboxOwned.mockReset();
+  mocks.mergeGamePassCatalog.mockReset();
   mocks.mergeBattlenetOwned.mockReset();
   mocks.listenMock.mockReset();
   mocks.listenMock.mockImplementation(() => Promise.resolve(() => undefined));
@@ -215,6 +219,7 @@ function setupDefaultMocks() {
     mocks.mergeEpicOwned,
     mocks.mergeUbisoftOwned,
     mocks.mergeXboxOwned,
+    mocks.mergeGamePassCatalog,
     mocks.mergeBattlenetOwned,
   ]) {
     provider.mockImplementation(async (games: Game[]) => ({
@@ -399,10 +404,17 @@ describe("useLibrarySync", () => {
     }
   });
 
-  it("drops legacy Xbox cloud catalog entries from persisted snapshots", async () => {
+  it("migrates legacy Game Pass snapshots to installable Xbox product IDs", async () => {
     const persisted: Game[] = [
       makeGame({ id: "steam-1", title: "Persisted" }),
-      makeGame({ id: "gamepass-cloud", title: "Cloud Catalog Entry", launcher: "xbox" }),
+      makeGame({
+        id: "gamepass-9NBLGGH4R315",
+        externalId: "9NBLGGH4R315",
+        title: "Game Pass Entry",
+        launcher: "xbox",
+        cloudGamingUrl: "https://www.xbox.com/play",
+        status: "not_installed",
+      }),
     ];
     window.localStorage.setItem("launcher_library_snapshot", JSON.stringify(persisted));
     mocks.listInstalledGames.mockResolvedValue([]);
@@ -413,19 +425,45 @@ describe("useLibrarySync", () => {
       expect(result.current.installedGames.some((g) => g.id === "steam-1")).toBe(true);
     });
 
-    expect(result.current.installedGames.some((g) => g.id.startsWith("gamepass-"))).toBe(false);
+    expect(result.current.installedGames).toContainEqual(
+      expect.objectContaining({
+        id: "xbox-9NBLGGH4R315",
+        externalId: "9NBLGGH4R315",
+        launcher: "xbox",
+        catalogSource: "pc_game_pass",
+        productCategory: "game",
+        cloudGamingUrl: undefined,
+      }),
+    );
+    expect(result.current.installedGames.some((game) => game.id.startsWith("gamepass-"))).toBe(
+      false,
+    );
   });
 
-  it("does not require an Xbox cloud catalog fetch on startup", async () => {
-    const persisted: Game[] = [makeGame({ id: "steam-1", title: "Persisted" })];
-    window.localStorage.setItem("launcher_library_snapshot", JSON.stringify(persisted));
-    mocks.listInstalledGames.mockResolvedValue(persisted);
+  it("runs the Game Pass catalog provider when the initial library is empty", async () => {
+    mocks.mergeGamePassCatalog.mockImplementation(async (games: Game[]) => ({
+      games: [
+        ...games,
+        makeGame({
+          id: "xbox-9NBLGGH4R315",
+          externalId: "9NBLGGH4R315",
+          launcher: "xbox",
+          status: "not_installed",
+          title: "Catalog Game",
+        }),
+      ],
+      warnings: [],
+      statusMessage: null,
+    }));
 
     const { result } = renderLibrarySync();
 
     await waitFor(() => {
-      expect(result.current.installedGames.some((g) => g.id === "steam-1")).toBe(true);
+      expect(result.current.installedGames.some((game) => game.id === "xbox-9NBLGGH4R315")).toBe(
+        true,
+      );
     });
+    expect(mocks.mergeGamePassCatalog).toHaveBeenCalled();
   });
 
   it("uses refreshInstalledGames when forceRefresh is true via runAutomaticLibrarySync", async () => {

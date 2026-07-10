@@ -130,11 +130,15 @@ export function useLibraryFilterPipeline(
     selectedManualCollectionIds,
   ]);
 
-  const grouped = useMemo(() => groupGames(filteredVariantGames), [filteredVariantGames]);
+  const libraryGroups = useMemo(
+    () => sortGameGroups(groupGames(enrichedLibraryGames), sortOption),
+    [enrichedLibraryGames, sortOption],
+  );
 
-  const libraryGroups = useMemo(() => sortGameGroups(grouped, sortOption), [grouped, sortOption]);
-
-  const filteredGroups = libraryGroups;
+  const filteredGroups = useMemo(
+    () => sortGameGroups(groupGames(filteredVariantGames), sortOption),
+    [filteredVariantGames, sortOption],
+  );
 
   const selectedGroup = useMemo(
     () => filteredGroups.find((group) => group.id === selectedGroupId) ?? null,

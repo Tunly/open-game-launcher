@@ -2,6 +2,7 @@ import { act, renderHook } from "@testing-library/react";
 import { beforeEach, describe, expect, it } from "vitest";
 
 import { useLibraryFilters } from "../useLibraryFilters";
+import { STORAGE_KEYS } from "../../../lib/storage-keys";
 import type { Game } from "../../../lib/types";
 
 function makeGame(overrides: Partial<Game> = {}): Game {
@@ -39,7 +40,31 @@ describe("useLibraryFilters", () => {
     expect(result.current.activePlatformFilter).toBe("all");
     expect(result.current.isFilterPopupOpen).toBe(false);
     expect(result.current.sortOption).toBeDefined();
+    expect(result.current.advancedFilters.showGamePassCatalog).toBe(true);
     expect(result.current.hasActiveFilters).toBe(false);
+  });
+
+  it("hydrates a persisted hidden Game Pass catalog preference", () => {
+    window.localStorage.setItem(
+      STORAGE_KEYS.LIBRARY_FILTER_STATE,
+      JSON.stringify({ advancedFilters: { showGamePassCatalog: false } }),
+    );
+
+    const { result } = renderHook(() =>
+      useLibraryFilters({
+        installedGames: [],
+        customArtwork: {},
+        favorites: {},
+        hiddenGames: {},
+        customCategories: {},
+        manualCollections: {},
+        selectedManualCollectionName: null,
+        isDiscoveringGames: false,
+      }),
+    );
+
+    expect(result.current.advancedFilters.showGamePassCatalog).toBe(false);
+    expect(result.current.hasActiveFilters).toBe(true);
   });
 
   it("setSearchQuery updates the search query", () => {
@@ -117,12 +142,17 @@ describe("useLibraryFilters", () => {
     act(() => {
       result.current.setSearchQuery("hello");
       result.current.setActivePlatformFilter("windows");
+      result.current.setAdvancedFilters((current) => ({
+        ...current,
+        showGamePassCatalog: false,
+      }));
     });
     act(() => {
       result.current.resetAdvancedFilters();
     });
     expect(result.current.searchQuery).toBe("");
     expect(result.current.activePlatformFilter).toBe("all");
+    expect(result.current.advancedFilters.showGamePassCatalog).toBe(true);
     expect(result.current.hasActiveFilters).toBe(false);
   });
 

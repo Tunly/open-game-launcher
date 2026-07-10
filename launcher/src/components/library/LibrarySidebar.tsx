@@ -70,8 +70,9 @@ export function LibrarySidebar({
     hasActiveFiltersProp ??
     (Boolean(searchQuery) ||
       activePlatformFilter !== "all" ||
-      Object.values(advancedFilters).some((value) => {
+      Object.entries(advancedFilters).some(([key, value]) => {
         if (Array.isArray(value)) return value.length > 0;
+        if (key === "showGamePassCatalog" && typeof value === "boolean") return !value;
         if (typeof value === "boolean") return value;
         return value !== "";
       }));

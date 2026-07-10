@@ -58,6 +58,7 @@ function LibraryRowBase({
   const [isDragOver, setIsDragOver] = useState(false);
   const iconCandidates = getGameIconCandidates(game);
   const iconUrl = getGameAssetUrl(iconCandidates[iconCandidateIndex]);
+  const isInPcGamePass = group.variants.some((variant) => variant.catalogSource === "pc_game_pass");
 
   useEffect(() => {
     setIconCandidateIndex(0);
@@ -122,13 +123,22 @@ function LibraryRowBase({
       </span>
       <span className="flex min-w-0 flex-1 flex-col justify-center">
         <span className="block truncate text-[14px] font-black leading-none">{group.title}</span>
-        {group.variants.length > 1 ? (
-          <span
-            className={`mt-0.5 text-[9px] font-bold uppercase tracking-wider ${
-              selected ? "text-[#f4ead8]" : "text-[#139a82]"
-            }`}
-          >
-            {group.variants.length} Anbieter
+        {group.variants.length > 1 || isInPcGamePass ? (
+          <span className="mt-0.5 flex min-w-0 items-center gap-1">
+            {group.variants.length > 1 ? (
+              <span
+                className={`truncate text-[9px] font-bold uppercase tracking-wider ${
+                  selected ? "text-[#f4ead8]" : "text-[#087d6d]"
+                }`}
+              >
+                {group.variants.length} Anbieter
+              </span>
+            ) : null}
+            {isInPcGamePass ? (
+              <span className="neo-copy shrink-0 border border-black bg-[#8cf5e4] px-1 py-px text-[7px] font-black uppercase leading-none tracking-[0.08em] text-[#171411] shadow-[1px_1px_0_#171411]">
+                PC Game Pass
+              </span>
+            ) : null}
           </span>
         ) : null}
       </span>

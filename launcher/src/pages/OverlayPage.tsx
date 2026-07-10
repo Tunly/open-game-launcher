@@ -72,7 +72,6 @@ import type { Game, UnifiedAchievement } from "../lib/types";
 import type { RealtimeMetrics } from "../lib/types/performance";
 import type { FriendLink } from "../lib/types/friends";
 import type { NativeOverlaySettings } from "../lib/types/overlay";
-import { AchievementPopupLayer } from "../components/achievements/AchievementPopupLayer";
 
 interface AntiCheatInfo {
   name: string;
@@ -386,7 +385,6 @@ export function OverlayPage() {
       data-overlay-position={runtimeSettings.position}
       style={{ opacity: runtimeSettings.opacity }}
     >
-      <AchievementPopupLayer />
       {isChromeVisible && (
         <>
           <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle,rgba(255,249,237,0.11)_1px,transparent_1px)] bg-[length:10px_10px] opacity-40" />

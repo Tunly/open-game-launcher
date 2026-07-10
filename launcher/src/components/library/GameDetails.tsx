@@ -71,6 +71,7 @@ import {
   getSourceDisplayLabel,
 } from "../../lib/formatters";
 import { getGameAssetUrl, getGameBannerStyle } from "../../lib/assets";
+import { getAchievementProviderStatusMessage } from "../../lib/achievement-status";
 import {
   buildClientPathOverlayPreflight,
   type ClientPathOverlayPreflight,
@@ -817,9 +818,12 @@ export function GameDetails({
   );
   const variantsForActions =
     gameVariants.length > 0 ? gameVariants : enrichedSelectedGame ? [enrichedSelectedGame] : [];
-  const achievementAttentionMessage = achievementProviderStatuses.find(
+  const achievementAttentionStatus = achievementProviderStatuses.find(
     (provider) => provider.status !== "available",
-  )?.message;
+  );
+  const achievementAttentionMessage = achievementAttentionStatus
+    ? getAchievementProviderStatusMessage(achievementAttentionStatus)
+    : undefined;
   const variantIds = variantsForActions.map((game) => game.id);
   const variantIdKey = variantIds.join("|");
   const primaryArtworkGameId = artworkGameId ?? enrichedSelectedGame?.id;
@@ -1612,7 +1616,6 @@ export function GameDetails({
                 const shouldShowTextFallback =
                   !shouldHideHeroOverlay &&
                   gameSource !== "gog" &&
-                  gameSource !== "xbox" &&
                   !hasUbisoftBanner &&
                   !hasEpicBanner &&
                   (!logoSrc || !loadedLogoUrls.has(logoSrc));
@@ -3307,7 +3310,7 @@ export function GameDetails({
                                     ? "bg-[#b7102a] text-white"
                                     : "bg-[#fbf4e7] text-[#55504a]"
                               }`}
-                              title={provider.message}
+                              title={getAchievementProviderStatusMessage(provider)}
                             >
                               {provider.source}: {provider.status}
                             </span>

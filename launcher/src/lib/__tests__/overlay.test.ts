@@ -62,20 +62,4 @@ describe("overlay desktop commands", () => {
       enabled: true,
     });
   });
-
-  it("emits achievement popups with the native camelCase payload", async () => {
-    mocks.invoke.mockResolvedValue(undefined);
-    const payload = {
-      achievementName: "First Win",
-      description: "Win one match",
-      gameTitle: "Neon Arena",
-      iconUrl: null,
-      rarity: "4.2% rarity",
-    };
-
-    const { emitAchievementPopup } = await import("../overlay");
-    await emitAchievementPopup(payload);
-
-    expect(mocks.invoke).toHaveBeenCalledWith("emit_achievement_popup", { payload });
-  });
 });

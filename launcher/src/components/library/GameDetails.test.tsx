@@ -61,6 +61,27 @@ describe("GameDetails actions", () => {
     expect(screen.queryByText(/achievement auto-sync runs/i)).not.toBeInTheDocument();
   });
 
+  it("hides persisted achievement cache diagnostics", () => {
+    const safeMessage =
+      "No readable Ubisoft achievement data was found on this PC. Launch the game through Ubisoft Connect, then try again.";
+    renderGameDetails({
+      achievementProviderStatuses: [
+        {
+          message:
+            "sync_local_game_achievements failed: No local ubisoft achievement cache found for Local Test Game. Checked: C:\\Users\\Danie\\AppData\\Local\\Ubisoft\\635.json; +52 more",
+          source: "ubisoft",
+          stability: "unofficial",
+          status: "failed",
+        },
+      ],
+      launcher: "ubisoft",
+    });
+
+    expect(screen.getByText(safeMessage)).toBeInTheDocument();
+    expect(screen.queryByText(/sync_local_game_achievements|checked:/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/ubisoft: failed/i)).toHaveAttribute("title", safeMessage);
+  });
+
   it("does not render the red achievement progress bar", () => {
     const { container } = renderGameDetails({
       achievements: [
@@ -105,6 +126,21 @@ describe("GameDetails actions", () => {
     expect(screen.getByText("Not detected")).toBeInTheDocument();
     expect(screen.getByText("Unavailable")).toBeInTheDocument();
     expect(screen.queryByText("Up to date")).not.toBeInTheDocument();
+  });
+
+  it("shows an Xbox catalog title when no logo artwork is available", () => {
+    renderGameDetails({
+      catalogSource: "pc_game_pass",
+      id: "xbox-9NBLGGH4R315",
+      launcher: "xbox",
+      logoUrl: undefined,
+      status: "not_installed",
+      title: "Game Pass Catalog Title",
+    });
+
+    expect(
+      screen.getByRole("heading", { name: "Game Pass Catalog Title", level: 1 }),
+    ).toBeVisible();
   });
 });
 

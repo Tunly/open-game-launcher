@@ -33,6 +33,7 @@ export const initialAdvancedFilters: AdvancedFilters = {
   categories: [],
   sizeQuery: "",
   productCategories: [...PRODUCT_CATEGORIES],
+  showGamePassCatalog: true,
 };
 
 export function normalizeStringArray(value: unknown): string[] {
@@ -61,6 +62,10 @@ export function normalizeAdvancedFilters(value: unknown): AdvancedFilters {
       normalizeStringArray(stored.productCategories).length > 0
         ? normalizeStringArray(stored.productCategories)
         : initialAdvancedFilters.productCategories,
+    showGamePassCatalog:
+      typeof stored.showGamePassCatalog === "boolean"
+        ? stored.showGamePassCatalog
+        : initialAdvancedFilters.showGamePassCatalog,
   };
 }
 

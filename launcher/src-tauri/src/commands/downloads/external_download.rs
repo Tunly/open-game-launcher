@@ -15,6 +15,91 @@ use crate::commands::downloads::types::{
 };
 use crate::commands::downloads::utils::get_dir_size;
 
+const MICROSOFT_STORE_PRODUCT_ID_LENGTH: usize = 12;
+
+fn xbox_product_id_from_game_id(game_id: &str) -> Option<&str> {
+    let product_id = game_id
+        .strip_prefix("xbox-owned-")
+        .or_else(|| game_id.strip_prefix("xbox-"))?;
+
+    (product_id.len() == MICROSOFT_STORE_PRODUCT_ID_LENGTH
+        && product_id
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric())
+        && product_id
+            .chars()
+            .any(|character| character.is_ascii_digit()))
+    .then_some(product_id)
+}
+
+fn normalize_game_title(title: &str) -> Option<String> {
+    let mut normalized = String::new();
+    let mut pending_separator = false;
+
+    for character in title.chars().flat_map(char::to_lowercase) {
+        if character.is_alphanumeric() {
+            if pending_separator && !normalized.is_empty() {
+                normalized.push(' ');
+            }
+            normalized.push(character);
+            pending_separator = false;
+        } else if !normalized.is_empty() {
+            pending_separator = true;
+        }
+    }
+
+    for suffix in [
+        " for windows 10",
+        " for windows 11",
+        " for windows",
+        " windows 10",
+        " windows 11",
+        " windows",
+        " pc",
+    ] {
+        if let Some(without_suffix) = normalized.strip_suffix(suffix) {
+            normalized = without_suffix.trim_end().to_string();
+            break;
+        }
+    }
+
+    (!normalized.is_empty()).then_some(normalized)
+}
+
+fn xbox_install_matches_detected_games<'a, I>(
+    game_id: &str,
+    requested_title: Option<&str>,
+    detected_games: I,
+) -> bool
+where
+    I: IntoIterator<Item = (&'a str, &'a str)>,
+{
+    let clean_id = game_id.replace("-owned-", "-");
+    let normalized_requested_title = xbox_product_id_from_game_id(game_id)
+        .and_then(|_| requested_title)
+        .and_then(normalize_game_title)
+        .filter(|title| title != "unknown game");
+    let mut exact_id_match = false;
+    let mut normalized_title_match_count = 0usize;
+
+    for (detected_id, detected_title) in detected_games {
+        if detected_id == clean_id {
+            exact_id_match = true;
+        }
+
+        if normalized_requested_title
+            .as_ref()
+            .is_some_and(|requested| {
+                normalize_game_title(detected_title).as_ref() == Some(requested)
+            })
+        {
+            normalized_title_match_count = normalized_title_match_count.saturating_add(1);
+        }
+    }
+
+    exact_id_match || (normalized_requested_title.is_some() && normalized_title_match_count == 1)
+}
+
 /// Run the external-launcher tracking loop for a download. Polls Epic's
 /// Legendary process stderr, Steam's `appmanifest_*.acf` file, or
 /// `detect::scan_*_games` (EA / Ubisoft / Battle.net / Xbox) until the
@@ -42,6 +127,10 @@ pub async fn run_external_download(
         ExternalTracker::Epic(id) => Some(id.clone()),
         _ => None,
     };
+    let requested_title = get_download_manager()
+        .lock()
+        .ok()
+        .and_then(|guard| guard.get(&game_id).map(|download| download.title.clone()));
 
     let mut progress = 0;
 
@@ -318,9 +407,14 @@ pub async fn run_external_download(
                     .iter()
                     .any(|g| g.id == clean_id),
                 "Xbox App / PC Game Pass" | "Xbox App" | "Xbox Game Pass" => {
-                    crate::commands::games::detect::scan_xbox_games()
-                        .iter()
-                        .any(|g| g.id == clean_id)
+                    let detected_games = crate::commands::games::detect::scan_xbox_games();
+                    xbox_install_matches_detected_games(
+                        &game_id,
+                        requested_title.as_deref(),
+                        detected_games
+                            .iter()
+                            .map(|game| (game.id.as_str(), game.title.as_str())),
+                    )
                 }
                 _ => false,
             };
@@ -424,5 +518,59 @@ mod tests {
             Some("Legendary exited with status code 7.")
         );
         assert!(legendary_exit_error(true, Some(0)).is_none());
+    }
+
+    #[test]
+    fn xbox_product_install_matches_one_normalized_detected_title() {
+        for product_id in ["9NBLGGH4R315", "BSLX1RNXR6H7"] {
+            assert!(xbox_install_matches_detected_games(
+                &format!("xbox-{product_id}"),
+                Some("  Forza: Horizon 5™ (Windows 11) "),
+                [("xbox-Forza Horizon 5", "FORZA HORIZON 5 (PC)")],
+            ));
+        }
+    }
+
+    #[test]
+    fn xbox_title_fallback_only_applies_to_unique_product_id_matches() {
+        assert!(!xbox_install_matches_detected_games(
+            "xbox-HaloInfinite",
+            Some("Halo Infinite"),
+            [("xbox-Halo Infinite", "Halo Infinite")],
+        ));
+        assert!(!xbox_install_matches_detected_games(
+            "xbox-9NBLGGH4R315",
+            Some("Halo"),
+            [("xbox-Halo Infinite", "Halo Infinite")],
+        ));
+        assert!(!xbox_install_matches_detected_games(
+            "xbox-9NBLGGH4R315",
+            Some("Halo Infinite"),
+            [
+                ("xbox-Halo Infinite", "Halo Infinite"),
+                ("xbox-Halo-Infinite", "Halo: Infinite"),
+            ],
+        ));
+        assert!(!xbox_install_matches_detected_games(
+            "xbox-9NBLGGH4R315",
+            Some("Unknown Game"),
+            [("xbox-Unknown Game", "Unknown Game")],
+        ));
+    }
+
+    #[test]
+    fn xbox_exact_id_match_remains_authoritative() {
+        assert!(xbox_install_matches_detected_games(
+            "xbox-owned-Microsoft.ForzaHorizon5_8wekyb3d8bbwe",
+            Some("Different Title"),
+            [
+                (
+                    "xbox-Microsoft.ForzaHorizon5_8wekyb3d8bbwe",
+                    "Forza Horizon 5",
+                ),
+                ("xbox-Duplicate", "Different Title"),
+                ("xbox-AnotherDuplicate", "Different: Title"),
+            ],
+        ));
     }
 }

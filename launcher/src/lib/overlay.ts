@@ -1,7 +1,7 @@
 import { listen } from "@tauri-apps/api/event";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { useEffect } from "react";
-import type { AchievementPopupPayload, NativeOverlaySettings } from "./types/overlay";
+import type { NativeOverlaySettings } from "./types/overlay";
 
 export async function toggleInGameOverlay(): Promise<boolean> {
   return invoke("toggle_in_game_overlay");
@@ -23,11 +23,6 @@ export async function saveOverlaySettings(
   settings: NativeOverlaySettings,
 ): Promise<NativeOverlaySettings> {
   return invoke("save_overlay_settings", { settings });
-}
-
-export async function emitAchievementPopup(payload: AchievementPopupPayload): Promise<void> {
-  if (!isTauri()) return;
-  return invoke("emit_achievement_popup", { payload });
 }
 
 export function useOverlayHotkey() {
@@ -52,26 +47,6 @@ export function useOverlayHotkey() {
       if (unlisten) unlisten();
     };
   }, []);
-}
-
-export function useAchievementPopup(callback: (payload: AchievementPopupPayload) => void) {
-  useEffect(() => {
-    if (!isTauri()) {
-      return;
-    }
-
-    let unlisten: (() => void) | null = null;
-
-    listen("achievement-unlocked", (event) => {
-      callback(event.payload as AchievementPopupPayload);
-    }).then((fn) => {
-      unlisten = fn;
-    });
-
-    return () => {
-      if (unlisten) unlisten();
-    };
-  }, [callback]);
 }
 
 export function useFpsHudHotkey() {

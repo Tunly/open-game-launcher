@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 
 import type { LibraryAdvancedFilters } from "../../lib/library-filters";
+import { normalizeAdvancedFilters } from "../../lib/library-filters-helpers";
 import { STORAGE_KEYS } from "../../lib/storage-keys";
 import type { LibrarySortOption } from "../../lib/library-sort";
 
@@ -72,7 +73,7 @@ export function useDynamicCollections(
     }
 
     setSelectedCollectionName(collection.name);
-    setAdvancedFilters(collection.filters);
+    setAdvancedFilters(normalizeAdvancedFilters(collection.filters));
     setActivePlatformFilter(collection.platformFilter);
     setSearchQuery(collection.searchQuery);
   }

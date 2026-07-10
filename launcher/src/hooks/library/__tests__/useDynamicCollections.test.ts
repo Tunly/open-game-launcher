@@ -17,6 +17,7 @@ const baseAdvanced: LibraryAdvancedFilters = {
   categories: [],
   sizeQuery: "",
   productCategories: [],
+  showGamePassCatalog: true,
 };
 
 function makeOptions(overrides: Partial<Parameters<typeof useDynamicCollections>[0]> = {}) {
@@ -52,6 +53,25 @@ describe("useDynamicCollections", () => {
     const { result } = renderHook(() => useDynamicCollections(makeOptions()));
     expect(result.current.dynamicCollections).toHaveLength(1);
     expect(result.current.dynamicCollections[0].name).toBe("Test");
+  });
+
+  it("defaults legacy saved collections to showing the Game Pass catalog", () => {
+    const { showGamePassCatalog: _removed, ...legacyFilters } = baseAdvanced;
+    void _removed;
+    window.localStorage.setItem(
+      STORAGE_KEYS.LIBRARY_DYNAMIC_COLLECTIONS,
+      JSON.stringify([
+        { name: "Legacy", filters: legacyFilters, platformFilter: "all", searchQuery: "" },
+      ]),
+    );
+    const options = makeOptions();
+    const { result } = renderHook(() => useDynamicCollections(options));
+
+    act(() => result.current.applyDynamicCollection("Legacy"));
+
+    expect(options.setAdvancedFilters).toHaveBeenCalledWith(
+      expect.objectContaining({ showGamePassCatalog: true }),
+    );
   });
 
   it("saveCurrentFilterAsCollection adds a new collection", () => {

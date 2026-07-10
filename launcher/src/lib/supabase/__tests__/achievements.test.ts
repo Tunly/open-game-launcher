@@ -416,6 +416,71 @@ describe("ingestTrustedAchievements", () => {
     ]);
   });
 
+  it("skips auth and catalog queries for unsupported games when the user is already known", async () => {
+    const { hydrateGamesWithRemoteAchievements } = await import("../achievements");
+
+    const hydrated = await hydrateGamesWithRemoteAchievements([game], { userId: "user-1" });
+
+    expect(hydrated).toEqual([game]);
+    expect(mocks.authGetUser).not.toHaveBeenCalled();
+    expect(mocks.from).not.toHaveBeenCalled();
+  });
+
+  it("stops scheduling more remote games after a transport failure", async () => {
+    let catalogQueries = 0;
+    let definitionQueries = 0;
+    mocks.from.mockImplementation((table: string) => {
+      if (table === "games") {
+        return {
+          select: () => ({
+            eq: () => ({
+              limit: () => ({
+                maybeSingle: () => {
+                  catalogQueries += 1;
+                  return Promise.resolve(makeQueryResult({ id: "catalog-1" }));
+                },
+              }),
+            }),
+          }),
+        };
+      }
+      if (table === "achievements") {
+        const chain = {
+          select: vi.fn(() => chain),
+          eq: vi.fn((column: string) => {
+            if (column !== "is_active") return chain;
+            definitionQueries += 1;
+            return Promise.resolve(makeQueryResult(null, { message: "Failed to fetch" }));
+          }),
+        };
+        return chain;
+      }
+      return {};
+    });
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const remoteGames = Array.from(
+      { length: 8 },
+      (_, index): Game => ({
+        ...game,
+        achievements: [],
+        id: `steam-${index}`,
+        launcher: "steam",
+        slug: `remote-game-${index}`,
+        title: `Remote Game ${index}`,
+      }),
+    );
+
+    const { hydrateGamesWithRemoteAchievements } = await import("../achievements");
+    const hydrated = await hydrateGamesWithRemoteAchievements(remoteGames, { userId: "user-1" });
+
+    expect(hydrated).toEqual(remoteGames);
+    expect(catalogQueries).toBeGreaterThan(0);
+    expect(catalogQueries).toBeLessThanOrEqual(4);
+    expect(definitionQueries).toBeGreaterThan(0);
+    expect(definitionQueries).toBeLessThanOrEqual(4);
+    expect(warn).toHaveBeenCalled();
+  });
+
   it("keeps hydrating later games when one remote game query fails", async () => {
     let definitionQueryCount = 0;
     mocks.from.mockImplementation((table: string) => {

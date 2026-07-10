@@ -4,13 +4,16 @@ import type { Dispatch, SetStateAction } from "react";
 import { achievementProviderForGame } from "../../lib/achievement-providers";
 import { supportedAchievementSyncGames, type GameGroup } from "../../lib/game-groups";
 import { getErrorMessage } from "../../lib/formatters";
-import { updateAchievementProviderStatus } from "../../lib/launcher";
-import { emitAchievementPopup } from "../../lib/overlay";
+import { getAchievementProviderStatusMessage } from "../../lib/achievement-status";
+import {
+  persistAchievementProviderStatus,
+  syncAchievementProviderGame,
+  withAchievementProviderStatus,
+  type GameAchievementProviderStatus,
+} from "../../lib/achievement-provider-sync";
 import { cacheSteamOwnedGameAchievements } from "../../lib/steam-owned-games-cache";
 import { ingestTrustedAchievements } from "../../lib/supabase/achievements";
 import type { Game } from "../../lib/types";
-
-type GameAchievementProviderStatus = NonNullable<Game["achievementProviderStatuses"]>[number];
 
 export interface UseAchievementAutoSyncOptions {
   installedGames?: Game[];
@@ -23,25 +26,6 @@ export interface UseAchievementAutoSyncResult {
   syncingAchievementGameId: string | null;
   syncingAchievementGameIds: ReadonlySet<string>;
   syncAchievementsForGame: (game: Game) => Promise<void>;
-}
-
-function withAchievementProviderStatus(
-  game: Game,
-  status: GameAchievementProviderStatus,
-  existingStatuses = game.achievementProviderStatuses ?? [],
-): Game {
-  const nextStatuses = existingStatuses.filter((entry) => entry.source !== status.source);
-  return {
-    ...game,
-    achievementProviderStatuses: [...nextStatuses, status],
-  };
-}
-
-function persistAchievementProviderStatus(gameId: string, status: GameAchievementProviderStatus) {
-  if (gameId.startsWith("steam-owned-")) return;
-  updateAchievementProviderStatus({ gameId, status }).catch((error) => {
-    console.warn("[OG-Launcher] Achievement provider status cache update failed:", error);
-  });
 }
 
 function achievementSyncAttemptKey(game: Game): string {
@@ -99,7 +83,7 @@ export function useAchievementAutoSync({
         if (!options.silent) {
           setStatusMessage(provider.message);
         }
-        persistAchievementProviderStatus(game.id, status);
+        void persistAchievementProviderStatus(game.id, status);
         updateInstalledGame(game.id, (currentGame) =>
           withAchievementProviderStatus(currentGame, status),
         );
@@ -117,7 +101,24 @@ export function useAchievementAutoSync({
       let newUnlocks: NonNullable<Game["achievements"]> = [];
 
       try {
-        const response = await provider.sync(game);
+        const outcome = await syncAchievementProviderGame(game, provider);
+        if (!outcome.success) {
+          updateInstalledGame(game.id, (currentGame) =>
+            withAchievementProviderStatus(
+              outcome.game,
+              outcome.status,
+              currentGame.achievementProviderStatuses,
+            ),
+          );
+          if (!options.silent) {
+            setStatusMessage(outcome.status.message);
+          } else {
+            console.warn("[OG-Launcher] Auto achievement sync failed:", outcome.diagnosticMessage);
+          }
+          return;
+        }
+
+        const { response } = outcome;
         syncedGame = response.game;
         cacheSteamOwnedGameAchievements(response.game);
         const previous = installedGamesRef.current.find((candidate) => candidate.id === game.id);
@@ -147,7 +148,7 @@ export function useAchievementAutoSync({
           stability: provider.stability,
           message,
         };
-        persistAchievementProviderStatus(response.game.id, status);
+        void persistAchievementProviderStatus(response.game.id, status);
 
         updateInstalledGame(response.game.id, (currentGame) =>
           withAchievementProviderStatus(
@@ -165,16 +166,18 @@ export function useAchievementAutoSync({
         }
       } catch (error) {
         const errorMessage = getErrorMessage(error);
-        const message = syncedGame
+        const diagnosticMessage = syncedGame
           ? `Achievements synced locally, but trusted hosted persistence failed: ${errorMessage}`
           : errorMessage;
-        const status: GameAchievementProviderStatus = {
+        const failedStatus: GameAchievementProviderStatus = {
           source: provider.provider,
           status: "failed",
           stability: provider.stability,
-          message,
+          message: diagnosticMessage,
         };
-        persistAchievementProviderStatus(game.id, status);
+        const message = getAchievementProviderStatusMessage(failedStatus);
+        const status = { ...failedStatus, message };
+        void persistAchievementProviderStatus(game.id, status);
         updateInstalledGame(game.id, (currentGame) =>
           withAchievementProviderStatus(
             syncedGame ?? currentGame,
@@ -185,23 +188,9 @@ export function useAchievementAutoSync({
         if (!options.silent) {
           setStatusMessage(message);
         } else if (options.silent) {
-          console.warn("[OG-Launcher] Auto achievement sync failed:", message);
+          console.warn("[OG-Launcher] Auto achievement sync failed:", diagnosticMessage);
         }
       } finally {
-        for (const unlock of newUnlocks) {
-          try {
-            await emitAchievementPopup({
-              achievementName: unlock.name,
-              description: unlock.description ?? "",
-              gameTitle: syncedGame?.title ?? game.title,
-              iconUrl: unlock.iconUrl ?? null,
-              rarity:
-                typeof unlock.rarity === "number" ? `${unlock.rarity.toFixed(1)}% rarity` : "",
-            });
-          } catch (popupError) {
-            console.warn("[OG-Launcher] Achievement popup could not be emitted:", popupError);
-          }
-        }
         setSyncingAchievementGameIds((current) => {
           const next = new Set(current);
           next.delete(game.id);

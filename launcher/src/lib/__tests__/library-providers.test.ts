@@ -50,4 +50,22 @@ describe("ownedGameToGame", () => {
     expect(game.achievements).toEqual([{ id: "first-win", name: "First Win", source: "steam" }]);
     expect(game.achievementsSyncedAt).toBe("2026-07-10T10:05:00.000Z");
   });
+
+  it("preserves explicit PC Game Pass catalog identity", () => {
+    const game = ownedGameToGame({
+      catalogSource: "pc_game_pass",
+      coverUrl: null,
+      description: "PC Game Pass catalog",
+      externalId: "9NBLGGH4R315",
+      id: "xbox-9NBLGGH4R315",
+      logoUrl: null,
+      title: "Catalog Game",
+    });
+
+    expect(game).toMatchObject({
+      catalogSource: "pc_game_pass",
+      launcher: "xbox",
+      status: "not_installed",
+    });
+  });
 });

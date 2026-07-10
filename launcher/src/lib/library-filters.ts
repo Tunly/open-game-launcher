@@ -14,6 +14,7 @@ export interface LibraryAdvancedFilters {
   categories: string[];
   sizeQuery: string;
   productCategories: string[];
+  showGamePassCatalog: boolean;
 }
 
 export interface LibraryFilterContext {
@@ -52,6 +53,21 @@ function normalizeFilterToken(value: string): string {
 
 function getGameProductCategory(game: Game): string {
   return (game.productCategory || "unknown").toLowerCase();
+}
+
+export function isPcGamePassCatalogEntry(
+  game: Pick<Game, "catalogSource" | "externalId" | "id" | "status">,
+): boolean {
+  if (game.catalogSource !== "pc_game_pass" || game.status !== "not_installed") {
+    return false;
+  }
+
+  const match = game.id.match(/^xbox-([a-z0-9]{12})$/i);
+  if (!match || !/\d/.test(match[1])) {
+    return false;
+  }
+
+  return !game.externalId || game.externalId.toLowerCase() === match[1].toLowerCase();
 }
 
 function matchesSidebarPlatform(game: Game, filter: LibraryPlatformFilter): boolean {
@@ -307,6 +323,7 @@ export function matchesSearchQuery(game: Game, query: string): boolean {
   const haystack = [
     game.title,
     game.description,
+    game.catalogSource === "pc_game_pass" ? "PC Game Pass" : undefined,
     game.developer,
     game.publisher,
     game.id,
@@ -327,6 +344,10 @@ export function gamePassesAdvancedFilters(
   filters: LibraryAdvancedFilters,
   context: LibraryFilterContext,
 ): boolean {
+  if (!filters.showGamePassCatalog && isPcGamePassCatalogEntry(game)) {
+    return false;
+  }
+
   if (!matchesSidebarPlatform(game, context.activePlatformFilter)) {
     return false;
   }
@@ -427,6 +448,7 @@ export function countActiveAdvancedFilters(
   if (filters.launchers.length > 0) count += 1;
   if (filters.categories.length > 0) count += 1;
   if (filters.sizeQuery.trim()) count += 1;
+  if (filters.showGamePassCatalog !== defaults.showGamePassCatalog) count += 1;
   const defaultCategories = new Set(defaults.productCategories.map((entry) => entry.toLowerCase()));
   const currentCategories = new Set(filters.productCategories.map((entry) => entry.toLowerCase()));
   const productCategoriesChanged =

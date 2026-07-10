@@ -20,11 +20,3 @@ export interface NativeOverlaySettings {
   fpsHudEnabled?: boolean;
   showGpu?: boolean;
 }
-
-export interface AchievementPopupPayload {
-  gameTitle: string;
-  achievementName: string;
-  description: string;
-  rarity: string;
-  iconUrl: string | null;
-}

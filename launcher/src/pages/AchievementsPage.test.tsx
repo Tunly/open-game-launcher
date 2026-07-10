@@ -1,13 +1,15 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 
 import { AchievementsPage } from "./AchievementsPage";
-import type { Game } from "../lib/types";
+import type { Game, SyncGameAchievementsResponse } from "../lib/types";
 
 const launcherMocks = vi.hoisted(() => ({
   listInstalledGames: vi.fn(),
   openAchievementCacheFolder: vi.fn(),
+  syncGameAchievements: vi.fn(),
+  updateAchievementProviderStatus: vi.fn(),
 }));
 
 const achievementMocks = vi.hoisted(() => ({
@@ -35,11 +37,43 @@ function renderAchievementsRoute(initialEntry: string) {
   );
 }
 
+function deferred<T>() {
+  let resolve!: (value: T | PromiseLike<T>) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+}
+
+function syncResponse(
+  game: Game,
+  achievements: NonNullable<Game["achievements"]>,
+): SyncGameAchievementsResponse {
+  return {
+    game: {
+      ...game,
+      achievements,
+      achievementsSyncedAt: "2026-07-10T13:00:00Z",
+    },
+    gameId: game.id,
+    message: `${game.title} achievements synced.`,
+    success: true,
+    syncedAchievements: achievements.length,
+    unlockedAchievements: achievements.filter((achievement) => achievement.unlockedAt).length,
+  };
+}
+
 describe("AchievementsPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     launcherMocks.listInstalledGames.mockResolvedValue([]);
     launcherMocks.openAchievementCacheFolder.mockResolvedValue("/tmp/achievements");
+    launcherMocks.syncGameAchievements.mockRejectedValue(
+      new Error("Unexpected achievement sync in this test."),
+    );
+    launcherMocks.updateAchievementProviderStatus.mockImplementation(({ gameId, status }) =>
+      Promise.resolve({ id: gameId, achievementProviderStatuses: [status] }),
+    );
     achievementMocks.hydrateGamesWithRemoteAchievements.mockImplementation((games) =>
       Promise.resolve(games),
     );
@@ -75,8 +109,349 @@ describe("AchievementsPage", () => {
     expect(
       screen.queryByRole("region", { name: /achievement cache readiness/i }),
     ).not.toBeInTheDocument();
-    expect(achievementMocks.hydrateGamesWithRemoteAchievements).toHaveBeenCalledTimes(1);
-    expect(achievementMocks.hydrateGamesWithRemoteAchievements).toHaveBeenCalledWith([]);
+    expect(achievementMocks.hydrateGamesWithRemoteAchievements).not.toHaveBeenCalled();
+  });
+
+  it("renders local achievement rows without waiting for cloud hydration", async () => {
+    const remoteHydration = deferred<Game[]>();
+    const localGame: Game = {
+      achievements: [
+        {
+          id: "local-unlock",
+          name: "Local Unlock",
+          unlockedAt: "2026-07-10T10:00:00Z",
+        },
+      ],
+      description: "",
+      id: "steam-fast-game",
+      launcher: "steam",
+      platform: "windows",
+      status: "installed",
+      title: "Fast Game",
+      version: "1.0.0",
+    };
+    const hydratedGame: Game = {
+      ...localGame,
+      achievements: [
+        ...localGame.achievements!,
+        {
+          id: "remote-unlock",
+          name: "Remote Unlock",
+          unlockedAt: "2026-07-10T11:00:00Z",
+        },
+      ],
+    };
+    launcherMocks.listInstalledGames.mockResolvedValueOnce([localGame]);
+    achievementMocks.hydrateGamesWithRemoteAchievements.mockReturnValueOnce(
+      remoteHydration.promise,
+    );
+    useCurrentUserMock.mockReturnValue({
+      isLoading: false,
+      user: { id: "user-fast", user_metadata: {} },
+    });
+
+    renderAchievementsRoute("/achievements");
+
+    expect(await screen.findByRole("heading", { name: "Fast Game" })).toBeInTheDocument();
+    expect(screen.getByText("Local Unlock")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("status", { name: /loading local achievement games/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      await screen.findByRole("status", { name: /refreshing cloud achievements/i }),
+    ).toBeInTheDocument();
+    expect(achievementMocks.hydrateGamesWithRemoteAchievements).toHaveBeenCalledWith([localGame], {
+      userId: "user-fast",
+    });
+
+    await act(async () => {
+      remoteHydration.resolve([hydratedGame]);
+      await remoteHydration.promise;
+    });
+
+    expect(await screen.findByText("Remote Unlock")).toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("status", { name: /refreshing cloud achievements/i }),
+      ).not.toBeInTheDocument(),
+    );
+  });
+
+  it("syncs empty non-Steam provider games when the archive opens", async () => {
+    const providers = ["xbox", "gog", "epic", "ea", "ubisoft", "battlenet"] as const;
+    const providerLabels = {
+      battlenet: "Battle.net",
+      ea: "EA",
+      epic: "Epic",
+      gog: "GOG",
+      ubisoft: "Ubisoft",
+      xbox: "Xbox",
+    };
+    const providerGames: Game[] = providers.map((launcher, index) => ({
+      achievements: [],
+      description: "",
+      externalId: String(123456789 + index),
+      id: `${launcher}-provider-game`,
+      launcher,
+      platform: "windows",
+      status: "installed",
+      title: `${providerLabels[launcher]} Provider Game`,
+      version: "1.0.0",
+    }));
+    launcherMocks.listInstalledGames.mockResolvedValueOnce(providerGames);
+    launcherMocks.syncGameAchievements.mockImplementation((game: Game) => {
+      const label = providerLabels[game.launcher as keyof typeof providerLabels];
+      const achievements = [
+        {
+          id: `${game.launcher}-first`,
+          name: `${label} First`,
+          source: game.launcher,
+          unlockedAt: "2026-07-10T12:00:00Z",
+        },
+        {
+          id: `${game.launcher}-second`,
+          name: `${label} Second`,
+          source: game.launcher,
+          unlockedAt: null,
+        },
+      ];
+      return Promise.resolve(syncResponse(game, achievements));
+    });
+
+    renderAchievementsRoute("/achievements");
+
+    for (const game of providerGames) {
+      const label = providerLabels[game.launcher as keyof typeof providerLabels];
+      const heading = await screen.findByRole("heading", { name: game.title });
+      expect(await screen.findByText(`${label} First`)).toBeInTheDocument();
+      expect(within(heading.closest("article")!).getByText("1/2")).toBeInTheDocument();
+      expect(launcherMocks.syncGameAchievements).toHaveBeenCalledWith(game);
+    }
+    expect(launcherMocks.syncGameAchievements).toHaveBeenCalledTimes(providerGames.length);
+  });
+
+  it("refreshes stale non-Steam achievements so new unlocks appear", async () => {
+    const staleGame: Game = {
+      achievements: [{ id: "gog-old", name: "GOG Old", source: "gog", unlockedAt: null }],
+      achievementsSyncedAt: "2026-07-01T10:00:00Z",
+      description: "",
+      externalId: "gog-stale",
+      id: "gog-stale-game",
+      launcher: "gog",
+      platform: "windows",
+      status: "installed",
+      title: "GOG Stale Game",
+      version: "1.0.0",
+    };
+    const refreshedAchievements = [
+      {
+        id: "gog-old",
+        name: "GOG Old",
+        source: "gog",
+        unlockedAt: "2026-07-10T12:00:00Z",
+      },
+      {
+        id: "gog-new",
+        name: "GOG New",
+        source: "gog",
+        unlockedAt: null,
+      },
+    ];
+    launcherMocks.listInstalledGames.mockResolvedValueOnce([staleGame]);
+    launcherMocks.syncGameAchievements.mockResolvedValueOnce(
+      syncResponse(staleGame, refreshedAchievements),
+    );
+
+    renderAchievementsRoute("/achievements");
+
+    const heading = await screen.findByRole("heading", { name: "GOG Stale Game" });
+    expect(await screen.findByText("GOG Old")).toBeInTheDocument();
+    expect(within(heading.closest("article")!).getByText("1/2")).toBeInTheDocument();
+    expect(launcherMocks.syncGameAchievements).toHaveBeenCalledWith(staleGame);
+  });
+
+  it("keeps a fresh non-Steam achievement snapshot without another provider call", async () => {
+    const freshGame: Game = {
+      achievements: [
+        {
+          id: "epic-fresh",
+          name: "Epic Fresh",
+          source: "epic",
+          unlockedAt: "2026-07-10T12:00:00Z",
+        },
+      ],
+      achievementsSyncedAt: new Date().toISOString(),
+      description: "",
+      externalId: "epic-fresh",
+      id: "epic-fresh-game",
+      launcher: "epic",
+      platform: "windows",
+      status: "installed",
+      title: "Epic Fresh Game",
+      version: "1.0.0",
+    };
+    launcherMocks.listInstalledGames.mockResolvedValueOnce([freshGame]);
+
+    renderAchievementsRoute("/achievements");
+
+    expect(await screen.findByText("Epic Fresh")).toBeInTheDocument();
+    expect(launcherMocks.syncGameAchievements).not.toHaveBeenCalled();
+  });
+
+  it("does not accept an empty provider response as available", async () => {
+    const xboxGame: Game = {
+      achievements: [],
+      description: "",
+      externalId: "24681012",
+      id: "xbox-empty-response",
+      launcher: "xbox",
+      platform: "windows",
+      status: "installed",
+      title: "Xbox Empty Response",
+      version: "1.0.0",
+    };
+    launcherMocks.listInstalledGames.mockResolvedValueOnce([xboxGame]);
+    launcherMocks.syncGameAchievements.mockResolvedValueOnce(syncResponse(xboxGame, []));
+
+    renderAchievementsRoute("/achievements");
+
+    const heading = await screen.findByRole("heading", { name: "Xbox Empty Response" });
+    const rowView = within(heading.closest("article")!);
+    expect(await rowView.findByText("Unavailable")).toBeInTheDocument();
+    expect(launcherMocks.updateAchievementProviderStatus).toHaveBeenCalledWith({
+      gameId: xboxGame.id,
+      status: expect.objectContaining({ source: "xbox", status: "failed" }),
+    });
+    expect(launcherMocks.updateAchievementProviderStatus).not.toHaveBeenCalledWith({
+      gameId: xboxGame.id,
+      status: expect.objectContaining({ status: "available" }),
+    });
+  });
+
+  it("serializes achievement refreshes for multiple games from the same provider", async () => {
+    const xboxGames: Game[] = ["one", "two"].map((suffix, index) => ({
+      achievements: [],
+      description: "",
+      externalId: String(97531000 + index),
+      id: `xbox-serial-${suffix}`,
+      launcher: "xbox",
+      platform: "windows",
+      status: "installed",
+      title: `Xbox Serial ${suffix}`,
+      version: "1.0.0",
+    }));
+    const firstSync = deferred<SyncGameAchievementsResponse>();
+    const secondSync = deferred<SyncGameAchievementsResponse>();
+    launcherMocks.listInstalledGames.mockResolvedValueOnce(xboxGames);
+    launcherMocks.syncGameAchievements
+      .mockReturnValueOnce(firstSync.promise)
+      .mockReturnValueOnce(secondSync.promise);
+
+    renderAchievementsRoute("/achievements");
+
+    await waitFor(() => expect(launcherMocks.syncGameAchievements).toHaveBeenCalledTimes(1));
+    await act(async () => {
+      firstSync.resolve(
+        syncResponse(xboxGames[0], [
+          {
+            id: "xbox-serial-one-ach",
+            name: "Xbox Serial One",
+            unlockedAt: "2026-07-10T12:00:00Z",
+          },
+        ]),
+      );
+      await firstSync.promise;
+    });
+    await waitFor(() => expect(launcherMocks.syncGameAchievements).toHaveBeenCalledTimes(2));
+    await act(async () => {
+      secondSync.resolve(
+        syncResponse(xboxGames[1], [
+          {
+            id: "xbox-serial-two-ach",
+            name: "Xbox Serial Two",
+            unlockedAt: "2026-07-10T12:00:00Z",
+          },
+        ]),
+      );
+      await secondSync.promise;
+    });
+    expect(await screen.findByText("Xbox Serial One")).toBeInTheDocument();
+    expect(await screen.findByText("Xbox Serial Two")).toBeInTheDocument();
+  });
+
+  it("deduplicates an in-flight provider refresh across page remounts", async () => {
+    const gogGame: Game = {
+      achievements: [],
+      description: "",
+      externalId: "gog-in-flight",
+      id: "gog-in-flight",
+      launcher: "gog",
+      platform: "windows",
+      status: "installed",
+      title: "GOG In Flight",
+      version: "1.0.0",
+    };
+    const pendingSync = deferred<SyncGameAchievementsResponse>();
+    launcherMocks.listInstalledGames.mockResolvedValue([gogGame]);
+    launcherMocks.syncGameAchievements.mockReturnValue(pendingSync.promise);
+
+    const firstView = renderAchievementsRoute("/achievements");
+    await waitFor(() => expect(launcherMocks.syncGameAchievements).toHaveBeenCalledTimes(1));
+    firstView.unmount();
+    renderAchievementsRoute("/achievements");
+    await waitFor(() => expect(launcherMocks.listInstalledGames).toHaveBeenCalledTimes(2));
+    expect(launcherMocks.syncGameAchievements).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      pendingSync.resolve(
+        syncResponse(gogGame, [
+          {
+            id: "gog-in-flight-ach",
+            name: "GOG In Flight Achievement",
+            unlockedAt: "2026-07-10T12:00:00Z",
+          },
+        ]),
+      );
+      await pendingSync.promise;
+    });
+    expect(await screen.findByText("GOG In Flight Achievement")).toBeInTheDocument();
+  });
+
+  it("loads the local archive while auth restoration is still pending", async () => {
+    const localGame: Game = {
+      achievements: [{ id: "local-first", name: "Local First", unlockedAt: null }],
+      description: "",
+      id: "steam-auth-pending",
+      launcher: "steam",
+      platform: "windows",
+      status: "installed",
+      title: "Auth Pending Game",
+      version: "1.0.0",
+    };
+    launcherMocks.listInstalledGames.mockResolvedValueOnce([localGame]);
+    useCurrentUserMock.mockReturnValue({ isLoading: true, user: null });
+
+    const view = renderAchievementsRoute("/achievements");
+
+    expect(await screen.findByRole("heading", { name: "Auth Pending Game" })).toBeInTheDocument();
+    expect(achievementMocks.hydrateGamesWithRemoteAchievements).not.toHaveBeenCalled();
+
+    useCurrentUserMock.mockReturnValue({
+      isLoading: false,
+      user: { id: "restored-user", user_metadata: {} },
+    });
+    view.rerender(
+      <MemoryRouter initialEntries={["/achievements"]}>
+        <AchievementsPage />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() =>
+      expect(achievementMocks.hydrateGamesWithRemoteAchievements).toHaveBeenCalledWith(
+        [localGame],
+        { userId: "restored-user" },
+      ),
+    );
   });
 
   it("does not render placeholder game-stat, content, or overflow actions", async () => {
@@ -104,42 +479,95 @@ describe("AchievementsPage", () => {
     );
   });
 
-  it("keeps failed and unsynced provider games visible with a retry drilldown", async () => {
+  it("replaces persisted provider diagnostics with a safe retry message", async () => {
+    const safeMessage =
+      "No readable Ubisoft achievement data was found on this PC. Launch the game through Ubisoft Connect, then try again.";
+    const diagnosticMessage =
+      "sync_local_game_achievements failed: No local ubisoft achievement cache found for Tom Clancy's Rainbow Six Siege X. Checked: C:\\Users\\Danie\\AppData\\Local\\open-game-launcher\\achievement-cache\\ubisoft\\635.json; +52 more";
     const failedGame: Game = {
       achievements: [],
       achievementProviderStatuses: [
         {
-          message: "Hosted ingestion timed out",
-          source: "steam",
-          stability: "official",
+          message: diagnosticMessage,
+          source: "ubisoft",
+          stability: "unofficial",
           status: "failed",
         },
       ],
       description: "",
-      id: "steam-failed",
-      launcher: "steam",
+      id: "ubisoft-rainbow-six",
+      launcher: "ubisoft",
       platform: "windows",
       status: "installed",
-      title: "Retry Game",
+      title: "Tom Clancy's Rainbow Six Siege X",
       version: "1.0.0",
     };
     launcherMocks.listInstalledGames.mockResolvedValueOnce([failedGame]);
+    launcherMocks.syncGameAchievements.mockRejectedValueOnce(new Error(diagnosticMessage));
 
     renderAchievementsRoute("/achievements");
 
-    expect(await screen.findByRole("heading", { name: "Retry Game" })).toBeInTheDocument();
-    expect(screen.getByText("Hosted ingestion timed out")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /retry in library/i })).toHaveAttribute(
+    const heading = await screen.findByRole("heading", {
+      name: "Tom Clancy's Rainbow Six Siege X",
+    });
+    const row = heading.closest("article");
+    expect(row).not.toBeNull();
+
+    const rowView = within(row!);
+    const status = rowView.getByRole("status", {
+      name: /ubisoft achievement sync unavailable/i,
+    });
+    expect(status).toHaveTextContent(safeMessage);
+    expect(status).not.toHaveTextContent(/sync_local_game_achievements|checked:|[a-z]:\\users\\/i);
+    expect(rowView.getByText(/ubisoft: failed/i)).toHaveAttribute("title", safeMessage);
+    expect(rowView.getByText("Unavailable")).toBeInTheDocument();
+    expect(rowView.queryByText("0/0")).not.toBeInTheDocument();
+    expect(launcherMocks.syncGameAchievements).toHaveBeenCalledWith(failedGame);
+    expect(rowView.getByRole("link", { name: /retry in library/i })).toHaveAttribute(
       "href",
-      "/library?game=steam-failed",
+      "/library?game=ubisoft-rainbow-six",
     );
   });
 
+  it("marks a provider unavailable when its background sync has no readable data", async () => {
+    const eaGame: Game = {
+      achievements: [],
+      description: "",
+      externalId: "ea-local-game",
+      id: "ea-local-game",
+      launcher: "ea",
+      platform: "windows",
+      status: "installed",
+      title: "EA Local Game",
+      version: "1.0.0",
+    };
+    launcherMocks.listInstalledGames.mockResolvedValueOnce([eaGame]);
+    launcherMocks.syncGameAchievements.mockRejectedValueOnce(
+      new Error(
+        "sync_local_game_achievements failed: No local ea achievement cache found for EA Local Game. Checked: C:\\Users\\Danie\\AppData\\Local\\EA\\cache.json",
+      ),
+    );
+
+    renderAchievementsRoute("/achievements");
+
+    const heading = await screen.findByRole("heading", { name: "EA Local Game" });
+    const rowView = within(heading.closest("article")!);
+    expect(
+      await rowView.findByRole("status", { name: /ea achievement sync unavailable/i }),
+    ).toHaveTextContent(
+      "No readable EA achievement data was found on this PC. Launch the game through the EA app, then try again.",
+    );
+    expect(rowView.getByText("Unavailable")).toBeInTheDocument();
+    expect(rowView.queryByText("0/0")).not.toBeInTheDocument();
+    expect(launcherMocks.updateAchievementProviderStatus).toHaveBeenCalledWith({
+      gameId: "ea-local-game",
+      status: expect.objectContaining({ source: "ea", status: "failed" }),
+    });
+  });
+
   it("clears the previous account rows and rehydrates when the signed-in user changes", async () => {
-    const oldGame: Game = {
-      achievements: [
-        { id: "old-unlock", name: "Old Account Unlock", unlockedAt: "2026-07-01T10:00:00Z" },
-      ],
+    const localGame: Game = {
+      achievements: [],
       description: "",
       id: "steam-account-game",
       launcher: "steam",
@@ -148,10 +576,16 @@ describe("AchievementsPage", () => {
       title: "Account Game",
       version: "1.0.0",
     };
-    launcherMocks.listInstalledGames.mockResolvedValue([oldGame]);
+    const oldAccountGame: Game = {
+      ...localGame,
+      achievements: [
+        { id: "old-unlock", name: "Old Account Unlock", unlockedAt: "2026-07-01T10:00:00Z" },
+      ],
+    };
+    launcherMocks.listInstalledGames.mockResolvedValue([localGame]);
     achievementMocks.hydrateGamesWithRemoteAchievements
-      .mockResolvedValueOnce([oldGame])
-      .mockResolvedValueOnce([{ ...oldGame, achievements: [] }]);
+      .mockResolvedValueOnce([oldAccountGame])
+      .mockResolvedValueOnce([localGame]);
     useCurrentUserMock.mockReturnValue({
       isLoading: false,
       user: { id: "user-old", user_metadata: {} },
@@ -174,7 +608,10 @@ describe("AchievementsPage", () => {
     await waitFor(() =>
       expect(achievementMocks.hydrateGamesWithRemoteAchievements).toHaveBeenCalledTimes(2),
     );
-    expect(achievementMocks.hydrateGamesWithRemoteAchievements).toHaveBeenLastCalledWith([oldGame]);
+    expect(achievementMocks.hydrateGamesWithRemoteAchievements).toHaveBeenLastCalledWith(
+      [localGame],
+      { userId: "user-new" },
+    );
     expect(await screen.findByRole("heading", { name: "Account Game" })).toBeInTheDocument();
     expect(
       await screen.findByText("Account Game does not expose a Steam AppID for achievement sync."),

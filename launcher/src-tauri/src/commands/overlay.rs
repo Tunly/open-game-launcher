@@ -550,24 +550,3 @@ fn write_overlay_settings(settings: &OverlaySettingsPayload) -> Result<(), Strin
     std::fs::write(path, contents)
         .map_err(|error| format!("Could not write overlay settings: {error}"))
 }
-
-// â”€â”€â”€ Achievement Popup Emitter â”€â”€â”€
-
-#[derive(Debug, Serialize, Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct AchievementPopupPayload {
-    pub game_title: String,
-    pub achievement_name: String,
-    pub description: String,
-    pub rarity: String,
-    pub icon_url: Option<String>,
-}
-
-#[tauri::command]
-pub fn emit_achievement_popup(
-    app: tauri::AppHandle,
-    payload: AchievementPopupPayload,
-) -> Result<(), String> {
-    app.emit("achievement-unlocked", payload)
-        .map_err(|error| format!("Could not emit achievement popup: {error}"))
-}

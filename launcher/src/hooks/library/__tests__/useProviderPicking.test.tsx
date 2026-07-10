@@ -174,6 +174,41 @@ describe("useProviderPicking", () => {
     );
   });
 
+  it.each(["xbox-Forza Horizon 5", "xbox-Hades", "xbox-Halo_Infinite"])(
+    "launches installed scanner-shaped Xbox variant %s through launchGame",
+    async (id) => {
+      const game = makeGame({
+        id,
+        title: "Scanner Xbox Game",
+        status: "installed",
+        launcher: "xbox",
+      });
+      const { hook, setStatusMessage } = renderProviderPicking();
+
+      await act(async () => {
+        await hook.result.current.handlePlayVariant(game);
+      });
+
+      expect(mocks.launchXboxGame).not.toHaveBeenCalled();
+      expect(mocks.launchGame).toHaveBeenCalledWith(id);
+      expect(setStatusMessage).toHaveBeenLastCalledWith("Launching game.");
+      expect(mocks.writeActivePerformanceGameContext).toHaveBeenCalledWith({
+        gameId: id,
+        gameTitle: "Scanner Xbox Game",
+        launcher: "xbox",
+      });
+      expect(mocks.logGameStart).toHaveBeenCalledWith(id, "Scanner Xbox Game", {
+        launcher: "xbox",
+      });
+      expect(mocks.syncGamePlaytimeStats).toHaveBeenCalledWith(
+        expect.objectContaining({
+          countSessionStart: true,
+          game,
+        }),
+      );
+    },
+  );
+
   it("consumes a cross-play join query after a successful launch", async () => {
     const { setStatusMessage } = renderProviderPicking({
       initialEntry: "/library?join=match-42&platform=steam",
