@@ -17,6 +17,7 @@ import { createVerifyAchievementHostedHydrationContract } from "../lib/achieveme
 import { groupGames, type GameGroup, type GroupedAchievement } from "../lib/game-groups";
 import { listInstalledGames, openAchievementCacheFolder } from "../lib/launcher";
 import { hydrateGamesWithRemoteAchievements } from "../lib/supabase/achievements";
+import { mergeGamePassCatalog } from "../library/providers";
 import type { Game } from "../lib/types";
 import { PlatformSourceIcon } from "../components/library/PlatformIcons";
 import { useCurrentUser } from "../hooks/useCurrentUser";
@@ -401,10 +402,26 @@ export function AchievementsPage() {
           }
           throw err;
         });
-        const allGames = listedGames.map((game) => {
+        let allGames = listedGames.map((game) => {
           const launcher = normalizeLauncherKey(game.launcher, game.id);
           return launcher === game.launcher ? game : { ...game, launcher };
         });
+
+        if (!shouldSkipRemoteHydration) {
+          const catalogResult = await mergeGamePassCatalog(allGames, {
+            forceRefresh: false,
+            setStatusMessage,
+            shouldApplyResult: () => mounted,
+          });
+          for (const warning of catalogResult.warnings) {
+            console.warn(warning);
+          }
+          if (catalogResult.statusMessage && mounted) {
+            setStatusMessage(catalogResult.statusMessage);
+          }
+          allGames = catalogResult.games;
+        }
+
         if (mounted) {
           setLocalGames(allGames);
           setGames(allGames);

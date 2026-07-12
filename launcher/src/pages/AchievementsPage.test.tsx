@@ -4,6 +4,7 @@ import { MemoryRouter } from "react-router-dom";
 
 import { AchievementsPage } from "./AchievementsPage";
 import type { Game, SyncGameAchievementsResponse } from "../lib/types";
+import { STORAGE_KEYS } from "../lib/storage-keys";
 
 const launcherMocks = vi.hoisted(() => ({
   listInstalledGames: vi.fn(),
@@ -66,6 +67,7 @@ function syncResponse(
 describe("AchievementsPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    localStorage.clear();
     launcherMocks.listInstalledGames.mockResolvedValue([]);
     launcherMocks.openAchievementCacheFolder.mockResolvedValue("/tmp/achievements");
     launcherMocks.syncGameAchievements.mockRejectedValue(
@@ -110,6 +112,29 @@ describe("AchievementsPage", () => {
       screen.queryByRole("region", { name: /achievement cache readiness/i }),
     ).not.toBeInTheDocument();
     expect(achievementMocks.hydrateGamesWithRemoteAchievements).not.toHaveBeenCalled();
+  });
+
+  it("loads PC Game Pass catalog titles beyond the native installed inventory", async () => {
+    localStorage.setItem(
+      STORAGE_KEYS.GAME_PASS_CATALOG_CACHE,
+      JSON.stringify([
+        {
+          id: "gamepass-9NBLGGH4R315",
+          externalId: "9NBLGGH4R315",
+          title: "Game Pass Archive",
+          description: "",
+          coverUrl: null,
+          logoUrl: null,
+        },
+      ]),
+    );
+
+    renderAchievementsRoute("/achievements");
+
+    const heading = await screen.findByRole("heading", { name: "Game Pass Archive" });
+    const row = within(heading.closest("article")!);
+    expect(row.getByText(/pc game pass catalog entry/i)).toBeInTheDocument();
+    expect(launcherMocks.syncGameAchievements).not.toHaveBeenCalled();
   });
 
   it("renders local achievement rows without waiting for cloud hydration", async () => {
