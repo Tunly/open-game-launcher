@@ -187,7 +187,6 @@ inventory. The operational root commands include `completion:gate:*`,
 │   ├── PROJECT_DESIGN.md              # Design system
 │   ├── references/                    # Maintained format/reference docs
 │   ├── runbooks/                      # Hosted deploy/cron/evidence operations
-│   ├── superpowers/                   # Design specs and implementation plans
 │   └── verification/                  # Local/external evidence inventory
 ├── launcher/
 │   ├── src/
