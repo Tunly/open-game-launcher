@@ -201,6 +201,54 @@ Deno.test("notify price-drop handler live run records notifications and evidence
   });
 });
 
+Deno.test("notify price-drop handler records stale concurrent claims without failing", async () => {
+  const evidenceRecords: unknown[] = [];
+  const response = await handleNotifyPriceDrop(
+    jsonRequest({ triggerSource: "scheduled" }),
+    stubDeps({
+      loadActiveAlerts: async () => [alertRow()],
+      recordNotifications: async () => ({
+        alertsMarked: 0,
+        notificationsRecorded: 0,
+      }),
+      recordPriceDropNotificationRun: async (evidence) => {
+        evidenceRecords.push(evidence);
+      },
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  const body = await response.json();
+  assertEquals(body.candidateCount, 1);
+  assertEquals(body.notificationsRecorded, 0);
+  assertEquals(body.skipped.delivery_claim_lost, 1);
+  assertEquals(evidenceRecords[0], {
+    alerts_marked_count: 0,
+    candidate_count: 1,
+    completed_at: "2026-06-15T12:00:02.000Z",
+    dry_run: false,
+    limit_count: 500,
+    notifications_recorded_count: 0,
+    requested_alert_count: 0,
+    requested_product_count: 0,
+    requested_user_count: 0,
+    run_id: "price-drop-run-1",
+    scanned_count: 1,
+    skipped_summary: {
+      already_notified: 0,
+      delivery_claim_lost: 1,
+      inactive: 0,
+      invalid_product: 0,
+      invalid_target: 0,
+      not_met: 0,
+      unpublished_product: 0,
+    },
+    started_at: "2026-06-15T12:00:00.000Z",
+    status: "completed",
+    trigger_source: "scheduled",
+  });
+});
+
 Deno.test("notify price-drop handler limits returned candidate summaries", async () => {
   const response = await handleNotifyPriceDrop(
     jsonRequest({ dryRun: true }),

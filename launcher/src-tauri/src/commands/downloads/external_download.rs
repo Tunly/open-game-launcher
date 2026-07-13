@@ -11,7 +11,8 @@ use crate::commands::downloads::steam_state::{
 };
 use crate::commands::downloads::types::{
     cancellable_sleep, emit_download_progress, get_download_manager, is_download_control_pending,
-    pause_hold_feedback, update_download_metrics, update_download_status,
+    pause_hold_feedback, remove_active_download_if_current, update_download_metrics,
+    update_download_status,
 };
 use crate::commands::downloads::utils::get_dir_size;
 
@@ -147,7 +148,7 @@ pub async fn run_external_download(
                     progress,
                     &format!("Could not prepare Legendary: {error}"),
                 );
-                remove_external_download(&game_id);
+                remove_external_download(&game_id, &cancel_rx);
                 return;
             }
         };
@@ -167,7 +168,7 @@ pub async fn run_external_download(
                     progress,
                     &format!("Could not start Legendary: {error}"),
                 );
-                remove_external_download(&game_id);
+                remove_external_download(&game_id, &cancel_rx);
                 return;
             }
         };
@@ -181,7 +182,7 @@ pub async fn run_external_download(
                 "Legendary did not expose an output stream for progress tracking.",
             );
             let _ = child.kill().await;
-            remove_external_download(&game_id);
+            remove_external_download(&game_id, &cancel_rx);
             return;
         }
         epic_child = Some(child);
@@ -199,9 +200,7 @@ pub async fn run_external_download(
             }
             update_download_status(&game_id, "cancelled", "Cancelled", progress, 0);
             emit_download_progress(&app, &game_id, progress, "Cancelled", "cancelled", 0);
-            if let Ok(mut guard) = get_download_manager().lock() {
-                guard.remove(&game_id);
-            }
+            remove_external_download(&game_id, &cancel_rx);
             return;
         }
         while *pause_rx.borrow() {
@@ -222,9 +221,7 @@ pub async fn run_external_download(
                 }
                 update_download_status(&game_id, "cancelled", "Cancelled", progress, 0);
                 emit_download_progress(&app, &game_id, progress, "Cancelled", "cancelled", 0);
-                if let Ok(mut guard) = get_download_manager().lock() {
-                    guard.remove(&game_id);
-                }
+                remove_external_download(&game_id, &cancel_rx);
                 return;
             }
         }
@@ -319,7 +316,7 @@ pub async fn run_external_download(
 
                     if let Some(error) = steam_state.terminal_error(downloading_dir_size) {
                         fail_external_download(&app, &game_id, progress, error);
-                        remove_external_download(&game_id);
+                        remove_external_download(&game_id, &cancel_rx);
                         return;
                     }
 
@@ -370,7 +367,7 @@ pub async fn run_external_download(
                             progress,
                             "Steam manifest could not be read; completion was not confirmed.",
                         );
-                        remove_external_download(&game_id);
+                        remove_external_download(&game_id, &cancel_rx);
                         return;
                     }
                     let speed_str = "Steam (Connecting...)";
@@ -384,7 +381,7 @@ pub async fn run_external_download(
                     progress,
                     "Steam manifest disappeared before completion was confirmed.",
                 );
-                remove_external_download(&game_id);
+                remove_external_download(&game_id, &cancel_rx);
                 return;
             } else {
                 let speed_str = "Steam (Starting...)";
@@ -464,7 +461,7 @@ pub async fn run_external_download(
 
     if let Some(error) = epic_failure {
         fail_external_download(&app, &game_id, progress, &error);
-        remove_external_download(&game_id);
+        remove_external_download(&game_id, &cancel_rx);
         return;
     }
 
@@ -480,9 +477,7 @@ pub async fn run_external_download(
     emit_download_progress(&app, &game_id, 100, "Complete", "completed", 0);
 
     let _ = cancellable_sleep(&cancel_rx, tokio::time::Duration::from_secs(2)).await;
-    if let Ok(mut guard) = get_download_manager().lock() {
-        guard.remove(&game_id);
-    }
+    remove_external_download(&game_id, &cancel_rx);
 }
 
 fn legendary_exit_error(success: bool, code: Option<i32>) -> Option<String> {
@@ -501,10 +496,8 @@ fn fail_external_download(app: &AppHandle, game_id: &str, progress: u32, message
     emit_download_progress(app, game_id, progress, message, "error", 0);
 }
 
-fn remove_external_download(game_id: &str) {
-    if let Ok(mut guard) = get_download_manager().lock() {
-        guard.remove(game_id);
-    }
+fn remove_external_download(game_id: &str, cancel_rx: &watch::Receiver<bool>) {
+    remove_active_download_if_current(game_id, cancel_rx);
 }
 
 #[cfg(test)]

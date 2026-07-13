@@ -90,16 +90,6 @@
       .status-row {
         display: flex;
         align-items: center;
-        gap: 13px;
-      }
-
-      .status-mark {
-        width: 13px;
-        height: 34px;
-        flex: 0 0 auto;
-        border: 3px solid #171411;
-        background: #007166;
-        animation: pulse 0.9s steps(2, end) infinite;
       }
 
       .status-label {
@@ -141,14 +131,7 @@
         }
       }
 
-      @keyframes pulse {
-        50% {
-          background: #b7102a;
-        }
-      }
-
       @media (prefers-reduced-motion: reduce) {
-        .status-mark,
         .progress::before {
           animation: none;
         }
@@ -168,7 +151,6 @@
 
       <section class="splash-content">
         <div class="status-row">
-          <span class="status-mark" aria-hidden="true"></span>
           <div>
             <p class="status-label neo-copy" role="status">Systemstart</p>
             <h1 id="splash-title" class="neo-title">Launcher wird geladen</h1>

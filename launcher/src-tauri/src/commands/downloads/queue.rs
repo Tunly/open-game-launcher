@@ -10,7 +10,7 @@ use crate::commands::downloads::types::{
 };
 
 pub fn get_download_queue() -> Result<Vec<DownloadItemPayload>, String> {
-    let mut queue_by_game_id: HashMap<String, DownloadItemPayload> = load_download_history()
+    let mut queue_by_game_id: HashMap<String, DownloadItemPayload> = load_download_history()?
         .into_iter()
         .map(|item| (item.game_id.clone(), normalize_queue_payload(item)))
         .collect();
@@ -27,7 +27,7 @@ pub fn get_download_queue() -> Result<Vec<DownloadItemPayload>, String> {
 
         for item in active_items {
             if is_stale_installed_download(&item) {
-                remove_download_history_item(&item.game_id);
+                remove_download_history_item(&item.game_id)?;
                 continue;
             }
             queue_by_game_id.insert(item.game_id.clone(), item);

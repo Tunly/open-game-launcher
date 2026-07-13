@@ -167,11 +167,13 @@ export function buildAccountDeletionFailureMutation(input: {
 
 export function parseAccountDeletionProcessorBody(body: unknown): {
   dryRun: boolean;
+  executeAcknowledged: boolean;
   limit: number;
   triggerSource: AccountDeletionProcessorTriggerSource;
 } {
   return {
     dryRun: readDryRun(body),
+    executeAcknowledged: readExecutionAcknowledgement(body),
     limit: readLimit(body),
     triggerSource: readTriggerSource(body),
   };
@@ -281,6 +283,14 @@ function readDryRun(body: unknown): boolean {
   }
 
   return (body as { dry_run?: unknown }).dry_run === true;
+}
+
+function readExecutionAcknowledgement(body: unknown): boolean {
+  if (!body || typeof body !== "object" || !("execute" in body)) {
+    return false;
+  }
+
+  return (body as { execute?: unknown }).execute === true;
 }
 
 function readTriggerSource(

@@ -22,13 +22,18 @@ We aim to acknowledge new reports within **3 business days** and ship a fix or m
 
 ## Hardening scope
 
-Security & RLS Hardening has been successfully completed:
+The checkout contains the following local hardening. Hosted, provider, and
+hardware proof still follows the external completion gates:
 
 - **Stripe checkout**: Enforced caller JWT, derived `user_id` from claims, and corrected the target column.
 - **RLS**: Implemented access policies on `store_orders`, `store_order_items`, `store_builds`, and `store_licenses`, and blocked self-publishing in `store_products`.
 - **Rust backend**: Eliminated shell, PowerShell, and path-traversal injection vectors, replaced plaintext-token JSON fallback with the OS keychain, and swapped `Mutex::lock().unwrap()` for poisoned-lock-aware variants to prevent lock poisoning.
 - **Platform auth**: GOG and EA bearer tokens stay in the native secure store; frontend flows remove legacy browser token copies, and Epic keeps only a non-sensitive connected-session marker while Legendary owns credentials.
 - **Install manifests**: Signed OG install manifests verify with a public key; `OGL_INSTALL_MANIFEST_SIGNING_KEY` is a release/staging secret and must never be committed or bundled into public client builds.
+- **Atomic social/data mutations**: Direct-message and group-room creation,
+  trusted playtime aggregation, price-drop delivery, social-link replacement,
+  achievement ingestion cursors, invite-status changes, and submitted artwork
+  identity are constrained through narrow RPCs, RLS, and migration-level guards.
 
 ## Best practices for contributors
 
@@ -36,7 +41,8 @@ Security & RLS Hardening has been successfully completed:
 - **Never** accept user-controlled paths without normalization and a "stays inside the configured root" check.
 - **Always** use parameterised SQL — never string-concatenate values into a query.
 - **Always** read privileged input from JWT claims, never from the request body.
-- Run `pnpm typecheck && pnpm lint && pnpm test` before opening a PR.
+- Run `pnpm --dir launcher typecheck`, `pnpm --dir launcher lint`, and
+  `pnpm --dir launcher test` before opening a PR.
 
 ## Recognition
 

@@ -1,15 +1,15 @@
-# Local Completion Audit - 2026-06-22
+# Local Completion Audit - 2026-07-13
 
 This audit defines the local completion boundary for this checkout. It is a
 local deterministic completion boundary, not a release-readiness boundary or a
 claim that external provider, hardware, or hosted production systems have been
 exercised. Full release readiness still requires the real external evidence
 artifacts and a successful full `pnpm completion:gate` release-boundary run.
-Last refreshed: 2026-06-22 for completion-gate status, external evidence,
-hosted cron evidence helper semantics, the current Plugin Runtime Sandbox local
-boundary, locked Cargo/Tauri release checks, release artifact inventory checks,
-and dirty tracked release-artifact guards. The mutable local gate receipt is
-stored outside Git; no live external evidence was collected in this workspace.
+Last refreshed: 2026-07-13 against the current frontend, native commands,
+Supabase migrations/functions, and operational scripts. This refresh does not
+claim a new clean-checkout `completion:gate:local` receipt: the working tree
+contains active implementation work. The mutable receipt remains outside Git,
+and no live external evidence was collected in this workspace.
 
 ## Local Completion Boundary
 
@@ -38,8 +38,9 @@ stored outside Git; no live external evidence was collected in this workspace.
 - Tooling versions are pinned for reproducibility: the repository declares
   Node.js `>=22.12 <26`, GitHub Actions reads `.node-version` (`22.12.0`),
   GitHub Actions use verified SHA refs on fixed runner labels, Rust uses
-  `rust-toolchain.toml` (`1.95.0`) locally and in CI, Supabase CI uses CLI
-  `2.104.0`, Deno CI and fallback use `v2.8.3`/`deno@2.8.3`, Cargo checks run
+  `rust-toolchain.toml` (`1.95.0`) locally and in CI, Supabase DB/deploy CI lanes
+  use CLI `2.104.0` while launcher-local commands use `2.109.0`, Deno CI and
+  fallback use `v2.8.3`/`deno@2.8.3`, Cargo checks run
   with `Cargo.lock` frozen, Tauri bundle lanes pass `--locked` to the Cargo
   runner, and hosted deploy commands run through the launcher-pinned Supabase
   CLI instead of an ambient global binary.
@@ -52,6 +53,14 @@ stored outside Git; no live external evidence was collected in this workspace.
   signing, price-drop cron contracts, presence polling, account export/deletion,
   hosted community artwork moderation, RAWG assets, trusted playtime and
   achievement ingestion, invite hosted proof, and shared privacy/store boundaries without live secrets.
+- Migration/contract coverage now pins atomic direct/group room creation,
+  blocked-DM access, auth-bound social relationship helpers, constrained invite
+  status changes, immutable submitted artwork identity, atomic/idempotent trusted
+  playtime ingestion, and atomic price-drop notification delivery.
+- Library/native coverage includes selected-copy capability resolution, stale
+  target revalidation, short-lived destructive-action grants, local-only custom
+  artwork, app-owned Xbox artwork materialization, Store-ID-first Xbox/Game Pass
+  merging, and preservation of real sub-minute Last Played activity.
 - Native Rust coverage includes external launcher dispatch URI validation with a
   test-injected opener, no-process rejection of unsafe Steam/EA/Ubisoft/Battle.net
   input labels, filtering for unknown or empty virtual input bindings before
@@ -66,8 +75,7 @@ stored outside Git; no live external evidence was collected in this workspace.
   desktop/mobile, local hosted-readiness panels, One-Click Setup rollback/audit no-write contract desktop/mobile
   evidence, Hosted Cron Evidence Summary desktop/mobile evidence, External
   Completion Evidence Summary desktop/mobile evidence, Broadcasting Audience Status
-  Contract desktop/mobile evidence, AI Recommendations Consent Audit/Gateway
-  handoff desktop/mobile evidence, and no-horizontal-overflow DOM checks for
+  Contract desktop/mobile evidence, and no-horizontal-overflow DOM checks for
   explicitly recorded screenshot sweep routes.
 - UI screenshot evidence is locally gated for dirty worktrees and CI diffs: when
   `launcher/src/**/*.tsx`, `launcher/src/index.css`,
@@ -97,13 +105,6 @@ stored outside Git; no live external evidence was collected in this workspace.
   pre-upload artifact inventory validation, target-scoped uploads that fail
   when no files match, signing env names, and draft-release handoff before
   `completion:gate:local` can pass.
-- AI Recommendations Hosted Eval Contract local evidence is limited to
-  overflow checks, and contract tests for deterministic baseline fixtures,
-  prompt regression, quality thresholds, safety/abuse fixtures, consent sample
-  review, hosted runner boundaries, cloud profile replay blockers, provider
-  telemetry replay blockers, and rollout rollback gates. It is not a model call,
-  prompt upload, hosted inference run, cloud profile replay, provider telemetry
-  fetch, live hosted eval, A/B rollout, or launch automation proof.
 - Broadcasting Audience Status Contract local evidence is limited to
   `/community?verify=broadcasting-audience-status-contract` screenshots, DOM
   overflow checks, and contract tests for preview-state labels, stale fallback,
@@ -175,8 +176,9 @@ stored outside Git; no live external evidence was collected in this workspace.
   hosted/provider evidence.
 - First-party Cloud Saves are removed: the launcher does not expose its former
   upload/download/restore/conflict UI or use the removed Supabase tables and
-  bucket. The cloud-save removal and forward-verification migrations are covered
-  by static contract tests.
+  storage policies. A legacy empty `game-saves` storage object may remain
+  inaccessible until an operator removes it through the Storage API. Removal
+  and forward-verification migrations are covered by static contract tests.
 - The remaining Cross-Store Save Copy evidence is limited to explicit local file
   actions, consent-gated native apply/rollback, hashes/manifests, and a temporary
   sandbox proof. It does not upload saves, use Supabase/keychain staging, call a
@@ -191,39 +193,32 @@ stored outside Git; no live external evidence was collected in this workspace.
   Release completion still requires external plugin marketplace and production
   signing/update evidence before plugin execution channels can be treated as
   externally complete.
-- Latest focused operational verification commands:
+- Current operational verification entry points (run them fresh; this document
+  does not attach pass/fail claims to the active dirty checkout):
 
 ```bash
-pnpm completion:gate:status # passed as no-run status; latest local receipt present/valid, releaseReady false, external evidence 0/5
-pnpm completion:gate:local # passed
-git diff --check HEAD # passed via completion:gate:local
-pnpm completion:gate:external # fails until hosted deploy, hosted cron, and external proof artifacts pass preflight
-pnpm hosted:deploy-gate:test # passed
-pnpm completion:gate:test # passed
-pnpm release:tag:test # passed
-pnpm release:workflow:test # passed
-pnpm release:workflow # passed
-pnpm tauri:debug-bundle:test # passed
-pnpm tauri:debug-bundle # passed on linux with a debug .deb bundle smoke
-pnpm external:evidence:test # passed
-pnpm hosted:cron-evidence:test # passed
-pnpm supabase:db:lint:test # passed
-NODE_ENV=development pnpm --dir launcher install --frozen-lockfile # passed; prepare installs Husky hook path
-pnpm --dir launcher lint-staged --diff HEAD --no-stash --concurrent false # passed
-pnpm supabase:functions:runner:test # passed
-pnpm supabase:functions:check # passed
-pnpm verify:ui-evidence:test # passed
-pnpm verify:ui-evidence # passed
-pnpm verify:routes:test # passed
-pnpm verify:routes # passed; see fresh command output for current route and screenshot counts
+pnpm completion:gate:status
+pnpm completion:gate:local
+pnpm completion:gate:external
+pnpm hosted:deploy-gate:test
+pnpm external:evidence:test
+pnpm hosted:cron-evidence:test
+pnpm supabase:db:lint:test
+pnpm supabase:functions:test
+pnpm supabase:functions:check
+pnpm verify:ui-evidence
+pnpm verify:routes
+pnpm --dir launcher typecheck
+pnpm --dir launcher lint
+pnpm --dir launcher test
+pnpm --dir launcher build
 ```
 
 `completion:gate:local` starts with `git diff --check HEAD`, so staged and
 unstaged whitespace and patch metadata errors are covered by the same
-deterministic local gate. On this Linux host, the gate logs the Rust Windows
-target check as skipped with an explicit `windows-2025` CI handoff; the same
-gate runs the real `cargo check --locked --target x86_64-pc-windows-msvc`
-command on Windows.
+deterministic local gate. Platform-scoped checks report explicit CI handoffs
+when they cannot run on the current host; Windows runs the real
+`cargo check --locked --target x86_64-pc-windows-msvc` lane.
 After a successful local run, `completion:gate:local` also writes the gitignored
 `.codex/completion-gate-local-latest.json` receipt. That receipt is local
 operator context only: it records the local command, platform, check IDs, and

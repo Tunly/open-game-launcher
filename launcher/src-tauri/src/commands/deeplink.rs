@@ -2,6 +2,7 @@ use serde::Serialize;
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DeepLinkEvent {
     pub raw_url: String,
     pub action: String, // "join", "open", "install"

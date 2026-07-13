@@ -1,14 +1,20 @@
+// deno-lint-ignore-file no-import-prefix
 import {
   assertEquals,
-  assertObjectMatch,
+  assertRejects,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 
 import { createIngestPlaytimeAdapters } from "./adapters.ts";
+import type { NormalizedPlaytimeIngestion } from "./playtime-ingestion.ts";
 
 const userId = "11111111-1111-4111-8111-111111111111";
-const otherUserId = "22222222-2222-4222-8222-222222222222";
 const catalogGameId = "123e4567-e89b-42d3-a456-426614174000";
 const secondGameId = "123e4567-e89b-42d3-a456-426614174001";
+const sessionId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const payloadConflictSessionId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+const launcherDeviceId = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+const aggregateOperationId = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+const observedAt = "2026-06-15T12:00:00.000Z";
 
 Deno.test("ingest playtime adapters authenticate via caller client without live Supabase secrets", async () => {
   const baseDeps = deps();
@@ -19,10 +25,11 @@ Deno.test("ingest playtime adapters authenticate via caller client without live 
       calls.push({ options, supabaseAnonKey, supabaseUrl });
       return {
         auth: {
-          getUser: async () => ({
-            data: { user: { id: userId } },
-            error: null,
-          }),
+          getUser: () =>
+            Promise.resolve({
+              data: { user: { id: userId } },
+              error: null,
+            }),
         },
       };
     },
@@ -73,10 +80,11 @@ Deno.test("ingest playtime adapters reject invalid caller auth", async () => {
     ...deps(),
     createClient: () => ({
       auth: {
-        getUser: async () => ({
-          data: { user: null },
-          error: { message: "bad jwt" },
-        }),
+        getUser: () =>
+          Promise.resolve({
+            data: { user: null },
+            error: { message: "bad jwt" },
+          }),
       },
     }),
   });
@@ -125,16 +133,11 @@ Deno.test("ingest playtime adapters look up missing catalog games", async () => 
   ]);
 });
 
-Deno.test("ingest playtime adapters look up session id conflicts", async () => {
-  const operations: Operation[] = [];
+Deno.test("ingest playtime adapters compare catalog UUIDs canonically", async () => {
   const supabaseAdmin = supabaseStub({
     dataByTable: {
-      game_sessions: [
-        { id: "own-session", user_id: userId },
-        { id: "other-session", user_id: otherUserId },
-      ],
+      games: [{ id: catalogGameId }],
     },
-    operations,
   });
   const adapters = createIngestPlaytimeAdapters({
     ...deps(),
@@ -142,125 +145,130 @@ Deno.test("ingest playtime adapters look up session id conflicts", async () => {
   });
 
   assertEquals(
-    await adapters.findConflictingSessionIds(auth(supabaseAdmin), [
-      "own-session",
-      "other-session",
+    await adapters.findMissingCatalogGames(auth(supabaseAdmin), [
+      catalogGameId.toUpperCase(),
     ]),
-    ["other-session"],
+    [],
   );
-  assertEquals(operations, [
-    { args: ["game_sessions"], method: "from" },
-    { args: ["id, user_id"], method: "select", table: "game_sessions" },
-    {
-      args: ["id", ["own-session", "other-session"]],
-      method: "in",
-      table: "game_sessions",
-    },
-  ]);
 });
 
-Deno.test("ingest playtime adapters upsert aggregate stats", async () => {
+Deno.test("ingest playtime adapters send aggregate and sessions through one atomic RPC", async () => {
   const operations: Operation[] = [];
-  const supabaseAdmin = supabaseStub({ operations });
-  const adapters = createIngestPlaytimeAdapters({
-    ...deps(),
-    supabaseAdmin,
-  });
-
-  await adapters.upsertAggregate(auth(supabaseAdmin), {
-    firstPlayedAt: "2026-06-10T10:00:00.000Z",
-    gameId: catalogGameId,
-    installedVersion: "1.2.3",
-    lastPlayedAt: "2026-06-15T10:00:00.000Z",
-    playtimeMinutes: 42,
-    totalSessions: 3,
-  });
-
-  assertEquals(operations[0], {
-    args: ["user_game_stats"],
-    method: "from",
-  });
-  const upsert = operations[1];
-  assertEquals(upsert.method, "upsert");
-  assertEquals(upsert.table, "user_game_stats");
-  assertObjectMatch(upsert.args[0] as Record<string, unknown>, {
-    first_played_at: "2026-06-10T10:00:00.000Z",
-    game_id: catalogGameId,
-    installed_version: "1.2.3",
-    last_played_at: "2026-06-15T10:00:00.000Z",
-    playtime_minutes: 42,
-    total_sessions: 3,
-    user_id: userId,
-  });
-  assertEquals(
-    typeof (upsert.args[0] as Record<string, unknown>).updated_at,
-    "string",
-  );
-  assertEquals(upsert.args[1], { onConflict: "user_id,game_id" });
-});
-
-Deno.test("ingest playtime adapters insert session rows", async () => {
-  const operations: Operation[] = [];
-  const supabaseAdmin = supabaseStub({ operations });
-  const adapters = createIngestPlaytimeAdapters({
-    ...deps(),
-    supabaseAdmin,
-  });
-
-  await adapters.upsertSessions(auth(supabaseAdmin), [
-    {
-      durationMinutes: 60,
-      endedAt: "2026-06-15T11:00:00.000Z",
-      gameId: catalogGameId,
-      id: "session-1",
-      launcherDeviceId: "device-1",
-      platform: "linux",
-      startedAt: "2026-06-15T10:00:00.000Z",
-    },
-  ]);
-
-  assertEquals(operations, [
-    { args: ["game_sessions"], method: "from" },
-    {
-      args: [[
-        {
-          duration_minutes: 60,
-          ended_at: "2026-06-15T11:00:00.000Z",
-          game_id: catalogGameId,
-          id: "session-1",
-          launcher_device_id: "device-1",
-          platform: "linux",
-          started_at: "2026-06-15T10:00:00.000Z",
-          user_id: userId,
-        },
-      ]],
-      method: "insert",
-      table: "game_sessions",
-    },
-  ]);
-});
-
-Deno.test("ingest playtime adapters surface Supabase errors", async () => {
   const supabaseAdmin = supabaseStub({
-    errorByTable: {
-      games: { message: "catalog read failed" },
-    },
+    operations,
+    rpcData: [{
+      accepted: true,
+      aggregate_pushed: true,
+      owner_conflict_session_ids: [],
+      payload_conflict_session_ids: [],
+      sessions_pushed: 1,
+    }],
   });
   const adapters = createIngestPlaytimeAdapters({
     ...deps(),
     supabaseAdmin,
+  });
+
+  assertEquals(
+    await adapters.ingestPlaytime(auth(supabaseAdmin), ingestion()),
+    {
+      accepted: true,
+      aggregatePushed: true,
+      ownerConflictSessionIds: [],
+      payloadConflictSessionIds: [],
+      sessionsPushed: 1,
+    },
+  );
+  assertEquals(operations, [
+    {
+      args: [
+        "ingest_trusted_playtime",
+        {
+          p_aggregate: {
+            first_played_at: "2026-06-10T10:00:00.000Z",
+            game_id: catalogGameId,
+            installed_version: "1.2.3",
+            last_played_at: "2026-06-15T11:00:00.000Z",
+            observed_at: observedAt,
+            operation: "snapshot",
+            operation_id: aggregateOperationId,
+            playtime_minutes: 42,
+            session_count_delta: 3,
+          },
+          p_authenticated_user_id: userId,
+          p_sessions: [{
+            duration_minutes: 60,
+            ended_at: "2026-06-15T11:00:00.000Z",
+            game_id: catalogGameId,
+            id: sessionId,
+            launcher_device_id: launcherDeviceId,
+            platform: "linux",
+            started_at: "2026-06-15T10:00:00.000Z",
+          }],
+        },
+      ],
+      method: "rpc",
+    },
+  ]);
+});
+
+Deno.test("ingest playtime adapters preserve RPC conflict classifications", async () => {
+  const operations: Operation[] = [];
+  const supabaseAdmin = supabaseStub({
+    operations,
+    rpcData: [{
+      accepted: false,
+      aggregate_pushed: false,
+      owner_conflict_session_ids: [sessionId],
+      payload_conflict_session_ids: [payloadConflictSessionId],
+      sessions_pushed: 0,
+    }],
+  });
+  const adapters = createIngestPlaytimeAdapters({
+    ...deps(),
+    supabaseAdmin,
+  });
+
+  assertEquals(
+    await adapters.ingestPlaytime(auth(supabaseAdmin), ingestion()),
+    {
+      accepted: false,
+      aggregatePushed: false,
+      ownerConflictSessionIds: [sessionId],
+      payloadConflictSessionIds: [payloadConflictSessionId],
+      sessionsPushed: 0,
+    },
+  );
+  assertEquals(operations.length, 1);
+  assertEquals(operations[0].method, "rpc");
+});
+
+Deno.test("ingest playtime adapters surface RPC failures and malformed results", async () => {
+  const rpcError = { message: "transaction failed" };
+  const failedAdmin = supabaseStub({ rpcError });
+  const failedAdapters = createIngestPlaytimeAdapters({
+    ...deps(),
+    supabaseAdmin: failedAdmin,
   });
 
   let thrown: unknown;
   try {
-    await adapters.findMissingCatalogGames(auth(supabaseAdmin), [
-      catalogGameId,
-    ]);
+    await failedAdapters.ingestPlaytime(auth(failedAdmin), ingestion());
   } catch (error) {
     thrown = error;
   }
+  assertEquals(thrown, rpcError);
 
-  assertEquals(thrown, { message: "catalog read failed" });
+  const malformedAdmin = supabaseStub({ rpcData: [] });
+  const malformedAdapters = createIngestPlaytimeAdapters({
+    ...deps(),
+    supabaseAdmin: malformedAdmin,
+  });
+  await assertRejects(
+    () => malformedAdapters.ingestPlaytime(auth(malformedAdmin), ingestion()),
+    Error,
+    "Invalid ingest_trusted_playtime RPC response.",
+  );
 });
 
 type Operation = {
@@ -273,7 +281,11 @@ function deps() {
   return {
     createClient: () => ({
       auth: {
-        getUser: async () => ({ data: { user: { id: userId } }, error: null }),
+        getUser: () =>
+          Promise.resolve({
+            data: { user: { id: userId } },
+            error: null,
+          }),
       },
     }),
     supabaseAdmin: supabaseStub(),
@@ -289,10 +301,37 @@ function auth(adminClient: unknown) {
   };
 }
 
+function ingestion(): NormalizedPlaytimeIngestion {
+  return {
+    aggregate: {
+      firstPlayedAt: "2026-06-10T10:00:00.000Z",
+      gameId: catalogGameId,
+      installedVersion: "1.2.3",
+      lastPlayedAt: "2026-06-15T11:00:00.000Z",
+      observedAt,
+      operation: "snapshot",
+      operationId: aggregateOperationId,
+      playtimeMinutes: 42,
+      sessionCountDelta: 3,
+    },
+    sessions: [{
+      durationMinutes: 60,
+      endedAt: "2026-06-15T11:00:00.000Z",
+      gameId: catalogGameId,
+      id: sessionId,
+      launcherDeviceId,
+      platform: "linux",
+      startedAt: "2026-06-15T10:00:00.000Z",
+    }],
+  };
+}
+
 function supabaseStub(options: {
   dataByTable?: Record<string, unknown[]>;
   errorByTable?: Record<string, { message?: string } | null>;
   operations?: Operation[];
+  rpcData?: unknown;
+  rpcError?: { message?: string } | null;
 } = {}) {
   const operations = options.operations ?? [];
   return {
@@ -307,24 +346,19 @@ function supabaseStub(options: {
           operations.push({ args: [column, values], method: "in", table });
           return Promise.resolve(result());
         },
-        insert(value: unknown) {
-          operations.push({ args: [value], method: "insert", table });
-          return Promise.resolve(result());
-        },
         select(columns: string) {
           operations.push({ args: [columns], method: "select", table });
           return query;
         },
-        upsert(value: unknown, options?: unknown) {
-          operations.push({
-            args: options === undefined ? [value] : [value, options],
-            method: "upsert",
-            table,
-          });
-          return Promise.resolve(result());
-        },
       };
       return query;
+    },
+    rpc: (name: string, args: Record<string, unknown>) => {
+      operations.push({ args: [name, args], method: "rpc" });
+      return Promise.resolve({
+        data: options.rpcData ?? null,
+        error: options.rpcError ?? null,
+      });
     },
   };
 }

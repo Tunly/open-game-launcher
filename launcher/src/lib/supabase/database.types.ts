@@ -3432,6 +3432,7 @@ export type Database = {
           first_played_at: string | null
           game_id: string
           id: string
+          ingestion_observed_at: string | null
           installed_version: string | null
           is_favorite: boolean
           last_installed_at: string | null
@@ -3447,6 +3448,7 @@ export type Database = {
           first_played_at?: string | null
           game_id: string
           id?: string
+          ingestion_observed_at?: string | null
           installed_version?: string | null
           is_favorite?: boolean
           last_installed_at?: string | null
@@ -3462,6 +3464,7 @@ export type Database = {
           first_played_at?: string | null
           game_id?: string
           id?: string
+          ingestion_observed_at?: string | null
           installed_version?: string | null
           is_favorite?: boolean
           last_installed_at?: string | null

@@ -22,7 +22,7 @@ import { EmptyStorePanel } from "../components/store/EmptyStorePanel";
 import { StoreOrderPanel } from "../components/store/StoreOrderPanel";
 import { STORE_REFUND_REASON_OPTIONS } from "../components/store/storeOrderOptions";
 import { ProductDetailPanel } from "../components/store/StoreProductDetailPanel";
-import { CatalogSourceTape, StoreMetric } from "../components/store/StoreReadinessPanels";
+import { StoreMetric } from "../components/store/StoreReadinessPanels";
 import { StoreReviewsPanel } from "../components/store/StoreReviewsPanel";
 import { useCurrentUser } from "../hooks/useCurrentUser";
 import { getSupabaseClient } from "../lib/supabase/client";
@@ -238,29 +238,6 @@ function formatStorePrice(game: StoreGame) {
   return game.isFree || game.price <= 0 ? "Free" : formatCurrency(game.price);
 }
 
-function catalogSourceLabel(source: StoreCatalogSource) {
-  switch (source) {
-    case "loading":
-      return "Loading Catalog";
-    case "hosted":
-      return "Hosted Catalog";
-    case "empty":
-      return "Hosted Empty";
-    case "error":
-      return "Hosted Error";
-  }
-}
-
-function heroAccentLabel(game: StoreGame) {
-  if (game.discountPercent) return `${game.discountPercent}% Off`;
-  if (game.isFree || game.price <= 0) return "Free";
-  return "Published";
-}
-
-function heroGenreLabel(game: StoreGame) {
-  return game.genres?.[0] ?? game.tagLine.split("/")[0]?.trim() ?? "Store";
-}
-
 function releaseTime(game: StoreGame) {
   const timestamp = game.releaseDate ? new Date(game.releaseDate).getTime() : 0;
   return Number.isFinite(timestamp) ? timestamp : 0;
@@ -335,7 +312,6 @@ export function StorePage() {
   const [products, setProducts] = useState<StoreGame[]>([]);
   const [storeProducts, setStoreProducts] = useState<StoreProduct[]>([]);
   const [catalogSource, setCatalogSource] = useState<StoreCatalogSource>("loading");
-  const [catalogError, setCatalogError] = useState<string | null>(null);
   const [ordersLoading, setOrdersLoading] = useState(true);
   const [selectedProductId, setSelectedProductId] = useState<string | null>(null);
   const [accountStateUserId, setAccountStateUserId] = useState<string | null>(null);
@@ -443,7 +419,6 @@ export function StorePage() {
 
     async function loadProducts() {
       setCatalogSource("loading");
-      setCatalogError(null);
       try {
         const publishedProducts = await listPublishedProducts();
 
@@ -463,12 +438,11 @@ export function StorePage() {
             setSelectedProductId(mapped[0].id);
           }
         }
-      } catch (error) {
+      } catch {
         if (!cancelled) {
           setStoreProducts([]);
           setProducts([]);
           setSelectedProductId(null);
-          setCatalogError(error instanceof Error ? error.message : String(error));
           setCatalogSource("error");
         }
       }
@@ -814,6 +788,7 @@ export function StorePage() {
   useEffect(() => {
     const slug = searchParams.get("slug");
     if (!slug) return;
+    if (catalogSource === "loading") return;
 
     const wantsInstall = searchParams.get("install") === "1";
     const wanted = slug.toLowerCase();
@@ -846,7 +821,7 @@ export function StorePage() {
     next.delete("slug");
     next.delete("install");
     setSearchParams(next, { replace: true });
-  }, [searchParams, setSearchParams, setStatusMessage, products]);
+  }, [catalogSource, products, searchParams, setSearchParams, setStatusMessage]);
 
   async function toggleWishlist(gameId: string) {
     if (!commerceEnabled) {
@@ -1561,18 +1536,7 @@ export function StorePage() {
           <div className="absolute inset-x-0 top-0 h-24 bg-black/35" />
           <div className="neo-dots-ink relative m-4 flex min-h-[330px] items-center border-l-4 border-[#c20b2f] p-5 sm:m-6 sm:min-h-[280px] sm:p-9">
             <div className="max-w-[590px]">
-              <div className="neo-copy flex flex-wrap gap-2 text-[11px] font-bold uppercase">
-                <span className="border-2 border-[#c20b2f] bg-[#fff9ed] px-3 py-1 text-[#c20b2f]">
-                  {selectedProduct ? heroAccentLabel(selectedProduct) : "Store"}
-                </span>
-                <span className="border-2 border-[#087d6d] bg-[#fff9ed] px-3 py-1 text-[#087d6d]">
-                  {selectedProduct ? heroGenreLabel(selectedProduct) : "Catalog"}
-                </span>
-                <span className="border-2 border-black bg-[#fff9ed] px-3 py-1 text-[#171411]">
-                  {catalogSourceLabel(catalogSource)}
-                </span>
-              </div>
-              <h1 className="neo-title mt-4 text-[3.25rem] leading-none text-[#fffaf0] sm:text-[4rem] lg:text-[4.5rem]">
+              <h1 className="neo-title text-[3.25rem] leading-none text-[#fffaf0] sm:text-[4rem] lg:text-[4.5rem]">
                 {selectedProduct?.title ?? "Store Desk"}
               </h1>
               <p className="mt-4 max-w-[560px] text-base leading-7 text-[#fffaf0] sm:text-lg">
@@ -1623,12 +1587,6 @@ export function StorePage() {
             </div>
           </div>
         </div>
-
-        <CatalogSourceTape
-          errorMessage={catalogError}
-          productCount={products.length}
-          source={catalogSource}
-        />
 
         <section
           aria-label="Store discovery controls"

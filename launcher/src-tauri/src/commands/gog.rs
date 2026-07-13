@@ -1555,7 +1555,9 @@ pub(crate) fn emit_gog_download_progress(
         progress_source: "gog_api".to_string(),
         error: None,
     };
-    super::downloads::record_download_item(payload.clone());
+    if let Err(error) = super::downloads::record_download_item(payload.clone()) {
+        eprintln!("[open-game-launcher] Could not persist GOG download progress: {error}");
+    }
     let _ = app.emit("download_progress", payload);
 }
 

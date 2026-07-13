@@ -609,16 +609,24 @@ pub async fn fetch_ubisoft_owned_games() -> Result<Vec<OwnedGame>, String> {
                 &game.id.to_string(),
                 &game.name,
             );
-            let cover_url = resolved_cover.clone().or_else(|| {
-                rawg_assets
-                    .as_ref()
-                    .and_then(|assets| assets.cover_url.clone())
-            });
-            let logo_url = resolved_logo.clone().or_else(|| {
-                rawg_assets
-                    .as_ref()
-                    .and_then(|assets| assets.logo_url.clone())
-            });
+            let (fallback_cover, fallback_logo, fallback_icon) =
+                crate::commands::games::detect::get_ubisoft_fallback_assets(&game.name);
+            let cover_url = resolved_cover
+                .clone()
+                .or_else(|| {
+                    rawg_assets
+                        .as_ref()
+                        .and_then(|assets| assets.cover_url.clone())
+                })
+                .or(fallback_cover);
+            let logo_url = resolved_logo
+                .clone()
+                .or_else(|| {
+                    rawg_assets
+                        .as_ref()
+                        .and_then(|assets| assets.logo_url.clone())
+                })
+                .or(fallback_logo);
             let icon_url = resolved_icon
                 .or_else(|| {
                     rawg_assets
@@ -626,7 +634,8 @@ pub async fn fetch_ubisoft_owned_games() -> Result<Vec<OwnedGame>, String> {
                         .and_then(|assets| assets.icon_url.clone())
                 })
                 .or_else(|| logo_url.clone())
-                .or_else(|| cover_url.clone());
+                .or_else(|| cover_url.clone())
+                .or(fallback_icon);
 
             OwnedGame {
                 id: format!("ubisoft-owned-{}", game.id),

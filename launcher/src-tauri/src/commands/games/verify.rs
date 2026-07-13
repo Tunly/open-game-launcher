@@ -6,11 +6,11 @@ use std::{
 
 use super::core::{
     extract_og_zip_package, find_launch_executable, is_og_managed_install_path, is_zip_package,
-    launcher_display_name, manifest_has_signature, normalize_game_id,
+    launcher_display_name, manifest_has_signature, mutate_installed_games_cache, normalize_game_id,
     og_managed_manifest_trust_status, og_manifest_file_for_path, og_manifest_path_for_entry,
     og_manifest_relative_path, open_uri, path_to_string, read_installed_games_cache,
-    read_og_managed_manifest, read_og_managed_version, sha256_file_hex, update_uri_for_game,
-    verify_og_managed_manifest_signature, write_installed_games_cache,
+    read_og_managed_manifest, read_og_managed_version, sha256_file_hex,
+    update_installed_game_cache, update_uri_for_game, verify_og_managed_manifest_signature,
     write_og_managed_manifest_details, OgManagedManifest, OgManagedManifestFile,
     OgManifestTrustStatus, OG_MANAGED_LATEST_VERSION,
 };
@@ -241,7 +241,7 @@ pub fn repair_game_files(game_id: String) -> Result<RepairGameFilesResponse, Str
     let game_id = normalize_game_id(game_id)?;
     println!("[open-game-launcher] repair_game_files requested for {game_id}");
 
-    let mut games = read_installed_games_cache().unwrap_or_default();
+    let games = read_installed_games_cache().unwrap_or_default();
     let game_index = games
         .iter()
         .position(|game| game.id == game_id)
@@ -326,8 +326,17 @@ pub fn repair_game_files(game_id: String) -> Result<RepairGameFilesResponse, Str
         .map(|name| vec![name.to_string()])
         .unwrap_or_default();
 
-    games[game_index] = game.clone();
-    write_installed_games_cache(&games)?;
+    let status = game.status.clone();
+    let cached_install_path = game.install_path.clone();
+    let cached_executable_path = game.executable_path.clone();
+    let process_names = game.process_names.clone();
+    game = update_installed_game_cache(&game_id, move |latest| {
+        latest.status = status;
+        latest.install_path = cached_install_path;
+        latest.executable_path = cached_executable_path;
+        latest.process_names = process_names;
+        Ok(())
+    })?;
 
     Ok(RepairGameFilesResponse {
         game_id,
@@ -344,28 +353,29 @@ pub fn repair_game_files(game_id: String) -> Result<RepairGameFilesResponse, Str
 
 #[tauri::command]
 pub fn check_game_updates() -> Result<CheckGameUpdatesResponse, String> {
-    let mut games = read_installed_games_cache().unwrap_or_default();
-    let mut update_count = 0;
+    let (update_count, games) = mutate_installed_games_cache(|games| {
+        let mut update_count = 0;
 
-    for game in games.iter_mut() {
-        let Some(install_path) = game.install_path.as_deref().map(PathBuf::from) else {
-            continue;
-        };
+        for game in games.iter_mut() {
+            let Some(install_path) = game.install_path.as_deref().map(PathBuf::from) else {
+                continue;
+            };
 
-        if !is_og_managed_install_path(&install_path) {
-            continue;
+            if !is_og_managed_install_path(&install_path) {
+                continue;
+            }
+
+            let local_version =
+                read_og_managed_version(&install_path).unwrap_or_else(|| game.version.clone());
+            if local_version.trim() != OG_MANAGED_LATEST_VERSION {
+                game.status = GameStatus::UpdateAvailable;
+                game.version = local_version;
+                update_count += 1;
+            }
         }
 
-        let local_version =
-            read_og_managed_version(&install_path).unwrap_or_else(|| game.version.clone());
-        if local_version.trim() != OG_MANAGED_LATEST_VERSION {
-            game.status = GameStatus::UpdateAvailable;
-            game.version = local_version;
-            update_count += 1;
-        }
-    }
-
-    write_installed_games_cache(&games)?;
+        Ok((update_count, games.clone()))
+    })?;
 
     let message = if update_count == 0 {
         "All OG-managed games are up to date.".to_string()

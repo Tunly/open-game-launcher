@@ -3,12 +3,31 @@
 //! The poller writes one row per closed session. Rows are flagged `synced_at`
 //! after the frontend successfully pushes them to the Supabase
 //! `game_sessions` table. Unsynced rows are drained on next sync.
-use chrono::DateTime;
 use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::types::Platform;
+
+fn open_play_session_connection() -> Result<Connection, String> {
+    let conn = crate::commands::local_db::open_connection()?;
+    open_session_table(&conn)
+        .map_err(|error| format!("Could not initialize local play sessions: {error}"))?;
+    Ok(conn)
+}
+
+fn validate_session(session: &PlaySessionRecord) -> Result<(), String> {
+    if session.id.trim().is_empty()
+        || session.game_id.trim().is_empty()
+        || session.launcher_device_id.trim().is_empty()
+    {
+        return Err("Play sessions require id, gameId, and launcherDeviceId.".to_string());
+    }
+    if session.started_at <= 0 || session.ended_at < session.started_at {
+        return Err("Play session timestamps are invalid.".to_string());
+    }
+    Ok(())
+}
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -130,6 +149,72 @@ pub fn update_session(
     Ok(())
 }
 
+#[tauri::command]
+pub fn get_unsynced_play_sessions() -> Result<Vec<PlaySessionRecord>, String> {
+    let conn = open_play_session_connection()?;
+    unsynced_sessions(&conn).map_err(|error| format!("Could not read local play sessions: {error}"))
+}
+
+#[tauri::command]
+pub fn mark_play_sessions_synced(ids: Vec<String>) -> Result<usize, String> {
+    if ids.len() > 1_000 {
+        return Err("At most 1000 play sessions can be marked at once.".to_string());
+    }
+    let conn = open_play_session_connection()?;
+    mark_synced(&conn, &ids)
+        .map_err(|error| format!("Could not mark play sessions synced: {error}"))
+}
+
+#[tauri::command]
+pub fn upsert_play_session(session: PlaySessionRecord) -> Result<(), String> {
+    validate_session(&session)?;
+    let conn = open_play_session_connection()?;
+    insert_session(&conn, &session)
+        .map_err(|error| format!("Could not save local play session: {error}"))
+}
+
+#[tauri::command]
+pub fn update_play_session(
+    id: String,
+    started_at: Option<i64>,
+    ended_at: Option<i64>,
+    duration_minutes: Option<u32>,
+) -> Result<(), String> {
+    if id.trim().is_empty() {
+        return Err("Play session id is required.".to_string());
+    }
+    let conn = open_play_session_connection()?;
+    let existing = get_session(&conn, &id)
+        .map_err(|error| format!("Could not read local play session: {error}"))?
+        .ok_or_else(|| format!("Play session '{id}' was not found."))?;
+    let next_started_at = started_at.unwrap_or(existing.started_at);
+    let next_ended_at = ended_at.unwrap_or(existing.ended_at);
+    if next_started_at <= 0 || next_ended_at < next_started_at {
+        return Err("Play session timestamps are invalid.".to_string());
+    }
+    update_session(&conn, &id, started_at, ended_at, duration_minutes)
+        .map_err(|error| format!("Could not update local play session: {error}"))
+}
+
+#[tauri::command]
+pub fn delete_play_session(id: String) -> Result<usize, String> {
+    if id.trim().is_empty() {
+        return Err("Play session id is required.".to_string());
+    }
+    let conn = open_play_session_connection()?;
+    delete_session(&conn, &id)
+        .map_err(|error| format!("Could not delete local play session: {error}"))
+}
+
+#[tauri::command]
+pub fn get_play_session(id: String) -> Result<Option<PlaySessionRecord>, String> {
+    if id.trim().is_empty() {
+        return Err("Play session id is required.".to_string());
+    }
+    let conn = open_play_session_connection()?;
+    get_session(&conn, &id).map_err(|error| format!("Could not read local play session: {error}"))
+}
+
 pub fn platform_to_str(platform: &Platform) -> &'static str {
     match platform {
         Platform::Windows => "windows",
@@ -143,12 +228,6 @@ pub fn now_unix_secs() -> i64 {
         .duration_since(UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)
         .unwrap_or(0)
-}
-
-pub fn iso_to_unix(iso: &str) -> i64 {
-    DateTime::parse_from_rfc3339(iso)
-        .map(|dt| dt.timestamp())
-        .unwrap_or_else(|_| now_unix_secs())
 }
 
 fn row_to_session(row: &rusqlite::Row<'_>) -> rusqlite::Result<PlaySessionRecord> {

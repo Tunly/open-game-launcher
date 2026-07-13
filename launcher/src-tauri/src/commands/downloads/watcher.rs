@@ -8,7 +8,8 @@ use crate::commands::downloads::steam_state::{
 };
 use crate::commands::downloads::types::{
     emit_download_progress, get_download_manager, is_download_control_pending, pause_hold_feedback,
-    payload_from_active_download, update_download_metrics, update_download_status, ActiveDownload,
+    payload_from_active_download, remove_active_download_if_current, update_download_metrics,
+    update_download_status, ActiveDownload,
 };
 use crate::commands::downloads::utils::get_dir_size;
 
@@ -65,7 +66,7 @@ pub fn start_global_download_watcher(app: AppHandle) {
                                                 if let Ok(mut guard) = map.lock() {
                                                     let (pause_tx, pause_rx) =
                                                         tokio::sync::watch::channel(false);
-                                                    let (cancel_tx, _) =
+                                                    let (cancel_tx, cancel_rx) =
                                                         tokio::sync::watch::channel(false);
 
                                                     let progress = calculate_steam_progress(
@@ -96,11 +97,15 @@ pub fn start_global_download_watcher(app: AppHandle) {
                                                     };
                                                     guard.insert(game_id.clone(), active);
                                                     if let Some(dl) = guard.get(&game_id) {
-                                                        remember_download_item(
+                                                        if let Err(error) = remember_download_item(
                                                             payload_from_active_download(
                                                                 &game_id, dl,
                                                             ),
-                                                        );
+                                                        ) {
+                                                            eprintln!(
+                                                                "[open-game-launcher] Could not persist discovered Steam download: {error}"
+                                                            );
+                                                        }
                                                     }
 
                                                     let app_clone = app.clone();
@@ -110,6 +115,7 @@ pub fn start_global_download_watcher(app: AppHandle) {
                                                         downloading_dir.clone();
                                                     tokio::spawn(async move {
                                                         let pause_rx = pause_rx;
+                                                        let cancel_rx = cancel_rx;
                                                         let mut current_progress = progress;
                                                         let mut manifest_read_failures = 0u8;
                                                         loop {
@@ -192,13 +198,10 @@ pub fn start_global_download_watcher(app: AppHandle) {
                                                                         tokio::time::Duration::from_secs(2),
                                                                     )
                                                                     .await;
-                                                                    if let Ok(mut guard) =
-                                                                        get_download_manager()
-                                                                            .lock()
-                                                                    {
-                                                                        guard
-                                                                            .remove(&game_id_clone);
-                                                                    }
+                                                                    remove_active_download_if_current(
+                                                                        &game_id_clone,
+                                                                        &cancel_rx,
+                                                                    );
                                                                     return;
                                                                 }
 
@@ -306,11 +309,10 @@ pub fn start_global_download_watcher(app: AppHandle) {
                                                                     tokio::time::Duration::from_secs(2),
                                                                 )
                                                                 .await;
-                                                                if let Ok(mut guard) =
-                                                                    get_download_manager().lock()
-                                                                {
-                                                                    guard.remove(&game_id_clone);
-                                                                }
+                                                                remove_active_download_if_current(
+                                                                    &game_id_clone,
+                                                                    &cancel_rx,
+                                                                );
                                                                 return;
                                                             }
                                                             tokio::time::sleep(
@@ -347,11 +349,10 @@ pub fn start_global_download_watcher(app: AppHandle) {
                                                             tokio::time::Duration::from_secs(2),
                                                         )
                                                         .await;
-                                                        if let Ok(mut guard) =
-                                                            get_download_manager().lock()
-                                                        {
-                                                            guard.remove(&game_id_clone);
-                                                        }
+                                                        remove_active_download_if_current(
+                                                            &game_id_clone,
+                                                            &cancel_rx,
+                                                        );
                                                     });
                                                 }
                                             }

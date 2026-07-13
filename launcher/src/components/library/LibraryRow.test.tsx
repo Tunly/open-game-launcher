@@ -60,4 +60,34 @@ describe("LibraryRow", () => {
 
     expect(screen.queryByText("PC Game Pass")).not.toBeInTheDocument();
   });
+
+  it("hard-crops circular GOG provider icons into a square tile", () => {
+    const group = aggregateGameGroup([
+      makeGame({
+        id: "gog-Jotun: Valhalla Edition",
+        launcher: "gog",
+        iconUrl: "https://images-3.gog-statics.com/1458127099-icon.png",
+      }),
+    ]);
+
+    const { container } = render(<LibraryRow group={group} onSelect={vi.fn()} />);
+    const icon = container.querySelector("img");
+
+    expect(icon).toHaveClass("rounded-none", "scale-[1.55]");
+    expect(icon?.parentElement).toHaveClass("rounded-none", "overflow-hidden");
+  });
+
+  it("does not zoom a custom GOG icon", () => {
+    const group = aggregateGameGroup([
+      makeGame({
+        id: "gog-custom",
+        launcher: "gog",
+        iconUrl: "/artwork/community-panel-icon.svg",
+      }),
+    ]);
+
+    const { container } = render(<LibraryRow group={group} onSelect={vi.fn()} />);
+
+    expect(container.querySelector("img")).not.toHaveClass("scale-[1.55]");
+  });
 });

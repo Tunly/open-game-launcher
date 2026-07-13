@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ConfirmDialog } from "./ConfirmDialog";
 
 describe("ConfirmDialog", () => {
@@ -9,6 +9,10 @@ describe("ConfirmDialog", () => {
     onConfirm: vi.fn(),
     title: "Confirm action",
   };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
 
   it("returns null when closed", () => {
     const { container } = render(<ConfirmDialog {...baseProps} open={false} />);
@@ -45,13 +49,16 @@ describe("ConfirmDialog", () => {
     expect(screen.getByRole("dialog").querySelectorAll("svg").length).toBeGreaterThan(0);
   });
 
-  it("responds to Escape by calling onCancel and Enter by calling onConfirm", () => {
+  it("focuses the safe action and responds to Escape without globally confirming Enter", () => {
     render(<ConfirmDialog {...baseProps} open />);
+
+    const cancelButton = screen.getByRole("button", { name: "Cancel" });
+    expect(cancelButton).toHaveFocus();
 
     fireEvent.keyDown(window, { key: "Escape" });
     expect(baseProps.onCancel).toHaveBeenCalledTimes(1);
 
-    fireEvent.keyDown(window, { key: "Enter" });
-    expect(baseProps.onConfirm).toHaveBeenCalledTimes(1);
+    fireEvent.keyDown(cancelButton, { key: "Enter" });
+    expect(baseProps.onConfirm).not.toHaveBeenCalled();
   });
 });

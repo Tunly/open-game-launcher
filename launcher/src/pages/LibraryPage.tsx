@@ -11,6 +11,7 @@ const GameDetailPanel = React.lazy(() =>
 import { useDownloadStore, selectCompletedCount } from "../stores/downloadStore";
 import { LibraryProvider } from "../context/LibraryProvider";
 import { launchCrossPlayJoin } from "../lib/launcher";
+import { isPlayableGame } from "../lib/game-groups";
 
 import { useLibrarySync } from "../hooks/library/useLibrarySync";
 import { useLibraryFilters } from "../hooks/library/useLibraryFilters";
@@ -21,6 +22,7 @@ import { useProviderPicking } from "../hooks/library/useProviderPicking";
 
 export function LibraryPage() {
   const gameListScrollRef = useRef<HTMLDivElement>(null);
+  const claimedJoinRequestRef = useRef<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [isAddGameOpen, setIsAddGameOpen] = useState(false);
   const navigate = useNavigate();
@@ -83,13 +85,36 @@ export function LibraryPage() {
   // the cross-play launch and tidy up the URL so a reload doesn't re-fire it.
   useEffect(() => {
     const joinSlug = searchParams.get("join");
-    if (!joinSlug) return;
+    if (!joinSlug) {
+      claimedJoinRequestRef.current = null;
+      return;
+    }
+
+    if (sync.isDiscoveringGames || sync.shouldShowLibraryLoading) {
+      return;
+    }
 
     const platform = searchParams.get("platform") ?? "";
     const invite = searchParams.get("invite") ?? "";
+    const requestKey = `${joinSlug}\u0000${platform}\u0000${invite}`;
+    if (claimedJoinRequestRef.current === requestKey) {
+      return;
+    }
+
+    claimedJoinRequestRef.current = requestKey;
+    const next = new URLSearchParams(searchParams);
+    next.delete("join");
+    next.delete("platform");
+    next.delete("invite");
+    setSearchParams(next, { replace: true });
+
     const wanted = joinSlug.toLowerCase();
 
     const match = sync.installedGames.find((game) => {
+      if (!isPlayableGame(game)) {
+        return false;
+      }
+
       const candidates = [game.slug, game.id, game.externalId, game.title]
         .filter((value): value is string => typeof value === "string" && value.length > 0)
         .map((value) => value.toLowerCase());
@@ -100,26 +125,16 @@ export function LibraryPage() {
       setStatusMessage(
         `Could not join "${joinSlug}" — game is not installed yet. Install it first.`,
       );
-      const next = new URLSearchParams(searchParams);
-      next.delete("join");
-      next.delete("platform");
-      next.delete("invite");
-      setSearchParams(next, { replace: true });
       return;
     }
 
     const gameSlug = match.slug || match.id;
     if (!platform) {
       setStatusMessage(`Could not join "${match.title}" — missing platform parameter.`);
-      const next = new URLSearchParams(searchParams);
-      next.delete("join");
-      next.delete("platform");
-      next.delete("invite");
-      setSearchParams(next, { replace: true });
       return;
     }
 
-    launchCrossPlayJoin(platform, gameSlug)
+    void launchCrossPlayJoin(platform, gameSlug)
       .then((uri) => {
         const inviteSuffix = invite ? " with invite token" : "";
         setStatusMessage(`Joining ${match.title} on ${platform}${inviteSuffix}…`);
@@ -128,15 +143,14 @@ export function LibraryPage() {
       .catch((error: unknown) => {
         const message = error instanceof Error ? error.message : String(error);
         setStatusMessage(`Could not join ${match.title}: ${message}`);
-      })
-      .finally(() => {
-        const next = new URLSearchParams(searchParams);
-        next.delete("join");
-        next.delete("platform");
-        next.delete("invite");
-        setSearchParams(next, { replace: true });
       });
-  }, [searchParams, setSearchParams, sync.installedGames, setStatusMessage]);
+  }, [
+    searchParams,
+    setSearchParams,
+    sync.installedGames,
+    sync.isDiscoveringGames,
+    sync.shouldShowLibraryLoading,
+  ]);
 
   useEffect(() => {
     if (!statusMessage) {

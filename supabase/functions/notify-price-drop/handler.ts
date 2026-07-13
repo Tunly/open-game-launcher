@@ -87,6 +87,16 @@ export async function handleNotifyPriceDrop(
     const writeResult = scanRequest.dryRun
       ? { alertsMarked: 0, notificationsRecorded: 0 }
       : await deps.recordNotifications(result.candidates, notifiedAt);
+    const deliveryClaimLost = scanRequest.dryRun ? 0 : Math.max(
+      0,
+      result.candidates.length - writeResult.notificationsRecorded,
+    );
+    const runSkipped: Record<string, number> = {
+      ...result.skipped,
+      ...(deliveryClaimLost > 0
+        ? { delivery_claim_lost: deliveryClaimLost }
+        : {}),
+    };
     const evidence = buildPriceDropNotificationRunEvidence({
       alertsMarkedCount: writeResult.alertsMarked,
       candidateCount: result.candidates.length,
@@ -99,7 +109,7 @@ export async function handleNotifyPriceDrop(
       requestedUserCount: scanRequest.userIds.length,
       runId,
       scannedCount: result.scanned,
-      skipped: result.skipped,
+      skipped: runSkipped,
       startedAt,
       triggerSource: scanRequest.triggerSource,
     });
@@ -118,7 +128,7 @@ export async function handleNotifyPriceDrop(
       notificationsRecorded: writeResult.notificationsRecorded,
       runId: evidence.run_id,
       scanned: result.scanned,
-      skipped: result.skipped,
+      skipped: runSkipped,
       triggerSource: evidence.trigger_source,
     });
   } catch (error) {

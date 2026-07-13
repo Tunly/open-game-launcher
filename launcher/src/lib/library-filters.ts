@@ -35,18 +35,6 @@ export const LIBRARY_STORE_FILTER_OPTIONS = [
   "Manual",
 ] as const;
 
-export const LIBRARY_FEATURE_FILTER_OPTIONS = [
-  "Steam Achievements",
-  "Steam Trading Cards",
-  "Steam Workshop",
-  "Steam Cloud",
-  "Stats",
-  "Leaderboards",
-  "In-App Purchases",
-  "VR Supported",
-  "Comments available",
-] as const;
-
 function normalizeFilterToken(value: string): string {
   return value.toLowerCase().replace(/[^a-z0-9]/g, "");
 }
@@ -173,51 +161,6 @@ function matchesCategoryLabel(game: Game, filter: string, context: LibraryFilter
     const labelToken = normalizeFilterToken(label);
     return labelToken === token || labelToken.includes(token) || token.includes(labelToken);
   });
-}
-
-function matchesFeatureLabel(game: Game, filter: string): boolean {
-  const token = normalizeFilterToken(filter);
-  const features = (game.features || []).map((feature) => feature.toLowerCase());
-  const description = (game.description || "").toLowerCase();
-  const source = getGameSource(game);
-
-  if (token.includes("achieve")) {
-    return features.some((feature) => feature.includes("achievement"));
-  }
-  if (token.includes("card")) {
-    return features.some((feature) => feature.includes("trading"));
-  }
-  if (token.includes("workshop")) {
-    return features.some((feature) => feature.includes("workshop"));
-  }
-  if (token.includes("cloud")) {
-    return features.some((feature) => feature.includes("cloud"));
-  }
-  if (token.includes("stat")) {
-    return features.some((feature) => feature.includes("stat"));
-  }
-  if (token.includes("leader")) {
-    return features.some((feature) => feature.includes("leaderboard"));
-  }
-  if (token.includes("purchase") || token.includes("micro")) {
-    return features.some((feature) => feature.includes("purchase"));
-  }
-  if (token.includes("vr")) {
-    return features.some((feature) => feature.includes("vr"));
-  }
-  if (token.includes("comment")) {
-    return (
-      features.some((feature) => feature.includes("comment")) || description.includes("comment")
-    );
-  }
-  if (token.includes("multiplayer") || token === "multi") {
-    return (game.players || []).some((player) => normalizeFilterToken(player).includes("multi"));
-  }
-
-  return (
-    features.some((feature) => normalizeFilterToken(feature) === token) ||
-    (source === "steam" && token === "steam")
-  );
 }
 
 function matchesHardwareLabel(game: Game, filter: string): boolean {
@@ -390,13 +333,6 @@ export function gamePassesAdvancedFilters(
     }
   }
 
-  if (filters.features.length > 0) {
-    const matchesFeatures = filters.features.some((feature) => matchesFeatureLabel(game, feature));
-    if (!matchesFeatures) {
-      return false;
-    }
-  }
-
   if (filters.hardware.length > 0) {
     const matchesHardware = filters.hardware.some((hardware) =>
       matchesHardwareLabel(game, hardware),
@@ -440,7 +376,6 @@ export function countActiveAdvancedFilters(
 ): number {
   let count = 0;
   if (filters.players.length > 0) count += 1;
-  if (filters.features.length > 0) count += 1;
   if (filters.hardware.length > 0) count += 1;
   if (filters.genres.length > 0) count += 1;
   if (filters.status.length > 0) count += 1;

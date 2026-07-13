@@ -1,11 +1,9 @@
 import type {
   PlaytimeIngestionAuthContext,
   PlaytimeIngestionHandlerDeps,
+  PlaytimeIngestionWriteResult,
 } from "./handler.ts";
-import type {
-  NormalizedPlaytimeAggregate,
-  NormalizedPlaytimeSession,
-} from "./playtime-ingestion.ts";
+import type { NormalizedPlaytimeIngestion } from "./playtime-ingestion.ts";
 
 type SupabaseQueryResult<T> = {
   data: T | null;
@@ -17,16 +15,23 @@ type SupabaseTableClient = {
     column: string,
     values: unknown[],
   ) => Promise<SupabaseQueryResult<unknown[]>>;
-  insert: (value: unknown) => Promise<SupabaseQueryResult<unknown>>;
   select: (columns: string) => SupabaseTableClient;
-  upsert: (
-    value: unknown,
-    options?: { onConflict?: string },
-  ) => Promise<SupabaseQueryResult<unknown>>;
 };
 
 type SupabaseAdminClient = {
   from: (table: string) => unknown;
+  rpc: (
+    name: string,
+    args: Record<string, unknown>,
+  ) => PromiseLike<SupabaseQueryResult<unknown>>;
+};
+
+type TrustedPlaytimeRpcRow = {
+  accepted?: unknown;
+  aggregate_pushed?: unknown;
+  owner_conflict_session_ids?: unknown;
+  payload_conflict_session_ids?: unknown;
+  sessions_pushed?: unknown;
 };
 
 type CallerClient = {
@@ -64,18 +69,14 @@ export function createIngestPlaytimeAdapters(
 ): PlaytimeIngestionHandlerDeps {
   return {
     authenticateRequest: (request) => authenticateRequest(deps, request),
-    findConflictingSessionIds: (auth, sessionIds) =>
-      findConflictingSessionIds(
-        adminClientFromAuth(auth),
-        auth.userId,
-        sessionIds,
-      ),
     findMissingCatalogGames: (auth, gameIds) =>
       findMissingCatalogGames(adminClientFromAuth(auth), gameIds),
-    upsertAggregate: (auth, aggregate) =>
-      upsertAggregate(adminClientFromAuth(auth), auth.userId, aggregate),
-    upsertSessions: (auth, sessions) =>
-      insertSessions(adminClientFromAuth(auth), auth.userId, sessions),
+    ingestPlaytime: (auth, ingestion) =>
+      ingestPlaytime(
+        adminClientFromAuth(auth),
+        auth.userId,
+        ingestion,
+      ),
   };
 }
 
@@ -133,49 +134,82 @@ async function findMissingCatalogGames(
   const foundIds = new Set(
     (data ?? [])
       .map((row) => row as { id?: unknown })
-      .map((row) => (typeof row.id === "string" ? row.id : null))
+      .map((row) => typeof row.id === "string" ? row.id.toLowerCase() : null)
       .filter((id): id is string => Boolean(id)),
   );
-  return gameIds.filter((gameId) => !foundIds.has(gameId));
+  return gameIds.filter((gameId) => !foundIds.has(gameId.toLowerCase()));
 }
 
-async function findConflictingSessionIds(
+async function ingestPlaytime(
   adminClient: SupabaseAdminClient,
   userId: string,
-  sessionIds: string[],
-): Promise<string[]> {
-  if (sessionIds.length === 0) {
-    return [];
-  }
+  ingestion: NormalizedPlaytimeIngestion,
+): Promise<PlaytimeIngestionWriteResult> {
+  const aggregate = ingestion.aggregate
+    ? aggregateRpcRow(ingestion.aggregate)
+    : null;
+  const sessions = ingestion.sessions.map((session) => ({
+    duration_minutes: session.durationMinutes,
+    ended_at: session.endedAt,
+    game_id: session.gameId,
+    id: session.id,
+    launcher_device_id: session.launcherDeviceId,
+    platform: session.platform,
+    started_at: session.startedAt,
+  }));
 
-  const { data, error } = await tableClient(adminClient, "game_sessions")
-    .select("id, user_id")
-    .in("id", sessionIds);
+  const { data, error } = await adminClient.rpc("ingest_trusted_playtime", {
+    p_aggregate: aggregate,
+    p_authenticated_user_id: userId,
+    p_sessions: sessions,
+  });
   if (error) {
     throw error;
   }
 
-  return (data ?? [])
-    .map((row) => row as { id?: unknown; user_id?: unknown })
-    .filter((row) => row.user_id !== userId)
-    .map((row) => row.id)
-    .filter((id): id is string => typeof id === "string");
+  const rpcRows = Array.isArray(data) ? data as TrustedPlaytimeRpcRow[] : [];
+  const rpcRow = rpcRows.length === 1 ? rpcRows[0] : null;
+  const ownerConflictSessionIds = stringArray(
+    rpcRow?.owner_conflict_session_ids,
+  );
+  const payloadConflictSessionIds = stringArray(
+    rpcRow?.payload_conflict_session_ids,
+  );
+  if (
+    !rpcRow ||
+    typeof rpcRow.accepted !== "boolean" ||
+    typeof rpcRow.aggregate_pushed !== "boolean" ||
+    typeof rpcRow.sessions_pushed !== "number" ||
+    !Number.isSafeInteger(rpcRow.sessions_pushed) ||
+    rpcRow.sessions_pushed < 0 ||
+    ownerConflictSessionIds === null ||
+    payloadConflictSessionIds === null
+  ) {
+    throw new Error("Invalid ingest_trusted_playtime RPC response.");
+  }
+
+  return {
+    accepted: rpcRow.accepted,
+    aggregatePushed: rpcRow.aggregate_pushed,
+    ownerConflictSessionIds,
+    payloadConflictSessionIds,
+    sessionsPushed: rpcRow.sessions_pushed,
+  };
 }
 
-async function upsertAggregate(
-  adminClient: SupabaseAdminClient,
-  userId: string,
-  aggregate: NormalizedPlaytimeAggregate,
+function aggregateRpcRow(
+  aggregate: NonNullable<NormalizedPlaytimeIngestion["aggregate"]>,
 ) {
   const row: Record<string, unknown> = {
     game_id: aggregate.gameId,
+    observed_at: aggregate.observedAt,
+    operation: aggregate.operation,
+    operation_id: aggregate.operationId,
     playtime_minutes: aggregate.playtimeMinutes,
-    updated_at: new Date().toISOString(),
-    user_id: userId,
   };
 
-  if (aggregate.totalSessions !== undefined) {
-    row.total_sessions = aggregate.totalSessions;
+  if (aggregate.sessionCountDelta !== undefined) {
+    row.session_count_delta = aggregate.sessionCountDelta;
   }
   if (aggregate.firstPlayedAt !== undefined) {
     row.first_played_at = aggregate.firstPlayedAt;
@@ -187,34 +221,13 @@ async function upsertAggregate(
     row.installed_version = aggregate.installedVersion;
   }
 
-  const { error } = await tableClient(adminClient, "user_game_stats")
-    .upsert(row, { onConflict: "user_id,game_id" });
-  if (error) {
-    throw error;
-  }
+  return row;
 }
 
-async function insertSessions(
-  adminClient: SupabaseAdminClient,
-  userId: string,
-  sessions: NormalizedPlaytimeSession[],
-) {
-  const rows = sessions.map((session) => ({
-    duration_minutes: session.durationMinutes,
-    ended_at: session.endedAt,
-    game_id: session.gameId,
-    id: session.id,
-    launcher_device_id: session.launcherDeviceId,
-    platform: session.platform,
-    started_at: session.startedAt,
-    user_id: userId,
-  }));
-
-  const { error } = await tableClient(adminClient, "game_sessions")
-    .insert(rows);
-  if (error) {
-    throw error;
-  }
+function stringArray(value: unknown): string[] | null {
+  return Array.isArray(value) && value.every((item) => typeof item === "string")
+    ? value
+    : null;
 }
 
 function adminClientFromAuth(

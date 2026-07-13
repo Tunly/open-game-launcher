@@ -10,6 +10,7 @@ import type {
 import type { PriceDropCandidate, StorePriceAlertRow } from "./price-alerts.ts";
 
 const NOTIFICATION_TYPE = "store_price_drop";
+const RPC_DELIVERY_BATCH_SIZE = 500;
 const ALERT_SELECT = `
   id,
   user_id,
@@ -60,6 +61,10 @@ type SupabaseTableClient = {
 
 type SupabaseAdminClient = {
   from: (table: string) => unknown;
+  rpc: (
+    name: string,
+    args: Record<string, unknown>,
+  ) => PromiseLike<SupabaseQueryResult<unknown>>;
 };
 
 export type NotifyPriceDropAdapterDeps = {
@@ -159,34 +164,50 @@ async function recordNotifications(
     return { alertsMarked: 0, notificationsRecorded: 0 };
   }
 
-  const { error: notificationError } = await tableClient(
-    supabaseAdmin,
-    "user_notifications",
-  )
-    .insert(notificationRows(candidates, notifiedAt));
-  if (notificationError) {
-    throw new Error(
-      `Failed to record price-drop notifications: ${notificationError.message}`,
+  const rows = notificationRows(candidates, notifiedAt);
+  const deliveries = candidates.map((candidate, index) => ({
+    alertId: candidate.alertId,
+    alertUpdatedAt: candidate.alertUpdatedAt,
+    body: rows[index].body,
+    data: rows[index].data,
+    lastNotifiedAt: candidate.lastNotifiedAt,
+    productId: candidate.productId,
+    productUpdatedAt: candidate.productUpdatedAt,
+    title: rows[index].title,
+    userId: candidate.userId,
+  }));
+  let alertsMarked = 0;
+  let notificationsRecorded = 0;
+  for (
+    let offset = 0;
+    offset < deliveries.length;
+    offset += RPC_DELIVERY_BATCH_SIZE
+  ) {
+    const batch = deliveries.slice(offset, offset + RPC_DELIVERY_BATCH_SIZE);
+    const { data, error } = await supabaseAdmin.rpc(
+      "record_store_price_drop_notifications",
+      { delivered_at: notifiedAt, deliveries: batch },
     );
-  }
-
-  const alertIds = candidates.map((candidate) => candidate.alertId);
-  const { count, error: updateError } = await tableClient(
-    supabaseAdmin,
-    "store_price_alerts",
-  )
-    .update({ last_notified_at: notifiedAt }, { count: "exact" })
-    .in("id", alertIds);
-  if (updateError) {
-    throw new Error(
-      `Failed to mark price alerts notified: ${updateError.message}`,
-    );
+    if (error) {
+      throw new Error(
+        `Failed to record price-drop notifications: ${error.message}`,
+      );
+    }
+    const result = Array.isArray(data) ? data[0] : data;
+    const counts = (result ?? {}) as Record<string, unknown>;
+    alertsMarked += safeCount(counts.alerts_marked_count);
+    notificationsRecorded += safeCount(counts.notifications_recorded_count);
   }
 
   return {
-    alertsMarked: count ?? alertIds.length,
-    notificationsRecorded: candidates.length,
+    alertsMarked,
+    notificationsRecorded,
   };
+}
+
+function safeCount(value: unknown): number {
+  const count = Number(value ?? 0);
+  return Number.isSafeInteger(count) && count >= 0 ? count : 0;
 }
 
 async function recordPriceDropNotificationRun(

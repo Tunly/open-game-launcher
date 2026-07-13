@@ -81,5 +81,7 @@ export interface RealtimeMetrics {
   gpuTempC: number | null;
   fps: number;
   frameTimeMs: number;
+  /** Rendering rate of the launcher HUD webview, not FPS from the active game process. */
+  fpsSource?: "hud_webview";
   uptime: string;
 }

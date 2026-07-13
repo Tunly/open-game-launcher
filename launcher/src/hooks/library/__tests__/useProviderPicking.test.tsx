@@ -209,41 +209,17 @@ describe("useProviderPicking", () => {
     },
   );
 
-  it("consumes a cross-play join query after a successful launch", async () => {
+  it("leaves cross-play join queries to the library page", async () => {
     const { setStatusMessage } = renderProviderPicking({
       initialEntry: "/library?join=match-42&platform=steam",
     });
-
-    await waitFor(() => {
-      expect(mocks.launchCrossPlayJoin).toHaveBeenCalledWith("steam", "match-42");
-      expect(setStatusMessage).toHaveBeenCalledWith("Joining game on steam...");
-    });
-    expect(mocks.launchCrossPlayJoin).toHaveBeenCalledTimes(1);
-  });
-
-  it.each([
-    [new Error("Lobby is full"), "Lobby is full"],
-    ["provider unavailable", "provider unavailable"],
-  ])("clears a failed cross-play join query and reports %s", async (error, message) => {
-    mocks.launchCrossPlayJoin.mockRejectedValue(error);
-    const { setStatusMessage } = renderProviderPicking({
-      initialEntry: "/library?join=match-99&platform=xbox",
-    });
-
-    await waitFor(() => {
-      expect(setStatusMessage).toHaveBeenCalledWith(message);
-    });
-    expect(mocks.launchCrossPlayJoin).toHaveBeenCalledTimes(1);
-  });
-
-  it("ignores incomplete cross-play join queries", async () => {
-    renderProviderPicking({ initialEntry: "/library?join=match-without-platform" });
 
     await act(async () => {
       await Promise.resolve();
     });
 
     expect(mocks.launchCrossPlayJoin).not.toHaveBeenCalled();
+    expect(setStatusMessage).not.toHaveBeenCalled();
   });
 
   it("launches an installed owned-provider game and records the session context", async () => {

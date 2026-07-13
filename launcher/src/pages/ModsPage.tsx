@@ -258,10 +258,12 @@ export function ModsPage() {
   }, [selectedGameId, loading]);
 
   useEffect(() => {
-    if (selectedGame && !nexusGameSlug) {
-      setNexusGameSlug(selectedGame.title.toLowerCase().replace(/[^a-z0-9]/g, ""));
-    }
-  }, [selectedGame, nexusGameSlug]);
+    setNexusGameSlug(
+      selectedGame ? selectedGame.title.toLowerCase().replace(/[^a-z0-9]/g, "") : "",
+    );
+    setNexusResults([]);
+    setNexusSearchError(null);
+  }, [selectedGame]);
 
   useEffect(() => {
     setNativeProviderGameId(

@@ -12,7 +12,7 @@ rustup target add x86_64-pc-windows-msvc aarch64-apple-darwin x86_64-unknown-lin
 
 # 2. Bootstrap
 pnpm --dir launcher install
-pnpm --dir launcher exec supabase --version   # 2.104.0
+pnpm --dir launcher exec supabase --version   # 2.109.0 (CI DB/deploy lanes pin 2.104.0 separately)
 cp supabase/functions/.env.example supabase/functions/.env  # fill in keys
 pnpm --dir launcher typecheck
 pnpm --dir launcher lint

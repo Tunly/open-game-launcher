@@ -169,9 +169,6 @@ function normalizeSessionInput(
   const ramValues = validSamples
     .map((sample) => finiteNumber(sample.ramMb))
     .filter((value): value is number => value != null);
-  const fpsValues = validSamples
-    .map((sample) => finiteNumber(sample.fps))
-    .filter((value): value is number => value != null);
   const gpuValues = validSamples
     .map((sample) => finiteNumber(sample.gpuPercent))
     .filter((value): value is number => value != null);
@@ -196,8 +193,10 @@ function normalizeSessionInput(
     max_cpu_percent: maxCpuPercent,
     avg_ram_mb: avgRamMb,
     max_ram_mb: maxRamMb,
-    avg_fps: average(fpsValues),
-    max_fps: max(fpsValues),
+    // The native sampler currently reports the launcher HUD webview render rate. It must not be
+    // promoted to a game-session benchmark in the legacy aggregate columns.
+    avg_fps: null,
+    max_fps: null,
     avg_gpu_percent: average(gpuValues),
     max_gpu_percent: max(gpuValues),
   };
@@ -234,8 +233,10 @@ export async function savePerformanceSnapshotFromMetrics(
     ramMb: metrics.ramMb,
     gpuPercent: metrics.gpuPercent,
     gpuTempC: metrics.gpuTempC,
-    fps: metrics.fps,
-    frameTimeMs: metrics.frameTimeMs,
+    // Keep the schema compatible while persisting only system telemetry. The reported frame rate
+    // belongs to the launcher HUD webview, not to the game represented by the attribution context.
+    fps: null,
+    frameTimeMs: null,
     durationSeconds: options.durationSeconds ?? null,
   });
 }

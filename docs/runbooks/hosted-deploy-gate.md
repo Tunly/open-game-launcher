@@ -31,12 +31,21 @@ Optional GitHub Environment variables:
 - `OGL_HOSTED_SMOKE_ORIGIN`: expected hosted launcher origin for OPTIONS CORS smoke validation
 
 Runtime secrets must also exist in the Supabase project before deploy/smoke:
+the deploy-gate preflight checks the following minimum set:
 `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`,
 `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `OGL_LICENSE_SIGNING_KEY`,
 `RAWG_API_KEY`, `PRICE_DROP_NOTIFY_SECRET`,
 `ACCOUNT_DELETION_PROCESSOR_SECRET`, `PRESENCE_POLL_SECRET`,
 `STEAM_WEB_API_KEY`, `PRESENCE_PROVIDER_TOKEN`, and optional
 `<PLATFORM>_PRESENCE_ENDPOINT` bridge URLs.
+
+Individual functions may require additional configuration that is not part of
+the minimum preflight set, including
+`ACHIEVEMENT_INGESTION_ATTESTATION_SECRET`,
+`INVITE_HOSTED_PROOF_ALLOWED_ORIGINS`, `RAWG_ASSETS_ALLOWED_ORIGINS`, and
+`STORE_BUILDS_BUCKET`. Review `supabase/functions/.env.example` and the target
+function before a production deploy; a green preflight does not prove every
+optional/provider-specific feature is configured.
 
 `preflight` also runs the launcher-pinned Supabase CLI as
 `pnpm --dir launcher exec supabase secrets list --project-ref` and checks only
@@ -147,7 +156,7 @@ copyable scheduler command/URL fields until the target refs are corrected.
 
 - `poll-platform-presence`: every minute, Authorization: Bearer `$PRESENCE_POLL_SECRET`, body `{"dryRun":false,"force":false,"limit":100,"triggerSource":"scheduled"}`
 - `notify-price-drop`: hourly or after price imports, Authorization: Bearer `$PRICE_DROP_NOTIFY_SECRET`, body `{"dryRun":false,"limit":500,"triggerSource":"scheduled"}`
-- `process-account-deletions`: daily, Authorization: Bearer `$ACCOUNT_DELETION_PROCESSOR_SECRET`, body `{"dry_run":false,"limit":20,"triggerSource":"scheduled"}`
+- `process-account-deletions`: daily, Authorization: Bearer `$ACCOUNT_DELETION_PROCESSOR_SECRET`, body `{"dry_run":false,"execute":true,"limit":20,"triggerSource":"scheduled"}`
 
 Each scheduled request must use the exact bearer secret shown above; keep the
 same mapping in GitHub Environment secrets and Supabase runtime secrets.

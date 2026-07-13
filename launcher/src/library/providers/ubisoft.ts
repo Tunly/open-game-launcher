@@ -19,7 +19,42 @@ export async function mergeUbisoftOwned(
       return { games, warnings, statusMessage };
     }
 
-    const installed = installedUbiKeys(games);
+    const enrichedGames = games.map((game) => {
+      const installedKeys = installedUbiKeys([game]);
+      if (installedKeys.size === 0) return game;
+
+      const owned = ownedUbiGames.find((candidate) => {
+        const numericId = candidate.externalId ?? candidate.id.replace(/^ubisoft-owned-/, "");
+        return (
+          installedKeys.has(candidate.id) ||
+          installedKeys.has(candidate.title.toLowerCase()) ||
+          installedKeys.has(numericId) ||
+          installedKeys.has(`ubisoft-owned-${numericId}`)
+        );
+      });
+      if (!owned) return game;
+
+      const ownedIconUrls = uniqueArtworkUrls([...(owned.iconUrls ?? []), owned.iconUrl]);
+      const ownedLogoUrls = uniqueArtworkUrls([...(owned.logoUrls ?? []), owned.logoUrl]);
+      const coverUrl = game.coverUrl ?? owned.coverUrl;
+      const iconUrl = game.iconUrl ?? owned.iconUrl;
+      const logoUrl = game.logoUrl ?? owned.logoUrl;
+
+      if (!coverUrl && !iconUrl && !logoUrl && !ownedIconUrls.length && !ownedLogoUrls.length) {
+        return game;
+      }
+
+      return {
+        ...game,
+        coverUrl,
+        iconUrl,
+        iconUrls: uniqueArtworkUrls([...(game.iconUrls ?? []), ...ownedIconUrls]),
+        logoUrl,
+        logoUrls: uniqueArtworkUrls([...(game.logoUrls ?? []), ...ownedLogoUrls]),
+      };
+    });
+
+    const installed = installedUbiKeys(enrichedGames);
     const uninstalledOwned = ownedUbiGames.filter((og) => {
       const ownedNumericId = og.externalId ?? og.id.replace(/^ubisoft-owned-/, "");
       if (installed.has(og.id) || installed.has(og.title.toLowerCase())) {
@@ -32,7 +67,7 @@ export async function mergeUbisoftOwned(
     });
 
     return {
-      games: [...games, ...uninstalledOwned],
+      games: [...enrichedGames, ...uninstalledOwned],
       warnings,
       statusMessage,
     };
@@ -40,4 +75,10 @@ export async function mergeUbisoftOwned(
     warnings.push(`Failed to fetch owned Ubisoft games during load: ${err}`);
     return { games, warnings, statusMessage };
   }
+}
+
+function uniqueArtworkUrls(urls: Array<string | undefined>): string[] {
+  return urls.filter(
+    (url, index, candidates): url is string => Boolean(url) && candidates.indexOf(url) === index,
+  );
 }

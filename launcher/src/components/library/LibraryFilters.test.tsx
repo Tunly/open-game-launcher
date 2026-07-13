@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { initialAdvancedFilters } from "../../lib/library-filters-helpers";
@@ -47,13 +47,20 @@ describe("LibraryFilters", () => {
     installContext(true);
   });
 
-  it("renders a Retro Manga PC Game Pass visibility control", () => {
+  it("renders the PC Game Pass visibility control inside Game Platform", () => {
     render(<LibraryFilters isOpen onClose={vi.fn()} />);
 
-    expect(screen.getByText("Xbox // Catalog")).toBeInTheDocument();
-    expect(screen.getByText("PC Game Pass")).toBeInTheDocument();
-    expect(screen.getByText("Visible")).toBeInTheDocument();
-    expect(screen.getByRole("checkbox", { name: "Show PC Game Pass catalog" })).toBeChecked();
+    const storeSection = screen.getByRole("heading", {
+      name: "Game Platform (Store)",
+    }).parentElement;
+    expect(storeSection).not.toBeNull();
+    expect(screen.queryByText("Xbox // Catalog")).not.toBeInTheDocument();
+    expect(within(storeSection!).getByText("PC Game Pass Catalog")).toBeInTheDocument();
+    expect(within(storeSection!).queryByText("Visible")).not.toBeInTheDocument();
+    expect(within(storeSection!).queryByText("Hidden")).not.toBeInTheDocument();
+    expect(
+      within(storeSection!).getByRole("checkbox", { name: "Show PC Game Pass catalog" }),
+    ).toBeChecked();
   });
 
   it("writes an explicit hidden catalog preference", () => {
@@ -64,5 +71,28 @@ describe("LibraryFilters", () => {
     expect(mocks.setAdvancedFilters).toHaveBeenCalledWith(
       expect.objectContaining({ showGamePassCatalog: false }),
     );
+  });
+
+  it("keeps the complete filter panel inside the scrollable library viewport", () => {
+    render(<LibraryFilters isOpen onClose={vi.fn()} />);
+
+    const panel = screen.getByRole("dialog", { name: "Advanced Filters" });
+    expect(panel).toHaveClass(
+      "top-12",
+      "bottom-2",
+      "overflow-y-auto",
+      "overscroll-contain",
+      "[scrollbar-gutter:stable]",
+    );
+    expect(panel).not.toHaveClass("max-h-[82vh]");
+  });
+
+  it("does not render the retired feature filter options", () => {
+    render(<LibraryFilters isOpen onClose={vi.fn()} />);
+
+    expect(screen.queryByRole("heading", { name: "Features" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Steam Achievements")).not.toBeInTheDocument();
+    expect(screen.queryByText("Steam Trading Cards")).not.toBeInTheDocument();
+    expect(screen.queryByText("Steam Workshop")).not.toBeInTheDocument();
   });
 });

@@ -170,7 +170,10 @@ async fn start_download_lifecycle(
     };
     guard.insert(game_id.clone(), active);
     if let Some(dl) = guard.get(&game_id) {
-        remember_download_item(payload_from_active_download(&game_id, dl));
+        if let Err(error) = remember_download_item(payload_from_active_download(&game_id, dl)) {
+            guard.remove(&game_id);
+            return Err(format!("Could not persist queued download: {error}"));
+        }
     }
 
     let app_clone = app.clone();

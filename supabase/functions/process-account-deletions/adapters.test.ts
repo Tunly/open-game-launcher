@@ -266,13 +266,17 @@ Deno.test("process account deletion adapters remove nested storage objects and i
         statusCode: 404,
       },
       operations,
-      storageLists: {
+      storageListPages: {
         [`avatars:${userId}`]: [
-          { id: "file-1", name: "root.sav" },
-          { id: null, name: "nested" },
+          [
+            { id: "file-1", name: "root.sav" },
+            { id: null, name: "nested" },
+          ],
+          [],
         ],
         [`avatars:${userId}/nested`]: [
-          { id: "file-2", name: "leaf.bin" },
+          [{ id: "file-2", name: "leaf.bin" }],
+          [],
         ],
       },
     }),
@@ -282,26 +286,96 @@ Deno.test("process account deletion adapters remove nested storage objects and i
 
   assertEquals(operations, [
     {
-      args: [userId, { limit: 1000 }],
+      args: [userId, { limit: 1000, offset: 0 }],
       method: "storage.list",
       table: "avatars",
     },
     {
-      args: [`${userId}/nested`, { limit: 1000 }],
+      args: [`${userId}/nested`, { limit: 1000, offset: 0 }],
       method: "storage.list",
       table: "avatars",
     },
     {
-      args: [[`${userId}/root.sav`, `${userId}/nested/leaf.bin`]],
+      args: [[`${userId}/nested/leaf.bin`]],
       method: "storage.remove",
       table: "avatars",
     },
+    {
+      args: [`${userId}/nested`, { limit: 1000, offset: 0 }],
+      method: "storage.list",
+      table: "avatars",
+    },
+    {
+      args: [[`${userId}/root.sav`]],
+      method: "storage.remove",
+      table: "avatars",
+    },
+    {
+      args: [userId, { limit: 1000, offset: 0 }],
+      method: "storage.list",
+      table: "avatars",
+    },
     ...ACCOUNT_DELETION_USER_STORAGE_BUCKETS.slice(1).map((bucket) => ({
-      args: [userId, { limit: 1000 }],
+      args: [userId, { limit: 1000, offset: 0 }],
       method: "storage.list",
       table: bucket,
     })),
   ]);
+});
+
+Deno.test("process account deletion adapters repeatedly drain and verify storage prefixes over 1000 objects", async () => {
+  const operations: Operation[] = [];
+  const firstPage = Array.from({ length: 1000 }, (_, index) => ({
+    id: `file-${index}`,
+    name: `object-${index.toString().padStart(4, "0")}.bin`,
+  }));
+  const overflowObject = { id: "file-1000", name: "object-1000.bin" };
+  const adapters = createProcessAccountDeletionsAdapters({
+    getExpectedSecret: () => "processor-secret",
+    supabaseAdmin: supabaseStub({
+      defaultStorageListError: {
+        message: "not found",
+        statusCode: 404,
+      },
+      operations,
+      storageListPages: {
+        [`avatars:${userId}`]: [firstPage, [overflowObject], []],
+      },
+    }),
+  });
+
+  await adapters.deleteKnownUserStorage(userId);
+
+  const avatarOperations = operations.filter(({ table }) =>
+    table === "avatars"
+  );
+  assertEquals(
+    avatarOperations.map(({ method }) => method),
+    [
+      "storage.list",
+      "storage.remove",
+      "storage.list",
+      "storage.remove",
+      "storage.list",
+    ],
+  );
+  assertEquals(
+    avatarOperations
+      .filter(({ method }) => method === "storage.list")
+      .map(({ args }) => args),
+    [
+      [userId, { limit: 1000, offset: 0 }],
+      [userId, { limit: 1000, offset: 0 }],
+      [userId, { limit: 1000, offset: 0 }],
+    ],
+  );
+
+  const firstRemove = avatarOperations[1].args[0] as string[];
+  const overflowRemove = avatarOperations[3].args[0] as string[];
+  assertEquals(firstRemove.length, 1000);
+  assertEquals(firstRemove[0], `${userId}/object-0000.bin`);
+  assertEquals(firstRemove[999], `${userId}/object-0999.bin`);
+  assertEquals(overflowRemove, [`${userId}/object-1000.bin`]);
 });
 
 type Operation = {
@@ -321,10 +395,11 @@ function supabaseStub(options: {
   defaultStorageListError?: unknown;
   errorByMethod?: Record<string, unknown>;
   operations?: Operation[];
-  storageLists?: Record<string, StorageEntry[]>;
+  storageListPages?: Record<string, StorageEntry[][]>;
   storageRemoveError?: unknown;
 } = {}) {
   const operations = options.operations ?? [];
+  const storageListPageIndexes = new Map<string, number>();
   return {
     auth: {
       admin: {
@@ -388,16 +463,21 @@ function supabaseStub(options: {
     },
     storage: {
       from: (bucket: string) => ({
-        list: (prefix: string, listOptions: { limit: number }) => {
+        list: (
+          prefix: string,
+          listOptions: { limit: number; offset: number },
+        ) => {
           operations.push({
             args: [prefix, listOptions],
             method: "storage.list",
             table: bucket,
           });
           const key = `${bucket}:${prefix}`;
-          if (Object.hasOwn(options.storageLists ?? {}, key)) {
+          if (Object.hasOwn(options.storageListPages ?? {}, key)) {
+            const pageIndex = storageListPageIndexes.get(key) ?? 0;
+            storageListPageIndexes.set(key, pageIndex + 1);
             return Promise.resolve({
-              data: options.storageLists?.[key] ?? [],
+              data: options.storageListPages?.[key]?.[pageIndex] ?? [],
               error: null,
             });
           }

@@ -8,6 +8,14 @@
 
 **Tech Stack:** Rust/Tauri 2, React 19, TypeScript 6, Vitest 4, pnpm 9
 
+## Audited Status — 2026-07-13
+
+Implementation tasks 1–3 are present in the current working tree. Focused Rust
+Xbox tests and the Xbox/Game Pass/Achievements Vitest suites pass. The plan's
+live rendered-behavior step has not been re-run as part of this documentation
+refresh, so external/package-specific visual proof remains open. The historical
+checkboxes below describe the original execution recipe, not current status.
+
 ## Global Constraints
 
 - Preserve all unrelated dirty-worktree changes.
@@ -224,4 +232,3 @@ Browser plugin is not available in this session, so use the repository's Playwri
 - [ ] **Step 5: Review final diff**
 
 Run: `git diff --check` and inspect only the intended Xbox artwork files. Confirm unrelated workspace changes were not overwritten.
-

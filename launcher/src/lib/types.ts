@@ -698,11 +698,13 @@ export interface LocalEntityPayload {
   id: string;
   entity: Record<string, unknown>;
   updatedAt: number;
+  syncToken: string;
 }
 
 export interface LocalEntityKey {
   kind: "games" | "downloads" | "mod_install_queue" | "mod_installs";
   id: string;
+  syncToken: string;
 }
 
 export interface PlaySession {

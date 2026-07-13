@@ -41,6 +41,7 @@ const metrics: RealtimeMetrics = {
   cpuPercent: 28,
   fps: 61,
   frameTimeMs: 16.4,
+  fpsSource: "hud_webview",
   gpuPercent: 42,
   gpuTempC: 64,
   gpuVramMb: 4096,
@@ -95,7 +96,8 @@ describe("FpsHudPage performance polling", () => {
       await Promise.resolve();
     });
     expect(screen.getByText("61 FPS")).toBeInTheDocument();
-    expect(screen.queryByText("42% GPU")).not.toBeInTheDocument();
+    expect(screen.getByText("HUD Webview")).toBeInTheDocument();
+    expect(screen.queryByText("42% System GPU")).not.toBeInTheDocument();
     expect(screen.getByText("61 FPS").parentElement).toHaveStyle({ opacity: "0.72" });
     expect(pollCallCount()).toBe(1);
 

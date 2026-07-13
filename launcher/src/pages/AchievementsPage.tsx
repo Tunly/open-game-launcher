@@ -17,7 +17,17 @@ import { createVerifyAchievementHostedHydrationContract } from "../lib/achieveme
 import { groupGames, type GameGroup, type GroupedAchievement } from "../lib/game-groups";
 import { listInstalledGames, openAchievementCacheFolder } from "../lib/launcher";
 import { hydrateGamesWithRemoteAchievements } from "../lib/supabase/achievements";
-import { mergeGamePassCatalog } from "../library/providers";
+import {
+  mergeBattlenetOwned,
+  mergeEaOwned,
+  mergeEpicOwned,
+  mergeGamePassCatalog,
+  mergeGogOwned,
+  mergeSteamOwned,
+  mergeUbisoftOwned,
+  mergeXboxOwned,
+  type ProviderMerger,
+} from "../library/providers";
 import type { Game } from "../lib/types";
 import { PlatformSourceIcon } from "../components/library/PlatformIcons";
 import { useCurrentUser } from "../hooks/useCurrentUser";
@@ -53,6 +63,17 @@ const SORTS: { key: GameSort; label: string }[] = [
   { key: "playtime", label: "Playtime" },
   { key: "name", label: "Name" },
   { key: "completion", label: "Achievement Completion" },
+];
+
+const ACHIEVEMENT_INVENTORY_PROVIDERS: ProviderMerger[] = [
+  mergeBattlenetOwned,
+  mergeSteamOwned,
+  mergeGogOwned,
+  mergeEaOwned,
+  mergeEpicOwned,
+  mergeUbisoftOwned,
+  mergeXboxOwned,
+  mergeGamePassCatalog,
 ];
 
 function parseTime(value?: string | null): number {
@@ -408,18 +429,26 @@ export function AchievementsPage() {
         });
 
         if (!shouldSkipRemoteHydration) {
-          const catalogResult = await mergeGamePassCatalog(allGames, {
+          const providerContext = {
             forceRefresh: false,
             setStatusMessage,
             shouldApplyResult: () => mounted,
-          });
-          for (const warning of catalogResult.warnings) {
-            console.warn(warning);
+          };
+          for (const provider of ACHIEVEMENT_INVENTORY_PROVIDERS) {
+            if (!mounted) break;
+            try {
+              const providerResult = await provider(allGames, providerContext);
+              for (const warning of providerResult.warnings) {
+                console.warn(warning);
+              }
+              if (providerResult.statusMessage && mounted) {
+                setStatusMessage(providerResult.statusMessage);
+              }
+              allGames = providerResult.games;
+            } catch (err) {
+              console.warn("[OG-Launcher] Achievement inventory provider skipped:", err);
+            }
           }
-          if (catalogResult.statusMessage && mounted) {
-            setStatusMessage(catalogResult.statusMessage);
-          }
-          allGames = catalogResult.games;
         }
 
         if (mounted) {

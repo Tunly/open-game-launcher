@@ -1,4 +1,4 @@
-﻿use std::{
+use std::{
     collections::{BTreeMap, HashMap, HashSet},
     env, fs,
     path::{Path, PathBuf},
@@ -23,9 +23,9 @@ use winreg::{
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 use super::core::{
-    apply_battlenet_assets, current_unix_timestamp, env_path, epic_catalog_asset_cache_path,
-    installed_game, is_ignored_game_directory, local_drive_roots, path_to_string,
-    rawg_asset_cache_path,
+    apply_battlenet_assets, apply_gog_assets, current_unix_timestamp, env_path,
+    epic_catalog_asset_cache_path, installed_game, is_ignored_game_directory, local_drive_roots,
+    open_game_launcher_data_dir, path_to_string, rawg_asset_cache_path,
 };
 use super::types::*;
 
@@ -215,19 +215,192 @@ fn find_gog_webcache_banner(game_id: &str) -> Option<String> {
                         .iter()
                         .find(|f| f.to_lowercase().contains("_glx_bg_top_padding_7"))
                     {
-                        return Some(path_to_string(game_dir.join(banner_file)));
+                        return materialize_gog_local_asset(
+                            game_id,
+                            "cover",
+                            &game_dir.join(banner_file),
+                        );
                     }
                     if let Some(cover_file) = files
                         .iter()
                         .find(|f| f.to_lowercase().contains("_glx_vertical_cover"))
                     {
-                        return Some(path_to_string(game_dir.join(cover_file)));
+                        return materialize_gog_local_asset(
+                            game_id,
+                            "cover",
+                            &game_dir.join(cover_file),
+                        );
                     }
                 }
             }
         }
     }
     None
+}
+
+#[derive(Clone, Default)]
+pub struct GogResolvedAssets {
+    pub cover_url: Option<String>,
+    pub logo_url: Option<String>,
+    pub icon_url: Option<String>,
+}
+
+pub fn get_gog_assets(game_id: &str, install_dir: Option<&Path>) -> GogResolvedAssets {
+    let cache_key = game_id.trim().to_lowercase();
+    if cache_key.is_empty() {
+        return GogResolvedAssets::default();
+    }
+
+    static CACHE: OnceLock<Mutex<HashMap<String, GogResolvedAssets>>> = OnceLock::new();
+    let cache = CACHE.get_or_init(|| Mutex::new(HashMap::new()));
+    if let Ok(cache) = cache.lock() {
+        if let Some(assets) = cache.get(&cache_key) {
+            return assets.clone();
+        }
+    }
+
+    let materialized = GogResolvedAssets {
+        cover_url: find_materialized_gog_asset(game_id, "cover"),
+        logo_url: find_materialized_gog_asset(game_id, "logo"),
+        icon_url: find_materialized_gog_asset(game_id, "icon"),
+    };
+    if materialized.cover_url.is_some()
+        && materialized.logo_url.is_some()
+        && materialized.icon_url.is_some()
+    {
+        if let Ok(mut cache) = cache.lock() {
+            cache.insert(cache_key, materialized.clone());
+        }
+        return materialized;
+    }
+
+    let product_url = format!("https://api.gog.com/products/{game_id}?expand=description");
+    let fetched = rawg_get_json(&product_url)
+        .map(|product| gog_product_assets_from_json(game_id, &product))
+        .unwrap_or_default();
+    let mut assets = merge_gog_assets(materialized, fetched);
+    if assets.icon_url.is_none() {
+        assets.icon_url =
+            install_dir.and_then(|directory| materialize_gog_install_icon(game_id, directory));
+    }
+    if assets.logo_url.is_none() {
+        assets.logo_url = assets.icon_url.clone();
+    }
+    if assets.cover_url.is_none() {
+        assets.cover_url = assets.logo_url.clone().or_else(|| assets.icon_url.clone());
+    }
+
+    if assets.cover_url.is_some() || assets.logo_url.is_some() || assets.icon_url.is_some() {
+        if let Ok(mut cache) = cache.lock() {
+            cache.insert(cache_key, assets.clone());
+        }
+    }
+    assets
+}
+
+fn merge_gog_assets(
+    preferred: GogResolvedAssets,
+    fallback: GogResolvedAssets,
+) -> GogResolvedAssets {
+    GogResolvedAssets {
+        cover_url: preferred.cover_url.or(fallback.cover_url),
+        logo_url: preferred.logo_url.or(fallback.logo_url),
+        icon_url: preferred.icon_url.or(fallback.icon_url),
+    }
+}
+
+fn gog_product_assets_from_json(game_id: &str, product: &serde_json::Value) -> GogResolvedAssets {
+    let images = product.get("images").unwrap_or(&serde_json::Value::Null);
+    let cover_url =
+        gog_json_image_url(images, "background").or_else(|| gog_json_image_url(images, "logo2x"));
+    let logo_url = gog_json_image_url(images, "logo2x");
+    let icon_url =
+        gog_json_image_url(images, "icon").or_else(|| gog_json_image_url(images, "sidebarIcon"));
+
+    GogResolvedAssets {
+        cover_url: materialize_gog_product_image(game_id, "cover", cover_url),
+        logo_url: materialize_gog_product_image(game_id, "logo", logo_url),
+        icon_url: materialize_gog_product_image(game_id, "icon", icon_url),
+    }
+}
+
+fn materialize_gog_product_image(
+    game_id: &str,
+    kind: &str,
+    remote_url: Option<String>,
+) -> Option<String> {
+    let remote_url = remote_url?;
+    materialize_gog_remote_asset(game_id, kind, &remote_url).or(Some(remote_url))
+}
+
+fn gog_json_image_url(images: &serde_json::Value, field: &str) -> Option<String> {
+    let value = images.get(field)?.as_str()?.trim();
+    if value.is_empty() {
+        None
+    } else if value.starts_with("//") {
+        Some(format!("https:{value}"))
+    } else {
+        Some(value.to_string())
+    }
+}
+
+fn materialize_gog_remote_asset(game_id: &str, kind: &str, url: &str) -> Option<String> {
+    use std::io::Read;
+
+    if let Some(existing) = find_materialized_gog_asset(game_id, kind) {
+        return Some(existing);
+    }
+
+    let output_root = open_game_launcher_data_dir()?.join("gog-assets");
+    fs::create_dir_all(&output_root).ok()?;
+
+    let response = ureq::get(url).call().ok()?;
+    let mut reader = response.into_body().into_reader().take(12 * 1024 * 1024);
+    let mut bytes = Vec::new();
+    reader.read_to_end(&mut bytes).ok()?;
+    let extension = cached_image_extension_from_bytes(&bytes)?;
+    let destination = output_root.join(format!("{game_id}-{kind}.{extension}"));
+    fs::write(&destination, bytes).ok()?;
+    Some(path_to_string(destination))
+}
+
+fn materialize_gog_local_asset(game_id: &str, kind: &str, source: &Path) -> Option<String> {
+    if let Some(existing) = find_materialized_gog_asset(game_id, kind) {
+        return Some(existing);
+    }
+
+    let bytes = fs::read(source).ok()?;
+    let extension = cached_image_extension_from_bytes(&bytes)?;
+    let output_root = open_game_launcher_data_dir()?.join("gog-assets");
+    fs::create_dir_all(&output_root).ok()?;
+    let destination = output_root.join(format!("{game_id}-{kind}.{extension}"));
+    fs::write(&destination, bytes).ok()?;
+    Some(path_to_string(destination))
+}
+
+fn find_materialized_gog_asset(game_id: &str, kind: &str) -> Option<String> {
+    let output_root = open_game_launcher_data_dir()?.join("gog-assets");
+    ["jpg", "png", "webp", "svg", "ico"]
+        .into_iter()
+        .map(|extension| output_root.join(format!("{game_id}-{kind}.{extension}")))
+        .find(|path| path.is_file())
+        .map(path_to_string)
+}
+
+fn materialize_gog_install_icon(game_id: &str, install_dir: &Path) -> Option<String> {
+    let source = [
+        install_dir.join(format!("goggame-{game_id}.ico")),
+        install_dir.join("gog.ico"),
+    ]
+    .into_iter()
+    .find(|path| path.is_file())?;
+    let output_root = open_game_launcher_data_dir()?.join("gog-assets");
+    fs::create_dir_all(&output_root).ok()?;
+    let destination = output_root.join(format!("{game_id}-icon.ico"));
+    if !destination.is_file() {
+        fs::copy(source, &destination).ok()?;
+    }
+    Some(path_to_string(destination))
 }
 
 pub struct GogRegistryInstall {
@@ -312,7 +485,7 @@ pub fn scan_gog_games() -> Vec<InstalledGame> {
             banner_path,
         );
         game.external_id = game_id.clone();
-        // Note: GOG games do not use logos or icons (only banner/cover) as requested by the user.
+        game = apply_gog_assets(game);
 
         games.push(game);
     }
@@ -364,7 +537,7 @@ pub fn scan_gog_games() -> Vec<InstalledGame> {
                 banner_path,
             );
             game.external_id = game_id.clone();
-            // Note: GOG games do not use logos or icons (only banner/cover) as requested by the user.
+            game = apply_gog_assets(game);
 
             games.push(game);
         }
@@ -380,6 +553,13 @@ pub struct BattleNetAssetTheme {
     pub bg_alt: &'static str,
     pub accent: &'static str,
     pub accent_alt: &'static str,
+}
+
+#[derive(Default)]
+struct BattleNetCachedAssets {
+    cover_url: Option<String>,
+    logo_url: Option<String>,
+    icon_url: Option<String>,
 }
 
 pub fn battlenet_asset_theme(uid: &str, title: &str) -> BattleNetAssetTheme {
@@ -506,12 +686,330 @@ pub fn get_battlenet_assets(
     title: &str,
 ) -> (Option<String>, Option<String>, Option<String>) {
     let theme = battlenet_asset_theme(uid, title);
+    let cached = find_battlenet_cached_assets(uid).unwrap_or_default();
+    let provider_artwork = battlenet_provider_artwork(uid, title);
+    let generated_banner = battlenet_banner_asset(title, &theme);
+    let generated_icon = battlenet_icon_asset(&theme);
 
     (
-        Some(battlenet_banner_asset(title, &theme)),
-        Some(battlenet_logo_asset(title, &theme)),
-        Some(battlenet_icon_asset(&theme)),
+        cached
+            .cover_url
+            .or_else(|| provider_artwork.map(str::to_string))
+            .or(Some(generated_banner)),
+        cached
+            .logo_url
+            .or_else(|| Some(battlenet_logo_asset(title, &theme))),
+        cached
+            .icon_url
+            .or_else(|| provider_artwork.map(str::to_string))
+            .or(Some(generated_icon)),
     )
+}
+
+fn find_battlenet_cached_assets(identity: &str) -> Option<BattleNetCachedAssets> {
+    let cache_root = env_path("LOCALAPPDATA")?.join("Battle.net").join("Cache");
+    find_battlenet_cached_assets_in(&cache_root, identity)
+}
+
+fn find_battlenet_cached_assets_in(
+    cache_root: &Path,
+    identity: &str,
+) -> Option<BattleNetCachedAssets> {
+    let identity = identity
+        .trim()
+        .trim_start_matches("battlenet-owned-")
+        .trim_start_matches("battlenet-")
+        .to_lowercase();
+    if identity.is_empty() {
+        return None;
+    }
+
+    let mut best: Option<(usize, BattleNetCachedAssets)> = None;
+    for catalog_path in battlenet_cache_files(cache_root) {
+        let Ok(metadata) = fs::metadata(&catalog_path) else {
+            continue;
+        };
+        if metadata.len() == 0 || metadata.len() > 4 * 1024 * 1024 {
+            continue;
+        }
+        let Ok(contents) = fs::read(&catalog_path) else {
+            continue;
+        };
+        if contents.iter().find(|byte| !byte.is_ascii_whitespace()) != Some(&b'{') {
+            continue;
+        }
+        let Ok(catalog) = serde_json::from_slice::<serde_json::Value>(&contents) else {
+            continue;
+        };
+        let Some(files) = catalog
+            .get("files")
+            .and_then(|value| value.get("default"))
+            .and_then(serde_json::Value::as_object)
+        else {
+            continue;
+        };
+        let Some(products) = catalog
+            .get("products")
+            .and_then(serde_json::Value::as_array)
+        else {
+            continue;
+        };
+
+        for product in products {
+            let Some(base) = product.get("base") else {
+                continue;
+            };
+            let descriptor = if battlenet_descriptor_matches(base, &identity) {
+                base
+            } else if let Some(found) = find_battlenet_descriptor(product, &identity) {
+                found
+            } else {
+                continue;
+            };
+
+            let cover_ref = battlenet_asset_reference(
+                descriptor,
+                base,
+                &["background", "key_art", "install_background"],
+            );
+            let logo_ref = battlenet_asset_reference(descriptor, base, &["logo"]);
+            let icon_ref = battlenet_asset_reference(descriptor, base, &["icon_massive"])
+                .or_else(|| battlenet_namespace_icon_reference(files, cover_ref.or(logo_ref)))
+                .or_else(|| {
+                    battlenet_asset_reference(
+                        descriptor,
+                        base,
+                        &["icon_medium", "icon_small", "icon", "icon_svg"],
+                    )
+                });
+            let assets = BattleNetCachedAssets {
+                cover_url: cover_ref.and_then(|reference| {
+                    resolve_battlenet_cache_reference(cache_root, files, reference)
+                }),
+                logo_url: logo_ref.and_then(|reference| {
+                    resolve_battlenet_cache_reference(cache_root, files, reference)
+                }),
+                icon_url: icon_ref.and_then(|reference| {
+                    resolve_battlenet_cache_reference(cache_root, files, reference)
+                }),
+            };
+            let score = usize::from(assets.cover_url.is_some()) * 4
+                + usize::from(assets.icon_url.is_some()) * 2
+                + usize::from(assets.logo_url.is_some());
+            if score > best.as_ref().map(|(score, _)| *score).unwrap_or_default() {
+                best = Some((score, assets));
+            }
+        }
+    }
+
+    best.map(|(_, assets)| assets)
+}
+
+fn battlenet_cache_files(cache_root: &Path) -> Vec<PathBuf> {
+    let mut files = Vec::new();
+    collect_battlenet_cache_files(cache_root, 3, &mut files);
+    files
+}
+
+fn collect_battlenet_cache_files(directory: &Path, depth: usize, files: &mut Vec<PathBuf>) {
+    if depth == 0 {
+        return;
+    }
+    let Ok(entries) = fs::read_dir(directory) else {
+        return;
+    };
+    for path in entries.flatten().map(|entry| entry.path()) {
+        if path.is_file() {
+            files.push(path);
+        } else if path.is_dir() {
+            collect_battlenet_cache_files(&path, depth - 1, files);
+        }
+    }
+}
+
+fn battlenet_descriptor_matches(value: &serde_json::Value, identity: &str) -> bool {
+    let Some(object) = value.as_object() else {
+        return false;
+    };
+    ["uid", "title_id", "program_id", "id"]
+        .into_iter()
+        .filter_map(|key| object.get(key))
+        .any(|value| {
+            value
+                .as_str()
+                .map(str::to_lowercase)
+                .or_else(|| value.as_u64().map(|value| value.to_string()))
+                .is_some_and(|value| value == identity)
+        })
+}
+
+fn find_battlenet_descriptor<'a>(
+    value: &'a serde_json::Value,
+    identity: &str,
+) -> Option<&'a serde_json::Value> {
+    if battlenet_descriptor_matches(value, identity) {
+        return Some(value);
+    }
+    match value {
+        serde_json::Value::Array(values) => values
+            .iter()
+            .find_map(|value| find_battlenet_descriptor(value, identity)),
+        serde_json::Value::Object(object) => object.iter().find_map(|(key, value)| {
+            key.eq_ignore_ascii_case(identity)
+                .then_some(value)
+                .or_else(|| find_battlenet_descriptor(value, identity))
+        }),
+        _ => None,
+    }
+}
+
+fn battlenet_asset_reference<'a>(
+    descriptor: &'a serde_json::Value,
+    base: &'a serde_json::Value,
+    fields: &[&str],
+) -> Option<&'a str> {
+    [descriptor, base].into_iter().find_map(|value| {
+        fields
+            .iter()
+            .find_map(|field| value.get(*field).and_then(serde_json::Value::as_str))
+    })
+}
+
+fn resolve_battlenet_cache_reference(
+    cache_root: &Path,
+    files: &serde_json::Map<String, serde_json::Value>,
+    reference: &str,
+) -> Option<String> {
+    let hash = files
+        .get(reference)?
+        .get("hash")?
+        .as_str()?
+        .trim()
+        .to_lowercase();
+    if hash.len() < 4 || !hash.chars().all(|character| character.is_ascii_hexdigit()) {
+        return None;
+    }
+    let path = cache_root.join(&hash[0..2]).join(&hash[2..4]).join(&hash);
+    materialize_battlenet_cached_image(cache_root, &path, &hash)
+}
+
+fn materialize_battlenet_cached_image(
+    cache_root: &Path,
+    source: &Path,
+    hash: &str,
+) -> Option<String> {
+    let extension = battlenet_cached_image_extension(source)?;
+    let is_live_cache = env_path("LOCALAPPDATA")
+        .map(|root| root.join("Battle.net").join("Cache"))
+        .as_deref()
+        == Some(cache_root);
+    let output_root = if is_live_cache {
+        open_game_launcher_data_dir()?.join("battlenet-assets")
+    } else {
+        cache_root.join("materialized-assets")
+    };
+    fs::create_dir_all(&output_root).ok()?;
+
+    let destination = output_root.join(format!("{hash}.{extension}"));
+    if !destination.is_file() {
+        fs::copy(source, &destination).ok()?;
+    }
+
+    Some(path_to_string(destination))
+}
+
+fn battlenet_namespace_icon_reference<'a>(
+    files: &'a serde_json::Map<String, serde_json::Value>,
+    artwork_reference: Option<&str>,
+) -> Option<&'a str> {
+    let namespace = artwork_reference?.split('#').next()?;
+    ["ICON_MASSIVE", "ICON_MEDIUM", "ICON_SMALL"]
+        .into_iter()
+        .find_map(|suffix| {
+            files
+                .keys()
+                .find(|key| key.starts_with(namespace) && key.contains(suffix))
+                .map(String::as_str)
+        })
+}
+
+fn battlenet_cached_image_extension(path: &Path) -> Option<&'static str> {
+    let Ok(bytes) = fs::read(path) else {
+        return None;
+    };
+    cached_image_extension_from_bytes(&bytes)
+}
+
+fn cached_image_extension_from_bytes(bytes: &[u8]) -> Option<&'static str> {
+    if bytes.starts_with(&[0x89, b'P', b'N', b'G']) {
+        Some("png")
+    } else if bytes.starts_with(&[0xff, 0xd8, 0xff]) {
+        Some("jpg")
+    } else if bytes.starts_with(b"RIFF") && bytes.get(8..12) == Some(b"WEBP") {
+        Some("webp")
+    } else if String::from_utf8_lossy(&bytes[..bytes.len().min(256)])
+        .trim_start()
+        .starts_with("<svg")
+    {
+        Some("svg")
+    } else {
+        None
+    }
+}
+
+fn battlenet_provider_artwork(uid: &str, title: &str) -> Option<&'static str> {
+    let normalized_uid = uid.to_lowercase();
+    let normalized_title = title.to_lowercase();
+
+    if normalized_uid.contains("wow")
+        || normalized_title.contains("world of warcraft")
+        || normalized_title.contains("burning crusade")
+    {
+        return Some(
+            "https://bnetcmsus-a.akamaihd.net/cms/content_entry_media/3f/3F7V2QWSSRCK1770317485433.png",
+        );
+    }
+    if normalized_uid.contains("hearthstone")
+        || normalized_uid.contains("wtcg")
+        || normalized_title.contains("hearthstone")
+    {
+        return Some(
+            "https://d39zum0jwvcigt.cloudfront.net/_next/static/images/default-475d770302527dbab7708dca2af05afd.jpg",
+        );
+    }
+    if normalized_uid.contains("overwatch")
+        || normalized_uid == "pro"
+        || normalized_title.contains("overwatch")
+    {
+        return Some(
+            "https://blz-contentstack-images.akamaized.net/v3/assets/blt2477dcaf4ebd440c/blt45586c965db08717/6823abc24dee72d806fff5e2/OpenGraph.jpg",
+        );
+    }
+    if normalized_uid.contains("d3")
+        || normalized_uid == "17459"
+        || (normalized_title.contains("diablo") && normalized_title.contains("iii"))
+        || normalized_title.contains("diablo 3")
+    {
+        return Some(
+            "https://blz-contentstack-images.akamaized.net/v3/assets/blt9c12f249ac15c7ec/blte3178c04d93773f1/67ce27f440e6651e27e17582/og_image.webp",
+        );
+    }
+    if normalized_uid.contains("d4")
+        || normalized_uid.contains("fenris")
+        || normalized_title.contains("diablo iv")
+        || normalized_title.contains("diablo 4")
+    {
+        return Some(
+            "https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/2344520/header.jpg",
+        );
+    }
+    if normalized_title.contains("destiny 2") {
+        return Some(
+            "https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/1085660/header.jpg",
+        );
+    }
+
+    None
 }
 
 pub fn get_rawg_game_assets(platform: &str, id: &str, search_title: &str) -> Option<RawgAssets> {
@@ -523,7 +1021,12 @@ pub fn get_rawg_game_assets(platform: &str, id: &str, search_title: &str) -> Opt
     );
     if let Ok(cache) = rawg_asset_cache_store().lock() {
         if let Some(cached_assets) = cache.entries.get(&cache_key) {
-            return Some(cached_assets.clone());
+            // Older launcher builds persisted empty lookup results. Treating
+            // those rows as successful cache hits permanently prevented a
+            // later authenticated RAWG lookup from filling Ubisoft artwork.
+            if rawg_assets_have_artwork(cached_assets) {
+                return Some(cached_assets.clone());
+            }
         }
     }
 
@@ -537,7 +1040,7 @@ pub fn get_rawg_game_assets(platform: &str, id: &str, search_title: &str) -> Opt
         fetch_rawg_assets(&api_key, search_title)
     })?;
 
-    if assets.cover_url.is_some() || assets.logo_url.is_some() || assets.icon_url.is_some() {
+    if rawg_assets_have_artwork(&assets) {
         if let Ok(mut cache) = rawg_asset_cache_store().lock() {
             cache.entries.insert(cache_key, assets.clone());
             write_rawg_asset_cache(&cache);
@@ -548,6 +1051,10 @@ pub fn get_rawg_game_assets(platform: &str, id: &str, search_title: &str) -> Opt
     None
 }
 
+fn rawg_assets_have_artwork(assets: &RawgAssets) -> bool {
+    assets.cover_url.is_some() || assets.logo_url.is_some() || assets.icon_url.is_some()
+}
+
 pub fn get_rawg_battlenet_assets(uid: &str, title: &str) -> Option<RawgAssets> {
     let search_title = battlenet_rawg_search_title(uid, title);
     get_rawg_game_assets("battlenet", uid, &search_title)
@@ -556,6 +1063,57 @@ pub fn get_rawg_battlenet_assets(uid: &str, title: &str) -> Option<RawgAssets> {
 pub fn get_rawg_ubisoft_assets(install_id: &str, title: &str) -> Option<RawgAssets> {
     let search_title = ubisoft_rawg_search_title(title);
     get_rawg_game_assets("ubisoft", install_id, &search_title)
+}
+
+pub fn get_ubisoft_fallback_assets(
+    title: &str,
+) -> (Option<String>, Option<String>, Option<String>) {
+    let normalized = title
+        .to_lowercase()
+        .replace(['\u{2122}', '\u{00ae}', '\u{2019}', '\'', '_'], " ")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    if normalized == "xdefiant" {
+        let artwork = "https://staticctf.ubisoft.com/J3yJr34U2pZ2Ieem48Dwy9uqj5PNUQTn/1TjjdkDpFywtBbDRPYxnqv/44dd9abfda16b64dc7b283ab357f1432/GSK_NewFaction_960x540.jpg".to_string();
+        return (Some(artwork.clone()), None, Some(artwork));
+    }
+    let steam_app_id = if normalized.contains("anno 2070") {
+        Some("48240")
+    } else if normalized.contains("assassin s creed iv black flag")
+        || normalized.contains("assassins creed iv black flag")
+    {
+        Some("242050")
+    } else if normalized.contains("assassin s creed liberation hd")
+        || normalized.contains("assassins creed liberation hd")
+    {
+        Some("260210")
+    } else if normalized.contains("assassin s creed syndicate")
+        || normalized.contains("assassins creed syndicate")
+    {
+        Some("368500")
+    } else if normalized.contains("roller champions") {
+        Some("2211280")
+    } else if normalized.contains("rainbow six siege") {
+        Some("359550")
+    } else if normalized == "trackmania" || normalized.contains("trackmania 2020") {
+        Some("2225070")
+    } else if normalized == "watch dogs" || normalized.contains("watch dogs complete") {
+        Some("243470")
+    } else if normalized.contains("world in conflict") {
+        Some("21760")
+    } else {
+        None
+    };
+
+    let Some(steam_app_id) = steam_app_id else {
+        return (None, None, None);
+    };
+    let artwork = format!(
+        "https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/{steam_app_id}/header.jpg"
+    );
+
+    (Some(artwork.clone()), None, Some(artwork))
 }
 
 pub fn get_rawg_epic_assets(id: &str, title: &str) -> Option<RawgAssets> {
@@ -1312,7 +1870,10 @@ pub fn scan_ubisoft_games() -> Vec<InstalledGame> {
         .map(|game| game.title.to_lowercase())
         .collect::<HashSet<_>>();
 
-    for install in read_ubisoft_registry_installs() {
+    let registry_installs = read_ubisoft_registry_installs();
+    let unambiguous_cached_asset = find_unambiguous_ubisoft_cached_asset(registry_installs.len());
+
+    for install in registry_installs {
         if !install.install_dir.is_dir() || is_ignored_game_directory(&install.install_dir) {
             continue;
         }
@@ -1328,6 +1889,7 @@ pub fn scan_ubisoft_games() -> Vec<InstalledGame> {
         };
 
         let rawg_assets = get_rawg_ubisoft_assets(&install.install_id, title);
+        let (fallback_cover, fallback_logo, fallback_icon) = get_ubisoft_fallback_assets(title);
         let launcher_assets = find_ubisoft_launcher_assets(&install.install_id);
         let cover_url = launcher_assets
             .cover_url
@@ -1337,7 +1899,9 @@ pub fn scan_ubisoft_games() -> Vec<InstalledGame> {
                 rawg_assets
                     .as_ref()
                     .and_then(|assets| assets.cover_url.clone())
-            });
+            })
+            .or_else(|| unambiguous_cached_asset.clone())
+            .or(fallback_cover);
         let logo_url = launcher_assets
             .logo_url
             .clone()
@@ -1346,7 +1910,8 @@ pub fn scan_ubisoft_games() -> Vec<InstalledGame> {
                 rawg_assets
                     .as_ref()
                     .and_then(|assets| assets.logo_url.clone())
-            });
+            })
+            .or(fallback_logo);
         let icon_url = launcher_assets
             .icon_url
             .clone()
@@ -1357,7 +1922,9 @@ pub fn scan_ubisoft_games() -> Vec<InstalledGame> {
                     .and_then(|assets| assets.icon_url.clone())
             })
             .or_else(|| logo_url.clone())
-            .or_else(|| cover_url.clone());
+            .or_else(|| cover_url.clone())
+            .or_else(|| unambiguous_cached_asset.clone())
+            .or(fallback_icon);
 
         if !seen_titles.insert(title.to_lowercase()) {
             apply_ubisoft_launcher_metadata(
@@ -1485,6 +2052,14 @@ pub fn scan_xbox_games() -> Vec<InstalledGame> {
 }
 
 fn collect_xbox_games_from_roots(roots: Vec<(PathBuf, Option<String>)>) -> Vec<InstalledGame> {
+    let asset_root = open_game_launcher_data_dir().map(|root| root.join("xbox-assets"));
+    collect_xbox_games_from_roots_with_asset_root(roots, asset_root.as_deref())
+}
+
+fn collect_xbox_games_from_roots_with_asset_root(
+    roots: Vec<(PathBuf, Option<String>)>,
+    asset_root: Option<&Path>,
+) -> Vec<InstalledGame> {
     let mut games = Vec::new();
     let mut seen_paths = HashSet::new();
     let mut seen_titles = HashSet::new();
@@ -1515,18 +2090,26 @@ fn collect_xbox_games_from_roots(roots: Vec<(PathBuf, Option<String>)>) -> Vec<I
             continue;
         }
 
+        let source_cover = find_local_banner_asset(&root);
+        let source_logo = find_local_logo_asset(&root);
+        let source_icon = find_local_icon_asset(&root);
         let mut game = installed_game(
             &format!("xbox-{title}"),
             title,
             "Xbox".to_string(),
             Some(path_to_string(root.clone())),
-            find_local_banner_asset(&root),
+            source_cover,
         );
-        game.external_id = Some(game.slug.clone());
-        game.logo_url = find_local_logo_asset(&root);
-        game.icon_url = find_local_icon_asset(&root)
-            .or_else(|| game.logo_url.clone())
-            .or_else(|| game.cover_url.clone());
+        game.external_id = xbox_store_product_id(&root).or_else(|| Some(game.slug.clone()));
+        let asset_key = game.external_id.as_deref().unwrap_or(&game.slug);
+        game.cover_url =
+            materialize_xbox_artwork(asset_root, asset_key, "cover", game.cover_url.as_deref());
+        game.logo_url =
+            materialize_xbox_artwork(asset_root, asset_key, "logo", source_logo.as_deref());
+        game.icon_url =
+            materialize_xbox_artwork(asset_root, asset_key, "icon", source_icon.as_deref())
+                .or_else(|| game.logo_url.clone())
+                .or_else(|| game.cover_url.clone());
 
         if let Some(pfn) = package_family_name {
             if let Ok(contents) = fs::read_to_string(root.join("AppxManifest.xml")) {
@@ -1545,6 +2128,96 @@ fn collect_xbox_games_from_roots(roots: Vec<(PathBuf, Option<String>)>) -> Vec<I
     }
 
     games
+}
+
+fn find_xml_element_text(contents: &str, element: &str) -> Option<String> {
+    let open = format!("<{element}>");
+    let open_end = contents.find(&open)? + open.len();
+    let close = format!("</{element}>");
+    let close_start = contents[open_end..].find(&close)? + open_end;
+    let value = contents[open_end..close_start].trim();
+    (!value.is_empty()).then(|| value.to_string())
+}
+
+fn normalize_xbox_store_id(value: &str) -> Option<String> {
+    let value = value.trim();
+    (value.len() == 12
+        && value
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric()))
+    .then(|| value.to_ascii_uppercase())
+}
+
+fn xbox_store_product_id(path: &Path) -> Option<String> {
+    [
+        path.join("MicrosoftGame.config"),
+        path.join("Content").join("MicrosoftGame.config"),
+    ]
+    .into_iter()
+    .filter_map(|config_path| fs::read_to_string(config_path).ok())
+    .filter_map(|contents| find_xml_element_text(&contents, "StoreId"))
+    .find_map(|store_id| normalize_xbox_store_id(&store_id))
+}
+
+fn safe_xbox_asset_key(value: &str) -> String {
+    let mut key = String::new();
+    for character in value.chars() {
+        if character.is_ascii_alphanumeric() {
+            key.push(character.to_ascii_lowercase());
+        } else if !key.is_empty() && !key.ends_with('-') {
+            key.push('-');
+        }
+    }
+    key.trim_end_matches('-').to_string()
+}
+
+fn materialize_xbox_artwork(
+    asset_root: Option<&Path>,
+    game_key: &str,
+    kind: &str,
+    source: Option<&str>,
+) -> Option<String> {
+    let source = source?;
+    let asset_root = asset_root?;
+    let bytes = fs::read(source).ok()?;
+    let extension = cached_image_extension_from_bytes(&bytes)?;
+    let safe_game_key = safe_xbox_asset_key(game_key);
+    if safe_game_key.is_empty() {
+        return None;
+    }
+
+    fs::create_dir_all(asset_root).ok()?;
+    let destination = asset_root.join(format!("{safe_game_key}-{kind}.{extension}"));
+    if destination.is_file() {
+        let existing_bytes = fs::read(&destination).ok()?;
+        if cached_image_extension_from_bytes(&existing_bytes) == Some(extension) {
+            return Some(path_to_string(destination));
+        }
+    }
+
+    static TEMP_FILE_COUNTER: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let temp_suffix = TEMP_FILE_COUNTER.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    let destination_name = destination.file_name()?.to_string_lossy();
+    let temporary = destination.with_file_name(format!(
+        ".{destination_name}.{}.{}.tmp",
+        std::process::id(),
+        temp_suffix
+    ));
+
+    if fs::write(&temporary, bytes).is_err() {
+        let _ = fs::remove_file(&temporary);
+        return None;
+    }
+    if destination.exists() && fs::remove_file(&destination).is_err() {
+        let _ = fs::remove_file(&temporary);
+        return None;
+    }
+    if fs::rename(&temporary, &destination).is_err() {
+        let _ = fs::remove_file(&temporary);
+        return None;
+    }
+
+    Some(path_to_string(destination))
 }
 
 fn read_xbox_games_root_dirs(xbox_root: &Path) -> Vec<PathBuf> {
@@ -2429,6 +3102,31 @@ fn ubisoft_cached_asset_roots() -> Vec<PathBuf> {
     roots
 }
 
+fn find_unambiguous_ubisoft_cached_asset(installed_game_count: usize) -> Option<String> {
+    let candidates = ubisoft_cached_asset_roots()
+        .into_iter()
+        .filter_map(|root| fs::read_dir(root).ok())
+        .flat_map(|entries| entries.flatten().map(|entry| entry.path()))
+        .filter(|path| path.is_file() && is_supported_image(path))
+        .collect::<Vec<_>>();
+
+    select_unambiguous_ubisoft_cached_asset(installed_game_count, candidates).map(path_to_string)
+}
+
+fn select_unambiguous_ubisoft_cached_asset(
+    installed_game_count: usize,
+    mut candidates: Vec<PathBuf>,
+) -> Option<PathBuf> {
+    if installed_game_count != 1 {
+        return None;
+    }
+
+    candidates.sort();
+    candidates.dedup();
+
+    (candidates.len() == 1).then(|| candidates.remove(0))
+}
+
 #[cfg(windows)]
 fn query_registry_sections(key: &str) -> Vec<String> {
     let Some((hkey, subkey)) = parse_registry_root(key) else {
@@ -2805,6 +3503,138 @@ pub fn scan_ea_games() -> Vec<InstalledGame> {
 mod tests {
     use super::*;
 
+    fn xbox_test_root(label: &str) -> PathBuf {
+        env::temp_dir().join(format!(
+            "og-launcher-xbox-{label}-{}-{}",
+            std::process::id(),
+            current_unix_timestamp()
+        ))
+    }
+
+    #[test]
+    fn xbox_artwork_without_asset_root_never_returns_raw_local_path() {
+        let root = xbox_test_root("no-asset-root");
+        fs::create_dir_all(&root).expect("create Xbox fixture root");
+        let source = root.join("SplashScreenImage.png");
+        fs::write(&source, [0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a])
+            .expect("write PNG fixture");
+
+        assert_eq!(
+            materialize_xbox_artwork(None, "9PFNXM9G4N83", "cover", source.to_str()),
+            None
+        );
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn xbox_artwork_preserves_existing_complete_destination() {
+        let root = xbox_test_root("preserve-existing");
+        let asset_root = root.join("xbox-assets");
+        fs::create_dir_all(&asset_root).expect("create Xbox asset root");
+        let source = root.join("source.png");
+        let source_bytes = [0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a, 0x11];
+        let existing_bytes = [0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a, 0x22];
+        fs::write(&source, source_bytes).expect("write source PNG");
+        let destination = asset_root.join("9pfnxm9g4n83-cover.png");
+        fs::write(&destination, existing_bytes).expect("write existing Xbox artwork");
+
+        let result =
+            materialize_xbox_artwork(Some(&asset_root), "9PFNXM9G4N83", "cover", source.to_str());
+
+        assert_eq!(result.as_deref(), destination.to_str());
+        assert_eq!(
+            fs::read(&destination).expect("read destination"),
+            existing_bytes
+        );
+        assert_eq!(
+            fs::read_dir(&asset_root)
+                .expect("read Xbox asset root")
+                .flatten()
+                .count(),
+            1
+        );
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn xbox_scan_materializes_package_artwork_and_uses_store_id() {
+        let root = xbox_test_root("artwork");
+        let install_root = root.join("Roadside Research");
+        let asset_root = root.join("app-local").join("xbox-assets");
+        fs::create_dir_all(&install_root).expect("create Xbox install root");
+        fs::write(
+            install_root.join("MicrosoftGame.config"),
+            r#"<?xml version="1.0" encoding="utf-8"?>
+<Game>
+  <ShellVisuals DefaultDisplayName="Roadside Research" SplashScreenImage="SplashScreenImage.png" StoreLogo="StoreLogo.png" Square44x44Logo="Square44x44Logo.png" />
+  <StoreId>9PFNXM9G4N83</StoreId>
+</Game>"#,
+        )
+        .expect("write MicrosoftGame.config");
+        for file_name in [
+            "SplashScreenImage.png",
+            "StoreLogo.png",
+            "Square44x44Logo.png",
+        ] {
+            fs::write(
+                install_root.join(file_name),
+                [0x89, b'P', b'N', b'G', 0x0d, 0x0a, 0x1a, 0x0a],
+            )
+            .expect("write PNG fixture");
+        }
+
+        let games = collect_xbox_games_from_roots_with_asset_root(
+            vec![(install_root, None)],
+            Some(&asset_root),
+        );
+        let game = games.first().expect("detected Xbox game");
+
+        assert_eq!(game.external_id.as_deref(), Some("9PFNXM9G4N83"));
+        assert!(game
+            .cover_url
+            .as_deref()
+            .is_some_and(|path| path.contains("xbox-assets")));
+        assert!(game
+            .logo_url
+            .as_deref()
+            .is_some_and(|path| path.contains("xbox-assets")));
+        assert!(game
+            .icon_url
+            .as_deref()
+            .is_some_and(|path| path.contains("xbox-assets")));
+        assert!(Path::new(game.cover_url.as_deref().expect("cover path")).is_file());
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn xbox_scan_falls_back_to_slug_for_invalid_store_id() {
+        let root = xbox_test_root("invalid-store-id");
+        let install_root = root.join("Roadside Research");
+        let asset_root = root.join("app-local").join("xbox-assets");
+        fs::create_dir_all(&install_root).expect("create Xbox install root");
+        fs::write(
+            install_root.join("MicrosoftGame.config"),
+            r#"<Game>
+  <ShellVisuals DefaultDisplayName="Roadside Research" />
+  <StoreId>not-a-store-id</StoreId>
+</Game>"#,
+        )
+        .expect("write MicrosoftGame.config");
+
+        let games = collect_xbox_games_from_roots_with_asset_root(
+            vec![(install_root, None)],
+            Some(&asset_root),
+        );
+        let game = games.first().expect("detected Xbox game");
+
+        assert_eq!(game.external_id.as_deref(), Some("roadside-research"));
+
+        let _ = fs::remove_dir_all(root);
+    }
+
     #[test]
     fn merge_scanned_games_uses_path_priority_index() {
         let install_path = Some("C:/Games/Same Install".to_string());
@@ -2868,5 +3698,230 @@ mod tests {
         assert_eq!(game.cover_url.as_deref(), Some("cover.jpg"));
         assert_eq!(game.logo_url.as_deref(), Some("logo.png"));
         assert_eq!(game.icon_url.as_deref(), Some("icon.png"));
+    }
+
+    #[test]
+    fn empty_rawg_cache_rows_do_not_count_as_artwork() {
+        let empty = RawgAssets {
+            cover_url: None,
+            logo_url: None,
+            icon_url: None,
+            fetched_at: 1,
+        };
+        let cover = RawgAssets {
+            cover_url: Some("https://media.rawg.io/media/game.jpg".to_string()),
+            logo_url: None,
+            icon_url: None,
+            fetched_at: 2,
+        };
+
+        assert!(!rawg_assets_have_artwork(&empty));
+        assert!(rawg_assets_have_artwork(&cover));
+    }
+
+    #[test]
+    fn ubisoft_cache_fallback_requires_one_install_and_one_asset() {
+        let banner = PathBuf::from("C:/ProgramData/Ubisoft/cache/assets/banner.png");
+
+        assert_eq!(
+            select_unambiguous_ubisoft_cached_asset(1, vec![banner.clone()]),
+            Some(banner.clone())
+        );
+        assert_eq!(
+            select_unambiguous_ubisoft_cached_asset(
+                1,
+                vec![
+                    banner,
+                    PathBuf::from("C:/ProgramData/Ubisoft/cache/assets/other.png")
+                ],
+            ),
+            None
+        );
+        assert_eq!(
+            select_unambiguous_ubisoft_cached_asset(
+                2,
+                vec![PathBuf::from(
+                    "C:/ProgramData/Ubisoft/cache/assets/banner.png"
+                )],
+            ),
+            None
+        );
+    }
+
+    #[test]
+    fn ubisoft_known_titles_get_store_artwork_without_provider_secrets() {
+        for (title, app_id) in [
+            ("Anno 2070", "48240"),
+            ("Assassin's Creed IV Black Flag", "242050"),
+            ("Assassin’s Creed® Liberation HD", "260210"),
+            ("Assassin’s Creed® Syndicate", "368500"),
+            ("Roller Champions", "2211280"),
+            ("Tom Clancy's Rainbow Six Siege X", "359550"),
+            ("Trackmania", "2225070"),
+            ("Watch_Dogs", "243470"),
+            ("World In Conflict", "21760"),
+        ] {
+            let (cover, logo, icon) = get_ubisoft_fallback_assets(title);
+            assert!(cover.as_deref().is_some_and(|url| url.contains(app_id)));
+            assert_eq!(logo, None);
+            assert_eq!(icon, cover);
+        }
+
+        let (xdefiant_cover, _, xdefiant_icon) = get_ubisoft_fallback_assets("XDefiant");
+        assert!(xdefiant_cover
+            .as_deref()
+            .is_some_and(|url| url.starts_with("https://staticctf.ubisoft.com/")));
+        assert_eq!(xdefiant_icon, xdefiant_cover);
+    }
+
+    #[test]
+    fn battlenet_known_titles_use_real_provider_artwork() {
+        for (uid, title) in [
+            ("wow_classic_anniversary", "Burning Crusade"),
+            ("5730135", "World of Warcraft"),
+            ("1465140039", "Hearthstone"),
+            ("5272175", "Overwatch"),
+            ("17459", "Diablo III"),
+            ("destiny-2", "Destiny 2"),
+        ] {
+            let (cover, logo, icon) = get_battlenet_assets(uid, title);
+            assert!(cover
+                .as_deref()
+                .is_some_and(|url| !url.starts_with("data:image/svg+xml,")));
+            assert!(logo.is_some());
+            assert!(icon
+                .as_deref()
+                .is_some_and(|url| !url.starts_with("data:image/svg+xml,")));
+        }
+
+        let (unknown_cover, _, unknown_icon) = get_battlenet_assets("unknown", "Unknown Game");
+        assert!(unknown_cover
+            .as_deref()
+            .is_some_and(|url| url.starts_with("data:image/svg+xml,")));
+        assert!(unknown_icon
+            .as_deref()
+            .is_some_and(|url| url.starts_with("data:image/svg+xml,")));
+    }
+
+    #[test]
+    fn battlenet_catalog_resolves_title_id_and_install_uid_assets() {
+        let root = env::temp_dir().join(format!(
+            "og-launcher-battlenet-artwork-{}",
+            current_unix_timestamp()
+        ));
+        let hashes = [
+            "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "cccccccccccccccccccccccccccccccc",
+            "dddddddddddddddddddddddddddddddd",
+        ];
+        for hash in hashes {
+            let path = root.join(&hash[0..2]).join(&hash[2..4]).join(hash);
+            fs::create_dir_all(path.parent().expect("asset parent")).expect("create asset dir");
+            fs::write(path, [0x89, b'P', b'N', b'G', 0x0d, 0x0a]).expect("write image");
+        }
+        let catalog_path = root.join("90").join("8c").join("catalog");
+        fs::create_dir_all(catalog_path.parent().expect("catalog parent"))
+            .expect("create catalog dir");
+        let catalog = serde_json::json!({
+            "files": { "default": {
+                "game#BACKGROUND": { "hash": hashes[0] },
+                "game#TYPE_BACKGROUND": { "hash": hashes[1] },
+                "game#LOGO": { "hash": hashes[2] },
+                "game#ICON_MASSIVE": { "hash": hashes[3] }
+            }},
+            "products": [{ "base": {
+                "title_id": 12345,
+                "background": "game#BACKGROUND",
+                "logo": "game#LOGO",
+                "icon_massive": "game#ICON_MASSIVE",
+                "types": { "game_classic": {
+                    "background": "game#TYPE_BACKGROUND"
+                }}
+            }}]
+        });
+        fs::write(
+            &catalog_path,
+            serde_json::to_vec(&catalog).expect("serialize catalog"),
+        )
+        .expect("write catalog");
+
+        let owned = find_battlenet_cached_assets_in(&root, "12345").expect("owned assets");
+        assert!(owned
+            .cover_url
+            .as_deref()
+            .is_some_and(|path| path.contains(hashes[0])));
+        assert!(owned
+            .icon_url
+            .as_deref()
+            .is_some_and(|path| path.contains(hashes[3])));
+
+        let installed =
+            find_battlenet_cached_assets_in(&root, "game_classic").expect("installed assets");
+        assert!(installed
+            .cover_url
+            .as_deref()
+            .is_some_and(|path| path.contains(hashes[1])));
+        assert!(installed
+            .logo_url
+            .as_deref()
+            .is_some_and(|path| path.contains(hashes[2])));
+        assert!(installed
+            .icon_url
+            .as_deref()
+            .is_some_and(|path| path.contains(hashes[3])));
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn gog_product_images_normalize_protocol_relative_urls() {
+        let images = serde_json::json!({
+            "background": "//images-1.gog-statics.com/jotun-background.jpg",
+            "logo2x": "//images-4.gog-statics.com/jotun-logo.jpg",
+            "icon": "https://images-3.gog-statics.com/jotun-icon.png"
+        });
+
+        assert_eq!(
+            gog_json_image_url(&images, "background").as_deref(),
+            Some("https://images-1.gog-statics.com/jotun-background.jpg")
+        );
+        assert_eq!(
+            gog_json_image_url(&images, "logo2x").as_deref(),
+            Some("https://images-4.gog-statics.com/jotun-logo.jpg")
+        );
+        assert_eq!(
+            gog_json_image_url(&images, "icon").as_deref(),
+            Some("https://images-3.gog-statics.com/jotun-icon.png")
+        );
+    }
+
+    #[test]
+    fn gog_partial_materialized_assets_survive_fallback_merging() {
+        let assets = merge_gog_assets(
+            GogResolvedAssets {
+                cover_url: Some("C:/AppData/gog-assets/game-cover.jpg".to_string()),
+                logo_url: None,
+                icon_url: None,
+            },
+            GogResolvedAssets {
+                cover_url: Some("https://example.test/remote-cover.jpg".to_string()),
+                logo_url: Some("https://example.test/remote-logo.png".to_string()),
+                icon_url: Some("C:/Games/game/goggame.ico".to_string()),
+            },
+        );
+
+        assert_eq!(
+            assets.cover_url.as_deref(),
+            Some("C:/AppData/gog-assets/game-cover.jpg")
+        );
+        assert_eq!(
+            assets.logo_url.as_deref(),
+            Some("https://example.test/remote-logo.png")
+        );
+        assert_eq!(
+            assets.icon_url.as_deref(),
+            Some("C:/Games/game/goggame.ico")
+        );
     }
 }

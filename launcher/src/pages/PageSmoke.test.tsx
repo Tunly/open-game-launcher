@@ -159,6 +159,7 @@ const presenceMocks = vi.hoisted(() => ({
 
 const socialMocks = vi.hoisted(() => ({
   getDirectThread: vi.fn(),
+  getGroupMessages: vi.fn(),
   getMyGameInvites: vi.fn(),
   getMyGroupChats: vi.fn(),
   proveInviteHostedReplay: vi.fn(),
@@ -481,6 +482,7 @@ const metrics: RealtimeMetrics = {
   cpuPercent: 28,
   fps: 61,
   frameTimeMs: 16.4,
+  fpsSource: "hud_webview",
   gpuPercent: 42,
   gpuTempC: 64,
   gpuVramMb: 4096,
@@ -630,6 +632,7 @@ describe("routed page smoke coverage", () => {
       messages: [],
     });
     socialMocks.getMyGameInvites.mockResolvedValue([]);
+    socialMocks.getGroupMessages.mockResolvedValue([]);
     socialMocks.getMyGroupChats.mockResolvedValue([]);
     socialMocks.proveInviteHostedReplay.mockResolvedValue(null);
     socialMocks.redeemShareToken.mockResolvedValue(null);
@@ -686,9 +689,7 @@ describe("routed page smoke coverage", () => {
     });
 
     expect(screen.queryByRole("heading", { name: /wasteland drifter/i })).not.toBeInTheDocument();
-    expect(screen.getByRole("region", { name: /store catalog source/i })).toHaveTextContent(
-      /hosted empty/i,
-    );
+    expect(screen.queryByRole("region", { name: /store catalog source/i })).not.toBeInTheDocument();
     expect(
       screen.queryByRole("region", { name: /price-drop scheduler readiness/i }),
     ).not.toBeInTheDocument();
@@ -868,8 +869,8 @@ describe("routed page smoke coverage", () => {
     renderRoute(<FpsHudPage />);
 
     expect(await screen.findByText("61 FPS")).toBeInTheDocument();
-    expect(screen.getByText("28% CPU")).toBeInTheDocument();
-    expect(screen.getByText("42% GPU")).toBeInTheDocument();
+    expect(screen.getByText("28% System CPU")).toBeInTheDocument();
+    expect(screen.getByText("42% System GPU")).toBeInTheDocument();
   });
 
   it("renders browser preview metrics in the FPS HUD without native invokes", async () => {
@@ -880,8 +881,8 @@ describe("routed page smoke coverage", () => {
 
     expect(await screen.findByText("Browser Preview")).toBeInTheDocument();
     expect(screen.getByText("66 FPS")).toBeInTheDocument();
-    expect(screen.getByText("42% CPU")).toBeInTheDocument();
-    expect(screen.getByText("58% GPU")).toBeInTheDocument();
+    expect(screen.getByText("42% System CPU")).toBeInTheDocument();
+    expect(screen.getByText("58% System GPU")).toBeInTheDocument();
     expect(screen.queryByText("•••")).not.toBeInTheDocument();
     expect(invoke).not.toHaveBeenCalled();
   });
@@ -944,6 +945,51 @@ describe("routed page smoke coverage", () => {
     expect(screen.getByText("OG-Launcher")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Friends" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Screenshots" })).not.toBeInTheDocument();
+  });
+
+  it("loads existing messages when an overlay group chat opens", async () => {
+    currentUserMock.mockReturnValue({
+      error: null,
+      isConfigured: true,
+      isLoading: false,
+      session: null,
+      signOut: vi.fn(),
+      user: { id: "user-1" },
+    });
+    socialMocks.getMyGroupChats.mockResolvedValue([
+      {
+        memberCount: 2,
+        room: {
+          createdAt: "2026-06-22T00:00:00.000Z",
+          createdBy: "user-1",
+          id: "group-1",
+          name: "Night Shift",
+          type: "group",
+          updatedAt: "2026-06-22T00:00:00.000Z",
+        },
+      },
+    ]);
+    socialMocks.getGroupMessages.mockResolvedValue([
+      {
+        content: "Earlier message",
+        createdAt: "2026-06-22T00:01:00.000Z",
+        deletedAt: null,
+        id: "message-1",
+        roomId: "group-1",
+        senderId: "friend-1",
+        updatedAt: "2026-06-22T00:01:00.000Z",
+      },
+    ]);
+
+    renderRoute(<OverlayPage />);
+    fireEvent.click(screen.getByRole("button", { name: "Chat" }));
+
+    expect(await screen.findByText("Earlier message")).toBeInTheDocument();
+    expect(socialMocks.getGroupMessages).toHaveBeenCalledWith("group-1");
+    expect(socialMocks.subscribeToGroupMessages).toHaveBeenCalledWith(
+      "group-1",
+      expect.any(Function),
+    );
   });
 
   it("makes the external overlay click-through while only pinned panels remain", async () => {
@@ -1091,6 +1137,8 @@ describe("routed page smoke coverage", () => {
       await Promise.resolve();
     });
     expect(screen.getByText("Overlay Active Game")).toBeInTheDocument();
+    expect(screen.getAllByText("HUD FPS").length).toBeGreaterThan(0);
+    expect(screen.getByText(/not game FPS or a benchmark/i)).toBeInTheDocument();
     expect(pollPerformanceMetricCallCount()).toBe(1);
 
     await act(async () => {
@@ -1128,6 +1176,17 @@ describe("routed page smoke coverage", () => {
       vi.advanceTimersByTime(5_000);
       await Promise.resolve();
     });
+    expect(pollPerformanceMetricCallCount()).toBe(0);
+  });
+
+  it("opens the local system-telemetry panel on its development verify route", async () => {
+    window.history.replaceState(null, "", "/overlay?verify=performance-system-telemetry");
+
+    renderRoute(<OverlayPage />);
+
+    expect(await screen.findByText("Standalone Overlay")).toBeInTheDocument();
+    expect(screen.getAllByText("HUD FPS").length).toBeGreaterThan(0);
+    expect(screen.getByText(/not game FPS or a benchmark/i)).toBeInTheDocument();
     expect(pollPerformanceMetricCallCount()).toBe(0);
   });
 });

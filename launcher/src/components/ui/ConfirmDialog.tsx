@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { AlertTriangle, X } from "lucide-react";
 
 import { Button } from "./Button";
@@ -24,22 +24,22 @@ export function ConfirmDialog({
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
     if (!open) {
       return;
     }
+    dialogRef.current?.querySelector<HTMLButtonElement>("[data-safe-action]")?.focus();
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
         event.preventDefault();
         onCancel();
-      } else if (event.key === "Enter") {
-        event.preventDefault();
-        onConfirm();
       }
     }
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [open, onCancel, onConfirm]);
+  }, [open, onCancel]);
 
   if (!open) {
     return null;
@@ -50,6 +50,7 @@ export function ConfirmDialog({
       aria-label={title}
       aria-modal="true"
       className="neo-dots-ink fixed inset-0 z-50 flex items-center justify-center p-4"
+      ref={dialogRef}
       role="dialog"
     >
       <div className="w-full max-w-[440px] border-4 border-black bg-[#f5eedf] shadow-[6px_6px_0_#171411]">
@@ -75,7 +76,7 @@ export function ConfirmDialog({
         </div>
 
         <div className="flex items-center justify-end gap-2 border-t-2 border-black bg-[#fbf4e7] px-4 py-3">
-          <Button size="sm" type="button" variant="secondary" onClick={onCancel}>
+          <Button data-safe-action size="sm" type="button" variant="secondary" onClick={onCancel}>
             {cancelLabel}
           </Button>
           <Button

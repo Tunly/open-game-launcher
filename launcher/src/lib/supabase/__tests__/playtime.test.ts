@@ -5,9 +5,10 @@ import type { Game, PlaySession } from "../../types";
 const mocks = vi.hoisted(() => {
   const from = vi.fn();
   const functionsInvoke = vi.fn();
+  const rpc = vi.fn();
   const authGetUser = vi.fn();
   const authGetSession = vi.fn();
-  return { from, functionsInvoke, authGetUser, authGetSession };
+  return { from, functionsInvoke, rpc, authGetUser, authGetSession };
 });
 
 vi.mock("../client", () => ({
@@ -16,6 +17,7 @@ vi.mock("../client", () => ({
     functions: {
       invoke: mocks.functionsInvoke,
     },
+    rpc: mocks.rpc,
     auth: {
       getUser: mocks.authGetUser,
       getSession: mocks.authGetSession,
@@ -222,6 +224,10 @@ function mockTrustedIngestionUnavailable() {
     data: null,
     error: { message: "Function not found", context: { status: 404 } },
   });
+  mocks.rpc.mockResolvedValue({
+    data: null,
+    error: { code: "PGRST202", message: "Function does not exist" },
+  });
 }
 
 function makeCatalogThenStatsHandler(options: {
@@ -275,6 +281,7 @@ describe("listGameSessions", () => {
     vi.unstubAllEnvs();
     mocks.from.mockReset();
     mocks.functionsInvoke.mockReset();
+    mocks.rpc.mockReset();
     mocks.authGetUser.mockReset();
     mockAuthedUser();
     mockTrustedIngestionUnavailable();
@@ -317,6 +324,7 @@ describe("updateGameSession", () => {
     vi.unstubAllEnvs();
     mocks.from.mockReset();
     mocks.functionsInvoke.mockReset();
+    mocks.rpc.mockReset();
     mocks.authGetUser.mockReset();
     mockAuthedUser();
     mockTrustedIngestionUnavailable();
@@ -384,13 +392,18 @@ describe("syncGamePlaytimeStats", () => {
     vi.unstubAllEnvs();
     mocks.from.mockReset();
     mocks.functionsInvoke.mockReset();
+    mocks.rpc.mockReset();
     mocks.authGetUser.mockReset();
     mockAuthedUser();
     mockTrustedIngestionUnavailable();
   });
 
-  it("falls back to direct aggregate upsert when strict ingestion is disabled", async () => {
+  it("falls back to the caller-bound aggregate RPC with an atomic session delta", async () => {
     const upsert = vi.fn().mockResolvedValue(makeQueryResult([], null));
+    mocks.rpc.mockResolvedValue({
+      data: [{ aggregate_pushed: true, sessions_pushed: 0 }],
+      error: null,
+    });
     mocks.from.mockImplementation(
       makeCatalogThenStatsHandler({
         catalogFound: true,
@@ -410,15 +423,22 @@ describe("syncGamePlaytimeStats", () => {
       lastPlayedAt: "2026-06-13T10:00:00.000Z",
     });
 
-    expect(upsert).toHaveBeenCalledTimes(1);
-    expect(upsert.mock.calls[0][0]).toMatchObject({
-      first_played_at: "2026-06-13T10:00:00.000Z",
-      game_id: "catalog-1",
-      last_played_at: "2026-06-13T10:00:00.000Z",
-      playtime_minutes: 75,
-      total_sessions: 2,
-      user_id: "user-1",
+    expect(mocks.rpc).toHaveBeenCalledWith("ingest_trusted_playtime", {
+      p_aggregate: {
+        first_played_at: "2026-06-13T10:00:00.000Z",
+        game_id: "catalog-1",
+        installed_version: "1.0",
+        last_played_at: "2026-06-13T10:00:00.000Z",
+        observed_at: expect.any(String),
+        operation: "snapshot",
+        operation_id: expect.any(String),
+        playtime_minutes: 75,
+        session_count_delta: 1,
+      },
+      p_authenticated_user_id: "user-1",
+      p_sessions: [],
     });
+    expect(upsert).not.toHaveBeenCalled();
   });
 
   it("blocks direct aggregate upsert when strict ingestion is enabled", async () => {
@@ -444,6 +464,7 @@ describe("syncGamePlaytimeStats", () => {
         game: { ...game, playtimeMinutes: 75 },
       }),
     ).rejects.toThrow(/Trusted playtime ingestion is required in production/);
+    expect(mocks.rpc).toHaveBeenCalledTimes(1);
     expect(upsert).not.toHaveBeenCalled();
   });
 });
@@ -454,41 +475,55 @@ describe("updateUserGamePlaytime", () => {
     vi.unstubAllEnvs();
     mocks.from.mockReset();
     mocks.functionsInvoke.mockReset();
+    mocks.rpc.mockReset();
     mocks.authGetUser.mockReset();
     mockAuthedUser();
     mockTrustedIngestionUnavailable();
   });
 
-  it("upserts the aggregate row with updated_at", async () => {
+  it("uses the caller-bound RPC when the Edge Function is unavailable", async () => {
     const upsert = vi.fn().mockResolvedValue(makeQueryResult([], null));
     mocks.from.mockImplementation(() => ({ upsert }));
+    mocks.rpc.mockResolvedValue({
+      data: [{ aggregate_pushed: true, sessions_pushed: 0 }],
+      error: null,
+    });
 
     const { updateUserGamePlaytime } = await import("../playtime");
     await updateUserGamePlaytime("user-1", "game-1", 90);
 
-    expect(upsert).toHaveBeenCalledTimes(1);
-    const arg = upsert.mock.calls[0][0];
-    expect(arg.user_id).toBe("user-1");
-    expect(arg.game_id).toBe("game-1");
-    expect(arg.playtime_minutes).toBe(90);
-    expect(typeof arg.updated_at).toBe("string");
-    expect(arg.updated_at).toMatch(/T.+Z$/);
-    expect(upsert.mock.calls[0][1]).toEqual({ onConflict: "user_id,game_id" });
+    expect(mocks.rpc).toHaveBeenCalledWith("ingest_trusted_playtime", {
+      p_aggregate: {
+        game_id: "game-1",
+        observed_at: expect.any(String),
+        operation: "correction",
+        operation_id: expect.any(String),
+        playtime_minutes: 90,
+      },
+      p_authenticated_user_id: "user-1",
+      p_sessions: [],
+    });
+    expect(upsert).not.toHaveBeenCalled();
   });
 
   it("floors negative minutes to zero", async () => {
-    const upsert = vi.fn().mockResolvedValue(makeQueryResult([], null));
-    mocks.from.mockImplementation(() => ({ upsert }));
+    mocks.rpc.mockResolvedValue({
+      data: [{ aggregate_pushed: true, sessions_pushed: 0 }],
+      error: null,
+    });
 
     const { updateUserGamePlaytime } = await import("../playtime");
     await updateUserGamePlaytime("user-1", "game-1", -10);
-    expect(upsert.mock.calls[0][0].playtime_minutes).toBe(0);
+    expect(mocks.rpc.mock.calls[0][1].p_aggregate.playtime_minutes).toBe(0);
   });
 
   it("uses trusted ingestion instead of direct upsert when the function is available", async () => {
     const upsert = vi.fn().mockResolvedValue(makeQueryResult([], null));
     mocks.from.mockImplementation(() => ({ upsert }));
-    mocks.functionsInvoke.mockResolvedValue({ data: { ok: true }, error: null });
+    mocks.functionsInvoke.mockResolvedValue({
+      data: { aggregatePushed: true, ok: true, sessionsPushed: 0 },
+      error: null,
+    });
 
     const { updateUserGamePlaytime } = await import("../playtime");
     await updateUserGamePlaytime("user-1", "game-1", 33);
@@ -497,11 +532,28 @@ describe("updateUserGamePlaytime", () => {
       body: {
         aggregate: {
           gameId: "game-1",
+          observedAt: expect.any(String),
+          operation: "correction",
+          operationId: expect.any(String),
           playtimeMinutes: 33,
         },
       },
     });
     expect(upsert).not.toHaveBeenCalled();
+  });
+
+  it("reports a rejected correction instead of claiming success", async () => {
+    mocks.functionsInvoke.mockResolvedValue({
+      data: { aggregatePushed: false, ok: true, sessionsPushed: 0 },
+      error: null,
+    });
+
+    const { updateUserGamePlaytime } = await import("../playtime");
+
+    await expect(updateUserGamePlaytime("user-1", "game-1", 33)).rejects.toThrow(
+      "The playtime correction was not applied",
+    );
+    expect(mocks.rpc).not.toHaveBeenCalled();
   });
 
   it("does not fall back when trusted ingestion rejects the payload", async () => {
@@ -532,6 +584,7 @@ describe("updateUserGamePlaytime", () => {
     await expect(updateUserGamePlaytime("user-1", "game-1", 33)).rejects.toThrow(
       /Trusted playtime ingestion is required in production/,
     );
+    expect(mocks.rpc).toHaveBeenCalledTimes(1);
     expect(upsert).not.toHaveBeenCalled();
   });
 });
@@ -542,6 +595,7 @@ describe("syncGameSessions", () => {
     vi.unstubAllEnvs();
     mocks.from.mockReset();
     mocks.functionsInvoke.mockReset();
+    mocks.rpc.mockReset();
     mocks.authGetUser.mockReset();
     mockAuthedUser();
     mockTrustedIngestionUnavailable();
@@ -601,7 +655,10 @@ describe("syncGameSessions", () => {
 
   it("uses trusted ingestion for session batches before falling back to direct upsert", async () => {
     const upsert = vi.fn().mockResolvedValue(makeQueryResult([], null));
-    mocks.functionsInvoke.mockResolvedValue({ data: { ok: true }, error: null });
+    mocks.functionsInvoke.mockResolvedValue({
+      data: { aggregatePushed: false, ok: true, sessionsPushed: 1 },
+      error: null,
+    });
     mocks.from.mockImplementation((table: string) => {
       if (table === "games") {
         return makeCatalogThenSessionsHandler({
@@ -701,6 +758,7 @@ describe("getUserPlaySessions", () => {
     vi.unstubAllEnvs();
     mocks.from.mockReset();
     mocks.functionsInvoke.mockReset();
+    mocks.rpc.mockReset();
     mocks.authGetUser.mockReset();
     mockAuthedUser();
   });
@@ -872,6 +930,7 @@ describe("getUserPlaySessionYears", () => {
     vi.unstubAllEnvs();
     mocks.from.mockReset();
     mocks.functionsInvoke.mockReset();
+    mocks.rpc.mockReset();
     mocks.authGetUser.mockReset();
     mockAuthedUser();
   });

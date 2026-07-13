@@ -1,26 +1,70 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import type { Dispatch, RefObject, SetStateAction } from "react";
 import { MemoryRouter } from "react-router-dom";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { GameActionCapability, GameActionResult } from "../../lib/game-actions";
 import type { Game } from "../../lib/types";
-import { GameDetails } from "./GameDetails";
+import { GameDetails, type GameDetailsProps } from "./GameDetails";
+
+const launcherMocks = vi.hoisted(() => ({
+  getGameActionCapabilities: vi.fn(),
+  getPlatformClientAssetCacheLookup: vi.fn(),
+  getPlatformClientInstallerMetadata: vi.fn(),
+  getPlatformClientModificationConfig: vi.fn(),
+  getPlatformClientUpdateStatus: vi.fn(),
+  isTauri: vi.fn(),
+  listen: vi.fn(),
+  openExternalUrl: vi.fn(),
+  pollPlatformClientHealth: vi.fn(),
+  prepareGameActionConfirmation: vi.fn(),
+  previewPlatformClientAutoApply: vi.fn(),
+  previewPlatformClientInstall: vi.fn(),
+  runGameAction: vi.fn(),
+}));
+
+vi.mock("@tauri-apps/api/core", () => ({
+  isTauri: launcherMocks.isTauri,
+}));
+
+vi.mock("@tauri-apps/api/event", () => ({
+  listen: launcherMocks.listen,
+}));
+
+vi.mock("../../lib/launcher", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../../lib/launcher")>()),
+  getGameActionCapabilities: launcherMocks.getGameActionCapabilities,
+  getPlatformClientAssetCacheLookup: launcherMocks.getPlatformClientAssetCacheLookup,
+  getPlatformClientInstallerMetadata: launcherMocks.getPlatformClientInstallerMetadata,
+  getPlatformClientModificationConfig: launcherMocks.getPlatformClientModificationConfig,
+  getPlatformClientUpdateStatus: launcherMocks.getPlatformClientUpdateStatus,
+  openExternalUrl: launcherMocks.openExternalUrl,
+  pollPlatformClientHealth: launcherMocks.pollPlatformClientHealth,
+  prepareGameActionConfirmation: launcherMocks.prepareGameActionConfirmation,
+  previewPlatformClientAutoApply: launcherMocks.previewPlatformClientAutoApply,
+  previewPlatformClientInstall: launcherMocks.previewPlatformClientInstall,
+  runGameAction: launcherMocks.runGameAction,
+}));
 
 vi.mock("../../lib/supabase/crossplay", () => ({
   getCrossPlayPlatforms: vi.fn().mockResolvedValue([]),
 }));
 
-vi.mock("../../lib/supabase/community-artwork", () => ({
-  listHostedCommunityArtworkCandidates: vi.fn().mockResolvedValue({
-    ok: true,
-    value: [],
-  }),
-  reportHostedCommunityArtwork: vi.fn(),
-  setHostedCommunityArtworkVote: vi.fn(),
-  uploadCommunityArtworkForGame: vi.fn(),
-}));
-
 describe("GameDetails actions", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    launcherMocks.isTauri.mockReturnValue(false);
+    launcherMocks.getGameActionCapabilities.mockResolvedValue([]);
+    launcherMocks.getPlatformClientAssetCacheLookup.mockResolvedValue(null);
+    launcherMocks.getPlatformClientInstallerMetadata.mockResolvedValue(null);
+    launcherMocks.getPlatformClientModificationConfig.mockResolvedValue(null);
+    launcherMocks.getPlatformClientUpdateStatus.mockResolvedValue(null);
+    launcherMocks.listen.mockResolvedValue(() => undefined);
+    launcherMocks.pollPlatformClientHealth.mockResolvedValue([]);
+    launcherMocks.previewPlatformClientAutoApply.mockResolvedValue(null);
+    launcherMocks.previewPlatformClientInstall.mockResolvedValue(null);
+  });
+
   it("does not render screenshot or platform cloud save panels", async () => {
     renderGameDetails();
 
@@ -107,6 +151,39 @@ describe("GameDetails actions", () => {
     ).toBe(false);
   });
 
+  it("keeps the achievement sort selector without a visible sort label", () => {
+    renderGameDetails({
+      achievements: [
+        {
+          id: "first-clear",
+          name: "First Clear",
+          description: "Finish the opening route.",
+        },
+      ],
+    });
+
+    const sortSelector = screen.getByRole("combobox", { name: "Sort achievements" });
+
+    expect(sortSelector).toBeInTheDocument();
+    expect(sortSelector.parentElement).not.toHaveClass("ml-auto");
+    expect(screen.queryByText("Sort", { exact: true })).not.toBeInTheDocument();
+  });
+
+  it("does not display the achievement sync timestamp", () => {
+    renderGameDetails({
+      achievements: [
+        {
+          id: "first-clear",
+          name: "First Clear",
+          description: "Finish the opening route.",
+        },
+      ],
+      achievementsSyncedAt: new Date().toISOString(),
+    });
+
+    expect(screen.queryByText(/synced\s+just now/i)).not.toBeInTheDocument();
+  });
+
   it("does not fabricate friend play or wishlist activity", () => {
     renderGameDetails();
 
@@ -126,6 +203,485 @@ describe("GameDetails actions", () => {
     expect(screen.getByText("Not detected")).toBeInTheDocument();
     expect(screen.getByText("Unavailable")).toBeInTheDocument();
     expect(screen.queryByText("Up to date")).not.toBeInTheDocument();
+  });
+
+  it("does not show the community artwork import deck in game settings", () => {
+    renderGameDetails();
+
+    fireEvent.click(screen.getByRole("button", { name: "Game Settings" }));
+
+    expect(
+      screen.queryByRole("region", { name: "Community artwork import deck" }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("Community Art Deck")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /import panel break cover/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("keeps custom artwork local-only", () => {
+    renderGameDetails({
+      coverUrl: "https://cdn.example.test/cover.jpg",
+      iconUrl: "https://cdn.example.test/icon.jpg",
+      logoUrl: "https://cdn.example.test/logo.png",
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Game Settings" }));
+
+    expect(screen.getByTitle("Choose custom banner artwork")).toBeVisible();
+    expect(screen.getByTitle("Choose custom icon artwork")).toBeVisible();
+    expect(screen.getByTitle("Choose custom logo artwork")).toBeVisible();
+    expect(screen.queryByText("Auto Artwork")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("region", { name: /hosted community artwork upload/i }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("Community Art Deck")).not.toBeInTheDocument();
+  });
+
+  it("opens a Retro Manga dossier with explicit selected-copy and all-copies scopes", async () => {
+    renderGameDetails(
+      { id: "steam-shared-game", launcher: "steam" },
+      {
+        gameVariants: [
+          { ...selectedGame, id: "steam-shared-game", launcher: "steam" },
+          {
+            ...selectedGame,
+            id: "gog-shared-game",
+            launcher: "gog",
+            status: "update_available",
+          },
+        ],
+      },
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Game Settings" }));
+
+    expect(screen.getByRole("dialog", { name: "Game Options" })).toBeVisible();
+    expect(screen.getByRole("region", { name: "Selected copy actions" })).toBeVisible();
+    expect(screen.getByRole("region", { name: "All copies organization" })).toBeVisible();
+    expect(screen.getAllByText("All copies").length).toBeGreaterThan(0);
+
+    fireEvent.click(screen.getByRole("button", { name: "Select GOG copy" }));
+
+    expect(screen.getByRole("button", { name: "Select GOG copy" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    await waitFor(() => {
+      expect(screen.getByRole("button", { name: /Update with GOG Galaxy/i })).toBeDisabled();
+      expect(screen.getByRole("button", { name: /Verify in GOG Galaxy/i })).toBeDisabled();
+    });
+    expect(
+      screen.getAllByText(
+        "This action requires the OG-Launcher desktop app; no native operation ran in the browser.",
+      ).length,
+    ).toBeGreaterThan(0);
+    expect(launcherMocks.getGameActionCapabilities).not.toHaveBeenCalled();
+    expect(launcherMocks.prepareGameActionConfirmation).not.toHaveBeenCalled();
+    expect(launcherMocks.runGameAction).not.toHaveBeenCalled();
+  });
+
+  it("runs a native action with the exact selected variant binding", async () => {
+    launcherMocks.isTauri.mockReturnValue(true);
+    launcherMocks.getGameActionCapabilities.mockImplementation(async (gameId: string) => [
+      capability("verify", {
+        label: `Verify ${gameId}`,
+        reason: `Verify only ${gameId}.`,
+      }),
+    ]);
+    launcherMocks.runGameAction.mockResolvedValue(
+      actionResult("verify", "gog-shared-game", "gog", {
+        message: "Selected GOG files were verified.",
+      }),
+    );
+
+    renderGameDetails(
+      { id: "steam-shared-game", launcher: "steam" },
+      {
+        gameVariants: [
+          { ...selectedGame, id: "steam-shared-game", launcher: "steam" },
+          { ...selectedGame, id: "gog-shared-game", launcher: "gog" },
+        ],
+      },
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Game Settings" }));
+    fireEvent.click(screen.getByRole("button", { name: "Select GOG copy" }));
+    const verifyButton = await screen.findByRole("button", { name: /Verify gog-shared-game/i });
+    await waitFor(() => expect(verifyButton).toBeEnabled());
+    fireEvent.click(verifyButton);
+
+    await waitFor(() => {
+      expect(launcherMocks.runGameAction).toHaveBeenCalledWith({
+        action: "verify",
+        gameId: "gog-shared-game",
+        expectedProvider: "gog",
+        expectedTitle: "Local Test Game",
+      });
+    });
+  });
+
+  it("prepares a short-lived exact grant and immediately binds it to the confirmed action", async () => {
+    const runAutomaticLibrarySync = vi.fn().mockResolvedValue(undefined);
+    launcherMocks.isTauri.mockReturnValue(true);
+    launcherMocks.getGameActionCapabilities.mockResolvedValue([
+      capability("remove_from_library", {
+        destructive: true,
+        label: "Remove Manual Entry",
+        reason: "Remove only this manual library entry.",
+        requiresConfirmation: true,
+      }),
+    ]);
+    launcherMocks.prepareGameActionConfirmation.mockResolvedValue({
+      action: "remove_from_library",
+      confirmationToken: "short-lived-token",
+      expiresAt: "2026-07-13T00:02:00Z",
+      expiresInSeconds: 120,
+      gameId: "manual-entry",
+    });
+    launcherMocks.runGameAction.mockResolvedValue(
+      actionResult("remove_from_library", "manual-entry", "manual", {
+        libraryChanged: true,
+        message: "Manual entry removed.",
+      }),
+    );
+
+    renderGameDetails(
+      { id: "manual-entry", launcher: "manual", status: "not_installed" },
+      { runAutomaticLibrarySync },
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Game Settings" }));
+    const removeButton = await screen.findByRole("button", { name: /Remove Manual Entry/i });
+    await waitFor(() => expect(removeButton).toBeEnabled());
+    fireEvent.click(removeButton);
+
+    const dialog = screen.getByRole("dialog", { name: "Confirm Selected Copy Action" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Remove Manual Entry" }));
+
+    await waitFor(() => {
+      expect(launcherMocks.prepareGameActionConfirmation).toHaveBeenCalledWith({
+        action: "remove_from_library",
+        gameId: "manual-entry",
+        expectedProvider: "manual",
+        expectedTitle: "Local Test Game",
+      });
+      expect(launcherMocks.runGameAction).toHaveBeenCalledWith({
+        action: "remove_from_library",
+        gameId: "manual-entry",
+        expectedProvider: "manual",
+        expectedTitle: "Local Test Game",
+        confirmationToken: "short-lived-token",
+      });
+      expect(runAutomaticLibrarySync).toHaveBeenCalledWith(true);
+    });
+    expect(launcherMocks.prepareGameActionConfirmation.mock.invocationCallOrder[0]).toBeLessThan(
+      launcherMocks.runGameAction.mock.invocationCallOrder[0],
+    );
+  });
+
+  it("reports provider handoff as handoff required, never completed", async () => {
+    launcherMocks.isTauri.mockReturnValue(true);
+    launcherMocks.getGameActionCapabilities.mockResolvedValue([
+      capability("repair", {
+        completionObservable: false,
+        destructive: true,
+        label: "Repair in Steam",
+        mode: "user_handoff",
+        reason: "Steam must finish this repair.",
+        requiresConfirmation: true,
+      }),
+    ]);
+    launcherMocks.prepareGameActionConfirmation.mockResolvedValue({
+      action: "repair",
+      confirmationToken: "repair-token",
+      expiresAt: "2026-07-13T00:02:00Z",
+      expiresInSeconds: 120,
+      gameId: "steam-handoff",
+    });
+    launcherMocks.runGameAction.mockResolvedValue(
+      actionResult("repair", "steam-handoff", "steam", {
+        message: "Steam opened; finish the repair there.",
+        outcome: "handoff_required",
+      }),
+    );
+
+    renderGameDetails({ id: "steam-handoff", launcher: "steam" });
+    fireEvent.click(screen.getByRole("button", { name: "Game Settings" }));
+    const repairButton = await screen.findByRole("button", { name: /Repair in Steam/i });
+    fireEvent.click(repairButton);
+    fireEvent.click(
+      within(screen.getByRole("dialog", { name: "Confirm Selected Copy Action" })).getByRole(
+        "button",
+        { name: "Repair in Steam" },
+      ),
+    );
+
+    expect(await screen.findByText("Handoff required")).toBeVisible();
+    expect(screen.getByText("Steam opened; finish the repair there.")).toBeVisible();
+    expect(screen.queryByText("Completed")).not.toBeInTheDocument();
+  });
+
+  it("ignores a stale capability response after the selected variant changes", async () => {
+    launcherMocks.isTauri.mockReturnValue(true);
+    const steamCapabilities = deferred<GameActionCapability[]>();
+    const gogCapabilities = deferred<GameActionCapability[]>();
+    launcherMocks.getGameActionCapabilities.mockImplementation((gameId: string) =>
+      gameId === "steam-stale" ? steamCapabilities.promise : gogCapabilities.promise,
+    );
+
+    renderGameDetails(
+      { id: "steam-stale", launcher: "steam" },
+      {
+        gameVariants: [
+          { ...selectedGame, id: "steam-stale", launcher: "steam" },
+          { ...selectedGame, id: "gog-current", launcher: "gog" },
+        ],
+      },
+    );
+    await waitFor(() =>
+      expect(launcherMocks.getGameActionCapabilities).toHaveBeenCalledWith("steam-stale"),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Game Settings" }));
+    fireEvent.click(screen.getByRole("button", { name: "Select GOG copy" }));
+    await waitFor(() =>
+      expect(launcherMocks.getGameActionCapabilities).toHaveBeenCalledWith("gog-current"),
+    );
+
+    gogCapabilities.resolve([
+      capability("verify", { label: "Verify Current GOG Copy", reason: "Current selection." }),
+    ]);
+    expect(await screen.findByRole("button", { name: /Verify Current GOG Copy/i })).toBeEnabled();
+    steamCapabilities.resolve([
+      capability("verify", { label: "Stale Steam Action", reason: "Stale selection." }),
+    ]);
+
+    await waitFor(() => {
+      expect(screen.queryByText("Stale Steam Action")).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /Verify Current GOG Copy/i })).toBeEnabled();
+    });
+  });
+
+  it("rejects a prepared confirmation grant when the selected copy changes", async () => {
+    const confirmationGrant = deferred<{
+      action: "repair";
+      confirmationToken: string;
+      expiresAt: string;
+      expiresInSeconds: number;
+      gameId: string;
+    }>();
+    const setStatusMessage = vi.fn();
+    launcherMocks.isTauri.mockReturnValue(true);
+    launcherMocks.getGameActionCapabilities.mockImplementation(async (gameId: string) =>
+      gameId === "steam-confirm"
+        ? [
+            capability("repair", {
+              destructive: true,
+              label: "Repair Confirmed Steam Copy",
+              requiresConfirmation: true,
+            }),
+          ]
+        : [capability("verify", { label: "Verify Current GOG Copy" })],
+    );
+    launcherMocks.prepareGameActionConfirmation.mockReturnValue(confirmationGrant.promise);
+
+    renderGameDetails(
+      { id: "steam-confirm", launcher: "steam" },
+      {
+        gameVariants: [
+          { ...selectedGame, id: "steam-confirm", launcher: "steam" },
+          { ...selectedGame, id: "gog-after-confirm", launcher: "gog" },
+        ],
+        setStatusMessage,
+      },
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Game Settings" }));
+    const repairButton = await screen.findByRole("button", {
+      name: /Repair Confirmed Steam Copy/i,
+    });
+    fireEvent.click(repairButton);
+    fireEvent.click(
+      within(screen.getByRole("dialog", { name: "Confirm Selected Copy Action" })).getByRole(
+        "button",
+        { name: "Repair Confirmed Steam Copy" },
+      ),
+    );
+    await waitFor(() =>
+      expect(launcherMocks.prepareGameActionConfirmation).toHaveBeenCalledTimes(1),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Select GOG copy" }));
+    confirmationGrant.resolve({
+      action: "repair",
+      confirmationToken: "now-stale-token",
+      expiresAt: "2026-07-13T00:02:00Z",
+      expiresInSeconds: 120,
+      gameId: "steam-confirm",
+    });
+
+    await waitFor(() => {
+      expect(launcherMocks.runGameAction).not.toHaveBeenCalled();
+      expect(setStatusMessage).toHaveBeenCalledWith(
+        expect.stringMatching(/selected copy changed.*nothing was started/i),
+      );
+    });
+  });
+
+  it("fails closed for backend maintenance capabilities while the exact copy is running", async () => {
+    launcherMocks.isTauri.mockReturnValue(true);
+    launcherMocks.getGameActionCapabilities.mockResolvedValue([
+      capability("update", { label: "Native Update" }),
+      capability("verify", { label: "Native Verify" }),
+      capability("repair", { label: "Native Repair" }),
+      capability("uninstall", { destructive: true, label: "Native Uninstall" }),
+    ]);
+
+    renderGameDetails({ id: "running-copy", launcher: "steam" }, { isGameRunning: true });
+    fireEvent.click(screen.getByRole("button", { name: "Game Settings" }));
+
+    for (const label of ["Native Update", "Native Verify", "Native Repair", "Native Uninstall"]) {
+      const actionButton = await screen.findByRole("button", { name: new RegExp(label, "i") });
+      expect(actionButton).toBeDisabled();
+      expect(actionButton).toHaveAttribute(
+        "title",
+        "Close this selected copy before running maintenance actions.",
+      );
+    }
+    expect(launcherMocks.runGameAction).not.toHaveBeenCalled();
+  });
+
+  it("blocks install maintenance for a not-installed copy but keeps manual removal available", async () => {
+    launcherMocks.isTauri.mockReturnValue(true);
+    launcherMocks.getGameActionCapabilities.mockResolvedValue([
+      capability("verify", { label: "Native Verify" }),
+      capability("remove_from_library", {
+        destructive: true,
+        label: "Remove Catalog Entry",
+        requiresConfirmation: true,
+      }),
+    ]);
+
+    renderGameDetails({ id: "manual-catalog", launcher: "manual", status: "not_installed" });
+    fireEvent.click(screen.getByRole("button", { name: "Game Settings" }));
+
+    const verifyButton = await screen.findByRole("button", { name: /Native Verify/i });
+    const removeButton = screen.getByRole("button", { name: /Remove Catalog Entry/i });
+    expect(verifyButton).toBeDisabled();
+    expect(verifyButton).toHaveAttribute(
+      "title",
+      "Install this selected copy before running maintenance actions.",
+    );
+    expect(removeButton).toBeEnabled();
+  });
+
+  it("opens only the resolver-owned HTTPS support destination", () => {
+    const openWindow = vi.spyOn(window, "open").mockImplementation(() => null);
+    renderGameDetails({ id: "steam-support-game", launcher: "steam" });
+
+    fireEvent.click(screen.getByRole("button", { name: "Game Settings" }));
+    fireEvent.click(screen.getByRole("button", { name: /Steam Support/i }));
+
+    expect(openWindow).toHaveBeenCalledWith(
+      "https://help.steampowered.com/",
+      "_blank",
+      "noopener,noreferrer",
+    );
+    openWindow.mockRestore();
+  });
+
+  it("uses the selected variant id for local artwork", () => {
+    const openArtworkPreview = vi.fn();
+    const { container } = renderGameDetails(
+      { id: "steam-shared-game", launcher: "steam" },
+      {
+        gameVariants: [
+          { ...selectedGame, id: "steam-shared-game", launcher: "steam" },
+          { ...selectedGame, id: "gog-shared-game", launcher: "gog" },
+        ],
+        openArtworkPreview,
+      },
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Game Settings" }));
+    fireEvent.click(screen.getByRole("button", { name: "Select GOG copy" }));
+    const coverInput = container.querySelector<HTMLInputElement>('input[type="file"]');
+    const file = new File(["cover"], "cover.png", { type: "image/png" });
+
+    expect(coverInput).not.toBeNull();
+    fireEvent.change(coverInput!, { target: { files: [file] } });
+
+    expect(openArtworkPreview).toHaveBeenCalledWith("gog-shared-game", "cover", file);
+  });
+
+  it("fans all-copy organization changes out to every variant id", () => {
+    const setFavorites = vi.fn();
+    renderGameDetails(
+      { id: "steam-shared-game", launcher: "steam" },
+      {
+        gameVariants: [
+          { ...selectedGame, id: "steam-shared-game", launcher: "steam" },
+          { ...selectedGame, id: "gog-shared-game", launcher: "gog" },
+        ],
+        favorites: { "steam-shared-game": true },
+        setFavorites,
+      },
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Game Settings" }));
+    expect(screen.getByText("1/2 copies")).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: /Favorite/i }));
+
+    const update = setFavorites.mock.calls[0]?.[0] as (
+      current: Record<string, boolean>,
+    ) => Record<string, boolean>;
+    expect(update({ "steam-shared-game": true })).toEqual({
+      "steam-shared-game": true,
+      "gog-shared-game": true,
+    });
+  });
+
+  it("removes grouped copies and renames or deletes local collections", () => {
+    const setManualCollections = vi.fn();
+    renderGameDetails(
+      { id: "steam-shared-game", launcher: "steam" },
+      {
+        gameVariants: [
+          { ...selectedGame, id: "steam-shared-game", launcher: "steam" },
+          { ...selectedGame, id: "gog-shared-game", launcher: "gog" },
+        ],
+        manualCollections: {
+          Backlog: ["steam-shared-game", "gog-shared-game", "other-game"],
+        },
+        setManualCollections,
+      },
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Game Settings" }));
+    fireEvent.click(screen.getByRole("button", { name: "Remove all copies" }));
+    const removeCopies = setManualCollections.mock.calls[0]?.[0] as (
+      current: Record<string, string[]>,
+    ) => Record<string, string[]>;
+    expect(
+      removeCopies({ Backlog: ["steam-shared-game", "gog-shared-game", "other-game"] }),
+    ).toEqual({ Backlog: ["other-game"] });
+
+    fireEvent.click(screen.getByRole("button", { name: "Rename local" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Rename Backlog" }), {
+      target: { value: "Weekend" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    const rename = setManualCollections.mock.calls[1]?.[0] as (
+      current: Record<string, string[]>,
+    ) => Record<string, string[]>;
+    expect(rename({ Backlog: ["steam-shared-game"], Weekend: ["other-game"] })).toEqual({
+      Weekend: ["other-game", "steam-shared-game"],
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete local collection" }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm delete local collection" }));
+    const removeCollection = setManualCollections.mock.calls[2]?.[0] as (
+      current: Record<string, string[]>,
+    ) => Record<string, string[]>;
+    expect(removeCollection({ Backlog: ["steam-shared-game"] })).toEqual({});
   });
 
   it("shows an Xbox catalog title when no logo artwork is available", () => {
@@ -155,7 +711,10 @@ const selectedGame: Game = {
   executablePath: "C:\\Games\\Local Test Game\\game.exe",
 };
 
-function renderGameDetails(gameOverrides: Partial<Game> = {}) {
+function renderGameDetails(
+  gameOverrides: Partial<Game> = {},
+  propOverrides: Partial<GameDetailsProps> = {},
+) {
   const noop = vi.fn();
   const game = { ...selectedGame, ...gameOverrides };
 
@@ -187,7 +746,6 @@ function renderGameDetails(gameOverrides: Partial<Game> = {}) {
         customArtwork={null}
         onSelectCustomArtwork={noop}
         onArtworkDrop={noop}
-        onApplyCustomArtworkUrl={noop}
         onConfirmArtwork={noop}
         onResetCustomArtwork={noop}
         pendingArtworkFile={null}
@@ -195,6 +753,7 @@ function renderGameDetails(gameOverrides: Partial<Game> = {}) {
         pendingArtworkGameId={null}
         openArtworkPreview={noop}
         closeArtworkPreview={noop}
+        {...propOverrides}
       />
     </MemoryRouter>,
   );
@@ -202,4 +761,51 @@ function renderGameDetails(gameOverrides: Partial<Game> = {}) {
 
 function stateSetter<T>(): Dispatch<SetStateAction<T>> {
   return vi.fn() as unknown as Dispatch<SetStateAction<T>>;
+}
+
+function capability(
+  action: GameActionCapability["action"],
+  overrides: Partial<GameActionCapability> = {},
+): GameActionCapability {
+  return {
+    action,
+    available: true,
+    completionObservable: true,
+    destructive: false,
+    label: action,
+    mode: "local_read_only",
+    reason: `${action} is available for this exact selected copy.`,
+    requiresConfirmation: false,
+    ...overrides,
+  };
+}
+
+function actionResult(
+  action: GameActionResult["action"],
+  gameId: string,
+  provider: string,
+  overrides: Partial<GameActionResult> = {},
+): GameActionResult {
+  return {
+    action,
+    details: [],
+    gameId,
+    libraryChanged: false,
+    message: `${action} completed.`,
+    outcome: "completed",
+    provider,
+    rescanRecommended: false,
+    sessionId: "session-1",
+    ...overrides,
+  };
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason?: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise;
+    reject = rejectPromise;
+  });
+  return { promise, reject, resolve };
 }

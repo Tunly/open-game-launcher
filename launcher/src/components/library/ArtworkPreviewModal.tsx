@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { X, ImagePlus } from "lucide-react";
 import type { CustomArtworkKind } from "../../lib/custom-artwork";
 import { compressAndReadImage, isAllowedImageType } from "../../lib/image-compress";
@@ -28,7 +28,6 @@ export function ArtworkPreviewModal({
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [isCompressing, setIsCompressing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const cancelRef = useRef(false);
 
   useEffect(() => {
     setSelectedKind(initialKind);
@@ -38,35 +37,37 @@ export function ArtworkPreviewModal({
     if (!isOpen || !file) {
       setPreviewUrl(null);
       setError(null);
+      setIsCompressing(false);
       return;
     }
 
     if (!isAllowedImageType(file)) {
       setError("Only JPG, PNG, and WebP images are supported.");
       setPreviewUrl(null);
+      setIsCompressing(false);
       return;
     }
 
-    cancelRef.current = false;
+    let cancelled = false;
     setIsCompressing(true);
     setError(null);
 
     compressAndReadImage(file, selectedKind)
       .then((dataUrl) => {
-        if (!cancelRef.current) {
+        if (!cancelled) {
           setPreviewUrl(dataUrl);
           setIsCompressing(false);
         }
       })
       .catch(() => {
-        if (!cancelRef.current) {
+        if (!cancelled) {
           setError("Could not process the image.");
           setIsCompressing(false);
         }
       });
 
     return () => {
-      cancelRef.current = true;
+      cancelled = true;
     };
   }, [isOpen, file, selectedKind]);
 

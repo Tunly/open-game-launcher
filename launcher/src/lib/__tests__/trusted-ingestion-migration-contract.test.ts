@@ -31,6 +31,7 @@ describe("trusted ingestion migration contract", () => {
   const sessions = readMigration("20260605134744_extend_game_sessions_policies.sql");
   const activityFeed = readMigration("20260602130000_universal_friends.sql");
   const trustedAchievements = readMigration("20260610173000_trusted_achievement_ingestion.sql");
+  const atomicPlaytime = readMigration("20260712000000_atomic_playtime_ingestion.sql");
   const config = readSupabaseConfig();
 
   it("keeps achievement, progress, and XP writes behind trusted ingestion", () => {
@@ -61,13 +62,35 @@ describe("trusted ingestion migration contract", () => {
     expect(config).toMatch(/\[functions\.ingest-achievements\]\s+verify_jwt = true/i);
   });
 
-  it("pins remaining authenticated direct-write exceptions for staged playtime fallback", () => {
+  it("closes the staged direct playtime fallback behind the caller-bound RPC", () => {
     expect(playtimeStats).toMatch(
       /grant select, insert, update on table public\.user_game_stats to authenticated/i,
     );
     expect(playtimeStats).toMatch(/create policy launcher_playtime_stats_insert_own/i);
     expect(playtimeStats).toMatch(/create policy launcher_playtime_stats_update_own/i);
     expect(playtimeStats).toMatch(/with check \(auth\.uid\(\) = user_id\)/i);
+
+    expect(atomicPlaytime).toMatch(
+      /revoke insert, update on table public\.user_game_stats from authenticated/i,
+    );
+    expect(atomicPlaytime).toMatch(/p_authenticated_user_id is distinct from auth\.uid\(\)/i);
+    expect(atomicPlaytime).toMatch(
+      /grant execute on function public\.ingest_trusted_playtime\(uuid, jsonb, jsonb\)\s+to authenticated, service_role/i,
+    );
+
+    for (const column of [
+      "playtime_minutes",
+      "total_sessions",
+      "first_played_at",
+      "last_played_at",
+      "installed_version",
+      "ingestion_observed_at",
+    ]) {
+      const escaped = column.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      expect(atomicPlaytime).not.toMatch(
+        new RegExp(`grant\\s+(?:insert|update)\\s*\\([^)]*${escaped}`, "i"),
+      );
+    }
 
     expect(base).toMatch(/create policy game_sessions_insert_own/i);
     expect(sessions).toMatch(/create policy game_sessions_update_own/i);

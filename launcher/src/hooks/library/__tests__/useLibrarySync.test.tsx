@@ -4,6 +4,7 @@ import { StrictMode, useState, type PropsWithChildren } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Game } from "../../../lib/types";
+import type { ProviderResult } from "../../../library/providers/types";
 import { activateSteamAccount } from "../../../lib/steam-owned-games-cache";
 
 const mocks = vi.hoisted(() => {
@@ -310,7 +311,7 @@ describe("useLibrarySync", () => {
   it("hydrates from a persisted library snapshot", async () => {
     const persisted: Game[] = [makeGame({ id: "steam-1", title: "Persisted" })];
     window.localStorage.setItem("launcher_library_snapshot", JSON.stringify(persisted));
-    mocks.listInstalledGames.mockResolvedValue([]);
+    mocks.listInstalledGames.mockResolvedValue(persisted);
 
     const { result } = renderLibrarySync();
 
@@ -319,18 +320,39 @@ describe("useLibrarySync", () => {
     });
   });
 
-  it("keeps a persisted snapshot responsive and defers the startup refresh", async () => {
+  it("preserves a persisted snapshot when the native library read fails", async () => {
+    const persisted: Game[] = [makeGame({ id: "steam-1", title: "Persisted" })];
+    window.localStorage.setItem("launcher_library_snapshot", JSON.stringify(persisted));
+    mocks.listInstalledGames.mockRejectedValueOnce(new Error("cache unavailable"));
+
+    const { result } = renderLibrarySync();
+
+    await waitFor(() => expect(result.current.isDiscoveringGames).toBe(false));
+    expect(result.current.installedGames).toEqual(persisted);
+    expect(result.current.discoveryMessage).toBe(
+      "Saved library could not be refreshed. The last available snapshot remains visible.",
+    );
+    expect(JSON.parse(window.localStorage.getItem("launcher_library_snapshot") ?? "[]")).toEqual(
+      persisted,
+    );
+  });
+
+  it("keeps a persisted snapshot responsive, reconciles native cache, and defers refresh", async () => {
     vi.useFakeTimers();
     try {
       const persisted: Game[] = [makeGame({ id: "steam-1", title: "Persisted" })];
       const refreshed: Game[] = [makeGame({ id: "steam-2", title: "Refreshed" })];
       window.localStorage.setItem("launcher_library_snapshot", JSON.stringify(persisted));
+      mocks.listInstalledGames.mockResolvedValue(persisted);
       mocks.refreshInstalledGames.mockResolvedValue(refreshed);
 
       const { result } = renderLibrarySync();
 
       expect(result.current.installedGames.some((g) => g.id === "steam-1")).toBe(true);
-      expect(mocks.listInstalledGames).not.toHaveBeenCalled();
+      await act(async () => {
+        await Promise.resolve();
+      });
+      expect(mocks.listInstalledGames).toHaveBeenCalledTimes(1);
       expect(mocks.refreshInstalledGames).not.toHaveBeenCalled();
 
       await act(async () => {
@@ -349,6 +371,33 @@ describe("useLibrarySync", () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it("replaces stale snapshot artwork from the native cache immediately", async () => {
+    const persisted = makeGame({
+      id: "ubisoft-635",
+      launcher: "ubisoft",
+      coverUrl: undefined,
+      iconUrl: undefined,
+    });
+    const cached = makeGame({
+      id: "ubisoft-635",
+      launcher: "ubisoft",
+      coverUrl: "C:/ProgramData/Ubisoft/cache/assets/banner.png",
+      iconUrl: "C:/ProgramData/Ubisoft/cache/assets/icon.png",
+    });
+    window.localStorage.setItem("launcher_library_snapshot", JSON.stringify([persisted]));
+    mocks.listInstalledGames.mockResolvedValue([cached]);
+
+    const { result } = renderLibrarySync();
+
+    expect(result.current.installedGames[0].coverUrl).toBeUndefined();
+    await waitFor(() => {
+      expect(result.current.installedGames[0]).toMatchObject({
+        coverUrl: cached.coverUrl,
+        iconUrl: cached.iconUrl,
+      });
+    });
   });
 
   it("reloads immediately after a Steam account changes outside the library route", async () => {
@@ -417,7 +466,7 @@ describe("useLibrarySync", () => {
       }),
     ];
     window.localStorage.setItem("launcher_library_snapshot", JSON.stringify(persisted));
-    mocks.listInstalledGames.mockResolvedValue([]);
+    mocks.listInstalledGames.mockResolvedValue(persisted);
 
     const { result } = renderLibrarySync();
 
@@ -895,6 +944,92 @@ describe("useLibrarySync", () => {
       expect.objectContaining({ message: "GOG provider crashed" }),
     );
     expect(mocks.mergeBattlenetOwned).toHaveBeenCalled();
+  });
+
+  it("publishes repaired Battle.net artwork before slower providers finish", async () => {
+    const repaired = makeGame({
+      id: "battlenet-owned-17459",
+      externalId: "17459",
+      launcher: "battlenet",
+      title: "Diablo® III",
+      coverUrl: "C:\\AppData\\open-game-launcher\\battlenet-assets\\diablo.webp",
+      iconUrl: "C:\\AppData\\open-game-launcher\\battlenet-assets\\diablo.png",
+    });
+    mocks.mergeBattlenetOwned.mockResolvedValue({
+      games: [repaired],
+      warnings: [],
+      statusMessage: null,
+    });
+    let resolveSteam: ((value: ProviderResult) => void) | undefined;
+    mocks.mergeSteamOwned.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveSteam = resolve;
+        }),
+    );
+
+    const { result } = renderLibrarySync();
+
+    await waitFor(() =>
+      expect(result.current.installedGames[0]).toMatchObject({
+        id: repaired.id,
+        coverUrl: repaired.coverUrl,
+        iconUrl: repaired.iconUrl,
+      }),
+    );
+    expect(mocks.mergeBattlenetOwned.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.mergeSteamOwned.mock.invocationCallOrder[0],
+    );
+
+    await act(async () => {
+      resolveSteam?.({ games: [repaired], warnings: [], statusMessage: null });
+    });
+  });
+
+  it("publishes repaired native GOG artwork before provider discovery finishes", async () => {
+    const repaired = makeGame({
+      id: "gog-Jotun: Valhalla Edition",
+      externalId: "1458127099",
+      launcher: "gog",
+      title: "Jotun: Valhalla Edition",
+      coverUrl: "C:\\AppData\\open-game-launcher\\gog-assets\\jotun-cover.jpg",
+      logoUrl: "C:\\AppData\\open-game-launcher\\gog-assets\\jotun-logo.jpg",
+      iconUrl: "C:\\AppData\\open-game-launcher\\gog-assets\\jotun-icon.png",
+    });
+    window.localStorage.setItem(
+      "launcher_library_snapshot",
+      JSON.stringify([
+        {
+          ...repaired,
+          coverUrl: undefined,
+          logoUrl: undefined,
+          iconUrl: undefined,
+        },
+      ]),
+    );
+    mocks.listInstalledGames.mockResolvedValue([repaired]);
+    let resolveBattlenet: ((value: ProviderResult) => void) | undefined;
+    mocks.mergeBattlenetOwned.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveBattlenet = resolve;
+        }),
+    );
+
+    const { result } = renderLibrarySync();
+
+    await waitFor(() =>
+      expect(result.current.installedGames[0]).toMatchObject({
+        id: repaired.id,
+        coverUrl: repaired.coverUrl,
+        logoUrl: repaired.logoUrl,
+        iconUrl: repaired.iconUrl,
+      }),
+    );
+
+    await act(async () => {
+      resolveBattlenet?.({ games: [repaired], warnings: [], statusMessage: null });
+    });
   });
 
   it("does not replace an equal library list with a new array", async () => {

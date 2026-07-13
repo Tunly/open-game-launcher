@@ -1,7 +1,6 @@
 import {
   listPlaytimeIngestionGameIds,
-  type NormalizedPlaytimeAggregate,
-  type NormalizedPlaytimeSession,
+  type NormalizedPlaytimeIngestion,
   normalizePlaytimeIngestionPayload,
   PlaytimeIngestionValidationError,
 } from "./playtime-ingestion.ts";
@@ -13,26 +12,26 @@ export type PlaytimeIngestionAuthContext = {
 
 type PlaytimeIngestionAuthResult = PlaytimeIngestionAuthContext | Response;
 
+export type PlaytimeIngestionWriteResult = {
+  accepted: boolean;
+  aggregatePushed: boolean;
+  ownerConflictSessionIds: string[];
+  payloadConflictSessionIds: string[];
+  sessionsPushed: number;
+};
+
 export interface PlaytimeIngestionHandlerDeps {
   authenticateRequest: (
     request: Request,
   ) => Promise<PlaytimeIngestionAuthResult>;
-  findConflictingSessionIds: (
-    auth: PlaytimeIngestionAuthContext,
-    sessionIds: string[],
-  ) => Promise<string[]>;
   findMissingCatalogGames: (
     auth: PlaytimeIngestionAuthContext,
     gameIds: string[],
   ) => Promise<string[]>;
-  upsertAggregate: (
+  ingestPlaytime: (
     auth: PlaytimeIngestionAuthContext,
-    aggregate: NormalizedPlaytimeAggregate,
-  ) => Promise<void>;
-  upsertSessions: (
-    auth: PlaytimeIngestionAuthContext,
-    sessions: NormalizedPlaytimeSession[],
-  ) => Promise<void>;
+    ingestion: NormalizedPlaytimeIngestion,
+  ) => Promise<PlaytimeIngestionWriteResult>;
 }
 
 const playtimeIngestionCorsHeaders = {
@@ -64,7 +63,16 @@ export async function handlePlaytimeIngestion(
     return jsonResponse({ error: "Method not allowed." }, 405);
   }
 
-  const authResult = await deps.authenticateRequest(request);
+  let authResult: PlaytimeIngestionAuthResult;
+  try {
+    authResult = await deps.authenticateRequest(request);
+  } catch (error) {
+    console.error("Playtime ingestion authentication failed.", error);
+    return jsonResponse(
+      { error: "Playtime ingestion service unavailable." },
+      500,
+    );
+  }
   if (authResult instanceof Response) {
     return authResult;
   }
@@ -85,10 +93,19 @@ export async function handlePlaytimeIngestion(
   }
 
   const gameIds = listPlaytimeIngestionGameIds(ingestion);
-  const missingGameIds = await deps.findMissingCatalogGames(
-    authResult,
-    gameIds,
-  );
+  let missingGameIds: string[];
+  try {
+    missingGameIds = await deps.findMissingCatalogGames(
+      authResult,
+      gameIds,
+    );
+  } catch (error) {
+    console.error("Playtime ingestion catalog lookup failed.", error);
+    return jsonResponse(
+      { error: "Playtime ingestion service unavailable." },
+      500,
+    );
+  }
   if (missingGameIds.length > 0) {
     return jsonResponse(
       { error: "Unknown catalog game id.", missingGameIds },
@@ -96,32 +113,56 @@ export async function handlePlaytimeIngestion(
     );
   }
 
-  const conflictingSessionIds = await deps.findConflictingSessionIds(
-    authResult,
-    ingestion.sessions.map((session) => session.id),
-  );
-  if (conflictingSessionIds.length > 0) {
+  let writeResult: PlaytimeIngestionWriteResult;
+  try {
+    writeResult = await deps.ingestPlaytime(authResult, ingestion);
+  } catch (error) {
+    console.error("Atomic playtime ingestion failed.", error);
+    return jsonResponse(
+      { error: "Playtime ingestion service unavailable." },
+      500,
+    );
+  }
+  if (!writeResult.accepted) {
+    const conflictingSessionIds = Array.from(
+      new Set([
+        ...writeResult.ownerConflictSessionIds,
+        ...writeResult.payloadConflictSessionIds,
+      ]),
+    );
+    if (conflictingSessionIds.length === 0) {
+      console.error(
+        "Atomic playtime ingestion was rejected without conflict details.",
+      );
+      return jsonResponse(
+        { error: "Playtime ingestion service unavailable." },
+        500,
+      );
+    }
+
+    const hasOwnerConflicts = writeResult.ownerConflictSessionIds.length > 0;
+    const hasPayloadConflicts =
+      writeResult.payloadConflictSessionIds.length > 0;
+    let error = "Session id already belongs to another user.";
+    if (hasOwnerConflicts && hasPayloadConflicts) {
+      error =
+        "Session ids conflict with existing owners or immutable payloads.";
+    } else if (hasPayloadConflicts) {
+      error = "Session id conflicts with an existing immutable payload.";
+    }
     return jsonResponse(
       {
-        error: "Session id already belongs to another user.",
+        error,
         conflictingSessionIds,
       },
       409,
     );
   }
 
-  if (ingestion.aggregate) {
-    await deps.upsertAggregate(authResult, ingestion.aggregate);
-  }
-
-  if (ingestion.sessions.length > 0) {
-    await deps.upsertSessions(authResult, ingestion.sessions);
-  }
-
   return jsonResponse({
-    aggregatePushed: Boolean(ingestion.aggregate),
+    aggregatePushed: writeResult.aggregatePushed,
     ok: true,
-    sessionsPushed: ingestion.sessions.length,
+    sessionsPushed: writeResult.sessionsPushed,
     userId: authResult.userId,
   });
 }

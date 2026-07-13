@@ -11,12 +11,45 @@ import {
   rowNumber,
   rowNullableString,
   rowString,
+  type SupabaseErrorLike,
   type UnknownRecord,
 } from "./helpers";
 
 export type DirectThread = {
   messages: ChatMessage[];
   room: ChatRoom;
+};
+
+type DirectRoomRpcClient = {
+  rpc: (
+    functionName: "ensure_direct_room",
+    args: { friend_id_input: string },
+  ) => {
+    single: () => Promise<{
+      data: UnknownRecord | null;
+      error: SupabaseErrorLike | null;
+    }>;
+  };
+};
+
+type GroupRoomRpcClient = {
+  rpc: (
+    functionName: "create_group_room",
+    args: { member_ids_input: string[]; title_input: string },
+  ) => Promise<{
+    data: string | null;
+    error: SupabaseErrorLike | null;
+  }>;
+};
+
+type GroupMemberRpcClient = {
+  rpc: (
+    functionName: "add_group_room_member",
+    args: { member_id_input: string; room_id_input: string },
+  ) => Promise<{
+    data: null;
+    error: SupabaseErrorLike | null;
+  }>;
 };
 
 export type GameInviteInput = {
@@ -105,6 +138,16 @@ function toMessage(row: UnknownRecord): ChatMessage {
   };
 }
 
+function toChronologicalMessages(rows: unknown[] | null): ChatMessage[] {
+  return (rows ?? []).map((row) => toMessage(row as UnknownRecord)).reverse();
+}
+
+export type ChatMessageCursor = Pick<ChatMessage, "createdAt" | "id">;
+
+function chatMessageCursorFilter(cursor: ChatMessageCursor) {
+  return `created_at.lt.${cursor.createdAt},and(created_at.eq.${cursor.createdAt},id.lt.${cursor.id})`;
+}
+
 function toInvite(row: UnknownRecord): GameInvite {
   return {
     createdAt: rowString(row, "created_at"),
@@ -133,115 +176,19 @@ async function getCurrentUserId() {
   return data.user.id;
 }
 
-function buildDmPairKey(currentUserId: string, friendId: string) {
-  return [currentUserId, friendId].sort().join(":");
-}
-
-async function findExistingDirectRoom(currentUserId: string, friendId: string) {
-  const client = getSupabaseClient();
-  const dmPairKey = buildDmPairKey(currentUserId, friendId);
-  const pairResult = await client
-    .from("chat_rooms")
-    .select("*")
-    .eq("type", "dm")
-    .filter("dm_pair_key", "eq", dmPairKey)
-    .maybeSingle();
-  handleError(pairResult.error);
-  if (pairResult.data) {
-    return toRoom(pairResult.data as UnknownRecord);
-  }
-
-  const ownMemberships = await client
-    .from("chat_room_members")
-    .select("room_id")
-    .eq("user_id", currentUserId);
-  handleError(ownMemberships.error);
-
-  const roomIds = (ownMemberships.data ?? [])
-    .map((row) => rowString(row as UnknownRecord, "room_id"))
-    .filter(Boolean);
-
-  if (roomIds.length === 0) {
-    return null;
-  }
-
-  const roomResult = await client.from("chat_rooms").select("*").eq("type", "dm").in("id", roomIds);
-  handleError(roomResult.error);
-
-  const rooms = (roomResult.data ?? []).map((row) => toRoom(row as UnknownRecord));
-  if (rooms.length === 0) {
-    return null;
-  }
-
-  const dmRoomIds = rooms.map((room) => room.id);
-  const memberResult = await client
-    .from("chat_room_members")
-    .select("room_id, user_id")
-    .in("room_id", dmRoomIds)
-    .in("user_id", [currentUserId, friendId]);
-  handleError(memberResult.error);
-
-  const userSetsByRoom = new Map<string, Set<string>>();
-  for (const row of memberResult.data ?? []) {
-    const record = row as UnknownRecord;
-    const roomId = rowString(record, "room_id");
-    const userId = rowString(record, "user_id");
-    const users = userSetsByRoom.get(roomId) ?? new Set<string>();
-    users.add(userId);
-    userSetsByRoom.set(roomId, users);
-  }
-
-  return rooms.find((room) => userSetsByRoom.get(room.id)?.size === 2) ?? null;
-}
-
 async function ensureDirectRoom(friendId: string) {
   const client = getSupabaseClient();
-  const currentUserId = await getCurrentUserId();
-  if (friendId === currentUserId) {
-    throw new Error("Cannot create a chat with yourself.");
-  }
-
-  const dmPairKey = buildDmPairKey(currentUserId, friendId);
-  const existingRoom = await findExistingDirectRoom(currentUserId, friendId);
-  if (existingRoom) {
-    return existingRoom;
-  }
-
-  const roomInsert = {
-    created_by: currentUserId,
-    dm_pair_key: dmPairKey,
-    type: "dm",
-  };
-  const roomResult = await client
-    .from("chat_rooms")
-    .insert(roomInsert as never)
-    .select("*")
+  const rpcClient = client as unknown as DirectRoomRpcClient;
+  const { data, error } = await rpcClient
+    .rpc("ensure_direct_room", { friend_id_input: friendId })
     .single();
+  handleError(error);
 
-  if (roomResult.error) {
-    const message = roomResult.error.message.toLowerCase();
-    if (
-      roomResult.error.code === "23505" ||
-      message.includes("duplicate") ||
-      message.includes("unique")
-    ) {
-      const racedRoom = await findExistingDirectRoom(currentUserId, friendId);
-      if (racedRoom) {
-        return racedRoom;
-      }
-    }
-    handleError(roomResult.error);
+  if (!data) {
+    throw new Error("The direct-message room was not returned.");
   }
 
-  const room = toRoom(roomResult.data as UnknownRecord);
-
-  const memberResult = await client.from("chat_room_members").insert([
-    { role: "owner", room_id: room.id, user_id: currentUserId },
-    { role: "member", room_id: room.id, user_id: friendId },
-  ]);
-  handleError(memberResult.error);
-
-  return room;
+  return toRoom(data);
 }
 
 export async function getDirectThread(friendId: string): Promise<DirectThread> {
@@ -252,12 +199,13 @@ export async function getDirectThread(friendId: string): Promise<DirectThread> {
     .select("*")
     .eq("room_id", room.id)
     .is("deleted_at", null)
-    .order("created_at", { ascending: true })
+    .order("created_at", { ascending: false })
+    .order("id", { ascending: false })
     .limit(80);
   handleError(error);
 
   return {
-    messages: (data ?? []).map((row) => toMessage(row as UnknownRecord)),
+    messages: toChronologicalMessages(data),
     room,
   };
 }
@@ -400,33 +348,21 @@ export interface GroupChatInfo {
 
 export async function createGroupChat(name: string, memberIds: string[]): Promise<ChatRoom> {
   const client = getSupabaseClient();
-  const { data: userData, error: authError } = await client.auth.getUser();
-  handleError(authError);
-  if (!userData.user) throw new Error("You must be signed in.");
+  const rpcClient = client as unknown as GroupRoomRpcClient;
+  const { data: roomId, error: rpcError } = await rpcClient.rpc("create_group_room", {
+    member_ids_input: memberIds,
+    title_input: name,
+  });
+  handleError(rpcError);
 
-  const currentUserId = userData.user.id;
+  if (!roomId) {
+    throw new Error("The group-chat room ID was not returned.");
+  }
 
-  const roomResult = await client
-    .from("chat_rooms")
-    .insert({ type: "group", name: name.trim() || null, created_by: currentUserId } as never)
-    .select("*")
-    .single();
-  handleError(roomResult.error);
+  const { data, error } = await client.from("chat_rooms").select("*").eq("id", roomId).single();
+  handleError(error);
 
-  const room = toRoom(roomResult.data as UnknownRecord);
-
-  // Add creator + members
-  const allMembers = [currentUserId, ...memberIds.filter((id) => id !== currentUserId)];
-  const memberRows = allMembers.map((userId, index) => ({
-    room_id: room.id,
-    user_id: userId,
-    role: index === 0 ? "owner" : "member",
-  }));
-
-  const { error: memberError } = await client.from("chat_room_members").insert(memberRows);
-  handleError(memberError);
-
-  return room;
+  return toRoom(data as UnknownRecord);
 }
 
 export async function getMyGroupChats(): Promise<GroupChatInfo[]> {
@@ -464,9 +400,11 @@ export async function getMyGroupChats(): Promise<GroupChatInfo[]> {
 
 export async function addGroupMember(roomId: string, userId: string): Promise<void> {
   const client = getSupabaseClient();
-  const { error } = await client
-    .from("chat_room_members")
-    .insert({ room_id: roomId, user_id: userId, role: "member" });
+  const rpcClient = client as unknown as GroupMemberRpcClient;
+  const { error } = await rpcClient.rpc("add_group_room_member", {
+    member_id_input: userId,
+    room_id_input: roomId,
+  });
   handleError(error);
 }
 
@@ -506,7 +444,7 @@ export async function renameGroup(roomId: string, name: string): Promise<void> {
 export async function getGroupMessages(
   roomId: string,
   limit = 80,
-  before?: string,
+  before?: ChatMessageCursor,
 ): Promise<ChatMessage[]> {
   const client = getSupabaseClient();
   let query = client
@@ -514,17 +452,17 @@ export async function getGroupMessages(
     .select("*")
     .eq("room_id", roomId)
     .is("deleted_at", null)
-    .order("created_at", { ascending: true })
-    .limit(limit);
+    .order("created_at", { ascending: false })
+    .order("id", { ascending: false });
 
   if (before) {
-    query = query.lt("created_at", before);
+    query = query.or(chatMessageCursorFilter(before));
   }
 
-  const { data, error } = await query;
+  const { data, error } = await query.limit(limit);
   handleError(error);
 
-  return (data ?? []).map((row) => toMessage(row as UnknownRecord));
+  return toChronologicalMessages(data);
 }
 
 export async function sendGroupMessage(roomId: string, content: string): Promise<ChatMessage> {

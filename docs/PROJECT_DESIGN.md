@@ -135,9 +135,11 @@ Do not add:
 Before finishing UI work:
 
 - Header still uses `OG-Launcher`.
-- Header nav still includes Store, Library, Community, Downloads.
+- Header nav still includes Library, Achievements, Activity, Downloads, Mods,
+  Store, and Community.
 - Background is warm paper with print/halftone feel.
 - Borders and shadows are hard, black, and visible.
 - No rounded/glass/SaaS look was introduced.
 - Mobile still wraps without text overlap.
-- `pnpm typecheck`, `pnpm lint`, and for meaningful UI changes `pnpm build` pass.
+- `pnpm --dir launcher typecheck`, `pnpm --dir launcher lint`, and for
+  meaningful UI changes `pnpm --dir launcher build` pass from the repository root.

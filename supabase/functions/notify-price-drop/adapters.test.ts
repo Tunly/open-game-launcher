@@ -143,8 +143,8 @@ Deno.test("notify price-drop adapters insert notifications and mark alerts", asy
   const adapters = createNotifyPriceDropAdapters({
     getNotifySecret: () => "test-secret",
     supabaseAdmin: supabaseStub({
-      countByTable: { store_price_alerts: 1 },
       operations,
+      rpcData: [{ alerts_marked_count: 1, notifications_recorded_count: 1 }],
     }),
   });
 
@@ -153,16 +153,18 @@ Deno.test("notify price-drop adapters insert notifications and mark alerts", asy
     { alertsMarked: 1, notificationsRecorded: 1 },
   );
 
-  const insert = operations.find((operation) =>
-    operation.method === "insert" && operation.table === "user_notifications"
-  );
-  const rows = insert?.args[0] as Record<string, unknown>[];
+  const rpc = operations.find((operation) => operation.method === "rpc");
+  const args = rpc?.args[1] as Record<string, unknown>;
+  const rows = args.deliveries as Record<string, unknown>[];
+  assertEquals(rpc?.args[0], "record_store_price_drop_notifications");
+  assertEquals(args.delivered_at, notifiedAt);
   assertEquals(rows.length, 1);
   assertObjectMatch(rows[0], {
+    alertId,
+    alertUpdatedAt: "2026-06-10T09:00:00.000Z",
     body: "Mock Game is now EUR 15.00 (target EUR 15.00).",
     title: "Price drop: Mock Game",
-    type: "store_price_drop",
-    user_id: userId,
+    userId,
   });
   assertObjectMatch(rows[0].data as Record<string, unknown>, {
     current_price_cents: 1500,
@@ -173,15 +175,46 @@ Deno.test("notify price-drop adapters insert notifications and mark alerts", asy
     store_price_alert_id: alertId,
     target_price_cents: 1500,
   });
-  assertEquals(operations.slice(-3), [
-    {
-      args: [{ last_notified_at: notifiedAt }, { count: "exact" }],
-      method: "update",
-      table: "store_price_alerts",
-    },
-    { args: ["id", [alertId]], method: "in", table: "store_price_alerts" },
-    { args: [], method: "then", table: "store_price_alerts" },
-  ]);
+  assertEquals(
+    operations.filter((operation) => operation.method === "rpc").length,
+    1,
+  );
+});
+
+Deno.test("notify price-drop adapters batch scans above the RPC delivery limit", async () => {
+  const operations: Operation[] = [];
+  const adapters = createNotifyPriceDropAdapters({
+    getNotifySecret: () => "test-secret",
+    supabaseAdmin: supabaseStub({
+      operations,
+      rpcDataByCall: [
+        [{ alerts_marked_count: 500, notifications_recorded_count: 500 }],
+        [{ alerts_marked_count: 1, notifications_recorded_count: 1 }],
+      ],
+    }),
+  });
+  const candidates = Array.from({ length: 501 }, (_, index) =>
+    candidate({
+      alertId: `${String(index).padStart(8, "0")}-1111-4111-8111-111111111111`,
+    }));
+
+  assertEquals(await adapters.recordNotifications(candidates, notifiedAt), {
+    alertsMarked: 501,
+    notificationsRecorded: 501,
+  });
+
+  const calls = operations.filter((operation) => operation.method === "rpc");
+  assertEquals(calls.length, 2);
+  assertEquals(
+    ((calls[0].args[1] as Record<string, unknown>).deliveries as unknown[])
+      .length,
+    500,
+  );
+  assertEquals(
+    ((calls[1].args[1] as Record<string, unknown>).deliveries as unknown[])
+      .length,
+    1,
+  );
 });
 
 Deno.test("notify price-drop adapters record sanitized aggregate run evidence", async () => {
@@ -235,7 +268,7 @@ Deno.test("notify price-drop adapters map Supabase errors", async () => {
   const notificationAdapters = createNotifyPriceDropAdapters({
     getNotifySecret: () => "test-secret",
     supabaseAdmin: supabaseStub({
-      errorByTable: { user_notifications: { message: "insert failed" } },
+      rpcError: { message: "insert failed" },
     }),
   });
   await assertRejects(
@@ -270,9 +303,24 @@ function supabaseStub(options: {
   dataByTable?: Record<string, unknown[] | null>;
   errorByTable?: Record<string, { message?: string } | null>;
   operations?: Operation[];
+  rpcData?: unknown;
+  rpcDataByCall?: unknown[];
+  rpcError?: { message?: string } | null;
 } = {}) {
   const operations = options.operations ?? [];
+  let rpcCallIndex = 0;
   return {
+    rpc: (name: string, args: Record<string, unknown>) => {
+      operations.push({ args: [name, args], method: "rpc" });
+      const data = options.rpcDataByCall?.[rpcCallIndex] ?? options.rpcData ??
+        null;
+      rpcCallIndex += 1;
+      return Promise.resolve({
+        count: null,
+        data,
+        error: options.rpcError ?? null,
+      });
+    },
     from: (table: string) => {
       operations.push({ args: [table], method: "from" });
       const result = () => ({

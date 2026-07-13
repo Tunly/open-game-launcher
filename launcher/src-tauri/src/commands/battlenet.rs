@@ -205,8 +205,6 @@ pub async fn process_battlenet_games_payload(
 
     let data: serde_json::Value =
         serde_json::from_str(&json_str).map_err(|e| format!("Invalid JSON: {}", e))?;
-    let _ = std::fs::write("battlenet_debug.json", &json_str);
-
     let mut games = Vec::new();
 
     if let serde_json::Value::Array(arr) = data {
@@ -233,16 +231,36 @@ pub async fn process_battlenet_games_payload(
                     .map(str::trim)
                     .filter(|value| !value.is_empty())
                     .map(str::to_string);
-                let assets = crate::commands::games::detect::get_rawg_battlenet_assets(i, n);
                 let (fallback_cover, fallback_logo, fallback_icon) =
                     crate::commands::games::detect::get_battlenet_assets(i, n);
+                let assets = battlenet_primary_artwork_needs_rawg(
+                    fallback_cover.as_deref(),
+                    fallback_icon.as_deref(),
+                )
+                .then(|| crate::commands::games::detect::get_rawg_battlenet_assets(i, n))
+                .flatten();
                 let cover_url = api_cover_url
+                    .or_else(|| {
+                        fallback_cover
+                            .clone()
+                            .filter(|url| !url.starts_with("data:image/svg+xml,"))
+                    })
                     .or_else(|| assets.as_ref().and_then(|a| a.cover_url.clone()))
                     .or(fallback_cover);
                 let logo_url = api_logo_url
+                    .or_else(|| {
+                        fallback_logo
+                            .clone()
+                            .filter(|url| !url.starts_with("data:image/svg+xml,"))
+                    })
                     .or_else(|| assets.as_ref().and_then(|a| a.logo_url.clone()))
                     .or(fallback_logo);
                 let icon_url = api_icon_url
+                    .or_else(|| {
+                        fallback_icon
+                            .clone()
+                            .filter(|url| !url.starts_with("data:image/svg+xml,"))
+                    })
                     .or_else(|| assets.as_ref().and_then(|a| a.icon_url.clone()))
                     .or(fallback_icon);
 
@@ -267,4 +285,27 @@ pub async fn process_battlenet_games_payload(
     games.dedup_by(|a, b| a.title == b.title);
 
     Ok(games)
+}
+
+fn battlenet_primary_artwork_needs_rawg(cover_url: Option<&str>, icon_url: Option<&str>) -> bool {
+    [cover_url, icon_url]
+        .into_iter()
+        .any(|url| url.is_none_or(|value| value.starts_with("data:image/svg+xml,")))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::battlenet_primary_artwork_needs_rawg;
+
+    #[test]
+    fn skips_rawg_when_battlenet_primary_artwork_is_available() {
+        assert!(!battlenet_primary_artwork_needs_rawg(
+            Some("C:/Battle.net/Cache/cover"),
+            Some("C:/Battle.net/Cache/icon"),
+        ));
+        assert!(battlenet_primary_artwork_needs_rawg(
+            Some("data:image/svg+xml,%3Csvg%3E"),
+            None,
+        ));
+    }
 }

@@ -1,5 +1,6 @@
 import {
   exportAdditionalUserScopedReads,
+  exportOrderColumns,
   exportOwnUserIdTables,
 } from "./contract.ts";
 
@@ -14,9 +15,32 @@ Deno.test(
       "launcher_local_entities",
       "community_artwork_votes",
     ]);
-    assertExcludesAll(exportOwnUserIdTables, ["screenshots", "screenshot_likes"]);
+    assertExcludesAll(exportOwnUserIdTables, [
+      "screenshots",
+      "screenshot_likes",
+    ]);
   },
 );
+
+Deno.test("user export pagination order includes filter and primary-key columns", () => {
+  assertJsonEquals(exportOrderColumns("user_activity", ["user_id"]), [
+    "user_id",
+    "id",
+  ]);
+  assertJsonEquals(exportOrderColumns("store_order_items", ["order_id"]), [
+    "order_id",
+    "id",
+  ]);
+  assertJsonEquals(exportOrderColumns("friendships"), ["id"]);
+  assertJsonEquals(exportOrderColumns("chat_room_members", ["user_id"]), [
+    "user_id",
+    "room_id",
+  ]);
+  assertJsonEquals(
+    exportOrderColumns("community_artwork_votes", ["user_id"]),
+    ["user_id", "artwork_id"],
+  );
+});
 
 Deno.test(
   "user export additional scoped reads cover non-user-id owner columns",
@@ -46,7 +70,17 @@ function assertIncludesAll(actual: readonly string[], expected: string[]) {
 function assertExcludesAll(actual: readonly string[], forbidden: string[]) {
   for (const value of forbidden) {
     if (actual.includes(value)) {
-      throw new Error(`Expected ${JSON.stringify(actual)} not to include ${value}`);
+      throw new Error(
+        `Expected ${JSON.stringify(actual)} not to include ${value}`,
+      );
     }
+  }
+}
+
+function assertJsonEquals(actual: unknown, expected: unknown) {
+  if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+    throw new Error(
+      `Expected ${JSON.stringify(actual)} to equal ${JSON.stringify(expected)}`,
+    );
   }
 }

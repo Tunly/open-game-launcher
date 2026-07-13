@@ -38,19 +38,12 @@ import type {
   ClientUpdateStatus,
   Game,
   GameRuntimeStatus,
-  ManifestTrustStatus,
   PlatformClientHealth,
   PlatformClientLifecycleEvent,
-  VerifyGameFilesResponse,
   UnifiedAchievement,
 } from "../../lib/types";
 import {
-  customArtworkHasKind,
-  getAutoArtworkCandidates,
-  getLocalCommunityArtworkCandidates,
   hasCustomArtwork,
-  type CommunityArtworkCandidate,
-  type CustomArtworkCandidate,
   type CustomArtworkKind,
   type GameCustomArtwork,
 } from "../../lib/custom-artwork";
@@ -85,25 +78,31 @@ import {
   getPlatformClientUpdateStatus,
   openPlatformClientInstaller,
   openPlatformClientUpdater,
+  openExternalUrl,
   pollPlatformClientHealth,
   previewPlatformClientAutoApply,
   previewPlatformClientInstall,
-  repairGameFiles,
+  getGameActionCapabilities,
+  prepareGameActionConfirmation,
+  runGameAction,
   savePlatformClientModificationConfig,
   toClientPlatformId,
-  uninstallGame,
-  verifyGameFiles,
 } from "../../lib/launcher";
+import {
+  resolveGroupGameActionCapabilities,
+  resolveGroupSelectionState,
+  resolveOfficialSupportDestination,
+  resolveSelectedCopyActionCapabilities,
+  type GameAction,
+  type GameActionCapability,
+  type GameActionOutcome,
+  type GameActionResult,
+  type GameActionRuntimeContext,
+} from "../../lib/game-actions";
 import { isLiveDownloadItem, useDownloadStore } from "../../stores/downloadStore";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { CrossPlayBadge } from "./CrossPlayBadge";
 import { getCrossPlayPlatforms } from "../../lib/supabase/crossplay";
-import {
-  listHostedCommunityArtworkCandidates,
-  reportHostedCommunityArtwork,
-  setHostedCommunityArtworkVote,
-  uploadCommunityArtworkForGame,
-} from "../../lib/supabase/community-artwork";
 import type { CrossPlayPlatform } from "../../lib/types/crossplay";
 const CrossStoreSaveMigrationReadinessPanel = React.lazy(() =>
   import("./GameDetails/CrossStoreSaveMigrationReadinessPanel").then((m) => ({
@@ -132,11 +131,6 @@ const IgdbCrossPlayReadinessPanel = React.lazy(() =>
 );
 import { GameUpdateFeed } from "./GameUpdateFeed";
 import { ArtworkPreviewModal } from "./ArtworkPreviewModal";
-import { CommunityArtworkGallery } from "./CommunityArtworkGallery";
-import {
-  CommunityArtworkUploadPanel,
-  type CommunityArtworkUploadDraft,
-} from "./CommunityArtworkUploadPanel";
 import type { CrossStoreSaveMigrationReadiness } from "../../lib/cross-store-save-migration-readiness";
 import type { CrossStoreSaveSyncPlan } from "../../lib/cross-store-save-sync-planner";
 import type { HostedCommunityArtworkReadiness } from "../../lib/hosted-community-artwork-readiness";
@@ -150,65 +144,67 @@ type AchievementWithSources = UnifiedAchievement & {
   isAdditional?: boolean;
 };
 
-const HOSTED_COMMUNITY_ARTWORK_MAX_BYTES = 5 * 1024 * 1024;
-const HOSTED_COMMUNITY_ARTWORK_MIME_TYPES = new Set([
-  "image/gif",
-  "image/jpeg",
-  "image/png",
-  "image/svg+xml",
-  "image/webp",
-]);
+const EMPTY_GAME_VARIANTS: Game[] = [];
 
-function getArtworkKindLabel(kind: CustomArtworkKind): string {
-  return kind === "cover" ? "Cover" : kind === "icon" ? "Icon" : "Logo";
+type NativeGameActionCapabilities = Partial<Record<GameAction, GameActionCapability>>;
+
+interface PendingGameAction {
+  action: GameAction;
+  capability: GameActionCapability;
+  gameId: string;
+  provider: string;
+  title: string;
 }
 
-function isAllowedHostedArtworkFile(file: File): boolean {
-  const extension = file.name.split(".").pop()?.toLowerCase() ?? "";
-  const hasAllowedExtension = ["gif", "jpeg", "jpg", "png", "svg", "webp"].includes(extension);
-  return (
-    file.size > 0 &&
-    file.size <= HOSTED_COMMUNITY_ARTWORK_MAX_BYTES &&
-    (HOSTED_COMMUNITY_ARTWORK_MIME_TYPES.has(file.type) || hasAllowedExtension)
-  );
+type SelectedGameActionBinding = Pick<PendingGameAction, "gameId" | "provider" | "title">;
+
+function unavailableNativeCapability(
+  action: GameAction,
+  label: string,
+  reason: string,
+): GameActionCapability {
+  return {
+    action,
+    available: false,
+    completionObservable: false,
+    destructive:
+      action === "repair" ||
+      action === "update" ||
+      action === "uninstall" ||
+      action === "remove_from_library",
+    label,
+    mode: "not_applicable",
+    reason,
+    requiresConfirmation: false,
+  };
 }
 
-function getArtworkSourceBadge(sourceLabel: string): string {
-  if (sourceLabel.startsWith("Current ")) return "Current";
-  if (sourceLabel.startsWith("Launcher ")) return "Launcher";
-  return sourceLabel;
-}
-
-function getVerificationSummary(result: VerifyGameFilesResponse | null): string {
-  if (!result) return "Not checked";
-  if (result.status === "verified") {
-    return `${result.checkedFiles} files verified`;
+function gameActionOutcomeLabel(outcome: GameActionOutcome): string {
+  switch (outcome) {
+    case "completed":
+      return "Completed";
+    case "handoff_required":
+      return "Handoff required";
+    case "not_needed":
+      return "Not needed";
+    case "blocked":
+      return "Blocked";
+    case "failed":
+      return "Failed";
   }
-  return `${result.missingFiles.length} issue${result.missingFiles.length === 1 ? "" : "s"} found`;
 }
 
-const MANIFEST_TRUST_LABELS: Record<ManifestTrustStatus, string> = {
-  missing: "No manifest",
-  unsigned: "Unsigned manifest",
-  signed: "Signed manifest",
-  invalid: "Invalid manifest",
-};
-
-const MANIFEST_TRUST_CLASSES: Record<ManifestTrustStatus, string> = {
-  missing: "bg-[#fbf4e7] text-[#655f58]",
-  unsigned: "bg-[#f7d04a] text-[#171411]",
-  signed: "bg-[#8cf5e4] text-[#171411]",
-  invalid: "bg-[#b7102a] text-white",
-};
-
-function getManifestTrustLabel(result: VerifyGameFilesResponse | null): string {
-  if (!result) return "Not checked";
-  return MANIFEST_TRUST_LABELS[result.manifestTrust];
-}
-
-function getManifestTrustClasses(result: VerifyGameFilesResponse | null): string {
-  if (!result) return "bg-[#fbf4e7] text-[#655f58]";
-  return MANIFEST_TRUST_CLASSES[result.manifestTrust];
+function gameActionOutcomeClasses(outcome: GameActionOutcome): string {
+  switch (outcome) {
+    case "completed":
+      return "bg-[#8cf5e4] text-[#171411]";
+    case "handoff_required":
+    case "not_needed":
+      return "bg-[#e8c843] text-[#171411]";
+    case "blocked":
+    case "failed":
+      return "bg-[#b7102a] text-white";
+  }
 }
 
 function filterAndSortAchievements(
@@ -669,13 +665,13 @@ export interface GameDetailsProps {
   crossStoreSaveSyncPlan?: CrossStoreSaveSyncPlan;
   hostedCommunityArtworkReadiness?: HostedCommunityArtworkReadiness;
   hostedCommunityArtworkModerationConsole?: HostedCommunityArtworkModerationConsole;
-  seedHostedArtworkUploadPending?: boolean;
   igdbCrossPlayReadinessPlan?: IgdbCrossPlayReadinessPlan;
   shouldShowLibraryLoading: boolean;
   handlePlay: () => void;
   onInstallFromProvider?: () => void;
   hasInstallableVariants?: boolean;
   isGameRunning?: boolean;
+  runningGameIds?: ReadonlySet<string>;
   gameRuntime?: GameRuntimeStatus | null;
   logoCandidateIndexes: Record<string, number>;
   loadedLogoUrls: Set<string>;
@@ -696,15 +692,10 @@ export interface GameDetailsProps {
   discoveryMessage: string | null;
   runAutomaticLibrarySync: (force: boolean) => Promise<void>;
   customArtwork: GameCustomArtwork | null;
+  customArtworkByGameId?: Record<string, GameCustomArtwork>;
   artworkGameId?: string;
   onSelectCustomArtwork: (gameId: string, kind: CustomArtworkKind, file: File) => void;
   onArtworkDrop: (gameId: string, kind: CustomArtworkKind, file: File) => void;
-  onApplyCustomArtworkUrl: (
-    gameId: string,
-    kind: CustomArtworkKind,
-    url: string,
-    sourceLabel: string,
-  ) => void;
   onConfirmArtwork: (dataUrl: string, kind: CustomArtworkKind) => void;
   onResetCustomArtwork: (gameId: string, kind?: CustomArtworkKind) => void;
   pendingArtworkFile: File | null;
@@ -717,18 +708,18 @@ export interface GameDetailsProps {
 export function GameDetails({
   selectedGame,
   enrichedSelectedGame,
-  gameVariants = [],
+  gameVariants = EMPTY_GAME_VARIANTS,
   crossStoreSaveMigrationReadiness,
   crossStoreSaveSyncPlan,
   hostedCommunityArtworkReadiness,
   hostedCommunityArtworkModerationConsole,
-  seedHostedArtworkUploadPending = false,
   igdbCrossPlayReadinessPlan,
   shouldShowLibraryLoading,
   handlePlay,
   onInstallFromProvider,
   hasInstallableVariants = false,
   isGameRunning = false,
+  runningGameIds,
   gameRuntime = null,
   logoCandidateIndexes,
   loadedLogoUrls,
@@ -749,9 +740,9 @@ export function GameDetails({
   discoveryMessage,
   runAutomaticLibrarySync,
   customArtwork,
+  customArtworkByGameId,
   artworkGameId,
   onArtworkDrop,
-  onApplyCustomArtworkUrl,
   onConfirmArtwork,
   onResetCustomArtwork,
   pendingArtworkFile,
@@ -761,36 +752,27 @@ export function GameDetails({
 }: GameDetailsProps) {
   // Local state that was originally in LibraryPage
   const [isSettingsPopoverOpen, setIsSettingsPopoverOpen] = useState(false);
-  const [settingsPopoverPosition, setSettingsPopoverPosition] = useState<{
-    left: number;
-    top: number;
-  } | null>(null);
+  const [selectedVariantId, setSelectedVariantId] = useState<string | null>(null);
   const [newCategoryInput, setNewCategoryInput] = useState("");
-  const [isUninstallDialogOpen, setIsUninstallDialogOpen] = useState(false);
-  const [isUninstalling, setIsUninstalling] = useState(false);
-  const [uninstallError, setUninstallError] = useState<string | null>(null);
+  const [newCollectionInput, setNewCollectionInput] = useState("");
+  const [renamingCollectionName, setRenamingCollectionName] = useState<string | null>(null);
+  const [collectionRenameInput, setCollectionRenameInput] = useState("");
+  const [pendingCollectionDelete, setPendingCollectionDelete] = useState<string | null>(null);
   const [achievementFilter, setAchievementFilter] = useState("all");
   const [achievementSort, setAchievementSort] = useState<"rarity" | "name" | "date">("rarity");
-  const [hostedCommunityArtworkCandidates, setHostedCommunityArtworkCandidates] = useState<
-    CommunityArtworkCandidate[]
-  >([]);
-  const [isHostedCommunityArtworkLoading, setIsHostedCommunityArtworkLoading] = useState(false);
-  const [hostedCommunityArtworkMessage, setHostedCommunityArtworkMessage] = useState<string | null>(
-    null,
-  );
-  const [communityArtworkBusyId, setCommunityArtworkBusyId] = useState<string | null>(null);
-  const [communityArtworkUploadMessage, setCommunityArtworkUploadMessage] = useState<string | null>(
-    null,
-  );
-  const [communityArtworkUploadSubmissions, setCommunityArtworkUploadSubmissions] = useState<
-    CommunityArtworkCandidate[]
-  >([]);
-  const [isCommunityArtworkUploading, setIsCommunityArtworkUploading] = useState(false);
-  const [fileIntegrityResult, setFileIntegrityResult] = useState<VerifyGameFilesResponse | null>(
-    null,
-  );
-  const [isVerifyingFiles, setIsVerifyingFiles] = useState(false);
-  const [isRepairingFiles, setIsRepairingFiles] = useState(false);
+  const [nativeGameActionCapabilities, setNativeGameActionCapabilities] =
+    useState<NativeGameActionCapabilities | null>(null);
+  const [nativeGameActionCapabilitiesGameId, setNativeGameActionCapabilitiesGameId] = useState<
+    string | null
+  >(null);
+  const [isLoadingGameActionCapabilities, setIsLoadingGameActionCapabilities] = useState(false);
+  const [gameActionCapabilityError, setGameActionCapabilityError] = useState<string | null>(null);
+  const [busyGameAction, setBusyGameAction] = useState<GameAction | null>(null);
+  const [gameActionResult, setGameActionResult] = useState<GameActionResult | null>(null);
+  const [gameActionError, setGameActionError] = useState<string | null>(null);
+  const [pendingGameAction, setPendingGameAction] = useState<PendingGameAction | null>(null);
+  const capabilityRequestIdRef = useRef(0);
+  const selectedGameActionBindingRef = useRef<SelectedGameActionBinding | null>(null);
   const coverArtworkInputRef = useRef<HTMLInputElement>(null);
   const iconArtworkInputRef = useRef<HTMLInputElement>(null);
   const logoArtworkInputRef = useRef<HTMLInputElement>(null);
@@ -816,89 +798,55 @@ export function GameDetails({
       ),
     ),
   );
-  const variantsForActions =
-    gameVariants.length > 0 ? gameVariants : enrichedSelectedGame ? [enrichedSelectedGame] : [];
+  const variantsForActions = useMemo(
+    () =>
+      gameVariants.length > 0 ? gameVariants : enrichedSelectedGame ? [enrichedSelectedGame] : [],
+    [enrichedSelectedGame, gameVariants],
+  );
   const achievementAttentionStatus = achievementProviderStatuses.find(
     (provider) => provider.status !== "available",
   );
   const achievementAttentionMessage = achievementAttentionStatus
     ? getAchievementProviderStatusMessage(achievementAttentionStatus)
     : undefined;
-  const variantIds = variantsForActions.map((game) => game.id);
+  const variantIds = useMemo(() => variantsForActions.map((game) => game.id), [variantsForActions]);
   const variantIdKey = variantIds.join("|");
-  const primaryArtworkGameId = artworkGameId ?? enrichedSelectedGame?.id;
-  const autoArtworkCandidates = useMemo(
-    () => (enrichedSelectedGame ? getAutoArtworkCandidates(enrichedSelectedGame).slice(0, 6) : []),
-    [enrichedSelectedGame],
-  );
-  const seededCommunityArtworkUploadSubmissions = useMemo<CommunityArtworkCandidate[]>(() => {
-    if (!seedHostedArtworkUploadPending || !enrichedSelectedGame) {
-      return [];
-    }
-
-    const title = `${enrichedSelectedGame.title} Verify Cover`;
-    return [
-      {
-        artist: "OG Verify",
-        description: "Local verification pending upload.",
-        downloads: 0,
-        hosted: true,
-        id: `verify-pending-${enrichedSelectedGame.id}`,
-        kind: "cover",
-        moderationStatus: "pending",
-        sourceLabel: title,
-        tags: ["cover", "community-upload", "verify"],
-        title,
-        url: enrichedSelectedGame.coverUrl ?? "",
-        userVote: 0,
-        votes: 0,
-      },
-    ];
-  }, [enrichedSelectedGame, seedHostedArtworkUploadPending]);
-  const displayedCommunityArtworkUploadSubmissions = useMemo(
-    () => [
-      ...communityArtworkUploadSubmissions,
-      ...seededCommunityArtworkUploadSubmissions.filter(
-        (seeded) =>
-          !communityArtworkUploadSubmissions.some((submission) => submission.id === seeded.id),
-      ),
-    ],
-    [communityArtworkUploadSubmissions, seededCommunityArtworkUploadSubmissions],
-  );
-  const localCommunityArtworkCandidates = useMemo(
-    () => (enrichedSelectedGame ? getLocalCommunityArtworkCandidates() : []),
-    [enrichedSelectedGame],
-  );
-  const communityArtworkCandidates = useMemo(() => {
-    if (!enrichedSelectedGame) return [];
-    return [...hostedCommunityArtworkCandidates, ...localCommunityArtworkCandidates];
-  }, [enrichedSelectedGame, hostedCommunityArtworkCandidates, localCommunityArtworkCandidates]);
-  const positionSettingsPopover = useCallback(() => {
-    const rect = settingsButtonRef.current?.getBoundingClientRect();
-    if (!rect) {
-      return;
-    }
-
-    const menuWidth = 256;
-    const margin = 12;
-    const viewportWidth = window.innerWidth || document.documentElement.clientWidth || menuWidth;
-
-    setSettingsPopoverPosition({
-      left: Math.max(margin, Math.min(rect.right - menuWidth, viewportWidth - menuWidth - margin)),
-      top: rect.bottom + 8,
-    });
-  }, []);
+  const selectedVariant =
+    variantsForActions.find((game) => game.id === selectedVariantId) ??
+    variantsForActions.find((game) => game.id === enrichedSelectedGame?.id) ??
+    variantsForActions[0] ??
+    enrichedSelectedGame;
+  const primaryArtworkGameId = selectedVariant?.id ?? artworkGameId ?? enrichedSelectedGame?.id;
+  const selectedVariantArtwork = primaryArtworkGameId
+    ? (customArtworkByGameId?.[primaryArtworkGameId] ?? customArtwork)
+    : customArtwork;
   const handleToggleGameSettingsPopover = useCallback(() => {
-    if (isSettingsPopoverOpen) {
-      setIsSettingsPopoverOpen(false);
-      return;
-    }
-
-    positionSettingsPopover();
-    setIsSettingsPopoverOpen(true);
-  }, [isSettingsPopoverOpen, positionSettingsPopover]);
-  const isGroupFavorite = variantIds.some((id) => favorites[id] === true);
-  const isGroupHidden = variantIds.length > 0 && variantIds.every((id) => hiddenGames[id] === true);
+    setIsSettingsPopoverOpen((current) => !current);
+  }, []);
+  const favoriteVariantCount = variantIds.filter((id) => favorites[id] === true).length;
+  const hiddenVariantCount = variantIds.filter((id) => hiddenGames[id] === true).length;
+  const favoriteSelectionState = resolveGroupSelectionState(
+    variantIds,
+    (id) => favorites[id] === true,
+  );
+  const hiddenSelectionState = resolveGroupSelectionState(
+    variantIds,
+    (id) => hiddenGames[id] === true,
+  );
+  const isGroupFavorite = favoriteSelectionState === "all";
+  const isGroupHidden = hiddenSelectionState === "all";
+  const favoriteScopeLabel =
+    favoriteVariantCount === 0
+      ? "None"
+      : isGroupFavorite
+        ? "All copies"
+        : `${favoriteVariantCount}/${variantIds.length} copies`;
+  const hiddenScopeLabel =
+    hiddenVariantCount === 0
+      ? "None"
+      : isGroupHidden
+        ? "All copies"
+        : `${hiddenVariantCount}/${variantIds.length} copies`;
   const groupCategories = useMemo(
     () =>
       Array.from(
@@ -908,6 +856,19 @@ export function GameDetails({
       ),
     [customCategories, variantIdKey],
   );
+  const categorySelectionState = resolveGroupSelectionState(
+    variantIds,
+    (id) => (customCategories[id]?.length ?? 0) > 0,
+  );
+  const collectionSelectionState = resolveGroupSelectionState(variantIds, (id) =>
+    Object.values(manualCollections).some((gameIds) => gameIds.includes(id)),
+  );
+  const groupActionCapabilities = resolveGroupGameActionCapabilities(variantsForActions, {
+    favorite: favoriteSelectionState,
+    hidden: hiddenSelectionState,
+    categories: categorySelectionState,
+    collections: collectionSelectionState,
+  });
   const unlockedAchievementCount = achievements.filter(
     (achievement) => achievement.unlockedAt,
   ).length;
@@ -917,6 +878,7 @@ export function GameDetails({
       : Math.round((unlockedAchievementCount / achievements.length) * 100);
 
   const navigate = useNavigate();
+  const isDesktopRuntime = isTauri();
   const [crossPlayPlatforms, setCrossPlayPlatforms] = useState<CrossPlayPlatform[]>([]);
   const [isBannerDragOver, setIsBannerDragOver] = useState(false);
   const [clientHealth, setClientHealth] = useState<PlatformClientHealth | null>(null);
@@ -935,8 +897,153 @@ export function GameDetails({
   const [clientManagerError, setClientManagerError] = useState<string | null>(null);
   const [clientManagerBusyAction, setClientManagerBusyAction] = useState<string | null>(null);
   const selectedSourceClientId = toClientPlatformId(
-    enrichedSelectedGame ? getGameSource(enrichedSelectedGame) : null,
+    selectedVariant ? getGameSource(selectedVariant) : null,
   );
+  const isSelectedVariantRunning = selectedVariant
+    ? (runningGameIds?.has(selectedVariant.id) ??
+      (variantsForActions.length === 1 && isGameRunning))
+    : false;
+  const selectedActionContext: GameActionRuntimeContext | null = selectedVariant
+    ? {
+        runtime: isDesktopRuntime ? "desktop" : "browser",
+        operatingSystem: selectedVariant.platform,
+        clientInstalled: clientHealth?.installed ?? false,
+        clientLoggedIn: null,
+        clientVersionFingerprint: null,
+        providerAutomationAvailable: false,
+        gameRunning: isSelectedVariantRunning,
+      }
+    : null;
+  const selectedCopyActionCapabilities =
+    selectedVariant && selectedActionContext
+      ? resolveSelectedCopyActionCapabilities(selectedVariant, selectedActionContext)
+      : null;
+  const supportDestination = selectedVariant
+    ? resolveOfficialSupportDestination(selectedVariant)
+    : null;
+  const selectedVariantGameId = selectedVariant?.id ?? null;
+  const selectedVariantTitle = selectedVariant?.title ?? null;
+  const selectedVariantSource = selectedVariant ? getGameSource(selectedVariant) : "unknown";
+  const currentNativeCapabilities =
+    selectedVariant && nativeGameActionCapabilitiesGameId === selectedVariant.id
+      ? nativeGameActionCapabilities
+      : null;
+  const nativeCapabilityUnavailableReason = isLoadingGameActionCapabilities
+    ? "Loading native action capabilities for the selected copy."
+    : gameActionCapabilityError
+      ? `Native action capabilities are unavailable: ${gameActionCapabilityError}`
+      : "The desktop backend did not report this action for the selected copy.";
+  const applySelectedCopySafetyGuards = (
+    capability: GameActionCapability,
+  ): GameActionCapability => {
+    if (!capability.available) return capability;
+    const requiresInstalledCopy = ["verify", "repair", "update", "uninstall"].includes(
+      capability.action,
+    );
+    if (requiresInstalledCopy && selectedVariant?.status === "not_installed") {
+      return {
+        ...capability,
+        available: false,
+        reason: "Install this selected copy before running maintenance actions.",
+        requiresConfirmation: false,
+      };
+    }
+    if (requiresInstalledCopy && isSelectedVariantRunning) {
+      return {
+        ...capability,
+        available: false,
+        reason: "Close this selected copy before running maintenance actions.",
+        requiresConfirmation: false,
+      };
+    }
+    return capability;
+  };
+  const resolveDisplayedNativeCapability = (action: GameAction, label: string) =>
+    applySelectedCopySafetyGuards(
+      currentNativeCapabilities?.[action] ??
+        unavailableNativeCapability(action, label, nativeCapabilityUnavailableReason),
+    );
+  const nativeRemoveCapability = currentNativeCapabilities?.remove_from_library
+    ? applySelectedCopySafetyGuards(currentNativeCapabilities.remove_from_library)
+    : undefined;
+  const nativeUninstallCapability = currentNativeCapabilities?.uninstall
+    ? applySelectedCopySafetyGuards(currentNativeCapabilities.uninstall)
+    : undefined;
+  const browserDestructiveCapability = (
+    selectedVariantSource === "manual"
+      ? selectedCopyActionCapabilities?.remove_from_library
+      : selectedCopyActionCapabilities?.uninstall
+  ) as GameActionCapability | undefined;
+  const displayedDestructiveCapability: GameActionCapability = isDesktopRuntime
+    ? nativeRemoveCapability?.available
+      ? nativeRemoveCapability
+      : nativeUninstallCapability?.available
+        ? nativeUninstallCapability
+        : selectedVariantSource === "manual"
+          ? (nativeRemoveCapability ??
+            resolveDisplayedNativeCapability("remove_from_library", "Remove from Library"))
+          : (nativeUninstallCapability ??
+            resolveDisplayedNativeCapability("uninstall", "Uninstall Selected Copy"))
+    : (browserDestructiveCapability ??
+      unavailableNativeCapability(
+        selectedVariantSource === "manual" ? "remove_from_library" : "uninstall",
+        selectedVariantSource === "manual" ? "Remove from Library" : "Uninstall Selected Copy",
+        "No selected copy is available.",
+      ));
+  const gameActionCapabilities = selectedCopyActionCapabilities
+    ? {
+        support: selectedCopyActionCapabilities.support,
+        update: isDesktopRuntime
+          ? resolveDisplayedNativeCapability("update", "Update Selected Copy")
+          : selectedCopyActionCapabilities.update,
+        verify: isDesktopRuntime
+          ? resolveDisplayedNativeCapability("verify", "Verify Selected Copy")
+          : selectedCopyActionCapabilities.verify,
+        repair: isDesktopRuntime
+          ? resolveDisplayedNativeCapability("repair", "Repair Selected Copy")
+          : selectedCopyActionCapabilities.repair,
+        uninstall: displayedDestructiveCapability,
+        clientManager: selectedCopyActionCapabilities.client_manager,
+      }
+    : null;
+  const loadNativeGameActionCapabilities = useCallback(async (gameId: string) => {
+    const requestId = ++capabilityRequestIdRef.current;
+    setIsLoadingGameActionCapabilities(true);
+    setGameActionCapabilityError(null);
+
+    try {
+      const capabilities = await getGameActionCapabilities(gameId);
+      if (
+        requestId !== capabilityRequestIdRef.current ||
+        selectedGameActionBindingRef.current?.gameId !== gameId
+      ) {
+        return;
+      }
+      setNativeGameActionCapabilities(
+        Object.fromEntries(
+          capabilities.map((capability) => [capability.action, capability]),
+        ) as NativeGameActionCapabilities,
+      );
+      setNativeGameActionCapabilitiesGameId(gameId);
+    } catch (error) {
+      if (
+        requestId !== capabilityRequestIdRef.current ||
+        selectedGameActionBindingRef.current?.gameId !== gameId
+      ) {
+        return;
+      }
+      setNativeGameActionCapabilities(null);
+      setNativeGameActionCapabilitiesGameId(null);
+      setGameActionCapabilityError(getErrorMessage(error));
+    } finally {
+      if (
+        requestId === capabilityRequestIdRef.current &&
+        selectedGameActionBindingRef.current?.gameId === gameId
+      ) {
+        setIsLoadingGameActionCapabilities(false);
+      }
+    }
+  }, []);
   const gameRuntimeSourceLabel = gameRuntime?.launcher
     ? getSourceDisplayLabel(gameRuntime.launcher)
     : null;
@@ -1030,49 +1137,6 @@ export function GameDetails({
       setIsClientManagerLoading(false);
     }
   }, [selectedSourceClientId]);
-  const loadHostedCommunityArtwork = useCallback(async () => {
-    if (!enrichedSelectedGame || !primaryArtworkGameId) {
-      setHostedCommunityArtworkCandidates([]);
-      setHostedCommunityArtworkMessage(null);
-      setIsHostedCommunityArtworkLoading(false);
-      return;
-    }
-
-    setIsHostedCommunityArtworkLoading(true);
-    try {
-      const result = await listHostedCommunityArtworkCandidates(primaryArtworkGameId);
-      if (!result.ok) {
-        setHostedCommunityArtworkCandidates([]);
-        setHostedCommunityArtworkMessage(`${result.message} Local deck shown.`);
-        return;
-      }
-
-      setHostedCommunityArtworkCandidates(result.value);
-      setHostedCommunityArtworkMessage(
-        result.value.length > 0
-          ? "Approved hosted artwork loaded. Votes, reports, and ranking sync through Supabase."
-          : "Hosted community artwork is online; no approved art is published for this game yet. Local deck shown.",
-      );
-    } catch (error) {
-      setHostedCommunityArtworkCandidates([]);
-      setHostedCommunityArtworkMessage(
-        `Hosted community artwork unavailable: ${getErrorMessage(error)}. Local deck shown.`,
-      );
-    } finally {
-      setIsHostedCommunityArtworkLoading(false);
-    }
-  }, [enrichedSelectedGame, primaryArtworkGameId]);
-  const updateHostedCommunityArtworkCandidate = useCallback(
-    (
-      artworkId: string,
-      updater: (candidate: CommunityArtworkCandidate) => CommunityArtworkCandidate,
-    ) => {
-      setHostedCommunityArtworkCandidates((current) =>
-        current.map((candidate) => (candidate.id === artworkId ? updater(candidate) : candidate)),
-      );
-    },
-    [],
-  );
   function handleBannerDragOver(event: React.DragEvent) {
     event.preventDefault();
     event.dataTransfer.dropEffect = "copy";
@@ -1161,30 +1225,23 @@ export function GameDetails({
       void unlistenClientStopped?.then((unlisten) => unlisten());
       void unlistenClientWindowUpdated?.then((unlisten) => unlisten());
     };
-  }, [selectedSourceClientId, enrichedSelectedGame?.id]);
+  }, [selectedSourceClientId, selectedVariant?.id]);
 
   useEffect(() => {
     void loadClientManagerState();
   }, [loadClientManagerState]);
 
   useEffect(() => {
-    void loadHostedCommunityArtwork();
-  }, [loadHostedCommunityArtwork]);
+    if (!isSettingsPopoverOpen) return;
 
-  useEffect(() => {
-    if (!isSettingsPopoverOpen) {
-      return;
-    }
-
-    positionSettingsPopover();
-    window.addEventListener("resize", positionSettingsPopover);
-    window.addEventListener("scroll", positionSettingsPopover, true);
-
-    return () => {
-      window.removeEventListener("resize", positionSettingsPopover);
-      window.removeEventListener("scroll", positionSettingsPopover, true);
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsSettingsPopoverOpen(false);
+      }
     };
-  }, [isSettingsPopoverOpen, positionSettingsPopover]);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isSettingsPopoverOpen]);
 
   const downloadItems = useDownloadStore((s) => s.items);
   const activeDownload = enrichedSelectedGame
@@ -1197,16 +1254,64 @@ export function GameDetails({
   useEffect(() => {
     setIsSettingsPopoverOpen(false);
     setNewCategoryInput("");
-    setIsUninstallDialogOpen(false);
-    setUninstallError(null);
+    setNewCollectionInput("");
+    setRenamingCollectionName(null);
+    setCollectionRenameInput("");
+    setPendingCollectionDelete(null);
+    setPendingGameAction(null);
+    setBusyGameAction(null);
+    setGameActionResult(null);
+    setGameActionError(null);
     setAchievementFilter("all");
     setAchievementSort("rarity");
     setIsClientManagerOpen(false);
     setClientManagerBusyAction(null);
-    setFileIntegrityResult(null);
-    setCommunityArtworkUploadMessage(null);
-    setCommunityArtworkUploadSubmissions([]);
   }, [selectedGame?.id]);
+
+  useEffect(() => {
+    const defaultVariantId =
+      variantsForActions.find((game) => game.id === enrichedSelectedGame?.id)?.id ??
+      variantsForActions[0]?.id ??
+      null;
+    setSelectedVariantId((current) =>
+      current && variantsForActions.some((game) => game.id === current)
+        ? current
+        : defaultVariantId,
+    );
+  }, [enrichedSelectedGame?.id, variantIds, variantsForActions]);
+
+  useEffect(() => {
+    setIsClientManagerOpen(false);
+    setClientManagerBusyAction(null);
+    setPendingGameAction(null);
+    setGameActionResult(null);
+    setGameActionError(null);
+  }, [selectedVariant?.id]);
+
+  useEffect(() => {
+    selectedGameActionBindingRef.current =
+      selectedVariantGameId && selectedVariantTitle
+        ? {
+            gameId: selectedVariantGameId,
+            provider: selectedVariantSource,
+            title: selectedVariantTitle,
+          }
+        : null;
+  }, [selectedVariantGameId, selectedVariantSource, selectedVariantTitle]);
+
+  useEffect(() => {
+    capabilityRequestIdRef.current += 1;
+    setNativeGameActionCapabilities(null);
+    setNativeGameActionCapabilitiesGameId(null);
+    setGameActionCapabilityError(null);
+
+    if (!isDesktopRuntime || !selectedVariant?.id) {
+      setIsLoadingGameActionCapabilities(false);
+      return;
+    }
+
+    void loadNativeGameActionCapabilities(selectedVariant.id);
+  }, [isDesktopRuntime, loadNativeGameActionCapabilities, selectedVariant?.id]);
 
   function handleArtworkFileChange(kind: CustomArtworkKind, fileList: FileList | null) {
     const file = fileList?.[0];
@@ -1228,148 +1333,22 @@ export function GameDetails({
     input?.click();
   }
 
-  function handleApplyArtworkCandidate(candidate: CustomArtworkCandidate) {
-    if (!primaryArtworkGameId) {
-      setStatusMessage("Select a game before applying artwork.");
-      return;
-    }
+  async function handleOpenSelectedSupport() {
+    if (!supportDestination || !gameActionCapabilities?.support.available) return;
 
-    onApplyCustomArtworkUrl(
-      primaryArtworkGameId,
-      candidate.kind,
-      candidate.url,
-      candidate.sourceLabel,
-    );
-  }
-
-  function handleApplyCommunityArtwork(candidate: CommunityArtworkCandidate) {
-    if (!primaryArtworkGameId) {
-      setStatusMessage("Select a game before importing community artwork.");
-      return;
-    }
-
-    onApplyCustomArtworkUrl(
-      primaryArtworkGameId,
-      candidate.kind,
-      candidate.url,
-      candidate.sourceLabel,
-    );
-  }
-
-  async function handleUploadCommunityArtwork(draft: CommunityArtworkUploadDraft) {
-    if (!primaryArtworkGameId || !enrichedSelectedGame) {
-      setCommunityArtworkUploadMessage("Select a game before uploading hosted artwork.");
-      return false;
-    }
-
-    if (!isAllowedHostedArtworkFile(draft.file)) {
-      setCommunityArtworkUploadMessage(
-        "Hosted artwork accepts PNG, JPEG, WebP, GIF, or SVG images up to 5 MB.",
-      );
-      return false;
-    }
-
-    setIsCommunityArtworkUploading(true);
-    setCommunityArtworkUploadMessage(null);
     try {
-      const result = await uploadCommunityArtworkForGame({
-        artistName: draft.artistName,
-        description: draft.description,
-        file: draft.file,
-        gameId: primaryArtworkGameId,
-        kind: draft.kind,
-        tags: draft.tags,
-        title: draft.title,
-      });
-
-      if (!result.ok) {
-        setCommunityArtworkUploadMessage(`${result.message} Draft kept for retry.`);
-        return false;
+      const destination = new URL(supportDestination.url);
+      if (destination.protocol !== "https:") {
+        throw new Error("Support destinations must use HTTPS.");
       }
-
-      setCommunityArtworkUploadSubmissions((current) => [
-        result.value,
-        ...current.filter((candidate) => candidate.id !== result.value.id),
-      ]);
-      setCommunityArtworkUploadMessage(
-        result.message ??
-          "Submission queued for moderation. Approved art appears in the hosted deck.",
-      );
-      setHostedCommunityArtworkMessage(
-        "Submission queued for moderation. Approved art appears in the hosted deck.",
-      );
-      void loadHostedCommunityArtwork();
-      return true;
-    } catch (error) {
-      setCommunityArtworkUploadMessage(`Hosted upload failed: ${getErrorMessage(error)}`);
-      return false;
-    } finally {
-      setIsCommunityArtworkUploading(false);
-    }
-  }
-
-  async function handleVoteCommunityArtwork(
-    candidate: CommunityArtworkCandidate,
-    vote: -1 | 0 | 1,
-  ) {
-    if (!candidate.hosted) {
-      return;
-    }
-
-    setCommunityArtworkBusyId(candidate.id);
-    try {
-      const result = await setHostedCommunityArtworkVote(candidate.id, vote);
-      if (!result.ok) {
-        setHostedCommunityArtworkMessage(`${result.message} Local deck remains available.`);
-        return;
+      if (isTauri()) {
+        await openExternalUrl(destination.toString());
+      } else {
+        window.open(destination.toString(), "_blank", "noopener,noreferrer");
       }
-
-      updateHostedCommunityArtworkCandidate(candidate.id, (current) => ({
-        ...current,
-        userVote: result.value.userVote,
-        votes: result.value.voteScore,
-      }));
-      setHostedCommunityArtworkMessage(
-        result.value.userVote === 1
-          ? `Hosted vote synced for ${candidate.title}.`
-          : `Hosted vote removed from ${candidate.title}.`,
-      );
+      setStatusMessage(`${supportDestination.label} opened for the selected copy.`);
     } catch (error) {
-      setHostedCommunityArtworkMessage(`Hosted vote failed: ${getErrorMessage(error)}`);
-    } finally {
-      setCommunityArtworkBusyId(null);
-    }
-  }
-
-  async function handleReportCommunityArtwork(candidate: CommunityArtworkCandidate) {
-    if (!candidate.hosted) {
-      return;
-    }
-
-    setCommunityArtworkBusyId(candidate.id);
-    try {
-      const result = await reportHostedCommunityArtwork(
-        candidate.id,
-        "other",
-        "Reported from OG-Launcher Community Art Deck.",
-      );
-      if (!result.ok) {
-        setHostedCommunityArtworkMessage(`${result.message} Local deck remains available.`);
-        return;
-      }
-
-      updateHostedCommunityArtworkCandidate(candidate.id, (current) => ({
-        ...current,
-        moderationStatus: result.value.moderationStatus,
-        reportCount: result.value.reportCount,
-      }));
-      setHostedCommunityArtworkMessage(
-        `Report queued for ${candidate.title}. Moderation status: ${result.value.moderationStatus}.`,
-      );
-    } catch (error) {
-      setHostedCommunityArtworkMessage(`Hosted report failed: ${getErrorMessage(error)}`);
-    } finally {
-      setCommunityArtworkBusyId(null);
+      setStatusMessage(`Support could not be opened: ${getErrorMessage(error)}`);
     }
   }
 
@@ -1383,43 +1362,145 @@ export function GameDetails({
     );
   }
 
-  async function handleVerifyGameFiles() {
-    if (!enrichedSelectedGame || isVerifyingFiles || isRepairingFiles) {
+  function selectionMatchesGameAction(snapshot: PendingGameAction): boolean {
+    const current = selectedGameActionBindingRef.current;
+    return Boolean(
+      current &&
+      current.gameId === snapshot.gameId &&
+      current.title === snapshot.title &&
+      current.provider === snapshot.provider,
+    );
+  }
+
+  async function executeBoundGameAction(snapshot: PendingGameAction, confirmationToken?: string) {
+    if (!selectionMatchesGameAction(snapshot)) {
+      throw new Error(
+        "The selected copy changed before the action could run. Nothing was started.",
+      );
+    }
+
+    const result = await runGameAction({
+      action: snapshot.action,
+      gameId: snapshot.gameId,
+      expectedProvider: snapshot.provider,
+      expectedTitle: snapshot.title,
+      ...(confirmationToken ? { confirmationToken } : {}),
+    });
+
+    if (result.gameId !== snapshot.gameId || result.action !== snapshot.action) {
+      throw new Error("The desktop backend returned a result for a different game action.");
+    }
+
+    let displayedResult = result;
+    let librarySyncWarning: string | null = null;
+    if (result.libraryChanged || result.rescanRecommended) {
+      try {
+        await runAutomaticLibrarySync(true);
+      } catch (error) {
+        librarySyncWarning = `Library sync failed: ${getErrorMessage(error)}`;
+        displayedResult = {
+          ...result,
+          details: [...result.details, librarySyncWarning],
+        };
+      }
+    }
+
+    if (!selectionMatchesGameAction(snapshot)) {
+      setStatusMessage(
+        `${gameActionOutcomeLabel(result.outcome)} for ${snapshot.title}: ${result.message}${librarySyncWarning ? ` ${librarySyncWarning}` : ""}`,
+      );
       return;
     }
 
-    setIsVerifyingFiles(true);
-    try {
-      const result = await verifyGameFiles(enrichedSelectedGame.id);
-      setFileIntegrityResult(result);
-      setStatusMessage(
-        result.status === "verified"
-          ? `${enrichedSelectedGame.title} files verified.`
-          : `${enrichedSelectedGame.title} needs repair: ${result.missingFiles.length} issue(s).`,
-      );
-    } catch (error) {
-      setStatusMessage(`Verify failed: ${getErrorMessage(error)}`);
-    } finally {
-      setIsVerifyingFiles(false);
+    setGameActionResult(displayedResult);
+    setGameActionError(null);
+    setStatusMessage(
+      `${gameActionOutcomeLabel(result.outcome)}: ${result.message}${librarySyncWarning ? ` ${librarySyncWarning}` : ""}`,
+    );
+    if (isDesktopRuntime) {
+      await loadNativeGameActionCapabilities(snapshot.gameId);
     }
   }
 
-  async function handleRepairGameFiles() {
-    if (!enrichedSelectedGame || isRepairingFiles || isVerifyingFiles) {
+  async function runRequestedGameAction(snapshot: PendingGameAction) {
+    if (busyGameAction) return;
+
+    setBusyGameAction(snapshot.action);
+    try {
+      await executeBoundGameAction(snapshot);
+    } catch (error) {
+      const message = getErrorMessage(error);
+      setGameActionError(message);
+      setStatusMessage(`Action failed: ${message}`);
+    } finally {
+      setBusyGameAction(null);
+    }
+  }
+
+  function handleRequestGameAction(action: GameAction, capability: GameActionCapability) {
+    if (!selectedVariant || !capability.available || busyGameAction) return;
+
+    const snapshot: PendingGameAction = {
+      action,
+      capability: { ...capability, action },
+      gameId: selectedVariant.id,
+      provider: getGameSource(selectedVariant),
+      title: selectedVariant.title,
+    };
+    setGameActionResult(null);
+    setGameActionError(null);
+
+    if (capability.requiresConfirmation) {
+      setPendingGameAction(snapshot);
       return;
     }
 
-    setIsRepairingFiles(true);
+    void runRequestedGameAction(snapshot);
+  }
+
+  async function handleConfirmGameAction() {
+    const snapshot = pendingGameAction;
+    if (!snapshot || busyGameAction) return;
+
+    if (!selectionMatchesGameAction(snapshot)) {
+      setPendingGameAction(null);
+      const message = "The selected copy changed before confirmation. Nothing was started.";
+      setGameActionError(message);
+      setStatusMessage(`Action blocked: ${message}`);
+      return;
+    }
+
+    setBusyGameAction(snapshot.action);
+    setGameActionError(null);
     try {
-      const result = await repairGameFiles(enrichedSelectedGame.id);
-      const verificationResult = await verifyGameFiles(result.gameId);
-      setFileIntegrityResult(verificationResult);
-      setStatusMessage(result.message);
-      await runAutomaticLibrarySync(true);
+      const grant = await prepareGameActionConfirmation({
+        action: snapshot.action,
+        gameId: snapshot.gameId,
+        expectedProvider: snapshot.provider,
+        expectedTitle: snapshot.title,
+      });
+
+      if (!selectionMatchesGameAction(snapshot)) {
+        throw new Error(
+          "The selected copy changed while confirmation was prepared. Nothing was started.",
+        );
+      }
+      if (
+        grant.gameId !== snapshot.gameId ||
+        grant.action !== snapshot.action ||
+        !grant.confirmationToken.trim()
+      ) {
+        throw new Error("The desktop backend returned an invalid confirmation grant.");
+      }
+
+      setPendingGameAction(null);
+      await executeBoundGameAction(snapshot, grant.confirmationToken);
     } catch (error) {
-      setStatusMessage(`Repair failed: ${getErrorMessage(error)}`);
+      const message = getErrorMessage(error);
+      setGameActionError(message);
+      setStatusMessage(`Action failed: ${message}`);
     } finally {
-      setIsRepairingFiles(false);
+      setBusyGameAction(null);
     }
   }
 
@@ -1558,24 +1639,6 @@ export function GameDetails({
     }
   }
 
-  async function handleUninstallConfirm() {
-    if (!enrichedSelectedGame || isUninstalling) {
-      return;
-    }
-
-    setIsUninstalling(true);
-    try {
-      await uninstallGame(enrichedSelectedGame.id);
-      setStatusMessage("Uninstall process started. Library will sync automatically.");
-      setIsUninstallDialogOpen(false);
-      void runAutomaticLibrarySync(true);
-    } catch (err) {
-      setUninstallError(getErrorMessage(err));
-    } finally {
-      setIsUninstalling(false);
-    }
-  }
-
   return (
     <>
       <div className="library-scroll-frame relative z-10 min-h-0 min-w-0">
@@ -1605,7 +1668,8 @@ export function GameDetails({
                 const logoCandidates = getGameLogoCandidates(enrichedSelectedGame);
                 const logoCandidateIndex = logoCandidateIndexes[enrichedSelectedGame.id] ?? 0;
                 const gameSource = getGameSource(enrichedSelectedGame);
-                const shouldHideHeroOverlay = gameSource === "battlenet";
+                const shouldHideHeroOverlay =
+                  gameSource === "battlenet" && Boolean(enrichedSelectedGame.coverUrl);
                 const logoSrc = shouldHideHeroOverlay
                   ? undefined
                   : getGameAssetUrl(logoCandidates[logoCandidateIndex]);
@@ -1615,7 +1679,6 @@ export function GameDetails({
                   gameSource === "epic" && Boolean(enrichedSelectedGame.coverUrl);
                 const shouldShowTextFallback =
                   !shouldHideHeroOverlay &&
-                  gameSource !== "gog" &&
                   !hasUbisoftBanner &&
                   !hasEpicBanner &&
                   (!logoSrc || !loadedLogoUrls.has(logoSrc));
@@ -2815,432 +2878,682 @@ export function GameDetails({
                   </div>
                 ) : null}
 
-                {/* Settings popover is anchored to the action-row gear button. */}
-                <div className="contents">
-                  {isSettingsPopoverOpen ? (
-                    <div
-                      className="fixed z-50 w-64 border-4 border-black bg-[#fbf4e7] p-3 shadow-[5px_5px_0_#171411]"
-                      style={{
-                        fontFamily: '"Arial Narrow", Impact, sans-serif',
-                        left: settingsPopoverPosition?.left ?? 12,
-                        top: settingsPopoverPosition?.top ?? 96,
-                      }}
+                {isSettingsPopoverOpen && selectedVariant && gameActionCapabilities ? (
+                  <>
+                    <button
+                      aria-label="Close Game Options"
+                      className="fixed inset-0 z-40 cursor-default bg-[#171411]/55"
+                      type="button"
+                      onClick={() => setIsSettingsPopoverOpen(false)}
+                    />
+                    <section
+                      aria-labelledby="game-options-title"
+                      aria-modal="true"
+                      className="neo-dots fixed inset-x-3 top-[84px] bottom-3 z-50 flex min-w-0 flex-col border-4 border-black bg-[#efe3cf] shadow-[8px_8px_0_#171411] sm:right-4 sm:left-auto sm:w-[500px]"
+                      role="dialog"
                     >
-                      <h4 className="mb-2 border-b border-black pb-1 text-[12px] font-black uppercase">
-                        Options: {enrichedSelectedGame.title}
-                      </h4>
-
-                      {/* QUICK ACTIONS */}
-                      <div className="mb-3 grid gap-1.5 border-b border-black pb-3">
-                        <button
-                          className="flex w-full items-center justify-start gap-2 border-2 border-black bg-[#ded3c1] px-2 py-1.5 text-[10px] font-black uppercase transition hover:bg-[#d5c7b1]"
-                          type="button"
-                          onClick={() =>
-                            alert(
-                              `Support: Visit the support page for ${enrichedSelectedGame.title}.`,
-                            )
-                          }
-                        >
-                          <CircleHelp className="h-4 w-4" />
-                          Support / Help
-                        </button>
-
-                        <button
-                          onClick={() => {
-                            const nextFavorite = !isGroupFavorite;
-                            setFavorites((prev) => {
-                              const next = { ...prev };
-                              variantIds.forEach((id) => {
-                                next[id] = nextFavorite;
-                              });
-                              return next;
-                            });
-                          }}
-                          className={`flex w-full items-center justify-start gap-2 border-2 border-black px-2 py-1.5 text-[10px] font-black uppercase transition ${
-                            isGroupFavorite
-                              ? "bg-[#b7102a] text-white shadow-[1px_1px_0_#000]"
-                              : "bg-[#ded3c1] text-[#171411] hover:bg-[#d5c7b1]"
-                          }`}
-                          type="button"
-                        >
-                          <Heart className={`h-4 w-4 ${isGroupFavorite ? "fill-current" : ""}`} />
-                          {isGroupFavorite ? "Favorited" : "Favorite Game"}
-                        </button>
-                      </div>
-
-                      {/* HIDE GAME TOGGLE */}
-                      <div className="mb-3">
-                        <button
-                          onClick={() => {
-                            const nextHidden = !isGroupHidden;
-                            setHiddenGames((prev) => {
-                              const next = { ...prev };
-                              variantIds.forEach((id) => {
-                                next[id] = nextHidden;
-                              });
-                              return next;
-                            });
-                          }}
-                          className={`w-full border-2 border-black py-1 text-[10px] font-black uppercase transition ${
-                            isGroupHidden
-                              ? "bg-[#b7102a] text-white shadow-[1px_1px_0_#000]"
-                              : "bg-[#ded3c1] text-[#171411] hover:bg-[#d5c7b1]"
-                          }`}
-                        >
-                          {isGroupHidden ? "Hidden" : "Hide Game"}
-                        </button>
-                      </div>
-
-                      {/* UNINSTALL GAME */}
-                      {enrichedSelectedGame.status === "installed" && (
-                        <div className="mb-3 border-b border-black pb-3">
-                          <button
-                            onClick={() => {
-                              setUninstallError(null);
-                              setIsUninstallDialogOpen(true);
-                            }}
-                            className="w-full border-2 border-black bg-[#b7102a] py-1 text-[10px] font-black text-white uppercase shadow-[1px_1px_0_#000] transition hover:bg-[#990a20]"
-                          >
-                            Uninstall Game
-                          </button>
-                        </div>
-                      )}
-
-                      {/* FILE INTEGRITY */}
-                      <div className="mb-3 border-b border-black pb-3">
-                        <span className="mb-1 block text-[11px] font-black uppercase">
-                          File Integrity:
-                        </span>
-                        <div className="grid grid-cols-2 gap-1">
-                          <button
-                            type="button"
-                            className="flex h-8 items-center justify-center gap-1 border-2 border-black bg-[#ded3c1] px-1 text-[9px] font-black uppercase transition hover:bg-[#8cf5e4] disabled:cursor-not-allowed disabled:opacity-60"
-                            disabled={isVerifyingFiles || isRepairingFiles}
-                            onClick={handleVerifyGameFiles}
-                          >
-                            <RefreshCw
-                              className={`h-3.5 w-3.5 ${isVerifyingFiles ? "animate-spin" : ""}`}
-                            />
-                            Verify
-                          </button>
-                          <button
-                            type="button"
-                            className="flex h-8 items-center justify-center gap-1 border-2 border-black bg-[#fbf4e7] px-1 text-[9px] font-black uppercase shadow-[1px_1px_0_#000] transition hover:bg-[#f7d04a] disabled:cursor-not-allowed disabled:opacity-60"
-                            disabled={isVerifyingFiles || isRepairingFiles}
-                            onClick={handleRepairGameFiles}
-                          >
-                            <RotateCcw
-                              className={`h-3.5 w-3.5 ${isRepairingFiles ? "animate-spin" : ""}`}
-                            />
-                            Repair
-                          </button>
-                        </div>
-                        <div
-                          className={`neo-copy mt-2 border-2 border-black px-2 py-1 text-[9px] font-black uppercase shadow-[1px_1px_0_#000] ${
-                            fileIntegrityResult?.status === "repair_required"
-                              ? "bg-[#b7102a] text-white"
-                              : fileIntegrityResult?.status === "verified"
-                                ? "bg-[#8cf5e4] text-[#171411]"
-                                : "bg-[#fbf4e7] text-[#655f58]"
-                          }`}
-                        >
-                          {getVerificationSummary(fileIntegrityResult)}
-                        </div>
-                        <div className="mt-1 flex items-center justify-between gap-2 border-2 border-black bg-[#fbf4e7] px-2 py-1 shadow-[1px_1px_0_#000]">
-                          <span className="text-[8px] font-black text-[#171411] uppercase">
-                            Manifest
+                      <header className="flex items-start justify-between gap-3 border-b-4 border-black bg-[#171411] px-4 py-3 text-white">
+                        <div className="min-w-0">
+                          <span className="neo-copy text-[9px] font-black tracking-[0.18em] text-[#8cf5e4] uppercase">
+                            Selected copy dossier
                           </span>
-                          <span
-                            className={`border-2 border-black px-1.5 py-0.5 text-right text-[8px] leading-none font-black uppercase ${getManifestTrustClasses(fileIntegrityResult)}`}
+                          <h2
+                            id="game-options-title"
+                            className="neo-title truncate text-[25px] leading-none uppercase"
                           >
-                            {getManifestTrustLabel(fileIntegrityResult)}
-                          </span>
+                            Game Options
+                          </h2>
+                          <p className="neo-copy mt-1 truncate text-[10px] font-black text-[#f6edd8] uppercase">
+                            {enrichedSelectedGame.title}
+                          </p>
                         </div>
-                        {fileIntegrityResult?.missingFiles.length ? (
-                          <div className="mt-1 space-y-1">
-                            {fileIntegrityResult.missingFiles.slice(0, 2).map((file) => (
-                              <p
-                                key={file}
-                                className="text-[8px] leading-3 font-bold break-words text-[#b7102a] uppercase"
-                                title={file}
-                              >
-                                {file}
-                              </p>
-                            ))}
-                          </div>
-                        ) : null}
-                      </div>
+                        <button
+                          className="neo-copy border-2 border-white bg-[#fbf4e7] px-2 py-1 text-[9px] font-black text-[#171411] uppercase shadow-[2px_2px_0_#b7102a] hover:bg-[#8cf5e4]"
+                          type="button"
+                          onClick={() => setIsSettingsPopoverOpen(false)}
+                        >
+                          Close
+                        </button>
+                      </header>
 
-                      {/* CUSTOM ARTWORK */}
-                      <div className="mb-3 border-b border-black pb-3">
-                        <input
-                          ref={coverArtworkInputRef}
-                          className="hidden"
-                          type="file"
-                          accept="image/*"
-                          onChange={(event) => {
-                            handleArtworkFileChange("cover", event.currentTarget.files);
-                            event.currentTarget.value = "";
-                          }}
-                        />
-                        <input
-                          ref={iconArtworkInputRef}
-                          className="hidden"
-                          type="file"
-                          accept="image/*"
-                          onChange={(event) => {
-                            handleArtworkFileChange("icon", event.currentTarget.files);
-                            event.currentTarget.value = "";
-                          }}
-                        />
-                        <input
-                          ref={logoArtworkInputRef}
-                          className="hidden"
-                          type="file"
-                          accept="image/*"
-                          onChange={(event) => {
-                            handleArtworkFileChange("logo", event.currentTarget.files);
-                            event.currentTarget.value = "";
-                          }}
-                        />
-
-                        <span className="mb-1 block text-[11px] font-black uppercase">
-                          Custom Artwork:
-                        </span>
-                        <div className="grid grid-cols-3 gap-1">
-                          {(
-                            [
-                              ["cover", "Banner"],
-                              ["icon", "Icon"],
-                              ["logo", "Logo"],
-                            ] as const
-                          ).map(([kind, label]) => (
-                            <button
-                              key={kind}
-                              type="button"
-                              className="flex h-8 items-center justify-center gap-1 border-2 border-black bg-[#ded3c1] px-1 text-[9px] font-black uppercase transition hover:bg-[#8cf5e4]"
-                              title={`Choose custom ${label.toLowerCase()} artwork`}
-                              onClick={() => openArtworkPicker(kind)}
-                            >
-                              <ImagePlus className="h-3.5 w-3.5" />
-                              {label}
-                            </button>
-                          ))}
-                        </div>
-                        {autoArtworkCandidates.length > 0 && (
-                          <div className="mt-2">
-                            <span className="neo-copy mb-1 block text-[9px] font-black text-[#171411] uppercase">
-                              Auto Artwork
+                      <div className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-4">
+                        <section
+                          aria-label="Game copies"
+                          className="mb-4 border-4 border-black bg-[#f6edd8] shadow-[4px_4px_0_#171411]"
+                        >
+                          <div className="flex items-center justify-between gap-2 border-b-2 border-black bg-[#e8c843] px-3 py-2">
+                            <h3 className="neo-title text-[16px] leading-none uppercase">
+                              Choose Copy
+                            </h3>
+                            <span className="neo-copy border-2 border-black bg-[#fbf4e7] px-2 py-0.5 text-[8px] font-black uppercase">
+                              {variantsForActions.length}{" "}
+                              {variantsForActions.length === 1 ? "copy" : "copies"}
                             </span>
-                            <div className="grid grid-cols-2 gap-1">
-                              {autoArtworkCandidates.map((candidate) => {
-                                const hasKind = customArtworkHasKind(customArtwork, candidate.kind);
-                                return (
-                                  <button
-                                    key={`${candidate.kind}-${candidate.url}`}
-                                    type="button"
-                                    className="group flex h-[54px] min-w-0 items-center gap-1.5 border-2 border-black bg-[#fbf4e7] p-1 text-left shadow-[2px_2px_0_#000] transition hover:-translate-y-0.5 hover:bg-[#8cf5e4]"
-                                    title={`${hasKind ? "Replace" : "Apply"} ${candidate.sourceLabel} ${candidate.kind}`}
-                                    onClick={() => handleApplyArtworkCandidate(candidate)}
-                                  >
-                                    <span className="relative h-10 w-10 shrink-0 overflow-hidden border-2 border-black bg-[#ded3c1]">
-                                      <img
-                                        src={candidate.url}
-                                        alt=""
-                                        className="h-full w-full object-cover"
-                                        loading="lazy"
-                                      />
+                          </div>
+                          <div className="grid gap-2 p-2 sm:grid-cols-2">
+                            {variantsForActions.map((variant) => {
+                              const sourceLabel = getSourceDisplayLabel(getGameSource(variant));
+                              const isSelected = variant.id === selectedVariant.id;
+                              return (
+                                <button
+                                  key={variant.id}
+                                  aria-label={`Select ${sourceLabel} copy`}
+                                  aria-pressed={isSelected}
+                                  className={`flex min-w-0 items-center gap-2 border-2 border-black px-2 py-2 text-left shadow-[2px_2px_0_#171411] transition-colors ${
+                                    isSelected
+                                      ? "bg-[#169b83] text-white"
+                                      : "bg-[#fbf4e7] text-[#171411] hover:bg-[#8cf5e4]"
+                                  }`}
+                                  type="button"
+                                  onClick={() => setSelectedVariantId(variant.id)}
+                                >
+                                  <PlatformSourceIcon game={variant} className="h-5 w-5 shrink-0" />
+                                  <span className="min-w-0 flex-1">
+                                    <span className="neo-copy block truncate text-[11px] font-black uppercase">
+                                      {sourceLabel}
                                     </span>
-                                    <span className="min-w-0">
-                                      <span className="block truncate text-[8px] font-black text-[#b7102a] uppercase">
-                                        {hasKind ? "Replace" : "Apply"}
-                                      </span>
-                                      <span className="block truncate text-[9px] font-black text-[#171411] uppercase">
-                                        {getArtworkKindLabel(candidate.kind)}
-                                      </span>
-                                      <span className="block truncate text-[8px] font-black text-[#655f58] uppercase">
-                                        {getArtworkSourceBadge(candidate.sourceLabel)}
-                                      </span>
+                                    <span className="neo-copy block truncate text-[8px] font-black uppercase opacity-80">
+                                      {variant.status.replace("_", " ")}
                                     </span>
-                                  </button>
-                                );
-                              })}
+                                  </span>
+                                  {isSelected ? (
+                                    <span className="neo-copy border-2 border-black bg-[#fbf4e7] px-1.5 py-0.5 text-[7px] font-black text-[#171411] uppercase">
+                                      Selected
+                                    </span>
+                                  ) : null}
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </section>
+
+                        <section
+                          aria-label="Selected copy actions"
+                          className="mb-4 border-4 border-black bg-[#fbf4e7] shadow-[4px_4px_0_#171411]"
+                        >
+                          <div className="flex items-center justify-between gap-2 border-b-2 border-black bg-[#b7102a] px-3 py-2 text-white">
+                            <h3 className="neo-title text-[17px] leading-none uppercase">
+                              Selected Copy
+                            </h3>
+                            <span className="neo-copy border-2 border-black bg-[#f6edd8] px-2 py-0.5 text-[8px] font-black text-[#171411] uppercase">
+                              {getSourceDisplayLabel(getGameSource(selectedVariant))}
+                            </span>
+                          </div>
+                          <div className="grid gap-2 p-2 sm:grid-cols-2">
+                            <button
+                              className="min-h-16 border-2 border-black bg-[#ded3c1] px-2 py-2 text-left disabled:cursor-not-allowed disabled:text-[#655f58]"
+                              disabled={!gameActionCapabilities.support.available}
+                              title={gameActionCapabilities.support.reason}
+                              type="button"
+                              onClick={() => void handleOpenSelectedSupport()}
+                            >
+                              <span className="neo-copy flex items-center gap-1 text-[10px] font-black uppercase">
+                                <CircleHelp className="h-4 w-4" />
+                                {gameActionCapabilities.support.label}
+                              </span>
+                              <span className="neo-copy mt-1 block text-[8px] leading-3 font-bold uppercase">
+                                {gameActionCapabilities.support.reason}
+                              </span>
+                            </button>
+                            <button
+                              className="min-h-16 border-2 border-black bg-[#e8c843] px-2 py-2 text-left shadow-[2px_2px_0_#171411] disabled:cursor-not-allowed disabled:bg-[#ded3c1] disabled:text-[#655f58] disabled:shadow-none"
+                              disabled={
+                                !gameActionCapabilities.update.available || busyGameAction !== null
+                              }
+                              title={gameActionCapabilities.update.reason}
+                              type="button"
+                              onClick={() =>
+                                handleRequestGameAction(
+                                  "update",
+                                  gameActionCapabilities.update as GameActionCapability,
+                                )
+                              }
+                            >
+                              <span className="neo-copy flex items-center gap-1 text-[10px] font-black uppercase">
+                                <Download
+                                  className={`h-4 w-4 ${busyGameAction === "update" ? "animate-pulse" : ""}`}
+                                />
+                                {busyGameAction === "update"
+                                  ? "Updating..."
+                                  : gameActionCapabilities.update.label}
+                              </span>
+                              <span className="neo-copy mt-1 block text-[8px] leading-3 font-bold uppercase">
+                                {gameActionCapabilities.update.reason}
+                              </span>
+                            </button>
+                            <button
+                              className="min-h-16 border-2 border-black bg-[#f6edd8] px-2 py-2 text-left shadow-[2px_2px_0_#171411] disabled:cursor-not-allowed disabled:bg-[#ded3c1] disabled:text-[#655f58] disabled:shadow-none"
+                              disabled={
+                                !gameActionCapabilities.verify.available || busyGameAction !== null
+                              }
+                              title={gameActionCapabilities.verify.reason}
+                              type="button"
+                              onClick={() =>
+                                handleRequestGameAction(
+                                  "verify",
+                                  gameActionCapabilities.verify as GameActionCapability,
+                                )
+                              }
+                            >
+                              <span className="neo-copy flex items-center gap-1 text-[10px] font-black uppercase">
+                                <RefreshCw
+                                  className={`h-4 w-4 ${busyGameAction === "verify" ? "animate-spin" : ""}`}
+                                />
+                                {busyGameAction === "verify"
+                                  ? "Verifying..."
+                                  : gameActionCapabilities.verify.label}
+                              </span>
+                              <span className="neo-copy mt-1 block text-[8px] leading-3 font-bold uppercase">
+                                {gameActionCapabilities.verify.reason}
+                              </span>
+                            </button>
+                            <button
+                              className="min-h-16 border-2 border-black bg-[#f6edd8] px-2 py-2 text-left shadow-[2px_2px_0_#171411] disabled:cursor-not-allowed disabled:bg-[#ded3c1] disabled:text-[#655f58] disabled:shadow-none"
+                              disabled={
+                                !gameActionCapabilities.repair.available || busyGameAction !== null
+                              }
+                              title={gameActionCapabilities.repair.reason}
+                              type="button"
+                              onClick={() =>
+                                handleRequestGameAction(
+                                  "repair",
+                                  gameActionCapabilities.repair as GameActionCapability,
+                                )
+                              }
+                            >
+                              <span className="neo-copy flex items-center gap-1 text-[10px] font-black uppercase">
+                                <RotateCcw
+                                  className={`h-4 w-4 ${busyGameAction === "repair" ? "animate-spin" : ""}`}
+                                />
+                                {busyGameAction === "repair"
+                                  ? "Repairing..."
+                                  : gameActionCapabilities.repair.label}
+                              </span>
+                              <span className="neo-copy mt-1 block text-[8px] leading-3 font-bold uppercase">
+                                {gameActionCapabilities.repair.reason}
+                              </span>
+                            </button>
+                            <button
+                              className="min-h-16 border-2 border-black bg-[#b7102a] px-2 py-2 text-left text-white shadow-[2px_2px_0_#171411] disabled:cursor-not-allowed disabled:bg-[#ded3c1] disabled:text-[#655f58] disabled:shadow-none"
+                              disabled={
+                                !gameActionCapabilities.uninstall.available ||
+                                busyGameAction !== null
+                              }
+                              title={gameActionCapabilities.uninstall.reason}
+                              type="button"
+                              onClick={() =>
+                                handleRequestGameAction(
+                                  gameActionCapabilities.uninstall.action as GameAction,
+                                  gameActionCapabilities.uninstall as GameActionCapability,
+                                )
+                              }
+                            >
+                              <span className="neo-copy flex items-center gap-1 text-[10px] font-black uppercase">
+                                <Trash2
+                                  className={`h-4 w-4 ${busyGameAction === gameActionCapabilities.uninstall.action ? "animate-pulse" : ""}`}
+                                />
+                                {busyGameAction === gameActionCapabilities.uninstall.action
+                                  ? "Working..."
+                                  : gameActionCapabilities.uninstall.label}
+                              </span>
+                              <span className="neo-copy mt-1 block text-[8px] leading-3 font-bold uppercase">
+                                {gameActionCapabilities.uninstall.reason}
+                              </span>
+                            </button>
+                            <button
+                              className="min-h-16 border-2 border-black bg-[#171411] px-2 py-2 text-left text-white shadow-[2px_2px_0_#b7102a] disabled:cursor-not-allowed disabled:bg-[#ded3c1] disabled:text-[#655f58] disabled:shadow-none"
+                              disabled={!gameActionCapabilities.clientManager.available}
+                              title={gameActionCapabilities.clientManager.reason}
+                              type="button"
+                              onClick={() => {
+                                setIsSettingsPopoverOpen(false);
+                                setIsClientManagerOpen(true);
+                              }}
+                            >
+                              <span className="neo-copy flex items-center gap-1 text-[10px] font-black uppercase">
+                                <Settings className="h-4 w-4" />
+                                {gameActionCapabilities.clientManager.label}
+                              </span>
+                              <span className="neo-copy mt-1 block text-[8px] leading-3 font-bold uppercase">
+                                {gameActionCapabilities.clientManager.reason}
+                              </span>
+                            </button>
+                          </div>
+
+                          <div
+                            aria-live="polite"
+                            className="mx-2 mb-2 border-2 border-black bg-[#efe3cf] p-2"
+                          >
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="neo-copy text-[9px] font-black uppercase">
+                                Action status
+                              </span>
+                              {gameActionResult ? (
+                                <span
+                                  className={`neo-copy border-2 border-black px-2 py-0.5 text-[8px] font-black uppercase ${gameActionOutcomeClasses(gameActionResult.outcome)}`}
+                                >
+                                  {gameActionOutcomeLabel(gameActionResult.outcome)}
+                                </span>
+                              ) : isLoadingGameActionCapabilities ? (
+                                <span className="neo-copy flex items-center gap-1 border-2 border-black bg-[#e8c843] px-2 py-0.5 text-[8px] font-black uppercase">
+                                  <Loader2 className="h-3 w-3 animate-spin" /> Loading
+                                </span>
+                              ) : null}
+                            </div>
+                            <p className="neo-copy mt-1 text-[9px] font-black uppercase">
+                              {gameActionError
+                                ? `Action failed: ${gameActionError}`
+                                : gameActionCapabilityError
+                                  ? `Capabilities unavailable: ${gameActionCapabilityError}`
+                                  : gameActionResult
+                                    ? gameActionResult.message
+                                    : isLoadingGameActionCapabilities
+                                      ? "Reading native capabilities for this exact selected copy."
+                                      : isDesktopRuntime
+                                        ? "Choose an available action for this selected copy."
+                                        : "Native actions stay disabled in the browser preview."}
+                            </p>
+                            {gameActionResult?.details.length ? (
+                              <ul className="neo-copy mt-1 list-inside list-disc text-[8px] font-bold uppercase">
+                                {gameActionResult.details.map((detail) => (
+                                  <li key={detail}>{detail}</li>
+                                ))}
+                              </ul>
+                            ) : null}
+                          </div>
+
+                          <div className="border-t-2 border-black p-2">
+                            <input
+                              ref={coverArtworkInputRef}
+                              className="hidden"
+                              type="file"
+                              accept="image/*"
+                              onChange={(event) => {
+                                handleArtworkFileChange("cover", event.currentTarget.files);
+                                event.currentTarget.value = "";
+                              }}
+                            />
+                            <input
+                              ref={iconArtworkInputRef}
+                              className="hidden"
+                              type="file"
+                              accept="image/*"
+                              onChange={(event) => {
+                                handleArtworkFileChange("icon", event.currentTarget.files);
+                                event.currentTarget.value = "";
+                              }}
+                            />
+                            <input
+                              ref={logoArtworkInputRef}
+                              className="hidden"
+                              type="file"
+                              accept="image/*"
+                              onChange={(event) => {
+                                handleArtworkFileChange("logo", event.currentTarget.files);
+                                event.currentTarget.value = "";
+                              }}
+                            />
+                            <div className="mb-2 flex items-center justify-between gap-2">
+                              <h4 className="neo-title text-[15px] uppercase">Local Artwork</h4>
+                              <span className="neo-copy border-2 border-black bg-[#8cf5e4] px-2 py-0.5 text-[8px] font-black uppercase">
+                                Selected copy / local only
+                              </span>
+                            </div>
+                            <div className="grid grid-cols-3 gap-1">
+                              {(
+                                [
+                                  ["cover", "Banner"],
+                                  ["icon", "Icon"],
+                                  ["logo", "Logo"],
+                                ] as const
+                              ).map(([kind, label]) => (
+                                <button
+                                  key={kind}
+                                  type="button"
+                                  className="flex h-9 items-center justify-center gap-1 border-2 border-black bg-[#ded3c1] px-1 text-[9px] font-black uppercase hover:bg-[#8cf5e4]"
+                                  title={`Choose custom ${label.toLowerCase()} artwork`}
+                                  onClick={() => openArtworkPicker(kind)}
+                                >
+                                  <ImagePlus className="h-3.5 w-3.5" />
+                                  {label}
+                                </button>
+                              ))}
+                            </div>
+                            {hasCustomArtwork(selectedVariantArtwork) ? (
+                              <button
+                                type="button"
+                                className="mt-2 flex h-8 w-full items-center justify-center gap-1 border-2 border-black bg-[#fbf4e7] px-2 text-[9px] font-black uppercase hover:bg-[#e8c843]"
+                                onClick={() =>
+                                  primaryArtworkGameId && onResetCustomArtwork(primaryArtworkGameId)
+                                }
+                              >
+                                <RotateCcw className="h-3.5 w-3.5" />
+                                Reset Selected Copy Artwork
+                              </button>
+                            ) : (
+                              <p className="neo-copy mt-2 text-[9px] font-bold text-[#655f58] uppercase">
+                                Uses scanned {getSourceDisplayLabel(getGameSource(selectedVariant))}{" "}
+                                artwork.
+                              </p>
+                            )}
+                          </div>
+                        </section>
+
+                        <section
+                          aria-label="All copies organization"
+                          className="border-4 border-black bg-[#f6edd8] shadow-[4px_4px_0_#171411]"
+                        >
+                          <div className="flex items-center justify-between gap-2 border-b-2 border-black bg-[#169b83] px-3 py-2 text-white">
+                            <h3 className="neo-title text-[17px] leading-none uppercase">
+                              Library Organization
+                            </h3>
+                            <span className="neo-copy border-2 border-black bg-[#fbf4e7] px-2 py-0.5 text-[8px] font-black text-[#171411] uppercase">
+                              All copies
+                            </span>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2 border-b-2 border-black p-2">
+                            <button
+                              className={`border-2 border-black px-2 py-2 text-left shadow-[2px_2px_0_#171411] ${
+                                isGroupFavorite
+                                  ? "bg-[#b7102a] text-white"
+                                  : "bg-[#fbf4e7] hover:bg-[#e8c843]"
+                              }`}
+                              disabled={!groupActionCapabilities.favorite.available}
+                              title={groupActionCapabilities.favorite.reason}
+                              type="button"
+                              onClick={() => {
+                                const nextFavorite = !isGroupFavorite;
+                                setFavorites((previous) => ({
+                                  ...previous,
+                                  ...Object.fromEntries(variantIds.map((id) => [id, nextFavorite])),
+                                }));
+                              }}
+                            >
+                              <span className="neo-copy flex items-center gap-1 text-[10px] font-black uppercase">
+                                <Heart
+                                  className={`h-4 w-4 ${isGroupFavorite ? "fill-current" : ""}`}
+                                />
+                                {groupActionCapabilities.favorite.label}
+                              </span>
+                              <span className="neo-copy mt-1 block text-[8px] font-black uppercase">
+                                {favoriteScopeLabel}
+                              </span>
+                            </button>
+                            <button
+                              className={`border-2 border-black px-2 py-2 text-left shadow-[2px_2px_0_#171411] ${
+                                isGroupHidden
+                                  ? "bg-[#b7102a] text-white"
+                                  : "bg-[#fbf4e7] hover:bg-[#e8c843]"
+                              }`}
+                              disabled={!groupActionCapabilities.hidden.available}
+                              title={groupActionCapabilities.hidden.reason}
+                              type="button"
+                              onClick={() => {
+                                const nextHidden = !isGroupHidden;
+                                setHiddenGames((previous) => ({
+                                  ...previous,
+                                  ...Object.fromEntries(variantIds.map((id) => [id, nextHidden])),
+                                }));
+                              }}
+                            >
+                              <span className="neo-copy text-[10px] font-black uppercase">
+                                {groupActionCapabilities.hidden.label}
+                              </span>
+                              <span className="neo-copy mt-1 block text-[8px] font-black uppercase">
+                                {hiddenScopeLabel}
+                              </span>
+                            </button>
+                          </div>
+
+                          <div className="border-b-2 border-black p-2">
+                            <div className="mb-1 flex items-center justify-between gap-2">
+                              <h4 className="neo-title text-[14px] uppercase">
+                                {groupActionCapabilities.categories.label}
+                              </h4>
+                              <span className="neo-copy text-[8px] font-black uppercase">
+                                Applies to all copies
+                              </span>
+                            </div>
+                            <div className="flex gap-1">
+                              <input
+                                aria-label="New category for all copies"
+                                className="neo-copy h-8 min-w-0 flex-1 border-2 border-black bg-[#fbf4e7] px-2 text-[10px] font-bold outline-none"
+                                placeholder="e.g. Retro, Co-op"
+                                value={newCategoryInput}
+                                onChange={(event) => setNewCategoryInput(event.target.value)}
+                              />
+                              <button
+                                className="border-2 border-black bg-[#171411] px-3 text-[10px] font-black text-white uppercase hover:bg-[#087d6d]"
+                                type="button"
+                                onClick={() => {
+                                  const category = newCategoryInput.trim();
+                                  if (!category) return;
+                                  setCustomCategories((previous) => ({
+                                    ...previous,
+                                    ...Object.fromEntries(
+                                      variantIds.map((id) => [
+                                        id,
+                                        Array.from(new Set([...(previous[id] ?? []), category])),
+                                      ]),
+                                    ),
+                                  }));
+                                  setNewCategoryInput("");
+                                }}
+                              >
+                                Add
+                              </button>
+                            </div>
+                            <div className="mt-2 flex flex-wrap gap-1">
+                              {groupCategories.length > 0 ? (
+                                groupCategories.map((category) => {
+                                  const memberCount = variantIds.filter((id) =>
+                                    customCategories[id]?.includes(category),
+                                  ).length;
+                                  return (
+                                    <button
+                                      key={category}
+                                      className="neo-copy border-2 border-black bg-[#efe3cf] px-2 py-1 text-[8px] font-black uppercase hover:bg-[#b7102a] hover:text-white"
+                                      title={`Remove ${category} from all copies`}
+                                      type="button"
+                                      onClick={() =>
+                                        setCustomCategories((previous) => ({
+                                          ...previous,
+                                          ...Object.fromEntries(
+                                            variantIds.map((id) => [
+                                              id,
+                                              (previous[id] ?? []).filter(
+                                                (item) => item !== category,
+                                              ),
+                                            ]),
+                                          ),
+                                        }))
+                                      }
+                                    >
+                                      {category} / {memberCount}/{variantIds.length}
+                                    </button>
+                                  );
+                                })
+                              ) : (
+                                <span className="neo-copy text-[8px] font-bold text-[#655f58] uppercase">
+                                  No categories assigned.
+                                </span>
+                              )}
                             </div>
                           </div>
-                        )}
-                        <CommunityArtworkUploadPanel
-                          disabled={!primaryArtworkGameId}
-                          gameTitle={enrichedSelectedGame?.title ?? "Selected Game"}
-                          isUploading={isCommunityArtworkUploading}
-                          message={communityArtworkUploadMessage}
-                          pendingSubmissions={displayedCommunityArtworkUploadSubmissions}
-                          onSubmit={handleUploadCommunityArtwork}
-                        />
-                        <CommunityArtworkGallery
-                          artwork={customArtwork}
-                          busyCandidateId={communityArtworkBusyId}
-                          candidates={communityArtworkCandidates}
-                          hostedStatus={{
-                            loading: isHostedCommunityArtworkLoading,
-                            message: hostedCommunityArtworkMessage,
-                            mode: hostedCommunityArtworkCandidates.length > 0 ? "hosted" : "local",
-                          }}
-                          onApply={handleApplyCommunityArtwork}
-                          onReport={(candidate) => {
-                            void handleReportCommunityArtwork(candidate);
-                          }}
-                          onVote={(candidate, vote) => {
-                            void handleVoteCommunityArtwork(candidate, vote);
-                          }}
-                        />
-                        {hasCustomArtwork(customArtwork) ? (
-                          <button
-                            type="button"
-                            className="mt-2 flex h-8 w-full items-center justify-center gap-1 border-2 border-black bg-[#fbf4e7] px-2 text-[9px] font-black uppercase transition hover:bg-[#efe3cf]"
-                            onClick={() => {
-                              if (primaryArtworkGameId) {
-                                onResetCustomArtwork(primaryArtworkGameId);
-                              }
-                            }}
-                          >
-                            <RotateCcw className="h-3.5 w-3.5" />
-                            Reset Artwork
-                          </button>
-                        ) : (
-                          <p className="mt-2 text-[10px] font-bold text-[#655f58] uppercase">
-                            Uses scanned launcher art.
-                          </p>
-                        )}
-                      </div>
 
-                      {/* CUSTOM CATEGORIES */}
-                      <div>
-                        <span className="mb-1 block text-[11px] font-black uppercase">
-                          Kategorien verwalten:
-                        </span>
-                        <div className="mb-2 flex gap-1">
-                          <input
-                            type="text"
-                            placeholder="z.B. Retro, Fav..."
-                            value={newCategoryInput}
-                            onChange={(e) => setNewCategoryInput(e.target.value)}
-                            className="neo-copy h-7 flex-1 border-2 border-black bg-[#f4ead8] px-2 text-[10px] font-bold outline-none"
-                          />
-                          <button
-                            onClick={() => {
-                              if (!newCategoryInput.trim()) return;
-                              const cat = newCategoryInput.trim();
-                              setCustomCategories((prev) => {
-                                const next = { ...prev };
-                                variantIds.forEach((id) => {
-                                  const currentCats = next[id] || [];
-                                  if (!currentCats.includes(cat)) {
-                                    next[id] = [...currentCats, cat];
-                                  }
-                                });
-                                return next;
-                              });
-                              setNewCategoryInput("");
-                            }}
-                            className="border-2 border-black bg-black px-2 text-[10px] font-black text-white uppercase hover:bg-[#2c2c2c]"
-                          >
-                            +
-                          </button>
-                        </div>
-
-                        {groupCategories.length > 0 ? (
-                          <div className="mt-1 flex flex-wrap gap-1">
-                            {groupCategories.map((cat) => (
-                              <span
-                                key={cat}
-                                className="inline-flex items-center gap-1 border border-black bg-[#efe3cf] px-1.5 py-0.5 text-[9px] font-bold"
-                              >
-                                {cat}
-                                <button
-                                  onClick={() => {
-                                    setCustomCategories((prev) => ({
-                                      ...prev,
-                                      ...Object.fromEntries(
-                                        variantIds.map((id) => [
-                                          id,
-                                          (prev[id] || []).filter((c) => c !== cat),
-                                        ]),
-                                      ),
-                                    }));
-                                  }}
-                                  className="font-bold text-[#b7102a]"
-                                >
-                                  x
-                                </button>
+                          <div className="p-2">
+                            <div className="mb-1 flex items-center justify-between gap-2">
+                              <h4 className="neo-title text-[14px] uppercase">
+                                {groupActionCapabilities.collections.label}
+                              </h4>
+                              <span className="neo-copy text-[8px] font-black uppercase">
+                                Applies to all copies
                               </span>
-                            ))}
+                            </div>
+                            <select
+                              aria-label="Add all copies to collection"
+                              className="neo-copy mb-2 h-8 w-full border-2 border-black bg-[#fbf4e7] px-2 text-[10px] font-bold outline-none"
+                              defaultValue=""
+                              onChange={(event) => {
+                                const collection = event.currentTarget.value;
+                                if (!collection) return;
+                                setManualCollections((previous) => ({
+                                  ...previous,
+                                  [collection]: Array.from(
+                                    new Set([...(previous[collection] ?? []), ...variantIds]),
+                                  ),
+                                }));
+                                event.currentTarget.value = "";
+                              }}
+                            >
+                              <option value="">Choose collection...</option>
+                              {Object.keys(manualCollections).map((collection) => (
+                                <option key={collection} value={collection}>
+                                  {collection}
+                                </option>
+                              ))}
+                            </select>
+                            {Object.keys(manualCollections).length > 0 ? (
+                              <div className="mb-2 space-y-1.5">
+                                {Object.entries(manualCollections).map(([collection, gameIds]) => {
+                                  const memberCount = variantIds.filter((id) =>
+                                    gameIds.includes(id),
+                                  ).length;
+                                  const isRenaming = renamingCollectionName === collection;
+                                  const isDeletePending = pendingCollectionDelete === collection;
+                                  return (
+                                    <div
+                                      key={collection}
+                                      className="border-2 border-black bg-[#efe3cf] p-1.5"
+                                    >
+                                      {isRenaming ? (
+                                        <div className="mb-1 flex gap-1">
+                                          <input
+                                            aria-label={`Rename ${collection}`}
+                                            className="neo-copy h-7 min-w-0 flex-1 border-2 border-black bg-[#fbf4e7] px-2 text-[9px] font-bold outline-none"
+                                            value={collectionRenameInput}
+                                            onChange={(event) =>
+                                              setCollectionRenameInput(event.target.value)
+                                            }
+                                          />
+                                          <button
+                                            className="neo-copy border-2 border-black bg-[#169b83] px-2 text-[8px] font-black text-white uppercase"
+                                            type="button"
+                                            onClick={() => {
+                                              const nextName = collectionRenameInput.trim();
+                                              if (!nextName) return;
+                                              setManualCollections((previous) => {
+                                                const next = { ...previous };
+                                                const sourceIds = next[collection] ?? [];
+                                                delete next[collection];
+                                                next[nextName] = Array.from(
+                                                  new Set([
+                                                    ...(next[nextName] ?? []),
+                                                    ...sourceIds,
+                                                  ]),
+                                                );
+                                                return next;
+                                              });
+                                              setRenamingCollectionName(null);
+                                              setCollectionRenameInput("");
+                                            }}
+                                          >
+                                            Save
+                                          </button>
+                                        </div>
+                                      ) : (
+                                        <div className="mb-1 flex items-center justify-between gap-2">
+                                          <span className="neo-copy truncate text-[9px] font-black uppercase">
+                                            {collection} / {memberCount}/{variantIds.length} copies
+                                          </span>
+                                          <button
+                                            className="neo-copy border-2 border-black bg-[#fbf4e7] px-1.5 py-0.5 text-[7px] font-black uppercase hover:bg-[#8cf5e4]"
+                                            type="button"
+                                            onClick={() => {
+                                              setRenamingCollectionName(collection);
+                                              setCollectionRenameInput(collection);
+                                              setPendingCollectionDelete(null);
+                                            }}
+                                          >
+                                            Rename local
+                                          </button>
+                                        </div>
+                                      )}
+                                      <div className="grid grid-cols-2 gap-1">
+                                        <button
+                                          className="neo-copy border-2 border-black bg-[#fbf4e7] px-1 py-1 text-[7px] font-black uppercase hover:bg-[#e8c843] disabled:cursor-not-allowed disabled:text-[#8b857c]"
+                                          disabled={memberCount === 0}
+                                          type="button"
+                                          onClick={() =>
+                                            setManualCollections((previous) => ({
+                                              ...previous,
+                                              [collection]: (previous[collection] ?? []).filter(
+                                                (id) => !variantIds.includes(id),
+                                              ),
+                                            }))
+                                          }
+                                        >
+                                          Remove all copies
+                                        </button>
+                                        <button
+                                          className="neo-copy border-2 border-black bg-[#b7102a] px-1 py-1 text-[7px] font-black text-white uppercase hover:bg-[#990a20]"
+                                          type="button"
+                                          onClick={() => {
+                                            if (!isDeletePending) {
+                                              setPendingCollectionDelete(collection);
+                                              setRenamingCollectionName(null);
+                                              return;
+                                            }
+                                            setManualCollections((previous) => {
+                                              const next = { ...previous };
+                                              delete next[collection];
+                                              return next;
+                                            });
+                                            setPendingCollectionDelete(null);
+                                          }}
+                                        >
+                                          {isDeletePending
+                                            ? "Confirm delete local collection"
+                                            : "Delete local collection"}
+                                        </button>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            ) : null}
+                            <div className="flex gap-1">
+                              <input
+                                aria-label="New collection for all copies"
+                                className="neo-copy h-8 min-w-0 flex-1 border-2 border-black bg-[#fbf4e7] px-2 text-[10px] font-bold outline-none"
+                                placeholder="New collection..."
+                                value={newCollectionInput}
+                                onChange={(event) => setNewCollectionInput(event.target.value)}
+                              />
+                              <button
+                                className="border-2 border-black bg-[#171411] px-3 text-[10px] font-black text-white uppercase hover:bg-[#087d6d]"
+                                type="button"
+                                onClick={() => {
+                                  const collection = newCollectionInput.trim();
+                                  if (!collection) return;
+                                  setManualCollections((previous) => ({
+                                    ...previous,
+                                    [collection]: Array.from(
+                                      new Set([...(previous[collection] ?? []), ...variantIds]),
+                                    ),
+                                  }));
+                                  setNewCollectionInput("");
+                                }}
+                              >
+                                Create
+                              </button>
+                            </div>
                           </div>
-                        ) : (
-                          <p className="text-[10px] text-[#5b403f] italic">
-                            No categories assigned.
-                          </p>
-                        )}
+                        </section>
                       </div>
-
-                      {/* ADD TO MANUAL COLLECTION */}
-                      <div className="mt-3 border-t border-black pt-2">
-                        <span className="mb-1 block text-[11px] font-black uppercase">
-                          Add to collection:
-                        </span>
-                        <select
-                          className="neo-copy mb-1 w-full border-2 border-black bg-[#f4ead8] p-1 text-[10px] font-bold outline-none"
-                          onChange={(e) => {
-                            if (!e.target.value) return;
-                            const col = e.target.value;
-                            setManualCollections((prev) => {
-                              const currentIds = prev[col] || [];
-                              return {
-                                ...prev,
-                                [col]: Array.from(new Set([...currentIds, ...variantIds])),
-                              };
-                            });
-                            e.target.value = "";
-                          }}
-                        >
-                          <option value="">-- Choose Collection --</option>
-                          {Object.keys(manualCollections).map((col) => (
-                            <option key={col} value={col}>
-                              {col}
-                            </option>
-                          ))}
-                        </select>
-                        <div className="mb-2 flex gap-1">
-                          <input
-                            type="text"
-                            placeholder="New collection..."
-                            id="newManualColInput"
-                            className="neo-copy h-7 flex-1 border-2 border-black bg-[#f4ead8] px-2 text-[10px] font-bold outline-none"
-                          />
-                          <button
-                            onClick={() => {
-                              const input = document.getElementById(
-                                "newManualColInput",
-                              ) as HTMLInputElement;
-                              if (!input || !input.value.trim()) return;
-                              const col = input.value.trim();
-                              setManualCollections((prev) => {
-                                const currentIds = prev[col] || [];
-                                return {
-                                  ...prev,
-                                  [col]: Array.from(new Set([...currentIds, ...variantIds])),
-                                };
-                              });
-                              input.value = "";
-                            }}
-                            className="border-2 border-black bg-black px-2 text-[10px] font-black text-white uppercase hover:bg-[#2c2c2c]"
-                          >
-                            +
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  ) : null}
-                </div>
+                    </section>
+                  </>
+                ) : null}
               </section>
 
               {/* Game Metadata & Activity Grid */}
@@ -3340,11 +3653,9 @@ export function GameDetails({
                                 {key.startsWith("source:") ? key.slice("source:".length) : key}
                               </button>
                             ))}
-                            <div className="ml-auto flex items-center gap-1">
-                              <span className="neo-copy text-[9px] font-black text-[#55504a] uppercase">
-                                Sort
-                              </span>
+                            <div className="flex items-center gap-1">
                               <select
+                                aria-label="Sort achievements"
                                 value={achievementSort}
                                 onChange={(e) =>
                                   setAchievementSort(e.target.value as "rarity" | "name" | "date")
@@ -3356,12 +3667,6 @@ export function GameDetails({
                                 <option value="date">Date</option>
                               </select>
                             </div>
-                            {enrichedSelectedGame?.achievementsSyncedAt ? (
-                              <span className="neo-copy w-full text-right text-[9px] font-bold text-[#55504a] uppercase">
-                                Synced{" "}
-                                {formatRelativeTime(enrichedSelectedGame.achievementsSyncedAt)}
-                              </span>
-                            ) : null}
                           </div>
                           <div className="max-h-[360px] space-y-2 overflow-y-auto p-3">
                             {filterAndSortAchievements(
@@ -3512,22 +3817,26 @@ export function GameDetails({
         <LibraryCustomScrollbar targetRef={detailScrollRef} />
       </div>
       <ConfirmDialog
-        cancelLabel="Keep Installed"
-        confirmLabel={isUninstalling ? "Uninstalling..." : "Uninstall"}
-        destructive
-        message={
-          uninstallError
-            ? `Failed to start uninstaller: ${uninstallError}`
-            : `This will remove ${enrichedSelectedGame?.title ?? "this game"} and any managed install files. This action cannot be undone.`
+        cancelLabel="Cancel"
+        confirmLabel={
+          busyGameAction === pendingGameAction?.action
+            ? "Working..."
+            : (pendingGameAction?.capability.label ?? "Confirm Selected Copy Action")
         }
-        open={isUninstallDialogOpen}
-        title={uninstallError ? "Uninstall Failed" : "Uninstall Game?"}
+        destructive={pendingGameAction?.capability.destructive ?? false}
+        message={
+          gameActionError
+            ? `Action could not start: ${gameActionError}`
+            : `${pendingGameAction?.capability.reason ?? "This action affects only the selected copy."} Selected ID: ${pendingGameAction?.gameId ?? "unknown"}. Provider: ${pendingGameAction?.provider ?? "unknown"}.`
+        }
+        open={pendingGameAction !== null}
+        title={gameActionError ? "Action Failed" : "Confirm Selected Copy Action"}
         onCancel={() => {
-          if (isUninstalling) return;
-          setIsUninstallDialogOpen(false);
-          setUninstallError(null);
+          if (busyGameAction) return;
+          setPendingGameAction(null);
+          setGameActionError(null);
         }}
-        onConfirm={handleUninstallConfirm}
+        onConfirm={() => void handleConfirmGameAction()}
       />
       <ArtworkPreviewModal
         isOpen={pendingArtworkFile !== null}

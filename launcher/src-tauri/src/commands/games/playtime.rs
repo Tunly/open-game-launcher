@@ -1,159 +1,319 @@
-use std::path::Path;
-use std::process::Child;
-use std::{collections::HashMap, thread};
+use std::{
+    collections::HashMap,
+    path::Path,
+    process::Child,
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        mpsc, Mutex,
+    },
+    thread::{self, JoinHandle},
+    time::Duration,
+};
 use tauri::{AppHandle, Emitter};
+use uuid::Uuid;
 
 use super::core::{
     current_unix_timestamp, read_installed_games_cache, unix_timestamp_to_iso,
     update_installed_game_cache,
 };
 use super::types::*;
+use super::{device_id::load_or_create_device_id, play_sessions};
 
-pub fn start_playtime_poller(app_handle: AppHandle) {
-    thread::spawn(move || {
-        use sysinfo::System;
-        let mut sys = System::new_all();
-        // Keep track of accumulated seconds for each running game in this thread
-        let mut active_sessions = HashMap::<String, ActiveGameSession>::new();
+const PLAYTIME_POLL_INTERVAL: Duration = Duration::from_secs(10);
+const PLAYTIME_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(7);
 
-        loop {
-            thread::sleep(std::time::Duration::from_secs(10));
+pub struct PlaytimePoller {
+    shutdown_tx: mpsc::Sender<()>,
+    stopped_rx: Mutex<mpsc::Receiver<()>>,
+    worker: Mutex<Option<JoinHandle<()>>>,
+    shutdown_requested: AtomicBool,
+    shutdown_acknowledged: AtomicBool,
+}
 
-            // Refresh processes (just executables/paths to be fast)
-            sys.refresh_processes_specifics(
-                sysinfo::ProcessesToUpdate::All,
-                true,
-                sysinfo::ProcessRefreshKind::nothing().with_exe(sysinfo::UpdateKind::Always),
-            );
+impl PlaytimePoller {
+    pub fn shutdown(&self) -> bool {
+        self.shutdown_with_timeout(PLAYTIME_SHUTDOWN_TIMEOUT)
+    }
 
-            let cached_games = read_installed_games_cache().unwrap_or_default();
-            if cached_games.is_empty() {
-                continue;
+    fn shutdown_with_timeout(&self, timeout: Duration) -> bool {
+        if self.shutdown_acknowledged.load(Ordering::Acquire) {
+            return true;
+        }
+
+        if !self.shutdown_requested.swap(true, Ordering::AcqRel) {
+            let _ = self.shutdown_tx.send(());
+        }
+
+        let stopped = self
+            .stopped_rx
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .recv_timeout(timeout);
+
+        match stopped {
+            Ok(()) => {
+                let joined = self.join_worker();
+                self.shutdown_acknowledged.store(joined, Ordering::Release);
+                joined
             }
+            Err(mpsc::RecvTimeoutError::Disconnected) => {
+                let joined = self.join_worker();
+                self.shutdown_acknowledged.store(joined, Ordering::Release);
+                joined
+            }
+            Err(mpsc::RecvTimeoutError::Timeout) => false,
+        }
+    }
 
-            // Collect running process identities once per poll. Games can be
-            // identified by path, executable path, or launcher-provided names.
-            let mut running_processes = Vec::new();
-            let process_windows = collect_process_windows();
-            for (pid, process) in sys.processes() {
-                let process_name = normalize_process_name(&process.name().to_string_lossy());
-                let pid = pid.to_string().parse::<u32>().ok();
-                let window = pid.and_then(|pid| process_windows.get(&pid).cloned());
-                if let Some(exe_path) = process.exe() {
-                    running_processes.push(RunningProcess {
-                        name: process_name,
-                        exe_path: Some(normalize_path(&exe_path.to_string_lossy())),
-                        pid,
-                        uptime_seconds: Some(process.run_time()),
-                        window,
-                    });
-                } else {
-                    running_processes.push(RunningProcess {
-                        name: process_name,
-                        exe_path: None,
-                        pid,
-                        uptime_seconds: Some(process.run_time()),
-                        window,
-                    });
+    fn join_worker(&self) -> bool {
+        let worker = self
+            .worker
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take();
+        worker.is_none_or(|worker| worker.join().is_ok())
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum PollerWakeReason {
+    Poll,
+    Shutdown,
+}
+
+fn wait_for_poll_or_shutdown(
+    shutdown_rx: &mpsc::Receiver<()>,
+    poll_interval: Duration,
+) -> PollerWakeReason {
+    match shutdown_rx.recv_timeout(poll_interval) {
+        Ok(()) | Err(mpsc::RecvTimeoutError::Disconnected) => PollerWakeReason::Shutdown,
+        Err(mpsc::RecvTimeoutError::Timeout) => PollerWakeReason::Poll,
+    }
+}
+
+pub fn start_playtime_poller(app_handle: AppHandle) -> PlaytimePoller {
+    let (shutdown_tx, shutdown_rx) = mpsc::channel();
+    let (stopped_tx, stopped_rx) = mpsc::sync_channel(1);
+    let worker = thread::spawn(move || {
+        run_playtime_poller(app_handle, shutdown_rx);
+        let _ = stopped_tx.send(());
+    });
+
+    PlaytimePoller {
+        shutdown_tx,
+        stopped_rx: Mutex::new(stopped_rx),
+        worker: Mutex::new(Some(worker)),
+        shutdown_requested: AtomicBool::new(false),
+        shutdown_acknowledged: AtomicBool::new(false),
+    }
+}
+
+fn run_playtime_poller(app_handle: AppHandle, shutdown_rx: mpsc::Receiver<()>) {
+    use sysinfo::System;
+    let mut sys = System::new_all();
+    // Keep track of accumulated seconds for each running game in this thread.
+    let mut active_sessions = HashMap::<String, ActiveGameSession>::new();
+
+    loop {
+        if wait_for_poll_or_shutdown(&shutdown_rx, PLAYTIME_POLL_INTERVAL)
+            == PollerWakeReason::Shutdown
+        {
+            finalize_active_sessions_on_shutdown(&app_handle, &mut active_sessions);
+            break;
+        }
+
+        // Refresh processes (just executables/paths to be fast)
+        sys.refresh_processes_specifics(
+            sysinfo::ProcessesToUpdate::All,
+            true,
+            sysinfo::ProcessRefreshKind::nothing().with_exe(sysinfo::UpdateKind::Always),
+        );
+
+        let cached_games = read_installed_games_cache().unwrap_or_default();
+        if cached_games.is_empty() {
+            continue;
+        }
+
+        // Collect running process identities once per poll. Games can be
+        // identified by path, executable path, or launcher-provided names.
+        let mut running_processes = Vec::new();
+        let process_windows = collect_process_windows();
+        for (pid, process) in sys.processes() {
+            let process_name = normalize_process_name(&process.name().to_string_lossy());
+            let pid = pid.to_string().parse::<u32>().ok();
+            let window = pid.and_then(|pid| process_windows.get(&pid).cloned());
+            if let Some(exe_path) = process.exe() {
+                running_processes.push(RunningProcess {
+                    name: process_name,
+                    exe_path: Some(normalize_path(&exe_path.to_string_lossy())),
+                    pid,
+                    uptime_seconds: Some(process.run_time()),
+                    window,
+                });
+            } else {
+                running_processes.push(RunningProcess {
+                    name: process_name,
+                    exe_path: None,
+                    pid,
+                    uptime_seconds: Some(process.run_time()),
+                    window,
+                });
+            }
+        }
+
+        let mut activity_updates = HashMap::<String, (Option<String>, u32)>::new();
+        let mut updated_cache = cached_games.clone();
+        let last_input_seconds = Some(super::idle::seconds_since_last_input());
+
+        for game in updated_cache.iter_mut() {
+            let running_process = find_running_game_process(game, &running_processes);
+            let was_running = active_sessions.contains_key(&game.id);
+            let checked_at = unix_timestamp_to_iso(current_unix_timestamp());
+
+            if let Some(running_process) = running_process {
+                if let Some(event) = game_lifecycle_event_for_transition(
+                    game,
+                    was_running,
+                    true,
+                    Some(running_process),
+                    last_input_seconds,
+                    &checked_at,
+                ) {
+                    emit_game_lifecycle_event(&app_handle, &event);
                 }
-            }
+                let runtime_update = game_runtime_update_for_running_game(
+                    game,
+                    running_process,
+                    last_input_seconds,
+                    &checked_at,
+                );
+                emit_game_runtime_update(&app_handle, &runtime_update);
 
-            let mut activity_updates = HashMap::<String, (Option<String>, u32)>::new();
-            let mut updated_cache = cached_games.clone();
-            let last_input_seconds = Some(super::idle::seconds_since_last_input());
+                // Increment session time
+                let now = current_unix_timestamp();
+                let session =
+                    active_sessions
+                        .entry(game.id.clone())
+                        .or_insert_with(|| ActiveGameSession {
+                            accumulated_seconds: 0,
+                            started_at: now as i64,
+                            total_seconds: 0,
+                            process: running_process.clone(),
+                        });
+                session.process = running_process.clone();
+                session.accumulated_seconds += PLAYTIME_POLL_INTERVAL.as_secs() as u32;
+                session.total_seconds = session
+                    .total_seconds
+                    .saturating_add(PLAYTIME_POLL_INTERVAL.as_secs() as u32);
 
-            for game in updated_cache.iter_mut() {
-                let running_process = find_running_game_process(game, &running_processes);
-                let was_running = active_sessions.contains_key(&game.id);
-                let checked_at = unix_timestamp_to_iso(current_unix_timestamp());
+                // Update last played time to now
+                game.last_played_at = Some(unix_timestamp_to_iso(now));
 
-                if let Some(running_process) = running_process {
+                if let Some(update) = first_running_activity_update(was_running, game) {
+                    activity_updates.insert(game.id.clone(), update);
+                }
+
+                if session.accumulated_seconds >= 60 {
+                    // Increment playtime minutes
+                    let current_min = game.playtime_minutes.unwrap_or_default();
+                    game.playtime_minutes = Some(current_min + 1);
+                    session.accumulated_seconds = 0; // reset seconds accumulator
+                    activity_updates.insert(game.id.clone(), (game.last_played_at.clone(), 1));
+                }
+            } else {
+                // Game is not running. If it was previously running, finalize its session.
+                if let Some(session) =
+                    finalize_active_session(&mut active_sessions, &game.id, |game_id, session| {
+                        record_completed_play_session(&app_handle, game_id, session);
+                    })
+                {
                     if let Some(event) = game_lifecycle_event_for_transition(
                         game,
-                        was_running,
                         true,
-                        Some(running_process),
+                        false,
+                        Some(&session.process),
                         last_input_seconds,
                         &checked_at,
                     ) {
                         emit_game_lifecycle_event(&app_handle, &event);
                     }
-                    let runtime_update = game_runtime_update_for_running_game(
-                        game,
-                        running_process,
-                        last_input_seconds,
-                        &checked_at,
-                    );
-                    emit_game_runtime_update(&app_handle, &runtime_update);
-
-                    // Increment session time
-                    let session = active_sessions.entry(game.id.clone()).or_insert_with(|| {
-                        ActiveGameSession {
-                            accumulated_seconds: 0,
-                            process: running_process.clone(),
-                        }
-                    });
-                    session.process = running_process.clone();
-                    session.accumulated_seconds += 10;
-
-                    // Update last played time to now
-                    let now = current_unix_timestamp();
-                    game.last_played_at = Some(unix_timestamp_to_iso(now));
-
-                    if session.accumulated_seconds >= 60 {
-                        // Increment playtime minutes
-                        let current_min = game.playtime_minutes.unwrap_or_default();
-                        game.playtime_minutes = Some(current_min + 1);
-                        session.accumulated_seconds = 0; // reset seconds accumulator
-                        activity_updates.insert(game.id.clone(), (game.last_played_at.clone(), 1));
-                    }
-                } else {
-                    // Game is not running. If it was previously running, we reset session
-                    if let Some(session) = active_sessions.remove(&game.id) {
-                        if let Some(event) = game_lifecycle_event_for_transition(
-                            game,
-                            true,
-                            false,
-                            Some(&session.process),
-                            last_input_seconds,
-                            &checked_at,
-                        ) {
-                            emit_game_lifecycle_event(&app_handle, &event);
-                        }
-                        activity_updates.insert(game.id.clone(), (game.last_played_at.clone(), 0));
-                    }
-                }
-            }
-
-            for (game_id, (last_played, add_playtime_minutes)) in activity_updates {
-                match update_installed_game_cache(&game_id, move |game| {
-                    if last_played.is_some() {
-                        game.last_played_at = last_played;
-                    }
-                    if add_playtime_minutes > 0 {
-                        game.playtime_minutes = Some(
-                            game.playtime_minutes
-                                .unwrap_or_default()
-                                .saturating_add(add_playtime_minutes),
-                        );
-                    }
-                    Ok(())
-                }) {
-                    Ok(game) => {
-                        let update = GameActivityUpdate {
-                            game_id: game.id,
-                            last_played: game.last_played_at,
-                            playtime_minutes: game.playtime_minutes,
-                        };
-                        let _ = app_handle.emit("game_activity_updated", &update);
-                    }
-                    Err(error) => eprintln!(
-                        "[open-game-launcher] Could not persist activity for {game_id}: {error}"
-                    ),
+                    activity_updates.insert(game.id.clone(), (game.last_played_at.clone(), 0));
                 }
             }
         }
+
+        for (game_id, (last_played, add_playtime_minutes)) in activity_updates {
+            match update_installed_game_cache(&game_id, move |game| {
+                apply_game_activity_update(game, last_played, add_playtime_minutes);
+                Ok(())
+            }) {
+                Ok(game) => {
+                    let update = GameActivityUpdate {
+                        game_id: game.id,
+                        last_played: game.last_played_at,
+                        playtime_minutes: game.playtime_minutes,
+                    };
+                    let _ = app_handle.emit("game_activity_updated", &update);
+                }
+                Err(error) => eprintln!(
+                    "[open-game-launcher] Could not persist activity for {game_id}: {error}"
+                ),
+            }
+        }
+    }
+}
+
+fn finalize_active_session(
+    active_sessions: &mut HashMap<String, ActiveGameSession>,
+    game_id: &str,
+    mut finalize: impl FnMut(&str, &ActiveGameSession),
+) -> Option<ActiveGameSession> {
+    let session = active_sessions.remove(game_id)?;
+    finalize(game_id, &session);
+    Some(session)
+}
+
+fn drain_active_sessions(
+    active_sessions: &mut HashMap<String, ActiveGameSession>,
+    mut finalize: impl FnMut(&str, &ActiveGameSession),
+) {
+    for (game_id, session) in active_sessions.drain() {
+        finalize(&game_id, &session);
+    }
+}
+
+fn finalize_active_sessions_on_shutdown(
+    app: &AppHandle,
+    active_sessions: &mut HashMap<String, ActiveGameSession>,
+) {
+    let mut finalized_sessions = Vec::with_capacity(active_sessions.len());
+    drain_active_sessions(active_sessions, |game_id, session| {
+        record_completed_play_session(app, game_id, session);
+        finalized_sessions.push((game_id.to_string(), session.clone()));
     });
+
+    if finalized_sessions.is_empty() {
+        return;
+    }
+
+    let cached_games = read_installed_games_cache().unwrap_or_default();
+    let checked_at = unix_timestamp_to_iso(current_unix_timestamp());
+    let last_input_seconds = Some(super::idle::seconds_since_last_input());
+
+    for (game_id, session) in finalized_sessions {
+        if let Some(game) = cached_games.iter().find(|game| game.id == game_id) {
+            if let Some(event) = game_lifecycle_event_for_transition(
+                game,
+                true,
+                false,
+                Some(&session.process),
+                last_input_seconds,
+                &checked_at,
+            ) {
+                emit_game_lifecycle_event(app, &event);
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -174,7 +334,38 @@ struct GameWindowInfo {
 #[derive(Debug, Clone)]
 struct ActiveGameSession {
     accumulated_seconds: u32,
+    started_at: i64,
+    total_seconds: u32,
     process: RunningProcess,
+}
+
+fn record_completed_play_session(app: &AppHandle, game_id: &str, session: &ActiveGameSession) {
+    let ended_at = current_unix_timestamp() as i64;
+    let record = play_sessions::PlaySessionRecord {
+        id: Uuid::new_v4().to_string(),
+        game_id: game_id.to_string(),
+        started_at: session.started_at,
+        ended_at: ended_at.max(session.started_at),
+        duration_minutes: session.total_seconds.div_ceil(60),
+        platform: play_sessions::platform_to_str(&current_platform()).to_string(),
+        launcher_device_id: load_or_create_device_id(),
+        synced_at: None,
+    };
+
+    if let Err(error) = play_sessions::upsert_play_session(record.clone()) {
+        eprintln!("[open-game-launcher] Could not persist completed play session: {error}");
+        return;
+    }
+    let _ = app.emit("play_session_recorded", record);
+}
+
+fn current_platform() -> Platform {
+    #[cfg(target_os = "windows")]
+    return Platform::Windows;
+    #[cfg(target_os = "macos")]
+    return Platform::Macos;
+    #[cfg(target_os = "linux")]
+    return Platform::Linux;
 }
 
 fn normalize_path(path: &str) -> String {
@@ -392,6 +583,31 @@ pub fn record_game_launch_started(game_id: &str) -> Option<GameActivityUpdate> {
     update_cached_game_activity(game_id, Some(current_unix_timestamp()), None)
 }
 
+fn first_running_activity_update(
+    was_running: bool,
+    game: &InstalledGame,
+) -> Option<(Option<String>, u32)> {
+    (!was_running).then(|| (game.last_played_at.clone(), 0))
+}
+
+fn apply_game_activity_update(
+    game: &mut InstalledGame,
+    last_played: Option<String>,
+    add_playtime_minutes: u32,
+) {
+    let has_observed_activity = last_played.is_some();
+    if has_observed_activity {
+        game.last_played_at = last_played;
+    }
+    if has_observed_activity || add_playtime_minutes > 0 {
+        game.playtime_minutes = Some(
+            game.playtime_minutes
+                .unwrap_or_default()
+                .saturating_add(add_playtime_minutes),
+        );
+    }
+}
+
 pub fn record_game_play_session_when_finished(app: AppHandle, game_id: String, mut child: Child) {
     thread::spawn(move || {
         if child.wait().is_err() {
@@ -416,13 +632,7 @@ pub fn update_cached_game_activity(
 ) -> Option<GameActivityUpdate> {
     let last_played = last_played.map(unix_timestamp_to_iso);
     match update_installed_game_cache(game_id, move |game| {
-        if last_played.is_some() {
-            game.last_played_at = last_played;
-        }
-        if let Some(minutes) = add_playtime_minutes {
-            let current = game.playtime_minutes.unwrap_or_default();
-            game.playtime_minutes = Some(current.saturating_add(minutes));
-        }
+        apply_game_activity_update(game, last_played, add_playtime_minutes.unwrap_or_default());
         Ok(())
     }) {
         Ok(game) => Some(GameActivityUpdate {
@@ -492,6 +702,123 @@ mod tests {
             title: "Steam Test".to_string(),
             version: "1.0.0".to_string(),
         }
+    }
+
+    fn test_active_session(started_at: i64, total_seconds: u32) -> ActiveGameSession {
+        ActiveGameSession {
+            accumulated_seconds: total_seconds % 60,
+            started_at,
+            total_seconds,
+            process: RunningProcess {
+                name: "game.exe".to_string(),
+                exe_path: Some("/games/test/game.exe".to_string()),
+                pid: Some(4242),
+                uptime_seconds: Some(total_seconds as u64),
+                window: None,
+            },
+        }
+    }
+
+    #[test]
+    fn activity_timestamp_initializes_zero_minute_provenance() {
+        let mut game = test_game();
+        let played_at = "2026-07-12T20:00:00Z".to_string();
+
+        apply_game_activity_update(&mut game, Some(played_at.clone()), 0);
+
+        assert_eq!(game.last_played_at, Some(played_at));
+        assert_eq!(game.playtime_minutes, Some(0));
+    }
+
+    #[test]
+    fn first_running_observation_schedules_zero_minute_activity() {
+        let mut game = test_game();
+        game.last_played_at = Some("2026-07-12T20:00:00Z".to_string());
+
+        assert_eq!(
+            first_running_activity_update(false, &game),
+            Some((game.last_played_at.clone(), 0))
+        );
+        assert_eq!(first_running_activity_update(true, &game), None);
+    }
+
+    #[test]
+    fn shutdown_flush_finalizes_every_active_session() {
+        let mut active_sessions = HashMap::from([
+            ("game-one".to_string(), test_active_session(100, 20)),
+            ("game-two".to_string(), test_active_session(200, 80)),
+        ]);
+        let mut finalized = Vec::new();
+
+        drain_active_sessions(&mut active_sessions, |game_id, session| {
+            finalized.push((game_id.to_string(), session.total_seconds));
+        });
+        finalized.sort();
+
+        assert!(active_sessions.is_empty());
+        assert_eq!(
+            finalized,
+            vec![("game-one".to_string(), 20), ("game-two".to_string(), 80)]
+        );
+    }
+
+    #[test]
+    fn normal_stop_then_shutdown_finalizes_each_session_exactly_once() {
+        let mut active_sessions = HashMap::from([
+            ("normal-stop".to_string(), test_active_session(100, 60)),
+            ("shutdown".to_string(), test_active_session(200, 30)),
+        ]);
+        let mut finalization_counts = HashMap::<String, usize>::new();
+        let mut count_finalization = |game_id: &str, _session: &ActiveGameSession| {
+            *finalization_counts.entry(game_id.to_string()).or_default() += 1;
+        };
+
+        assert!(finalize_active_session(
+            &mut active_sessions,
+            "normal-stop",
+            &mut count_finalization,
+        )
+        .is_some());
+        drain_active_sessions(&mut active_sessions, &mut count_finalization);
+        drain_active_sessions(&mut active_sessions, &mut count_finalization);
+        assert!(finalize_active_session(
+            &mut active_sessions,
+            "normal-stop",
+            &mut count_finalization,
+        )
+        .is_none());
+
+        assert_eq!(finalization_counts.get("normal-stop"), Some(&1));
+        assert_eq!(finalization_counts.get("shutdown"), Some(&1));
+    }
+
+    #[test]
+    fn shutdown_signal_wakes_poller_promptly() {
+        use std::time::Instant;
+
+        let (shutdown_tx, shutdown_rx) = mpsc::channel();
+        let (ready_tx, ready_rx) = mpsc::channel();
+        let worker = thread::spawn(move || {
+            let started = Instant::now();
+            ready_tx.send(()).unwrap();
+            let reason = wait_for_poll_or_shutdown(&shutdown_rx, PLAYTIME_POLL_INTERVAL);
+            (reason, started.elapsed())
+        });
+
+        ready_rx.recv_timeout(Duration::from_secs(1)).unwrap();
+        let signal_started = Instant::now();
+        shutdown_tx.send(()).unwrap();
+        let (reason, total_wait) = worker.join().unwrap();
+
+        assert_eq!(reason, PollerWakeReason::Shutdown);
+        assert!(
+            signal_started.elapsed() < Duration::from_secs(2),
+            "shutdown signal was not handled promptly"
+        );
+        assert!(
+            total_wait < Duration::from_secs(2),
+            "poller waited {total_wait:?} instead of waking for shutdown"
+        );
     }
 
     #[test]

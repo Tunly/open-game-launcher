@@ -282,9 +282,6 @@ describe("StorePage", () => {
   it("does not render or load store price-alert scheduler UI", async () => {
     renderStoreRoute("/store?verify=price-drop-scheduled-evidence");
 
-    await screen.findByRole("region", {
-      name: /store catalog source/i,
-    });
     await waitFor(() => {
       expect(storeMocks.getCartItems).toHaveBeenCalled();
     });
@@ -327,19 +324,10 @@ describe("StorePage", () => {
   it("shows an honest empty hosted catalog without fictional products", async () => {
     renderStoreRoute();
 
-    const sourcePanel = await screen.findByRole("region", {
-      name: /store catalog source/i,
-    });
-
-    await waitFor(() => {
-      expect(within(sourcePanel).getByText("Hosted Empty")).toBeInTheDocument();
-    });
+    expect(screen.queryByRole("region", { name: /store catalog source/i })).not.toBeInTheDocument();
     expect(
-      within(sourcePanel).getByText(/no local product data is substituted/i),
-    ).toBeInTheDocument();
-    expect(screen.getAllByText("No published products are currently available.")).not.toHaveLength(
-      0,
-    );
+      await screen.findAllByText("No published products are currently available."),
+    ).not.toHaveLength(0);
     expect(screen.getByRole("button", { name: /trailer unavailable/i })).toBeDisabled();
     expect(screen.queryByText("Wasteland Drifter")).not.toBeInTheDocument();
     expect(screen.queryByText("System Crash")).not.toBeInTheDocument();
@@ -354,8 +342,7 @@ describe("StorePage", () => {
 
     renderStoreRoute();
 
-    const sourcePanel = await screen.findByRole("region", { name: /store catalog source/i });
-    expect(within(sourcePanel).getByText("Loading Catalog")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: /store catalog source/i })).not.toBeInTheDocument();
     expect(screen.getByText("Loading the hosted catalog.")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /preview only/i })).not.toBeInTheDocument();
     expect(screen.queryByText("Wasteland Drifter")).not.toBeInTheDocument();
@@ -366,15 +353,35 @@ describe("StorePage", () => {
     });
   });
 
+  it("keeps a product deep link until the hosted catalog finishes loading", async () => {
+    const catalog = deferred<StoreProduct[]>();
+    const hostedProduct = makeStoreProduct();
+    storeMocks.listPublishedProducts.mockReturnValue(catalog.promise);
+
+    renderStoreRoute("/store?slug=hosted-hero-product&install=1");
+
+    await screen.findByText("Loading the hosted catalog.");
+    expect(screen.queryByText(/did not match a known product/i)).not.toBeInTheDocument();
+
+    await act(async () => {
+      catalog.resolve([hostedProduct]);
+      await catalog.promise;
+    });
+
+    expect(
+      await screen.findByText(
+        `Opening ${hostedProduct.title}. Click "Install" to add it to your library.`,
+      ),
+    ).toBeInTheDocument();
+  });
+
   it("shows a catalog error without substituting local products", async () => {
     storeMocks.listPublishedProducts.mockRejectedValue(new Error("catalog offline"));
 
     renderStoreRoute();
 
-    const sourcePanel = await screen.findByRole("region", { name: /store catalog source/i });
-    await waitFor(() => expect(within(sourcePanel).getByText("Hosted Error")).toBeInTheDocument());
-    expect(within(sourcePanel).getByText(/catalog offline/i)).toBeInTheDocument();
-    expect(screen.getByText(/no local products are shown/i)).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: /store catalog source/i })).not.toBeInTheDocument();
+    expect(await screen.findByText(/no local products are shown/i)).toBeInTheDocument();
     expect(screen.queryByText("Wasteland Drifter")).not.toBeInTheDocument();
   });
 
@@ -392,10 +399,7 @@ describe("StorePage", () => {
 
     expect(await screen.findAllByRole("heading", { name: "Hosted Hero Product" })).toHaveLength(2);
 
-    const sourcePanel = screen.getByRole("region", {
-      name: /store catalog source/i,
-    });
-    expect(within(sourcePanel).getByText("Hosted Catalog")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: /store catalog source/i })).not.toBeInTheDocument();
     expect(screen.getAllByText("Full hosted product description.")).not.toHaveLength(0);
     expect(screen.getAllByText("Hosted Publisher")).not.toHaveLength(0);
     expect(screen.queryByText(/built for players who want/i)).not.toBeInTheDocument();

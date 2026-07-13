@@ -136,10 +136,13 @@ Deno.test(
     assertEquals(reads.includes(`store_products.developer_id.${userId}`), true);
     assertEquals(orReads, [
       `friendships:requester_id.eq.${userId},addressee_id.eq.${userId}`,
-      `user_blocks:blocker_id.eq.${userId},blocked_id.eq.${userId}`,
       `profile_comments:profile_user_id.eq.${userId},author_id.eq.${userId}`,
       `game_invites:sender_id.eq.${userId},receiver_id.eq.${userId}`,
     ]);
+    assertEquals(
+      reads.includes(`user_blocks.blocker_id.${userId}`),
+      true,
+    );
     assertEquals(inReads, [
       {
         column: "order_id",
@@ -161,6 +164,34 @@ Deno.test(
     ]);
   },
 );
+
+Deno.test("export user data excludes incoming block rows and their private reason", async () => {
+  const incomingBlockerId = "22222222-2222-4222-8222-222222222222";
+  const outgoingBlock = {
+    blocked_id: "33333333-3333-4333-8333-333333333333",
+    blocker_id: userId,
+    id: "outgoing-block",
+    reason: "my exportable reason",
+  };
+  const payload = await buildExportPayload(
+    user(),
+    payloadDeps({
+      rowsByTable: {
+        user_blocks: [
+          outgoingBlock,
+          {
+            blocked_id: userId,
+            blocker_id: incomingBlockerId,
+            id: "incoming-block",
+            reason: "incoming blocker's private reason",
+          },
+        ],
+      },
+    }),
+  );
+
+  assertEquals(payload.data.user_blocks, [outgoingBlock]);
+});
 
 Deno.test("export user data payload carries read warnings", async () => {
   const payload = await buildExportPayload(

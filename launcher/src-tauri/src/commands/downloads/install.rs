@@ -1,5 +1,5 @@
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     fs,
     path::{Path, PathBuf},
 };
@@ -10,10 +10,10 @@ use crate::commands::downloads::types::{
 };
 use crate::commands::games::{
     extract_og_zip_package, find_launch_executable, installed_game, is_file_executable,
-    is_zip_package, manifest_has_signature, og_manifest_file_for_path, og_manifest_path_for_entry,
-    og_manifest_relative_path, path_to_string, read_installed_games_cache,
-    verify_og_managed_manifest_signature, write_installed_games_cache,
-    write_og_managed_manifest_details, GameStatus, OgManagedManifest, OgManagedManifestFile,
+    is_zip_package, manifest_has_signature, mutate_installed_games_cache,
+    og_manifest_file_for_path, og_manifest_path_for_entry, og_manifest_relative_path,
+    path_to_string, verify_og_managed_manifest_signature, write_og_managed_manifest_details,
+    GameStatus, OgManagedManifest, OgManagedManifestFile,
 };
 
 pub(crate) struct InstalledDownloadPackage {
@@ -30,15 +30,6 @@ pub(crate) fn install_downloaded_game_package(
     downloaded_file: &Path,
 ) -> Result<InstalledDownloadPackage, String> {
     update_download_metrics(game_id, "installing", None, None);
-    update_download_status(game_id, DOWNLOAD_STATUS_INSTALLING, "Installing", 99, 0);
-    emit_download_progress(
-        app,
-        game_id,
-        99,
-        "Installing",
-        DOWNLOAD_STATUS_INSTALLING,
-        0,
-    );
 
     let files = if is_zip_package(downloaded_file) {
         extract_og_zip_package(downloaded_file, install_dir, |processed, total| {
@@ -66,13 +57,68 @@ pub(crate) fn install_downloaded_game_package(
     };
 
     let executable_path = find_launch_executable(install_dir, title)
-        .or_else(|| is_file_executable(downloaded_file).then(|| downloaded_file.to_path_buf()))
-        .ok_or_else(|| "Installed package does not contain a launchable executable.".to_string())?;
+        .or_else(|| is_file_executable(downloaded_file).then(|| downloaded_file.to_path_buf()));
+    let Some(executable_path) = executable_path else {
+        let error = "Installed package does not contain a launchable executable.";
+        return match rollback_downloaded_game_artifacts(install_dir, downloaded_file, &files) {
+            Ok(()) => Err(error.to_string()),
+            Err(rollback_error) => Err(format!("{error} Rollback also failed: {rollback_error}")),
+        };
+    };
 
     Ok(InstalledDownloadPackage {
         files,
         executable_path,
     })
+}
+
+pub(crate) fn rollback_downloaded_game_artifacts(
+    install_dir: &Path,
+    downloaded_file: &Path,
+    files: &[OgManagedManifestFile],
+) -> Result<(), String> {
+    let mut paths = BTreeSet::<PathBuf>::new();
+    for file in files {
+        if let Some(path) = og_manifest_path_for_entry(install_dir, &file.path) {
+            paths.insert(path);
+        }
+    }
+    if og_manifest_relative_path(install_dir, downloaded_file).is_some() {
+        paths.insert(downloaded_file.to_path_buf());
+    }
+
+    let mut first_error = None;
+    for path in paths.into_iter().rev() {
+        match fs::remove_file(&path) {
+            Ok(()) => remove_empty_download_parents(&path, install_dir),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+            Err(error) => {
+                first_error.get_or_insert_with(|| {
+                    format!(
+                        "Could not remove failed install artifact '{}': {error}",
+                        path.display()
+                    )
+                });
+            }
+        };
+    }
+
+    first_error.map_or(Ok(()), Err)
+}
+
+fn remove_empty_download_parents(path: &Path, install_dir: &Path) {
+    let Some(mut parent) = path.parent().map(Path::to_path_buf) else {
+        return;
+    };
+    while parent.starts_with(install_dir) && parent != install_dir {
+        if fs::remove_dir(&parent).is_err() {
+            break;
+        }
+        let Some(next) = parent.parent().map(Path::to_path_buf) else {
+            break;
+        };
+        parent = next;
+    }
 }
 
 pub(crate) fn write_downloaded_game_manifest(
@@ -257,9 +303,7 @@ pub(crate) fn update_installed_games_cache_for_download(
     title: &str,
     install_dir: &Path,
     executable_path: Option<&Path>,
-) {
-    let mut games = read_installed_games_cache().unwrap_or_default();
-    let mut found = false;
+) -> Result<(), String> {
     let executable_path_string = executable_path.map(|path| path_to_string(path.to_path_buf()));
     let process_names = executable_path
         .and_then(|path| path.file_name())
@@ -267,8 +311,8 @@ pub(crate) fn update_installed_games_cache_for_download(
         .map(|name| vec![name.to_string()])
         .unwrap_or_default();
 
-    for game in games.iter_mut() {
-        if game.id == game_id {
+    mutate_installed_games_cache(|games| {
+        if let Some(game) = games.iter_mut().find(|game| game.id == game_id) {
             game.status = GameStatus::Installed;
             game.install_path = Some(path_to_string(install_dir.to_path_buf()));
             game.executable_path = executable_path_string.clone();
@@ -278,27 +322,22 @@ pub(crate) fn update_installed_games_cache_for_download(
             if game.description.trim().is_empty() {
                 game.description = format!("Downloaded game: {title}");
             }
-            found = true;
+        } else {
+            let mut game = installed_game(
+                game_id,
+                title.to_string(),
+                "manual".to_string(),
+                Some(path_to_string(install_dir.to_path_buf())),
+                None,
+            );
+            game.description = format!("Downloaded game: {title}");
+            game.executable_path = executable_path_string;
+            game.process_names = process_names;
+            games.push(game);
         }
-    }
-
-    if !found {
-        let mut game = installed_game(
-            game_id,
-            title.to_string(),
-            "manual".to_string(),
-            Some(path_to_string(install_dir.to_path_buf())),
-            None,
-        );
-        game.description = format!("Downloaded game: {title}");
-        game.executable_path = executable_path_string;
-        game.process_names = process_names;
-        games.push(game);
-    }
-
-    if let Err(error) = write_installed_games_cache(&games) {
-        eprintln!("[open-game-launcher] Could not persist installed game '{game_id}': {error}");
-    }
+        Ok(())
+    })
+    .map_err(|error| format!("Could not persist installed game '{game_id}': {error}"))
 }
 
 #[cfg(test)]
@@ -306,6 +345,50 @@ mod tests {
     use super::*;
     use crate::commands::games::manifest_env_test_lock;
     use ed25519_dalek::SigningKey;
+
+    #[test]
+    fn installed_download_cache_update_exposes_persistence_failures_in_its_api() {
+        let _updater: fn(&str, &str, &Path, Option<&Path>) -> Result<(), String> =
+            update_installed_games_cache_for_download;
+    }
+
+    #[test]
+    fn failed_install_rollback_removes_only_new_package_artifacts_inside_the_install_root() {
+        let root = unique_temp_dir("rollback-artifacts");
+        let outside = root.parent().unwrap().join(format!(
+            "ogl-download-outside-{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let package = root.join("package.zip");
+        let executable = root.join("bin/game.exe");
+        fs::create_dir_all(executable.parent().unwrap()).unwrap();
+        fs::write(&package, b"package").unwrap();
+        fs::write(&executable, b"game").unwrap();
+        fs::write(&outside, b"outside").unwrap();
+        let files = vec![
+            OgManagedManifestFile {
+                path: "bin/game.exe".to_string(),
+                size_bytes: None,
+                sha256: None,
+            },
+            OgManagedManifestFile {
+                path: format!("../{}", outside.file_name().unwrap().to_string_lossy()),
+                size_bytes: None,
+                sha256: None,
+            },
+        ];
+
+        rollback_downloaded_game_artifacts(&root, &package, &files).unwrap();
+
+        assert!(!package.exists());
+        assert!(!executable.exists());
+        assert_eq!(fs::read(&outside).unwrap(), b"outside");
+        fs::remove_file(outside).unwrap();
+        fs::remove_dir_all(root).unwrap();
+    }
 
     fn unique_temp_dir(name: &str) -> PathBuf {
         let path = std::env::temp_dir().join(format!(

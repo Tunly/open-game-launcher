@@ -22,6 +22,8 @@ export function usePlaySessionSync(): void {
   const running = useRef(false);
 
   useEffect(() => {
+    if (!isTauri()) return;
+
     let isMounted = true;
 
     const drain = async () => {
@@ -52,25 +54,23 @@ export function usePlaySessionSync(): void {
       void drain();
     }, 60_000);
 
-    const unlistenPromise = isTauri()
-      ? listen<PlaySession>("play_session_recorded", async (event) => {
-          if (!isMounted) return;
-          const session = event.payload;
-          try {
-            const outcome = await syncGameSessions([session]);
-            if (outcome.pushed > 0) {
-              await markPlaySessionsSynced([session.id]);
-            }
-          } catch (error) {
-            console.warn("[usePlaySessionSync] event push failed:", error);
-          }
-        })
-      : null;
+    const unlistenPromise = listen<PlaySession>("play_session_recorded", async (event) => {
+      if (!isMounted) return;
+      const session = event.payload;
+      try {
+        const outcome = await syncGameSessions([session]);
+        if (outcome.pushed > 0) {
+          await markPlaySessionsSynced([session.id]);
+        }
+      } catch (error) {
+        console.warn("[usePlaySessionSync] event push failed:", error);
+      }
+    });
 
     return () => {
       isMounted = false;
       window.clearInterval(interval);
-      void unlistenPromise?.then((unlisten) => unlisten());
+      void unlistenPromise.then((unlisten) => unlisten());
     };
   }, []);
 }

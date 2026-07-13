@@ -8,8 +8,18 @@ import type {
   UninstallGameResponse,
   VerifyGameFilesResponse,
 } from "./types";
+import type {
+  GameActionCapability,
+  GameActionResult,
+  PrepareGameActionConfirmationInput,
+  PrepareGameActionConfirmationResult,
+  RunGameActionInput,
+} from "../game-actions";
 import { writeActivePerformanceGameContext } from "../performance-context";
 import { invokeCommand } from "./shared";
+
+const DESKTOP_GAME_ACTIONS_REQUIRED =
+  "Game actions are available only in the OG-Launcher desktop app.";
 
 export function listInstalledGames(): Promise<Game[]> {
   if (!isTauri()) {
@@ -52,16 +62,38 @@ export function moveGame(input: { gameId: string; newPath: string }): Promise<vo
 
 export function verifyGameFiles(gameId: string): Promise<VerifyGameFilesResponse> {
   if (!isTauri()) {
-    return Promise.resolve({
-      gameId,
-      checkedFiles: 0,
-      missingFiles: ["Desktop app required for native file verification."],
-      manifestTrust: "missing",
-      status: "repair_required",
-    });
+    return Promise.reject(new Error(DESKTOP_GAME_ACTIONS_REQUIRED));
   }
 
   return invokeCommand<VerifyGameFilesResponse>("verify_game_files", { gameId });
+}
+
+export function getGameActionCapabilities(gameId: string): Promise<GameActionCapability[]> {
+  if (!isTauri()) {
+    return Promise.reject(new Error(DESKTOP_GAME_ACTIONS_REQUIRED));
+  }
+
+  return invokeCommand<GameActionCapability[]>("get_game_action_capabilities", { gameId });
+}
+
+export function runGameAction(input: RunGameActionInput): Promise<GameActionResult> {
+  if (!isTauri()) {
+    return Promise.reject(new Error(DESKTOP_GAME_ACTIONS_REQUIRED));
+  }
+
+  return invokeCommand<GameActionResult>("run_game_action", { input });
+}
+
+export function prepareGameActionConfirmation(
+  input: PrepareGameActionConfirmationInput,
+): Promise<PrepareGameActionConfirmationResult> {
+  if (!isTauri()) {
+    return Promise.reject(new Error(DESKTOP_GAME_ACTIONS_REQUIRED));
+  }
+
+  return invokeCommand<PrepareGameActionConfirmationResult>("prepare_game_action_confirmation", {
+    input,
+  });
 }
 
 export function repairGameFiles(gameId: string): Promise<RepairGameFilesResponse> {

@@ -192,25 +192,13 @@ fn read_broadcast_stream_key_metadata(
     channel_id: &str,
 ) -> Result<Option<BroadcastStreamKeyVaultMetadata>, String> {
     let id = broadcast_stream_key_metadata_id(provider, channel_id);
-    Ok(
-        local_db::read_collection::<BroadcastStreamKeyVaultMetadata>(
-            STREAM_KEY_METADATA_COLLECTION,
-        )?
-        .into_iter()
-        .find(|entry| entry.id == id),
-    )
+    local_db::read_item(STREAM_KEY_METADATA_COLLECTION, &id)
 }
 
 fn upsert_broadcast_stream_key_metadata(
     metadata: BroadcastStreamKeyVaultMetadata,
 ) -> Result<(), String> {
-    let mut entries = local_db::read_collection::<BroadcastStreamKeyVaultMetadata>(
-        STREAM_KEY_METADATA_COLLECTION,
-    )
-    .unwrap_or_default();
-    entries.retain(|entry| entry.id != metadata.id);
-    entries.push(metadata);
-    local_db::write_collection(STREAM_KEY_METADATA_COLLECTION, &entries, |entry| &entry.id)
+    local_db::upsert_item(STREAM_KEY_METADATA_COLLECTION, &metadata.id, &metadata)
 }
 
 fn validate_stream_key_consent(

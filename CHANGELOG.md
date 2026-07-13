@@ -11,11 +11,30 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 - First-party Cloud Saves were removed from the active product path, including launcher-managed storage/schema, upload/download/restore/conflict UI, encryption, and Supabase/keychain staging; provider clients own cloud synchronization. The remaining Cross-Store Save Copy proof is local-only.
 - The supported overlay is explicitly a separate transparent always-on-top Tauri window. Game-process injection is not used and is not a product target.
 - Library and store surfaces now display only scanner, provider, or hosted catalog metadata. Missing size, category, playtime, compatibility, artwork, and catalog fields remain explicitly unavailable instead of being inferred from titles, IDs, directory timestamps, or local demo products.
+- Game Options now targets an explicitly selected game copy, distinguishes
+  selected-copy maintenance from all-copy metadata actions, revalidates the
+  native target, and uses action-bound confirmation for destructive work.
+- Normal GameDetails artwork controls are local-only Banner/Icon/Logo actions.
+  Auto, community, and hosted artwork controls were removed from the active UI;
+  hosted moderation/schema review remains isolated behind a verify route.
+- Provider UI automation is optional and fail-closed. The default native build
+  does not enable live accessibility automation or report provider completion
+  without an observed postcondition.
 
 ### Fixed
 
 - Cross-platform invite sends now bind feasibility and generated links to the exact user/recipient/mode/game/platform context, synchronously reject duplicate sends, and discard stale async results before token creation or UI publication.
 - Removed title-hash library metadata, synthetic cloud status, provider-ID descriptions, legacy directory-mtime activity, fictional store products, seeded launcher notifications, and fallback news articles from normal runtime routes.
+- Real sub-minute activity now persists explicit zero-minute provenance so
+  `lastPlayed` survives refresh, and the first observed process transition is
+  written immediately.
+- Xbox package artwork is materialized below the app-owned asset root, linked
+  TitleHub images are retained, and Xbox/Game Pass metadata merges by Store ID
+  before conservative localized-title fallback.
+- PC Game Pass catalog-only titles are included in the Achievement inventory.
+- Direct/group chat creation, blocked-DM access, trusted playtime aggregation,
+  price-drop delivery, social-link replacement, invite transitions, and
+  submitted artwork identity are hardened through atomic RPCs/RLS guards.
 
 ## [0.1.0] - 2026-06-22
 

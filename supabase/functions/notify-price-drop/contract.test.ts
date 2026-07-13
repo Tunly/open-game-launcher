@@ -188,6 +188,30 @@ Deno.test(
 );
 
 Deno.test(
+  "price-drop notification run evidence accepts stale concurrent delivery claims",
+  () => {
+    assertEquals(
+      buildPriceDropNotificationRunEvidence(
+        makeEvidenceInput({
+          alertsMarkedCount: 2,
+          notificationsRecordedCount: 2,
+          skipped: {
+            already_notified: 3,
+            delivery_claim_lost: 1,
+            not_met: 4,
+          },
+        }),
+      ).skipped_summary,
+      {
+        already_notified: 3,
+        delivery_claim_lost: 1,
+        not_met: 4,
+      },
+    );
+  },
+);
+
+Deno.test(
   "price-drop notification run evidence rejects dry-run completed status",
   () => {
     assertThrows(

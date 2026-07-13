@@ -20,6 +20,7 @@ export function createBrowserPreviewMetrics(elapsedSeconds: number): RealtimeMet
     gpuTempC: 64 + Math.max(0, pulse) * 4,
     fps: 60 + Math.cos(seconds / 4) * 6,
     frameTimeMs: 16.7 + Math.max(0, -pulse) * 2,
+    fpsSource: "hud_webview",
     uptime: formatPreviewUptime(seconds),
   };
 }

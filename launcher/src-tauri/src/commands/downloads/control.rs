@@ -3,9 +3,9 @@ use tauri::AppHandle;
 use crate::commands::downloads::history::remove_download_history_item;
 use crate::commands::downloads::steam_cef::toggle_steam_download_pause;
 use crate::commands::downloads::types::{
-    emit_download_progress, emit_download_removed, get_download_manager,
-    is_terminal_download_status, DOWNLOAD_STATUS_CANCELLED, DOWNLOAD_STATUS_DOWNLOADING,
-    DOWNLOAD_STATUS_PAUSED,
+    emit_download_payload, emit_download_removed, get_download_manager,
+    is_terminal_download_status, request_download_cancellation, toggle_download_pause,
+    DownloadCancellationTransition, DOWNLOAD_STATUS_INSTALLING, DOWNLOAD_STATUS_PAUSED,
 };
 use crate::commands::downloads::utils::{
     is_external_tracker_game_id, normalize_game_id, steam_app_id_from_download_id,
@@ -24,28 +24,16 @@ pub fn pause_download(app: AppHandle, game_id: String) -> Result<(), String> {
         return Err("This download is controlled by an external launcher.".to_string());
     }
 
-    let map = get_download_manager();
-    let mut guard = map
-        .lock()
-        .map_err(|error| format!("Download manager lock poisoned: {error}"))?;
-    if let Some(dl) = guard.get_mut(&game_id) {
-        if dl.status == DOWNLOAD_STATUS_DOWNLOADING {
-            dl.paused = true;
-            dl.status = DOWNLOAD_STATUS_PAUSED.to_string();
-            dl.speed = "Paused".to_string();
-            let _ = dl.pause_tx.send(true);
-            println!("[open-game-launcher] Paused download for {game_id}");
-            emit_download_progress(&app, &game_id, dl.progress, &dl.speed, &dl.status, dl.eta);
-        } else if dl.status == DOWNLOAD_STATUS_PAUSED {
-            dl.paused = false;
-            dl.status = DOWNLOAD_STATUS_DOWNLOADING.to_string();
-            dl.speed = "Connecting...".to_string();
-            let _ = dl.pause_tx.send(false);
-            println!("[open-game-launcher] Resumed download for {game_id}");
-            emit_download_progress(&app, &game_id, dl.progress, &dl.speed, &dl.status, dl.eta);
-        }
-    }
-    Ok(())
+    let Some(payload) = toggle_download_pause(&game_id)? else {
+        return Ok(());
+    };
+    let action = if payload.status == DOWNLOAD_STATUS_PAUSED {
+        "Paused"
+    } else {
+        "Resumed"
+    };
+    println!("[open-game-launcher] {action} download for {game_id}");
+    emit_download_payload(&app, *payload)
 }
 
 pub fn cancel_download(app: AppHandle, game_id: String) -> Result<(), String> {
@@ -61,26 +49,24 @@ pub fn cancel_download(app: AppHandle, game_id: String) -> Result<(), String> {
         );
     }
 
-    let map = get_download_manager();
-    let mut guard = map
-        .lock()
-        .map_err(|error| format!("Download manager lock poisoned: {error}"))?;
-    if let Some(dl) = guard.get_mut(&game_id) {
-        dl.cancelled = true;
-        dl.status = DOWNLOAD_STATUS_CANCELLED.to_string();
-        let _ = dl.cancel_tx.send(true);
-        println!("[open-game-launcher] Cancelled download for {game_id}");
-        emit_download_progress(
-            &app,
-            &game_id,
-            dl.progress,
-            "Cancelled",
-            DOWNLOAD_STATUS_CANCELLED,
-            0,
-        );
+    match request_download_cancellation(&game_id)? {
+        DownloadCancellationTransition::Cancelled(payload) => {
+            println!("[open-game-launcher] Cancelled download for {game_id}");
+            emit_download_payload(&app, *payload)
+        }
+        DownloadCancellationTransition::Missing => Ok(()),
+        DownloadCancellationTransition::Rejected { status }
+            if status == DOWNLOAD_STATUS_INSTALLING =>
+        {
+            Err(
+                "Installation has already started; this download can no longer be cancelled."
+                    .to_string(),
+            )
+        }
+        DownloadCancellationTransition::Rejected { status } => Err(format!(
+            "This download cannot be cancelled while its status is '{status}'."
+        )),
     }
-    guard.remove(&game_id);
-    Ok(())
 }
 
 pub async fn archive_download(app: AppHandle, game_id: String) -> Result<(), String> {
@@ -88,7 +74,7 @@ pub async fn archive_download(app: AppHandle, game_id: String) -> Result<(), Str
     let archived_game_id = game_id.clone();
 
     tauri::async_runtime::spawn_blocking(move || {
-        remove_download_history_item(&archived_game_id);
+        remove_download_history_item(&archived_game_id)?;
 
         let map = get_download_manager();
         let mut guard = map

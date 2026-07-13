@@ -1,17 +1,19 @@
+// deno-lint-ignore-file no-import-prefix
 import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 
 import {
   handlePlaytimeIngestion,
-  type PlaytimeIngestionAuthContext,
   type PlaytimeIngestionHandlerDeps,
+  type PlaytimeIngestionWriteResult,
 } from "./handler.ts";
-import type {
-  NormalizedPlaytimeAggregate,
-  NormalizedPlaytimeSession,
-} from "./playtime-ingestion.ts";
+import type { NormalizedPlaytimeIngestion } from "./playtime-ingestion.ts";
 
 const userId = "11111111-1111-4111-8111-111111111111";
 const catalogGameId = "123e4567-e89b-42d3-a456-426614174000";
+const sessionId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const launcherDeviceId = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
+const aggregateOperationId = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+const observedAt = "2026-06-15T12:00:00.000Z";
 
 Deno.test("playtime ingestion handler answers CORS and method guards", async () => {
   const optionsResponse = await handlePlaytimeIngestion(
@@ -72,7 +74,12 @@ Deno.test("playtime ingestion handler returns parser details", async () => {
 Deno.test("playtime ingestion handler blocks unknown catalog games", async () => {
   const response = await handlePlaytimeIngestion(
     jsonRequest({
-      aggregate: { gameId: catalogGameId, playtimeMinutes: 5 },
+      aggregate: {
+        gameId: catalogGameId,
+        observedAt,
+        operationId: aggregateOperationId,
+        playtimeMinutes: 5,
+      },
     }),
     stubDeps({ missingGameIds: [catalogGameId] }),
   );
@@ -90,42 +97,74 @@ Deno.test("playtime ingestion handler blocks session id conflicts", async () => 
       gameId: catalogGameId,
       sessions: [
         {
-          id: "session-1",
+          id: sessionId,
+          launcherDeviceId,
           startedAt: "2026-06-15T10:00:00.000Z",
         },
       ],
     }),
-    stubDeps({ conflictingSessionIds: ["session-1"] }),
+    stubDeps({
+      writeResult: rejectedWrite({ ownerConflictSessionIds: [sessionId] }),
+    }),
   );
 
   assertEquals(response.status, 409);
   assertEquals(await response.json(), {
-    conflictingSessionIds: ["session-1"],
+    conflictingSessionIds: [sessionId],
     error: "Session id already belongs to another user.",
   });
 });
 
-Deno.test("playtime ingestion handler writes aggregate and sessions", async () => {
-  const aggregates: NormalizedPlaytimeAggregate[] = [];
-  const sessions: NormalizedPlaytimeSession[][] = [];
+Deno.test("playtime ingestion handler blocks immutable session payload conflicts", async () => {
+  const response = await handlePlaytimeIngestion(
+    sessionRequest(),
+    stubDeps({
+      writeResult: rejectedWrite({ payloadConflictSessionIds: [sessionId] }),
+    }),
+  );
+
+  assertEquals(response.status, 409);
+  assertEquals(await response.json(), {
+    conflictingSessionIds: [sessionId],
+    error: "Session id conflicts with an existing immutable payload.",
+  });
+});
+
+Deno.test("playtime ingestion handler stabilizes malformed rejection results", async () => {
+  const response = await handlePlaytimeIngestion(
+    sessionRequest(),
+    stubDeps({ writeResult: rejectedWrite({}) }),
+  );
+
+  assertEquals(response.status, 500);
+  assertEquals(await response.json(), {
+    error: "Playtime ingestion service unavailable.",
+  });
+});
+
+Deno.test("playtime ingestion handler writes aggregate and sessions atomically", async () => {
+  const ingestions: NormalizedPlaytimeIngestion[] = [];
   const response = await handlePlaytimeIngestion(
     jsonRequest({
       aggregate: {
         gameId: catalogGameId,
+        observedAt,
+        operationId: aggregateOperationId,
         playtimeMinutes: 42,
-        totalSessions: 2,
+        sessionCountDelta: 2,
       },
       gameId: catalogGameId,
       sessions: [
         {
           endedAt: "2026-06-15T11:00:00.000Z",
-          id: "session-1",
+          id: sessionId,
+          launcherDeviceId,
           platform: "linux",
           startedAt: "2026-06-15T10:00:00.000Z",
         },
       ],
     }),
-    stubDeps({ aggregates, sessions }),
+    stubDeps({ ingestions }),
   );
 
   assertEquals(response.status, 200);
@@ -135,21 +174,85 @@ Deno.test("playtime ingestion handler writes aggregate and sessions", async () =
     sessionsPushed: 1,
     userId,
   });
-  assertEquals(aggregates, [
-    {
+  assertEquals(ingestions, [{
+    aggregate: {
       gameId: catalogGameId,
+      observedAt,
+      operation: "snapshot",
+      operationId: aggregateOperationId,
       playtimeMinutes: 42,
-      totalSessions: 2,
+      sessionCountDelta: 2,
     },
-  ]);
-  assertEquals(sessions[0][0], {
-    durationMinutes: 60,
-    endedAt: "2026-06-15T11:00:00.000Z",
-    gameId: catalogGameId,
-    id: "session-1",
-    launcherDeviceId: null,
-    platform: "linux",
-    startedAt: "2026-06-15T10:00:00.000Z",
+    sessions: [{
+      durationMinutes: 60,
+      endedAt: "2026-06-15T11:00:00.000Z",
+      gameId: catalogGameId,
+      id: sessionId,
+      launcherDeviceId,
+      platform: "linux",
+      startedAt: "2026-06-15T10:00:00.000Z",
+    }],
+  }]);
+});
+
+Deno.test("playtime ingestion handler treats an identical committed retry as success", async () => {
+  const ingestions: NormalizedPlaytimeIngestion[] = [];
+  const deps = stubDeps({ ingestions });
+
+  const first = await handlePlaytimeIngestion(sessionRequest(), deps);
+  const retry = await handlePlaytimeIngestion(sessionRequest(), deps);
+
+  assertEquals(first.status, 200);
+  assertEquals(retry.status, 200);
+  assertEquals(await first.json(), {
+    aggregatePushed: false,
+    ok: true,
+    sessionsPushed: 1,
+    userId,
+  });
+  assertEquals(await retry.json(), {
+    aggregatePushed: false,
+    ok: true,
+    sessionsPushed: 1,
+    userId,
+  });
+  assertEquals(ingestions.length, 2);
+  assertEquals(ingestions[0], ingestions[1]);
+});
+
+Deno.test("playtime ingestion handler returns a stable CORS JSON error for dependency failures", async () => {
+  const ingestions: NormalizedPlaytimeIngestion[] = [];
+  const transactionFailure = new Error("transaction rolled back");
+
+  const response = await handlePlaytimeIngestion(
+    sessionRequest(),
+    stubDeps({ ingestError: transactionFailure, ingestions }),
+  );
+  assertEquals(response.status, 500);
+  assertEquals(response.headers.get("Access-Control-Allow-Origin"), "*");
+  assertEquals(await response.json(), {
+    error: "Playtime ingestion service unavailable.",
+  });
+  assertEquals(ingestions.length, 1);
+});
+
+Deno.test("playtime ingestion handler stabilizes catalog lookup failures", async () => {
+  const response = await handlePlaytimeIngestion(
+    jsonRequest({
+      aggregate: {
+        gameId: catalogGameId,
+        observedAt,
+        operationId: aggregateOperationId,
+        playtimeMinutes: 5,
+      },
+    }),
+    stubDeps({ catalogError: new Error("catalog unavailable") }),
+  );
+
+  assertEquals(response.status, 500);
+  assertEquals(response.headers.get("Access-Control-Allow-Origin"), "*");
+  assertEquals(await response.json(), {
+    error: "Playtime ingestion service unavailable.",
   });
 });
 
@@ -164,38 +267,71 @@ function jsonRequest(body: Record<string, unknown>) {
   });
 }
 
+function sessionRequest() {
+  return jsonRequest({
+    gameId: catalogGameId,
+    sessions: [{
+      endedAt: "2026-06-15T11:00:00.000Z",
+      id: sessionId,
+      launcherDeviceId,
+      platform: "linux",
+      startedAt: "2026-06-15T10:00:00.000Z",
+    }],
+  });
+}
+
 function stubDeps(
   options: {
-    aggregates?: NormalizedPlaytimeAggregate[];
     authResponse?: Response;
-    conflictingSessionIds?: string[];
+    catalogError?: unknown;
+    ingestError?: unknown;
+    ingestions?: NormalizedPlaytimeIngestion[];
     missingGameIds?: string[];
-    sessions?: NormalizedPlaytimeSession[][];
+    writeResult?: PlaytimeIngestionWriteResult;
   } = {},
 ): PlaytimeIngestionHandlerDeps {
   return {
-    authenticateRequest: async () =>
-      options.authResponse ?? { adminClient: "stub", userId },
-    findConflictingSessionIds: async (
-      auth: PlaytimeIngestionAuthContext,
-      sessionIds,
-    ) => {
+    authenticateRequest: () =>
+      Promise.resolve(
+        options.authResponse ?? { adminClient: "stub", userId },
+      ),
+    findMissingCatalogGames: (auth, gameIds) => {
       assertEquals(auth.userId, userId);
-      if (sessionIds.length === 0) return [];
-      return options.conflictingSessionIds ?? [];
+      if (options.catalogError !== undefined) {
+        return Promise.reject(options.catalogError);
+      }
+      return Promise.resolve(
+        gameIds.length === 0 ? [] : options.missingGameIds ?? [],
+      );
     },
-    findMissingCatalogGames: async (auth, gameIds) => {
+    ingestPlaytime: (auth, ingestion) => {
       assertEquals(auth.userId, userId);
-      if (gameIds.length === 0) return [];
-      return options.missingGameIds ?? [];
+      options.ingestions?.push(ingestion);
+      if (options.ingestError !== undefined) {
+        return Promise.reject(options.ingestError);
+      }
+      return Promise.resolve(
+        options.writeResult ?? {
+          accepted: true,
+          aggregatePushed: Boolean(ingestion.aggregate),
+          ownerConflictSessionIds: [],
+          payloadConflictSessionIds: [],
+          sessionsPushed: ingestion.sessions.length,
+        },
+      );
     },
-    upsertAggregate: async (auth, aggregate) => {
-      assertEquals(auth.userId, userId);
-      options.aggregates?.push(aggregate);
-    },
-    upsertSessions: async (auth, sessions) => {
-      assertEquals(auth.userId, userId);
-      options.sessions?.push(sessions);
-    },
+  };
+}
+
+function rejectedWrite(
+  overrides: Partial<PlaytimeIngestionWriteResult>,
+): PlaytimeIngestionWriteResult {
+  return {
+    accepted: false,
+    aggregatePushed: false,
+    ownerConflictSessionIds: [],
+    payloadConflictSessionIds: [],
+    sessionsPushed: 0,
+    ...overrides,
   };
 }

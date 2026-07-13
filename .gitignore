@@ -53,6 +53,7 @@ node_modules/
 _*.ps1
 _dump.ps1
 _test.py
+launcher/src-tauri/battlenet_debug.json
 
 # Generated code
 launcher/src/lib/supabase/database.types.ts

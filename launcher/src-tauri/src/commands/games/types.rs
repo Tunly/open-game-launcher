@@ -66,7 +66,7 @@ pub struct InstalledGame {
     pub friends_playing: Vec<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct UnifiedAchievement {
     pub id: String,
@@ -90,7 +90,7 @@ pub struct UnifiedAchievement {
     pub provider_confidence: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct AchievementProviderStatus {
     pub source: String,
@@ -99,7 +99,7 @@ pub struct AchievementProviderStatus {
     pub message: String,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct SaveFile {
     pub id: String,
@@ -114,7 +114,7 @@ pub struct SaveFile {
     pub synced_at: Option<String>,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum GameStatus {
     Installed,
@@ -122,7 +122,7 @@ pub enum GameStatus {
     UpdateAvailable,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum Platform {
     Windows,
@@ -130,7 +130,7 @@ pub enum Platform {
     Macos,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub enum LogoPosition {
     BottomLeft,

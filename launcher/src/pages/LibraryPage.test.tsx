@@ -1,11 +1,14 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { UseProviderPickingOptions } from "../hooks/library/useProviderPicking";
+import type { Game } from "../lib/types";
 import { LibraryPage } from "./LibraryPage";
 
 const gameDetailPanelMock = vi.hoisted(() => vi.fn());
+const launchCrossPlayJoinMock = vi.hoisted(() => vi.fn());
+const useLibrarySyncMock = vi.hoisted(() => vi.fn());
 const useProviderPickingMock = vi.hoisted(() =>
   vi.fn((options: UseProviderPickingOptions) => {
     void options;
@@ -85,7 +88,19 @@ vi.mock("../hooks/library/useLibraryFilters", () => ({
 }));
 
 vi.mock("../hooks/library/useLibrarySync", () => ({
-  useLibrarySync: () => ({
+  useLibrarySync: (...args: unknown[]) => useLibrarySyncMock(...args),
+}));
+
+function makeLibrarySyncResult(
+  overrides: Partial<{
+    installedGames: Game[];
+    isDiscoveringGames: boolean;
+    shouldShowLibraryLoading: boolean;
+  }> = {},
+) {
+  const installedGames = overrides.installedGames ?? [];
+
+  return {
     addGameToLibrary: vi.fn().mockResolvedValue({ id: "manual-game", title: "Manual Game" }),
     closeArtworkPreview: noop,
     customArtwork: {},
@@ -99,8 +114,10 @@ vi.mock("../hooks/library/useLibrarySync", () => ({
     handleResetCustomArtwork: noop,
     handleSelectCustomArtwork: noop,
     initialLibrarySnapshot: [],
-    installedGames: [],
-    isDiscoveringGames: false,
+    installedGames,
+    installedGamesRef: { current: installedGames },
+    isDiscoveringGames: overrides.isDiscoveringGames ?? false,
+    loadInstalledGames: vi.fn().mockResolvedValue(undefined),
     loadedLogoUrls: new Set<string>(),
     logoCandidateIndexes: {},
     openArtworkPreview: noop,
@@ -110,9 +127,9 @@ vi.mock("../hooks/library/useLibrarySync", () => ({
     runAutomaticLibrarySync: vi.fn().mockResolvedValue(undefined),
     runningGameIds: new Set<string>(),
     setInstalledGames: noop,
-    shouldShowLibraryLoading: false,
-  }),
-}));
+    shouldShowLibraryLoading: overrides.shouldShowLibraryLoading ?? false,
+  };
+}
 
 vi.mock("../hooks/library/useManualCollections", () => ({
   useManualCollections: () => ({
@@ -134,7 +151,7 @@ vi.mock("../hooks/library/useProviderPicking", () => ({
 }));
 
 vi.mock("../lib/launcher", () => ({
-  launchCrossPlayJoin: vi.fn(),
+  launchCrossPlayJoin: (...args: unknown[]) => launchCrossPlayJoinMock(...args),
 }));
 
 vi.mock("../stores/downloadStore", () => ({
@@ -146,16 +163,53 @@ vi.mock("../stores/downloadStore", () => ({
 
 import { Suspense } from "react";
 
-function renderLibraryRoute(initialEntry: string) {
-  return render(
+function makeGame(overrides: Partial<Game> = {}): Game {
+  return {
+    id: "steam-neon-circuit",
+    title: "Neon Circuit",
+    slug: "neon-circuit",
+    description: "",
+    version: "1.0",
+    status: "installed",
+    platform: "windows",
+    launcher: "steam",
+    ...overrides,
+  };
+}
+
+function LibraryRoute({ initialEntry }: { initialEntry: string }) {
+  return (
     <MemoryRouter initialEntries={[initialEntry]}>
       <Suspense fallback={null}>
         <Routes>
-          <Route element={<LibraryPage />} path="/library" />
+          <Route
+            element={
+              <>
+                <LibraryPage />
+                <LibraryRouteProbe />
+              </>
+            }
+            path="/library"
+          />
           <Route element={<FriendsRouteProbe />} path="/friends" />
         </Routes>
       </Suspense>
-    </MemoryRouter>,
+    </MemoryRouter>
+  );
+}
+
+function renderLibraryRoute(initialEntry: string) {
+  return render(<LibraryRoute initialEntry={initialEntry} />);
+}
+
+function LibraryRouteProbe() {
+  const location = useLocation();
+
+  return (
+    <div data-testid="library-route">
+      {location.pathname}
+      {location.search}
+    </div>
   );
 }
 
@@ -170,10 +224,11 @@ function FriendsRouteProbe() {
   );
 }
 
-describe("LibraryPage verification route wiring", () => {
+describe("LibraryPage", () => {
   beforeEach(() => {
-    gameDetailPanelMock.mockClear();
-    useProviderPickingMock.mockClear();
+    vi.clearAllMocks();
+    launchCrossPlayJoinMock.mockResolvedValue("steam://run/neon-circuit");
+    useLibrarySyncMock.mockReturnValue(makeLibrarySyncResult());
   });
 
   it("passes IGDB cross-play readiness verify mode to GameDetailPanel", async () => {
@@ -226,6 +281,74 @@ describe("LibraryPage verification route wiring", () => {
       }),
     );
     expect(options).not.toHaveProperty("maybeAutoSyncOnLaunch");
+  });
+
+  it("waits for startup library discovery before consuming a cross-play join", async () => {
+    const initialEntry = "/library?join=Neon%20Circuit&platform=steam&invite=invite-1";
+    useLibrarySyncMock.mockReturnValue(
+      makeLibrarySyncResult({
+        installedGames: [],
+        isDiscoveringGames: true,
+        shouldShowLibraryLoading: true,
+      }),
+    );
+    const view = renderLibraryRoute(initialEntry);
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(launchCrossPlayJoinMock).not.toHaveBeenCalled();
+    expect(screen.getByTestId("library-route")).toHaveTextContent(
+      "/library?join=Neon%20Circuit&platform=steam&invite=invite-1",
+    );
+
+    useLibrarySyncMock.mockReturnValue(makeLibrarySyncResult({ installedGames: [makeGame()] }));
+    view.rerender(<LibraryRoute initialEntry={initialEntry} />);
+
+    await waitFor(() => {
+      expect(launchCrossPlayJoinMock).toHaveBeenCalledWith("steam", "neon-circuit");
+    });
+    expect(launchCrossPlayJoinMock).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId("library-route")).toHaveTextContent(/^\/library$/);
+  });
+
+  it("claims and clears a join query before a pending launch can be repeated", async () => {
+    const initialEntry = "/library?join=neon-circuit&platform=steam&invite=invite-2&verify=keep-me";
+    launchCrossPlayJoinMock.mockReturnValue(new Promise<string>(() => undefined));
+    useLibrarySyncMock.mockReturnValue(makeLibrarySyncResult({ installedGames: [makeGame()] }));
+    const view = renderLibraryRoute(initialEntry);
+
+    await waitFor(() => {
+      expect(launchCrossPlayJoinMock).toHaveBeenCalledTimes(1);
+    });
+
+    useLibrarySyncMock.mockReturnValue(
+      makeLibrarySyncResult({ installedGames: [{ ...makeGame() }] }),
+    );
+    view.rerender(<LibraryRoute initialEntry={initialEntry} />);
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(launchCrossPlayJoinMock).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId("library-route")).toHaveTextContent("/library?verify=keep-me");
+  });
+
+  it("does not launch a matching library entry that is not installed", async () => {
+    useLibrarySyncMock.mockReturnValue(
+      makeLibrarySyncResult({
+        installedGames: [makeGame({ status: "not_installed" })],
+      }),
+    );
+
+    renderLibraryRoute("/library?join=neon-circuit&platform=steam");
+
+    await waitFor(() => {
+      expect(screen.getByTestId("library-route")).toHaveTextContent(/^\/library$/);
+    });
+    expect(launchCrossPlayJoinMock).not.toHaveBeenCalled();
   });
 
   it("routes the footer Friends & Chat control to the chat tab", () => {

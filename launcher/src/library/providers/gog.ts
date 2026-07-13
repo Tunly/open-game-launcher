@@ -33,7 +33,37 @@ export async function mergeGogOwned(games: Game[], context: MergeContext): Promi
       return { games, warnings, statusMessage };
     }
 
-    const installed = installedGogKeys(games);
+    const enrichedGames = games.map((game) => {
+      const gameKeys = installedGogKeys([game]);
+      if (gameKeys.size === 0) return game;
+      const owned = ownedGogGames.find((candidate) => {
+        const ownedId = candidate.externalId ?? candidate.id.replace(/^gog-owned-/, "");
+        return (
+          gameKeys.has(candidate.id) ||
+          gameKeys.has(candidate.title.toLowerCase()) ||
+          gameKeys.has(ownedId) ||
+          gameKeys.has(`gog-owned-${ownedId}`)
+        );
+      });
+      if (!owned) return game;
+
+      const coverUrl = shouldReplaceGogArtwork(game.coverUrl) ? owned.coverUrl : game.coverUrl;
+      const logoUrl = shouldReplaceGogArtwork(game.logoUrl) ? owned.logoUrl : game.logoUrl;
+      const iconUrl = shouldReplaceGogArtwork(game.iconUrl) ? owned.iconUrl : game.iconUrl;
+      if (coverUrl === game.coverUrl && logoUrl === game.logoUrl && iconUrl === game.iconUrl) {
+        return game;
+      }
+      return {
+        ...game,
+        coverUrl,
+        logoUrl,
+        iconUrl,
+        logoUrls: uniqueGogArtworkUrls([logoUrl, ...(game.logoUrls ?? [])]),
+        iconUrls: uniqueGogArtworkUrls([iconUrl, ...(game.iconUrls ?? [])]),
+      };
+    });
+
+    const installed = installedGogKeys(enrichedGames);
     const uninstalledOwned = ownedGogGames.filter((og) => {
       const ownedId = og.externalId ?? og.id.replace(/^gog-owned-/, "");
       if (installed.has(og.id) || installed.has(og.title.toLowerCase())) {
@@ -46,7 +76,7 @@ export async function mergeGogOwned(games: Game[], context: MergeContext): Promi
     });
 
     return {
-      games: [...games, ...uninstalledOwned],
+      games: [...enrichedGames, ...uninstalledOwned],
       warnings,
       statusMessage,
     };
@@ -54,4 +84,14 @@ export async function mergeGogOwned(games: Game[], context: MergeContext): Promi
     warnings.push(`Failed to fetch owned GOG games during load: ${err}`);
     return { games, warnings, statusMessage };
   }
+}
+
+function shouldReplaceGogArtwork(url?: string): boolean {
+  return !url || /[\\/]ProgramData[\\/]GOG\.com[\\/]Galaxy[\\/]webcache[\\/]/i.test(url);
+}
+
+function uniqueGogArtworkUrls(urls: Array<string | undefined>): string[] {
+  return urls.filter(
+    (url, index, candidates): url is string => Boolean(url) && candidates.indexOf(url) === index,
+  );
 }

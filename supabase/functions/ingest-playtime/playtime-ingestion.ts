@@ -10,8 +10,11 @@ export type NormalizedPlaytimeAggregate = {
   gameId: string;
   installedVersion?: string | null;
   lastPlayedAt?: string | null;
+  observedAt: string;
+  operation: "snapshot" | "correction";
+  operationId: string;
   playtimeMinutes: number;
-  totalSessions?: number;
+  sessionCountDelta?: number;
 };
 
 export type NormalizedPlaytimeSession = {
@@ -41,6 +44,8 @@ export class PlaytimeIngestionValidationError extends Error {
 
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const isoTimestampPattern =
+  /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.(\d{1,6}))?(Z|[+-]\d{2}:\d{2})$/;
 const validPlatforms = new Set<PlaytimePlatform>([
   "windows",
   "linux",
@@ -105,15 +110,29 @@ function readInteger(
   const value = record[key];
   const parsed = typeof value === "number"
     ? value
-    : Number.parseInt(String(value), 10);
+    : typeof value === "string" && /^-?\d+(?:\.\d+)?$/.test(value.trim())
+    ? Number(value.trim())
+    : Number.NaN;
   if (!Number.isFinite(parsed)) {
-    errors.push(`${key} must be a finite number.`);
+    errors.push(`${key} must be a finite numeric value.`);
     return undefined;
   }
 
   const min = options.min ?? 0;
   const max = options.max ?? 1_000_000;
-  return Math.min(max, Math.max(min, Math.floor(parsed)));
+  const normalized = Math.floor(parsed);
+  if (normalized < min || normalized > max) {
+    errors.push(`${key} must be between ${min} and ${max}.`);
+    return undefined;
+  }
+  return normalized;
+}
+
+function daysInMonth(year: number, month: number) {
+  if (month === 2) {
+    return year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0) ? 29 : 28;
+  }
+  return [4, 6, 9, 11].includes(month) ? 30 : 31;
 }
 
 function readIsoDate(
@@ -138,12 +157,66 @@ function readIsoDate(
     return undefined;
   }
 
-  const date = new Date(value);
+  const match = isoTimestampPattern.exec(value.trim());
+  if (!match) {
+    errors.push(`${key} must be a valid ISO timestamp.`);
+    return undefined;
+  }
+
+  const [
+    ,
+    yearText,
+    monthText,
+    dayText,
+    hourText,
+    minuteText,
+    secondText,
+    fraction,
+    zone,
+  ] = match;
+  const year = Number(yearText);
+  const month = Number(monthText);
+  const day = Number(dayText);
+  const hour = Number(hourText);
+  const minute = Number(minuteText);
+  const second = Number(secondText);
+  const offset = zone === "Z" ? null : zone.slice(1).split(":").map(Number);
+  if (
+    year < 1 ||
+    month < 1 ||
+    month > 12 ||
+    day < 1 ||
+    day > daysInMonth(year, month) ||
+    hour > 23 ||
+    minute > 59 ||
+    second > 59 ||
+    (offset && (offset[0] > 23 || offset[1] > 59))
+  ) {
+    errors.push(`${key} must be a valid ISO timestamp.`);
+    return undefined;
+  }
+
+  const date = new Date(value.trim());
   if (!Number.isFinite(date.getTime())) {
     errors.push(`${key} must be a valid ISO timestamp.`);
     return undefined;
   }
-  return date.toISOString();
+  const normalized = date.toISOString();
+  if (!fraction || fraction.length <= 3) {
+    return normalized;
+  }
+
+  return normalized.replace(/\.\d{3}Z$/, `.${fraction}Z`);
+}
+
+function aliasKey(
+  record: Record<string, unknown>,
+  primary: string,
+  legacy: string,
+): string | null {
+  if (primary in record) return primary;
+  if (legacy in record) return legacy;
+  return null;
 }
 
 function normalizeGameId(
@@ -162,22 +235,26 @@ function normalizeGameId(
     errors.push(`${fieldPrefix}gameId must be a catalog game UUID.`);
     return "";
   }
-  return gameId;
+  return gameId.toLowerCase();
 }
 
 function hasAggregateFields(record: Record<string, unknown>) {
   return [
-    "aggregate",
     "playtimeMinutes",
     "playtime_minutes",
-    "totalSessions",
-    "total_sessions",
+    "sessionCountDelta",
+    "session_count_delta",
     "firstPlayedAt",
     "first_played_at",
     "lastPlayedAt",
     "last_played_at",
     "installedVersion",
     "installed_version",
+    "observedAt",
+    "observed_at",
+    "operation",
+    "operationId",
+    "operation_id",
   ].some((key) => key in record);
 }
 
@@ -186,8 +263,19 @@ function normalizeAggregate(
   defaultGameId: string | null,
   errors: string[],
 ): NormalizedPlaytimeAggregate | null {
-  const aggregateRecord = asRecord(body.aggregate) ??
-    (hasAggregateFields(body) ? body : null);
+  let aggregateRecord: Record<string, unknown> | null = null;
+  if ("aggregate" in body) {
+    if (body.aggregate === null) {
+      return null;
+    }
+    aggregateRecord = asRecord(body.aggregate);
+    if (!aggregateRecord) {
+      errors.push("aggregate must be an object or null.");
+      return null;
+    }
+  } else if (hasAggregateFields(body)) {
+    aggregateRecord = body;
+  }
   if (!aggregateRecord) {
     return null;
   }
@@ -199,49 +287,115 @@ function normalizeAggregate(
     "aggregate.",
     aggregateErrors,
   );
-  const playtimeMinutes = "playtimeMinutes" in aggregateRecord
-    ? readInteger(aggregateRecord, "playtimeMinutes", aggregateErrors, {
+  const playtimeKey = aliasKey(
+    aggregateRecord,
+    "playtimeMinutes",
+    "playtime_minutes",
+  );
+  const playtimeMinutes = playtimeKey
+    ? readInteger(aggregateRecord, playtimeKey, aggregateErrors, {
       max: 10_000_000,
     })
-    : readInteger(aggregateRecord, "playtime_minutes", aggregateErrors, {
+    : readInteger(aggregateRecord, "playtimeMinutes", aggregateErrors, {
       max: 10_000_000,
       required: true,
     });
-  const totalSessions =
-    readInteger(aggregateRecord, "totalSessions", aggregateErrors, {
-      max: 1_000_000,
-    }) ??
-      readInteger(aggregateRecord, "total_sessions", aggregateErrors, {
-        max: 1_000_000,
-      });
-  const firstPlayedAt =
-    readIsoDate(aggregateRecord, "firstPlayedAt", aggregateErrors) ??
-      readIsoDate(aggregateRecord, "first_played_at", aggregateErrors);
-  const lastPlayedAt =
-    readIsoDate(aggregateRecord, "lastPlayedAt", aggregateErrors) ??
-      readIsoDate(aggregateRecord, "last_played_at", aggregateErrors);
-  const installedVersion = readNullableString(
+  if (
+    "totalSessions" in aggregateRecord || "total_sessions" in aggregateRecord
+  ) {
+    aggregateErrors.push(
+      "totalSessions is not supported; use sessionCountDelta for atomic increments.",
+    );
+  }
+  const sessionCountDeltaKey = aliasKey(
+    aggregateRecord,
+    "sessionCountDelta",
+    "session_count_delta",
+  );
+  const sessionCountDelta = sessionCountDeltaKey
+    ? readInteger(aggregateRecord, sessionCountDeltaKey, aggregateErrors, {
+      max: 100,
+    })
+    : undefined;
+  const firstPlayedAtKey = aliasKey(
+    aggregateRecord,
+    "firstPlayedAt",
+    "first_played_at",
+  );
+  const firstPlayedAt = firstPlayedAtKey
+    ? readIsoDate(aggregateRecord, firstPlayedAtKey, aggregateErrors)
+    : undefined;
+  const lastPlayedAtKey = aliasKey(
+    aggregateRecord,
+    "lastPlayedAt",
+    "last_played_at",
+  );
+  const lastPlayedAt = lastPlayedAtKey
+    ? readIsoDate(aggregateRecord, lastPlayedAtKey, aggregateErrors)
+    : undefined;
+  const installedVersionKey = aliasKey(
     aggregateRecord,
     "installedVersion",
-    128,
-    aggregateErrors,
-  ) ??
-    readNullableString(
+    "installed_version",
+  );
+  const installedVersion = installedVersionKey
+    ? readNullableString(
       aggregateRecord,
-      "installed_version",
+      installedVersionKey,
       128,
       aggregateErrors,
-    );
+    )
+    : undefined;
+  const observedAtKey = aliasKey(
+    aggregateRecord,
+    "observedAt",
+    "observed_at",
+  );
+  const observedAt = observedAtKey
+    ? readIsoDate(aggregateRecord, observedAtKey, aggregateErrors, true)
+    : readIsoDate(aggregateRecord, "observedAt", aggregateErrors, true);
+  const operationIdKey = aliasKey(
+    aggregateRecord,
+    "operationId",
+    "operation_id",
+  );
+  const operationIdRaw = operationIdKey
+    ? readString(aggregateRecord, operationIdKey)
+    : null;
+  const operationId = operationIdRaw?.toLowerCase() ?? "";
+  if (!operationId) {
+    aggregateErrors.push("operationId is required for idempotent ingestion.");
+  } else if (!uuidPattern.test(operationId)) {
+    aggregateErrors.push("operationId must be a UUID.");
+  }
+
+  const operationRaw =
+    readString(aggregateRecord, "operation")?.toLowerCase() ??
+      "snapshot";
+  const operation = operationRaw === "snapshot" || operationRaw === "correction"
+    ? operationRaw
+    : null;
+  if (!operation) {
+    aggregateErrors.push("operation must be snapshot or correction.");
+  } else if (operation === "correction" && (sessionCountDelta ?? 0) !== 0) {
+    aggregateErrors.push("correction aggregates cannot increment sessions.");
+  }
 
   errors.push(...aggregateErrors);
-  if (!gameId || playtimeMinutes === undefined) {
+  if (
+    !gameId || playtimeMinutes === undefined || !observedAt || !operationId ||
+    !operation
+  ) {
     return null;
   }
 
   return {
     gameId,
+    observedAt,
+    operation,
+    operationId,
     playtimeMinutes,
-    ...(totalSessions !== undefined ? { totalSessions } : {}),
+    ...(sessionCountDelta !== undefined ? { sessionCountDelta } : {}),
     ...(firstPlayedAt !== undefined ? { firstPlayedAt } : {}),
     ...(lastPlayedAt !== undefined ? { lastPlayedAt } : {}),
     ...(installedVersion !== undefined ? { installedVersion } : {}),
@@ -270,24 +424,33 @@ function normalizeSession(
 
   const sessionErrors: string[] = [];
   const prefix = `sessions[${index}].`;
-  const id = readString(record, "id");
+  const rawId = readString(record, "id");
+  const id = rawId?.toLowerCase() ?? null;
   if (!id) {
     sessionErrors.push(`${prefix}id is required for idempotent ingestion.`);
-  } else if (id.length > 128) {
-    sessionErrors.push(`${prefix}id must be 128 characters or shorter.`);
+  } else if (!uuidPattern.test(id)) {
+    sessionErrors.push(`${prefix}id must be a UUID.`);
   }
 
   const gameId = normalizeGameId(record, defaultGameId, prefix, sessionErrors);
-  const startedAt = readIsoDate(record, "startedAt", sessionErrors, true) ??
-    readIsoDate(record, "started_at", sessionErrors, true);
-  const endedAt = readIsoDate(record, "endedAt", sessionErrors) ??
-    readIsoDate(record, "ended_at", sessionErrors);
-  let durationMinutes = readInteger(record, "durationMinutes", sessionErrors, {
-    max: 10_000_000,
-  }) ??
-    readInteger(record, "duration_minutes", sessionErrors, {
+  const startedAtKey = aliasKey(record, "startedAt", "started_at");
+  const startedAt = startedAtKey
+    ? readIsoDate(record, startedAtKey, sessionErrors, true)
+    : readIsoDate(record, "startedAt", sessionErrors, true);
+  const endedAtKey = aliasKey(record, "endedAt", "ended_at");
+  const endedAt = endedAtKey
+    ? readIsoDate(record, endedAtKey, sessionErrors)
+    : undefined;
+  const durationMinutesKey = aliasKey(
+    record,
+    "durationMinutes",
+    "duration_minutes",
+  );
+  let durationMinutes = durationMinutesKey
+    ? readInteger(record, durationMinutesKey, sessionErrors, {
       max: 10_000_000,
-    });
+    })
+    : undefined;
 
   if (startedAt && endedAt) {
     const startedMs = Date.parse(startedAt);
@@ -299,10 +462,18 @@ function normalizeSession(
     }
   }
 
-  const launcherDeviceId =
-    readNullableString(record, "launcherDeviceId", 128, sessionErrors) ??
-      readNullableString(record, "launcher_device_id", 128, sessionErrors) ??
-      null;
+  const launcherDeviceIdKey = aliasKey(
+    record,
+    "launcherDeviceId",
+    "launcher_device_id",
+  );
+  const launcherDeviceIdRaw = launcherDeviceIdKey
+    ? readNullableString(record, launcherDeviceIdKey, 128, sessionErrors)
+    : undefined;
+  const launcherDeviceId = launcherDeviceIdRaw?.toLowerCase() ?? null;
+  if (launcherDeviceId && !uuidPattern.test(launcherDeviceId)) {
+    sessionErrors.push(`${prefix}launcherDeviceId must be a UUID.`);
+  }
 
   errors.push(...sessionErrors);
   if (!id || !gameId || !startedAt) {

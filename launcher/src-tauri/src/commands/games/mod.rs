@@ -1,4 +1,6 @@
 #[allow(unused_imports)]
+pub mod actions;
+#[allow(unused_imports)]
 pub mod core;
 #[allow(unused_imports)]
 pub mod detect;
@@ -6,6 +8,8 @@ pub mod detect;
 pub mod device_id;
 #[allow(unused_imports)]
 pub mod idle;
+#[allow(unused_imports)]
+pub mod play_sessions;
 #[allow(unused_imports)]
 pub mod playtime;
 #[allow(unused_imports)]
@@ -17,6 +21,8 @@ pub mod verify;
 
 // Re-export everything from all submodules
 #[allow(unused_imports)]
+pub use actions::*;
+#[allow(unused_imports)]
 pub use core::*;
 #[allow(unused_imports)]
 pub use detect::*;
@@ -24,6 +30,8 @@ pub use detect::*;
 pub use device_id::*;
 #[allow(unused_imports)]
 pub use idle::*;
+#[allow(unused_imports)]
+pub use play_sessions::*;
 #[allow(unused_imports)]
 pub use playtime::*;
 #[allow(unused_imports)]

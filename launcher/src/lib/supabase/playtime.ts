@@ -22,8 +22,11 @@ type TrustedPlaytimeAggregatePayload = {
   gameId: string;
   installedVersion?: string | null;
   lastPlayedAt?: string | null;
+  observedAt: string;
+  operation: "snapshot" | "correction";
+  operationId: string;
   playtimeMinutes: number;
-  totalSessions?: number;
+  sessionCountDelta?: number;
 };
 
 type TrustedPlaytimeSessionPayload = {
@@ -42,6 +45,7 @@ type TrustedPlaytimePayload = {
 };
 
 type SupabaseFunctionErrorLike = {
+  code?: string;
   context?: { status?: number };
   message?: string;
   name?: string;
@@ -52,6 +56,23 @@ type SupabaseFunctionInvoker = (
   functionName: string,
   options: { body: TrustedPlaytimePayload },
 ) => Promise<{ data: unknown; error: SupabaseFunctionErrorLike | null }>;
+
+type TrustedPlaytimeIngestionResult = {
+  aggregatePushed: boolean;
+  sessionsPushed: number;
+};
+
+type SupabasePlaytimeRpcInvoker = (
+  functionName: "ingest_trusted_playtime",
+  args: {
+    p_aggregate: Record<string, unknown>;
+    p_authenticated_user_id: string;
+    p_sessions: never[];
+  },
+) => Promise<{
+  data: unknown;
+  error: SupabaseFunctionErrorLike | null;
+}>;
 
 const catalogGameCacheTtlMs = 5 * 60_000;
 const catalogGameIdCache = new Map<string, { catalogGameId: string | null; expiresAt: number }>();
@@ -206,6 +227,50 @@ function getTrustedPlaytimeInvoker(client: unknown): SupabaseFunctionInvoker | n
   return typeof functions?.invoke === "function" ? functions.invoke.bind(functions) : null;
 }
 
+function getPlaytimeRpcInvoker(client: unknown): SupabasePlaytimeRpcInvoker | null {
+  const rpc = (client as { rpc?: SupabasePlaytimeRpcInvoker }).rpc;
+  return typeof rpc === "function" ? rpc.bind(client) : null;
+}
+
+function trustedPlaytimeResult(data: unknown): TrustedPlaytimeIngestionResult | null {
+  const candidate = Array.isArray(data) ? data[0] : data;
+  if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+    return null;
+  }
+
+  const record = candidate as Record<string, unknown>;
+  const aggregatePushed = record.aggregatePushed ?? record.aggregate_pushed;
+  const sessionsPushed = record.sessionsPushed ?? record.sessions_pushed;
+  if (
+    typeof aggregatePushed !== "boolean" ||
+    typeof sessionsPushed !== "number" ||
+    !Number.isSafeInteger(sessionsPushed) ||
+    sessionsPushed < 0
+  ) {
+    return null;
+  }
+
+  return { aggregatePushed, sessionsPushed };
+}
+
+function aggregateRpcRow(aggregate: TrustedPlaytimeAggregatePayload) {
+  return {
+    game_id: aggregate.gameId,
+    observed_at: aggregate.observedAt,
+    operation: aggregate.operation,
+    operation_id: aggregate.operationId,
+    playtime_minutes: aggregate.playtimeMinutes,
+    ...(aggregate.sessionCountDelta !== undefined
+      ? { session_count_delta: aggregate.sessionCountDelta }
+      : {}),
+    ...(aggregate.firstPlayedAt !== undefined ? { first_played_at: aggregate.firstPlayedAt } : {}),
+    ...(aggregate.lastPlayedAt !== undefined ? { last_played_at: aggregate.lastPlayedAt } : {}),
+    ...(aggregate.installedVersion !== undefined
+      ? { installed_version: aggregate.installedVersion }
+      : {}),
+  };
+}
+
 export function isTrustedPlaytimeIngestionUnavailable(error: unknown) {
   const typedError = (error ?? {}) as SupabaseFunctionErrorLike;
   const status = typedError.status ?? typedError.context?.status ?? null;
@@ -223,42 +288,78 @@ export function isTrustedPlaytimeIngestionUnavailable(error: unknown) {
   );
 }
 
-async function tryTrustedPlaytimeIngestion(payload: TrustedPlaytimePayload): Promise<boolean> {
+async function tryTrustedPlaytimeIngestion(
+  payload: TrustedPlaytimePayload,
+): Promise<TrustedPlaytimeIngestionResult | null> {
   if (!isSupabaseConfigured) {
-    return false;
+    return null;
   }
 
   const invokeFunction = getTrustedPlaytimeInvoker(getSupabaseClient());
   if (!invokeFunction) {
-    if (isTrustedIngestionStrictMode()) {
-      throw trustedIngestionStrictModeError("playtime", "Supabase Functions client unavailable");
-    }
-    return false;
+    return null;
   }
 
-  const { error } = await invokeFunction("ingest-playtime", { body: payload });
+  const { data, error } = await invokeFunction("ingest-playtime", { body: payload });
   if (!error) {
-    return true;
+    const result = trustedPlaytimeResult(data);
+    if (!result) {
+      throw new Error("Trusted playtime ingestion returned an invalid response.");
+    }
+    return result;
   }
 
   if (isTrustedPlaytimeIngestionUnavailable(error)) {
-    if (isTrustedIngestionStrictMode()) {
-      throw trustedIngestionStrictModeError(
-        "playtime",
-        error.message ?? "ingest-playtime unavailable",
-      );
-    }
-    return false;
+    return null;
   }
 
   handleError({ message: error.message ?? "Trusted playtime ingestion failed." });
-  return false;
+  return null;
+}
+
+async function tryAuthenticatedPlaytimeAggregate(
+  userId: string,
+  aggregate: TrustedPlaytimeAggregatePayload,
+): Promise<TrustedPlaytimeIngestionResult | null> {
+  const client = getSupabaseClient();
+  const invokeRpc = getPlaytimeRpcInvoker(client);
+  if (!invokeRpc) {
+    return null;
+  }
+
+  const { data, error } = await invokeRpc("ingest_trusted_playtime", {
+    p_aggregate: aggregateRpcRow(aggregate),
+    p_authenticated_user_id: userId,
+    p_sessions: [],
+  });
+  if (error) {
+    const normalizedError = {
+      code: error.code,
+      message: error.message ?? "Playtime aggregate RPC failed.",
+    };
+    if (isMissingSchemaError(normalizedError)) {
+      return null;
+    }
+    handleError(normalizedError);
+  }
+
+  const result = trustedPlaytimeResult(data);
+  if (!result) {
+    throw new Error("Playtime aggregate RPC returned an invalid response.");
+  }
+  return result;
 }
 
 export async function syncGamePlaytimeStats(input: PlaytimeSyncInput) {
   if (!isSupabaseConfigured) {
     return;
   }
+
+  // Capture the observation before any remote reads. Concurrent calls can
+  // finish out of order, but the database can still identify which snapshot
+  // was actually observed first.
+  const observedAt = new Date().toISOString();
+  const operationId = crypto.randomUUID();
 
   const client = getSupabaseClient();
   const userId = await getCurrentSessionUserId();
@@ -273,7 +374,7 @@ export async function syncGamePlaytimeStats(input: PlaytimeSyncInput) {
 
   const { data: existingData, error: existingError } = await client
     .from("user_game_stats")
-    .select("playtime_minutes, total_sessions, first_played_at")
+    .select("playtime_minutes, first_played_at")
     .eq("user_id", userId)
     .eq("game_id", catalogGameId)
     .maybeSingle();
@@ -291,42 +392,34 @@ export async function syncGamePlaytimeStats(input: PlaytimeSyncInput) {
   const lastPlayedAt =
     input.lastPlayedAt ?? input.game.lastPlayedAt ?? input.game.lastPlayed ?? null;
   const firstPlayedAt = rowNullableString(existing, "first_played_at") ?? lastPlayedAt;
-  const row = {
-    user_id: userId,
-    game_id: catalogGameId,
-    playtime_minutes: nextPlaytime,
-    last_played_at: lastPlayedAt,
-    first_played_at: firstPlayedAt,
-    installed_version: input.game.version,
-    ...(input.countSessionStart
-      ? { total_sessions: rowNumber(existing, "total_sessions") + 1 }
-      : {}),
+  const aggregate: TrustedPlaytimeAggregatePayload = {
+    firstPlayedAt,
+    gameId: catalogGameId,
+    installedVersion: input.game.version,
+    lastPlayedAt,
+    observedAt,
+    operation: "snapshot",
+    operationId,
+    playtimeMinutes: nextPlaytime,
+    ...(input.countSessionStart ? { sessionCountDelta: 1 } : {}),
   };
 
-  const trustedPushed = await tryTrustedPlaytimeIngestion({
-    aggregate: {
-      firstPlayedAt,
-      gameId: catalogGameId,
-      installedVersion: input.game.version,
-      lastPlayedAt,
-      playtimeMinutes: nextPlaytime,
-      ...(input.countSessionStart
-        ? { totalSessions: rowNumber(existing, "total_sessions") + 1 }
-        : {}),
-    },
-  });
-  if (trustedPushed) {
+  const trustedResult = await tryTrustedPlaytimeIngestion({ aggregate });
+  if (trustedResult) {
     return;
   }
 
-  const { error } = await client
-    .from("user_game_stats")
-    .upsert(row, { onConflict: "user_id,game_id" });
-
-  if (isMissingSchemaError(error)) {
+  const rpcResult = await tryAuthenticatedPlaytimeAggregate(userId, aggregate);
+  if (rpcResult) {
     return;
   }
-  handleError(error);
+
+  if (isTrustedIngestionStrictMode()) {
+    throw trustedIngestionStrictModeError(
+      "playtime",
+      "ingest-playtime and aggregate RPC unavailable",
+    );
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -548,41 +641,46 @@ export async function updateUserGamePlaytime(
 ): Promise<void> {
   if (!isSupabaseConfigured) return;
   if (!userId || !gameId) return;
-  const client = getSupabaseClient();
   const safeMinutes = Math.max(0, Math.floor(playtimeMinutes));
+  const aggregate: TrustedPlaytimeAggregatePayload = {
+    gameId,
+    observedAt: new Date().toISOString(),
+    operation: "correction",
+    operationId: crypto.randomUUID(),
+    playtimeMinutes: safeMinutes,
+  };
 
-  const invokeFunction = getTrustedPlaytimeInvoker(client);
   const currentUserId = await getCurrentSessionUserId();
-  if (currentUserId === userId) {
-    if (invokeFunction || isTrustedIngestionStrictMode()) {
-      const trustedPushed = await tryTrustedPlaytimeIngestion({
-        aggregate: {
-          gameId,
-          playtimeMinutes: safeMinutes,
-        },
-      });
-      if (trustedPushed) {
-        return;
-      }
-    }
-  } else if (isTrustedIngestionStrictMode()) {
-    throw trustedIngestionStrictModeError(
-      "playtime",
-      "direct aggregate write for another user blocked",
-    );
+  if (!currentUserId) {
+    return;
+  }
+  if (currentUserId !== userId) {
+    throw new Error("You cannot update another user's playtime.");
   }
 
-  const { error } = await client.from("user_game_stats").upsert(
-    {
-      user_id: userId,
-      game_id: gameId,
-      playtime_minutes: safeMinutes,
-      updated_at: new Date().toISOString(),
-    },
-    { onConflict: "user_id,game_id" },
-  );
-  if (isMissingSchemaError(error)) return;
-  handleError(error);
+  const trustedResult = await tryTrustedPlaytimeIngestion({ aggregate });
+  if (trustedResult) {
+    if (!trustedResult.aggregatePushed) {
+      throw new Error("The playtime correction was not applied. Please retry.");
+    }
+    return;
+  }
+
+  const rpcResult = await tryAuthenticatedPlaytimeAggregate(userId, aggregate);
+  if (rpcResult) {
+    if (!rpcResult.aggregatePushed) {
+      throw new Error("The playtime correction was not applied. Please retry.");
+    }
+    return;
+  }
+
+  if (isTrustedIngestionStrictMode()) {
+    throw trustedIngestionStrictModeError(
+      "playtime",
+      "ingest-playtime and aggregate RPC unavailable",
+    );
+  }
+  throw new Error("The playtime sync service is unavailable. Please retry.");
 }
 
 /**
@@ -812,11 +910,15 @@ export async function syncGameSessions(sessions: PlaySession[]): Promise<GameSes
     platform: row.platform,
     startedAt: row.started_at,
   }));
-  const trustedPushed = await tryTrustedPlaytimeIngestion({ sessions: trustedSessions });
-  if (trustedPushed) {
+  const trustedResult = await tryTrustedPlaytimeIngestion({ sessions: trustedSessions });
+  if (trustedResult) {
     outcome.pushed = rows.length;
     outcome.pushedIds = rows.map((row) => row.id);
     return outcome;
+  }
+
+  if (isTrustedIngestionStrictMode()) {
+    throw trustedIngestionStrictModeError("playtime", "ingest-playtime unavailable");
   }
 
   const { error } = await client.from("game_sessions").upsert(rows, { onConflict: "id" });

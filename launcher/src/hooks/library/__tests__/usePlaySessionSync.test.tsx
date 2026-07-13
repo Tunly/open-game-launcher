@@ -64,7 +64,7 @@ describe("usePlaySessionSync", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.getUnsyncedPlaySessions.mockResolvedValue([]);
-    mocks.isTauri.mockReturnValue(false);
+    mocks.isTauri.mockReturnValue(true);
     mocks.listen.mockResolvedValue(() => undefined);
     mocks.markPlaySessionsSynced.mockResolvedValue(0);
     mocks.syncGameSessions.mockResolvedValue(outcome());
@@ -78,8 +78,19 @@ describe("usePlaySessionSync", () => {
     });
     expect(mocks.syncGameSessions).not.toHaveBeenCalled();
     expect(mocks.markPlaySessionsSynced).not.toHaveBeenCalled();
-    expect(mocks.listen).not.toHaveBeenCalled();
+    expect(mocks.listen).toHaveBeenCalledWith("play_session_recorded", expect.any(Function));
 
+    view.unmount();
+  });
+
+  it("does not touch native play-session storage in a browser preview", async () => {
+    mocks.isTauri.mockReturnValue(false);
+
+    const view = render(<PlaySessionSyncHost />);
+    await act(async () => Promise.resolve());
+
+    expect(mocks.getUnsyncedPlaySessions).not.toHaveBeenCalled();
+    expect(mocks.listen).not.toHaveBeenCalled();
     view.unmount();
   });
 

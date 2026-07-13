@@ -1,8 +1,7 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
-import { useSearchParams } from "react-router-dom";
 
-import { launchGame, launchXboxGame, launchCrossPlayJoin, startDownload } from "../../lib/launcher";
+import { launchGame, launchXboxGame, startDownload } from "../../lib/launcher";
 import { syncGamePlaytimeStats } from "../../lib/supabase/playtime";
 import { writeActivePerformanceGameContext } from "../../lib/performance-context";
 import { isInstallableGame, isPlayableGame, type GameGroup } from "../../lib/game-groups";
@@ -88,24 +87,7 @@ export function useProviderPicking({
   setStatusMessage,
 }: UseProviderPickingOptions): UseProviderPickingResult {
   const [providerPicker, setProviderPicker] = useState<ProviderPickerState>(null);
-  const [searchParams, setSearchParams] = useSearchParams();
   const { logGameStart } = useActivityLogger();
-
-  useEffect(() => {
-    const joinGame = searchParams.get("join");
-    const platform = searchParams.get("platform");
-    if (joinGame && platform) {
-      void launchCrossPlayJoin(platform, joinGame)
-        .then(() => {
-          setStatusMessage(`Joining game on ${platform}...`);
-          setSearchParams({}, { replace: true });
-        })
-        .catch((err: unknown) => {
-          setStatusMessage(err instanceof Error ? err.message : String(err));
-          setSearchParams({}, { replace: true });
-        });
-    }
-  }, [searchParams, setSearchParams, setStatusMessage]);
 
   const handlePlayVariant = async (game: Game) => {
     setStatusMessage(null);

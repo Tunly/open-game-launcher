@@ -37,14 +37,24 @@ vi.mock("../../../lib/launcher", () => ({
   fetchGogOwnedGames: (...args: unknown[]) => fetchGogOwnedGames(...args),
 }));
 
-function toOwnedGame(entries: Array<{ id: string; title: string; externalId?: string }>) {
+function toOwnedGame(
+  entries: Array<{
+    id: string;
+    title: string;
+    externalId?: string;
+    coverUrl?: string | null;
+    logoUrl?: string | null;
+    iconUrl?: string | null;
+  }>,
+) {
   return entries.map((e) => ({
     id: e.id,
     externalId: e.externalId ?? null,
     title: e.title,
     description: "",
-    coverUrl: null,
-    logoUrl: null,
+    coverUrl: e.coverUrl ?? null,
+    logoUrl: e.logoUrl ?? null,
+    iconUrl: e.iconUrl ?? null,
   }));
 }
 
@@ -117,6 +127,38 @@ describe("mergeGogOwned", () => {
 
     expect(result.games).toHaveLength(1);
     expect(result.games[0]).toBe(installed);
+  });
+
+  it("repairs installed GOG artwork from the matching owned game", async () => {
+    gogGetToken.mockResolvedValueOnce({ accessToken: "x" });
+    gogRefreshToken.mockResolvedValueOnce(null);
+    fetchGogOwnedGames.mockResolvedValueOnce(
+      toOwnedGame([
+        {
+          id: "gog-owned-1458127099",
+          externalId: "1458127099",
+          title: "Jotun: Valhalla Edition",
+          coverUrl: "https://images.gog.example/jotun-background.jpg",
+          logoUrl: "https://images.gog.example/jotun-logo.jpg",
+          iconUrl: "https://images.gog.example/jotun-icon.png",
+        },
+      ]),
+    );
+    const installed = makeGame({
+      id: "gog-Jotun: Valhalla Edition",
+      externalId: "1458127099",
+      title: "Jotun: Valhalla Edition",
+      coverUrl: "C:\\ProgramData\\GOG.com\\Galaxy\\webcache\\old\\jotun-background.webp",
+    });
+
+    const result = await mergeGogOwned([installed], makeContext());
+
+    expect(result.games).toHaveLength(1);
+    expect(result.games[0]).toMatchObject({
+      coverUrl: "https://images.gog.example/jotun-background.jpg",
+      logoUrl: "https://images.gog.example/jotun-logo.jpg",
+      iconUrl: "https://images.gog.example/jotun-icon.png",
+    });
   });
 
   it("does not persist refreshed tokens to localStorage", async () => {

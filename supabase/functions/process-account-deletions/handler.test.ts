@@ -138,40 +138,49 @@ Deno.test("account deletion processor handler records non-destructive dry-run ev
   ]);
 });
 
-Deno.test("account deletion processor handler treats malformed JSON as default live body", async () => {
-  const evidenceRows: AccountDeletionProcessorRunEvidenceRecord[] = [];
+Deno.test("account deletion processor handler rejects malformed JSON before processing", async () => {
+  let listCalls = 0;
   const response = await handleProcessAccountDeletions(
     processorRequest("{", { rawBody: true }),
     stubDeps({
-      recordProcessorRunEvidence: async (evidence) => {
-        evidenceRows.push(evidence);
-        return evidence;
+      listDueDeletionRequests: async () => {
+        listCalls += 1;
+        return [];
       },
     }),
   );
 
-  assertEquals(response.status, 200);
+  assertEquals(response.status, 400);
   assertEquals(await response.json(), {
-    dryRun: false,
-    evidenceRecorded: true,
-    failedCount: 0,
-    limit: 20,
-    processed: [],
-    processedCount: 0,
-    runId,
-    storageBuckets: ACCOUNT_DELETION_USER_STORAGE_BUCKETS,
-    triggerSource: "manual",
+    error: "Malformed JSON request body.",
   });
-  assertEquals(evidenceRows[0].dry_run, false);
-  assertEquals(evidenceRows[0].limit_count, 20);
-  assertEquals(evidenceRows[0].status, "completed");
-  assertEquals(evidenceRows[0].trigger_source, "manual");
+  assertEquals(listCalls, 0);
+});
+
+Deno.test("account deletion processor handler requires live execution acknowledgement", async () => {
+  let listCalls = 0;
+  const response = await handleProcessAccountDeletions(
+    processorRequest({ dry_run: false, limit: 1 }),
+    stubDeps({
+      listDueDeletionRequests: async () => {
+        listCalls += 1;
+        return [];
+      },
+    }),
+  );
+
+  assertEquals(response.status, 400);
+  assertEquals(await response.json(), {
+    error:
+      "Live account deletion processing requires execute: true acknowledgement.",
+  });
+  assertEquals(listCalls, 0);
 });
 
 Deno.test("account deletion processor handler records skipped claims", async () => {
   const evidenceRows: AccountDeletionProcessorRunEvidenceRecord[] = [];
   const response = await handleProcessAccountDeletions(
-    processorRequest({ dry_run: false, limit: 1 }),
+    processorRequest({ dry_run: false, execute: true, limit: 1 }),
     stubDeps({
       claimDeletionRequest: async () => null,
       listDueDeletionRequests: async () => [dueRequest()],
@@ -212,7 +221,7 @@ Deno.test("account deletion processor handler records skipped claims", async () 
 Deno.test("account deletion processor handler completes claimed deletions", async () => {
   const operations: string[] = [];
   const response = await handleProcessAccountDeletions(
-    processorRequest({ dry_run: false, limit: 1 }),
+    processorRequest({ dry_run: false, execute: true, limit: 1 }),
     stubDeps({
       deleteKnownUserStorage: async (userId) => {
         operations.push(`storage:${userId}`);
@@ -256,7 +265,7 @@ Deno.test("account deletion processor handler records deletion failures", async 
   const failedAuditCalls: Array<{ message: string; requestId: string }> = [];
   const evidenceRows: AccountDeletionProcessorRunEvidenceRecord[] = [];
   const response = await handleProcessAccountDeletions(
-    processorRequest({ dry_run: false, limit: 1 }),
+    processorRequest({ dry_run: false, execute: true, limit: 1 }),
     stubDeps({
       deleteUser: () => {
         throw new Error("Auth delete failed");
@@ -306,7 +315,7 @@ Deno.test("account deletion processor handler records deletion failures", async 
 
 Deno.test("account deletion processor handler reports audit failure after deletion failure", async () => {
   const response = await handleProcessAccountDeletions(
-    processorRequest({ dry_run: false, limit: 1 }),
+    processorRequest({ dry_run: false, execute: true, limit: 1 }),
     stubDeps({
       deleteUser: () => {
         throw new Error("Auth delete failed");

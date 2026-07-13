@@ -4,6 +4,7 @@ import { MemoryRouter } from "react-router-dom";
 
 import { AchievementsPage } from "./AchievementsPage";
 import type { Game, SyncGameAchievementsResponse } from "../lib/types";
+import type { OwnedGame } from "../lib/launcher";
 import { STORAGE_KEYS } from "../lib/storage-keys";
 
 const launcherMocks = vi.hoisted(() => ({
@@ -11,6 +12,18 @@ const launcherMocks = vi.hoisted(() => ({
   openAchievementCacheFolder: vi.fn(),
   syncGameAchievements: vi.fn(),
   updateAchievementProviderStatus: vi.fn(),
+  eaFetchOwnedGames: vi.fn(),
+  eaGetToken: vi.fn(),
+  fetchEpicOwnedGames: vi.fn(),
+  fetchGamePassCatalog: vi.fn(),
+  fetchGogOwnedGames: vi.fn(),
+  fetchSteamOwnedGames: vi.fn(),
+  fetchUbisoftOwnedGames: vi.fn(),
+  gogGetToken: vi.fn(),
+  gogRefreshToken: vi.fn(),
+  normalizeSteamOwnedGames: vi.fn(),
+  openSteamScraperWindow: vi.fn(),
+  processBattleNetGamesPayload: vi.fn(),
 }));
 
 const achievementMocks = vi.hoisted(() => ({
@@ -64,6 +77,25 @@ function syncResponse(
   };
 }
 
+function ownedAchievementGame(id: string, title: string): OwnedGame {
+  return {
+    id,
+    title,
+    description: "",
+    coverUrl: null,
+    logoUrl: null,
+    achievements: [
+      {
+        id: `${id}-unlock`,
+        name: `${title} Unlock`,
+        source: id.split("-", 1)[0],
+        unlockedAt: "2026-07-12T12:00:00Z",
+      },
+    ],
+    achievementsSyncedAt: new Date().toISOString(),
+  };
+}
+
 describe("AchievementsPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -76,6 +108,20 @@ describe("AchievementsPage", () => {
     launcherMocks.updateAchievementProviderStatus.mockImplementation(({ gameId, status }) =>
       Promise.resolve({ id: gameId, achievementProviderStatuses: [status] }),
     );
+    launcherMocks.eaFetchOwnedGames.mockResolvedValue([]);
+    launcherMocks.eaGetToken.mockResolvedValue(null);
+    launcherMocks.fetchEpicOwnedGames.mockResolvedValue([]);
+    launcherMocks.fetchGamePassCatalog.mockResolvedValue([]);
+    launcherMocks.fetchGogOwnedGames.mockResolvedValue([]);
+    launcherMocks.fetchSteamOwnedGames.mockResolvedValue([]);
+    launcherMocks.fetchUbisoftOwnedGames.mockResolvedValue([]);
+    launcherMocks.gogGetToken.mockResolvedValue(null);
+    launcherMocks.gogRefreshToken.mockResolvedValue(null);
+    launcherMocks.normalizeSteamOwnedGames.mockImplementation((games) =>
+      Array.isArray(games) ? games : [],
+    );
+    launcherMocks.openSteamScraperWindow.mockResolvedValue(undefined);
+    launcherMocks.processBattleNetGamesPayload.mockResolvedValue([]);
     achievementMocks.hydrateGamesWithRemoteAchievements.mockImplementation((games) =>
       Promise.resolve(games),
     );
@@ -135,6 +181,66 @@ describe("AchievementsPage", () => {
     const row = within(heading.closest("article")!);
     expect(row.getByText(/pc game pass catalog entry/i)).toBeInTheDocument();
     expect(launcherMocks.syncGameAchievements).not.toHaveBeenCalled();
+  });
+
+  it("loads account and cache inventory from every supported launcher", async () => {
+    const steam = ownedAchievementGame("steam-owned-10", "Steam Archive");
+    const gog = ownedAchievementGame("gog-owned-20", "GOG Archive");
+    const ea = ownedAchievementGame("ea-owned-30", "EA Archive");
+    const epic = ownedAchievementGame("epic-owned-offer:catalog:app", "Epic Archive");
+    const ubisoft = ownedAchievementGame("ubisoft-owned-50", "Ubisoft Archive");
+    const xbox = ownedAchievementGame("xbox-owned-60", "Xbox Archive");
+    const battlenet = ownedAchievementGame("battlenet-owned-wow", "Battle.net Archive");
+
+    localStorage.setItem(STORAGE_KEYS.STEAM_ID, JSON.stringify("steam-user"));
+    localStorage.setItem(STORAGE_KEYS.EPIC_SESSION_MARKER, "connected");
+    localStorage.setItem(STORAGE_KEYS.XBOX_GAMES_CACHE, JSON.stringify([xbox]));
+    localStorage.setItem(STORAGE_KEYS.BATTLENET_GAMES_CACHE, JSON.stringify([battlenet]));
+    launcherMocks.fetchSteamOwnedGames.mockResolvedValueOnce([steam]);
+    launcherMocks.gogGetToken.mockResolvedValueOnce({ accessToken: "gog" });
+    launcherMocks.fetchGogOwnedGames.mockResolvedValueOnce([gog]);
+    launcherMocks.eaGetToken.mockResolvedValueOnce({ accessToken: "ea" });
+    launcherMocks.eaFetchOwnedGames.mockResolvedValueOnce([ea]);
+    launcherMocks.fetchEpicOwnedGames.mockResolvedValueOnce([epic]);
+    launcherMocks.fetchUbisoftOwnedGames.mockResolvedValueOnce([ubisoft]);
+
+    renderAchievementsRoute("/achievements");
+
+    for (const game of [steam, gog, ea, epic, ubisoft, xbox, battlenet]) {
+      expect(await screen.findByRole("heading", { name: game.title })).toBeInTheDocument();
+      expect(screen.getByText(`${game.title} Unlock`)).toBeInTheDocument();
+    }
+  });
+
+  it("refreshes empty Steam achievements when the archive opens", async () => {
+    const steamGame: Game = {
+      achievements: [],
+      description: "",
+      externalId: "12345",
+      id: "steam-12345",
+      launcher: "steam",
+      platform: "windows",
+      status: "installed",
+      title: "Steam Refresh Game",
+      version: "1.0.0",
+    };
+    localStorage.setItem(STORAGE_KEYS.STEAM_ID, JSON.stringify("steam-user"));
+    launcherMocks.listInstalledGames.mockResolvedValueOnce([steamGame]);
+    launcherMocks.syncGameAchievements.mockResolvedValueOnce(
+      syncResponse(steamGame, [
+        {
+          id: "steam-refresh-unlock",
+          name: "Steam Refresh Unlock",
+          source: "steam",
+          unlockedAt: "2026-07-12T12:00:00Z",
+        },
+      ]),
+    );
+
+    renderAchievementsRoute("/achievements");
+
+    expect(await screen.findByText("Steam Refresh Unlock")).toBeInTheDocument();
+    expect(launcherMocks.syncGameAchievements).toHaveBeenCalledWith(steamGame, "steam-user");
   });
 
   it("renders local achievement rows without waiting for cloud hydration", async () => {

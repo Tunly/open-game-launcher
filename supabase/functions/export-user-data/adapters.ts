@@ -3,6 +3,10 @@ import type {
   ExportUserDataHandlerDeps,
   JsonObject,
 } from "./handler.ts";
+import { exportOrderColumns } from "./contract.ts";
+
+const DATA_API_PAGE_SIZE = 1000;
+const MAX_EXPORT_PAGES = 100_000;
 
 type SupabaseQueryResult = {
   data: JsonObject[] | null;
@@ -10,9 +14,14 @@ type SupabaseQueryResult = {
 };
 
 type SupabaseTableClient = {
-  eq: (column: string, value: string) => Promise<SupabaseQueryResult>;
-  in: (column: string, values: string[]) => Promise<SupabaseQueryResult>;
-  or: (filter: string) => Promise<SupabaseQueryResult>;
+  eq: (column: string, value: string) => SupabaseTableClient;
+  in: (column: string, values: string[]) => SupabaseTableClient;
+  or: (filter: string) => SupabaseTableClient;
+  order: (
+    column: string,
+    options: { ascending: boolean },
+  ) => SupabaseTableClient;
+  range: (from: number, to: number) => Promise<SupabaseQueryResult>;
   select: (columns: string) => SupabaseTableClient;
 };
 
@@ -60,20 +69,23 @@ async function authenticateRequest(
   return { user: authResult.user as ExportUser };
 }
 
-async function readRows(
+function readRows(
   adminClient: ExportReadClient,
   table: string,
   column: string,
   value: string,
   warnings: string[],
 ): Promise<JsonObject[]> {
-  const { data, error } = await tableClient(adminClient, table)
-    .select("*")
-    .eq(column, value);
-  return handleReadResult(table, data, error, warnings);
+  return readAllPages(
+    adminClient,
+    table,
+    [column],
+    warnings,
+    (query) => query.eq(column, value),
+  );
 }
 
-async function readRowsIn(
+function readRowsIn(
   adminClient: ExportReadClient,
   table: string,
   column: string,
@@ -81,42 +93,91 @@ async function readRowsIn(
   warnings: string[],
 ): Promise<JsonObject[]> {
   if (values.length === 0) {
-    return [];
+    return Promise.resolve([]);
   }
 
-  const { data, error } = await tableClient(adminClient, table)
-    .select("*")
-    .in(column, values);
-  return handleReadResult(table, data, error, warnings);
+  return readAllPages(
+    adminClient,
+    table,
+    [column],
+    warnings,
+    (query) => query.in(column, values),
+  );
 }
 
-async function readRowsWithOr(
+function readRowsWithOr(
   adminClient: ExportReadClient,
   table: string,
   filter: string,
   warnings: string[],
 ): Promise<JsonObject[]> {
-  const { data, error } = await tableClient(adminClient, table)
-    .select("*")
-    .or(filter);
-  return handleReadResult(table, data, error, warnings);
+  return readAllPages(
+    adminClient,
+    table,
+    [],
+    warnings,
+    (query) => query.or(filter),
+  );
 }
 
-function handleReadResult(
+async function readAllPages(
+  adminClient: ExportReadClient,
   table: string,
-  data: JsonObject[] | null,
-  error: (Error & { code?: string }) | null,
+  filterColumns: readonly string[],
   warnings: string[],
-): JsonObject[] {
-  if (error) {
-    if (isMissingRelationError(error)) {
-      warnings.push(`Skipped missing table ${table}.`);
-      return [];
+  applyFilter: (query: SupabaseTableClient) => SupabaseTableClient,
+): Promise<JsonObject[]> {
+  const rows: JsonObject[] = [];
+  const orderColumns = exportOrderColumns(table, filterColumns);
+  const seenFullPages = new Set<string>();
+
+  for (let page = 0; page < MAX_EXPORT_PAGES; page += 1) {
+    const from = page * DATA_API_PAGE_SIZE;
+    let query = applyFilter(tableClient(adminClient, table).select("*"));
+    for (const column of orderColumns) {
+      query = query.order(column, { ascending: true });
     }
-    throw error;
+
+    const { data, error } = await query.range(
+      from,
+      from + DATA_API_PAGE_SIZE - 1,
+    );
+    if (error) {
+      if (isMissingRelationError(error)) {
+        warnings.push(`Skipped missing table ${table}.`);
+        return [];
+      }
+      throw error;
+    }
+
+    const pageRows = data ?? [];
+    if (pageRows.length > DATA_API_PAGE_SIZE) {
+      throw new Error(
+        `Pagination for table ${table} returned more than ${DATA_API_PAGE_SIZE} rows in one page.`,
+      );
+    }
+
+    if (pageRows.length === DATA_API_PAGE_SIZE) {
+      const signature = pageBoundarySignature(pageRows);
+      if (seenFullPages.has(signature)) {
+        throw new Error(`Pagination for table ${table} did not advance.`);
+      }
+      seenFullPages.add(signature);
+    }
+
+    rows.push(...pageRows);
+    if (pageRows.length < DATA_API_PAGE_SIZE) {
+      return rows;
+    }
   }
 
-  return data ?? [];
+  throw new Error(
+    `Pagination for table ${table} exceeded ${MAX_EXPORT_PAGES} pages.`,
+  );
+}
+
+function pageBoundarySignature(rows: JsonObject[]) {
+  return JSON.stringify([rows[0], rows[rows.length - 1]]);
 }
 
 function isMissingRelationError(error: Error & { code?: string }) {

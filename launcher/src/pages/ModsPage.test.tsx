@@ -122,6 +122,39 @@ describe("ModsPage provider API key staging readiness", () => {
     expect(supabaseModMocks.recordUserModInstall).toHaveBeenCalledTimes(1);
   });
 
+  it("resets the Nexus game slug when the target game changes", async () => {
+    launcherMocks.listInstalledGames.mockResolvedValue([
+      {
+        id: "game-1",
+        platform: "windows",
+        source: "steam",
+        status: "installed",
+        title: "Cyber Drift",
+      },
+      {
+        id: "game-2",
+        platform: "windows",
+        source: "steam",
+        status: "installed",
+        title: "Space Quest",
+      },
+    ]);
+
+    renderModsRoute("/mods");
+    await screen.findByText("Installed Mods");
+    fireEvent.click(screen.getByRole("button", { name: /browse/i }));
+
+    const gameSlug = screen.getByLabelText("Game Slug");
+    await waitFor(() => expect(gameSlug).toHaveValue("cyberdrift"));
+    fireEvent.change(gameSlug, { target: { value: "manual-override" } });
+    expect(gameSlug).toHaveValue("manual-override");
+
+    fireEvent.change(screen.getByLabelText("Target Game"), {
+      target: { value: "game-2" },
+    });
+    await waitFor(() => expect(gameSlug).toHaveValue("spacequest"));
+  });
+
   it("renders local readiness on the verify route without live provider calls", async () => {
     renderModsRoute("/mods?verify=provider-api-key-staging");
 

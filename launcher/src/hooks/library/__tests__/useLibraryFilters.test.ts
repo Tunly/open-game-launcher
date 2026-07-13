@@ -67,6 +67,29 @@ describe("useLibraryFilters", () => {
     expect(result.current.hasActiveFilters).toBe(true);
   });
 
+  it("clears retired persisted feature filters", () => {
+    window.localStorage.setItem(
+      STORAGE_KEYS.LIBRARY_FILTER_STATE,
+      JSON.stringify({ advancedFilters: { features: ["Steam Achievements"] } }),
+    );
+
+    const { result } = renderHook(() =>
+      useLibraryFilters({
+        installedGames: [],
+        customArtwork: {},
+        favorites: {},
+        hiddenGames: {},
+        customCategories: {},
+        manualCollections: {},
+        selectedManualCollectionName: null,
+        isDiscoveringGames: false,
+      }),
+    );
+
+    expect(result.current.advancedFilters.features).toEqual([]);
+    expect(result.current.hasActiveFilters).toBe(false);
+  });
+
   it("setSearchQuery updates the search query", () => {
     const { result } = renderHook(() =>
       useLibraryFilters({

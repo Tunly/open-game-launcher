@@ -72,3 +72,21 @@ export const exportAdditionalUserScopedReads = [
     table: "store_products",
   },
 ] as const;
+
+const exportPrimaryKeyOverrides: Record<string, readonly string[]> = {
+  chat_room_members: ["room_id", "user_id"],
+  community_artwork_votes: ["artwork_id", "user_id"],
+  profile_private: ["user_id"],
+  store_customers: ["user_id"],
+  user_hardware: ["user_id"],
+  user_presence: ["user_id"],
+  user_settings: ["user_id"],
+};
+
+export function exportOrderColumns(
+  table: string,
+  filterColumns: readonly string[] = [],
+): string[] {
+  const primaryKeyColumns = exportPrimaryKeyOverrides[table] ?? ["id"];
+  return Array.from(new Set([...filterColumns, ...primaryKeyColumns]));
+}

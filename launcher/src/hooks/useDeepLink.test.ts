@@ -4,12 +4,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getDeepLinkLogSummary, useDeepLink, type DeepLinkParams } from "./useDeepLink";
 
 const tauriMocks = vi.hoisted(() => ({
+  invoke: vi.fn(),
   isTauri: vi.fn(),
   listen: vi.fn(),
   unlisten: vi.fn(),
 }));
 
 vi.mock("@tauri-apps/api/core", () => ({
+  invoke: tauriMocks.invoke,
   isTauri: tauriMocks.isTauri,
 }));
 
@@ -20,6 +22,8 @@ vi.mock("@tauri-apps/api/event", () => ({
 beforeEach(() => {
   tauriMocks.isTauri.mockReset();
   tauriMocks.isTauri.mockReturnValue(false);
+  tauriMocks.invoke.mockReset();
+  tauriMocks.invoke.mockResolvedValue(null);
   tauriMocks.listen.mockReset();
   tauriMocks.unlisten.mockReset();
 });
@@ -115,5 +119,28 @@ describe("useDeepLink", () => {
     await waitFor(() => {
       expect(tauriMocks.unlisten).toHaveBeenCalledTimes(1);
     });
+  });
+
+  it("claims and forwards a cold-start deep link after the listener is ready", async () => {
+    tauriMocks.isTauri.mockReturnValue(true);
+    tauriMocks.listen.mockResolvedValue(tauriMocks.unlisten);
+    const pending: DeepLinkParams = {
+      action: "open",
+      params: { game: "neon-drift" },
+      rawUrl: "oglauncher://open?game=neon-drift",
+    };
+    tauriMocks.invoke.mockResolvedValue(pending);
+    vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const onLink = vi.fn();
+
+    const hook = renderHook(() => useDeepLink(onLink));
+
+    await waitFor(() => expect(onLink).toHaveBeenCalledWith(pending));
+    expect(tauriMocks.invoke).toHaveBeenCalledWith("take_pending_deep_link");
+    expect(tauriMocks.listen.mock.invocationCallOrder[0]).toBeLessThan(
+      tauriMocks.invoke.mock.invocationCallOrder[0],
+    );
+
+    hook.unmount();
   });
 });

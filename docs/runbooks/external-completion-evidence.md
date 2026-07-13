@@ -54,6 +54,14 @@ To focus one lane:
 OGL_EXTERNAL_EVIDENCE_GATES=hosted-supabase-cron pnpm external:evidence:preflight
 ```
 
+PowerShell equivalent:
+
+```powershell
+$env:OGL_EXTERNAL_EVIDENCE_GATES='hosted-supabase-cron'
+pnpm external:evidence:preflight
+Remove-Item Env:OGL_EXTERNAL_EVIDENCE_GATES
+```
+
 Use `pnpm external:evidence:status` when an operator or CI job needs a
 machine-readable missing-evidence packet without turning the run red. The JSON
 contains gate IDs, readiness booleans, missing environment names, redacted

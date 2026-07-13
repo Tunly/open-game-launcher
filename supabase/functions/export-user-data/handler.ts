@@ -117,11 +117,13 @@ export async function buildExportPayload(
     `requester_id.eq.${userId},addressee_id.eq.${userId}`,
     warnings,
   );
-  data.user_blocks = await deps.readRowsWithOr(
+  const userBlocks = await deps.readRows(
     "user_blocks",
-    `blocker_id.eq.${userId},blocked_id.eq.${userId}`,
+    "blocker_id",
+    userId,
     warnings,
   );
+  data.user_blocks = userBlocks.filter((row) => row.blocker_id === userId);
   data.profile_comments = await deps.readRowsWithOr(
     "profile_comments",
     `profile_user_id.eq.${userId},author_id.eq.${userId}`,

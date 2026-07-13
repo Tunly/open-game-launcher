@@ -37,7 +37,7 @@ type SupabaseTableClient = {
 type SupabaseStorageBucketClient = {
   list: (
     prefix: string,
-    options: { limit: number },
+    options: { limit: number; offset: number },
   ) => Promise<
     SupabaseQueryResult<Array<{ id?: string | null; name: string }>>
   >;
@@ -239,51 +239,68 @@ async function removeStoragePrefix(
   bucket: string,
   prefix: string,
 ): Promise<void> {
-  const paths = await listStoragePaths(supabaseAdmin, bucket, prefix);
-  if (paths.length === 0) return;
-
-  const { error } = await supabaseAdmin.storage.from(bucket).remove(paths);
-  if (error) {
-    throw new Error(
-      `Failed to remove ${bucket} storage objects: ${error.message}`,
-    );
-  }
+  const bucketClient = supabaseAdmin.storage.from(bucket);
+  await drainStoragePrefix(bucketClient, bucket, prefix);
 }
 
-async function listStoragePaths(
-  supabaseAdmin: SupabaseAdminClient,
+async function drainStoragePrefix(
+  bucketClient: SupabaseStorageBucketClient,
   bucket: string,
   prefix: string,
-): Promise<string[]> {
-  const pending = [prefix];
-  const paths: string[] = [];
-
-  while (pending.length > 0) {
-    const currentPrefix = pending.pop()!;
-    const { data, error } = await supabaseAdmin.storage
-      .from(bucket)
-      .list(currentPrefix, { limit: 1000 });
+): Promise<"empty" | "missing"> {
+  while (true) {
+    // Always drain the first page. Advancing an offset after removing objects
+    // would skip entries that shifted into an earlier page.
+    const { data, error } = await bucketClient.list(prefix, {
+      limit: 1000,
+      offset: 0,
+    });
 
     if (error) {
       if (isMissingStorageResource(error)) {
-        return [];
+        return "missing";
       }
       throw new Error(
-        `Failed to list ${bucket}/${currentPrefix}: ${error.message}`,
+        `Failed to list ${bucket}/${prefix}: ${error.message}`,
       );
     }
 
-    for (const entry of data ?? []) {
-      const path = `${currentPrefix}/${entry.name}`;
+    const entries = data ?? [];
+    if (entries.length === 0) {
+      return "empty";
+    }
+
+    const paths: string[] = [];
+    const childPrefixes = new Set<string>();
+    for (const entry of entries) {
+      const path = `${prefix}/${entry.name}`;
       if (entry.id) {
         paths.push(path);
       } else {
-        pending.push(path);
+        childPrefixes.add(path);
+      }
+    }
+
+    for (const childPrefix of childPrefixes) {
+      const status = await drainStoragePrefix(
+        bucketClient,
+        bucket,
+        childPrefix,
+      );
+      if (status === "missing") {
+        return status;
+      }
+    }
+
+    if (paths.length > 0) {
+      const { error: removeError } = await bucketClient.remove(paths);
+      if (removeError) {
+        throw new Error(
+          `Failed to remove ${bucket} storage objects: ${removeError.message}`,
+        );
       }
     }
   }
-
-  return paths;
 }
 
 function isMissingStorageResource(error: SupabaseQueryError) {

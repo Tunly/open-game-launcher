@@ -90,7 +90,9 @@ export function PerfHistoryPage() {
   const isOverlayE2EReadinessVerify = verifyMode === "overlay-e2e-readiness";
   const isOverlayFullscreenAntiCheatReadinessVerify =
     verifyMode === "overlay-fullscreen-anti-cheat-readiness";
-  const isLocalPreview = !isConfigured;
+  const isPerformanceTelemetryVerify =
+    import.meta.env.DEV && verifyMode === "performance-system-telemetry";
+  const isLocalPreview = !isConfigured || isPerformanceTelemetryVerify;
   const localPreview = useMemo(() => createLocalPerformancePreview(new Date()), []);
   const historySnapshots = isLocalPreview ? localPreview.snapshots : snapshots;
   const historySessions = isLocalPreview ? localPreview.sessions : sessions;
@@ -159,7 +161,7 @@ export function PerfHistoryPage() {
   useEffect(() => {
     let isMounted = true;
 
-    if (!isConfigured || !user) {
+    if (isLocalPreview || !user) {
       setSnapshots([]);
       setSessions([]);
       setIsLoading(false);
@@ -187,7 +189,7 @@ export function PerfHistoryPage() {
     return () => {
       isMounted = false;
     };
-  }, [isConfigured, range, user]);
+  }, [isLocalPreview, range, user]);
 
   function handleReload() {
     setRange((current) => current);
@@ -262,7 +264,7 @@ export function PerfHistoryPage() {
               Perf History
             </h1>
             <p className="neo-copy mt-3 text-xs font-bold text-[#55504a] uppercase">
-              Overlay samples // fps trace // hardware readout
+              System telemetry // HUD webview trace // active-game context
             </p>
           </div>
 
@@ -291,7 +293,7 @@ export function PerfHistoryPage() {
                   value={selectedGameId}
                   onChange={(event) => handleGameFilterChange(event.target.value)}
                 >
-                  <option value="all">Alle Games</option>
+                  <option value="all">Alle Kontexte</option>
                   {gameOptions.map((gameId) => (
                     <option key={gameId} value={gameId}>
                       {formatPerformanceGameLabel(gameId)}
@@ -357,7 +359,9 @@ export function PerfHistoryPage() {
           {isOverlayE2EReadinessVerify ? (
             <OverlayE2EReadinessPanel readiness={createVerifyOverlayE2EReadiness()} />
           ) : null}
-          {isLocalPreview ? <LocalPerformancePreviewNotice /> : null}
+          {isLocalPreview ? (
+            <LocalPerformancePreviewNotice isVerification={isPerformanceTelemetryVerify} />
+          ) : null}
           {!hasSelectedGameHistory ? (
             <MissingSelectedGameHistoryNotice
               isActivityCrossFilter={isActivityCrossFilter}
@@ -373,9 +377,11 @@ export function PerfHistoryPage() {
                 <div className="flex items-center justify-between border-b-4 border-black bg-[#171411] p-5 text-white">
                   <div>
                     <p className="neo-copy text-[10px] font-bold text-[#8cf5e4] uppercase">
-                      Frame Tape
+                      System Tape
                     </p>
-                    <h2 className="neo-title mt-1 text-3xl leading-none">FPS / CPU Trace</h2>
+                    <h2 className="neo-title mt-1 text-3xl leading-none">
+                      Legacy HUD FPS / System CPU
+                    </h2>
                   </div>
                   <BarChart3 className="h-10 w-10 text-[#8cf5e4]" />
                 </div>
@@ -386,9 +392,16 @@ export function PerfHistoryPage() {
                       <div className="grid gap-3 sm:grid-cols-4">
                         <Readout label="Samples" value={filteredSnapshots.length.toString()} />
                         <Readout label="Buckets" value={buckets.length.toString()} />
-                        <Readout label="Avg FPS" value={formatNumber(stats.avgFps, 0)} />
-                        <Readout label="Avg CPU" value={`${formatNumber(stats.avgCpu, 0)}%`} />
+                        <Readout label="Legacy HUD FPS Avg" value={formatNumber(stats.avgFps, 0)} />
+                        <Readout
+                          label="System CPU Avg"
+                          value={`${formatNumber(stats.avgCpu, 0)}%`}
+                        />
                       </div>
+                      <p className="neo-copy mt-3 border-2 border-black bg-[#f6edd8] p-3 text-[9px] font-black text-[#b7102a] uppercase">
+                        FPS and frame values are legacy launcher HUD-webview samples. They are not
+                        game-process FPS and must not be read as a game benchmark.
+                      </p>
                     </div>
                   ) : (
                     <EmptyHistory />
@@ -403,7 +416,7 @@ export function PerfHistoryPage() {
                       Run Buckets
                     </p>
                     <h2 className="text-3xl font-black text-[#171411] uppercase">
-                      Spielzeit / Detail
+                      Monitorzeit / Detail
                     </h2>
                   </div>
                   <TimerReset className="h-9 w-9 text-[#087d6d]" />
@@ -415,25 +428,33 @@ export function PerfHistoryPage() {
                       <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1">
                         <Readout label="Modus" value={formatBucketMode(activeBucketMode)} />
                         <Readout
-                          label="Spielzeit"
+                          label="Monitorzeit"
                           value={formatDurationLong(bucketStats.durationSeconds)}
                         />
-                        <Readout label="Peak FPS" value={formatNumber(bucketStats.peakFps, 0)} />
+                        <Readout
+                          label="Legacy HUD FPS Peak"
+                          value={formatNumber(bucketStats.peakFps, 0)}
+                        />
                       </div>
                       <div className="overflow-x-auto lg:col-span-2">
                         <table className="w-full min-w-[760px] border-2 border-black bg-[#fff9ed] text-left">
                           <thead className="border-b-2 border-black bg-[#171411] text-white">
                             <tr>
-                              {["Bucket", "Samples", "Runs", "Playtime", "Avg FPS", "Avg CPU"].map(
-                                (heading) => (
-                                  <th
-                                    key={heading}
-                                    className="neo-copy px-3 py-2 text-[10px] font-black uppercase"
-                                  >
-                                    {heading}
-                                  </th>
-                                ),
-                              )}
+                              {[
+                                "Bucket",
+                                "Samples",
+                                "Monitor Runs",
+                                "Monitor Time",
+                                "Legacy HUD FPS Avg",
+                                "System CPU Avg",
+                              ].map((heading) => (
+                                <th
+                                  key={heading}
+                                  className="neo-copy px-3 py-2 text-[10px] font-black uppercase"
+                                >
+                                  {heading}
+                                </th>
+                              ))}
                             </tr>
                           </thead>
                           <tbody>
@@ -489,7 +510,15 @@ export function PerfHistoryPage() {
                   <table className="w-full min-w-[760px] border-2 border-black bg-[#fff9ed] text-left">
                     <thead className="border-b-2 border-black bg-[#171411] text-white">
                       <tr>
-                        {["Zeit", "Game", "FPS", "Frame", "CPU", "GPU", "RAM"].map((heading) => (
+                        {[
+                          "Zeit",
+                          "Capture Context",
+                          "Legacy HUD FPS",
+                          "HUD Frame",
+                          "System CPU",
+                          "System GPU",
+                          "System RAM",
+                        ].map((heading) => (
                           <th
                             key={heading}
                             className="neo-copy px-3 py-2 text-[10px] font-black uppercase"
@@ -543,7 +572,7 @@ export function PerfHistoryPage() {
             <aside className="space-y-4">
               <ReadoutPanel
                 icon={<Activity className="h-7 w-7 text-[#c20b2f]" />}
-                label="Last FPS"
+                label="Last Legacy HUD FPS"
                 value={formatNumber(stats.lastFps, 0)}
               />
               <ReadoutPanel
@@ -553,14 +582,14 @@ export function PerfHistoryPage() {
               />
               <ReadoutPanel
                 icon={<Gauge className="h-7 w-7 text-[#c20b2f]" />}
-                label="Avg Frame"
+                label="Avg HUD Frame"
                 value={`${formatNumber(bucketStats.avgFrameTimeMs, 1)} ms`}
               />
               <div className="border-4 border-black bg-[#f5eedf] p-5 shadow-[5px_5px_0_#171411]">
                 <div className="flex items-center justify-between gap-4">
                   <div>
                     <p className="neo-copy text-[10px] font-bold text-[#55504a] uppercase">
-                      Source Attribution
+                      Capture Context
                     </p>
                     <h2 className="mt-2 text-2xl font-black text-[#171411] uppercase">
                       {attributionStats.statusLabel}
@@ -571,7 +600,7 @@ export function PerfHistoryPage() {
                 <div className="mt-4 grid grid-cols-2 gap-3 border-y-2 border-black py-3">
                   <div>
                     <p className="neo-copy text-[9px] font-bold text-[#55504a] uppercase">
-                      Active Games
+                      Active-game Contexts
                     </p>
                     <p className="mt-1 text-xl font-black text-[#087d6d] uppercase">
                       {attributionStats.activeGameCount}
@@ -597,7 +626,7 @@ export function PerfHistoryPage() {
               </div>
               <div className="border-4 border-black bg-[#f5eedf] p-5 shadow-[5px_5px_0_#171411]">
                 <p className="neo-copy text-[10px] font-bold text-[#55504a] uppercase">
-                  Session Aggregates
+                  System Session Aggregates
                 </p>
                 <h2 className="mt-2 text-3xl font-black text-[#171411] uppercase">
                   {sessionStats.count} Runs
@@ -605,7 +634,7 @@ export function PerfHistoryPage() {
                 <div className="mt-4 grid grid-cols-2 gap-3 border-y-2 border-black py-3">
                   <div>
                     <p className="neo-copy text-[9px] font-bold text-[#55504a] uppercase">
-                      Avg FPS
+                      Legacy HUD FPS Avg
                     </p>
                     <p className="mt-1 text-xl font-black text-[#b7102a] uppercase">
                       {formatNumber(sessionStats.avgFps, 0)}
@@ -613,7 +642,7 @@ export function PerfHistoryPage() {
                   </div>
                   <div>
                     <p className="neo-copy text-[9px] font-bold text-[#55504a] uppercase">
-                      Peak RAM
+                      System RAM Peak
                     </p>
                     <p className="mt-1 text-xl font-black text-[#087d6d] uppercase">
                       {formatNumber(sessionStats.peakRamMb, 0)} MB
@@ -636,8 +665,8 @@ export function PerfHistoryPage() {
                       </div>
                       <p className="neo-copy mt-1 text-[9px] font-bold text-[#55504a] uppercase">
                         {session.sampleCount} samples // avg{" "}
-                        {formatNumber(session.avgCpuPercent, 0)}% cpu //{" "}
-                        {formatNumber(session.avgFps, 0)} fps
+                        {formatNumber(session.avgCpuPercent, 0)}% system cpu //{" "}
+                        {formatNumber(session.avgFps, 0)} legacy hud fps
                       </p>
                       {isStandalonePerformanceGameId(session.gameId) && (
                         <p className="neo-copy mt-1 text-[8px] font-black text-[#b7102a] uppercase">
@@ -697,10 +726,10 @@ function HistoryChart({ buckets }: { buckets: PerformanceBucket[] }) {
   return (
     <div className="border-2 border-black bg-[#fff9ed] p-4 shadow-[3px_3px_0_#171411]">
       <div className="mb-3 flex flex-wrap items-center gap-3">
-        <Legend color="#b7102a" label="FPS" />
-        <Legend color="#087d6d" label="CPU %" />
-        <Legend color="#8cf5e4" label="GPU %" />
-        <Legend color="#171411" label="Frame MS" />
+        <Legend color="#b7102a" label="Legacy HUD FPS" />
+        <Legend color="#087d6d" label="System CPU %" />
+        <Legend color="#8cf5e4" label="System GPU %" />
+        <Legend color="#171411" label="HUD Frame MS" />
       </div>
       <svg
         className="h-64 w-full border-2 border-black bg-[#efe6d4]"
@@ -909,7 +938,7 @@ function ReadoutPanel({
   );
 }
 
-function LocalPerformancePreviewNotice() {
+function LocalPerformancePreviewNotice({ isVerification = false }: { isVerification?: boolean }) {
   return (
     <div className="flex flex-wrap items-start gap-4 border-4 border-black bg-[#fff9ed] p-4 shadow-[5px_5px_0_#171411]">
       <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center border-2 border-black bg-[#c20b2f] text-white shadow-[2px_2px_0_#171411]">
@@ -923,8 +952,9 @@ function LocalPerformancePreviewNotice() {
           Local Performance Preview
         </h2>
         <p className="neo-copy mt-2 text-[10px] leading-relaxed font-bold text-[#55504a] uppercase">
-          Supabase is not configured, so this route renders local performance samples instead of
-          opening an empty settings dead end.
+          {isVerification
+            ? "Development-only verification data proves the System/HUD labels without Supabase reads, writes, or a game benchmark claim."
+            : "Supabase is not configured, so this route renders local performance samples instead of opening an empty settings dead end."}
         </p>
       </div>
     </div>
@@ -987,8 +1017,8 @@ function EmptyHistory() {
     <div className="border-2 border-black bg-[#efe6d4] p-6 text-center shadow-[3px_3px_0_#171411]">
       <p className="text-3xl font-black text-[#171411] uppercase">No Samples Yet</p>
       <p className="neo-copy mx-auto mt-3 max-w-[520px] text-[10px] leading-relaxed font-bold text-[#55504a] uppercase">
-        Open the performance overlay while signed in. New samples will appear here after the next
-        write interval.
+        Open the performance overlay while signed in. New system-telemetry samples will appear here
+        after the next write interval.
       </p>
     </div>
   );

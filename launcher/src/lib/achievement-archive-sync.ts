@@ -4,7 +4,15 @@ import { achievementProviderSyncGameKey } from "./achievement-sync-coordinator";
 import { getGameSource } from "./formatters";
 import type { Game } from "./types";
 
-const ARCHIVE_AUTO_SYNC_PROVIDERS = new Set(["xbox", "gog", "epic", "ea", "ubisoft", "battlenet"]);
+const ARCHIVE_AUTO_SYNC_PROVIDERS = new Set([
+  "steam",
+  "xbox",
+  "gog",
+  "epic",
+  "ea",
+  "ubisoft",
+  "battlenet",
+]);
 const ARCHIVE_AUTO_SYNC_CONCURRENCY = 3;
 const ARCHIVE_SYNC_FRESHNESS_MS = 5 * 60 * 1000;
 const ARCHIVE_SYNC_RETRY_DELAY_MS = 10 * 1000;

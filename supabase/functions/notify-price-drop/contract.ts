@@ -179,16 +179,16 @@ function assertPriceDropNotificationRunEvidence(
     throw new Error("Invalid price-drop run evidence.");
   }
 
-  if (
-    sumSkippedSummary(evidence.skipped_summary) !==
-      evidence.scanned_count - evidence.candidate_count
-  ) {
+  const expectedSkippedCount = evidence.dry_run
+    ? evidence.scanned_count - evidence.candidate_count
+    : evidence.scanned_count - evidence.notifications_recorded_count;
+  if (sumSkippedSummary(evidence.skipped_summary) !== expectedSkippedCount) {
     throw new Error("Invalid price-drop run evidence.");
   }
 
   if (
-    evidence.notifications_recorded_count !== evidence.candidate_count ||
-    evidence.alerts_marked_count !== evidence.candidate_count
+    evidence.alerts_marked_count !== evidence.notifications_recorded_count ||
+    evidence.notifications_recorded_count > evidence.candidate_count
   ) {
     throw new Error("Invalid price-drop run evidence.");
   }

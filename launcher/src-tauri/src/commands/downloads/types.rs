@@ -238,6 +238,13 @@ impl DownloadStatusKind {
         matches!(self, Self::Downloading | Self::Paused)
     }
 
+    pub(crate) fn is_cancellable(self) -> bool {
+        matches!(
+            self,
+            Self::Queued | Self::Starting | Self::Downloading | Self::Paused
+        )
+    }
+
     pub(crate) fn is_steam_control_pending(self) -> bool {
         matches!(self, Self::Pausing | Self::Resuming)
     }
@@ -261,6 +268,10 @@ pub(crate) fn is_pause_toggle_status(status: &str) -> bool {
     DownloadStatusKind::parse(status).is_some_and(DownloadStatusKind::is_pause_toggle)
 }
 
+pub(crate) fn is_cancellable_download_status(status: &str) -> bool {
+    DownloadStatusKind::parse(status).is_some_and(DownloadStatusKind::is_cancellable)
+}
+
 pub(crate) fn is_steam_control_pending_status(status: &str) -> bool {
     DownloadStatusKind::parse(status).is_some_and(DownloadStatusKind::is_steam_control_pending)
 }
@@ -268,6 +279,163 @@ pub(crate) fn is_steam_control_pending_status(status: &str) -> bool {
 pub(crate) fn get_download_manager() -> &'static DownloadMap {
     static MANAGER: OnceLock<DownloadMap> = OnceLock::new();
     MANAGER.get_or_init(|| Arc::new(Mutex::new(HashMap::new())))
+}
+
+pub(crate) fn remove_active_download_if_current(
+    game_id: &str,
+    worker_cancel_rx: &watch::Receiver<bool>,
+) -> bool {
+    remove_active_download_if_current_in_map(get_download_manager(), game_id, worker_cancel_rx)
+}
+
+fn remove_active_download_if_current_in_map(
+    map: &DownloadMap,
+    game_id: &str,
+    worker_cancel_rx: &watch::Receiver<bool>,
+) -> bool {
+    let Ok(mut guard) = map.lock() else {
+        return false;
+    };
+    let is_current = guard.get(game_id).is_some_and(|download| {
+        download
+            .cancel_tx
+            .subscribe()
+            .same_channel(worker_cancel_rx)
+    });
+    if is_current {
+        guard.remove(game_id);
+    }
+    is_current
+}
+
+pub(crate) fn toggle_download_pause(
+    game_id: &str,
+) -> Result<Option<Box<DownloadItemPayload>>, String> {
+    toggle_download_pause_in_map(get_download_manager(), game_id)
+}
+
+fn toggle_download_pause_in_map(
+    map: &DownloadMap,
+    game_id: &str,
+) -> Result<Option<Box<DownloadItemPayload>>, String> {
+    let mut guard = map
+        .lock()
+        .map_err(|error| format!("Download manager lock poisoned: {error}"))?;
+    let Some(download) = guard.get_mut(game_id) else {
+        return Ok(None);
+    };
+
+    match download.status.as_str() {
+        DOWNLOAD_STATUS_DOWNLOADING => {
+            download.paused = true;
+            download.status = DOWNLOAD_STATUS_PAUSED.to_string();
+            download.speed = "Paused".to_string();
+            download.phase = "paused".to_string();
+            download.raw_status = DOWNLOAD_STATUS_PAUSED.to_string();
+            let _ = download.pause_tx.send(true);
+        }
+        DOWNLOAD_STATUS_PAUSED => {
+            download.paused = false;
+            download.status = DOWNLOAD_STATUS_DOWNLOADING.to_string();
+            download.speed = "Connecting...".to_string();
+            download.phase = "download".to_string();
+            download.raw_status = DOWNLOAD_STATUS_DOWNLOADING.to_string();
+            let _ = download.pause_tx.send(false);
+        }
+        _ => return Ok(None),
+    }
+
+    Ok(Some(Box::new(payload_from_active_download(
+        game_id, download,
+    ))))
+}
+
+#[derive(Debug)]
+pub(crate) enum DownloadCancellationTransition {
+    Cancelled(Box<DownloadItemPayload>),
+    Missing,
+    Rejected { status: String },
+}
+
+pub(crate) fn request_download_cancellation(
+    game_id: &str,
+) -> Result<DownloadCancellationTransition, String> {
+    request_download_cancellation_in_map(get_download_manager(), game_id)
+}
+
+fn request_download_cancellation_in_map(
+    map: &DownloadMap,
+    game_id: &str,
+) -> Result<DownloadCancellationTransition, String> {
+    let mut guard = map
+        .lock()
+        .map_err(|error| format!("Download manager lock poisoned: {error}"))?;
+    let Some(download) = guard.get_mut(game_id) else {
+        return Ok(DownloadCancellationTransition::Missing);
+    };
+
+    if !download.can_cancel || !is_cancellable_download_status(&download.status) {
+        return Ok(DownloadCancellationTransition::Rejected {
+            status: download.status.clone(),
+        });
+    }
+
+    download.cancelled = true;
+    download.status = DOWNLOAD_STATUS_CANCELLED.to_string();
+    download.speed = "Cancelled".to_string();
+    download.eta = 0;
+    download.phase = DOWNLOAD_STATUS_CANCELLED.to_string();
+    download.can_pause = false;
+    download.can_cancel = false;
+    download.raw_status = DOWNLOAD_STATUS_CANCELLED.to_string();
+    download.error = None;
+    let _ = download.cancel_tx.send(true);
+    let payload = payload_from_active_download(game_id, download);
+    guard.remove(game_id);
+
+    Ok(DownloadCancellationTransition::Cancelled(Box::new(payload)))
+}
+
+pub(crate) fn begin_download_commit(game_id: &str) -> Result<Option<DownloadItemPayload>, String> {
+    begin_download_commit_in_map(get_download_manager(), game_id)
+}
+
+fn begin_download_commit_in_map(
+    map: &DownloadMap,
+    game_id: &str,
+) -> Result<Option<DownloadItemPayload>, String> {
+    let mut guard = map
+        .lock()
+        .map_err(|error| format!("Download manager lock poisoned: {error}"))?;
+    let Some(download) = guard.get_mut(game_id) else {
+        return Ok(None);
+    };
+
+    if download.cancelled
+        || *download.cancel_tx.borrow()
+        || download.status == DOWNLOAD_STATUS_CANCELLED
+    {
+        return Ok(None);
+    }
+    if !download.can_cancel || !is_cancellable_download_status(&download.status) {
+        return Err(format!(
+            "Download commit cannot begin while its status is '{}'.",
+            download.status
+        ));
+    }
+
+    download.status = DOWNLOAD_STATUS_INSTALLING.to_string();
+    download.speed = "Installing".to_string();
+    download.progress = 99;
+    download.eta = 0;
+    download.phase = DOWNLOAD_STATUS_INSTALLING.to_string();
+    download.can_pause = false;
+    download.can_cancel = false;
+    download.paused = false;
+    download.raw_status = DOWNLOAD_STATUS_INSTALLING.to_string();
+    download.error = None;
+
+    Ok(Some(payload_from_active_download(game_id, download)))
 }
 
 pub(crate) fn update_download_status(
@@ -287,6 +455,10 @@ pub(crate) fn update_download_status(
         dl.progress = normalize_progress(progress, status);
         dl.eta = eta;
         dl.phase = phase_from_status_and_speed(status, speed);
+        if status == DOWNLOAD_STATUS_INSTALLING || is_terminal_download_status(status) {
+            dl.can_pause = false;
+            dl.can_cancel = false;
+        }
     }
 }
 
@@ -441,14 +613,24 @@ pub(crate) fn emit_download_progress(
     payload.status = status.to_string();
     payload.eta = eta;
     payload.phase = phase_from_status_and_speed(status, speed);
-    payload = normalize_queue_payload(payload);
-    if is_stale_installed_download(&payload) {
-        remove_download_history_item(game_id);
-        emit_download_removed(app, game_id);
-        return;
+    if let Err(error) = emit_download_payload(app, payload) {
+        eprintln!("[open-game-launcher] Could not persist download progress: {error}");
     }
-    remember_download_item(payload.clone());
+}
+
+pub(crate) fn emit_download_payload(
+    app: &tauri::AppHandle,
+    payload: DownloadItemPayload,
+) -> Result<(), String> {
+    let payload = normalize_queue_payload(payload);
+    if is_stale_installed_download(&payload) {
+        remove_download_history_item(&payload.game_id)?;
+        emit_download_removed(app, &payload.game_id);
+        return Ok(());
+    }
+    remember_download_item(payload.clone())?;
     let _ = app.emit("download_progress", payload);
+    Ok(())
 }
 
 pub(crate) fn payload_from_active_download(
@@ -534,7 +716,10 @@ pub(crate) fn normalize_queue_payload(mut item: DownloadItemPayload) -> Download
         && is_pause_toggle_status(&item.status)
         && (!external || supports_external_pause)
         && !is_terminal;
-    item.can_cancel = item.can_cancel && !external && !is_terminal;
+    item.can_cancel = item.can_cancel
+        && is_cancellable_download_status(&item.status)
+        && !external
+        && !is_terminal;
 
     item
 }
@@ -571,6 +756,146 @@ fn contains_download_secret_marker(value: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn active_download_fixture() -> (ActiveDownload, watch::Receiver<bool>) {
+        let (pause_tx, _pause_rx) = watch::channel(false);
+        let (cancel_tx, cancel_rx) = watch::channel(false);
+        (
+            ActiveDownload {
+                title: "Race Test".to_string(),
+                progress: 98,
+                speed: "Downloading".to_string(),
+                status: DOWNLOAD_STATUS_DOWNLOADING.to_string(),
+                eta: 1,
+                phase: "download".to_string(),
+                bytes_downloaded: Some(98),
+                bytes_total: Some(100),
+                can_pause: true,
+                can_cancel: true,
+                external: false,
+                paused: false,
+                cancelled: false,
+                pause_tx,
+                cancel_tx,
+                raw_status: DOWNLOAD_STATUS_DOWNLOADING.to_string(),
+                error: None,
+            },
+            cancel_rx,
+        )
+    }
+
+    #[test]
+    fn cancellation_immediately_before_download_commit_prevents_installing_transition() {
+        let map: DownloadMap = Arc::new(Mutex::new(HashMap::new()));
+        let (download, cancel_rx) = active_download_fixture();
+        map.lock()
+            .unwrap()
+            .insert("race-before".to_string(), download);
+
+        let cancellation = request_download_cancellation_in_map(&map, "race-before").unwrap();
+        let DownloadCancellationTransition::Cancelled(payload) = cancellation else {
+            panic!("cancellation should win before the commit boundary");
+        };
+
+        assert_eq!(payload.status, DOWNLOAD_STATUS_CANCELLED);
+        assert!(!payload.can_cancel);
+        assert!(begin_download_commit_in_map(&map, "race-before")
+            .unwrap()
+            .is_none());
+        assert!(*cancel_rx.borrow());
+        assert!(!map.lock().unwrap().contains_key("race-before"));
+    }
+
+    #[test]
+    fn cancellation_immediately_after_download_commit_is_rejected() {
+        let map: DownloadMap = Arc::new(Mutex::new(HashMap::new()));
+        let (download, cancel_rx) = active_download_fixture();
+        map.lock()
+            .unwrap()
+            .insert("race-after".to_string(), download);
+
+        let committing = begin_download_commit_in_map(&map, "race-after")
+            .unwrap()
+            .expect("commit transition should start");
+        assert_eq!(committing.status, DOWNLOAD_STATUS_INSTALLING);
+        assert!(!committing.can_cancel);
+
+        let cancellation = request_download_cancellation_in_map(&map, "race-after").unwrap();
+        let DownloadCancellationTransition::Rejected { status } = cancellation else {
+            panic!("cancellation must be rejected after the commit boundary");
+        };
+        assert_eq!(status, DOWNLOAD_STATUS_INSTALLING);
+        assert!(!*cancel_rx.borrow());
+
+        let guard = map.lock().unwrap();
+        let download = guard.get("race-after").unwrap();
+        assert_eq!(download.status, DOWNLOAD_STATUS_INSTALLING);
+        assert!(!download.can_cancel);
+        assert!(!download.cancelled);
+    }
+
+    #[test]
+    fn worker_cleanup_never_removes_a_newer_download_for_the_same_game() {
+        let map: DownloadMap = Arc::new(Mutex::new(HashMap::new()));
+        let (old_download, old_cancel_rx) = active_download_fixture();
+        map.lock()
+            .unwrap()
+            .insert("same-game".to_string(), old_download);
+
+        let (new_download, new_cancel_rx) = active_download_fixture();
+        map.lock()
+            .unwrap()
+            .insert("same-game".to_string(), new_download);
+
+        assert!(!remove_active_download_if_current_in_map(
+            &map,
+            "same-game",
+            &old_cancel_rx,
+        ));
+        assert!(map.lock().unwrap().contains_key("same-game"));
+
+        assert!(remove_active_download_if_current_in_map(
+            &map,
+            "same-game",
+            &new_cancel_rx,
+        ));
+        assert!(!map.lock().unwrap().contains_key("same-game"));
+    }
+
+    #[test]
+    fn pause_toggle_returns_a_payload_after_releasing_the_manager_lock() {
+        let map: DownloadMap = Arc::new(Mutex::new(HashMap::new()));
+        let (mut download, _cancel_rx) = active_download_fixture();
+        let pause_rx = download.pause_tx.subscribe();
+        download.status = DOWNLOAD_STATUS_DOWNLOADING.to_string();
+        download.speed = "Downloading".to_string();
+        download.can_pause = true;
+        map.lock()
+            .unwrap()
+            .insert("pause-game".to_string(), download);
+
+        let paused = toggle_download_pause_in_map(&map, "pause-game")
+            .unwrap()
+            .expect("active download should pause");
+
+        assert_eq!(paused.status, DOWNLOAD_STATUS_PAUSED);
+        assert_eq!(paused.speed, "Paused");
+        assert!(*pause_rx.borrow());
+        assert!(
+            map.try_lock().is_ok(),
+            "pause transition leaked the manager lock"
+        );
+
+        let resumed = toggle_download_pause_in_map(&map, "pause-game")
+            .unwrap()
+            .expect("paused download should resume");
+        assert_eq!(resumed.status, DOWNLOAD_STATUS_DOWNLOADING);
+        assert!(!*pause_rx.borrow());
+        assert!(
+            map.try_lock().is_ok(),
+            "resume transition leaked the manager lock"
+        );
+    }
 
     #[test]
     fn normalize_queue_payload_allows_steam_external_pause_only() {

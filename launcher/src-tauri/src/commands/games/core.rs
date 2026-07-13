@@ -47,6 +47,8 @@ const ACHIEVEMENT_CLIENT_CACHE_MAX_DEPTH: usize = 4;
 const ACHIEVEMENT_CLIENT_CACHE_MAX_DISCOVERED_FILES: usize = 64;
 const ACHIEVEMENT_CLIENT_CACHE_MAX_FILE_BYTES: u64 = 2 * 1024 * 1024;
 const OG_MANAGED_MANIFEST_FORMAT_VERSION: u32 = 1;
+const MAX_EXTRACTED_GAME_BYTES: u64 = 128 * 1024 * 1024 * 1024;
+const MAX_GAME_ARCHIVE_ENTRIES: usize = 250_000;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -135,25 +137,26 @@ where
 
 #[tauri::command]
 pub async fn refresh_installed_games() -> Result<Vec<InstalledGame>, String> {
-    let mut games = BTreeMap::<String, InstalledGame>::new();
     let cached_games = read_installed_games_cache().unwrap_or_default();
-    let cached_activity = cached_games
+    let baseline_games = cached_games
         .iter()
         .map(|game| (game.id.clone(), game.clone()))
         .collect::<HashMap<_, _>>();
 
-    for mut game in cached_games.into_iter().filter(is_manual_game) {
+    let mut refreshed_manual_games = BTreeMap::<String, InstalledGame>::new();
+    for mut game in cached_games.into_iter().filter(is_refresh_preserved_game) {
         if game.genres.is_empty() {
             game = sync_game_metadata(game).await;
         }
-        games.insert(game.id.clone(), game);
+        refreshed_manual_games.insert(game.id.clone(), game);
     }
 
     let scanned = tokio::task::spawn_blocking(scan_installed_games)
         .await
         .map_err(|error| format!("Failed to scan installed games: {error}"))?;
+    let mut scanned_games = BTreeMap::<String, InstalledGame>::new();
     for mut game in scanned {
-        if let Some(cached_game) = cached_activity.get(&game.id) {
+        if let Some(cached_game) = baseline_games.get(&game.id) {
             merge_cached_game_activity(&mut game, cached_game);
         }
 
@@ -161,13 +164,19 @@ pub async fn refresh_installed_games() -> Result<Vec<InstalledGame>, String> {
             game = sync_game_metadata(game).await;
         }
 
-        games.insert(game.id.clone(), game);
+        scanned_games.insert(game.id.clone(), game);
     }
 
-    let games = games.into_values().collect::<Vec<_>>();
-    write_installed_games_cache(&games)?;
-
-    Ok(games)
+    mutate_installed_games_cache(move |latest_games| {
+        let merged = merge_refreshed_inventory(
+            std::mem::take(latest_games),
+            &baseline_games,
+            refreshed_manual_games,
+            scanned_games,
+        );
+        *latest_games = merged;
+        Ok(latest_games.clone())
+    })
 }
 
 #[tauri::command]
@@ -185,11 +194,33 @@ pub fn open_achievement_cache_folder(provider: Option<String>) -> Result<String,
     fs::create_dir_all(&folder)
         .map_err(|error| format!("Could not create achievement cache folder: {error}"))?;
 
-    let folder_text = path_to_string(folder);
-    open_uri(&folder_text)
+    let folder = folder
+        .canonicalize()
+        .map_err(|error| format!("Could not resolve achievement cache folder: {error}"))?;
+    open_local_directory(&folder)
         .map_err(|error| format!("Could not open achievement cache folder: {error}"))?;
+    let folder_text = path_to_string(folder);
 
     Ok(folder_text)
+}
+
+fn open_local_directory(path: &Path) -> Result<(), String> {
+    if !path.is_dir() {
+        return Err("Local folder does not exist.".to_string());
+    }
+
+    #[cfg(target_os = "windows")]
+    let mut command = Command::new("explorer.exe");
+    #[cfg(target_os = "macos")]
+    let mut command = Command::new("open");
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let mut command = Command::new("xdg-open");
+
+    command
+        .arg(path)
+        .spawn()
+        .map(|_| ())
+        .map_err(|error| format!("Could not start the system folder opener: {error}"))
 }
 
 #[tauri::command]
@@ -226,14 +257,7 @@ pub async fn add_manual_game(input: AddManualGameRequest) -> Result<InstalledGam
 
     game = sync_game_metadata(game).await;
 
-    let mut games = BTreeMap::<String, InstalledGame>::new();
-    for cached_game in read_installed_games_cache().unwrap_or_default() {
-        games.insert(cached_game.id.clone(), cached_game);
-    }
-    games.insert(game.id.clone(), game.clone());
-
-    let games = games.into_values().collect::<Vec<_>>();
-    write_installed_games_cache(&games)?;
+    upsert_installed_game_cache(&game)?;
 
     Ok(game)
 }
@@ -241,55 +265,46 @@ pub async fn add_manual_game(input: AddManualGameRequest) -> Result<InstalledGam
 #[tauri::command]
 pub fn update_game_metadata(input: UpdateGameMetadataRequest) -> Result<InstalledGame, String> {
     let game_id = normalize_game_id(input.game_id)?;
-    let mut games = read_installed_games_cache().unwrap_or_default();
-
-    let game = games
-        .iter_mut()
-        .find(|game| game.id == game_id)
-        .ok_or_else(|| format!("Game '{game_id}' was not found in the local library cache."))?;
-
-    if let Some(cover_url) = sanitize_optional_text(input.cover_url) {
-        game.cover_url = Some(cover_url);
-    }
-    if let Some(logo_url) = sanitize_optional_text(input.logo_url) {
-        game.logo_url = Some(logo_url.clone());
-        if !game.logo_urls.contains(&logo_url) {
-            game.logo_urls.insert(0, logo_url);
+    update_installed_game_cache(&game_id, move |game| {
+        if let Some(cover_url) = sanitize_optional_text(input.cover_url) {
+            game.cover_url = Some(cover_url);
         }
-    }
-    if let Some(icon_url) = sanitize_optional_text(input.icon_url) {
-        game.icon_url = Some(icon_url.clone());
-        if !game.icon_urls.contains(&icon_url) {
-            game.icon_urls.insert(0, icon_url);
+        if let Some(logo_url) = sanitize_optional_text(input.logo_url) {
+            game.logo_url = Some(logo_url.clone());
+            if !game.logo_urls.contains(&logo_url) {
+                game.logo_urls.insert(0, logo_url);
+            }
         }
-    }
-    if let Some(rating) = input.rating {
-        game.rating = Some(rating.clamp(0.0, 5.0));
-    }
-    if let Some(achievements) = input.achievements {
-        game.achievements = achievements
-            .into_iter()
-            .filter(|achievement| !achievement.name.trim().is_empty())
-            .collect();
-    }
-    if let Some(save_files) = input.save_files {
-        game.save_files = save_files
-            .into_iter()
-            .filter(|save_file| !save_file.path.trim().is_empty())
-            .collect();
-    }
-    if let Some(friends_playing) = input.friends_playing {
-        game.friends_playing = friends_playing
-            .into_iter()
-            .map(|friend| friend.trim().to_string())
-            .filter(|friend| !friend.is_empty())
-            .collect();
-    }
-
-    let updated_game = game.clone();
-    write_installed_games_cache(&games)?;
-
-    Ok(updated_game)
+        if let Some(icon_url) = sanitize_optional_text(input.icon_url) {
+            game.icon_url = Some(icon_url.clone());
+            if !game.icon_urls.contains(&icon_url) {
+                game.icon_urls.insert(0, icon_url);
+            }
+        }
+        if let Some(rating) = input.rating {
+            game.rating = Some(rating.clamp(0.0, 5.0));
+        }
+        if let Some(achievements) = input.achievements {
+            game.achievements = achievements
+                .into_iter()
+                .filter(|achievement| !achievement.name.trim().is_empty())
+                .collect();
+        }
+        if let Some(save_files) = input.save_files {
+            game.save_files = save_files
+                .into_iter()
+                .filter(|save_file| !save_file.path.trim().is_empty())
+                .collect();
+        }
+        if let Some(friends_playing) = input.friends_playing {
+            game.friends_playing = friends_playing
+                .into_iter()
+                .map(|friend| friend.trim().to_string())
+                .filter(|friend| !friend.is_empty())
+                .collect();
+        }
+        Ok(())
+    })
 }
 
 fn upsert_achievement_provider_status(game: &mut InstalledGame, status: AchievementProviderStatus) {
@@ -338,7 +353,7 @@ pub fn import_library_snapshot(games: Vec<InstalledGame>) -> Result<Vec<Installe
         imported_games.push(game);
     }
 
-    write_installed_games_cache(&imported_games)?;
+    replace_installed_games_cache(&imported_games)?;
     Ok(imported_games)
 }
 
@@ -351,7 +366,7 @@ pub struct MoveGameRequest {
 
 #[tauri::command]
 pub async fn move_game(input: MoveGameRequest) -> Result<(), String> {
-    let mut games = read_installed_games_cache().unwrap_or_default();
+    let games = read_installed_games_cache().unwrap_or_default();
 
     let game_index = games
         .iter()
@@ -393,8 +408,11 @@ pub async fn move_game(input: MoveGameRequest) -> Result<(), String> {
     fs::rename(&old_path_buf, &final_new_path)
         .map_err(|e| format!("Failed to move game; no cache entry was changed: {e}"))?;
 
-    games[game_index].install_path = Some(final_new_path.to_string_lossy().to_string());
-    write_installed_games_cache(&games)?;
+    let final_new_path = final_new_path.to_string_lossy().to_string();
+    update_installed_game_cache(&input.game_id, move |game| {
+        game.install_path = Some(final_new_path);
+        Ok(())
+    })?;
 
     Ok(())
 }
@@ -2178,17 +2196,14 @@ pub fn uninstall_game(game_id: String) -> Result<UninstallGameResponse, String> 
     let game_id = normalize_game_id(game_id)?;
     println!("[open-game-launcher] uninstall_game requested for {game_id}");
 
-    let mut games = read_installed_games_cache().unwrap_or_default();
-    let game_index = games
-        .iter()
-        .position(|game| game.id == game_id)
+    let mut game = read_installed_games_cache()
+        .unwrap_or_default()
+        .into_iter()
+        .find(|game| game.id == game_id)
         .ok_or_else(|| format!("Game '{game_id}' was not found in the local library cache."))?;
 
-    let mut game = games[game_index].clone();
-
     if is_manual_game(&game) {
-        games.remove(game_index);
-        write_installed_games_cache(&games)?;
+        remove_installed_game_cache(&game_id)?;
         return Ok(UninstallGameResponse {
             game_id,
             success: true,
@@ -2202,9 +2217,10 @@ pub fn uninstall_game(game_id: String) -> Result<UninstallGameResponse, String> 
         let install_path = PathBuf::from(install_path);
         if is_og_managed_install_path(&install_path) {
             remove_managed_install_path(&install_path)?;
-            mark_game_not_installed(&mut game);
-            games[game_index] = game.clone();
-            write_installed_games_cache(&games)?;
+            game = update_installed_game_cache(&game_id, |game| {
+                mark_game_not_installed(game);
+                Ok(())
+            })?;
             return Ok(UninstallGameResponse {
                 game_id,
                 success: true,
@@ -2262,9 +2278,10 @@ pub fn uninstall_game(game_id: String) -> Result<UninstallGameResponse, String> 
                 // not block on `wait()` because the call already returned and
                 // the parent has nothing meaningful to do with the exit code.
                 drop(child);
-                mark_game_not_installed(&mut game);
-                games[game_index] = game.clone();
-                write_installed_games_cache(&games)?;
+                game = update_installed_game_cache(&game_id, |game| {
+                    mark_game_not_installed(game);
+                    Ok(())
+                })?;
                 return Ok(UninstallGameResponse {
                     game_id,
                     success: true,
@@ -2325,8 +2342,17 @@ pub fn start_library_inventory_watcher(app_handle: AppHandle) {
         }
 
         while let Ok(result) = rx.recv() {
-            if let Err(error) = result {
-                eprintln!("[open-game-launcher] Library watcher event error: {error}");
+            let event = match result {
+                Ok(event) => event,
+                Err(error) => {
+                    eprintln!("[open-game-launcher] Library watcher event error: {error}");
+                    continue;
+                }
+            };
+            if !inventory_event_should_refresh(
+                &event.paths,
+                open_game_launcher_data_dir().as_deref(),
+            ) {
                 continue;
             }
 
@@ -2394,9 +2420,12 @@ fn watch_path_key(path: &Path) -> String {
 
 fn library_inventory_watch_paths() -> Vec<PathBuf> {
     let mut paths = Vec::new();
+    let launcher_data_dir = open_game_launcher_data_dir();
 
-    if let Some(data_dir) = open_game_launcher_data_dir() {
-        paths.push(data_dir.clone());
+    if let Some(data_dir) = launcher_data_dir.as_ref() {
+        // The data root also contains launcher.sqlite3 and multiple caches. Watching
+        // it recursively makes every refresh write schedule another refresh. Managed
+        // game installs remain a legitimate inventory root.
         paths.push(data_dir.join("games"));
     }
 
@@ -2479,7 +2508,42 @@ fn library_inventory_watch_paths() -> Vec<PathBuf> {
         }
     }
 
+    filter_library_inventory_watch_paths(paths, launcher_data_dir.as_deref())
+}
+
+fn filter_library_inventory_watch_paths(
+    paths: Vec<PathBuf>,
+    launcher_data_dir: Option<&Path>,
+) -> Vec<PathBuf> {
+    let paths = paths
+        .into_iter()
+        .filter(|path| !is_launcher_owned_non_game_path(path, launcher_data_dir))
+        .collect();
     dedupe_existing_watch_paths(paths)
+}
+
+fn inventory_event_should_refresh(paths: &[PathBuf], launcher_data_dir: Option<&Path>) -> bool {
+    paths.is_empty()
+        || paths
+            .iter()
+            .any(|path| !is_launcher_owned_non_game_path(path, launcher_data_dir))
+}
+
+fn is_launcher_owned_non_game_path(path: &Path, launcher_data_dir: Option<&Path>) -> bool {
+    let Some(data_dir) = launcher_data_dir else {
+        return false;
+    };
+    let normalized_path = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+    let normalized_data_dir = data_dir
+        .canonicalize()
+        .unwrap_or_else(|_| data_dir.to_path_buf());
+    if !path_is_within_root(&normalized_path, &normalized_data_dir) {
+        return false;
+    }
+
+    let games_dir = data_dir.join("games");
+    let normalized_games_dir = games_dir.canonicalize().unwrap_or(games_dir);
+    !path_is_within_root(&normalized_path, &normalized_games_dir)
 }
 
 fn dedupe_existing_watch_paths(paths: Vec<PathBuf>) -> Vec<PathBuf> {
@@ -3015,7 +3079,26 @@ fn collect_og_manifest_files(install_path: &Path) -> Result<Vec<OgManagedManifes
 pub fn extract_og_zip_package<F>(
     package_path: &Path,
     install_path: &Path,
+    on_file: F,
+) -> Result<Vec<OgManagedManifestFile>, String>
+where
+    F: FnMut(usize, usize),
+{
+    extract_og_zip_package_with_limits(
+        package_path,
+        install_path,
+        on_file,
+        MAX_GAME_ARCHIVE_ENTRIES,
+        MAX_EXTRACTED_GAME_BYTES,
+    )
+}
+
+fn extract_og_zip_package_with_limits<F>(
+    package_path: &Path,
+    install_path: &Path,
     mut on_file: F,
+    max_entries: usize,
+    max_uncompressed_bytes: u64,
 ) -> Result<Vec<OgManagedManifestFile>, String>
 where
     F: FnMut(usize, usize),
@@ -3024,54 +3107,122 @@ where
         .map_err(|error| format!("Could not open downloaded ZIP package: {error}"))?;
     let mut archive = zip::ZipArchive::new(file)
         .map_err(|error| format!("Could not read ZIP package: {error}"))?;
+    if archive.len() > max_entries {
+        return Err(format!(
+            "ZIP package entry limit exceeded: archive has {} entries, maximum is {max_entries}.",
+            archive.len()
+        ));
+    }
     let total = archive.len().max(1);
     let mut files = Vec::new();
+    let mut extracted_bytes = 0_u64;
+    let mut created_files = Vec::<PathBuf>::new();
 
-    for index in 0..archive.len() {
-        let mut entry = archive
-            .by_index(index)
-            .map_err(|error| format!("Could not read ZIP entry: {error}"))?;
+    let extraction_result = (|| -> Result<(), String> {
+        for index in 0..archive.len() {
+            let mut entry = archive
+                .by_index(index)
+                .map_err(|error| format!("Could not read ZIP entry: {error}"))?;
 
-        if entry.is_symlink() {
-            return Err("ZIP packages with symbolic links are not supported.".to_string());
-        }
+            if entry.is_symlink() {
+                return Err("ZIP packages with symbolic links are not supported.".to_string());
+            }
 
-        let Some(relative_path) = entry.enclosed_name() else {
-            return Err("ZIP package contains an unsafe path.".to_string());
-        };
-        let outpath = install_path.join(relative_path);
-
-        if entry.is_dir() {
-            fs::create_dir_all(&outpath)
-                .map_err(|error| format!("Could not create ZIP directory: {error}"))?;
-            on_file(index + 1, total);
-            continue;
-        }
-
-        if let Some(parent) = outpath.parent() {
-            fs::create_dir_all(parent)
-                .map_err(|error| format!("Could not create ZIP output folder: {error}"))?;
-        }
-
-        let mut outfile = fs::File::create(&outpath)
-            .map_err(|error| format!("Could not write extracted ZIP file: {error}"))?;
-        io::copy(&mut entry, &mut outfile)
-            .map_err(|error| format!("Could not extract ZIP file: {error}"))?;
-
-        #[cfg(unix)]
-        if let Some(mode) = entry.unix_mode() {
-            use std::os::unix::fs::PermissionsExt;
-            let _ = fs::set_permissions(&outpath, fs::Permissions::from_mode(mode));
-        }
-
-        if let Some(file) = og_manifest_file_for_path(install_path, &outpath) {
-            if file.path.eq_ignore_ascii_case(OG_MANAGED_MANIFEST_FILE) {
+            let Some(relative_path) = entry.enclosed_name() else {
+                return Err("ZIP package contains an unsafe path.".to_string());
+            };
+            if relative_path
+                .to_string_lossy()
+                .replace('\\', "/")
+                .eq_ignore_ascii_case(OG_MANAGED_MANIFEST_FILE)
+            {
+                // The launcher writes the verified/generated manifest only after
+                // package validation. Never let an archive pre-place that trust file.
                 on_file(index + 1, total);
                 continue;
             }
-            files.push(file);
+            let outpath = install_path.join(relative_path);
+            ensure_path_inside_root(&outpath, install_path)
+                .map_err(|_| "ZIP package contains an unsafe path.".to_string())?;
+
+            if entry.is_dir() {
+                fs::create_dir_all(&outpath)
+                    .map_err(|error| format!("Could not create ZIP directory: {error}"))?;
+                on_file(index + 1, total);
+                continue;
+            }
+
+            let remaining = max_uncompressed_bytes.saturating_sub(extracted_bytes);
+            if entry.size() > remaining {
+                return Err(format!(
+                    "ZIP package uncompressed size limit exceeded: maximum is {max_uncompressed_bytes} bytes."
+                ));
+            }
+
+            if let Some(parent) = outpath.parent() {
+                fs::create_dir_all(parent)
+                    .map_err(|error| format!("Could not create ZIP output folder: {error}"))?;
+            }
+
+            let mut outfile = fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&outpath)
+                .map_err(|error| {
+                    if error.kind() == io::ErrorKind::AlreadyExists {
+                        format!(
+                            "Refusing to extract ZIP file because '{}' already exists.",
+                            outpath.display()
+                        )
+                    } else {
+                        format!("Could not write extracted ZIP file: {error}")
+                    }
+                })?;
+            created_files.push(outpath.clone());
+            let copied = {
+                let mut limited_entry = (&mut entry).take(remaining.saturating_add(1));
+                io::copy(&mut limited_entry, &mut outfile)
+            };
+            let copied = match copied {
+                Ok(copied) => copied,
+                Err(error) => {
+                    drop(outfile);
+                    let _ = fs::remove_file(&outpath);
+                    return Err(format!("Could not extract ZIP file: {error}"));
+                }
+            };
+            if copied > remaining {
+                drop(outfile);
+                let _ = fs::remove_file(&outpath);
+                return Err(format!(
+                    "ZIP package uncompressed size limit exceeded: maximum is {max_uncompressed_bytes} bytes."
+                ));
+            }
+            extracted_bytes += copied;
+
+            #[cfg(unix)]
+            if let Some(mode) = entry.unix_mode() {
+                use std::os::unix::fs::PermissionsExt;
+                let _ = fs::set_permissions(&outpath, fs::Permissions::from_mode(mode & 0o777));
+            }
+
+            if let Some(file) = og_manifest_file_for_path(install_path, &outpath) {
+                if file.path.eq_ignore_ascii_case(OG_MANAGED_MANIFEST_FILE) {
+                    on_file(index + 1, total);
+                    continue;
+                }
+                files.push(file);
+            }
+            on_file(index + 1, total);
         }
-        on_file(index + 1, total);
+        Ok(())
+    })();
+
+    if let Err(error) = extraction_result {
+        for path in created_files.iter().rev() {
+            let _ = fs::remove_file(path);
+        }
+        return Err(error);
     }
 
     Ok(files)
@@ -3121,7 +3272,7 @@ pub fn merge_cached_game_activity(game: &mut InstalledGame, cached_game: &Instal
     // Older scanner versions used the install-directory mtime as "last played".
     // Only carry cached timestamps that are backed by recorded playtime; provider
     // timestamps discovered during the current scan remain on `game` untouched.
-    if cached_game.playtime_minutes.unwrap_or_default() > 0 {
+    if cached_game.playtime_minutes.is_some() {
         match (&game.last_played_at, &cached_game.last_played_at) {
             (Some(current), Some(cached)) if cached > current => {
                 game.last_played_at = Some(cached.clone());
@@ -3173,6 +3324,233 @@ pub fn merge_cached_game_activity(game: &mut InstalledGame, cached_game: &Instal
     if game.friends_playing.is_empty() {
         game.friends_playing = cached_game.friends_playing.clone();
     }
+    if game.achievements_synced_at.is_none() {
+        game.achievements_synced_at = cached_game.achievements_synced_at.clone();
+    }
+    if cached_game.cover_url.is_some() {
+        game.cover_url = cached_game.cover_url.clone();
+    }
+    if cached_game.icon_url.is_some() {
+        game.icon_url = cached_game.icon_url.clone();
+    }
+    if !cached_game.icon_urls.is_empty() {
+        game.icon_urls = cached_game.icon_urls.clone();
+    }
+    if cached_game.logo_url.is_some() {
+        game.logo_url = cached_game.logo_url.clone();
+    }
+    if !cached_game.logo_urls.is_empty() {
+        game.logo_urls = cached_game.logo_urls.clone();
+    }
+    if cached_game.logo_url.is_some() || !cached_game.logo_urls.is_empty() {
+        game.logo_position = cached_game.logo_position.clone();
+        game.logo_width_percent = cached_game.logo_width_percent;
+        game.logo_height_percent = cached_game.logo_height_percent;
+    }
+}
+
+fn merge_refreshed_inventory(
+    latest_games: Vec<InstalledGame>,
+    baseline_games: &HashMap<String, InstalledGame>,
+    mut refreshed_manual_games: BTreeMap<String, InstalledGame>,
+    mut scanned_games: BTreeMap<String, InstalledGame>,
+) -> Vec<InstalledGame> {
+    for mut latest_game in latest_games {
+        if is_refresh_preserved_game(&latest_game) {
+            // Manual entries are not scanner-owned. Only retain entries that still
+            // exist in the transaction's latest snapshot, so a concurrent remove is
+            // not undone and a concurrent add is not dropped.
+            if latest_game.genres.is_empty() {
+                if let Some(refreshed) = refreshed_manual_games.remove(&latest_game.id) {
+                    copy_game_metadata(&mut latest_game, &refreshed);
+                }
+            }
+            scanned_games.insert(latest_game.id.clone(), latest_game);
+            continue;
+        }
+
+        if let Some(scanned_game) = scanned_games.get_mut(&latest_game.id) {
+            // Scanner data owns inventory fields, while activity and user-enriched
+            // fields must be merged from the row as it exists at commit time.
+            merge_cached_game_activity(scanned_game, &latest_game);
+            // These fields can already contain a baseline copy from the refresh's
+            // first merge. The transaction-latest values must therefore replace
+            // them even when the scanner result is non-empty.
+            scanned_game.achievements = latest_game.achievements.clone();
+            scanned_game.achievement_provider_statuses =
+                latest_game.achievement_provider_statuses.clone();
+            scanned_game.save_files = latest_game.save_files.clone();
+            scanned_game.friends_playing = latest_game.friends_playing.clone();
+            if latest_game.achievements_synced_at.is_some() {
+                scanned_game.achievements_synced_at = latest_game.achievements_synced_at.clone();
+            }
+            if let Some(baseline_game) = baseline_games.get(&latest_game.id) {
+                preserve_concurrent_game_changes(scanned_game, &latest_game, baseline_game);
+            } else {
+                *scanned_game = latest_game;
+            }
+        } else if !baseline_games.contains_key(&latest_game.id) {
+            // A row added after scanning began was never eligible to appear in the
+            // scan result. Keep it; a later refresh can determine whether it is stale.
+            scanned_games.insert(latest_game.id.clone(), latest_game);
+        }
+    }
+
+    scanned_games.into_values().collect()
+}
+
+fn preserve_concurrent_game_changes(
+    scanned: &mut InstalledGame,
+    latest: &InstalledGame,
+    baseline: &InstalledGame,
+) {
+    fn copy_if_changed<T: Clone + PartialEq>(target: &mut T, latest: &T, baseline: &T) {
+        if latest != baseline {
+            *target = latest.clone();
+        }
+    }
+
+    copy_if_changed(&mut scanned.title, &latest.title, &baseline.title);
+    copy_if_changed(&mut scanned.slug, &latest.slug, &baseline.slug);
+    copy_if_changed(
+        &mut scanned.description,
+        &latest.description,
+        &baseline.description,
+    );
+    copy_if_changed(&mut scanned.version, &latest.version, &baseline.version);
+    copy_if_changed(&mut scanned.launcher, &latest.launcher, &baseline.launcher);
+    copy_if_changed(
+        &mut scanned.external_id,
+        &latest.external_id,
+        &baseline.external_id,
+    );
+    copy_if_changed(
+        &mut scanned.cover_url,
+        &latest.cover_url,
+        &baseline.cover_url,
+    );
+    copy_if_changed(&mut scanned.icon_url, &latest.icon_url, &baseline.icon_url);
+    copy_if_changed(
+        &mut scanned.icon_urls,
+        &latest.icon_urls,
+        &baseline.icon_urls,
+    );
+    copy_if_changed(&mut scanned.logo_url, &latest.logo_url, &baseline.logo_url);
+    copy_if_changed(
+        &mut scanned.logo_urls,
+        &latest.logo_urls,
+        &baseline.logo_urls,
+    );
+    copy_if_changed(
+        &mut scanned.logo_position,
+        &latest.logo_position,
+        &baseline.logo_position,
+    );
+    copy_if_changed(
+        &mut scanned.logo_width_percent,
+        &latest.logo_width_percent,
+        &baseline.logo_width_percent,
+    );
+    copy_if_changed(
+        &mut scanned.logo_height_percent,
+        &latest.logo_height_percent,
+        &baseline.logo_height_percent,
+    );
+    copy_if_changed(&mut scanned.status, &latest.status, &baseline.status);
+    copy_if_changed(&mut scanned.platform, &latest.platform, &baseline.platform);
+    copy_if_changed(
+        &mut scanned.install_path,
+        &latest.install_path,
+        &baseline.install_path,
+    );
+    copy_if_changed(
+        &mut scanned.executable_path,
+        &latest.executable_path,
+        &baseline.executable_path,
+    );
+    copy_if_changed(
+        &mut scanned.process_names,
+        &latest.process_names,
+        &baseline.process_names,
+    );
+    copy_if_changed(
+        &mut scanned.launch_uri,
+        &latest.launch_uri,
+        &baseline.launch_uri,
+    );
+    copy_if_changed(
+        &mut scanned.last_played_at,
+        &latest.last_played_at,
+        &baseline.last_played_at,
+    );
+    copy_if_changed(
+        &mut scanned.playtime_minutes,
+        &latest.playtime_minutes,
+        &baseline.playtime_minutes,
+    );
+    copy_if_changed(&mut scanned.genres, &latest.genres, &baseline.genres);
+    copy_if_changed(
+        &mut scanned.developer,
+        &latest.developer,
+        &baseline.developer,
+    );
+    copy_if_changed(
+        &mut scanned.publisher,
+        &latest.publisher,
+        &baseline.publisher,
+    );
+    copy_if_changed(
+        &mut scanned.release_date,
+        &latest.release_date,
+        &baseline.release_date,
+    );
+    copy_if_changed(&mut scanned.features, &latest.features, &baseline.features);
+    copy_if_changed(&mut scanned.rating, &latest.rating, &baseline.rating);
+    copy_if_changed(
+        &mut scanned.achievements,
+        &latest.achievements,
+        &baseline.achievements,
+    );
+    copy_if_changed(
+        &mut scanned.achievements_synced_at,
+        &latest.achievements_synced_at,
+        &baseline.achievements_synced_at,
+    );
+    copy_if_changed(
+        &mut scanned.achievement_provider_statuses,
+        &latest.achievement_provider_statuses,
+        &baseline.achievement_provider_statuses,
+    );
+    copy_if_changed(
+        &mut scanned.save_files,
+        &latest.save_files,
+        &baseline.save_files,
+    );
+    copy_if_changed(
+        &mut scanned.friends_playing,
+        &latest.friends_playing,
+        &baseline.friends_playing,
+    );
+}
+
+fn is_refresh_preserved_game(game: &InstalledGame) -> bool {
+    is_manual_game(game) || launcher_key_from_source(&game.launcher) == "manual"
+}
+
+fn copy_game_metadata(game: &mut InstalledGame, metadata: &InstalledGame) {
+    if metadata.genres.is_empty() {
+        return;
+    }
+
+    game.genres = metadata.genres.clone();
+    game.developer = metadata.developer.clone();
+    game.publisher = metadata.publisher.clone();
+    game.release_date = metadata.release_date.clone();
+    game.features = metadata.features.clone();
+    game.rating = metadata.rating;
+    if !metadata.description.contains("//") {
+        game.description = metadata.description.clone();
+    }
 }
 
 pub fn read_installed_games_cache() -> Option<Vec<InstalledGame>> {
@@ -3184,14 +3562,54 @@ pub fn read_installed_games_cache_result() -> Result<Vec<InstalledGame>, String>
         .map(|games| games.into_iter().map(repair_cached_game_assets).collect())
 }
 
-pub fn write_installed_games_cache(games: &[InstalledGame]) -> Result<(), String> {
-    let repaired_games = games
+fn repaired_installed_games(games: &[InstalledGame]) -> Vec<InstalledGame> {
+    games
         .iter()
         .cloned()
         .map(repair_cached_game_assets)
-        .collect::<Vec<_>>();
+        .collect()
+}
 
-    crate::commands::local_db::write_collection("games", &repaired_games, |game| &game.id)
+pub fn replace_installed_games_cache(games: &[InstalledGame]) -> Result<(), String> {
+    let repaired_games = repaired_installed_games(games);
+    crate::commands::local_db::replace_collection("games", &repaired_games, |game| &game.id)
+}
+
+pub fn upsert_installed_game_cache(game: &InstalledGame) -> Result<(), String> {
+    let mut incoming = repair_cached_game_assets(game.clone());
+    mutate_installed_games_cache(move |games| {
+        if let Some(existing) = games.iter_mut().find(|game| game.id == incoming.id) {
+            merge_cached_game_activity(&mut incoming, existing);
+            *existing = incoming;
+        } else {
+            games.push(incoming);
+        }
+        Ok(())
+    })
+}
+
+pub fn remove_installed_game_cache(game_id: &str) -> Result<(), String> {
+    crate::commands::local_db::remove_item("games", game_id)
+}
+
+pub fn mutate_installed_games_cache<R, F>(mutate: F) -> Result<R, String>
+where
+    F: FnOnce(&mut Vec<InstalledGame>) -> Result<R, String>,
+{
+    crate::commands::local_db::mutate_collection(
+        "games",
+        |game: &InstalledGame| &game.id,
+        |games| {
+            for game in games.iter_mut() {
+                *game = repair_cached_game_assets(game.clone());
+            }
+            let result = mutate(games)?;
+            for game in games.iter_mut() {
+                *game = repair_cached_game_assets(game.clone());
+            }
+            Ok(result)
+        },
+    )
 }
 
 pub fn update_installed_game_cache<F>(game_id: &str, update: F) -> Result<InstalledGame, String>
@@ -3280,10 +3698,98 @@ pub fn repair_cached_game_assets(mut game: InstalledGame) -> InstalledGame {
             .unwrap_or_default();
     }
 
+    if is_gog_game(&game) && gog_game_needs_asset_repair(&game) {
+        game = apply_gog_assets(game);
+    }
+
     if is_battlenet_game(&game) {
         return apply_battlenet_assets(game, None);
     }
 
+    game
+}
+
+pub fn is_gog_game(game: &InstalledGame) -> bool {
+    game.id.starts_with("gog-")
+        || launcher_key_from_source(&game.launcher) == "gog"
+        || game
+            .launch_uri
+            .as_deref()
+            .is_some_and(|uri| uri.starts_with("goggalaxy://"))
+}
+
+fn gog_game_needs_asset_repair(game: &InstalledGame) -> bool {
+    !game
+        .cover_url
+        .as_deref()
+        .is_some_and(gog_artwork_url_is_usable)
+        || !game
+            .logo_url
+            .as_deref()
+            .is_some_and(gog_artwork_url_is_usable)
+        || !game
+            .icon_url
+            .as_deref()
+            .is_some_and(gog_artwork_url_is_usable)
+}
+
+fn gog_artwork_url_is_usable(url: &str) -> bool {
+    !is_gog_galaxy_webcache_artwork(url)
+        && (url.starts_with("http://")
+            || url.starts_with("https://")
+            || url.starts_with("data:")
+            || url.starts_with("blob:")
+            || url.starts_with("/artwork/")
+            || Path::new(url).is_file())
+}
+
+fn is_gog_galaxy_webcache_artwork(url: &str) -> bool {
+    url.replace('\\', "/")
+        .to_ascii_lowercase()
+        .contains("gog.com/galaxy/webcache/")
+}
+
+pub fn apply_gog_assets(mut game: InstalledGame) -> InstalledGame {
+    let Some(game_id) = game
+        .external_id
+        .as_deref()
+        .filter(|value| !value.trim().is_empty())
+        .or_else(|| game.id.strip_prefix("gog-owned-"))
+    else {
+        return game;
+    };
+    let install_dir = game.install_path.as_deref().map(Path::new);
+    let assets = super::detect::get_gog_assets(game_id, install_dir);
+
+    let cover_url = game
+        .cover_url
+        .take()
+        .filter(|url| gog_artwork_url_is_usable(url))
+        .or(assets.cover_url);
+    let logo_url = game
+        .logo_url
+        .take()
+        .filter(|url| gog_artwork_url_is_usable(url))
+        .or(assets.logo_url);
+    let icon_url = game
+        .icon_url
+        .take()
+        .filter(|url| gog_artwork_url_is_usable(url))
+        .or(assets.icon_url)
+        .or_else(|| logo_url.clone())
+        .or_else(|| cover_url.clone());
+
+    game.cover_url = cover_url;
+    game.logo_url = logo_url.clone();
+    game.icon_url = icon_url.clone();
+    if let Some(url) = logo_url {
+        game.logo_urls.retain(|candidate| candidate != &url);
+        game.logo_urls.insert(0, url);
+    }
+    if let Some(url) = icon_url {
+        game.icon_urls.retain(|candidate| candidate != &url);
+        game.icon_urls.insert(0, url);
+    }
     game
 }
 
@@ -3309,15 +3815,51 @@ pub fn apply_battlenet_assets(
     let (fallback_cover, fallback_logo, fallback_icon) =
         super::detect::get_battlenet_assets(uid, &game.title);
     let rawg_assets = super::detect::get_rawg_battlenet_assets(uid, &game.title);
-    let (cover, logo, icon) = rawg_assets
-        .map(|assets| {
-            (
-                assets.cover_url.or(fallback_cover.clone()),
-                assets.logo_url.or(fallback_logo.clone()),
-                assets.icon_url.or(fallback_icon.clone()),
-            )
+    let existing_cover = game
+        .cover_url
+        .take()
+        .filter(|url| !is_generated_battlenet_artwork(url));
+    let existing_logo = game
+        .logo_url
+        .take()
+        .filter(|url| !is_generated_battlenet_artwork(url));
+    let existing_icon = game
+        .icon_url
+        .take()
+        .filter(|url| !is_generated_battlenet_artwork(url));
+    let rawg_cover = rawg_assets
+        .as_ref()
+        .and_then(|assets| assets.cover_url.clone());
+    let rawg_logo = rawg_assets
+        .as_ref()
+        .and_then(|assets| assets.logo_url.clone());
+    let rawg_icon = rawg_assets
+        .as_ref()
+        .and_then(|assets| assets.icon_url.clone());
+    let cover = existing_cover
+        .or_else(|| {
+            fallback_cover
+                .clone()
+                .filter(|url| !is_generated_battlenet_artwork(url))
         })
-        .unwrap_or((fallback_cover, fallback_logo, fallback_icon));
+        .or(rawg_cover)
+        .or(fallback_cover);
+    let logo = existing_logo
+        .or_else(|| {
+            fallback_logo
+                .clone()
+                .filter(|url| !is_generated_battlenet_artwork(url))
+        })
+        .or(rawg_logo)
+        .or(fallback_logo);
+    let icon = existing_icon
+        .or_else(|| {
+            fallback_icon
+                .clone()
+                .filter(|url| !is_generated_battlenet_artwork(url))
+        })
+        .or(rawg_icon)
+        .or(fallback_icon);
 
     game.cover_url = cover;
     game.logo_url = logo.clone();
@@ -3328,6 +3870,10 @@ pub fn apply_battlenet_assets(
     game.logo_width_percent = Some(58.0);
     game.logo_height_percent = Some(48.0);
     game
+}
+
+fn is_generated_battlenet_artwork(url: &str) -> bool {
+    url.starts_with("data:image/svg+xml,")
 }
 
 pub fn installed_game(
@@ -3696,36 +4242,53 @@ fn supabase_access_token_path() -> Option<PathBuf> {
     open_game_launcher_data_dir().map(|data_dir| data_dir.join("supabase-access-token"))
 }
 
-pub fn read_supabase_access_token() -> Option<String> {
-    let path = supabase_access_token_path()?;
-    let token = fs::read_to_string(path).ok()?.trim().to_string();
-    (!token.is_empty()).then_some(token)
-}
+const SUPABASE_ACCESS_TOKEN_SECRET_DOMAIN: &str = "supabase-access-token";
 
-#[tauri::command]
-pub fn read_cached_supabase_access_token() -> Option<String> {
-    read_supabase_access_token()
+pub fn read_supabase_access_token() -> Option<String> {
+    if let Some(token) =
+        crate::commands::secure_store::get_secret(SUPABASE_ACCESS_TOKEN_SECRET_DOMAIN)
+            .ok()
+            .flatten()
+            .map(|token| token.trim().to_string())
+            .filter(|token| !token.is_empty())
+    {
+        if let Some(path) = supabase_access_token_path().filter(|path| path.exists()) {
+            let _ = fs::remove_file(path);
+        }
+        return Some(token);
+    }
+
+    let path = supabase_access_token_path()?;
+    let token = fs::read_to_string(&path).ok()?.trim().to_string();
+    if token.is_empty() {
+        let _ = fs::remove_file(path);
+        return None;
+    }
+    if crate::commands::secure_store::set_secret(SUPABASE_ACCESS_TOKEN_SECRET_DOMAIN, &token)
+        .is_ok()
+    {
+        let _ = fs::remove_file(path);
+    }
+    Some(token)
 }
 
 #[tauri::command]
 pub fn cache_supabase_access_token(token: String) -> Result<(), String> {
-    let Some(path) = supabase_access_token_path() else {
-        return Err("Could not resolve launcher data directory.".to_string());
-    };
-
-    if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent).map_err(|error| error.to_string())?;
-    }
-
+    let legacy_path = supabase_access_token_path();
     let trimmed = token.trim();
     if trimmed.is_empty() {
-        if path.exists() {
-            fs::remove_file(&path).map_err(|error| error.to_string())?;
+        crate::commands::secure_store::delete_secret(SUPABASE_ACCESS_TOKEN_SECRET_DOMAIN)?;
+        if let Some(path) = legacy_path.filter(|path| path.exists()) {
+            fs::remove_file(path).map_err(|error| error.to_string())?;
         }
         return Ok(());
     }
 
-    fs::write(path, trimmed).map_err(|error| error.to_string())
+    crate::commands::secure_store::set_secret(SUPABASE_ACCESS_TOKEN_SECRET_DOMAIN, trimmed)?;
+    if let Some(path) = legacy_path.filter(|path| path.exists()) {
+        fs::remove_file(path).map_err(|error| error.to_string())?;
+    }
+    Ok(())
 }
 
 pub fn rawg_asset_cache_path() -> Option<PathBuf> {
@@ -3777,58 +4340,58 @@ pub fn local_drive_roots() -> Vec<PathBuf> {
 }
 
 pub fn ensure_path_inside_root(path: &Path, root: &Path) -> Result<(), String> {
-    // Both inputs must be canonicalizable. If either fails (e.g. does not yet
-    // exist and we cannot resolve symlinks), we refuse — the previous
-    // implementation silently fell back to the raw input, which let a
-    // caller pass `..\..\Windows\System32\config\SAM` and have it accepted
-    // because `Path::starts_with` was compared against an un-canonicalized
-    // root.
     let normalized_root = root.canonicalize().map_err(|e| {
         format!("Refusing to write outside the OG save-sync folder: root is not resolvable ({e}).")
     })?;
-    let normalized_path = path.canonicalize().map_err(|e| {
-        format!("Refusing to write outside the OG save-sync folder: path is not resolvable ({e}).")
-    })?;
+    let candidate = if path.is_absolute() {
+        path.to_path_buf()
+    } else {
+        normalized_root.join(path)
+    };
 
-    // Reject any `..` components in the raw input up front as a defence in
-    // depth — canonicalize should already have collapsed them, but a path
-    // that *only* contained `..` would canonicalize to a parent directory
-    // and could be inside the root by accident.
+    // Sync destinations usually do not exist yet. Reject lexical traversal,
+    // then canonicalize the nearest existing ancestor so symlink escapes are
+    // still caught before any destination directory is created.
     for component in path.components() {
-        match component {
-            std::path::Component::ParentDir => {
-                return Err(
-                    "Refusing to write outside the OG save-sync folder: path contains '..'."
-                        .to_string(),
-                );
-            }
-            std::path::Component::Prefix(_) | std::path::Component::RootDir => {
-                return Err(
-                    "Refusing to write outside the OG save-sync folder: absolute paths are not allowed."
-                        .to_string(),
-                );
-            }
-            _ => {}
+        if matches!(component, std::path::Component::ParentDir) {
+            return Err(
+                "Refusing to write outside the OG save-sync folder: path contains '..'."
+                    .to_string(),
+            );
         }
     }
 
-    // Compare path components, not bytes — `C:\foo` should not be considered
-    // a child of `c:\foo` on Windows purely because of the drive letter, but
-    // `Foo` and `foo` are the same directory on NTFS and we want them to
-    // match. Use case-insensitive comparison on Windows only.
-    let same_root = if cfg!(windows) {
-        normalized_path
-            .to_string_lossy()
-            .to_lowercase()
-            .starts_with(&normalized_root.to_string_lossy().to_lowercase())
-    } else {
-        normalized_path.starts_with(&normalized_root)
-    };
+    let existing_ancestor = candidate
+        .ancestors()
+        .find(|ancestor| ancestor.exists())
+        .ok_or_else(|| {
+            "Refusing to write outside the OG save-sync folder: path has no resolvable ancestor."
+                .to_string()
+        })?;
+    let normalized_ancestor = existing_ancestor.canonicalize().map_err(|e| {
+        format!("Refusing to write outside the OG save-sync folder: path is not resolvable ({e}).")
+    })?;
 
-    if same_root {
+    if path_is_within_root(&normalized_ancestor, &normalized_root) {
         Ok(())
     } else {
         Err("Refusing to write outside the OG save-sync folder.".to_string())
+    }
+}
+
+fn path_is_within_root(path: &Path, root: &Path) -> bool {
+    #[cfg(windows)]
+    {
+        let path = path.to_string_lossy().to_lowercase();
+        let root = root.to_string_lossy().to_lowercase();
+        path == root
+            || path
+                .strip_prefix(&root)
+                .is_some_and(|suffix| suffix.starts_with(['\\', '/']))
+    }
+    #[cfg(not(windows))]
+    {
+        path.starts_with(root)
     }
 }
 
@@ -3864,6 +4427,8 @@ fn collect_path_size(path: &Path, size: &mut u64) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Write;
+    use zip::{write::SimpleFileOptions, ZipWriter};
 
     fn unique_temp_dir(name: &str) -> PathBuf {
         let path = std::env::temp_dir().join(format!(
@@ -3879,6 +4444,68 @@ mod tests {
         path.to_string_lossy().replace('\\', "/")
     }
 
+    fn write_test_zip(path: &Path, entries: &[(&str, &[u8])]) {
+        let file = fs::File::create(path).unwrap();
+        let mut archive = ZipWriter::new(file);
+        for (name, contents) in entries {
+            archive
+                .start_file(*name, SimpleFileOptions::default())
+                .unwrap();
+            archive.write_all(contents).unwrap();
+        }
+        archive.finish().unwrap();
+    }
+
+    #[test]
+    fn game_zip_extraction_rejects_entry_and_uncompressed_size_bombs() {
+        let root = unique_temp_dir("game-zip-limits");
+        let archive = root.join("game.zip");
+        let target = root.join("install");
+        fs::create_dir_all(&target).unwrap();
+        write_test_zip(&archive, &[("one.bin", b"12345"), ("two.bin", b"67890")]);
+
+        let entry_error =
+            extract_og_zip_package_with_limits(&archive, &target, |_, _| {}, 1, 100).unwrap_err();
+        assert!(entry_error.contains("entry limit"));
+
+        let byte_error =
+            extract_og_zip_package_with_limits(&archive, &target, |_, _| {}, 10, 6).unwrap_err();
+        assert!(byte_error.contains("uncompressed size limit"));
+        assert!(!target.join("one.bin").exists());
+        assert!(!target.join("two.bin").exists());
+
+        fs::write(target.join("one.bin"), b"user-owned").unwrap();
+        let overwrite_error =
+            extract_og_zip_package_with_limits(&archive, &target, |_, _| {}, 10, 100).unwrap_err();
+        assert!(overwrite_error.contains("already exists"));
+        assert_eq!(fs::read(target.join("one.bin")).unwrap(), b"user-owned");
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn game_zip_never_preplaces_the_launcher_trust_manifest() {
+        let root = unique_temp_dir("game-zip-manifest");
+        let archive = root.join("game.zip");
+        let target = root.join("install");
+        fs::create_dir_all(&target).unwrap();
+        write_test_zip(
+            &archive,
+            &[
+                (OG_MANAGED_MANIFEST_FILE, b"untrusted"),
+                ("game.exe", b"binary"),
+            ],
+        );
+
+        let files =
+            extract_og_zip_package_with_limits(&archive, &target, |_, _| {}, 10, 100).unwrap();
+
+        assert!(!target.join(OG_MANAGED_MANIFEST_FILE).exists());
+        assert!(target.join("game.exe").exists());
+        assert_eq!(files.len(), 1);
+        fs::remove_dir_all(root).unwrap();
+    }
+
     #[test]
     fn launcher_key_normalizes_legacy_uplay_labels() {
         assert_eq!(launcher_key_from_source("Uplay"), "ubisoft");
@@ -3890,6 +4517,229 @@ mod tests {
         let games_root = open_game_launcher_data_dir().unwrap().join("games");
 
         assert!(!is_og_managed_install_path(&games_root));
+    }
+
+    #[test]
+    fn inventory_watch_roots_exclude_launcher_data_but_keep_game_roots() {
+        let root = unique_temp_dir("inventory-watch-roots");
+        let data_dir = root.join("open-game-launcher");
+        let managed_games = data_dir.join("games");
+        let managed_game = managed_games.join("managed-game");
+        let cache = data_dir.join("achievement-cache");
+        let database = data_dir.join("launcher.sqlite3");
+        let external_game = root.join("external-game");
+        fs::create_dir_all(&managed_game).unwrap();
+        fs::create_dir_all(&cache).unwrap();
+        fs::create_dir_all(&external_game).unwrap();
+        fs::write(&database, b"sqlite").unwrap();
+
+        let roots = filter_library_inventory_watch_paths(
+            vec![
+                data_dir.clone(),
+                database.clone(),
+                cache.clone(),
+                managed_games.clone(),
+                managed_game.clone(),
+                external_game.clone(),
+            ],
+            Some(&data_dir),
+        );
+        let keys = roots
+            .iter()
+            .map(|path| watch_path_key(path))
+            .collect::<HashSet<_>>();
+
+        assert!(!keys.contains(&watch_path_key(&data_dir)));
+        assert!(!keys.contains(&watch_path_key(&database)));
+        assert!(!keys.contains(&watch_path_key(&cache)));
+        assert!(keys.contains(&watch_path_key(&managed_games)));
+        assert!(keys.contains(&watch_path_key(&managed_game)));
+        assert!(keys.contains(&watch_path_key(&external_game)));
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn inventory_events_ignore_sqlite_and_cache_writes_but_keep_game_changes() {
+        let root = unique_temp_dir("inventory-watch-events");
+        let data_dir = root.join("open-game-launcher");
+        let sqlite = data_dir.join("launcher.sqlite3-wal");
+        let cache_file = data_dir.join("client-cache").join("steam.json");
+        let managed_game_file = data_dir.join("games").join("game-1").join("game.exe");
+        let external_game_file = root.join("external-game").join("game.exe");
+
+        assert!(!inventory_event_should_refresh(
+            &[data_dir.clone(), sqlite, cache_file],
+            Some(&data_dir),
+        ));
+        assert!(inventory_event_should_refresh(
+            &[managed_game_file],
+            Some(&data_dir),
+        ));
+        assert!(inventory_event_should_refresh(
+            &[external_game_file],
+            Some(&data_dir),
+        ));
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn refreshed_inventory_merges_latest_rows_and_removes_scanner_stale_games() {
+        let mut baseline_scanned = installed_game(
+            "steam-1",
+            "Scanned Game".to_string(),
+            "steam".to_string(),
+            None,
+            None,
+        );
+        baseline_scanned.friends_playing = vec!["Baseline Friend".to_string()];
+        let mut latest_scanned = baseline_scanned.clone();
+        latest_scanned.playtime_minutes = Some(99);
+        latest_scanned.friends_playing = vec!["Concurrent Friend".to_string()];
+
+        let baseline_manual = installed_game(
+            "manual-existing",
+            "Manual Game".to_string(),
+            "manual".to_string(),
+            None,
+            None,
+        );
+        let mut latest_manual = baseline_manual.clone();
+        latest_manual.friends_playing = vec!["Latest Friend".to_string()];
+
+        let stale = installed_game(
+            "epic-stale",
+            "Removed Provider Game".to_string(),
+            "epic".to_string(),
+            None,
+            None,
+        );
+        let concurrent_manual = installed_game(
+            "manual-concurrent",
+            "Concurrent Manual".to_string(),
+            "manual".to_string(),
+            None,
+            None,
+        );
+        let concurrent_provider_game = installed_game(
+            "gog-concurrent",
+            "Concurrent Provider Game".to_string(),
+            "gog".to_string(),
+            None,
+            None,
+        );
+
+        let mut refreshed_manual = baseline_manual.clone();
+        refreshed_manual.genres = vec!["Action".to_string()];
+        let removed_manual = installed_game(
+            "manual-removed",
+            "Removed Manual".to_string(),
+            "manual".to_string(),
+            None,
+            None,
+        );
+        let scanned = baseline_scanned.clone();
+        // The refresh's first-stage merge may carry baseline activity into the
+        // scanner result. A commit-time mutation must still win over that copy.
+        let baseline_games = HashMap::from([
+            (baseline_scanned.id.clone(), baseline_scanned),
+            (baseline_manual.id.clone(), baseline_manual),
+            (removed_manual.id.clone(), removed_manual.clone()),
+            (stale.id.clone(), stale.clone()),
+        ]);
+
+        let merged = merge_refreshed_inventory(
+            vec![
+                latest_scanned,
+                latest_manual,
+                stale,
+                concurrent_manual,
+                concurrent_provider_game,
+            ],
+            &baseline_games,
+            BTreeMap::from([
+                ("manual-existing".to_string(), refreshed_manual),
+                ("manual-removed".to_string(), removed_manual),
+            ]),
+            BTreeMap::from([("steam-1".to_string(), scanned)]),
+        );
+
+        let scanned = merged.iter().find(|game| game.id == "steam-1").unwrap();
+        assert_eq!(scanned.playtime_minutes, Some(99));
+        assert_eq!(scanned.friends_playing, ["Concurrent Friend"]);
+        let manual = merged
+            .iter()
+            .find(|game| game.id == "manual-existing")
+            .unwrap();
+        assert_eq!(manual.genres, ["Action"]);
+        assert_eq!(manual.friends_playing, ["Latest Friend"]);
+        assert!(merged.iter().any(|game| game.id == "manual-concurrent"));
+        assert!(merged.iter().any(|game| game.id == "gog-concurrent"));
+        assert!(!merged.iter().any(|game| game.id == "manual-removed"));
+        assert!(!merged.iter().any(|game| game.id == "epic-stale"));
+    }
+
+    #[test]
+    fn refreshed_inventory_preserves_concurrent_non_monotonic_and_cache_owned_updates() {
+        let mut baseline = installed_game(
+            "steam-corrected",
+            "Corrected Game".to_string(),
+            "steam".to_string(),
+            None,
+            Some("baseline-cover".to_string()),
+        );
+        baseline.playtime_minutes = Some(120);
+        baseline.achievements_synced_at = Some("2026-07-12T10:00:00Z".to_string());
+
+        // Simulate the first-stage scanner merge carrying the baseline values.
+        let scanned = baseline.clone();
+        let mut latest = baseline.clone();
+        latest.playtime_minutes = Some(30);
+        latest.achievements_synced_at = Some("2026-07-12T10:05:00Z".to_string());
+        latest.cover_url = Some("concurrent-custom-cover".to_string());
+
+        let merged = merge_refreshed_inventory(
+            vec![latest],
+            &HashMap::from([(baseline.id.clone(), baseline)]),
+            BTreeMap::new(),
+            BTreeMap::from([("steam-corrected".to_string(), scanned)]),
+        );
+        let merged = merged
+            .iter()
+            .find(|game| game.id == "steam-corrected")
+            .unwrap();
+
+        assert_eq!(merged.playtime_minutes, Some(30));
+        assert_eq!(
+            merged.achievements_synced_at.as_deref(),
+            Some("2026-07-12T10:05:00Z")
+        );
+        assert_eq!(merged.cover_url.as_deref(), Some("concurrent-custom-cover"));
+    }
+
+    #[test]
+    fn refreshed_inventory_keeps_new_scanner_values_when_cached_row_is_unchanged() {
+        let mut baseline = installed_game(
+            "steam-new-scan",
+            "New Scan".to_string(),
+            "steam".to_string(),
+            None,
+            None,
+        );
+        baseline.playtime_minutes = Some(120);
+        let latest = baseline.clone();
+        let mut scanned = baseline.clone();
+        scanned.playtime_minutes = Some(150);
+
+        let merged = merge_refreshed_inventory(
+            vec![latest],
+            &HashMap::from([(baseline.id.clone(), baseline)]),
+            BTreeMap::new(),
+            BTreeMap::from([("steam-new-scan".to_string(), scanned)]),
+        );
+
+        assert_eq!(merged[0].playtime_minutes, Some(150));
     }
 
     #[cfg(windows)]
@@ -4243,6 +5093,14 @@ mod tests {
 
         assert!(scanned_game.last_played_at.is_none());
 
+        cached_game.playtime_minutes = Some(0);
+        merge_cached_game_activity(&mut scanned_game, &cached_game);
+        assert_eq!(
+            scanned_game.last_played_at.as_deref(),
+            Some("2026-06-01T12:00:00Z")
+        );
+
+        scanned_game.last_played_at = None;
         cached_game.playtime_minutes = Some(12);
         merge_cached_game_activity(&mut scanned_game, &cached_game);
         assert_eq!(
@@ -5236,5 +6094,51 @@ mod tests {
             merged[0].unlocked_at.as_deref(),
             Some("2026-01-03T00:00:00Z")
         );
+    }
+
+    #[test]
+    fn gog_artwork_repair_rejects_missing_local_files() {
+        let missing = env::temp_dir().join(format!(
+            "og-launcher-missing-gog-artwork-{}-cover.webp",
+            current_unix_timestamp()
+        ));
+
+        assert!(!gog_artwork_url_is_usable(&path_to_string(missing)));
+        assert!(gog_artwork_url_is_usable(
+            "https://images-1.gog-statics.com/jotun-background.jpg"
+        ));
+        assert!(is_gog_galaxy_webcache_artwork(
+            r"C:\ProgramData\GOG.com\Galaxy\webcache\123\gog\1458127099\cover.webp"
+        ));
+        assert!(!gog_artwork_url_is_usable(
+            r"C:\ProgramData\GOG.com\Galaxy\webcache\123\gog\1458127099\cover.webp"
+        ));
+    }
+
+    #[test]
+    fn save_sync_path_guard_accepts_a_new_destination_below_the_root() {
+        let root = unique_temp_dir("sync-path-new-destination");
+        let destination = root.join("game-1").join("slot").join("save.dat");
+
+        assert!(ensure_path_inside_root(&destination, &root).is_ok());
+        assert!(ensure_path_inside_root(Path::new("game-1/slot/save.dat"), &root).is_ok());
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn save_sync_path_guard_rejects_siblings_and_parent_traversal() {
+        let root = unique_temp_dir("sync-path-root");
+        let sibling = root.with_file_name(format!(
+            "{}-sibling",
+            root.file_name().unwrap().to_string_lossy()
+        ));
+        fs::create_dir_all(&sibling).unwrap();
+
+        assert!(ensure_path_inside_root(&sibling.join("save.dat"), &root).is_err());
+        assert!(ensure_path_inside_root(Path::new("safe/../escape.dat"), &root).is_err());
+
+        fs::remove_dir_all(root).unwrap();
+        fs::remove_dir_all(sibling).unwrap();
     }
 }

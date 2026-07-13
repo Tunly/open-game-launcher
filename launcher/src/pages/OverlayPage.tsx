@@ -32,6 +32,7 @@ import { listen } from "@tauri-apps/api/event";
 import { CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts";
 import { useCurrentUser } from "../hooks/useCurrentUser";
 import {
+  getGroupMessages,
   getMyGroupChats,
   sendGroupMessage,
   subscribeToGroupMessages,
@@ -88,6 +89,15 @@ type PerformanceChartPoint = {
   value: number | null;
 };
 
+function mergeChatMessages(current: ChatMessage[], incoming: ChatMessage[]) {
+  const byId = new Map(current.map((message) => [message.id, message]));
+  for (const message of incoming) byId.set(message.id, message);
+  return [...byId.values()].sort(
+    (left, right) =>
+      left.createdAt.localeCompare(right.createdAt) || left.id.localeCompare(right.id),
+  );
+}
+
 const PERFORMANCE_CHART_SAMPLE_LIMIT = 60;
 const PERFORMANCE_SNAPSHOT_INTERVAL_MS = 5 * 60_000;
 const OVERLAY_SETTINGS_PREVIEW_KEY = "og-launcher:overlay-settings-preview";
@@ -143,10 +153,15 @@ function normalizeRuntimeOverlaySettings(
 }
 
 export function OverlayPage() {
+  const isPerformanceTelemetryVerify =
+    import.meta.env.DEV &&
+    new URLSearchParams(window.location.search).get("verify") === "performance-system-telemetry";
   const sessionStartedAt = useRef(Date.now());
-  const [openPanels, setOpenPanels] = useState<OverlayPanel[]>([]);
+  const [openPanels, setOpenPanels] = useState<OverlayPanel[]>(() =>
+    isPerformanceTelemetryVerify ? ["perf"] : [],
+  );
   const [panelStates, setPanelStates] = useState<Partial<Record<OverlayPanel, OverlayPanelState>>>(
-    {},
+    () => (isPerformanceTelemetryVerify ? { perf: createDefaultPanelState("perf") } : {}),
   );
   const [acList, setAcList] = useState<AntiCheatInfo[]>([]);
   const [isChromeVisible, setIsChromeVisible] = useState(true);
@@ -1459,8 +1474,15 @@ function OverlayChatTab() {
     setMessages([]);
     const unsub = subscribeToGroupMessages(activeRoom, (msg) => {
       if (!mounted) return;
-      setMessages((prev) => [...prev, msg]);
+      setMessages((current) => mergeChatMessages(current, [msg]));
     });
+    void getGroupMessages(activeRoom)
+      .then((history) => {
+        if (mounted) setMessages((current) => mergeChatMessages(current, history));
+      })
+      .catch((error) => {
+        if (mounted) console.error("[overlay] getGroupMessages failed:", error);
+      });
     return () => {
       mounted = false;
       unsub();
@@ -1468,7 +1490,8 @@ function OverlayChatTab() {
   }, [activeRoom]);
 
   useEffect(() => {
-    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight });
+    const scrollContainer = scrollRef.current;
+    if (scrollContainer) scrollContainer.scrollTop = scrollContainer.scrollHeight;
   }, [messages]);
 
   const send = useCallback(async () => {
@@ -1855,33 +1878,33 @@ function OverlayPerfTab({ showGpu }: { showGpu: boolean }) {
       color: "#087d6d",
       data: chartDataFor((sample) => sample.cpuPercent),
       fallbackDomain: [0, 100],
-      label: "CPU",
+      label: "System CPU",
       value: `${latest.cpuPercent.toFixed(0)}%`,
     },
     {
       color: "#007166",
       data: chartDataFor((sample) => sample.gpuPercent),
       fallbackDomain: [0, 100],
-      label: "GPU",
+      label: "System GPU",
       value: latest.gpuPercent != null ? `${latest.gpuPercent.toFixed(0)}%` : "N/A",
     },
     {
       color: "#b7102a",
       data: chartDataFor((sample) => sample.fps),
       fallbackDomain: [0, 120],
-      label: "FPS",
+      label: "HUD FPS",
       value: `${latest.fps.toFixed(0)}`,
     },
     {
       color: "#1f1c0f",
       data: chartDataFor((sample) => sample.frameTimeMs),
       fallbackDomain: [0, 40],
-      label: "Frame",
+      label: "HUD Frame",
       value: `${latest.frameTimeMs.toFixed(1)} ms`,
     },
   ];
   const performanceCharts = allPerformanceCharts.filter(
-    (chart) => showGpu || chart.label !== "GPU",
+    (chart) => showGpu || chart.label !== "System GPU",
   );
 
   return (
@@ -1897,35 +1920,38 @@ function OverlayPerfTab({ showGpu }: { showGpu: boolean }) {
         <p className="neo-copy mt-1 text-[8px] font-black text-[#655f58] uppercase">
           {performanceAttribution.detail}
         </p>
+        <p className="neo-copy mt-2 border-t-2 border-[#171411] pt-2 text-[8px] font-black text-[#b7102a] uppercase">
+          System telemetry // HUD FPS measures this launcher webview, not game FPS or a benchmark
+        </p>
       </div>
       <div className="grid grid-cols-2 gap-2">
         <MetricCard
-          label="CPU"
+          label="System CPU"
           value={`${latest.cpuPercent.toFixed(0)}%`}
           icon={Zap}
           color="#087d6d"
         />
         <MetricCard
-          label="RAM"
+          label="System RAM"
           value={`${latest.ramMb.toFixed(0)} MB`}
           icon={Monitor}
           color="#007166"
         />
         <MetricCard
-          label="FPS"
+          label="HUD FPS"
           value={`${latest.fps.toFixed(0)}`}
           icon={Activity}
           color="#b7102a"
         />
         <MetricCard
-          label="Frame"
+          label="HUD Frame"
           value={`${latest.frameTimeMs.toFixed(1)} ms`}
           icon={Clock}
           color="#1f1c0f"
         />
         {showGpu && latest.gpuPercent != null && (
           <MetricCard
-            label="GPU"
+            label="System GPU"
             value={`${latest.gpuPercent.toFixed(0)}%`}
             icon={Zap}
             color="#087d6d"
@@ -1933,7 +1959,7 @@ function OverlayPerfTab({ showGpu }: { showGpu: boolean }) {
         )}
         {showGpu && latest.gpuVramMb != null && (
           <MetricCard
-            label="VRAM"
+            label="System VRAM"
             value={`${(latest.gpuVramMb / 1024).toFixed(1)} GB`}
             icon={Monitor}
             color="#b7102a"
@@ -1941,7 +1967,7 @@ function OverlayPerfTab({ showGpu }: { showGpu: boolean }) {
         )}
         {showGpu && latest.gpuTempC != null && (
           <MetricCard
-            label="GPU Temp"
+            label="System GPU Temp"
             value={`${latest.gpuTempC.toFixed(0)} °C`}
             icon={Flame}
             color="#b7102a"

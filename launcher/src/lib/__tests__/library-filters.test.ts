@@ -127,6 +127,16 @@ describe("gamePassesAdvancedFilters", () => {
     expect(gamePassesAdvancedFilters(makeGame(), defaults, context)).toBe(true);
   });
 
+  it("ignores retired feature filter values from legacy collections", () => {
+    expect(
+      gamePassesAdvancedFilters(
+        makeGame({ features: [] }),
+        { ...defaults, features: ["Steam Achievements"] },
+        context,
+      ),
+    ).toBe(true);
+  });
+
   it("lets the user hide PC Game Pass catalog entries without changing other Xbox games", () => {
     const catalogGame = makeGame({
       catalogSource: "pc_game_pass",
@@ -294,14 +304,14 @@ describe("countActiveAdvancedFilters", () => {
     expect(countActiveAdvancedFilters(defaults, defaults)).toBe(0);
   });
 
-  it("counts each activated filter", () => {
+  it("does not count retired feature selections as active filters", () => {
     const modified: LibraryAdvancedFilters = {
       ...defaults,
       players: ["Singleplayer"],
       features: ["Steam Achievements"],
       sizeQuery: ">10gb",
     };
-    expect(countActiveAdvancedFilters(modified, defaults)).toBe(3);
+    expect(countActiveAdvancedFilters(modified, defaults)).toBe(2);
   });
 
   it("counts changed productCategories once", () => {

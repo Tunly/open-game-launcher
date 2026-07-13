@@ -9,6 +9,7 @@ import { useDeepLink } from "../hooks/useDeepLink";
 import { useOverlayHotkey, useFpsHudHotkey } from "../lib/overlay";
 import { AppErrorBoundary } from "../components/ui/AppErrorBoundary";
 import { completeDesktopStartup } from "../lib/startup-window";
+import { PlaySessionSyncHost } from "../hooks/library/usePlaySessionSync";
 
 // Lazy-loaded for overlay/FPS windows only
 const OverlayPage = lazy(() =>
@@ -137,6 +138,7 @@ export default function App() {
         <StartupWindowCoordinator />
         <MainWindowHandlers />
         <DeepLinkHandler />
+        <PlaySessionSyncHost />
         <RouterProvider router={router} />
       </AuthProvider>
     </AppErrorBoundary>

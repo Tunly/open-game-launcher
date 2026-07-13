@@ -12,6 +12,7 @@ describe("createBrowserPreviewMetrics", () => {
       gpuTempC: 64,
       fps: 66,
       frameTimeMs: 16.7,
+      fpsSource: "hud_webview",
       uptime: "0m 00s",
     });
   });

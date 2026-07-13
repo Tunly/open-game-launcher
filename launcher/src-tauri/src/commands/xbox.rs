@@ -1,16 +1,32 @@
 use super::secure_store;
 use crate::commands::system::OwnedGame;
+use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+use rand::{rngs::SysRng, TryRng};
 use reqwest::header::{HeaderMap, HeaderValue, ACCEPT_LANGUAGE, AUTHORIZATION};
 use serde::{Deserialize, Deserializer, Serialize};
+use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
-use std::io::{Read, Write};
-use std::net::TcpListener;
+use std::io::{self, Read, Write};
+use std::net::{Ipv4Addr, SocketAddr, TcpListener, TcpStream};
 use std::process::Command;
+use std::sync::{
+    atomic::{AtomicBool, Ordering},
+    Arc, Mutex, OnceLock,
+};
 use std::thread;
+use std::time::{Duration, Instant};
 
 const XBOX_CLIENT_ID: &str = "38cd2fa8-66fd-4760-afb2-405eb65d5b0c";
 const XBOX_SCOPE: &str = "Xboxlive.signin Xboxlive.offline_access";
 const XBOX_REDIRECT_URI: &str = "https://login.live.com/oauth20_desktop.srf";
+const XBOX_AUTHORIZATION_ENDPOINT: &str = "https://login.live.com/oauth20_authorize.srf";
+const XBOX_TOKEN_ENDPOINT: &str = "https://login.live.com/oauth20_token.srf";
+const XBOX_LOOPBACK_CALLBACK_PATH: &str = "/oauth/xbox/callback";
+const XBOX_CALLBACK_TIMEOUT: Duration = Duration::from_secs(10 * 60);
+const XBOX_CALLBACK_POLL_INTERVAL: Duration = Duration::from_millis(25);
+const XBOX_CALLBACK_READ_TIMEOUT: Duration = Duration::from_secs(5);
+const XBOX_CALLBACK_REQUEST_LIMIT: usize = 8 * 1024;
+const XBOX_PKCE_EXCHANGE_TTL: Duration = Duration::from_secs(10 * 60);
 const GAME_PASS_SIGL_ENDPOINT: &str = "https://catalog.gamepass.com/sigls/v2";
 const GAME_PASS_PC_SIGL_ID: &str = "fdd9e2a7-0fee-49f6-ad69-4354098401ff";
 const DISPLAY_CATALOG_ENDPOINT: &str = "https://displaycatalog.mp.microsoft.com/v7.0/products";
@@ -27,7 +43,7 @@ fn load_xbox_token() -> Option<String> {
     secure_store::get_secret("xbox").ok().flatten()
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize)]
 struct TokenResponse {
     access_token: String,
     refresh_token: String,
@@ -53,7 +69,7 @@ struct AuthRequest {
     token_type: String,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize)]
 struct AuthResponse {
     #[serde(rename = "Token")]
     token: String,
@@ -113,6 +129,12 @@ struct Title {
     devices: Option<Vec<String>>,
     #[serde(rename = "titleHistory")]
     title_history: Option<TitleHistoryDetail>,
+    #[serde(
+        rename = "displayImage",
+        default,
+        deserialize_with = "deserialize_optional_string"
+    )]
+    display_image: Option<String>,
     stats: Option<serde_json::Value>,
 }
 
@@ -234,6 +256,23 @@ struct DisplayCatalogSelection {
     excluded_unknown_duplicates: usize,
 }
 
+struct PendingPkceExchange {
+    verifier: String,
+    created_at: Instant,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum OAuthCallbackError {
+    MalformedRequest,
+    UnsupportedMethod,
+    UnexpectedPath,
+    DuplicateCode,
+    DuplicateState,
+    MissingCode,
+    MissingState,
+    StateMismatch,
+}
+
 fn deserialize_optional_string<'de, D>(deserializer: D) -> Result<Option<String>, D::Error>
 where
     D: Deserializer<'de>,
@@ -242,117 +281,419 @@ where
     Ok(value.and_then(|value| value.as_str().map(str::to_string)))
 }
 
-fn start_xbox_callback_server(app: tauri::AppHandle) {
-    thread::spawn(move || {
-        let listener = match TcpListener::bind("127.0.0.1:18236") {
-            Ok(l) => l,
-            Err(e) => {
-                println!("[Xbox Login] Failed to bind local server: {e}");
+fn generate_oauth_secret() -> Result<String, String> {
+    let mut bytes = [0_u8; 32];
+    SysRng
+        .try_fill_bytes(&mut bytes)
+        .map_err(|_| "Failed to obtain secure randomness for Xbox login".to_string())?;
+    Ok(URL_SAFE_NO_PAD.encode(bytes))
+}
+
+fn pkce_s256_challenge(verifier: &str) -> String {
+    URL_SAFE_NO_PAD.encode(Sha256::digest(verifier.as_bytes()))
+}
+
+fn build_xbox_authorization_url(state: &str, code_challenge: &str) -> Result<String, String> {
+    let mut url = reqwest::Url::parse(XBOX_AUTHORIZATION_ENDPOINT)
+        .map_err(|e| format!("Failed to parse Xbox authorization endpoint: {e}"))?;
+    url.query_pairs_mut()
+        .append_pair("client_id", XBOX_CLIENT_ID)
+        .append_pair("response_type", "code")
+        .append_pair("approval_prompt", "auto")
+        .append_pair("scope", XBOX_SCOPE)
+        .append_pair("redirect_uri", XBOX_REDIRECT_URI)
+        .append_pair("state", state)
+        .append_pair("code_challenge", code_challenge)
+        .append_pair("code_challenge_method", "S256");
+    Ok(url.into())
+}
+
+fn build_loopback_callback_url(address: SocketAddr) -> Result<String, String> {
+    if address.ip() != Ipv4Addr::LOCALHOST {
+        return Err("Xbox callback listener did not bind to IPv4 loopback".to_string());
+    }
+
+    let mut url = reqwest::Url::parse(&format!("http://{address}"))
+        .map_err(|e| format!("Failed to construct Xbox callback URL: {e}"))?;
+    url.set_path(XBOX_LOOPBACK_CALLBACK_PATH);
+    Ok(url.into())
+}
+
+fn build_xbox_callback_script(callback_url: &str) -> Result<String, String> {
+    let callback_url = serde_json::to_string(callback_url)
+        .map_err(|e| format!("Failed to prepare Xbox callback URL: {e}"))?;
+    let redirect_uri = serde_json::to_string(XBOX_REDIRECT_URI)
+        .map_err(|e| format!("Failed to prepare Xbox redirect URI: {e}"))?;
+
+    Ok(r##"
+        window.addEventListener("DOMContentLoaded", () => {
+            const redirectUri = new URL(__XBOX_REDIRECT_URI__);
+            if (
+                window.location.origin !== redirectUri.origin ||
+                window.location.pathname !== redirectUri.pathname
+            ) {
                 return;
             }
-        };
 
-        println!("[Xbox Login] Local callback server listening on 127.0.0.1:18236");
-
-        for stream in listener.incoming() {
-            let mut stream = match stream {
-                Ok(s) => s,
-                Err(_) => continue,
-            };
-
-            let mut buffer = [0; 4096];
-            let bytes_read = match stream.read(&mut buffer) {
-                Ok(n) => n,
-                Err(_) => continue,
-            };
-
-            let request = String::from_utf8_lossy(&buffer[..bytes_read]);
-
-            if request.contains("code=") {
-                if let Some(pos) = request.find("code=") {
-                    let start_idx = pos + "code=".len();
-                    let rest = &request[start_idx..];
-                    let code = rest.split([' ', '&', '\r', '\n']).next().unwrap_or("");
-                    if !code.is_empty() {
-                        println!("[Xbox Login] Extracted Xbox Code: {}", code);
-
-                        use tauri::{Emitter, Manager};
-                        let _ = app.emit("xbox_login_code", code.to_string());
-
-                        if let Some(window) = app.get_webview_window("xbox-login") {
-                            let _ = window.close();
-                        }
-
-                        let response_body = r#"
-                            <!DOCTYPE html>
-                            <html>
-                            <head>
-                                <meta charset="utf-8">
-                                <title>OG Launcher - Xbox Login Successful</title>
-                                <style>
-                                    body {
-                                        font-family: system-ui, -apple-system, sans-serif;
-                                        background-color: #fbf4e7;
-                                        color: #171411;
-                                        text-align: center;
-                                        padding: 50px;
-                                        margin: 0;
-                                    }
-                                    .container {
-                                        max-width: 500px;
-                                        margin: 80px auto;
-                                        border: 4px solid #000;
-                                        background-color: #efe6d4;
-                                        padding: 40px 30px;
-                                        box-shadow: 6px 6px 0px #000;
-                                    }
-                                    h1 {
-                                        font-weight: 900;
-                                        text-transform: uppercase;
-                                        margin-bottom: 20px;
-                                        font-size: 28px;
-                                        letter-spacing: -0.02em;
-                                    }
-                                    p { font-weight: bold; font-size: 16px; line-height: 1.5; color: #55504a; }
-                                    .success-icon {
-                                        font-size: 48px;
-                                        color: #087d6d;
-                                        margin-bottom: 20px;
-                                    }
-                                </style>
-                            </head>
-                            <body>
-                                <div class="container">
-                                    <div class="success-icon">OK</div>
-                                    <h1>Xbox Login Successful!</h1>
-                                    <p>Your Xbox integration was successful. You can close this tab now and return to the Open Game Launcher.</p>
-                                </div>
-                            </body>
-                            </html>
-                        "#;
-
-                        let response = format!(
-                            "HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=UTF-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}",
-                            response_body.len(),
-                            response_body
-                        );
-
-                        let _ = stream.write_all(response.as_bytes());
-                        let _ = stream.flush();
-                        break;
-                    }
-                }
+            let params = new URLSearchParams(window.location.search);
+            if (!params.has("code") && window.location.hash.startsWith("#")) {
+                params = new URLSearchParams(window.location.hash.substring(1));
             }
 
-            let response_body =
-                "HTTP/1.1 400 Bad Request\r\nContent-Length: 0\r\nConnection: close\r\n\r\n";
-            let _ = stream.write_all(response_body.as_bytes());
+            const code = params.get("code");
+            const state = params.get("state");
+            if (!code || !state) {
+                return;
+            }
+
+            const callbackUrl = new URL(__XBOX_CALLBACK_URL__);
+            callbackUrl.searchParams.set("code", code);
+            callbackUrl.searchParams.set("state", state);
+            fetch(callbackUrl.toString()).catch(() => {});
+        });
+    "##
+    .replace("__XBOX_REDIRECT_URI__", &redirect_uri)
+    .replace("__XBOX_CALLBACK_URL__", &callback_url))
+}
+
+fn bind_xbox_callback_listener() -> Result<(TcpListener, SocketAddr), String> {
+    let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0))
+        .map_err(|e| format!("Failed to start Xbox login callback listener: {e}"))?;
+    let address = listener
+        .local_addr()
+        .map_err(|e| format!("Failed to inspect Xbox login callback listener: {e}"))?;
+    listener
+        .set_nonblocking(true)
+        .map_err(|e| format!("Failed to configure Xbox login callback listener: {e}"))?;
+    Ok((listener, address))
+}
+
+fn parse_oauth_callback_request(
+    request: &str,
+    expected_state: &str,
+) -> Result<String, OAuthCallbackError> {
+    let request_line = request
+        .lines()
+        .next()
+        .ok_or(OAuthCallbackError::MalformedRequest)?;
+    let mut request_parts = request_line.split_ascii_whitespace();
+    let method = request_parts
+        .next()
+        .ok_or(OAuthCallbackError::MalformedRequest)?;
+    let target = request_parts
+        .next()
+        .ok_or(OAuthCallbackError::MalformedRequest)?;
+    let version = request_parts
+        .next()
+        .ok_or(OAuthCallbackError::MalformedRequest)?;
+    if request_parts.next().is_some() || !matches!(version, "HTTP/1.0" | "HTTP/1.1") {
+        return Err(OAuthCallbackError::MalformedRequest);
+    }
+    if method != "GET" {
+        return Err(OAuthCallbackError::UnsupportedMethod);
+    }
+
+    let raw_path = target.split_once('?').map_or(target, |(path, _)| path);
+    if raw_path != XBOX_LOOPBACK_CALLBACK_PATH {
+        return Err(OAuthCallbackError::UnexpectedPath);
+    }
+    if target.contains('#') {
+        return Err(OAuthCallbackError::MalformedRequest);
+    }
+
+    let url = reqwest::Url::parse(&format!("http://127.0.0.1{target}"))
+        .map_err(|_| OAuthCallbackError::MalformedRequest)?;
+    let mut code = None;
+    let mut state = None;
+    for (key, value) in url.query_pairs() {
+        match key.as_ref() {
+            "code" if code.is_some() => return Err(OAuthCallbackError::DuplicateCode),
+            "code" => code = Some(value.into_owned()),
+            "state" if state.is_some() => return Err(OAuthCallbackError::DuplicateState),
+            "state" => state = Some(value.into_owned()),
+            _ => {}
         }
+    }
+
+    let code = code
+        .filter(|value| !value.is_empty())
+        .ok_or(OAuthCallbackError::MissingCode)?;
+    let state = state
+        .filter(|value| !value.is_empty())
+        .ok_or(OAuthCallbackError::MissingState)?;
+    if !oauth_state_matches(expected_state, &state) {
+        return Err(OAuthCallbackError::StateMismatch);
+    }
+
+    Ok(code)
+}
+
+fn oauth_state_matches(expected: &str, received: &str) -> bool {
+    if expected.len() != received.len() {
+        return false;
+    }
+
+    expected
+        .as_bytes()
+        .iter()
+        .zip(received.as_bytes())
+        .fold(0_u8, |difference, (left, right)| {
+            difference | (left ^ right)
+        })
+        == 0
+}
+
+fn read_callback_request(stream: &mut TcpStream) -> io::Result<String> {
+    stream.set_nonblocking(false)?;
+    stream.set_read_timeout(Some(XBOX_CALLBACK_READ_TIMEOUT))?;
+
+    let mut request = Vec::with_capacity(1024);
+    let mut chunk = [0_u8; 1024];
+    while request.len() < XBOX_CALLBACK_REQUEST_LIMIT {
+        let bytes_read = stream.read(&mut chunk)?;
+        if bytes_read == 0 {
+            break;
+        }
+        request.extend_from_slice(&chunk[..bytes_read]);
+        if request.windows(4).any(|window| window == b"\r\n\r\n") {
+            break;
+        }
+    }
+
+    if request.len() >= XBOX_CALLBACK_REQUEST_LIMIT
+        && !request.windows(4).any(|window| window == b"\r\n\r\n")
+    {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "Xbox callback request headers are too large",
+        ));
+    }
+
+    String::from_utf8(request).map_err(|_| {
+        io::Error::new(
+            io::ErrorKind::InvalidData,
+            "Invalid callback request encoding",
+        )
+    })
+}
+
+fn write_callback_response(stream: &mut TcpStream, status: &str, body: &str) -> io::Result<()> {
+    let response = format!(
+        "HTTP/1.1 {status}\r\nContent-Type: text/html; charset=UTF-8\r\nContent-Length: {}\r\nCache-Control: no-store\r\nReferrer-Policy: no-referrer\r\nX-Content-Type-Options: nosniff\r\nConnection: close\r\n\r\n{body}",
+        body.len()
+    );
+    stream.write_all(response.as_bytes())?;
+    stream.flush()
+}
+
+fn pending_pkce_exchanges() -> &'static Mutex<HashMap<[u8; 32], PendingPkceExchange>> {
+    static EXCHANGES: OnceLock<Mutex<HashMap<[u8; 32], PendingPkceExchange>>> = OnceLock::new();
+    EXCHANGES.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn active_callback_cancellation() -> &'static Mutex<Option<Arc<AtomicBool>>> {
+    static ACTIVE: OnceLock<Mutex<Option<Arc<AtomicBool>>>> = OnceLock::new();
+    ACTIVE.get_or_init(|| Mutex::new(None))
+}
+
+fn activate_callback_server(cancelled: Arc<AtomicBool>) -> Result<(), String> {
+    let mut active = active_callback_cancellation()
+        .lock()
+        .map_err(|_| "Xbox login callback state is unavailable".to_string())?;
+    if let Some(previous) = active.replace(cancelled) {
+        previous.store(true, Ordering::Release);
+    }
+    Ok(())
+}
+
+fn clear_active_callback_server(cancelled: &Arc<AtomicBool>) {
+    if let Ok(mut active) = active_callback_cancellation().lock() {
+        if active
+            .as_ref()
+            .is_some_and(|current| Arc::ptr_eq(current, cancelled))
+        {
+            active.take();
+        }
+    }
+}
+
+fn oauth_code_fingerprint(code: &str) -> [u8; 32] {
+    Sha256::digest(code.as_bytes()).into()
+}
+
+fn remember_pkce_exchange(code: &str, verifier: &str) -> Result<(), String> {
+    let mut exchanges = pending_pkce_exchanges()
+        .lock()
+        .map_err(|_| "Xbox login exchange state is unavailable".to_string())?;
+    let now = Instant::now();
+    exchanges.retain(|_, exchange| {
+        now.saturating_duration_since(exchange.created_at) < XBOX_PKCE_EXCHANGE_TTL
     });
+    exchanges.insert(
+        oauth_code_fingerprint(code),
+        PendingPkceExchange {
+            verifier: verifier.to_string(),
+            created_at: now,
+        },
+    );
+    Ok(())
+}
+
+fn take_pkce_verifier(code: &str) -> Result<String, String> {
+    let mut exchanges = pending_pkce_exchanges()
+        .lock()
+        .map_err(|_| "Xbox login exchange state is unavailable".to_string())?;
+    let now = Instant::now();
+    exchanges.retain(|_, exchange| {
+        now.saturating_duration_since(exchange.created_at) < XBOX_PKCE_EXCHANGE_TTL
+    });
+    exchanges
+        .remove(&oauth_code_fingerprint(code))
+        .map(|exchange| exchange.verifier)
+        .ok_or_else(|| "Xbox login session is missing or expired; start login again".to_string())
+}
+
+fn forget_pkce_exchange(code: &str) {
+    if let Ok(mut exchanges) = pending_pkce_exchanges().lock() {
+        exchanges.remove(&oauth_code_fingerprint(code));
+    }
+}
+
+fn start_xbox_callback_server(
+    listener: TcpListener,
+    app: tauri::AppHandle,
+    expected_state: String,
+    pkce_verifier: String,
+) -> Result<Arc<AtomicBool>, String> {
+    let cancelled = Arc::new(AtomicBool::new(false));
+    let worker_cancelled = Arc::clone(&cancelled);
+    thread::Builder::new()
+        .name("xbox-oauth-callback".to_string())
+        .spawn(move || {
+            use tauri::{Emitter, Manager};
+
+            let deadline = Instant::now() + XBOX_CALLBACK_TIMEOUT;
+            while !worker_cancelled.load(Ordering::Acquire) && Instant::now() < deadline {
+                let (mut stream, _) = match listener.accept() {
+                    Ok(connection) => connection,
+                    Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
+                        thread::sleep(XBOX_CALLBACK_POLL_INTERVAL);
+                        continue;
+                    }
+                    Err(_) => break,
+                };
+
+                let Ok(request) = read_callback_request(&mut stream) else {
+                    let _ = write_callback_response(&mut stream, "400 Bad Request", "");
+                    continue;
+                };
+                if worker_cancelled.load(Ordering::Acquire) {
+                    break;
+                }
+                let Ok(code) = parse_oauth_callback_request(&request, &expected_state) else {
+                    let _ = write_callback_response(&mut stream, "400 Bad Request", "");
+                    continue;
+                };
+
+                if remember_pkce_exchange(&code, &pkce_verifier).is_err() {
+                    let _ = write_callback_response(&mut stream, "500 Internal Server Error", "");
+                    break;
+                }
+                if worker_cancelled.load(Ordering::Acquire) {
+                    forget_pkce_exchange(&code);
+                    break;
+                }
+
+                if app.emit("xbox_login_code", code.clone()).is_err() {
+                    forget_pkce_exchange(&code);
+                    let _ = write_callback_response(&mut stream, "500 Internal Server Error", "");
+                    break;
+                }
+
+                let response_body = r#"
+                    <!DOCTYPE html>
+                    <html>
+                    <head>
+                        <meta charset="utf-8">
+                        <title>OG Launcher - Xbox Login Successful</title>
+                        <style>
+                            body {
+                                font-family: system-ui, -apple-system, sans-serif;
+                                background-color: #fbf4e7;
+                                color: #171411;
+                                text-align: center;
+                                padding: 50px;
+                                margin: 0;
+                            }
+                            .container {
+                                max-width: 500px;
+                                margin: 80px auto;
+                                border: 4px solid #000;
+                                background-color: #efe6d4;
+                                padding: 40px 30px;
+                                box-shadow: 6px 6px 0px #000;
+                            }
+                            h1 {
+                                font-weight: 900;
+                                text-transform: uppercase;
+                                margin-bottom: 20px;
+                                font-size: 28px;
+                                letter-spacing: -0.02em;
+                            }
+                            p { font-weight: bold; font-size: 16px; line-height: 1.5; color: #55504a; }
+                            .success-icon {
+                                font-size: 48px;
+                                color: #087d6d;
+                                margin-bottom: 20px;
+                            }
+                        </style>
+                    </head>
+                    <body>
+                        <div class="container">
+                            <div class="success-icon">OK</div>
+                            <h1>Xbox Login Successful!</h1>
+                            <p>Your Xbox integration was successful. You can close this tab now and return to the Open Game Launcher.</p>
+                        </div>
+                    </body>
+                    </html>
+                "#;
+                let _ = write_callback_response(&mut stream, "200 OK", response_body);
+
+                if !worker_cancelled.load(Ordering::Acquire) {
+                    if let Some(window) = app.get_webview_window("xbox-login") {
+                        let _ = window.close();
+                    }
+                }
+                break;
+            }
+            clear_active_callback_server(&worker_cancelled);
+        })
+        .map_err(|e| format!("Failed to start Xbox login callback worker: {e}"))?;
+    Ok(cancelled)
 }
 
 #[tauri::command]
 pub async fn open_xbox_login_window(app: tauri::AppHandle) -> Result<(), String> {
+    let (listener, callback_address) = bind_xbox_callback_listener()?;
+    let callback_url = build_loopback_callback_url(callback_address)?;
+    let state = generate_oauth_secret()?;
+    let pkce_verifier = generate_oauth_secret()?;
+    let pkce_challenge = pkce_s256_challenge(&pkce_verifier);
+    let url = build_xbox_authorization_url(&state, &pkce_challenge)?;
+    let url = url
+        .parse()
+        .map_err(|e| format!("Failed to parse login URL: {e}"))?;
+    let script = build_xbox_callback_script(&callback_url)?;
+
+    // Keep the verifier in Rust and pair it with the accepted callback code. The
+    // legacy Live desktop authorize/token endpoint pair supports standard S256
+    // PKCE without changing the registered oauth20_desktop.srf redirect contract.
+    let callback_cancel = start_xbox_callback_server(listener, app.clone(), state, pkce_verifier)?;
+    if let Err(error) = activate_callback_server(Arc::clone(&callback_cancel)) {
+        callback_cancel.store(true, Ordering::Release);
+        return Err(error);
+    }
+
     // Close any existing xbox-login window first so we can create a fresh one
     use tauri::Manager;
     if let Some(existing) = app.get_webview_window("xbox-login") {
@@ -360,49 +701,25 @@ pub async fn open_xbox_login_window(app: tauri::AppHandle) -> Result<(), String>
         // Give the OS a moment to clean up the window
         tokio::time::sleep(std::time::Duration::from_millis(200)).await;
     }
-    start_xbox_callback_server(app.clone());
-    let url = format!(
-        "https://login.live.com/oauth20_authorize.srf?client_id={}&response_type=code&approval_prompt=auto&scope={}&redirect_uri={}",
-        XBOX_CLIENT_ID,
-        "Xboxlive.signin%20Xboxlive.offline_access",
-        "https://login.live.com/oauth20_desktop.srf"
-    );
 
-    let script = r#"
-        window.addEventListener("DOMContentLoaded", () => {
-            if (window.location.href.includes("oauth20_desktop.srf")) {
-                let params = new URLSearchParams(window.location.search);
-                if (!params.has("code") && window.location.hash.includes("code=")) {
-                    params = new URLSearchParams(window.location.hash.substring(1));
-                }
-                let code = params.get("code");
-                if (code) {
-                    fetch("http://127.0.0.1:18236/?code=" + code).catch(console.error);
-                }
-            }
-        });
-    "#;
+    let window_result =
+        tauri::WebviewWindowBuilder::new(&app, "xbox-login", tauri::WebviewUrl::External(url))
+            .title("Xbox Login")
+            .inner_size(500.0, 700.0)
+            .center()
+            .resizable(true)
+            .initialization_script(&script)
+            .build();
 
-    let _window = tauri::WebviewWindowBuilder::new(
-        &app,
-        "xbox-login",
-        tauri::WebviewUrl::External(
-            url.parse()
-                .map_err(|e| format!("Failed to parse login URL: {e}"))?,
-        ),
-    )
-    .title("Xbox Login")
-    .inner_size(500.0, 700.0)
-    .center()
-    .resizable(true)
-    .initialization_script(script)
-    .build()
-    .map_err(|e| format!("Failed to create login window: {e}"))?;
+    if let Err(error) = window_result {
+        callback_cancel.store(true, Ordering::Release);
+        return Err(format!("Failed to create login window: {error}"));
+    }
 
     Ok(())
 }
 
-async fn get_oauth_token(code: &str) -> Result<TokenResponse, String> {
+async fn get_oauth_token(code: &str, code_verifier: &str) -> Result<TokenResponse, String> {
     let client = crate::commands::http::shared_http_client();
     let params = [
         ("grant_type", "authorization_code"),
@@ -410,10 +727,11 @@ async fn get_oauth_token(code: &str) -> Result<TokenResponse, String> {
         ("scope", XBOX_SCOPE),
         ("client_id", XBOX_CLIENT_ID),
         ("redirect_uri", XBOX_REDIRECT_URI),
+        ("code_verifier", code_verifier),
     ];
 
     let res = client
-        .post("https://login.live.com/oauth20_token.srf")
+        .post(XBOX_TOKEN_ENDPOINT)
         .form(&params)
         .send()
         .await
@@ -438,7 +756,7 @@ async fn refresh_xbox_oauth_token(refresh_token: &str) -> Result<TokenResponse, 
     ];
 
     let res = client
-        .post("https://login.live.com/oauth20_token.srf")
+        .post(XBOX_TOKEN_ENDPOINT)
         .form(&params)
         .send()
         .await
@@ -518,11 +836,8 @@ async fn authorize_xsts(user_token: &str) -> Result<AuthResponse, String> {
 
 #[tauri::command]
 pub async fn fetch_xbox_owned_games(code: String) -> Result<XboxFetchResult, String> {
-    println!(
-        "[Xbox] Starting fetch_xbox_owned_games with code length: {}",
-        code.len()
-    );
-    let oauth_token = match get_oauth_token(&code).await {
+    let code_verifier = take_pkce_verifier(&code)?;
+    let oauth_token = match get_oauth_token(&code, &code_verifier).await {
         Ok(t) => t,
         Err(e) => {
             println!("[Xbox] get_oauth_token failed: {}", e);
@@ -576,7 +891,7 @@ pub async fn fetch_xbox_owned_games(code: String) -> Result<XboxFetchResult, Str
 
     let client = crate::commands::http::shared_http_client();
     let url = format!(
-        "https://titlehub.xboxlive.com/users/xuid({})/titles/titlehistory/decoration/detail,stat,achievement",
+        "https://titlehub.xboxlive.com/users/xuid({})/titles/titlehistory/decoration/detail,stat,achievement,image",
         xid.unwrap_or_default()
     );
 
@@ -631,6 +946,7 @@ pub async fn fetch_xbox_owned_games(code: String) -> Result<XboxFetchResult, Str
             .unwrap_or_else(|| "Unknown Xbox Game".to_string());
         let clean_name = clean_xbox_title_name(&raw_name);
 
+        let display_image_url = titlehub_display_image_url(&title);
         let last_played = title.title_history.and_then(|th| th.last_time_played);
 
         let mut playtime_minutes = None;
@@ -665,9 +981,9 @@ pub async fn fetch_xbox_owned_games(code: String) -> Result<XboxFetchResult, Str
             external_id: Some(title.title_id.clone()),
             title: clean_name,
             description: String::new(),
-            cover_url: None, // Could be fetched via titlehub details if needed
+            cover_url: display_image_url.clone(),
             logo_url: None,
-            icon_url: None,
+            icon_url: display_image_url,
             playtime_minutes,
             last_played_at: last_played,
             cloud_gaming_url: None,
@@ -919,6 +1235,13 @@ fn normalize_catalog_asset_url(value: &str) -> Option<String> {
     }
 
     Some(format!("https://{remainder}"))
+}
+
+fn titlehub_display_image_url(title: &Title) -> Option<String> {
+    title
+        .display_image
+        .as_deref()
+        .and_then(normalize_catalog_asset_url)
 }
 
 fn find_catalog_image_url(
@@ -1615,6 +1938,108 @@ pub async fn sync_xbox_achievements(
 mod tests {
     use super::*;
 
+    #[test]
+    fn builds_callback_url_from_ephemeral_loopback_address() {
+        let address = SocketAddr::from(([127, 0, 0, 1], 49_152));
+
+        assert_eq!(
+            build_loopback_callback_url(address).unwrap(),
+            "http://127.0.0.1:49152/oauth/xbox/callback"
+        );
+    }
+
+    #[test]
+    fn callback_url_rejects_non_loopback_addresses() {
+        let address = SocketAddr::from(([192, 0, 2, 10], 49_152));
+
+        assert!(build_loopback_callback_url(address).is_err());
+    }
+
+    #[test]
+    fn parses_exact_callback_path_and_matching_state() {
+        let request = format!(
+            "GET {XBOX_LOOPBACK_CALLBACK_PATH}?code=returned%2Bcode&state=expected-state&lc=1033 HTTP/1.1\r\nHost: 127.0.0.1\r\n\r\n"
+        );
+
+        assert_eq!(
+            parse_oauth_callback_request(&request, "expected-state"),
+            Ok("returned+code".to_string())
+        );
+    }
+
+    #[test]
+    fn rejects_callback_with_wrong_or_missing_state() {
+        let wrong_state = format!(
+            "GET {XBOX_LOOPBACK_CALLBACK_PATH}?code=returned-code&state=expected-statz HTTP/1.1\r\n\r\n"
+        );
+        let missing_state =
+            format!("GET {XBOX_LOOPBACK_CALLBACK_PATH}?code=returned-code HTTP/1.1\r\n\r\n");
+
+        assert_eq!(
+            parse_oauth_callback_request(&wrong_state, "expected-state"),
+            Err(OAuthCallbackError::StateMismatch)
+        );
+        assert_eq!(
+            parse_oauth_callback_request(&missing_state, "expected-state"),
+            Err(OAuthCallbackError::MissingState)
+        );
+    }
+
+    #[test]
+    fn rejects_callback_path_variants_and_duplicate_security_parameters() {
+        let path_suffix = format!(
+            "GET {XBOX_LOOPBACK_CALLBACK_PATH}/extra?code=returned-code&state=expected-state HTTP/1.1\r\n\r\n"
+        );
+        let duplicate_state = format!(
+            "GET {XBOX_LOOPBACK_CALLBACK_PATH}?code=returned-code&state=expected-state&state=expected-state HTTP/1.1\r\n\r\n"
+        );
+
+        assert_eq!(
+            parse_oauth_callback_request(&path_suffix, "expected-state"),
+            Err(OAuthCallbackError::UnexpectedPath)
+        );
+        assert_eq!(
+            parse_oauth_callback_request(&duplicate_state, "expected-state"),
+            Err(OAuthCallbackError::DuplicateState)
+        );
+    }
+
+    #[test]
+    fn authorization_url_carries_state_and_s256_pkce() {
+        let url = build_xbox_authorization_url("attempt-state", "pkce-challenge").unwrap();
+        let url = reqwest::Url::parse(&url).unwrap();
+        let query: HashMap<_, _> = url.query_pairs().into_owned().collect();
+
+        assert_eq!(
+            url.as_str().split('?').next(),
+            Some(XBOX_AUTHORIZATION_ENDPOINT)
+        );
+        assert_eq!(
+            query.get("redirect_uri").map(String::as_str),
+            Some(XBOX_REDIRECT_URI)
+        );
+        assert_eq!(
+            query.get("state").map(String::as_str),
+            Some("attempt-state")
+        );
+        assert_eq!(
+            query.get("code_challenge").map(String::as_str),
+            Some("pkce-challenge")
+        );
+        assert_eq!(
+            query.get("code_challenge_method").map(String::as_str),
+            Some("S256")
+        );
+    }
+
+    #[test]
+    fn computes_rfc7636_s256_challenge() {
+        assert_eq!(
+            pkce_s256_challenge("dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"),
+            "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"
+        );
+    }
+
     fn test_title(title_id: &str, pfn: Option<&str>, name: Option<&str>) -> Title {
         Title {
             title_id: title_id.to_string(),
@@ -1623,7 +2048,43 @@ mod tests {
             item_type: Some("Game".to_string()),
             devices: Some(vec!["PC".to_string()]),
             title_history: None,
+            display_image: None,
             stats: None,
+        }
+    }
+
+    #[test]
+    fn normalizes_titlehub_display_image_to_https() {
+        let title: Title = serde_json::from_str(
+            r#"{"titleId":"123","pfn":"Microsoft.Test_8wekyb3d8bbwe","name":"Test Game","type":"Game","devices":["PC"],"displayImage":"http://store-images.microsoft.com/test.png"}"#,
+        )
+        .unwrap();
+
+        assert_eq!(
+            titlehub_display_image_url(&title).as_deref(),
+            Some("https://store-images.microsoft.com/test.png")
+        );
+    }
+
+    #[test]
+    fn ignores_non_string_and_null_titlehub_display_images() {
+        for display_image in [
+            serde_json::json!({ "url": "https://store-images.microsoft.com/object.png" }),
+            serde_json::json!(42),
+            serde_json::Value::Null,
+        ] {
+            let title: Title = serde_json::from_value(serde_json::json!({
+                "titleId": "123",
+                "pfn": "Microsoft.Test_8wekyb3d8bbwe",
+                "name": "Test Game",
+                "type": "Game",
+                "devices": ["PC"],
+                "displayImage": display_image,
+            }))
+            .expect("malformed optional displayImage should not reject the title");
+
+            assert_eq!(title.display_image, None);
+            assert_eq!(titlehub_display_image_url(&title), None);
         }
     }
 

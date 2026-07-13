@@ -76,6 +76,7 @@ function installFeedMock(rows: Array<Record<string, unknown>>, error: QueryError
     in: vi.fn(),
     limit: vi.fn(),
     lt: vi.fn(),
+    or: vi.fn(),
     order: vi.fn(),
     select: vi.fn(),
     then: queryResult.then.bind(queryResult),
@@ -83,6 +84,7 @@ function installFeedMock(rows: Array<Record<string, unknown>>, error: QueryError
   query.in.mockReturnValue(query);
   query.limit.mockReturnValue(query);
   query.lt.mockReturnValue(query);
+  query.or.mockReturnValue(query);
   query.order.mockReturnValue(query);
   query.select.mockReturnValue(query);
   mocks.from.mockReturnValue(query);
@@ -226,5 +228,24 @@ describe("friend activity feed", () => {
     expect(query.limit).toHaveBeenCalledWith(12);
     expect(feed).toHaveLength(1);
     expect(feed[0]?.userId).toBe("friend-1");
+  });
+
+  it("uses a stable timestamp and id cursor without skipping tied activity rows", async () => {
+    const query = installFeedMock([]);
+    const cursor = {
+      createdAt: "2026-07-09T12:00:00.000Z",
+      id: "67b2f3b7-6ff8-4b8c-88e1-4505ec519755",
+    };
+
+    await getFriendActivityFeed(["friend-1"], 12, cursor);
+
+    expect(query.order).toHaveBeenNthCalledWith(1, "created_at", { ascending: false });
+    expect(query.order).toHaveBeenNthCalledWith(2, "id", { ascending: false });
+    expect(query.or).toHaveBeenCalledWith(
+      "created_at.lt.2026-07-09T12:00:00.000Z,and(created_at.eq.2026-07-09T12:00:00.000Z,id.lt.67b2f3b7-6ff8-4b8c-88e1-4505ec519755)",
+    );
+    expect(query.or.mock.invocationCallOrder[0]).toBeLessThan(
+      query.limit.mock.invocationCallOrder[0],
+    );
   });
 });

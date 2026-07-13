@@ -161,6 +161,92 @@ describe("mergeGamePassCatalog", () => {
     });
   });
 
+  it("matches the Store product ID before localized catalog titles", async () => {
+    localStorage.setItem(
+      STORAGE_KEYS.GAME_PASS_CATALOG_CACHE,
+      JSON.stringify([
+        ownedCatalogGame({
+          externalId: "9PFNXM9G4N83",
+          id: "xbox-9PFNXM9G4N83",
+          title: "Roadside Research (Game Preview)",
+          coverUrl: "https://store-images.example/roadside.jpg",
+        }),
+      ]),
+    );
+    const installed = installedXboxGame({
+      externalId: "9PFNXM9G4N83",
+      title: "Forschung am Straßenrand (Spielvorschau)",
+    });
+
+    const result = await mergeGamePassCatalog([installed], makeContext());
+
+    expect(result.games).toHaveLength(1);
+    expect(result.games[0]).toMatchObject({
+      externalId: "9PFNXM9G4N83",
+      coverUrl: "https://store-images.example/roadside.jpg",
+    });
+  });
+
+  it("does not merge or suppress a same-title catalog row with a different Store product ID", async () => {
+    localStorage.setItem(
+      STORAGE_KEYS.GAME_PASS_CATALOG_CACHE,
+      JSON.stringify([
+        ownedCatalogGame({
+          externalId: "9BBBBBBBBBBB",
+          id: "xbox-9BBBBBBBBBBB",
+          title: "Roadside Research",
+          coverUrl: "https://store-images.example/catalog-b.jpg",
+        }),
+      ]),
+    );
+    const installed = installedXboxGame({
+      id: "xbox-installed-a",
+      externalId: "9AAAAAAAAAAA",
+      title: "Roadside Research",
+    });
+
+    const result = await mergeGamePassCatalog([installed], makeContext());
+
+    expect(result.games).toHaveLength(2);
+    expect(result.games[0]).toBe(installed);
+    expect(result.games[1]).toMatchObject({
+      id: "xbox-9BBBBBBBBBBB",
+      externalId: "9BBBBBBBBBBB",
+      coverUrl: "https://store-images.example/catalog-b.jpg",
+      catalogSource: "pc_game_pass",
+    });
+  });
+
+  it("replaces a protected WindowsApps asset with valid remote catalog artwork", async () => {
+    localStorage.setItem(
+      STORAGE_KEYS.GAME_PASS_CATALOG_CACHE,
+      JSON.stringify([
+        ownedCatalogGame({
+          externalId: "9PFNXM9G4N83",
+          id: "xbox-9PFNXM9G4N83",
+          title: "Roadside Research",
+          coverUrl: "https://store-images.example/roadside.jpg",
+          iconUrl: "https://store-images.example/roadside-icon.jpg",
+        }),
+      ]),
+    );
+    const protectedAsset =
+      "C:\\Program Files\\WindowsApps\\Microsoft.Roadside_1.0.0.0_x64__8wekyb3d8bbwe\\Assets\\Splash.png";
+    const installed = installedXboxGame({
+      externalId: "9PFNXM9G4N83",
+      title: "Roadside Research",
+      coverUrl: protectedAsset,
+      iconUrl: protectedAsset,
+    });
+
+    const result = await mergeGamePassCatalog([installed], makeContext());
+
+    expect(result.games[0]).toMatchObject({
+      coverUrl: "https://store-images.example/roadside.jpg",
+      iconUrl: "https://store-images.example/roadside-icon.jpg",
+    });
+  });
+
   it("keeps an installed Xbox product category while adding catalog membership", async () => {
     localStorage.setItem(
       STORAGE_KEYS.GAME_PASS_CATALOG_CACHE,

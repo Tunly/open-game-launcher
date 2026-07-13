@@ -57,7 +57,12 @@ export async function syncLocalEntitiesWithSupabase(userId: string) {
     }
   ).from("launcher_local_entities");
   const deviceId = getOrCreateDeviceId();
-  const pending = await getPendingLocalEntities();
+  // The hosted table intentionally accepts only portable game/download
+  // records. Mod install state contains machine-local paths and must never
+  // poison the whole upsert batch or be acknowledged as cloud-synced.
+  const pending = (await getPendingLocalEntities()).filter((entity) =>
+    isLocalEntityKind(entity.kind),
+  );
 
   if (pending.length > 0) {
     const rows: LauncherLocalEntityRow[] = pending.map((entity) => ({
@@ -77,7 +82,13 @@ export async function syncLocalEntitiesWithSupabase(userId: string) {
       throw error;
     }
 
-    await markLocalEntitiesSynced(pending.map((entity) => ({ kind: entity.kind, id: entity.id })));
+    await markLocalEntitiesSynced(
+      pending.map((entity) => ({
+        kind: entity.kind,
+        id: entity.id,
+        syncToken: entity.syncToken,
+      })),
+    );
   }
 
   const { data, error } = await table
@@ -99,6 +110,7 @@ export async function syncLocalEntitiesWithSupabase(userId: string) {
       id: row.entity_id,
       entity: toObject(row.entity),
       updatedAt: Number(row.local_updated_at ?? 0),
+      syncToken: "",
     });
   }
 

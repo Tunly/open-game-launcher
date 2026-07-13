@@ -101,6 +101,9 @@ describe("PerfHistoryPage activity cross-filtering", () => {
       row.textContent?.includes("game-1"),
     );
     expect(gameRow).toHaveTextContent("60");
+    expect(container).toHaveTextContent("Legacy HUD FPS");
+    expect(container).toHaveTextContent("Capture Context");
+    expect(container).toHaveTextContent("not game-process FPS");
   });
 
   it("renders local preview data without Supabase calls when Supabase is not configured", async () => {
@@ -117,6 +120,23 @@ describe("PerfHistoryPage activity cross-filtering", () => {
       expect(container).toHaveTextContent("Browser Performance Relay");
       expect(container).toHaveTextContent("Local Performance Preview");
       expect(container).toHaveTextContent("Neon Runner");
+    });
+
+    expect(listPerformanceSnapshots).not.toHaveBeenCalled();
+    expect(listPerformanceSessions).not.toHaveBeenCalled();
+  });
+
+  it("forces the local system-telemetry preview on its development verify route", async () => {
+    const { container } = renderPerfHistoryRoute(
+      "/settings/performance?verify=performance-system-telemetry",
+    );
+
+    await waitFor(() => {
+      expect(container).toHaveTextContent("Local Performance Preview");
+      expect(container).toHaveTextContent("Legacy HUD FPS");
+      expect(container).toHaveTextContent("Capture Context");
+      expect(container).toHaveTextContent("Development-only verification data");
+      expect(container).toHaveTextContent("without Supabase reads, writes");
     });
 
     expect(listPerformanceSnapshots).not.toHaveBeenCalled();

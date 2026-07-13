@@ -25,7 +25,11 @@ function makeGame(overrides: Partial<Game> = {}): Game {
   } as Game;
 }
 
-function ownedGame(id = "635", title = "Rainbow Six Siege") {
+function ownedGame(
+  id = "635",
+  title = "Rainbow Six Siege",
+  overrides: Record<string, unknown> = {},
+) {
   return {
     id: `ubisoft-owned-${id}`,
     externalId: id,
@@ -33,7 +37,9 @@ function ownedGame(id = "635", title = "Rainbow Six Siege") {
     description: "",
     coverUrl: null,
     logoUrl: null,
+    iconUrl: null,
     lastPlayedAt: null,
+    ...overrides,
   };
 }
 
@@ -84,5 +90,55 @@ describe("mergeUbisoftOwned", () => {
     const result = await mergeUbisoftOwned([], context);
 
     expect(result.games.map((game) => game.title)).toEqual(["Assassins Creed Odyssey"]);
+  });
+
+  it("fills missing installed artwork from the matching owned Ubisoft game", async () => {
+    mocks.fetchUbisoftOwnedGames.mockResolvedValue([
+      ownedGame("635", "Rainbow Six Siege", {
+        coverUrl: "C:/ProgramData/Ubisoft/cache/assets/banner.png",
+        iconUrl: "C:/ProgramData/Ubisoft/cache/assets/icon.png",
+        logoUrl: "C:/ProgramData/Ubisoft/cache/assets/logo.png",
+      }),
+    ]);
+    const installed = makeGame({
+      externalId: "635",
+      coverUrl: undefined,
+      iconUrl: undefined,
+      logoUrl: undefined,
+    });
+
+    const result = await mergeUbisoftOwned([installed], context);
+
+    expect(result.games).toHaveLength(1);
+    expect(result.games[0]).toMatchObject({
+      id: installed.id,
+      coverUrl: "C:/ProgramData/Ubisoft/cache/assets/banner.png",
+      iconUrl: "C:/ProgramData/Ubisoft/cache/assets/icon.png",
+      logoUrl: "C:/ProgramData/Ubisoft/cache/assets/logo.png",
+    });
+  });
+
+  it("does not overwrite installed Ubisoft artwork", async () => {
+    mocks.fetchUbisoftOwnedGames.mockResolvedValue([
+      ownedGame("635", "Rainbow Six Siege", {
+        coverUrl: "owned-cover.png",
+        iconUrl: "owned-icon.png",
+        logoUrl: "owned-logo.png",
+      }),
+    ]);
+    const installed = makeGame({
+      externalId: "635",
+      coverUrl: "installed-cover.png",
+      iconUrl: "installed-icon.png",
+      logoUrl: "installed-logo.png",
+    });
+
+    const result = await mergeUbisoftOwned([installed], context);
+
+    expect(result.games[0]).toMatchObject({
+      coverUrl: "installed-cover.png",
+      iconUrl: "installed-icon.png",
+      logoUrl: "installed-logo.png",
+    });
   });
 });

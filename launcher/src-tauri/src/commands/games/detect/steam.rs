@@ -877,10 +877,13 @@ pub async fn fetch_steam_achievements(
         .or_else(|| env::var("VITE_STEAM_ID").ok())
         .map(|id| id.trim().trim_matches('"').to_string())
         .filter(|id| !id.is_empty());
+    let web_api_key = env::var("STEAM_WEB_API_KEY")
+        .ok()
+        .and_then(|value| normalize_steam_web_api_key(&value));
 
     let player_fut = async {
-        if let Some(steam_id) = steam_id.as_deref() {
-            fetch_steam_player_achievements(appid, steam_id)
+        if let (Some(steam_id), Some(web_api_key)) = (steam_id.as_deref(), web_api_key.as_deref()) {
+            fetch_steam_player_achievements(appid, steam_id, web_api_key)
                 .await
                 .unwrap_or_default()
         } else {
@@ -1006,12 +1009,20 @@ async fn fetch_steam_global_achievement_percentages(
     Ok(map)
 }
 
+fn normalize_steam_web_api_key(value: &str) -> Option<String> {
+    let value = value.trim().trim_matches('"');
+    (value.len() == 32 && value.bytes().all(|byte| byte.is_ascii_hexdigit()))
+        .then(|| value.to_string())
+}
+
 async fn fetch_steam_player_achievements(
     appid: u32,
     steam_id: &str,
+    web_api_key: &str,
 ) -> Result<Vec<UnifiedAchievement>, String> {
     let client = crate::commands::http::shared_http_client();
     let query = vec![
+        ("key", web_api_key.to_string()),
         ("appid", appid.to_string()),
         ("steamid", steam_id.to_string()),
         ("l", "en".to_string()),
@@ -1329,6 +1340,16 @@ pub async fn sync_game_metadata(mut game: InstalledGame) -> InstalledGame {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn validates_steam_web_api_keys_before_player_achievement_requests() {
+        assert_eq!(
+            normalize_steam_web_api_key(" 0123456789abcdef0123456789ABCDEF ").as_deref(),
+            Some("0123456789abcdef0123456789ABCDEF")
+        );
+        assert!(normalize_steam_web_api_key("short").is_none());
+        assert!(normalize_steam_web_api_key("z123456789abcdef0123456789abcdef").is_none());
+    }
 
     #[test]
     fn parses_steam_activity_from_localconfig_app_blocks() {

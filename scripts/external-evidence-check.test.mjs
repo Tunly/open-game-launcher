@@ -5049,7 +5049,8 @@ test("mods documentation no longer advertises removed scanner or Nexus provider 
   assert.doesNotMatch(readme, /scan_mod_directory/);
   assert.doesNotMatch(featurePlan, /scan_mod_directory/);
   assert.doesNotMatch(readme, /Nexus\/CurseForge/);
-  assert.doesNotMatch(featurePlan, /Nexus/);
+  assert.doesNotMatch(featurePlan, /Nexus\/CurseForge/);
+  assert.match(featurePlan, /Nexus-Mod-Provider:[\s\S]*?aus den aktiven[\s\S]*?entfernt/);
   assert.match(readme, /run_mod_provider_staging_probe/);
   assert.match(featurePlan, /run_mod_provider_staging_probe/);
   assert.match(readme, /mod\.io\/CurseForge/);

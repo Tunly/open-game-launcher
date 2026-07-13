@@ -10,18 +10,12 @@ import { ownedGameToGame } from "../../lib/library-providers";
 import { STORAGE_KEYS } from "../../lib/storage-keys";
 import type { Game } from "../../lib/types";
 import type { MergeContext, ProviderResult } from "./types";
-
-function normalizedTitle(value: string): string {
-  return value
-    .toLowerCase()
-    .replace(/\s*\((?:pc|windows(?: 10| 11)?)\)\s*$/g, "")
-    .replace(/\s+(?:for|-)\s+windows(?: 10| 11)?\s*$/g, "")
-    .normalize("NFKD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/&/g, "and")
-    .replace(/[^a-z0-9]+/g, "")
-    .trim();
-}
+import {
+  mergeXboxArtworkCandidates,
+  normalizeXboxCatalogTitle,
+  normalizeXboxStoreProductId,
+  preferXboxArtwork,
+} from "./xbox-metadata";
 
 function persistCatalogCache(value: string, warnings: string[]) {
   try {
@@ -32,28 +26,60 @@ function persistCatalogCache(value: string, warnings: string[]) {
 }
 
 function mergeCatalogArtwork(games: Game[], catalogGames: Game[]): Game[] {
-  const byTitle = new Map(catalogGames.map((game) => [normalizedTitle(game.title), game]));
+  const byProductId = new Map<string, Game>();
+  const byTitle = new Map<string, Game>();
+  for (const catalogGame of catalogGames) {
+    if (catalogGame.externalId && !byProductId.has(catalogGame.externalId.toLowerCase())) {
+      byProductId.set(catalogGame.externalId.toLowerCase(), catalogGame);
+    }
+    const titleKey = normalizeXboxCatalogTitle(catalogGame.title);
+    if (titleKey && !byTitle.has(titleKey)) {
+      byTitle.set(titleKey, catalogGame);
+    }
+  }
   return games.map((game) => {
     if (game.launcher !== "xbox") {
       return game;
     }
 
-    const catalogGame = byTitle.get(normalizedTitle(game.title));
+    const stableCatalogGame = game.externalId
+      ? byProductId.get(game.externalId.toLowerCase())
+      : undefined;
+    const titleCatalogGame = byTitle.get(normalizeXboxCatalogTitle(game.title));
+    const gameProductId = normalizeXboxStoreProductId(game.externalId);
+    const titleProductId = normalizeXboxStoreProductId(titleCatalogGame?.externalId);
+    const catalogGame =
+      stableCatalogGame ??
+      (gameProductId && titleProductId && gameProductId !== titleProductId
+        ? undefined
+        : titleCatalogGame);
     if (!catalogGame) {
       return game;
     }
+
+    const coverUrl = preferXboxArtwork(game.coverUrl, catalogGame.coverUrl);
+    const iconUrl = preferXboxArtwork(game.iconUrl, catalogGame.iconUrl);
+    const logoUrl = preferXboxArtwork(game.logoUrl, catalogGame.logoUrl);
 
     return {
       ...game,
       catalogSource: catalogGame.catalogSource ?? "pc_game_pass",
       productCategory: game.productCategory ?? catalogGame.productCategory,
-      coverUrl: game.coverUrl ?? catalogGame.coverUrl,
-      logoUrl: game.logoUrl ?? catalogGame.logoUrl,
-      iconUrl: game.iconUrl ?? catalogGame.iconUrl,
-      iconUrls:
-        game.iconUrls?.length || !catalogGame.iconUrl ? game.iconUrls : [catalogGame.iconUrl],
-      logoUrls:
-        game.logoUrls?.length || !catalogGame.logoUrl ? game.logoUrls : [catalogGame.logoUrl],
+      coverUrl,
+      logoUrl,
+      iconUrl,
+      iconUrls: mergeXboxArtworkCandidates(
+        iconUrl,
+        ...(game.iconUrls ?? []),
+        catalogGame.iconUrl,
+        ...(catalogGame.iconUrls ?? []),
+      ),
+      logoUrls: mergeXboxArtworkCandidates(
+        logoUrl,
+        ...(game.logoUrls ?? []),
+        catalogGame.logoUrl,
+        ...(catalogGame.logoUrls ?? []),
+      ),
     };
   });
 }
@@ -123,8 +149,23 @@ export async function mergeGamePassCatalog(
   const existingXboxTitles = new Set(
     enrichedGames
       .filter((game) => game.launcher === "xbox")
-      .map((game) => normalizedTitle(game.title)),
+      .map((game) => normalizeXboxCatalogTitle(game.title)),
   );
+  const initialXboxTitleProductIds = new Map<string, Set<string>>();
+  for (const game of enrichedGames) {
+    if (game.launcher !== "xbox") {
+      continue;
+    }
+    const titleKey = normalizeXboxCatalogTitle(game.title);
+    const productId = normalizeXboxStoreProductId(game.externalId);
+    if (!titleKey || !productId) {
+      continue;
+    }
+    const productIds = initialXboxTitleProductIds.get(titleKey) ?? new Set<string>();
+    productIds.add(productId);
+    initialXboxTitleProductIds.set(titleKey, productIds);
+  }
+  const addedConflictingCatalogTitles = new Set<string>();
   const missingCatalogGames = catalogGames.filter((game) => {
     if (existingIds.has(game.id.toLowerCase())) {
       return false;
@@ -132,8 +173,19 @@ export async function mergeGamePassCatalog(
     if (game.externalId && existingXboxExternalIds.has(game.externalId.toLowerCase())) {
       return false;
     }
-    const titleKey = normalizedTitle(game.title);
+    const titleKey = normalizeXboxCatalogTitle(game.title);
     if (existingXboxTitles.has(titleKey)) {
+      const productId = normalizeXboxStoreProductId(game.externalId);
+      const initialProductIds = initialXboxTitleProductIds.get(titleKey);
+      const hasStableIdConflict =
+        productId !== undefined &&
+        initialProductIds !== undefined &&
+        initialProductIds.size > 0 &&
+        !initialProductIds.has(productId);
+      if (hasStableIdConflict && !addedConflictingCatalogTitles.has(titleKey)) {
+        addedConflictingCatalogTitles.add(titleKey);
+        return true;
+      }
       return false;
     }
     existingXboxTitles.add(titleKey);

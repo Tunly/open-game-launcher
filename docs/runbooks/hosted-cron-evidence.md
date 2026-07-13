@@ -57,6 +57,19 @@ OGL_EXTERNAL_EVIDENCE_GATES=hosted-supabase-cron pnpm external:evidence:prefligh
 pnpm completion:gate:external
 ```
 
+On PowerShell, prefer `--checks=price-drop` where available. For env-scoped
+commands use:
+
+```powershell
+$env:OGL_HOSTED_CRON_EVIDENCE_CHECKS='price-drop'
+pnpm hosted:cron-evidence:packet
+Remove-Item Env:OGL_HOSTED_CRON_EVIDENCE_CHECKS
+
+$env:OGL_EXTERNAL_EVIDENCE_GATES='hosted-supabase-cron'
+pnpm external:evidence:preflight
+Remove-Item Env:OGL_EXTERNAL_EVIDENCE_GATES
+```
+
 Without `OGL_HOSTED_CRON_EVIDENCE_CHECKS` or `--checks`, the collector checks
 all scheduler lanes. `store-stripe-live` only needs the `price-drop` lane; use
 `OGL_HOSTED_CRON_EVIDENCE_CHECKS=price-drop` or `--checks=price-drop` for that

@@ -1,15 +1,18 @@
 mod commands;
+pub mod launcher_automation;
 
 use std::{
     env, fs,
     path::PathBuf,
     sync::{
         atomic::{AtomicBool, Ordering},
-        Arc,
+        Arc, Mutex,
     },
     time::Duration,
 };
-use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, State, WebviewWindow, WindowEvent};
+use tauri::{
+    AppHandle, Emitter, Manager, PhysicalPosition, RunEvent, State, WebviewWindow, WindowEvent,
+};
 use tauri_plugin_global_shortcut::ShortcutState;
 
 const STARTUP_FALLBACK_DELAY: Duration = Duration::from_secs(15);
@@ -17,6 +20,32 @@ const STARTUP_FALLBACK_DELAY: Duration = Duration::from_secs(15);
 #[derive(Default)]
 struct StartupState {
     transition_started: Arc<AtomicBool>,
+    pending_deep_link: Mutex<Option<commands::deeplink::DeepLinkEvent>>,
+}
+
+fn store_pending_deep_link(
+    pending: &Mutex<Option<commands::deeplink::DeepLinkEvent>>,
+    link: commands::deeplink::DeepLinkEvent,
+) {
+    *pending
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(link);
+}
+
+fn take_pending_deep_link_value(
+    pending: &Mutex<Option<commands::deeplink::DeepLinkEvent>>,
+) -> Option<commands::deeplink::DeepLinkEvent> {
+    pending
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .take()
+}
+
+#[tauri::command]
+fn take_pending_deep_link(
+    state: State<'_, StartupState>,
+) -> Option<commands::deeplink::DeepLinkEvent> {
+    take_pending_deep_link_value(&state.pending_deep_link)
 }
 
 #[tauri::command]
@@ -48,7 +77,7 @@ pub fn run_headless_plugin_runtime_sandbox_probe_from_args() -> Option<i32> {
 pub fn run() {
     load_local_env_files();
 
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
         .manage(StartupState::default())
         .plugin(tauri_plugin_autostart::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
@@ -57,6 +86,10 @@ pub fn run() {
             for arg in args {
                 if arg.starts_with("oglauncher://") {
                     let link = commands::deeplink::parse_deep_link(&arg);
+                    store_pending_deep_link(
+                        &app.state::<StartupState>().pending_deep_link,
+                        link.clone(),
+                    );
                     if let Some(window) = app.get_webview_window("main") {
                         let _ = window.emit("deep-link", link);
                         if app
@@ -93,8 +126,15 @@ pub fn run() {
 
             spawn_startup_fallback(app);
 
-            // Start the background process poller for tracking playtime
-            commands::games::start_playtime_poller(app.handle().clone());
+            // Start the background process poller for tracking playtime and retain
+            // its shutdown handle for the application exit lifecycle.
+            let playtime_poller = commands::games::start_playtime_poller(app.handle().clone());
+            if !app.manage(playtime_poller) {
+                return Err(std::io::Error::other(
+                    "Could not register the playtime poller shutdown handle",
+                )
+                .into());
+            }
             commands::client_manager::start_platform_client_event_poller(app.handle().clone());
             commands::games::start_library_inventory_watcher(app.handle().clone());
             commands::downloads::start_global_download_watcher(app.handle().clone());
@@ -105,11 +145,10 @@ pub fn run() {
             // Register the universallauncher:// protocol handler (Windows Registry)
             commands::deeplink::register_protocol_handler();
 
-            // Check if app was launched via a deep link and emit event to frontend
+            // Keep startup links until the frontend explicitly claims them. Tauri
+            // events are transient and setup runs before React subscribes.
             if let Some(link) = commands::deeplink::check_deep_link_on_startup() {
-                let handle = app.handle().clone();
-                // emit to all windows
-                let _ = handle.emit("deep-link", link);
+                store_pending_deep_link(&app.state::<StartupState>().pending_deep_link, link);
             }
 
             // Register the saved global overlay hotkey; defaults to Shift+F1.
@@ -119,6 +158,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             complete_startup,
+            take_pending_deep_link,
             commands::system::get_system_info,
             commands::system::get_default_install_dir,
             commands::system::get_hardware_info,
@@ -202,7 +242,6 @@ pub fn run() {
             commands::plugin_system::review_plugin_activation_plan,
             commands::plugin_system::review_plugin_marketplace_update_index_trust,
             commands::plugin_system::review_plugin_update_signing_envelope,
-            commands::mod_install::install_mod_from_url,
             commands::mod_install::start_mod_install,
             commands::mod_install::get_mod_queue,
             commands::mod_install::pause_mod_install,
@@ -224,7 +263,6 @@ pub fn run() {
             commands::gog::gog_start_download,
             commands::gog::gog_get_cloud_saves,
             commands::games::cache_supabase_access_token,
-            commands::games::read_cached_supabase_access_token,
             commands::games::get_launcher_device_id,
             commands::games::add_manual_game,
             commands::games::update_game_metadata,
@@ -234,6 +272,9 @@ pub fn run() {
             commands::games::list_installed_games,
             commands::games::refresh_installed_games,
             commands::games::launch_game,
+            commands::games::get_game_action_capabilities,
+            commands::games::prepare_game_action_confirmation,
+            commands::games::run_game_action,
             commands::games::verify_game_files,
             commands::games::repair_game_files,
             commands::games::check_game_updates,
@@ -244,6 +285,12 @@ pub fn run() {
             commands::games::open_achievement_cache_folder,
             commands::games::uninstall_game,
             commands::games::set_cached_game_playtime,
+            commands::games::get_unsynced_play_sessions,
+            commands::games::mark_play_sessions_synced,
+            commands::games::upsert_play_session,
+            commands::games::update_play_session,
+            commands::games::delete_play_session,
+            commands::games::get_play_session,
             commands::downloads::start_download,
             commands::downloads::pause_download,
             commands::downloads::cancel_download,
@@ -270,8 +317,20 @@ pub fn run() {
             commands::nexus_scraper::scrape_nexus_mod_info,
             commands::nexus_scraper::search_nexus_mods,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running Open Game Launcher");
+        .build(tauri::generate_context!())
+        .expect("error while building Open Game Launcher");
+
+    app.run(|app_handle, event| {
+        if matches!(event, RunEvent::ExitRequested { .. })
+            && !app_handle
+                .state::<commands::games::PlaytimePoller>()
+                .shutdown()
+        {
+            eprintln!(
+                "[open-game-launcher] Playtime poller did not acknowledge shutdown before the timeout"
+            );
+        }
+    });
 }
 
 fn claim_startup_transition(transition_started: &AtomicBool) -> bool {
@@ -416,6 +475,40 @@ fn keep_window_on_visible_monitor(window: &WebviewWindow) {
 #[cfg(test)]
 mod startup_tests {
     use super::*;
+
+    #[test]
+    fn security_arbitrary_url_mod_installer_is_not_exposed() {
+        let source = include_str!("lib.rs");
+        let handler_marker = "invoke_handler(tauri::generate_handler![";
+        let handler_start = source
+            .find(handler_marker)
+            .expect("Tauri invoke handler registration should exist");
+        let handler_tail = &source[handler_start + handler_marker.len()..];
+        let handler_end = handler_tail
+            .find(".build(tauri::generate_context!())")
+            .expect("Tauri invoke handler should be followed by app startup");
+        let registered_commands = &handler_tail[..handler_end];
+        let removed_command = ["install_mod_from", "_url"].concat();
+
+        assert!(
+            !registered_commands.contains(&removed_command),
+            "the arbitrary URL mod installer must not be exposed to the renderer"
+        );
+    }
+
+    #[test]
+    fn pending_deep_link_is_retained_until_claimed_once() {
+        let pending = Mutex::new(None);
+        let link =
+            commands::deeplink::parse_deep_link("oglauncher://join?game=neon-drift&platform=steam");
+
+        store_pending_deep_link(&pending, link.clone());
+
+        let claimed = take_pending_deep_link_value(&pending).expect("pending link");
+        assert_eq!(claimed.action, link.action);
+        assert_eq!(claimed.params, link.params);
+        assert!(take_pending_deep_link_value(&pending).is_none());
+    }
 
     #[test]
     fn startup_transition_can_only_be_claimed_once() {

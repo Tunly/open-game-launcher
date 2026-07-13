@@ -80,7 +80,7 @@ export const schedulerPlan = Object.freeze([
     secretEnv: "PRICE_DROP_NOTIFY_SECRET",
   },
   {
-    body: { dry_run: false, limit: 20, triggerSource: "scheduled" },
+    body: { dry_run: false, execute: true, limit: 20, triggerSource: "scheduled" },
     cadence: "daily",
     functionName: "process-account-deletions",
     secretEnv: "ACCOUNT_DELETION_PROCESSOR_SECRET",

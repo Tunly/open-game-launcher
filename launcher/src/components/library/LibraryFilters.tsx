@@ -1,9 +1,6 @@
 import { SlidersHorizontal, Sparkles, X } from "lucide-react";
 
-import {
-  LIBRARY_FEATURE_FILTER_OPTIONS,
-  LIBRARY_STORE_FILTER_OPTIONS,
-} from "../../lib/library-filters";
+import { LIBRARY_STORE_FILTER_OPTIONS } from "../../lib/library-filters";
 import { useLibraryContext } from "../../context/useLibraryContext";
 
 interface LibraryFiltersProps {
@@ -90,7 +87,9 @@ export function LibraryFilters({ isOpen, onClose }: LibraryFiltersProps) {
 
   return (
     <div
-      className="absolute top-12 right-2 left-2 z-50 max-h-[82vh] overflow-y-auto border-4 border-black bg-[#fbf4e7] p-4 shadow-[6px_6px_0_#171411] sm:right-auto sm:left-[260px] sm:w-[380px] lg:left-[290px]"
+      aria-label="Advanced Filters"
+      className="absolute top-12 right-2 bottom-2 left-2 z-50 [scrollbar-gutter:stable] overflow-y-auto overscroll-contain border-4 border-black bg-[#fbf4e7] p-4 shadow-[6px_6px_0_#171411] sm:right-auto sm:left-[260px] sm:w-[380px] lg:left-[290px]"
+      role="dialog"
       style={{ fontFamily: '"Arial Narrow", Impact, sans-serif' }}
     >
       <div className="mb-4 flex items-center justify-between gap-2 border-b-4 border-black pb-2">
@@ -159,18 +158,7 @@ export function LibraryFilters({ isOpen, onClose }: LibraryFiltersProps) {
               />
             );
           })}
-        </FilterSection>
-
-        <div className="border-[3px] border-black bg-[#f5eedf] shadow-[3px_3px_0_#171411]">
-          <div className="flex items-center justify-between gap-2 border-b-2 border-black bg-[#171411] px-2 py-1 text-[#fff9ed]">
-            <h4 className="neo-copy text-[10px] font-black tracking-[0.12em] uppercase">
-              Xbox // Catalog
-            </h4>
-            <span className="neo-copy bg-[#8cf5e4] px-1.5 py-0.5 text-[8px] font-black text-[#171411] uppercase">
-              PC Game Pass
-            </span>
-          </div>
-          <label className="flex cursor-pointer items-center gap-2 p-2.5">
+          <label className="col-span-3 mt-1 flex cursor-pointer items-center gap-2 border-2 border-black bg-[#f5eedf] px-2 py-1.5">
             <input
               aria-label="Show PC Game Pass catalog"
               type="checkbox"
@@ -183,20 +171,11 @@ export function LibraryFilters({ isOpen, onClose }: LibraryFiltersProps) {
               }
               className="h-4 w-4 shrink-0 border-2 border-black accent-[#087d6d]"
             />
-            <span className="neo-copy min-w-0 flex-1 text-[10px] font-black tracking-[0.08em] text-[#171411] uppercase">
-              Show catalog games
-            </span>
-            <span
-              className={`neo-copy shrink-0 border border-black px-1.5 py-0.5 text-[8px] font-black uppercase shadow-[1px_1px_0_#171411] ${
-                advancedFilters.showGamePassCatalog
-                  ? "bg-[#087d6d] text-white"
-                  : "bg-[#efe6d4] text-[#5b403f]"
-              }`}
-            >
-              {advancedFilters.showGamePassCatalog ? "Visible" : "Hidden"}
+            <span className="neo-copy min-w-0 flex-1 text-[9px] font-black tracking-[0.08em] text-[#171411] uppercase">
+              PC Game Pass Catalog
             </span>
           </label>
-        </div>
+        </FilterSection>
 
         <FilterCheckboxSection
           title="Player Count"
@@ -206,18 +185,6 @@ export function LibraryFilters({ isOpen, onClose }: LibraryFiltersProps) {
             setAdvancedFilters({
               ...advancedFilters,
               players: toggleValue(advancedFilters.players, value),
-            })
-          }
-        />
-
-        <FilterCheckboxSection
-          title="Features"
-          values={advancedFilters.features}
-          options={[...LIBRARY_FEATURE_FILTER_OPTIONS]}
-          onToggle={(value) =>
-            setAdvancedFilters({
-              ...advancedFilters,
-              features: toggleValue(advancedFilters.features, value),
             })
           }
         />

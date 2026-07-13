@@ -70,6 +70,7 @@ describe("performance supabase helpers", () => {
       cpuPercent: 42,
       fps: 60,
       frameTimeMs: 16.7,
+      fpsSource: "hud_webview",
       gpuPercent: 55,
       gpuTempC: null,
       gpuVramMb: null,
@@ -78,7 +79,13 @@ describe("performance supabase helpers", () => {
     });
 
     expect(saved).toBe(true);
-    expect(insert).toHaveBeenCalledWith(expect.objectContaining({ game_id: "overlay-runtime" }));
+    expect(insert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        fps: null,
+        frame_time_ms: null,
+        game_id: "overlay-runtime",
+      }),
+    );
   });
 
   it("lists snapshots with range filtering and maps db rows", async () => {
@@ -169,8 +176,8 @@ describe("performance supabase helpers", () => {
       max_cpu_percent: 60,
       avg_ram_mb: 5120,
       max_ram_mb: 6144,
-      avg_fps: 55,
-      max_fps: 60,
+      avg_fps: null,
+      max_fps: null,
       avg_gpu_percent: 45,
       max_gpu_percent: 50,
     });

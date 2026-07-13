@@ -802,16 +802,9 @@ function CommunityLivePage() {
       >
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <p className="neo-copy inline-flex border-2 border-black bg-[#8cf5e4] px-3 py-1 text-[10px] font-black tracking-[0.14em] text-[#171411] uppercase shadow-[2px_2px_0_#000]">
-              Supabase live relay
-            </p>
-            <h1 className="neo-title mt-3 text-5xl leading-none text-[#fff9ed] md:text-7xl">
+            <h1 className="neo-title text-5xl leading-none text-[#fff9ed] md:text-7xl">
               Community Activity
             </h1>
-            <p className="neo-copy mt-3 max-w-2xl text-[11px] leading-5 font-black text-[#8cf5e4] uppercase">
-              Real launcher activity shared under your account and privacy rules. No local hub,
-              market, workshop, or moderation fixtures are shown here.
-            </p>
           </div>
           <div className="border-[3px] border-black bg-[#f5eedf] px-4 py-3 text-[#171411] shadow-[3px_3px_0_#8cf5e4]">
             <p className="neo-copy text-[9px] font-black tracking-[0.14em] text-[#5b403f] uppercase">
@@ -900,16 +893,6 @@ function CommunityLivePage() {
             ) : null}
           </form>
 
-          <section className="border-4 border-black bg-[#8cf5e4] p-4 shadow-[5px_5px_0_#171411]">
-            <div className="flex items-center gap-3">
-              <Shield aria-hidden="true" className="h-6 w-6 text-[#171411]" />
-              <h2 className="neo-title text-3xl leading-none text-[#171411]">Privacy Lane</h2>
-            </div>
-            <p className="neo-copy mt-3 text-[10px] leading-5 font-black text-[#171411] uppercase">
-              Status posts use friends-only visibility. Feed rows are loaded from Supabase under the
-              signed-in user's row-level security policy.
-            </p>
-          </section>
         </aside>
       </div>
     </section>

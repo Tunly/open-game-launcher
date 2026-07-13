@@ -40,6 +40,7 @@ Deno.test(
       parseAccountDeletionProcessorBody({ dry_run: true, limit: "250" }),
       {
         dryRun: true,
+        executeAcknowledged: false,
         limit: 100,
         triggerSource: "manual",
       },
@@ -52,8 +53,22 @@ Deno.test(
       }),
       {
         dryRun: false,
+        executeAcknowledged: false,
         limit: 20,
         triggerSource: "hosted_deploy_gate",
+      },
+    );
+    assertEquals(
+      parseAccountDeletionProcessorBody({
+        dry_run: false,
+        execute: true,
+        limit: 5,
+      }),
+      {
+        dryRun: false,
+        executeAcknowledged: true,
+        limit: 5,
+        triggerSource: "manual",
       },
     );
   },

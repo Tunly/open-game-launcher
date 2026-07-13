@@ -145,12 +145,15 @@ export function FpsHudPage() {
         </>
       )}
       <span style={{ color }}>{Math.round(metrics.fps)} FPS</span>
+      <span className="border border-[#171411] bg-[#f6edd8] px-1 py-0.5 text-[7px] leading-none text-[#655f58]">
+        HUD Webview
+      </span>
       <span className="text-[#655f58]">|</span>
-      <span className="text-[#171411]">{Math.round(metrics.cpuPercent)}% CPU</span>
+      <span className="text-[#171411]">{Math.round(metrics.cpuPercent)}% System CPU</span>
       {displaySettings.showGpu && metrics.gpuPercent != null && (
         <>
           <span className="text-[#655f58]">|</span>
-          <span className="text-[#171411]">{Math.round(metrics.gpuPercent)}% GPU</span>
+          <span className="text-[#171411]">{Math.round(metrics.gpuPercent)}% System GPU</span>
         </>
       )}
     </div>

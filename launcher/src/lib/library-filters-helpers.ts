@@ -50,7 +50,9 @@ export function normalizeAdvancedFilters(value: unknown): AdvancedFilters {
 
   return {
     players: normalizeStringArray(stored.players),
-    features: normalizeStringArray(stored.features),
+    // Feature filters were retired from the Library UI. Clearing legacy
+    // selections prevents an invisible persisted filter from hiding games.
+    features: [],
     hardware: normalizeStringArray(stored.hardware),
     genres: normalizeStringArray(stored.genres),
     status: normalizeStringArray(stored.status),

@@ -21,6 +21,12 @@ const recentLifecycleActivities = new Map<
   { expiresAt: number; request: Promise<ActivityFeedItem> }
 >();
 
+export type ActivityFeedCursor = Pick<ActivityFeedItem, "createdAt" | "id">;
+
+function activityFeedCursorFilter(cursor: ActivityFeedCursor) {
+  return `created_at.lt.${cursor.createdAt},and(created_at.eq.${cursor.createdAt},id.lt.${cursor.id})`;
+}
+
 function toActivityItem(row: UnknownRecord): ActivityFeedItem {
   return {
     id: rowString(row, "id"),
@@ -195,7 +201,7 @@ function cleanString(value: unknown) {
 export async function getFriendActivityFeed(
   friendIds: string[],
   limit = 30,
-  before?: string,
+  before?: ActivityFeedCursor,
 ): Promise<ActivityFeedItem[]> {
   const watchedFriendIds = Array.from(new Set(friendIds.filter((friendId) => friendId.trim())));
   if (watchedFriendIds.length === 0) {
@@ -209,13 +215,13 @@ export async function getFriendActivityFeed(
     .select(activitySelect)
     .in("user_id", watchedFriendIds)
     .order("created_at", { ascending: false })
-    .limit(limit);
+    .order("id", { ascending: false });
 
   if (before) {
-    query = query.lt("created_at", before);
+    query = query.or(activityFeedCursorFilter(before));
   }
 
-  const { data, error } = await query;
+  const { data, error } = await query.limit(limit);
   if (isMissingSchemaError(error)) return [];
   handleError(error);
 
@@ -225,7 +231,10 @@ export async function getFriendActivityFeed(
     .filter((item) => watchedUsers.has(item.userId));
 }
 
-export async function getMyActivityFeed(limit = 30, before?: string): Promise<ActivityFeedItem[]> {
+export async function getMyActivityFeed(
+  limit = 30,
+  before?: ActivityFeedCursor,
+): Promise<ActivityFeedItem[]> {
   const client = getSupabaseClient();
   const userId = await getCurrentUserId();
 
@@ -234,13 +243,13 @@ export async function getMyActivityFeed(limit = 30, before?: string): Promise<Ac
     .select(activitySelect)
     .eq("user_id", userId)
     .order("created_at", { ascending: false })
-    .limit(limit);
+    .order("id", { ascending: false });
 
   if (before) {
-    query = query.lt("created_at", before);
+    query = query.or(activityFeedCursorFilter(before));
   }
 
-  const { data, error } = await query;
+  const { data, error } = await query.limit(limit);
   if (isMissingSchemaError(error)) return [];
   handleError(error);
 

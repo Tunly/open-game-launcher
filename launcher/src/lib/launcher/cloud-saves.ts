@@ -7,10 +7,6 @@ import type {
 } from "./types";
 import { invokeCommand } from "./shared";
 
-export async function readCachedSupabaseAccessToken(): Promise<string | null> {
-  return invokeCommand<string | null>("read_cached_supabase_access_token");
-}
-
 export function getBroadcastStreamKeyVaultStatus(
   input: BroadcastStreamKeyVaultStatusRequest,
 ): Promise<BroadcastStreamKeyVaultStatus> {

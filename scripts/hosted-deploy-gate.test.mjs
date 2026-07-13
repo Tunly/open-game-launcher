@@ -738,6 +738,7 @@ test("scheduler packet mirrors schedulerPlan and runbook content", () => {
   );
   assert.equal("dry_run" in accountDeletion.body, true);
   assert.equal("dryRun" in accountDeletion.body, false);
+  assert.equal(accountDeletion.body.execute, true);
 });
 
 test("scheduler-packet command emits redacted config without secret values", () => {

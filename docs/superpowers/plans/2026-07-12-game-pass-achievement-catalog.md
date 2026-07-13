@@ -1,5 +1,11 @@
 # PC Game Pass Achievement Catalog Implementation Plan
 
+## Audited Status — 2026-07-13
+
+The Achievement inventory now loads and merges the PC Game Pass catalog, and
+the focused `AchievementsPage` regression suite passes. The historical
+checkboxes below preserve the original implementation recipe.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make every valid PC Game Pass catalog title visible on the Achievement page, including catalog-only titles with no synchronized achievements.

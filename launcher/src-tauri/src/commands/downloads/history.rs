@@ -4,14 +4,28 @@ use crate::commands::downloads::types::{
     now_unix_secs, DownloadItemPayload, DOWNLOAD_STATUS_PAUSED,
 };
 use crate::commands::downloads::utils::is_download_game_installed;
-use crate::commands::local_db::{read_collection, remove_item, write_collection};
+use crate::commands::local_db::{
+    mutate_collection, read_collection, remove_item, remove_item_if_unchanged,
+};
 
 pub(crate) const MAX_DOWNLOAD_HISTORY_ITEMS: usize = 200;
 pub(crate) const TERMINAL_ITEM_TTL_SECS: u64 = 30 * 24 * 60 * 60;
 
-pub(crate) fn save_download_history(items: &[DownloadItemPayload]) {
-    let trimmed = trim_download_history(items);
-    let _ = write_collection("downloads", &trimmed, |item| &item.game_id);
+pub(crate) fn mutate_download_history<R, F>(mutate: F) -> Result<R, String>
+where
+    F: FnOnce(&mut Vec<DownloadItemPayload>) -> Result<R, String>,
+{
+    mutate_collection(
+        "downloads",
+        |item: &DownloadItemPayload| &item.game_id,
+        |items| {
+            normalize_download_history(items);
+            *items = trim_download_history(items);
+            let result = mutate(items)?;
+            *items = trim_download_history(items);
+            Ok(result)
+        },
+    )
 }
 
 pub(crate) fn trim_download_history(items: &[DownloadItemPayload]) -> Vec<DownloadItemPayload> {
@@ -84,14 +98,21 @@ pub(crate) fn is_stale_installed_download(item: &DownloadItemPayload) -> bool {
     is_download_game_installed(&item.game_id) && !has_active_download_work(item)
 }
 
-pub(crate) fn load_download_history() -> Vec<DownloadItemPayload> {
-    let items = read_collection::<DownloadItemPayload>("downloads").unwrap_or_default();
-    let original_len = items.len();
-    let mut changed = false;
+pub(crate) fn load_download_history() -> Result<Vec<DownloadItemPayload>, String> {
+    // Installed-item checks can scan provider state, so perform them outside the
+    // SQLite writer transaction. The conditional delete prevents a newer record
+    // for the same game from being removed after this snapshot was read.
+    for item in read_collection::<DownloadItemPayload>("downloads")? {
+        if is_stale_installed_download(&item) {
+            remove_item_if_unchanged("downloads", &item.game_id, &item)?;
+        }
+    }
+    mutate_download_history(|items| Ok(items.clone()))
+}
 
-    let mut normalized_items = Vec::with_capacity(original_len);
-    for item in items {
-        let mut item = normalize_queue_payload(item);
+fn normalize_download_history(items: &mut [DownloadItemPayload]) {
+    for item in items.iter_mut() {
+        *item = normalize_queue_payload(item.clone());
         if is_restart_interrupted_download_status(&item.status) {
             item.status = DOWNLOAD_STATUS_PAUSED.to_string();
             item.speed = if item.external {
@@ -102,52 +123,52 @@ pub(crate) fn load_download_history() -> Vec<DownloadItemPayload> {
             item.phase = "interrupted".to_string();
             item.can_pause = false;
             item.can_cancel = false;
-            changed = true;
         }
-        normalized_items.push(normalize_queue_payload(item));
+        *item = normalize_queue_payload(item.clone());
     }
-
-    let filtered_items = normalized_items
-        .into_iter()
-        .filter(|item| !is_stale_installed_download(item))
-        .collect::<Vec<_>>();
-
-    if changed || filtered_items.len() != original_len {
-        save_download_history(&filtered_items);
-    }
-
-    filtered_items
 }
 
-pub(crate) fn remember_download_item(mut item: DownloadItemPayload) {
+pub(crate) fn remember_download_item(mut item: DownloadItemPayload) -> Result<(), String> {
     item.last_updated_at = now_unix_secs();
-    let mut items = load_download_history();
     let item = normalize_queue_payload(item);
     if is_stale_installed_download(&item) {
-        items.retain(|existing| existing.game_id != item.game_id);
-        save_download_history(&items);
-        let _ = remove_item("downloads", &item.game_id);
-        return;
+        return mutate_download_history(move |items| {
+            items.retain(|existing| {
+                existing.game_id != item.game_id || existing.last_updated_at > item.last_updated_at
+            });
+            Ok(())
+        });
     }
 
-    if let Some(index) = items
-        .iter()
-        .position(|existing| existing.game_id == item.game_id)
-    {
-        items[index] = item;
-    } else {
-        items.push(item);
+    mutate_download_history(move |items| {
+        if let Some(existing) = items
+            .iter_mut()
+            .find(|existing| existing.game_id == item.game_id)
+        {
+            *existing = item;
+        } else {
+            items.push(item);
+        }
+        Ok(())
+    })
+}
+
+pub fn record_download_item(item: DownloadItemPayload) -> Result<(), String> {
+    remember_download_item(item)
+}
+
+pub(crate) fn remove_download_history_item(game_id: &str) -> Result<(), String> {
+    remove_item("downloads", game_id)
+}
+
+#[cfg(test)]
+mod persistence_api_tests {
+    use super::*;
+
+    #[test]
+    fn download_history_persistence_errors_are_part_of_the_api() {
+        let _load: fn() -> Result<Vec<DownloadItemPayload>, String> = load_download_history;
+        let _remember: fn(DownloadItemPayload) -> Result<(), String> = remember_download_item;
+        let _remove: fn(&str) -> Result<(), String> = remove_download_history_item;
     }
-    save_download_history(&items);
-}
-
-pub fn record_download_item(item: DownloadItemPayload) {
-    remember_download_item(item);
-}
-
-pub(crate) fn remove_download_history_item(game_id: &str) {
-    let mut items = load_download_history();
-    items.retain(|item| item.game_id != game_id);
-    save_download_history(&items);
-    let _ = remove_item("downloads", game_id);
 }

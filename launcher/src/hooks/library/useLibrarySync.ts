@@ -175,6 +175,7 @@ export interface UseLibrarySyncResult {
 }
 
 const PROVIDER_PIPELINE: ProviderMerger[] = [
+  mergeBattlenetOwned,
   mergeSteamOwned,
   mergeGogOwned,
   mergeEaOwned,
@@ -182,7 +183,6 @@ const PROVIDER_PIPELINE: ProviderMerger[] = [
   mergeUbisoftOwned,
   mergeXboxOwned,
   mergeGamePassCatalog,
-  mergeBattlenetOwned,
 ];
 const STARTUP_LIBRARY_REFRESH_DELAY_MS = 1_500;
 
@@ -235,6 +235,58 @@ export function useLibrarySync({ setStatusMessage }: UseLibrarySyncOptions): Use
     shouldApplyResult: () => boolean = () => true,
     showLoading = true,
   ) {
+    const applyVisibleGames = (nextGames: Game[]) => {
+      if (!shouldApplyResult()) return;
+      const visibleGames = normalizeLibrarySnapshotGames(nextGames);
+      setInstalledGames((current) =>
+        areGameListsEqual(current, visibleGames) ? current : visibleGames,
+      );
+      setDiscoveryMessage(
+        visibleGames.length > 0
+          ? null
+          : isTauri()
+            ? "No installed games were detected on this PC."
+            : "Open the desktop app to scan installed games. This browser preview stays empty.",
+      );
+    };
+
+    const publishBattlenetArtwork = (nextGames: Game[]) => {
+      if (!shouldApplyResult()) return;
+      const repairedGames = normalizeLibrarySnapshotGames(nextGames).filter(
+        (game) => normalizeLauncherKey(game.launcher, game.id) === "battlenet",
+      );
+      const repairedById = new Map(repairedGames.map((game) => [game.id, game]));
+      setInstalledGames((current) => {
+        const currentIds = new Set(current.map((game) => game.id));
+        const merged = current.map((game) => repairedById.get(game.id) ?? game);
+        for (const game of repairedGames) {
+          if (!currentIds.has(game.id)) merged.push(game);
+        }
+        return areGameListsEqual(current, merged) ? current : merged;
+      });
+    };
+
+    const publishNativeArtworkRepairs = (nextGames: Game[]) => {
+      if (!shouldApplyResult()) return;
+      const repairedGames = normalizeLibrarySnapshotGames(nextGames);
+      const repairedById = new Map(repairedGames.map((game) => [game.id, game]));
+      setInstalledGames((current) => {
+        const merged = current.map((game) => {
+          const repaired = repairedById.get(game.id);
+          if (!repaired) return game;
+          return {
+            ...game,
+            coverUrl: repaired.coverUrl ?? game.coverUrl,
+            logoUrl: repaired.logoUrl ?? game.logoUrl,
+            logoUrls: repaired.logoUrls?.length ? repaired.logoUrls : game.logoUrls,
+            iconUrl: repaired.iconUrl ?? game.iconUrl,
+            iconUrls: repaired.iconUrls?.length ? repaired.iconUrls : game.iconUrls,
+          };
+        });
+        return areGameListsEqual(current, merged) ? current : merged;
+      });
+    };
+
     if (showLoading) {
       setIsDiscoveringGames(true);
       setDiscoveryMessage(null);
@@ -247,6 +299,7 @@ export function useLibrarySync({ setStatusMessage }: UseLibrarySyncOptions): Use
           launcher: normalizeLauncherKey(game.launcher, game.id),
         }),
       );
+      publishNativeArtworkRepairs(games);
 
       const context: MergeContext = { forceRefresh, setStatusMessage, shouldApplyResult };
       for (const provider of PROVIDER_PIPELINE) {
@@ -264,6 +317,12 @@ export function useLibrarySync({ setStatusMessage }: UseLibrarySyncOptions): Use
             setStatusMessage(result.statusMessage);
           }
           games = result.games;
+          if (provider === mergeBattlenetOwned) {
+            // Battle.net hydration is entirely local and repairs stale artwork.
+            // Publish it immediately so slower network providers cannot leave
+            // the first-painted library stuck on placeholder art.
+            publishBattlenetArtwork(games);
+          }
         } catch (err) {
           console.warn("Provider merge threw unexpectedly:", err);
         }
@@ -273,27 +332,21 @@ export function useLibrarySync({ setStatusMessage }: UseLibrarySyncOptions): Use
         return;
       }
 
-      const visibleGames = normalizeLibrarySnapshotGames(games);
-      setInstalledGames((current) =>
-        areGameListsEqual(current, visibleGames) ? current : visibleGames,
-      );
-      setDiscoveryMessage(
-        visibleGames.length > 0
-          ? null
-          : isTauri()
-            ? "No installed games were detected on this PC."
-            : "Open the desktop app to scan installed games. This browser preview stays empty.",
-      );
+      applyVisibleGames(games);
     } catch {
       if (!shouldApplyResult()) {
         return;
       }
 
-      setInstalledGames([]);
+      const hasVisibleGames = installedGamesRef.current.length > 0;
       setDiscoveryMessage(
         forceRefresh
-          ? "Automatic sync is unavailable in this session. No games were added."
-          : "Saved library is unavailable in this session. No games were loaded.",
+          ? hasVisibleGames
+            ? "Automatic sync is unavailable in this session. The last available library remains visible."
+            : "Automatic sync is unavailable in this session. No games were added."
+          : hasVisibleGames
+            ? "Saved library could not be refreshed. The last available snapshot remains visible."
+            : "Saved library is unavailable in this session. No games were loaded.",
       );
     } finally {
       if (showLoading && shouldApplyResult()) {
@@ -357,9 +410,10 @@ export function useLibrarySync({ setStatusMessage }: UseLibrarySyncOptions): Use
       }
       automaticSyncInFlightRef.current = true;
       try {
-        if (initialLibrarySnapshot.length === 0) {
-          await loadInstalledGames(false, () => isMounted, initialLibrarySnapshot.length === 0);
-        }
+        // The browser snapshot makes first paint instant, but it can contain
+        // stale provider artwork. Always reconcile it with the native cache;
+        // only show the blocking loader when there was no snapshot to paint.
+        await loadInstalledGames(false, () => isMounted, initialLibrarySnapshot.length === 0);
       } finally {
         automaticSyncInFlightRef.current = false;
       }

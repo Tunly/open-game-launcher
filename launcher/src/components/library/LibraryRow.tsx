@@ -44,6 +44,18 @@ function runtimeSummary(runtime: GameRuntimeStatus | undefined, group?: GameGrou
   );
 }
 
+function shouldSquareCropProviderIcon(game: GameGroup["primaryGame"], iconCandidate?: string) {
+  if (!iconCandidate || getGameSource(game) !== "gog" || iconCandidate !== game.iconUrl) {
+    return false;
+  }
+
+  const normalized = iconCandidate.replaceAll("\\", "/").toLowerCase();
+  return (
+    /\/gog-assets\/[^/]+-icon\.(?:ico|jpe?g|png|webp)$/.test(normalized) ||
+    /^https:\/\/images-\d+\.gog-statics\.com\//.test(normalized)
+  );
+}
+
 function LibraryRowBase({
   group,
   selected,
@@ -57,7 +69,9 @@ function LibraryRowBase({
   const [iconCandidateIndex, setIconCandidateIndex] = useState(0);
   const [isDragOver, setIsDragOver] = useState(false);
   const iconCandidates = getGameIconCandidates(game);
-  const iconUrl = getGameAssetUrl(iconCandidates[iconCandidateIndex]);
+  const iconCandidate = iconCandidates[iconCandidateIndex];
+  const iconUrl = getGameAssetUrl(iconCandidate);
+  const squareCropProviderIcon = shouldSquareCropProviderIcon(game, iconCandidate);
   const isInPcGamePass = group.variants.some((variant) => variant.catalogSource === "pc_game_pass");
 
   useEffect(() => {
@@ -99,14 +113,16 @@ function LibraryRowBase({
       onDrop={onArtworkDrop ? handleDrop : undefined}
     >
       <span
-        className={`grid h-[22px] w-[22px] shrink-0 place-items-center overflow-hidden border border-black text-[10px] leading-none ${
+        className={`grid h-[22px] w-[22px] shrink-0 place-items-center overflow-hidden rounded-none border border-black text-[10px] leading-none ${
           selected ? "bg-[#e8c843] text-[#171411]" : "bg-[#d8cbb7]"
         }`}
       >
         {iconUrl ? (
           <img
             alt=""
-            className="h-full w-full object-cover"
+            className={`h-full w-full rounded-none bg-[#171411] object-cover object-center ${
+              squareCropProviderIcon ? "scale-[1.55]" : ""
+            }`}
             loading="lazy"
             src={iconUrl}
             onError={() =>

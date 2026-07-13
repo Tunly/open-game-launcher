@@ -6,7 +6,7 @@ use std::{
 use super::core::{
     current_unix_timestamp, ensure_path_inside_root, get_dir_last_modified, normalize_game_id,
     path_size_bytes, path_to_string, read_installed_games_cache, save_sync_root_for_game,
-    sync_destination_for_save, unix_timestamp_to_iso, write_installed_games_cache,
+    sync_destination_for_save, unix_timestamp_to_iso, update_installed_game_cache,
 };
 use super::types::*;
 
@@ -15,7 +15,7 @@ pub fn sync_game_saves(game_id: String) -> Result<SyncGameSavesResponse, String>
     let game_id = normalize_game_id(game_id)?;
     println!("[open-game-launcher] sync_game_saves requested for {game_id}");
 
-    let mut games = read_installed_games_cache().unwrap_or_default();
+    let games = read_installed_games_cache().unwrap_or_default();
     let game_index = games
         .iter()
         .position(|game| game.id == game_id)
@@ -46,8 +46,21 @@ pub fn sync_game_saves(game_id: String) -> Result<SyncGameSavesResponse, String>
         synced_files.push(path_to_string(destination));
     }
 
-    games[game_index] = game.clone();
-    write_installed_games_cache(&games)?;
+    let synced_save_files = game.save_files.clone();
+    game = update_installed_game_cache(&game_id, move |latest| {
+        for synced in synced_save_files {
+            if let Some(save_file) = latest
+                .save_files
+                .iter_mut()
+                .find(|save_file| save_file.path == synced.path)
+            {
+                save_file.synced_at = synced.synced_at;
+                save_file.modified_at = synced.modified_at;
+                save_file.size_bytes = synced.size_bytes;
+            }
+        }
+        Ok(())
+    })?;
 
     let message = if missing_files.is_empty() {
         format!("{} save sync completed.", game.title)

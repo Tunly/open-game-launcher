@@ -71,6 +71,7 @@ export function GameDetailPanel({ verifyMode }: { verifyMode?: string | null }) 
         ),
       )}
       isGameRunning={Boolean(selectedVariants.some((game) => ctx.sync.runningGameIds.has(game.id)))}
+      runningGameIds={ctx.sync.runningGameIds}
       gameRuntime={selectedRuntime}
       gameVariants={selectedVariants}
       hostedCommunityArtworkReadiness={hostedCommunityArtworkReadiness}
@@ -78,7 +79,6 @@ export function GameDetailPanel({ verifyMode }: { verifyMode?: string | null }) 
       crossStoreSaveMigrationReadiness={crossStoreSaveMigrationReadiness}
       crossStoreSaveSyncPlan={crossStoreSaveSyncPlan}
       igdbCrossPlayReadinessPlan={igdbCrossPlayReadinessPlan}
-      seedHostedArtworkUploadPending={isHostedCommunityArtworkVerify}
       logoCandidateIndexes={ctx.sync.logoCandidateIndexes}
       loadedLogoUrls={ctx.sync.loadedLogoUrls}
       handleLogoLoad={ctx.sync.handleLogoLoad}
@@ -100,10 +100,10 @@ export function GameDetailPanel({ verifyMode }: { verifyMode?: string | null }) 
       customArtwork={
         selectedVariants[0] ? (ctx.sync.customArtwork[selectedVariants[0].id] ?? null) : null
       }
+      customArtworkByGameId={ctx.sync.customArtwork}
       artworkGameId={selectedVariants[0]?.id}
       onSelectCustomArtwork={ctx.sync.handleSelectCustomArtwork}
       onArtworkDrop={ctx.sync.handleArtworkDrop}
-      onApplyCustomArtworkUrl={ctx.sync.handleApplyCustomArtworkUrl}
       onConfirmArtwork={ctx.sync.handleConfirmArtwork}
       onResetCustomArtwork={ctx.sync.handleResetCustomArtwork}
       pendingArtworkFile={ctx.sync.pendingArtworkFile}

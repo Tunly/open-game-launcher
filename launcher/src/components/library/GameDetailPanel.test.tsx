@@ -22,7 +22,6 @@ vi.mock("./GameDetails", () => ({
     hostedCommunityArtworkReadiness?: { statusLabel: string };
     igdbCrossPlayReadinessPlan?: { statusLabel: string };
     selectedGame?: { externalId?: string; title?: string } | null;
-    seedHostedArtworkUploadPending?: boolean;
   }) => (
     <section aria-label="game details mock">
       {props.crossStoreSaveMigrationReadiness ? (
@@ -45,7 +44,6 @@ vi.mock("./GameDetails", () => ({
       {props.hostedCommunityArtworkModerationConsole ? (
         <p>Hosted moderation: {props.hostedCommunityArtworkModerationConsole.modeLabel}</p>
       ) : null}
-      {props.seedHostedArtworkUploadPending ? <p>Seed hosted pending upload</p> : null}
     </section>
   ),
 }));
@@ -90,7 +88,6 @@ describe("GameDetailPanel verification modes", () => {
 
     expect(screen.getByText("Hosted artwork: Hosted v1 staged")).toBeInTheDocument();
     expect(screen.getByText("Hosted moderation: Local Review Preview")).toBeInTheDocument();
-    expect(screen.getByText("Seed hosted pending upload")).toBeInTheDocument();
   });
 });
 

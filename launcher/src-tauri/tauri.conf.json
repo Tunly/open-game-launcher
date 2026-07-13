@@ -51,6 +51,8 @@
             "$APPLOCALDATA/**/*",
             "$APPCACHE/**/*",
             "$HOME/**/*",
+            "$HOME/AppData/Local/Battle.net/Cache/**/*",
+            "C:/ProgramData/Ubisoft/Ubisoft Game Launcher/cache/assets/**/*",
             "C:/Program Files (x86)/Steam/appcache/librarycache/**/*",
             "C:/Program Files/Steam/appcache/librarycache/**/*",
             "C:/Program Files (x86)/Steam/steam/games/**/*",

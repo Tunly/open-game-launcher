@@ -67,10 +67,28 @@ export async function handleProcessAccountDeletions(
     );
   }
 
-  const body = await request.json().catch(() => ({}));
-  const { dryRun, limit, triggerSource } = parseAccountDeletionProcessorBody(
-    body,
-  );
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return accountDeletionJsonResponse(
+      { error: "Malformed JSON request body." },
+      400,
+    );
+  }
+
+  const { dryRun, executeAcknowledged, limit, triggerSource } =
+    parseAccountDeletionProcessorBody(body);
+  if (!dryRun && !executeAcknowledged) {
+    return accountDeletionJsonResponse(
+      {
+        error:
+          "Live account deletion processing requires execute: true acknowledgement.",
+      },
+      400,
+    );
+  }
+
   const runId = deps.randomUUID?.() ?? crypto.randomUUID();
   const startedAt = readIsoTimestamp(deps);
   const dueBefore = readIsoTimestamp(deps);
