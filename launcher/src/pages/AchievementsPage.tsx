@@ -1,27 +1,28 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { Award, FolderOpen, Gamepad2, Loader2, Search, Settings, Trophy } from "lucide-react";
+import { Award, Gamepad2, Loader2, Search, Settings, Trophy } from "lucide-react";
 
 import { getGameAssetUrl, getGameBannerStyle } from "../lib/assets";
 import { AchievementCacheReadinessPanel } from "../components/achievements/AchievementCacheReadinessPanel";
 import { AchievementHostedHydrationContractPanel } from "../components/achievements/AchievementHostedHydrationContractPanel";
 import {
-  getErrorMessage,
   getGameIconCandidates,
   formatLastPlayed,
   formatPlayTime,
+  getSourceDisplayLabel,
   normalizeLauncherKey,
 } from "../lib/formatters";
 import { createVerifyAchievementCacheReadiness } from "../lib/achievement-cache-readiness";
 import { createVerifyAchievementHostedHydrationContract } from "../lib/achievement-hosted-hydration-contract";
 import { groupGames, type GameGroup, type GroupedAchievement } from "../lib/game-groups";
-import { listInstalledGames, openAchievementCacheFolder } from "../lib/launcher";
+import { listInstalledGames } from "../lib/launcher";
 import { hydrateGamesWithRemoteAchievements } from "../lib/supabase/achievements";
 import {
   mergeBattlenetOwned,
   mergeEaOwned,
   mergeEpicOwned,
   mergeGamePassCatalog,
+  mergeOglCatalog,
   mergeGogOwned,
   mergeSteamOwned,
   mergeUbisoftOwned,
@@ -48,6 +49,7 @@ type GameAchievementRow = {
   total: number;
   unlocked: number;
   completion: number;
+  isPerfect: boolean;
   lastUnlockedAt: string | null;
   recentAchievements: GroupedAchievement[];
 };
@@ -66,6 +68,7 @@ const SORTS: { key: GameSort; label: string }[] = [
 ];
 
 const ACHIEVEMENT_INVENTORY_PROVIDERS: ProviderMerger[] = [
+  mergeOglCatalog,
   mergeBattlenetOwned,
   mergeSteamOwned,
   mergeGogOwned,
@@ -89,15 +92,23 @@ function formatDate(value?: string | null): string {
   return parsed.toLocaleDateString("en", { day: "numeric", month: "short", year: "numeric" });
 }
 
-function readPlayerLabel(value: unknown): string | null {
-  return typeof value === "string" && value.trim() ? value.trim() : null;
-}
-
 function buildRow(group: GameGroup): GameAchievementRow {
   const achievements = group.achievements;
-  const total = achievements.length;
-  const unlocked = achievements.filter((achievement) => achievement.unlockedAt).length;
+  const completionAchievements = achievements.filter((achievement) => !achievement.isAdditional);
+  const summaries = group.variants.flatMap((game) =>
+    game.achievementSummary && game.achievementSummary.total > 0 ? [game.achievementSummary] : [],
+  );
+  const achievementSummary =
+    summaries.find((summary) => summary.isPerfect && summary.unlocked >= summary.total) ??
+    summaries[0];
+  const total = achievementSummary?.total ?? completionAchievements.length;
+  const unlocked =
+    achievementSummary?.unlocked ??
+    completionAchievements.filter((achievement) => achievement.unlockedAt).length;
   const completion = total > 0 ? Math.round((unlocked / total) * 100) : 0;
+  const isPerfect = achievementSummary
+    ? achievementSummary.isPerfect && unlocked >= total
+    : total > 0 && unlocked === total;
   const lastUnlockedAt = achievements.reduce<string | null>((latest, achievement) => {
     if (!achievement.unlockedAt) return latest;
     return parseTime(achievement.unlockedAt) > parseTime(latest) ? achievement.unlockedAt : latest;
@@ -112,6 +123,7 @@ function buildRow(group: GameGroup): GameAchievementRow {
     total,
     unlocked,
     completion,
+    isPerfect,
     lastUnlockedAt,
     recentAchievements,
   };
@@ -145,7 +157,7 @@ function SourceBadges({ group }: { group: GameGroup }) {
         <span
           key={variant.id}
           className="grid h-6 w-6 place-items-center border-2 border-black bg-[#fbf4e7] text-[#171411] shadow-[1px_1px_0_#171411]"
-          title={variant.launcher ?? variant.title}
+          title={getSourceDisplayLabel(variant.launcher ?? variant.title)}
         >
           <PlatformSourceIcon game={variant} className="h-3.5 w-3.5" />
         </span>
@@ -185,7 +197,7 @@ function ProviderStatusBadges({ group }: { group: GameGroup }) {
           )}`}
           title={getAchievementProviderStatusMessage(provider)}
         >
-          {provider.source}: {provider.status}
+          {getAchievementProviderDisplayName(provider.source)}: {provider.status}
         </span>
       ))}
     </div>
@@ -229,8 +241,7 @@ function ProgressBar({ value }: { value: number }) {
 }
 
 function GameRow({ row }: { row: GameAchievementRow }) {
-  const { group, total, unlocked, completion, recentAchievements } = row;
-  const isPerfect = total > 0 && unlocked === total;
+  const { group, total, unlocked, completion, isPerfect, recentAchievements } = row;
   const attentionStatus = group.achievementProviderStatuses?.find(
     (provider) => provider.status !== "available",
   );
@@ -267,7 +278,7 @@ function GameRow({ row }: { row: GameAchievementRow }) {
                 </span>
                 {group.achievementBasisSource ? (
                   <span className="neo-copy border-2 border-black bg-[#171411] px-2 py-0.5 text-[9px] font-black text-[#fbf4e7] uppercase">
-                    Basis: {group.achievementBasisSource}
+                    Basis: {getSourceDisplayLabel(group.achievementBasisSource)}
                   </span>
                 ) : null}
               </div>
@@ -400,12 +411,6 @@ export function AchievementsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [sourceFilter, setSourceFilter] = useState("all");
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
-  const playerLabel =
-    readPlayerLabel(user?.user_metadata.display_name) ??
-    readPlayerLabel(user?.user_metadata.full_name) ??
-    readPlayerLabel(user?.user_metadata.username) ??
-    readPlayerLabel(user?.email?.split("@", 1)[0]) ??
-    "Local Player";
 
   useEffect(() => {
     let mounted = true;
@@ -491,7 +496,7 @@ export function AchievementsPage() {
 
     setGames(localGames);
     const userId = user?.id ?? null;
-    if (shouldSkipRemoteHydration || isAuthLoading || !userId || localGames.length === 0) {
+    if (shouldSkipRemoteHydration || isAuthLoading || localGames.length === 0) {
       setIsHydrating(false);
       return;
     }
@@ -533,7 +538,7 @@ export function AchievementsPage() {
   const stats = useMemo(() => {
     const total = rows.reduce((sum, row) => sum + row.total, 0);
     const unlocked = rows.reduce((sum, row) => sum + row.unlocked, 0);
-    const perfect = rows.filter((row) => row.total > 0 && row.total === row.unlocked).length;
+    const perfect = rows.filter((row) => row.isPerfect).length;
     const pct = total > 0 ? Math.round((unlocked / total) * 100) : 0;
     return { total, unlocked, perfect, pct };
   }, [rows]);
@@ -556,8 +561,8 @@ export function AchievementsPage() {
       recent: rows.filter((row) => parseTime(row.group.lastPlayedAt) > Number.NEGATIVE_INFINITY)
         .length,
       all: rows.length,
-      perfect: rows.filter((row) => row.total > 0 && row.total === row.unlocked).length,
-      unfinished: rows.filter((row) => row.unlocked < row.total).length,
+      perfect: rows.filter((row) => row.isPerfect).length,
+      unfinished: rows.filter((row) => row.total > 0 && !row.isPerfect).length,
     }),
     [rows],
   );
@@ -578,9 +583,9 @@ export function AchievementsPage() {
     if (activeTab === "recent") {
       next = next.filter((row) => parseTime(row.group.lastPlayedAt) > Number.NEGATIVE_INFINITY);
     } else if (activeTab === "perfect") {
-      next = next.filter((row) => row.total > 0 && row.total === row.unlocked);
+      next = next.filter((row) => row.isPerfect);
     } else if (activeTab === "unfinished") {
-      next = next.filter((row) => row.unlocked < row.total);
+      next = next.filter((row) => row.total > 0 && !row.isPerfect);
     }
 
     next = [...next];
@@ -604,15 +609,6 @@ export function AchievementsPage() {
     return next;
   }, [activeTab, rows, searchQuery, sortMode, sourceFilter]);
 
-  const handleOpenAchievementCacheFolder = async () => {
-    try {
-      const folder = await openAchievementCacheFolder();
-      setStatusMessage(`Achievement cache folder opened: ${folder}`);
-    } catch (err) {
-      setStatusMessage(`Could not open achievement cache folder: ${getErrorMessage(err)}`);
-    }
-  };
-
   if (error) {
     return (
       <section className="neo-dots space-y-6">
@@ -626,30 +622,8 @@ export function AchievementsPage() {
   return (
     <section className="neo-dots space-y-5">
       <div className="mx-auto max-w-[980px] border-4 border-black bg-[#fbf4e7] shadow-[6px_6px_0_#171411]">
-        <div className="flex flex-wrap items-center gap-4 border-b-4 border-black bg-[#171411] px-4 py-3 text-[#fbf4e7]">
-          <div className="grid h-14 w-14 place-items-center border-[3px] border-black bg-[#c20b2f] text-white shadow-[3px_3px_0_#000]">
-            <Trophy className="h-8 w-8" />
-          </div>
-          <div className="min-w-0">
-            <p className="neo-copy text-[10px] font-black tracking-[0.14em] text-[#8cf5e4] uppercase">
-              Player Archive
-            </p>
-            <h1 className="neo-title truncate text-4xl leading-none">
-              {playerLabel} <span className="text-xl text-[#8cf5e4]">/ Games</span>
-            </h1>
-          </div>
-          <div className="ml-auto flex flex-wrap gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                void handleOpenAchievementCacheFolder();
-              }}
-              className="neo-copy inline-flex items-center gap-2 border-[3px] border-black bg-[#fbf4e7] px-3 py-2 text-[10px] font-black text-[#171411] uppercase shadow-[3px_3px_0_#000] transition hover:-translate-y-0.5"
-              title="Open achievement cache folder"
-            >
-              <FolderOpen className="h-4 w-4" />
-              Cache Folder
-            </button>
+        <div className="flex flex-wrap gap-2 border-b-4 border-black bg-[#171411] px-4 py-3 text-[#fbf4e7]">
+          <div className="flex flex-wrap gap-2">
             <StatCard label="Total" value={stats.total} tone="paper" />
             <StatCard label="Unlocked" value={stats.unlocked} tone="teal" />
             <StatCard label="Perfect" value={stats.perfect} tone="red" />
@@ -663,27 +637,15 @@ export function AchievementsPage() {
           </div>
         ) : null}
 
-        {isHydrating ? (
+        {isHydrating || isProviderSyncing ? (
           <div
-            aria-label="Refreshing cloud achievements"
+            aria-label="Refreshing achievement archive"
             aria-live="polite"
             className="neo-copy flex items-center gap-2 border-b-4 border-black bg-[#8cf5e4] px-4 py-2 text-[10px] font-black text-[#171411] uppercase"
             role="status"
           >
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            Cloud archive updating / Local games ready
-          </div>
-        ) : null}
-
-        {isProviderSyncing ? (
-          <div
-            aria-label="Refreshing provider achievements"
-            aria-live="polite"
-            className="neo-copy flex items-center gap-2 border-b-4 border-black bg-[#f6edd8] px-4 py-2 text-[10px] font-black text-[#171411] uppercase"
-            role="status"
-          >
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            Xbox / GOG / Epic / EA / Ubisoft / Battle.net archive updating
+            Achievement archive updating / Local games ready
           </div>
         ) : null}
 
@@ -749,7 +711,7 @@ export function AchievementsPage() {
                     : "bg-[#fbf4e7] text-[#171411]"
                 }`}
               >
-                {source}
+                {source === "all" ? "All" : getSourceDisplayLabel(source)}
               </button>
             ))}
           </div>

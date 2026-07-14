@@ -16,6 +16,7 @@ import {
   inventorySummary,
   legacyVerifyFlags,
   screenshotArtifactIntegrity,
+  screenshotManifestErrors,
   verifyRouteInventory,
 } from "./verify-route-inventory.mjs";
 
@@ -58,7 +59,46 @@ function writeFixture(root, source, docs, screenshotPaths = []) {
     join(root, "launcher", "src", "pages", "ExamplePage.tsx"),
     source,
   );
-  writeFileSync(join(root, "docs", "verification", "README.md"), docs);
+  const screenshots = String(docs)
+    .split(/\r?\n/)
+    .map((line) => {
+      const file = line.match(/`((?:docs\/verification\/)?screenshots\/[^`*]+\.png)`/)?.[1]
+        ?.replace(/^docs\/verification\//, "");
+      if (!file) return null;
+      const routeTokens = [...line.matchAll(/`(\/[^`\s]+)`/g)].map(
+        (match) => match[1],
+      );
+      return {
+        file,
+        routes: [
+          ...new Set(
+            routeTokens
+              .map((route) => route.split(/[?#]/, 1)[0])
+              .filter(Boolean),
+          ),
+        ],
+        verify: [
+          ...new Set(
+            [...line.matchAll(/\?verify=([A-Za-z0-9_-]+)/g)].map(
+              (match) => match[1],
+            ),
+          ),
+        ],
+        purpose: `${line.split(" - ").at(-1) ?? "fixture"} state`,
+        boundary: "local",
+      };
+    })
+    .filter(Boolean);
+  writeFileSync(
+    join(root, "docs", "verification", "screenshot-manifest.json"),
+    JSON.stringify({
+      version: 1,
+      visualEvidence:
+        "OG-Launcher Retro Manga styling and responsive overflow evidence",
+      boundaries: { local: "Local verification; no hosted or live claim" },
+      screenshots,
+    }),
+  );
   for (const screenshotPath of screenshotPaths) {
     const absolutePath = join(root, "docs", "verification", screenshotPath);
     mkdirSync(dirname(absolutePath), { recursive: true });
@@ -153,7 +193,7 @@ test("verifyRouteInventory rejects normal app routes without screenshot evidence
 
     assert.match(
       verifyRouteInventory(root).errors.join("\n"),
-      /App route '\/library'.*missing.*concrete screenshot artifact line/,
+      /App route '\/library'.*missing.*concrete screenshot route/,
     );
   } finally {
     cleanup();
@@ -218,7 +258,7 @@ test("verifyRouteInventory rejects dynamic placeholder route documentation", () 
 
     assert.match(
       verifyRouteInventory(root).errors.join("\n"),
-      /App route '\/invite\/:token'.*missing.*concrete screenshot artifact line/,
+      /App route '\/invite\/:token'.*missing.*concrete screenshot route/,
     );
   } finally {
     cleanup();
@@ -249,37 +289,34 @@ test("collectSourceVerifyFlags ignores test files and resolves verify constants"
   }
 });
 
-test("verifyRouteInventory rejects undocumented verify routes", () => {
+test("verifyRouteInventory allows active verify flags without permanent screenshots", () => {
   const { root, cleanup } = tempRepo();
   try {
     writeFixture(
       root,
       'const isReady = searchParams.get("verify") === "example-readiness";',
-      "- Downloads local readiness screenshot exists.",
+      "",
     );
 
-    assert.match(
-      verifyRouteInventory(root).errors[0],
-      /example-readiness.*missing.*\?verify=example-readiness/,
-    );
+    assert.deepEqual(verifyRouteInventory(root).errors, []);
   } finally {
     cleanup();
   }
 });
 
-test("verifyRouteInventory rejects routes without screenshot artifact lines", () => {
+test("verifyRouteInventory keeps screenshot evidence optional for documented flags", () => {
   const { root, cleanup } = tempRepo();
   try {
     writeFixture(
       root,
       'const isReady = searchParams.get("verify") === "example-readiness";',
-      "- `/downloads?verify=example-readiness` documented.",
+      "",
     );
 
-    assert.match(
-      verifyRouteInventory(root).errors[0],
-      /example-readiness.*missing.*screenshot artifact line/,
-    );
+    const result = verifyRouteInventory(root);
+    assert.equal(result.sourceFlags.has("example-readiness"), true);
+    assert.equal(result.documentedFlags.has("example-readiness"), false);
+    assert.deepEqual(result.errors, []);
   } finally {
     cleanup();
   }
@@ -315,7 +352,7 @@ test("verifyRouteInventory rejects missing screenshot artifact files", () => {
 
     assert.match(
       verifyRouteInventory(root).errors.join("\n"),
-      /example-readiness.*missing screenshot artifact.*example-readiness-local\.png/,
+      /references missing artifact.*example-readiness-local\.png/,
     );
   } finally {
     cleanup();
@@ -333,14 +370,14 @@ test("verifyRouteInventory rejects documented screenshot artifacts that are miss
 
     assert.match(
       verifyRouteInventory(root).errors[0],
-      /README references missing screenshot artifact 'screenshots\/missing-readiness\.png'/,
+      /Screenshot manifest references missing artifact 'screenshots\/missing-readiness\.png'/,
     );
   } finally {
     cleanup();
   }
 });
 
-test("verifyRouteInventory rejects screenshot files missing from the README", () => {
+test("verifyRouteInventory rejects screenshot files missing from the manifest", () => {
   const { root, cleanup } = tempRepo();
   try {
     writeFixture(root, "", "", ["screenshots/undocumented-readiness.png"]);
@@ -349,6 +386,39 @@ test("verifyRouteInventory rejects screenshot files missing from the README", ()
       verifyRouteInventory(root).errors[0],
       /Screenshot artifact 'screenshots\/undocumented-readiness\.png' exists but is missing/,
     );
+  } finally {
+    cleanup();
+  }
+});
+
+test("screenshotManifestErrors rejects weak evidence descriptions", () => {
+  const { root, cleanup } = tempRepo();
+  try {
+    writeFixture(root, "", "");
+    writeFileSync(
+      join(root, "docs", "verification", "screenshot-manifest.json"),
+      JSON.stringify({
+        version: 1,
+        visualEvidence: "generic screenshot",
+        boundaries: { unknown: "unspecified" },
+        screenshots: [
+          {
+            file: "screenshots/example.png",
+            routes: ["relative"],
+            verify: ["INVALID_FLAG"],
+            purpose: "updated",
+            boundary: "unknown",
+          },
+        ],
+      }),
+    );
+
+    const errors = screenshotManifestErrors(root).join("\n");
+    assert.match(errors, /visualEvidence.*OG-Launcher\/Retro Manga/);
+    assert.match(errors, /routes must be an array of absolute routes/);
+    assert.match(errors, /verify must be an array of verify flag names/);
+    assert.match(errors, /purpose must name a concrete UI state/);
+    assert.match(errors, /explicit evidence scope/);
   } finally {
     cleanup();
   }
@@ -449,19 +519,20 @@ test("verifyRouteInventory allows legacy aliases only when canonical route is do
   }
 });
 
-test("current verify route inventory is documented with explicit legacy aliases", () => {
+test("current route inventory has curated visual coverage and explicit legacy aliases", () => {
   const result = verifyRouteInventory();
 
-  assert.equal(result.sourceFlags.size, 50);
-  assert.equal(result.appRoutePaths.size, 22);
-  assert.equal(result.appRouteArtifacts.size, 22);
+  assert.equal(result.sourceFlags.size, 49);
+  assert.equal(result.appRoutePaths.size, 23);
+  assert.equal(result.appRouteArtifacts.size, 23);
   assert.deepEqual(result.errors, []);
   assert.equal(
     result.documentedScreenshots.size,
     result.existingScreenshots.size,
   );
-  assert.equal(result.existingScreenshots.size, 305);
-  assert.equal(result.screenshotIntegrity.size, 305);
+  assert.ok(result.existingScreenshots.size >= 20);
+  assert.ok(result.existingScreenshots.size <= 40);
+  assert.equal(result.screenshotIntegrity.size, result.existingScreenshots.size);
   assert.equal(
     [...result.screenshotIntegrity.values()].every(
       (inspection) =>
@@ -470,6 +541,7 @@ test("current verify route inventory is documented with explicit legacy aliases"
     true,
   );
   assert.deepEqual(Object.keys(legacyVerifyFlags).sort(), [
+    "cross-store-save-sync-e2e-readiness",
     "invite-hosted-ready",
     "plugin-system-native-disabled-registry-audit",
     "public-profile-privacy-guard",
@@ -480,8 +552,8 @@ test("current verify route inventory is documented with explicit legacy aliases"
       line.includes("normal app route paths"),
     ),
     [
-      "Discovered 22 normal app route paths in launcher/src/app/router.tsx.",
-      "Verified screenshot artifact coverage for 22 normal app route paths.",
+      "Discovered 23 normal app route paths in launcher/src/app/router.tsx.",
+      "Verified screenshot artifact coverage for 23 normal app route paths.",
     ],
   );
 });
@@ -502,7 +574,7 @@ test("inventorySummary explains legacy alias route counts", () => {
     assert.deepEqual(inventorySummary(verifyRouteInventory(root)), [
       "Discovered 2 verify route flags in launcher/src.",
       "Verified screenshot artifact coverage for 1 documented verify route flags.",
-      "Recognized 1 legacy verify route aliases; aliases reuse canonical screenshot coverage.",
+      "Recognized 1 legacy verify route aliases.",
       "Verified 1 documented screenshot artifacts against 1 files.",
       "Verified 1 PNG screenshot artifacts with complete chunk structure.",
     ]);
@@ -531,7 +603,8 @@ test("documentedVerifyScreenshotArtifacts reads concrete route screenshot lines"
       {
         artifactPath: "screenshots/example-readiness-local.png",
         exists: true,
-        location: "docs/verification/README.md:3",
+        location:
+          "docs/verification/screenshot-manifest.json:screenshots[0]",
       },
     ]);
   } finally {
@@ -577,8 +650,9 @@ test("documentedVerifyFlags reads concrete query routes only", () => {
       "",
       [
         "- Screenshot name contains example-readiness but no route.",
-        "- `/downloads?verify=provider-telemetry-dry-run` documented.",
+        "- `screenshots/provider-telemetry.png` - `/downloads?verify=provider-telemetry-dry-run` documented.",
       ].join("\n"),
+      ["screenshots/provider-telemetry.png"],
     );
 
     assert.deepEqual([...documentedVerifyFlags(root)], ["provider-telemetry-dry-run"]);

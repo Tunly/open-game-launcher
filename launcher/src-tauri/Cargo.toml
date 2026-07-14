@@ -32,12 +32,13 @@ tauri-plugin-single-instance = "2"
 tauri-plugin-deep-link = "2"
 reqwest = { version = "0.13", features = ["blocking", "json", "stream", "form", "query"] }
 rusqlite = { version = "0.40", features = ["bundled"] }
-tungstenite = "0.29"
+tungstenite = { version = "0.29", features = ["rustls-tls-native-roots"] }
 tokio = { version = "1", features = ["full"] }
 sysinfo = { version = "0.39", features = ["serde"] }
 futures-util = "0.3"
 notify = "8"
 zip = "8.6.0"
+sevenz-rust2 = { version = "0.21.1", default-features = false, features = ["brotli", "bzip2", "deflate", "lz4", "ppmd", "util", "zstd"] }
 ureq = { version = "3.2.1", features = ["json"] }
 keyring = "4"
 aes-gcm = "0.11"
@@ -52,6 +53,8 @@ tauri-plugin-dialog = "2"
 
 
 [target.'cfg(target_os = "windows")'.dependencies]
+tauri-plugin-process = "2"
+tauri-plugin-updater = "2"
 uiautomation = { version = "=0.25.0", optional = true, default-features = false, features = ["control", "input"] }
 winreg = "0.56"
 windows-sys = { version = "0.61", features = ["Win32_UI_Shell", "Win32_Graphics_Gdi", "Win32_Foundation", "Win32_UI_WindowsAndMessaging", "Win32_UI_Input", "Win32_UI_Input_KeyboardAndMouse"] }
@@ -64,6 +67,9 @@ atspi = { version = "=0.30.0", optional = true, default-features = false, featur
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 tauri-plugin-autostart = "2"
+
+[dev-dependencies]
+sevenz-rust2 = { version = "0.21.1", default-features = false, features = ["compress", "util"] }
 
 [profile.dev]
 incremental = true

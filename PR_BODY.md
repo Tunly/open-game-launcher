@@ -1,225 +1,54 @@
-## Completion Sweep
+# Summary
 
-Local completion pass for the current launcher checkout.
+This worktree aligns the active product surface with the current launcher:
 
-### Summary
+- `/activity` is now the friends activity feed, including RLS-protected
+  reactions/comments and Realtime updates; the yearly recap moved to
+  `/activity/recap`.
+- Store purchases, friend relationships, achievements, play sessions, and
+  status posts can produce feed activity through the new migrations.
+- `/mods` is reduced to Nexus Mods and Steam Workshop. Nexus uses an official
+  no-slug website search handoff; Steam remains a client handoff with local
+  read-only Workshop detection. Registered Nexus SSO/native support is optional.
+- Legacy mod.io/CurseForge provider search, provider-key staging, provider-ID
+  mapping UI, free URL/archive/folder import, and the scraper-based Nexus path
+  are removed from the active product surface.
+- Platform detection/auth and achievement archive mapping now retain stronger
+  provider IDs needed by the current library and activity flows.
+- The native shell and splash screen receive the accompanying launcher polish.
 
-- Fixed Stripe paid-checkout customer persistence by adding `store_customers` and removing the invalid `profiles.metadata` dependency.
-- Configured `stripe-webhook` to accept external Stripe delivery with `verify_jwt = false`.
-- Added missing scheduler/admin secrets to `supabase/functions/.env.example`.
-- Updated Tauri dev/build hooks to use the repo's pinned package manager, `pnpm`.
-- Repaired backup external-drive write-proof Rust tests for the current consent and disk-evidence API.
-- Wired the Backup/Restore write-proof UI to send the native command's expected mountpoint and explicit sentinel write/read/checksum/delete consent payload.
-- Added Backup/Restore eject-safety preflight proof with explicit flush/write/delete-before-eject consent, pending proof-file checks, Settings UI handoff, and no OS-eject success claim.
-- Added browser-local Family Relay fallback for no-Supabase local previews, with create/join persistence and screenshot evidence for created and joined relay states.
-- Added Backup/Restore OS eject/unmount command path with final sentinel preflight, explicit consent, shell-free Linux/macOS command selection, Windows `Win32_Volume.Dismount` drive-root backend, and mount-disappearance verification before success.
-- Updated Backup/Restore readiness/docs to mark local eject-safety preflight, Windows eject backend, and OS eject/unmount result proof as implemented while keeping Windows/macOS/Linux external-drive backup/restore E2E on real drives open.
-- Removed first-party Cloud Saves from the active product path, including launcher-managed buckets/tables, upload/download/restore/conflict UI, encryption, and Supabase/keychain staging. The remaining Cross-Store Save Copy proof is an explicit local file apply/rollback sandbox with target snapshots, manifests, SHA-256 verification, and no cloud upload.
-- Added Plugin-System read-only local discovery plus a signed package staging console, signed local package staging, `/settings?verify=plugin-disabled-registry-audit` native disabled-registry audit evidence, `/settings?verify=plugin-runtime-sandbox-process-boundary` native runtime sandbox dry-run evidence with strict exact-matrix admission and 8 deterministic blocked escape fixtures, native activation-plan review with exact per-plugin consent, disabled-registry re-audit, staged manifest hash evidence, and execution/download/install/network/permission-grant blockers, native signed update-envelope review for `/settings?verify=plugin-update-signing-review` evidence, and `/settings?verify=plugin-marketplace-update-index-trust` local signed marketplace/update-index trust packet evidence with desktop manifest folder scan, browser JSON import, explicit consent-operation review, schema/entrypoint checks, denied unknown permission evidence, theme-hook policy, signature policy, Ed25519 package signature/hash/path/symlink checks, unsigned extra-file and unknown-field rejection, browser display-cache separation, disabled local registry stage, entrypoint denial before code load, blocked path traversal, symlink entrypoints, nested manifest paths, deny-all/network IPC, environment/filesystem attempts, permission escalation, partial/duplicate/unknown escape-matrix rejection, counter mismatch rejection, ready-flag spoof rejection, signed update envelopes, manifest hashes, rollback metadata, signed index envelopes, disabled-registry matching, blocked download/install/auto-update lanes, no permission grants, and `codeExecuted false` while keeping real plugin execution and marketplace paths blocked.
-- Added AI recommendation local explanation packet with score signals, local input evidence, privacy notes, skipped model/cloud steps, a resettable browser-local Backlog Preference Tape, a manual browser-local Play Next Queue, a local Consent Audit Packet with redacted prompt envelope/no-write evidence, and `/library?verify=ai-recommendations-hosted-eval-contract` hosted-eval contract lanes for deterministic baseline, prompt regression, quality thresholds, safety fixtures, consent samples, hosted runner boundaries, cloud/profile replay blockers, provider telemetry blockers, and rollout rollback gates while keeping model execution, prompt upload, hosted inference, cloud replay, provider telemetry, hosted eval execution, rollout, and launch automation blocked.
-- Added browser-local Retro Manga App Shell skin switching for header, navigation, and main shell plus default-skin reset/invalid-id fallback, hosted built-in shell-skin preference sync through `profiles.app_shell_skin`, and validated custom theme draft sync through `profiles.custom_theme_json`, while keeping live profile-theme catalog persistence and marketplace skins blocked.
-- Added a redacted local Broadcasting RTMP dry-run packet plus local provider scope/terms policy evidence and a consent-gated stream-key desktop vault with non-secret local metadata and provider/live readiness wiring while keeping OAuth, RTMP output, live stream-key use, hosted moderation, VOD sync, callbacks, and audience/live-status proof blocked.
-- Added local SVG file share/export for `/activity` yearly `OG-Launcher Gaming Year` recap cards with Browser Share file payloads, text fallback, Copy Card, and TXT export while keeping hosted share URLs and real social integrations out of scope.
-- Added Hosted Community Artwork v1 with Supabase schema/RLS, `game-artwork` storage, approved-feed listing, authenticated vote persistence, report-backed moderation queue, ranking sync, launcher helper fallback, public upload UI, pending-submission cards, private moderator allowlist, service-role scan/review RPCs, trusted moderation Edge Function with HTTP handler coverage, local moderator console preview, deterministic content-scan evidence, provider artwork source-policy evidence for Steam/RAWG import paths, a local Steam/RAWG/Epic caps proof matrix with Epic review-only guardrails, rawg-assets HTTP handler coverage, approval gating, audit ledger evidence, and `/library?verify=hosted-community-artwork` readiness UI while keeping community-wide rollout and provider API approval blocked; ML image moderation and copyright fingerprinting are not claimed.
-- Added `/invite/:token` Hosted Token Rehearsal for Custom-Link Invites with create-token, resolve-token, receiver-auth, redeem-token, and replay-guard evidence while keeping raw token storage, anonymous invite-row reads, hosted-web success, replay acceptance, and external hosted E2E out of scope.
-- Added the Custom-Link Invite hosted replay/origin proof contract: `prove_share_token_replay_denial`, authenticated `invite-hosted-proof` Edge Function with exact HTTPS-Origin allowlist, extracted HTTP handler coverage for origin/auth/body/proof/replay guards, sanitized token-hint-only proof packets, and a Replay Origin UI console on `/invite/:token`.
-- Added `/community?verify=broadcasting-chat-moderation-shadow` with deterministic local chat fixtures, redacted link/secret previews, and preview-only queue actions while keeping provider chat reads, Twitch/YouTube OAuth, hosted enforcement, Supabase moderation logs, RTMP/live output, VOD sync, and audience/live-status proof blocked.
-- Added `/community?verify=broadcasting-vod-archive-policy` with local VOD retention, visibility, delete-coverage, Supabase-archive, signed-URL, provider-import, and sync-job policy gates while keeping OAuth, RTMP/live output, hosted moderation, VOD provider sync, Supabase archive writes, signed URL requests, public storage serving, provider imports/deletes, and audience/live-status proof blocked.
-- Added `/community?verify=broadcasting-provider-oauth-contract` with local PKCE, state, redirect URI, scope, callback error, token storage boundary, and secret-redaction fixtures while keeping provider authorization redirects, OAuth token exchange, provider token storage, hosted callback endpoints, provider chat reads, VOD sync, RTMP/live output, and audience/live-status proof blocked.
-- Added `/community?verify=broadcasting-provider-callback-contract` with local event-schema, signature-header, idempotency, replay-duplicate, and redacted audit-row fixtures while keeping hosted endpoints, callback runners, provider delivery proof, Supabase callback row mutation, replay runners, VOD sync jobs, and audience/live-status proof blocked.
-- Added `/community?verify=broadcasting-live-session-rehearsal` with local preflight, desktop vault, provider OAuth, RTMP, chat, hosted moderation, VOD, callback, audience-status, and rollback sequence review while keeping OAuth launch, RTMP sockets, stream-key live use, provider chat reads, hosted moderation, VOD sync, callback replay, and audience/live-status updates blocked.
-- Added `/community?verify=broadcasting-audience-status-contract` with local audience/live-status contract lanes for preview labels, stale fallback, rollback clear order, provider state events, audience counts, chat presence, public status writes, and Supabase audience row blockers while keeping provider reads, count polling, callback replay, public mutation, RTMP output, and VOD sync blocked.
-- Added `/achievements?verify=achievement-cache-readiness` with local cache-folder, sidecar, parser, and provider-status fixtures while skipping hosted hydration and keeping provider sync, Supabase writes, OAuth/token exchange, live unlock imports, remote cache jobs, provider credentials, and official unlock proof blocked.
-- Added `/achievements?verify=achievement-hosted-hydration-contract` with a local no-write hosted hydration contract for authenticated Supabase read shape, provider-key filtering, catalog-game resolution, definition/unlock merge, and fallback-to-local behavior while keeping live hosted staging, Supabase writes, provider sync, OAuth/token exchange, remote cache jobs, trusted ingestion calls, live unlock import, and official unlock proof blocked.
-- Added `/settings/performance?verify=overlay-e2e-readiness` session-flush proof with a shared 300-sample buffer cap, `og-launcher:performance-session-flush` close/toggle handoff, promise settlement coverage, attached anti-cheat fallback evidence, and explicit no live external overlay, no Supabase write/read, no long-running native session, or anti-cheat compatibility claims.
-- Added `/settings/performance?verify=overlay-fullscreen-anti-cheat-readiness` for the separate transparent always-on-top Tauri window, with local mode/settings/fallback fixtures and external-window E2E still open. Game-process injection, anti-cheat bypass, driver install, and protected-process attachment are explicitly out of scope.
-- Added `/settings?verify=client-manager-mount-apply-contract` with local Client Manager mount/apply contract fixtures, local auto-apply capability checks for runtime presence/install target/free disk/admin review, a read-only native capability preview command, a Steam/GOG/Epic/EA/Ubisoft/Battle.net/Xbox Provider Policy Matrix with no provider-approved launcher apply and terms-not-approved evidence, plus `/settings?verify=client-manager-mount-apply-sandbox-proof` for local sandbox copy, manifest readback, hash verification, and rollback proof while keeping provider-approved apply mechanisms, real OS mount creation, symlink/junction creation, admin elevation, driver/kernel install, destructive client writes, provider terms approval, live provider rollback/unmount, and live client mutation proof blocked.
-- Added `/settings?verify=one-click-setup-rollback-audit-contract` with a local no-write One-Click Setup rollback/audit packet bound to the actual setup-step ledger, undo/cleanup order, partial-failure map, redacted audit envelope, empty writes/deletes/live-calls ledgers, unknown-step blocking, and UI-visible failure drill while keeping hosted auth E2E, provider OAuth/token replay, provider-approved silent install, consent/terms approval, production hosted deployment, local file writes/deletes, Supabase audit writes, provider-client mutation, token/keychain replay, setup execution, and real rollback/audit proof blocked.
-- Added `/library?verify=igdb-cross-play-readiness` staged import preview evidence with review-only `game_cross_play` rows, a `games.external_ids` patch envelope, skipped-candidate reasons, duplicate/conflicting target-key review for external-id sources and platform rows, and no IGDB API, Supabase write, provider telemetry, hosted sync, or live verification claims.
-- Added a mod.io/CurseForge provider staging probe path that forces one-result requests, redacts mod.io query API keys and CurseForge `x-api-key` placement, returns only counts/guards rather than direct-download URLs, and shows a redacted request packet, local terms/rate-limit/retry/redaction policy evidence, plus local response-shape review fixtures on `/mods?verify=provider-api-key-staging` without invoking native search or storing secrets in verify mode.
-- Added a Deno-tested Store license signing contract with explicit `OGL-STAGING-UNSIGNED-*` fallback labels for missing signing key/device ID, plus duplicate-key license conflict recovery that only succeeds after all expected active licenses exist.
-- Hardened Store/Stripe staging with the current Stripe API-version pin, checkout-attempt UUID dedupe, Stripe idempotency keys, extracted no-live-secret Stripe Checkout HTTP handler plus adapter query-shape/session projection coverage, `store_customers` customer bootstrap coverage, service-role-only webhook replay ledger with stale retry leasing, adapter-level event claim/finalizer coverage, order/license fulfillment, invoice persistence, refund ledger/status handling, shared Store Stripe invoice/refund boundary coverage, and no-live-secret Deno contracts for the checkout/webhook wiring.
-- Added `/store?verify=stripe-live-staging-contract` local Stripe live-staging contract evidence for `2026-05-27.dahlia`, signature-first webhook parsing, Tax/Invoice Dashboard checklist, refund replay ledger boundaries, no-write fixture orders, and no raw Stripe key/webhook secret/Dashboard success/refund replay success/live delivery claim.
-- Hardened Store order support with no-live-secret contracts for HTTP CORS/auth/order-ownership/invoice/refund/error guards, adapter-level order/refund/invoice query shapes, refund staging/reject mutations, refund/invoice request parsing, refund reason mapping, and Stripe refund idempotency payloads.
-- Hardened `notify-price-drop` with extracted no-live-secret HTTP handler and adapter coverage for CORS/method/auth/dry-run/live-write/error guards, exact cron secret headers, lazy secret reads, dry-run parsing, UUID filters, batch limit clamping, alert query shapes, notification insert/alert update mutations, sanitized `store_price_drop_notification_runs` aggregate evidence inserts, and `/store?verify=price-drop-scheduled-evidence` Hosted Scheduler Proof UI with no-write fixture rows and no hosted cron success claim without a trusted scheduled row.
-- Hardened Hosted Community Artwork moderation with an extracted no-live-secret adapter boundary for caller auth, private moderator allowlist reads, artwork scan row query shape, generic moderation RPC delegation, scan RPC payloads, and Supabase error mapping.
-- Pinned the profile Supabase client to read-only progression surfaces and removed the stale direct-write TODO now that trusted ingestion owns badge/XP/playtime/achievement write paths.
-- Hardened trusted achievement ingestion so `providerConfidence: "official"` is accepted only for official providers, preventing local/unofficial providers from claiming full XP confidence.
-- Hardened trusted playtime/achievement ingestion with extracted no-live-secret adapter boundaries for playtime auth/catalog/session-conflict/aggregate/session mutations and achievement auth/catalog/definition-upsert/trusted-unlock RPC payloads.
-- Hardened Presence polling with an extracted no-live-provider HTTP handler and adapter coverage for CORS/auth/cache-skip/force/live-write/activity/evidence/error guards, platform account and existing-presence query shapes, cache update payloads, presence/activity/evidence mutations, Steam provider-client HTTP behavior, and bridge adapter rate-limit/error mapping; request parsing also keeps strings like `"false"`, `"0"`, and `"off"` from accidentally enabling `dryRun`/`force` cron paths, with Settings separating trusted dry-run review packets from hosted cron/writeback proof.
-- Added a local Presence Provider Bridge Contract Matrix and Deno provider-client coverage for Epic/GOG/EA/Xbox/Battle.net/Ubisoft bridge HTTP mapping, token redaction, provider-error, missing-provider, and rate-limit paths while keeping live provider coverage and writeback unclaimed.
-- Hardened Friends dedup merge-group acceptance so target links with an existing `merge_group_id` keep that group, the final accepted status update remains user-scoped, `og` platform rows pass hosted migration checks, and auto-match propagation stays owner-scoped by direct owner/platform/platform-friend matches.
-- Added DSGVO export/deletion contracts for the user-data export HTTP handler, shared privacy auth/admin runtime, adapter auth/read query shapes, empty dependent-read skips, missing-table warning mapping, newer user-scoped export data, account-deletion request/cancel HTTP handler guards, request adapter auth/active lookup/create mutation/`23505` preservation, cancel adapter auth/pending lookup/pending-only mutation/error propagation, active pending/processing uniqueness, process-account-deletions HTTP CORS/method/secret/dry-run/live delete/audit/evidence guards, processor claim/audit mutations, processor adapter due-request query shape, Auth delete delegation, evidence insert, recursive storage cleanup, missing-bucket handling, sanitized `account_deletion_processor_runs` evidence, secret-gated deletion processor dry-runs, limit clamping, non-destructive dry-run output, `game-artwork` storage cleanup coverage, a no-write Hosted Cron Staging Proof fixture, and Deploy Gate validation for `failedCount === 0`/`evidenceRecorded` while keeping real hosted cron execution blocked.
-- Added `/settings?verify=hosted-cron-evidence-summary` with a local no-write scheduler evidence summary for `notify-price-drop`, `process-account-deletions`, and `poll-platform-presence`, keeping dry-run, stale, missing, placeholder-env, unsafe REST target, unsafe run-id, missing/invalid/semantically impossible aggregate-count, non-zero `failed_count`, secret-bearing, verify-route-write, Stripe webhook/dashboard, and production deployment claims blocked until fresh scheduled non-dry-run evidence rows exist.
-- Added `/settings?verify=external-completion-evidence-summary` with a local no-write external evidence map for Store/Stripe, hosted cron, provider-live, hardware/OS, and rollout lanes, keeping env names, artifact paths, required proof checklist labels, and blocked claims visible without rendering secrets or claiming external completion.
-- Added Public Profile Privacy Guard evidence on `/u/localprivacy?verify=profile-privacy-guard`, client redaction for public viewers, guarded showcase placeholders, and a Deno-pinned RLS migration contract for parent profile plus lane visibility.
-- Added per-link Social Link Visibility for profile links, including editor visibility controls, `/settings/profile?verify=social-link-visibility-editor` local draft/payload proof, public-viewer filtering, and a Deno-pinned RLS migration contract for parent profile plus link visibility.
-- Added production-strict trusted playtime/achievement ingestion mode that blocks direct authenticated playtime/session fallback writes and fails loud when trusted ingestion is unavailable in strict mode.
-- Added focused strict-mode env parser coverage for trusted ingestion production/local defaults, accepted true/false aliases, and invalid-value fallback to `MODE`.
-- Added a trusted-ingestion migration contract test that pins achievement/XP write revokes, JWT-protected ingestion functions, and the remaining staged DB direct-write exceptions for playtime, sessions, and narrow non-achievement activity posts.
-- Added static migration contracts for safe first-party Cloud-Save removal and a forward verification that keeps the removed bucket, policies, tables, and client grants from silently returning.
-- Kept the remaining local Cross-Store Save Copy proof narrowly scoped to explicit user paths, consent-gated apply/rollback, duplicate-target rejection, manifest/hash checks, and a temporary sandbox; it has no Supabase/keychain or provider-cloud path.
-- Added browser-local Backlog Learning feedback and a manual Play Next Queue to `/library?verify=backlog-priority`, with `Boost Pick`, `Skip Pick`, `Finished`, `Clear Learn`, `Queue Pick`, `Remove`, and `Clear Queue` controls that tune local mood/session/social weights and queue local picks without hosted model, cloud profile, provider telemetry, launch automation, or account sync.
-- Wired the Library footer `Friends & Chat +` control to `/friends?tab=chat`.
-- Added a browser-local `/community` Create Post composer that prepends local feed cards and stores only capped localStorage entries without hosted publishing, Supabase writes, provider sync, or moderation execution.
-- Added `/community?verify=community-create-post` as deterministic in-memory Create Post evidence with desktop/mobile screenshots and no browser-storage write.
-- Refreshed stale test-count documentation so fresh command output remains the
-  source of truth instead of fixed frontend pass counts.
-- Updated CI to include trusted playtime/achievement Edge Function contract tests and the Supabase DB lint wrapper test, and to block `v*` draft release packaging behind the `hosted-production` `pnpm completion:gate:external` release-boundary job, with release-tag version validation, `main` reachability validation, and a post-matrix draft-release job.
-- Added the manual hosted Supabase deploy gate behind `workflow_dispatch` + GitHub Environments, with Function deploy planning, placeholder hosted deploy gate environment value and unsafe/non-Supabase hosted Functions base URL rejection before smoke fetch, redacted smoke failure summaries, safe evidence `runId` validation for dry-run smokes, non-mutating dry-run smokes, OPTIONS sanity for every deployed Edge Function, normal PR/push validation for the deploy-gate script, drift-free Edge Function test discovery, and scheduler handoff documentation with per-function bearer secret mapping.
-- Hardened release packaging with a macOS `.icns` icon, Rust format gating before release/deploy jobs, Linux AppImage `APPIMAGE_EXTRACT_AND_RUN`/`NO_STRIP` CI environment for modern `.relr.dyn` system libraries, and package-file-only upload/release globs for nested Tauri bundle outputs.
+## Database changes
 
-### Verification
+- `20260714143000_store_friend_activity_events.sql` adds trusted Store/friend
+  activity events.
+- `20260714150000_activity_feed_interactions.sql` adds reactions, comments,
+  visibility-aware RPCs/RLS, and Realtime publication.
+- `20260714160000_mod_provider_rework.sql` activates Nexus and Steam for new
+  mod rows while preserving historical provider values.
 
-- Screenshot: `docs/verification/screenshots/store-stripe-staging-tax-invoice.png`
-- Screenshot: `docs/verification/screenshots/store-stripe-live-staging-contract.png`
-- Screenshot: `docs/verification/screenshots/store-price-drop-hosted-scheduler-proof.png`
-- Screenshot: `docs/verification/screenshots/store-cart-drawer-retro-manga-desktop.png`
-- Screenshot: `docs/verification/screenshots/store-cart-checkout-retro-manga-desktop.png`
-- Screenshot: `docs/verification/screenshots/store-cart-checkout-retro-manga-mobile.png`
-- Screenshot: `docs/verification/screenshots/auth-signup-username-retro-manga-desktop.png`
-- Screenshot: `docs/verification/screenshots/auth-signup-username-retro-manga-mobile.png`
-- Screenshot: `docs/verification/screenshots/library-default-retro-manga-desktop.png`
-- Screenshot: `docs/verification/screenshots/library-default-retro-manga-mobile.png`
-- Screenshot: `docs/verification/screenshots/library-add-game-dialog-retro-manga-backdrop.png`
-- Screenshot: `docs/verification/screenshots/mods-provider-keys-retro-manga-backdrop.png`
-- Screenshot: `docs/verification/screenshots/library-hosted-community-artwork-readiness-local.png`
-- Screenshot: `docs/verification/screenshots/settings-profile-app-wide-theme-readiness-local.png`
-- Screenshot: `docs/verification/screenshots/privacy-deletion-processor-cron-dry-run-packet.png`
-- Screenshot: `docs/verification/screenshots/privacy-deletion-processor-hosted-cron-staging.png`
-- Screenshot: `docs/verification/screenshots/privacy-account-deletion-local-processing.png`
-- Screenshot: `docs/verification/screenshots/achievements-hosted-hydration-contract-local.png`
-- Screenshot: `docs/verification/screenshots/achievements-hosted-hydration-contract-mobile.png`
-- Screenshot: `docs/verification/screenshots/community-broadcasting-live-session-rehearsal-mobile.png`
-- Screenshot: `docs/verification/screenshots/community-broadcasting-audience-status-contract-local.png`
-- Screenshot: `docs/verification/screenshots/community-broadcasting-audience-status-contract-mobile.png`
-- Screenshot: `docs/verification/screenshots/settings-performance-overlay-e2e-readiness-local.png`
-- Screenshot: `docs/verification/screenshots/friends-dedup-merge-group-contract.png`
-- Screenshot: `docs/verification/screenshots/friends-dedup-merge-group-contract-mobile.png`
-- Screenshot: `docs/verification/screenshots/settings-one-click-setup-rollback-audit-contract-local.png`
-- Screenshot: `docs/verification/screenshots/settings-one-click-setup-rollback-audit-contract-mobile.png`
-- Screenshot: `docs/verification/screenshots/settings-hosted-cron-evidence-summary-local.png`
-- Screenshot: `docs/verification/screenshots/settings-hosted-cron-evidence-summary-mobile.png`
-- Screenshot: `docs/verification/screenshots/settings-external-completion-evidence-summary-local.png`
-- Screenshot: `docs/verification/screenshots/settings-external-completion-evidence-summary-mobile.png`
-- Screenshot: `docs/verification/screenshots/library-ai-recommendations-hosted-eval-contract-local.png`
-- Screenshot: `docs/verification/screenshots/library-ai-recommendations-hosted-eval-contract-mobile.png`
-- Screenshot: `docs/verification/screenshots/friends-roster-action-handoff-local.png`
-- Screenshot: `docs/verification/screenshots/friends-roster-action-handoff-local-mobile.png`
-- Added `docs/verification/local-completion-audit.md` to pin the local completion boundary: local automated checks plus screenshot/DOM/static-class evidence are verified locally, while the five external evidence gates stay open in `FEATURE_PLAN.md`: `store-stripe-live` (two artifacts), `hosted-supabase-cron`, `provider-live-integrations`, `hardware-os-e2e`, and `rollout-tracks`; fresh command output is the source of truth for mutable counts.
-- Added Friends roster handoff actions so local and configured friend cards expose Chat, Smart Join, and Invite routes through the existing launcher social tabs.
-- Added `pnpm completion:gate:plan`, `pnpm completion:gate:status`, `pnpm completion:gate:local`, `pnpm completion:gate:external`, and `pnpm completion:gate` so the full local-plus-external completion boundary is a single discoverable gate with a redacted no-run prerequisite/status inventory, local `git diff --check HEAD`, Supabase DB lint wrapper tests, Supabase Edge Function Deno checking, hosted deploy preflight plus non-mutating hosted deploy smoke, a `v*` tag release-boundary CI job that validates `main` reachability and ignores scoped evidence env vars, and failure until hosted and external proof artifacts pass preflight.
-- Re-enabled local developer automation with weekly Dependabot coverage for GitHub Actions, launcher npm, and Tauri Cargo dependencies plus a Husky pre-commit hook that runs the launcher `lint-staged` guard through the existing `format:check` and `lint` commands.
-- Pinned reproducible tooling with Node.js `>=22.12 <26` in repo manifests, GitHub Actions reading `.node-version` (`22.12.0`), GitHub Actions refs pinned to verified SHAs on fixed runner labels, Rust `1.95.0` in `rust-toolchain.toml` and CI action refs, Deno CI/fallback `2.8.3`, Supabase CLI `2.104.0` in CI, hosted deploy Supabase calls through the launcher-pinned CLI, and local DB lint through a redacting start/lint/stop wrapper.
-- Library mobile header DOM check: viewport `390`, document `scrollWidth` `390`, all primary header nav buttons visible without clipped bounds.
-- Modal backdrop check: Store Cart drawer, Library Add Game, Mods Provider Keys, Artwork Preview, and Provider Picker use ink/halftone backdrops in routed/component tests; the auth signup username screenshots cover the `/auth` signup username form, while `UsernamePromptModal` and the currently non-route-mounted Playtime editor overlays have implementation/static class evidence keeping them free of `backdrop-blur` and legacy `bg-black/45`/`bg-black/50` overlay classes.
-- Store/Auth DOM checks: Store cart/checkout kept `scrollWidth` equal to viewport at `1440` and `390`, Auth signup username kept all form controls unclipped at `1440` and `390`, and both routes retained the OG-Launcher header brand.
+## Product boundaries
+
+- First-party Cloud Saves remain removed. Provider clients own cloud sync;
+  local Cross-Store Save Copy proofs do not upload saves.
+- Steam Workshop download/subscription/update state remains Steam-managed.
+- Normal Nexus handoff requires no app ID. Optional registered SSO/native
+  support still requires provider approval and separate real-provider evidence.
+- The five external completion gates remain open until their real redacted
+  artifacts exist.
+
+## Verification
+
+Run the checks relevant to the changed surface before merge:
 
 ```bash
-cd launcher
-env -u NODE_ENV pnpm install --frozen-lockfile # passed
-pnpm format:check # passed
-pnpm typecheck # passed
-pnpm lint # passed
-pnpm exec vitest run src/pages/DownloadsPage.test.tsx # see fresh command output
-pnpm exec vitest run src/lib/__tests__/igdb-cross-play-readiness.test.ts src/components/library/GameDetails/IgdbCrossPlayReadinessPanel.test.tsx src/pages/LibraryPage.test.tsx src/components/library/GameDetailPanel.test.tsx
-pnpm exec vitest run src/lib/__tests__/profile-privacy-guard.test.ts src/components/profile/ProfilePrivacyGuardPanel.test.tsx src/components/profile/ProfileShowcaseGrid.test.tsx src/pages/ProfilePage.test.tsx
-pnpm test -- src/lib/__tests__/trusted-ingestion-migration-contract.test.ts
-pnpm --dir launcher exec vitest run src/lib/supabase/__tests__/trusted-ingestion.test.ts # 11 passed
-pnpm test -- src/lib/__tests__/cloud-save-removal-migration-contract.test.ts src/lib/__tests__/post-audit-database-hardening-migrations.test.ts
-pnpm test -- src/lib/__tests__/cross-store-save-sync-planner.test.ts
-pnpm test -- src/lib/__tests__/launcher-browser-guards.test.ts
-pnpm test -- src/components/friends/DeduplicationPanel.test.tsx src/components/friends/FriendImport.test.tsx src/lib/supabase/__tests__/friend-links-merge-groups.test.ts src/lib/__tests__/friend-merge-groups-migration-contract.test.ts src/pages/PageSmoke.test.tsx
-pnpm test -- src/lib/__tests__/launcher-browser-guards.test.ts src/lib/__tests__/cross-store-save-migration-readiness.test.ts src/components/library/GameDetails/CrossStoreSaveMigrationReadinessPanel.test.tsx
-pnpm test -- src/lib/__tests__/cross-store-save-sync-planner.test.ts src/lib/__tests__/cross-store-save-migration-readiness.test.ts src/components/library/GameDetails/CrossStoreSaveSyncPlanner.test.tsx src/components/library/GameDetails/CrossStoreSaveMigrationReadinessPanel.test.tsx src/components/library/GameDetailPanel.test.tsx src/pages/LibraryPage.test.tsx src/lib/__tests__/launcher-browser-guards.test.ts
-pnpm test -- src/lib/__tests__/presence-readiness.test.ts src/components/settings/PresencePollingReadinessPanel.test.tsx src/pages/SettingsPage.test.tsx
-pnpm test -- src/lib/__tests__/overlay-e2e-readiness.test.ts src/components/settings/OverlayE2EReadinessPanel.test.tsx src/pages/PerfHistoryPage.test.tsx # 8 passed
-pnpm test -- src/lib/__tests__/store-support.test.ts src/pages/StorePage.test.tsx
-pnpm test -- src/lib/__tests__/store-price-drop-readiness.test.ts src/pages/StorePage.test.tsx
-pnpm test -- src/components/library/ModalBackdrops.test.tsx src/pages/ModsPage.test.tsx src/pages/StorePage.test.tsx src/pages/LibraryPage.test.tsx src/pages/PageSmoke.test.tsx src/components/layout/AppLayout.test.tsx # 48 passed
-pnpm test -- src/lib/__tests__/mod-api-staging-readiness.test.ts src/components/mods/ModApiStagingReadinessPanel.test.tsx src/pages/ModsPage.test.tsx
-pnpm vitest run src/lib/__tests__/plugin-system-readiness.test.ts src/components/settings/PluginSystemReadinessPanel.test.tsx src/pages/SettingsPage.test.tsx src/lib/__tests__/launcher-browser-guards.test.ts # 67 passed
-pnpm exec vitest run src/lib/__tests__/one-click-setup-rollback-audit-contract.test.ts src/components/settings/OneClickSetupRollbackAuditContractPanel.test.tsx src/pages/SettingsPage.test.tsx
-pnpm exec vitest run src/lib/__tests__/hosted-cron-evidence-summary.test.ts src/components/settings/HostedCronEvidenceSummaryPanel.test.tsx src/pages/SettingsPage.test.tsx
-pnpm exec vitest run src/lib/__tests__/external-completion-evidence-summary.test.ts src/components/settings/ExternalCompletionEvidenceSummaryPanel.test.tsx src/pages/SettingsPage.test.tsx
-pnpm exec vitest run src/lib/__tests__/broadcast-audience-status-contract.test.ts src/components/community/BroadcastAudienceStatusContractPanel.test.tsx src/pages/CommunityPage.test.tsx src/pages/PageSmoke.test.tsx
-pnpm exec vitest run src/lib/__tests__/ai-recommendation-hosted-eval-contract.test.ts src/components/library/GameDetails/AiRecommendationHostedEvalContractPanel.test.tsx src/components/library/GameDetailPanel.test.tsx src/pages/LibraryPage.test.tsx src/pages/PageSmoke.test.tsx
-pnpm test        # see fresh command output
-pnpm test:cov    # see fresh command output; coverage report generated
-pnpm build       # passed
-cd ..
-rustup show active-toolchain # 1.95.0
-cargo test --manifest-path launcher/src-tauri/Cargo.toml commands::games::sync::tests -- --nocapture
-cargo test --manifest-path launcher/src-tauri/Cargo.toml commands::cross_store_save::tests -- --nocapture
-cargo test cross_store_staging --lib
-cargo test --manifest-path launcher/src-tauri/Cargo.toml # 341 passed
-RUSTFLAGS='-D warnings' cargo test --manifest-path launcher/src-tauri/Cargo.toml --lib # 341 passed
-RUSTFLAGS='-D warnings' cargo check --manifest-path launcher/src-tauri/Cargo.toml --lib # passed
-env -u NODE_ENV RUSTFLAGS='-D warnings' pnpm -C launcher tauri build --target x86_64-unknown-linux-gnu --no-bundle # passed
-env -u NODE_ENV APPIMAGE_EXTRACT_AND_RUN=1 NO_STRIP=1 RUSTFLAGS='-D warnings' pnpm -C launcher tauri build --target x86_64-unknown-linux-gnu # passed; built deb, rpm, AppImage
-cargo fmt --all -- --check # passed
-cargo clippy --lib --all-targets -- -D warnings # passed
-cargo clippy --bins -- -D warnings # passed
-cargo check --manifest-path launcher/src-tauri/Cargo.toml --lib --target x86_64-pc-windows-msvc # hardware/OS E2E lane skipped on this Linux host; runs on windows-2025 with the Windows MSVC toolchain
-pnpm hosted:deploy-gate:test # 52 passed
-pnpm external:evidence:test # 53 passed
-pnpm hosted:cron-evidence:test # 36 passed
-pnpm completion:gate:test # 17 passed
-pnpm release:tag:test # 4 passed
-pnpm supabase:db:lint:test # 5 passed
-NODE_ENV=development pnpm --dir launcher install --frozen-lockfile # passed; prepare installs Husky hook path
-pnpm --dir launcher lint-staged --diff HEAD --no-stash --concurrent false # passed
-pnpm completion:gate:local # passed
-pnpm completion:gate:external # fails until hosted deploy, hosted cron, and external proof artifacts pass preflight
-pnpm supabase:functions:runner:test # 6 passed
-pnpm verify:routes:test # 17 passed
-pnpm supabase:functions:test # 386 passed
-pnpm supabase:functions:check # passed
-pnpm --dir launcher test -- src/lib/supabase/__tests__/playtime.test.ts src/lib/supabase/__tests__/achievements.test.ts
-cd launcher
-pnpm test -- --run \
-  src/lib/__tests__/broadcast-chat-moderation-shadow.test.ts \
-  src/components/community/BroadcastChatModerationShadowPanel.test.tsx \
-  src/lib/__tests__/broadcast-vod-archive-policy.test.ts \
-  src/components/community/BroadcastVodArchivePolicyPanel.test.tsx \
-  src/lib/__tests__/broadcast-provider-oauth-contract.test.ts \
-  src/components/community/BroadcastProviderOAuthContractPanel.test.tsx \
-  src/lib/__tests__/broadcast-provider-callback-contract.test.ts \
-  src/components/community/BroadcastProviderCallbackContractPanel.test.tsx \
-  src/pages/CommunityPage.test.tsx \
-  src/lib/__tests__/achievement-cache-readiness.test.ts \
-  src/components/achievements/AchievementCacheReadinessPanel.test.tsx \
-  src/lib/__tests__/achievement-hosted-hydration-contract.test.ts \
-  src/components/achievements/AchievementHostedHydrationContractPanel.test.tsx \
-  src/pages/AchievementsPage.test.tsx \
-  src/lib/__tests__/overlay-fullscreen-anti-cheat-readiness.test.ts \
-  src/components/settings/OverlayFullscreenAntiCheatReadinessPanel.test.tsx \
-  src/pages/PerfHistoryPage.test.tsx \
-  src/lib/__tests__/client-manager-mount-apply-contract.test.ts \
-  src/components/settings/ClientManagerMountApplyContractPanel.test.tsx \
-  src/pages/SettingsPage.test.tsx \
-  src/lib/__tests__/backlog-recommendations.test.ts \
-  src/components/library/BacklogPriorityPanel.test.tsx \
-  src/lib/__tests__/ai-recommendation-readiness.test.ts \
-  src/components/library/GameDetails/AiRecommendationReadinessPanel.test.tsx \
-  src/lib/supabase/__tests__/community-artwork.test.ts \
-  src/components/library/CommunityArtworkUploadPanel.test.tsx \
-  src/lib/__tests__/community-artwork-migration-contract.test.ts \
-  src/lib/__tests__/hosted-community-artwork-moderation-console.test.ts \
-  src/lib/__tests__/hosted-community-artwork-readiness.test.ts \
-  src/components/library/GameDetails/HostedCommunityArtworkModeratorConsolePanel.test.tsx \
-  src/components/library/GameDetails/HostedCommunityArtworkReadinessPanel.test.tsx \
-  src/components/library/CommunityArtworkGallery.test.tsx \
-  src/components/library/GameDetailPanel.test.tsx \
-  src/pages/LibraryPage.test.tsx
-
-cd src-tauri
-cargo test       # 341 passed
-
-cd ../..
-pnpm --dir launcher exec supabase db reset # passed
-pnpm supabase:db:lint # no schema errors
-pnpm supabase:functions:test
-# 386 passed
-pnpm supabase:functions:check # passed
+pnpm --dir launcher format:check
+pnpm --dir launcher typecheck
+pnpm --dir launcher lint
+pnpm --dir launcher test -- src/pages/ActivityPage.test.tsx src/components/friends/ActivityFeed.test.tsx src/pages/ModsPage.test.tsx src/lib/launcher/mods.test.ts
+pnpm --dir launcher test -- src/lib/__tests__/activity-feed-interactions-migration-contract.test.ts src/lib/__tests__/store-friend-activity-events-migration-contract.test.ts src/lib/__tests__/mod-provider-rework-migration-contract.test.ts
+cargo test --manifest-path launcher/src-tauri/Cargo.toml
+pnpm verify:routes
 ```
+
+Local fixtures and verify routes do not complete hosted, provider, hardware, or
+rollout evidence.

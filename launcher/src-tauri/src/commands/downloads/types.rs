@@ -1,5 +1,7 @@
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::future::Future;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tauri::Emitter;
@@ -56,6 +58,8 @@ pub struct DownloadItemPayload {
     #[serde(default)]
     pub last_updated_at: u64,
     #[serde(default)]
+    pub event_revision: u64,
+    #[serde(default)]
     pub provider: String,
     #[serde(default)]
     pub raw_status: String,
@@ -63,6 +67,8 @@ pub struct DownloadItemPayload {
     pub progress_source: String,
     #[serde(default)]
     pub error: Option<String>,
+    #[serde(skip)]
+    pub(crate) worker_generation: Option<u64>,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -79,6 +85,7 @@ pub(crate) struct DownloadRemovedPayload {
 }
 
 pub(crate) struct ActiveDownload {
+    pub(crate) worker_generation: u64,
     pub(crate) title: String,
     pub(crate) progress: u32,
     pub(crate) speed: String,
@@ -96,6 +103,28 @@ pub(crate) struct ActiveDownload {
     pub(crate) cancel_tx: watch::Sender<bool>,
     pub(crate) raw_status: String,
     pub(crate) error: Option<String>,
+}
+
+tokio::task_local! {
+    static DOWNLOAD_WORKER_GENERATION: u64;
+}
+
+pub(crate) async fn scope_download_worker<F>(generation: u64, future: F) -> F::Output
+where
+    F: Future,
+{
+    DOWNLOAD_WORKER_GENERATION.scope(generation, future).await
+}
+
+pub(crate) fn next_download_worker_generation() -> u64 {
+    static NEXT_GENERATION: AtomicU64 = AtomicU64::new(1);
+    NEXT_GENERATION.fetch_add(1, Ordering::Relaxed)
+}
+
+fn scoped_download_worker_generation() -> Option<u64> {
+    DOWNLOAD_WORKER_GENERATION
+        .try_with(|generation| *generation)
+        .ok()
 }
 
 #[derive(Debug, Clone)]
@@ -281,6 +310,41 @@ pub(crate) fn get_download_manager() -> &'static DownloadMap {
     MANAGER.get_or_init(|| Arc::new(Mutex::new(HashMap::new())))
 }
 
+pub(crate) fn get_download_lifecycle_lock() -> &'static Mutex<()> {
+    static LIFECYCLE: OnceLock<Mutex<()>> = OnceLock::new();
+    LIFECYCLE.get_or_init(|| Mutex::new(()))
+}
+
+fn active_download_matches_generation(download: &ActiveDownload, generation: Option<u64>) -> bool {
+    generation.is_none_or(|generation| download.worker_generation == generation)
+}
+
+fn get_suppressed_downloads() -> &'static Mutex<HashSet<String>> {
+    static SUPPRESSED: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
+    SUPPRESSED.get_or_init(|| Mutex::new(HashSet::new()))
+}
+
+pub(crate) fn suppress_download_emissions(game_id: &str) {
+    get_suppressed_downloads()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .insert(game_id.to_string());
+}
+
+pub(crate) fn clear_download_suppression(game_id: &str) {
+    get_suppressed_downloads()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .remove(game_id);
+}
+
+pub(crate) fn is_download_suppressed(game_id: &str) -> bool {
+    get_suppressed_downloads()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .contains(game_id)
+}
+
 pub(crate) fn remove_active_download_if_current(
     game_id: &str,
     worker_cancel_rx: &watch::Receiver<bool>,
@@ -391,7 +455,6 @@ fn request_download_cancellation_in_map(
     download.error = None;
     let _ = download.cancel_tx.send(true);
     let payload = payload_from_active_download(game_id, download);
-    guard.remove(game_id);
 
     Ok(DownloadCancellationTransition::Cancelled(Box::new(payload)))
 }
@@ -410,6 +473,9 @@ fn begin_download_commit_in_map(
     let Some(download) = guard.get_mut(game_id) else {
         return Ok(None);
     };
+    if !active_download_matches_generation(download, scoped_download_worker_generation()) {
+        return Ok(None);
+    }
 
     if download.cancelled
         || *download.cancel_tx.borrow()
@@ -450,6 +516,9 @@ pub(crate) fn update_download_status(
         return;
     };
     if let Some(dl) = guard.get_mut(game_id) {
+        if !active_download_matches_generation(dl, scoped_download_worker_generation()) {
+            return;
+        }
         dl.status = status.to_string();
         dl.speed = speed.to_string();
         dl.progress = normalize_progress(progress, status);
@@ -472,6 +541,9 @@ pub(crate) fn update_download_metrics(
         return;
     };
     if let Some(dl) = guard.get_mut(game_id) {
+        if !active_download_matches_generation(dl, scoped_download_worker_generation()) {
+            return;
+        }
         dl.phase = phase.to_string();
         dl.bytes_downloaded = bytes_downloaded;
         dl.bytes_total = bytes_total;
@@ -599,15 +671,22 @@ pub(crate) fn emit_download_progress(
     eta: u32,
 ) {
     let status = validated_download_status(status);
-    let mut payload = get_download_manager()
-        .lock()
-        .ok()
-        .and_then(|guard| {
-            guard
-                .get(game_id)
-                .map(|dl| payload_from_active_download(game_id, dl))
+    let scoped_generation = scoped_download_worker_generation();
+    let mut payload = get_download_manager().lock().ok().and_then(|guard| {
+        guard.get(game_id).and_then(|download| {
+            active_download_matches_generation(download, scoped_generation)
+                .then(|| payload_from_active_download(game_id, download))
         })
+    });
+    if scoped_generation.is_some() && payload.is_none() {
+        return;
+    }
+    let mut payload = payload
+        .take()
         .unwrap_or_else(|| default_download_payload(game_id, ""));
+    if scoped_generation.is_some() {
+        payload.worker_generation = scoped_generation;
+    }
     payload.progress = normalize_progress(progress, status);
     payload.speed = speed.to_string();
     payload.status = status.to_string();
@@ -622,15 +701,88 @@ pub(crate) fn emit_download_payload(
     app: &tauri::AppHandle,
     payload: DownloadItemPayload,
 ) -> Result<(), String> {
+    let _lifecycle = get_download_lifecycle_lock()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let expected_generation = payload.worker_generation;
+    let active_downloads = if let Some(generation) = expected_generation {
+        let guard = get_download_manager()
+            .lock()
+            .map_err(|error| format!("Download manager lock poisoned: {error}"))?;
+        let is_current = guard
+            .get(&payload.game_id)
+            .is_some_and(|download| download.worker_generation == generation);
+        if !is_current {
+            return Ok(());
+        }
+        Some(guard)
+    } else {
+        None
+    };
     let payload = normalize_queue_payload(payload);
     if is_stale_installed_download(&payload) {
         remove_download_history_item(&payload.game_id)?;
         emit_download_removed(app, &payload.game_id);
         return Ok(());
     }
+
+    // Serialize the final tombstone check with persistence and emission. If a
+    // cancel/archive wins this lock first, the payload is discarded. If an
+    // already-running emit wins, cancel/archive waits and then removes that row
+    // and emits `download_removed`, preserving a deterministic final order.
+    let suppressed_downloads = get_suppressed_downloads()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    if suppressed_downloads.contains(&payload.game_id) {
+        remove_download_history_item(&payload.game_id)?;
+        return Ok(());
+    }
+
+    let payload = stamp_download_payload(payload, now_unix_secs(), next_download_event_revision());
     remember_download_item(payload.clone())?;
     let _ = app.emit("download_progress", payload);
+    drop(active_downloads);
     Ok(())
+}
+
+fn next_download_event_revision() -> u64 {
+    static LAST_REVISION: AtomicU64 = AtomicU64::new(0);
+    let wall_clock = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_micros().min(u128::from(u64::MAX)) as u64)
+        .unwrap_or(0);
+    let mut observed = LAST_REVISION.load(Ordering::Relaxed);
+    loop {
+        let next = wall_clock.max(observed.saturating_add(1));
+        match LAST_REVISION.compare_exchange_weak(
+            observed,
+            next,
+            Ordering::SeqCst,
+            Ordering::Relaxed,
+        ) {
+            Ok(_) => return next,
+            Err(actual) => observed = actual,
+        }
+    }
+}
+
+fn stamp_download_payload(
+    mut payload: DownloadItemPayload,
+    timestamp: u64,
+    event_revision: u64,
+) -> DownloadItemPayload {
+    payload.last_updated_at = timestamp;
+    payload.event_revision = event_revision;
+    payload
+}
+
+#[cfg(test)]
+fn should_suppress_download_payload(payload: &DownloadItemPayload) -> bool {
+    // A worker can race with map removal and then build a fallback payload whose
+    // metadata cannot describe the removed map entry. Tombstones are registered
+    // for cancelled internal jobs and archived external trackers, so the id is
+    // authoritative and the payload's `external` flag must not be consulted.
+    is_download_suppressed(&payload.game_id)
 }
 
 pub(crate) fn payload_from_active_download(
@@ -653,10 +805,12 @@ pub(crate) fn payload_from_active_download(
         can_cancel: dl.can_cancel,
         external: dl.external,
         last_updated_at: 0,
+        event_revision: 0,
         provider: provider_key_from_game_id(game_id),
         raw_status: dl.raw_status.clone(),
         progress_source: progress_source_from_game_id(game_id),
         error: dl.error.clone(),
+        worker_generation: Some(dl.worker_generation),
     })
 }
 
@@ -677,10 +831,12 @@ fn default_download_payload(game_id: &str, title: &str) -> DownloadItemPayload {
         can_cancel: true,
         external: false,
         last_updated_at: 0,
+        event_revision: 0,
         provider: provider_key_from_game_id(game_id),
         raw_status: String::new(),
         progress_source: progress_source_from_game_id(game_id),
         error: None,
+        worker_generation: None,
     })
 }
 
@@ -762,6 +918,7 @@ mod tests {
         let (cancel_tx, cancel_rx) = watch::channel(false);
         (
             ActiveDownload {
+                worker_generation: next_download_worker_generation(),
                 title: "Race Test".to_string(),
                 progress: 98,
                 speed: "Downloading".to_string(),
@@ -803,7 +960,12 @@ mod tests {
             .unwrap()
             .is_none());
         assert!(*cancel_rx.borrow());
-        assert!(!map.lock().unwrap().contains_key("race-before"));
+        assert!(map.lock().unwrap().contains_key("race-before"));
+        assert!(remove_active_download_if_current_in_map(
+            &map,
+            "race-before",
+            &cancel_rx,
+        ));
     }
 
     #[test]
@@ -915,10 +1077,12 @@ mod tests {
             can_cancel: true,
             external: true,
             last_updated_at: 0,
+            event_revision: 0,
             provider: String::new(),
             raw_status: String::new(),
             progress_source: String::new(),
             error: None,
+            worker_generation: None,
         });
 
         let epic_item = normalize_queue_payload(DownloadItemPayload {
@@ -937,10 +1101,12 @@ mod tests {
             can_cancel: true,
             external: true,
             last_updated_at: 0,
+            event_revision: 0,
             provider: String::new(),
             raw_status: String::new(),
             progress_source: String::new(),
             error: None,
+            worker_generation: None,
         });
 
         assert!(steam_item.can_pause);
@@ -967,10 +1133,12 @@ mod tests {
             can_cancel: false,
             external: true,
             last_updated_at: 0,
+            event_revision: 0,
             provider: String::new(),
             raw_status: String::new(),
             progress_source: String::new(),
             error: None,
+            worker_generation: None,
         });
 
         let paused_item = normalize_queue_payload(DownloadItemPayload {
@@ -1001,6 +1169,67 @@ mod tests {
         assert!(!is_restart_interrupted_download_status(
             DOWNLOAD_STATUS_COMPLETED
         ));
+    }
+
+    #[test]
+    fn explicit_restart_clears_download_remove_suppression() {
+        let game_id = "steam-owned-suppression-test";
+        clear_download_suppression(game_id);
+        assert!(!is_download_suppressed(game_id));
+
+        suppress_download_emissions(game_id);
+        assert!(is_download_suppressed(game_id));
+
+        clear_download_suppression(game_id);
+        assert!(!is_download_suppressed(game_id));
+    }
+
+    #[test]
+    fn suppressed_map_missing_fallback_payload_cannot_reappear() {
+        let game_id = "steam-owned-map-missing-suppression-test";
+        clear_download_suppression(game_id);
+        suppress_download_emissions(game_id);
+
+        let payload = DownloadItemPayload {
+            // Model a late worker emission after its manager entry has already
+            // been removed, before any provider metadata can be recovered.
+            external: false,
+            ..default_download_payload(game_id, "")
+        };
+        assert!(!payload.external, "fixture must model the map-missing path");
+        assert!(should_suppress_download_payload(&payload));
+
+        clear_download_suppression(game_id);
+    }
+
+    #[test]
+    fn cancelled_internal_payload_cannot_reappear() {
+        let game_id = "internal-cancel-suppression-test";
+        clear_download_suppression(game_id);
+        suppress_download_emissions(game_id);
+
+        let payload = default_download_payload(game_id, "Internal download");
+        assert!(!payload.external);
+        assert!(should_suppress_download_payload(&payload));
+
+        clear_download_suppression(game_id);
+    }
+
+    #[test]
+    fn emitted_download_payload_uses_the_persisted_timestamp() {
+        let payload =
+            stamp_download_payload(default_download_payload("timestamp-test", ""), 123, 456);
+
+        assert_eq!(payload.last_updated_at, 123);
+        assert_eq!(payload.event_revision, 456);
+    }
+
+    #[test]
+    fn event_revisions_are_strictly_monotonic() {
+        let first = next_download_event_revision();
+        let second = next_download_event_revision();
+
+        assert!(second > first);
     }
 
     #[test]
@@ -1036,10 +1265,12 @@ mod tests {
             can_cancel: true,
             external: false,
             last_updated_at: 0,
+            event_revision: 0,
             provider: String::new(),
             raw_status: String::new(),
             progress_source: String::new(),
             error: None,
+            worker_generation: None,
         });
 
         assert_eq!(item.status, DOWNLOAD_STATUS_FAILED);
@@ -1098,10 +1329,12 @@ mod tests {
             can_cancel: true,
             external: false,
             last_updated_at: 0,
+            event_revision: 0,
             provider: String::new(),
             raw_status: String::new(),
             progress_source: String::new(),
             error: Some("signedUrl=https://signed.example.test/build.zip".to_string()),
+            worker_generation: None,
         });
 
         assert!(!item.speed.contains("https://"));

@@ -77,6 +77,34 @@ describe("aggregateGameGroup achievements", () => {
     expect(extra?.matchConfidence).toBe("additional");
   });
 
+  it("deduplicates exact provider achievements inside the basis game", () => {
+    const steam = makeGame({
+      id: "steam-1",
+      launcher: "steam",
+      achievements: [
+        achievement({
+          id: "locked-copy",
+          source: "Steam",
+          sourceAchievementId: "STORY_COMPLETE",
+          name: "Story Complete",
+          unlockedAt: null,
+        }),
+        achievement({
+          id: "unlocked-copy",
+          source: " steam ",
+          sourceAchievementId: "STORY_COMPLETE",
+          name: "Story Complete",
+          unlockedAt: "2026-01-01T00:00:00.000Z",
+        }),
+      ],
+    });
+
+    const group = aggregateGameGroup([steam]);
+
+    expect(group.achievements).toHaveLength(1);
+    expect(group.achievements[0].unlockedAt).toBe("2026-01-01T00:00:00.000Z");
+  });
+
   it("merges the same achievement across platforms and preserves sources", () => {
     const steam = makeGame({
       id: "steam-1",

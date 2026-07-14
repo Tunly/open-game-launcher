@@ -183,6 +183,7 @@ function prioritizePatchUpdates(items: GameUpdateItem[]): GameUpdateItem[] {
 
 function sanitizeText(value: string): string {
   return value
+    .replace(/\{STEAM_CLAN_(?:LOC_)?IMAGE\}\/[^\s"'<>[\]]+/gi, " ")
     .replace(/\[[^\]]+\]/g, " ")
     .replace(/<[^>]*>/g, " ")
     .replace(/&quot;/g, '"')

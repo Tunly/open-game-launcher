@@ -216,6 +216,38 @@ export type Database = {
           },
         ]
       }
+      activity_comments: {
+        Row: {
+          activity_id: string
+          author_id: string
+          body: string
+          created_at: string
+          id: string
+        }
+        Insert: {
+          activity_id: string
+          author_id: string
+          body: string
+          created_at?: string
+          id?: string
+        }
+        Update: {
+          activity_id?: string
+          author_id?: string
+          body?: string
+          created_at?: string
+          id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "activity_comments_activity_id_fkey"
+            columns: ["activity_id"]
+            isOneToOne: false
+            referencedRelation: "activity_feed"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       activity_feed: {
         Row: {
           achievement_name: string | null
@@ -224,6 +256,7 @@ export type Database = {
           game_title: string | null
           id: string
           metadata: Json
+          source_key: string | null
           type: string
           user_id: string
           visibility: string
@@ -235,6 +268,7 @@ export type Database = {
           game_title?: string | null
           id?: string
           metadata?: Json
+          source_key?: string | null
           type: string
           user_id: string
           visibility?: string
@@ -246,6 +280,7 @@ export type Database = {
           game_title?: string | null
           id?: string
           metadata?: Json
+          source_key?: string | null
           type?: string
           user_id?: string
           visibility?: string
@@ -263,6 +298,35 @@ export type Database = {
             columns: ["game_id"]
             isOneToOne: false
             referencedRelation: "games"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      activity_reactions: {
+        Row: {
+          activity_id: string
+          created_at: string
+          reaction: string
+          user_id: string
+        }
+        Insert: {
+          activity_id: string
+          created_at?: string
+          reaction?: string
+          user_id: string
+        }
+        Update: {
+          activity_id?: string
+          created_at?: string
+          reaction?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "activity_reactions_activity_id_fkey"
+            columns: ["activity_id"]
+            isOneToOne: false
+            referencedRelation: "activity_feed"
             referencedColumns: ["id"]
           },
         ]
@@ -3700,6 +3764,8 @@ export type Database = {
           manifest: Json
           name_snapshot: string
           provider: string
+          provider_item_id: string | null
+          provider_version_id: string | null
           source_url: string | null
           target_dir: string | null
           updated_at: string
@@ -3723,6 +3789,8 @@ export type Database = {
           manifest?: Json
           name_snapshot: string
           provider: string
+          provider_item_id?: string | null
+          provider_version_id?: string | null
           source_url?: string | null
           target_dir?: string | null
           updated_at?: string
@@ -3746,6 +3814,8 @@ export type Database = {
           manifest?: Json
           name_snapshot?: string
           provider?: string
+          provider_item_id?: string | null
+          provider_version_id?: string | null
           source_url?: string | null
           target_dir?: string | null
           updated_at?: string
@@ -4182,6 +4252,10 @@ export type Database = {
         Args: { profile_user_id: string; viewer_id: string }
         Returns: boolean
       }
+      can_view_activity: {
+        Args: { target_activity_id: string }
+        Returns: boolean
+      }
       can_view_game_activity: {
         Args: { profile_user_id: string; viewer_id: string }
         Returns: boolean
@@ -4234,6 +4308,15 @@ export type Database = {
         }[]
       }
       generate_family_invite_code: { Args: never; Returns: string }
+      get_activity_interaction_summaries: {
+        Args: { p_activity_ids: string[] }
+        Returns: {
+          activity_id: string
+          comment_count: number
+          reacted_by_current_user: boolean
+          reaction_count: number
+        }[]
+      }
       is_blocked: { Args: { user_a: string; user_b: string }; Returns: boolean }
       is_friend: { Args: { user_a: string; user_b: string }; Returns: boolean }
       is_username_available: {
@@ -4274,6 +4357,14 @@ export type Database = {
           game_invite_id: string
           game_title: string
           platform: string
+        }[]
+      }
+      set_activity_rate_up: {
+        Args: { p_active: boolean; p_activity_id: string }
+        Returns: {
+          activity_id: string
+          reacted_by_current_user: boolean
+          reaction_count: number
         }[]
       }
       sync_store_review_report_hide_state: {

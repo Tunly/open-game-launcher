@@ -651,6 +651,7 @@ pub async fn fetch_ubisoft_owned_games() -> Result<Vec<OwnedGame>, String> {
                 playtime_minutes: None,
                 last_played_at: None,
                 cloud_gaming_url: None,
+                achievement_summary: None,
             }
         })
         .collect();

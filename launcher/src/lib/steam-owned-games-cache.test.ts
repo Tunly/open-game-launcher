@@ -92,4 +92,30 @@ describe("Steam owned-games cache", () => {
       playtimeMinutes: 120,
     });
   });
+
+  it("preserves a Steam achievement summary when a later inventory response omits it", () => {
+    const steamId = "76561198000000001";
+    activateSteamAccount(steamId);
+    writeSteamOwnedGamesCache(steamId, [
+      {
+        achievementSummary: {
+          unlocked: 31,
+          total: 31,
+          isPerfect: true,
+          source: "steam",
+        },
+        appid: 10,
+      },
+    ]);
+
+    writeSteamOwnedGamesCache(steamId, [{ appid: 10, name: "Counter-Strike" }]);
+
+    const cached = JSON.parse(readSteamOwnedGamesCache(steamId) ?? "[]");
+    expect(cached[0]?.achievementSummary).toEqual({
+      unlocked: 31,
+      total: 31,
+      isPerfect: true,
+      source: "steam",
+    });
+  });
 });

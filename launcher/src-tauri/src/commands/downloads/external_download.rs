@@ -1,4 +1,4 @@
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use tauri::AppHandle;
 use tauri::Emitter;
@@ -11,8 +11,8 @@ use crate::commands::downloads::steam_state::{
 };
 use crate::commands::downloads::types::{
     cancellable_sleep, emit_download_progress, get_download_manager, is_download_control_pending,
-    pause_hold_feedback, remove_active_download_if_current, update_download_metrics,
-    update_download_status,
+    is_download_suppressed, pause_hold_feedback, remove_active_download_if_current,
+    update_download_metrics, update_download_status,
 };
 use crate::commands::downloads::utils::get_dir_size;
 
@@ -194,6 +194,16 @@ pub async fn run_external_download(
     let mut external_installed_seen_count = 0u8;
 
     loop {
+        if is_download_suppressed(&game_id) {
+            retire_suppressed_external_download(
+                &game_id,
+                &cancel_rx,
+                &mut epic_child,
+                &mut epic_stderr,
+            )
+            .await;
+            return;
+        }
         if *cancel_rx.borrow() {
             if let Some(mut child) = epic_child.take() {
                 let _ = child.kill().await;
@@ -204,6 +214,16 @@ pub async fn run_external_download(
             return;
         }
         while *pause_rx.borrow() {
+            if is_download_suppressed(&game_id) {
+                retire_suppressed_external_download(
+                    &game_id,
+                    &cancel_rx,
+                    &mut epic_child,
+                    &mut epic_stderr,
+                )
+                .await;
+                return;
+            }
             let (pause_status, pause_speed, pause_eta) = pause_hold_feedback(&game_id, "Paused");
             update_download_status(&game_id, &pause_status, &pause_speed, progress, pause_eta);
             emit_download_progress(
@@ -439,6 +459,17 @@ pub async fn run_external_download(
         }
     }
 
+    if is_download_suppressed(&game_id) {
+        retire_suppressed_external_download(
+            &game_id,
+            &cancel_rx,
+            &mut epic_child,
+            &mut epic_stderr,
+        )
+        .await;
+        return;
+    }
+
     if let Some(mut child) = epic_child.take() {
         match tokio::time::timeout(std::time::Duration::from_secs(10), child.wait()).await {
             Ok(Ok(status)) => {
@@ -462,6 +493,17 @@ pub async fn run_external_download(
     if let Some(error) = epic_failure {
         fail_external_download(&app, &game_id, progress, &error);
         remove_external_download(&game_id, &cancel_rx);
+        return;
+    }
+
+    if is_download_suppressed(&game_id) {
+        retire_suppressed_external_download(
+            &game_id,
+            &cancel_rx,
+            &mut epic_child,
+            &mut epic_stderr,
+        )
+        .await;
         return;
     }
 
@@ -498,6 +540,35 @@ fn fail_external_download(app: &AppHandle, game_id: &str, progress: u32, message
 
 fn remove_external_download(game_id: &str, cancel_rx: &watch::Receiver<bool>) {
     remove_active_download_if_current(game_id, cancel_rx);
+}
+
+async fn retire_suppressed_external_download(
+    game_id: &str,
+    cancel_rx: &watch::Receiver<bool>,
+    epic_child: &mut Option<tokio::process::Child>,
+    epic_stderr: &mut Option<tokio::io::BufReader<tokio::process::ChildStderr>>,
+) {
+    // Removing an Epic row means "stop tracking", not "kill Legendary". Keep
+    // the generation reserved until the provider process exits so a quick
+    // explicit restart cannot launch a second installer for the same game.
+    let stderr_drain = epic_stderr.take().map(|mut stderr| {
+        tokio::spawn(async move {
+            let mut sink = tokio::io::sink();
+            let _ = tokio::io::copy(&mut stderr, &mut sink).await;
+        })
+    });
+    if let Some(child) = epic_child.as_mut() {
+        loop {
+            match child.try_wait() {
+                Ok(Some(_)) | Err(_) => break,
+                Ok(None) => tokio::time::sleep(Duration::from_millis(500)).await,
+            }
+        }
+    }
+    if let Some(stderr_drain) = stderr_drain {
+        let _ = stderr_drain.await;
+    }
+    remove_external_download(game_id, cancel_rx);
 }
 
 #[cfg(test)]

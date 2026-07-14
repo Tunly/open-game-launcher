@@ -1,13 +1,21 @@
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { isTauri } from "@tauri-apps/api/core";
-import { describe, expect, it, vi } from "vitest";
+import { listen } from "@tauri-apps/api/event";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   APP_SHELL_SKIN_STORAGE_KEY,
   notifyAppShellSkinChanged,
   writeAppShellSkinId,
 } from "../../lib/app-shell-skins";
+import { useLauncherUpdateStore } from "../../stores/launcherUpdateStore";
+import { useDownloadStore } from "../../stores/downloadStore";
+import { useModInstallStore } from "../../stores/modInstallStore";
+import { getDownloadQueue, getModQueue } from "../../lib/launcher";
+import type { DownloadItem } from "../../lib/types";
+import type { ModInstallQueueItem } from "../../lib/types/mods";
 import { AppShell } from "./AppShell";
+import type { PageKey } from "./Sidebar";
 
 const tauriWindowMock = vi.hoisted(() => ({
   currentWindow: {
@@ -29,13 +37,313 @@ vi.mock("@tauri-apps/api/window", () => ({
 
 vi.mock("../../lib/launcher", () => ({
   getDownloadQueue: vi.fn(() => Promise.resolve([])),
+  getModQueue: vi.fn(() => Promise.resolve([])),
   runBackupPlan: vi.fn(() => Promise.resolve({ manifestId: "manifest", message: "Backup done" })),
   runScheduledPlatformClientUpdateChecks: vi.fn(() =>
     Promise.resolve({ checkedAt: "2026-06-12T10:00:00.000Z", message: "", updateCount: 0 }),
   ),
 }));
 
+function makeModQueueItem(overrides: Partial<ModInstallQueueItem> = {}): ModInstallQueueItem {
+  return {
+    id: "mod-install-1",
+    installId: "mod-install-1",
+    gameId: "game-1",
+    title: "Startup Mod",
+    provider: "nexus",
+    progress: 10,
+    speed: "1 MB/s",
+    status: "downloading",
+    phase: "Downloading",
+    canPause: false,
+    canCancel: true,
+    external: false,
+    lastUpdatedAt: 1,
+    ...overrides,
+  };
+}
+
+function makeDownloadItem(overrides: Partial<DownloadItem> = {}): DownloadItem {
+  return {
+    gameId: "game-1",
+    id: "download-game-1",
+    progress: 10,
+    speed: "1 MB/s",
+    status: "downloading",
+    title: "Startup Download",
+    canCancel: true,
+    canPause: true,
+    lastUpdatedAt: 1,
+    ...overrides,
+  };
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  vi.mocked(listen).mockImplementation(() => Promise.resolve(() => undefined));
+  vi.mocked(getDownloadQueue).mockResolvedValue([]);
+  vi.mocked(getModQueue).mockResolvedValue([]);
+  useDownloadStore.setState({ items: [] });
+  useModInstallStore.setState({ items: [] });
+});
+
 describe("AppShell browser-local shell skins", () => {
+  it("hydrates the central mod queue and applies global progress events", async () => {
+    vi.mocked(getModQueue).mockResolvedValue([makeModQueueItem()]);
+    renderShell({ isDesktop: true });
+
+    await waitFor(() => {
+      expect(useModInstallStore.getState().items).toHaveLength(1);
+    });
+    expect(useModInstallStore.getState().items[0]).toMatchObject({
+      installId: "mod-install-1",
+      progress: 10,
+    });
+
+    const progressCall = vi
+      .mocked(listen)
+      .mock.calls.find(([eventName]) => eventName === "mod_install_progress");
+    expect(progressCall).toBeDefined();
+
+    act(() => {
+      const handler = progressCall?.[1] as (event: { payload: ModInstallQueueItem }) => void;
+      handler({ payload: makeModQueueItem({ progress: 65, lastUpdatedAt: 2 }) });
+    });
+
+    expect(useModInstallStore.getState().items[0]).toMatchObject({
+      installId: "mod-install-1",
+      progress: 65,
+    });
+  });
+
+  it("keeps progress events that arrive while the download queue is hydrating", async () => {
+    let resolveQueue!: (items: DownloadItem[]) => void;
+    vi.mocked(getDownloadQueue).mockReturnValue(
+      new Promise((resolve) => {
+        resolveQueue = resolve;
+      }),
+    );
+    renderShell({ isDesktop: true });
+
+    const progressCall = vi
+      .mocked(listen)
+      .mock.calls.find(([eventName]) => eventName === "download_progress");
+    expect(progressCall).toBeDefined();
+
+    act(() => {
+      const handler = progressCall?.[1] as (event: { payload: DownloadItem }) => void;
+      handler({ payload: makeDownloadItem({ progress: 65, lastUpdatedAt: 2 }) });
+    });
+
+    await act(async () => {
+      resolveQueue([makeDownloadItem()]);
+      await Promise.resolve();
+    });
+
+    expect(useDownloadStore.getState().items).toHaveLength(1);
+    expect(useDownloadStore.getState().items[0]).toMatchObject({
+      gameId: "game-1",
+      progress: 65,
+    });
+  });
+
+  it("keeps a newer download snapshot when an older progress event was buffered", async () => {
+    let resolveQueue!: (items: DownloadItem[]) => void;
+    vi.mocked(getDownloadQueue).mockReturnValue(
+      new Promise((resolve) => {
+        resolveQueue = resolve;
+      }),
+    );
+    renderShell({ isDesktop: true });
+
+    const progressCall = vi
+      .mocked(listen)
+      .mock.calls.find(([eventName]) => eventName === "download_progress");
+    expect(progressCall).toBeDefined();
+
+    act(() => {
+      const handler = progressCall?.[1] as (event: { payload: DownloadItem }) => void;
+      handler({ payload: makeDownloadItem({ progress: 40, lastUpdatedAt: 10 }) });
+    });
+
+    await act(async () => {
+      resolveQueue([makeDownloadItem({ progress: 80, lastUpdatedAt: 20 })]);
+      await Promise.resolve();
+    });
+
+    expect(useDownloadStore.getState().items[0]).toMatchObject({
+      gameId: "game-1",
+      lastUpdatedAt: 20,
+      progress: 80,
+    });
+  });
+
+  it("uses event revisions when download updates share the same second", async () => {
+    let resolveQueue!: (items: DownloadItem[]) => void;
+    vi.mocked(getDownloadQueue).mockReturnValue(
+      new Promise((resolve) => {
+        resolveQueue = resolve;
+      }),
+    );
+    renderShell({ isDesktop: true });
+
+    const progressCall = vi
+      .mocked(listen)
+      .mock.calls.find(([eventName]) => eventName === "download_progress");
+    act(() => {
+      const handler = progressCall?.[1] as (event: { payload: DownloadItem }) => void;
+      handler({
+        payload: makeDownloadItem({
+          eventRevision: 100,
+          lastUpdatedAt: 10,
+          progress: 40,
+        }),
+      });
+    });
+
+    await act(async () => {
+      resolveQueue([makeDownloadItem({ eventRevision: 101, lastUpdatedAt: 10, progress: 100 })]);
+      await Promise.resolve();
+    });
+
+    expect(useDownloadStore.getState().items[0]).toMatchObject({
+      eventRevision: 101,
+      lastUpdatedAt: 10,
+      progress: 100,
+    });
+  });
+
+  it("keeps a newer mod snapshot when an older progress event was buffered", async () => {
+    let resolveQueue!: (items: ModInstallQueueItem[]) => void;
+    vi.mocked(getModQueue).mockReturnValue(
+      new Promise((resolve) => {
+        resolveQueue = resolve;
+      }),
+    );
+    renderShell({ isDesktop: true });
+
+    const progressCall = vi
+      .mocked(listen)
+      .mock.calls.find(([eventName]) => eventName === "mod_install_progress");
+    expect(progressCall).toBeDefined();
+
+    act(() => {
+      const handler = progressCall?.[1] as (event: { payload: ModInstallQueueItem }) => void;
+      handler({ payload: makeModQueueItem({ progress: 40, lastUpdatedAt: 10 }) });
+    });
+
+    await act(async () => {
+      resolveQueue([makeModQueueItem({ progress: 80, lastUpdatedAt: 20 })]);
+      await Promise.resolve();
+    });
+
+    expect(useModInstallStore.getState().items[0]).toMatchObject({
+      installId: "mod-install-1",
+      lastUpdatedAt: 20,
+      progress: 80,
+    });
+  });
+
+  it("uses event revisions when mod updates share the same second", async () => {
+    let resolveQueue!: (items: ModInstallQueueItem[]) => void;
+    vi.mocked(getModQueue).mockReturnValue(
+      new Promise((resolve) => {
+        resolveQueue = resolve;
+      }),
+    );
+    renderShell({ isDesktop: true });
+
+    const progressCall = vi
+      .mocked(listen)
+      .mock.calls.find(([eventName]) => eventName === "mod_install_progress");
+    act(() => {
+      const handler = progressCall?.[1] as (event: { payload: ModInstallQueueItem }) => void;
+      handler({
+        payload: makeModQueueItem({
+          eventRevision: 100,
+          lastUpdatedAt: 10,
+          progress: 40,
+        }),
+      });
+    });
+
+    await act(async () => {
+      resolveQueue([makeModQueueItem({ eventRevision: 101, lastUpdatedAt: 10, progress: 100 })]);
+      await Promise.resolve();
+    });
+
+    expect(useModInstallStore.getState().items[0]).toMatchObject({
+      eventRevision: 101,
+      lastUpdatedAt: 10,
+      progress: 100,
+    });
+  });
+
+  it("waits for download listeners before requesting the initial queue", async () => {
+    let resolveProgressListener!: (unlisten: () => void) => void;
+    let resolveRemovedListener!: (unlisten: () => void) => void;
+    vi.mocked(listen).mockImplementation((eventName) => {
+      if (eventName === "download_progress") {
+        return new Promise((resolve) => {
+          resolveProgressListener = resolve;
+        });
+      }
+      if (eventName === "download_removed") {
+        return new Promise((resolve) => {
+          resolveRemovedListener = resolve;
+        });
+      }
+      return Promise.resolve(() => undefined);
+    });
+
+    renderShell({ isDesktop: true });
+
+    expect(
+      vi.mocked(listen).mock.calls.some(([eventName]) => eventName === "download_progress"),
+    ).toBe(true);
+    expect(
+      vi.mocked(listen).mock.calls.some(([eventName]) => eventName === "download_removed"),
+    ).toBe(true);
+    expect(getDownloadQueue).not.toHaveBeenCalled();
+
+    await act(async () => {
+      resolveProgressListener(() => undefined);
+      resolveRemovedListener(() => undefined);
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(getDownloadQueue).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("does not restore a download removed while the queue is hydrating", async () => {
+    let resolveQueue!: (items: DownloadItem[]) => void;
+    vi.mocked(getDownloadQueue).mockReturnValue(
+      new Promise((resolve) => {
+        resolveQueue = resolve;
+      }),
+    );
+    renderShell({ isDesktop: true });
+
+    const removedCall = vi
+      .mocked(listen)
+      .mock.calls.find(([eventName]) => eventName === "download_removed");
+    expect(removedCall).toBeDefined();
+
+    act(() => {
+      const handler = removedCall?.[1] as (event: { payload: { gameId: string } }) => void;
+      handler({ payload: { gameId: "game-1" } });
+    });
+
+    await act(async () => {
+      resolveQueue([makeDownloadItem()]);
+      await Promise.resolve();
+    });
+
+    expect(useDownloadStore.getState().items).toEqual([]);
+  });
+
   it("applies the stored shell skin to the shell root and document", () => {
     window.localStorage.setItem(APP_SHELL_SKIN_STORAGE_KEY, "teal-print");
 
@@ -109,6 +417,44 @@ describe("AppShell browser-local shell skins", () => {
     expect(within(dialog).queryByText(/three new indie titles/i)).not.toBeInTheDocument();
   });
 
+  it("announces a signed launcher update and routes its action to settings", () => {
+    const onNavigate = vi.fn();
+    act(() => {
+      useLauncherUpdateStore.setState({
+        status: "available",
+        currentVersion: "0.1.0",
+        latestVersion: "0.2.0",
+        notes: "Signed release",
+        progress: null,
+        error: null,
+        unsupportedReason: null,
+        lastCheckedAt: "2026-07-14T14:00:00.000Z",
+      });
+    });
+
+    renderShell({ onNavigate });
+    fireEvent.click(screen.getByRole("button", { name: "Notifications" }));
+
+    const dialog = screen.getByRole("dialog", { name: "Notifications" });
+    expect(within(dialog).getByText("OG Launcher Update")).toBeInTheDocument();
+    expect(within(dialog).getByText(/signed version v0.2.0/i)).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole("button", { name: /review update/i }));
+    expect(onNavigate).toHaveBeenCalledWith("settings");
+
+    act(() => {
+      useLauncherUpdateStore.setState({
+        status: "idle",
+        currentVersion: null,
+        latestVersion: null,
+        notes: null,
+        progress: null,
+        error: null,
+        unsupportedReason: null,
+        lastCheckedAt: null,
+      });
+    });
+  });
+
   it("places desktop window controls in the header brand row without a separate title bar", async () => {
     const { container } = renderShell({ isDesktop: true });
 
@@ -155,9 +501,11 @@ describe("AppShell browser-local shell skins", () => {
 function renderShell({
   isDesktop = false,
   isAuthenticated = false,
+  onNavigate = () => undefined,
 }: {
   isDesktop?: boolean;
   isAuthenticated?: boolean;
+  onNavigate?: (page: PageKey) => void;
 } = {}) {
   vi.mocked(isTauri).mockReturnValue(isDesktop);
 
@@ -176,7 +524,7 @@ function renderShell({
       subtitle="Local shell skin test"
       title="OG-Launcher"
       onLogout={() => Promise.resolve()}
-      onNavigate={() => undefined}
+      onNavigate={onNavigate}
     >
       <div>Library content</div>
     </AppShell>,

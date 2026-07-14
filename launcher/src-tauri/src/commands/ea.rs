@@ -609,6 +609,7 @@ fn owned_item_to_game(
         playtime_minutes,
         last_played_at,
         cloud_gaming_url: None,
+        achievement_summary: None,
     })
 }
 

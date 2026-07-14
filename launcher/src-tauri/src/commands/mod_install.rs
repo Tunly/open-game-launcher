@@ -1,10 +1,9 @@
 use futures_util::StreamExt;
 use reqwest::{
-    header::{HeaderMap, LOCATION},
+    header::{HeaderMap, CONTENT_TYPE, LOCATION},
     redirect, StatusCode, Url,
 };
 use serde::{Deserialize, Serialize};
-use serde_json::Value;
 use sha2::{Digest, Sha256};
 use std::{
     collections::{hash_map::Entry, HashMap, HashSet},
@@ -12,8 +11,11 @@ use std::{
     io::{Read, Write},
     net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr},
     path::{Path, PathBuf},
-    sync::{Arc, Mutex, OnceLock},
-    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
+    sync::{
+        atomic::{AtomicU64, Ordering},
+        Arc, Mutex, OnceLock,
+    },
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use tauri::Emitter;
 use tokio::sync::watch;
@@ -23,7 +25,7 @@ use crate::commands::{
     games::{
         open_game_launcher_data_dir, open_uri, path_to_string, read_installed_games_cache_result,
     },
-    local_db, secure_store,
+    local_db,
 };
 
 const MOD_INSTALL_QUEUE_COLLECTION: &str = "mod_install_queue";
@@ -39,10 +41,16 @@ const REMOTE_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
 const REMOTE_REQUEST_TIMEOUT: Duration = Duration::from_secs(30 * 60);
 const REMOTE_READ_TIMEOUT: Duration = Duration::from_secs(30);
 const REMOTE_DNS_TIMEOUT: Duration = Duration::from_secs(10);
+const NEXUS_DOWNLOAD_HOST_SUFFIXES: &[&str] = &["nexusmods.com", "nexus-cdn.com"];
+const NEXUS_DOWNLOAD_HOSTS: &[&str] = &["nexus-files.b-cdn.net"];
 
+/// Persistence-compatible provider values for historical queue entries and
+/// ownership manifests. New renderer commands use `mod_manager::ModProvider`,
+/// whose public contract contains only Nexus and Steam Workshop.
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, Eq, PartialEq, Hash)]
 #[serde(rename_all = "snake_case")]
 pub enum ModProvider {
+    Nexus,
     SteamWorkshop,
     Modio,
     Curseforge,
@@ -52,25 +60,19 @@ pub enum ModProvider {
 }
 
 impl ModProvider {
+    fn is_active(self) -> bool {
+        matches!(self, Self::Nexus | Self::SteamWorkshop)
+    }
+
     fn as_str(self) -> &'static str {
         match self {
+            Self::Nexus => "nexus",
             Self::SteamWorkshop => "steam_workshop",
             Self::Modio => "modio",
             Self::Curseforge => "curseforge",
             Self::DirectUrl => "direct_url",
             Self::LocalArchive => "local_archive",
             Self::LocalFolder => "local_folder",
-        }
-    }
-
-    fn display_name(self) -> &'static str {
-        match self {
-            Self::SteamWorkshop => "Steam Workshop",
-            Self::Modio => "mod.io",
-            Self::Curseforge => "CurseForge",
-            Self::DirectUrl => "Direct URL",
-            Self::LocalArchive => "Local Archive",
-            Self::LocalFolder => "Local Folder",
         }
     }
 }
@@ -94,19 +96,29 @@ impl ModInstallStatus {
     }
 }
 
-#[derive(Debug, Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct ModInstallRequest {
+/// Provider-authenticated Nexus download metadata. This type is intentionally
+/// not deserializable and is only constructed by `mod_manager` after querying
+/// the official Nexus API. The generic renderer-facing install command cannot
+/// opt into this trust policy.
+#[derive(Debug, Clone)]
+pub(crate) struct TrustedNexusInstallRequest {
     pub game_id: String,
-    pub provider: ModProvider,
-    pub catalog_item_id: Option<String>,
+    pub catalog_item_id: String,
+    pub file_id: String,
+    pub title: String,
     pub version_id: Option<String>,
-    pub source_url: Option<String>,
-    pub local_path: Option<String>,
-    pub target_policy_id: Option<String>,
-    pub profile_id: Option<String>,
-    pub title: Option<String>,
-    pub sha256: Option<String>,
+    pub download_url: String,
+    pub file_name: String,
+    pub expected_size: TrustedNexusExpectedSize,
+    pub provider_page_url: String,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+pub(crate) struct TrustedNexusExpectedSize {
+    pub bytes: u64,
+    /// The v1 API normally returns an exact byte field. Older responses only
+    /// expose rounded KiB, for which a one-KiB tolerance is required.
+    pub exact: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -143,6 +155,8 @@ pub struct ModInstallQueueItem {
     pub delegated_url: Option<String>,
     pub error: Option<String>,
     pub last_updated_at: u64,
+    #[serde(default)]
+    pub event_revision: u64,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -159,6 +173,8 @@ pub struct InstalledModInfo {
     pub profile_id: Option<String>,
     pub catalog_item_id: Option<String>,
     pub version_id: Option<String>,
+    #[serde(default)]
+    pub provider_file_id: Option<String>,
     pub source_url: Option<String>,
     pub installed_at: u64,
     #[serde(default)]
@@ -187,68 +203,6 @@ struct ModBackupRecord {
     original_size: u64,
 }
 
-#[derive(Debug, Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct NativeModSearchRequest {
-    pub provider: ModProvider,
-    pub provider_game_id: String,
-    pub query: String,
-    pub page: Option<u32>,
-    pub page_size: Option<u32>,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
-#[serde(rename_all = "camelCase")]
-pub struct NativeModSearchResult {
-    pub provider: ModProvider,
-    pub external_id: String,
-    pub name: String,
-    pub author: Option<String>,
-    pub summary: Option<String>,
-    pub url: String,
-    pub icon_url: Option<String>,
-    pub downloads: Option<String>,
-    pub follows: Option<String>,
-    pub latest_version: Option<String>,
-    pub download_url: Option<String>,
-    pub provider_app_url: Option<String>,
-    pub file_size_bytes: Option<u64>,
-}
-
-#[derive(Debug, Deserialize, Clone)]
-#[serde(rename_all = "camelCase")]
-pub struct ModProviderStagingProbeRequest {
-    pub provider: ModProvider,
-    pub provider_game_id: String,
-    pub query: String,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, Copy, Eq, PartialEq)]
-#[serde(rename_all = "snake_case")]
-pub enum ModProviderStagingProbeStatus {
-    Blocked,
-    Ready,
-    ProviderError,
-}
-
-#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
-#[serde(rename_all = "camelCase")]
-pub struct ModProviderStagingProbeResult {
-    pub provider: ModProvider,
-    pub provider_game_id: String,
-    pub query_hint: String,
-    pub page_size: u32,
-    pub status: ModProviderStagingProbeStatus,
-    pub live_request_attempted: bool,
-    pub result_count: usize,
-    pub direct_download_count: usize,
-    pub provider_app_handoff_count: usize,
-    pub duration_ms: u64,
-    pub redacted_request: String,
-    pub message: String,
-    pub guards: Vec<String>,
-}
-
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 struct ModInstallManifest {
@@ -262,6 +216,8 @@ struct ModInstallManifest {
     profile_id: Option<String>,
     catalog_item_id: Option<String>,
     version_id: Option<String>,
+    #[serde(default)]
+    provider_file_id: Option<String>,
     source_url: Option<String>,
     installed_at: u64,
     #[serde(default)]
@@ -303,6 +259,24 @@ fn reserve_mod_install_in_map(
 
 fn normalize_mod_queue_item(mut item: ModInstallQueueItem, active: bool) -> ModInstallQueueItem {
     item.can_pause = false;
+    if !active
+        && matches!(
+            item.status,
+            ModInstallStatus::Queued
+                | ModInstallStatus::Starting
+                | ModInstallStatus::Downloading
+                | ModInstallStatus::Installing
+        )
+    {
+        item.status = ModInstallStatus::Failed;
+        item.progress = item.progress.min(99);
+        item.speed = "Interrupted".to_string();
+        item.phase = "interrupted".to_string();
+        item.error.get_or_insert_with(|| {
+            "OG-Launcher closed before this mod installation finished. Start the install again."
+                .to_string()
+        });
+    }
     item.can_cancel = active && item.can_cancel && item.status.is_cancellable();
     item
 }
@@ -339,6 +313,7 @@ fn request_mod_install_cancellation_in_map(
     active.item.can_cancel = false;
     active.item.error = None;
     active.item.last_updated_at = now_unix_secs();
+    active.item.event_revision = next_mod_event_revision();
     let item = normalize_mod_queue_item(active.item.clone(), false);
     guard.remove(install_id);
 
@@ -374,6 +349,7 @@ where
     active.item.can_cancel = false;
     update(&mut active.item);
     active.item.last_updated_at = now_unix_secs();
+    active.item.event_revision = next_mod_event_revision();
     active.item.progress = active.item.progress.min(100);
     active.item = normalize_mod_queue_item(active.item.clone(), true);
     Ok(Some(active.item.clone()))
@@ -398,6 +374,7 @@ where
 pub fn get_mod_queue() -> Result<Vec<ModInstallQueueItem>, String> {
     let mut queue_by_id: HashMap<String, ModInstallQueueItem> = read_mod_queue_history()?
         .into_iter()
+        .filter(|item| item.provider.is_active())
         .map(|item| {
             let item = normalize_mod_queue_item(item, false);
             (item.install_id.clone(), item)
@@ -410,7 +387,9 @@ pub fn get_mod_queue() -> Result<Vec<ModInstallQueueItem>, String> {
         .map_err(|error| format!("Mod install manager lock poisoned: {error}"))?;
     for active in guard.values() {
         let item = normalize_mod_queue_item(active.item.clone(), true);
-        queue_by_id.insert(item.install_id.clone(), item);
+        if item.provider.is_active() {
+            queue_by_id.insert(item.install_id.clone(), item);
+        }
     }
 
     let mut queue = queue_by_id.into_values().collect::<Vec<_>>();
@@ -422,109 +401,54 @@ pub fn get_mod_queue() -> Result<Vec<ModInstallQueueItem>, String> {
     Ok(queue)
 }
 
-#[tauri::command]
-pub async fn start_mod_install(
+/// Queues a native Nexus install whose URL and metadata came directly from an
+/// authenticated Nexus API response. This is deliberately not a Tauri command:
+/// renderer-controlled URLs cannot opt into the provider trust policy.
+pub(crate) async fn start_trusted_nexus_install(
     app: tauri::AppHandle,
-    input: ModInstallRequest,
+    input: TrustedNexusInstallRequest,
 ) -> Result<ModInstallResult, String> {
     let game_id = normalize_id(&input.game_id, "gameId")?;
     let game = read_installed_games_cache_result()?
         .into_iter()
         .find(|game| game.id == game_id)
         .ok_or_else(|| format!("Game '{game_id}' was not found in the local library cache."))?;
-    let title = input
-        .title
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(ToOwned::to_owned)
-        .or_else(|| title_from_source(&input))
-        .unwrap_or_else(|| format!("{} Mod", game.title));
-    let delegated_url = delegated_url_for_provider(&input);
-    let is_delegated = delegated_url.is_some() && should_delegate_provider(&input);
-    validate_install_source(&input, is_delegated)?;
-
-    if is_delegated && input.provider != ModProvider::SteamWorkshop {
-        let url = delegated_url
-            .as_deref()
-            .ok_or_else(|| "The delegated provider URL is missing.".to_string())?;
-        let parsed = parse_and_validate_remote_url(url)?;
-        resolve_public_remote_addresses(&parsed).await?;
+    normalize_id(&input.catalog_item_id, "catalogItemId")?;
+    normalize_id(&input.file_id, "fileId")?;
+    if input.expected_size.bytes == 0 || input.expected_size.bytes > MAX_REMOTE_MOD_BYTES {
+        return Err("The Nexus file metadata exceeded the native download limit.".to_string());
     }
+    validate_supported_nexus_archive_name(&input.file_name)?;
+    validate_nexus_provider_page_url(&input.provider_page_url)?;
+    let parsed_download = parse_and_validate_remote_url(&input.download_url)?;
+    validate_nexus_download_host(&parsed_download)?;
 
-    let target = match input.provider {
-        ModProvider::LocalFolder => {
-            if input
-                .target_policy_id
-                .as_deref()
-                .is_some_and(|value| !value.trim().is_empty())
-            {
-                return Err(
-                    "External local folders are metadata-only and do not accept a target policy."
-                        .to_string(),
-                );
-            }
-            Some(local_path(&input)?)
-        }
-        _ if is_delegated => {
-            if input
-                .target_policy_id
-                .as_deref()
-                .is_some_and(|value| !value.trim().is_empty())
-            {
-                Some(resolve_target_path(
-                    &game,
-                    input.provider,
-                    input.target_policy_id.as_deref(),
-                )?)
-            } else {
-                None
-            }
-        }
-        _ => Some(resolve_target_path(
-            &game,
-            input.provider,
-            input.target_policy_id.as_deref(),
-        )?),
-    };
-    let target_path = target.clone().map(path_to_string);
-    let install_id = build_install_id(input.provider);
+    // Native Nexus target selection is archive-driven and happens in staging.
+    // No game path is created or changed while the destination is ambiguous.
+    let install_id = build_install_id(ModProvider::Nexus);
     ensure_install_id_available(&install_id)?;
     let (cancel_tx, cancel_rx) = watch::channel(false);
-
     let item = ModInstallQueueItem {
         id: install_id.clone(),
         install_id: install_id.clone(),
         game_id: game_id.clone(),
-        title: title.clone(),
-        provider: input.provider,
+        title: input.title.clone(),
+        provider: ModProvider::Nexus,
         progress: 0,
-        speed: if is_delegated {
-            "Opening official provider".to_string()
-        } else {
-            "Queued".to_string()
-        },
-        status: if is_delegated {
-            ModInstallStatus::Delegated
-        } else {
-            ModInstallStatus::Queued
-        },
-        phase: if is_delegated {
-            "delegated".to_string()
-        } else {
-            "queued".to_string()
-        },
+        speed: "Queued".to_string(),
+        status: ModInstallStatus::Queued,
+        phase: "queued".to_string(),
         bytes_downloaded: None,
-        bytes_total: None,
+        bytes_total: Some(input.expected_size.bytes),
         can_pause: false,
-        can_cancel: !is_delegated,
-        external: is_delegated,
-        target_path: target_path.clone(),
-        delegated_url: delegated_url.clone(),
+        can_cancel: true,
+        external: false,
+        target_path: None,
+        delegated_url: None,
         error: None,
         last_updated_at: now_unix_secs(),
+        event_revision: next_mod_event_revision(),
     };
-
     reserve_mod_install_in_map(
         get_mod_install_manager(),
         &install_id,
@@ -541,47 +465,21 @@ pub async fn start_mod_install(
     }
     emit_mod_progress(&app, &item);
 
-    if let Some(url) = delegated_url.clone().filter(|_| is_delegated) {
-        let _ = open_uri(&url);
-        finish_delegated_install(&app, &install_id, &url)?;
-        return Ok(ModInstallResult {
-            install_id,
-            game_id,
-            status: ModInstallStatus::Delegated,
-            provider: input.provider,
-            target_path,
-            installed_files: Vec::new(),
-            delegated_url: Some(url),
-            message: "Opened the official provider. Use scan after the external install finishes."
-                .to_string(),
-        });
-    }
-
     let app_clone = app.clone();
     let install_id_clone = install_id.clone();
-    let input_clone = input.clone();
-    let game_clone = game.clone();
     tokio::spawn(async move {
-        run_mod_install_worker(
-            app_clone,
-            install_id_clone,
-            input_clone,
-            game_clone,
-            title,
-            cancel_rx,
-        )
-        .await;
+        run_trusted_nexus_install_worker(app_clone, install_id_clone, input, game, cancel_rx).await;
     });
 
     Ok(ModInstallResult {
         install_id,
         game_id,
         status: ModInstallStatus::Queued,
-        provider: input.provider,
-        target_path,
+        provider: ModProvider::Nexus,
+        target_path: None,
         installed_files: Vec::new(),
         delegated_url: None,
-        message: "Mod install queued.".to_string(),
+        message: "Nexus mod install queued.".to_string(),
     })
 }
 
@@ -614,44 +512,67 @@ pub fn cancel_mod_install(app: tauri::AppHandle, install_id: String) -> Result<(
     }
 }
 
-#[tauri::command]
-pub fn scan_game_mods(game_id: String) -> Result<Vec<InstalledModInfo>, String> {
-    let game_id = normalize_id(&game_id, "gameId")?;
-    let mut installs = read_mod_installs()?
-        .into_iter()
-        .filter(|item| item.game_id == game_id)
-        .collect::<Vec<_>>();
+/// Revalidates every ownership invariant before the product may present a
+/// persisted Nexus entry as installed.
+pub(crate) fn validate_managed_mod_install(install: &InstalledModInfo) -> Result<(), String> {
+    let target = validate_persisted_install_target(install)?;
+    let backup_root = mod_backup_dir(&install.install_id)?;
+    validate_managed_mod_install_at_roots(install, &target, &backup_root)
+}
 
-    if installs.is_empty() {
-        if let Some(game) = read_installed_games_cache_result()?
-            .into_iter()
-            .find(|game| game.id == game_id)
-        {
-            for target in candidate_mod_targets(&game) {
-                installs.extend(
-                    read_manifests_from_target(&target)
-                        .into_iter()
-                        .filter(|install| install.game_id == game_id),
-                );
+fn validate_managed_mod_install_at_roots(
+    install: &InstalledModInfo,
+    target: &Path,
+    backup_root: &Path,
+) -> Result<(), String> {
+    validate_file_record_ownership(install, target, backup_root)?;
+    validate_backup_tree(install, backup_root)?;
+    verify_manifest_ownership_if_present(install, target)?;
+    let disabled_root = disabled_root_for_install(target, &install.install_id)?;
+
+    for record in &install.file_records {
+        let active = safe_join(target, &record.relative_path)?;
+        let disabled = safe_join(&disabled_root, &record.relative_path)?;
+        if install.enabled {
+            verify_owned_file(
+                &active,
+                &record.installed_sha256,
+                record.installed_size,
+                "installed mod file",
+            )?;
+            if regular_file_metadata(&disabled, "disabled mod file")?.is_some() {
+                return Err("A managed mod file exists in active and disabled storage.".to_string());
+            }
+        } else {
+            verify_owned_file(
+                &disabled,
+                &record.installed_sha256,
+                record.installed_size,
+                "disabled mod file",
+            )?;
+            if let Some(backup) = &record.backup {
+                verify_owned_file(
+                    &active,
+                    &backup.original_sha256,
+                    backup.original_size,
+                    "restored original game file",
+                )?;
+            } else if regular_file_metadata(&active, "disabled mod target")?.is_some() {
+                return Err("An unowned file occupies a disabled mod target.".to_string());
             }
         }
     }
-
-    installs.sort_by(|left, right| left.title.cmp(&right.title));
-    Ok(installs)
+    Ok(())
 }
 
-#[tauri::command]
 pub fn enable_mod(install_id: String) -> Result<InstalledModInfo, String> {
     set_mod_enabled(&install_id, true)
 }
 
-#[tauri::command]
 pub fn disable_mod(install_id: String) -> Result<InstalledModInfo, String> {
     set_mod_enabled(&install_id, false)
 }
 
-#[tauri::command]
 pub fn uninstall_mod(install_id: String) -> Result<(), String> {
     let install_id = normalize_id(&install_id, "installId")?;
     let Some(install) =
@@ -802,70 +723,6 @@ fn remove_mod_install_artifacts_from_roots(
     Ok(())
 }
 
-#[tauri::command]
-pub fn set_mod_provider_secret(provider: ModProvider, secret: String) -> Result<(), String> {
-    let domain = provider_secret_domain(provider);
-    let trimmed = secret.trim();
-    if trimmed.is_empty() {
-        secure_store::delete_secret(&domain)
-    } else {
-        secure_store::set_secret(&domain, trimmed)
-    }
-}
-
-#[tauri::command]
-pub async fn search_native_mods(
-    input: NativeModSearchRequest,
-) -> Result<Vec<NativeModSearchResult>, String> {
-    let provider_game_id = normalize_id(&input.provider_game_id, "providerGameId")?;
-    let query = normalize_id(&input.query, "query")?;
-    let page = input.page.unwrap_or(1).clamp(1, 100);
-    let page_size = input.page_size.unwrap_or(12).clamp(1, 50);
-    match input.provider {
-        ModProvider::Modio => search_modio_mods(&provider_game_id, &query, page, page_size).await,
-        ModProvider::Curseforge => {
-            search_curseforge_mods(&provider_game_id, &query, page, page_size).await
-        }
-        other => Err(format!(
-            "{} does not expose native API search in OG-Launcher yet.",
-            other.display_name()
-        )),
-    }
-}
-
-#[tauri::command]
-pub async fn run_mod_provider_staging_probe(
-    input: ModProviderStagingProbeRequest,
-) -> Result<ModProviderStagingProbeResult, String> {
-    let request = build_mod_provider_staging_probe_request(&input)?;
-    if !provider_secret_configured(request.provider)? {
-        return Ok(build_mod_provider_staging_probe_blocked(
-            &request,
-            &format!(
-                "{} API key is not stored in the local keychain; no provider request was made.",
-                request.provider.display_name()
-            ),
-        ));
-    }
-
-    let started = Instant::now();
-    let result = search_native_mods(request.clone()).await;
-    let duration_ms = started.elapsed().as_millis().min(u128::from(u64::MAX)) as u64;
-
-    match result {
-        Ok(results) => Ok(build_mod_provider_staging_probe_success(
-            &request,
-            &results,
-            duration_ms,
-        )),
-        Err(error) => Ok(build_mod_provider_staging_probe_error(
-            &request,
-            &error,
-            duration_ms,
-        )),
-    }
-}
-
 // (removed: scan_mod_directory had a path-traversal sink because the
 // renderer-controlled `path` was passed to `fs::read_dir` without an
 // allow-root check. The frontend never calls this command —
@@ -873,16 +730,25 @@ pub async fn run_mod_provider_staging_probe(
 // removed entirely. If a future feature needs free-form directory
 // scanning, add an allow-list helper alongside the new entry point.)
 
-async fn run_mod_install_worker(
+enum TrustedNexusWorkerOutcome {
+    Installed(ModInstallResult),
+    Handoff { url: String, message: String },
+}
+
+enum TrustedNexusPreparation {
+    Ready { extracted: PathBuf, target: PathBuf },
+    Handoff(String),
+}
+
+async fn run_trusted_nexus_install_worker(
     app: tauri::AppHandle,
     install_id: String,
-    input: ModInstallRequest,
+    input: TrustedNexusInstallRequest,
     game: crate::commands::games::InstalledGame,
-    title: String,
     cancel_rx: watch::Receiver<bool>,
 ) {
     let result =
-        run_mod_install_worker_inner(&app, &install_id, &input, &game, &title, cancel_rx).await;
+        run_trusted_nexus_install_worker_inner(&app, &install_id, &input, &game, cancel_rx).await;
 
     if let Err(error) =
         mod_staging_dir(&install_id).and_then(|path| cleanup_mod_staging_path(&path))
@@ -893,16 +759,38 @@ async fn run_mod_install_worker(
     }
 
     let queue_update = match result {
-        Ok(result) => update_queue_item(&app, &install_id, |item| {
-            item.status = ModInstallStatus::Completed;
-            item.progress = 100;
-            item.speed = "Installed".to_string();
-            item.phase = "complete".to_string();
-            item.bytes_downloaded = item.bytes_total;
-            item.can_cancel = false;
-            item.target_path = result.target_path.clone();
-            item.error = None;
-        }),
+        Ok(TrustedNexusWorkerOutcome::Installed(result)) => {
+            update_queue_item(&app, &install_id, |item| {
+                item.status = ModInstallStatus::Completed;
+                item.progress = 100;
+                item.speed = "Installed".to_string();
+                item.phase = "complete".to_string();
+                item.bytes_downloaded = item.bytes_total;
+                item.can_cancel = false;
+                item.target_path = result.target_path.clone();
+                item.error = None;
+            })
+        }
+        Ok(TrustedNexusWorkerOutcome::Handoff { url, message }) => match open_uri(&url) {
+            Ok(()) => update_queue_item(&app, &install_id, |item| {
+                item.status = ModInstallStatus::Delegated;
+                item.progress = 100;
+                item.speed = "Provider opened".to_string();
+                item.phase = "delegated".to_string();
+                item.can_cancel = false;
+                item.external = true;
+                item.target_path = None;
+                item.delegated_url = Some(url);
+                item.error = None;
+            }),
+            Err(_) => update_queue_item(&app, &install_id, |item| {
+                item.status = ModInstallStatus::Failed;
+                item.speed = "Handoff failed".to_string();
+                item.phase = "error".to_string();
+                item.can_cancel = false;
+                item.error = Some(message);
+            }),
+        },
         Err(error) if error == "cancelled" => update_queue_item(&app, &install_id, |item| {
             item.status = ModInstallStatus::Cancelled;
             item.speed = "Cancelled".to_string();
@@ -919,95 +807,75 @@ async fn run_mod_install_worker(
     };
     if let Err(error) = queue_update {
         eprintln!(
-            "[open-game-launcher] Could not persist final mod install status '{install_id}': {error}"
+            "[open-game-launcher] Could not persist final Nexus install status '{install_id}': {error}"
         );
     }
-
     if let Ok(mut guard) = get_mod_install_manager().lock() {
         guard.remove(&install_id);
     }
 }
 
-async fn run_mod_install_worker_inner(
+async fn run_trusted_nexus_install_worker_inner(
     app: &tauri::AppHandle,
     install_id: &str,
-    input: &ModInstallRequest,
+    input: &TrustedNexusInstallRequest,
     game: &crate::commands::games::InstalledGame,
-    title: &str,
     mut cancel_rx: watch::Receiver<bool>,
-) -> Result<ModInstallResult, String> {
+) -> Result<TrustedNexusWorkerOutcome, String> {
     update_queue_item(app, install_id, |item| {
         item.status = ModInstallStatus::Starting;
         item.phase = "resolving".to_string();
-        item.speed = "Resolving target".to_string();
+        item.speed = "Validating Nexus metadata".to_string();
         item.progress = 3;
     })?;
-
-    if input.provider == ModProvider::LocalFolder {
-        let folder = local_path(input)?;
-        if !folder.is_dir() {
-            return Err(format!(
-                "Local mod folder is not a directory: {}",
-                folder.display()
-            ));
-        }
-        begin_mod_install_commit(app, install_id, |item| {
-            item.phase = "discovering".to_string();
-            item.speed = "Registering external folder".to_string();
-            item.progress = 90;
-            item.external = true;
-            item.target_path = Some(path_to_string(folder.clone()));
-        })?;
-        let manifest = ModInstallManifest {
-            install_id: install_id.to_string(),
-            game_id: game.id.clone(),
-            title: title.to_string(),
-            provider: input.provider,
-            enabled: true,
-            target_path: path_to_string(folder),
-            installed_files: Vec::new(),
-            profile_id: input.profile_id.clone(),
-            catalog_item_id: input.catalog_item_id.clone(),
-            version_id: input.version_id.clone(),
-            source_url: input.source_url.clone(),
-            installed_at: now_unix_secs(),
-            manifest_version: MOD_MANIFEST_VERSION,
-            file_records: Vec::new(),
-        };
-        persist_mod_manifest(&manifest)?;
-        return Ok(result_from_manifest(manifest));
-    }
-
-    let target = resolve_target_path(game, input.provider, input.target_policy_id.as_deref())?;
-    ensure_writable_mod_target(&target)?;
-
-    let package = match input.provider {
-        ModProvider::LocalArchive => local_path(input)?,
-        ModProvider::LocalFolder => unreachable!("local folders are handled as external metadata"),
-        _ => {
-            let source_url = input
-                .source_url
-                .as_deref()
-                .map(str::trim)
-                .filter(|value| !value.is_empty())
-                .ok_or_else(|| {
-                    format!("{} requires a source URL.", input.provider.display_name())
-                })?;
-            download_url_to_package(app, install_id, source_url, &mut cancel_rx).await?
-        }
-    };
-
+    let install_root = validated_game_install_root(game)?;
+    let package = download_trusted_nexus_package(app, install_id, input, &mut cancel_rx).await?;
     if *cancel_rx.borrow() {
         return Err("cancelled".to_string());
     }
 
-    if let Some(expected) = input
-        .sha256
-        .as_deref()
-        .map(str::trim)
-        .filter(|v| !v.is_empty())
-    {
-        verify_sha256(&package, expected)?;
+    let replacing = managed_nexus_install_for_update(&game.id, &input.catalog_item_id)?;
+    if let Some(existing) = replacing.as_ref() {
+        if !existing.enabled {
+            return Ok(TrustedNexusWorkerOutcome::Handoff {
+                url: input.provider_page_url.clone(),
+                message: "Enable the existing mod before updating it, or continue on Nexus."
+                    .to_string(),
+            });
+        }
+        validate_managed_mod_install(existing)?;
+    }
+    let prepared = prepare_trusted_nexus_archive(
+        install_id,
+        &package,
+        &input.file_name,
+        &install_root,
+        replacing
+            .as_ref()
+            .map(|install| install.install_id.as_str()),
+    )?;
+    let (extracted, target) = match prepared {
+        TrustedNexusPreparation::Ready { extracted, target } => (extracted, target),
+        TrustedNexusPreparation::Handoff(message) => {
+            return Ok(TrustedNexusWorkerOutcome::Handoff {
+                url: input.provider_page_url.clone(),
+                message,
+            });
+        }
+    };
+    if *cancel_rx.borrow() {
+        return Err("cancelled".to_string());
+    }
+
+    if let Some(existing) = replacing.as_ref() {
+        let existing_target = validate_persisted_install_target(existing)?;
+        if existing_target != target {
+            return Ok(TrustedNexusWorkerOutcome::Handoff {
+                url: input.provider_page_url.clone(),
+                message: "The update targets a different game-owned mod folder; continue on Nexus to resolve it safely."
+                    .to_string(),
+            });
+        }
     }
 
     begin_mod_install_commit(app, install_id, |item| {
@@ -1016,32 +884,72 @@ async fn run_mod_install_worker_inner(
         item.progress = 90;
         item.target_path = Some(path_to_string(target.clone()));
     })?;
+    let staged_files = collect_relative_files(&extracted)?;
+    if staged_files.is_empty() {
+        return Err("The Nexus archive did not contain installable files.".to_string());
+    }
+    let manifest = commit_trusted_nexus_install(
+        install_id,
+        input,
+        game,
+        &extracted,
+        &target,
+        &staged_files,
+        replacing.as_ref(),
+    )?;
+    Ok(TrustedNexusWorkerOutcome::Installed(result_from_manifest(
+        manifest,
+    )))
+}
 
-    let file_records = install_package_to_target(install_id, title, &package, &target)?;
-    let installed_files: Vec<String> = file_records
-        .iter()
-        .map(|record| record.relative_path.clone())
-        .collect();
-    let manifest = ModInstallManifest {
-        install_id: install_id.to_string(),
-        game_id: game.id.clone(),
-        title: title.to_string(),
-        provider: input.provider,
-        enabled: true,
-        target_path: path_to_string(target.clone()),
-        installed_files,
-        profile_id: input.profile_id.clone(),
-        catalog_item_id: input.catalog_item_id.clone(),
-        version_id: input.version_id.clone(),
-        source_url: input.source_url.clone(),
-        installed_at: now_unix_secs(),
-        manifest_version: MOD_MANIFEST_VERSION,
-        file_records,
-    };
+fn managed_nexus_install_for_update(
+    game_id: &str,
+    catalog_item_id: &str,
+) -> Result<Option<InstalledModInfo>, String> {
+    let mut matches = local_db::read_collection::<InstalledModInfo>(MOD_INSTALLS_COLLECTION)?
+        .into_iter()
+        .filter(|install| {
+            install.provider == ModProvider::Nexus
+                && install.game_id == game_id
+                && install.catalog_item_id.as_deref() == Some(catalog_item_id)
+        });
+    let first = matches.next();
+    if matches.next().is_some() {
+        return Err(
+            "Multiple managed installations exist for this Nexus mod; continue on Nexus to resolve the conflict."
+                .to_string(),
+        );
+    }
+    Ok(first)
+}
+
+fn commit_trusted_nexus_install(
+    install_id: &str,
+    input: &TrustedNexusInstallRequest,
+    game: &crate::commands::games::InstalledGame,
+    extracted: &Path,
+    target: &Path,
+    staged_files: &[String],
+    replacing: Option<&InstalledModInfo>,
+) -> Result<ModInstallManifest, String> {
+    if let Some(existing) = replacing {
+        return replace_managed_nexus_install(
+            install_id,
+            input,
+            game,
+            extracted,
+            target,
+            staged_files,
+            existing,
+        );
+    }
+
+    let file_records = apply_staged_files(install_id, extracted, target, staged_files)?;
+    let manifest = trusted_nexus_manifest(install_id, input, game, target, file_records);
     if let Err(error) = persist_mod_manifest(&manifest) {
         let install = info_from_manifest(manifest.clone());
         let backup_root = mod_backup_dir(install_id)?;
-        let rollback = remove_mod_install_artifacts_from_roots(&install, &target, &backup_root);
+        let rollback = remove_mod_install_artifacts_from_roots(&install, target, &backup_root);
         return match rollback {
             Ok(()) => Err(error),
             Err(rollback_error) => Err(format!(
@@ -1049,27 +957,250 @@ async fn run_mod_install_worker_inner(
             )),
         };
     }
-    Ok(result_from_manifest(manifest))
+    Ok(manifest)
 }
 
-fn finish_delegated_install(
-    app: &tauri::AppHandle,
+fn trusted_nexus_manifest(
     install_id: &str,
-    url: &str,
-) -> Result<(), String> {
-    let update_result = update_queue_item(app, install_id, |item| {
-        item.status = ModInstallStatus::Delegated;
-        item.progress = 100;
-        item.speed = "External provider opened".to_string();
-        item.phase = "delegated".to_string();
-        item.can_cancel = false;
-        item.external = true;
-        item.delegated_url = Some(url.to_string());
-    });
-    if let Ok(mut guard) = get_mod_install_manager().lock() {
-        guard.remove(install_id);
+    input: &TrustedNexusInstallRequest,
+    game: &crate::commands::games::InstalledGame,
+    target: &Path,
+    file_records: Vec<ModInstalledFileRecord>,
+) -> ModInstallManifest {
+    let installed_files = file_records
+        .iter()
+        .map(|record| record.relative_path.clone())
+        .collect::<Vec<_>>();
+    ModInstallManifest {
+        install_id: install_id.to_string(),
+        game_id: game.id.clone(),
+        title: input.title.clone(),
+        provider: ModProvider::Nexus,
+        enabled: true,
+        target_path: path_to_string(target.to_path_buf()),
+        installed_files,
+        profile_id: None,
+        catalog_item_id: Some(input.catalog_item_id.clone()),
+        version_id: input.version_id.clone(),
+        provider_file_id: Some(input.file_id.clone()),
+        // Never persist the signed CDN URL or an NXM payload.
+        source_url: Some(input.provider_page_url.clone()),
+        installed_at: now_unix_secs(),
+        manifest_version: MOD_MANIFEST_VERSION,
+        file_records,
     }
-    update_result
+}
+
+fn replace_managed_nexus_install(
+    install_id: &str,
+    input: &TrustedNexusInstallRequest,
+    game: &crate::commands::games::InstalledGame,
+    extracted: &Path,
+    target: &Path,
+    staged_files: &[String],
+    existing: &InstalledModInfo,
+) -> Result<ModInstallManifest, String> {
+    validate_managed_mod_install(existing)?;
+    let snapshot_root = mod_staging_dir(install_id)?.join("update-rollback");
+    snapshot_managed_install(existing, &snapshot_root)?;
+    run_managed_replacement_transaction(
+        || remove_mod_install_artifacts(existing),
+        || local_db::remove_item(MOD_INSTALLS_COLLECTION, &existing.install_id),
+        || {
+            let file_records = apply_staged_files(install_id, extracted, target, staged_files)?;
+            Ok(trusted_nexus_manifest(
+                install_id,
+                input,
+                game,
+                target,
+                file_records,
+            ))
+        },
+        persist_mod_manifest,
+        |manifest| {
+            let new_install = info_from_manifest(manifest.clone());
+            let new_backup_root = mod_backup_dir(install_id)?;
+            remove_mod_install_artifacts_from_roots(&new_install, target, &new_backup_root)
+        },
+        || restore_managed_install_snapshot(existing, &snapshot_root),
+    )
+}
+
+fn run_managed_replacement_transaction<
+    T,
+    RemoveOld,
+    DeleteOld,
+    ApplyNew,
+    PersistNew,
+    RemoveNew,
+    RestoreOld,
+>(
+    remove_old: RemoveOld,
+    delete_old: DeleteOld,
+    apply_new: ApplyNew,
+    persist_new: PersistNew,
+    remove_new: RemoveNew,
+    mut restore_old: RestoreOld,
+) -> Result<T, String>
+where
+    RemoveOld: FnOnce() -> Result<(), String>,
+    DeleteOld: FnOnce() -> Result<(), String>,
+    ApplyNew: FnOnce() -> Result<T, String>,
+    PersistNew: FnOnce(&T) -> Result<(), String>,
+    RemoveNew: FnOnce(&T) -> Result<(), String>,
+    RestoreOld: FnMut() -> Result<(), String>,
+{
+    if let Err(error) = remove_old() {
+        return combine_update_rollback_error(error, restore_old());
+    }
+    if let Err(error) = delete_old() {
+        return combine_update_rollback_error(error, restore_old());
+    }
+    let replacement = match apply_new() {
+        Ok(replacement) => replacement,
+        Err(error) => return combine_update_rollback_error(error, restore_old()),
+    };
+    if let Err(error) = persist_new(&replacement) {
+        let remove_result = remove_new(&replacement);
+        let restore_result = restore_old();
+        return match (remove_result, restore_result) {
+            (Ok(()), Ok(())) => Err(error),
+            (Err(remove_error), Ok(())) => Err(format!(
+                "{error} The previous mod version was restored, but new files could not be removed safely: {remove_error}"
+            )),
+            (Ok(()), Err(restore_error)) => Err(format!(
+                "{error} The previous mod version could not be restored safely: {restore_error}"
+            )),
+            (Err(remove_error), Err(restore_error)) => Err(format!(
+                "{error} The new files could not be removed safely: {remove_error} The previous mod version also could not be restored safely: {restore_error}"
+            )),
+        };
+    }
+    Ok(replacement)
+}
+
+fn snapshot_managed_install(
+    install: &InstalledModInfo,
+    snapshot_root: &Path,
+) -> Result<(), String> {
+    if snapshot_root.exists() {
+        cleanup_mod_staging_path(snapshot_root)?;
+    }
+    let target = validate_persisted_install_target(install)?;
+    let backup_root = mod_backup_dir(&install.install_id)?;
+    snapshot_managed_install_at_roots(install, &target, &backup_root, snapshot_root)
+}
+
+fn snapshot_managed_install_at_roots(
+    install: &InstalledModInfo,
+    target: &Path,
+    backup_root: &Path,
+    snapshot_root: &Path,
+) -> Result<(), String> {
+    fs::create_dir_all(snapshot_root)
+        .map_err(|error| format!("Could not create update rollback snapshot: {error}"))?;
+    for record in &install.file_records {
+        let active = safe_join(target, &record.relative_path)?;
+        let snapshot = safe_join(&snapshot_root.join("files"), &record.relative_path)?;
+        if let Some(parent) = snapshot.parent() {
+            fs::create_dir_all(parent)
+                .map_err(|error| format!("Could not create update snapshot parent: {error}"))?;
+        }
+        copy_file_create_new(&active, &snapshot)
+            .map_err(|error| format!("Could not snapshot installed mod file: {error}"))?;
+        verify_owned_file(
+            &snapshot,
+            &record.installed_sha256,
+            record.installed_size,
+            "snapshotted mod file",
+        )?;
+        if let Some(backup) = &record.backup {
+            let source = safe_join(backup_root, &backup.backup_relative_path)?;
+            let snapshot_backup =
+                safe_join(&snapshot_root.join("backups"), &backup.backup_relative_path)?;
+            if let Some(parent) = snapshot_backup.parent() {
+                fs::create_dir_all(parent).map_err(|error| {
+                    format!("Could not create update backup snapshot parent: {error}")
+                })?;
+            }
+            copy_file_create_new(&source, &snapshot_backup)
+                .map_err(|error| format!("Could not snapshot original-file backup: {error}"))?;
+            verify_owned_file(
+                &snapshot_backup,
+                &backup.original_sha256,
+                backup.original_size,
+                "snapshotted original-file backup",
+            )?;
+        }
+    }
+    Ok(())
+}
+
+fn restore_managed_install_snapshot(
+    install: &InstalledModInfo,
+    snapshot_root: &Path,
+) -> Result<(), String> {
+    let target = validate_persisted_install_target(install)?;
+    let backup_root = mod_backup_dir(&install.install_id)?;
+    restore_managed_install_files_from_snapshot(install, &target, &backup_root, snapshot_root)?;
+    local_db::upsert_item(MOD_INSTALLS_COLLECTION, &install.install_id, install)?;
+    write_manifest_from_info(install)?;
+    Ok(())
+}
+
+fn restore_managed_install_files_from_snapshot(
+    install: &InstalledModInfo,
+    target: &Path,
+    backup_root: &Path,
+    snapshot_root: &Path,
+) -> Result<(), String> {
+    for record in &install.file_records {
+        let snapshot = safe_join(&snapshot_root.join("files"), &record.relative_path)?;
+        let active = safe_join(target, &record.relative_path)?;
+        if let Some(parent) = active.parent() {
+            fs::create_dir_all(parent)
+                .map_err(|error| format!("Could not recreate managed mod parent: {error}"))?;
+        }
+        fs::copy(&snapshot, &active)
+            .map_err(|error| format!("Could not restore previous mod file: {error}"))?;
+        verify_owned_file(
+            &active,
+            &record.installed_sha256,
+            record.installed_size,
+            "restored previous mod file",
+        )?;
+        if let Some(backup) = &record.backup {
+            let snapshot_backup =
+                safe_join(&snapshot_root.join("backups"), &backup.backup_relative_path)?;
+            let backup_path = safe_join(backup_root, &backup.backup_relative_path)?;
+            if let Some(parent) = backup_path.parent() {
+                fs::create_dir_all(parent).map_err(|error| {
+                    format!("Could not recreate original-file backup parent: {error}")
+                })?;
+            }
+            fs::copy(&snapshot_backup, &backup_path)
+                .map_err(|error| format!("Could not restore original-file backup: {error}"))?;
+            verify_owned_file(
+                &backup_path,
+                &backup.original_sha256,
+                backup.original_size,
+                "restored original-file backup",
+            )?;
+        }
+    }
+    Ok(())
+}
+
+fn combine_update_rollback_error<T>(
+    error: String,
+    rollback: Result<(), String>,
+) -> Result<T, String> {
+    match rollback {
+        Ok(()) => Err(error),
+        Err(rollback_error) => Err(format!(
+            "{error} The previous mod version could not be restored safely: {rollback_error}"
+        )),
+    }
 }
 
 fn update_queue_item<F>(app: &tauri::AppHandle, install_id: &str, update: F) -> Result<(), String>
@@ -1086,6 +1217,7 @@ where
         };
         update(&mut active.item);
         active.item.last_updated_at = now_unix_secs();
+        active.item.event_revision = next_mod_event_revision();
         active.item.progress = active.item.progress.min(100);
         active.item = normalize_mod_queue_item(active.item.clone(), true);
         Some(active.item.clone())
@@ -1168,11 +1300,6 @@ fn persist_mod_manifest(manifest: &ModInstallManifest) -> Result<(), String> {
 }
 
 fn result_from_manifest(manifest: ModInstallManifest) -> ModInstallResult {
-    let message = if manifest.provider == ModProvider::LocalFolder {
-        "Local mod folder registered as external metadata."
-    } else {
-        "Mod installed."
-    };
     ModInstallResult {
         install_id: manifest.install_id,
         game_id: manifest.game_id,
@@ -1181,7 +1308,7 @@ fn result_from_manifest(manifest: ModInstallManifest) -> ModInstallResult {
         target_path: Some(manifest.target_path),
         installed_files: manifest.installed_files,
         delegated_url: None,
-        message: message.to_string(),
+        message: "Mod installed.".to_string(),
     }
 }
 
@@ -1198,6 +1325,7 @@ fn info_from_manifest(manifest: ModInstallManifest) -> InstalledModInfo {
         profile_id: manifest.profile_id,
         catalog_item_id: manifest.catalog_item_id,
         version_id: manifest.version_id,
+        provider_file_id: manifest.provider_file_id,
         source_url: manifest.source_url,
         installed_at: manifest.installed_at,
         manifest_version: manifest.manifest_version,
@@ -1362,10 +1490,6 @@ fn build_pinned_remote_client(
         .map_err(|error| format!("Could not configure secure mod downloader: {error}"))
 }
 
-async fn send_validated_remote_request(url: Url) -> Result<reqwest::Response, String> {
-    send_validated_remote_request_with_headers(url, HeaderMap::new(), REMOTE_REQUEST_TIMEOUT).await
-}
-
 pub(crate) async fn send_validated_remote_request_with_headers(
     mut url: Url,
     headers: HeaderMap,
@@ -1413,6 +1537,280 @@ pub(crate) async fn send_validated_remote_request_with_headers(
             return Err(format!("Mod download returned {}.", response.status()));
         }
         return Ok(response);
+    }
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq)]
+enum NexusArchiveKind {
+    Zip,
+    SevenZip,
+}
+
+pub(crate) fn validate_supported_nexus_archive_name(value: &str) -> Result<(), String> {
+    nexus_archive_kind(value).map(|_| ())
+}
+
+fn nexus_archive_kind(value: &str) -> Result<NexusArchiveKind, String> {
+    let value = value.trim();
+    if value.is_empty()
+        || value.len() > 300
+        || value.chars().any(char::is_control)
+        || value.contains(['/', '\\'])
+    {
+        return Err("The Nexus file name was invalid.".to_string());
+    }
+    let lower = value.to_ascii_lowercase();
+    if lower.ends_with(".zip") {
+        Ok(NexusArchiveKind::Zip)
+    } else if lower.ends_with(".7z") {
+        Ok(NexusArchiveKind::SevenZip)
+    } else {
+        Err("Native Nexus installation supports ZIP and 7z archives only.".to_string())
+    }
+}
+
+fn validate_nexus_provider_page_url(value: &str) -> Result<Url, String> {
+    let url = Url::parse(value)
+        .map_err(|_| "The official Nexus Mods provider page was invalid.".to_string())?;
+    let host = url
+        .host_str()
+        .map(|host| host.trim_end_matches('.').to_ascii_lowercase());
+    if url.scheme() != "https"
+        || !matches!(
+            host.as_deref(),
+            Some("nexusmods.com") | Some("www.nexusmods.com")
+        )
+        || !url.username().is_empty()
+        || url.password().is_some()
+    {
+        return Err("The official Nexus Mods provider page was invalid.".to_string());
+    }
+    for (key, value) in url.query_pairs() {
+        if !matches!(key.as_ref(), "tab" | "file_id")
+            || (key == "tab" && value != "files")
+            || (key == "file_id" && !value.chars().all(|character| character.is_ascii_digit()))
+        {
+            return Err(
+                "The official Nexus Mods provider page contained unsafe parameters.".to_string(),
+            );
+        }
+    }
+    Ok(url)
+}
+
+pub(crate) fn validate_nexus_download_host(url: &Url) -> Result<(), String> {
+    validate_remote_url_syntax(url)?;
+    let host = url
+        .host_str()
+        .map(|host| host.trim_end_matches('.').to_ascii_lowercase())
+        .ok_or_else(|| "The Nexus download URL was missing a host.".to_string())?;
+    let exact = NEXUS_DOWNLOAD_HOSTS.iter().any(|allowed| host == *allowed);
+    let suffix = NEXUS_DOWNLOAD_HOST_SUFFIXES
+        .iter()
+        .any(|allowed| host == *allowed || host.ends_with(&format!(".{allowed}")));
+    if exact || suffix {
+        Ok(())
+    } else {
+        Err(
+            "The Nexus API returned a download host outside the approved CDN allowlist."
+                .to_string(),
+        )
+    }
+}
+
+async fn send_trusted_nexus_request(mut url: Url) -> Result<reqwest::Response, String> {
+    let mut visited = HashSet::new();
+    // The URL may contain a short-lived provider signature. Keep it in memory
+    // and never copy it into an error, queue entry, or manifest.
+    visited.insert(url.as_str().to_string());
+    let mut redirects_followed = 0;
+    loop {
+        validate_nexus_download_host(&url)?;
+        let addresses = resolve_public_remote_addresses(&url).await?;
+        let client = build_pinned_remote_client(&url, &addresses, REMOTE_REQUEST_TIMEOUT)?;
+        let response = client
+            .get(url.clone())
+            .header(
+                "Accept",
+                "application/octet-stream, application/zip, application/x-7z-compressed",
+            )
+            .send()
+            .await
+            .map_err(|_| "The authenticated Nexus download could not be reached.".to_string())?;
+        if is_followable_redirect_status(response.status()) {
+            let location = response
+                .headers()
+                .get(LOCATION)
+                .ok_or_else(|| "The Nexus CDN redirect was incomplete.".to_string())?
+                .to_str()
+                .map_err(|_| "The Nexus CDN redirect was invalid.".to_string())?;
+            let next =
+                validated_redirect_url(&url, location, redirects_followed, MAX_REMOTE_REDIRECTS)?;
+            validate_nexus_download_host(&next)?;
+            if !visited.insert(next.as_str().to_string()) {
+                return Err("A Nexus CDN redirect loop was detected.".to_string());
+            }
+            redirects_followed += 1;
+            url = next;
+            continue;
+        }
+        if response.status().is_redirection() {
+            return Err("The Nexus CDN returned an unsupported redirect.".to_string());
+        }
+        if !response.status().is_success() {
+            return Err(format!(
+                "The Nexus CDN returned HTTP {}.",
+                response.status().as_u16()
+            ));
+        }
+        return Ok(response);
+    }
+}
+
+fn validate_nexus_content_type(
+    content_type: Option<&reqwest::header::HeaderValue>,
+    kind: NexusArchiveKind,
+) -> Result<(), String> {
+    let mime = content_type
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.split(';').next())
+        .map(str::trim)
+        .map(str::to_ascii_lowercase)
+        .ok_or_else(|| {
+            "The Nexus CDN response did not declare a binary content type.".to_string()
+        })?;
+    let common_binary = matches!(
+        mime.as_str(),
+        "application/octet-stream" | "binary/octet-stream"
+    );
+    let archive_mime = match kind {
+        NexusArchiveKind::Zip => matches!(
+            mime.as_str(),
+            "application/zip" | "application/x-zip" | "application/x-zip-compressed"
+        ),
+        NexusArchiveKind::SevenZip => matches!(mime.as_str(), "application/x-7z-compressed"),
+    };
+    if common_binary || archive_mime {
+        Ok(())
+    } else {
+        Err("The Nexus CDN returned an unexpected content type.".to_string())
+    }
+}
+
+fn validate_nexus_expected_size(
+    actual: u64,
+    expected: TrustedNexusExpectedSize,
+) -> Result<(), String> {
+    let tolerance = if expected.exact { 0 } else { 1024 };
+    if actual.abs_diff(expected.bytes) <= tolerance {
+        Ok(())
+    } else {
+        Err("The Nexus download size did not match authenticated file metadata.".to_string())
+    }
+}
+
+async fn download_trusted_nexus_package(
+    app: &tauri::AppHandle,
+    install_id: &str,
+    input: &TrustedNexusInstallRequest,
+    cancel_rx: &mut watch::Receiver<bool>,
+) -> Result<PathBuf, String> {
+    let kind = nexus_archive_kind(&input.file_name)?;
+    let parsed = parse_and_validate_remote_url(&input.download_url)?;
+    validate_nexus_download_host(&parsed)?;
+    let staging = mod_staging_dir(install_id)?;
+    fs::create_dir_all(&staging)
+        .map_err(|error| format!("Could not create staging folder: {error}"))?;
+    let package = staging.join(sanitize_file_name(&input.file_name));
+
+    update_queue_item(app, install_id, |item| {
+        item.status = ModInstallStatus::Downloading;
+        item.phase = "download".to_string();
+        item.speed = "Connecting to Nexus CDN".to_string();
+        item.progress = 5;
+    })?;
+    let response = send_trusted_nexus_request(parsed).await?;
+    validate_nexus_content_type(response.headers().get(CONTENT_TYPE), kind)?;
+    if let Some(declared) = response.content_length() {
+        validate_declared_download_size(Some(declared), MAX_REMOTE_MOD_BYTES)?;
+        validate_nexus_expected_size(declared, input.expected_size)?;
+    }
+
+    let mut stream = response.bytes_stream();
+    let write_result: Result<u64, String> = async {
+        let mut file = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&package)
+            .map_err(|error| format!("Could not create downloaded mod file: {error}"))?;
+        let mut downloaded = 0_u64;
+        while let Some(chunk) = stream.next().await {
+            if *cancel_rx.borrow() {
+                return Err("cancelled".to_string());
+            }
+            let chunk = chunk
+                .map_err(|_| "The authenticated Nexus download was incomplete.".to_string())?;
+            let next_size = checked_download_size(downloaded, chunk.len(), MAX_REMOTE_MOD_BYTES)?;
+            if next_size > input.expected_size.bytes.saturating_add(1024) {
+                return Err("The Nexus download exceeded authenticated file metadata.".to_string());
+            }
+            file.write_all(&chunk)
+                .map_err(|error| format!("Could not write mod download chunk: {error}"))?;
+            downloaded = next_size;
+            let progress = 5
+                + (((downloaded as f64 / input.expected_size.bytes as f64) * 80.0).round() as u32)
+                    .min(80);
+            update_queue_item(app, install_id, |item| {
+                item.progress = progress.min(85);
+                item.speed = "Downloading from Nexus".to_string();
+                item.bytes_downloaded = Some(downloaded);
+                item.bytes_total = Some(input.expected_size.bytes);
+            })?;
+        }
+        file.sync_all()
+            .map_err(|error| format!("Could not flush downloaded mod file: {error}"))?;
+        Ok(downloaded)
+    }
+    .await;
+    let downloaded = match write_result {
+        Ok(downloaded) => downloaded,
+        Err(error) => {
+            let _ = fs::remove_file(&package);
+            return Err(error);
+        }
+    };
+    if let Err(error) = validate_nexus_expected_size(downloaded, input.expected_size)
+        .and_then(|_| validate_archive_magic(&package, kind))
+    {
+        let _ = fs::remove_file(&package);
+        return Err(error);
+    }
+    Ok(package)
+}
+
+fn validate_archive_magic(path: &Path, kind: NexusArchiveKind) -> Result<(), String> {
+    let mut file = fs::File::open(path)
+        .map_err(|error| format!("Could not inspect downloaded archive: {error}"))?;
+    let mut prefix = [0_u8; 8];
+    let count = file
+        .read(&mut prefix)
+        .map_err(|error| format!("Could not inspect downloaded archive: {error}"))?;
+    let valid = match kind {
+        NexusArchiveKind::Zip => {
+            count >= 4
+                && matches!(
+                    &prefix[..4],
+                    [b'P', b'K', 3, 4] | [b'P', b'K', 5, 6] | [b'P', b'K', 7, 8]
+                )
+        }
+        NexusArchiveKind::SevenZip => {
+            count >= 6 && prefix[..6] == [b'7', b'z', 0xBC, 0xAF, 0x27, 0x1C]
+        }
+    };
+    if valid {
+        Ok(())
+    } else {
+        Err("The downloaded file signature did not match its Nexus archive metadata.".to_string())
     }
 }
 
@@ -1469,102 +1867,261 @@ fn checked_download_size(current: u64, chunk_len: usize, max: u64) -> Result<u64
     Ok(next)
 }
 
-async fn download_url_to_package(
-    app: &tauri::AppHandle,
-    install_id: &str,
-    url: &str,
-    cancel_rx: &mut watch::Receiver<bool>,
+fn validated_game_install_root(
+    game: &crate::commands::games::InstalledGame,
 ) -> Result<PathBuf, String> {
-    let parsed = parse_and_validate_remote_url(url)?;
-    let staging = mod_staging_dir(install_id)?;
-    fs::create_dir_all(&staging)
-        .map_err(|error| format!("Could not create staging folder: {error}"))?;
-    let package = staging.join(download_file_name(&parsed, install_id));
-
-    update_queue_item(app, install_id, |item| {
-        item.status = ModInstallStatus::Downloading;
-        item.phase = "download".to_string();
-        item.speed = "Connecting".to_string();
-        item.progress = 5;
-    })?;
-
-    let response = send_validated_remote_request(parsed).await?;
-    let total = response.content_length();
-    validate_declared_download_size(total, MAX_REMOTE_MOD_BYTES)?;
-    let mut stream = response.bytes_stream();
-    let write_result: Result<(), String> = async {
-        let mut file = fs::File::create(&package)
-            .map_err(|error| format!("Could not create downloaded mod file: {error}"))?;
-        let mut downloaded = 0_u64;
-
-        while let Some(chunk) = stream.next().await {
-            if *cancel_rx.borrow() {
-                return Err("cancelled".to_string());
-            }
-            let chunk =
-                chunk.map_err(|error| format!("Could not read mod download chunk: {error}"))?;
-            let next_size = checked_download_size(downloaded, chunk.len(), MAX_REMOTE_MOD_BYTES)?;
-            file.write_all(&chunk)
-                .map_err(|error| format!("Could not write mod download chunk: {error}"))?;
-            downloaded = next_size;
-            let progress = total
-                .map(|value| {
-                    5 + (((downloaded as f64 / value.max(1) as f64) * 80.0).round() as u32)
-                })
-                .unwrap_or(40)
-                .min(85);
-            update_queue_item(app, install_id, |item| {
-                item.progress = progress;
-                item.speed = "Downloading".to_string();
-                item.bytes_downloaded = Some(downloaded);
-                item.bytes_total = total;
-            })?;
-        }
-        file.sync_all()
-            .map_err(|error| format!("Could not flush downloaded mod file: {error}"))?;
-        Ok(())
+    let install_root = game
+        .install_path
+        .as_deref()
+        .map(PathBuf::from)
+        .ok_or_else(|| format!("{} has no local install path.", game.title))?;
+    if !install_root.is_absolute() || !install_root.is_dir() || is_restricted_target(&install_root)
+    {
+        return Err("The selected game's install root cannot be verified safely.".to_string());
     }
-    .await;
-
-    if let Err(error) = write_result {
-        let _ = fs::remove_file(&package);
-        return Err(error);
+    let resolved = resolve_path_with_existing_ancestors(&install_root)?;
+    if !resolved.is_dir() || is_restricted_target(&resolved) {
+        return Err("The selected game's install root cannot be verified safely.".to_string());
     }
-
-    Ok(package)
+    Ok(resolved)
 }
 
-fn install_package_to_target(
+fn prepare_trusted_nexus_archive(
     install_id: &str,
-    title: &str,
     package: &Path,
-    target: &Path,
-) -> Result<Vec<ModInstalledFileRecord>, String> {
-    fs::create_dir_all(target)
-        .map_err(|error| format!("Could not create target folder: {error}"))?;
+    file_name: &str,
+    install_root: &Path,
+    replacing_install_id: Option<&str>,
+) -> Result<TrustedNexusPreparation, String> {
+    let kind = nexus_archive_kind(file_name)?;
     let extracted = mod_staging_dir(install_id)?.join("extracted");
     if extracted.exists() {
-        fs::remove_dir_all(&extracted)
-            .map_err(|error| format!("Could not reset staging folder: {error}"))?;
+        cleanup_mod_staging_path(&extracted)?;
     }
     fs::create_dir_all(&extracted)
         .map_err(|error| format!("Could not create extraction folder: {error}"))?;
-
-    if is_zip_package(package) {
-        extract_zip_safely(package, &extracted)?;
-    } else {
-        let file_name = package
-            .file_name()
-            .and_then(|value| value.to_str())
-            .map(sanitize_file_name)
-            .filter(|value| !value.is_empty())
-            .unwrap_or_else(|| format!("{}.bin", sanitize_file_name(title)));
-        fs::copy(package, extracted.join(file_name))
-            .map_err(|error| format!("Could not stage raw mod file: {error}"))?;
+    match kind {
+        NexusArchiveKind::Zip => extract_zip_safely(package, &extracted)?,
+        NexusArchiveKind::SevenZip => extract_7z_safely(package, &extracted)?,
     }
 
-    let staged_files = collect_relative_files(&extracted)?;
-    apply_staged_files(install_id, &extracted, target, &staged_files)
+    let mut source_root = collapse_single_archive_wrapper(&extracted)?;
+    let staged_files = collect_relative_files(&source_root)?;
+    if staged_files.is_empty() {
+        return Ok(TrustedNexusPreparation::Handoff(
+            "The Nexus archive contained no directly installable files; continue on Nexus."
+                .to_string(),
+        ));
+    }
+    if staged_files.iter().any(|relative| {
+        relative
+            .replace('\\', "/")
+            .to_ascii_lowercase()
+            .ends_with("fomod/moduleconfig.xml")
+    }) {
+        return Ok(TrustedNexusPreparation::Handoff(
+            "This mod uses FOMOD installer instructions; continue on Nexus with a compatible mod manager."
+                .to_string(),
+        ));
+    }
+    if staged_files.iter().any(|relative| {
+        Path::new(relative)
+            .extension()
+            .and_then(|extension| extension.to_str())
+            .is_some_and(|extension| {
+                matches!(
+                    extension.to_ascii_lowercase().as_str(),
+                    "exe" | "msi" | "bat" | "cmd" | "com" | "ps1"
+                )
+            })
+    }) {
+        return Ok(TrustedNexusPreparation::Handoff(
+            "This archive contains an executable installer; continue on Nexus instead of applying it to the game automatically."
+                .to_string(),
+        ));
+    }
+
+    let explicit_targets = explicit_archive_targets(&source_root)?;
+    let target = match explicit_targets.as_slice() {
+        [(relative_source, relative_target)] => {
+            source_root = relative_source.clone();
+            install_root.join(relative_target)
+        }
+        [] => match infer_existing_game_target(install_root, &staged_files)? {
+            Some(target) => target,
+            None => {
+                return Ok(TrustedNexusPreparation::Handoff(
+                    "OG-Launcher could not determine one safe game-owned destination for this archive; continue on Nexus."
+                        .to_string(),
+                ));
+            }
+        },
+        _ => {
+            return Ok(TrustedNexusPreparation::Handoff(
+                "The archive targets multiple game mod locations and requires provider-managed installation."
+                    .to_string(),
+            ));
+        }
+    };
+    let target = validate_mod_target_under_game_root(install_root, &target)?;
+    if source_root == extracted && target == install_root {
+        return Ok(TrustedNexusPreparation::Handoff(
+            "OG-Launcher refused an ambiguous whole-game-root archive; continue on Nexus."
+                .to_string(),
+        ));
+    }
+    let final_files = collect_relative_files(&source_root)?;
+    if has_managed_mod_conflict(&target, &final_files, replacing_install_id) {
+        return Ok(TrustedNexusPreparation::Handoff(
+            "This archive conflicts with files owned by another managed mod; continue on Nexus to resolve the conflict."
+                .to_string(),
+        ));
+    }
+    Ok(TrustedNexusPreparation::Ready {
+        extracted: source_root,
+        target,
+    })
+}
+
+fn has_managed_mod_conflict(
+    target: &Path,
+    requested_files: &[String],
+    replacing_install_id: Option<&str>,
+) -> bool {
+    let requested = requested_files
+        .iter()
+        .map(|relative| relative.replace('\\', "/").to_ascii_lowercase())
+        .collect::<HashSet<_>>();
+    read_manifests_from_target(target)
+        .into_iter()
+        .filter(|install| Some(install.install_id.as_str()) != replacing_install_id)
+        .any(|install| {
+            install.file_records.iter().any(|record| {
+                requested.contains(&record.relative_path.replace('\\', "/").to_ascii_lowercase())
+            })
+        })
+}
+
+fn collapse_single_archive_wrapper(root: &Path) -> Result<PathBuf, String> {
+    let mut files = 0usize;
+    let mut directories = Vec::new();
+    for entry in fs::read_dir(root)
+        .map_err(|error| format!("Could not inspect extracted archive: {error}"))?
+    {
+        let entry = entry.map_err(|error| format!("Could not inspect archive entry: {error}"))?;
+        let metadata = fs::symlink_metadata(entry.path())
+            .map_err(|error| format!("Could not inspect archive entry metadata: {error}"))?;
+        if metadata.file_type().is_symlink() {
+            return Err("The archive contained a symbolic link.".to_string());
+        }
+        if metadata.is_dir() {
+            directories.push(entry.path());
+        } else if metadata.is_file() {
+            files += 1;
+        } else {
+            return Err("The archive contained an unsupported filesystem entry.".to_string());
+        }
+    }
+    if files == 0 && directories.len() == 1 {
+        let name = directories[0]
+            .file_name()
+            .and_then(|value| value.to_str())
+            .unwrap_or_default()
+            .to_ascii_lowercase();
+        if !matches!(name.as_str(), "data" | "bepinex" | "mods" | "mod") {
+            return Ok(directories.remove(0));
+        }
+    }
+    Ok(root.to_path_buf())
+}
+
+/// Returns `(archive source root, target relative to game root)` pairs.
+fn explicit_archive_targets(root: &Path) -> Result<Vec<(PathBuf, PathBuf)>, String> {
+    let mut targets = Vec::new();
+    if let Some(data) = find_child_directory(root, "Data")? {
+        targets.push((data, PathBuf::from("Data")));
+    }
+    if let Some(bepinex) = find_child_directory(root, "BepInEx")? {
+        if let Some(plugins) = find_child_directory(&bepinex, "plugins")? {
+            targets.push((plugins, PathBuf::from("BepInEx").join("plugins")));
+        }
+    }
+    if let Some(mods) = find_child_directory(root, "Mods")? {
+        targets.push((mods, PathBuf::from("Mods")));
+    }
+    Ok(targets)
+}
+
+fn find_child_directory(root: &Path, name: &str) -> Result<Option<PathBuf>, String> {
+    let mut found = None;
+    for entry in
+        fs::read_dir(root).map_err(|error| format!("Could not inspect archive layout: {error}"))?
+    {
+        let entry = entry.map_err(|error| format!("Could not inspect archive layout: {error}"))?;
+        if !entry
+            .file_name()
+            .to_string_lossy()
+            .eq_ignore_ascii_case(name)
+        {
+            continue;
+        }
+        let metadata = fs::symlink_metadata(entry.path())
+            .map_err(|error| format!("Could not inspect archive layout: {error}"))?;
+        if metadata.file_type().is_symlink() || !metadata.is_dir() || found.is_some() {
+            return Err(
+                "The archive contained an ambiguous or unsafe destination directory.".to_string(),
+            );
+        }
+        found = Some(entry.path());
+    }
+    Ok(found)
+}
+
+fn infer_existing_game_target(
+    install_root: &Path,
+    staged_files: &[String],
+) -> Result<Option<PathBuf>, String> {
+    let data = find_child_directory(install_root, "Data")?;
+    let bepinex_plugins = find_child_directory(install_root, "BepInEx")?
+        .map(|bepinex| find_child_directory(&bepinex, "plugins"))
+        .transpose()?
+        .flatten();
+    let mods = find_child_directory(install_root, "Mods")?;
+    let existing = [data.clone(), bepinex_plugins.clone(), mods.clone()]
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>();
+    if existing.len() == 1 {
+        return Ok(existing.into_iter().next());
+    }
+    if existing.is_empty() {
+        return Ok(Some(install_root.join("mods")));
+    }
+
+    let lower = staged_files
+        .iter()
+        .map(|relative| relative.to_ascii_lowercase())
+        .collect::<Vec<_>>();
+    let bethesda_layout = lower.iter().any(|relative| {
+        relative.starts_with("meshes/")
+            || relative.starts_with("textures/")
+            || relative.starts_with("scripts/")
+            || matches!(
+                Path::new(relative)
+                    .extension()
+                    .and_then(|value| value.to_str()),
+                Some("esp" | "esm" | "esl" | "bsa")
+            )
+    });
+    let bepinex_layout =
+        lower.iter().any(|relative| relative.ends_with(".dll")) && !bethesda_layout;
+    if bethesda_layout {
+        Ok(data)
+    } else if bepinex_layout {
+        Ok(bepinex_plugins)
+    } else {
+        Ok(mods.or_else(|| Some(install_root.join("mods"))))
+    }
 }
 
 fn extract_zip_safely(zip_path: &Path, target: &Path) -> Result<(), String> {
@@ -1592,13 +2149,27 @@ fn extract_zip_safely_with_limits(
         ));
     }
     let mut extracted_bytes = 0_u64;
+    let mut seen = HashSet::new();
     for index in 0..archive.len() {
         let mut entry = archive
             .by_index(index)
             .map_err(|error| format!("Could not read ZIP entry: {error}"))?;
+        if entry
+            .unix_mode()
+            .is_some_and(|mode| mode & 0o170000 == 0o120000)
+        {
+            return Err("ZIP contains a symbolic link.".to_string());
+        }
         let Some(enclosed) = entry.enclosed_name().map(|path| path.to_path_buf()) else {
             return Err("ZIP contains a path outside the install folder.".to_string());
         };
+        let duplicate_key = enclosed
+            .to_string_lossy()
+            .replace('\\', "/")
+            .to_ascii_lowercase();
+        if duplicate_key.is_empty() || !seen.insert(duplicate_key) {
+            return Err("ZIP contains duplicate or empty entry paths.".to_string());
+        }
         let out_path = target.join(enclosed);
         ensure_path_inside_root(&out_path, target)?;
         if entry.is_dir() {
@@ -1615,7 +2186,10 @@ fn extract_zip_safely_with_limits(
                 fs::create_dir_all(parent)
                     .map_err(|error| format!("Could not create ZIP entry parent: {error}"))?;
             }
-            let mut out_file = fs::File::create(&out_path)
+            let mut out_file = OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&out_path)
                 .map_err(|error| format!("Could not create ZIP entry file: {error}"))?;
             let copied = {
                 let mut limited_entry = (&mut entry).take(remaining.saturating_add(1));
@@ -1636,10 +2210,97 @@ fn extract_zip_safely_with_limits(
                     "ZIP uncompressed size limit exceeded: maximum is {max_uncompressed_bytes} bytes."
                 ));
             }
+            if copied != entry.size() {
+                drop(out_file);
+                let _ = fs::remove_file(&out_path);
+                return Err("ZIP entry size did not match its archive metadata.".to_string());
+            }
             extracted_bytes += copied;
         }
     }
     Ok(())
+}
+
+fn extract_7z_safely(path: &Path, target: &Path) -> Result<(), String> {
+    extract_7z_safely_with_limits(
+        path,
+        target,
+        MAX_MOD_ARCHIVE_ENTRIES,
+        MAX_EXTRACTED_MOD_BYTES,
+    )
+}
+
+fn extract_7z_safely_with_limits(
+    path: &Path,
+    target: &Path,
+    max_entries: usize,
+    max_uncompressed_bytes: u64,
+) -> Result<(), String> {
+    let mut entries = 0usize;
+    let mut extracted_bytes = 0u64;
+    let mut seen = HashSet::new();
+    sevenz_rust2::decompress_file_with_extract_fn(path, target, |entry, reader, destination| {
+        entries = entries.saturating_add(1);
+        if entries > max_entries {
+            return Err(sevenz_rust2::Error::Other(
+                format!("7z entry limit exceeded: maximum is {max_entries}.").into(),
+            ));
+        }
+        if entry.is_anti_item
+            || (entry.has_windows_attributes
+                && (entry.windows_attributes() >> 16) & 0o170000 == 0o120000)
+        {
+            return Err(sevenz_rust2::Error::Other(
+                "7z contains a link or anti-item entry.".into(),
+            ));
+        }
+        let duplicate_key = entry.name().replace('\\', "/").to_ascii_lowercase();
+        if duplicate_key.is_empty() || !seen.insert(duplicate_key) {
+            return Err(sevenz_rust2::Error::Other(
+                "7z contains duplicate or empty entry paths.".into(),
+            ));
+        }
+        ensure_path_inside_root(destination, target)
+            .map_err(|error| sevenz_rust2::Error::Other(error.into()))?;
+        if entry.is_directory() {
+            fs::create_dir_all(destination).map_err(sevenz_rust2::Error::from)?;
+            return Ok(true);
+        }
+        let next_total = extracted_bytes
+            .checked_add(entry.size())
+            .ok_or_else(|| sevenz_rust2::Error::Other("7z size overflow.".into()))?;
+        if next_total > max_uncompressed_bytes {
+            return Err(sevenz_rust2::Error::Other(
+                format!(
+                "7z uncompressed size limit exceeded: maximum is {max_uncompressed_bytes} bytes."
+            )
+                .into(),
+            ));
+        }
+        if let Some(parent) = destination.parent() {
+            fs::create_dir_all(parent).map_err(sevenz_rust2::Error::from)?;
+        }
+        let mut output = OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(destination)
+            .map_err(sevenz_rust2::Error::from)?;
+        let copied = {
+            let mut limited = reader.take(entry.size().saturating_add(1));
+            std::io::copy(&mut limited, &mut output).map_err(sevenz_rust2::Error::from)?
+        };
+        if copied != entry.size() {
+            drop(output);
+            let _ = fs::remove_file(destination);
+            return Err(sevenz_rust2::Error::Other(
+                "7z entry size did not match its archive metadata.".into(),
+            ));
+        }
+        output.sync_all().map_err(sevenz_rust2::Error::from)?;
+        extracted_bytes = next_total;
+        Ok(true)
+    })
+    .map_err(|error| format!("Invalid or unsafe 7z archive: {error}"))
 }
 
 fn cleanup_mod_staging_path(path: &Path) -> Result<(), String> {
@@ -2016,6 +2677,7 @@ fn write_manifest_from_info(info: &InstalledModInfo) -> Result<(), String> {
         profile_id: info.profile_id.clone(),
         catalog_item_id: info.catalog_item_id.clone(),
         version_id: info.version_id.clone(),
+        provider_file_id: info.provider_file_id.clone(),
         source_url: info.source_url.clone(),
         installed_at: info.installed_at,
         manifest_version: info.manifest_version,
@@ -2058,79 +2720,6 @@ fn read_manifests_from_target(target: &Path) -> Vec<InstalledModInfo> {
         .collect()
 }
 
-fn resolve_target_path(
-    game: &crate::commands::games::InstalledGame,
-    provider: ModProvider,
-    target_policy_id: Option<&str>,
-) -> Result<PathBuf, String> {
-    let install_path = game
-        .install_path
-        .as_deref()
-        .map(PathBuf::from)
-        .ok_or_else(|| format!("{} has no local install path.", game.title))?;
-    resolve_target_path_from_install_root(&game.title, provider, target_policy_id, &install_path)
-}
-
-fn resolve_target_path_from_install_root(
-    game_title: &str,
-    provider: ModProvider,
-    target_policy_id: Option<&str>,
-    install_path: &Path,
-) -> Result<PathBuf, String> {
-    if is_restricted_target(install_path) {
-        return Err(
-            "This game's install folder is restricted. Use provider delegation or manual import."
-                .to_string(),
-        );
-    }
-    if !install_path.is_dir() {
-        return Err(format!(
-            "{} does not have a valid local install directory.",
-            game_title
-        ));
-    }
-    let install_root = resolve_path_with_existing_ancestors(install_path)?;
-    let policy = target_policy_id.map(str::trim).unwrap_or_default();
-
-    let candidate = if let Some(path) = policy.strip_prefix("manual:") {
-        let manual = PathBuf::from(path.trim());
-        if !manual.is_absolute()
-            || manual
-                .components()
-                .any(|component| matches!(component, std::path::Component::ParentDir))
-        {
-            return Err(
-                "Manual mod targets must be absolute paths without parent traversal.".to_string(),
-            );
-        }
-        manual
-    } else {
-        match policy {
-            "" | "auto" => auto_target_path(game_title, provider, &install_root),
-            "root" => install_root.clone(),
-            "creation_data" => install_root.join("Data"),
-            "bepinex_plugins" => install_root.join("BepInEx").join("plugins"),
-            "minecraft_mods" | "game_mods" => install_root.join("mods"),
-            "steam_workshop" if provider == ModProvider::SteamWorkshop => {
-                install_root.join("workshop")
-            }
-            "steam_workshop" => {
-                return Err(
-                    "The steam_workshop target policy is only valid for Steam Workshop installs."
-                        .to_string(),
-                );
-            }
-            other => {
-                return Err(format!(
-                    "Unsupported mod target policy '{other}'. Use an approved target policy."
-                ));
-            }
-        }
-    };
-
-    validate_mod_target_under_game_root(&install_root, &candidate)
-}
-
 fn validate_mod_target_under_game_root(
     install_root: &Path,
     target: &Path,
@@ -2160,576 +2749,6 @@ fn validate_mod_target_under_game_root(
     }
     ensure_writable_mod_target(&resolved_target)?;
     Ok(resolved_target)
-}
-
-fn auto_target_path(game_title: &str, provider: ModProvider, install_path: &Path) -> PathBuf {
-    let title = game_title.to_lowercase();
-    if provider == ModProvider::SteamWorkshop {
-        return install_path.join("workshop");
-    }
-    if title.contains("skyrim")
-        || title.contains("fallout")
-        || title.contains("oblivion")
-        || title.contains("starfield")
-    {
-        return install_path.join("Data");
-    }
-    if install_path.join("BepInEx").is_dir() {
-        return install_path.join("BepInEx").join("plugins");
-    }
-    install_path.join("mods")
-}
-
-fn candidate_mod_targets(game: &crate::commands::games::InstalledGame) -> Vec<PathBuf> {
-    let Some(install_path) = game.install_path.as_deref().map(PathBuf::from) else {
-        return Vec::new();
-    };
-    vec![
-        install_path.join("mods"),
-        install_path.join("Data"),
-        install_path.join("BepInEx").join("plugins"),
-        install_path.join("workshop"),
-    ]
-}
-
-fn should_delegate_provider(input: &ModInstallRequest) -> bool {
-    match input.provider {
-        ModProvider::SteamWorkshop => true,
-        ModProvider::Modio | ModProvider::Curseforge => {
-            input
-                .source_url
-                .as_deref()
-                .is_none_or(|url| !looks_like_download_url(url))
-                || input
-                    .sha256
-                    .as_deref()
-                    .is_none_or(|checksum| checksum.trim().is_empty())
-        }
-        ModProvider::DirectUrl | ModProvider::LocalArchive | ModProvider::LocalFolder => false,
-    }
-}
-
-fn delegated_url_for_provider(input: &ModInstallRequest) -> Option<String> {
-    let source = input
-        .source_url
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty());
-    match input.provider {
-        ModProvider::SteamWorkshop => {
-            let id = source
-                .and_then(extract_steam_workshop_id)
-                .or_else(|| input.catalog_item_id.as_deref().map(ToOwned::to_owned));
-            id.map(|id| {
-                format!(
-                    "steam://openurl/https://steamcommunity.com/sharedfiles/filedetails/?id={id}"
-                )
-            })
-            .or_else(|| source.map(ToOwned::to_owned))
-        }
-        ModProvider::Modio => source.map(ToOwned::to_owned),
-        ModProvider::Curseforge => source
-            .map(ToOwned::to_owned)
-            .or_else(|| input.catalog_item_id.as_deref().map(curseforge_project_url)),
-        ModProvider::DirectUrl | ModProvider::LocalArchive | ModProvider::LocalFolder => None,
-    }
-}
-
-fn curseforge_project_url(project_id: &str) -> String {
-    format!(
-        "https://www.curseforge.com/projects/{}",
-        sanitize_url_path_segment(project_id)
-    )
-}
-
-fn extract_steam_workshop_id(value: &str) -> Option<String> {
-    if let Some((_, rest)) = value.split_once("id=") {
-        let id = rest
-            .chars()
-            .take_while(|character| character.is_ascii_digit())
-            .collect::<String>();
-        if !id.is_empty() {
-            return Some(id);
-        }
-    }
-    let digits = value
-        .chars()
-        .filter(|character| character.is_ascii_digit())
-        .collect::<String>();
-    (!digits.is_empty()).then_some(digits)
-}
-
-async fn search_modio_mods(
-    game_id: &str,
-    query: &str,
-    page: u32,
-    page_size: u32,
-) -> Result<Vec<NativeModSearchResult>, String> {
-    let api_key = read_provider_secret(ModProvider::Modio)?;
-    let mut url = Url::parse(&format!(
-        "https://api.mod.io/v1/games/{}/mods",
-        sanitize_url_path_segment(game_id)
-    ))
-    .map_err(|error| format!("Invalid mod.io API URL: {error}"))?;
-    let offset = page.saturating_sub(1).saturating_mul(page_size);
-    url.query_pairs_mut()
-        .append_pair("api_key", &api_key)
-        .append_pair("_q", query)
-        .append_pair("limit", &page_size.to_string())
-        .append_pair("offset", &offset.to_string());
-
-    let payload = reqwest::Client::new()
-        .get(url)
-        .header("Accept", "application/json")
-        .send()
-        .await
-        .map_err(|error| format!("mod.io search failed: {error}"))?;
-    if !payload.status().is_success() {
-        return Err(format!("mod.io search returned {}", payload.status()));
-    }
-    let json = payload
-        .json::<Value>()
-        .await
-        .map_err(|error| format!("mod.io response was not valid JSON: {error}"))?;
-    Ok(map_modio_search_results(&json))
-}
-
-fn build_mod_provider_staging_probe_request(
-    input: &ModProviderStagingProbeRequest,
-) -> Result<NativeModSearchRequest, String> {
-    match input.provider {
-        ModProvider::Modio | ModProvider::Curseforge => Ok(NativeModSearchRequest {
-            provider: input.provider,
-            provider_game_id: normalize_id(&input.provider_game_id, "providerGameId")?,
-            query: normalize_id(&input.query, "query")?,
-            page: Some(1),
-            page_size: Some(1),
-        }),
-        other => Err(format!(
-            "{} does not expose provider API staging probes.",
-            other.display_name()
-        )),
-    }
-}
-
-fn provider_secret_configured(provider: ModProvider) -> Result<bool, String> {
-    let domain = provider_secret_domain(provider);
-    secure_store::get_secret(&domain)
-        .map_err(|error| format!("Could not read {} key: {error}", provider.display_name()))
-        .map(|secret| {
-            secret
-                .map(|value| !value.trim().is_empty())
-                .unwrap_or(false)
-        })
-}
-
-fn build_mod_provider_staging_probe_redacted_request(request: &NativeModSearchRequest) -> String {
-    match request.provider {
-        ModProvider::Modio => format!(
-            "GET https://api.mod.io/v1/games/{}/mods?api_key=<redacted>&_q={}&limit=1&offset=0",
-            sanitize_url_path_segment(&request.provider_game_id),
-            request.query
-        ),
-        ModProvider::Curseforge => format!(
-            "GET https://api.curseforge.com/v1/mods/search?gameId={}&searchFilter={}&pageSize=1&index=0 x-api-key=<redacted>",
-            request.provider_game_id, request.query
-        ),
-        other => format!("{} provider API staging is unsupported", other.display_name()),
-    }
-}
-
-fn build_mod_provider_staging_probe_success(
-    request: &NativeModSearchRequest,
-    results: &[NativeModSearchResult],
-    duration_ms: u64,
-) -> ModProviderStagingProbeResult {
-    ModProviderStagingProbeResult {
-        provider: request.provider,
-        provider_game_id: request.provider_game_id.clone(),
-        query_hint: request.query.clone(),
-        page_size: request.page_size.unwrap_or(1),
-        status: ModProviderStagingProbeStatus::Ready,
-        live_request_attempted: true,
-        result_count: results.len(),
-        direct_download_count: results
-            .iter()
-            .filter(|result| {
-                result
-                    .download_url
-                    .as_deref()
-                    .is_some_and(|url| !url.is_empty())
-            })
-            .count(),
-        provider_app_handoff_count: results
-            .iter()
-            .filter(|result| {
-                result
-                    .provider_app_url
-                    .as_deref()
-                    .is_some_and(|url| !url.is_empty())
-            })
-            .count(),
-        duration_ms,
-        redacted_request: build_mod_provider_staging_probe_redacted_request(request),
-        message: format!(
-            "{} staging probe returned {} result(s) with redacted telemetry.",
-            request.provider.display_name(),
-            results.len()
-        ),
-        guards: mod_provider_staging_probe_guards(),
-    }
-}
-
-fn build_mod_provider_staging_probe_blocked(
-    request: &NativeModSearchRequest,
-    message: &str,
-) -> ModProviderStagingProbeResult {
-    ModProviderStagingProbeResult {
-        provider: request.provider,
-        provider_game_id: request.provider_game_id.clone(),
-        query_hint: request.query.clone(),
-        page_size: request.page_size.unwrap_or(1),
-        status: ModProviderStagingProbeStatus::Blocked,
-        live_request_attempted: false,
-        result_count: 0,
-        direct_download_count: 0,
-        provider_app_handoff_count: 0,
-        duration_ms: 0,
-        redacted_request: build_mod_provider_staging_probe_redacted_request(request),
-        message: message.to_string(),
-        guards: mod_provider_staging_probe_guards(),
-    }
-}
-
-fn build_mod_provider_staging_probe_error(
-    request: &NativeModSearchRequest,
-    error: &str,
-    duration_ms: u64,
-) -> ModProviderStagingProbeResult {
-    ModProviderStagingProbeResult {
-        provider: request.provider,
-        provider_game_id: request.provider_game_id.clone(),
-        query_hint: request.query.clone(),
-        page_size: request.page_size.unwrap_or(1),
-        status: ModProviderStagingProbeStatus::ProviderError,
-        live_request_attempted: true,
-        result_count: 0,
-        direct_download_count: 0,
-        provider_app_handoff_count: 0,
-        duration_ms,
-        redacted_request: build_mod_provider_staging_probe_redacted_request(request),
-        message: redact_mod_provider_staging_probe_error(error),
-        guards: mod_provider_staging_probe_guards(),
-    }
-}
-
-fn mod_provider_staging_probe_guards() -> Vec<String> {
-    vec![
-        "API key redacted".to_string(),
-        "Single-result staging probe".to_string(),
-        "No direct-download URL returned".to_string(),
-        "Keys stay out of Supabase".to_string(),
-    ]
-}
-
-fn redact_mod_provider_staging_probe_error(error: &str) -> String {
-    let redacted = redact_assignment_value(error, "api_key=");
-    redact_assignment_value(&redacted, "x-api-key=")
-}
-
-fn redact_assignment_value(input: &str, marker: &str) -> String {
-    let mut output = input.to_string();
-    let mut cursor = 0;
-    while let Some(relative_start) = output[cursor..].find(marker) {
-        let value_start = cursor + relative_start + marker.len();
-        let value_end = output[value_start..]
-            .find(|character: char| {
-                character == '&'
-                    || character == ' '
-                    || character == '\n'
-                    || character == '\r'
-                    || character == '\t'
-            })
-            .map(|relative_end| value_start + relative_end)
-            .unwrap_or_else(|| output.len());
-        output.replace_range(value_start..value_end, "<redacted>");
-        cursor = value_start + "<redacted>".len();
-    }
-    output
-}
-
-async fn search_curseforge_mods(
-    game_id: &str,
-    query: &str,
-    page: u32,
-    page_size: u32,
-) -> Result<Vec<NativeModSearchResult>, String> {
-    let api_key = read_provider_secret(ModProvider::Curseforge)?;
-    let mut url = Url::parse("https://api.curseforge.com/v1/mods/search")
-        .map_err(|error| format!("Invalid CurseForge API URL: {error}"))?;
-    let index = page.saturating_sub(1).saturating_mul(page_size);
-    url.query_pairs_mut()
-        .append_pair("gameId", game_id)
-        .append_pair("searchFilter", query)
-        .append_pair("pageSize", &page_size.to_string())
-        .append_pair("index", &index.to_string());
-
-    let payload = reqwest::Client::new()
-        .get(url)
-        .header("Accept", "application/json")
-        .header("x-api-key", api_key)
-        .send()
-        .await
-        .map_err(|error| format!("CurseForge search failed: {error}"))?;
-    if !payload.status().is_success() {
-        return Err(format!("CurseForge search returned {}", payload.status()));
-    }
-    let json = payload
-        .json::<Value>()
-        .await
-        .map_err(|error| format!("CurseForge response was not valid JSON: {error}"))?;
-    Ok(map_curseforge_search_results(&json))
-}
-
-fn map_modio_search_results(json: &Value) -> Vec<NativeModSearchResult> {
-    json.get("data")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .filter_map(|entry| {
-            let external_id = value_u64(entry, &["id"])
-                .map(|value| value.to_string())
-                .or_else(|| value_string(entry, &["name_id"]))?;
-            let name = value_string(entry, &["name"])?;
-            let url = value_string(entry, &["profile_url"]).unwrap_or_else(|| {
-                format!(
-                    "https://mod.io/g/mods/m/{}",
-                    sanitize_url_path_segment(&external_id)
-                )
-            });
-            let modfile = entry.get("modfile").unwrap_or(&Value::Null);
-            Some(NativeModSearchResult {
-                provider: ModProvider::Modio,
-                external_id,
-                name,
-                author: value_string(entry, &["submitted_by", "username"]),
-                summary: value_string(entry, &["summary"]),
-                url,
-                icon_url: first_string(entry, &[&["logo", "thumb_320x180"], &["logo", "original"]]),
-                downloads: value_u64(entry, &["stats", "downloads_total"]).map(format_count),
-                follows: value_u64(entry, &["stats", "subscribers_total"]).map(format_count),
-                latest_version: value_string(modfile, &["version"]),
-                download_url: value_string(modfile, &["download", "binary_url"]),
-                provider_app_url: None,
-                file_size_bytes: value_u64(modfile, &["filesize"]),
-            })
-        })
-        .collect()
-}
-
-fn map_curseforge_search_results(json: &Value) -> Vec<NativeModSearchResult> {
-    json.get("data")
-        .and_then(Value::as_array)
-        .into_iter()
-        .flatten()
-        .filter_map(|entry| {
-            let external_id = value_u64(entry, &["id"]).map(|value| value.to_string())?;
-            let name = value_string(entry, &["name"])?;
-            let provider_app_url = value_string(entry, &["links", "websiteUrl"])
-                .unwrap_or_else(|| curseforge_project_url(&external_id));
-            let latest_file = entry
-                .get("latestFiles")
-                .and_then(Value::as_array)
-                .and_then(|files| files.first())
-                .unwrap_or(&Value::Null);
-            Some(NativeModSearchResult {
-                provider: ModProvider::Curseforge,
-                external_id,
-                name,
-                author: entry
-                    .get("authors")
-                    .and_then(Value::as_array)
-                    .and_then(|authors| authors.first())
-                    .and_then(|author| value_string(author, &["name"])),
-                summary: value_string(entry, &["summary"]),
-                url: provider_app_url.clone(),
-                icon_url: first_string(entry, &[&["logo", "thumbnailUrl"], &["logo", "url"]]),
-                downloads: value_u64(entry, &["downloadCount"]).map(format_count),
-                follows: value_u64(entry, &["thumbsUpCount"]).map(format_count),
-                latest_version: first_string(
-                    latest_file,
-                    &[&["displayName"], &["fileName"], &["releaseType"]],
-                ),
-                download_url: value_string(latest_file, &["downloadUrl"]),
-                provider_app_url: Some(provider_app_url),
-                file_size_bytes: value_u64(latest_file, &["fileLength"]),
-            })
-        })
-        .collect()
-}
-
-fn read_provider_secret(provider: ModProvider) -> Result<String, String> {
-    let domain = provider_secret_domain(provider);
-    secure_store::get_secret(&domain)
-        .map_err(|error| format!("Could not read {} key: {error}", provider.display_name()))?
-        .map(|value| value.trim().to_string())
-        .filter(|value| !value.is_empty())
-        .ok_or_else(|| {
-            format!(
-                "{} API key is required. Save it from the Provider Keys panel first.",
-                provider.display_name()
-            )
-        })
-}
-
-fn value_string(value: &Value, path: &[&str]) -> Option<String> {
-    path.iter()
-        .try_fold(value, |current, key| current.get(*key))
-        .and_then(Value::as_str)
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .map(ToOwned::to_owned)
-}
-
-fn first_string(value: &Value, paths: &[&[&str]]) -> Option<String> {
-    paths.iter().find_map(|path| value_string(value, path))
-}
-
-fn value_u64(value: &Value, path: &[&str]) -> Option<u64> {
-    let leaf = path
-        .iter()
-        .try_fold(value, |current, key| current.get(*key))?;
-    leaf.as_u64()
-        .or_else(|| leaf.as_f64().map(|number| number.max(0.0) as u64))
-        .or_else(|| leaf.as_str()?.parse::<u64>().ok())
-}
-
-fn format_count(value: u64) -> String {
-    if value >= 1_000_000 {
-        format!("{:.1}M", value as f64 / 1_000_000.0)
-    } else if value >= 1_000 {
-        format!("{:.1}K", value as f64 / 1_000.0)
-    } else {
-        value.to_string()
-    }
-}
-
-fn sanitize_url_path_segment(value: &str) -> String {
-    value
-        .trim()
-        .chars()
-        .filter(|character| character.is_ascii_alphanumeric() || matches!(character, '-' | '_'))
-        .collect::<String>()
-}
-
-fn provider_secret_domain(provider: ModProvider) -> String {
-    format!("mod_provider:{}", provider.as_str())
-}
-
-fn local_path(input: &ModInstallRequest) -> Result<PathBuf, String> {
-    let path = input
-        .local_path
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .ok_or_else(|| format!("{} requires a local path.", input.provider.display_name()))?;
-    let path = PathBuf::from(path);
-    if !path.exists() {
-        return Err(format!("Local mod path does not exist: {}", path.display()));
-    }
-    Ok(path)
-}
-
-fn validate_install_source(input: &ModInstallRequest, is_delegated: bool) -> Result<(), String> {
-    match input.provider {
-        ModProvider::LocalArchive => {
-            let path = local_path(input)?;
-            if !path.is_file() {
-                return Err(format!(
-                    "Local mod archive is not a regular file: {}",
-                    path.display()
-                ));
-            }
-        }
-        ModProvider::LocalFolder => {
-            let path = local_path(input)?;
-            if !path.is_dir() {
-                return Err(format!(
-                    "Local mod folder is not a directory: {}",
-                    path.display()
-                ));
-            }
-        }
-        ModProvider::SteamWorkshop if is_delegated => {}
-        ModProvider::SteamWorkshop => {
-            let source = remote_source_url(input)?;
-            parse_and_validate_remote_url(source)?;
-            required_remote_checksum(input)?;
-        }
-        ModProvider::Modio | ModProvider::Curseforge | ModProvider::DirectUrl if !is_delegated => {
-            let source = remote_source_url(input)?;
-            parse_and_validate_remote_url(source)?;
-            required_remote_checksum(input)?;
-        }
-        ModProvider::Modio | ModProvider::Curseforge | ModProvider::DirectUrl => {}
-    }
-    Ok(())
-}
-
-fn remote_source_url(input: &ModInstallRequest) -> Result<&str, String> {
-    input
-        .source_url
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .ok_or_else(|| format!("{} requires a source URL.", input.provider.display_name()))
-}
-
-fn required_remote_checksum(input: &ModInstallRequest) -> Result<String, String> {
-    let checksum = input
-        .sha256
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-        .ok_or_else(|| {
-            format!(
-                "{} remote archives require an expected SHA-256 checksum. Use the provider handoff when no trusted checksum is available.",
-                input.provider.display_name()
-            )
-        })?;
-    normalize_sha256(checksum)
-}
-
-fn title_from_source(input: &ModInstallRequest) -> Option<String> {
-    input
-        .source_url
-        .as_deref()
-        .or(input.local_path.as_deref())
-        .and_then(|value| {
-            Path::new(value)
-                .file_stem()
-                .and_then(|stem| stem.to_str())
-                .map(|stem| stem.replace(['_', '-'], " "))
-        })
-}
-
-fn looks_like_download_url(value: &str) -> bool {
-    let lower = Url::parse(value)
-        .ok()
-        .map(|url| url.path().to_lowercase())
-        .unwrap_or_else(|| value.to_lowercase());
-    lower.ends_with(".zip")
-        || lower.ends_with(".7z")
-        || lower.ends_with(".rar")
-        || lower.ends_with(".pak")
-        || lower.contains("/download")
-        || lower.contains("binary_url")
-}
-
-fn is_zip_package(path: &Path) -> bool {
-    path.extension()
-        .and_then(|extension| extension.to_str())
-        .is_some_and(|extension| extension.eq_ignore_ascii_case("zip"))
 }
 
 fn ensure_writable_mod_target(target: &Path) -> Result<(), String> {
@@ -3298,14 +3317,6 @@ fn status_rank(status: ModInstallStatus) -> u8 {
     }
 }
 
-fn download_file_name(url: &Url, fallback: &str) -> String {
-    url.path_segments()
-        .and_then(|mut segments| segments.next_back())
-        .map(sanitize_file_name)
-        .filter(|value| !value.is_empty())
-        .unwrap_or_else(|| format!("{}.bin", sanitize_file_name(fallback)))
-}
-
 fn sanitize_file_name(value: &str) -> String {
     let sanitized = value
         .chars()
@@ -3322,17 +3333,6 @@ fn sanitize_file_name(value: &str) -> String {
     } else {
         sanitized
     }
-}
-
-fn verify_sha256(path: &Path, expected: &str) -> Result<(), String> {
-    let expected = normalize_sha256(expected)?;
-    let actual = sha256_file(path)?;
-    if actual != expected {
-        return Err(format!(
-            "SHA-256 verification failed: expected {expected}, got {actual}."
-        ));
-    }
-    Ok(())
 }
 
 fn normalize_sha256(expected: &str) -> Result<String, String> {
@@ -3386,9 +3386,39 @@ fn now_unix_secs() -> u64 {
         .unwrap_or(0)
 }
 
+fn next_mod_event_revision() -> u64 {
+    static LAST_REVISION: AtomicU64 = AtomicU64::new(0);
+    let wall_clock = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_micros().min(u128::from(u64::MAX)) as u64)
+        .unwrap_or(0);
+    let mut observed = LAST_REVISION.load(Ordering::Relaxed);
+    loop {
+        let next = wall_clock.max(observed.saturating_add(1));
+        match LAST_REVISION.compare_exchange_weak(
+            observed,
+            next,
+            Ordering::SeqCst,
+            Ordering::Relaxed,
+        ) {
+            Ok(_) => return next,
+            Err(actual) => observed = actual,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn mod_event_revisions_are_strictly_monotonic() {
+        let first = next_mod_event_revision();
+        let second = next_mod_event_revision();
+
+        assert!(second > first);
+    }
+    use sevenz_rust2::{ArchiveEntry, ArchiveWriter};
     use zip::{write::SimpleFileOptions, ZipWriter};
 
     #[test]
@@ -3396,6 +3426,54 @@ mod tests {
         let _read: fn() -> Result<Vec<ModInstallQueueItem>, String> = read_mod_queue_history;
         let _remember: fn(ModInstallQueueItem) -> Result<(), String> = remember_mod_queue_item;
         let _read_installs: fn() -> Result<Vec<InstalledModInfo>, String> = read_mod_installs;
+    }
+
+    #[test]
+    fn only_current_providers_are_loaded_into_the_active_queue() {
+        assert!(ModProvider::Nexus.is_active());
+        assert!(ModProvider::SteamWorkshop.is_active());
+        for provider in [
+            ModProvider::Modio,
+            ModProvider::Curseforge,
+            ModProvider::DirectUrl,
+            ModProvider::LocalArchive,
+            ModProvider::LocalFolder,
+        ] {
+            assert!(!provider.is_active());
+        }
+    }
+
+    #[test]
+    fn startup_queue_hydration_marks_orphaned_work_as_interrupted() {
+        let (active, _) = active_mod_install_fixture();
+
+        for status in [
+            ModInstallStatus::Queued,
+            ModInstallStatus::Starting,
+            ModInstallStatus::Downloading,
+            ModInstallStatus::Installing,
+        ] {
+            let mut item = active.item.clone();
+            item.status = status;
+            item.progress = 100;
+            item.can_cancel = true;
+
+            let hydrated = normalize_mod_queue_item(item, false);
+
+            assert_eq!(hydrated.status, ModInstallStatus::Failed);
+            assert_eq!(hydrated.phase, "interrupted");
+            assert_eq!(hydrated.speed, "Interrupted");
+            assert_eq!(hydrated.progress, 99);
+            assert!(!hydrated.can_cancel);
+            assert!(hydrated
+                .error
+                .as_deref()
+                .is_some_and(|error| error.contains("Start the install again")));
+        }
+
+        let active_item = normalize_mod_queue_item(active.item, true);
+        assert_eq!(active_item.status, ModInstallStatus::Starting);
+        assert!(active_item.can_cancel);
     }
 
     fn active_mod_install_fixture() -> (ActiveModInstall, watch::Receiver<bool>) {
@@ -3407,7 +3485,7 @@ mod tests {
                     install_id: "mod-race".to_string(),
                     game_id: "game-race".to_string(),
                     title: "Race Mod".to_string(),
-                    provider: ModProvider::LocalArchive,
+                    provider: ModProvider::Nexus,
                     progress: 89,
                     speed: "Verifying".to_string(),
                     status: ModInstallStatus::Starting,
@@ -3421,6 +3499,7 @@ mod tests {
                     delegated_url: None,
                     error: None,
                     last_updated_at: 0,
+                    event_revision: 0,
                 },
                 cancel_tx,
             },
@@ -3444,6 +3523,16 @@ mod tests {
                 .start_file(*name, SimpleFileOptions::default())
                 .unwrap();
             archive.write_all(contents).unwrap();
+        }
+        archive.finish().unwrap();
+    }
+
+    fn write_test_7z(path: &Path, entries: &[(&str, &[u8])]) {
+        let mut archive = ArchiveWriter::create(path).unwrap();
+        for (name, contents) in entries {
+            archive
+                .push_archive_entry(ArchiveEntry::new_file(name), Some(*contents))
+                .unwrap();
         }
         archive.finish().unwrap();
     }
@@ -3474,6 +3563,244 @@ mod tests {
 
         assert!(error.contains("uncompressed size limit"));
         assert!(!target.join("large.bin").exists());
+        fs::remove_dir_all(temp).unwrap();
+    }
+
+    #[test]
+    fn zip_extraction_rejects_symlinks_and_case_colliding_paths() {
+        let temp = test_directory("zip-link-duplicate");
+        let target = temp.join("extracted");
+        fs::create_dir_all(&target).unwrap();
+
+        let symlink_archive = temp.join("symlink.zip");
+        let file = fs::File::create(&symlink_archive).unwrap();
+        let mut archive = ZipWriter::new(file);
+        archive
+            .add_symlink("escape-link", "../../outside", SimpleFileOptions::default())
+            .unwrap();
+        archive.finish().unwrap();
+        assert!(extract_zip_safely(&symlink_archive, &target)
+            .unwrap_err()
+            .contains("symbolic link"));
+
+        let duplicate_archive = temp.join("duplicate.zip");
+        let file = fs::File::create(&duplicate_archive).unwrap();
+        let mut archive = ZipWriter::new(file);
+        archive
+            .start_file("same.txt", SimpleFileOptions::default())
+            .unwrap();
+        archive.write_all(b"first").unwrap();
+        archive
+            .start_file("SAME.txt", SimpleFileOptions::default())
+            .unwrap();
+        archive.write_all(b"second").unwrap();
+        archive.finish().unwrap();
+        assert!(extract_zip_safely(&duplicate_archive, &target)
+            .unwrap_err()
+            .contains("duplicate"));
+        fs::remove_dir_all(temp).unwrap();
+    }
+
+    #[test]
+    fn zip_extraction_rejects_parent_traversal_without_writing_outside_target() {
+        let temp = test_directory("zip-traversal");
+        let archive = temp.join("traversal.zip");
+        let target = temp.join("extracted");
+        fs::create_dir_all(&target).unwrap();
+        write_test_zip(&archive, &[("../escaped.txt", b"escaped")]);
+
+        assert!(extract_zip_safely(&archive, &target)
+            .unwrap_err()
+            .contains("outside the install folder"));
+        assert!(!temp.join("escaped.txt").exists());
+        fs::remove_dir_all(temp).unwrap();
+    }
+
+    #[test]
+    fn seven_zip_extraction_is_real_and_enforces_traversal_and_size_limits() {
+        let temp = test_directory("seven-zip-security");
+        fs::create_dir_all(&temp).unwrap();
+
+        let valid = temp.join("valid.7z");
+        let valid_target = temp.join("valid-out");
+        write_test_7z(&valid, &[("mods/plugin.dll", b"plugin")]);
+        extract_7z_safely(&valid, &valid_target).unwrap();
+        assert_eq!(
+            fs::read(valid_target.join("mods/plugin.dll")).unwrap(),
+            b"plugin"
+        );
+
+        let traversal = temp.join("traversal.7z");
+        let traversal_target = temp.join("traversal-out");
+        write_test_7z(&traversal, &[("../escaped.txt", b"escaped")]);
+        assert!(extract_7z_safely(&traversal, &traversal_target).is_err());
+        assert!(!temp.join("escaped.txt").exists());
+
+        let link_archive = temp.join("link.7z");
+        let link_target = temp.join("link-out");
+        let mut writer = ArchiveWriter::create(&link_archive).unwrap();
+        let mut link = ArchiveEntry::new_file("unsafe-link");
+        link.has_windows_attributes = true;
+        link.windows_attributes = 0o120000 << 16;
+        writer
+            .push_archive_entry(link, Some(b"target" as &[u8]))
+            .unwrap();
+        writer.finish().unwrap();
+        assert!(extract_7z_safely(&link_archive, &link_target)
+            .unwrap_err()
+            .contains("link or anti-item"));
+        assert!(!link_target.join("unsafe-link").exists());
+
+        let oversized = temp.join("oversized.7z");
+        let oversized_target = temp.join("oversized-out");
+        write_test_7z(&oversized, &[("large.bin", b"0123456789abcdef")]);
+        assert!(
+            extract_7z_safely_with_limits(&oversized, &oversized_target, 10, 8)
+                .unwrap_err()
+                .contains("size limit")
+        );
+        assert!(!oversized_target.join("large.bin").exists());
+
+        fs::remove_dir_all(temp).unwrap();
+    }
+
+    #[test]
+    fn unsupported_nexus_archive_layouts_handoff_without_touching_the_game() {
+        type ArchiveEntryFixture<'a> = (&'a str, &'a [u8]);
+        type HandoffFixture<'a> = (&'a str, &'a [ArchiveEntryFixture<'a>], &'a str);
+
+        let temp = test_directory("nexus-handoff-layouts");
+        let game = temp.join("game");
+        fs::create_dir_all(&game).unwrap();
+        fs::write(game.join("game.exe"), b"original game").unwrap();
+
+        let cases: [HandoffFixture<'_>; 3] = [
+            (
+                "fomod.zip",
+                &[
+                    ("MyMod/fomod/ModuleConfig.xml", b"<config />"),
+                    ("MyMod/readme.txt", b"readme"),
+                ],
+                "FOMOD",
+            ),
+            (
+                "installer.zip",
+                &[("MyMod/setup.exe", b"not executable")],
+                "executable installer",
+            ),
+            (
+                "ambiguous.zip",
+                &[("Data/a.esm", b"data"), ("Mods/b.dll", b"mods")],
+                "multiple game mod locations",
+            ),
+        ];
+
+        for (file_name, entries, expected_message) in cases {
+            let archive = temp.join(file_name);
+            write_test_zip(&archive, entries);
+            let install_id = build_install_id(ModProvider::Nexus);
+            let result =
+                prepare_trusted_nexus_archive(&install_id, &archive, file_name, &game, None)
+                    .unwrap();
+            match result {
+                TrustedNexusPreparation::Handoff(message) => {
+                    assert!(message.contains(expected_message), "{message}");
+                }
+                TrustedNexusPreparation::Ready { .. } => {
+                    panic!("unsupported archive unexpectedly became installable")
+                }
+            }
+            cleanup_mod_staging_path(&mod_staging_dir(&install_id).unwrap()).unwrap();
+            assert_eq!(fs::read(game.join("game.exe")).unwrap(), b"original game");
+            assert_eq!(fs::read_dir(&game).unwrap().count(), 1);
+        }
+
+        fs::remove_dir_all(temp).unwrap();
+    }
+
+    #[test]
+    fn nexus_provider_trust_requires_approved_cdn_archive_mime_and_size() {
+        use reqwest::header::HeaderValue;
+
+        for allowed in [
+            "https://cf-files.nexusmods.com/mod.zip?token=short-lived",
+            "https://mirror.nexus-cdn.com/mod.7z",
+            "https://nexus-files.b-cdn.net/mod.zip",
+        ] {
+            assert!(validate_nexus_download_host(&Url::parse(allowed).unwrap()).is_ok());
+        }
+        for rejected in [
+            "https://nexusmods.com.evil.example/mod.zip",
+            "https://evil.example/mod.zip",
+            "http://cf-files.nexusmods.com/mod.zip",
+        ] {
+            assert!(validate_nexus_download_host(&Url::parse(rejected).unwrap()).is_err());
+        }
+        assert!(validate_supported_nexus_archive_name("safe.zip").is_ok());
+        assert!(validate_supported_nexus_archive_name("safe.7Z").is_ok());
+        assert!(validate_supported_nexus_archive_name("installer.exe").is_err());
+        assert!(validate_supported_nexus_archive_name("archive.rar").is_err());
+        assert!(validate_supported_nexus_archive_name("../mod.zip").is_err());
+        assert!(validate_nexus_content_type(
+            Some(&HeaderValue::from_static("application/zip")),
+            NexusArchiveKind::Zip,
+        )
+        .is_ok());
+        assert!(validate_nexus_content_type(
+            Some(&HeaderValue::from_static("text/html")),
+            NexusArchiveKind::Zip,
+        )
+        .is_err());
+        assert!(validate_nexus_expected_size(
+            4096,
+            TrustedNexusExpectedSize {
+                bytes: 4096,
+                exact: true,
+            },
+        )
+        .is_ok());
+        assert!(validate_nexus_expected_size(
+            4097,
+            TrustedNexusExpectedSize {
+                bytes: 4096,
+                exact: true,
+            },
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn nexus_target_inference_uses_layout_then_game_internal_mods_fallback() {
+        let temp = test_directory("nexus-target-inference");
+        let root = temp.join("game");
+        fs::create_dir_all(root.join("Data")).unwrap();
+        fs::create_dir_all(root.join("BepInEx").join("plugins")).unwrap();
+        assert_eq!(
+            infer_existing_game_target(&root, &["meshes/armor.nif".to_string()])
+                .unwrap()
+                .unwrap(),
+            root.join("Data")
+        );
+        assert_eq!(
+            infer_existing_game_target(&root, &["plugin.dll".to_string()])
+                .unwrap()
+                .unwrap(),
+            root.join("BepInEx").join("plugins")
+        );
+        assert_eq!(
+            infer_existing_game_target(&root, &["readme.txt".to_string()])
+                .unwrap()
+                .unwrap(),
+            root.join("mods")
+        );
+        let empty_root = temp.join("empty-game");
+        fs::create_dir_all(&empty_root).unwrap();
+        assert_eq!(
+            infer_existing_game_target(&empty_root, &["plugin.pak".to_string()])
+                .unwrap()
+                .unwrap(),
+            empty_root.join("mods")
+        );
         fs::remove_dir_all(temp).unwrap();
     }
 
@@ -3510,6 +3837,7 @@ mod tests {
             profile_id: None,
             catalog_item_id: None,
             version_id: None,
+            provider_file_id: None,
             source_url: None,
             installed_at: 0,
             manifest_version: MOD_MANIFEST_VERSION,
@@ -3659,73 +3987,6 @@ mod tests {
     }
 
     #[test]
-    fn launcher_managed_remote_archives_require_valid_sha256() {
-        let mut input = ModInstallRequest {
-            game_id: "game-1".to_string(),
-            provider: ModProvider::DirectUrl,
-            catalog_item_id: None,
-            version_id: None,
-            source_url: Some("https://example.com/mod.zip".to_string()),
-            local_path: None,
-            target_policy_id: None,
-            profile_id: None,
-            title: None,
-            sha256: None,
-        };
-
-        assert!(validate_install_source(&input, false).is_err());
-        input.sha256 = Some("not-a-checksum".to_string());
-        assert!(validate_install_source(&input, false).is_err());
-        input.sha256 = Some("a".repeat(64));
-        assert!(validate_install_source(&input, false).is_ok());
-    }
-
-    #[test]
-    fn target_policy_rejects_manual_escape_and_unknown_policies() {
-        let temp = test_directory("target-policy");
-        let install_root = temp.join("game");
-        let inside = install_root.join("custom-mods");
-        let outside = temp.join("outside");
-        fs::create_dir_all(&install_root).unwrap();
-        fs::create_dir_all(&outside).unwrap();
-
-        let inside_policy = format!("manual:{}", inside.display());
-        let resolved = resolve_target_path_from_install_root(
-            "Example Game",
-            ModProvider::LocalArchive,
-            Some(&inside_policy),
-            &install_root,
-        )
-        .unwrap();
-        assert!(resolved.starts_with(install_root.canonicalize().unwrap()));
-
-        let outside_policy = format!("manual:{}", outside.display());
-        assert!(resolve_target_path_from_install_root(
-            "Example Game",
-            ModProvider::LocalArchive,
-            Some(&outside_policy),
-            &install_root,
-        )
-        .is_err());
-        assert!(resolve_target_path_from_install_root(
-            "Example Game",
-            ModProvider::LocalArchive,
-            Some("manual:relative/mods"),
-            &install_root,
-        )
-        .is_err());
-        assert!(resolve_target_path_from_install_root(
-            "Example Game",
-            ModProvider::LocalArchive,
-            Some("renderer_chosen_policy"),
-            &install_root,
-        )
-        .is_err());
-
-        fs::remove_dir_all(temp).unwrap();
-    }
-
-    #[test]
     fn uninstall_restores_overwritten_files_and_only_deletes_owned_new_files() {
         let temp = test_directory("owned-uninstall");
         let target = temp.join("game").join("mods");
@@ -3835,6 +4096,7 @@ mod tests {
             profile_id: None,
             catalog_item_id: None,
             version_id: None,
+            provider_file_id: None,
             source_url: None,
             installed_at: 0,
             manifest_version: 0,
@@ -3874,6 +4136,7 @@ mod tests {
             profile_id: None,
             catalog_item_id: None,
             version_id: None,
+            provider_file_id: None,
             source_url: None,
             installed_at: 0,
             manifest_version: 0,
@@ -3884,18 +4147,6 @@ mod tests {
 
         assert_eq!(fs::read(&source_file).unwrap(), b"original user content");
         fs::remove_dir_all(source_folder).unwrap();
-    }
-
-    #[test]
-    fn steam_workshop_id_is_extracted_from_url() {
-        assert_eq!(
-            extract_steam_workshop_id(
-                "https://steamcommunity.com/sharedfiles/filedetails/?id=123456789&searchtext=test"
-            )
-            .as_deref(),
-            Some("123456789")
-        );
-        assert_eq!(extract_steam_workshop_id("12345").as_deref(), Some("12345"));
     }
 
     #[test]
@@ -3949,223 +4200,169 @@ mod tests {
     }
 
     #[test]
-    fn provider_delegation_respects_direct_sources() {
-        let direct = ModInstallRequest {
-            game_id: "steam-1".to_string(),
-            provider: ModProvider::DirectUrl,
-            catalog_item_id: None,
-            version_id: None,
-            source_url: Some("https://example.test/mod.zip".to_string()),
-            local_path: None,
-            target_policy_id: None,
-            profile_id: None,
-            title: None,
-            sha256: None,
-        };
-        assert!(!should_delegate_provider(&direct));
+    fn trusted_nexus_conflicts_with_existing_managed_file_ownership() {
+        let temp = test_directory("managed-conflict");
+        let target = temp.join("game").join("Mods");
+        fs::create_dir_all(&target).unwrap();
+        let install_id = build_install_id(ModProvider::Nexus);
+        let install = owned_install_fixture(
+            install_id.clone(),
+            &target,
+            vec![ModInstalledFileRecord {
+                relative_path: "plugins/shared.dll".to_string(),
+                owner_install_id: install_id,
+                installed_sha256: "a".repeat(64),
+                installed_size: 1,
+                backup: None,
+            }],
+            true,
+        );
+        write_manifest_from_info(&install).unwrap();
 
-        let steam = ModInstallRequest {
-            provider: ModProvider::SteamWorkshop,
-            ..direct
-        };
-        assert!(should_delegate_provider(&steam));
+        assert!(has_managed_mod_conflict(
+            &target,
+            &["Plugins/SHARED.dll".to_string()],
+            None,
+        ));
+        assert!(!has_managed_mod_conflict(
+            &target,
+            &["plugins/unique.dll".to_string()],
+            None,
+        ));
+        assert!(!has_managed_mod_conflict(
+            &target,
+            &["Plugins/SHARED.dll".to_string()],
+            Some(&install.install_id),
+        ));
+
+        fs::remove_dir_all(temp).unwrap();
     }
 
     #[test]
-    fn curseforge_delegation_falls_back_to_project_url() {
-        let input = ModInstallRequest {
-            game_id: "steam-1".to_string(),
-            provider: ModProvider::Curseforge,
-            catalog_item_id: Some("987".to_string()),
-            version_id: None,
-            source_url: None,
-            local_path: None,
-            target_policy_id: None,
-            profile_id: None,
-            title: None,
-            sha256: None,
-        };
+    fn nexus_update_rollback_restores_previous_owned_version() {
+        let temp = test_directory("nexus-update-rollback");
+        let target = temp.join("game/Mods");
+        let old_backup_root = temp.join("old-backup");
+        let snapshot_root = temp.join("snapshot");
+        let new_backup_root = temp.join("new-backup");
+        let extracted = temp.join("new-version");
+        fs::create_dir_all(target.join("plugins")).unwrap();
+        fs::create_dir_all(old_backup_root.join("plugins")).unwrap();
+        fs::create_dir_all(extracted.join("plugins")).unwrap();
+        fs::write(target.join("plugins/mod.dll"), b"version-one").unwrap();
+        fs::write(old_backup_root.join("plugins/mod.dll"), b"original-game").unwrap();
+        fs::write(extracted.join("plugins/mod.dll"), b"version-two").unwrap();
 
-        assert!(should_delegate_provider(&input));
+        let install_id = build_install_id(ModProvider::Nexus);
+        let mut install = owned_install_fixture(
+            install_id.clone(),
+            &target,
+            vec![ModInstalledFileRecord {
+                relative_path: "plugins/mod.dll".to_string(),
+                owner_install_id: install_id.clone(),
+                installed_sha256: sha256_file(&target.join("plugins/mod.dll")).unwrap(),
+                installed_size: b"version-one".len() as u64,
+                backup: Some(ModBackupRecord {
+                    owner_install_id: install_id,
+                    backup_relative_path: "plugins/mod.dll".to_string(),
+                    original_sha256: sha256_file(&old_backup_root.join("plugins/mod.dll")).unwrap(),
+                    original_size: b"original-game".len() as u64,
+                }),
+            }],
+            true,
+        );
+        install.provider = ModProvider::Nexus;
+        install.catalog_item_id = Some("42".to_string());
+        install.version_id = Some("1.0".to_string());
+        install.provider_file_id = Some("100".to_string());
+        write_manifest_from_info(&install).unwrap();
+
+        validate_managed_mod_install_at_roots(&install, &target, &old_backup_root).unwrap();
+        snapshot_managed_install_at_roots(&install, &target, &old_backup_root, &snapshot_root)
+            .unwrap();
+        remove_mod_install_artifacts_from_roots(&install, &target, &old_backup_root).unwrap();
         assert_eq!(
-            delegated_url_for_provider(&input).as_deref(),
-            Some("https://www.curseforge.com/projects/987")
+            fs::read(target.join("plugins/mod.dll")).unwrap(),
+            b"original-game"
         );
 
-        let native_input = ModInstallRequest {
-            source_url: Some("https://edge.forgecdn.net/files/ui.zip".to_string()),
-            ..input
-        };
-        assert!(should_delegate_provider(&native_input));
+        let new_records = apply_staged_files_with_backup_root(
+            "mod-nexus-00000000-0000-4000-8000-000000000001",
+            &extracted,
+            &target,
+            &["plugins/mod.dll".to_string()],
+            &new_backup_root,
+        )
+        .unwrap();
         assert_eq!(
-            delegated_url_for_provider(&native_input).as_deref(),
-            Some("https://edge.forgecdn.net/files/ui.zip")
+            fs::read(target.join("plugins/mod.dll")).unwrap(),
+            b"version-two"
+        );
+        rollback_applied_file_records(&new_records, &target, &new_backup_root).unwrap();
+        restore_managed_install_files_from_snapshot(
+            &install,
+            &target,
+            &old_backup_root,
+            &snapshot_root,
+        )
+        .unwrap();
+
+        assert_eq!(
+            fs::read(target.join("plugins/mod.dll")).unwrap(),
+            b"version-one"
+        );
+        assert_eq!(
+            fs::read(old_backup_root.join("plugins/mod.dll")).unwrap(),
+            b"original-game"
+        );
+        validate_managed_mod_install_at_roots(&install, &target, &old_backup_root).unwrap();
+        fs::remove_dir_all(temp).unwrap();
+    }
+
+    #[test]
+    fn replacement_transaction_restores_old_version_even_if_new_cleanup_fails() {
+        let events = std::cell::RefCell::new(Vec::new());
+        let result: Result<&'static str, String> = run_managed_replacement_transaction(
+            || {
+                events.borrow_mut().push("remove-old");
+                Ok(())
+            },
+            || {
+                events.borrow_mut().push("delete-old-record");
+                Ok(())
+            },
+            || {
+                events.borrow_mut().push("apply-new");
+                Ok("new-version")
+            },
+            |_| {
+                events.borrow_mut().push("persist-new");
+                Err("database write failed".to_string())
+            },
+            |_| {
+                events.borrow_mut().push("remove-new");
+                Err("new cleanup failed".to_string())
+            },
+            || {
+                events.borrow_mut().push("restore-old");
+                Ok(())
+            },
         );
 
-        let checksummed_input = ModInstallRequest {
-            sha256: Some("a".repeat(64)),
-            ..native_input
-        };
-        assert!(!should_delegate_provider(&checksummed_input));
-    }
-
-    #[test]
-    fn modio_search_mapper_extracts_latest_download() {
-        let json = serde_json::json!({
-            "data": [{
-                "id": 123,
-                "name": "Better Maps",
-                "summary": "Adds cleaner tactical maps.",
-                "profile_url": "https://mod.io/g/example/m/better-maps",
-                "submitted_by": { "username": "mapper" },
-                "logo": { "thumb_320x180": "https://img.example/map.png" },
-                "stats": { "downloads_total": 12345, "subscribers_total": 678 },
-                "modfile": {
-                    "version": "1.2.0",
-                    "filesize": 4096,
-                    "download": { "binary_url": "https://mods.example/better-maps.zip" }
-                }
-            }]
-        });
-
-        let results = map_modio_search_results(&json);
-
-        assert_eq!(results.len(), 1);
-        assert_eq!(results[0].provider, ModProvider::Modio);
-        assert_eq!(results[0].external_id, "123");
-        assert_eq!(results[0].downloads.as_deref(), Some("12.3K"));
+        let error = result.unwrap_err();
+        assert!(error.contains("database write failed"));
+        assert!(error.contains("new cleanup failed"));
+        assert!(error.contains("previous mod version was restored"));
         assert_eq!(
-            results[0].download_url.as_deref(),
-            Some("https://mods.example/better-maps.zip")
+            events.into_inner(),
+            vec![
+                "remove-old",
+                "delete-old-record",
+                "apply-new",
+                "persist-new",
+                "remove-new",
+                "restore-old",
+            ]
         );
-        assert_eq!(results[0].provider_app_url, None);
-    }
-
-    #[test]
-    fn curseforge_search_mapper_uses_latest_file() {
-        let json = serde_json::json!({
-            "data": [{
-                "id": 987,
-                "name": "Sharper UI",
-                "summary": "Dense launcher-friendly menus.",
-                "links": { "websiteUrl": "https://www.curseforge.com/example/sharper-ui" },
-                "logo": { "thumbnailUrl": "https://img.example/ui.png" },
-                "authors": [{ "name": "forge-author" }],
-                "downloadCount": 2500000,
-                "thumbsUpCount": 42,
-                "latestFiles": [{
-                    "displayName": "2.0.1",
-                    "fileLength": 2048,
-                    "downloadUrl": "https://edge.forgecdn.net/files/ui.zip"
-                }]
-            }]
-        });
-
-        let results = map_curseforge_search_results(&json);
-
-        assert_eq!(results.len(), 1);
-        assert_eq!(results[0].provider, ModProvider::Curseforge);
-        assert_eq!(results[0].external_id, "987");
-        assert_eq!(results[0].author.as_deref(), Some("forge-author"));
-        assert_eq!(results[0].downloads.as_deref(), Some("2.5M"));
-        assert_eq!(results[0].latest_version.as_deref(), Some("2.0.1"));
-        assert_eq!(
-            results[0].provider_app_url.as_deref(),
-            Some("https://www.curseforge.com/example/sharper-ui")
-        );
-    }
-
-    #[test]
-    fn curseforge_search_mapper_builds_project_handoff_url() {
-        let json = serde_json::json!({
-            "data": [{
-                "id": 987,
-                "name": "Sharper UI",
-                "latestFiles": [{
-                    "displayName": "2.0.1",
-                    "fileLength": 2048
-                }]
-            }]
-        });
-
-        let results = map_curseforge_search_results(&json);
-
-        assert_eq!(results.len(), 1);
-        assert_eq!(results[0].download_url, None);
-        assert_eq!(
-            results[0].provider_app_url.as_deref(),
-            Some("https://www.curseforge.com/projects/987")
-        );
-    }
-
-    #[test]
-    fn provider_staging_probe_forces_single_result_and_redacts_request() {
-        let input = ModProviderStagingProbeRequest {
-            provider: ModProvider::Modio,
-            provider_game_id: "example-game".to_string(),
-            query: "ui tweaks".to_string(),
-        };
-
-        let request = build_mod_provider_staging_probe_request(&input).unwrap();
-        let redacted_request = build_mod_provider_staging_probe_redacted_request(&request);
-
-        assert_eq!(request.provider, ModProvider::Modio);
-        assert_eq!(request.provider_game_id, "example-game");
-        assert_eq!(request.query, "ui tweaks");
-        assert_eq!(request.page, Some(1));
-        assert_eq!(request.page_size, Some(1));
-        assert!(redacted_request.contains("api_key=<redacted>"));
-        assert!(redacted_request.contains("limit=1"));
-        assert!(!redacted_request.contains("secret"));
-    }
-
-    #[test]
-    fn provider_staging_probe_counts_results_without_returning_urls() {
-        let request = NativeModSearchRequest {
-            provider: ModProvider::Curseforge,
-            provider_game_id: "432".to_string(),
-            query: "ui".to_string(),
-            page: Some(1),
-            page_size: Some(1),
-        };
-        let results = vec![NativeModSearchResult {
-            provider: ModProvider::Curseforge,
-            external_id: "987".to_string(),
-            name: "Sharper UI".to_string(),
-            author: Some("forge-author".to_string()),
-            summary: Some("Dense menus.".to_string()),
-            url: "https://www.curseforge.com/example/sharper-ui".to_string(),
-            icon_url: Some("https://img.example/ui.png".to_string()),
-            downloads: Some("2.5M".to_string()),
-            follows: Some("42".to_string()),
-            latest_version: Some("2.0.1".to_string()),
-            download_url: Some("https://edge.forgecdn.net/files/ui.zip?token=secret".to_string()),
-            provider_app_url: Some("https://www.curseforge.com/example/sharper-ui".to_string()),
-            file_size_bytes: Some(2048),
-        }];
-
-        let probe = build_mod_provider_staging_probe_success(&request, &results, 48);
-
-        assert_eq!(probe.status, ModProviderStagingProbeStatus::Ready);
-        assert!(probe.live_request_attempted);
-        assert_eq!(probe.result_count, 1);
-        assert_eq!(probe.direct_download_count, 1);
-        assert_eq!(probe.provider_app_handoff_count, 1);
-        assert_eq!(probe.duration_ms, 48);
-        assert!(probe.redacted_request.contains("x-api-key=<redacted>"));
-        assert!(!serde_json::to_string(&probe)
-            .unwrap()
-            .contains("edge.forgecdn.net"));
-        assert!(!serde_json::to_string(&probe).unwrap().contains("secret"));
-    }
-
-    #[test]
-    fn provider_staging_probe_error_redaction_removes_query_api_keys() {
-        let error = "mod.io search failed: https://api.mod.io/v1/games/example/mods?api_key=super-secret&_q=ui";
-
-        let redacted = redact_mod_provider_staging_probe_error(error);
-
-        assert!(redacted.contains("api_key=<redacted>"));
-        assert!(!redacted.contains("super-secret"));
     }
 }

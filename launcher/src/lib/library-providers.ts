@@ -46,6 +46,7 @@ export function ownedGameToGame(og: OwnedGame): Game {
     lastPlayed: og.lastPlayedAt ?? undefined,
     cloudGamingUrl: og.cloudGamingUrl ?? undefined,
     achievements: og.achievements,
+    achievementSummary: og.achievementSummary,
     achievementsSyncedAt: og.achievementsSyncedAt,
   } as Game;
 }

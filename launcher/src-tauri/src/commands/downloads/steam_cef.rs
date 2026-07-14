@@ -6,9 +6,10 @@ use serde::Deserialize;
 use tauri::AppHandle;
 
 use crate::commands::downloads::types::{
-    emit_download_command_error, emit_download_progress, get_download_manager,
-    is_steam_control_pending_status, SteamDownloadControlAction, DOWNLOAD_STATUS_DOWNLOADING,
-    DOWNLOAD_STATUS_PAUSED, DOWNLOAD_STATUS_PAUSING, DOWNLOAD_STATUS_RESUMING,
+    emit_download_command_error, emit_download_payload, get_download_manager,
+    is_steam_control_pending_status, payload_from_active_download, DownloadItemPayload,
+    SteamDownloadControlAction, DOWNLOAD_STATUS_DOWNLOADING, DOWNLOAD_STATUS_PAUSED,
+    DOWNLOAD_STATUS_PAUSING, DOWNLOAD_STATUS_RESUMING,
 };
 
 #[derive(Deserialize)]
@@ -33,12 +34,12 @@ pub(crate) fn toggle_steam_download_pause(
         .parse::<u32>()
         .map_err(|error| format!("Invalid Steam app id: {error}"))?;
 
-    let action = {
+    let (action, worker_generation) = {
         let map = get_download_manager();
         let guard = map
             .lock()
             .map_err(|error| format!("Download manager lock poisoned: {error}"))?;
-        match guard.get(game_id) {
+        let action = match guard.get(game_id) {
             Some(download) if is_steam_control_pending_status(&download.status) => {
                 return Ok(());
             }
@@ -46,16 +47,26 @@ pub(crate) fn toggle_steam_download_pause(
                 SteamDownloadControlAction::Resume
             }
             _ => SteamDownloadControlAction::Pause,
-        }
+        };
+        let Some(download) = guard.get(game_id) else {
+            return Ok(());
+        };
+        (action, download.worker_generation)
     };
 
-    set_steam_download_control_pending(&app, game_id, action)?;
+    set_steam_download_control_pending(&app, game_id, worker_generation, action)?;
 
     let app_clone = app.clone();
     let game_id_clone = game_id.to_string();
     tokio::runtime::Handle::current().spawn_blocking(move || {
         let result = try_control_steam_download_with_timeout(app_id, action);
-        finish_steam_download_control(&app_clone, &game_id_clone, action, result);
+        finish_steam_download_control(
+            &app_clone,
+            &game_id_clone,
+            worker_generation,
+            action,
+            result,
+        );
     });
 
     Ok(())
@@ -64,10 +75,12 @@ pub(crate) fn toggle_steam_download_pause(
 fn set_steam_download_control_pending(
     app: &AppHandle,
     game_id: &str,
+    worker_generation: u64,
     action: SteamDownloadControlAction,
 ) -> Result<(), String> {
-    let Some((progress, speed, status, eta)) = update_steam_download_control_state(
+    let Some(payload) = update_steam_download_control_state(
         game_id,
+        worker_generation,
         action,
         SteamDownloadControlStage::Pending,
         None,
@@ -76,13 +89,13 @@ fn set_steam_download_control_pending(
         return Ok(());
     };
 
-    emit_download_progress(app, game_id, progress, &speed, &status, eta);
-    Ok(())
+    emit_download_payload(app, payload)
 }
 
 fn finish_steam_download_control(
     app: &AppHandle,
     game_id: &str,
+    worker_generation: u64,
     action: SteamDownloadControlAction,
     result: Result<(), String>,
 ) {
@@ -93,14 +106,17 @@ fn finish_steam_download_control(
         SteamDownloadControlStage::Applied
     };
 
-    if let Ok(Some((progress, speed, status, eta))) =
-        update_steam_download_control_state(game_id, action, stage, error_message.as_deref())
-    {
-        emit_download_progress(app, game_id, progress, &speed, &status, eta);
-    }
-
-    if let Some(message) = error_message {
-        emit_download_command_error(app, game_id, &message);
+    if let Ok(Some(payload)) = update_steam_download_control_state(
+        game_id,
+        worker_generation,
+        action,
+        stage,
+        error_message.as_deref(),
+    ) {
+        let _ = emit_download_payload(app, payload);
+        if let Some(message) = error_message {
+            emit_download_command_error(app, game_id, &message);
+        }
     }
 }
 
@@ -113,10 +129,11 @@ enum SteamDownloadControlStage {
 
 fn update_steam_download_control_state(
     game_id: &str,
+    worker_generation: u64,
     action: SteamDownloadControlAction,
     stage: SteamDownloadControlStage,
     error_message: Option<&str>,
-) -> Result<Option<(u32, String, String, u32)>, String> {
+) -> Result<Option<DownloadItemPayload>, String> {
     let map = get_download_manager();
     let mut guard = map
         .lock()
@@ -124,6 +141,9 @@ fn update_steam_download_control_state(
     let Some(download) = guard.get_mut(game_id) else {
         return Ok(None);
     };
+    if download.worker_generation != worker_generation {
+        return Ok(None);
+    }
 
     match (action, stage) {
         (SteamDownloadControlAction::Pause, SteamDownloadControlStage::Pending) => {
@@ -182,12 +202,7 @@ fn update_steam_download_control_state(
         }
     }
 
-    Ok(Some((
-        download.progress,
-        download.speed.clone(),
-        download.status.clone(),
-        download.eta,
-    )))
+    Ok(Some(payload_from_active_download(game_id, download)))
 }
 
 fn steam_control_failed_speed(action: &str, error_message: Option<&str>) -> String {

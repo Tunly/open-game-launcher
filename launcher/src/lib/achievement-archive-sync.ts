@@ -2,6 +2,7 @@ import { achievementProviderForGame, type AchievementProvider } from "./achievem
 import { syncAchievementProviderGame } from "./achievement-provider-sync";
 import { achievementProviderSyncGameKey } from "./achievement-sync-coordinator";
 import { getGameSource } from "./formatters";
+import { cacheSteamOwnedGameAchievements } from "./steam-owned-games-cache";
 import type { Game } from "./types";
 
 const ARCHIVE_AUTO_SYNC_PROVIDERS = new Set([
@@ -14,7 +15,9 @@ const ARCHIVE_AUTO_SYNC_PROVIDERS = new Set([
   "battlenet",
 ]);
 const ARCHIVE_AUTO_SYNC_CONCURRENCY = 3;
-const ARCHIVE_SYNC_FRESHNESS_MS = 5 * 60 * 1000;
+// Keep the archive local-first across page visits. The active game sync still
+// refreshes on demand, while cached library snapshots only need a periodic update.
+const ARCHIVE_SYNC_FRESHNESS_MS = 6 * 60 * 60 * 1000;
 const ARCHIVE_SYNC_RETRY_DELAY_MS = 10 * 1000;
 const MAX_RECENT_SYNC_ATTEMPTS = 512;
 
@@ -93,7 +96,11 @@ function archiveSyncCandidates(games: Game[]): ArchiveSyncCandidate[] {
 }
 
 async function syncArchiveCandidate(candidate: ArchiveSyncCandidate): Promise<Game> {
-  return (await syncAchievementProviderGame(candidate.game, candidate.provider)).game;
+  const outcome = await syncAchievementProviderGame(candidate.game, candidate.provider);
+  if (outcome.success) {
+    cacheSteamOwnedGameAchievements(outcome.game);
+  }
+  return outcome.game;
 }
 
 function syncArchiveCandidateOnce(candidate: ArchiveSyncCandidate): Promise<Game> {

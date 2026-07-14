@@ -1,57 +1,184 @@
-import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import type { ManagedMod, ModBrowseItem, ModProvider } from "../lib/types/mods";
 import { ModsPage } from "./ModsPage";
 
 const launcherMocks = vi.hoisted(() => ({
-  disableMod: vi.fn(),
-  enableMod: vi.fn(),
+  browseMods: vi.fn(),
+  connectNexus: vi.fn(),
+  disconnectNexus: vi.fn(),
+  getModProviderStatus: vi.fn(),
+  getNxmHandlerStatus: vi.fn(),
+  installMod: vi.fn(),
   listInstalledGames: vi.fn(),
-  scanGameMods: vi.fn(),
-  scrapeNexusModInfo: vi.fn(),
-  searchNexusMods: vi.fn(),
-  setModProviderSecret: vi.fn(),
-  startModInstall: vi.fn(),
-  uninstallMod: vi.fn(),
-}));
-
-const supabaseModMocks = vi.hoisted(() => ({
-  listModCatalogEntries: vi.fn(),
-  listSharedModProviderGameMappings: vi.fn(),
-  recordUserModInstall: vi.fn(),
-  upsertSharedModProviderGameMapping: vi.fn(),
-}));
-
-const nativeSearchMocks = vi.hoisted(() => ({
-  searchNativeMods: vi.fn(),
+  listManagedMods: vi.fn(),
+  openProviderMod: vi.fn(),
+  openNxmHandlerSettings: vi.fn(),
+  removeMod: vi.fn(),
+  setModEnabled: vi.fn(),
+  takePendingNxmStatus: vi.fn(),
 }));
 
 vi.mock("../lib/launcher", () => launcherMocks);
 
-vi.mock("../lib/supabase/mods", () => supabaseModMocks);
+const nexusItem: ModBrowseItem = {
+  author: "Mika K.",
+  bannerUrl: null,
+  downloads: "128K",
+  endorsements: "8K",
+  iconUrl: null,
+  id: "nexus-42",
+  installCapability: "native",
+  installed: false,
+  fileSizeBytes: 2048,
+  name: "Photo Mode Overhaul",
+  provider: "nexus",
+  summary: "A compact camera and lighting toolkit.",
+  updateAvailable: false,
+  url: "https://www.nexusmods.com/cyberdrift/mods/42",
+  version: "2.1",
+};
 
-vi.mock("../lib/mod-provider-search", () => nativeSearchMocks);
+const steamItem: ModBrowseItem = {
+  author: "Steam Community",
+  bannerUrl: null,
+  downloads: null,
+  endorsements: null,
+  iconUrl: null,
+  id: "workshop",
+  installCapability: "steam_handoff",
+  installed: false,
+  fileSizeBytes: null,
+  name: "Cyber Drift Workshop",
+  provider: "steam_workshop",
+  summary: "Browse compatible subscriptions in the Steam client.",
+  updateAvailable: false,
+  url: "steam://url/CommunityFilePage/123",
+  version: null,
+};
 
-function seedModsPageMocks() {
+const managedNexus: ManagedMod = {
+  canRemove: true,
+  canToggle: true,
+  enabled: true,
+  gameId: "game-1",
+  installId: "install-42",
+  installedAt: 1_788_000_000,
+  manageUrl: "https://www.nexusmods.com/cyberdrift/mods/42",
+  provider: "nexus",
+  providerItemId: "nexus-42",
+  status: "update_available",
+  title: "Photo Mode Overhaul",
+  version: "2.0",
+};
+
+const managedSteam: ManagedMod = {
+  canRemove: false,
+  canToggle: false,
+  enabled: true,
+  gameId: "game-1",
+  installId: "steam-123",
+  installedAt: null,
+  manageUrl: "steam://url/CommunityFilePage/123",
+  provider: "steam_workshop",
+  providerItemId: "123",
+  status: "external",
+  title: "Neon Garage",
+  version: null,
+};
+
+function seedMocks() {
+  launcherMocks.takePendingNxmStatus.mockResolvedValue(null);
+  launcherMocks.getNxmHandlerStatus.mockResolvedValue({
+    isDefault: true,
+    message: "OG-Launcher handles Nexus download links.",
+    registered: true,
+    state: "registered",
+  });
+  launcherMocks.openNxmHandlerSettings.mockResolvedValue(undefined);
   launcherMocks.listInstalledGames.mockResolvedValue([
     {
+      description: "",
       id: "game-1",
+      launcher: "steam",
       platform: "windows",
-      source: "steam",
       status: "installed",
       title: "Cyber Drift",
+      version: "1.0",
+    },
+    {
+      description: "",
+      id: "game-2",
+      launcher: "steam",
+      platform: "windows",
+      status: "installed",
+      title: "Space Quest",
+      version: "1.0",
     },
   ]);
-  launcherMocks.scanGameMods.mockResolvedValue([]);
-  supabaseModMocks.listModCatalogEntries.mockResolvedValue([]);
-  supabaseModMocks.listSharedModProviderGameMappings.mockResolvedValue([]);
-  supabaseModMocks.recordUserModInstall.mockResolvedValue(null);
-  supabaseModMocks.upsertSharedModProviderGameMapping.mockResolvedValue(null);
-  nativeSearchMocks.searchNativeMods.mockResolvedValue([]);
+  launcherMocks.getModProviderStatus.mockImplementation((provider: ModProvider) =>
+    Promise.resolve({
+      action: provider === "nexus" ? "disconnect" : "open_provider",
+      actionLabel: provider === "nexus" ? "Disconnect Nexus" : "Open Steam Workshop",
+      available: true,
+      connected: provider === "nexus",
+      message:
+        provider === "nexus"
+          ? "Official Nexus connection is ready."
+          : "Subscriptions are managed by Steam.",
+      provider,
+      supportsBrowse: provider === "nexus",
+      supportsNativeInstall: provider === "nexus",
+    }),
+  );
+  launcherMocks.browseMods.mockImplementation(({ provider }: { provider: ModProvider }) =>
+    Promise.resolve({
+      items: provider === "nexus" ? [nexusItem] : [steamItem],
+      message: null,
+      nextCursor: null,
+      total: 1,
+    }),
+  );
+  launcherMocks.listManagedMods.mockResolvedValue([]);
+  launcherMocks.connectNexus.mockResolvedValue({
+    action: "disconnect",
+    actionLabel: "Disconnect Nexus",
+    available: true,
+    connected: true,
+    message: "Nexus connected.",
+    provider: "nexus",
+    supportsBrowse: true,
+    supportsNativeInstall: true,
+  });
+  launcherMocks.disconnectNexus.mockResolvedValue({
+    action: "connect",
+    actionLabel: "Connect Nexus",
+    available: true,
+    connected: false,
+    message: "Nexus disconnected.",
+    provider: "nexus",
+    supportsBrowse: false,
+    supportsNativeInstall: false,
+  });
+  launcherMocks.installMod.mockResolvedValue({
+    delegatedUrl: null,
+    installId: "install-42",
+    message: "Install queued.",
+    status: "queued",
+  });
+  launcherMocks.setModEnabled.mockResolvedValue({ ...managedNexus, enabled: false });
+  launcherMocks.removeMod.mockResolvedValue(undefined);
+  launcherMocks.openProviderMod.mockResolvedValue({
+    delegatedUrl: "steam://url/CommunityFilePage/123",
+    installId: null,
+    message: "Steam Workshop opened.",
+    status: "handoff",
+  });
 }
 
-function renderModsRoute(initialEntry: string) {
+function renderModsRoute(initialEntry = "/mods") {
   return render(
     <MemoryRouter initialEntries={[initialEntry]}>
       <Routes>
@@ -61,174 +188,388 @@ function renderModsRoute(initialEntry: string) {
   );
 }
 
-describe("ModsPage provider API key staging readiness", () => {
+describe("ModsPage simplified multi-provider manager", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    seedModsPageMocks();
+    seedMocks();
   });
 
-  it("does not render provider API key staging readiness on the base route", async () => {
-    renderModsRoute("/mods");
+  it("opens on Browse with only Nexus and Steam controls and loads popular Nexus mods", async () => {
+    renderModsRoute();
 
-    expect(await screen.findByText("Installed Mods")).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "Browse" })).toHaveAttribute("aria-selected", "true");
+    expect(await screen.findByText("Photo Mode Overhaul")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Nexus Mods/i })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(screen.getByRole("button", { name: /Steam Workshop/i })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+    expect(screen.getByLabelText("Target Game")).toHaveValue("game-1");
+    expect(screen.getByRole("button", { name: "popular" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Install" })).toBeInTheDocument();
+    expect(screen.getByText("Photo Mode Overhaul").closest("article")?.parentElement).toHaveClass(
+      "grid-cols-1",
+      "sm:grid-cols-2",
+      "lg:grid-cols-3",
+    );
+    expect(screen.queryByText("No manual API keys")).not.toBeInTheDocument();
+    expect(screen.getByText("Official catalog + manager handoff")).toHaveClass(
+      "whitespace-normal",
+      "sm:truncate",
+    );
+
     expect(
-      screen.queryByRole("region", {
-        name: /mod provider api key staging readiness/i,
-      }),
+      screen.queryByText(/mod\.io|curseforge|direct url|local archive/i),
     ).not.toBeInTheDocument();
-    await waitFor(() => {
-      expect(launcherMocks.scanGameMods).toHaveBeenCalledWith("game-1");
-      expect(supabaseModMocks.listModCatalogEntries).toHaveBeenCalled();
-      expect(supabaseModMocks.listSharedModProviderGameMappings).toHaveBeenCalled();
-    });
-    await act(async () => {
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-  });
+    expect(
+      screen.queryByLabelText(/api key|game slug|provider id|source url/i),
+    ).not.toBeInTheDocument();
 
-  it("persists a completed mod scan as one Supabase batch", async () => {
-    const installedMods = [
-      {
-        enabled: true,
+    await waitFor(() => {
+      expect(launcherMocks.browseMods).toHaveBeenCalledWith({
+        cursor: undefined,
         gameId: "game-1",
-        id: "mod-1",
-        installId: "install-1",
-        installedAt: 1_788_000_000,
-        installedFiles: ["mods/one.pak"],
-        provider: "local_folder" as const,
-        targetPath: "C:/Games/CyberDrift/mods/one",
-        title: "One",
-      },
-      {
-        enabled: false,
-        gameId: "game-1",
-        id: "mod-2",
-        installId: "install-2",
-        installedAt: 1_788_000_100,
-        installedFiles: ["mods/two.pak"],
-        provider: "local_folder" as const,
-        targetPath: "C:/Games/CyberDrift/mods/two",
-        title: "Two",
-      },
-    ];
-    launcherMocks.scanGameMods.mockResolvedValue(installedMods);
+        pageSize: 12,
+        provider: "nexus",
+        query: "",
+        sort: "popular",
+      });
+    });
+  });
 
-    renderModsRoute("/mods");
+  it("keeps the gameId route contract and reloads when game, provider, search, or sort changes", async () => {
+    renderModsRoute("/mods?gameId=game-2");
+    expect(await screen.findByText("Photo Mode Overhaul")).toBeInTheDocument();
+    expect(screen.getByLabelText("Target Game")).toHaveValue("game-2");
+
+    fireEvent.change(screen.getByLabelText("Target Game"), { target: { value: "game-1" } });
+    fireEvent.click(screen.getByRole("button", { name: /Steam Workshop/i }));
+    expect(await screen.findByText("Cyber Drift Workshop")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Browse in Steam" })).toBeInTheDocument();
+
+    fireEvent.change(screen.getByRole("searchbox"), { target: { value: "garage" } });
+    fireEvent.submit(screen.getByRole("search"));
+    fireEvent.click(screen.getByRole("button", { name: "latest" }));
 
     await waitFor(() => {
-      expect(supabaseModMocks.recordUserModInstall).toHaveBeenCalledWith(installedMods);
+      expect(launcherMocks.browseMods).toHaveBeenCalledWith(
+        expect.objectContaining({
+          gameId: "game-1",
+          provider: "steam_workshop",
+          query: "garage",
+          sort: "latest",
+        }),
+      );
     });
-    expect(supabaseModMocks.recordUserModInstall).toHaveBeenCalledTimes(1);
   });
 
-  it("resets the Nexus game slug when the target game changes", async () => {
-    launcherMocks.listInstalledGames.mockResolvedValue([
-      {
-        id: "game-1",
-        platform: "windows",
-        source: "steam",
-        status: "installed",
-        title: "Cyber Drift",
-      },
-      {
-        id: "game-2",
-        platform: "windows",
-        source: "steam",
-        status: "installed",
-        title: "Space Quest",
-      },
-    ]);
-
-    renderModsRoute("/mods");
-    await screen.findByText("Installed Mods");
-    fireEvent.click(screen.getByRole("button", { name: /browse/i }));
-
-    const gameSlug = screen.getByLabelText("Game Slug");
-    await waitFor(() => expect(gameSlug).toHaveValue("cyberdrift"));
-    fireEvent.change(gameSlug, { target: { value: "manual-override" } });
-    expect(gameSlug).toHaveValue("manual-override");
-
-    fireEvent.change(screen.getByLabelText("Target Game"), {
-      target: { value: "game-2" },
-    });
-    await waitFor(() => expect(gameSlug).toHaveValue("spacequest"));
-  });
-
-  it("renders local readiness on the verify route without live provider calls", async () => {
-    renderModsRoute("/mods?verify=provider-api-key-staging");
-
-    expect(await screen.findByText("Native Provider Search")).toBeInTheDocument();
-
-    const panel = await screen.findByRole("region", {
-      name: /mod provider api key staging readiness/i,
-    });
-
-    expect(screen.getByText("Cyber Drift")).toBeInTheDocument();
-    expect(screen.queryByText(/cannot read properties of undefined/i)).not.toBeInTheDocument();
-    expect(within(panel).getByText("API Staging Readiness")).toBeInTheDocument();
-    expect(within(panel).getByText("Provider Staging Probe")).toBeInTheDocument();
-    expect(within(panel).getByText("Terms + Limits Policy")).toBeInTheDocument();
-    expect(within(panel).getByText("One-result staging requests")).toBeInTheDocument();
-    expect(within(panel).getByText("Provider Response Review")).toBeInTheDocument();
-    expect(within(panel).getByText("mod.io Response Shape")).toBeInTheDocument();
-    expect(within(panel).getByText("CurseForge Response Shape")).toBeInTheDocument();
-    expect(within(panel).getByText(/api_key=<redacted>/i)).toBeInTheDocument();
-    expect(within(panel).getByText("No real provider key configured")).toBeInTheDocument();
-    expect(within(panel).getByText("No live mod.io/CurseForge API call")).toBeInTheDocument();
-    expect(panel).not.toHaveTextContent(
-      /live api ready|hosted download ready|moderation ready|direct download ready|overwolf installed/i,
-    );
-    expect(panel).not.toHaveTextContent(/downloadUrl|edge\.forgecdn\.net|super-secret/i);
-    await waitFor(() => {
-      expect(supabaseModMocks.listModCatalogEntries).toHaveBeenCalled();
-      expect(supabaseModMocks.listSharedModProviderGameMappings).toHaveBeenCalled();
-      expect(launcherMocks.scanGameMods).toHaveBeenCalled();
-    });
-    expect(nativeSearchMocks.searchNativeMods).not.toHaveBeenCalled();
-    expect(launcherMocks.setModProviderSecret).not.toHaveBeenCalled();
-  });
-
-  it("uses a browser-local verify fixture when native game listing is unavailable", async () => {
-    launcherMocks.listInstalledGames.mockRejectedValueOnce(
-      new Error("Cannot read properties of undefined (reading 'invoke')"),
+  it("runs a native install once and never turns a provider handoff into an installed mod", async () => {
+    let finishInstall!: (result: {
+      delegatedUrl: null;
+      installId: string;
+      message: string;
+      status: "queued";
+    }) => void;
+    launcherMocks.installMod.mockReturnValueOnce(
+      new Promise((resolve) => {
+        finishInstall = resolve;
+      }),
     );
 
-    renderModsRoute("/mods?verify=provider-api-key-staging");
+    renderModsRoute();
+    const installButton = await screen.findByRole("button", { name: "Install" });
+    fireEvent.click(installButton);
+    fireEvent.click(installButton);
 
-    const panel = await screen.findByRole("region", {
-      name: /mod provider api key staging readiness/i,
+    await waitFor(() => expect(launcherMocks.installMod).toHaveBeenCalledTimes(1));
+    expect(launcherMocks.installMod).toHaveBeenCalledWith({
+      capability: "native",
+      gameId: "game-1",
+      itemId: "nexus-42",
+      provider: "nexus",
+      title: nexusItem.name,
     });
+    finishInstall({
+      delegatedUrl: null,
+      installId: "install-42",
+      message: "Install queued.",
+      status: "queued",
+    });
+    await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Install queued."));
 
-    expect(screen.getByText("Mod API Staging Demo")).toBeInTheDocument();
-    expect(screen.queryByText(/cannot read properties of undefined/i)).not.toBeInTheDocument();
-    expect(within(panel).getByText("Terms + Limits Policy")).toBeInTheDocument();
-    await waitFor(() => {
-      expect(supabaseModMocks.listModCatalogEntries).toHaveBeenCalled();
-      expect(supabaseModMocks.listSharedModProviderGameMappings).toHaveBeenCalled();
+    launcherMocks.installMod.mockResolvedValueOnce({
+      delegatedUrl: steamItem.url,
+      installId: null,
+      message: "Steam Workshop opened.",
+      status: "handoff",
     });
-    expect(await screen.findByText("No mods found in catalog")).toBeInTheDocument();
-    await act(async () => {
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-    expect(launcherMocks.scanGameMods).not.toHaveBeenCalled();
-    expect(nativeSearchMocks.searchNativeMods).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: /Steam Workshop/i }));
+    fireEvent.click(await screen.findByRole("button", { name: "Browse in Steam" }));
+
+    await waitFor(() => expect(launcherMocks.installMod).toHaveBeenCalledTimes(2));
+    expect(
+      (await screen.findAllByText(/Provider opened \/\/ Steam Workshop opened/i)).length,
+    ).toBeGreaterThan(0);
+    expect(launcherMocks.listManagedMods).toHaveBeenCalled();
+    expect(screen.queryByText("Installed", { selector: "span" })).not.toBeInTheDocument();
   });
 
-  it("uses the Retro Manga halftone overlay for the provider keys modal", async () => {
-    renderModsRoute("/mods?verify=provider-api-key-staging");
+  it("resets search and sort when the target game changes", async () => {
+    renderModsRoute();
+    await screen.findByText("Photo Mode Overhaul");
 
-    const providerKeysButton = await screen.findByTitle("Provider Keys");
-    fireEvent.click(providerKeysButton);
+    fireEvent.change(screen.getByRole("searchbox"), { target: { value: "garage" } });
+    fireEvent.submit(screen.getByRole("search"));
+    fireEvent.click(screen.getByRole("button", { name: "latest" }));
+    await waitFor(() => {
+      expect(launcherMocks.browseMods).toHaveBeenCalledWith(
+        expect.objectContaining({ query: "garage", sort: "latest" }),
+      );
+    });
 
-    const modal = await screen.findByText("Provider Keys");
-    const backdrop = modal.closest(".fixed");
+    fireEvent.change(screen.getByLabelText("Target Game"), { target: { value: "game-2" } });
+    await waitFor(() => {
+      expect(launcherMocks.browseMods).toHaveBeenCalledWith(
+        expect.objectContaining({ gameId: "game-2", query: "", sort: "popular" }),
+      );
+    });
+    expect(screen.getByRole("searchbox")).toHaveValue("");
+    expect(screen.getByRole("button", { name: "popular" })).toHaveAttribute("aria-pressed", "true");
+  });
 
-    expect(backdrop?.className).toContain("bg-[#171411]/90");
-    expect(backdrop?.className).toContain("radial-gradient");
-    expect(backdrop?.className).toContain("bg-[length:10px_10px]");
-    expect(backdrop?.className).not.toContain("bg-black/50");
-    expect(backdrop?.className).not.toContain("backdrop-blur");
+  it("uses provider cursors for next and previous result pages", async () => {
+    launcherMocks.browseMods
+      .mockResolvedValueOnce({
+        items: [nexusItem],
+        message: null,
+        nextCursor: "cursor-page-2",
+        total: 2,
+      })
+      .mockResolvedValueOnce({
+        items: [{ ...nexusItem, id: "nexus-43", name: "Night City Weather" }],
+        message: null,
+        nextCursor: null,
+        total: 2,
+      })
+      .mockResolvedValueOnce({
+        items: [nexusItem],
+        message: null,
+        nextCursor: "cursor-page-2",
+        total: 2,
+      });
+
+    renderModsRoute();
+    fireEvent.click(await screen.findByRole("button", { name: /Next/i }));
+    expect(await screen.findByText("Night City Weather")).toBeInTheDocument();
+    expect(launcherMocks.browseMods).toHaveBeenLastCalledWith(
+      expect.objectContaining({ cursor: "cursor-page-2" }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Previous/i }));
+    expect(await screen.findByText("Photo Mode Overhaul")).toBeInTheDocument();
+    expect(launcherMocks.browseMods).toHaveBeenLastCalledWith(
+      expect.objectContaining({ cursor: undefined }),
+    );
+  });
+
+  it("renders explicit loading, empty, and provider-error states without mock catalog data", async () => {
+    launcherMocks.browseMods.mockReturnValueOnce(new Promise(() => undefined));
+    const loadingView = renderModsRoute();
+    expect(await screen.findByText("Loading Nexus Mods")).toBeInTheDocument();
+    loadingView.unmount();
+
+    launcherMocks.browseMods.mockResolvedValueOnce({
+      items: [],
+      message: "No official results are available.",
+      nextCursor: null,
+      total: 0,
+    });
+    const emptyView = renderModsRoute();
+    expect(await screen.findByText("No official results are available.")).toBeInTheDocument();
+    expect(screen.getByText("No mods found")).toBeInTheDocument();
+    emptyView.unmount();
+
+    launcherMocks.browseMods.mockRejectedValueOnce(new Error("Provider rate limited"));
+    renderModsRoute();
+    expect(await screen.findByRole("alert")).toHaveTextContent("Provider rate limited");
+    expect(screen.queryByText("Photo Mode Overhaul")).not.toBeInTheDocument();
+  });
+
+  it("manages Nexus locally, confirms removal, and delegates Steam management", async () => {
+    launcherMocks.listManagedMods.mockResolvedValue([managedNexus, managedSteam]);
+    renderModsRoute();
+
+    const myModsTab = await screen.findByRole("tab", { name: /My Mods/i });
+    fireEvent.click(myModsTab);
+    const panel = screen.getByRole("tabpanel", { name: /My Mods/i });
+    expect(await within(panel).findByText("Neon Garage")).toBeInTheDocument();
+    expect(within(panel).getByText("Steam managed")).toBeInTheDocument();
+
+    fireEvent.click(within(panel).getByRole("button", { name: "Disable Photo Mode Overhaul" }));
+    await waitFor(() => {
+      expect(launcherMocks.setModEnabled).toHaveBeenCalledWith("install-42", false);
+    });
+    await waitFor(() => {
+      expect(within(panel).queryByText("Reconciling local mods...")).not.toBeInTheDocument();
+      expect(launcherMocks.listManagedMods).toHaveBeenCalledTimes(2);
+    });
+
+    fireEvent.click(within(panel).getByRole("button", { name: "Remove Photo Mode Overhaul" }));
+    expect(within(panel).getByText("Remove?")).toBeInTheDocument();
+    expect(launcherMocks.removeMod).not.toHaveBeenCalled();
+    fireEvent.click(
+      within(panel).getByRole("button", { name: "Confirm remove Photo Mode Overhaul" }),
+    );
+    await waitFor(() => expect(launcherMocks.removeMod).toHaveBeenCalledWith("install-42"));
+    await waitFor(() => {
+      expect(within(panel).queryByText("Reconciling local mods...")).not.toBeInTheDocument();
+      expect(launcherMocks.listManagedMods).toHaveBeenCalledTimes(3);
+    });
+
+    fireEvent.click(within(panel).getByRole("button", { name: "Manage in Steam" }));
+    await waitFor(() => {
+      expect(launcherMocks.openProviderMod).toHaveBeenCalledWith({
+        gameId: "game-1",
+        itemId: "123",
+        provider: "steam_workshop",
+        url: managedSteam.manageUrl,
+      });
+    });
+  });
+
+  it("offers one system action when another app owns the NXM handler", async () => {
+    launcherMocks.getNxmHandlerStatus.mockResolvedValue({
+      isDefault: false,
+      message: "Another application handles Nexus download links.",
+      registered: false,
+      state: "handler_conflict",
+    });
+    renderModsRoute();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Change NXM Handler" }));
+    await waitFor(() => {
+      expect(launcherMocks.openNxmHandlerSettings).toHaveBeenCalledTimes(1);
+    });
+    expect(await screen.findByRole("status")).toHaveTextContent("System settings opened");
+  });
+
+  it("connects and disconnects Nexus without exposing credentials", async () => {
+    launcherMocks.getModProviderStatus.mockResolvedValueOnce({
+      action: "connect",
+      actionLabel: "Connect Nexus",
+      available: true,
+      connected: false,
+      message: "Connect through the official browser flow.",
+      provider: "nexus",
+      supportsBrowse: false,
+      supportsNativeInstall: false,
+    });
+    const disconnectedView = renderModsRoute();
+    fireEvent.click(await screen.findByRole("button", { name: "Connect Nexus" }));
+    await waitFor(() => expect(launcherMocks.connectNexus).toHaveBeenCalledTimes(1));
+    expect(screen.queryByLabelText(/api key/i)).not.toBeInTheDocument();
+    disconnectedView.unmount();
+
+    vi.clearAllMocks();
+    seedMocks();
+    renderModsRoute();
+    fireEvent.click(await screen.findByRole("button", { name: "Disconnect Nexus" }));
+    await waitFor(() => expect(launcherMocks.disconnectNexus).toHaveBeenCalledTimes(1));
+  });
+
+  it("uses official Nexus web handoff without requiring an app slug", async () => {
+    launcherMocks.getModProviderStatus.mockResolvedValue({
+      action: "open_provider",
+      actionLabel: "Browse on Nexus",
+      available: true,
+      connected: false,
+      message: "Browse Nexus Mods on its official website without an API key or app slug.",
+      provider: "nexus",
+      supportsBrowse: false,
+      supportsNativeInstall: false,
+    });
+    launcherMocks.browseMods.mockResolvedValue({
+      items: [],
+      message: "Search continues on the official Nexus Mods website.",
+      nextCursor: null,
+      total: null,
+    });
+
+    renderModsRoute();
+    fireEvent.click(await screen.findByRole("button", { name: "Browse on Nexus" }));
+
+    await waitFor(() => {
+      expect(launcherMocks.openProviderMod).toHaveBeenCalledWith({
+        gameId: "game-1",
+        provider: "nexus",
+        query: "",
+        sort: "popular",
+      });
+    });
+    expect(launcherMocks.connectNexus).not.toHaveBeenCalled();
+    expect(launcherMocks.getNxmHandlerStatus).not.toHaveBeenCalled();
+    expect(launcherMocks.installMod).not.toHaveBeenCalled();
+    expect(screen.queryByRole("button", { name: "Continue on Nexus" })).not.toBeInTheDocument();
+    expect(await screen.findByRole("status")).toHaveTextContent("Provider opened");
+  });
+
+  it("announces a redacted pending NXM continuation failure", async () => {
+    launcherMocks.takePendingNxmStatus
+      .mockResolvedValueOnce({
+        accepted: false,
+        code: "continuation_failed",
+        fileId: null,
+        gameDomain: null,
+        message: "The Nexus continuation could not be completed. Try the download again.",
+        modId: null,
+      })
+      .mockResolvedValueOnce(null);
+
+    renderModsRoute();
+
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "NXM continuation failed // The Nexus continuation could not be completed",
+    );
+    expect(screen.getByRole("status")).not.toHaveTextContent("nxm://");
+  });
+
+  it("queues an available Nexus update exactly once", async () => {
+    launcherMocks.listManagedMods.mockResolvedValue([managedNexus]);
+    renderModsRoute();
+    fireEvent.click(await screen.findByRole("tab", { name: /My Mods/i }));
+
+    const updateButton = await screen.findByRole("button", {
+      name: "Update Photo Mode Overhaul",
+    });
+    fireEvent.click(updateButton);
+    fireEvent.click(updateButton);
+
+    await waitFor(() => {
+      expect(launcherMocks.installMod).toHaveBeenCalledTimes(1);
+      expect(launcherMocks.installMod).toHaveBeenCalledWith({
+        capability: "native",
+        gameId: "game-1",
+        itemId: "nexus-42",
+        provider: "nexus",
+        title: "Photo Mode Overhaul",
+      });
+    });
+  });
+
+  it("supports arrow-key tab navigation and exposes loading and status semantics", async () => {
+    renderModsRoute();
+    const browseTab = screen.getByRole("tab", { name: "Browse" });
+    fireEvent.keyDown(browseTab, { key: "ArrowRight" });
+
+    const managedTab = await screen.findByRole("tab", { name: /My Mods/i });
+    expect(managedTab).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByRole("tabpanel", { name: /My Mods/i })).toHaveAttribute(
+      "aria-labelledby",
+      "mods-tab-managed",
+    );
+    expect(screen.getByRole("status")).toHaveAttribute("aria-live", "polite");
   });
 });

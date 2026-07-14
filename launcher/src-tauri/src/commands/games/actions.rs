@@ -596,14 +596,9 @@ fn plan_provider_action(game: &InstalledGame, action: GameAction) -> PlannedGame
                     "No verified automation provider mapping is available.",
                 );
             };
-            let game_identity = match provider_game_identity(game, provider) {
-                Ok(identity) => identity,
-                Err(_) => {
-                    // A safe client handoff may still exist, but semantic automation
-                    // is unavailable without an exact provider-owned game identity.
-                    String::new()
-                }
-            };
+            // A safe client handoff may still exist, but semantic automation is
+            // unavailable without an exact provider-owned game identity.
+            let game_identity = provider_game_identity(game, provider).unwrap_or_default();
             if !game_identity.is_empty() {
                 let mode = if provider_id == ProviderId::Xbox {
                     GameActionMode::OsAutomation

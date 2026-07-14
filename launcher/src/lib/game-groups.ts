@@ -8,6 +8,7 @@ import type { Game, UnifiedAchievement } from "./types";
 type GameStatus = Game["status"];
 
 const SOURCE_PRIORITY = [
+  "ogl",
   "steam",
   "xbox",
   "gog",
@@ -164,7 +165,7 @@ function achievementNameKey(achievement: UnifiedAchievement): string {
 }
 
 function achievementExactKey(game: Game, achievement: UnifiedAchievement): string {
-  const source = achievement.source ?? getGameSource(game);
+  const source = normalizeToken(achievement.source ?? getGameSource(game));
   const sourceAchievementId = achievement.sourceAchievementId ?? achievement.id;
   return `${source}:${normalizeToken(sourceAchievementId)}`;
 }
@@ -306,8 +307,23 @@ export function aggregateAchievements(games: Game[]): GroupedAchievement[] {
   const results: GroupedAchievement[] = [];
 
   for (const achievement of basisGame.achievements ?? []) {
+    const exactKey = achievementExactKey(basisGame, achievement);
+    const existing = byExactKey.get(exactKey);
+    if (existing) {
+      mergeGroupedAchievement(existing, basisGame, achievement, "exact");
+      registerAchievementKeys(
+        existing,
+        achievement,
+        byExactKey,
+        byNameDescriptionKey,
+        byNameKey,
+        basisGame,
+      );
+      continue;
+    }
+
     const grouped = createGroupedAchievement(basisGame, achievement, {
-      matchKey: achievementExactKey(basisGame, achievement),
+      matchKey: exactKey,
       matchConfidence: "exact",
       isAdditional: false,
     });
@@ -343,6 +359,14 @@ export function aggregateAchievements(games: Game[]): GroupedAchievement[] {
 
       if (current) {
         mergeGroupedAchievement(current, game, achievement, matchConfidence);
+        registerAchievementKeys(
+          current,
+          achievement,
+          byExactKey,
+          byNameDescriptionKey,
+          byNameKey,
+          game,
+        );
         continue;
       }
 

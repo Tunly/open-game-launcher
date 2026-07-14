@@ -22,6 +22,7 @@ const mocks = vi.hoisted(() => {
   const openSteamScraperWindow = vi.fn();
   const normalizeSteamOwnedGames = vi.fn();
   const syncGamePlaytimeStats = vi.fn();
+  const hydrateGamesWithRemoteAchievements = vi.fn();
   const mergeSteamOwned = vi.fn();
   const mergeGogOwned = vi.fn();
   const mergeEaOwned = vi.fn();
@@ -29,6 +30,7 @@ const mocks = vi.hoisted(() => {
   const mergeUbisoftOwned = vi.fn();
   const mergeXboxOwned = vi.fn();
   const mergeGamePassCatalog = vi.fn();
+  const mergeOglCatalog = vi.fn();
   const mergeBattlenetOwned = vi.fn();
   const listenMock = vi.fn(() => Promise.resolve(() => undefined));
   const compressAndReadImage = vi.fn();
@@ -48,6 +50,7 @@ const mocks = vi.hoisted(() => {
     openSteamScraperWindow,
     normalizeSteamOwnedGames,
     syncGamePlaytimeStats,
+    hydrateGamesWithRemoteAchievements,
     mergeSteamOwned,
     mergeGogOwned,
     mergeEaOwned,
@@ -55,6 +58,7 @@ const mocks = vi.hoisted(() => {
     mergeUbisoftOwned,
     mergeXboxOwned,
     mergeGamePassCatalog,
+    mergeOglCatalog,
     mergeBattlenetOwned,
     listenMock,
     compressAndReadImage,
@@ -83,6 +87,11 @@ vi.mock("../../../lib/supabase/playtime", () => ({
   syncGamePlaytimeStats: (...args: unknown[]) => mocks.syncGamePlaytimeStats(...args),
 }));
 
+vi.mock("../../../lib/supabase/achievements", () => ({
+  hydrateGamesWithRemoteAchievements: (...args: unknown[]) =>
+    mocks.hydrateGamesWithRemoteAchievements(...args),
+}));
+
 vi.mock("../../../library/providers", () => ({
   mergeSteamOwned: (...args: unknown[]) => mocks.mergeSteamOwned(...args),
   mergeGogOwned: (...args: unknown[]) => mocks.mergeGogOwned(...args),
@@ -91,6 +100,7 @@ vi.mock("../../../library/providers", () => ({
   mergeUbisoftOwned: (...args: unknown[]) => mocks.mergeUbisoftOwned(...args),
   mergeXboxOwned: (...args: unknown[]) => mocks.mergeXboxOwned(...args),
   mergeGamePassCatalog: (...args: unknown[]) => mocks.mergeGamePassCatalog(...args),
+  mergeOglCatalog: (...args: unknown[]) => mocks.mergeOglCatalog(...args),
   mergeBattlenetOwned: (...args: unknown[]) => mocks.mergeBattlenetOwned(...args),
 }));
 
@@ -185,6 +195,7 @@ function setupDefaultMocks() {
   mocks.openSteamScraperWindow.mockReset();
   mocks.normalizeSteamOwnedGames.mockReset();
   mocks.syncGamePlaytimeStats.mockReset();
+  mocks.hydrateGamesWithRemoteAchievements.mockReset();
   mocks.mergeSteamOwned.mockReset();
   mocks.mergeGogOwned.mockReset();
   mocks.mergeEaOwned.mockReset();
@@ -192,6 +203,7 @@ function setupDefaultMocks() {
   mocks.mergeUbisoftOwned.mockReset();
   mocks.mergeXboxOwned.mockReset();
   mocks.mergeGamePassCatalog.mockReset();
+  mocks.mergeOglCatalog.mockReset();
   mocks.mergeBattlenetOwned.mockReset();
   mocks.listenMock.mockReset();
   mocks.listenMock.mockImplementation(() => Promise.resolve(() => undefined));
@@ -213,6 +225,7 @@ function setupDefaultMocks() {
   );
   mocks.openSteamScraperWindow.mockResolvedValue(undefined);
   mocks.syncGamePlaytimeStats.mockResolvedValue(undefined);
+  mocks.hydrateGamesWithRemoteAchievements.mockImplementation(async (games: Game[]) => games);
   for (const provider of [
     mocks.mergeSteamOwned,
     mocks.mergeGogOwned,
@@ -221,6 +234,7 @@ function setupDefaultMocks() {
     mocks.mergeUbisoftOwned,
     mocks.mergeXboxOwned,
     mocks.mergeGamePassCatalog,
+    mocks.mergeOglCatalog,
     mocks.mergeBattlenetOwned,
   ]) {
     provider.mockImplementation(async (games: Game[]) => ({
@@ -261,6 +275,67 @@ describe("useLibrarySync", () => {
       "Open the desktop app to scan installed games. This browser preview stays empty.",
     );
     expect(mocks.listInstalledGames).toHaveBeenCalled();
+  });
+
+  it("adds hosted OG Launcher catalog games to the library inventory", async () => {
+    mocks.mergeOglCatalog.mockImplementation(async (games: Game[]) => ({
+      games: [
+        ...games,
+        makeGame({
+          achievements: [{ id: "first-boost", name: "First Boost", source: "ogl" }],
+          id: "ogl-neon-runners",
+          launcher: "ogl",
+          status: "not_installed",
+          title: "Neon Runners",
+        }),
+      ],
+      warnings: [],
+      statusMessage: null,
+    }));
+
+    const { result } = renderLibrarySync();
+
+    await waitFor(() =>
+      expect(result.current.installedGames).toEqual([
+        expect.objectContaining({
+          id: "ogl-neon-runners",
+          launcher: "ogl",
+          status: "not_installed",
+        }),
+      ]),
+    );
+  });
+
+  it("hydrates achievements for an owned game that is not installed", async () => {
+    const ownedGame = makeGame({
+      achievements: [],
+      id: "steam-480",
+      launcher: "steam",
+      status: "not_installed",
+      title: "Spacewar",
+    });
+    const hydratedGame: Game = {
+      ...ownedGame,
+      achievements: [
+        {
+          id: "ACH_REMOTE",
+          name: "Remote Catalog Achievement",
+          source: "steam",
+          unlockedAt: null,
+        },
+      ],
+    };
+    mocks.mergeSteamOwned.mockImplementation(async (games: Game[]) => ({
+      games: [...games, ownedGame],
+      warnings: [],
+      statusMessage: null,
+    }));
+    mocks.hydrateGamesWithRemoteAchievements.mockResolvedValue([hydratedGame]);
+
+    const { result } = renderLibrarySync();
+
+    await waitFor(() => expect(result.current.installedGames).toEqual([hydratedGame]));
+    expect(mocks.hydrateGamesWithRemoteAchievements).toHaveBeenCalledWith([ownedGame]);
   });
 
   it("does not leave an empty library loading forever after StrictMode replays effects", async () => {
@@ -327,7 +402,11 @@ describe("useLibrarySync", () => {
 
     const { result } = renderLibrarySync();
 
-    await waitFor(() => expect(result.current.isDiscoveringGames).toBe(false));
+    await waitFor(() =>
+      expect(result.current.discoveryMessage).toBe(
+        "Saved library could not be refreshed. The last available snapshot remains visible.",
+      ),
+    );
     expect(result.current.installedGames).toEqual(persisted);
     expect(result.current.discoveryMessage).toBe(
       "Saved library could not be refreshed. The last available snapshot remains visible.",

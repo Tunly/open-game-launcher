@@ -113,7 +113,7 @@ describe("ActivitySection performance history links", () => {
         container.querySelector<HTMLAnchorElement>(
           'a[aria-label="Open yearly activity dashboard"]',
         ),
-      ).toHaveAttribute("href", "/activity");
+      ).toHaveAttribute("href", "/activity/recap");
     });
   });
 

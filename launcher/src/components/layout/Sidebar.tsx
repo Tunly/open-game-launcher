@@ -9,6 +9,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 
+import { MODS_PAGE_ENABLED } from "../../lib/feature-flags";
 import { cn } from "../../lib/utils";
 
 export type PageKey =
@@ -45,7 +46,9 @@ const navItems: NavItem[] = [
   { key: "achievements", label: "Achievements", icon: Trophy },
   { key: "activity", label: "Activity", icon: Activity },
   { key: "downloads", label: "Downloads", icon: HardDriveDownload },
-  { key: "mods", label: "Mods", icon: PackagePlus },
+  ...(MODS_PAGE_ENABLED
+    ? ([{ key: "mods", label: "Mods", icon: PackagePlus }] satisfies NavItem[])
+    : []),
   { key: "store", label: "Store", icon: Store },
   { key: "community", label: "Community", icon: MessageSquareMore },
 ];

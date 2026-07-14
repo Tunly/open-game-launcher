@@ -155,6 +155,7 @@ test("default release specs cover source and release-critical roots", () => {
     ["launcher/index.html", "file"],
     ["launcher/pnpm-lock.yaml", "file"],
     ["launcher/postcss.config.js", "file"],
+    ["docs/verification/screenshot-manifest.json", "file"],
     ["launcher/src", "dir"],
     ["launcher/public", "dir"],
     ["launcher/src-tauri", "dir"],

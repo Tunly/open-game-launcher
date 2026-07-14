@@ -65,6 +65,7 @@ import {
 } from "../../lib/formatters";
 import { getGameAssetUrl, getGameBannerStyle } from "../../lib/assets";
 import { getAchievementProviderStatusMessage } from "../../lib/achievement-status";
+import { MODS_PAGE_ENABLED } from "../../lib/feature-flags";
 import {
   buildClientPathOverlayPreflight,
   type ClientPathOverlayPreflight,
@@ -924,6 +925,10 @@ export function GameDetails({
   const selectedVariantGameId = selectedVariant?.id ?? null;
   const selectedVariantTitle = selectedVariant?.title ?? null;
   const selectedVariantSource = selectedVariant ? getGameSource(selectedVariant) : "unknown";
+  const isOglCatalogOnly =
+    enrichedSelectedGame?.status === "not_installed" &&
+    selectedVariantSource === "ogl" &&
+    !selectedVariant?.downloadUrl;
   const currentNativeCapabilities =
     selectedVariant && nativeGameActionCapabilitiesGameId === selectedVariant.id
       ? nativeGameActionCapabilities
@@ -1759,6 +1764,16 @@ export function GameDetails({
                         View in Downloads
                       </button>
                     </div>
+                  ) : isOglCatalogOnly ? (
+                    <button
+                      className="flex h-[64px] min-w-[205px] flex-1 cursor-not-allowed items-center justify-center gap-3 border-4 border-black bg-[#efe6d4] px-5 text-[18px] font-black text-[#655f58] uppercase shadow-[3px_3px_0_#171411] sm:flex-none"
+                      title="This OG Launcher catalog game does not have an installable build yet."
+                      type="button"
+                      disabled
+                    >
+                      <Award className="h-7 w-7" />
+                      OG Catalog
+                    </button>
                   ) : enrichedSelectedGame.status === "not_installed" ? (
                     <button
                       className="flex h-[64px] min-w-[205px] flex-1 items-center justify-center gap-3 border-4 border-black bg-[#b7102a] px-5 text-[22px] font-black text-white uppercase shadow-[3px_3px_0_#171411] transition-colors hover:bg-[#990a20] sm:flex-none xl:text-[26px]"
@@ -1803,7 +1818,7 @@ export function GameDetails({
                   >
                     <Settings className="h-7 w-7" />
                   </button>
-                  {enrichedSelectedGame.status !== "not_installed" ? (
+                  {MODS_PAGE_ENABLED && enrichedSelectedGame.status !== "not_installed" ? (
                     <button
                       className="flex h-[64px] min-w-0 flex-1 items-center justify-center gap-2 border-4 border-black bg-[#fbf4e7] px-3 text-[18px] font-black text-[#171411] uppercase shadow-[3px_3px_0_#171411] transition-colors hover:bg-[#8cf5e4]"
                       type="button"

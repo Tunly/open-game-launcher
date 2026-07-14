@@ -232,6 +232,12 @@ const PROVIDERS: Record<string, AchievementProvider> = {
     "Battle.net achievement checks need local Battle.net library data before best-effort checks can run.",
     () => hasNonEmptyJsonArray(STORAGE_KEYS.BATTLENET_GAMES_CACHE),
   ),
+  ogl: unavailableProvider(
+    "ogl",
+    "official",
+    "unsupported",
+    "OG Launcher catalog achievements are delivered directly by Supabase.",
+  ),
   manual: unavailableProvider(
     "manual",
     "local",

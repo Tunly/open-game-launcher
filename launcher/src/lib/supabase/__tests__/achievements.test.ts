@@ -77,14 +77,18 @@ function makeRemoteHydrationHandler(options: {
 }) {
   return (table: string) => {
     if (table === "games") {
+      const result = () =>
+        Promise.resolve(
+          makeQueryResult({ id: options.catalogId ?? "catalog-1", slug: "half-life-2" }),
+        );
       return {
         select: () => ({
+          contains: () => ({
+            limit: () => ({ maybeSingle: result }),
+          }),
           eq: () => ({
             limit: () => ({
-              maybeSingle: () =>
-                Promise.resolve(
-                  makeQueryResult({ id: options.catalogId ?? "catalog-1", slug: "half-life-2" }),
-                ),
+              maybeSingle: result,
             }),
           }),
         }),
@@ -364,6 +368,49 @@ describe("ingestTrustedAchievements", () => {
       hydrated.achievements?.some((achievement) => achievement.id.startsWith("grouped-")),
     ).toBe(false);
   });
+
+  it.each(["steam", "xbox", "gog", "epic", "ea", "ubisoft", "battlenet"] as const)(
+    "hydrates public %s definitions for a game that is not installed",
+    async (provider) => {
+      mocks.from.mockImplementation(
+        makeRemoteHydrationHandler({
+          definitions: [
+            {
+              description: "Public catalog definition",
+              id: `definition-${provider}`,
+              key: `${provider}:ACH_NOT_INSTALLED`,
+              name: `${provider} Catalog Achievement`,
+            },
+          ],
+          unlocks: [],
+        }),
+      );
+      const ownedGame: Game = {
+        ...game,
+        achievements: [],
+        id: `${provider}-owned-game`,
+        launcher: provider,
+        status: "not_installed",
+      };
+
+      const { hydrateGamesWithRemoteAchievements } = await import("../achievements");
+      const [hydrated] = await hydrateGamesWithRemoteAchievements([ownedGame], { userId: null });
+
+      expect(hydrated.status).toBe("not_installed");
+      expect(hydrated.achievements).toEqual([
+        expect.objectContaining({
+          description: "Public catalog definition",
+          id: "ACH_NOT_INSTALLED",
+          name: `${provider} Catalog Achievement`,
+          source: provider,
+          sourceAchievementId: "ACH_NOT_INSTALLED",
+          unlockedAt: null,
+        }),
+      ]);
+      expect(mocks.authGetUser).not.toHaveBeenCalled();
+      expect(mocks.from).not.toHaveBeenCalledWith("user_achievements");
+    },
+  );
 
   it("merges remote unlocks into existing local provider achievements", async () => {
     mocks.from.mockImplementation(

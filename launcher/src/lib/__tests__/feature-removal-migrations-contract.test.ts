@@ -9,21 +9,14 @@ function readMigration(name: string) {
   return readFileSync(resolve(`../supabase/migrations/${name}`), "utf8");
 }
 
-function expectSafeRemoval(
-  migration: string,
-  tableName: string,
-  options: { allowEmptyStorageBucketDelete?: boolean } = {},
-) {
+function expectSafeRemoval(migration: string, tableName: string) {
   expect(migration).toMatch(/lock table %s in access exclusive mode/i);
   expect(migration).toMatch(/select exists \(select 1 from %s\)/i);
   expect(migration).toMatch(/from pg_constraint dependency/i);
   expect(migration).toMatch(/from pg_depend dependency[\s\S]*join pg_rewrite rewrite/i);
   expect(migration).toMatch(new RegExp(`drop table if exists public\\.${tableName} restrict`, "i"));
   expect(migration).not.toMatch(/\bcascade\b/i);
-  const mutationChecked = options.allowEmptyStorageBucketDelete
-    ? migration.replace(/delete from storage\.buckets where id = 'screenshots';/gi, "")
-    : migration;
-  expect(mutationChecked).not.toMatch(/\b(?:delete|truncate)\s+from\b/i);
+  expect(migration).not.toMatch(/\b(?:delete|truncate)\s+from\b/i);
 
   const preflight = migration.indexOf("select exists (select 1 from %s)");
   const tableDrop = migration.indexOf(`drop table if exists public.${tableName} restrict`);
@@ -41,7 +34,7 @@ describe("retired feature removal migration contracts", () => {
       "screenshot_likes",
       "screenshots",
     ]) {
-      expectSafeRemoval(migration, table, { allowEmptyStorageBucketDelete: true });
+      expectSafeRemoval(migration, table);
     }
 
     expect(migration).toMatch(/while screenshot storage objects remain/i);
@@ -51,7 +44,8 @@ describe("retired feature removal migration contracts", () => {
     expect(migration).toMatch(
       /drop function if exists public\.report_screenshot\(uuid, text, text\) restrict/i,
     );
-    expect(migration).toMatch(/delete from storage\.buckets where id = 'screenshots'/i);
+    expect(migration).toMatch(/bucket is removed through the Storage API/i);
+    expect(migration).not.toMatch(/delete from storage\.buckets/i);
     expect(migration).not.toMatch(/\bcascade\b/i);
   });
 

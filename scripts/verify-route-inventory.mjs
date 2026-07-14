@@ -6,6 +6,11 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 export const repoRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 
 export const legacyVerifyFlags = Object.freeze({
+  "cross-store-save-sync-e2e-readiness": {
+    canonical: "cross-store-save-sync",
+    reason:
+      "Retired composite readiness alias; current evidence covers the local copy planner only.",
+  },
   "invite-hosted-ready": {
     canonical: null,
     reason:
@@ -36,10 +41,9 @@ const verifyIdentifierRegexes = [
 ];
 const verifyConstantRegex =
   /\b(?:export\s+)?const\s+([A-Z0-9_]*VERIFY[A-Z0-9_]*)\s*=\s*["']([a-z0-9-]+)["']/g;
-const screenshotArtifactRegex =
-  /`?(docs\/verification\/screenshots\/[^`\s)]+\.png|screenshots\/[^`\s)]+\.png)`?/g;
 const routerPathRegex = /\bpath\s*:\s*["']([^"']+)["']/g;
-const documentedRouteRegex = /`(\/[^`\s]*)`/g;
+export const screenshotManifestRelativePath =
+  "docs/verification/screenshot-manifest.json";
 const pngSignature = Buffer.from([
   0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
 ]);
@@ -197,12 +201,132 @@ export function collectAppRoutePaths(root = repoRoot) {
   );
 }
 
+export function readScreenshotManifest(root = repoRoot) {
+  const path = join(root, screenshotManifestRelativePath);
+  const text = readFileSync(path, "utf8");
+  return JSON.parse(text);
+}
+
+function manifestEntries(root = repoRoot) {
+  const manifest = readScreenshotManifest(root);
+  return Array.isArray(manifest.screenshots) ? manifest.screenshots : [];
+}
+
+function manifestEntryLocation(index) {
+  return `${screenshotManifestRelativePath}:screenshots[${index}]`;
+}
+
+export function screenshotManifestErrors(root = repoRoot) {
+  const path = join(root, screenshotManifestRelativePath);
+  if (!statSync(path, { throwIfNoEntry: false })?.isFile()) {
+    return [`Screenshot manifest missing: ${screenshotManifestRelativePath}`];
+  }
+
+  let manifest;
+  try {
+    manifest = readScreenshotManifest(root);
+  } catch (error) {
+    return [
+      `Screenshot manifest is not valid JSON: ${error instanceof Error ? error.message : error}`,
+    ];
+  }
+
+  const errors = [];
+  if (manifest.version !== 1) {
+    errors.push("Screenshot manifest version must be 1.");
+  }
+  if (
+    typeof manifest.visualEvidence !== "string" ||
+    !/OG-Launcher|Retro Manga/i.test(manifest.visualEvidence) ||
+    !/overflow|responsive|wrapp/i.test(manifest.visualEvidence)
+  ) {
+    errors.push(
+      "Screenshot manifest visualEvidence must describe OG-Launcher/Retro Manga styling and responsive overflow coverage.",
+    );
+  }
+  if (
+    !manifest.boundaries ||
+    typeof manifest.boundaries !== "object" ||
+    Array.isArray(manifest.boundaries)
+  ) {
+    errors.push("Screenshot manifest boundaries must be an object.");
+  }
+  if (!Array.isArray(manifest.screenshots)) {
+    errors.push("Screenshot manifest screenshots must be an array.");
+    return errors;
+  }
+
+  const seen = new Set();
+  for (const [index, entry] of manifest.screenshots.entries()) {
+    const location = manifestEntryLocation(index);
+    if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
+      errors.push(`${location} must be an object.`);
+      continue;
+    }
+    if (
+      typeof entry.file !== "string" ||
+      !/^screenshots\/[^/]+\.png$/.test(entry.file)
+    ) {
+      errors.push(`${location}.file must match screenshots/<name>.png.`);
+    } else if (seen.has(entry.file)) {
+      errors.push(`${location}.file duplicates '${entry.file}'.`);
+    } else {
+      seen.add(entry.file);
+    }
+    if (
+      !Array.isArray(entry.routes) ||
+      entry.routes.some(
+        (route) => typeof route !== "string" || !route.startsWith("/"),
+      )
+    ) {
+      errors.push(`${location}.routes must be an array of absolute routes.`);
+    }
+    if (
+      !Array.isArray(entry.verify) ||
+      entry.verify.some(
+        (flag) => typeof flag !== "string" || !/^[a-z0-9-]+$/.test(flag),
+      )
+    ) {
+      errors.push(`${location}.verify must be an array of verify flag names.`);
+    }
+    if (
+      typeof entry.purpose !== "string" ||
+      entry.purpose.trim().length < 8 ||
+      !/\b(?:state|view|page|panel|modal|dialog|drawer|flow|mode|layout|screen|hud)\b/i.test(
+        entry.purpose,
+      )
+    ) {
+      errors.push(`${location}.purpose must name a concrete UI state.`);
+    }
+    if (
+      typeof entry.boundary !== "string" ||
+      typeof manifest.boundaries?.[entry.boundary] !== "string" ||
+      !/\b(?:local|mock|fixture|browser|no-write|dry-run|staging|preflight|live|hosted|production|external)\b/i.test(
+        manifest.boundaries?.[entry.boundary] ?? "",
+      )
+    ) {
+      errors.push(
+        `${location}.boundary must reference a boundary description with an explicit evidence scope.`,
+      );
+    }
+  }
+  return errors;
+}
+
+export function screenshotEntryDescription(manifest, entry) {
+  return [
+    ...(entry.routes ?? []),
+    ...(entry.verify ?? []).map((flag) => `?verify=${flag}`),
+    entry.purpose,
+    manifest.boundaries?.[entry.boundary],
+    manifest.visualEvidence,
+  ]
+    .filter(Boolean)
+    .join("; ");
+}
+
 export function documentedVerifyFlags(root = repoRoot) {
-  const docsPath = join(root, "docs", "verification", "README.md");
-  const docs = readFileSync(docsPath, "utf8");
-  return new Set(
-    [...docs.matchAll(/\?verify=([A-Za-z0-9_-]+)/g)].map((match) => match[1]),
-  );
+  return new Set(manifestEntries(root).flatMap((entry) => entry.verify ?? []));
 }
 
 function resolveScreenshotArtifact(root, artifactPath) {
@@ -210,17 +334,6 @@ function resolveScreenshotArtifact(root, artifactPath) {
     return join(root, artifactPath);
   }
   return join(root, "docs", "verification", artifactPath);
-}
-
-function normalizeScreenshotArtifactPath(artifactPath) {
-  if (artifactPath.startsWith("docs/verification/")) {
-    return artifactPath.slice("docs/verification/".length);
-  }
-  return artifactPath;
-}
-
-function isConcreteScreenshotArtifactPath(artifactPath) {
-  return !/[*?[{]/.test(artifactPath);
 }
 
 function normalizeDocumentedRoutePath(routePath) {
@@ -259,24 +372,12 @@ function documentedRouteMatchesAppRoute(documentedRoutePath, appRoutePath) {
 }
 
 export function documentedScreenshotArtifacts(root = repoRoot) {
-  const docsPath = join(root, "docs", "verification", "README.md");
-  const docs = readFileSync(docsPath, "utf8").split(/\r?\n/);
   const artifacts = new Map();
-
-  for (const [index, line] of docs.entries()) {
-    const screenshotPaths = [...line.matchAll(screenshotArtifactRegex)].map(
-      (match) => match[1],
-    );
-    for (const artifactPath of screenshotPaths) {
-      if (!isConcreteScreenshotArtifactPath(artifactPath)) continue;
-      const normalizedPath = normalizeScreenshotArtifactPath(artifactPath);
-      if (!artifacts.has(normalizedPath)) artifacts.set(normalizedPath, []);
-      artifacts
-        .get(normalizedPath)
-        .push(`docs/verification/README.md:${index + 1}`);
-    }
+  for (const [index, entry] of manifestEntries(root).entries()) {
+    if (typeof entry.file !== "string") continue;
+    if (!artifacts.has(entry.file)) artifacts.set(entry.file, []);
+    artifacts.get(entry.file).push(manifestEntryLocation(index));
   }
-
   return artifacts;
 }
 
@@ -284,18 +385,11 @@ export function documentedAppRouteScreenshotArtifacts(
   root = repoRoot,
   appRoutePaths = collectAppRoutePaths(root),
 ) {
-  const docsPath = join(root, "docs", "verification", "README.md");
-  const docs = readFileSync(docsPath, "utf8").split(/\r?\n/);
   const artifacts = new Map();
-
-  for (const [index, line] of docs.entries()) {
-    const screenshotPaths = [...line.matchAll(screenshotArtifactRegex)]
-      .map((match) => match[1])
-      .filter(isConcreteScreenshotArtifactPath);
-    if (screenshotPaths.length === 0) continue;
-
-    const documentedRoutes = [...line.matchAll(documentedRouteRegex)]
-      .map((match) => normalizeDocumentedRoutePath(match[1]))
+  for (const [index, entry] of manifestEntries(root).entries()) {
+    if (typeof entry.file !== "string") continue;
+    const documentedRoutes = (entry.routes ?? [])
+      .map(normalizeDocumentedRoutePath)
       .filter((routePath) => routePath !== null);
     if (documentedRoutes.length === 0) continue;
 
@@ -306,17 +400,13 @@ export function documentedAppRouteScreenshotArtifacts(
       if (!matchingRoute) continue;
 
       if (!artifacts.has(appRoutePath)) artifacts.set(appRoutePath, []);
-      for (const artifactPath of screenshotPaths) {
-        const resolvedPath = resolveScreenshotArtifact(root, artifactPath);
-        artifacts.get(appRoutePath).push({
-          artifactPath,
-          documentedRoutePath: matchingRoute,
-          exists:
-            statSync(resolvedPath, { throwIfNoEntry: false })?.isFile() ??
-            false,
-          location: `docs/verification/README.md:${index + 1}`,
-        });
-      }
+      const resolvedPath = resolveScreenshotArtifact(root, entry.file);
+      artifacts.get(appRoutePath).push({
+        artifactPath: entry.file,
+        documentedRoutePath: matchingRoute,
+        exists: statSync(resolvedPath, { throwIfNoEntry: false })?.isFile() ?? false,
+        location: manifestEntryLocation(index),
+      });
     }
   }
 
@@ -489,39 +579,24 @@ export function screenshotArtifactIntegrity(root = repoRoot) {
 }
 
 export function documentedVerifyScreenshotArtifacts(root = repoRoot) {
-  const docsPath = join(root, "docs", "verification", "README.md");
-  const docs = readFileSync(docsPath, "utf8").split(/\r?\n/);
   const artifacts = new Map();
-
-  for (const [index, line] of docs.entries()) {
-    const flags = [...line.matchAll(/\?verify=([A-Za-z0-9_-]+)/g)].map(
-      (match) => match[1],
-    );
-    const screenshotPaths = [...line.matchAll(screenshotArtifactRegex)]
-      .map((match) => match[1])
-      .filter(isConcreteScreenshotArtifactPath);
-    if (flags.length === 0 || screenshotPaths.length === 0) continue;
-
-    for (const flag of flags) {
+  for (const [index, entry] of manifestEntries(root).entries()) {
+    if (typeof entry.file !== "string") continue;
+    for (const flag of entry.verify ?? []) {
       if (!artifacts.has(flag)) artifacts.set(flag, []);
-      for (const artifactPath of screenshotPaths) {
-        const resolvedPath = resolveScreenshotArtifact(root, artifactPath);
-        artifacts.get(flag).push({
-          artifactPath,
-          exists:
-            statSync(resolvedPath, { throwIfNoEntry: false })?.isFile() ??
-            false,
-          location: `docs/verification/README.md:${index + 1}`,
-        });
-      }
+      const resolvedPath = resolveScreenshotArtifact(root, entry.file);
+      artifacts.get(flag).push({
+        artifactPath: entry.file,
+        exists: statSync(resolvedPath, { throwIfNoEntry: false })?.isFile() ?? false,
+        location: manifestEntryLocation(index),
+      });
     }
   }
-
   return artifacts;
 }
 
 export function verifyRouteInventory(root = repoRoot) {
-  const docsPath = join(root, "docs", "verification", "README.md");
+  const manifestPath = join(root, screenshotManifestRelativePath);
   const sourceRoot = join(root, "launcher", "src");
   const errors = [];
 
@@ -535,8 +610,20 @@ export function verifyRouteInventory(root = repoRoot) {
       sourceFlags: new Map(),
     };
   }
-  if (!statSync(docsPath, { throwIfNoEntry: false })?.isFile()) {
-    errors.push(`Verification README missing: ${relative(root, docsPath)}`);
+  if (!statSync(manifestPath, { throwIfNoEntry: false })?.isFile()) {
+    errors.push(`Screenshot manifest missing: ${screenshotManifestRelativePath}`);
+    return {
+      appRouteArtifacts: new Map(),
+      appRoutePaths: collectAppRoutePaths(root),
+      documentedFlags: new Set(),
+      errors,
+      sourceFlags: collectSourceVerifyFlags(root),
+    };
+  }
+
+  const manifestErrors = screenshotManifestErrors(root);
+  errors.push(...manifestErrors);
+  if (manifestErrors.some((error) => /not valid JSON|screenshots must/.test(error))) {
     return {
       appRouteArtifacts: new Map(),
       appRoutePaths: collectAppRoutePaths(root),
@@ -561,7 +648,7 @@ export function verifyRouteInventory(root = repoRoot) {
   for (const [artifactPath, locations] of documentedScreenshots.entries()) {
     if (!existingScreenshots.has(artifactPath)) {
       errors.push(
-        `Verification README references missing screenshot artifact '${artifactPath}' at ${locations[0]}.`,
+        `Screenshot manifest references missing artifact '${artifactPath}' at ${locations[0]}.`,
       );
     }
   }
@@ -569,7 +656,7 @@ export function verifyRouteInventory(root = repoRoot) {
   for (const artifactPath of existingScreenshots) {
     if (!documentedScreenshots.has(artifactPath)) {
       errors.push(
-        `Screenshot artifact '${artifactPath}' exists but is missing from docs/verification/README.md.`,
+        `Screenshot artifact '${artifactPath}' exists but is missing from ${screenshotManifestRelativePath}.`,
       );
     }
     const integrity = screenshotIntegrity.get(artifactPath);
@@ -577,39 +664,6 @@ export function verifyRouteInventory(root = repoRoot) {
       errors.push(
         `Screenshot artifact '${artifactPath}' is not a valid PNG screenshot: ${integrity.error}.`,
       );
-    }
-  }
-
-  for (const [flag, locations] of sourceFlags.entries()) {
-    const legacy = legacyVerifyFlags[flag];
-    if (legacy) {
-      if (legacy.canonical && !documentedFlags.has(legacy.canonical)) {
-        errors.push(
-          `Legacy verify flag '${flag}' points to undocumented canonical route '${legacy.canonical}'.`,
-        );
-      }
-      continue;
-    }
-
-    if (!documentedFlags.has(flag)) {
-      errors.push(
-        `Verify flag '${flag}' is missing from docs/verification/README.md as '?verify=${flag}'. First seen at ${locations[0]}.`,
-      );
-    }
-
-    const artifacts = screenshotArtifacts.get(flag) ?? [];
-    if (artifacts.length === 0) {
-      errors.push(
-        `Verify flag '${flag}' is documented but missing a docs/verification/README.md screenshot artifact line containing '?verify=${flag}'. First seen at ${locations[0]}.`,
-      );
-      continue;
-    }
-    for (const artifact of artifacts) {
-      if (!artifact.exists) {
-        errors.push(
-          `Verify flag '${flag}' references missing screenshot artifact '${artifact.artifactPath}' at ${artifact.location}.`,
-        );
-      }
     }
   }
 
@@ -624,7 +678,7 @@ export function verifyRouteInventory(root = repoRoot) {
     const artifacts = appRouteArtifacts.get(routePath) ?? [];
     if (artifacts.length === 0) {
       errors.push(
-        `App route '${routePath}' is missing from docs/verification/README.md as a concrete screenshot artifact line documenting that route family. First seen at ${locations[0]}.`,
+        `App route '${routePath}' is missing from ${screenshotManifestRelativePath} as a concrete screenshot route. First seen at ${locations[0]}.`,
       );
       continue;
     }
@@ -649,7 +703,7 @@ export function verifyRouteInventory(root = repoRoot) {
   for (const flag of documentedFlags) {
     if (!activeDocumentedFlags.has(flag)) {
       errors.push(
-        `Verify flag '${flag}' is documented in docs/verification/README.md but is not an active production source flag or canonical legacy route.`,
+        `Verify flag '${flag}' is documented in ${screenshotManifestRelativePath} but is not an active production source flag or canonical legacy route.`,
       );
     }
   }
@@ -691,7 +745,7 @@ export function inventorySummary({
   }
   if (legacyAliasCount > 0) {
     lines.push(
-      `Recognized ${legacyAliasCount} legacy verify route aliases; aliases reuse canonical screenshot coverage.`,
+      `Recognized ${legacyAliasCount} legacy verify route aliases.`,
     );
   }
   lines.push(

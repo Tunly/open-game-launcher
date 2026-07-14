@@ -5,20 +5,16 @@ Thanks for your interest in contributing to Open Game Launcher! This project is 
 ## Quick start
 
 ```bash
-# 1. Install prerequisites
 node --version   # >= 22.12 and < 26
 pnpm --version   # >= 9
 rustup target add x86_64-pc-windows-msvc aarch64-apple-darwin x86_64-unknown-linux-gnu
 
-# 2. Bootstrap
 pnpm --dir launcher install
-pnpm --dir launcher exec supabase --version   # 2.109.0 (CI DB/deploy lanes pin 2.104.0 separately)
 cp supabase/functions/.env.example supabase/functions/.env  # fill in keys
 pnpm --dir launcher typecheck
 pnpm --dir launcher lint
 pnpm --dir launcher test
 
-# 3. Run the launcher in dev mode
 pnpm --dir launcher tauri dev
 ```
 
@@ -29,7 +25,7 @@ pnpm --dir launcher tauri dev
    - `fix/<short-slug>` for bug fixes
    - `chore/<short-slug>` for tooling / refactors
 2. Run `pnpm --dir launcher typecheck && pnpm --dir launcher lint && pnpm --dir launcher test` before opening a PR.
-3. Sign off each commit (`git commit -s`) — see `DCO` requirement below.
+3. Sign off each commit (`git commit -s`) — see the DCO requirement below.
 4. Open a PR with a clear description and link any related issues.
 
 ## Commit conventions
@@ -46,7 +42,12 @@ Subject line ≤ 72 chars, body wraps at 100. Use the body to explain **why**, n
 
 ## DCO (Developer Certificate of Origin)
 
-This project uses the [DCO](https://developercertificate.org/). By contributing you certify that you have the right to submit the work under AGPL-3.0. Sign off each commit with `git commit -s` which appends a `Signed-off-by:` line.
+This project uses the [Developer Certificate of Origin
+(DCO)](https://developercertificate.org/). A `Signed-off-by:` line certifies
+the statements in the DCO, including that you have the right to submit the
+contribution under the project's license. It is not a copyright assignment.
+Add the sign-off with `git commit -s`; use your real name and an email address
+you are authorized to associate with the contribution.
 
 ## Code style
 
@@ -64,8 +65,9 @@ This project uses the [DCO](https://developercertificate.org/). By contributing 
 
 ## Reporting issues
 
-Use the GitHub issue templates (`bug.md`, `feature.md`). For security issues, **do not** open a public issue — follow `SECURITY.md` instead.
+Open a normal GitHub issue with a clear title, reproduction or proposal,
+affected platform, and relevant logs. This repository currently has no issue
+templates, so no template filename is required. For security issues, **do
+not** open a public issue — follow `SECURITY.md` instead.
 
-## License
-
-By contributing, you agree that your contributions will be licensed under the project's AGPL-3.0 license.
+Contributions are licensed under AGPL-3.0.

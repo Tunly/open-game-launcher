@@ -1,322 +1,139 @@
 # External Completion Evidence
 
-The local checkout is covered by deterministic tests, frontend coverage,
-screenshots, DOM checks, static-class checks, and a current-platform Tauri
-debug-bundle smoke. The items below are deliberately not marked complete until
-the named external proof artifact exists and passes preflight with checked proof
-rows, required detail fields, accepted external locators, fresh capture
-timestamps, and non-placeholder environment values.
+This runbook covers the release-blocking proof that cannot be produced by the
+local deterministic test suite. External gates remain incomplete until their
+committed artifacts contain reviewed, redacted live evidence and pass preflight.
+The artifact index and current templates live in
+[`docs/verification/external/`](../verification/external/README.md).
 
-Use this helper without secrets in logs:
+## Operator sequence
 
-```bash
-pnpm completion:gate:plan
-pnpm completion:gate:status
-pnpm external:evidence:plan
-pnpm external:evidence:next
-pnpm external:evidence:packet
-pnpm external:evidence:runbook
-pnpm external:evidence:status
-pnpm external:evidence:template
-pnpm external:evidence:worklist
-pnpm external:evidence:preflight
-pnpm hosted:deploy-gate:plan
-pnpm hosted:deploy-gate:packet
-pnpm hosted:deploy-gate:scheduler-packet
-pnpm hosted:cron-evidence:plan
-pnpm hosted:cron-evidence
-pnpm hosted:cron-evidence:packet
-pnpm hosted:cron-evidence:artifact-hints
-```
+1. Inspect the current boundary and generate a redacted handoff:
 
-For a current-platform release-boundary rehearsal, use `pnpm completion:gate`.
-It first runs the local deterministic gate, then
-`pnpm hosted:deploy-gate:preflight`, `pnpm hosted:deploy-gate:smoke`,
-`pnpm hosted:cron-evidence`, and `pnpm external:evidence:preflight`. It must
-fail until the real external artifacts and required
-environment values below are present. Cross-platform signoff comes from the
-configured CI runners, but GitHub Actions does not mirror the local gate
-exactly: coverage runs as a separate threshold-enforcing CI job, and no CI
-Tauri debug-bundle smoke exists. The release tag path waits for coverage before
-the external completion gate, then uses the frontend, Rust, Supabase CI jobs,
-and an unscoped `pnpm completion:gate:external` tag job in the
-`hosted-production` Environment before any draft-release artifacts are created.
-That tag job validates launcher/Tauri version alignment and rejects semver-valid
-`v*` tags whose checked-out commit is not the current `origin/main` commit.
-Before final release-boundary verification, run `pnpm completion:gate:status`.
-The final `pnpm completion:gate:external` run is unscoped and also runs
-`pnpm hosted:deploy-gate:preflight`, `pnpm hosted:deploy-gate:smoke`,
-`pnpm hosted:cron-evidence`, and `pnpm external:evidence:preflight`.
+   ```bash
+   pnpm completion:gate:status
+   pnpm external:evidence:status
+   pnpm external:evidence:next
+   pnpm external:evidence:worklist
+   pnpm external:evidence:packet
+   pnpm external:evidence:runbook
+   ```
 
-To focus one lane:
+2. Prepare hosted deployment or scheduler commands where the gate requires
+   them:
 
-```bash
-OGL_EXTERNAL_EVIDENCE_GATES=hosted-supabase-cron pnpm external:evidence:preflight
-```
+   ```bash
+   pnpm hosted:deploy-gate:plan
+   pnpm hosted:deploy-gate:packet
+   pnpm hosted:deploy-gate:scheduler-packet
+   pnpm hosted:cron-evidence:plan
+   pnpm hosted:cron-evidence:packet
+   ```
 
-PowerShell equivalent:
+3. Capture the live run in the named external system. Fill the matching
+   committed template with redacted locators, required detail fields, a current
+   UTC timestamp, release ref and commit SHA. Remove its `Template only` banner
+   and check a proof row only after its evidence has been reviewed.
 
-```powershell
-$env:OGL_EXTERNAL_EVIDENCE_GATES='hosted-supabase-cron'
-pnpm external:evidence:preflight
-Remove-Item Env:OGL_EXTERNAL_EVIDENCE_GATES
-```
+4. Run the scoped preparation check:
 
-Use `pnpm external:evidence:status` when an operator or CI job needs a
-machine-readable missing-evidence packet without turning the run red. The JSON
-contains gate IDs, readiness booleans, missing environment names, redacted
-environment reason codes (`missing`, `placeholder`, or `malformed`), missing
-artifact/proof/detail rows, redacted artifact detail reason codes, redacted
-proof-evidence reason codes, template-only banner findings, unreadable artifact
-findings, secret-scan findings, redacted follow-up commands, and aggregate
-ready/missing counts; it does not print raw environment values or artifact
-values.
+   ```bash
+   OGL_EXTERNAL_EVIDENCE_GATES=<gate-id> pnpm external:evidence:preflight
+   ```
 
-Use `pnpm external:evidence:next` when an operator needs a compact
-non-mutating handoff. It prints only non-ready selected gates, missing
-environment names, missing artifacts/proofs/detail fields, missing artifact
-proof coverage, per-proof capture handoffs, redacted artifact
-detail/proof-evidence reason codes, blocking findings, and existing follow-up
-commands such as
-`pnpm external:evidence:template`,
-`pnpm external:evidence:status`, `pnpm external:evidence:preflight`,
-`pnpm hosted:deploy-gate:scheduler-packet`, `pnpm hosted:cron-evidence`,
-`pnpm hosted:cron-evidence:packet`, and
-`pnpm hosted:cron-evidence:artifact-hints`. It is redacted output only: it does
-not print raw environment values, does not use local screenshot paths as proof,
-does not mark proof rows checked, and does not assert that an external system
-has succeeded.
+   PowerShell:
 
-Use `pnpm external:evidence:worklist` when an operator needs a per-artifact fill
-list. It groups each selected artifact by readiness state, missing proof labels,
-per-artifact capture handoffs, `Rows to fill` labels with requirement hints,
-complete missing detail field names, redacted reason codes for rejected detail
-and proof-evidence rows, blocking finding labels, and the same follow-up
-commands. It is redacted output only: it does not write artifacts, does not
-include proof checkboxes, does not print environment values or artifact values,
-does not generate run IDs or timestamps, and does not mark external evidence
-complete.
+   ```powershell
+   $env:OGL_EXTERNAL_EVIDENCE_GATES='<gate-id>'
+   pnpm external:evidence:preflight
+   Remove-Item Env:OGL_EXTERNAL_EVIDENCE_GATES
+   ```
 
-Use `pnpm external:evidence:packet` when an operator needs one redacted handoff
-document before a release run. It includes selected gate counts, ready counts,
-required environment names, artifact paths, proof requirements, capture
-handoffs, evidence detail fields, per-gate commands, and the same
-missing-evidence next steps. It is non-mutating and does not print environment
-values, mark proof rows checked, or assert external success.
+5. Run the unscoped release boundary with the real release tag/SHA context:
 
-Use `pnpm external:evidence:runbook` when an operator needs a sequenced
-operator runbook instead of a status summary. It groups the selected gates into
-artifact preparation, evidence capture, and release-boundary verification,
-listing artifact paths, proof labels, per-proof capture handoffs, detail field
-names, and commands only. It does not include proof checkboxes, write artifacts,
-print environment values, or assert external success.
+   ```bash
+   pnpm completion:gate:status
+   pnpm completion:gate:external
+   ```
 
-Generated external evidence templates include a `Capture Handoff` section after
-the unchecked proof checklist. Those rows tell operators how to collect redacted
-live evidence for each proof lane before checking proof rows. They are guidance
-only: the preflight still requires checked proof rows, matching
-`Evidence for <proof>:` mappings, accepted external locators, required detail
-fields, fresh release context, and clean secret scans.
+Scoped preflight is only a lane preparation check. It never replaces the final
+unscoped check.
 
-For `rollout-tracks`, the generated commands include
-`pnpm hosted:deploy-gate:plan` and `pnpm hosted:deploy-gate:packet` so hosted
-production deployment evidence can be prepared from the reviewed deploy-gate
-handoff. Those packet commands are still local handoff text and do not prove a
-hosted deployment by themselves.
+## Command roles
 
-For `hosted-supabase-cron`, this lane-specific preflight checks the scheduler
-bearer secret environment names and the redacted external artifact. Run
-`pnpm hosted:deploy-gate:scheduler-packet` to prepare the scheduler command
-packet and confirm its `SUPABASE_FUNCTIONS_URL` setup step before copying
-scheduler commands, then run `pnpm hosted:cron-evidence` separately with REST
-read auth to collect and validate the sanitized Supabase evidence rows. The
-generated external evidence packet, runbook, next-step, and worklist handoffs
-repeat those REST collector prerequisites as
-`SUPABASE_REST_URL or SUPABASE_URL or SUPABASE_PROJECT_REF` plus
-`SUPABASE_SERVICE_ROLE_KEY or SUPABASE_ANON_KEY + SUPABASE_AUTH_JWT` beside the
-hosted-cron commands so operators do not discover that dependency late. If those
-rows are ready, `pnpm hosted:cron-evidence:plan` confirms the selected lanes,
-`pnpm hosted:cron-evidence:packet` prints a durable redacted row validation
-handoff plus artifact detail hints, and
-`pnpm hosted:cron-evidence:artifact-hints` prints only those detail fields for
-the external artifact. These checks are complementary and none replaces the
-operator-reviewed proof rows.
+- `external:evidence:status` emits machine-readable readiness and redacted
+  reason codes without failing on missing proof.
+- `external:evidence:next` prints only non-ready gates and their next actions.
+  It is the compact non-mutating handoff.
+- `external:evidence:worklist` lists every artifact field and proof still to
+  fill.
+- `external:evidence:packet` produces one redacted handoff document.
+- `external:evidence:runbook` prints the generated capture sequence. Use it as
+  the sequenced operator runbook.
+- `external:evidence:template` prints current templates; generated templates
+  also contain per-proof `Capture Handoff` guidance.
+- `external:evidence:preflight` validates environment shapes, artifact and
+  proof ownership, detail fields, locators, release freshness, cron receipts
+  and secret-free content.
 
-For `store-stripe-live`, only the price-drop scheduler lane belongs to the
-Store/Stripe artifact. Use
-`OGL_HOSTED_CRON_EVIDENCE_CHECKS=price-drop pnpm hosted:cron-evidence:plan`,
-`OGL_HOSTED_CRON_EVIDENCE_CHECKS=price-drop pnpm hosted:cron-evidence`,
-`OGL_HOSTED_CRON_EVIDENCE_CHECKS=price-drop pnpm hosted:cron-evidence:packet`,
-and
-`OGL_HOSTED_CRON_EVIDENCE_CHECKS=price-drop pnpm hosted:cron-evidence:artifact-hints`
-so missing presence/account-deletion rows do not block the Store/Stripe handoff.
-The Store/Stripe price-drop scheduler artifact must still identify
-`store_price_drop_notification_runs` and `notify-price-drop`; paste evidence
-from the price-drop-only `artifact-hints` command as flat `Gate-Specific
-Evidence` fields in
-`docs/verification/external/store-price-drop-scheduler-live.md`. Evidence from
-`presence_poll_runs`, `account_deletion_processor_runs`, or their functions does
-not satisfy this proof.
-For `hosted-supabase-cron`, leave the collector unscoped so all three scheduler
-lanes are required.
+These commands are non-mutating unless their own help says otherwise. Handoff
+output does not prove an external run, fill an artifact, or check a proof row.
+It never prints raw environment values.
 
-`/settings?verify=external-completion-evidence-summary` renders these lanes as
-a local no-write UI map. Screenshots are stored in
-`docs/verification/screenshots/settings-external-completion-evidence-summary-local.png`
-and
-`docs/verification/screenshots/settings-external-completion-evidence-summary-mobile.png`.
-These screenshots are local UI verification artifacts only; they are not
-external completion evidence and do not satisfy any gate.
+## Release boundary
 
-Scoped `OGL_EXTERNAL_EVIDENCE_GATES=... pnpm external:evidence:preflight`
-runs are preparation checks for a single proof lane. The unscoped
-`pnpm external:evidence:preflight` and release-boundary
-`pnpm completion:gate:external` runs are the final proof checks; they must run
-in a release tag/SHA context through `GITHUB_REF_NAME` or `GITHUB_REF` and
-`GITHUB_SHA`.
+`pnpm completion:gate` is the current-platform rehearsal. It runs the local
+deterministic gate, hosted deploy preflight/smoke, hosted cron collection and
+external evidence preflight. It is expected to fail until real external proof
+and required environment values exist.
 
-When the release-boundary `completion:gate:external` action reaches the hosted
-cron lane, it creates one gitignored hosted-cron receipt path and passes it to
-both `pnpm hosted:cron-evidence` and `pnpm external:evidence:preflight`.
-Hosted-cron artifact rows must include the `Hosted cron receipt SHA256` emitted
-by the collector hints, and preflight compares that SHA plus table, function,
-run ID, scheduled/non-dry-run status, and selected lanes against the receipt
-from the same gate run. A missing, stale, scoped, mismatched, or secret-bearing
-receipt keeps the release boundary red even when the Markdown proof rows look
-complete.
+Its hosted boundary includes `pnpm hosted:deploy-gate:preflight` and
+`pnpm hosted:deploy-gate:smoke`.
 
-`pnpm external:evidence:preflight` requires every selected required environment
-name to hold a non-placeholder value with the expected shape, every selected
-artifact file to exist, per-artifact proof coverage for assigned proof rows,
-each named proof to appear as a checked `- [x]` checklist row outside Markdown
-code fences, HTML comments, and indented code blocks, a matching
-`Evidence for <proof>:` line with a specific redacted run/dashboard/artifact
-locator or `sha256:<64-hex>` reference for every checked proof, non-empty and
-specific, non-placeholder Evidence Captured and Gate-Specific Evidence detail
-fields outside inactive
-Markdown, lane-scoped hosted cron detail sections for every selected scheduler
-proof, `Captured at` as a UTC ISO-8601 timestamp within 30 days and not more
-than 10 minutes in the future, `Release ref` as the exact release tag,
-`Commit SHA` as the full 40-hex release commit, release CI exact matches
-against `GITHUB_REF_NAME` and `GITHUB_SHA`, and blocks common raw secret shapes
-such as Stripe live/test and restricted keys, webhook secrets, bearer tokens,
-JWT-like tokens, RAWG/Steam/mod provider keys, provider API-key headers, the
-`OGL_LICENSE_SIGNING_KEY` runtime secret, Supabase service-role/auth/access
-tokens, bare `sbp_...` deploy tokens, hosted scheduler secrets, private keys, and unredacted secret fixtures. Unchecked template rows,
-checked rows inside fenced/commented/indented examples, missing per-artifact
-proof coverage, checked proof rows without specific matching proof evidence
-mappings, placeholder/copied env values, malformed env values,
-placeholder/weak detail values, a retained `Template only` banner once proof
-rows or detail rows are filled, local `docs/verification/screenshots/*`
-locators, relative/local/file path locators, arbitrary HTTPS URLs outside the
-accepted host/pattern list, Stripe test-mode Dashboard URLs such as
-`dashboard.stripe.com/test/...`, generic Stripe Dashboard pages such as
-`/settings`, `/customers`, and `/payments`, generic locator values,
-stale/future capture times, non-ISO capture times, and checked rows without
-captured evidence details stay blocked.
+The final `pnpm completion:gate:external` run is unscoped and requires the
+release context through `GITHUB_REF_NAME` or `GITHUB_REF` plus `GITHUB_SHA`.
+The release tag path waits for coverage before the external completion gate.
+The release tag workflow waits for coverage and the frontend, Rust and Supabase
+CI jobs, then runs this gate in the `hosted-production` Environment before
+creating draft-release artifacts. It also verifies launcher/Tauri version
+alignment and rejects a `v*` tag whose commit is not current `origin/main`.
+Cross-platform signoff comes from the configured CI runners. In CI, coverage
+runs as a separate threshold-enforcing CI job. CI does not duplicate the local
+Tauri debug-bundle smoke.
 
-When `preflight`, `next`, `worklist`, or `status` reports artifact reason
-codes, treat them as redacted diagnostics for the field named beside the code:
-`missing` means the row or proof-specific `Evidence for ...` mapping is absent;
-`placeholder` and `weak` mean the row still contains generic fill text;
-`malformed_timestamp`, `stale_timestamp`, and `future_timestamp` apply to
-`Captured at`; `release_ref_context_missing` and
-`commit_sha_context_missing` mean an unscoped release-boundary check is missing
-release tag/SHA context; `release_ref_mismatch` and `commit_sha_mismatch` apply
-to release-boundary rows that do not match CI; `local_path` rejects local files,
-workspace paths, and `docs/verification/screenshots/*`; `unapproved_url`
-rejects unsupported hosts, non-HTTPS URLs, query/hash/userinfo URLs, localhost,
-private-network URLs, and example URLs; `malformed_locator` means no accepted
-external locator, run ID, workflow ID, signed log, artifact ID, or
-`sha256:<64-hex>` reference was present; `missing_lane_terms` means the value is
-syntactically specific but does not name the required proof lane; and
-`wrong_expected_value` means a lane-specific expected value such as cron table,
-function, status, `dry_run=false`, or redaction wording does not match.
+During the release-boundary cron lane, one gitignored receipt path is shared by
+`hosted:cron-evidence` and `external:evidence:preflight`. Scheduler artifacts
+must contain the collector's `Hosted cron receipt SHA256`. Preflight compares
+the receipt SHA, selected lanes, table, function, run ID, scheduled/non-dry-run
+state and status. A missing, stale, scoped, mismatched or secret-bearing receipt
+keeps the boundary red even if the Markdown rows look complete.
 
-Proof evidence values must name the proof lane they support: use identifiers
-such as `stripe-webhook`, `stripe-tax-invoice`,
-`license-key-custody-live-license-issuance`, `price-drop`, `presence-poll`,
-`account-deletion`, `mod.io/CurseForge`,
-`non-steam-presence-bridge-provider`,
-`provider-approved-catalog-cloud-transfer`,
-`achievement-provider-cache-real-client`, `fullscreen-anti-cheat-overlay`,
-`backup-restore`, `client-mount-apply-provider-client`,
-`community-artwork-rollout`, `plugin-marketplace-execution-update`,
-`hosted-deploy`. Bare `evt_...`
-values are accepted only for the Stripe webhook signature proof. Syntactically
-specific but generic IDs such as `run-generic-1` stay blocked. Compound proof
-values must include every required term in the same value: mod-provider evidence
-includes both `mod.io` and `CurseForge`; external-drive backup/restore proof
-evidence includes `Windows`, `macOS`, and `Linux`; long native overlay proof
-evidence includes a numeric measured duration/window; hardware matrix evidence
-includes one `Windows`, one `macOS`, and one `Linux` row, each with `title:`,
-`client:`, and a specific locator.
+## Gate map
 
 ## store-stripe-live
 
-Required environment names:
+Required shell environment:
 
 - `SUPABASE_URL`
 - `STRIPE_SECRET_KEY`
 - `STRIPE_WEBHOOK_SECRET`
 - `PRICE_DROP_NOTIFY_SECRET`
 
-`OGL_LICENSE_SIGNING_KEY` is also a hosted runtime prerequisite for signed
-production licenses, but it is deliberately not a required shell variable for
-`pnpm external:evidence:preflight`. Prove that lane through redacted runtime
-secret custody evidence plus a live license issuance/order/function locator;
-never paste the signing key into an artifact or operator log.
+Artifacts:
 
-Required artifacts:
+- [`docs/verification/external/store-stripe-live-staging.md`](../verification/external/store-stripe-live-staging.md)
+- [`docs/verification/external/store-price-drop-scheduler-live.md`](../verification/external/store-price-drop-scheduler-live.md)
 
-- `docs/verification/external/store-stripe-live-staging.md`
-- `docs/verification/external/store-price-drop-scheduler-live.md`
+Proof covers the live Stripe webhook signature, Stripe Tax/invoice settings,
+production signing-key custody plus live license issuance, and one fresh hosted
+price-drop scheduler run. `OGL_LICENSE_SIGNING_KEY` is a hosted runtime
+prerequisite but deliberately is not a preflight shell variable; prove
+custody with redacted evidence and a
+`live license issuance/order/function locator`. Never paste the signing key.
 
-Proof required:
-
-- Stripe webhook signature delivery reaches stripe-webhook.
-- Stripe Tax and invoice settings are verified in Dashboard.
-- Production license signing key custody and live license issuance are verified.
-- Hosted price-drop scheduler writes fresh run evidence.
-
-Evidence rows by artifact. The Stripe artifact uses flat dashboard/webhook
-fields; the scheduler artifact uses flat `Gate-Specific Evidence` fields.
-For `docs/verification/external/store-price-drop-scheduler-live.md`, fill flat Gate-Specific Evidence fields
-from the price-drop-only hosted cron artifact hints:
-
-- `docs/verification/external/store-stripe-live-staging.md`:
-  Stripe webhook event ID.
-- `docs/verification/external/store-stripe-live-staging.md`:
-  Stripe Dashboard evidence.
-- `docs/verification/external/store-stripe-live-staging.md`:
-  Supabase function log run ID.
-- `docs/verification/external/store-stripe-live-staging.md`:
-  License key custody evidence.
-- `docs/verification/external/store-stripe-live-staging.md`:
-  Live license issuance evidence.
-- `docs/verification/external/store-price-drop-scheduler-live.md`:
-  Hosted cron table.
-- `docs/verification/external/store-price-drop-scheduler-live.md`: Function.
-- `docs/verification/external/store-price-drop-scheduler-live.md`: Run ID.
-- `docs/verification/external/store-price-drop-scheduler-live.md`: Scheduled.
-- `docs/verification/external/store-price-drop-scheduler-live.md`:
-  `dry_run=false`.
-- `docs/verification/external/store-price-drop-scheduler-live.md`: Status.
-
-Recommended Store/Stripe capture sequence:
-
-1. Confirm hosted runtime secrets include `SUPABASE_URL`, Stripe live keys,
-   `OGL_LICENSE_SIGNING_KEY`, and the scheduler secret names without exposing
-   their values.
-2. Run a live checkout through the hosted Stripe path and capture the Stripe
-   live event locator, Stripe Dashboard tax/invoice locator, Supabase
-   `stripe-webhook` function log locator, Store order/license locator, and
-   license key custody locator.
-3. Fill `docs/verification/external/store-stripe-live-staging.md` only with
-   redacted locators and IDs, then remove the template banner and check the
-   proof rows after review.
-
-Recommended hosted cron collector commands for the scheduler artifact:
+Capture checkout/webhook, Stripe Dashboard, Supabase `stripe-webhook`, order or
+license and secret-custody locators in the Stripe artifact. Collect only the
+price-drop scheduler lane for the second artifact:
 
 ```bash
 OGL_HOSTED_CRON_EVIDENCE_CHECKS=price-drop pnpm hosted:cron-evidence:plan
@@ -325,44 +142,34 @@ OGL_HOSTED_CRON_EVIDENCE_CHECKS=price-drop pnpm hosted:cron-evidence:packet
 OGL_HOSTED_CRON_EVIDENCE_CHECKS=price-drop pnpm hosted:cron-evidence:artifact-hints
 ```
 
+The scheduler artifact uses flat `Gate-Specific Evidence` fields and must name
+`store_price_drop_notification_runs` and `notify-price-drop`. Presence or
+account-deletion rows do not satisfy it.
+
 ## hosted-supabase-cron
 
-Required environment names for external preflight:
+Required shell environment:
 
 - `SUPABASE_URL`
 - `PRICE_DROP_NOTIFY_SECRET`
 - `ACCOUNT_DELETION_PROCESSOR_SECRET`
 - `PRESENCE_POLL_SECRET`
 
-Additional REST read environment for `pnpm hosted:cron-evidence`:
+The collector additionally needs a REST URL from `SUPABASE_REST_URL`,
+`SUPABASE_URL` or `SUPABASE_PROJECT_REF`, plus either
+`SUPABASE_SERVICE_ROLE_KEY` or `SUPABASE_ANON_KEY` with `SUPABASE_AUTH_JWT`.
 
-- `SUPABASE_URL` or `SUPABASE_REST_URL` or `SUPABASE_PROJECT_REF`
-- `SUPABASE_SERVICE_ROLE_KEY` or both `SUPABASE_ANON_KEY` and `SUPABASE_AUTH_JWT`
+Artifact:
 
-Required artifacts:
+- [`docs/verification/external/hosted-supabase-cron.md`](../verification/external/hosted-supabase-cron.md)
 
-- `docs/verification/external/hosted-supabase-cron.md`
-
-Proof required:
-
-- poll-platform-presence scheduled run writes fresh evidence.
-- notify-price-drop scheduled run writes fresh evidence.
-- process-account-deletions scheduled run writes fresh evidence.
-
-Lane-specific evidence rows. Fill one complete block for each scheduled lane in
-`docs/verification/external/hosted-supabase-cron.md`; a single generic cron run
-cannot satisfy all three proofs:
-
-- `price-drop`: Hosted cron table, Function, Run ID, Scheduled,
-  `dry_run=false`, Status.
-- `presence-poll`: Hosted cron table, Function, Run ID, Scheduled,
-  `dry_run=false`, Status.
-- `account-deletion`: Hosted cron table, Function, Run ID, Scheduled,
-  `dry_run=false`, Status.
-
-Recommended hosted cron collector commands for this gate:
+Proof covers fresh scheduled, non-dry-run rows for `price-drop`,
+`presence-poll`, and `account-deletion`. Keep the collector unscoped and fill a
+complete table/function/run-ID/scheduled/`dry_run=false`/status block for every
+lane; one generic run cannot satisfy all three.
 
 ```bash
+pnpm hosted:deploy-gate:scheduler-packet
 pnpm hosted:cron-evidence:plan
 pnpm hosted:cron-evidence
 pnpm hosted:cron-evidence:packet
@@ -371,173 +178,123 @@ pnpm hosted:cron-evidence:artifact-hints
 
 ## provider-live-integrations
 
-Required environment names:
+Required shell environment:
 
 - `STEAM_WEB_API_KEY`
 - `PRESENCE_PROVIDER_TOKEN`
-- `MOD_IO_API_KEY`
-- `CURSEFORGE_API_KEY`
 
-For the mod provider proof, store the real mod.io and CurseForge keys through
-the desktop secret command `set_mod_provider_secret`, run the native
-`run_mod_provider_staging_probe()` command for both providers, and paste only
-the redacted run ID plus provider response evidence into
-`docs/verification/external/provider-live-integrations.md`.
+Artifact:
 
-The desktop keychain proof and the external preflight env check are separate:
-the same live mod.io and CurseForge values must also be injected through the
-Release Vault or shell environment as `MOD_IO_API_KEY` and
-`CURSEFORGE_API_KEY`. Do not write those values into artifacts.
+- [`docs/verification/external/provider-live-integrations.md`](../verification/external/provider-live-integrations.md)
 
-For the non-Steam presence bridge proof, deploy/configure
-`poll-platform-presence` with `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`,
-`PRESENCE_POLL_SECRET`, `STEAM_WEB_API_KEY`, `PRESENCE_PROVIDER_TOKEN`, and the
-live bridge endpoints needed for the matrix:
+Proof covers Nexus website search handoff and Steam Workshop handoff against live
+providers, non-Steam presence bridges, approved catalog/cloud transfers and
+achievement/provider-cache E2E against real client data. The provider/client
+matrix must name both `Nexus` and `Steam Workshop`.
+
+Use `open_provider_mod` for the no-slug Nexus website search handoff and for a
+verified Steam AppID. Copy only redacted run and provider locators. A separately
+registered native Nexus build is optional and is not a release prerequisite.
+
+For the bridge lane, deploy `poll-platform-presence` with the Supabase service
+configuration, scheduler secret, `PRESENCE_PROVIDER_TOKEN`, and
 `EPIC_PRESENCE_ENDPOINT`, `GOG_PRESENCE_ENDPOINT`, `EA_PRESENCE_ENDPOINT`,
 `XBOX_PRESENCE_ENDPOINT`, `BATTLENET_PRESENCE_ENDPOINT`, and
-`UBISOFT_PRESENCE_ENDPOINT`. Invoke the hosted function with a non-dry-run live
-session, then paste only the redacted provider bridge run ID, Supabase function
-log locator, and provider response locator into
-`docs/verification/external/provider-live-integrations.md`.
-
-Required artifacts:
-
-- `docs/verification/external/provider-live-integrations.md`
-
-Proof required:
-
-- mod.io and CurseForge staging probes use real provider keys.
-- Non-Steam presence bridges return redacted live provider evidence.
-- Provider-approved catalog/cloud transfer flows are verified.
-- Achievement/provider cache E2E runs against real client data.
-
-Gate-specific evidence rows:
-
-- Provider/client matrix.
-- Live probe run ID.
-- Provider response evidence.
-
-Provider/client matrix values must include both `mod.io` and `CurseForge`.
+`UBISOFT_PRESENCE_ENDPOINT`. Run a non-dry-run live session and capture its
+provider bridge run ID, function-log locator and provider response locator. The
+template and generated worklist are authoritative for the exact row names.
 
 ## hardware-os-e2e
 
-Required environment names:
+Required shell environment: none.
 
-- none
+Artifact:
 
-Required artifacts:
+- [`docs/verification/external/hardware-os-e2e.md`](../verification/external/hardware-os-e2e.md)
 
-- `docs/verification/external/hardware-os-e2e.md`
-
-Proof required:
-
-- Fullscreen/anti-cheat overlay evidence is captured on real titles.
-- Long native overlay sessions produce stable runtime/session evidence.
-- External-drive backup/restore E2E runs on Windows, macOS, and Linux.
-- Real client mount/apply behavior is tested against provider clients.
-
-Gate-specific evidence rows:
-
-- OS/title/client matrix.
-- Hardware profile.
-- Session/run ID.
-
-OS/title/client matrix values must include one `Windows`, one `macOS`, and one
-`Linux` row separated by `|` or `;`; each row must include `title:`, `client:`,
+Proof covers real-title fullscreen/anti-cheat overlay behavior, a long native
+overlay session with numeric measured duration/window, external-drive
+backup/restore on Windows, macOS and Linux, and real provider-client
+mount/apply. The OS matrix needs one row per OS, each with `title:`, `client:`
 and a specific locator.
-Session/run ID values must include `overlay`, `session`/`run`, and a numeric
-duration/window such as `duration:30m`.
 
 ## rollout-tracks
 
-Required environment names:
+Required shell environment: none.
 
-- none
+Artifact:
 
-Required artifacts:
+- [`docs/verification/external/rollout-tracks.md`](../verification/external/rollout-tracks.md)
 
-- `docs/verification/external/rollout-tracks.md`
+Proof covers hosted community artwork rollout, plugin marketplace execution and
+update review, and hosted production deployment. Prepare deployment evidence
+with:
 
-Proof required:
+```bash
+pnpm hosted:deploy-gate:plan
+pnpm hosted:deploy-gate:packet
+```
 
-- Hosted community artwork rollout is exercised beyond fixtures.
-- Plugin marketplace execution/update channels are externally reviewed.
-- Hosted production deployment evidence is attached.
+The hosted deployment must be a GitHub Actions `CI` run from `main` with
+`hosted_deploy_gate=true`, `hosted_environment=hosted-production`,
+`hosted_deploy_action=all`, and `hosted_deploy_dry_run=false`. Put the labelled
+locator in both the matching proof-evidence row and `Hosted deploy evidence`,
+for example:
 
-Gate-specific evidence rows:
+```text
+hosted-deploy CI main hosted_deploy_gate=true hosted_environment=hosted-production hosted_deploy_action=all hosted_deploy_dry_run=false workflow: https://github.com/<owner>/<repo>/actions/runs/<id>
+```
 
-- Community rollout evidence.
-- Marketplace evidence.
-- Hosted deploy evidence.
+A bare Actions URL or workflow ID is insufficient.
 
-Hosted deploy proof comes from the GitHub Actions `CI` workflow run from
-`main` with `hosted_deploy_gate=true`,
-`hosted_environment=hosted-production`, `hosted_deploy_action=all`, and
-`hosted_deploy_dry_run=false`. Paste a labelled locator such as
-`hosted-deploy CI main hosted_deploy_gate=true
-hosted_environment=hosted-production hosted_deploy_action=all
-hosted_deploy_dry_run=false workflow:
-https://github.com/<owner>/<repo>/actions/runs/<id>` into both `Evidence for
-Hosted production deployment evidence is attached.` and `Hosted deploy
-evidence`; a bare Actions URL or standalone workflow ID lacks the lane label and
-production inputs required by preflight.
+## Evidence and security rules
 
-## Rules
-
-- Do not paste raw secrets into evidence artifacts.
-- Do not satisfy required environment names with placeholders such as `set`,
-  `secret-value`, `sk_live_secret`, `whsec_secret`, `TBD`, or `TODO`.
-- Required environment values must also match their expected shape:
-  `SUPABASE_URL` must be HTTPS on a hosted Supabase project host with a
-  20-character lowercase alphanumeric project ref, Supabase REST and Functions
-  URLs must use the same hosted project-ref shape with `/rest/v1` or
-  `/functions/v1`, Stripe live keys must start with `sk_live_`, Stripe webhook
-  secrets must start with `whsec_`, `SUPABASE_ACCESS_TOKEN` must be a plausible
-  `sbp_` token, REST auth values must be JWT-shaped Supabase tokens,
-  provider keys/tokens must be plausibly long non-template secrets, and
-  scheduler secrets must be 32+ token-safe non-template secrets.
-- Each selected artifact must contain the checked proof rows assigned to that
-  artifact; proof rows from one artifact cannot satisfy another artifact's
-  per-artifact proof coverage.
-- Each checked proof row must have a matching `Evidence for <proof>:` row in the
-  same artifact. The value must point to a specific redacted run ID, dashboard
-  link, external artifact locator, workflow ID, signed log, or
-  `sha256:<64-hex>` proof reference.
-- Do not check a proof row until the matching external run evidence is captured
-  and redacted.
-- Remove the `Template only` banner before checking any proof row or filling any
-  Evidence Captured or Gate-Specific Evidence row.
-- Do not place the required checked proof rows or Evidence Captured detail rows
-  inside Markdown code fences, HTML comments, or indented code blocks; inactive
-  examples are ignored by preflight.
-- Do not use placeholder Evidence Captured values such as `TBD`, `TODO`,
-  `N/A`, `none`, `pending`, `placeholder`, `sample`, or `example`.
-- Do not use weak Evidence Captured values such as `Operator: me`,
-  `Environment: test`, redacted evidence details of `see above`, or
-  `Redaction notes: ok`.
-- `Redaction notes` must use positive wording such as `raw secrets removed`,
-  `tokens redacted`, or `no raw secrets`. Contradictory wording such as
-  `not redacted`, `unredacted`, `contains raw`, or `not reviewed` stays
+- Never paste raw secrets, private keys or complete authorization headers into
+  artifacts, logs or handoff text. Required values must be real and match their
+  expected shape; `set`, `secret-value`, sample credentials, `TBD` and `TODO`
+  remain blocked.
+- Use hosted HTTPS Supabase project URLs with a 20-character lowercase alphanumeric project ref,
+  live Stripe `sk_live_` and `whsec_` values, and a
+  plausible `SUPABASE_ACCESS_TOKEN` with an `sbp_` prefix.
+  REST auth values must be JWT-shaped; provider tokens must be plausibly long
+  and scheduler secrets must be token-safe values of at least 32 characters.
+  Preflight reports only redacted reason codes such as `missing`, `placeholder`
+  or `malformed`.
+- Each checked proof must belong to that artifact and have a matching
+  `Evidence for <proof>:` value in the same file. Use a specific `run:`,
+  `run_id:`, `workflow:`, `deployment:`, `artifact:`, `log:`, `signed-log:` or
+  `sha256:<64-hex>` reference, or a recognized dashboard/deployment URL.
+- Accepted URLs include Supabase Dashboard, Stripe Dashboard, GitHub
+  Actions/releases/deployments, Vercel, Netlify, Cloudflare, App Store Connect
+  and Google Play Console. Do not include URL userinfo, query strings or
+  fragments. Arbitrary URLs are not accepted proof.
+- Local or relative paths, `file://`, localhost/private-network URLs, fixture
+  screenshots and `docs/verification/screenshots/*` may support readiness but
+  never satisfy external proof.
+- Proof evidence must identify its lane. Compound evidence must contain every
+  required provider, OS, duration or matrix term in the same value. Bare
+  `evt_...` is allowed only for the Stripe webhook-signature proof; generic IDs
+  such as `run-generic-1` remain blocked.
+- Proof evidence values must name the proof lane. Current lane identifiers are
+  `stripe-webhook`, `non-steam-presence-bridge-provider`,
+  `provider-approved-catalog-cloud-transfer`,
+  `achievement-provider-cache-real-client`, `fullscreen-anti-cheat-overlay`,
+  `community-artwork-rollout`, and `plugin-marketplace-execution-update`; the
+  generated worklist supplies the complete current set.
+- Fill all template detail rows with concrete redacted values. `Operator: me`,
+  `Environment: test`, `see above`, `N/A`, `none`, `pending`, `sample` and
+  `example` are not acceptable. `Redaction notes` must positively state that
+  raw secrets or tokens were removed; contradictory or unreviewed wording is
   blocked.
-- Do not use local or relative paths as external evidence locators, including
-  `docs/verification/screenshots/*`, `./`, `../`, `/tmp`, drive-letter paths, or
-  `file://` paths.
-- Do not use arbitrary HTTPS URLs as external run evidence. Use accepted
-  evidence classes such as `run:`, `run_id:`, `workflow:`, `deployment:`,
-  `artifact:`, `log:`, `signed-log:`, or a full `sha256:<64-hex>` reference, or
-  use a recognized dashboard/deployment host and path such as Supabase Dashboard,
-  Stripe Dashboard, GitHub Actions/release/deployment, Vercel, Netlify,
-  Cloudflare, App Store Connect, and Google Play Console. Accepted dashboard/deployment URLs must not include userinfo,
-  query strings, or fragments.
-- Fill `Captured at` with a freshly captured current UTC ISO-8601 timestamp;
-  the timestamp must be within 30 days and not more than 10 minutes in the
-  future when preflight runs.
-- Fill `Operator`, `Environment`, concrete redacted external run IDs/dashboard
-  links/hosted-run logs/external-system screenshots, and `Redaction notes` for
-  each artifact before running preflight.
-- Evidence may include redacted command output, external run IDs, dashboard
-  links, hosted-run logs, external-system screenshots, and signed deployment
-  logs.
-- Local dry-runs and fixture screenshots, including
-  `docs/verification/screenshots/*`, can support readiness, but they do not
-  satisfy this checklist.
+- Set `Captured at` to current UTC ISO-8601 time, no older than 30 days and no
+  more than ten minutes in the future. Set `Release ref` to the exact release
+  tag and `Commit SHA` to its full 40-hex commit.
+- Keep active proof and detail rows outside code fences, HTML comments and
+  indented code blocks. Remove `Template only` before filling evidence or
+  checking a proof.
+
+Run `pnpm external:evidence:worklist` for the authoritative missing fields and
+capture hints, then `pnpm external:evidence:preflight` for the authoritative
+acceptance result. The committed templates are the field-level contract; this
+runbook intentionally does not duplicate their complete checklists or generated
+reason-code output.

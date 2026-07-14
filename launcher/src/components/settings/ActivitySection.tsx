@@ -576,7 +576,7 @@ export function ActivitySection() {
               aria-label="Open yearly activity dashboard"
               className="inline-flex h-10 w-10 items-center justify-center border-2 border-black bg-[#087d6d] text-white shadow-[2px_2px_0_#171411] hover:-translate-y-0.5"
               title="Open yearly activity dashboard"
-              to="/activity"
+              to="/activity/recap"
             >
               <CalendarDays aria-hidden="true" className="h-4 w-4" />
             </Link>

@@ -130,7 +130,11 @@ pub(crate) fn sanitize_download_file_name(value: &str) -> String {
         .to_string()
 }
 
-pub(crate) fn verify_sha256(path: &PathBuf, expected: &str) -> Result<(), String> {
+pub(crate) fn verify_sha256(
+    path: &PathBuf,
+    expected: &str,
+    cancel_rx: &tokio::sync::watch::Receiver<bool>,
+) -> Result<(), String> {
     use sha2::{Digest, Sha256};
     use std::io::Read;
 
@@ -144,6 +148,9 @@ pub(crate) fn verify_sha256(path: &PathBuf, expected: &str) -> Result<(), String
     let mut hasher = Sha256::new();
     let mut buffer = [0u8; 64 * 1024];
     loop {
+        if *cancel_rx.borrow() {
+            return Err("Download cancelled.".to_string());
+        }
         let read = file
             .read(&mut buffer)
             .map_err(|error| format!("Could not read downloaded file for verification: {error}"))?;

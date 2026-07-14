@@ -33,8 +33,6 @@ function envEvidenceFor(gate: ExternalCompletionEvidenceGateInput) {
 function validEnvValue(name: string) {
   const values: Record<string, string> = {
     ACCOUNT_DELETION_PROCESSOR_SECRET: "acctDel9f8e7d6c5b4a392817263abcd",
-    CURSEFORGE_API_KEY: "curseForge9f8e7d6c5b4a392817",
-    MOD_IO_API_KEY: "modio9f8e7d6c5b4a392817263",
     PRESENCE_POLL_SECRET: "presencePoll9f8e7d6c5b4a392817abcd",
     PRESENCE_PROVIDER_TOKEN: "presenceProvider9f8e7d6c5b4a392817",
     PRICE_DROP_NOTIFY_SECRET: "priceDrop9f8e7d6c5b4a392817263abcd",

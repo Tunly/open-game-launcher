@@ -93,6 +93,18 @@ describe("mapSteamNewsItems", () => {
     expect(item.title).toBe("Update");
     expect(item.excerpt).toBe("Fixed & tuned");
   });
+
+  it("removes Steam image placeholders from update text", () => {
+    const [item] = mapSteamNewsItems("730", [
+      {
+        title: "Patch Art",
+        contents: "{STEAM_CLAN_LOC_IMAGE}/44715314/patch-notes.jpg Incoming update",
+        date: 1,
+      },
+    ]);
+
+    expect(item.excerpt).toBe("Incoming update");
+  });
 });
 
 describe("classifyGameUpdate", () => {

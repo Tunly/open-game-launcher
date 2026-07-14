@@ -19,6 +19,8 @@ describe("HomePage", () => {
       "href",
       "/settings/performance",
     );
+    expect(screen.queryByRole("link", { name: /Mods/i })).not.toBeInTheDocument();
+    expect(screen.queryByText(/mod deck/i)).not.toBeInTheDocument();
     expect(screen.queryByText("Owner locked")).not.toBeInTheDocument();
     expect(screen.queryByText("Steam client detected")).not.toBeInTheDocument();
     expect(screen.queryByText("2h uptime")).not.toBeInTheDocument();

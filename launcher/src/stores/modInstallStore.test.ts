@@ -20,7 +20,7 @@ function makeItem(overrides: Partial<ModInstallQueueItem> = {}): ModInstallQueue
     lastUpdatedAt: 0,
     phase: "",
     progress: 0,
-    provider: "local_archive",
+    provider: "nexus",
     speed: "0 B/s",
     status: "queued",
     title: "Test",
@@ -96,6 +96,41 @@ describe("useModInstallStore", () => {
     expect(items).toHaveLength(1);
     expect(items[0].progress).toBe(70);
     expect(items[0].status).toBe("installing");
+  });
+
+  it("keeps historical providers out of the active queue", () => {
+    act(() => {
+      useModInstallStore
+        .getState()
+        .setItems([
+          makeItem({ installId: "legacy", provider: "local_archive" }),
+          makeItem({ installId: "nexus", provider: "nexus" }),
+        ]);
+      useModInstallStore
+        .getState()
+        .upsertItem(makeItem({ installId: "legacy-event", provider: "curseforge" }));
+    });
+
+    expect(useModInstallStore.getState().items.map((item) => item.installId)).toEqual(["nexus"]);
+  });
+
+  it("bounds retained queue history while keeping active installs first", () => {
+    act(() => {
+      useModInstallStore.getState().setItems([
+        ...Array.from({ length: 60 }, (_, index) =>
+          makeItem({
+            installId: `completed-${index}`,
+            lastUpdatedAt: index,
+            status: "completed",
+          }),
+        ),
+        makeItem({ installId: "active", lastUpdatedAt: 100, status: "downloading" }),
+      ]);
+    });
+
+    const items = useModInstallStore.getState().items;
+    expect(items).toHaveLength(50);
+    expect(items[0].installId).toBe("active");
   });
 });
 

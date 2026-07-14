@@ -15,7 +15,7 @@ import type {
 } from "../plugin-system-readiness";
 
 // Types that were defined in launcher.ts itself (NOT in lib/types)
-import type { CatalogSource, Game, UnifiedAchievement } from "../types";
+import type { AchievementSummary, CatalogSource, Game, UnifiedAchievement } from "../types";
 
 export type { Game };
 
@@ -114,5 +114,6 @@ export interface OwnedGame {
   lastPlayedAt?: string | null;
   cloudGamingUrl?: string | null;
   achievements?: UnifiedAchievement[];
+  achievementSummary?: AchievementSummary;
   achievementsSyncedAt?: string | null;
 }

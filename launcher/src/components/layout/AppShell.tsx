@@ -26,6 +26,8 @@ import {
   type AppShellSkinId,
 } from "../../lib/app-shell-skins";
 import { selectActiveCount, useDownloadStore } from "../../stores/downloadStore";
+import { useModInstallStore } from "../../stores/modInstallStore";
+import { useLauncherUpdateStore } from "../../stores/launcherUpdateStore";
 import {
   BACKUP_REMINDER_SETTINGS_CHANGED_EVENT,
   formatBackupReminderDate,
@@ -39,11 +41,13 @@ import {
 } from "../../lib/backup-reminder";
 import {
   getDownloadQueue,
+  getModQueue,
   runBackupPlan,
   runScheduledPlatformClientUpdateChecks,
 } from "../../lib/launcher";
 import { STORAGE_KEYS } from "../../lib/storage-keys";
 import type { DownloadItem } from "../../lib/types";
+import type { ModInstallQueueItem } from "../../lib/types/mods";
 
 interface AppShellProps {
   activePage: PageKey;
@@ -85,6 +89,26 @@ function errorMessage(error: unknown) {
   return error instanceof Error ? error.message : String(error);
 }
 
+function isQueueItemAtLeastAsRecent(
+  incoming: { eventRevision?: number; lastUpdatedAt?: number },
+  current: { eventRevision?: number; lastUpdatedAt?: number },
+) {
+  const incomingRevision = incoming.eventRevision ?? 0;
+  const currentRevision = current.eventRevision ?? 0;
+  if (incomingRevision > 0 || currentRevision > 0) {
+    if (currentRevision > 0 && incomingRevision <= 0) return false;
+    if (incomingRevision > 0 && currentRevision <= 0) return true;
+    return incomingRevision > currentRevision;
+  }
+
+  const incomingTimestamp = incoming.lastUpdatedAt ?? 0;
+  const currentTimestamp = current.lastUpdatedAt ?? 0;
+
+  if (currentTimestamp > 0 && incomingTimestamp <= 0) return false;
+  if (incomingTimestamp <= 0 || currentTimestamp <= 0) return true;
+  return incomingTimestamp >= currentTimestamp;
+}
+
 export function AppShell({
   activePage,
   authAvatarUrl,
@@ -117,7 +141,24 @@ export function AppShell({
   const avatarInitials = getInitials(accountLabel);
   const profileMenuLabel = authUsername ?? accountLabel;
   const profileMenuInitials = getInitials(profileMenuLabel);
+  const launcherUpdateStatus = useLauncherUpdateStore((state) => state.status);
+  const launcherUpdateVersion = useLauncherUpdateStore((state) => state.latestVersion);
+  const launcherUpdateNotifications: NotificationItem[] =
+    launcherUpdateStatus === "available" && launcherUpdateVersion
+      ? [
+          {
+            id: `launcher-update-${launcherUpdateVersion}`,
+            title: "OG Launcher Update",
+            message: `Signed version v${launcherUpdateVersion.replace(/^v/, "")} is ready to install.`,
+            time: "Now",
+            isUnread: true,
+            type: "update",
+            action: { label: "Review update", page: "settings" },
+          },
+        ]
+      : [];
   const notificationItems = [
+    ...launcherUpdateNotifications,
     ...scheduledBackupReminderNotifications,
     ...scheduledClientUpdateNotifications,
   ];
@@ -161,6 +202,73 @@ export function AppShell({
     return () => {
       window.removeEventListener(APP_SHELL_SKIN_CHANGED_EVENT, handleShellSkinChanged);
       window.removeEventListener("storage", handleStorage);
+    };
+  }, []);
+
+  // Hydrate mod installs once for the whole main window, then keep every page
+  // synchronized through the single desktop progress event.
+  useEffect(() => {
+    let active = true;
+    let hydrated = false;
+    let unlistenProgress: (() => void) | null = null;
+    const pendingProgress = new Map<string, ModInstallQueueItem>();
+
+    function applyProgressItem(item: ModInstallQueueItem) {
+      const state = useModInstallStore.getState();
+      const current = state.items.find((entry) => entry.installId === item.installId);
+      if (!current || isQueueItemAtLeastAsRecent(item, current)) {
+        state.upsertItem(item);
+      }
+    }
+
+    function applyPendingProgress() {
+      if (!active) return;
+      for (const item of pendingProgress.values()) {
+        applyProgressItem(item);
+      }
+      pendingProgress.clear();
+    }
+
+    const listenerRegistration = isTauri()
+      ? listen<ModInstallQueueItem>("mod_install_progress", (event) => {
+          if (!active) return;
+          if (!hydrated) {
+            pendingProgress.set(event.payload.installId, event.payload);
+            return;
+          }
+          applyProgressItem(event.payload);
+        }).then((unlisten) => {
+          if (active) {
+            unlistenProgress = unlisten;
+          } else {
+            unlisten();
+          }
+        })
+      : Promise.resolve();
+
+    async function hydrateModQueue() {
+      await Promise.allSettled([listenerRegistration]);
+      if (!active) return;
+
+      try {
+        const queue = await getModQueue();
+        if (!active) return;
+        useModInstallStore.getState().setItems(queue);
+        hydrated = true;
+        applyPendingProgress();
+      } catch {
+        if (!active) return;
+        hydrated = true;
+        applyPendingProgress();
+      }
+    }
+
+    void hydrateModQueue();
+
+    return () => {
+      active = false;
+      pendingProgress.clear();
+      unlistenProgress?.();
     };
   }, []);
 
@@ -222,20 +330,29 @@ export function AppShell({
   // Initial download queue load + global listener for badge/cross-page state
   useEffect(() => {
     let active = true;
+    let hydrated = false;
+    let unlistenProgress: (() => void) | null = null;
+    let unlistenRemoved: (() => void) | null = null;
     const pendingDownloadProgress = new Map<string, DownloadItem>();
+    const removedBeforeHydration = new Set<string>();
     let flushHandle: number | null = null;
     let flushUsesAnimationFrame = false;
 
     function flushPendingDownloadProgress() {
       flushHandle = null;
-      if (!active || pendingDownloadProgress.size === 0) {
+      if (!active) {
         pendingDownloadProgress.clear();
         return;
       }
+      if (!hydrated || pendingDownloadProgress.size === 0) return;
 
-      const batch = [...pendingDownloadProgress.values()];
+      const state = useDownloadStore.getState();
+      const batch = [...pendingDownloadProgress.values()].filter((item) => {
+        const current = state.items.find((entry) => entry.gameId === item.gameId);
+        return !current || isQueueItemAtLeastAsRecent(item, current);
+      });
       pendingDownloadProgress.clear();
-      useDownloadStore.getState().upsertItems(batch);
+      state.upsertItems(batch);
     }
 
     function scheduleDownloadProgressFlush() {
@@ -252,30 +369,63 @@ export function AppShell({
       }
     }
 
-    const unlistenPromise = isTauri()
+    const progressListenerRegistration = isTauri()
       ? listen<DownloadItem>("download_progress", (event) => {
           if (active) {
+            removedBeforeHydration.delete(event.payload.gameId);
             pendingDownloadProgress.set(event.payload.gameId, event.payload);
-            scheduleDownloadProgressFlush();
+            if (hydrated) {
+              scheduleDownloadProgressFlush();
+            }
+          }
+        }).then((unlisten) => {
+          if (active) {
+            unlistenProgress = unlisten;
+          } else {
+            unlisten();
           }
         })
-      : null;
-    const unlistenRemovedPromise = isTauri()
+      : Promise.resolve();
+    const removedListenerRegistration = isTauri()
       ? listen<{ gameId: string }>("download_removed", (event) => {
           if (active) {
             pendingDownloadProgress.delete(event.payload.gameId);
+            if (!hydrated) {
+              removedBeforeHydration.add(event.payload.gameId);
+            }
             useDownloadStore.getState().removeItem(event.payload.gameId);
           }
+        }).then((unlisten) => {
+          if (active) {
+            unlistenRemoved = unlisten;
+          } else {
+            unlisten();
+          }
         })
-      : null;
+      : Promise.resolve();
 
-    getDownloadQueue()
-      .then((queue) => {
-        if (active) {
-          useDownloadStore.getState().setItems(queue);
-        }
-      })
-      .catch(() => {});
+    async function hydrateDownloadQueue() {
+      await Promise.allSettled([progressListenerRegistration, removedListenerRegistration]);
+      if (!active) return;
+
+      try {
+        const queue = await getDownloadQueue();
+        if (!active) return;
+        useDownloadStore
+          .getState()
+          .setItems(queue.filter((item) => !removedBeforeHydration.has(item.gameId)));
+        hydrated = true;
+        flushPendingDownloadProgress();
+        removedBeforeHydration.clear();
+      } catch {
+        if (!active) return;
+        hydrated = true;
+        flushPendingDownloadProgress();
+        removedBeforeHydration.clear();
+      }
+    }
+
+    void hydrateDownloadQueue();
 
     return () => {
       active = false;
@@ -287,8 +437,9 @@ export function AppShell({
         }
       }
       pendingDownloadProgress.clear();
-      void unlistenPromise?.then((unlisten) => unlisten());
-      void unlistenRemovedPromise?.then((unlisten) => unlisten());
+      removedBeforeHydration.clear();
+      unlistenProgress?.();
+      unlistenRemoved?.();
     };
   }, []);
 
@@ -683,8 +834,8 @@ function NotificationMenu({
           ))
         ) : (
           <p className="neo-copy border-2 border-dashed border-black bg-[#f6edd8] p-4 text-[10px] leading-5 font-black text-[#5b403f] uppercase">
-            No launcher notifications yet. Real download, backup, and client-update events will
-            appear here.
+            No launcher notifications yet. Real launcher-update, download, backup, and client-update
+            events will appear here.
           </p>
         )}
       </div>

@@ -4,7 +4,13 @@ export type PlatformType =
   "steam" | "epic" | "gog" | "ea" | "xbox" | "battlenet" | "ubisoft" | "og";
 export type MatchMethod = "linked_account" | "heuristic" | "manual";
 export type MergeSuggestionStatus = "pending" | "accepted" | "rejected";
-export type ActivityType = "status" | "game_start" | "game_stop" | "achievement_unlocked";
+export type ActivityType =
+  | "status"
+  | "game_start"
+  | "game_stop"
+  | "achievement_unlocked"
+  | "wishlist_added"
+  | "game_purchased";
 export type InviteFeasibility = "possible" | "uncertain" | "impossible";
 
 export interface PlatformAccount {
@@ -68,6 +74,21 @@ export interface ActivityFeedItem {
   createdAt: string;
 }
 
+export interface ActivityComment {
+  activityId: string;
+  authorId: string;
+  body: string;
+  createdAt: string;
+  id: string;
+}
+
+export interface ActivityInteractionSummary {
+  activityId: string;
+  commentCount: number;
+  reactedByCurrentUser: boolean;
+  reactionCount: number;
+}
+
 export interface GroupChat {
   id: string;
   name: string | null;
@@ -117,6 +138,8 @@ export interface AggregatedPresence {
 }
 
 export interface ActivityFeedMetadata extends Record<string, unknown> {
+  coverImageUrl?: string | null;
+  currency?: string | null;
   externalGameId?: string | null;
   launcher?: string | null;
   localGameId?: string | null;
@@ -124,5 +147,8 @@ export interface ActivityFeedMetadata extends Record<string, unknown> {
   platformGameId?: string | null;
   platformSource?: string | null;
   platform_source?: string | null;
+  priceCents?: number | null;
+  productId?: string | null;
+  productSlug?: string | null;
   text?: string | null;
 }

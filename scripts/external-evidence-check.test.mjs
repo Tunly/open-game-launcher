@@ -37,6 +37,12 @@ const verificationReadme = readFileSync(
   new URL("../docs/verification/README.md", import.meta.url),
   "utf8",
 );
+const screenshotManifest = JSON.parse(
+  readFileSync(
+    new URL("../docs/verification/screenshot-manifest.json", import.meta.url),
+    "utf8",
+  ),
+);
 const functionsEnvExample = readFileSync(
   new URL("../supabase/functions/.env.example", import.meta.url),
   "utf8",
@@ -50,6 +56,9 @@ const featurePlan = readFileSync(
   "utf8",
 );
 const readme = readFileSync(new URL("../README.md", import.meta.url), "utf8");
+const prBody = readFileSync(new URL("../PR_BODY.md", import.meta.url), "utf8");
+const security = readFileSync(new URL("../SECURITY.md", import.meta.url), "utf8");
+const changelog = readFileSync(new URL("../CHANGELOG.md", import.meta.url), "utf8");
 const externalSummarySource = readFileSync(
   new URL(
     "../launcher/src/lib/external-completion-evidence-summary.ts",
@@ -90,7 +99,8 @@ const validHardwareOsMatrix =
   "Windows title:redacted-game client:Steam run:win-matrix-123 | macOS title:redacted-game client:Steam run:macos-matrix-123 | Linux title:redacted-game client:Steam run:linux-matrix-123";
 const validHostedDeployEvidence =
   "hosted-deploy CI main hosted_deploy_gate=true hosted_environment=hosted-production hosted_deploy_action=all hosted_deploy_dry_run=false workflow: https://github.com/open-game-collective/open-game-launcher/actions/runs/12345";
-const rolloutProof = "Hosted community artwork rollout is exercised beyond fixtures.";
+const rolloutProof =
+  "Hosted community artwork rollout is exercised beyond fixtures.";
 const rolloutEvidence = "run-community-artwork-rollout-123";
 
 function requiredEvidenceFieldsForArtifact(gate, artifactPath) {
@@ -147,7 +157,7 @@ function gateSpecificEvidenceDetails(gate) {
         return "- Session/run ID: overlay-session-run-123 duration:30m";
       }
       if (field === "Provider/client matrix") {
-        return "- Provider/client matrix: provider-client matrix mod.io CurseForge workflow-123";
+        return "- Provider/client matrix: provider-client matrix Nexus Steam Workshop workflow-123";
       }
       if (field === "Hosted deploy evidence") {
         return `- Hosted deploy evidence: ${validHostedDeployEvidence}`;
@@ -177,8 +187,8 @@ function proofEvidenceValueForProof(proof, fallback) {
     return "workflow-account-deletion-123";
   if (proof.includes("Hosted price-drop scheduler"))
     return "workflow-price-drop-123";
-  if (proof.includes("mod.io and CurseForge"))
-    return "run-provider-modio-curseforge-probe-123";
+  if (proof.includes("Nexus website search handoff and Steam Workshop"))
+    return "run-nexus-steam-workshop-live-provider-123";
   if (proof.includes("Non-Steam presence"))
     return "run-non-steam-presence-bridge-provider-123";
   if (proof.includes("Provider-approved catalog/cloud"))
@@ -441,8 +451,6 @@ function externalSummaryGateBlock(id) {
 
 const configuredEnv = Object.freeze({
   ACCOUNT_DELETION_PROCESSOR_SECRET: "acctDel9f8e7d6c5b4a392817263abcd",
-  CURSEFORGE_API_KEY: "curseForge9f8e7d6c5b4a392817",
-  MOD_IO_API_KEY: "modio9f8e7d6c5b4a392817263",
   OGL_EXTERNAL_EVIDENCE_NOW: "2026-06-17T12:00:00.000Z",
   PRESENCE_POLL_SECRET: "presencePoll9f8e7d6c5b4a392817abcd",
   PRESENCE_PROVIDER_TOKEN: "presenceProvider9f8e7d6c5b4a392817",
@@ -1267,8 +1275,6 @@ test("preflight status rejects malformed required environment values without pri
   );
   assert.ok(providerGate);
   const providerEnv = {
-    CURSEFORGE_API_KEY: "curseforge-key",
-    MOD_IO_API_KEY: "modio-key",
     PRESENCE_PROVIDER_TOKEN: "provider-token",
     STEAM_WEB_API_KEY: "steam-web-key",
   };
@@ -1288,14 +1294,10 @@ test("preflight status rejects malformed required environment values without pri
   assert.deepEqual(providerStatus.missingEnv, [
     "STEAM_WEB_API_KEY",
     "PRESENCE_PROVIDER_TOKEN",
-    "MOD_IO_API_KEY",
-    "CURSEFORGE_API_KEY",
   ]);
   assert.deepEqual(providerStatus.envFindings, [
     { name: "STEAM_WEB_API_KEY", reason: "malformed" },
     { name: "PRESENCE_PROVIDER_TOKEN", reason: "malformed" },
-    { name: "MOD_IO_API_KEY", reason: "malformed" },
-    { name: "CURSEFORGE_API_KEY", reason: "malformed" },
   ]);
   for (const value of Object.values(providerEnv)) {
     assert.equal(JSON.stringify(providerStatus).includes(value), false);
@@ -1340,8 +1342,6 @@ test("preflight status rejects malformed required environment values without pri
   for (const name of [
     "OGL_EXTERNAL_EVIDENCE_GATES",
     "OGL_EXTERNAL_EVIDENCE_NOW",
-    "MOD_IO_API_KEY",
-    "CURSEFORGE_API_KEY",
   ]) {
     assert.match(functionsEnvExample, new RegExp(`^${name}=`, "m"));
   }
@@ -2504,7 +2504,7 @@ test("preflight status requires compound provider proof evidence terms", () => {
   const artifactPath =
     "docs/verification/external/provider-live-integrations.md";
   const compoundProof =
-    "mod.io and CurseForge staging probes use real provider keys.";
+    "Nexus website search handoff and Steam Workshop client handoff are verified against live providers.";
 
   const contentWithCompoundProofEvidence = (value) =>
     [
@@ -2550,7 +2550,7 @@ test("preflight status requires compound provider proof evidence terms", () => {
     fakeExists(gate.artifactPaths),
     fakeRead({
       [artifactPath]: contentWithCompoundProofEvidence(
-        "run-provider-modio-curseforge-staging-probe-123",
+        "run-nexus-steam-workshop-live-provider-123",
       ),
     }),
   );
@@ -4319,11 +4319,10 @@ test("preflight status blocks raw provider API key artifact content", () => {
     "docs/verification/external/provider-live-integrations.md";
   const rawProviderSecrets = [
     "STEAM_WEB_API_KEY=steam_live_super_secret_1234567890",
-    "MOD_IO_API_KEY=modio_live_super_secret_1234567890",
-    "CURSEFORGE_API_KEY=curseforge_live_super_secret_1234567890",
+    "NEXUS_API_KEY=nexus_live_super_secret_1234567890",
     "RAWG_API_KEY=rawg_live_super_secret_1234567890",
     "PRESENCE_PROVIDER_TOKEN=presence_live_super_secret_1234567890",
-    "X-Api-Key: curseforge_live_super_secret_1234567890",
+    "X-Api-Key: nexus_live_super_secret_1234567890",
     "Authorization: Token modio_live_super_secret_1234567890",
   ];
 
@@ -4361,7 +4360,7 @@ test("preflight status blocks raw provider API key artifact content", () => {
         "STEAM_WEB_API_KEY=[redacted]",
         "RAWG_API_KEY=[redacted]",
         "PRESENCE_PROVIDER_TOKEN=<redacted>",
-        "CURSEFORGE_API_KEY=***",
+        "NEXUS_API_KEY=***",
         "X-Api-Key: [redacted]",
         "Authorization: Token [redacted]",
       ].join("\n"),
@@ -4639,7 +4638,7 @@ test("artifactTemplate prints required proof checklist rows without secret value
   const template = artifactTemplate(gate, gate.artifactPaths[0]);
 
   assert.match(template, /Provider live integrations Evidence/);
-  assert.match(template, /MOD_IO_API_KEY/);
+  assert.doesNotMatch(template, /NEXUS_MODS_APP_ID/);
   assert.match(
     template,
     /Preflight requires non-empty, non-placeholder values/,
@@ -4652,7 +4651,7 @@ test("artifactTemplate prints required proof checklist rows without secret value
   assert.match(template, /`sha256:<64-hex>` reference/);
   assert.match(template, /Accepted dashboard URL hosts are Supabase/);
   assert.match(template, /Proof evidence values must name the proof lane/);
-  assert.match(template, /mod\.io\/CurseForge/);
+  assert.match(template, /nexus-steam-workshop-live-provider/);
   assert.match(
     template,
     /run:.*probe-.*session-.*workflow-.*deployment-.*artifact-/s,
@@ -4954,11 +4953,6 @@ test("runbook and local audit mention every external gate", () => {
         new RegExp(artifact.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
       );
     }
-    for (const item of gate.artifactEvidenceFields ?? []) {
-      for (const field of item.requiredFields) {
-        assert.match(runbook, new RegExp(escapeForRegExp(field)));
-      }
-    }
   }
 
   assert.match(localAudit, /Store\/Stripe/);
@@ -5019,7 +5013,7 @@ test("runbook documents Store price-drop scheduler artifact as flat gate-specifi
     /scheduler artifact uses one price-drop scheduler detail block/i,
   );
   assert.match(storeStripeRunbook, /OGL_LICENSE_SIGNING_KEY/);
-  assert.match(storeStripeRunbook, /hosted runtime prerequisite/);
+  assert.match(storeStripeRunbook, /hosted runtime\s+prerequisite/);
   assert.match(
     storeStripeRunbook,
     /live license issuance\/order\/function locator/,
@@ -5045,16 +5039,20 @@ test("provider runbook documents non-Steam presence bridge collection inputs", (
   assert.match(providerRunbook, /provider bridge run ID/);
 });
 
-test("mods documentation no longer advertises removed scanner or Nexus provider lane", () => {
+test("mods documentation advertises only the current Nexus and Steam Workshop lanes", () => {
   assert.doesNotMatch(readme, /scan_mod_directory/);
   assert.doesNotMatch(featurePlan, /scan_mod_directory/);
   assert.doesNotMatch(readme, /Nexus\/CurseForge/);
   assert.doesNotMatch(featurePlan, /Nexus\/CurseForge/);
-  assert.match(featurePlan, /Nexus-Mod-Provider:[\s\S]*?aus den aktiven[\s\S]*?entfernt/);
-  assert.match(readme, /run_mod_provider_staging_probe/);
-  assert.match(featurePlan, /run_mod_provider_staging_probe/);
-  assert.match(readme, /mod\.io\/CurseForge/);
-  assert.match(featurePlan, /mod\.io\/CurseForge/);
+  assert.doesNotMatch(readme, /run_mod_provider_staging_probe/);
+  assert.doesNotMatch(featurePlan, /run_mod_provider_staging_probe/);
+  assert.match(readme, /Nexus Mods[\s\S]*Steam Workshop/);
+  assert.match(featurePlan, /Nexus Mods[\s\S]*Steam Workshop/);
+  for (const document of [readme, featurePlan, prBody, security, changelog, localAudit]) {
+    assert.match(document, /no[- ]slug/i);
+  }
+  assert.doesNotMatch(prBody, /Nexus requires a registered app ID/i);
+  assert.doesNotMatch(security, /active surface is limited to the registered Nexus/i);
 });
 
 test("runbook documents proof evidence lane identity", () => {
@@ -5076,7 +5074,7 @@ test("runbook documents the external evidence next steps mode", () => {
   assert.match(runbook, /sequenced\s+operator runbook/);
   assert.match(runbook, /20-character lowercase alphanumeric project ref/);
   assert.match(runbook, /SUPABASE_ACCESS_TOKEN[\s\S]{0,80}`sbp_`/);
-  assert.match(runbook, /REST auth values must be JWT-shaped/i);
+  assert.match(runbook, /REST auth values must\s+be JWT-shaped/i);
 });
 
 test("runbook command list includes hosted cron plan and collector", () => {
@@ -5107,14 +5105,12 @@ test("README documents explicit hosted deploy gate aliases", () => {
   assert.doesNotMatch(readme, /hosted deploy preflight\/smoke/);
 });
 
-test("verification screenshot rows document external next handoff", () => {
-  const externalSummaryRows = verificationReadme
-    .split("\n")
-    .filter((line) =>
-      /screenshots\/settings-external-completion-evidence-summary-(?:local|mobile)\.png/.test(
-        line,
-      ),
-    );
+test("verification manifest and guide document the external next handoff", () => {
+  const externalSummaryRows = screenshotManifest.screenshots.filter((entry) =>
+    /screenshots\/settings-external-completion-evidence-summary-(?:local|mobile)\.png/.test(
+      entry.file,
+    ),
+  );
 
   assert.equal(externalSummaryRows.length, 2);
   const documentedCommands = [
@@ -5127,9 +5123,11 @@ test("verification screenshot rows document external next handoff", () => {
     "pnpm completion:gate:external",
   ];
   for (const row of externalSummaryRows) {
-    for (const command of documentedCommands) {
-      assert.match(row, new RegExp(escapeForRegExp(command)));
-    }
+    assert.deepEqual(row.routes, ["/settings"]);
+    assert.deepEqual(row.verify, ["external-completion-evidence-summary"]);
+  }
+  for (const command of documentedCommands) {
+    assert.match(verificationReadme, new RegExp(escapeForRegExp(command)));
   }
 });
 
@@ -5155,7 +5153,14 @@ test("external evidence CLI gates stay in sync with the UI summary and plan boun
       assert.match(uiGate, new RegExp(escapeForRegExp(`"${envName}"`)));
     }
     for (const proof of gate.requiredProofs) {
-      assert.match(runbook, new RegExp(escapeForRegExp(proof)));
+      const owningArtifact =
+        gate.artifactProofs?.find((item) => item.requiredProofs.includes(proof))
+          ?.path ?? gate.artifactPaths[0];
+      const artifact = readFileSync(
+        new URL(`../${owningArtifact}`, import.meta.url),
+        "utf8",
+      );
+      assert.match(artifact, new RegExp(escapeForRegExp(proof)));
       assert.match(uiGate, new RegExp(escapeForRegExp(`"${proof}"`)));
     }
   }

@@ -987,6 +987,7 @@ pub async fn fetch_xbox_owned_games(code: String) -> Result<XboxFetchResult, Str
             playtime_minutes,
             last_played_at: last_played,
             cloud_gaming_url: None,
+            achievement_summary: None,
         });
     }
 
@@ -1364,6 +1365,7 @@ fn map_display_catalog_product(product: DisplayCatalogProduct) -> Option<OwnedGa
         playtime_minutes: None,
         last_played_at: None,
         cloud_gaming_url: None,
+        achievement_summary: None,
     })
 }
 
@@ -1754,7 +1756,7 @@ async fn resolve_xbox_title_id(
     client: &reqwest::Client,
     auth_header: &str,
     xid: &str,
-    game_id: &str,
+    game: &crate::commands::games::types::InstalledGame,
     title_hint: &str,
 ) -> Result<String, String> {
     let title_hint = title_hint.trim();
@@ -1762,32 +1764,28 @@ async fn resolve_xbox_title_id(
         return Ok(title_hint.to_string());
     }
 
-    let games = crate::commands::games::core::read_installed_games_cache_result()?;
-    let game = games.iter().find(|game| game.id == game_id);
     let mut hints: HashSet<String> = HashSet::new();
 
     if !title_hint.is_empty() {
         hints.insert(title_hint.to_lowercase());
     }
 
-    if let Some(game) = game {
-        hints.insert(game.id.to_lowercase());
-        hints.insert(game.title.to_lowercase());
-        if !game.slug.is_empty() {
-            hints.insert(game.slug.to_lowercase());
+    hints.insert(game.id.to_lowercase());
+    hints.insert(game.title.to_lowercase());
+    if !game.slug.is_empty() {
+        hints.insert(game.slug.to_lowercase());
+    }
+    if let Some(external_id) = &game.external_id {
+        let external_id = external_id.trim();
+        if external_id.chars().all(|c| c.is_ascii_digit()) {
+            return Ok(external_id.to_string());
         }
-        if let Some(external_id) = &game.external_id {
-            let external_id = external_id.trim();
-            if external_id.chars().all(|c| c.is_ascii_digit()) {
-                return Ok(external_id.to_string());
-            }
-            if !external_id.is_empty() {
-                hints.insert(external_id.to_lowercase());
-            }
+        if !external_id.is_empty() {
+            hints.insert(external_id.to_lowercase());
         }
-        if let Some(launch_uri) = &game.launch_uri {
-            hints.insert(launch_uri.to_lowercase());
-        }
+    }
+    if let Some(launch_uri) = &game.launch_uri {
+        hints.insert(launch_uri.to_lowercase());
     }
 
     let history = fetch_xbox_title_history(client, auth_header, xid).await?;
@@ -1810,10 +1808,11 @@ async fn resolve_xbox_title_id(
         }
     }
 
-    let label = game
-        .map(|game| game.title.as_str())
-        .filter(|title| !title.is_empty())
-        .unwrap_or(game_id);
+    let label = if game.title.is_empty() {
+        game.id.as_str()
+    } else {
+        game.title.as_str()
+    };
     Err(format!(
         "Xbox achievement sync could not resolve a numeric TitleId for {}. Refresh the Xbox library or import the game from Xbox owned games first.",
         label
@@ -1824,7 +1823,29 @@ async fn resolve_xbox_title_id(
 pub async fn sync_xbox_achievements(
     game_id: String,
     title_id: String,
+    fallback_game: Option<crate::commands::games::types::InstalledGame>,
 ) -> Result<crate::commands::games::types::SyncGameAchievementsResponse, String> {
+    let game_id = crate::commands::games::core::normalize_game_id(game_id)?;
+    let fallback_game = fallback_game.filter(|game| game.id == game_id);
+    if fallback_game
+        .as_ref()
+        .is_some_and(|game| !game.launcher.eq_ignore_ascii_case("xbox"))
+    {
+        return Err(format!(
+            "Game '{game_id}' does not match the Xbox achievement provider."
+        ));
+    }
+    let cached_games = crate::commands::games::core::read_installed_games_cache_result();
+    let cached_game = match cached_games {
+        Ok(games) => games.into_iter().find(|game| game.id == game_id),
+        Err(error) if fallback_game.is_none() => return Err(error),
+        Err(_) => None,
+    };
+    let should_persist_to_native_cache = cached_game.is_some();
+    let mut game = cached_game
+        .or(fallback_game)
+        .ok_or_else(|| format!("Game '{game_id}' was not found in the local library cache."))?;
+
     let refresh_token = load_xbox_token().ok_or("Xbox account not linked or token missing")?;
     let oauth_token = refresh_xbox_oauth_token(&refresh_token).await?;
     save_xbox_token(&oauth_token.refresh_token);
@@ -1849,7 +1870,7 @@ pub async fn sync_xbox_achievements(
 
     let client = crate::commands::http::shared_http_client();
     let title_id =
-        resolve_xbox_title_id(client, &auth_header, &xid, &game_id, title_id.trim()).await?;
+        resolve_xbox_title_id(client, &auth_header, &xid, &game, title_id.trim()).await?;
     let url = format!(
         "https://achievements.xboxlive.com/users/xuid({})/achievements?titleId={}&maxItems=1000",
         xid, title_id
@@ -1912,12 +1933,19 @@ pub async fn sync_xbox_achievements(
     let synced_at = crate::commands::games::core::unix_timestamp_to_iso(
         crate::commands::games::core::current_unix_timestamp(),
     );
-    let game = crate::commands::games::core::update_installed_game_cache(&game_id, move |game| {
+    let game = if should_persist_to_native_cache {
+        crate::commands::games::core::update_installed_game_cache(&game_id, move |game| {
+            game.achievements =
+                crate::commands::games::core::preserve_known_unlocks(unified, &game.achievements);
+            game.achievements_synced_at = Some(synced_at);
+            Ok(())
+        })?
+    } else {
         game.achievements =
             crate::commands::games::core::preserve_known_unlocks(unified, &game.achievements);
         game.achievements_synced_at = Some(synced_at);
-        Ok(())
-    })?;
+        game
+    };
 
     Ok(
         crate::commands::games::types::SyncGameAchievementsResponse {

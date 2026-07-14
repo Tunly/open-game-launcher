@@ -58,7 +58,9 @@ pub async fn run_internal_lifecycle(
     {
         Ok(downloaded_file) => {
             let install_manifest_file =
-                match download_internal_install_manifest_file(&source, &install_dir).await {
+                match download_internal_install_manifest_file(&source, &install_dir, &cancel_rx)
+                    .await
+                {
                     Ok(path) => path,
                     Err(error) => {
                         if *cancel_rx.borrow() {
@@ -208,9 +210,9 @@ pub async fn run_internal_lifecycle(
             }
         }
         Err(error) => {
-            // The cancel command already emitted and persisted the complete
-            // payload before removing the active entry. Do not replace it
-            // with a default payload after the worker observes cancellation.
+            // The cancel command already removed the queue record after
+            // signalling this worker. Do not recreate it with a default
+            // payload after the worker observes cancellation.
             if *cancel_rx.borrow() {
                 remove_active_download_if_current(&game_id, &cancel_rx);
                 return;

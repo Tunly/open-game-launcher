@@ -40,6 +40,7 @@ vi.mock("../../../lib/launcher", () => ({
       description: "",
       coverUrl: null,
       logoUrl: null,
+      achievementSummary: entry.achievementSummary,
     }));
   },
   openSteamScraperWindow: (...args: unknown[]) => openSteamScraperWindow(...args),
@@ -82,6 +83,33 @@ describe("mergeSteamOwned", () => {
     expect(result.games[0]).toBe(installed);
     expect(result.games[1].id).toBe("steam-owned-730");
     expect(result.warnings).toEqual([]);
+  });
+
+  it("adds Steam achievement progress to an installed copy", async () => {
+    window.localStorage.setItem(STORAGE_KEYS.STEAM_ID, JSON.stringify("steamid-123"));
+    fetchSteamOwnedGames.mockResolvedValueOnce([
+      {
+        achievementSummary: {
+          unlocked: 31,
+          total: 31,
+          isPerfect: true,
+          source: "steam",
+        },
+        appid: "440",
+        title: "Team Fortress 2",
+      },
+    ]);
+
+    const installed = makeGame({ id: "steam-440", title: "Team Fortress 2" });
+    const result = await mergeSteamOwned([installed], makeContext());
+
+    expect(result.games).toHaveLength(1);
+    expect(result.games[0].achievementSummary).toEqual({
+      unlocked: 31,
+      total: 31,
+      isPerfect: true,
+      source: "steam",
+    });
   });
 
   it("caches the Steam-owned games for subsequent runs", async () => {

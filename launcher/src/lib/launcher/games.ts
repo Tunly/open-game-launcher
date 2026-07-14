@@ -118,6 +118,7 @@ export function syncGameAchievements(
     const titleId = game.externalId?.trim() || game.id || game.title;
     // Xbox uses its own sync command
     return invokeCommand<SyncGameAchievementsResponse>("sync_xbox_achievements", {
+      fallbackGame: game,
       gameId: game.id,
       titleId,
     });

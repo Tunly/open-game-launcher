@@ -1,9 +1,11 @@
+use super::downloads::normalize_download_game_id;
 use super::games::types::UnifiedAchievement;
 use super::secure_store;
 use reqwest::Client;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tauri::Emitter;
@@ -126,6 +128,7 @@ fn gog_catalog_product_to_owned(product: GogCatalogProduct) -> Option<super::sys
         playtime_minutes: None,
         last_played_at: None,
         cloud_gaming_url: None,
+        achievement_summary: None,
     })
 }
 
@@ -678,6 +681,7 @@ async fn fetch_gog_owned_games_from_user_data(
             playtime_minutes: None,
             last_played_at: None,
             cloud_gaming_url: None,
+            achievement_summary: None,
         });
     }
 
@@ -884,6 +888,7 @@ pub async fn gog_get_download_info(
 // ============================================================================
 
 struct GogActiveDownload {
+    worker_generation: u64,
     title: String,
     progress: u32,
     speed: String,
@@ -906,7 +911,50 @@ fn get_gog_download_manager() -> &'static GogDownloadMap {
     MANAGER.get_or_init(|| Arc::new(Mutex::new(HashMap::new())))
 }
 
+fn get_gog_download_lifecycle_lock() -> &'static Mutex<()> {
+    static LIFECYCLE: OnceLock<Mutex<()>> = OnceLock::new();
+    LIFECYCLE.get_or_init(|| Mutex::new(()))
+}
+
+fn next_gog_worker_generation() -> u64 {
+    static NEXT_GENERATION: AtomicU64 = AtomicU64::new(1);
+    NEXT_GENERATION.fetch_add(1, Ordering::Relaxed)
+}
+
 use std::collections::HashMap;
+
+fn normalize_gog_download_identity(
+    gog_id: &str,
+    requested_game_id: &str,
+) -> Result<(String, String, String), String> {
+    let gog_id = gog_id.trim().to_string();
+    if gog_id.is_empty() {
+        return Err("GOG game id must not be empty.".to_string());
+    }
+
+    let canonical_game_id = normalize_download_game_id(format!("gog-{gog_id}"))?;
+    let owned_game_id = format!("gog-owned-{gog_id}");
+    let requested_game_id = normalize_download_game_id(requested_game_id.to_string())?;
+    if requested_game_id != canonical_game_id && requested_game_id != owned_game_id {
+        return Err("GOG download game id does not match the provider game id.".to_string());
+    }
+
+    Ok((gog_id, requested_game_id, canonical_game_id))
+}
+
+fn gog_download_identity_matches(game_id: &str, gog_id: &str) -> bool {
+    game_id == format!("gog-{gog_id}") || game_id == format!("gog-owned-{gog_id}")
+}
+
+fn active_gog_download_id(
+    downloads: &HashMap<String, GogActiveDownload>,
+    gog_id: &str,
+) -> Option<String> {
+    downloads
+        .keys()
+        .find(|game_id| gog_download_identity_matches(game_id, gog_id))
+        .cloned()
+}
 
 #[tauri::command]
 pub async fn gog_start_download(
@@ -914,30 +962,42 @@ pub async fn gog_start_download(
     gog_id: String,
     install_path: Option<String>,
 ) -> Result<super::downloads::StartDownloadResponse, String> {
-    let mut token =
-        load_gog_token().ok_or_else(|| "No GOG token found. Please login first.".to_string())?;
+    let canonical_game_id = format!("gog-{}", gog_id.trim());
+    gog_start_download_for_game_id(app, gog_id, canonical_game_id, install_path).await
+}
 
-    // Get download info
-    let download_info = gog_get_download_info(gog_id.clone(), None).await?;
-
-    let game_id = format!("gog-{gog_id}");
+pub(crate) async fn gog_start_download_for_game_id(
+    app: tauri::AppHandle,
+    gog_id: String,
+    requested_game_id: String,
+    install_path: Option<String>,
+) -> Result<super::downloads::StartDownloadResponse, String> {
+    let (gog_id, game_id, staging_game_id) =
+        normalize_gog_download_identity(&gog_id, &requested_game_id)?;
     let download_id = format!("download-{game_id}");
 
-    // Check if already downloading
+    // Treat `gog-*` and `gog-owned-*` as aliases for the same provider job so
+    // two entry points cannot concurrently write the same staged installer.
     {
         let map = get_gog_download_manager();
         let guard = map
             .lock()
             .map_err(|error| format!("GOG manager lock poisoned: {error}"))?;
-        if guard.contains_key(&game_id) {
+        if let Some(active_game_id) = active_gog_download_id(&guard, &gog_id) {
             return Ok(super::downloads::StartDownloadResponse {
-                game_id: game_id.clone(),
-                download_id: download_id.clone(),
-                status: super::downloads::DownloadStartStatus::Started,
+                download_id: format!("download-{active_game_id}"),
+                game_id: active_game_id,
+                status: super::downloads::DownloadStartStatus::AlreadyQueued,
                 message: "Download is already queued.".to_string(),
             });
         }
     }
+
+    let mut token =
+        load_gog_token().ok_or_else(|| "No GOG token found. Please login first.".to_string())?;
+
+    // Get download info
+    let download_info = gog_get_download_info(gog_id.clone(), None).await?;
 
     // Determine install directory
     let install_dir = install_path.map(PathBuf::from).unwrap_or_else(|| {
@@ -946,7 +1006,7 @@ pub async fn gog_start_download(
             .unwrap_or_else(|| PathBuf::from("."))
             .join("open-game-launcher")
             .join("installer-staging")
-            .join(&game_id)
+            .join(&staging_game_id)
     });
 
     fs::create_dir_all(&install_dir)
@@ -954,15 +1014,41 @@ pub async fn gog_start_download(
 
     let (pause_tx, pause_rx) = watch::channel(false);
     let (cancel_tx, cancel_rx) = watch::channel(false);
+    let worker_generation = next_gog_worker_generation();
 
     {
+        let _lifecycle = get_gog_download_lifecycle_lock()
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
         let map = get_gog_download_manager();
         let mut guard = map
             .lock()
             .map_err(|error| format!("GOG manager lock poisoned: {error}"))?;
+        // The network bootstrap above is intentionally outside the lock. Check
+        // again atomically before registration so concurrent alias starts
+        // cannot create two workers for the same provider/staging identity.
+        if let Some(active_game_id) = active_gog_download_id(&guard, &gog_id) {
+            return Ok(super::downloads::StartDownloadResponse {
+                download_id: format!("download-{active_game_id}"),
+                game_id: active_game_id,
+                status: super::downloads::DownloadStartStatus::AlreadyQueued,
+                message: "Download is already queued.".to_string(),
+            });
+        }
+        let alternate_game_id = if game_id == staging_game_id {
+            format!("gog-owned-{gog_id}")
+        } else {
+            staging_game_id.clone()
+        };
+        // Queue identity follows the entry point (`gog-*` or
+        // `gog-owned-*`), but only one persisted alias may exist. Otherwise a
+        // finished row from an earlier entry point would sit beside the new
+        // active worker forever.
+        super::downloads::remove_download_record(&app, &alternate_game_id)?;
         guard.insert(
             game_id.clone(),
             GogActiveDownload {
+                worker_generation,
                 title: download_info.title.clone(),
                 progress: 0,
                 speed: "Waiting...".to_string(),
@@ -972,6 +1058,32 @@ pub async fn gog_start_download(
                 cancel_tx,
             },
         );
+        // An explicit restart retires tombstones for either visible alias. The
+        // provider-level duplicate gate above guarantees the previous worker
+        // has already left the manager before this happens.
+        super::downloads::clear_download_suppression(&staging_game_id);
+        super::downloads::clear_download_suppression(&format!("gog-owned-{gog_id}"));
+    }
+
+    let initial_emit = emit_gog_worker_progress_result(
+        &app,
+        &game_id,
+        &download_info.title,
+        0,
+        "Waiting...",
+        "downloading",
+        0,
+        worker_generation,
+    );
+    if let result @ (Ok(false) | Err(_)) = initial_emit {
+        super::downloads::suppress_download_emissions(&game_id);
+        remove_gog_download_if_current(&game_id, worker_generation);
+        let _ = super::downloads::remove_download_record(&app, &game_id);
+        return Err(match result {
+            Err(error) => format!("Could not emit queued GOG download: {error}"),
+            Ok(false) => "GOG download worker could not be registered.".to_string(),
+            Ok(true) => unreachable!(),
+        });
     }
 
     let app_clone = app.clone();
@@ -992,53 +1104,42 @@ pub async fn gog_start_download(
             &mut token,
             &pause_rx,
             &cancel_rx,
+            worker_generation,
         )
-        .await
-        .and_then(|staged| {
-            write_gog_installer_stage_manifest(
-                &install_dir_clone,
-                &game_id_clone,
-                &title_clone,
-                &gog_id,
-                &download_info_clone,
-                &staged,
-            )?;
-            Ok(staged)
-        });
+        .await;
 
-        match result {
+        let cancelled = match result {
             Ok(staged) => {
-                let _ = app_clone.emit(
-                    "gog_installer_staged",
-                    serde_json::json!({
-                        "gameId": game_id_clone,
-                        "path": install_dir_clone,
-                        "fileCount": staged.file_count,
-                        "checksumsVerified": staged.checksums_verified,
-                        "installed": false
-                    }),
-                );
-
-                let status_message = if staged.checksums_verified {
-                    "Installer staged and verified (not installed)"
-                } else {
-                    "Installer staged (checksum format not verified; not installed)"
-                };
-                update_gog_download_status(&game_id_clone, "completed", status_message, 100, 0);
-                emit_gog_download_progress(
+                match finalize_gog_download_worker(
                     &app_clone,
                     &game_id_clone,
                     &title_clone,
-                    100,
-                    status_message,
-                    "completed",
-                    0,
-                );
+                    &install_dir_clone,
+                    &gog_id,
+                    &download_info_clone,
+                    &staged,
+                    worker_generation,
+                ) {
+                    Ok(finalized) => !finalized,
+                    Err(error) => {
+                        eprintln!("[GOG Download] Failed to finalize: {error}");
+                        !emit_gog_worker_progress(
+                            &app_clone,
+                            &game_id_clone,
+                            &title_clone,
+                            0,
+                            &error,
+                            "error",
+                            0,
+                            worker_generation,
+                        )
+                    }
+                }
             }
+            Err(error) if is_gog_download_cancellation(&error, *cancel_rx.borrow()) => true,
             Err(e) => {
                 eprintln!("[GOG Download] Failed: {e}");
-                update_gog_download_status(&game_id_clone, "error", &e, 0, 0);
-                emit_gog_download_progress(
+                !emit_gog_worker_progress(
                     &app_clone,
                     &game_id_clone,
                     &title_clone,
@@ -1046,15 +1147,15 @@ pub async fn gog_start_download(
                     &e,
                     "error",
                     0,
-                );
+                    worker_generation,
+                )
             }
-        }
+        };
 
-        // Cleanup after delay
-        tokio::time::sleep(Duration::from_secs(3)).await;
-        if let Ok(mut guard) = get_gog_download_manager().lock() {
-            guard.remove(&game_id_clone);
+        if !cancelled {
+            tokio::time::sleep(Duration::from_secs(3)).await;
         }
+        remove_gog_download_if_current(&game_id_clone, worker_generation);
     });
 
     Ok(super::downloads::StartDownloadResponse {
@@ -1078,6 +1179,7 @@ async fn download_gog_game_files(
     token: &mut GogToken,
     pause_rx: &watch::Receiver<bool>,
     cancel_rx: &watch::Receiver<bool>,
+    worker_generation: u64,
 ) -> Result<GogStagedInstaller, String> {
     let client = Client::new();
     let total_size = download_info.files.iter().map(|f| f.size).sum::<u64>();
@@ -1104,7 +1206,7 @@ async fn download_gog_game_files(
             file_downloaded = metadata.len().min(file.size);
             if file_downloaded >= file.size {
                 checksums_verified &=
-                    verify_staged_gog_file(&file_path, file.size, &file.checksum)?;
+                    verify_staged_gog_file(&file_path, file.size, &file.checksum, cancel_rx)?;
                 completed_bytes = completed_bytes.saturating_add(file.size);
                 continue; // File already fully downloaded
             }
@@ -1132,8 +1234,7 @@ async fn download_gog_game_files(
 
             // Handle pause
             while *pause_rx.borrow() {
-                update_gog_download_status(game_id, "paused", "Paused", current_progress, 0);
-                emit_gog_download_progress(
+                if !emit_gog_worker_progress(
                     app,
                     game_id,
                     title,
@@ -1141,7 +1242,10 @@ async fn download_gog_game_files(
                     "Paused",
                     "paused",
                     0,
-                );
+                    worker_generation,
+                ) {
+                    return Err("Download cancelled.".to_string());
+                }
                 tokio::time::sleep(Duration::from_millis(200)).await;
                 if *cancel_rx.borrow() {
                     return Err("Download cancelled.".to_string());
@@ -1157,23 +1261,29 @@ async fn download_gog_game_files(
 
             // Resolve the authenticated CDN URL. A synthetic fallback URL cannot be
             // trusted because it omits the build ID, so failure is terminal.
-            let url = resolve_chunk_url(
-                token,
-                &download_info.game_id,
-                &download_info.installer_id,
-                &file.id,
-                &chunk.id,
-            )
-            .await
-            .ok_or_else(|| format!("Could not resolve GOG chunk URL for {}.", chunk.id))?;
+            let mut resolve_cancel_rx = cancel_rx.clone();
+            let url = tokio::select! {
+                biased;
+                _ = resolve_cancel_rx.changed() => return Err("Download cancelled.".to_string()),
+                url = resolve_chunk_url(
+                    token,
+                    &download_info.game_id,
+                    &download_info.installer_id,
+                    &file.id,
+                    &chunk.id,
+                ) => url.ok_or_else(|| format!("Could not resolve GOG chunk URL for {}.", chunk.id))?,
+            };
 
             // Download the chunk
-            let resp = client
-                .get(&url)
-                .header("Authorization", format!("Bearer {}", token.access_token))
-                .send()
-                .await
-                .map_err(|e| format!("Chunk download request failed: {e}"))?;
+            let mut request_cancel_rx = cancel_rx.clone();
+            let resp = tokio::select! {
+                biased;
+                _ = request_cancel_rx.changed() => return Err("Download cancelled.".to_string()),
+                response = client
+                    .get(&url)
+                    .header("Authorization", format!("Bearer {}", token.access_token))
+                    .send() => response.map_err(|e| format!("Chunk download request failed: {e}"))?,
+            };
 
             if !resp.status().is_success() {
                 return Err(format!(
@@ -1196,7 +1306,16 @@ async fn download_gog_game_files(
                 .open(&file_path)
                 .map_err(|e| format!("Failed to open file for writing: {e}"))?;
 
-            while let Some(item) = body.next().await {
+            let mut stream_cancel_rx = cancel_rx.clone();
+            loop {
+                let item = tokio::select! {
+                    biased;
+                    _ = stream_cancel_rx.changed() => return Err("Download cancelled.".to_string()),
+                    item = body.next() => item,
+                };
+                let Some(item) = item else {
+                    break;
+                };
                 if *cancel_rx.borrow() {
                     return Err("Download cancelled.".to_string());
                 }
@@ -1251,14 +1370,7 @@ async fn download_gog_game_files(
                         999
                     };
 
-                    update_gog_download_status(
-                        game_id,
-                        "downloading",
-                        &speed_str,
-                        current_progress,
-                        eta,
-                    );
-                    emit_gog_download_progress(
+                    if !emit_gog_worker_progress(
                         app,
                         game_id,
                         title,
@@ -1266,7 +1378,10 @@ async fn download_gog_game_files(
                         &speed_str,
                         "downloading",
                         eta,
-                    );
+                        worker_generation,
+                    ) {
+                        return Err("Download cancelled.".to_string());
+                    }
 
                     last_update = now;
                     bytes_since_last_update = 0;
@@ -1281,7 +1396,11 @@ async fn download_gog_game_files(
             }
         }
 
-        checksums_verified &= verify_staged_gog_file(&file_path, file.size, &file.checksum)?;
+        if *cancel_rx.borrow() {
+            return Err("Download cancelled.".to_string());
+        }
+        checksums_verified &=
+            verify_staged_gog_file(&file_path, file.size, &file.checksum, cancel_rx)?;
         completed_bytes = completed_before_file.saturating_add(file.size);
     }
 
@@ -1309,6 +1428,7 @@ fn verify_staged_gog_file(
     path: &Path,
     expected_size: u64,
     expected_checksum: &str,
+    cancel_rx: &watch::Receiver<bool>,
 ) -> Result<bool, String> {
     let actual_size = fs::metadata(path)
         .map_err(|error| format!("Could not inspect staged GOG installer: {error}"))?
@@ -1334,7 +1454,30 @@ fn verify_staged_gog_file(
         return Ok(false);
     }
 
-    let actual = crate::commands::games::core::sha256_file_hex(path)?;
+    use sha2::{Digest, Sha256};
+    use std::io::Read;
+
+    let mut file = std::fs::File::open(path)
+        .map_err(|error| format!("Could not open staged GOG installer: {error}"))?;
+    let mut hasher = Sha256::new();
+    let mut buffer = [0u8; 64 * 1024];
+    loop {
+        if *cancel_rx.borrow() {
+            return Err("Download cancelled.".to_string());
+        }
+        let read = file
+            .read(&mut buffer)
+            .map_err(|error| format!("Could not read staged GOG installer: {error}"))?;
+        if read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..read]);
+    }
+    let actual = hasher
+        .finalize()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
     if !actual.eq_ignore_ascii_case(checksum) {
         return Err(format!(
             "Staged GOG installer checksum mismatch for {}.",
@@ -1435,62 +1578,83 @@ pub fn get_gog_download_queue() -> Result<Vec<super::downloads::DownloadItemPayl
             status: dl.status.clone(),
             eta: dl.eta,
             platform: "GOG Galaxy".to_string(),
-            phase: "download".to_string(),
+            phase: String::new(),
             bytes_downloaded: None,
             bytes_total: None,
             can_pause: true,
             can_cancel: true,
             external: false,
             last_updated_at: 0,
+            event_revision: 0,
             provider: "gog".to_string(),
             raw_status: dl.status.clone(),
             progress_source: "gog_api".to_string(),
             error: None,
+            worker_generation: None,
         })
         .collect();
     Ok(queue)
 }
 
+pub(crate) fn get_active_gog_download_ids() -> Result<Vec<String>, String> {
+    let map = get_gog_download_manager()
+        .lock()
+        .map_err(|error| format!("GOG download manager lock poisoned: {error}"))?;
+    Ok(map.keys().cloned().collect())
+}
+
 pub fn pause_gog_download(app: tauri::AppHandle, game_id: String) -> Result<(), String> {
+    let _lifecycle = get_gog_download_lifecycle_lock()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     let map = get_gog_download_manager();
     let mut guard = map
         .lock()
         .map_err(|error| format!("GOG download manager lock poisoned: {error}"))?;
-    if let Some(dl) = guard.get_mut(&game_id) {
+    let payload = if let Some(dl) = guard.get_mut(&game_id) {
         if dl.status == "downloading" {
             dl.status = "paused".to_string();
             dl.speed = "Paused".to_string();
             let _ = dl.pause_tx.send(true);
             println!("[GOG Download] Paused download for {game_id}");
-            emit_gog_download_progress(
-                &app,
+            Some(gog_download_payload(
                 &game_id,
                 &dl.title,
                 dl.progress,
                 &dl.speed,
                 &dl.status,
                 dl.eta,
-            );
+            ))
         } else if dl.status == "paused" {
             dl.status = "downloading".to_string();
             dl.speed = "Connecting...".to_string();
             let _ = dl.pause_tx.send(false);
             println!("[GOG Download] Resumed download for {game_id}");
-            emit_gog_download_progress(
-                &app,
+            Some(gog_download_payload(
                 &game_id,
                 &dl.title,
                 dl.progress,
                 &dl.speed,
                 &dl.status,
                 dl.eta,
-            );
+            ))
+        } else {
+            None
         }
+    } else {
+        None
+    };
+    drop(guard);
+    if let Some(payload) = payload {
+        super::downloads::emit_download_item(&app, payload)?;
     }
     Ok(())
 }
 
 pub fn cancel_gog_download(app: tauri::AppHandle, game_id: String) -> Result<(), String> {
+    let _lifecycle = get_gog_download_lifecycle_lock()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     let map = get_gog_download_manager();
     let mut guard = map
         .lock()
@@ -1499,33 +1663,48 @@ pub fn cancel_gog_download(app: tauri::AppHandle, game_id: String) -> Result<(),
         dl.status = "cancelled".to_string();
         let _ = dl.cancel_tx.send(true);
         println!("[GOG Download] Cancelled download for {game_id}");
-        emit_gog_download_progress(
-            &app,
-            &game_id,
-            &dl.title,
-            dl.progress,
-            "Cancelled",
-            "cancelled",
-            0,
-        );
     }
-    guard.remove(&game_id);
-    Ok(())
+    // Keep the entry until this exact worker acknowledges cancellation. A
+    // provider-alias restart is therefore rejected until shared staging files
+    // are no longer in use.
+    super::downloads::suppress_download_emissions(&game_id);
+    drop(guard);
+
+    // Match the generic native cancel contract: cancellation immediately
+    // removes the persisted queue row, while the worker keeps the signal needed
+    // to stop without emitting a late error.
+    super::downloads::remove_download_record(&app, &game_id)
 }
 
-fn update_gog_download_status(game_id: &str, status: &str, speed: &str, progress: u32, eta: u32) {
-    let Ok(mut guard) = get_gog_download_manager().lock() else {
-        return;
-    };
-    if let Some(dl) = guard.get_mut(game_id) {
-        dl.status = status.to_string();
-        dl.speed = speed.to_string();
-        dl.progress = progress;
-        dl.eta = eta;
+pub(crate) fn archive_gog_download(app: tauri::AppHandle, game_id: String) -> Result<(), String> {
+    let _lifecycle = get_gog_download_lifecycle_lock()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let map = get_gog_download_manager();
+    let guard = map
+        .lock()
+        .map_err(|error| format!("GOG download manager lock poisoned: {error}"))?;
+    if let Some(download) = guard.get(&game_id) {
+        if !matches!(
+            download.status.as_str(),
+            "completed" | "error" | "failed" | "cancelled"
+        ) {
+            return Err(format!(
+                "This GOG download cannot be removed while its status is '{}'.",
+                download.status
+            ));
+        }
     }
+    drop(guard);
+    super::downloads::archive_download_record(&app, &game_id)
 }
 
-pub(crate) fn emit_gog_download_progress(
+fn is_gog_download_cancellation(error: &str, cancel_requested: bool) -> bool {
+    cancel_requested || error == "Download cancelled."
+}
+
+#[allow(clippy::too_many_arguments)]
+fn emit_gog_worker_progress(
     app: &tauri::AppHandle,
     game_id: &str,
     title: &str,
@@ -1533,8 +1712,146 @@ pub(crate) fn emit_gog_download_progress(
     speed: &str,
     status: &str,
     eta: u32,
-) {
-    let payload = super::downloads::DownloadItemPayload {
+    worker_generation: u64,
+) -> bool {
+    match emit_gog_worker_progress_result(
+        app,
+        game_id,
+        title,
+        progress,
+        speed,
+        status,
+        eta,
+        worker_generation,
+    ) {
+        Ok(is_current) => is_current,
+        Err(error) => {
+            eprintln!(
+                "[open-game-launcher] Could not persist or emit GOG download progress: {error}"
+            );
+            true
+        }
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn emit_gog_worker_progress_result(
+    app: &tauri::AppHandle,
+    game_id: &str,
+    title: &str,
+    progress: u32,
+    speed: &str,
+    status: &str,
+    eta: u32,
+    worker_generation: u64,
+) -> Result<bool, String> {
+    let _lifecycle = get_gog_download_lifecycle_lock()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let payload = {
+        let Ok(mut guard) = get_gog_download_manager().lock() else {
+            return Err("GOG download manager lock poisoned.".to_string());
+        };
+        let Some(download) = guard.get_mut(game_id) else {
+            return Ok(false);
+        };
+        if download.worker_generation != worker_generation || *download.cancel_tx.borrow() {
+            return Ok(false);
+        }
+        download.status = status.to_string();
+        download.speed = speed.to_string();
+        download.progress = progress;
+        download.eta = eta;
+        gog_download_payload(game_id, title, progress, speed, status, eta)
+    };
+    super::downloads::emit_download_item(app, payload)?;
+    Ok(true)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn finalize_gog_download_worker(
+    app: &tauri::AppHandle,
+    game_id: &str,
+    title: &str,
+    install_dir: &Path,
+    gog_id: &str,
+    download_info: &GogDownloadInfoPayload,
+    staged: &GogStagedInstaller,
+    worker_generation: u64,
+) -> Result<bool, String> {
+    let _lifecycle = get_gog_download_lifecycle_lock()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let payload = {
+        let mut guard = get_gog_download_manager()
+            .lock()
+            .map_err(|error| format!("GOG download manager lock poisoned: {error}"))?;
+        let Some(download) = guard.get_mut(game_id) else {
+            return Ok(false);
+        };
+        if download.worker_generation != worker_generation || *download.cancel_tx.borrow() {
+            return Ok(false);
+        }
+
+        write_gog_installer_stage_manifest(
+            install_dir,
+            game_id,
+            title,
+            gog_id,
+            download_info,
+            staged,
+        )?;
+        let status_message = if staged.checksums_verified {
+            "Installer staged and verified (not installed)"
+        } else {
+            "Installer staged (checksum format not verified; not installed)"
+        };
+        download.status = "completed".to_string();
+        download.speed = status_message.to_string();
+        download.progress = 100;
+        download.eta = 0;
+        gog_download_payload(game_id, title, 100, status_message, "completed", 0)
+    };
+
+    super::downloads::emit_download_item(app, payload)?;
+    let _ = app.emit(
+        "gog_installer_staged",
+        serde_json::json!({
+            "gameId": game_id,
+            "path": install_dir,
+            "fileCount": staged.file_count,
+            "checksumsVerified": staged.checksums_verified,
+            "installed": false
+        }),
+    );
+    Ok(true)
+}
+
+fn remove_gog_download_if_current(game_id: &str, worker_generation: u64) -> bool {
+    let _lifecycle = get_gog_download_lifecycle_lock()
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    let Ok(mut guard) = get_gog_download_manager().lock() else {
+        return false;
+    };
+    let is_current = guard
+        .get(game_id)
+        .is_some_and(|download| download.worker_generation == worker_generation);
+    if is_current {
+        guard.remove(game_id);
+    }
+    is_current
+}
+
+fn gog_download_payload(
+    game_id: &str,
+    title: &str,
+    progress: u32,
+    speed: &str,
+    status: &str,
+    eta: u32,
+) -> super::downloads::DownloadItemPayload {
+    super::downloads::DownloadItemPayload {
         id: format!("download-{game_id}"),
         game_id: game_id.to_string(),
         title: title.to_string(),
@@ -1543,22 +1860,20 @@ pub(crate) fn emit_gog_download_progress(
         status: status.to_string(),
         eta,
         platform: "GOG Galaxy".to_string(),
-        phase: "download".to_string(),
+        phase: String::new(),
         bytes_downloaded: None,
         bytes_total: None,
         can_pause: true,
         can_cancel: true,
         external: false,
         last_updated_at: 0,
+        event_revision: 0,
         provider: "gog".to_string(),
         raw_status: status.to_string(),
         progress_source: "gog_api".to_string(),
         error: None,
-    };
-    if let Err(error) = super::downloads::record_download_item(payload.clone()) {
-        eprintln!("[open-game-launcher] Could not persist GOG download progress: {error}");
+        worker_generation: None,
     }
-    let _ = app.emit("download_progress", payload);
 }
 
 // ============================================================================
@@ -1694,6 +2009,46 @@ mod tests {
     }
 
     #[test]
+    fn download_identity_preserves_owned_library_ids() {
+        assert_eq!(
+            normalize_gog_download_identity(" 12345 ", "gog-owned-12345").unwrap(),
+            (
+                "12345".to_string(),
+                "gog-owned-12345".to_string(),
+                "gog-12345".to_string(),
+            )
+        );
+        assert_eq!(
+            normalize_gog_download_identity("12345", "gog-12345").unwrap(),
+            (
+                "12345".to_string(),
+                "gog-12345".to_string(),
+                "gog-12345".to_string(),
+            )
+        );
+    }
+
+    #[test]
+    fn download_identity_rejects_mismatches_and_path_traversal() {
+        assert!(normalize_gog_download_identity("12345", "gog-owned-67890").is_err());
+        assert!(normalize_gog_download_identity("../escape", "gog-owned-../escape").is_err());
+    }
+
+    #[test]
+    fn gog_download_aliases_match_the_same_provider_job() {
+        assert!(gog_download_identity_matches("gog-12345", "12345"));
+        assert!(gog_download_identity_matches("gog-owned-12345", "12345"));
+        assert!(!gog_download_identity_matches("gog-owned-67890", "12345"));
+    }
+
+    #[test]
+    fn cancellation_is_not_reclassified_as_a_download_error() {
+        assert!(is_gog_download_cancellation("Download cancelled.", false));
+        assert!(is_gog_download_cancellation("stream closed", true));
+        assert!(!is_gog_download_cancellation("stream closed", false));
+    }
+
+    #[test]
     fn staged_installer_path_rejects_traversal() {
         let root = std::env::temp_dir();
         assert!(staged_gog_installer_path(&root, "../setup.exe").is_err());
@@ -1717,14 +2072,28 @@ mod tests {
         fs::create_dir_all(&root).unwrap();
         let installer = root.join("setup.exe");
         fs::write(&installer, b"abc").unwrap();
+        let (_cancel_tx, cancel_rx) = watch::channel(false);
 
         assert!(verify_staged_gog_file(
             &installer,
             3,
-            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+            &cancel_rx,
         )
         .unwrap());
-        assert!(verify_staged_gog_file(&installer, 4, "").is_err());
+        assert!(verify_staged_gog_file(&installer, 4, "", &cancel_rx).is_err());
+        let (cancel_tx, cancelled_rx) = watch::channel(false);
+        cancel_tx.send(true).unwrap();
+        assert_eq!(
+            verify_staged_gog_file(
+                &installer,
+                3,
+                "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+                &cancelled_rx,
+            )
+            .unwrap_err(),
+            "Download cancelled."
+        );
 
         let _ = fs::remove_dir_all(root);
     }

@@ -246,6 +246,7 @@
   .ubisoft-game-banner-hero,
   .battlenet-game-banner-hero,
   .ea-game-banner-hero,
+  .ogl-game-banner-hero,
   .manual-game-banner-hero,
   .unknown-game-banner-hero,
   .windows-game-banner-hero,
@@ -393,6 +394,14 @@
       radial-gradient(circle at 75% 25%, rgba(246, 242, 232, 0.72) 0 11%, transparent 12%),
       repeating-linear-gradient(45deg, rgba(23, 20, 17, 0.28) 0 4px, transparent 5px 22px),
       linear-gradient(180deg, #d93728 0 45%, #171411 46% 78%, #4aa5c8 79% 100%);
+  }
+
+  .library-source-art-ogl {
+    background:
+      radial-gradient(circle at 74% 28%, rgba(255, 249, 237, 0.82) 0 11%, transparent 12%),
+      linear-gradient(118deg, transparent 0 36%, rgba(23, 20, 17, 0.72) 37% 43%, transparent 44%),
+      repeating-linear-gradient(8deg, rgba(23, 20, 17, 0.24) 0 4px, transparent 5px 18px),
+      linear-gradient(180deg, #b7102a 0 44%, #f5eedf 45% 69%, #007166 70% 100%);
   }
 
   .library-source-art-windows,

@@ -47,7 +47,7 @@ const rows: { label: string; getValue: (item: DownloadItem) => string; isError?:
 export function DownloadInspector({ item }: DownloadInspectorProps) {
   return (
     <div className="border-t-4 border-black bg-[#171411] p-4">
-      <p className="neo-copy mb-3 text-[9px] font-bold text-[#087d6d] uppercase">Debug Inspector</p>
+      <p className="neo-copy mb-3 text-[9px] font-bold text-[#8cf5e4] uppercase">Debug Inspector</p>
       <div className="grid gap-1.5 sm:grid-cols-2">
         {rows.map((row) => {
           const value = row.getValue(item);
@@ -56,12 +56,14 @@ export function DownloadInspector({ item }: DownloadInspectorProps) {
               key={row.label}
               className="flex items-center justify-between gap-3 border border-[#333] bg-[#1f1c17] px-3 py-2"
             >
-              <span className="neo-copy text-[8px] font-bold text-[#8a8378] uppercase">
+              <span className="neo-copy text-[8px] font-bold text-[#efe6d4] uppercase">
                 {row.label}
               </span>
               <span
                 className={`neo-copy max-w-[180px] truncate text-[9px] font-bold uppercase ${
-                  row.isError && value !== "None" ? "text-[#c20b2f]" : "text-[#f5eedf]"
+                  row.isError && value !== "None"
+                    ? "bg-[#c20b2f] px-1 text-white"
+                    : "text-[#f5eedf]"
                 }`}
                 title={value}
               >

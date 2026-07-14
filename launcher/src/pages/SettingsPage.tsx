@@ -61,6 +61,7 @@ import {
 } from "../lib/platform-token-storage";
 import type { ClientManagerMountApplySandboxProof, SystemInfo } from "../lib/types";
 import { ClientUpdateSchedulerSettings } from "../components/settings/ClientUpdateSchedulerSettings";
+import { LauncherUpdatePanel } from "../components/settings/LauncherUpdatePanel";
 import { OneClickSetupReadinessPanel } from "../components/settings/OneClickSetupReadinessPanel";
 import { PlatformHealthPanel } from "../components/settings/PlatformHealthPanel";
 import { PluginSystemReadinessPanel } from "../components/settings/PluginSystemReadinessPanel";
@@ -2226,6 +2227,8 @@ export function SettingsPage() {
               {autostartMessage}
             </p>
           ) : null}
+
+          <LauncherUpdatePanel currentVersion={systemInfo?.appVersion} />
 
           <ClientUpdateSchedulerSettings />
 

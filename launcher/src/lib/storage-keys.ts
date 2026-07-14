@@ -25,10 +25,6 @@ export const STORAGE_KEYS = {
 
   CLIENT_USAGE_STATS: "og-launcher:client-usage-stats:v1",
 
-  MODS_ACTIVE_PROFILE: "og-launcher:mod-profile:v1",
-  MODS_ENABLED: "og-launcher:mods:v1",
-  MODS_PROVIDER_GAME_IDS: "og-launcher:mods:provider-game-ids:v1",
-
   PERFORMANCE_ACTIVE_GAME: "og-launcher:performance:active-game:v1",
 
   PLUGIN_MANIFEST_DISCOVERY: "og-launcher:plugin-manifest-discovery:v1",
@@ -52,4 +48,4 @@ export const STORAGE_KEYS = {
   STORE_WISHLIST: "og-launcher:store:wishlist",
 } as const;
 
-export const STEAM_OWNED_GAMES_CACHE_VERSION = "4";
+export const STEAM_OWNED_GAMES_CACHE_VERSION = "5";

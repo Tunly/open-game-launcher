@@ -3,6 +3,7 @@ import { lazy, Suspense, type ReactNode } from "react";
 
 import { AppLayout } from "../components/layout/AppLayout";
 import { RouteErrorBoundary } from "../components/ui/AppErrorBoundary";
+import { MODS_PAGE_ENABLED } from "../lib/feature-flags";
 
 const AuthPage = lazy(() =>
   import("../pages/AuthPage").then((page) => ({ default: page.AuthPage })),
@@ -18,6 +19,9 @@ const EditProfilePage = lazy(() =>
 );
 const FriendsPage = lazy(() =>
   import("../pages/FriendsPage").then((page) => ({ default: page.FriendsPage })),
+);
+const ActivityPage = lazy(() =>
+  import("../pages/ActivityPage").then((page) => ({ default: page.ActivityPage })),
 );
 const GameActivityDashboardPage = lazy(() =>
   import("../pages/GameActivityDashboardPage").then((page) => ({
@@ -113,8 +117,12 @@ export const router = createBrowserRouter([
       { path: "/community", element: page(<CommunityPage />) },
       { path: "/downloads", element: page(<DownloadsPage />) },
       { path: "/achievements", element: page(<AchievementsPage />) },
-      { path: "/activity", element: page(<GameActivityDashboardPage />) },
-      { path: "/mods", element: page(<ModsPage />) },
+      { path: "/activity", element: page(<ActivityPage />) },
+      { path: "/activity/recap", element: page(<GameActivityDashboardPage />) },
+      {
+        path: "/mods",
+        element: MODS_PAGE_ENABLED ? page(<ModsPage />) : <Navigate to="/library" replace />,
+      },
       { path: "/auth", element: page(<AuthPage />) },
       { path: "/invite/:token", element: page(<InviteFallbackPage />) },
       { path: "/u/:username", element: page(<ProfilePage />) },

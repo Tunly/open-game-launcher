@@ -629,6 +629,7 @@ async fn epic_owned_game_from_draft(draft: EpicOwnedGameDraft) -> OwnedGame {
         playtime_minutes: None,
         last_played_at: None,
         cloud_gaming_url: None,
+        achievement_summary: None,
     }
 }
 

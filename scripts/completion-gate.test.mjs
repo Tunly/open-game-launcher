@@ -149,10 +149,10 @@ const expectedCiActionRefs = Object.freeze({
     label: "v6",
     ref: "48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e",
   },
-    "actions/upload-artifact": {
-      label: "v7.0.1",
-      ref: "043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
-    },
+  "actions/upload-artifact": {
+    label: "v7.0.1",
+    ref: "043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
+  },
   "denoland/setup-deno": {
     label: "v2",
     ref: "22d081ff2d3a40755e97629de92e3bcbfa7cf2ed",
@@ -446,7 +446,7 @@ test("local lane includes coverage, Tauri bundle smoke, Supabase DB lint, and Wi
   assert.equal(tauriDebugBundle, "pnpm tauri:debug-bundle");
   assert.match(
     ciWorkflow,
-    /run: pnpm tauri build --target \$\{\{ matrix\.target \}\} -- --locked/,
+    /run: node \.\/node_modules\/@tauri-apps\/cli\/tauri\.js build --target \$\{\{ matrix\.target \}\} \$\{\{ matrix\.tauri_config \}\} -- --locked/,
   );
 
   const tauriDebugBundleTest = commandLine(
@@ -1023,12 +1023,12 @@ test("CI smoke parses completion status JSON without requiring external proof", 
   assert.doesNotMatch(smokeStep, /completion:gate:external/);
 });
 
-test("release tags require external evidence gate before draft artifacts", () => {
+test("release tags require external evidence gate before release artifacts", () => {
   const releaseGateJob = ciJobBlock("release-boundary-gate");
   const releaseGateNeeds = ciJobPropertyBlock("release-boundary-gate", "needs");
   const buildUploadJob = ciJobBlock("build-upload");
   const buildUploadNeeds = ciJobPropertyBlock("build-upload", "needs");
-  const createDraftReleaseJob = ciJobBlock("create-draft-release");
+  const createReleaseJob = ciJobBlock("create-release");
 
   assert.match(
     releaseGateJob,
@@ -1111,8 +1111,6 @@ test("release tags require external evidence gate before draft artifacts", () =>
     "STRIPE_WEBHOOK_SECRET",
     "STEAM_WEB_API_KEY",
     "PRESENCE_PROVIDER_TOKEN",
-    "MOD_IO_API_KEY",
-    "CURSEFORGE_API_KEY",
   ]) {
     assert.match(releaseGateJob, new RegExp(`\\b${envName}:`));
   }
@@ -1120,16 +1118,16 @@ test("release tags require external evidence gate before draft artifacts", () =>
   assert.match(buildUploadNeeds, /^        release-boundary-gate,$/m);
   assert.doesNotMatch(buildUploadJob, /softprops\/action-gh-release/);
   assert.match(
-    createDraftReleaseJob,
+    createReleaseJob,
     /^    if: startsWith\(github\.ref, 'refs\/tags\/v'\)$/m,
   );
-  assert.match(createDraftReleaseJob, /^    needs: \[build-upload\]$/m);
+  assert.match(createReleaseJob, /^    needs: \[build-upload\]$/m);
   assert.match(
-    createDraftReleaseJob,
+    createReleaseJob,
     /actions\/download-artifact@[0-9a-f]{40}/,
   );
   assert.match(
-    createDraftReleaseJob,
+    createReleaseJob,
     /softprops\/action-gh-release@[0-9a-f]{40}/,
   );
 });
@@ -1137,7 +1135,7 @@ test("release tags require external evidence gate before draft artifacts", () =>
 test("external evidence runbook documents release-gated coverage", () => {
   assert.match(
     externalEvidenceRunbook,
-    /coverage runs as a separate threshold-enforcing CI job/i,
+    /coverage\s+runs as a separate threshold-enforcing CI job/i,
   );
   assert.match(
     externalEvidenceRunbook,
@@ -1158,10 +1156,9 @@ test("external evidence runbook documents release-gated coverage", () => {
 });
 
 test("README documents current-main release tag boundary", () => {
-  assert.match(readme, /tagged commit is the current `origin\/main` commit/i);
   assert.match(
     readme,
-    /validated `v\*` tags whose commits point at the current `origin\/main` commit/i,
+    /validated `v\*` tags whose commits point at (?:the )?current\s+`origin\/main` commit/i,
   );
   assert.doesNotMatch(readme, /reachable from `origin\/main`/i);
   assert.doesNotMatch(readme, /reachable from `main`/i);

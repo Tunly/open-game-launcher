@@ -71,4 +71,26 @@ describe("normalizeSteamOwnedGames playtime provenance", () => {
     ]);
     expect(game?.achievementsSyncedAt).toBe("2026-07-10T10:05:00.000Z");
   });
+
+  it("restores validated Steam achievement progress summaries", () => {
+    const [game] = normalizeSteamOwnedGames([
+      {
+        achievementSummary: {
+          unlocked: 31,
+          total: 31,
+          isPerfect: true,
+          source: "steam",
+        },
+        appid: 10,
+        name: "Counter-Strike",
+      },
+    ]);
+
+    expect(game?.achievementSummary).toEqual({
+      unlocked: 31,
+      total: 31,
+      isPerfect: true,
+      source: "steam",
+    });
+  });
 });

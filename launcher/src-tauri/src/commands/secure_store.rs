@@ -165,6 +165,21 @@ pub fn set_secret(domain: &str, value: &str) -> Result<(), String> {
     }
 }
 
+/// Stores a high-sensitivity credential in the OS keychain only. Unlike the
+/// generic platform-token helper, this never writes an application file.
+pub fn set_secret_keychain_only(domain: &str, value: &str) -> Result<(), String> {
+    validate_domain(domain)?;
+    // Never retain a legacy application-file copy for keychain-only domains,
+    // even when the platform credential service is temporarily unavailable.
+    delete_fallback(domain);
+    let keyring_entry =
+        entry(domain).map_err(|_| "The OS credential store is unavailable.".to_string())?;
+    keyring_entry
+        .set_password(value)
+        .map_err(|_| "The OS credential store is unavailable.".to_string())?;
+    Ok(())
+}
+
 /// Retrieves a secret for a given domain from OS keychain.
 /// Falls back to local file if keychain is unavailable.
 pub fn get_secret(domain: &str) -> Result<Option<String>, String> {
@@ -179,6 +194,19 @@ pub fn get_secret(domain: &str) -> Result<Option<String>, String> {
     }
 }
 
+/// Reads a high-sensitivity credential exclusively from the OS keychain.
+pub fn get_secret_keychain_only(domain: &str) -> Result<Option<String>, String> {
+    validate_domain(domain)?;
+    match entry(domain) {
+        Ok(entry) => match entry.get_password() {
+            Ok(value) => Ok(Some(value)),
+            Err(keyring::Error::NoEntry) => Ok(None),
+            Err(_) => Err("The OS credential store is unavailable.".to_string()),
+        },
+        Err(_) => Err("The OS credential store is unavailable.".to_string()),
+    }
+}
+
 /// Deletes a secret for a given domain from OS keychain and fallback.
 pub fn delete_secret(domain: &str) -> Result<(), String> {
     validate_domain(domain)?;
@@ -187,6 +215,20 @@ pub fn delete_secret(domain: &str) -> Result<(), String> {
     }
     delete_fallback(domain);
     Ok(())
+}
+
+/// Deletes a keychain-only credential and purges any historical fallback copy.
+pub fn delete_secret_keychain_only(domain: &str) -> Result<(), String> {
+    validate_domain(domain)?;
+    let result = match entry(domain) {
+        Ok(keyring_entry) => match keyring_entry.delete_credential() {
+            Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
+            Err(_) => Err("The OS credential store is unavailable.".to_string()),
+        },
+        Err(_) => Err("The OS credential store is unavailable.".to_string()),
+    };
+    delete_fallback(domain);
+    result
 }
 
 // --- Fallback file (only used when OS keychain is unavailable) ---

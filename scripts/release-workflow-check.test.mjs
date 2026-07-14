@@ -122,7 +122,7 @@ test("release workflow contract keeps the packaged platform matrix pinned", () =
   );
 
   assert.deepEqual(errorsFor(broken), [
-    "build-upload matrix must include windows-2025 x86_64-pc-windows-msvc _x64.msi",
+    "build-upload matrix must include windows-2025 x86_64-pc-windows-msvc _windows_x64",
   ]);
 });
 
@@ -133,14 +133,14 @@ test("release workflow contract keeps each matrix target with its platform row",
   );
 
   assert.deepEqual(errorsFor(broken), [
-    "build-upload matrix must include windows-2025 x86_64-pc-windows-msvc _x64.msi",
+    "build-upload matrix must include windows-2025 x86_64-pc-windows-msvc _windows_x64",
   ]);
 });
 
 test("release workflow contract keeps Tauri release builds Cargo-locked", () => {
   const broken = ciWorkflow.replace(
-    "pnpm tauri build --target ${{ matrix.target }} -- --locked",
-    "pnpm tauri build --target ${{ matrix.target }}",
+    "node ./node_modules/@tauri-apps/cli/tauri.js build --target ${{ matrix.target }} ${{ matrix.tauri_config }} -- --locked",
+    "node ./node_modules/@tauri-apps/cli/tauri.js build --target ${{ matrix.target }} ${{ matrix.tauri_config }}",
   );
 
   assert.deepEqual(errorsFor(broken), [
@@ -159,14 +159,14 @@ test("release workflow contract reads build-upload needs structurally", () => {
   ]);
 });
 
-test("release workflow contract preserves signing and Linux bundle env", () => {
+test("release workflow contract validates signing secrets before building", () => {
   const broken = ciWorkflow.replace(
-    "          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}\n",
-    "",
+    "          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}\n          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}\n      - name: Build (Tauri)",
+    "          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}\n      - name: Build (Tauri)",
   );
 
   assert.deepEqual(errorsFor(broken), [
-    "build-upload must preserve TAURI_SIGNING_PRIVATE_KEY",
+    "build-upload signing secret validation must pass TAURI_SIGNING_PRIVATE_KEY from secrets",
   ]);
 });
 
@@ -212,25 +212,118 @@ test("release workflow contract requires missing upload files to fail", () => {
   ]);
 });
 
-test("release workflow contract requires draft releases after upload", () => {
+test("release workflow contract publishes releases after all gates", () => {
   const broken = ciWorkflow.replace(
-    "          draft: true",
     "          draft: false",
+    "          draft: true",
   );
 
   assert.deepEqual(errorsFor(broken), [
-    "create-draft-release must create a draft release",
+    "create-release must publish automatically after all release gates",
   ]);
 });
 
-test("release workflow contract requires draft release checksums", () => {
+test("release workflow contract requires release checksums", () => {
   const broken = ciWorkflow.replace(
     /      - name: Generate release artifact checksums\n(?:        .+\n|        run: \|\n(?:          .+\n)+)/,
     "",
   );
 
   assert.deepEqual(errorsFor(broken), [
-    "create-draft-release must generate release artifact checksums",
+    "create-release must generate release artifact checksums",
+  ]);
+});
+
+test("release workflow contract requires updater generator tests in CI", () => {
+  const broken = ciWorkflow.replace(
+    "      - name: Validate updater manifest generator\n        run: node --test scripts/generate-updater-manifest.test.mjs\n",
+    "",
+  );
+
+  assert.deepEqual(errorsFor(broken), [
+    "script validation must run updater manifest generator tests",
+  ]);
+});
+
+test("release workflow contract requires the Windows updater signature", () => {
+  const broken = ciWorkflow.replace(
+    "              launcher/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/**/*.exe.sig\n",
+    "",
+  );
+
+  assert.deepEqual(errorsFor(broken), [
+    "build-upload matrix must contract windows-2025 x86_64-pc-windows-msvc exe.sig artifact path",
+  ]);
+});
+
+test("release workflow contract requires the Windows updater config", () => {
+  const broken = ciWorkflow.replace(
+    "            tauri_config: --config src-tauri/tauri.windows.conf.json\n",
+    "",
+  );
+
+  assert.deepEqual(errorsFor(broken), [
+    "build-upload Windows row must merge tauri.windows.conf.json",
+  ]);
+});
+
+test("release workflow contract passes signing secrets to the Tauri build", () => {
+  const broken = ciWorkflow.replace(
+    "      - name: Build (Tauri)\n        working-directory: launcher\n        run: node ./node_modules/@tauri-apps/cli/tauri.js build --target ${{ matrix.target }} ${{ matrix.tauri_config }} -- --locked\n        env:\n          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}",
+    "      - name: Build (Tauri)\n        working-directory: launcher\n        run: node ./node_modules/@tauri-apps/cli/tauri.js build --target ${{ matrix.target }} ${{ matrix.tauri_config }} -- --locked\n        env:\n          TAURI_SIGNING_PRIVATE_KEY: detached-value",
+  );
+
+  assert.deepEqual(errorsFor(broken), [
+    "build-upload Tauri build must pass TAURI_SIGNING_PRIVATE_KEY from secrets",
+  ]);
+});
+
+test("release workflow does not require a Nexus application slug", () => {
+  assert.doesNotMatch(ciWorkflow, /NEXUS_MODS_APP_ID/);
+  assert.deepEqual(errorsFor(ciWorkflow), []);
+});
+
+test("release workflow contract requires latest.json before checksums", () => {
+  const manifestStart = ciWorkflow.indexOf(
+    "      - name: Generate signed updater manifest\n",
+  );
+  const checksumStart = ciWorkflow.indexOf(
+    "      - name: Generate release artifact checksums\n",
+  );
+  assert.ok(manifestStart >= 0);
+  assert.ok(checksumStart > manifestStart);
+
+  const manifestStep = ciWorkflow.slice(manifestStart, checksumStart);
+  const withoutManifest =
+    ciWorkflow.slice(0, manifestStart) + ciWorkflow.slice(checksumStart);
+  const releaseStart = withoutManifest.indexOf(
+    "      - name: Create GitHub Release\n",
+  );
+  assert.ok(releaseStart > 0);
+  const broken =
+    withoutManifest.slice(0, releaseStart) +
+    manifestStep +
+    withoutManifest.slice(releaseStart);
+
+  assert.deepEqual(errorsFor(broken), [
+    "create-release must generate latest.json before checksums",
+  ]);
+});
+
+test("release workflow contract protects the stable latest channel", () => {
+  const broken = ciWorkflow
+    .replace(
+      "          prerelease: ${{ steps.release-channel.outputs.prerelease }}\n",
+      "",
+    )
+    .replace(
+      "          make_latest: ${{ steps.release-channel.outputs.prerelease == 'false' }}\n",
+      "",
+    );
+
+  assert.deepEqual(errorsFor(broken), [
+    "create-release must mark SemVer prereleases on GitHub",
+    "create-release must make only stable releases latest",
   ]);
 });
 
@@ -257,7 +350,7 @@ test("release workflow contract requires checksum manifest before release upload
     withoutChecksum.slice(hostedDeployComment);
 
   assert.deepEqual(errorsFor(broken), [
-    "create-draft-release must checksum artifacts before release upload",
+    "create-release must checksum artifacts before release upload",
   ]);
 });
 

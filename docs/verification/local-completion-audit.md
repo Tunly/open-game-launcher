@@ -1,274 +1,114 @@
-# Local Completion Audit - 2026-07-13
+# Local Completion Audit
 
-This audit defines the local completion boundary for this checkout. It is a
-local deterministic completion boundary, not a release-readiness boundary or a
-claim that external provider, hardware, or hosted production systems have been
-exercised. Full release readiness still requires the real external evidence
-artifacts and a successful full `pnpm completion:gate` release-boundary run.
-Last refreshed: 2026-07-13 against the current frontend, native commands,
-Supabase migrations/functions, and operational scripts. This refresh does not
-claim a new clean-checkout `completion:gate:local` receipt: the working tree
-contains active implementation work. The mutable receipt remains outside Git,
-and no live external evidence was collected in this workspace.
+Last reviewed: 2026-07-14.
 
-## Local Completion Boundary
+This document defines what can be verified in a local checkout. It is not a
+release-readiness receipt and does not claim that live providers, hosted
+production systems, or physical hardware were exercised. Fresh command output
+is the source of truth for test counts and gate status.
 
-- Local app code, deterministic readiness routes, Supabase Edge contracts, Rust
-  command contracts, frontend tests, linting, typechecking, formatting,
-  Supabase Edge Function Deno checking, and screenshot, DOM, and static-class
-  evidence are the parts that can be completed in this workspace.
-- `FEATURE_PLAN.md` remains the source of truth for work that needs external
-  systems. Items that require live provider credentials, physical devices,
-  hosted cron rows, production dashboards, marketplace review, or provider terms approval stay open until that evidence exists.
-- Readiness panels and verify routes may show local fixtures, dry-runs, staging
-  packets, and no-write contract evidence. They must not be described as live
-  success unless the backing external evidence exists.
+## Local boundary
 
-## Current Local Evidence
+Local verification covers:
 
-- Automated inventory: Vitest frontend tests, frontend coverage execution,
-  current-platform Tauri debug bundle smoke, Rust tests, Deno Edge contracts,
-  and Node operational tests are covered by the completion gate and focused
-  helper commands below. Treat fresh command output as the source of truth for
-  mutable test counts instead of copying aggregate totals into this document.
-- Developer automation is locally wired: Dependabot tracks GitHub Actions,
-  launcher npm, and Tauri Cargo dependency lanes, and the Husky pre-commit hook
-  runs the launcher `lint-staged` guard through the existing `format:check` and
-  `lint` commands.
-- Tooling versions are pinned for reproducibility: the repository declares
-  Node.js `>=22.12 <26`, GitHub Actions reads `.node-version` (`22.12.0`),
-  GitHub Actions use verified SHA refs on fixed runner labels, Rust uses
-  `rust-toolchain.toml` (`1.95.0`) locally and in CI, Supabase DB/deploy CI lanes
-  use CLI `2.104.0` while launcher-local commands use `2.109.0`, Deno CI and
-  fallback use `v2.8.3`/`deno@2.8.3`, Cargo checks run
-  with `Cargo.lock` frozen, Tauri bundle lanes pass `--locked` to the Cargo
-  runner, and hosted deploy commands run through the launcher-pinned Supabase
-  CLI instead of an ambient global binary.
-- The local Supabase DB lint command is wrapped by `scripts/supabase-db-lint.mjs`
-  so fresh machines start the local database before linting, existing local DB
-  sessions are not stopped, and Supabase CLI credential output is redacted.
-  CI also runs the wrapper test before tag packaging can reach the external
-  release boundary.
-- Edge Function coverage includes checkout/webhook/order support, store license
-  signing, price-drop cron contracts, presence polling, account export/deletion,
-  hosted community artwork moderation, RAWG assets, trusted playtime and
-  achievement ingestion, invite hosted proof, and shared privacy/store boundaries without live secrets.
-- Migration/contract coverage now pins atomic direct/group room creation,
-  blocked-DM access, auth-bound social relationship helpers, constrained invite
-  status changes, immutable submitted artwork identity, atomic/idempotent trusted
-  playtime ingestion, and atomic price-drop notification delivery.
-- Library/native coverage includes selected-copy capability resolution, stale
-  target revalidation, short-lived destructive-action grants, local-only custom
-  artwork, app-owned Xbox artwork materialization, Store-ID-first Xbox/Game Pass
-  merging, and preservation of real sub-minute Last Played activity.
-- Native Rust coverage includes external launcher dispatch URI validation with a
-  test-injected opener, no-process rejection of unsafe Steam/EA/Ubisoft/Battle.net
-  input labels, filtering for unknown or empty virtual input bindings before
-  runtime output paths can use them, and Cross-Store Save Sync apply/rollback
-  coverage for nested multi-file copies, overwrite-plus-new-file manifests,
-  source/target/backup symlink-ancestor rejection, manifest symlink rejection,
-  apply preflight blocking before any copy/backup/manifest mutation, and
-  rollback preflight blocking before any restore/delete mutation.
-- Frontend verification includes screenshots for routed Retro Manga launcher
-  states, component tests for selected modal backdrops, static class checks for
-  non-route-mounted overlays, cart/checkout, auth username setup, Library
-  desktop/mobile, local hosted-readiness panels, One-Click Setup rollback/audit no-write contract desktop/mobile
-  evidence, Hosted Cron Evidence Summary desktop/mobile evidence, External
-  Completion Evidence Summary desktop/mobile evidence, Broadcasting Audience Status
-  Contract desktop/mobile evidence, and no-horizontal-overflow DOM checks for
-  explicitly recorded screenshot sweep routes.
-- UI screenshot evidence is locally gated for dirty worktrees and CI diffs: when
-  `launcher/src/**/*.tsx`, `launcher/src/index.css`,
-  `launcher/tailwind.config.ts`, or visible UI configuration/data files such as
-  `launcher/src/components/layout/navigation.ts`,
-  `launcher/src/components/**/*.helpers.ts`, `launcher/src/lib/mock-data.ts`,
-  `launcher/src/lib/app-shell-skins.ts`,
-  `launcher/src/lib/external-completion-evidence-summary.ts`, or local
-  audit/candidates/console/contract/evidence/fixtures/handoff/panel/planner/
-  policy/preview/proof/readiness/recap/recommendations/stats/status/summary
-  modules change, every changed
-  `docs/verification/screenshots/*.png` artifact must have a
-  `docs/verification/README.md` entry with route/state, local/mock/env-gated/live
-  evidence boundary, and Retro Manga/OG-Launcher or overflow/wrapping language;
-  test/spec, declaration, `vite-env.d.ts`, and `launcher/src/lib/types/**` files
-  are ignored.
-- Release artifact tracking is locally gated: release-critical app/Tauri
-  sources, public artwork assets, Supabase Function and migration sources,
-  scripts, runbooks, external evidence templates, screenshot artifacts,
-  toolchain pins, package/CI manifests, lint-staged config, and hosted evidence
-  UI summaries must be tracked by Git and unchanged in the working tree before
-  `completion:gate:local` can represent a clean-checkout-reproducible state.
-- Release workflow structure is locally gated: `pnpm release:workflow:test` and
-  `pnpm release:workflow` verify that `v*` tag packaging still waits for the
-  hosted-production external completion boundary, pinned platform build matrix,
-  Cargo-locked Tauri builds, explicit per-platform artifact inventory rows,
-  pre-upload artifact inventory validation, target-scoped uploads that fail
-  when no files match, signing env names, and draft-release handoff before
-  `completion:gate:local` can pass.
-- Broadcasting Audience Status Contract local evidence is limited to
-  `/community?verify=broadcasting-audience-status-contract` screenshots, DOM
-  overflow checks, and contract tests for preview-state labels, stale fallback,
-  rollback clear order, provider state-event blockers, audience-count blockers,
-  chat-presence blockers, public-status write blockers, and Supabase audience-row
-  blockers. It is not provider live-state reads, viewer-count polling, callback
-  replay, public live badge mutation, RTMP output, VOD sync, or live audience
-  proof.
-- External Completion Evidence Summary local evidence is limited to
-  `/settings?verify=external-completion-evidence-summary` screenshots, summary
-  panel gate cards, and no-write contract tests for Store/Stripe, hosted cron,
-  provider-live, hardware/OS, and rollout lanes. Local dry-runs and fixture
-  screenshots do not satisfy the named external artifacts.
-- External evidence preflight now requires the named artifact files, checked
-  `- [x]` proof rows outside Markdown code fences, HTML comments, and indented
-  code blocks, per-artifact proof coverage, specific `Evidence for <proof>:`
-  mappings for every checked proof, non-placeholder required environment values,
-  non-empty, specific, non-placeholder captured evidence detail fields outside
-  inactive Markdown, a fresh UTC ISO-8601 `Captured at` timestamp, and no
-  secret-shaped Stripe, bearer, JWT, provider API key/token, provider API-key
-  header, Supabase service-role/auth/access token, hosted scheduler secret, private key, or fixture-secret
-  content before an external gate can pass; unchecked template
-  rows, fenced/commented/indented examples, missing per-artifact proof coverage,
-  missing or generic per-proof evidence mappings, placeholder/copied env values,
-  placeholder/weak detail values, local `docs/verification/screenshots/*`
-  locators, placeholder/example URLs, localhost/loopback/private-network URLs,
-  `file://` paths, generic locator values, stale/future capture times, non-ISO
-  capture times, and checked rows without captured evidence details stay
-  blocked.
-- External evidence operator packet and runbook output are local handoff only:
-  they summarize selected gate counts, required environment names, artifact
-  paths, proof requirements, evidence detail fields, per-gate commands, capture
-  order, and missing-evidence next steps without printing environment values,
-  mutating artifacts, checking proof rows, or claiming external success.
-- Hosted Cron Evidence Summary local evidence is limited to
-  `/settings?verify=hosted-cron-evidence-summary` screenshots, evidence packet
-  and scheduler-lane cards, and no-write contract tests for price-drop, account
-  deletion, and presence scheduler lanes. Dry-run, stale, missing, placeholder-env,
-  secret-bearing, unsafe-run-id, missing-count, invalid-count, semantically
-  impossible aggregate-count, unsafe-REST-target, or verify-route-written
-  evidence rows do not prove live hosted scheduling; the external artifact must
-  still attach scheduler configuration/dashboard evidence proving the row came
-  from the real scheduler.
-- Hosted cron evidence tests mirror the account-deletion storage bucket count
-  against the Edge Function contract so local collector validation cannot drift
-  silently from destructive cleanup coverage.
-- Hosted cron evidence packet output is local handoff only: it reports missing
-  REST/auth env names, sanitized row validation state, count summaries, and
-  artifact detail hints only after the selected scheduled non-dry-run rows
-  validate; by default the collector selects all three scheduler lanes, while
-  Store/Stripe price-drop evidence can focus `price-drop` with
-  `OGL_HOSTED_CRON_EVIDENCE_CHECKS=price-drop`; it does not call Edge Functions,
-  create schedules, write rows, print REST/auth values, check proof rows, or
-  prove scheduler ownership. When using anon-plus-caller REST auth,
-  `SUPABASE_ANON_KEY` must carry role `anon` and `SUPABASE_AUTH_JWT` must carry
-  role `authenticated`; copied anon-role caller JWTs are rejected before REST
-  fetches.
-- Hosted deploy gate packet output is local handoff only: it reports missing
-  GitHub Environment env names, required Supabase runtime secret names, deploy
-  function `verify_jwt` flags, dry-run/OPTIONS smoke plans, scheduler handoff
-  shapes, and next commands without printing secret values, deploying
-  functions, calling hosted functions, creating schedulers, or proving external
-  success.
-- One-Click Setup rollback/audit evidence is limited to
-  `/settings?verify=one-click-setup-rollback-audit-contract` desktop/mobile
-  screenshots, DOM checks, and no-write contract tests for setup-step ledger
-  order, redacted failure packets, empty writes/deletes/live-calls ledgers, and
-  unknown-step blockers; real rollback proof still requires external
-  hosted/provider evidence.
-- First-party Cloud Saves are removed: the launcher does not expose its former
-  upload/download/restore/conflict UI or use the removed Supabase tables and
-  storage policies. A legacy empty `game-saves` storage object may remain
-  inaccessible until an operator removes it through the Storage API. Removal
-  and forward-verification migrations are covered by static contract tests.
-- The remaining Cross-Store Save Copy evidence is limited to explicit local file
-  actions, consent-gated native apply/rollback, hashes/manifests, and a temporary
-  sandbox proof. It does not upload saves, use Supabase/keychain staging, call a
-  provider cloud API, or claim a real migration run.
-- Performance polling is locally gated: active game attribution polls native
-  metrics at 1Hz, while standalone/idle overlay attribution uses local preview
-  without native polling.
-- Plugin Runtime Sandbox local evidence includes an owned proof-process lane: it
-  re-audits disabled signed packages, proves a local child-process boundary,
-  keeps entrypoints blocked, keeps `codeExecuted false`, keeps persistent
-  permission grants denied, and does not prove third-party plugin execution.
-  Release completion still requires external plugin marketplace and production
-  signing/update evidence before plugin execution channels can be treated as
-  externally complete.
-- Current operational verification entry points (run them fresh; this document
-  does not attach pass/fail claims to the active dirty checkout):
+- frontend, Rust, Supabase migration, Edge Function, and operational-script
+  contracts;
+- linting, formatting, typechecking, builds, and current-platform Tauri checks;
+- deterministic verify routes and current UI screenshots;
+- no-write fixtures, dry-runs, redaction guards, and evidence-template checks.
+
+It does not cover live provider credentials, hosted scheduler execution,
+production dashboards, marketplace approval, provider terms approval, or
+physical-device and cross-OS runs. Readiness panels and local fixtures must not
+be presented as proof of those external outcomes.
+
+## Current local evidence
+
+- The completion gate owns the complete automated inventory. Do not duplicate
+  mutable test totals here.
+- Route inventory requires every normal production route to have a current
+  visual reference. Verify flags are discovered independently from source and
+  need a screenshot only when they represent a durable visual reference.
+  Removed UI states are not retained as verification archaeology.
+- UI evidence checks require screenshots for affected visible UI families and
+  require each entry to identify its route/state, evidence boundary, and Retro
+  Manga/OG-Launcher styling or overflow result.
+- Activity uses `/activity` for the friend feed and `/activity/recap` for the
+  local sample-data yearly recap.
+- New mod rows are constrained to Nexus Mods and Steam Workshop. Preserved
+  legacy database rows do not make retired provider controls or key screens
+  current product evidence.
+- The normal no-slug Nexus website handoff and read-only Steam ACF parser are
+  locally testable. The optional native Nexus ZIP/7z engine, NXM
+  secret-redaction/claim flow, and transactional ownership rollback are also
+  covered locally, but registration, account entitlement, CDN delivery, and
+  Valve authorization remain separate external evidence.
+- First-party Cloud Saves are removed. Cross-Store Save Copy evidence covers
+  explicit local file actions, consent-gated apply/rollback, manifests, hashes,
+  and sandbox verification only; it does not prove provider-cloud or Supabase
+  save transfer.
+- External-evidence parsing rejects placeholders, stale or future timestamps,
+  local screenshot locators, private/loopback URLs, weak evidence mappings, and
+  secret-shaped content. Local summaries and operator packets are handoff tools,
+  not external proof.
+- Release tracking requires release-critical source, migrations, scripts,
+  runbooks, evidence templates, screenshots, manifests, and toolchain pins to
+  be tracked and reproducible from a clean checkout.
+- Platform-specific checks report an explicit CI handoff when they cannot run
+  on the current host.
+
+## Verification commands
+
+Run the relevant focused checks while developing, then the local completion
+gate before handoff:
 
 ```bash
-pnpm completion:gate:status
-pnpm completion:gate:local
-pnpm completion:gate:external
-pnpm hosted:deploy-gate:test
+pnpm verify:routes
+pnpm verify:ui-evidence
 pnpm external:evidence:test
 pnpm hosted:cron-evidence:test
-pnpm supabase:db:lint:test
+pnpm hosted:deploy-gate:test
 pnpm supabase:functions:test
 pnpm supabase:functions:check
-pnpm verify:ui-evidence
-pnpm verify:routes
 pnpm --dir launcher typecheck
 pnpm --dir launcher lint
 pnpm --dir launcher test
 pnpm --dir launcher build
+pnpm completion:gate:local
 ```
 
-`completion:gate:local` starts with `git diff --check HEAD`, so staged and
-unstaged whitespace and patch metadata errors are covered by the same
-deterministic local gate. Platform-scoped checks report explicit CI handoffs
-when they cannot run on the current host; Windows runs the real
-`cargo check --locked --target x86_64-pc-windows-msvc` lane.
-After a successful local run, `completion:gate:local` also writes the gitignored
-`.codex/completion-gate-local-latest.json` receipt. That receipt is local
-operator context only: it records the local command, platform, check IDs, and
-platform-scoped skips with `releaseProof: false` and
-`externalEvidenceCollected: false`; it never replaces fresh command output or
-external release evidence.
+`completion:gate:local` begins with the tracked-worktree and whitespace checks.
+On success it writes the gitignored
+`.codex/completion-gate-local-latest.json`. That receipt is local operator
+context only and never replaces fresh output or external evidence.
 
-## External Evidence Still Required
+## External evidence still required
 
-Current external evidence status is `0/5` gates ready.
-`v*` tag packaging and draft release artifacts are blocked by the
-`hosted-production` CI release-boundary job until `pnpm completion:gate:external`
-passes with real hosted/provider evidence and checked artifacts. The release job
-also validates the tag against the launcher/Tauri versions, verifies the tagged
-commit is the current `origin/main` commit, and ignores scoped external-evidence
-env vars so a tag cannot shrink the proof lane set or release from an unrelated
-branch tip.
+Use `pnpm completion:gate:status` for the current status and
+`pnpm external:evidence:worklist` for the next proof item. Release packaging
+remains blocked until `pnpm completion:gate:external` passes with real checked
+artifacts for these lanes:
 
-- Store/Stripe (`store-stripe-live`): real Stripe webhook signature delivery,
-  Stripe Dashboard tax/invoice configuration, production license signing key
-  custody with live license issuance, and real hosted price-drop scheduler
-  execution across `docs/verification/external/store-stripe-live-staging.md`
-  and `docs/verification/external/store-price-drop-scheduler-live.md`.
-- Hosted Supabase cron (`hosted-supabase-cron`): trusted scheduled runs for price-drop notifications,
-  account deletion processing, and platform presence polling with real secrets,
-  fresh evidence rows, and zero failure counts where aggregate rows expose
-  `failed_count`. Use `docs/runbooks/hosted-cron-evidence.md` and
-  `pnpm hosted:deploy-gate:scheduler-packet`, confirm its
-  `SUPABASE_FUNCTIONS_URL` setup step, then run `pnpm hosted:cron-evidence` and
-  `pnpm hosted:cron-evidence:artifact-hints` after scheduler handoff with
-  `SUPABASE_REST_URL or SUPABASE_URL or SUPABASE_PROJECT_REF` plus
-  `SUPABASE_SERVICE_ROLE_KEY or SUPABASE_ANON_KEY + SUPABASE_AUTH_JWT`.
-- Provider integrations (`provider-live-integrations`): real provider-key staging for
-  mod.io/CurseForge, live non-Steam presence bridges,
-  provider-approved catalog/cloud transfer flows, real achievement/provider
-  cache E2E, and provider terms approval where needed.
-- Hardware/OS E2E (`hardware-os-e2e`): fullscreen/anti-cheat overlay evidence, long native
-  overlay sessions, protected-title validation, external-drive backup/restore
-  E2E on Windows/macOS/Linux, and real client mount/apply behavior against
-  provider clients.
-- Rollout tracks (`rollout-tracks`): community-wide hosted artwork rollout,
-  channels,
-  and hosted production deployment. Use
-  `docs/runbooks/external-completion-evidence.md` plus
-  `pnpm external:evidence:worklist` and `pnpm external:evidence:preflight` to
-  track required proof artifacts.
+- Store/Stripe: webhook delivery, Dashboard tax/invoice configuration, license
+  key custody and issuance, and hosted price-drop scheduling.
+- Hosted Supabase cron: scheduled price-drop, account-deletion, and presence
+  runs with valid fresh evidence rows.
+- Provider integrations: no-slug Nexus website and Steam Workshop handoffs,
+  presence bridges, approved catalog/cloud-transfer flows, and real achievement
+  cache runs. Registered Nexus SSO/catalog evidence is optional native-track
+  evidence, not a normal-release prerequisite.
+- Hardware/OS E2E: overlay/fullscreen/anti-cheat, long native sessions,
+  external-drive backup/restore across supported systems, and real-client
+  mount/apply behavior.
+- Rollout tracks: hosted artwork rollout, channels, and production deployment.
 
-## Completion Rule
+The canonical proof fields and collection steps live in
+`docs/verification/external/` and
+`docs/runbooks/external-completion-evidence.md`.
 
-A feature is locally complete when its deterministic code path, tests, docs, and
-visual evidence are present and the remaining `FEATURE_PLAN.md` task requires
-external evidence. Do not convert those external tasks to "done" without the
-real evidence artifact and a fresh verification note.
+## Completion rule
+
+A feature is locally complete when its deterministic implementation, tests,
+documentation, and current visual evidence pass the relevant checks. External
+work may be marked complete only after its real evidence artifact passes the
+external gate.

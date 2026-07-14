@@ -32,18 +32,24 @@ export function useOverlayHotkey() {
     }
 
     let unlisten: (() => void) | null = null;
+    let mounted = true;
 
-    listen("overlay-toggle-requested", async () => {
+    void listen("overlay-toggle-requested", async () => {
       try {
         await toggleInGameOverlay();
       } catch (err) {
         console.error("[overlay] toggle failed:", err);
       }
-    }).then((fn) => {
-      unlisten = fn;
+    }).then((cleanup) => {
+      if (mounted) {
+        unlisten = cleanup;
+      } else {
+        cleanup();
+      }
     });
 
     return () => {
+      mounted = false;
       if (unlisten) unlisten();
     };
   }, []);
@@ -51,6 +57,10 @@ export function useOverlayHotkey() {
 
 export function useFpsHudHotkey() {
   useEffect(() => {
+    if (!isTauri()) {
+      return;
+    }
+
     const handler = async (e: KeyboardEvent) => {
       // Alt+F12 toggle FPS HUD
       if (e.altKey && e.key === "F12") {

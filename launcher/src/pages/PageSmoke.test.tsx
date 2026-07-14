@@ -47,46 +47,48 @@ const familyMocks = vi.hoisted(() => ({
 const launcherMocks = vi.hoisted(() => ({
   archiveDownload: vi.fn(),
   authenticateEpicLegendary: vi.fn(),
+  browseMods: vi.fn(),
   cancelDownload: vi.fn(),
   cancelModInstall: vi.fn(),
   clearBroadcastStreamKeySecret: vi.fn(),
+  connectNexus: vi.fn(),
   detectHardwareInfo: vi.fn(),
-  disableMod: vi.fn(),
+  disconnectNexus: vi.fn(),
   eaGetToken: vi.fn(),
   eaLogout: vi.fn(),
-  enableMod: vi.fn(),
   fetchSteamProfileName: vi.fn(),
   fetchXboxOwnedGames: vi.fn(),
   getBroadcastStreamKeyVaultStatus: vi.fn(),
   getDefaultInstallDir: vi.fn(),
   getDownloadQueue: vi.fn(),
   getLicenseDeviceId: vi.fn(),
+  getModProviderStatus: vi.fn(),
+  getNxmHandlerStatus: vi.fn(),
   getSystemInfo: vi.fn(),
   gogExchangeCode: vi.fn(),
   gogGetToken: vi.fn(),
   gogLogout: vi.fn(),
   launchCrossPlayJoin: vi.fn(),
   launchGame: vi.fn(),
+  installMod: vi.fn(),
   listInstalledGames: vi.fn(),
+  listManagedMods: vi.fn(),
   normalizeSteamOwnedGames: vi.fn(),
   openBattleNetLoginWindow: vi.fn(),
-  openAchievementCacheFolder: vi.fn(),
   openEaLoginWindow: vi.fn(),
   openEpicLoginWindow: vi.fn(),
   openGogLoginWindow: vi.fn(),
+  openProviderMod: vi.fn(),
+  openNxmHandlerSettings: vi.fn(),
   openSteamLoginWindow: vi.fn(),
   openXboxLoginWindow: vi.fn(),
   pauseDownload: vi.fn(),
   processBattleNetGamesPayload: vi.fn(),
-  scanGameMods: vi.fn(),
   scanLocalPluginManifests: vi.fn(),
-  scrapeNexusModInfo: vi.fn(),
-  searchNexusMods: vi.fn(),
   setBroadcastStreamKeySecret: vi.fn(),
-  setModProviderSecret: vi.fn(),
+  setModEnabled: vi.fn(),
   stageSignedPluginPackage: vi.fn(),
-  startModInstall: vi.fn(),
-  uninstallMod: vi.fn(),
+  removeMod: vi.fn(),
   validateLicense: vi.fn(),
 }));
 
@@ -128,17 +130,6 @@ const storeMocks = vi.hoisted(() => ({
   upsertStorePriceAlert: vi.fn(),
   upsertStoreReview: vi.fn(),
   upsertStoreReviewReply: vi.fn(),
-}));
-
-const modMocks = vi.hoisted(() => ({
-  listModCatalogEntries: vi.fn(),
-  listSharedModProviderGameMappings: vi.fn(),
-  recordUserModInstall: vi.fn(),
-  upsertSharedModProviderGameMapping: vi.fn(),
-}));
-
-const nativeModSearchMocks = vi.hoisted(() => ({
-  searchNativeMods: vi.fn(),
 }));
 
 const performanceMocks = vi.hoisted(() => ({
@@ -392,13 +383,9 @@ vi.mock("../lib/supabase/family", () => familyMocks);
 
 vi.mock("../lib/supabase/friend-links", () => friendLinkMocks);
 
-vi.mock("../lib/supabase/mods", () => modMocks);
-
 vi.mock("../lib/supabase/news", () => newsMocks);
 
 vi.mock("../lib/supabase/presence", () => presenceMocks);
-
-vi.mock("../lib/mod-provider-search", () => nativeModSearchMocks);
 
 vi.mock("../lib/supabase/performance", () => performanceMocks);
 
@@ -521,17 +508,41 @@ describe("routed page smoke coverage", () => {
     familyMocks.listFamilySharedGames.mockResolvedValue([]);
     launcherMocks.archiveDownload.mockResolvedValue(undefined);
     launcherMocks.authenticateEpicLegendary.mockResolvedValue("Epic authenticated.");
+    launcherMocks.browseMods.mockResolvedValue({
+      items: [],
+      message: null,
+      nextCursor: null,
+      total: 0,
+    });
     launcherMocks.cancelDownload.mockResolvedValue(undefined);
     launcherMocks.cancelModInstall.mockResolvedValue(undefined);
     launcherMocks.clearBroadcastStreamKeySecret.mockResolvedValue({
       configured: false,
       message: "Stream-key vault empty.",
     });
+    launcherMocks.connectNexus.mockResolvedValue({
+      action: "disconnect",
+      actionLabel: "Disconnect Nexus",
+      available: true,
+      connected: true,
+      message: "Connected.",
+      provider: "nexus",
+      supportsBrowse: true,
+      supportsNativeInstall: false,
+    });
     launcherMocks.detectHardwareInfo.mockResolvedValue(null);
-    launcherMocks.disableMod.mockResolvedValue(undefined);
+    launcherMocks.disconnectNexus.mockResolvedValue({
+      action: "connect",
+      actionLabel: "Connect Nexus",
+      available: true,
+      connected: false,
+      message: "Disconnected.",
+      provider: "nexus",
+      supportsBrowse: false,
+      supportsNativeInstall: false,
+    });
     launcherMocks.eaGetToken.mockResolvedValue(null);
     launcherMocks.eaLogout.mockResolvedValue(undefined);
-    launcherMocks.enableMod.mockResolvedValue(undefined);
     launcherMocks.fetchSteamProfileName.mockResolvedValue("Steam User");
     launcherMocks.fetchXboxOwnedGames.mockResolvedValue({ games: [], gamertag: "Xbox User" });
     launcherMocks.getBroadcastStreamKeyVaultStatus.mockResolvedValue({
@@ -541,6 +552,23 @@ describe("routed page smoke coverage", () => {
     launcherMocks.getDefaultInstallDir.mockResolvedValue("/games");
     launcherMocks.getDownloadQueue.mockResolvedValue([]);
     launcherMocks.getLicenseDeviceId.mockResolvedValue("device-test");
+    launcherMocks.getModProviderStatus.mockResolvedValue({
+      action: "none",
+      actionLabel: null,
+      available: false,
+      connected: false,
+      message: "No game selected.",
+      provider: "nexus",
+      supportsBrowse: false,
+      supportsNativeInstall: false,
+    });
+    launcherMocks.getNxmHandlerStatus.mockResolvedValue({
+      isDefault: true,
+      message: "OG-Launcher handles Nexus download links.",
+      registered: true,
+      state: "registered",
+    });
+    launcherMocks.openNxmHandlerSettings.mockResolvedValue(undefined);
     launcherMocks.getSystemInfo.mockResolvedValue({
       appVersion: "0.1.0",
       arch: "web",
@@ -551,27 +579,35 @@ describe("routed page smoke coverage", () => {
     launcherMocks.gogLogout.mockResolvedValue(undefined);
     launcherMocks.launchCrossPlayJoin.mockResolvedValue(undefined);
     launcherMocks.launchGame.mockResolvedValue(undefined);
+    launcherMocks.installMod.mockResolvedValue({
+      delegatedUrl: null,
+      installId: null,
+      message: "Provider opened.",
+      status: "handoff",
+    });
     launcherMocks.listInstalledGames.mockResolvedValue([]);
+    launcherMocks.listManagedMods.mockResolvedValue([]);
     launcherMocks.normalizeSteamOwnedGames.mockImplementation((games) => games);
-    launcherMocks.openAchievementCacheFolder.mockResolvedValue("/tmp/achievements");
     launcherMocks.openBattleNetLoginWindow.mockResolvedValue(undefined);
     launcherMocks.openEaLoginWindow.mockResolvedValue(undefined);
     launcherMocks.openEpicLoginWindow.mockResolvedValue(undefined);
     launcherMocks.openGogLoginWindow.mockResolvedValue(undefined);
+    launcherMocks.openProviderMod.mockResolvedValue({
+      delegatedUrl: null,
+      installId: null,
+      message: "Provider opened.",
+      status: "handoff",
+    });
     launcherMocks.openSteamLoginWindow.mockResolvedValue(undefined);
     launcherMocks.openXboxLoginWindow.mockResolvedValue(undefined);
     launcherMocks.pauseDownload.mockResolvedValue(undefined);
     launcherMocks.processBattleNetGamesPayload.mockResolvedValue([]);
-    launcherMocks.scanGameMods.mockResolvedValue([]);
-    launcherMocks.scrapeNexusModInfo.mockResolvedValue(null);
-    launcherMocks.searchNexusMods.mockResolvedValue([]);
     launcherMocks.setBroadcastStreamKeySecret.mockResolvedValue({
       configured: true,
       message: "Stream-key vault staged.",
     });
-    launcherMocks.setModProviderSecret.mockResolvedValue(undefined);
-    launcherMocks.startModInstall.mockResolvedValue(undefined);
-    launcherMocks.uninstallMod.mockResolvedValue(undefined);
+    launcherMocks.setModEnabled.mockResolvedValue(undefined);
+    launcherMocks.removeMod.mockResolvedValue(undefined);
     launcherMocks.validateLicense.mockResolvedValue({ ok: true });
     newsMocks.listPublishedNews.mockResolvedValue([newsItem]);
     achievementMocks.hydrateGamesWithRemoteAchievements.mockImplementation((games) =>
@@ -608,11 +644,6 @@ describe("routed page smoke coverage", () => {
     storeMocks.upsertStorePriceAlert.mockResolvedValue(undefined);
     storeMocks.upsertStoreReview.mockResolvedValue(null);
     storeMocks.upsertStoreReviewReply.mockResolvedValue(null);
-    modMocks.listModCatalogEntries.mockResolvedValue([]);
-    modMocks.listSharedModProviderGameMappings.mockResolvedValue([]);
-    modMocks.recordUserModInstall.mockResolvedValue(null);
-    modMocks.upsertSharedModProviderGameMapping.mockResolvedValue(null);
-    nativeModSearchMocks.searchNativeMods.mockResolvedValue([]);
     performanceMocks.listPerformanceSessions.mockResolvedValue([]);
     performanceMocks.listPerformanceSnapshots.mockResolvedValue([]);
     performanceMocks.savePerformanceSession.mockResolvedValue(true);
@@ -736,7 +767,7 @@ describe("routed page smoke coverage", () => {
     renderRoutedPage(<ModsPage />, "/mods");
 
     expect(await screen.findByRole("heading", { name: /mod manager/i })).toBeInTheDocument();
-    expect(screen.getByText("Installed Mods")).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: /my mods/i })).toBeInTheDocument();
   });
 
   it("renders the yearly activity route", () => {
@@ -845,7 +876,7 @@ describe("routed page smoke coverage", () => {
     renderRoute(<AchievementsPage />);
 
     expect(await screen.findByText("No achievement-enabled games found.")).toBeInTheDocument();
-    expect(screen.getByText("Cache Folder")).toBeInTheDocument();
+    expect(screen.queryByText("Cache Folder")).not.toBeInTheDocument();
   });
 
   it("renders realtime metrics in the FPS HUD", async () => {
@@ -947,6 +978,27 @@ describe("routed page smoke coverage", () => {
     expect(screen.queryByRole("button", { name: "Screenshots" })).not.toBeInTheDocument();
   });
 
+  it("does not offer a dead FPS HUD action in the anti-cheat fallback", async () => {
+    vi.mocked(isTauri).mockReturnValue(true);
+    vi.mocked(invoke).mockImplementation((command) => {
+      if (command === "get_overlay_settings") {
+        return Promise.resolve({ fpsHudEnabled: false });
+      }
+      if (command === "detect_anti_cheat_processes") {
+        return Promise.resolve([
+          { blocks_overlay: true, name: "Test Guard", process_name: "guard.exe" },
+        ]);
+      }
+      return Promise.resolve(undefined);
+    });
+
+    renderRoute(<OverlayPage />);
+
+    expect(await screen.findByText("Safety Fallback")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Toggle FPS HUD" })).not.toBeInTheDocument();
+    expect(screen.getByText(/fps hud is disabled/i)).toBeInTheDocument();
+  });
+
   it("loads existing messages when an overlay group chat opens", async () => {
     currentUserMock.mockReturnValue({
       error: null,
@@ -1028,7 +1080,7 @@ describe("routed page smoke coverage", () => {
     expect(screen.getByTitle("Unpin")).toBeInTheDocument();
   });
 
-  it("sends overlay friend invites from an inline form without native prompts", async () => {
+  it("uses presence platform IDs for joins and sends invites without native prompts", async () => {
     const promptSpy = vi.spyOn(window, "prompt").mockReturnValue("Native Prompt Game");
     currentUserMock.mockReturnValue({
       error: null,
@@ -1060,10 +1112,10 @@ describe("routed page smoke coverage", () => {
         currentGameId: "game-1",
         currentGameTitle: "Neon Drift",
         lastHeartbeatAt: "2026-06-22T00:00:00.000Z",
-        platform: "steam",
-        platformGameId: "steam-game-1",
+        platform: "epic",
+        platformGameId: "epic-neon-drift",
         platformLastPolledAt: "2026-06-22T00:00:00.000Z",
-        platformSource: "steam",
+        platformSource: "epic",
         status: "online",
         updatedAt: "2026-06-22T00:00:00.000Z",
         userId: "friend-1",
@@ -1074,6 +1126,12 @@ describe("routed page smoke coverage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Friends" }));
 
     expect(await screen.findByText("Arcade Rival")).toBeInTheDocument();
+    fireEvent.click(screen.getByTitle("Join"));
+    await waitFor(() =>
+      expect(launcherMocks.launchCrossPlayJoin).toHaveBeenCalledWith("epic", "epic-neon-drift"),
+    );
+    expect(await screen.findByRole("status")).toHaveTextContent("Opening Neon Drift via epic.");
+
     fireEvent.click(screen.getByTitle("Invite"));
 
     expect(promptSpy).not.toHaveBeenCalled();

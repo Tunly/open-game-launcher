@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { handleInstallDeepLink } from "./deep-link-handlers";
 import { router } from "./router";
+import { shouldMountLauncherUpdateHost } from "./window-view-policy";
 
 vi.mock("./router", () => ({
   router: {
@@ -35,5 +36,13 @@ describe("handleInstallDeepLink", () => {
     await handleInstallDeepLink({}, "cyber-drift");
 
     expect(router.navigate).toHaveBeenCalledWith("/store?slug=cyber-drift&install=1");
+  });
+});
+
+describe("launcher update host window policy", () => {
+  it("mounts only in the main launcher window", () => {
+    expect(shouldMountLauncherUpdateHost("main")).toBe(true);
+    expect(shouldMountLauncherUpdateHost("overlay")).toBe(false);
+    expect(shouldMountLauncherUpdateHost("fps-hud")).toBe(false);
   });
 });

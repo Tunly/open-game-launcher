@@ -1,4 +1,5 @@
 import { Pause, Play, RotateCcw, X } from "lucide-react";
+import { useState } from "react";
 
 import type { DownloadItem, DownloadStatus, Game } from "../../lib/types";
 import { isTerminalDownloadItem } from "../../stores/downloadStore";
@@ -9,7 +10,7 @@ interface DownloadCardProps {
   index?: number;
   item: DownloadItem;
   game?: Game;
-  commandPending?: boolean;
+  pendingAction?: "pause" | "cancel" | "archive" | "launch" | "clear";
   debugMode?: boolean;
   onArchive: (id: string) => void | Promise<void>;
   onCancel: (id: string) => void;
@@ -61,7 +62,7 @@ export function DownloadCard({
   index = 0,
   item,
   game,
-  commandPending = false,
+  pendingAction,
   debugMode = false,
   onArchive,
   onCancel,
@@ -69,6 +70,7 @@ export function DownloadCard({
   onLaunch,
 }: DownloadCardProps) {
   const isTerminal = isTerminalDownloadItem(item);
+  const commandPending = Boolean(pendingAction);
   const canPause =
     Boolean(item.canPause) &&
     !commandPending &&
@@ -77,20 +79,34 @@ export function DownloadCard({
   const isComplete = item.status === "completed";
   const isExternal = Boolean(item.external);
   const archiveLabel = isExternal && !isTerminal ? "Remove" : "Archive";
-  const lockedLabel = commandPending
-    ? "Busy"
-    : isExternal && /pausing|resuming/i.test(item.speed)
-      ? "Busy"
-      : item.status === "pausing" || item.status === "resuming" || item.status === "installing"
-        ? "Busy"
-        : isExternal
-          ? "External"
-          : "Locked";
+  const lockedLabel =
+    pendingAction === "pause"
+      ? item.status === "paused"
+        ? "Resuming..."
+        : "Pausing..."
+      : commandPending && item.status === "downloading"
+        ? "Pause"
+        : commandPending && item.status === "paused"
+          ? "Resume"
+          : isExternal && /pausing|resuming/i.test(item.speed)
+            ? "Busy"
+            : item.status === "pausing" ||
+                item.status === "resuming" ||
+                item.status === "installing"
+              ? "Busy"
+              : isExternal
+                ? "External"
+                : "Locked";
   const phaseLabel = item.phase ? ` // ${item.phase}` : "";
   const byteLabel = formatByteProgress(item);
+  const displayProgress = Number.isFinite(item.progress)
+    ? Math.min(100, Math.max(0, item.progress))
+    : 0;
 
   // Cover image URL or fallback to logoUrl
   const imageUrl = game ? getGameAssetUrl(game.coverUrl || game.logoUrl) : undefined;
+  const [failedImageUrl, setFailedImageUrl] = useState<string | null>(null);
+  const showImage = Boolean(imageUrl && failedImageUrl !== imageUrl);
 
   // Rotate deterministic art patterns when a game has no cover asset.
   const placeholderClasses = ["library-art-tokyo", "library-art-mech", "library-art-phantom"];
@@ -101,13 +117,18 @@ export function DownloadCard({
       <article className="grid grid-cols-1 items-center gap-4 border-4 border-black bg-[#f5eedf] p-4 shadow-[4px_4px_0_#171411] md:grid-cols-[auto_1fr_auto]">
         {/* Game Cover / Icon */}
         <div className="relative flex h-24 w-full flex-shrink-0 items-center justify-center overflow-hidden border-2 border-black bg-[#171411] md:h-20 md:w-36">
-          {imageUrl ? (
-            <img src={imageUrl} alt="" className="h-full w-full object-cover" />
+          {showImage ? (
+            <img
+              src={imageUrl}
+              alt=""
+              className="h-full w-full object-cover"
+              onError={() => setFailedImageUrl(imageUrl ?? null)}
+            />
           ) : (
             <div
               className={`flex h-full w-full flex-col items-center justify-center p-2 text-center select-none ${placeholderClass}`}
             >
-              <span className="neo-title max-w-full truncate bg-black/60 px-1 text-xs font-black tracking-tight text-white uppercase">
+              <span className="neo-title line-clamp-2 max-w-full bg-black/60 px-1 text-xs font-black tracking-tight break-words text-white uppercase">
                 {item.title}
               </span>
             </div>
@@ -117,9 +138,9 @@ export function DownloadCard({
         {/* Content & Progress */}
         <div className="min-w-0 flex-1">
           <div className="mb-1.5 flex flex-wrap items-center gap-2">
-            <h2 className="truncate text-base leading-none font-black tracking-tight text-[#171411] uppercase sm:text-lg">
+            <h3 className="neo-title text-base leading-none font-black tracking-tight break-words text-[#171411] uppercase sm:truncate sm:text-lg">
               {item.title}
-            </h2>
+            </h3>
             {item.platform && (
               <span
                 className={`neo-copy border px-1.5 py-0.5 text-[8px] font-extrabold uppercase shadow-[1px_1px_0_#171411] ${platformColors[item.platform] || "border-black bg-[#efe6d4] text-[#171411]"}`}
@@ -134,16 +155,23 @@ export function DownloadCard({
             </span>
           </div>
 
-          <div className="h-4 border-2 border-black bg-[#efe6d4]">
+          <div
+            aria-label={`${item.title} download progress`}
+            aria-valuemax={100}
+            aria-valuemin={0}
+            aria-valuenow={displayProgress}
+            className="h-4 border-2 border-black bg-[#efe6d4]"
+            role="progressbar"
+          >
             <div
               className={`h-full transition-all duration-300 ${isComplete ? "bg-[#087d6d]" : item.status === "paused" ? "bg-[#5b403f]" : "bg-[#c20b2f]"}`}
-              style={{ width: `${item.progress}%` }}
+              style={{ width: `${displayProgress}%` }}
             />
           </div>
 
           <div className="mt-2 flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
             <span className="neo-copy text-[10px] font-bold text-[#55504a] uppercase">
-              {item.progress}% complete{phaseLabel}
+              {displayProgress}% complete{phaseLabel}
             </span>
             <span className="neo-copy text-[10px] font-bold text-[#5b403f] uppercase">
               {byteLabel ? `${item.speed} // ${byteLabel}` : item.speed}
@@ -156,12 +184,17 @@ export function DownloadCard({
           {/* PLAY Button for Completed */}
           {isComplete && onLaunch ? (
             <button
+              disabled={commandPending}
               onClick={() => void onLaunch(item.gameId)}
-              className="neo-copy flex items-center justify-center gap-1.5 border-2 border-black bg-[#087d6d] px-4 py-2 text-xs font-bold tracking-wider text-white uppercase shadow-[2px_2px_0_#171411] hover:bg-[#087d6d]/90 active:translate-x-[1px] active:translate-y-[1px] active:shadow-[1px_1px_0_#171411]"
+              className={`neo-copy flex items-center justify-center gap-1.5 border-2 border-black px-4 py-2 text-xs font-bold tracking-wider uppercase ${
+                commandPending
+                  ? "cursor-not-allowed bg-[#efe6d4] text-[#55504a]"
+                  : "bg-[#087d6d] text-white shadow-[2px_2px_0_#171411] hover:bg-[#087d6d]/90 active:translate-x-[1px] active:translate-y-[1px] active:shadow-[1px_1px_0_#171411]"
+              }`}
               type="button"
             >
               <Play className="h-3.5 w-3.5 fill-current" />
-              PLAY
+              {pendingAction === "launch" ? "Launching..." : "Play"}
             </button>
           ) : null}
 
@@ -198,17 +231,22 @@ export function DownloadCard({
           {/* Cancel Button */}
           {canCancel ? (
             <button
-              className="neo-copy flex items-center justify-center gap-1.5 border-2 border-black bg-[#c20b2f] px-3 py-2 text-xs font-bold text-white uppercase shadow-[2px_2px_0_#171411] hover:bg-[#a50826] active:translate-x-[1px] active:translate-y-[1px] active:shadow-[1px_1px_0_#171411]"
+              className={`neo-copy flex items-center justify-center gap-1.5 border-2 border-black px-3 py-2 text-xs font-bold uppercase ${
+                commandPending
+                  ? "cursor-not-allowed bg-[#efe6d4] text-[#55504a]"
+                  : "bg-[#c20b2f] text-white shadow-[2px_2px_0_#171411] hover:bg-[#a50826] active:translate-x-[1px] active:translate-y-[1px] active:shadow-[1px_1px_0_#171411]"
+              }`}
+              disabled={commandPending}
               type="button"
               onClick={() => onCancel(item.id)}
             >
               <X className="h-3.5 w-3.5" />
-              Cancel
+              {pendingAction === "cancel" ? "Cancelling..." : "Cancel"}
             </button>
           ) : null}
 
           {/* Archive / Clear Button */}
-          {isTerminal || isComplete ? (
+          {isTerminal || isExternal ? (
             <button
               className={`neo-copy flex items-center justify-center gap-1.5 border-2 border-black px-3 py-2 text-xs font-bold uppercase ${
                 commandPending
@@ -220,7 +258,9 @@ export function DownloadCard({
               onClick={() => onArchive(item.id)}
             >
               <RotateCcw className="h-3.5 w-3.5" />
-              {commandPending ? "Busy" : archiveLabel}
+              {pendingAction === "archive" || pendingAction === "clear"
+                ? "Archiving..."
+                : archiveLabel}
             </button>
           ) : null}
         </div>

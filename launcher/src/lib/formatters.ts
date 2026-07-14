@@ -8,6 +8,7 @@ const SOURCE_LABELS: Record<string, string> = {
   linux: "Linux",
   macos: "macOS",
   manual: "Manual",
+  ogl: "OG Launcher",
   steam: "Steam",
   ubisoft: "Ubisoft",
   uplay: "Ubisoft",
@@ -138,6 +139,7 @@ function launcherHintFromId(id: string): Game["launcher"] | null {
   if (id.startsWith("xbox-")) return "xbox";
   if (id.startsWith("battlenet-")) return "battlenet";
   if (id.startsWith("ea-")) return "ea";
+  if (id.startsWith("ogl-")) return "ogl";
   if (id.startsWith("manual-")) return "manual";
   return null;
 }
@@ -159,6 +161,9 @@ function launcherHintFromLabel(launcher: string): Game["launcher"] | null {
     return "ea";
   }
   if (value.includes("manual")) return "manual";
+  if (value === "ogl" || value.includes("og launcher") || value.includes("open game launcher")) {
+    return "ogl";
+  }
   return null;
 }
 
@@ -225,6 +230,7 @@ const KNOWN_BANNER_SOURCES: Record<string, string> = {
   ubisoft: "ubisoft-game-banner-hero",
   battlenet: "battlenet-game-banner-hero",
   ea: "ea-game-banner-hero",
+  ogl: "ogl-game-banner-hero",
   manual: "manual-game-banner-hero",
   unknown: "unknown-game-banner-hero",
   windows: "windows-game-banner-hero",

@@ -6,8 +6,6 @@ import { parseArgs, releaseEvidenceBundle } from "./release-evidence-bundle.mjs"
 const fakeSecretEnv = Object.freeze({
   ACCOUNT_DELETION_PROCESSOR_SECRET:
     "account_deletion_0123456789abcdef0123456789",
-  CURSEFORGE_API_KEY: "curseforge_0123456789abcdef",
-  MOD_IO_API_KEY: "modio_0123456789abcdef",
   OGL_EXTERNAL_EVIDENCE_GATES: "hardware-os-e2e",
   PRESENCE_POLL_SECRET: "presence_poll_0123456789abcdef0123456789",
   PRICE_DROP_NOTIFY_SECRET: "price_drop_0123456789abcdef0123456789",

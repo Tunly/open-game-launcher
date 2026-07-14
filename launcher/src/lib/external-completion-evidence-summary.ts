@@ -353,17 +353,12 @@ export const EXTERNAL_COMPLETION_EVIDENCE_GATE_INPUTS: ExternalCompletionEvidenc
     localEvidence:
       "Provider adapters, cache policy, mod staging, cloud transfer, and bridge contracts are covered locally.",
     proofRequirements: [
-      "mod.io and CurseForge staging probes use real provider keys.",
+      "Nexus website search handoff and Steam Workshop client handoff are verified against live providers.",
       "Non-Steam presence bridges return redacted live provider evidence.",
       "Provider-approved catalog/cloud transfer flows are verified.",
       "Achievement/provider cache E2E runs against real client data.",
     ],
-    requiredEnv: [
-      "STEAM_WEB_API_KEY",
-      "PRESENCE_PROVIDER_TOKEN",
-      "MOD_IO_API_KEY",
-      "CURSEFORGE_API_KEY",
-    ],
+    requiredEnv: ["STEAM_WEB_API_KEY", "PRESENCE_PROVIDER_TOKEN"],
     skippedProof:
       "No provider-key staging packet, redacted bridge proof, or real-client cache E2E attached.",
     surface: "Provider Gate",
@@ -766,7 +761,7 @@ const forbiddenArtifactPatterns = [
   {
     label: "Raw provider API key",
     pattern:
-      /\b(?:STEAM_WEB_API_KEY|MOD_IO_API_KEY|CURSEFORGE_API_KEY|PRESENCE_PROVIDER_TOKEN)\s*[:=]\s*(?!(?:\[?redacted\]?|<redacted>|\*{3,})(?:\s|$))[^\s`"'<>]{8,}/i,
+      /\b(?:STEAM_WEB_API_KEY|NEXUS_API_KEY|PRESENCE_PROVIDER_TOKEN)\s*[:=]\s*(?!(?:\[?redacted\]?|<redacted>|\*{3,})(?:\s|$))[^\s`"'<>]{8,}/i,
   },
   {
     label: "Raw provider API key",
@@ -1435,8 +1430,8 @@ const fieldSpecificEvidenceValidators: Partial<Record<string, EvidenceDetailFiel
       /matrix/i,
       /provider/i,
       /client/i,
-      /mod[._\s-]?io/i,
-      /curseforge/i,
+      /nexus/i,
+      /steam[-_\s]?workshop/i,
     ]),
   "Release ref": releaseRefValueIsValid,
   "Run ID": evidenceIdentifierValueIsSpecific,
@@ -1547,8 +1542,8 @@ function expectedProofEvidenceValuePattern(proof: string) {
   if (/process-account-deletions/.test(normalizedProof)) {
     return /(?:account[-_\s]?deletions?|process[-_\s]?account[-_\s]?deletions|account_deletion_processor_runs)/i;
   }
-  if (/mod\.io and curseforge/.test(normalizedProof)) {
-    return [/mod[._\s-]?io/i, /curseforge/i];
+  if (/nexus website search handoff and steam workshop/.test(normalizedProof)) {
+    return [/nexus/i, /steam[-_\s]?workshop/i, /live[-_\s]?provider/i];
   }
   if (/non-steam presence/.test(normalizedProof)) {
     return [/non[-_\s]?steam/i, /presence/i, /bridge/i, /provider/i];
@@ -1663,8 +1658,6 @@ function secretValueLooksPlausible(value: string, minLength = 24) {
 
 const envShapeValidators: Partial<Record<string, (value: string) => boolean>> = {
   ACCOUNT_DELETION_PROCESSOR_SECRET: (value) => secretValueLooksPlausible(value, 32),
-  CURSEFORGE_API_KEY: (value) => secretValueLooksPlausible(value, 24),
-  MOD_IO_API_KEY: (value) => secretValueLooksPlausible(value, 24),
   PRESENCE_POLL_SECRET: (value) => secretValueLooksPlausible(value, 32),
   PRESENCE_PROVIDER_TOKEN: (value) => secretValueLooksPlausible(value, 24),
   PRICE_DROP_NOTIFY_SECRET: (value) => secretValueLooksPlausible(value, 32),

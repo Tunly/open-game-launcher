@@ -179,7 +179,9 @@ drop table if exists public.screenshot_reports restrict;
 drop table if exists public.screenshot_likes restrict;
 drop table if exists public.screenshots restrict;
 
-delete from storage.buckets where id = 'screenshots';
+-- The empty screenshots bucket is removed through the Storage API before this
+-- migration. Direct writes to storage.buckets are intentionally blocked by
+-- hosted Supabase, even for migration roles.
 
 alter table public.overlay_settings
   alter column shortcuts set default '{"performance":"Ctrl+Shift+P","friends":"Ctrl+Shift+F"}'::jsonb;

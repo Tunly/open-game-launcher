@@ -135,9 +135,15 @@ function steamOwnedGameCacheKey(value: unknown) {
 function achievementCacheFields(value: unknown) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const record = value as Record<string, unknown>;
-  if (!Array.isArray(record.achievements)) return null;
+  const achievements = Array.isArray(record.achievements) ? record.achievements : null;
+  const achievementSummary =
+    record.achievementSummary && typeof record.achievementSummary === "object"
+      ? record.achievementSummary
+      : null;
+  if (!achievements && !achievementSummary) return null;
   return {
-    achievements: record.achievements,
+    ...(achievements ? { achievements } : {}),
+    ...(achievementSummary ? { achievementSummary } : {}),
     ...(typeof record.achievementsSyncedAt === "string"
       ? { achievementsSyncedAt: record.achievementsSyncedAt }
       : {}),

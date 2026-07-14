@@ -144,8 +144,8 @@ const buildUploadArtifactContracts = [
   {
     os: "windows-2025",
     target: "x86_64-pc-windows-msvc",
-    artifactSuffix: "_x64.msi",
-    extensions: ["msi", "exe"],
+    artifactSuffix: "_windows_x64",
+    extensions: ["exe", "exe.sig"],
   },
   {
     os: "macos-15",
@@ -237,6 +237,12 @@ export function releaseWorkflowReport({ content, root = repoRoot } = {}) {
     pushMissing(
       errors,
       scriptValidationJob,
+      "node --test scripts/generate-updater-manifest.test.mjs",
+      "script validation must run updater manifest generator tests",
+    );
+    pushMissing(
+      errors,
+      scriptValidationJob,
       "node --test scripts/release-workflow-check.test.mjs",
       "script validation must run release workflow contract tests",
     );
@@ -314,8 +320,6 @@ export function releaseWorkflowReport({ content, root = repoRoot } = {}) {
         "STRIPE_WEBHOOK_SECRET",
         "STEAM_WEB_API_KEY",
         "PRESENCE_PROVIDER_TOKEN",
-        "MOD_IO_API_KEY",
-        "CURSEFORGE_API_KEY",
       ]) {
         if (!hasSecretEnvAssignment(externalGateStep, secretName)) {
           errors.push(
@@ -372,18 +376,22 @@ export function releaseWorkflowReport({ content, root = repoRoot } = {}) {
     pushMissing(
       errors,
       buildUpload,
-      "pnpm tauri build --target ${{ matrix.target }} -- --locked",
+      "node ./node_modules/@tauri-apps/cli/tauri.js build --target ${{ matrix.target }} ${{ matrix.tauri_config }} -- --locked",
       "build-upload must build the matrix target explicitly with Cargo.lock frozen",
     );
+    const windowsRow = matrixRows.find(
+      (row) =>
+        row.os === "windows-2025" && row.target === "x86_64-pc-windows-msvc",
+    );
+    if (
+      windowsRow &&
+      windowsRow.tauri_config !== "--config src-tauri/tauri.windows.conf.json"
+    ) {
+      errors.push(
+        "build-upload Windows row must merge tauri.windows.conf.json",
+      );
+    }
     for (const [envName, envAssignment] of [
-      [
-        "TAURI_SIGNING_PRIVATE_KEY",
-        "TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}",
-      ],
-      [
-        "TAURI_SIGNING_PRIVATE_KEY_PASSWORD",
-        "TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}",
-      ],
       [
         "APPIMAGE_EXTRACT_AND_RUN",
         "APPIMAGE_EXTRACT_AND_RUN: ${{ runner.os == 'Linux' && '1' || '' }}",
@@ -396,6 +404,21 @@ export function releaseWorkflowReport({ content, root = repoRoot } = {}) {
         envAssignment,
         `build-upload must preserve ${envName}`,
       );
+    }
+    const tauriBuildStep = workflowStepWithName(buildUpload, "Build (Tauri)");
+    if (!tauriBuildStep) {
+      errors.push("build-upload must define the Tauri build step");
+    } else {
+      for (const secretName of [
+        "TAURI_SIGNING_PRIVATE_KEY",
+        "TAURI_SIGNING_PRIVATE_KEY_PASSWORD",
+      ]) {
+        if (!hasSecretEnvAssignment(tauriBuildStep, secretName)) {
+          errors.push(
+            `build-upload Tauri build must pass ${secretName} from secrets`,
+          );
+        }
+      }
     }
     if (buildUpload.includes("launcher/src-tauri/target/release/bundle/")) {
       errors.push(
@@ -410,6 +433,38 @@ export function releaseWorkflowReport({ content, root = repoRoot } = {}) {
       buildUpload,
       "actions/upload-artifact@",
     );
+    const signingSecretsStep = workflowStepWithName(
+      buildUpload,
+      "Validate Windows updater signing secrets",
+    );
+    if (!signingSecretsStep) {
+      errors.push(
+        "build-upload must fail early when Windows updater signing secrets are missing",
+      );
+    } else {
+      for (const requiredValue of [
+        "if: runner.os == 'Windows'",
+        "TAURI_SIGNING_PRIVATE_KEY is required for Windows updater releases.",
+        "TAURI_SIGNING_PRIVATE_KEY_PASSWORD is required for Windows updater releases.",
+      ]) {
+        pushMissing(
+          errors,
+          signingSecretsStep,
+          requiredValue,
+          `build-upload signing secret validation must preserve ${requiredValue}`,
+        );
+      }
+      for (const secretName of [
+        "TAURI_SIGNING_PRIVATE_KEY",
+        "TAURI_SIGNING_PRIVATE_KEY_PASSWORD",
+      ]) {
+        if (!hasSecretEnvAssignment(signingSecretsStep, secretName)) {
+          errors.push(
+            `build-upload signing secret validation must pass ${secretName} from secrets`,
+          );
+        }
+      }
+    }
     if (!artifactInventoryStep) {
       errors.push("build-upload must validate release artifact inventory");
     } else {
@@ -466,90 +521,168 @@ export function releaseWorkflowReport({ content, root = repoRoot } = {}) {
     }
   }
 
-  const draftRelease = workflowJobBlock(workflow, "create-draft-release");
-  if (!draftRelease) {
-    errors.push("workflow must define create-draft-release job");
+  const release = workflowJobBlock(workflow, "create-release");
+  if (!release) {
+    errors.push("workflow must define create-release job");
   } else {
     const checksumStep = workflowStepWithName(
-      draftRelease,
+      release,
       "Generate release artifact checksums",
     );
+    const manifestStep = workflowStepWithName(
+      release,
+      "Generate signed updater manifest",
+    );
+    const releaseChannelStep = workflowStepWithName(
+      release,
+      "Determine release channel",
+    );
     const createReleaseStep = workflowStepWithUse(
-      draftRelease,
+      release,
       "softprops/action-gh-release@",
     );
 
     pushMissing(
       errors,
-      draftRelease,
+      release,
       "if: startsWith(github.ref, 'refs/tags/v')",
-      "create-draft-release must run only for v* tags",
+      "create-release must run only for v* tags",
     );
     pushMissing(
       errors,
-      draftRelease,
+      release,
       "needs: [build-upload]",
-      "create-draft-release must wait for build-upload",
+      "create-release must wait for build-upload",
     );
+    if (!manifestStep) {
+      errors.push("create-release must generate signed latest.json");
+    } else {
+      for (const [value, message] of [
+        [
+          "node scripts/generate-updater-manifest.mjs",
+          "create-release updater manifest must use the tested generator",
+        ],
+        [
+          "--artifacts release-artifacts",
+          "create-release updater manifest must scan downloaded artifacts",
+        ],
+        [
+          "--output release-artifacts/latest.json",
+          "create-release updater manifest must publish latest.json",
+        ],
+        [
+          '--tag "$GITHUB_REF_NAME"',
+          "create-release updater manifest must use the exact release tag",
+        ],
+        [
+          '--repository "$GITHUB_REPOSITORY"',
+          "create-release updater manifest must use the current GitHub repository",
+        ],
+      ]) {
+        pushMissing(errors, manifestStep, value, message);
+      }
+    }
     if (!checksumStep) {
-      errors.push(
-        "create-draft-release must generate release artifact checksums",
-      );
+      errors.push("create-release must generate release artifact checksums");
     } else {
       pushMissing(
         errors,
         checksumStep,
         "find release-artifacts -type f ! -name SHA256SUMS.txt -print0",
-        "create-draft-release checksum step must hash downloaded artifacts",
+        "create-release checksum step must hash downloaded artifacts",
       );
       pushMissing(
         errors,
         checksumStep,
         "sort -z",
-        "create-draft-release checksum step must sort artifacts deterministically",
+        "create-release checksum step must sort artifacts deterministically",
       );
       pushMissing(
         errors,
         checksumStep,
         "sha256sum",
-        "create-draft-release checksum step must use sha256sum",
+        "create-release checksum step must use sha256sum",
       );
       pushMissing(
         errors,
         checksumStep,
         "test -s",
-        "create-draft-release checksum step must fail empty checksum manifests",
+        "create-release checksum step must fail empty checksum manifests",
       );
       pushMissing(
         errors,
         checksumStep,
         "release-artifacts/SHA256SUMS.txt",
-        "create-draft-release checksum step must publish SHA256SUMS.txt",
+        "create-release checksum step must publish SHA256SUMS.txt",
       );
     }
     if (!createReleaseStep) {
-      errors.push("create-draft-release must use GitHub release action");
+      errors.push("create-release must use GitHub release action");
     }
     pushMissing(
       errors,
-      draftRelease,
+      release,
       "files: release-artifacts/**",
-      "create-draft-release must publish downloaded artifacts only",
+      "create-release must publish downloaded artifacts only",
     );
     pushMissing(
       errors,
-      draftRelease,
-      "draft: true",
-      "create-draft-release must create a draft release",
+      release,
+      "draft: false",
+      "create-release must publish automatically after all release gates",
     );
+    if (!releaseChannelStep) {
+      errors.push(
+        "create-release must determine stable versus prerelease tags",
+      );
+    } else {
+      for (const [value, message] of [
+        [
+          'version_without_build="${version%%+*}"',
+          "create-release channel detection must ignore build metadata",
+        ],
+        [
+          'if [[ "$version_without_build" == *-* ]]',
+          "create-release channel detection must recognize SemVer prereleases",
+        ],
+        [
+          'echo "prerelease=true" >> "$GITHUB_OUTPUT"',
+          "create-release channel detection must emit prerelease=true",
+        ],
+        [
+          'echo "prerelease=false" >> "$GITHUB_OUTPUT"',
+          "create-release channel detection must emit prerelease=false",
+        ],
+      ]) {
+        pushMissing(errors, releaseChannelStep, value, message);
+      }
+    }
+    pushMissing(
+      errors,
+      release,
+      "prerelease: ${{ steps.release-channel.outputs.prerelease }}",
+      "create-release must mark SemVer prereleases on GitHub",
+    );
+    pushMissing(
+      errors,
+      release,
+      "make_latest: ${{ steps.release-channel.outputs.prerelease == 'false' }}",
+      "create-release must make only stable releases latest",
+    );
+    if (
+      manifestStep &&
+      checksumStep &&
+      release.indexOf(manifestStep) > release.indexOf(checksumStep)
+    ) {
+      errors.push("create-release must generate latest.json before checksums");
+    }
     if (
       checksumStep &&
       createReleaseStep &&
-      draftRelease.indexOf(checksumStep) >
-        draftRelease.indexOf(createReleaseStep)
+      release.indexOf(checksumStep) > release.indexOf(createReleaseStep)
     ) {
       errors.push(
-        "create-draft-release must checksum artifacts before release upload",
+        "create-release must checksum artifacts before release upload",
       );
     }
   }

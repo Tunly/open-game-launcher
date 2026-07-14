@@ -8,6 +8,8 @@ import {
 } from "lucide-react";
 import { Link } from "react-router-dom";
 
+import { MODS_PAGE_ENABLED } from "../lib/feature-flags";
+
 interface QuickAction {
   body: string;
   icon: LucideIcon;
@@ -94,7 +96,7 @@ const surfaceLinks: SurfaceLink[] = [
 const deskLinks = [
   { label: "Runtime", title: "Performance history", to: "/settings/performance" },
   { label: "Backup", title: "Backup and restore settings", to: "/settings" },
-  { label: "Mods", title: "Installed mod manager", to: "/mods" },
+  ...(MODS_PAGE_ENABLED ? [{ label: "Mods", title: "Installed mod manager", to: "/mods" }] : []),
   { label: "Privacy", title: "Account privacy controls", to: "/settings/privacy" },
 ];
 
@@ -112,8 +114,8 @@ export function HomePage() {
                 Play Desk
               </h1>
               <p className="neo-copy mt-3 max-w-2xl text-[12px] leading-5 font-black text-[#5b403f] uppercase">
-                Game library, social layer, mod deck, downloads, store, and profile ops in one dense
-                launcher board.
+                Game library, social layer, downloads, store, and profile ops in one dense launcher
+                board.
               </p>
             </div>
             <div className="max-w-[270px] border-[3px] border-black bg-[#171411] p-4 text-white shadow-[4px_4px_0_#171411]">

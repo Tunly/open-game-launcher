@@ -1,8 +1,13 @@
 #!/usr/bin/env node
 import { spawnSync } from "node:child_process";
-import { readFileSync, statSync } from "node:fs";
+import { statSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import {
+  readScreenshotManifest,
+  screenshotEntryDescription,
+  screenshotManifestRelativePath,
+} from "./verify-route-inventory.mjs";
 
 export const repoRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 
@@ -111,15 +116,13 @@ export function changedPathsFromGit({ base = "", root = repoRoot } = {}) {
     : changedPathsFromGitStatus(root);
 }
 
-function screenshotReadmeToken(screenshotPath) {
+function screenshotManifestToken(screenshotPath) {
   return screenshotPath.replace(/^docs\/verification\//, "");
 }
 
-function readmeLineForScreenshot(readmeText, screenshotPath) {
-  const token = screenshotReadmeToken(screenshotPath);
-  return String(readmeText)
-    .split(/\r?\n/)
-    .find((line) => line.includes(token) || line.includes(screenshotPath));
+function manifestEntryForScreenshot(manifest, screenshotPath) {
+  const token = screenshotManifestToken(screenshotPath);
+  return manifest.screenshots?.find((entry) => entry.file === token);
 }
 
 const pageRouteTokens = Object.freeze({
@@ -166,6 +169,9 @@ function expectedRouteTokensForUiPath(path) {
   }
   if (/^launcher\/src\/components\/launcher\//.test(path)) {
     return ["/downloads", "/store", "/library"];
+  }
+  if (path === "launcher/src/components/friends/ActivityFeed.tsx") {
+    return ["/activity"];
   }
   if (/^launcher\/src\/components\/friends\//.test(path)) {
     return ["/friends", "/invite/"];
@@ -219,7 +225,7 @@ function fileExists(root, path) {
   );
 }
 
-function screenshotEntryFindings({ line, root, screenshotPath }) {
+function screenshotEntryFindings({ entry, manifest, root, screenshotPath }) {
   const findings = [];
   if (!fileExists(root, screenshotPath)) {
     findings.push(
@@ -228,32 +234,33 @@ function screenshotEntryFindings({ line, root, screenshotPath }) {
     return findings;
   }
 
-  if (!line) {
+  if (!entry) {
     findings.push(
-      `Screenshot artifact is missing a docs/verification/README.md entry: ${screenshotReadmeToken(
+      `Screenshot artifact is missing a ${screenshotManifestRelativePath} entry: ${screenshotManifestToken(
         screenshotPath,
       )}.`,
     );
     return findings;
   }
 
-  if (!routeOrStatePattern.test(line)) {
+  const description = screenshotEntryDescription(manifest, entry);
+  if (!routeOrStatePattern.test(description)) {
     findings.push(
-      `Screenshot README entry must name the route or UI state: ${screenshotReadmeToken(
+      `Screenshot manifest entry must name the route or UI state: ${screenshotManifestToken(
         screenshotPath,
       )}.`,
     );
   }
-  if (!evidenceBoundaryPattern.test(line)) {
+  if (!evidenceBoundaryPattern.test(description)) {
     findings.push(
-      `Screenshot README entry must state local/mock/env-gated/live evidence boundary: ${screenshotReadmeToken(
+      `Screenshot manifest entry must state local/mock/env-gated/live evidence boundary: ${screenshotManifestToken(
         screenshotPath,
       )}.`,
     );
   }
-  if (!retroOrOverflowPattern.test(line)) {
+  if (!retroOrOverflowPattern.test(description)) {
     findings.push(
-      `Screenshot README entry must mention Retro Manga/OG-Launcher styling or overflow/wrapping evidence: ${screenshotReadmeToken(
+      `Screenshot manifest entry must mention Retro Manga/OG-Launcher styling or overflow/wrapping evidence: ${screenshotManifestToken(
         screenshotPath,
       )}.`,
     );
@@ -264,7 +271,7 @@ function screenshotEntryFindings({ line, root, screenshotPath }) {
 export function uiEvidenceReport({
   base = "",
   changedPaths,
-  readmeText,
+  manifest: suppliedManifest,
   root = repoRoot,
 } = {}) {
   const paths = (changedPaths ?? changedPathsFromGit({ base, root })).map(
@@ -279,9 +286,6 @@ export function uiEvidenceReport({
   const screenshotChanges = paths.filter((path) =>
     screenshotPattern.test(path),
   );
-  const readme =
-    readmeText ??
-    readFileSync(join(root, "docs", "verification", "README.md"), "utf8");
   const findings = [];
 
   if (uiChanges.length === 0) {
@@ -294,13 +298,19 @@ export function uiEvidenceReport({
     };
   }
 
+  const manifest =
+    screenshotChanges.length > 0
+      ? suppliedManifest ?? readScreenshotManifest(root)
+      : suppliedManifest;
+
   const screenshotReviews = screenshotChanges.map((screenshotPath) => ({
     findings: screenshotEntryFindings({
-      line: readmeLineForScreenshot(readme, screenshotPath),
+      entry: manifestEntryForScreenshot(manifest, screenshotPath),
+      manifest,
       root,
       screenshotPath,
     }),
-    line: readmeLineForScreenshot(readme, screenshotPath),
+    entry: manifestEntryForScreenshot(manifest, screenshotPath),
     path: screenshotPath,
   }));
   const completeScreenshotEntries = screenshotReviews.filter(
@@ -319,26 +329,29 @@ export function uiEvidenceReport({
 
   if (screenshotChanges.length > 0 && incompleteScreenshotFindings.length > 0) {
     findings.push(
-      "UI changes detected, but one or more changed screenshot artifacts have incomplete README entries with route/state, evidence boundary, and Retro Manga/overflow language.",
+      "UI changes detected, but one or more changed screenshot artifacts have incomplete manifest entries with route/state, evidence boundary, and Retro Manga/overflow language.",
     );
     findings.push(...incompleteScreenshotFindings.slice(0, 20));
   }
 
-  const completeScreenshotLines = completeScreenshotEntries
-    .map((review) => review.line)
-    .filter(Boolean);
+  const completeScreenshotDescriptions = completeScreenshotEntries.map((review) =>
+    screenshotEntryDescription(manifest, review.entry),
+  );
   for (const uiPath of uiChanges) {
     const expectedRouteTokens = expectedRouteTokensForUiPath(uiPath);
-    if (expectedRouteTokens.length === 0 || completeScreenshotLines.length === 0) {
+    if (
+      expectedRouteTokens.length === 0 ||
+      completeScreenshotDescriptions.length === 0
+    ) {
       continue;
     }
     if (
-      !completeScreenshotLines.some((line) =>
-        lineMatchesExpectedRoute(line, expectedRouteTokens),
+      !completeScreenshotDescriptions.some((description) =>
+        lineMatchesExpectedRoute(description, expectedRouteTokens),
       )
     ) {
       findings.push(
-        `UI change '${uiPath}' needs at least one complete screenshot README entry for its affected route family (${expectedRouteTokens.join(" or ")}).`,
+        `UI change '${uiPath}' needs at least one complete screenshot manifest entry for its affected route family (${expectedRouteTokens.join(" or ")}).`,
       );
     }
   }
@@ -360,7 +373,7 @@ export function renderUiEvidenceReport(report) {
     "",
     `UI source changes: ${report.uiChanges.length}`,
     `Screenshot artifact changes: ${report.screenshotChanges.length}`,
-    `Complete screenshot README entries: ${report.completeScreenshotEntries.length}`,
+    `Complete screenshot manifest entries: ${report.completeScreenshotEntries.length}`,
   ];
   if (report.ready) {
     lines.push("", "UI evidence check passed.");

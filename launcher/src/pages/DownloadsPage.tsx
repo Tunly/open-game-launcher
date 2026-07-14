@@ -23,14 +23,14 @@ import {
   isPausedDownloadItem,
   useDownloadStore,
 } from "../stores/downloadStore";
-import { isTerminalModInstallItem } from "../stores/modInstallStore";
+import { useModInstallStore } from "../stores/modInstallStore";
 
 interface DownloadCommandError {
   gameId: string;
   message: string;
 }
 
-const MAX_VISIBLE_MOD_INSTALL_ITEMS = 50;
+type PendingDownloadCommand = "pause" | "cancel" | "archive" | "launch" | "clear";
 
 // Parse download speed string into numerical bytes/sec
 function parseSpeedToBytes(speedStr: string): number {
@@ -47,7 +47,7 @@ function parseSpeedToBytes(speedStr: string): number {
 
 // Format bytes/sec back into readable transfer rate string
 function formatBytesPerSecond(bytes: number): string {
-  if (bytes <= 0) return "0 B/s";
+  if (!Number.isFinite(bytes) || bytes <= 0) return "0 B/s";
   const units = ["B/s", "KB/s", "MB/s", "GB/s"];
   let i = 0;
   let val = bytes;
@@ -58,20 +58,46 @@ function formatBytesPerSecond(bytes: number): string {
   return `${val.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
 }
 
+function readLibrarySnapshot(): Game[] {
+  try {
+    const snapshot = localStorage.getItem(STORAGE_KEYS.LIBRARY_SNAPSHOT);
+    if (!snapshot) return [];
+
+    const parsed: unknown = JSON.parse(snapshot);
+    if (!Array.isArray(parsed)) return [];
+
+    return parsed.filter(
+      (game): game is Game =>
+        Boolean(game) &&
+        typeof game === "object" &&
+        typeof (game as { id?: unknown }).id === "string",
+    );
+  } catch {
+    return [];
+  }
+}
+
 export function DownloadsPage() {
   const items = useDownloadStore((s) => s.items);
   const removeItem = useDownloadStore((s) => s.removeItem);
   const [commandError, setCommandError] = useState<string | null>(null);
-  const [pendingCommandGameIds, setPendingCommandGameIds] = useState<Set<string>>(() => new Set());
+  const [pendingCommands, setPendingCommands] = useState<Map<string, PendingDownloadCommand>>(
+    () => new Map(),
+  );
+  const [pendingModInstallIds, setPendingModInstallIds] = useState<Set<string>>(() => new Set());
+  const [isClearingCompleted, setIsClearingCompleted] = useState(false);
   const [debugMode] = useDebugMode();
   const navigate = useNavigate();
 
   // Load games database to fetch cover artwork for download items
   const [games, setGames] = useState<Game[]>([]);
-  const [modItems, setModItems] = useState<ModInstallQueueItem[]>([]);
+  const modItems = useModInstallStore((state) => state.items);
+  const removeModItem = useModInstallStore((state) => state.removeItem);
   const [sessionPeakBytes, setSessionPeakBytes] = useState(0);
   const pendingCommandTimeoutsRef = useRef<number[]>([]);
-  const pendingArchiveGameIdsRef = useRef<Set<string>>(new Set());
+  const pendingCommandsRef = useRef<Map<string, PendingDownloadCommand>>(new Map());
+  const pendingModInstallIdsRef = useRef<Set<string>>(new Set());
+  const isClearingCompletedRef = useRef(false);
 
   useEffect(() => {
     let active = true;
@@ -84,16 +110,7 @@ export function DownloadsPage() {
       })
       .catch(() => {
         if (!active) return;
-
-        // Fallback to local snapshot
-        const snapshot = localStorage.getItem(STORAGE_KEYS.LIBRARY_SNAPSHOT);
-        if (snapshot) {
-          try {
-            setGames(JSON.parse(snapshot));
-          } catch {
-            /* ignore error parsing snapshot */
-          }
-        }
+        setGames(readLibrarySnapshot());
       });
 
     return () => {
@@ -120,30 +137,15 @@ export function DownloadsPage() {
 
   useEffect(() => {
     let active = true;
-
-    const unlistenErrorPromise = isTauri()
+    const unlistenPromise = isTauri()
       ? listen<DownloadCommandError>("download_command_error", (event) => {
-          if (!active) return;
-          setCommandError(event.payload.message);
-        })
-      : null;
-    const unlistenModPromise = isTauri()
-      ? listen<ModInstallQueueItem>("mod_install_progress", (event) => {
-          if (!active) return;
-          setModItems((prev) => {
-            const next = prev.filter((item) => item.installId !== event.payload.installId);
-            if (isTerminalModInstallItem(event.payload)) {
-              return next;
-            }
-            return [...next, event.payload].slice(-MAX_VISIBLE_MOD_INSTALL_ITEMS);
-          });
+          if (active) setCommandError(event.payload.message);
         })
       : null;
 
     return () => {
       active = false;
-      void unlistenErrorPromise?.then((unlisten) => unlisten());
-      void unlistenModPromise?.then((unlisten) => unlisten());
+      void unlistenPromise?.then((unlisten) => unlisten());
     };
   }, []);
 
@@ -166,6 +168,9 @@ export function DownloadsPage() {
   const completedItems = useMemo(() => {
     return items.filter((item) => item.status === "completed");
   }, [items]);
+  const hasPendingCompletedCommand = completedItems.some((item) =>
+    pendingCommands.has(item.gameId),
+  );
 
   const activeModItems = useMemo(() => {
     return modItems.filter(
@@ -187,27 +192,38 @@ export function DownloadsPage() {
 
   const activeSpeedStr = formatBytesPerSecond(totalSpeedBytes);
   const peakSpeedStr = formatBytesPerSecond(sessionPeakBytes);
-  const diskUsageStr = totalSpeedBytes > 0 ? formatBytesPerSecond(totalSpeedBytes * 1.15) : "0 B/s";
+
+  function beginGameCommand(gameId: string, command: PendingDownloadCommand) {
+    if (pendingCommandsRef.current.has(gameId)) return false;
+
+    pendingCommandsRef.current.set(gameId, command);
+    setPendingCommands((current) => new Map(current).set(gameId, command));
+    return true;
+  }
+
+  function finishGameCommand(gameId: string) {
+    pendingCommandsRef.current.delete(gameId);
+    setPendingCommands((current) => {
+      const next = new Map(current);
+      next.delete(gameId);
+      return next;
+    });
+  }
 
   async function handlePauseToggle(id: string) {
     const item = items.find((x) => x.id === id);
     if (!item) return;
-    if (pendingCommandGameIds.has(item.gameId)) return;
+    if (!beginGameCommand(item.gameId, "pause")) return;
 
     try {
       setCommandError(null);
-      setPendingCommandGameIds((current) => new Set(current).add(item.gameId));
       await pauseDownload(item.gameId);
     } catch (err) {
       setCommandError(getErrorMessage(err));
       console.error("Failed to toggle pause:", err);
     } finally {
       const timeoutId = window.setTimeout(() => {
-        setPendingCommandGameIds((current) => {
-          const next = new Set(current);
-          next.delete(item.gameId);
-          return next;
-        });
+        finishGameCommand(item.gameId);
         pendingCommandTimeoutsRef.current = pendingCommandTimeoutsRef.current.filter(
           (storedTimeoutId) => storedTimeoutId !== timeoutId,
         );
@@ -219,6 +235,7 @@ export function DownloadsPage() {
   async function handleCancel(id: string) {
     const item = items.find((x) => x.id === id);
     if (!item) return;
+    if (!beginGameCommand(item.gameId, "cancel")) return;
 
     try {
       setCommandError(null);
@@ -227,16 +244,15 @@ export function DownloadsPage() {
     } catch (err) {
       setCommandError(getErrorMessage(err));
       console.error("Failed to cancel download:", err);
+    } finally {
+      finishGameCommand(item.gameId);
     }
   }
 
   async function handleArchive(id: string) {
     const item = items.find((x) => x.id === id);
     if (!item) return;
-    if (pendingArchiveGameIdsRef.current.has(item.gameId)) return;
-
-    pendingArchiveGameIdsRef.current.add(item.gameId);
-    setPendingCommandGameIds((current) => new Set(current).add(item.gameId));
+    if (!beginGameCommand(item.gameId, "archive")) return;
 
     try {
       setCommandError(null);
@@ -246,80 +262,114 @@ export function DownloadsPage() {
       setCommandError(getErrorMessage(err));
       console.error("Failed to archive download:", err);
     } finally {
-      pendingArchiveGameIdsRef.current.delete(item.gameId);
-      setPendingCommandGameIds((current) => {
-        const next = new Set(current);
-        next.delete(item.gameId);
-        return next;
-      });
+      finishGameCommand(item.gameId);
     }
   }
 
   async function handleLaunchGame(gameId: string) {
+    if (!beginGameCommand(gameId, "launch")) return;
+
     try {
       setCommandError(null);
       await launchGame(gameId);
     } catch (err) {
       setCommandError(getErrorMessage(err));
       console.error("Failed to launch game:", err);
+    } finally {
+      finishGameCommand(gameId);
     }
   }
 
   async function handleClearAllCompleted() {
+    if (isClearingCompletedRef.current) return;
+
+    isClearingCompletedRef.current = true;
+    setIsClearingCompleted(true);
+    setCommandError(null);
+    const failures: string[] = [];
+
     for (const item of completedItems) {
-      if (pendingArchiveGameIdsRef.current.has(item.gameId)) {
+      if (!beginGameCommand(item.gameId, "clear")) {
+        failures.push(`${item.title} is busy`);
         continue;
       }
-
-      pendingArchiveGameIdsRef.current.add(item.gameId);
-      setPendingCommandGameIds((current) => new Set(current).add(item.gameId));
 
       try {
         await archiveDownload(item.gameId);
         removeItem(item.gameId);
       } catch (err) {
+        failures.push(getErrorMessage(err));
         console.error("Failed to clear completed item:", err);
       } finally {
-        pendingArchiveGameIdsRef.current.delete(item.gameId);
-        setPendingCommandGameIds((current) => {
-          const next = new Set(current);
-          next.delete(item.gameId);
-          return next;
-        });
+        finishGameCommand(item.gameId);
       }
+    }
+
+    isClearingCompletedRef.current = false;
+    setIsClearingCompleted(false);
+    if (failures.length > 0) {
+      setCommandError(
+        `Could not clear ${failures.length} completed download${failures.length === 1 ? "" : "s"}: ${failures[0]}`,
+      );
     }
   }
 
   async function handleModCancel(item: ModInstallQueueItem) {
+    if (pendingModInstallIdsRef.current.has(item.installId)) return;
+
+    pendingModInstallIdsRef.current.add(item.installId);
+    setPendingModInstallIds((current) => new Set(current).add(item.installId));
     try {
       setCommandError(null);
       await cancelModInstall(item.installId);
-      setModItems((prev) => prev.filter((m) => m.installId !== item.installId));
+      removeModItem(item.installId);
     } catch (err) {
       setCommandError(getErrorMessage(err));
+    } finally {
+      pendingModInstallIdsRef.current.delete(item.installId);
+      setPendingModInstallIds((current) => {
+        const next = new Set(current);
+        next.delete(item.installId);
+        return next;
+      });
     }
   }
 
   return (
-    <section className="space-y-6">
+    <section aria-labelledby="downloads-title" className="space-y-6">
       {/* System Monitor Header Dashboard */}
-      <div className="flex flex-col items-center gap-4 border-4 border-black bg-[#efe6d4] p-4 shadow-[4px_4px_0_#171411] md:flex-row md:justify-end">
+      <div className="flex flex-col items-stretch gap-4 border-4 border-black bg-[#efe6d4] p-4 shadow-[4px_4px_0_#171411] md:flex-row md:items-center md:justify-between">
+        <div className="min-w-0">
+          <p className="neo-copy text-[9px] font-black tracking-[0.18em] text-[#c20b2f] uppercase">
+            Transfer Control
+          </p>
+          <h1
+            id="downloads-title"
+            className="neo-title text-3xl leading-none font-black text-[#171411] uppercase"
+          >
+            Downloads
+          </h1>
+          <p className="neo-copy mt-1 text-[10px] font-bold text-[#5b403f] uppercase">
+            {items.length} game jobs // {activeModItems.length} mod jobs
+          </p>
+        </div>
         <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
           <div className="flex flex-col border-l-2 border-black pl-3 md:pl-4">
             <span className="neo-copy text-[9px] font-bold text-[#5b403f] uppercase">NETWORK</span>
-            <span className="text-xl font-extrabold text-[#171411]">{activeSpeedStr}</span>
+            <span className="neo-copy text-xl font-extrabold text-[#171411]">{activeSpeedStr}</span>
           </div>
           <div className="flex flex-col border-l-2 border-black pl-3 md:pl-4">
             <span className="neo-copy text-[9px] font-bold text-[#5b403f] uppercase">PEAK</span>
-            <span className="text-xl font-extrabold text-[#171411]">{peakSpeedStr}</span>
+            <span className="neo-copy text-xl font-extrabold text-[#171411]">{peakSpeedStr}</span>
           </div>
           <div className="flex flex-col border-l-2 border-black pl-3 md:pl-4">
-            <span className="neo-copy text-[9px] font-bold text-[#5b403f] uppercase">
-              DISK USAGE
+            <span className="neo-copy text-[9px] font-bold text-[#5b403f] uppercase">ACTIVE</span>
+            <span className="neo-copy text-xl font-extrabold text-[#171411]">
+              {activeItems.length}
             </span>
-            <span className="text-xl font-extrabold text-[#171411]">{diskUsageStr}</span>
           </div>
           <button
+            aria-label="Download settings"
             onClick={() => navigate("/settings")}
             className="ml-2 flex h-10 w-10 items-center justify-center border-2 border-black bg-[#f5eedf] shadow-[2px_2px_0_#171411] hover:bg-[#efe6d4] active:translate-x-[1px] active:translate-y-[1px] active:shadow-[1px_1px_0_#171411]"
             type="button"
@@ -331,7 +381,11 @@ export function DownloadsPage() {
       </div>
 
       {commandError ? (
-        <div className="neo-copy border-4 border-black bg-[#c20b2f] p-4 text-xs font-bold break-words text-white uppercase shadow-[4px_4px_0_#171411]">
+        <div
+          aria-live="assertive"
+          className="neo-copy border-4 border-black bg-[#c20b2f] p-4 text-xs font-bold break-words text-white uppercase shadow-[4px_4px_0_#171411]"
+          role="alert"
+        >
           {commandError}
         </div>
       ) : null}
@@ -341,9 +395,9 @@ export function DownloadsPage() {
         {/* 1. UP NEXT / ACTIVE Sektion */}
         <div>
           <div className="mb-3 flex items-center justify-between border-b-2 border-black pb-1.5">
-            <h3 className="neo-title text-base font-black tracking-wider text-[#171411] uppercase">
+            <h2 className="neo-title text-base font-black tracking-wider text-[#171411] uppercase">
               Up Next ({activeItems.length})
-            </h3>
+            </h2>
           </div>
           {activeItems.length > 0 ? (
             <div className="space-y-3">
@@ -353,7 +407,7 @@ export function DownloadsPage() {
                   index={idx}
                   item={item}
                   game={gamesMap.get(item.gameId)}
-                  commandPending={pendingCommandGameIds.has(item.gameId)}
+                  pendingAction={pendingCommands.get(item.gameId)}
                   debugMode={debugMode}
                   onArchive={handleArchive}
                   onCancel={handleCancel}
@@ -372,9 +426,9 @@ export function DownloadsPage() {
         {unscheduledItems.length > 0 ? (
           <div>
             <div className="mb-3 flex items-center justify-between border-b-2 border-black pb-1.5">
-              <h3 className="neo-title text-base font-black tracking-wider text-[#171411] uppercase">
+              <h2 className="neo-title text-base font-black tracking-wider text-[#171411] uppercase">
                 Unscheduled ({unscheduledItems.length})
-              </h3>
+              </h2>
             </div>
             <div className="space-y-3">
               {unscheduledItems.map((item, idx) => (
@@ -383,7 +437,7 @@ export function DownloadsPage() {
                   index={idx}
                   item={item}
                   game={gamesMap.get(item.gameId)}
-                  commandPending={pendingCommandGameIds.has(item.gameId)}
+                  pendingAction={pendingCommands.get(item.gameId)}
                   debugMode={debugMode}
                   onArchive={handleArchive}
                   onCancel={handleCancel}
@@ -398,16 +452,21 @@ export function DownloadsPage() {
         {completedItems.length > 0 ? (
           <div>
             <div className="mb-3 flex items-center justify-between border-b-2 border-black pb-1.5">
-              <h3 className="neo-title text-base font-black tracking-wider text-[#171411] uppercase">
+              <h2 className="neo-title text-base font-black tracking-wider text-[#171411] uppercase">
                 Completed ({completedItems.length})
-              </h3>
+              </h2>
               <button
+                disabled={isClearingCompleted || hasPendingCompletedCommand}
                 onClick={handleClearAllCompleted}
-                className="neo-copy flex items-center gap-1.5 border-2 border-black bg-[#efe6d4] px-2.5 py-1 text-[10px] font-bold text-[#171411] uppercase shadow-[2px_2px_0_#171411] hover:bg-[#e2d8c3] active:translate-x-[1px] active:translate-y-[1px] active:shadow-[1px_1px_0_#171411]"
+                className={`neo-copy flex items-center gap-1.5 border-2 border-black px-2.5 py-1 text-[10px] font-bold uppercase ${
+                  isClearingCompleted || hasPendingCompletedCommand
+                    ? "cursor-not-allowed bg-[#efe6d4] text-[#55504a]"
+                    : "bg-[#efe6d4] text-[#171411] shadow-[2px_2px_0_#171411] hover:bg-[#e2d8c3] active:translate-x-[1px] active:translate-y-[1px] active:shadow-[1px_1px_0_#171411]"
+                }`}
                 type="button"
               >
                 <Trash2 className="h-3.5 w-3.5" />
-                Clear All
+                {isClearingCompleted ? "Clearing..." : "Clear All"}
               </button>
             </div>
             <div className="space-y-3">
@@ -417,7 +476,9 @@ export function DownloadsPage() {
                   index={idx}
                   item={item}
                   game={gamesMap.get(item.gameId)}
-                  commandPending={pendingCommandGameIds.has(item.gameId)}
+                  pendingAction={
+                    pendingCommands.get(item.gameId) ?? (isClearingCompleted ? "clear" : undefined)
+                  }
                   debugMode={debugMode}
                   onArchive={handleArchive}
                   onCancel={handleCancel}
@@ -434,9 +495,9 @@ export function DownloadsPage() {
       {activeModItems.length > 0 && (
         <div className="mt-6">
           <div className="mb-3 flex items-center justify-between border-b-2 border-black pb-1.5">
-            <h3 className="neo-title text-base font-black tracking-wider text-[#171411] uppercase">
+            <h2 className="neo-title text-base font-black tracking-wider text-[#171411] uppercase">
               Mod Installs ({activeModItems.length})
-            </h3>
+            </h2>
           </div>
           <div className="space-y-3">
             {activeModItems.map((item) => (
@@ -453,7 +514,7 @@ export function DownloadsPage() {
                       {item.phase}
                     </span>
                   </div>
-                  <h3 className="mt-1 truncate text-lg leading-none font-black text-[#171411] uppercase">
+                  <h3 className="neo-title mt-1 text-lg leading-none font-black break-words text-[#171411] uppercase sm:truncate">
                     {item.title}
                   </h3>
                   <p className="neo-copy mt-1 text-[10px] font-black text-[#5b403f] uppercase">
@@ -464,18 +525,30 @@ export function DownloadsPage() {
                   <p className="neo-copy mb-1 text-[10px] font-black text-[#55504a] uppercase">
                     {item.progress}% {item.speed ? `// ${item.speed}` : ""}
                   </p>
-                  <div className="h-3 border-2 border-black bg-[#efe6d4]">
+                  <div
+                    aria-label={`${item.title} install progress`}
+                    aria-valuemax={100}
+                    aria-valuemin={0}
+                    aria-valuenow={item.progress}
+                    className="h-3 border-2 border-black bg-[#efe6d4]"
+                    role="progressbar"
+                  >
                     <div className="h-full bg-[#c20b2f]" style={{ width: `${item.progress}%` }} />
                   </div>
                 </div>
                 {item.canCancel && (
                   <button
-                    className="neo-copy flex h-9 items-center justify-center gap-2 border-2 border-black bg-[#f6edd8] px-3 text-[10px] font-black uppercase shadow-[2px_2px_0_#171411]"
+                    className={`neo-copy flex h-9 items-center justify-center gap-2 border-2 border-black px-3 text-[10px] font-black uppercase ${
+                      pendingModInstallIds.has(item.installId)
+                        ? "cursor-not-allowed bg-[#efe6d4] text-[#55504a]"
+                        : "bg-[#f6edd8] shadow-[2px_2px_0_#171411] hover:bg-[#e2d8c3]"
+                    }`}
+                    disabled={pendingModInstallIds.has(item.installId)}
                     type="button"
                     onClick={() => void handleModCancel(item)}
                   >
                     <XCircle className="h-4 w-4" />
-                    Cancel
+                    {pendingModInstallIds.has(item.installId) ? "Cancelling..." : "Cancel"}
                   </button>
                 )}
               </article>

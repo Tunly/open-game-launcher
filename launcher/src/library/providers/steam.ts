@@ -17,6 +17,13 @@ import { STORAGE_KEYS } from "../../lib/storage-keys";
 import type { Game } from "../../lib/types";
 import type { MergeContext, ProviderResult } from "./types";
 
+function steamAppId(game: Game) {
+  if (game.launcher === "steam" && game.externalId && /^\d+$/.test(game.externalId)) {
+    return game.externalId;
+  }
+  return game.id.match(/^steam-(?:owned-)?(\d+)$/)?.[1] ?? null;
+}
+
 export async function mergeSteamOwned(
   games: Game[],
   context: MergeContext,
@@ -72,13 +79,24 @@ export async function mergeSteamOwned(
 
     if (ownedRaw.length > 0) {
       const ownedGames = ownedRaw.map(ownedGameToGame);
+      const ownedByAppId = new Map(
+        ownedGames.flatMap((game) => {
+          const appId = steamAppId(game);
+          return appId ? [[appId, game] as const] : [];
+        }),
+      );
+      const gamesWithAchievementSummaries = games.map((game) => {
+        const appId = steamAppId(game);
+        const summary = appId ? ownedByAppId.get(appId)?.achievementSummary : undefined;
+        return summary ? { ...game, achievementSummary: summary } : game;
+      });
       const installed = installedSteamAppIds(games);
       const uninstalledOwned = ownedGames.filter((og) => {
         const appid = og.id.replace("steam-owned-", "");
         return !installed.has(appid) && !installed.has(og.title.toLowerCase());
       });
       return {
-        games: [...games, ...uninstalledOwned],
+        games: [...gamesWithAchievementSummaries, ...uninstalledOwned],
         warnings,
         statusMessage,
       };

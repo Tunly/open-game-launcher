@@ -1,6 +1,6 @@
 use serde::Serialize;
 use std::{
-    collections::{BTreeMap, BTreeSet},
+    collections::{BTreeMap, BTreeSet, HashMap},
     env, fs,
     io::{Read, Write},
     net::TcpListener,
@@ -1271,6 +1271,15 @@ pub async fn open_steam_scraper_window(
 
 #[derive(Debug, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
+pub struct AchievementSummary {
+    pub unlocked: u64,
+    pub total: u64,
+    pub is_perfect: bool,
+    pub source: String,
+}
+
+#[derive(Debug, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
 pub struct OwnedGame {
     pub id: String,
     pub external_id: Option<String>,
@@ -1283,12 +1292,66 @@ pub struct OwnedGame {
     pub playtime_minutes: Option<u64>,
     pub last_played_at: Option<String>,
     pub cloud_gaming_url: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub achievement_summary: Option<AchievementSummary>,
 }
 
 #[derive(Debug, Default, Clone)]
 struct LocalSteamOwnedActivity {
     playtime_minutes: Option<u64>,
     last_played: Option<u64>,
+}
+
+fn parse_steam_achievement_progress(json: &str) -> HashMap<String, AchievementSummary> {
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(json) else {
+        return HashMap::new();
+    };
+    let Some(entries) = value.get("mapCache").and_then(serde_json::Value::as_array) else {
+        return HashMap::new();
+    };
+
+    entries
+        .iter()
+        .filter_map(|entry| {
+            let pair = entry.as_array()?;
+            let progress = pair.get(1)?.as_object()?;
+            if progress.get("vetted").and_then(serde_json::Value::as_bool) != Some(true) {
+                return None;
+            }
+
+            let app_id = json_string_or_number(pair.first())
+                .or_else(|| json_string_or_number(progress.get("appid")))?;
+            let unlocked = progress.get("unlocked").and_then(json_u64)?;
+            let total = progress.get("total").and_then(json_u64)?;
+            if total == 0 {
+                return None;
+            }
+            let all_unlocked = progress
+                .get("all_unlocked")
+                .and_then(serde_json::Value::as_bool)
+                .unwrap_or(false);
+
+            Some((
+                app_id,
+                AchievementSummary {
+                    unlocked: unlocked.min(total),
+                    total,
+                    is_perfect: all_unlocked && unlocked >= total,
+                    source: "steam".to_string(),
+                },
+            ))
+        })
+        .collect()
+}
+
+fn read_steam_achievement_progress(config_dir: &Path) -> HashMap<String, AchievementSummary> {
+    let path = config_dir
+        .join("librarycache")
+        .join("achievement_progress.json");
+    fs::read_to_string(path)
+        .ok()
+        .map(|json| parse_steam_achievement_progress(&json))
+        .unwrap_or_default()
 }
 
 fn fetch_local_steam_owned_games(steam_id: &str) -> Vec<OwnedGame> {
@@ -1324,6 +1387,7 @@ fn fetch_local_steam_owned_games(steam_id: &str) -> Vec<OwnedGame> {
     }
 
     let activity = read_steam_owned_activity(&account_config_dir);
+    let achievement_progress = read_steam_achievement_progress(&account_config_dir);
     let mut games = Vec::new();
 
     for app_id in app_ids {
@@ -1376,6 +1440,7 @@ fn fetch_local_steam_owned_games(steam_id: &str) -> Vec<OwnedGame> {
             ),
             playtime_minutes: app_activity.playtime_minutes,
             cloud_gaming_url: None,
+            achievement_summary: achievement_progress.get(&app_id).cloned(),
         });
     }
 
@@ -1988,6 +2053,7 @@ fn parse_rg_games_json(json: &str, _steam_id: &str) -> Vec<OwnedGame> {
                 playtime_minutes: playtime,
                 last_played_at,
                 cloud_gaming_url: None,
+                achievement_summary: None,
             })
         })
         .collect()
@@ -2084,6 +2150,7 @@ pub async fn fetch_gog_owned_games(access_token: String) -> Result<Vec<OwnedGame
                         playtime_minutes: None,
                         last_played_at: None,
                         cloud_gaming_url: None,
+                        achievement_summary: None,
                     });
                 }
             }
@@ -2381,6 +2448,30 @@ mod tests {
         assert_eq!(games[1].playtime_minutes, Some(90));
         assert_eq!(games[2].playtime_minutes, Some(0));
         assert_eq!(games[3].playtime_minutes, None);
+    }
+
+    #[test]
+    fn parses_only_vetted_steam_achievement_progress_and_marks_perfect_games() {
+        let json = r#"{
+            "mapCache": [
+                [101, {"appid": 101, "unlocked": 31, "total": 31, "all_unlocked": true, "vetted": true}],
+                [202, {"appid": 202, "unlocked": 4, "total": 10, "all_unlocked": false, "vetted": true}],
+                [303, {"appid": 303, "unlocked": 5, "total": 5, "all_unlocked": true, "vetted": false}],
+                [404, {"appid": 404, "unlocked": 0, "total": 0, "all_unlocked": false, "vetted": true}]
+            ]
+        }"#;
+
+        let progress = parse_steam_achievement_progress(json);
+
+        assert_eq!(progress.len(), 2);
+        let perfect = progress.get("101").expect("missing perfect progress");
+        assert_eq!(perfect.unlocked, 31);
+        assert_eq!(perfect.total, 31);
+        assert!(perfect.is_perfect);
+        assert_eq!(perfect.source, "steam");
+        assert!(!progress.get("202").unwrap().is_perfect);
+        assert!(!progress.contains_key("303"));
+        assert!(!progress.contains_key("404"));
     }
 
     #[test]

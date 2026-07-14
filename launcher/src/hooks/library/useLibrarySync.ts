@@ -20,6 +20,7 @@ import {
 import { compressAndReadImage, isAllowedImageType } from "../../lib/image-compress";
 import { getGameLogoCandidates } from "../../lib/formatters";
 import { syncGamePlaytimeStats } from "../../lib/supabase/playtime";
+import { hydrateGamesWithRemoteAchievements } from "../../lib/supabase/achievements";
 import { getProviderErrorMessage, readLocalStorageString } from "../../lib/library-providers";
 import {
   activateSteamAccount,
@@ -39,6 +40,7 @@ import {
   mergeEaOwned,
   mergeEpicOwned,
   mergeGamePassCatalog,
+  mergeOglCatalog,
   mergeGogOwned,
   mergeSteamOwned,
   mergeUbisoftOwned,
@@ -175,6 +177,7 @@ export interface UseLibrarySyncResult {
 }
 
 const PROVIDER_PIPELINE: ProviderMerger[] = [
+  mergeOglCatalog,
   mergeBattlenetOwned,
   mergeSteamOwned,
   mergeGogOwned,
@@ -299,6 +302,12 @@ export function useLibrarySync({ setStatusMessage }: UseLibrarySyncOptions): Use
           launcher: normalizeLauncherKey(game.launcher, game.id),
         }),
       );
+      const nativeIds = new Set(games.map((game) => game.id));
+      games.push(
+        ...installedGamesRef.current.filter(
+          (game) => game.launcher === "ogl" && !nativeIds.has(game.id),
+        ),
+      );
       publishNativeArtworkRepairs(games);
 
       const context: MergeContext = { forceRefresh, setStatusMessage, shouldApplyResult };
@@ -326,6 +335,18 @@ export function useLibrarySync({ setStatusMessage }: UseLibrarySyncOptions): Use
         } catch (err) {
           console.warn("Provider merge threw unexpectedly:", err);
         }
+      }
+
+      if (!shouldApplyResult()) {
+        return;
+      }
+
+      try {
+        games = await hydrateGamesWithRemoteAchievements(games);
+      } catch (error) {
+        // Provider inventory remains useful offline; hosted achievement data is
+        // an additive catalog enrichment and must not hide the library.
+        console.warn("Hosted achievement hydration skipped for library:", error);
       }
 
       if (!shouldApplyResult()) {

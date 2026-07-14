@@ -476,7 +476,13 @@ pub async fn launch_game(app: AppHandle, game_id: String) -> Result<LaunchGameRe
 
         // The native path only stages the official installer. Await queue creation so
         // authentication/bootstrap failures are returned instead of reported as success.
-        crate::commands::gog::gog_start_download(app.clone(), gog_id.to_string(), None).await?;
+        crate::commands::gog::gog_start_download_for_game_id(
+            app.clone(),
+            gog_id.to_string(),
+            game_id.clone(),
+            None,
+        )
+        .await?;
         let _ = app.emit(
             "gog_download_started",
             serde_json::json!({ "gogId": gog_id }),
@@ -620,7 +626,8 @@ fn resolve_achievement_sync_game(
                 return Ok((game, true));
             }
         }
-        Err(_) if game_id.starts_with("steam-owned-") && fallback_game.is_some() => {}
+        Err(_)
+            if fallback_game.is_some() && achievement_provider_from_game_id(game_id).is_some() => {}
         Err(error) => return Err(error),
     }
 
@@ -5537,7 +5544,7 @@ mod tests {
     }
 
     #[test]
-    fn epic_owned_achievement_sync_does_not_hide_native_cache_read_errors() {
+    fn epic_owned_achievement_sync_uses_valid_fallback_when_native_cache_is_unavailable() {
         let fallback = installed_game(
             "epic-owned-catalog-app",
             "Epic Account Game".to_string(),
@@ -5546,14 +5553,15 @@ mod tests {
             None,
         );
 
-        let error = resolve_achievement_sync_game(
+        let (game, should_persist) = resolve_achievement_sync_game(
             "epic-owned-catalog-app",
             Err("native cache unavailable".to_string()),
             Some(fallback),
         )
-        .unwrap_err();
+        .unwrap();
 
-        assert_eq!(error, "native cache unavailable");
+        assert_eq!(game.id, "epic-owned-catalog-app");
+        assert!(!should_persist);
     }
 
     #[test]

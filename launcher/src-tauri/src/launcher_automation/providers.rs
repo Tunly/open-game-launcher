@@ -477,7 +477,7 @@ fn score_candidate(
             .any(|value| normalize_semantic(value) == normalized_name);
 
     // A localized name is a fallback, never a sufficient identity signal by itself.
-    if !id_match && !name_match && selector.automation_ids.len() > 0 {
+    if !id_match && !name_match && !selector.automation_ids.is_empty() {
         return None;
     }
 

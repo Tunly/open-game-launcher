@@ -1,15 +1,16 @@
 use tauri::AppHandle;
 use tauri::Emitter;
 
-use crate::commands::downloads::history::remember_download_item;
+use crate::commands::downloads::history::{remember_download_item, remove_download_history_item};
 use crate::commands::downloads::steam_state::{
     calculate_steam_progress, extract_vdf_string, parse_steam_download_state, steam_phase,
     steam_progress_bytes, steam_status_label,
 };
 use crate::commands::downloads::types::{
-    emit_download_progress, get_download_manager, is_download_control_pending, pause_hold_feedback,
-    payload_from_active_download, remove_active_download_if_current, update_download_metrics,
-    update_download_status, ActiveDownload,
+    emit_download_progress, get_download_lifecycle_lock, get_download_manager,
+    is_download_control_pending, is_download_suppressed, next_download_worker_generation,
+    pause_hold_feedback, payload_from_active_download, remove_active_download_if_current,
+    scope_download_worker, update_download_metrics, update_download_status, ActiveDownload,
 };
 use crate::commands::downloads::utils::get_dir_size;
 
@@ -44,9 +45,12 @@ pub fn start_global_download_watcher(app: AppHandle) {
                                         let downloading_dir_size = get_dir_size(&downloading_dir);
                                         let is_actively_downloading =
                                             steam_state.has_active_work(downloading_dir_size);
+                                        let game_id = format!("steam-owned-{app_id}");
 
                                         if is_actively_downloading {
-                                            let game_id = format!("steam-owned-{app_id}");
+                                            if is_download_suppressed(&game_id) {
+                                                continue;
+                                            }
 
                                             let is_tracked = {
                                                 let map = get_download_manager();
@@ -62,12 +66,24 @@ pub fn start_global_download_watcher(app: AppHandle) {
                                                     .unwrap_or_else(|| {
                                                         format!("Steam Game {app_id}")
                                                     });
+                                                let lifecycle_guard = get_download_lifecycle_lock()
+                                                    .lock()
+                                                    .unwrap_or_else(|poisoned| {
+                                                        poisoned.into_inner()
+                                                    });
                                                 let map = get_download_manager();
                                                 if let Ok(mut guard) = map.lock() {
+                                                    if guard.contains_key(&game_id)
+                                                        || is_download_suppressed(&game_id)
+                                                    {
+                                                        continue;
+                                                    }
                                                     let (pause_tx, pause_rx) =
                                                         tokio::sync::watch::channel(false);
                                                     let (cancel_tx, cancel_rx) =
                                                         tokio::sync::watch::channel(false);
+                                                    let worker_generation =
+                                                        next_download_worker_generation();
 
                                                     let progress = calculate_steam_progress(
                                                         &steam_state,
@@ -76,6 +92,7 @@ pub fn start_global_download_watcher(app: AppHandle) {
                                                     .unwrap_or(0);
 
                                                     let active = ActiveDownload {
+                                                        worker_generation,
                                                         title: title.clone(),
                                                         progress,
                                                         speed: "Steam".to_string(),
@@ -105,133 +122,165 @@ pub fn start_global_download_watcher(app: AppHandle) {
                                                             eprintln!(
                                                                 "[open-game-launcher] Could not persist discovered Steam download: {error}"
                                                             );
+                                                            guard.remove(&game_id);
+                                                            continue;
                                                         }
                                                     }
+
+                                                    drop(guard);
+                                                    drop(lifecycle_guard);
 
                                                     let app_clone = app.clone();
                                                     let game_id_clone = game_id.clone();
                                                     let manifest_path = path.clone();
                                                     let downloading_dir_clone =
                                                         downloading_dir.clone();
-                                                    tokio::spawn(async move {
-                                                        let pause_rx = pause_rx;
-                                                        let cancel_rx = cancel_rx;
-                                                        let mut current_progress = progress;
-                                                        let mut manifest_read_failures = 0u8;
-                                                        loop {
-                                                            while *pause_rx.borrow() {
-                                                                let (
-                                                                    pause_status,
-                                                                    pause_speed,
-                                                                    pause_eta,
-                                                                ) = pause_hold_feedback(
-                                                                    &game_id_clone,
-                                                                    "Steam Paused",
-                                                                );
-                                                                update_download_status(
-                                                                    &game_id_clone,
-                                                                    &pause_status,
-                                                                    &pause_speed,
-                                                                    current_progress,
-                                                                    pause_eta,
-                                                                );
-                                                                emit_download_progress(
-                                                                    &app_clone,
-                                                                    &game_id_clone,
-                                                                    current_progress,
-                                                                    &pause_speed,
-                                                                    &pause_status,
-                                                                    pause_eta,
-                                                                );
-                                                                tokio::time::sleep(
-                                                                    tokio::time::Duration::from_millis(500),
-                                                                )
-                                                                .await;
-                                                            }
-
-                                                            if let Ok(contents) =
-                                                                std::fs::read_to_string(
-                                                                    &manifest_path,
-                                                                )
-                                                            {
-                                                                manifest_read_failures = 0;
-                                                                if is_download_control_pending(
+                                                    tokio::spawn(scope_download_worker(
+                                                        worker_generation,
+                                                        async move {
+                                                            let mut current_progress = progress;
+                                                            let mut manifest_read_failures = 0u8;
+                                                            loop {
+                                                                if is_download_suppressed(
                                                                     &game_id_clone,
                                                                 ) {
-                                                                    tokio::time::sleep(
-                                                                        tokio::time::Duration::from_millis(500),
-                                                                    )
-                                                                    .await;
-                                                                    continue;
+                                                                    let _ =
+                                                                    remove_download_history_item(
+                                                                        &game_id_clone,
+                                                                    );
+                                                                    remove_active_download_if_current(
+                                                                    &game_id_clone,
+                                                                    &cancel_rx,
+                                                                );
+                                                                    return;
                                                                 }
-
-                                                                let steam_state =
-                                                                    parse_steam_download_state(
-                                                                        &contents,
+                                                                while *pause_rx.borrow() {
+                                                                    if is_download_suppressed(
+                                                                        &game_id_clone,
+                                                                    ) {
+                                                                        let _ = remove_download_history_item(
+                                                                         &game_id_clone,
+                                                                     );
+                                                                        remove_active_download_if_current(
+                                                                         &game_id_clone,
+                                                                         &cancel_rx,
+                                                                     );
+                                                                        return;
+                                                                    }
+                                                                    let (
+                                                                        pause_status,
+                                                                        pause_speed,
+                                                                        pause_eta,
+                                                                    ) = pause_hold_feedback(
+                                                                        &game_id_clone,
+                                                                        "Steam Paused",
                                                                     );
-                                                                let downloading_dir_size =
-                                                                    get_dir_size(
-                                                                        &downloading_dir_clone,
-                                                                    );
-
-                                                                if let Some(error) = steam_state
-                                                                    .terminal_error(
-                                                                        downloading_dir_size,
-                                                                    )
-                                                                {
                                                                     update_download_status(
                                                                         &game_id_clone,
-                                                                        "error",
-                                                                        error,
+                                                                        &pause_status,
+                                                                        &pause_speed,
                                                                         current_progress,
-                                                                        0,
+                                                                        pause_eta,
                                                                     );
                                                                     emit_download_progress(
                                                                         &app_clone,
                                                                         &game_id_clone,
                                                                         current_progress,
-                                                                        error,
-                                                                        "error",
-                                                                        0,
+                                                                        &pause_speed,
+                                                                        &pause_status,
+                                                                        pause_eta,
                                                                     );
                                                                     tokio::time::sleep(
+                                                                    tokio::time::Duration::from_millis(500),
+                                                                )
+                                                                .await;
+                                                                }
+
+                                                                if let Ok(contents) =
+                                                                    std::fs::read_to_string(
+                                                                        &manifest_path,
+                                                                    )
+                                                                {
+                                                                    manifest_read_failures = 0;
+                                                                    if is_download_control_pending(
+                                                                        &game_id_clone,
+                                                                    ) {
+                                                                        tokio::time::sleep(
+                                                                        tokio::time::Duration::from_millis(500),
+                                                                    )
+                                                                    .await;
+                                                                        continue;
+                                                                    }
+
+                                                                    let steam_state =
+                                                                        parse_steam_download_state(
+                                                                            &contents,
+                                                                        );
+                                                                    let downloading_dir_size =
+                                                                        get_dir_size(
+                                                                            &downloading_dir_clone,
+                                                                        );
+
+                                                                    if let Some(error) = steam_state
+                                                                        .terminal_error(
+                                                                            downloading_dir_size,
+                                                                        )
+                                                                    {
+                                                                        update_download_status(
+                                                                            &game_id_clone,
+                                                                            "error",
+                                                                            error,
+                                                                            current_progress,
+                                                                            0,
+                                                                        );
+                                                                        emit_download_progress(
+                                                                            &app_clone,
+                                                                            &game_id_clone,
+                                                                            current_progress,
+                                                                            error,
+                                                                            "error",
+                                                                            0,
+                                                                        );
+                                                                        tokio::time::sleep(
                                                                         tokio::time::Duration::from_secs(2),
                                                                     )
                                                                     .await;
-                                                                    remove_active_download_if_current(
+                                                                        remove_active_download_if_current(
                                                                         &game_id_clone,
                                                                         &cancel_rx,
                                                                     );
-                                                                    return;
-                                                                }
+                                                                        return;
+                                                                    }
 
-                                                                if steam_state.is_fully_installed(
-                                                                    downloading_dir_size,
-                                                                ) {
-                                                                    break;
-                                                                }
+                                                                    if steam_state
+                                                                        .is_fully_installed(
+                                                                            downloading_dir_size,
+                                                                        )
+                                                                    {
+                                                                        break;
+                                                                    }
 
-                                                                if let Some(next_progress) =
-                                                                    calculate_steam_progress(
-                                                                        &steam_state,
-                                                                        downloading_dir_size,
-                                                                    )
-                                                                {
-                                                                    current_progress =
-                                                                        next_progress;
-                                                                    let speed_str =
+                                                                    if let Some(next_progress) =
+                                                                        calculate_steam_progress(
+                                                                            &steam_state,
+                                                                            downloading_dir_size,
+                                                                        )
+                                                                    {
+                                                                        current_progress =
+                                                                            next_progress;
+                                                                        let speed_str =
                                                                         steam_status_label(
                                                                             &steam_state,
                                                                             downloading_dir_size,
                                                                         );
-                                                                    let (
-                                                                        bytes_downloaded,
-                                                                        bytes_total,
-                                                                    ) = steam_progress_bytes(
-                                                                        &steam_state,
-                                                                        downloading_dir_size,
-                                                                    );
-                                                                    update_download_metrics(
+                                                                        let (
+                                                                            bytes_downloaded,
+                                                                            bytes_total,
+                                                                        ) = steam_progress_bytes(
+                                                                            &steam_state,
+                                                                            downloading_dir_size,
+                                                                        );
+                                                                        update_download_metrics(
                                                                         &game_id_clone,
                                                                         steam_phase(
                                                                             &steam_state,
@@ -240,120 +289,135 @@ pub fn start_global_download_watcher(app: AppHandle) {
                                                                         bytes_downloaded,
                                                                         bytes_total,
                                                                     );
-                                                                    update_download_status(
+                                                                        update_download_status(
+                                                                            &game_id_clone,
+                                                                            "downloading",
+                                                                            speed_str,
+                                                                            current_progress,
+                                                                            999,
+                                                                        );
+                                                                        emit_download_progress(
+                                                                            &app_clone,
+                                                                            &game_id_clone,
+                                                                            current_progress,
+                                                                            speed_str,
+                                                                            "downloading",
+                                                                            999,
+                                                                        );
+                                                                    } else {
+                                                                        update_download_status(
                                                                         &game_id_clone,
                                                                         "downloading",
-                                                                        speed_str,
+                                                                        "Steam (Initializing...)",
                                                                         current_progress,
                                                                         999,
                                                                     );
-                                                                    emit_download_progress(
+                                                                        emit_download_progress(
                                                                         &app_clone,
                                                                         &game_id_clone,
                                                                         current_progress,
-                                                                        speed_str,
+                                                                        "Steam (Initializing...)",
                                                                         "downloading",
                                                                         999,
                                                                     );
+                                                                    }
                                                                 } else {
-                                                                    update_download_status(
-                                                                        &game_id_clone,
-                                                                        "downloading",
-                                                                        "Steam (Initializing...)",
-                                                                        current_progress,
-                                                                        999,
-                                                                    );
-                                                                    emit_download_progress(
-                                                                        &app_clone,
-                                                                        &game_id_clone,
-                                                                        current_progress,
-                                                                        "Steam (Initializing...)",
-                                                                        "downloading",
-                                                                        999,
-                                                                    );
-                                                                }
-                                                            } else {
-                                                                manifest_read_failures =
-                                                                    manifest_read_failures
-                                                                        .saturating_add(1);
-                                                                if manifest_read_failures < 3 {
-                                                                    tokio::time::sleep(
+                                                                    manifest_read_failures =
+                                                                        manifest_read_failures
+                                                                            .saturating_add(1);
+                                                                    if manifest_read_failures < 3 {
+                                                                        tokio::time::sleep(
                                                                         tokio::time::Duration::from_millis(500),
                                                                     )
                                                                     .await;
-                                                                    continue;
-                                                                }
-                                                                let error = if manifest_path
-                                                                    .exists()
-                                                                {
-                                                                    "Steam manifest could not be read; completion was not confirmed."
-                                                                } else {
-                                                                    "Steam manifest disappeared before completion was confirmed."
-                                                                };
-                                                                update_download_status(
-                                                                    &game_id_clone,
-                                                                    "error",
-                                                                    error,
-                                                                    current_progress,
-                                                                    0,
-                                                                );
-                                                                emit_download_progress(
-                                                                    &app_clone,
-                                                                    &game_id_clone,
-                                                                    current_progress,
-                                                                    error,
-                                                                    "error",
-                                                                    0,
-                                                                );
-                                                                tokio::time::sleep(
+                                                                        continue;
+                                                                    }
+                                                                    let error = if manifest_path
+                                                                        .exists()
+                                                                    {
+                                                                        "Steam manifest could not be read; completion was not confirmed."
+                                                                    } else {
+                                                                        "Steam manifest disappeared before completion was confirmed."
+                                                                    };
+                                                                    update_download_status(
+                                                                        &game_id_clone,
+                                                                        "error",
+                                                                        error,
+                                                                        current_progress,
+                                                                        0,
+                                                                    );
+                                                                    emit_download_progress(
+                                                                        &app_clone,
+                                                                        &game_id_clone,
+                                                                        current_progress,
+                                                                        error,
+                                                                        "error",
+                                                                        0,
+                                                                    );
+                                                                    tokio::time::sleep(
                                                                     tokio::time::Duration::from_secs(2),
                                                                 )
                                                                 .await;
+                                                                    remove_active_download_if_current(
+                                                                    &game_id_clone,
+                                                                    &cancel_rx,
+                                                                );
+                                                                    return;
+                                                                }
+                                                                tokio::time::sleep(
+                                                                tokio::time::Duration::from_secs(2),
+                                                            )
+                                                            .await;
+                                                            }
+
+                                                            if is_download_suppressed(
+                                                                &game_id_clone,
+                                                            ) {
+                                                                let _ =
+                                                                    remove_download_history_item(
+                                                                        &game_id_clone,
+                                                                    );
                                                                 remove_active_download_if_current(
                                                                     &game_id_clone,
                                                                     &cancel_rx,
                                                                 );
                                                                 return;
                                                             }
+
+                                                            update_download_status(
+                                                                &game_id_clone,
+                                                                "completed",
+                                                                "Done",
+                                                                100,
+                                                                0,
+                                                            );
+                                                            emit_download_progress(
+                                                                &app_clone,
+                                                                &game_id_clone,
+                                                                100,
+                                                                "Complete",
+                                                                "completed",
+                                                                0,
+                                                            );
+
+                                                            let _ = app_clone.emit(
+                                                                "library_inventory_changed",
+                                                                serde_json::json!({
+                                                                    "reason": "download_completed",
+                                                                    "gameCount": 0
+                                                                }),
+                                                            );
+
                                                             tokio::time::sleep(
                                                                 tokio::time::Duration::from_secs(2),
                                                             )
                                                             .await;
-                                                        }
-
-                                                        update_download_status(
-                                                            &game_id_clone,
-                                                            "completed",
-                                                            "Done",
-                                                            100,
-                                                            0,
-                                                        );
-                                                        emit_download_progress(
-                                                            &app_clone,
-                                                            &game_id_clone,
-                                                            100,
-                                                            "Complete",
-                                                            "completed",
-                                                            0,
-                                                        );
-
-                                                        let _ = app_clone.emit(
-                                                            "library_inventory_changed",
-                                                            serde_json::json!({
-                                                                "reason": "download_completed",
-                                                                "gameCount": 0
-                                                            }),
-                                                        );
-
-                                                        tokio::time::sleep(
-                                                            tokio::time::Duration::from_secs(2),
-                                                        )
-                                                        .await;
-                                                        remove_active_download_if_current(
-                                                            &game_id_clone,
-                                                            &cancel_rx,
-                                                        );
-                                                    });
+                                                            remove_active_download_if_current(
+                                                                &game_id_clone,
+                                                                &cancel_rx,
+                                                            );
+                                                        },
+                                                    ));
                                                 }
                                             }
                                         }

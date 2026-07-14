@@ -46,8 +46,6 @@ function envEvidenceFor(gate: ExternalCompletionEvidenceGateInput) {
 function validEnvValue(name: string) {
   const values: Record<string, string> = {
     ACCOUNT_DELETION_PROCESSOR_SECRET: "acctDel9f8e7d6c5b4a392817263abcd",
-    CURSEFORGE_API_KEY: "curseForge9f8e7d6c5b4a392817",
-    MOD_IO_API_KEY: "modio9f8e7d6c5b4a392817263",
     PRESENCE_POLL_SECRET: "presencePoll9f8e7d6c5b4a392817abcd",
     PRESENCE_PROVIDER_TOKEN: "presenceProvider9f8e7d6c5b4a392817",
     PRICE_DROP_NOTIFY_SECRET: "priceDrop9f8e7d6c5b4a392817263abcd",
@@ -158,7 +156,9 @@ function externalProofEvidenceFor(proof: string, fallback = "run-external-eviden
     return "run-license-key-custody-live-license-issuance-123";
   }
   if (proof.includes("Hosted price-drop scheduler")) return "workflow-price-drop-live-123";
-  if (proof.includes("mod.io and CurseForge")) return "run-provider-mod.io-curseforge-probe-123";
+  if (proof.includes("Nexus website search handoff and Steam Workshop")) {
+    return "run-nexus-steam-workshop-live-provider-123";
+  }
   if (proof.includes("Non-Steam presence")) {
     return "run-non-steam-presence-bridge-provider-123";
   }
@@ -438,7 +438,7 @@ describe("external completion evidence summary", () => {
                 ...evidenceDetails,
                 "Live probe run ID": "live-provider-probe-run-123",
                 "Provider response evidence": "provider-response-probe-run-123",
-                "Provider/client matrix": "provider-client-matrix-mod.io-curseforge-run-123",
+                "Provider/client matrix": "provider-client-matrix-nexus-steam-workshop-run-123",
               },
               path: providerGate.artifactPaths[0],
               proofEvidence: Object.fromEntries(
@@ -1165,14 +1165,14 @@ describe("external completion evidence summary", () => {
     ]);
   });
 
-  it("requires both mod.io and CurseForge in provider compound evidence", () => {
+  it("requires Nexus and Steam Workshop in provider compound evidence", () => {
     const providerGate = EXTERNAL_COMPLETION_EVIDENCE_GATE_INPUTS.find(
       (gate) => gate.id === "provider-live-integrations",
     );
     expect(providerGate).toBeDefined();
 
     const compoundProof = providerGate!.proofRequirements.find((proof) =>
-      proof.includes("mod.io and CurseForge"),
+      proof.includes("Nexus website search handoff and Steam Workshop"),
     );
     expect(compoundProof).toBeDefined();
 
@@ -1188,14 +1188,14 @@ describe("external completion evidence summary", () => {
                 ...evidenceDetails,
                 "Live probe run ID": "live-probe-run-123",
                 "Provider response evidence": "provider-response artifact run-123",
-                "Provider/client matrix": "provider-client-matrix-mod.io-run-123",
+                "Provider/client matrix": "provider-client-matrix-nexus-run-123",
               },
               path: providerGate!.artifactPaths[0],
               proofEvidence: Object.fromEntries(
                 providerGate!.proofRequirements.map((proof) => [
                   proof,
                   proof === compoundProof
-                    ? "run-provider-mod.io-probe-123"
+                    ? "run-nexus-live-provider-probe-123"
                     : externalProofEvidenceFor(proof),
                 ]),
               ),

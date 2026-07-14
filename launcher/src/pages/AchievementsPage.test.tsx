@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter } from "react-router-dom";
 
@@ -9,7 +9,6 @@ import { STORAGE_KEYS } from "../lib/storage-keys";
 
 const launcherMocks = vi.hoisted(() => ({
   listInstalledGames: vi.fn(),
-  openAchievementCacheFolder: vi.fn(),
   syncGameAchievements: vi.fn(),
   updateAchievementProviderStatus: vi.fn(),
   eaFetchOwnedGames: vi.fn(),
@@ -30,6 +29,10 @@ const achievementMocks = vi.hoisted(() => ({
   hydrateGamesWithRemoteAchievements: vi.fn(),
 }));
 
+const oglCatalogMocks = vi.hoisted(() => ({
+  listOglCatalogGames: vi.fn(),
+}));
+
 const useCurrentUserMock = vi.hoisted(() => vi.fn());
 
 const falseAchievementCacheClaim =
@@ -38,6 +41,8 @@ const falseAchievementCacheClaim =
 vi.mock("../lib/launcher", () => launcherMocks);
 
 vi.mock("../lib/supabase/achievements", () => achievementMocks);
+
+vi.mock("../lib/supabase/ogl-catalog", () => oglCatalogMocks);
 
 vi.mock("../hooks/useCurrentUser", () => ({
   useCurrentUser: useCurrentUserMock,
@@ -101,7 +106,6 @@ describe("AchievementsPage", () => {
     vi.clearAllMocks();
     localStorage.clear();
     launcherMocks.listInstalledGames.mockResolvedValue([]);
-    launcherMocks.openAchievementCacheFolder.mockResolvedValue("/tmp/achievements");
     launcherMocks.syncGameAchievements.mockRejectedValue(
       new Error("Unexpected achievement sync in this test."),
     );
@@ -125,29 +129,94 @@ describe("AchievementsPage", () => {
     achievementMocks.hydrateGamesWithRemoteAchievements.mockImplementation((games) =>
       Promise.resolve(games),
     );
+    oglCatalogMocks.listOglCatalogGames.mockResolvedValue([]);
     useCurrentUserMock.mockReturnValue({ isLoading: false, user: null });
   });
 
-  it("uses the signed-in display name and an honest local fallback for the player archive", async () => {
-    const local = renderAchievementsRoute("/achievements");
-
-    expect(screen.getByRole("heading", { name: /local player \/ games/i })).toBeInTheDocument();
-    expect(screen.queryByText(/daniel/i)).not.toBeInTheDocument();
-    await screen.findByText("No achievement-enabled games found.");
-    local.unmount();
-
-    useCurrentUserMock.mockReturnValue({
-      isLoading: false,
-      user: {
-        id: "ada",
-        email: "ada@example.test",
-        user_metadata: { display_name: "Ada Lovelace" },
-      },
-    });
+  it("does not render the player archive masthead", async () => {
     renderAchievementsRoute("/achievements");
 
-    expect(screen.getByRole("heading", { name: /ada lovelace \/ games/i })).toBeInTheDocument();
     await screen.findByText("No achievement-enabled games found.");
+    expect(screen.queryByText("Player Archive")).not.toBeInTheDocument();
+    expect(screen.queryByText("Local Player")).not.toBeInTheDocument();
+  });
+
+  it("shows a hosted OG Launcher test game without a native installation", async () => {
+    oglCatalogMocks.listOglCatalogGames.mockResolvedValueOnce([
+      {
+        achievements: [
+          {
+            id: "first-boost",
+            name: "First Boost",
+            source: "ogl",
+            sourceAchievementId: "first-boost",
+            providerConfidence: "official",
+            unlockedAt: null,
+          },
+        ],
+        description: "Supabase test game",
+        id: "ogl-neon-runners",
+        launcher: "ogl",
+        platform: "windows",
+        slug: "neon-runners",
+        status: "not_installed",
+        title: "Neon Runners",
+        version: "Catalog",
+      },
+    ] satisfies Game[]);
+
+    renderAchievementsRoute("/achievements");
+
+    const heading = await screen.findByRole("heading", { name: "Neon Runners" });
+    const row = within(heading.closest("article")!);
+    expect(row.getByText("0/1")).toBeInTheDocument();
+    expect(row.getByTitle("OG Launcher")).toBeInTheDocument();
+    expect(row.getByText("OG Launcher: available")).toBeInTheDocument();
+    expect(launcherMocks.syncGameAchievements).not.toHaveBeenCalled();
+    expect(row.getByRole("link", { name: /view full list/i })).toHaveAttribute(
+      "href",
+      "/library?game=ogl-neon-runners",
+    );
+  });
+
+  it("shows hosted definitions for a provider game that is not installed or signed in", async () => {
+    const ownedGame: Game = {
+      achievements: [],
+      description: "",
+      externalId: "480",
+      id: "steam-480",
+      launcher: "steam",
+      platform: "windows",
+      status: "not_installed",
+      title: "Uninstalled Catalog Game",
+      version: "Catalog",
+    };
+    const hydratedGame: Game = {
+      ...ownedGame,
+      achievements: [
+        {
+          id: "ACH_REMOTE",
+          name: "Remote Catalog Achievement",
+          source: "steam",
+          sourceAchievementId: "ACH_REMOTE",
+          unlockedAt: null,
+        },
+      ],
+    };
+    launcherMocks.listInstalledGames.mockResolvedValueOnce([ownedGame]);
+    achievementMocks.hydrateGamesWithRemoteAchievements.mockResolvedValueOnce([hydratedGame]);
+
+    renderAchievementsRoute("/achievements");
+
+    await screen.findByRole("heading", { name: "Uninstalled Catalog Game" });
+    await waitFor(() => {
+      const heading = screen.getByRole("heading", { name: "Uninstalled Catalog Game" });
+      expect(within(heading.closest("article")!).getByText("0/1")).toBeInTheDocument();
+    });
+    expect(achievementMocks.hydrateGamesWithRemoteAchievements).toHaveBeenCalledWith([ownedGame], {
+      userId: null,
+    });
+    expect(launcherMocks.syncGameAchievements).not.toHaveBeenCalled();
   });
 
   it("keeps the cache readiness panel out of the normal achievements route", async () => {
@@ -210,6 +279,82 @@ describe("AchievementsPage", () => {
       expect(await screen.findByRole("heading", { name: game.title })).toBeInTheDocument();
       expect(screen.getByText(`${game.title} Unlock`)).toBeInTheDocument();
     }
+  });
+
+  it("keeps a completed basis game perfect when another platform has exclusive achievements", async () => {
+    const syncedAt = new Date().toISOString();
+    const steamGame: Game = {
+      achievements: [
+        {
+          id: "steam-story-complete",
+          name: "Story Complete",
+          source: "steam",
+          unlockedAt: "2026-07-12T12:00:00Z",
+        },
+      ],
+      achievementsSyncedAt: syncedAt,
+      description: "",
+      externalId: "101",
+      id: "steam-101",
+      launcher: "steam",
+      platform: "windows",
+      status: "installed",
+      title: "Cross-Platform Perfect",
+      version: "1.0.0",
+    };
+    const xboxGame: Game = {
+      ...steamGame,
+      achievements: [
+        {
+          id: "xbox-exclusive",
+          name: "Xbox Exclusive",
+          source: "xbox",
+          unlockedAt: null,
+        },
+      ],
+      externalId: "202",
+      id: "xbox-202",
+      launcher: "xbox",
+    };
+    launcherMocks.listInstalledGames.mockResolvedValueOnce([steamGame, xboxGame]);
+
+    renderAchievementsRoute("/achievements");
+
+    const heading = await screen.findByRole("heading", { name: "Cross-Platform Perfect" });
+    const row = within(heading.closest("article")!);
+    expect(row.getByText("Perfect")).toBeInTheDocument();
+    expect(row.getByText("1/1")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Perfect Games (1)" }));
+
+    expect(screen.getByRole("heading", { name: "Cross-Platform Perfect" })).toBeInTheDocument();
+  });
+
+  it("shows Steam perfect games from vetted local progress before definition sync finishes", async () => {
+    const steamGame: OwnedGame = {
+      achievementSummary: {
+        unlocked: 31,
+        total: 31,
+        isPerfect: true,
+        source: "steam",
+      },
+      coverUrl: null,
+      description: "",
+      externalId: "346900",
+      id: "steam-owned-346900",
+      logoUrl: null,
+      title: "Steam Local Perfect",
+    };
+    localStorage.setItem(STORAGE_KEYS.STEAM_ID, JSON.stringify("steam-user"));
+    launcherMocks.fetchSteamOwnedGames.mockResolvedValueOnce([steamGame]);
+
+    renderAchievementsRoute("/achievements");
+
+    const heading = await screen.findByRole("heading", { name: "Steam Local Perfect" });
+    const row = within(heading.closest("article")!);
+    expect(row.getByText("Perfect")).toBeInTheDocument();
+    expect(row.getByText("31/31")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Perfect Games (1)" })).toBeInTheDocument();
   });
 
   it("refreshes empty Steam achievements when the archive opens", async () => {
@@ -289,7 +434,7 @@ describe("AchievementsPage", () => {
       screen.queryByRole("status", { name: /loading local achievement games/i }),
     ).not.toBeInTheDocument();
     expect(
-      await screen.findByRole("status", { name: /refreshing cloud achievements/i }),
+      await screen.findByRole("status", { name: /refreshing achievement archive/i }),
     ).toBeInTheDocument();
     expect(achievementMocks.hydrateGamesWithRemoteAchievements).toHaveBeenCalledWith([localGame], {
       userId: "user-fast",
@@ -303,9 +448,75 @@ describe("AchievementsPage", () => {
     expect(await screen.findByText("Remote Unlock")).toBeInTheDocument();
     await waitFor(() =>
       expect(
-        screen.queryByRole("status", { name: /refreshing cloud achievements/i }),
+        screen.queryByRole("status", { name: /refreshing achievement archive/i }),
       ).not.toBeInTheDocument(),
     );
+  });
+
+  it("shows one shared loading indicator while cloud and provider updates overlap", async () => {
+    const providerRefresh = deferred<SyncGameAchievementsResponse>();
+    const cloudHydration = deferred<Game[]>();
+    const staleGame: Game = {
+      achievements: [
+        {
+          id: "xbox-shared-loader",
+          name: "Shared Loader Unlock",
+          source: "xbox",
+          unlockedAt: null,
+        },
+      ],
+      achievementsSyncedAt: "2026-07-01T10:00:00Z",
+      description: "",
+      externalId: "24681012",
+      id: "xbox-shared-loader-game",
+      launcher: "xbox",
+      platform: "windows",
+      status: "installed",
+      title: "Shared Loader Game",
+      version: "1.0.0",
+    };
+    launcherMocks.listInstalledGames.mockResolvedValueOnce([staleGame]);
+    launcherMocks.syncGameAchievements.mockReturnValueOnce(providerRefresh.promise);
+    achievementMocks.hydrateGamesWithRemoteAchievements.mockReturnValueOnce(cloudHydration.promise);
+    useCurrentUserMock.mockReturnValue({
+      isLoading: false,
+      user: { id: "shared-loader-user", user_metadata: {} },
+    });
+
+    const view = renderAchievementsRoute("/achievements");
+
+    await waitFor(() => {
+      expect(launcherMocks.syncGameAchievements).toHaveBeenCalledWith(staleGame);
+      expect(achievementMocks.hydrateGamesWithRemoteAchievements).toHaveBeenCalledWith(
+        [staleGame],
+        { userId: "shared-loader-user" },
+      );
+    });
+    expect(screen.getAllByRole("status", { name: /refreshing achievement archive/i })).toHaveLength(
+      1,
+    );
+    expect(
+      screen.getByText("Achievement archive updating / Local games ready"),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole("status", { name: /refreshing cloud achievements/i }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("status", { name: /refreshing provider achievements/i }),
+    ).not.toBeInTheDocument();
+
+    await act(async () => {
+      providerRefresh.resolve(syncResponse(staleGame, staleGame.achievements!));
+      cloudHydration.resolve([staleGame]);
+      await Promise.all([providerRefresh.promise, cloudHydration.promise]);
+    });
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("status", { name: /refreshing achievement archive/i }),
+      ).not.toBeInTheDocument(),
+    );
+
+    view.unmount();
   });
 
   it("syncs empty non-Steam provider games when the archive opens", async () => {
@@ -426,6 +637,34 @@ describe("AchievementsPage", () => {
     renderAchievementsRoute("/achievements");
 
     expect(await screen.findByText("Epic Fresh")).toBeInTheDocument();
+    expect(launcherMocks.syncGameAchievements).not.toHaveBeenCalled();
+  });
+
+  it("reuses a cached achievement snapshot across page visits within the refresh window", async () => {
+    const cachedGame: Game = {
+      achievements: [
+        {
+          id: "xbox-cached",
+          name: "Xbox Cached",
+          source: "xbox",
+          unlockedAt: "2026-07-10T12:00:00Z",
+        },
+      ],
+      achievementsSyncedAt: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
+      description: "",
+      externalId: "xbox-cached",
+      id: "xbox-cached-game",
+      launcher: "xbox",
+      platform: "windows",
+      status: "installed",
+      title: "Xbox Cached Game",
+      version: "1.0.0",
+    };
+    launcherMocks.listInstalledGames.mockResolvedValueOnce([cachedGame]);
+
+    renderAchievementsRoute("/achievements");
+
+    expect(await screen.findByText("Xbox Cached")).toBeInTheDocument();
     expect(launcherMocks.syncGameAchievements).not.toHaveBeenCalled();
   });
 

@@ -38,4 +38,26 @@ describe("syncGameAchievements", () => {
       provider: "epic",
     });
   });
+
+  it("passes an uninstalled Xbox account game as the native fallback", async () => {
+    const game: Game = {
+      achievements: [],
+      description: "",
+      externalId: "123456789",
+      id: "xbox-owned-123456789",
+      launcher: "xbox",
+      platform: "windows",
+      status: "not_installed",
+      title: "Xbox Account Game",
+      version: "",
+    };
+
+    await syncGameAchievements(game);
+
+    expect(tauriMocks.invoke).toHaveBeenCalledWith("sync_xbox_achievements", {
+      fallbackGame: game,
+      gameId: game.id,
+      titleId: "123456789",
+    });
+  });
 });

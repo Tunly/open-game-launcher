@@ -2,10 +2,11 @@
 
 ## Supported versions
 
-| Version | Supported          |
-| ------- | ------------------ |
-| 0.1.x   | :white_check_mark: |
-| < 0.1.0 | :x:                |
+Open Game Launcher is currently an unreleased pre-release project. There is no
+published version with a security-support guarantee. Reports against the
+current `main` branch are welcome and will be handled on a best-effort basis;
+forks, mirrors, private deployments, and old commits are maintained by their
+respective owners.
 
 ## Reporting a vulnerability
 
@@ -18,7 +19,10 @@ Include as much of the following as you can:
 3. Affected commit / version.
 4. Your name / handle for the credit line (or "anonymous").
 
-We aim to acknowledge new reports within **3 business days** and ship a fix or mitigation within **30 days** for high-severity issues, longer for low-severity reports coordinated with the reporter.
+We aim to acknowledge new reports within **3 business days**. Remediation time
+depends on severity, reproducibility, maintainer availability, and coordinated
+disclosure; this target is not an SLA or a promise that an unreleased build is
+production-ready.
 
 ## Hardening scope
 
@@ -34,6 +38,14 @@ hardware proof still follows the external completion gates:
   trusted playtime aggregation, price-drop delivery, social-link replacement,
   achievement ingestion cursors, invite-status changes, and submitted artwork
   identity are constrained through narrow RPCs, RLS, and migration-level guards.
+- **Activity interactions**: Feed visibility is checked server-side for reads
+  and writes; reactions/comments use owner-bound RPCs and RLS, with deletion
+  restricted to the author or owning activity where applicable.
+- **Mod providers**: The active surface is limited to an official no-slug Nexus
+  website handoff and Steam client handoff. Optional registered Nexus native
+  support stores user credentials only in the OS keychain; provider credentials
+  and app secrets must not be accepted through browser storage or committed
+  config. No-slug builds do not register or capture `nxm://` links.
 
 ## Best practices for contributors
 
@@ -44,6 +56,5 @@ hardware proof still follows the external completion gates:
 - Run `pnpm --dir launcher typecheck`, `pnpm --dir launcher lint`, and
   `pnpm --dir launcher test` before opening a PR.
 
-## Recognition
-
-We credit security researchers in the release notes (unless you prefer to remain anonymous). Thank you for helping keep Open Game Launcher safe.
+Security researchers are credited in release notes unless they request
+anonymity.

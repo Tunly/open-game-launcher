@@ -892,7 +892,6 @@ function CommunityLivePage() {
               </p>
             ) : null}
           </form>
-
         </aside>
       </div>
     </section>

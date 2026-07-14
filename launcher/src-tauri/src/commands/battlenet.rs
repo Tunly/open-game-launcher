@@ -275,6 +275,7 @@ pub async fn process_battlenet_games_payload(
                     playtime_minutes: None,
                     last_played_at: None,
                     cloud_gaming_url: None,
+                    achievement_summary: None,
                 });
             }
         }

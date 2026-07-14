@@ -2,7 +2,7 @@ type GameStatus = "installed" | "not_installed" | "update_available";
 export type Platform = "windows" | "linux" | "macos";
 export type CatalogSource = "pc_game_pass";
 type LauncherType =
-  "steam" | "epic" | "ubisoft" | "ea" | "battlenet" | "gog" | "xbox" | "manual" | "unknown";
+  "steam" | "epic" | "ubisoft" | "ea" | "battlenet" | "gog" | "xbox" | "ogl" | "manual" | "unknown";
 export type ClientPlatformId = "steam" | "epic" | "gog" | "xbox" | "ubisoft" | "battlenet" | "ea";
 type LogoPosition = "bottomLeft" | "upperCenter" | "centerCenter" | "bottomCenter";
 export type DownloadStatus =
@@ -31,6 +31,13 @@ interface UnifiedAchievement {
 }
 
 export type { UnifiedAchievement };
+
+export interface AchievementSummary {
+  unlocked: number;
+  total: number;
+  isPerfect: boolean;
+  source: string;
+}
 
 interface SaveFile {
   id: string;
@@ -86,6 +93,7 @@ export interface Game {
   releaseDate?: string;
   rating?: number | null;
   achievements?: UnifiedAchievement[];
+  achievementSummary?: AchievementSummary;
   achievementsSyncedAt?: string | null;
   achievementBasisSource?: string | null;
   achievementBasisGameId?: string | null;
@@ -138,6 +146,7 @@ export interface DownloadItem {
   canCancel?: boolean;
   external?: boolean;
   lastUpdatedAt?: number;
+  eventRevision?: number;
   provider?: string;
   rawStatus?: string;
   progressSource?: string;

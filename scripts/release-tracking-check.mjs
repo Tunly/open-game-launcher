@@ -27,6 +27,7 @@ export const releaseTrackedPathSpecs = Object.freeze([
   { path: "scripts", type: "dir" },
   { path: "docs/runbooks", type: "dir" },
   { path: "docs/verification/README.md", type: "file" },
+  { path: "docs/verification/screenshot-manifest.json", type: "file" },
   { path: "docs/verification/local-completion-audit.md", type: "file" },
   { path: "docs/verification/external", type: "dir" },
   { path: "docs/verification/screenshots", type: "dir" },

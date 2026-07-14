@@ -222,8 +222,6 @@ export const evidenceGates = Object.freeze([
     requiredEnv: [
       "STEAM_WEB_API_KEY",
       "PRESENCE_PROVIDER_TOKEN",
-      "MOD_IO_API_KEY",
-      "CURSEFORGE_API_KEY",
     ],
     artifactPaths: ["docs/verification/external/provider-live-integrations.md"],
     artifactEvidenceFields: [
@@ -233,16 +231,16 @@ export const evidenceGates = Object.freeze([
       },
     ],
     requiredProofs: [
-      "mod.io and CurseForge staging probes use real provider keys.",
+      "Nexus website search handoff and Steam Workshop client handoff are verified against live providers.",
       "Non-Steam presence bridges return redacted live provider evidence.",
       "Provider-approved catalog/cloud transfer flows are verified.",
       "Achievement/provider cache E2E runs against real client data.",
     ],
     captureHandoffs: {
-      "mod.io and CurseForge staging probes use real provider keys.": {
+      "Nexus website search handoff and Steam Workshop client handoff are verified against live providers.": {
         capture:
-          "Run live staging probes with real mod.io and CurseForge credentials, then attach redacted provider response and rate-limit evidence.",
-        terms: ["mod.io", "CurseForge", "live-probe"],
+          "Hand off an installed game and search to the official Nexus Mods website, open a verified Steam AppID in Steam Workshop, and attach redacted provider/client evidence.",
+        terms: ["Nexus", "Steam Workshop", "live-provider"],
       },
       "Non-Steam presence bridges return redacted live provider evidence.": {
         capture:
@@ -400,7 +398,7 @@ const forbiddenArtifactPatterns = Object.freeze([
   {
     label: "Raw provider API key",
     pattern:
-      /\b(?:STEAM_WEB_API_KEY|MOD_IO_API_KEY|CURSEFORGE_API_KEY|RAWG_API_KEY|PRESENCE_PROVIDER_TOKEN)\s*[:=]\s*(?!(?:\[?redacted\]?|<redacted>|\*{3,})(?:\s|$))[^\s`"'<>]{8,}/i,
+      /\b(?:STEAM_WEB_API_KEY|NEXUS_API_KEY|RAWG_API_KEY|PRESENCE_PROVIDER_TOKEN)\s*[:=]\s*(?!(?:\[?redacted\]?|<redacted>|\*{3,})(?:\s|$))[^\s`"'<>]{8,}/i,
   },
   {
     label: "Raw license signing key",
@@ -1583,8 +1581,8 @@ const fieldSpecificEvidenceValidators = Object.freeze({
       /matrix/i,
       /provider/i,
       /client/i,
-      /mod[._\s-]?io/i,
-      /curseforge/i,
+      /nexus/i,
+      /steam[-_\s]?workshop/i,
     ]),
   "Run ID": runIdValueIsSpecific,
   "Session/run ID": sessionRunEvidenceValueIsSpecific,
@@ -1684,8 +1682,6 @@ function secretValueLooksPlausible(value, minLength = 24) {
 const envShapeValidators = Object.freeze({
   ACCOUNT_DELETION_PROCESSOR_SECRET: (value) =>
     secretValueLooksPlausible(value, 32),
-  CURSEFORGE_API_KEY: (value) => secretValueLooksPlausible(value, 24),
-  MOD_IO_API_KEY: (value) => secretValueLooksPlausible(value, 24),
   PRESENCE_POLL_SECRET: (value) => secretValueLooksPlausible(value, 32),
   PRESENCE_PROVIDER_TOKEN: (value) => secretValueLooksPlausible(value, 24),
   PRICE_DROP_NOTIFY_SECRET: (value) => secretValueLooksPlausible(value, 32),
@@ -1967,8 +1963,8 @@ function expectedProofEvidenceValuePatterns(proof) {
       /(?:account[-_\s]?deletions?|process[-_\s]?account[-_\s]?deletions|account_deletion_processor_runs)/i,
     ];
   }
-  if (/mod\.io and curseforge/.test(normalizedProof)) {
-    return [/mod[._\s-]?io/i, /curseforge/i];
+  if (/nexus website search handoff and steam workshop/.test(normalizedProof)) {
+    return [/nexus/i, /steam[-_\s]?workshop/i, /live[-_\s]?provider/i];
   }
   if (/non-steam presence/.test(normalizedProof)) {
     return [/non[-_\s]?steam/i, /presence/i, /bridge/i, /provider/i];
@@ -2420,13 +2416,13 @@ export function artifactTemplate(gate, artifactPath) {
         ]),
     "## Required Proof Checklist",
     "",
-    "Leave each item unchecked until the external run evidence is captured and redacted. `pnpm external:evidence:preflight` accepts checked `- [x]` rows only in the artifact assigned to that proof.",
+    "Check a row only after capturing and redacting its live evidence. `pnpm external:evidence:preflight` accepts `- [x]` only in the artifact assigned to that proof.",
     "",
     ...requiredProofs.map((proof) => `- [ ] ${proof}`),
     "",
     "## Capture Handoff",
     "",
-    "Use these operator handoffs to collect redacted live evidence before checking proof rows. Handoffs are guidance only; they do not execute commands or satisfy preflight by themselves.",
+    "Use these handoffs to collect redacted live evidence. Handoffs are guidance only; they do not execute commands or satisfy preflight by themselves.",
     "",
     ...captureHandoffsForArtifact(gate, artifactPath).map(
       (handoff) => `- ${formatCaptureHandoff(handoff)}`,
@@ -2434,9 +2430,9 @@ export function artifactTemplate(gate, artifactPath) {
     "",
     "## Proof Evidence Mapping",
     "",
-    "When a proof row is checked, fill the matching evidence line with a specific redacted run ID, dashboard link, external artifact locator, workflow ID, signed log, or `sha256:<64-hex>` reference. Accepted dashboard URL hosts are Supabase, Stripe live Dashboard, GitHub Actions/releases/deployments, Vercel, Netlify, Cloudflare, App Store Connect, and Google Play Console; otherwise use `run:`/`artifact:`/`sha256:` style locators. Generic text such as `redacted`, `see above`, local files, localhost URLs, and example URLs do not satisfy preflight.",
-    "Stripe Dashboard URLs used for Store/Stripe evidence must point at concrete detail paths such as `/events/evt_...`, `/invoices/in_...`, or targeted tax/invoice settings; generic `/settings`, `/customers`, and `/payments` dashboard pages do not satisfy preflight.",
-    "Proof evidence values must name the proof lane they support, for example `stripe-webhook`, `stripe-tax-invoice`, `license-key-custody-live-license-issuance`, `price-drop`, `presence-poll`, `account-deletion`, `mod.io/CurseForge`, `non-steam-presence-bridge-provider`, `provider-approved-catalog-cloud-transfer`, `achievement-provider-cache-real-client`, `fullscreen-anti-cheat-overlay`, `backup-restore`, `client-mount-apply-provider-client`, `community-artwork-rollout`, `plugin-marketplace-execution-update`, or `hosted-deploy`; bare `evt_...` values are accepted only for the Stripe webhook signature proof. Syntactically specific but generic IDs such as `run-generic-1` stay blocked. Compound proof values must include every required term in the same value: mod-provider evidence includes both `mod.io` and `CurseForge`; external-drive backup/restore proof evidence includes `Windows`, `macOS`, and `Linux`; long native overlay proof evidence includes a numeric measured duration/window; hardware matrix evidence includes one `Windows`, one `macOS`, and one `Linux` row, each with `title:`, `client:`, and a specific locator.",
+    "For every checked proof, add a specific redacted run/dashboard/workflow/artifact locator, signed log, or `sha256:<64-hex>` reference. Accepted dashboard URL hosts are Supabase, Stripe live Dashboard, GitHub Actions/releases/deployments, Vercel, Netlify, Cloudflare, App Store Connect, and Google Play Console; otherwise use `run:`/`artifact:`/`sha256:`. Local/example URLs and generic text do not pass.",
+    "Stripe Dashboard evidence must use a concrete event, invoice, or tax/invoice-settings path, not generic `/settings`, `/customers`, or `/payments` pages.",
+    "Proof evidence values must name the proof lane: `stripe-webhook`, `stripe-tax-invoice`, `license-key-custody-live-license-issuance`, `price-drop`, `presence-poll`, `account-deletion`, `nexus-steam-workshop-live-provider`, `non-steam-presence-bridge-provider`, `provider-approved-catalog-cloud-transfer`, `achievement-provider-cache-real-client`, `fullscreen-anti-cheat-overlay`, `backup-restore`, `client-mount-apply-provider-client`, `community-artwork-rollout`, `plugin-marketplace-execution-update`, or `hosted-deploy`. Compound values must include their required providers, OSes, duration/window, and matrix fields; bare `evt_...` is accepted only for Stripe webhook proof.",
     "",
     ...requiredProofs.map((proof) => `- Evidence for ${proof}:`),
     "",
@@ -2444,10 +2440,10 @@ export function artifactTemplate(gate, artifactPath) {
     "",
     requiredArtifactEvidenceFields.length === 0
       ? "- none"
-      : "Fill these rows with concrete external values for this gate. Keep secrets redacted; values must still include a specific accepted locator or ID containing digits, such as `run:...`, `probe-...`, `session-...`, `workflow-...`, `deployment-...`, or `artifact-...`; lane-specific hosted cron collector IDs such as `price-drop-cli-scheduled` are accepted for hosted cron Run ID rows, and Stripe webhook event IDs must be bare `evt_...` values.",
+      : "Add concrete redacted locators or IDs containing digits (`run:`, `probe-`, `session-`, `workflow-`, `deployment-`, or `artifact-`). Hosted cron Run IDs may use lane-specific collector IDs; Stripe webhook IDs must be bare `evt_...` values.",
     ...(requiredArtifactEvidenceFields.includes("Provider/client matrix")
       ? [
-          "Provider/client matrix values must include both `mod.io` and `CurseForge`.",
+          "Provider/client matrix values must include both `Nexus` and `Steam Workshop`.",
         ]
       : []),
     ...(requiredArtifactEvidenceFields.includes("Community rollout evidence")
@@ -2514,7 +2510,7 @@ export function artifactTemplate(gate, artifactPath) {
     ]),
     "## Evidence Captured",
     "",
-    "Preflight requires non-empty, non-placeholder values for each evidence detail field below. `Captured at` must be a freshly captured current UTC ISO-8601 timestamp within 30 days and not more than 10 minutes in the future. `Release ref` must name the release tag, `Commit SHA` must be a full 40-hex commit, and release CI requires them to match `GITHUB_REF_NAME` and `GITHUB_SHA` exactly. `Redaction notes` must use positive wording such as `raw secrets removed`, `tokens redacted`, or `no raw secrets`; contradictory wording such as `not redacted`, `unredacted`, `contains raw`, or `not reviewed` is rejected. Local `docs/verification/screenshots/*` paths, `file://` URLs, localhost/loopback/private-network URLs, and `example.com` URLs do not satisfy external completion evidence.",
+    "Preflight requires non-empty, non-placeholder values below. `Captured at` is a current UTC ISO-8601 timestamp (at most 30 days old and no more than 10 minutes ahead). `Release ref` and the full 40-hex `Commit SHA` must match release CI context. Use positive redaction wording such as `raw secrets removed`; local/private/example locators are invalid.",
     "",
     "- Captured at:",
     "- Release ref:",
@@ -2526,7 +2522,7 @@ export function artifactTemplate(gate, artifactPath) {
     "",
     "## Secret Handling",
     "",
-    "Operator reminders only. Preflight enforces this boundary by scanning artifact content for secret-shaped values.",
+    "Preflight scans artifact content for secret-shaped values.",
     "",
     "- Raw provider keys, Stripe secrets, bearer tokens, JWTs, Supabase service-role/auth/access tokens, scheduler secrets, private keys, and webhook secrets are absent.",
     "- Logs and screenshots are redacted before this artifact is committed.",
@@ -2690,7 +2686,7 @@ function fieldRequirementHint(field, group = null) {
     case "Redaction notes":
       return "positive redaction statement such as raw secrets removed or tokens redacted";
     case "Provider/client matrix":
-      return "include both mod.io and CurseForge plus provider-client evidence";
+      return "include both Nexus and Steam Workshop plus provider-client evidence";
     case "Community rollout evidence":
       return "include community artwork rollout evidence";
     case "Marketplace evidence":

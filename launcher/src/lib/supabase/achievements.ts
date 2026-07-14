@@ -360,7 +360,7 @@ export async function ingestTrustedAchievements(
 
 async function listRemoteAchievementsForGame(
   client: ReturnType<typeof getSupabaseClient>,
-  userId: string,
+  userId: string | null,
   catalogGameId: string,
   provider: string,
 ): Promise<UnifiedAchievement[]> {
@@ -397,6 +397,23 @@ async function listRemoteAchievementsForGame(
     return [];
   }
 
+  const mapDefinitions = (unlocksByAchievementId?: Map<string, RemoteAchievementUnlock>) =>
+    definitions.map((definition) => {
+      const parsed = parseProviderKey(definition.key);
+      return remoteDefinitionToAchievement(
+        definition,
+        unlocksByAchievementId?.get(definition.id),
+        provider,
+        parsed?.sourceAchievementId ?? definition.id,
+      );
+    });
+
+  // Definitions belong to the public game catalog. Authentication is only
+  // required for the current player's unlock timestamps.
+  if (!userId) {
+    return mapDefinitions();
+  }
+
   const unlocksResult = await client
     .from("user_achievements")
     .select("achievement_id, unlocked_at, metadata")
@@ -407,15 +424,7 @@ async function listRemoteAchievementsForGame(
       definitions.map((definition) => definition.id),
     );
   if (isMissingSchemaError(unlocksResult.error)) {
-    return definitions.map((definition) => {
-      const parsed = parseProviderKey(definition.key);
-      return remoteDefinitionToAchievement(
-        definition,
-        undefined,
-        provider,
-        parsed?.sourceAchievementId ?? definition.id,
-      );
-    });
+    return mapDefinitions();
   }
   handleError(unlocksResult.error);
 
@@ -426,21 +435,13 @@ async function listRemoteAchievementsForGame(
       .map((unlock) => [unlock.achievementId, unlock]),
   );
 
-  return definitions.map((definition) => {
-    const parsed = parseProviderKey(definition.key);
-    return remoteDefinitionToAchievement(
-      definition,
-      unlocksByAchievementId.get(definition.id),
-      provider,
-      parsed?.sourceAchievementId ?? definition.id,
-    );
-  });
+  return mapDefinitions(unlocksByAchievementId);
 }
 
 async function hydrateGameWithRemoteAchievements(
   client: ReturnType<typeof getSupabaseClient>,
   game: Game,
-  userId: string,
+  userId: string | null,
 ): Promise<{ game: Game; transportUnavailable: boolean }> {
   const provider = normalizeProvider(null, game);
   if (!REMOTE_ACHIEVEMENT_PROVIDERS.has(provider)) {
@@ -487,10 +488,10 @@ export async function hydrateGamesWithRemoteAchievements(
     return games;
   }
 
-  const userId = "userId" in options ? (options.userId ?? null) : await getCurrentSessionUserId();
-  if (!userId) {
-    return games;
-  }
+  const userId =
+    "userId" in options
+      ? (options.userId ?? null)
+      : await getCurrentSessionUserId().catch(() => null);
 
   const client = getSupabaseClient();
   const hydratedGames = new Array<Game>(games.length);

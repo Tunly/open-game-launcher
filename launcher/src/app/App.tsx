@@ -10,6 +10,8 @@ import { useOverlayHotkey, useFpsHudHotkey } from "../lib/overlay";
 import { AppErrorBoundary } from "../components/ui/AppErrorBoundary";
 import { completeDesktopStartup } from "../lib/startup-window";
 import { PlaySessionSyncHost } from "../hooks/library/usePlaySessionSync";
+import { LauncherUpdateHost } from "../components/launcher/LauncherUpdateHost";
+import { shouldMountLauncherUpdateHost, type WindowView } from "./window-view-policy";
 
 // Lazy-loaded for overlay/FPS windows only
 const OverlayPage = lazy(() =>
@@ -18,8 +20,6 @@ const OverlayPage = lazy(() =>
 const FpsHudPageLazy = lazy(() =>
   import("../pages/FpsHudPage").then((m) => ({ default: m.FpsHudPage })),
 );
-
-type WindowView = "main" | "overlay" | "fps-hud";
 
 function getWindowView(): WindowView {
   const queryView = new URLSearchParams(window.location.search).get("view");
@@ -136,6 +136,7 @@ export default function App() {
     <AppErrorBoundary>
       <AuthProvider>
         <StartupWindowCoordinator />
+        {shouldMountLauncherUpdateHost(view) ? <LauncherUpdateHost /> : null}
         <MainWindowHandlers />
         <DeepLinkHandler />
         <PlaySessionSyncHost />

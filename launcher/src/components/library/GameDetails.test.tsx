@@ -69,6 +69,7 @@ describe("GameDetails actions", () => {
     renderGameDetails();
 
     expect(screen.getByRole("button", { name: "Game Settings" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Mods" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Capture screenshot" })).not.toBeInTheDocument();
     expect(screen.queryByText("Screenshots")).not.toBeInTheDocument();
     expect(screen.queryByText(/captures/i)).not.toBeInTheDocument();
@@ -571,6 +572,21 @@ describe("GameDetails actions", () => {
       "Install this selected copy before running maintenance actions.",
     );
     expect(removeButton).toBeEnabled();
+  });
+
+  it("shows an inert catalog action for an OGL game without an installable build", () => {
+    const handlePlay = vi.fn();
+    renderGameDetails(
+      {
+        id: "ogl-neon-runners",
+        launcher: "ogl",
+        status: "not_installed",
+      },
+      { handlePlay },
+    );
+
+    expect(screen.getByRole("button", { name: "OG Catalog" })).toBeDisabled();
+    expect(handlePlay).not.toHaveBeenCalled();
   });
 
   it("opens only the resolver-owned HTTPS support destination", () => {

@@ -56,7 +56,7 @@ pub(crate) async fn download_internal_game_file(
         {
             Ok(()) => {
                 if let Some(expected_sha256) = source.sha256.as_deref() {
-                    verify_download_checksum_or_remove(&final_path, expected_sha256)?;
+                    verify_download_checksum_or_remove(&final_path, expected_sha256, cancel_rx)?;
                 }
                 return Ok(final_path);
             }
@@ -86,6 +86,7 @@ pub(crate) async fn download_internal_game_file(
 pub(crate) async fn download_internal_install_manifest_file(
     source: &InternalDownloadSource,
     install_dir: &PathBuf,
+    cancel_rx: &watch::Receiver<bool>,
 ) -> Result<Option<PathBuf>, String> {
     let Some(manifest_url) = source
         .install_manifest_url
@@ -115,15 +116,21 @@ pub(crate) async fn download_internal_install_manifest_file(
         reqwest::header::ACCEPT,
         HeaderValue::from_static("application/json"),
     );
-    let response = send_validated_remote_request_with_headers(
-        parsed_url,
-        headers,
-        INTERNAL_DOWNLOAD_REQUEST_TIMEOUT,
-    )
-    .await
-    .map_err(|error| {
-        redact_download_error_message(&format!("Install manifest request failed: {error}"))
-    })?;
+    if *cancel_rx.borrow() {
+        return Err("Download cancelled.".to_string());
+    }
+    let mut request_cancel_rx = cancel_rx.clone();
+    let response = tokio::select! {
+        biased;
+        _ = request_cancel_rx.changed() => return Err("Download cancelled.".to_string()),
+        response = send_validated_remote_request_with_headers(
+            parsed_url,
+            headers,
+            INTERNAL_DOWNLOAD_REQUEST_TIMEOUT,
+        ) => response.map_err(|error| {
+            redact_download_error_message(&format!("Install manifest request failed: {error}"))
+        })?,
+    };
     if response
         .content_length()
         .is_some_and(|length| length > MAX_INSTALL_MANIFEST_BYTES)
@@ -132,7 +139,16 @@ pub(crate) async fn download_internal_install_manifest_file(
     }
     let mut bytes = Vec::new();
     let mut body = response.bytes_stream();
-    while let Some(chunk) = body.next().await {
+    let mut stream_cancel_rx = cancel_rx.clone();
+    loop {
+        let chunk = tokio::select! {
+            biased;
+            _ = stream_cancel_rx.changed() => return Err("Download cancelled.".to_string()),
+            chunk = body.next() => chunk,
+        };
+        let Some(chunk) = chunk else {
+            break;
+        };
         let chunk =
             chunk.map_err(|error| format!("Could not read install manifest response: {error}"))?;
         checked_internal_download_size(bytes.len() as u64, chunk.len(), MAX_INSTALL_MANIFEST_BYTES)
@@ -140,12 +156,15 @@ pub(crate) async fn download_internal_install_manifest_file(
         bytes.extend_from_slice(&chunk);
     }
 
+    if *cancel_rx.borrow() {
+        return Err("Download cancelled.".to_string());
+    }
     if let Err(error) = tokio::fs::write(&final_path, bytes).await {
         let _ = tokio::fs::remove_file(&final_path).await;
         return Err(format!("Could not write install manifest: {error}"));
     }
     if let Some(expected_sha256) = source.install_manifest_sha256.as_deref() {
-        verify_download_checksum_or_remove(&final_path, expected_sha256)?;
+        verify_download_checksum_or_remove(&final_path, expected_sha256, cancel_rx)?;
     }
 
     Ok(Some(final_path))
@@ -182,12 +201,21 @@ async fn download_internal_game_file_once(
     }
 
     let url = validated_internal_download_url(source_url)?;
-    let response =
-        send_validated_remote_request_with_headers(url, headers, INTERNAL_DOWNLOAD_REQUEST_TIMEOUT)
-            .await
-            .map_err(|error| {
-                redact_download_error_message(&format!("Download request failed: {error}"))
-            })?;
+    if *cancel_rx.borrow() {
+        return Err("Download cancelled.".to_string());
+    }
+    let mut request_cancel_rx = cancel_rx.clone();
+    let response = tokio::select! {
+        biased;
+        _ = request_cancel_rx.changed() => return Err("Download cancelled.".to_string()),
+        response = send_validated_remote_request_with_headers(
+            url,
+            headers,
+            INTERNAL_DOWNLOAD_REQUEST_TIMEOUT,
+        ) => response.map_err(|error| {
+            redact_download_error_message(&format!("Download request failed: {error}"))
+        })?,
+    };
     let status = response.status();
     if !status.is_success() {
         return Err(format!("Download failed with status {status}"));
@@ -235,7 +263,19 @@ async fn download_internal_game_file_once(
     );
 
     let mut body = response.bytes_stream();
-    while let Some(chunk) = body.next().await {
+    let mut stream_cancel_rx = cancel_rx.clone();
+    loop {
+        let chunk = tokio::select! {
+            biased;
+            _ = stream_cancel_rx.changed() => {
+                let _ = tokio::fs::remove_file(part_path).await;
+                return Err("Download cancelled.".to_string());
+            }
+            chunk = body.next() => chunk,
+        };
+        let Some(chunk) = chunk else {
+            break;
+        };
         if *cancel_rx.borrow() {
             let _ = tokio::fs::remove_file(part_path).await;
             return Err("Download cancelled.".to_string());
@@ -316,6 +356,10 @@ async fn download_internal_game_file_once(
         }
     }
 
+    if *cancel_rx.borrow() {
+        let _ = tokio::fs::remove_file(part_path).await;
+        return Err("Download cancelled.".to_string());
+    }
     if final_path.exists() {
         tokio::fs::remove_file(final_path)
             .await
@@ -333,8 +377,12 @@ fn validated_internal_download_url(value: &str) -> Result<reqwest::Url, String> 
         .map_err(|error| error.replace("mod", "download").replace("Mod", "Download"))
 }
 
-fn verify_download_checksum_or_remove(path: &PathBuf, expected: &str) -> Result<(), String> {
-    match verify_sha256(path, expected) {
+fn verify_download_checksum_or_remove(
+    path: &PathBuf,
+    expected: &str,
+    cancel_rx: &watch::Receiver<bool>,
+) -> Result<(), String> {
+    match verify_sha256(path, expected, cancel_rx) {
         Ok(()) => Ok(()),
         Err(error) => match std::fs::remove_file(path) {
             Ok(()) => Err(error),
@@ -437,9 +485,35 @@ mod tests {
         let downloaded = root.join("game.zip");
         std::fs::write(&downloaded, b"untrusted").unwrap();
 
-        let error = verify_download_checksum_or_remove(&downloaded, &"0".repeat(64)).unwrap_err();
+        let (_cancel_tx, cancel_rx) = watch::channel(false);
+        let error = verify_download_checksum_or_remove(&downloaded, &"0".repeat(64), &cancel_rx)
+            .unwrap_err();
 
         assert!(error.contains("SHA-256"));
+        assert!(!downloaded.exists());
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn cancelled_checksum_stops_and_removes_the_partial_artifact() {
+        let root = std::env::temp_dir().join(format!(
+            "ogl-internal-cancelled-checksum-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        let downloaded = root.join("game.zip");
+        std::fs::write(&downloaded, b"untrusted").unwrap();
+        let (cancel_tx, cancel_rx) = watch::channel(false);
+        cancel_tx.send(true).unwrap();
+
+        let error = verify_download_checksum_or_remove(&downloaded, &"0".repeat(64), &cancel_rx)
+            .unwrap_err();
+
+        assert_eq!(error, "Download cancelled.");
         assert!(!downloaded.exists());
         std::fs::remove_dir_all(root).unwrap();
     }

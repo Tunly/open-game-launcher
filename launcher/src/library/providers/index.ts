@@ -6,4 +6,5 @@ export { mergeUbisoftOwned } from "./ubisoft";
 export { mergeXboxOwned } from "./xbox";
 export { mergeGamePassCatalog } from "./gamepass";
 export { mergeBattlenetOwned } from "./battlenet";
+export { mergeOglCatalog } from "./ogl";
 export type { MergeContext, ProviderResult, ProviderMerger } from "./types";

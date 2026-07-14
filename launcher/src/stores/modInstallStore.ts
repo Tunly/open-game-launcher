@@ -9,6 +9,7 @@ export interface ModInstallState {
 }
 
 const TERMINAL_STATUSES = new Set<ModInstallStatus>(["completed", "failed", "cancelled"]);
+const MAX_RETAINED_MOD_INSTALL_ITEMS = 50;
 
 const ACTIVE_STATUSES = new Set<ModInstallStatus>([
   "queued",
@@ -20,10 +21,18 @@ const ACTIVE_STATUSES = new Set<ModInstallStatus>([
 export const useModInstallStore = create<ModInstallState>()((set) => ({
   items: [],
 
-  setItems: (items) => set({ items: items.map(normalizeModInstallItem).sort(sortQueueItems) }),
+  setItems: (items) =>
+    set({
+      items: items
+        .filter((item) => isCurrentModProvider(item.provider))
+        .map(normalizeModInstallItem)
+        .sort(sortQueueItems)
+        .slice(0, MAX_RETAINED_MOD_INSTALL_ITEMS),
+    }),
 
   upsertItem: (item) =>
     set((state) => {
+      if (!isCurrentModProvider(item.provider)) return state;
       const normalizedItem = normalizeModInstallItem(item);
       const index = state.items.findIndex((entry) => entry.installId === normalizedItem.installId);
       if (index > -1) {
@@ -32,9 +41,13 @@ export const useModInstallStore = create<ModInstallState>()((set) => ({
           ...next[index],
           ...normalizedItem,
         });
-        return { items: next.sort(sortQueueItems) };
+        return { items: next.sort(sortQueueItems).slice(0, MAX_RETAINED_MOD_INSTALL_ITEMS) };
       }
-      return { items: [...state.items, normalizedItem].sort(sortQueueItems) };
+      return {
+        items: [...state.items, normalizedItem]
+          .sort(sortQueueItems)
+          .slice(0, MAX_RETAINED_MOD_INSTALL_ITEMS),
+      };
     }),
 
   removeItem: (installId) =>
@@ -42,6 +55,10 @@ export const useModInstallStore = create<ModInstallState>()((set) => ({
       items: state.items.filter((entry) => entry.installId !== installId),
     })),
 }));
+
+function isCurrentModProvider(provider: ModInstallQueueItem["provider"]) {
+  return provider === "nexus" || provider === "steam_workshop";
+}
 
 export function selectActiveModInstallCount(state: ModInstallState): number {
   return state.items.filter((item) => isActiveModInstallItem(item)).length;

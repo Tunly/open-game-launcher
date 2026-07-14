@@ -252,6 +252,27 @@ function readCachedSteamAchievements(
   return achievements.length > 0 ? achievements : undefined;
 }
 
+function readSteamAchievementSummary(
+  record: SteamRawGame,
+): OwnedGame["achievementSummary"] | undefined {
+  const value = record.achievementSummary ?? record.achievement_summary;
+  if (!isRecord(value)) return undefined;
+
+  const unlocked = readNumber(value, ["unlocked"]);
+  const total = readNumber(value, ["total"]);
+  const source = readString(value, ["source"]);
+  if (unlocked === undefined || total === undefined || total <= 0 || !source) {
+    return undefined;
+  }
+
+  return {
+    unlocked: Math.min(Math.round(unlocked), Math.round(total)),
+    total: Math.round(total),
+    isPerfect: value.isPerfect === true && unlocked >= total,
+    source,
+  };
+}
+
 function steamImageUrl(appId: string, asset: string) {
   return `https://cdn.cloudflare.steamstatic.com/steam/apps/${appId}/${asset}`;
 }
@@ -282,6 +303,7 @@ export function normalizeSteamOwnedGames(games: unknown): OwnedGame[] {
     const playtimeMinutes =
       explicitPlaytimeMinutes ?? (hours === undefined ? undefined : Math.round(hours * 60));
     const achievements = readCachedSteamAchievements(record);
+    const achievementSummary = readSteamAchievementSummary(record);
     const achievementsSyncedAt = readString(record, [
       "achievementsSyncedAt",
       "achievements_synced_at",
@@ -301,6 +323,7 @@ export function normalizeSteamOwnedGames(games: unknown): OwnedGame[] {
         ...(playtimeMinutes === undefined ? {} : { playtimeMinutes }),
         lastPlayedAt: readString(record, ["lastPlayedAt", "last_played_at"]) || null,
         ...(achievements ? { achievements } : {}),
+        ...(achievementSummary ? { achievementSummary } : {}),
         ...(achievementsSyncedAt && Number.isFinite(Date.parse(achievementsSyncedAt))
           ? { achievementsSyncedAt }
           : {}),

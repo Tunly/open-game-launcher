@@ -1,5 +1,135 @@
-export type ModProvider =
-  "steam_workshop" | "modio" | "curseforge" | "direct_url" | "local_archive" | "local_folder";
+export type ModProvider = "nexus" | "steam_workshop";
+
+/**
+ * Historical provider values can still exist in local manifests and Supabase.
+ * They are intentionally excluded from every new browse/install surface.
+ */
+export type LegacyModProvider =
+  "modio" | "curseforge" | "direct_url" | "local_archive" | "local_folder";
+
+export type StoredModProvider = ModProvider | LegacyModProvider;
+
+export type ModBrowseSort = "popular" | "latest";
+
+export type ModInstallCapability = "native" | "nxm_handoff" | "steam_handoff" | "unavailable";
+
+export type ModProviderAction = "connect" | "disconnect" | "open_provider" | "none";
+
+export interface ModBrowseRequest {
+  gameId: string;
+  provider: ModProvider;
+  query: string;
+  sort: ModBrowseSort;
+  cursor?: string;
+  pageSize?: number;
+}
+
+export interface ModBrowseItem {
+  id: string;
+  provider: ModProvider;
+  name: string;
+  author: string | null;
+  summary: string | null;
+  url: string;
+  iconUrl: string | null;
+  bannerUrl: string | null;
+  downloads: string | null;
+  endorsements: string | null;
+  version: string | null;
+  fileSizeBytes: number | null;
+  installCapability: ModInstallCapability;
+  installed: boolean;
+  updateAvailable: boolean;
+}
+
+export interface ModBrowsePage {
+  items: ModBrowseItem[];
+  nextCursor: string | null;
+  total: number | null;
+  message: string | null;
+}
+
+export interface ModProviderStatus {
+  provider: ModProvider;
+  available: boolean;
+  connected: boolean;
+  supportsBrowse: boolean;
+  supportsNativeInstall: boolean;
+  message: string;
+  action: ModProviderAction;
+  actionLabel: string | null;
+}
+
+export interface NxmHandlerStatus {
+  registered: boolean;
+  isDefault: boolean;
+  state: "not_checked" | "registered" | "handler_conflict" | "unavailable" | "os_managed";
+  message: string;
+}
+
+export interface NxmLinkStatus {
+  accepted: boolean;
+  code: "ready" | "expired" | "invalid_link" | "continuation_failed";
+  message: string;
+  gameDomain: string | null;
+  modId: number | null;
+  fileId: number | null;
+}
+
+export type ManagedModStatus =
+  "installed" | "disabled" | "external" | "update_available" | "damaged";
+
+export interface ManagedMod {
+  installId: string;
+  gameId: string;
+  provider: ModProvider;
+  providerItemId: string | null;
+  title: string;
+  version: string | null;
+  enabled: boolean;
+  status: ManagedModStatus;
+  installedAt: number | null;
+  canToggle: boolean;
+  canRemove: boolean;
+  manageUrl: string | null;
+}
+
+export type ModActionResult =
+  | {
+      status: "queued";
+      message: string;
+      installId: string | null;
+      delegatedUrl: null;
+    }
+  | {
+      status: "handoff";
+      message: string;
+      installId: null;
+      delegatedUrl: string;
+    }
+  | {
+      status: "unavailable";
+      message: string;
+      installId: null;
+      delegatedUrl: null;
+    };
+
+export interface InstallModRequest {
+  gameId: string;
+  provider: ModProvider;
+  itemId: string;
+  title: string;
+  capability: ModInstallCapability;
+}
+
+export interface OpenProviderModRequest {
+  gameId: string;
+  provider: ModProvider;
+  itemId?: string;
+  url?: string;
+  query?: string;
+  sort?: ModBrowseSort;
+}
 
 export type ModInstallStatus =
   | "queued"
@@ -11,107 +141,12 @@ export type ModInstallStatus =
   | "failed"
   | "cancelled";
 
-export type ModSource = "manual" | "steam_workshop" | "local";
-
-export interface ModProfile {
-  id: string;
-  userId: string;
-  name: string;
-  gameId: string;
-  isActive: boolean;
-  createdAt: string;
-}
-
-export interface ManagedMod {
-  id: string;
-  userId: string;
-  gameId: string | null;
-  gameTitle: string;
-  name: string;
-  source: ModSource;
-  sourceUrl: string | null;
-  author: string | null;
-  description: string | null;
-  category: string | null;
-  enabled: boolean;
-  loadOrder: number;
-  profileId: string | null;
-  currentVersionId: string | null;
-  installedAt: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface ModVersion {
-  id: string;
-  modId: string;
-  version: string;
-  changelog: string | null;
-  fileSizeBytes: number;
-  sha256: string | null;
-  downloadUrl: string | null;
-  isLatest: boolean;
-  createdAt: string;
-}
-
-export interface ModFile {
-  id: string;
-  modVersionId: string;
-  fileName: string;
-  relativePath: string;
-  sizeBytes: number;
-  sha256: string | null;
-  storagePath: string | null;
-  createdAt: string;
-}
-
-export interface ModDependency {
-  id: string;
-  modId: string;
-  dependsOnModId: string;
-  requiredVersion: string | null;
-  isOptional: boolean;
-}
-
-export interface ModReview {
-  id: string;
-  modId: string;
-  userId: string;
-  rating: number;
-  review: string | null;
-  createdAt: string;
-}
-
-export interface ModInstallRequest {
-  gameId: string;
-  provider: ModProvider;
-  catalogItemId?: string;
-  versionId?: string;
-  sourceUrl?: string;
-  localPath?: string;
-  targetPolicyId?: string;
-  profileId?: string;
-  title?: string;
-  sha256?: string;
-}
-
-export interface ModInstallResult {
-  installId: string;
-  gameId: string;
-  status: ModInstallStatus;
-  provider: ModProvider;
-  targetPath: string | null;
-  installedFiles: string[];
-  delegatedUrl: string | null;
-  message: string;
-}
-
 export interface ModInstallQueueItem {
   id: string;
   installId: string;
   gameId: string;
   title: string;
-  provider: ModProvider;
+  provider: StoredModProvider;
   progress: number;
   speed: string;
   status: ModInstallStatus;
@@ -125,6 +160,7 @@ export interface ModInstallQueueItem {
   delegatedUrl?: string | null;
   error?: string | null;
   lastUpdatedAt: number;
+  eventRevision?: number;
 }
 
 export interface InstalledModInfo {
@@ -132,132 +168,14 @@ export interface InstalledModInfo {
   installId: string;
   gameId: string;
   title: string;
-  provider: ModProvider;
+  provider: StoredModProvider;
   enabled: boolean;
   targetPath: string;
   installedFiles: string[];
   profileId?: string | null;
   catalogItemId?: string | null;
   versionId?: string | null;
+  providerFileId?: string | null;
   sourceUrl?: string | null;
   installedAt: number;
-}
-
-export interface ModCatalogEntry {
-  id: string;
-  slug: string;
-  localGameId?: string | null;
-  gameId?: string | null;
-  name: string;
-  author?: string | null;
-  summary?: string | null;
-  description?: string | null;
-  provider: ModProvider;
-  sourceUrl?: string | null;
-  externalId?: string | null;
-  categories: string[];
-  tags: string[];
-  iconUrl?: string | null;
-  bannerUrl?: string | null;
-  status: "draft" | "published" | "delisted";
-  latestVersion?: ModCatalogVersion | null;
-}
-
-export interface ModCatalogVersion {
-  id: string;
-  catalogModId: string;
-  version: string;
-  changelog?: string | null;
-  fileSizeBytes: number;
-  sha256?: string | null;
-  downloadUrl?: string | null;
-  storagePath?: string | null;
-  installStrategy: "archive" | "copy" | "external";
-  isLatest: boolean;
-  status: "draft" | "published" | "delisted";
-  createdAt: string;
-}
-
-export interface SharedModProviderGameMapping {
-  id: string;
-  localGameId: string;
-  gameId?: string | null;
-  gameTitle?: string | null;
-  provider: Extract<ModProvider, "modio" | "curseforge">;
-  providerGameId: string;
-  source: "manual" | "local_hint" | "provider_api" | "admin" | "catalog";
-  confidence: "manual" | "low" | "medium" | "high" | "verified";
-  status: "active" | "archived" | "rejected";
-  createdBy?: string | null;
-  verifiedAt?: string | null;
-  metadata?: Record<string, unknown> | null;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface NexusModInfo {
-  name: string;
-  author: string;
-  summary: string;
-  iconUrl: string | null;
-  downloadsCount: string | null;
-  gameName: string;
-}
-
-export interface NexusSearchResult {
-  name: string;
-  author: string;
-  summary: string;
-  url: string;
-  iconUrl: string | null;
-  downloads: string | null;
-  endorsements: string | null;
-}
-
-export interface NativeModSearchRequest {
-  provider: Extract<ModProvider, "modio" | "curseforge">;
-  providerGameId: string;
-  query: string;
-  page?: number;
-  pageSize?: number;
-}
-
-export interface NativeModSearchResult {
-  provider: Extract<ModProvider, "modio" | "curseforge">;
-  externalId: string;
-  name: string;
-  author: string | null;
-  summary: string | null;
-  url: string;
-  iconUrl: string | null;
-  downloads: string | null;
-  follows: string | null;
-  latestVersion: string | null;
-  downloadUrl: string | null;
-  providerAppUrl?: string | null;
-  fileSizeBytes: number | null;
-}
-
-export type ModProviderStagingProbeStatus = "blocked" | "ready" | "provider_error";
-
-export interface ModProviderStagingProbeRequest {
-  provider: Extract<ModProvider, "modio" | "curseforge">;
-  providerGameId: string;
-  query: string;
-}
-
-export interface ModProviderStagingProbeResult {
-  provider: Extract<ModProvider, "modio" | "curseforge">;
-  providerGameId: string;
-  queryHint: string;
-  pageSize: number;
-  status: ModProviderStagingProbeStatus;
-  liveRequestAttempted: boolean;
-  resultCount: number;
-  directDownloadCount: number;
-  providerAppHandoffCount: number;
-  durationMs: number;
-  redactedRequest: string;
-  message: string;
-  guards: string[];
 }

@@ -29,7 +29,7 @@ import {
 } from "lucide-react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts";
+import { CartesianGrid, Line, LineChart, ResponsiveContainer, XAxis, YAxis } from "recharts";
 import { useCurrentUser } from "../hooks/useCurrentUser";
 import {
   getGroupMessages,
@@ -124,6 +124,11 @@ interface RuntimeOverlaySettings {
   showGpu: boolean;
 }
 
+interface OverlayJoinTarget {
+  gameId: string;
+  platform: string;
+}
+
 const DEFAULT_RUNTIME_OVERLAY_SETTINGS: RuntimeOverlaySettings = {
   fpsHudEnabled: false,
   isEnabled: true,
@@ -139,7 +144,7 @@ function normalizeRuntimeOverlaySettings(
     ? (settings?.position as OverlayPosition)
     : DEFAULT_RUNTIME_OVERLAY_SETTINGS.position;
   const opacity =
-    typeof settings?.opacity === "number"
+    typeof settings?.opacity === "number" && Number.isFinite(settings.opacity)
       ? Math.min(1, Math.max(0.5, settings.opacity))
       : DEFAULT_RUNTIME_OVERLAY_SETTINGS.opacity;
 
@@ -150,6 +155,20 @@ function normalizeRuntimeOverlaySettings(
     position,
     showGpu: settings?.showGpu ?? DEFAULT_RUNTIME_OVERLAY_SETTINGS.showGpu,
   };
+}
+
+function resolveOverlayJoinTarget(
+  presence: UserPresence,
+  fallbackPlatform: FriendLink["platform"],
+): OverlayJoinTarget | null {
+  const platform = presence.platform ?? fallbackPlatform;
+  const gameId = presence.platformGameId?.trim() || presence.currentGameId?.trim();
+
+  if (!platform || platform === "og" || !gameId) {
+    return null;
+  }
+
+  return { gameId, platform };
 }
 
 export function OverlayPage() {
@@ -185,9 +204,17 @@ export function OverlayPage() {
         });
       void listen<NativeOverlaySettings>("overlay-settings-updated", (event) => {
         applySettings(event.payload);
-      }).then((cleanup) => {
-        unlisten = cleanup;
-      });
+      })
+        .then((cleanup) => {
+          if (cancelled) {
+            cleanup();
+          } else {
+            unlisten = cleanup;
+          }
+        })
+        .catch((error) => {
+          console.warn("[overlay] settings listener failed:", error);
+        });
     } else {
       try {
         const stored = localStorage.getItem(OVERLAY_SETTINGS_PREVIEW_KEY);
@@ -245,6 +272,15 @@ export function OverlayPage() {
     closeOverlayWindow();
   }, [closeOverlayWindow, openPanels, panelStates]);
 
+  const globalToggleHandlerRef = useRef<() => void>(() => undefined);
+  globalToggleHandlerRef.current = () => {
+    if (isChromeVisible) {
+      closeOverlay();
+    } else {
+      setIsChromeVisible(true);
+    }
+  };
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
@@ -262,25 +298,43 @@ export function OverlayPage() {
       return;
     }
 
+    let cancelled = false;
     let unlisten: (() => void) | undefined;
     listen("overlay-global-toggle", () => {
-      if (isChromeVisible) {
-        closeOverlay();
-      } else {
-        setIsChromeVisible(true);
-      }
+      globalToggleHandlerRef.current();
     })
       .then((cleanup) => {
-        unlisten = cleanup;
+        if (cancelled) {
+          cleanup();
+        } else {
+          unlisten = cleanup;
+        }
       })
       .catch((err) => {
         console.warn("[overlay] global toggle listener failed:", err);
       });
 
     return () => {
+      cancelled = true;
       unlisten?.();
     };
-  }, [closeOverlay, isChromeVisible]);
+  }, []);
+
+  useEffect(() => {
+    const clampPanelsToViewport = () => {
+      setPanelStates((current) =>
+        Object.fromEntries(
+          Object.entries(current).map(([panel, state]) => [
+            panel,
+            state ? clampPanelState(state) : state,
+          ]),
+        ),
+      );
+    };
+
+    window.addEventListener("resize", clampPanelsToViewport);
+    return () => window.removeEventListener("resize", clampPanelsToViewport);
+  }, []);
 
   useEffect(() => {
     if (isChromeVisible) return;
@@ -463,6 +517,7 @@ export function OverlayPage() {
       {isChromeVisible && blocked && (
         <OverlayFallbackDeck
           blockedAntiCheats={blockedAntiCheats}
+          canToggleFpsHud={runtimeSettings.fpsHudEnabled}
           onBackToGame={closeOverlay}
           onToggleFpsHud={handleToggleFpsHud}
         />
@@ -552,10 +607,12 @@ function overlayDockPositionClass(position: OverlayPosition) {
 
 function OverlayFallbackDeck({
   blockedAntiCheats,
+  canToggleFpsHud,
   onBackToGame,
   onToggleFpsHud,
 }: {
   blockedAntiCheats: AntiCheatInfo[];
+  canToggleFpsHud: boolean;
   onBackToGame: () => void;
   onToggleFpsHud: () => void;
 }) {
@@ -588,13 +645,20 @@ function OverlayFallbackDeck({
             tone="red"
             onClick={onBackToGame}
           />
-          <FallbackAction
-            body="Use the lightweight FPS HUD path instead of a full overlay panel when AC pressure is high."
-            icon={Monitor}
-            label="Toggle FPS HUD"
-            tone="teal"
-            onClick={onToggleFpsHud}
-          />
+          {canToggleFpsHud ? (
+            <FallbackAction
+              body="Use the lightweight FPS HUD path instead of a full overlay panel when AC pressure is high."
+              icon={Monitor}
+              label="Toggle FPS HUD"
+              tone="teal"
+              onClick={onToggleFpsHud}
+            />
+          ) : (
+            <div className="neo-copy border-[3px] border-[#171411] bg-[#efe6d4] p-3 text-[9px] leading-4 font-black text-[#5b403f] uppercase shadow-[3px_3px_0_#1f1c0f]">
+              FPS HUD is disabled. Enable it in Overlay Settings before using the anti-cheat
+              fallback.
+            </div>
+          )}
         </div>
       </div>
       <div className="neo-copy mt-3 border-2 border-[#171411] bg-[#171411] px-3 py-2 text-[9px] leading-4 font-black text-[#fff9ed] uppercase">
@@ -928,6 +992,7 @@ function OverlaySettingsPanel({
   const [hotkey, setHotkey] = useState("Shift+F1");
   const [opacity, setOpacity] = useState(95);
   const [pos, setPos] = useState<OverlayPosition>("bottom_right");
+  const [isEnabled, setIsEnabled] = useState(true);
   const [fpsHudEnabled, setFpsHudEnabled] = useState(false);
   const [showGpu, setShowGpu] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
@@ -948,6 +1013,7 @@ function OverlaySettingsPanel({
       setHotkey(nextHotkey);
       setOpacity(Math.min(100, Math.max(50, nextOpacity)));
       setPos(nextPosition);
+      setIsEnabled(settings.isEnabled ?? true);
       setFpsHudEnabled(settings.fpsHudEnabled ?? false);
       setShowGpu(settings.showGpu ?? true);
     }
@@ -989,7 +1055,7 @@ function OverlaySettingsPanel({
     const settings = {
       fpsHudEnabled,
       hotkey: nextHotkey,
-      isEnabled: true,
+      isEnabled,
       opacity: opacity / 100,
       position: pos,
       showGpu,
@@ -1004,6 +1070,7 @@ function OverlaySettingsPanel({
         setHotkey(saved.hotkey ?? nextHotkey);
         setOpacity(Math.min(100, Math.max(50, savedOpacity)));
         setPos(saved.position ?? pos);
+        setIsEnabled(saved.isEnabled ?? isEnabled);
         setFpsHudEnabled(saved.fpsHudEnabled ?? fpsHudEnabled);
         setShowGpu(saved.showGpu ?? showGpu);
         onSaved(saved);
@@ -1248,13 +1315,15 @@ function OverlayFriendsTab() {
     };
   }, [isInviteVerify, user]);
 
-  const handleJoin = async (friendId: string, gameTitle: string | null) => {
-    if (!gameTitle) return;
+  const handleJoin = async (friendId: string, gameTitle: string, target: OverlayJoinTarget) => {
     setJoining(friendId);
+    setInviteMessage(null);
     try {
-      await launchCrossPlayJoin("steam", gameTitle);
+      await launchCrossPlayJoin(target.platform, target.gameId);
+      setInviteMessage(`Opening ${gameTitle} via ${target.platform}.`);
     } catch (err) {
       console.error(err);
+      setInviteMessage(err instanceof Error ? `Join failed: ${err.message}` : "Join failed.");
     } finally {
       setJoining(null);
     }
@@ -1342,6 +1411,7 @@ function OverlayFriendsTab() {
         const friendId = link.matchedUserId!;
         const isInviteDraftOpen = inviteDraftFriendId === friendId;
         const inviteInputId = `overlay-invite-game-${friendId}`;
+        const joinTarget = p ? resolveOverlayJoinTarget(p, link.platform) : null;
         const statusColor =
           p?.status === "online"
             ? "bg-[#087d6d]"
@@ -1363,9 +1433,9 @@ function OverlayFriendsTab() {
                 )}
               </div>
               <div className="flex shrink-0 items-center gap-1">
-                {p?.currentGameTitle && (
+                {p?.currentGameTitle && joinTarget && (
                   <button
-                    onClick={() => handleJoin(friendId, p.currentGameTitle)}
+                    onClick={() => handleJoin(friendId, p.currentGameTitle!, joinTarget)}
                     disabled={!!joining}
                     className="neo-copy flex items-center gap-1 border-2 border-[#171411] bg-[#087d6d] px-1.5 py-0.5 text-[10px] font-black text-white uppercase shadow-[2px_2px_0_#1f1c0f] hover:translate-y-[-1px] disabled:opacity-50"
                     title="Join"
@@ -1437,6 +1507,8 @@ function OverlayChatTab() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(true);
+  const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -1449,12 +1521,15 @@ function OverlayChatTab() {
     }
     let mounted = true;
     setLoading(true);
+    setActiveRoom(null);
+    setMessages([]);
+    setSendError(null);
     getMyGroupChats()
       .then((r) => {
         if (!mounted) return;
         setRooms(r);
         setLoading(false);
-        if (r.length > 0 && !activeRoom) setActiveRoom(r[0].room.id);
+        setActiveRoom(r[0]?.room.id ?? null);
       })
       .catch((err) => {
         if (mounted) {
@@ -1465,7 +1540,6 @@ function OverlayChatTab() {
     return () => {
       mounted = false;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
   useEffect(() => {
@@ -1495,15 +1569,21 @@ function OverlayChatTab() {
   }, [messages]);
 
   const send = useCallback(async () => {
-    if (!activeRoom || !input.trim() || !user) return;
+    if (!activeRoom || !input.trim() || !user || sending) return;
     const content = input.trim();
     setInput("");
+    setSendError(null);
+    setSending(true);
     try {
       await sendGroupMessage(activeRoom, content);
     } catch (err) {
       console.error(err);
+      setInput((current) => current || content);
+      setSendError(err instanceof Error ? err.message : "Message could not be sent.");
+    } finally {
+      setSending(false);
     }
-  }, [activeRoom, input, user]);
+  }, [activeRoom, input, sending, user]);
 
   if (isAuthLoading) return <OverlayLoadingState />;
   if (!isConfigured) {
@@ -1530,6 +1610,14 @@ function OverlayChatTab() {
 
   return (
     <div className="flex h-full flex-col gap-2">
+      {sendError ? (
+        <p
+          className="neo-copy border-2 border-[#171411] bg-[#b7102a] px-2 py-1 text-[9px] font-black text-white uppercase shadow-[2px_2px_0_#1f1c0f]"
+          role="alert"
+        >
+          {sendError}
+        </p>
+      ) : null}
       <div className="flex gap-1 overflow-x-auto">
         {rooms.map((room) => (
           <button
@@ -1567,7 +1655,8 @@ function OverlayChatTab() {
         />
         <button
           onClick={send}
-          className="border-2 border-[#171411] bg-[#087d6d] px-2 py-1 text-white shadow-[2px_2px_0_#1f1c0f] hover:translate-y-[-1px]"
+          disabled={sending || !input.trim()}
+          className="border-2 border-[#171411] bg-[#087d6d] px-2 py-1 text-white shadow-[2px_2px_0_#1f1c0f] hover:translate-y-[-1px] disabled:opacity-50"
         >
           <Send size={14} />
         </button>
@@ -2049,35 +2138,32 @@ function PerformanceLineChart({
       </div>
       <div className="h-14 w-full overflow-hidden border-2 border-[#171411] bg-[#f6edd8]">
         {isChartReady ? (
-          <LineChart
-            data={data}
-            height={56}
-            margin={{ bottom: 2, left: 2, right: 2, top: 4 }}
-            width={280}
-          >
-            <CartesianGrid
-              stroke="#171411"
-              strokeDasharray="2 4"
-              strokeOpacity={0.18}
-              vertical={false}
-            />
-            <XAxis dataKey="sample" hide type="number" />
-            <YAxis domain={domain} hide width={0} />
-            <Line
-              activeDot={false}
-              connectNulls={false}
-              dataKey="value"
-              dot={
-                validPointCount < 2
-                  ? { fill: color, r: 3, stroke: "#171411", strokeWidth: 2 }
-                  : false
-              }
-              isAnimationActive={false}
-              stroke={color}
-              strokeWidth={3}
-              type="monotone"
-            />
-          </LineChart>
+          <ResponsiveContainer height="100%" minWidth={0} width="100%">
+            <LineChart data={data} margin={{ bottom: 2, left: 2, right: 2, top: 4 }}>
+              <CartesianGrid
+                stroke="#171411"
+                strokeDasharray="2 4"
+                strokeOpacity={0.18}
+                vertical={false}
+              />
+              <XAxis dataKey="sample" hide type="number" />
+              <YAxis domain={domain} hide width={0} />
+              <Line
+                activeDot={false}
+                connectNulls={false}
+                dataKey="value"
+                dot={
+                  validPointCount < 2
+                    ? { fill: color, r: 3, stroke: "#171411", strokeWidth: 2 }
+                    : false
+                }
+                isAnimationActive={false}
+                stroke={color}
+                strokeWidth={3}
+                type="monotone"
+              />
+            </LineChart>
+          </ResponsiveContainer>
         ) : null}
       </div>
     </div>

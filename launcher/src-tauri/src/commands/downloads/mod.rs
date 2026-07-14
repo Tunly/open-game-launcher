@@ -17,10 +17,31 @@ mod utils;
 mod watcher;
 
 pub use health::ProviderHealthStatus;
-pub use history::record_download_item;
 pub use reconcile::ReconciliationResult;
+pub(crate) use types::{clear_download_suppression, suppress_download_emissions};
 pub use types::{DownloadItemPayload, DownloadStartStatus, StartDownloadResponse};
+pub(crate) use utils::normalize_game_id as normalize_download_game_id;
 pub use watcher::start_global_download_watcher;
+
+pub(crate) fn emit_download_item(
+    app: &tauri::AppHandle,
+    payload: DownloadItemPayload,
+) -> Result<(), String> {
+    types::emit_download_payload(app, payload)
+}
+
+pub(crate) fn remove_download_record(app: &tauri::AppHandle, game_id: &str) -> Result<(), String> {
+    history::remove_download_history_item(game_id)?;
+    types::emit_download_removed(app, game_id);
+    Ok(())
+}
+
+pub(crate) fn archive_download_record(app: &tauri::AppHandle, game_id: &str) -> Result<(), String> {
+    history::remove_download_history_item(game_id)?;
+    types::suppress_download_emissions(game_id);
+    types::emit_download_removed(app, game_id);
+    Ok(())
+}
 
 #[tauri::command]
 pub fn get_download_queue() -> Result<Vec<DownloadItemPayload>, String> {

@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
-use std::path::PathBuf;
+use std::{path::PathBuf, str::FromStr};
 use tauri::{Emitter, Manager, WebviewUrl, WebviewWindowBuilder};
-use tauri_plugin_global_shortcut::GlobalShortcutExt;
+use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut};
 
 #[cfg(test)]
 mod overlay_settings_tests {
@@ -60,6 +60,15 @@ mod overlay_settings_tests {
 
         let error = normalize_overlay_settings(input).unwrap_err();
         assert!(error.contains("cannot be empty"));
+    }
+
+    #[test]
+    fn rejects_hotkeys_that_the_native_shortcut_parser_cannot_register() {
+        let mut input = payload();
+        input.hotkey = Some("banana".to_string());
+
+        let error = normalize_overlay_settings(input).unwrap_err();
+        assert!(error.contains("Invalid overlay hotkey"));
     }
 
     #[test]
@@ -142,7 +151,9 @@ mod overlay_settings_tests {
 pub fn toggle_in_game_overlay(app: tauri::AppHandle) -> Result<bool, String> {
     let label = "in_game_overlay";
     if let Some(window) = app.get_webview_window(label) {
-        let _ = window.close();
+        window
+            .close()
+            .map_err(|error| format!("Could not close overlay: {error}"))?;
         Ok(false)
     } else {
         let settings = read_overlay_settings().unwrap_or_else(|_| default_overlay_settings());
@@ -218,7 +229,7 @@ pub fn toggle_fps_hud(app: tauri::AppHandle) -> Result<bool, String> {
             size.width as f64 / scale_factor,
             size.height as f64 / scale_factor,
         );
-        let w = 140.0;
+        let w = 420.0;
         let h = 40.0;
         let position = settings
             .position
@@ -393,13 +404,60 @@ pub fn save_overlay_settings(
 ) -> Result<OverlaySettingsPayload, String> {
     let previous = read_overlay_settings().unwrap_or_else(|_| default_overlay_settings());
     let normalized = normalize_overlay_settings(settings)?;
-    write_overlay_settings(&normalized)?;
+    persist_overlay_settings_with_hotkey_transition(&app, &previous, &normalized)?;
     let fps_hud_close_result = close_fps_hud_if_disabled(&app, &normalized);
-    let hotkey_result = register_configured_overlay_hotkey(&app, previous.hotkey.as_deref());
     let _ = app.emit("overlay-settings-updated", normalized.clone());
     fps_hud_close_result?;
-    hotkey_result?;
     Ok(normalized)
+}
+
+fn persist_overlay_settings_with_hotkey_transition(
+    app: &tauri::AppHandle,
+    previous: &OverlaySettingsPayload,
+    next: &OverlaySettingsPayload,
+) -> Result<(), String> {
+    let previous_hotkey = previous.hotkey.as_deref().unwrap_or(DEFAULT_OVERLAY_HOTKEY);
+    let next_hotkey = next.hotkey.as_deref().unwrap_or(DEFAULT_OVERLAY_HOTKEY);
+    let next_enabled = next.is_enabled.unwrap_or(true);
+    let shortcut_manager = app.global_shortcut();
+    let registered_new = next_enabled && !shortcut_manager.is_registered(next_hotkey);
+
+    if registered_new {
+        shortcut_manager.register(next_hotkey).map_err(|error| {
+            format!("Could not register overlay hotkey '{next_hotkey}': {error}")
+        })?;
+    }
+
+    if let Err(write_error) = write_overlay_settings(next) {
+        if registered_new {
+            let _ = shortcut_manager.unregister(next_hotkey);
+        }
+        return Err(write_error);
+    }
+
+    let should_unregister_previous = shortcut_manager.is_registered(previous_hotkey)
+        && (!next_enabled || previous_hotkey != next_hotkey);
+    if should_unregister_previous {
+        if let Err(unregister_error) = shortcut_manager.unregister(previous_hotkey) {
+            let rollback_file_error = write_overlay_settings(previous).err();
+            let rollback_shortcut_error = if registered_new {
+                shortcut_manager.unregister(next_hotkey).err()
+            } else {
+                None
+            };
+            return Err(format!(
+                "Could not unregister previous overlay hotkey '{previous_hotkey}': {unregister_error}.{}{}",
+                rollback_file_error
+                    .map(|error| format!(" Settings rollback failed: {error}."))
+                    .unwrap_or_default(),
+                rollback_shortcut_error
+                    .map(|error| format!(" Shortcut rollback failed: {error}."))
+                    .unwrap_or_default(),
+            ));
+        }
+    }
+
+    Ok(())
 }
 
 fn close_fps_hud_if_disabled(
@@ -510,6 +568,8 @@ fn normalize_overlay_hotkey(value: Option<String>) -> Result<String, String> {
     {
         return Err("Overlay hotkey contains unsupported characters.".to_string());
     }
+    Shortcut::from_str(&normalized)
+        .map_err(|error| format!("Invalid overlay hotkey '{normalized}': {error}"))?;
     Ok(normalized)
 }
 
