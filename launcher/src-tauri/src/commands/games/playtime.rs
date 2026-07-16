@@ -4,7 +4,7 @@ use std::{
     process::Child,
     sync::{
         atomic::{AtomicBool, Ordering},
-        mpsc, Mutex,
+        mpsc, Arc, Mutex,
     },
     thread::{self, JoinHandle},
     time::Duration,
@@ -13,8 +13,8 @@ use tauri::{AppHandle, Emitter};
 use uuid::Uuid;
 
 use super::core::{
-    current_unix_timestamp, read_installed_games_cache, unix_timestamp_to_iso,
-    update_installed_game_cache,
+    current_unix_timestamp, normalize_game_id, read_installed_games_cache,
+    read_installed_games_cache_result, unix_timestamp_to_iso, update_installed_game_cache,
 };
 use super::types::*;
 use super::{device_id::load_or_create_device_id, play_sessions};
@@ -26,6 +26,7 @@ pub struct PlaytimePoller {
     shutdown_tx: mpsc::Sender<()>,
     stopped_rx: Mutex<mpsc::Receiver<()>>,
     worker: Mutex<Option<JoinHandle<()>>>,
+    observed_processes: Arc<Mutex<HashMap<String, ObservedGameProcess>>>,
     shutdown_requested: AtomicBool,
     shutdown_acknowledged: AtomicBool,
 }
@@ -94,8 +95,10 @@ fn wait_for_poll_or_shutdown(
 pub fn start_playtime_poller(app_handle: AppHandle) -> PlaytimePoller {
     let (shutdown_tx, shutdown_rx) = mpsc::channel();
     let (stopped_tx, stopped_rx) = mpsc::sync_channel(1);
+    let observed_processes = Arc::new(Mutex::new(HashMap::new()));
+    let worker_observed_processes = Arc::clone(&observed_processes);
     let worker = thread::spawn(move || {
-        run_playtime_poller(app_handle, shutdown_rx);
+        run_playtime_poller(app_handle, shutdown_rx, worker_observed_processes);
         let _ = stopped_tx.send(());
     });
 
@@ -103,12 +106,17 @@ pub fn start_playtime_poller(app_handle: AppHandle) -> PlaytimePoller {
         shutdown_tx,
         stopped_rx: Mutex::new(stopped_rx),
         worker: Mutex::new(Some(worker)),
+        observed_processes,
         shutdown_requested: AtomicBool::new(false),
         shutdown_acknowledged: AtomicBool::new(false),
     }
 }
 
-fn run_playtime_poller(app_handle: AppHandle, shutdown_rx: mpsc::Receiver<()>) {
+fn run_playtime_poller(
+    app_handle: AppHandle,
+    shutdown_rx: mpsc::Receiver<()>,
+    observed_processes: Arc<Mutex<HashMap<String, ObservedGameProcess>>>,
+) {
     use sysinfo::System;
     let mut sys = System::new_all();
     // Keep track of accumulated seconds for each running game in this thread.
@@ -118,6 +126,7 @@ fn run_playtime_poller(app_handle: AppHandle, shutdown_rx: mpsc::Receiver<()>) {
         if wait_for_poll_or_shutdown(&shutdown_rx, PLAYTIME_POLL_INTERVAL)
             == PollerWakeReason::Shutdown
         {
+            replace_observed_processes(&observed_processes, HashMap::new());
             finalize_active_sessions_on_shutdown(&app_handle, &mut active_sessions);
             break;
         }
@@ -131,6 +140,7 @@ fn run_playtime_poller(app_handle: AppHandle, shutdown_rx: mpsc::Receiver<()>) {
 
         let cached_games = read_installed_games_cache().unwrap_or_default();
         if cached_games.is_empty() {
+            replace_observed_processes(&observed_processes, HashMap::new());
             continue;
         }
 
@@ -147,6 +157,7 @@ fn run_playtime_poller(app_handle: AppHandle, shutdown_rx: mpsc::Receiver<()>) {
                     name: process_name,
                     exe_path: Some(normalize_path(&exe_path.to_string_lossy())),
                     pid,
+                    start_time: Some(process.start_time()),
                     uptime_seconds: Some(process.run_time()),
                     window,
                 });
@@ -155,6 +166,7 @@ fn run_playtime_poller(app_handle: AppHandle, shutdown_rx: mpsc::Receiver<()>) {
                     name: process_name,
                     exe_path: None,
                     pid,
+                    start_time: Some(process.start_time()),
                     uptime_seconds: Some(process.run_time()),
                     window,
                 });
@@ -163,6 +175,7 @@ fn run_playtime_poller(app_handle: AppHandle, shutdown_rx: mpsc::Receiver<()>) {
 
         let mut activity_updates = HashMap::<String, (Option<String>, u32)>::new();
         let mut updated_cache = cached_games.clone();
+        let mut newly_observed_processes = HashMap::new();
         let last_input_seconds = Some(super::idle::seconds_since_last_input());
 
         for game in updated_cache.iter_mut() {
@@ -171,6 +184,11 @@ fn run_playtime_poller(app_handle: AppHandle, shutdown_rx: mpsc::Receiver<()>) {
             let checked_at = unix_timestamp_to_iso(current_unix_timestamp());
 
             if let Some(running_process) = running_process {
+                if let Some(observed_process) =
+                    observed_process_for_safe_stop(game, running_process)
+                {
+                    newly_observed_processes.insert(game.id.clone(), observed_process);
+                }
                 if let Some(event) = game_lifecycle_event_for_transition(
                     game,
                     was_running,
@@ -241,6 +259,8 @@ fn run_playtime_poller(app_handle: AppHandle, shutdown_rx: mpsc::Receiver<()>) {
                 }
             }
         }
+
+        replace_observed_processes(&observed_processes, newly_observed_processes);
 
         for (game_id, (last_played, add_playtime_minutes)) in activity_updates {
             match update_installed_game_cache(&game_id, move |game| {
@@ -321,8 +341,17 @@ struct RunningProcess {
     name: String,
     exe_path: Option<String>,
     pid: Option<u32>,
+    start_time: Option<u64>,
     uptime_seconds: Option<u64>,
     window: Option<GameWindowInfo>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ObservedGameProcess {
+    pid: u32,
+    name: String,
+    exe_path: String,
+    start_time: u64,
 }
 
 #[derive(Debug, Clone)]
@@ -369,7 +398,16 @@ fn current_platform() -> Platform {
 }
 
 fn normalize_path(path: &str) -> String {
-    path.replace("\\", "/").trim_end_matches('/').to_lowercase()
+    let normalized = path.replace("\\", "/");
+    let normalized = normalized.trim_end_matches('/');
+    #[cfg(target_os = "windows")]
+    {
+        return normalized.to_lowercase();
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        normalized.to_string()
+    }
 }
 
 fn normalize_process_name(name: &str) -> String {
@@ -403,15 +441,33 @@ fn process_name_candidates(game: &InstalledGame) -> Vec<String> {
         })
 }
 
+fn normalized_game_paths(game: &InstalledGame) -> (Option<String>, Option<String>) {
+    (
+        game.install_path.as_ref().map(|path| normalize_path(path)),
+        game.executable_path
+            .as_ref()
+            .map(|path| normalize_path(path)),
+    )
+}
+
+fn process_path_matches_game(game: &InstalledGame, process_path: &str) -> bool {
+    let (install_path, executable_path) = normalized_game_paths(game);
+    executable_path
+        .as_ref()
+        .is_some_and(|path| process_path == path)
+        || install_path.as_ref().is_some_and(|path| {
+            process_path == path
+                || process_path
+                    .strip_prefix(path)
+                    .is_some_and(|rest| rest.starts_with('/'))
+        })
+}
+
 fn find_running_game_process<'a>(
     game: &InstalledGame,
     running_processes: &'a [RunningProcess],
 ) -> Option<&'a RunningProcess> {
-    let install_path = game.install_path.as_ref().map(|path| normalize_path(path));
-    let executable_path = game
-        .executable_path
-        .as_ref()
-        .map(|path| normalize_path(path));
+    let (install_path, executable_path) = normalized_game_paths(game);
     let process_names = process_name_candidates(game);
 
     if install_path.is_none() && executable_path.is_none() && process_names.is_empty() {
@@ -420,29 +476,207 @@ fn find_running_game_process<'a>(
 
     let has_path_identity = install_path.is_some() || executable_path.is_some();
 
-    running_processes.iter().find(|process| {
-        if let Some(process_path) = &process.exe_path {
-            if executable_path
-                .as_ref()
-                .is_some_and(|path| process_path == path)
-            {
-                return true;
-            }
-
-            if install_path.as_ref().is_some_and(|path| {
-                process_path == path
-                    || process_path
-                        .strip_prefix(path)
-                        .is_some_and(|rest| rest.starts_with('/'))
-            }) {
-                return true;
-            }
+    if let Some(executable_path) = executable_path {
+        if let Some(process) = running_processes
+            .iter()
+            .find(|process| process.exe_path.as_deref() == Some(executable_path.as_str()))
+        {
+            return Some(process);
         }
+    }
 
-        // A launcher-provided executable path or install root is a stronger identity
-        // than a generic process filename such as game.exe. Falling back to the name
-        // in that case can attribute another game's process and playtime to this game.
-        !has_path_identity && process_names.iter().any(|name| name == &process.name)
+    if let Some(process) = running_processes.iter().find(|process| {
+        process
+            .exe_path
+            .as_deref()
+            .is_some_and(|path| process_path_matches_game(game, path))
+    }) {
+        return Some(process);
+    }
+
+    // A launcher-provided executable path or install root is a stronger identity
+    // than a generic process filename such as game.exe. Falling back to the name
+    // in that case can attribute another game's process and playtime to this game.
+    (!has_path_identity).then(|| {
+        running_processes
+            .iter()
+            .find(|process| process_names.iter().any(|name| name == &process.name))
+    })?
+}
+
+fn observed_process_for_safe_stop(
+    game: &InstalledGame,
+    process: &RunningProcess,
+) -> Option<ObservedGameProcess> {
+    let pid = process.pid?;
+    let start_time = process.start_time.filter(|start_time| *start_time > 0)?;
+    let exe_path = process.exe_path.as_ref()?;
+    process_identity_matches_game_for_stop(game, &process.name, exe_path).then(|| {
+        ObservedGameProcess {
+            pid,
+            name: process.name.clone(),
+            exe_path: exe_path.clone(),
+            start_time,
+        }
+    })
+}
+
+fn process_identity_matches_game_for_stop(
+    game: &InstalledGame,
+    process_name: &str,
+    process_path: &str,
+) -> bool {
+    let (install_path, executable_path) = normalized_game_paths(game);
+    if let Some(executable_path) = executable_path {
+        return process_path == executable_path;
+    }
+
+    let Some(install_path) = install_path else {
+        return false;
+    };
+    let is_inside_install_path = process_path == install_path
+        || process_path
+            .strip_prefix(&install_path)
+            .is_some_and(|rest| rest.starts_with('/'));
+    is_inside_install_path
+        && process_name_candidates(game)
+            .iter()
+            .any(|candidate| candidate == process_name)
+}
+
+fn replace_observed_processes(
+    observed_processes: &Mutex<HashMap<String, ObservedGameProcess>>,
+    replacement: HashMap<String, ObservedGameProcess>,
+) {
+    *observed_processes
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner) = replacement;
+}
+
+fn validate_stop_target(
+    game: &InstalledGame,
+    observed: &ObservedGameProcess,
+    live: &RunningProcess,
+) -> Result<(), String> {
+    if !process_identity_matches_game_for_stop(game, &observed.name, &observed.exe_path) {
+        return Err(
+            "The observed process is no longer backed by this game's configured path. No process was stopped."
+                .to_string(),
+        );
+    }
+    if live.pid != Some(observed.pid)
+        || live.start_time != Some(observed.start_time)
+        || live.name != observed.name
+        || live.exe_path.as_deref() != Some(observed.exe_path.as_str())
+        || !live
+            .exe_path
+            .as_deref()
+            .is_some_and(|path| process_identity_matches_game_for_stop(game, &live.name, path))
+    {
+        return Err(
+            "The live process identity changed after observation. No process was stopped."
+                .to_string(),
+        );
+    }
+    Ok(())
+}
+
+fn running_process_from_sysinfo(pid: sysinfo::Pid, process: &sysinfo::Process) -> RunningProcess {
+    RunningProcess {
+        name: normalize_process_name(&process.name().to_string_lossy()),
+        exe_path: process
+            .exe()
+            .map(|path| normalize_path(&path.to_string_lossy())),
+        pid: Some(pid.as_u32()),
+        start_time: Some(process.start_time()),
+        uptime_seconds: Some(process.run_time()),
+        window: None,
+    }
+}
+
+fn refresh_single_process(system: &mut sysinfo::System, pid: sysinfo::Pid) {
+    system.refresh_processes_specifics(
+        sysinfo::ProcessesToUpdate::Some(&[pid]),
+        true,
+        sysinfo::ProcessRefreshKind::nothing().with_exe(sysinfo::UpdateKind::Always),
+    );
+}
+
+#[tauri::command]
+pub fn stop_game(
+    poller: tauri::State<'_, PlaytimePoller>,
+    game_id: String,
+) -> Result<StopGameResponse, String> {
+    let game_id = normalize_game_id(game_id)?;
+    let game = read_installed_games_cache_result()?
+        .into_iter()
+        .find(|game| game.id == game_id)
+        .ok_or_else(|| format!("Game '{game_id}' was not found."))?;
+    let observed = poller
+        .observed_processes
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .get(&game_id)
+        .cloned()
+        .ok_or_else(|| {
+            "No path-verified running process has been observed for this game. No process was stopped."
+                .to_string()
+        })?;
+
+    let pid = sysinfo::Pid::from_u32(observed.pid);
+    let mut system = sysinfo::System::new();
+    refresh_single_process(&mut system, pid);
+    let process = system.process(pid).ok_or_else(|| {
+        "The observed game process is no longer running. No process was stopped.".to_string()
+    })?;
+    let live = running_process_from_sysinfo(pid, process);
+    validate_stop_target(&game, &observed, &live)?;
+
+    if !process.kill() {
+        return Err("The operating system refused to stop the verified game process.".to_string());
+    }
+
+    let mut stopped = false;
+    for _ in 0..30 {
+        thread::sleep(Duration::from_millis(100));
+        refresh_single_process(&mut system, pid);
+        match system.process(pid) {
+            None => {
+                stopped = true;
+                break;
+            }
+            Some(process)
+                if process.start_time() != observed.start_time
+                    || process
+                        .exe()
+                        .map(|path| normalize_path(&path.to_string_lossy()))
+                        .as_deref()
+                        != Some(observed.exe_path.as_str()) =>
+            {
+                stopped = true;
+                break;
+            }
+            Some(_) => {}
+        }
+    }
+
+    if !stopped {
+        return Err(
+            "The verified stop request was sent, but the process is still running.".to_string(),
+        );
+    }
+
+    poller
+        .observed_processes
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .remove(&game_id);
+
+    Ok(StopGameResponse {
+        game_id,
+        success: true,
+        pid: observed.pid,
+        message: format!("{} was stopped.", game.title),
     })
 }
 
@@ -713,6 +947,7 @@ mod tests {
                 name: "game.exe".to_string(),
                 exe_path: Some("/games/test/game.exe".to_string()),
                 pid: Some(4242),
+                start_time: Some(100),
                 uptime_seconds: Some(total_seconds as u64),
                 window: None,
             },
@@ -828,6 +1063,7 @@ mod tests {
             exe_path: Some("/games/test/game.exe".to_string()),
             name: "game.exe".to_string(),
             pid: Some(4242),
+            start_time: Some(100),
             uptime_seconds: Some(180),
             window: Some(GameWindowInfo {
                 handle: "0x1234".to_string(),
@@ -868,6 +1104,7 @@ mod tests {
             exe_path: Some("/games/test/game.exe".to_string()),
             name: "game.exe".to_string(),
             pid: Some(4242),
+            start_time: Some(100),
             uptime_seconds: Some(300),
             window: Some(GameWindowInfo {
                 handle: "0x1234".to_string(),
@@ -906,6 +1143,7 @@ mod tests {
             exe_path: Some("/games/test/game.exe".to_string()),
             name: "game.exe".to_string(),
             pid: Some(4242),
+            start_time: Some(100),
             uptime_seconds: Some(180),
             window: Some(GameWindowInfo {
                 handle: "0x1234".to_string(),
@@ -953,6 +1191,7 @@ mod tests {
             exe_path: Some("/games/other/game.exe".to_string()),
             name: "game.exe".to_string(),
             pid: Some(99),
+            start_time: Some(100),
             uptime_seconds: Some(10),
             window: None,
         }];
@@ -967,6 +1206,7 @@ mod tests {
             exe_path: Some("/games/test/game.exe".to_string()),
             name: "game.exe".to_string(),
             pid: Some(42),
+            start_time: Some(100),
             uptime_seconds: Some(10),
             window: None,
         }];
@@ -986,6 +1226,7 @@ mod tests {
             exe_path: Some("/unknown/game.exe".to_string()),
             name: "game.exe".to_string(),
             pid: Some(7),
+            start_time: Some(100),
             uptime_seconds: Some(10),
             window: None,
         }];
@@ -994,5 +1235,79 @@ mod tests {
             find_running_game_process(&game, &processes).and_then(|process| process.pid),
             Some(7)
         );
+    }
+
+    #[test]
+    fn stop_observation_never_promotes_a_name_only_match() {
+        let mut game = test_game();
+        game.install_path = None;
+        game.executable_path = None;
+        let process = RunningProcess {
+            exe_path: Some("/unknown/game.exe".to_string()),
+            name: "game.exe".to_string(),
+            pid: Some(7),
+            start_time: Some(100),
+            uptime_seconds: Some(10),
+            window: None,
+        };
+
+        assert!(find_running_game_process(&game, &[process.clone()]).is_some());
+        assert!(observed_process_for_safe_stop(&game, &process).is_none());
+    }
+
+    #[test]
+    fn process_match_prefers_the_configured_executable_over_a_helper_in_the_install_root() {
+        let game = test_game();
+        let helper = RunningProcess {
+            exe_path: Some("/games/test/crash-reporter.exe".to_string()),
+            name: "crash-reporter.exe".to_string(),
+            pid: Some(8),
+            start_time: Some(80),
+            uptime_seconds: Some(10),
+            window: None,
+        };
+        let executable = RunningProcess {
+            exe_path: Some("/games/test/game.exe".to_string()),
+            name: "game.exe".to_string(),
+            pid: Some(9),
+            start_time: Some(90),
+            uptime_seconds: Some(10),
+            window: None,
+        };
+
+        assert!(observed_process_for_safe_stop(&game, &helper).is_none());
+        assert_eq!(
+            find_running_game_process(&game, &[helper, executable]).and_then(|process| process.pid),
+            Some(9)
+        );
+    }
+
+    #[test]
+    fn stop_target_validation_requires_the_same_pid_path_and_start_time() {
+        let game = test_game();
+        let observed = ObservedGameProcess {
+            pid: 42,
+            name: "game.exe".to_string(),
+            exe_path: "/games/test/game.exe".to_string(),
+            start_time: 100,
+        };
+        let exact = RunningProcess {
+            exe_path: Some("/games/test/game.exe".to_string()),
+            name: "game.exe".to_string(),
+            pid: Some(42),
+            start_time: Some(100),
+            uptime_seconds: Some(10),
+            window: None,
+        };
+
+        assert!(validate_stop_target(&game, &observed, &exact).is_ok());
+
+        let mut reused_pid = exact.clone();
+        reused_pid.start_time = Some(101);
+        assert!(validate_stop_target(&game, &observed, &reused_pid).is_err());
+
+        let mut replaced_path = exact;
+        replaced_path.exe_path = Some("/games/other/game.exe".to_string());
+        assert!(validate_stop_target(&game, &observed, &replaced_path).is_err());
     }
 }

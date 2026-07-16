@@ -44,8 +44,8 @@ const PLATFORM_OPTIONS: Record<PlatformType, PlatformImportOption> = {
   epic: {
     key: "epic",
     label: "Epic",
-    detail: "Imports your real Legendary roster",
-    badge: "Native",
+    detail: "Imports friends through your connected Epic session",
+    badge: "Beta",
     accentClass: "bg-[#171411]",
     available: true,
   },

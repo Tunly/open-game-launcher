@@ -147,6 +147,7 @@ export interface UseLibrarySyncResult {
   discoveryMessage: string | null;
   initialLibrarySnapshot: Game[];
   runAutomaticLibrarySync: (forceRefresh?: boolean) => Promise<void>;
+  requestLibraryRescanOnNextFocus: () => void;
   loadInstalledGames: (
     forceRefresh?: boolean,
     shouldApplyResult?: () => boolean,
@@ -211,6 +212,7 @@ export function useLibrarySync({ setStatusMessage }: UseLibrarySyncOptions): Use
   const automaticSyncPendingRef = useRef(false);
   const automaticSyncPendingForceRefreshRef = useRef(false);
   const lastFocusSyncAtRef = useRef(0);
+  const libraryRescanOnNextFocusRef = useRef(false);
 
   useEffect(() => {
     installedGamesRef.current = installedGames;
@@ -303,10 +305,22 @@ export function useLibrarySync({ setStatusMessage }: UseLibrarySyncOptions): Use
         }),
       );
       const nativeIds = new Set(games.map((game) => game.id));
+      const canReconcileNativeOglInstalls = isTauri();
       games.push(
-        ...installedGamesRef.current.filter(
-          (game) => game.launcher === "ogl" && !nativeIds.has(game.id),
-        ),
+        ...installedGamesRef.current
+          .filter((game) => game.launcher === "ogl" && !nativeIds.has(game.id))
+          .map((game) =>
+            !canReconcileNativeOglInstalls || game.status === "not_installed"
+              ? game
+              : {
+                  ...game,
+                  status: "not_installed" as const,
+                  installPath: undefined,
+                  executablePath: undefined,
+                  processNames: [],
+                  launchUri: undefined,
+                },
+          ),
       );
       publishNativeArtworkRepairs(games);
 
@@ -415,6 +429,10 @@ export function useLibrarySync({ setStatusMessage }: UseLibrarySyncOptions): Use
     },
     [loadInstalledGames],
   );
+
+  const requestLibraryRescanOnNextFocus = useCallback(() => {
+    libraryRescanOnNextFocusRef.current = true;
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -703,10 +721,12 @@ export function useLibrarySync({ setStatusMessage }: UseLibrarySyncOptions): Use
       }
 
       const now = Date.now();
-      if (now - lastFocusSyncAtRef.current < 30_000) {
+      const hasPendingProviderRescan = libraryRescanOnNextFocusRef.current;
+      if (!hasPendingProviderRescan && now - lastFocusSyncAtRef.current < 30_000) {
         return;
       }
 
+      libraryRescanOnNextFocusRef.current = false;
       lastFocusSyncAtRef.current = now;
       void runAutomaticLibrarySync(true);
     };
@@ -875,6 +895,7 @@ export function useLibrarySync({ setStatusMessage }: UseLibrarySyncOptions): Use
     discoveryMessage,
     initialLibrarySnapshot,
     runAutomaticLibrarySync,
+    requestLibraryRescanOnNextFocus,
     loadInstalledGames,
     addGameToLibrary,
     shouldShowLibraryLoading,

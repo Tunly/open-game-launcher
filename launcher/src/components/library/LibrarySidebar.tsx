@@ -13,6 +13,8 @@ const LIBRARY_ROW_HEIGHT = 56;
 const LIBRARY_ROW_OVERSCAN = 8;
 const LIBRARY_VIRTUALIZE_THRESHOLD = 80;
 
+export type LibraryGroupOption = "none" | "source" | "platform" | "status";
+
 export interface LibrarySidebarProps {
   games: GameGroup[];
   filteredGames: GameGroup[];
@@ -26,7 +28,8 @@ export interface LibrarySidebarProps {
   advancedFilters: LibraryAdvancedFilters;
   hasActiveFilters?: boolean;
   onResetFilters?: () => void;
-  groupOption: string;
+  groupOption: LibraryGroupOption;
+  setGroupOption: (option: LibraryGroupOption) => void;
   groupedGames: Record<string, GameGroup[]>;
   selectedGroup: GameGroup | null;
   setSelectedGroup: (group: GameGroup) => void;
@@ -34,8 +37,6 @@ export interface LibrarySidebarProps {
   gameRuntimeById?: Record<string, GameRuntimeStatus>;
   runningGameIds?: Set<string>;
   listScrollRef: RefObject<HTMLDivElement | null>;
-  setIsAddGameOpen: (open: boolean) => void;
-  setAddGameError?: (err: string | null) => void;
   onArtworkDrop?: (gameId: string, kind: CustomArtworkKind, file: File) => void;
 }
 
@@ -53,6 +54,7 @@ export function LibrarySidebar({
   hasActiveFilters: hasActiveFiltersProp,
   onResetFilters,
   groupOption,
+  setGroupOption,
   groupedGames,
   selectedGroup,
   setSelectedGroup,
@@ -60,12 +62,8 @@ export function LibrarySidebar({
   gameRuntimeById = {},
   runningGameIds = new Set(),
   listScrollRef,
-  setIsAddGameOpen,
-  setAddGameError,
   onArtworkDrop,
 }: LibrarySidebarProps) {
-  const clearAddGameError = setAddGameError ?? (() => undefined);
-
   const hasActiveFilters =
     hasActiveFiltersProp ??
     (Boolean(searchQuery) ||
@@ -180,6 +178,18 @@ export function LibrarySidebar({
           </div>
           <div className="flex shrink-0 items-center gap-2 pr-2">
             <select
+              value={groupOption}
+              onChange={(event) => setGroupOption(event.target.value as LibraryGroupOption)}
+              className="neo-copy h-6 cursor-pointer border-2 border-black bg-[#d8cbb7] text-[10px] font-black tracking-wider uppercase outline-none"
+              aria-label="Group library"
+              title="Group"
+            >
+              <option value="none">No Groups</option>
+              <option value="source">Provider</option>
+              <option value="platform">Platform</option>
+              <option value="status">Status</option>
+            </select>
+            <select
               value={sortOption}
               onChange={(event) => setSortOption(event.target.value as LibrarySortOption)}
               className="neo-copy h-6 cursor-pointer border-2 border-black bg-[#d8cbb7] text-[10px] font-black tracking-wider uppercase outline-none"
@@ -275,18 +285,6 @@ export function LibrarySidebar({
           </div>
           <LibraryCustomScrollbar targetRef={listScrollRef} />
         </div>
-      </div>
-      <div className="shrink-0 border-t-4 border-black bg-[#f4ead8] px-4 py-2 text-[14px] font-black">
-        <button
-          type="button"
-          className="text-left leading-none uppercase hover:text-[#b7102a]"
-          onClick={() => {
-            clearAddGameError(null);
-            setIsAddGameOpen(true);
-          }}
-        >
-          + Add a Game
-        </button>
       </div>
     </aside>
   );

@@ -29,6 +29,7 @@ import { GroupChatPanel } from "../components/friends/GroupChatPanel";
 import { ActivityFeed } from "../components/friends/ActivityFeed";
 import { CrossPlatformInvite } from "../components/friends/CrossPlatformInvite";
 import { useCurrentUser } from "../hooks/useCurrentUser";
+import { getUnifiedFriendCount } from "../lib/friends-roster";
 import {
   acceptFriendRequest,
   blockUser,
@@ -44,6 +45,7 @@ import {
   unblockUser,
 } from "../lib/supabase/profile";
 import { getVisiblePresence, subscribeToPresenceChanges } from "../lib/supabase/presence";
+import { getMyFriendLinks } from "../lib/supabase/friend-links";
 import {
   getMyPlatformAccounts,
   getPlatformAccountsForUser,
@@ -68,7 +70,7 @@ import type {
   Profile,
   UserPresence,
 } from "../lib/types/profile";
-import type { PlatformAccount, PlatformType } from "../lib/types/friends";
+import type { FriendLink, PlatformAccount, PlatformType } from "../lib/types/friends";
 
 type TabKey = "friends" | "import" | "chat" | "activity" | "invites";
 
@@ -410,6 +412,7 @@ function FriendsPageForAccount({ auth }: { auth: ReturnType<typeof useCurrentUse
     [searchParams, setSearchParams],
   );
   const [friends, setFriends] = useState<Friendship[]>([]);
+  const [friendLinks, setFriendLinks] = useState<FriendLink[]>([]);
   const [requests, setRequests] = useState<FriendRequest[]>([]);
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<Profile[]>([]);
@@ -533,15 +536,17 @@ function FriendsPageForAccount({ auth }: { auth: ReturnType<typeof useCurrentUse
   const refresh = useCallback(async () => {
     const expectedUserId = accountUserId;
     if (!expectedUserId || !isCurrentAccount(expectedUserId)) return;
-    const [loadedFriends, loadedRequests, loadedInvites] = await Promise.all([
+    const [loadedFriends, loadedRequests, loadedInvites, loadedFriendLinks] = await Promise.all([
       getFriends(expectedUserId),
       getMyFriendRequests(),
       getMyGameInvites(),
+      getMyFriendLinks(),
     ]);
     if (!isCurrentAccount(expectedUserId)) return;
     setFriends(loadedFriends);
     setRequests(loadedRequests);
     setInvites(loadedInvites);
+    setFriendLinks(loadedFriendLinks.filter((link) => !link.dismissed));
   }, [accountUserId, isCurrentAccount]);
 
   useEffect(() => {
@@ -791,7 +796,9 @@ function FriendsPageForAccount({ auth }: { auth: ReturnType<typeof useCurrentUse
   }
 
   const myPlatformTypes = myPlatforms.map((p) => p.platform) as PlatformType[];
-  const displayedFriendCount = isConfigured ? friends.length : LOCAL_FRIENDS.length;
+  const displayedFriendCount = isConfigured
+    ? getUnifiedFriendCount(user?.id ?? "", friends, friendLinks)
+    : LOCAL_FRIENDS.length;
   const displayedRequestCount = isConfigured ? requests.length : LOCAL_REQUESTS.length;
   const displayedOnlineFriends = isConfigured
     ? onlineFriends
@@ -847,9 +854,10 @@ function FriendsPageForAccount({ auth }: { auth: ReturnType<typeof useCurrentUse
           {activeTab === "friends" && (
             <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_380px]">
               <div className="space-y-5">
-                <Panel title="Friend List">
+                <Panel title="Friends / All Platforms">
                   <FriendsList
                     currentUserId={user.id}
+                    friendLinks={friendLinks}
                     friends={friends}
                     presenceByUserId={presenceByUserId}
                     selectedFriendId={selectedFriendId}
@@ -1631,6 +1639,9 @@ function LocalFriendsHub({
   activeTab: TabKey;
   onSwitchTab: (tab: TabKey) => void;
 }) {
+  const [localFriends, setLocalFriends] = useState<LocalFriend[]>(LOCAL_FRIENDS);
+  const [localRequests, setLocalRequests] = useState<LocalRequest[]>(LOCAL_REQUESTS);
+  const [blockedFriendIds, setBlockedFriendIds] = useState<string[]>(["static-knight"]);
   const [selectedFriendId, setSelectedFriendId] = useState(LOCAL_FRIENDS[0]?.id ?? "");
   const [chatMessages, setChatMessages] = useState<LocalChatMessage[]>(LOCAL_CHAT_MESSAGES);
   const [chatText, setChatText] = useState("");
@@ -1641,7 +1652,7 @@ function LocalFriendsHub({
     "Local social relay is active because Supabase is not configured.",
   );
   const selectedFriend =
-    LOCAL_FRIENDS.find((friend) => friend.id === selectedFriendId) ?? LOCAL_FRIENDS[0];
+    localFriends.find((friend) => friend.id === selectedFriendId) ?? localFriends[0];
   const visibleSearchResults = LOCAL_SEARCH_RESULTS.filter((result) => {
     const needle = localSearch.trim().toLowerCase();
     return (
@@ -1713,8 +1724,42 @@ function LocalFriendsHub({
     );
   }
 
+  function updateLocalRequest(request: LocalRequest, action: "accept" | "decline" | "cancel") {
+    setLocalRequests((current) => current.filter((item) => item.id !== request.id));
+    if (action === "accept") {
+      const friend: LocalFriend = {
+        id: request.id,
+        artClass: "library-art-mech",
+        displayName: request.displayName,
+        gameTitle: "Open to play",
+        note: "Added from the local relay preview.",
+        platforms: ["OG-Launcher"],
+        signal: "New friend",
+        status: "offline",
+        username: request.username,
+      };
+      setLocalFriends((current) =>
+        current.some((item) => item.id === friend.id) ? current : [...current, friend],
+      );
+      setSelectedFriendId(friend.id);
+    }
+    setLocalMessage(
+      action === "accept"
+        ? `${request.displayName} added to your local roster.`
+        : `${request.displayName} request ${action}ed locally.`,
+    );
+  }
+
+  function toggleLocalBlock(id: string, label: string) {
+    const isBlocked = blockedFriendIds.includes(id);
+    setBlockedFriendIds((current) =>
+      isBlocked ? current.filter((item) => item !== id) : [...current, id],
+    );
+    setLocalMessage(`${label} ${isBlocked ? "unblocked" : "blocked"} locally.`);
+  }
+
   function stagePlayerAction(label: string) {
-    setLocalMessage(`${label} staged locally. Connect Supabase to sync it across devices.`);
+    setLocalMessage(`${label}. Changes are local because Supabase is not configured.`);
   }
 
   function openLocalChat(friend: LocalFriend) {
@@ -1770,7 +1815,7 @@ function LocalFriendsHub({
           <div className="space-y-5">
             <Panel title="Local Roster">
               <div className="grid gap-3 lg:grid-cols-3">
-                {LOCAL_FRIENDS.map((friend) => (
+                {localFriends.map((friend) => (
                   <LocalFriendCard
                     key={friend.id}
                     friend={friend}
@@ -1789,7 +1834,7 @@ function LocalFriendsHub({
 
             <Panel title="Friend Requests">
               <div className="grid gap-3 md:grid-cols-2">
-                {LOCAL_REQUESTS.map((request) => (
+                {localRequests.map((request) => (
                   <div
                     key={request.id}
                     className="border-[3px] border-black bg-[#f6edd8] p-3 shadow-[3px_3px_0_#171411]"
@@ -1808,7 +1853,12 @@ function LocalFriendsHub({
                       <button
                         className="neo-copy border-2 border-black bg-[#007166] px-3 py-2 text-[10px] font-black tracking-[0.12em] text-white uppercase shadow-[2px_2px_0_#171411]"
                         type="button"
-                        onClick={() => stagePlayerAction(`${request.displayName} request action`)}
+                        onClick={() =>
+                          updateLocalRequest(
+                            request,
+                            request.direction === "incoming" ? "accept" : "cancel",
+                          )
+                        }
                       >
                         {request.direction === "incoming" ? "Accept" : "Cancel"}
                       </button>
@@ -1816,7 +1866,7 @@ function LocalFriendsHub({
                         <button
                           className="neo-copy border-2 border-black bg-[#b7102a] px-3 py-2 text-[10px] font-black tracking-[0.12em] text-white uppercase shadow-[2px_2px_0_#171411]"
                           type="button"
-                          onClick={() => stagePlayerAction(`${request.displayName} decline`)}
+                          onClick={() => updateLocalRequest(request, "decline")}
                         >
                           Decline
                         </button>
@@ -1854,14 +1904,32 @@ function LocalFriendsHub({
                         <button
                           className="neo-copy border-2 border-black bg-[#007166] px-3 py-2 text-[10px] font-black tracking-[0.12em] text-white uppercase shadow-[2px_2px_0_#171411]"
                           type="button"
-                          onClick={() => stagePlayerAction(`${result.displayName} add`)}
+                          onClick={() => {
+                            const friend: LocalFriend = {
+                              id: result.id,
+                              artClass: "library-art-tokyo",
+                              displayName: result.displayName,
+                              gameTitle: "Ready to connect",
+                              note: "Added from local player search.",
+                              platforms: ["OG-Launcher"],
+                              signal: "New friend",
+                              status: "offline",
+                              username: result.handle,
+                            };
+                            setLocalFriends((current) =>
+                              current.some((item) => item.id === friend.id)
+                                ? current
+                                : [...current, friend],
+                            );
+                            setLocalMessage(`${result.displayName} added to your local roster.`);
+                          }}
                         >
                           Add
                         </button>
                         <button
                           className="neo-copy border-2 border-black bg-[#fff9ed] px-3 py-2 text-[10px] font-black tracking-[0.12em] text-[#b7102a] uppercase shadow-[2px_2px_0_#171411]"
                           type="button"
-                          onClick={() => stagePlayerAction(`${result.displayName} block`)}
+                          onClick={() => toggleLocalBlock(result.id, result.displayName)}
                         >
                           Block
                         </button>
@@ -1877,23 +1945,29 @@ function LocalFriendsHub({
             </Panel>
 
             <Panel title="Muted Relay">
-              <div className="flex items-center justify-between gap-3 border-2 border-black bg-[#f6edd8] p-3 shadow-[2px_2px_0_#171411]">
-                <div className="min-w-0">
-                  <p className="neo-copy truncate text-[11px] font-black text-[#171411] uppercase">
-                    Static Knight
-                  </p>
-                  <p className="neo-copy truncate text-[9px] font-bold tracking-[0.12em] text-[#5b403f] uppercase">
-                    @staticknight
-                  </p>
+              {blockedFriendIds.includes("static-knight") ? (
+                <div className="flex items-center justify-between gap-3 border-2 border-black bg-[#f6edd8] p-3 shadow-[2px_2px_0_#171411]">
+                  <div className="min-w-0">
+                    <p className="neo-copy truncate text-[11px] font-black text-[#171411] uppercase">
+                      Static Knight
+                    </p>
+                    <p className="neo-copy truncate text-[9px] font-bold tracking-[0.12em] text-[#5b403f] uppercase">
+                      @staticknight
+                    </p>
+                  </div>
+                  <button
+                    className="neo-copy shrink-0 border-2 border-black bg-[#007166] px-2 py-1 text-[10px] font-black tracking-[0.12em] text-white uppercase shadow-[1px_1px_0_#171411]"
+                    type="button"
+                    onClick={() => toggleLocalBlock("static-knight", "Static Knight")}
+                  >
+                    Unblock
+                  </button>
                 </div>
-                <button
-                  className="neo-copy shrink-0 border-2 border-black bg-[#007166] px-2 py-1 text-[10px] font-black tracking-[0.12em] text-white uppercase shadow-[1px_1px_0_#171411]"
-                  type="button"
-                  onClick={() => stagePlayerAction("Static Knight unblock")}
-                >
-                  Unblock
-                </button>
-              </div>
+              ) : (
+                <p className="neo-copy border-2 border-dashed border-black bg-[#fff9ed] p-3 text-[11px] font-bold text-[#655f58] uppercase">
+                  No muted players.
+                </p>
+              )}
             </Panel>
           </aside>
         </div>
@@ -1952,7 +2026,7 @@ function LocalFriendsHub({
                 value={selectedFriend.id}
                 onChange={(event) => setSelectedFriendId(event.target.value)}
               >
-                {LOCAL_FRIENDS.map((friend) => (
+                {localFriends.map((friend) => (
                   <option key={friend.id} value={friend.id}>
                     {friend.displayName}
                   </option>
@@ -2020,8 +2094,8 @@ function LocalFriendsHub({
           composerEnabled={false}
           friends={getLocalActivityFriends()}
           modeLabel="Local Activity Relay"
-          onlineCount={LOCAL_FRIENDS.filter((friend) => friend.status === "online").length}
-          totalFriends={LOCAL_FRIENDS.length}
+          onlineCount={localFriends.filter((friend) => friend.status === "online").length}
+          totalFriends={localFriends.length}
           onSwitchTab={onSwitchTab}
         >
           <LocalActivityFeed items={LOCAL_ACTIVITY} />

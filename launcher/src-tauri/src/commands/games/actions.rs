@@ -20,7 +20,8 @@ use crate::launcher_automation::{
 use super::{
     check_game_updates, is_manual_game, is_og_managed_install_path, launcher_key_from_source,
     normalize_game_id, open_uri, read_installed_games_cache_result, repair_game_files,
-    uninstall_game, verify_game_files, GameStatus, InstalledGame,
+    uninstall_local_game, uninstall_xbox_game, verify_game_files,
+    xbox_package_family_name_for_game, GameStatus, InstalledGame,
 };
 
 const XBOX_CLIENT_URI: &str = "ms-xbl-38966778-3f57-4f6e-a6e9-3b81c79fbb3f://";
@@ -218,6 +219,7 @@ enum PlannedExecutor {
     LocalCheckUpdate,
     LocalRepair,
     LocalUninstall,
+    XboxPackageUninstall,
     RemoveLibraryEntry,
     ProviderAutomation(ProviderAutomationInvocation),
     Handoff(String),
@@ -253,14 +255,6 @@ impl PlannedGameAction {
     #[cfg(test)]
     fn mode(&self) -> GameActionMode {
         self.mode
-    }
-
-    #[cfg(test)]
-    fn handoff_uri(&self) -> Option<&str> {
-        match &self.executor {
-            PlannedExecutor::Handoff(uri) => Some(uri),
-            _ => None,
-        }
     }
 }
 
@@ -588,6 +582,38 @@ fn plan_provider_action(game: &InstalledGame, action: GameAction) -> PlannedGame
         action,
         GameAction::Repair | GameAction::Update | GameAction::Uninstall
     );
+    if provider == "xbox" && action == GameAction::Uninstall {
+        if provider_game_identity(game, provider).is_err() {
+            return unavailable_plan(
+                action_label(action),
+                "Xbox uninstall requires an exact package family name.",
+            );
+        }
+        return available_plan(
+            action_label(action),
+            "OG-Launcher removes the exact Xbox package and verifies that it is gone before updating the library.",
+            GameActionMode::OsAutomation,
+            true,
+            true,
+            true,
+            PlannedExecutor::XboxPackageUninstall,
+        );
+    }
+    if provider == "steam" && action == GameAction::Uninstall {
+        let uri = match provider_handoff_uri(game, provider, action) {
+            Ok(uri) => uri,
+            Err(reason) => return unavailable_plan(action_label(action), reason),
+        };
+        return available_plan(
+            action_label(action),
+            "OG-Launcher opens Steam's exact AppID-bound uninstall flow instead of guessing through client UI.",
+            GameActionMode::UserHandoff,
+            false,
+            true,
+            true,
+            PlannedExecutor::Handoff(uri),
+        );
+    }
     if provider_automation_enabled() {
         if let Some(maintenance_action) = maintenance_action(action) {
             let Some(provider_id) = provider_id(provider) else {
@@ -676,6 +702,10 @@ fn provider_game_identity(game: &InstalledGame, provider: &str) -> Result<String
         game.id.clone()
     } else if provider == "steam" {
         steam_app_id(game).map(str::to_string)?
+    } else if provider == "xbox" {
+        xbox_package_family_name_for_game(game)
+            .ok_or_else(|| "Exact Xbox package family name is missing.".to_string())?
+            .to_string()
     } else {
         game.external_id
             .clone()
@@ -684,14 +714,6 @@ fn provider_game_identity(game: &InstalledGame, provider: &str) -> Result<String
     let candidate = candidate.trim();
     if candidate.is_empty() || candidate.len() > 256 || candidate.chars().any(char::is_control) {
         return Err("Exact provider game identity is missing or unsafe.".to_string());
-    }
-    if provider == "xbox"
-        && (!candidate.contains('_')
-            || !candidate.chars().all(|character| {
-                character.is_ascii_alphanumeric() || matches!(character, '.' | '_' | '-')
-            }))
-    {
-        return Err("Xbox automation requires an exact Package Family Name.".to_string());
     }
     Ok(candidate.to_string())
 }
@@ -988,7 +1010,7 @@ impl PlannedActionExecutor for NativePlannedActionExecutor {
                 })
             }
             PlannedExecutor::LocalUninstall | PlannedExecutor::RemoveLibraryEntry => {
-                let uninstall = uninstall_game(game.id.clone())?;
+                let uninstall = uninstall_local_game(game.id.clone())?;
                 if !uninstall.success {
                     return Err(uninstall.message);
                 }
@@ -997,7 +1019,20 @@ impl PlannedActionExecutor for NativePlannedActionExecutor {
                     message: uninstall.message.clone(),
                     details: vec![uninstall.message],
                     library_changed: true,
-                    rescan_recommended: true,
+                    rescan_recommended: false,
+                })
+            }
+            PlannedExecutor::XboxPackageUninstall => {
+                let uninstall = uninstall_xbox_game(game.id.clone())?;
+                if !uninstall.success {
+                    return Err(uninstall.message);
+                }
+                Ok(LocalExecutionResult {
+                    outcome: GameActionOutcome::Completed,
+                    message: uninstall.message.clone(),
+                    details: vec![uninstall.message],
+                    library_changed: true,
+                    rescan_recommended: false,
                 })
             }
             PlannedExecutor::ProviderAutomation(_)
@@ -1028,6 +1063,7 @@ impl PlannedExecutor {
             Self::LocalCheckUpdate => "local_check_update",
             Self::LocalRepair => "local_repair",
             Self::LocalUninstall => "local_uninstall",
+            Self::XboxPackageUninstall => "xbox_package_uninstall",
             Self::RemoveLibraryEntry => "remove_library_entry",
             Self::ProviderAutomation(_) => "provider_automation",
             Self::Handoff(_) => "provider_handoff",
@@ -1427,31 +1463,25 @@ mod tests {
     }
 
     #[test]
-    fn xbox_uninstall_uses_only_the_exact_safe_client_start() {
-        let mut xbox = game(
-            "xbox-Microsoft.ForzaHorizon5_8wekyb3d8bbwe!App",
-            "Forza Horizon 5",
-            "xbox",
-        );
-        xbox.external_id = Some("Microsoft.ForzaHorizon5_8wekyb3d8bbwe".to_string());
+    fn xbox_uninstall_uses_verified_native_package_removal() {
+        let mut xbox = game("xbox-forza-horizon-5", "Forza Horizon 5", "xbox");
+        xbox.external_id = Some("9NKX70BBCDRN".to_string());
+        xbox.launch_uri =
+            Some("shell:AppsFolder\\Microsoft.ForzaHorizon5_8wekyb3d8bbwe!App".to_string());
 
         let plan = plan_game_action(&xbox, GameAction::Uninstall);
 
-        let uri = if provider_automation_enabled() {
-            assert_eq!(plan.mode(), GameActionMode::OsAutomation);
-            let PlannedExecutor::ProviderAutomation(invocation) = plan.executor else {
-                panic!("expected Xbox OS automation");
-            };
-            provider_client_start_uri(invocation.provider).to_string()
-        } else {
-            assert_eq!(plan.mode(), GameActionMode::UserHandoff);
-            plan.handoff_uri()
-                .expect("Xbox client handoff URI")
-                .to_string()
-        };
-        assert_eq!(uri, "ms-xbl-38966778-3f57-4f6e-a6e9-3b81c79fbb3f://");
-        assert!(!uri.contains('*'));
-        assert!(!uri.to_lowercase().contains("powershell"));
+        assert_eq!(plan.mode(), GameActionMode::OsAutomation);
+        assert!(plan.completion_observable);
+        assert!(plan.destructive);
+        assert!(plan.requires_confirmation);
+        assert!(matches!(
+            plan.executor,
+            PlannedExecutor::XboxPackageUninstall
+        ));
+
+        xbox.launch_uri = None;
+        assert!(!plan_game_action(&xbox, GameAction::Uninstall).available);
     }
 
     #[test]
@@ -1518,7 +1548,10 @@ mod tests {
             assert!(plan.destructive);
             assert!(plan.requires_confirmation);
             assert!(!plan.completion_observable);
-            if provider_automation_enabled() {
+            if action == GameAction::Uninstall {
+                assert_eq!(plan.mode, GameActionMode::UserHandoff);
+                assert!(matches!(plan.executor, PlannedExecutor::Handoff(_)));
+            } else if provider_automation_enabled() {
                 assert_eq!(plan.mode, GameActionMode::ProviderAutomation);
                 assert!(matches!(
                     plan.executor,
@@ -1761,7 +1794,7 @@ mod tests {
     fn windows_feature_plan_uses_safe_client_start_before_semantic_automation() {
         let mut steam = game("steam-440", "Team Fortress 2", "steam");
         steam.external_id = Some("440".to_string());
-        let plan = plan_game_action(&steam, GameAction::Uninstall);
+        let plan = plan_game_action(&steam, GameAction::Repair);
 
         assert_eq!(plan.mode, GameActionMode::ProviderAutomation);
         let PlannedExecutor::ProviderAutomation(invocation) = plan.executor else {
@@ -1771,6 +1804,13 @@ mod tests {
         assert_eq!(start_uri, "steam://open/main");
         assert!(!start_uri.contains("uninstall"));
         assert_eq!(invocation.game_identity, "440");
+
+        let uninstall = plan_game_action(&steam, GameAction::Uninstall);
+        assert_eq!(uninstall.mode, GameActionMode::UserHandoff);
+        assert!(matches!(
+            uninstall.executor,
+            PlannedExecutor::Handoff(ref uri) if uri == "steam://uninstall/440"
+        ));
 
         let mut xbox = game("xbox-demo", "Xbox Demo", "xbox");
         xbox.external_id = Some("Microsoft.XboxDemo_8wekyb3d8bbwe".to_string());

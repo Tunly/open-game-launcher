@@ -565,7 +565,16 @@ export interface LaunchGameResponse {
   message: string;
 }
 
+export interface StopGameResponse {
+  gameId: string;
+  success: boolean;
+  pid: number;
+  message: string;
+}
+
 export interface SyncGameAchievementsResponse {
+  achievementSource?: "steam_authenticated_session" | "steam_community_fallback";
+  achievementPersistence?: "hosted" | "local";
   gameId: string;
   success: boolean;
   game: Game;
@@ -707,6 +716,7 @@ export interface LocalEntityPayload {
   id: string;
   entity: Record<string, unknown>;
   updatedAt: number;
+  deletedAt?: number | null;
   syncToken: string;
 }
 

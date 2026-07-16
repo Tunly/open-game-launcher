@@ -10,10 +10,12 @@ export const deployFunctions = Object.freeze([
   { name: "ingest-achievements", verifyJwt: true },
   { name: "ingest-playtime", verifyJwt: true },
   { name: "invite-hosted-proof", verifyJwt: true },
+  { name: "link-steam-account", verifyJwt: true },
   { name: "notify-price-drop", verifyJwt: false },
   { name: "poll-platform-presence", verifyJwt: false },
   { name: "process-account-deletions", verifyJwt: false },
   { name: "rawg-assets", verifyJwt: true },
+  { name: "relay-steam-achievements", verifyJwt: true },
   { name: "request-account-deletion", verifyJwt: true },
   { name: "store-download-build", verifyJwt: true },
   { name: "store-order-support", verifyJwt: true },
@@ -58,7 +60,12 @@ export const accountDeletionUserStorageBuckets = Object.freeze([
 ]);
 
 export const optionsSmokes = Object.freeze(
-  deployFunctions.map((fn) => ({ name: fn.name })),
+  deployFunctions.map((fn) => ({
+    name: fn.name,
+    ...(fn.name === "ingest-achievements"
+      ? { requiredAllowHeaders: ["x-achievement-attestation"] }
+      : {}),
+  })),
 );
 
 export const schedulerPlan = Object.freeze([
@@ -199,6 +206,17 @@ export const runtimeSecretNames = Object.freeze([
   "STEAM_WEB_API_KEY",
   "PRESENCE_PROVIDER_TOKEN",
 ]);
+
+export function getRuntimeSecretNames(env = process.env) {
+  const selectedFunctions = new Set(
+    getDeployFunctions(env).map((fn) => fn.name),
+  );
+  return runtimeSecretNames.filter(
+    (name) =>
+      name !== "STEAM_WEB_API_KEY" ||
+      selectedFunctions.has("poll-platform-presence"),
+  );
+}
 
 function spawnCommand(spawnImpl, command, args, options) {
   if (process.platform === "win32" && spawnImpl === spawnSync) {
@@ -693,6 +711,7 @@ export function runRuntimeSecretsPreflight(
   env = process.env,
   spawnImpl = spawnSync,
 ) {
+  const expectedNames = getRuntimeSecretNames(env);
   const missingEnv = [];
   if (!safeSupabaseAccessToken(env.SUPABASE_ACCESS_TOKEN)) {
     missingEnv.push("SUPABASE_ACCESS_TOKEN");
@@ -729,14 +748,14 @@ export function runRuntimeSecretsPreflight(
   }
 
   const foundNames = parseSupabaseRuntimeSecretNames(result.stdout);
-  const missing = missingRuntimeSecretNames(foundNames);
+  const missing = missingRuntimeSecretNames(foundNames, expectedNames);
   if (missing.length > 0) {
     throw new Error(
       `Missing Supabase runtime secret names: ${missing.join(", ")}`,
     );
   }
 
-  return { checked: runtimeSecretNames.length };
+  return { checked: expectedNames.length };
 }
 
 export function validateSmokePayload(functionName, payload) {
@@ -862,7 +881,11 @@ async function readJsonResponse(response) {
   }
 }
 
-function validateOptionsSmokeCorsHeaders(headers, expectedOrigin) {
+function validateOptionsSmokeCorsHeaders(
+  headers,
+  expectedOrigin,
+  requiredAllowHeaders = [],
+) {
   const errors = [];
   const allowOrigin = clean(headers.get("access-control-allow-origin"));
   if (!allowOrigin) {
@@ -881,6 +904,20 @@ function validateOptionsSmokeCorsHeaders(headers, expectedOrigin) {
       .filter(Boolean);
     if (!methods.includes("OPTIONS")) {
       errors.push("Access-Control-Allow-Methods must include OPTIONS.");
+    }
+  }
+
+  const allowHeaders = new Set(
+    (clean(headers.get("access-control-allow-headers")) ?? "")
+      .split(",")
+      .map((header) => header.trim().toLowerCase())
+      .filter(Boolean),
+  );
+  for (const requiredHeader of requiredAllowHeaders) {
+    if (!allowHeaders.has(requiredHeader.toLowerCase())) {
+      errors.push(
+        `Access-Control-Allow-Headers must include ${requiredHeader}.`,
+      );
     }
   }
 
@@ -966,7 +1003,11 @@ export async function runOptionsSmoke(
       )})`,
     );
   }
-  const corsErrors = validateOptionsSmokeCorsHeaders(response.headers, origin);
+  const corsErrors = validateOptionsSmokeCorsHeaders(
+    response.headers,
+    origin,
+    smoke.requiredAllowHeaders,
+  );
   if (corsErrors.length > 0) {
     throw new Error(
       `${smoke.name} OPTIONS smoke failed: ${corsErrors.join(" ")}`,
@@ -1017,6 +1058,7 @@ function printPlan(env = process.env) {
 
 export function hostedDeployGatePacket(env = process.env) {
   const functions = getDeployFunctions(env);
+  const checkedRuntimeSecretNames = getRuntimeSecretNames(env);
   const smokePlan = getSmokePlan(env);
   const baseUrlState = deriveFunctionsBaseUrl(env)
     ? "configured"
@@ -1046,7 +1088,7 @@ export function hostedDeployGatePacket(env = process.env) {
     "",
     "## Runtime Secret Names Checked By Preflight",
     "",
-    ...runtimeSecretNames.map((name) => `- ${name}`),
+    ...checkedRuntimeSecretNames.map((name) => `- ${name}`),
     "",
     "## Deploy Functions",
     "",

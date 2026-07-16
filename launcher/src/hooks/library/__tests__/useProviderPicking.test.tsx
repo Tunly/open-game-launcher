@@ -7,6 +7,7 @@ import type { GameGroup } from "../../../lib/game-groups";
 import type { Game } from "../../../lib/types";
 
 const mocks = vi.hoisted(() => ({
+  isTauri: vi.fn(),
   launchCrossPlayJoin: vi.fn(),
   launchGame: vi.fn(),
   launchXboxGame: vi.fn(),
@@ -14,6 +15,10 @@ const mocks = vi.hoisted(() => ({
   startDownload: vi.fn(),
   syncGamePlaytimeStats: vi.fn(),
   writeActivePerformanceGameContext: vi.fn(),
+}));
+
+vi.mock("@tauri-apps/api/core", () => ({
+  isTauri: mocks.isTauri,
 }));
 
 vi.mock("../../../lib/launcher", () => ({
@@ -100,12 +105,41 @@ function renderProviderPicking(
 describe("useProviderPicking", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mocks.isTauri.mockReturnValue(true);
     mocks.startDownload.mockResolvedValue({ message: "Queued external install." });
     mocks.launchCrossPlayJoin.mockResolvedValue(undefined);
     mocks.launchGame.mockResolvedValue({ message: "Launching game." });
     mocks.launchXboxGame.mockResolvedValue(undefined);
     mocks.logGameStart.mockResolvedValue(undefined);
     mocks.syncGamePlaytimeStats.mockResolvedValue(undefined);
+  });
+
+  it("blocks play, install, and provider selection in the browser without native calls", async () => {
+    mocks.isTauri.mockReturnValue(false);
+    const game = makeGame({ status: "installed" });
+    const { hook, setStatusMessage } = renderProviderPicking({
+      selectedGroup: makeGroup([game]),
+    });
+
+    await act(async () => {
+      await hook.result.current.handlePlay();
+      await hook.result.current.handlePlayVariant(game);
+      await hook.result.current.handleInstallFromProvider();
+      await hook.result.current.handlePlayVariant(game, "install");
+    });
+
+    expect(setStatusMessage).toHaveBeenCalledWith(
+      "Launching games is available only in the OG-Launcher desktop app.",
+    );
+    expect(setStatusMessage).toHaveBeenLastCalledWith(
+      "Installing and updating games is available only in the OG-Launcher desktop app.",
+    );
+    expect(hook.result.current.providerPicker).toBeNull();
+    expect(mocks.launchGame).not.toHaveBeenCalled();
+    expect(mocks.launchXboxGame).not.toHaveBeenCalled();
+    expect(mocks.startDownload).not.toHaveBeenCalled();
+    expect(mocks.logGameStart).not.toHaveBeenCalled();
+    expect(mocks.syncGamePlaytimeStats).not.toHaveBeenCalled();
   });
 
   it.each([
@@ -254,6 +288,27 @@ describe("useProviderPicking", () => {
     });
   });
 
+  it("launches an owned-provider copy with an available update instead of queuing it", async () => {
+    const game = makeGame({
+      id: "steam-owned-1245620",
+      launcher: "steam",
+      status: "update_available",
+      title: "Update Ready",
+    });
+    const { hook, setStatusMessage } = renderProviderPicking();
+
+    await act(async () => {
+      await hook.result.current.handlePlayVariant(game);
+    });
+
+    expect(mocks.launchGame).toHaveBeenCalledWith("steam-owned-1245620");
+    expect(mocks.startDownload).not.toHaveBeenCalled();
+    expect(setStatusMessage).toHaveBeenLastCalledWith("Launching game.");
+    expect(mocks.logGameStart).toHaveBeenCalledWith("steam-owned-1245620", "Update Ready", {
+      launcher: "steam",
+    });
+  });
+
   it("launches an installed manual game and tolerates playtime sync failure", async () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
     mocks.syncGamePlaytimeStats.mockRejectedValue(new Error("offline"));
@@ -388,8 +443,8 @@ describe("useProviderPicking", () => {
     );
   });
 
-  it("does nothing when play has no selected group or eligible variant", async () => {
-    const { hook } = renderProviderPicking();
+  it("reports when a selected group has no playable or installable variant", async () => {
+    const { hook, setStatusMessage } = renderProviderPicking();
 
     await act(async () => {
       await hook.result.current.handlePlay();
@@ -404,10 +459,13 @@ describe("useProviderPicking", () => {
     expect(hook.result.current.providerPicker).toBeNull();
     expect(mocks.launchGame).not.toHaveBeenCalled();
     expect(mocks.startDownload).not.toHaveBeenCalled();
+    expect(setStatusMessage).toHaveBeenLastCalledWith(
+      "No installable copy of Test Group is available.",
+    );
   });
 
   it("handles explicit provider installation for zero, one, or several candidates", async () => {
-    const { hook } = renderProviderPicking();
+    const { hook, setStatusMessage } = renderProviderPicking();
 
     await act(async () => {
       await hook.result.current.handleInstallFromProvider();
@@ -419,6 +477,9 @@ describe("useProviderPicking", () => {
       await hook.result.current.handleInstallFromProvider();
     });
     expect(mocks.startDownload).not.toHaveBeenCalled();
+    expect(setStatusMessage).toHaveBeenLastCalledWith(
+      "Test Group is already installed and up to date.",
+    );
 
     const only = makeGame({ id: "catalog-only" });
     act(() => {
@@ -434,7 +495,10 @@ describe("useProviderPicking", () => {
       undefined,
     );
 
-    const variants = [makeGame({ id: "catalog-a" }), makeGame({ id: "catalog-b" })];
+    const variants = [
+      makeGame({ id: "catalog-a" }),
+      makeGame({ id: "gog-owned-b", launcher: "gog", status: "update_available" }),
+    ];
     act(() => {
       hook.rerender({ group: makeGroup(variants, "Install Choice") });
     });
@@ -446,5 +510,43 @@ describe("useProviderPicking", () => {
       title: "Install Choice",
       variants,
     });
+  });
+
+  it("queues an explicit provider update instead of launching the playable copy", async () => {
+    const update = makeGame({
+      id: "gog-owned-1207658995",
+      launcher: "gog",
+      status: "update_available",
+      title: "Update Ready",
+    });
+    const { hook, setStatusMessage } = renderProviderPicking({
+      selectedGroup: makeGroup([update]),
+    });
+
+    await act(async () => {
+      await hook.result.current.handleInstallFromProvider();
+    });
+
+    expect(mocks.startDownload).toHaveBeenCalledWith(
+      "gog-owned-1207658995",
+      "Update Ready",
+      undefined,
+      undefined,
+    );
+    expect(mocks.launchGame).not.toHaveBeenCalled();
+    expect(setStatusMessage).toHaveBeenLastCalledWith("Queued external install.");
+  });
+
+  it("reports provider install and update failures", async () => {
+    mocks.startDownload.mockRejectedValue(new Error("Provider client unavailable"));
+    const update = makeGame({ status: "update_available" });
+    const { hook, setStatusMessage } = renderProviderPicking();
+
+    await act(async () => {
+      await hook.result.current.handlePlayVariant(update, "install");
+    });
+
+    expect(setStatusMessage).toHaveBeenLastCalledWith("Provider client unavailable");
+    expect(mocks.launchGame).not.toHaveBeenCalled();
   });
 });

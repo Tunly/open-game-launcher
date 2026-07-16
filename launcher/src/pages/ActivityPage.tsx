@@ -1,5 +1,5 @@
-import { CalendarDays, Loader2, Search, Shield, Trophy, UserPlus, Users } from "lucide-react";
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { Loader2, Search, Shield, Trophy, UserPlus, Users } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 
 import { ActivityFeed, type ActivityFeedProfile } from "../components/friends/ActivityFeed";
@@ -20,7 +20,13 @@ type ActivityFriend = ActivityFeedProfile & {
   status: UserPresence["status"];
 };
 
+const PREVIEW_CURRENT_USER_ID = "preview-self";
+
 const PREVIEW_PROFILES = new Map<string, ActivityFeedProfile>([
+  [
+    PREVIEW_CURRENT_USER_ID,
+    { avatarUrl: null, displayName: "OG Operator", username: "ogoperator" },
+  ],
   ["preview-packet", { avatarUrl: null, displayName: "Packet Ghost", username: "packetghost" }],
   ["preview-teal", { avatarUrl: null, displayName: "Teal Shift", username: "tealshift" }],
   ["preview-arcade", { avatarUrl: null, displayName: "Arcade Witch", username: "arcadewitch" }],
@@ -53,8 +59,35 @@ const PREVIEW_FRIENDS: ActivityFriend[] = [
   },
 ];
 
-function previewActivity(): ActivityFeedItem[] {
+function previewActivity(isMyActivity: boolean): ActivityFeedItem[] {
   const now = Date.now();
+  if (isMyActivity) {
+    return [
+      {
+        achievementName: null,
+        createdAt: new Date(now - 12 * 60_000).toISOString(),
+        gameId: null,
+        gameTitle: "Neon Drift",
+        id: "preview-self-status",
+        metadata: { text: "Loadout locked. Night run starts at 21:00." },
+        type: "status",
+        userId: PREVIEW_CURRENT_USER_ID,
+        visibility: "friends_only",
+      },
+      {
+        achievementName: "Perfect Line",
+        createdAt: new Date(now - 74 * 60_000).toISOString(),
+        gameId: null,
+        gameTitle: "Neon Drift",
+        id: "preview-self-achievement",
+        metadata: { platform: "steam" },
+        type: "achievement_unlocked",
+        userId: PREVIEW_CURRENT_USER_ID,
+        visibility: "friends_only",
+      },
+    ];
+  }
+
   return [
     {
       achievementName: null,
@@ -103,11 +136,31 @@ function previewActivity(): ActivityFeedItem[] {
   ];
 }
 
-function previewInteractions(): {
+function previewInteractions(isMyActivity: boolean): {
   comments: ActivityComment[];
   summaries: ActivityInteractionSummary[];
 } {
   const now = Date.now();
+  if (isMyActivity) {
+    return {
+      comments: [],
+      summaries: [
+        {
+          activityId: "preview-self-status",
+          commentCount: 0,
+          reactedByCurrentUser: false,
+          reactionCount: 5,
+        },
+        {
+          activityId: "preview-self-achievement",
+          commentCount: 0,
+          reactedByCurrentUser: false,
+          reactionCount: 9,
+        },
+      ],
+    };
+  }
+
   return {
     comments: [
       {
@@ -156,14 +209,17 @@ export function ActivityPage() {
   const [searchParams] = useSearchParams();
   const [friends, setFriends] = useState<ActivityFriend[]>([]);
   const [profiles, setProfiles] = useState<ReadonlyMap<string, ActivityFeedProfile>>(new Map());
-  const [loading, setLoading] = useState(false);
-  const [loadError, setLoadError] = useState<string | null>(null);
+  const [friendDataUserId, setFriendDataUserId] = useState<string | null>(null);
+  const [friendDataLoading, setFriendDataLoading] = useState(false);
+  const [friendDataWarning, setFriendDataWarning] = useState<string | null>(null);
+  const [friendDataVersion, setFriendDataVersion] = useState(0);
   const [query, setQuery] = useState("");
   const [statusText, setStatusText] = useState("");
   const [statusGameTitle, setStatusGameTitle] = useState("");
   const [posting, setPosting] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const [feedVersion, setFeedVersion] = useState(0);
+  const requestedFriendDataUserIdRef = useRef<string | null>(null);
   const isPreview =
     !isConfigured || (import.meta.env.DEV && searchParams.get("verify") === "activity-preview");
   const isMyActivity = searchParams.get("view") === "mine";
@@ -171,24 +227,50 @@ export function ActivityPage() {
 
   useEffect(() => {
     if (!isConfigured || !user) {
+      requestedFriendDataUserIdRef.current = null;
       setFriends([]);
       setProfiles(new Map());
-      setLoading(false);
+      setFriendDataUserId(null);
+      setFriendDataLoading(false);
+      setFriendDataWarning(null);
       return;
     }
 
     let active = true;
-    setLoading(true);
-    setLoadError(null);
+    const isNewUser = requestedFriendDataUserIdRef.current !== user.id;
+    requestedFriendDataUserIdRef.current = user.id;
+    setFriendDataUserId(user.id);
+    if (isNewUser) {
+      setFriends([]);
+      setProfiles(new Map());
+    }
+    setFriendDataLoading(true);
+    setFriendDataWarning(null);
 
-    void getFriends(user.id)
-      .then(async (friendships) => {
+    void (async () => {
+      try {
+        const friendships = await getFriends(user.id);
         const ids = friendships.map((friendship) => friendId(friendship, user.id));
-        const [profileMap, presences] = await Promise.all([
+        if (!active) return;
+
+        setFriends(
+          ids.map((id) => ({
+            avatarUrl: null,
+            currentGame: null,
+            displayName: null,
+            id,
+            status: "offline",
+            username: `player-${id.slice(0, 8)}`,
+          })),
+        );
+
+        const [profileResult, presenceResult] = await Promise.allSettled([
           getProfilesForUsers(ids),
           getVisiblePresence(ids),
         ]);
         if (!active) return;
+        const profileMap = profileResult.status === "fulfilled" ? profileResult.value : new Map();
+        const presences = presenceResult.status === "fulfilled" ? presenceResult.value : [];
         const presenceMap = new Map(presences.map((presence) => [presence.userId, presence]));
         setProfiles(profileMap);
         setFriends(
@@ -205,19 +287,33 @@ export function ActivityPage() {
             };
           }),
         );
-      })
-      .catch((error: unknown) => {
-        if (active)
-          setLoadError(error instanceof Error ? error.message : "Activity friends failed.");
-      })
-      .finally(() => {
-        if (active) setLoading(false);
-      });
+
+        const unavailableSignals = [
+          profileResult.status === "rejected" ? "profiles" : null,
+          presenceResult.status === "rejected" ? "presence" : null,
+        ].filter((value): value is string => Boolean(value));
+        if (unavailableSignals.length > 0) {
+          setFriendDataWarning(
+            `Friend ${unavailableSignals.join(" and ")} unavailable. Activity is still available; names or online status may be incomplete.`,
+          );
+        }
+      } catch (error) {
+        if (!active) return;
+        setFriends([]);
+        setProfiles(new Map());
+        const detail = error instanceof Error && error.message.trim() ? ` ${error.message}` : "";
+        setFriendDataWarning(
+          `Friend roster unavailable. Activity is still available, but friend coverage may be incomplete.${detail}`,
+        );
+      } finally {
+        if (active) setFriendDataLoading(false);
+      }
+    })();
 
     return () => {
       active = false;
     };
-  }, [isConfigured, user]);
+  }, [friendDataVersion, isConfigured, user]);
 
   useEffect(() => {
     const ids = presenceFriendIdsKey ? presenceFriendIdsKey.split("|") : [];
@@ -237,8 +333,20 @@ export function ActivityPage() {
     });
   }, [isConfigured, presenceFriendIdsKey]);
 
-  const visibleFriends = isPreview ? PREVIEW_FRIENDS : friends;
-  const visibleProfiles = isPreview ? PREVIEW_PROFILES : profiles;
+  const friendDataBelongsToCurrentUser = friendDataUserId === (user?.id ?? null);
+  const visibleFriends = useMemo(
+    () => (isPreview ? PREVIEW_FRIENDS : friendDataBelongsToCurrentUser ? friends : []),
+    [friendDataBelongsToCurrentUser, friends, isPreview],
+  );
+  const visibleProfiles = useMemo(
+    () =>
+      isPreview
+        ? PREVIEW_PROFILES
+        : friendDataBelongsToCurrentUser
+          ? profiles
+          : new Map<string, ActivityFeedProfile>(),
+    [friendDataBelongsToCurrentUser, isPreview, profiles],
+  );
   const onlineCount = visibleFriends.filter((friend) =>
     ["online", "away", "busy"].includes(friend.status),
   ).length;
@@ -252,14 +360,20 @@ export function ActivityPage() {
     );
   }, [query, visibleFriends]);
   const feedUserIds = useMemo(() => {
-    if (isPreview) return visibleFriends.map((friend) => friend.id);
+    if (isPreview) {
+      return isMyActivity ? [PREVIEW_CURRENT_USER_ID] : visibleFriends.map((friend) => friend.id);
+    }
     if (!user) return [];
     if (isMyActivity) return [user.id];
     return [user.id, ...visibleFriends.map((friend) => friend.id)];
   }, [isMyActivity, isPreview, user, visibleFriends]);
+  const visiblePreviewItems = useMemo(
+    () => (isPreview ? previewActivity(isMyActivity) : undefined),
+    [isMyActivity, isPreview],
+  );
   const visiblePreviewInteractions = useMemo(
-    () => (isPreview ? previewInteractions() : undefined),
-    [isPreview],
+    () => (isPreview ? previewInteractions(isMyActivity) : undefined),
+    [isMyActivity, isPreview],
   );
 
   async function submitStatus(event: FormEvent<HTMLFormElement>) {
@@ -300,9 +414,6 @@ export function ActivityPage() {
           <h1 className="neo-title text-4xl leading-none sm:text-6xl">
             {isMyActivity ? "My Activity" : "Friend Activity"}
           </h1>
-          <p className="neo-copy mt-3 max-w-3xl text-[11px] leading-5 font-black text-[#8cf5e4] uppercase">
-            See what friends play, buy, wishlist, and unlock across the launcher network.
-          </p>
         </div>
         <div className="grid grid-cols-2 border-t-[5px] border-black bg-[#f5eedf] text-[#171411] lg:w-72 lg:border-t-0 lg:border-l-[5px]">
           <ActivityStat label="Friends" value={visibleFriends.length} />
@@ -326,7 +437,9 @@ export function ActivityPage() {
 
       {isPreview ? (
         <p className="neo-copy border-[3px] border-black bg-[#8cf5e4] p-3 text-[10px] leading-5 font-black text-[#171411] uppercase shadow-[3px_3px_0_#171411]">
-          Local preview // Connect Supabase to replace these examples with your real friend feed.
+          {isMyActivity
+            ? "Local preview // Showing sample activity for your own player profile."
+            : "Local preview // Connect Supabase to replace these examples with your real friend feed."}
         </p>
       ) : null}
 
@@ -411,24 +524,46 @@ export function ActivityPage() {
             </section>
 
             <section className="border-[5px] border-black bg-[#f5eedf] p-3 shadow-[6px_6px_0_#171411]">
-              {loading ? (
-                <div className="grid min-h-52 place-items-center">
-                  <Loader2 className="h-7 w-7 animate-spin text-[#b7102a]" />
+              {!isPreview && friendDataWarning ? (
+                <div
+                  className="mb-4 border-[3px] border-black bg-[#f3c3c9] p-3 shadow-[3px_3px_0_#171411]"
+                  role="alert"
+                >
+                  <p className="neo-title text-2xl leading-none text-[#171411]">
+                    Friend signal partially unavailable
+                  </p>
+                  <p className="neo-copy mt-2 text-[10px] leading-5 font-black text-[#5b403f] uppercase">
+                    {friendDataWarning}
+                  </p>
+                  <button
+                    className="neo-copy mt-3 inline-flex items-center gap-2 border-2 border-black bg-[#b7102a] px-3 py-2 text-[9px] font-black tracking-[0.1em] text-white uppercase shadow-[2px_2px_0_#171411] disabled:opacity-60"
+                    disabled={friendDataLoading}
+                    type="button"
+                    onClick={() => setFriendDataVersion((value) => value + 1)}
+                  >
+                    {friendDataLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                    {friendDataLoading ? "Retrying friend data..." : "Retry friend data"}
+                  </button>
                 </div>
-              ) : loadError ? (
-                <p className="neo-copy border-[3px] border-black bg-[#f3c3c9] p-4 text-[10px] font-black text-[#171411] uppercase">
-                  {loadError}
+              ) : null}
+              {!isPreview && friendDataLoading ? (
+                <p
+                  className="neo-copy mb-3 flex items-center gap-2 border-2 border-black bg-[#8cf5e4] p-2 text-[9px] font-black text-[#171411] uppercase"
+                  role="status"
+                >
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" /> Syncing friend signals... Feed
+                  remains available.
                 </p>
-              ) : (
-                <ActivityFeed
-                  currentUserId={user?.id ?? null}
-                  friendIds={feedUserIds}
-                  key={feedVersion}
-                  previewInteractions={visiblePreviewInteractions}
-                  previewItems={isPreview ? previewActivity() : undefined}
-                  profiles={visibleProfiles}
-                />
-              )}
+              ) : null}
+              <ActivityFeed
+                currentUserId={isPreview ? PREVIEW_CURRENT_USER_ID : (user?.id ?? null)}
+                friendIds={feedUserIds}
+                key={feedVersion}
+                previewInteractions={visiblePreviewInteractions}
+                previewItems={visiblePreviewItems}
+                profiles={visibleProfiles}
+                scope={isMyActivity ? "mine" : "friends"}
+              />
             </section>
           </div>
 
@@ -460,14 +595,6 @@ export function ActivityPage() {
               >
                 <UserPlus className="h-4 w-4" /> Manage friends
               </Link>
-            </RailPanel>
-
-            <RailPanel icon={<CalendarDays className="h-4 w-4" />} title="Upcoming Events" dark>
-              <RailNote
-                icon={<CalendarDays className="h-4 w-4" />}
-                title="No scheduled events"
-                copy="Friend events will appear here when event publishing is available."
-              />
             </RailPanel>
 
             <Link
@@ -552,40 +679,20 @@ function FriendRow({ friend }: { friend: ActivityFriend }) {
 
 function RailPanel({
   children,
-  dark = false,
   icon,
   title,
 }: {
   children: React.ReactNode;
-  dark?: boolean;
   icon: React.ReactNode;
   title: string;
 }) {
   return (
-    <section
-      className={`border-4 border-black p-3 shadow-[5px_5px_0_#171411] ${dark ? "bg-[#171411] text-[#fff9ed]" : "bg-[#fff9ed] text-[#171411]"}`}
-    >
-      <h2
-        className={`neo-title flex items-center gap-2 border-b-[3px] pb-2 text-3xl leading-none ${dark ? "border-[#fff9ed]" : "border-black"}`}
-      >
+    <section className="border-4 border-black bg-[#fff9ed] p-3 text-[#171411] shadow-[5px_5px_0_#171411]">
+      <h2 className="neo-title flex items-center gap-2 border-b-[3px] border-black pb-2 text-3xl leading-none">
         {icon}
         {title}
       </h2>
       <div className="mt-3">{children}</div>
     </section>
-  );
-}
-
-function RailNote({ copy, icon, title }: { copy: string; icon: React.ReactNode; title: string }) {
-  return (
-    <div className="mb-2 border-2 border-[#fff9ed] bg-[#24201c] p-2 last:mb-0">
-      <p className="neo-copy flex items-center gap-2 text-[9px] font-black text-[#8cf5e4] uppercase">
-        {icon}
-        {title}
-      </p>
-      <p className="neo-copy mt-1 text-[8px] leading-4 font-bold text-[#f5eedf] uppercase">
-        {copy}
-      </p>
-    </div>
   );
 }

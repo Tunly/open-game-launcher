@@ -19,6 +19,7 @@ import {
   getSystemInfo,
   isSteamScrapedGamesEventForAccount,
   isSteamScrapeErrorEventForAccount,
+  normalizeSteamLoginSuccessEvent,
   openSteamLoginWindow,
   openGogLoginWindow,
   openEpicLoginWindow,
@@ -107,6 +108,14 @@ import type {
 } from "../lib/presence-readiness";
 import type { PlatformType } from "../lib/types/friends";
 import { isSupabaseConfigured } from "../lib/supabase/client";
+import {
+  getMyVerifiedSteamPlatformAccount,
+  unlinkPlatformAccount,
+} from "../lib/supabase/platform-accounts";
+import {
+  linkSteamAccountThroughHostedVerifier,
+  type SteamHostedPlatformAccount,
+} from "../lib/supabase/steam-hosted-relay";
 import {
   buildOneClickSetupReadiness,
   type OneClickSetupPlatformEvidence,
@@ -504,6 +513,10 @@ export function SettingsPage() {
     "",
     settingSchemas.steamUsername,
   );
+  const [steamHostedAccount, setSteamHostedAccount] = useState<SteamHostedPlatformAccount | null>(
+    null,
+  );
+  const [steamHostedMessage, setSteamHostedMessage] = useState<string | null>(null);
 
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
 
@@ -728,6 +741,48 @@ export function SettingsPage() {
     };
   }, [isDesktopRuntime, setSteamUsername, steamId, steamUsername]);
 
+  useEffect(() => {
+    if (!isSupabaseConfigured) return;
+    let isMounted = true;
+    void getMyVerifiedSteamPlatformAccount()
+      .then((account) => {
+        if (!isMounted || !account) return;
+        setSteamHostedAccount(account);
+        setSteamHostedMessage("Steam OpenID ownership is verified by the hosted relay.");
+        activateSteamAccount(account.platformUserId);
+        setSteamId(account.platformUserId);
+        if (account.platformUsername) setSteamUsername(account.platformUsername);
+      })
+      .catch((error) => {
+        if (!isMounted) return;
+        setSteamHostedMessage(
+          `Hosted Steam verification status is unavailable: ${getErrorMessage(error)}`,
+        );
+      });
+    return () => {
+      isMounted = false;
+    };
+  }, [setSteamId, setSteamUsername]);
+
+  async function handleSteamDisconnect() {
+    if (steamHostedAccount) {
+      try {
+        await unlinkPlatformAccount("steam");
+      } catch (error) {
+        setSteamHostedMessage(
+          `Hosted Steam disconnect failed; account was kept linked: ${getErrorMessage(error)}`,
+        );
+        return;
+      }
+    }
+    clearSteamAccount();
+    setSteamId("");
+    setSteamUsername("");
+    setSteamHostedAccount(null);
+    setSteamHostedMessage(null);
+    setTestResult(null);
+  }
+
   async function handleGogCodeExchange(code: string) {
     setTestResult({ success: true, message: "GOG login code received. Exchanging..." });
     try {
@@ -785,9 +840,11 @@ export function SettingsPage() {
     let unlistenErrorPromise: Promise<() => void> | null = null;
 
     try {
-      unlistenPromise = listen<string>("steam_login_success", async (event) => {
+      unlistenPromise = listen<unknown>("steam_login_success", async (event) => {
         if (!isMounted) return;
-        const steamIdVal = event.payload;
+        const login = normalizeSteamLoginSuccessEvent(event.payload);
+        if (!login) return;
+        const steamIdVal = login.steamId;
         activateSteamAccount(steamIdVal);
         setSteamId(steamIdVal);
         const isCurrentSteamLogin = () =>
@@ -802,6 +859,40 @@ export function SettingsPage() {
           setSteamUsername("Steam User");
         }
         if (!isCurrentSteamLogin()) return;
+
+        if (login.openidResponseUrl) {
+          try {
+            const hostedAccount = await linkSteamAccountThroughHostedVerifier(
+              login.openidResponseUrl,
+            );
+            if (!isCurrentSteamLogin()) return;
+            if (hostedAccount) {
+              setSteamHostedAccount(hostedAccount);
+              setSteamHostedMessage(
+                "Steam OpenID ownership verified server-side. Hosted achievement relay is active; local cache remains the fallback.",
+              );
+              if (hostedAccount.platformUsername) {
+                setSteamUsername(hostedAccount.platformUsername);
+              }
+            } else {
+              setSteamHostedAccount(null);
+              setSteamHostedMessage(
+                "Steam connected locally. Hosted verification is unavailable; local cache fallback remains active.",
+              );
+            }
+          } catch (error) {
+            if (!isCurrentSteamLogin()) return;
+            setSteamHostedAccount(null);
+            setSteamHostedMessage(
+              `Steam connected locally, but hosted verification failed: ${getErrorMessage(error)}`,
+            );
+          }
+        } else {
+          setSteamHostedAccount(null);
+          setSteamHostedMessage(
+            "Steam connected through the legacy local event. Local cache fallback remains active.",
+          );
+        }
         setTestResult({
           success: true,
           message: "Login successful. Your game list is now being fetched...",
@@ -1746,8 +1837,8 @@ export function SettingsPage() {
                   <div>
                     <h3 className="mb-1 text-xl font-black text-[#171411] uppercase">Steam</h3>
                     <p className="neo-copy mb-4 text-[9px] leading-relaxed font-bold text-[#55504a] uppercase">
-                      Syncs your Steam library through secure login and local Steam cache. No API
-                      key required.
+                      Verifies Steam ownership through the hosted relay, then keeps the local Steam
+                      cache as fallback. No provider secret is shipped in the launcher.
                     </p>
                   </div>
                   <div>
@@ -1759,15 +1850,19 @@ export function SettingsPage() {
                         <span className="block truncate text-xs font-black text-[#087d6d]">
                           {steamUsername || "Steam User"}
                         </span>
+                        <span
+                          className={`neo-copy block border-2 border-black px-2 py-1 text-[8px] font-black uppercase ${
+                            steamHostedAccount
+                              ? "bg-[#087d6d] text-white"
+                              : "bg-[#efe6d4] text-[#171411]"
+                          }`}
+                        >
+                          {steamHostedAccount ? "Hosted verified" : "Local fallback"}
+                        </span>
                         <button
                           className="neo-copy flex h-8 w-full items-center justify-center gap-2 border-2 border-black bg-[#c20b2f] px-3 text-[10px] font-bold text-white uppercase shadow-[1px_1px_0_#171411] transition hover:bg-[#a10825]"
                           type="button"
-                          onClick={() => {
-                            clearSteamAccount();
-                            setSteamId("");
-                            setSteamUsername("");
-                            setTestResult(null);
-                          }}
+                          onClick={() => void handleSteamDisconnect()}
                         >
                           <LogOut className="h-3 w-3" />
                           Disconnect
@@ -1785,6 +1880,20 @@ export function SettingsPage() {
                         Connect
                       </button>
                     )}
+                    {steamHostedMessage ? (
+                      <p
+                        className={`neo-copy mt-2 border-2 border-black px-2 py-1 text-[8px] leading-relaxed font-bold uppercase ${
+                          steamHostedMessage.includes("failed")
+                            ? "bg-[#c20b2f] text-white"
+                            : steamHostedAccount
+                              ? "bg-[#8cf5e4] text-[#171411]"
+                              : "bg-[#f5eedf] text-[#5b403f]"
+                        }`}
+                        role="status"
+                      >
+                        {steamHostedMessage}
+                      </p>
+                    ) : null}
                   </div>
                 </div>
 

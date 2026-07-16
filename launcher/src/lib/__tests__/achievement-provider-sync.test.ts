@@ -1,7 +1,10 @@
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { AchievementProvider } from "../achievement-providers";
-import { syncAchievementProviderGame } from "../achievement-provider-sync";
+import {
+  persistAchievementProviderStatus,
+  syncAchievementProviderGame,
+} from "../achievement-provider-sync";
 import type { Game, SyncGameAchievementsResponse } from "../types";
 
 const launcherMocks = vi.hoisted(() => ({
@@ -19,6 +22,11 @@ function deferred<T>() {
 }
 
 describe("achievement provider sync", () => {
+  beforeEach(() => {
+    launcherMocks.updateAchievementProviderStatus.mockReset();
+    launcherMocks.updateAchievementProviderStatus.mockResolvedValue(undefined);
+  });
+
   it("shares one typed provider outcome across archive and library callers", async () => {
     const game: Game = {
       achievements: [],
@@ -73,5 +81,119 @@ describe("achievement provider sync", () => {
       success: true,
     });
     expect(launcherMocks.updateAchievementProviderStatus).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps Epic provider-only status in the frontend snapshot without a native row write", async () => {
+    await persistAchievementProviderStatus("epic-owned-catalog-app", {
+      message: "Epic achievements synced.",
+      source: "epic",
+      stability: "unofficial",
+      status: "available",
+    });
+
+    expect(launcherMocks.updateAchievementProviderStatus).not.toHaveBeenCalled();
+  });
+
+  it("classifies missing Epic best-effort sources as provider unavailable", async () => {
+    const game: Game = {
+      achievements: [],
+      description: "",
+      externalId: "catalog-app",
+      id: "epic-owned-catalog-app",
+      launcher: "epic",
+      platform: "windows",
+      status: "not_installed",
+      title: "Epic Catalog Game",
+      version: "1.0.0",
+    };
+    const provider: AchievementProvider = {
+      isAvailable: () => true,
+      message: "Epic best-effort sync available",
+      provider: "epic",
+      stability: "unofficial",
+      status: "available",
+      sync: vi
+        .fn()
+        .mockRejectedValue(
+          new Error(
+            "No local epic achievement cache found for Epic Catalog Game. Checked: cache.json. Epic public fallback failed: No public Epic achievement page matched Epic Catalog Game.",
+          ),
+        ),
+    };
+
+    const outcome = await syncAchievementProviderGame(game, provider);
+
+    expect(outcome).toMatchObject({
+      diagnosticMessage: expect.stringContaining("No local epic achievement cache"),
+      game: { id: game.id },
+      status: {
+        source: "epic",
+        status: "not_connected",
+      },
+      success: false,
+    });
+    expect(launcherMocks.updateAchievementProviderStatus).not.toHaveBeenCalled();
+  });
+
+  it("keeps unexpected Epic sync errors as failures", async () => {
+    const game: Game = {
+      achievements: [],
+      description: "",
+      id: "epic-local-install",
+      launcher: "epic",
+      platform: "windows",
+      status: "installed",
+      title: "Installed Epic Game",
+      version: "1.0.0",
+    };
+    const provider: AchievementProvider = {
+      isAvailable: () => true,
+      message: "Epic best-effort sync available",
+      provider: "epic",
+      stability: "unofficial",
+      status: "available",
+      sync: vi.fn().mockRejectedValue(new Error("Legendary returned malformed JSON")),
+    };
+
+    const outcome = await syncAchievementProviderGame(game, provider);
+
+    expect(outcome).toMatchObject({
+      diagnosticMessage: "Legendary returned malformed JSON",
+      status: { source: "epic", status: "failed" },
+      success: false,
+    });
+    expect(launcherMocks.updateAchievementProviderStatus).toHaveBeenCalledWith({
+      gameId: game.id,
+      status: expect.objectContaining({ source: "epic", status: "failed" }),
+    });
+  });
+
+  it("still reports native persistence failures for real local provider games", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    launcherMocks.updateAchievementProviderStatus.mockRejectedValueOnce(
+      new Error("SQLite write failed"),
+    );
+
+    await persistAchievementProviderStatus("epic-local-install", {
+      message: "Epic achievements synced.",
+      source: "epic",
+      stability: "unofficial",
+      status: "available",
+    });
+
+    expect(launcherMocks.updateAchievementProviderStatus).toHaveBeenCalledWith({
+      gameId: "epic-local-install",
+      status: {
+        message: "Epic achievements synced.",
+        source: "epic",
+        stability: "unofficial",
+        status: "available",
+      },
+    });
+    expect(warn).toHaveBeenCalledWith(
+      "[OG-Launcher] Achievement provider status update failed:",
+      expect.any(Error),
+    );
+    warn.mockRestore();
   });
 });

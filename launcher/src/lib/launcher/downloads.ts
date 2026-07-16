@@ -1,3 +1,5 @@
+import { isTauri } from "@tauri-apps/api/core";
+
 import type {
   DownloadItem,
   ProviderHealthStatus,
@@ -5,6 +7,9 @@ import type {
   StartDownloadResponse,
 } from "./types";
 import { invokeCommand } from "./shared";
+
+const DESKTOP_DOWNLOAD_ACTIONS_REQUIRED =
+  "Game installs and updates are available only in the OG-Launcher desktop app.";
 
 export function startDownload(
   gameId: string,
@@ -14,6 +19,10 @@ export function startDownload(
   installManifestUrl?: string,
   installManifestSha256?: string,
 ): Promise<StartDownloadResponse> {
+  if (!isTauri()) {
+    return Promise.reject(new Error(DESKTOP_DOWNLOAD_ACTIONS_REQUIRED));
+  }
+
   return invokeCommand<StartDownloadResponse>("start_download", {
     gameId,
     gameTitle: title,

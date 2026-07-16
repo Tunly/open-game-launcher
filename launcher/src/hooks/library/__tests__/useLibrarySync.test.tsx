@@ -5,6 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { Game } from "../../../lib/types";
 import type { ProviderResult } from "../../../library/providers/types";
+import { STORAGE_KEYS } from "../../../lib/storage-keys";
 import { activateSteamAccount } from "../../../lib/steam-owned-games-cache";
 
 const mocks = vi.hoisted(() => {
@@ -253,6 +254,7 @@ function setupDefaultMocks() {
 
 describe("useLibrarySync", () => {
   beforeEach(() => {
+    vi.mocked(isTauri).mockReturnValue(false);
     window.localStorage.clear();
     window.sessionStorage.clear();
     setupDefaultMocks();
@@ -612,6 +614,58 @@ describe("useLibrarySync", () => {
 
     expect(mocks.refreshInstalledGames).toHaveBeenCalled();
     expect(result.current.installedGames.some((g) => g.id === "steam-2")).toBe(true);
+  });
+
+  it("does not throttle the pending provider rescan on the next focus", async () => {
+    const { result } = renderLibrarySync();
+
+    await waitFor(() => {
+      expect(result.current.isDiscoveringGames).toBe(false);
+    });
+    mocks.refreshInstalledGames.mockClear();
+
+    window.dispatchEvent(new Event("focus"));
+    await waitFor(() => {
+      expect(mocks.refreshInstalledGames).toHaveBeenCalledTimes(1);
+    });
+
+    act(() => {
+      result.current.requestLibraryRescanOnNextFocus();
+      window.dispatchEvent(new Event("focus"));
+    });
+    await waitFor(() => {
+      expect(mocks.refreshInstalledGames).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  it("does not resurrect a missing OG-managed install as installed from the browser snapshot", async () => {
+    vi.mocked(isTauri).mockReturnValue(true);
+    localStorage.setItem(
+      STORAGE_KEYS.LIBRARY_SNAPSHOT,
+      JSON.stringify([
+        makeGame({
+          id: "ogl-local-game",
+          launcher: "ogl",
+          installPath: "C:\\Games\\OG\\Local Game",
+          executablePath: "C:\\Games\\OG\\Local Game\\game.exe",
+          status: "installed",
+        }),
+      ]),
+    );
+    mocks.listInstalledGames.mockResolvedValue([]);
+
+    const { result } = renderLibrarySync();
+
+    await waitFor(() => {
+      expect(result.current.installedGames).toEqual([
+        expect.objectContaining({
+          id: "ogl-local-game",
+          status: "not_installed",
+          installPath: undefined,
+          executablePath: undefined,
+        }),
+      ]);
+    });
   });
 
   it("skips state updates when shouldApplyResult returns false", async () => {

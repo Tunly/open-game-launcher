@@ -41,6 +41,22 @@ function normalizeSource(source: string) {
     .replace(/[^a-z0-9]/g, "");
 }
 
+function isExpectedProviderUnavailable(provider: AchievementProvider, message: string) {
+  if (normalizeSource(provider.provider) !== "epic") {
+    return false;
+  }
+
+  const noReadableLocalData =
+    /\b(?:no local epic achievement cache found|local epic achievement cache did not contain readable achievements)\b/i.test(
+      message,
+    );
+  const noPublicDefinitions = /\bno public epic achievement page matched\b/i.test(message);
+  const emptyReadableCache =
+    /\blocal epic achievement cache did not contain readable achievements\b/i.test(message);
+
+  return emptyReadableCache || (noReadableLocalData && noPublicDefinitions);
+}
+
 export function withAchievementProviderStatus(
   game: Game,
   status: GameAchievementProviderStatus,
@@ -61,7 +77,11 @@ export async function persistAchievementProviderStatus(
   gameId: string,
   status: GameAchievementProviderStatus,
 ) {
-  if (gameId.startsWith("steam-owned-")) {
+  if (/^(?:steam|epic|gog|ea|ubisoft|battlenet|xbox)-owned-.+/i.test(gameId)) {
+    // Provider-owned inventory entries are frontend overlays, not native
+    // collection rows. Their status remains on the in-memory/snapshot game;
+    // attempting a native update would only produce a misleading missing-row
+    // warning and must not create an incomplete local game record.
     return;
   }
   try {
@@ -116,11 +136,12 @@ export function syncAchievementProviderGame(
         };
       } catch (error) {
         const diagnosticMessage = getErrorMessage(error);
+        const expectedUnavailable = isExpectedProviderUnavailable(provider, diagnosticMessage);
         const failedStatus: GameAchievementProviderStatus = {
           message: diagnosticMessage,
           source: provider.provider,
           stability: provider.stability,
-          status: "failed",
+          status: expectedUnavailable ? "not_connected" : "failed",
         };
         const status = {
           ...failedStatus,

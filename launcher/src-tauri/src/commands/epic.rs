@@ -125,7 +125,7 @@ pub async fn open_epic_login_window(app: tauri::AppHandle) -> Result<(), String>
                 let rest = &url_str[pos + 5..];
                 let code = rest.split('&').next().unwrap_or("");
                 if !code.is_empty() {
-                    println!("[Epic Login] Extracted code: {}", code);
+                    println!("[Epic Login] Authorization code received.");
                     use tauri::Emitter;
                     let _ = app_clone.emit("epic_login_code", code.to_string());
 

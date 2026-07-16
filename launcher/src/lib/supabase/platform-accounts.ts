@@ -9,6 +9,25 @@ import {
   type UnknownRecord,
 } from "./helpers";
 
+export type VerifiedSteamPlatformAccount = PlatformAccount & {
+  platform: "steam";
+  verificationMethod: "steam_openid";
+  verifiedAt: string;
+};
+
+type VerificationQueryResult = {
+  data: UnknownRecord | null;
+  error: { code?: string; message: string } | null;
+};
+
+type VerificationQuery = {
+  eq: (column: string, value: unknown) => VerificationQuery;
+  limit: (count: number) => VerificationQuery;
+  maybeSingle: () => Promise<VerificationQueryResult>;
+  order: (column: string, options: { ascending: boolean }) => VerificationQuery;
+  select: (columns: string) => VerificationQuery;
+};
+
 function toPlatformAccount(row: UnknownRecord): PlatformAccount {
   return {
     id: rowString(row, "id"),
@@ -86,6 +105,57 @@ export async function getMyPlatformAccounts(): Promise<PlatformAccount[]> {
   handleError(error);
 
   return (data ?? []).map((row) => toPlatformAccount(row as UnknownRecord));
+}
+
+/**
+ * Reads the server-only ownership proof. Client-writable platform account
+ * metadata is deliberately ignored and can never establish hosted trust.
+ */
+export async function getMyVerifiedSteamPlatformAccount(): Promise<VerifiedSteamPlatformAccount | null> {
+  const client = getSupabaseClient();
+  const { data: userData, error: authError } = await client.auth.getUser();
+  handleError(authError);
+  if (!userData.user) return null;
+
+  const verificationClient = client as unknown as {
+    from: (table: string) => VerificationQuery;
+  };
+  const { data, error } = await verificationClient
+    .from("provider_account_verifications")
+    .select("user_id, platform, platform_user_id, verification_method, verified_at")
+    .eq("user_id", userData.user.id)
+    .eq("platform", "steam")
+    .eq("verification_method", "steam_openid")
+    .order("verified_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (isMissingSchemaError(error)) return null;
+  handleError(error);
+  if (!data) return null;
+
+  const platformUserId = rowString(data, "platform_user_id");
+  const verifiedAt = rowString(data, "verified_at");
+  if (
+    rowString(data, "user_id") !== userData.user.id ||
+    rowString(data, "platform") !== "steam" ||
+    rowString(data, "verification_method") !== "steam_openid" ||
+    !/^\d{17}$/.test(platformUserId) ||
+    !Number.isFinite(Date.parse(verifiedAt))
+  ) {
+    return null;
+  }
+
+  const account = (await getMyPlatformAccounts()).find(
+    (candidate) => candidate.platform === "steam" && candidate.platformUserId === platformUserId,
+  );
+  return account
+    ? {
+        ...account,
+        platform: "steam",
+        verificationMethod: "steam_openid",
+        verifiedAt: new Date(verifiedAt).toISOString(),
+      }
+    : null;
 }
 
 export async function getPlatformAccountsForUser(userId: string): Promise<PlatformAccount[]> {

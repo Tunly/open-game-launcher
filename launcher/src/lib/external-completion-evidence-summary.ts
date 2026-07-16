@@ -358,7 +358,7 @@ export const EXTERNAL_COMPLETION_EVIDENCE_GATE_INPUTS: ExternalCompletionEvidenc
       "Provider-approved catalog/cloud transfer flows are verified.",
       "Achievement/provider cache E2E runs against real client data.",
     ],
-    requiredEnv: ["STEAM_WEB_API_KEY", "PRESENCE_PROVIDER_TOKEN"],
+    requiredEnv: ["PRESENCE_PROVIDER_TOKEN"],
     skippedProof:
       "No provider-key staging packet, redacted bridge proof, or real-client cache E2E attached.",
     surface: "Provider Gate",
@@ -1661,7 +1661,6 @@ const envShapeValidators: Partial<Record<string, (value: string) => boolean>> = 
   PRESENCE_POLL_SECRET: (value) => secretValueLooksPlausible(value, 32),
   PRESENCE_PROVIDER_TOKEN: (value) => secretValueLooksPlausible(value, 24),
   PRICE_DROP_NOTIFY_SECRET: (value) => secretValueLooksPlausible(value, 32),
-  STEAM_WEB_API_KEY: (value) => /^[a-f0-9]{32}$/i.test(value),
   STRIPE_SECRET_KEY: (value) => /^sk_live_[a-z0-9]{16,}$/i.test(value),
   STRIPE_WEBHOOK_SECRET: (value) => /^whsec_[a-z0-9]{16,}$/i.test(value),
   SUPABASE_FUNCTIONS_BASE_URL: (value) =>

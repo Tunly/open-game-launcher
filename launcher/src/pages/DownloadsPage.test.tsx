@@ -107,6 +107,9 @@ describe("DownloadsPage", () => {
     renderDownloadsRoute("/downloads");
 
     expect(await screen.findByText("Central Queue Mod")).toBeInTheDocument();
+    expect(screen.getByText("0 game jobs · 1 mod jobs")).toBeInTheDocument();
+    expect(screen.getByText("42% · 1 MBPS")).toBeInTheDocument();
+    expect(screen.getAllByText("0 B/s")).toHaveLength(2);
     fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
 
     await waitFor(() => {
@@ -196,6 +199,29 @@ describe("DownloadsPage", () => {
     });
   });
 
+  it("shows a pausing download as paused instead of active", async () => {
+    useDownloadStore.setState({
+      items: [
+        makeDownloadItem({
+          canPause: false,
+          gameId: "steam-owned-5678",
+          id: "download-steam-owned-5678",
+          progress: 37,
+          speed: "Steam Pausing...",
+          status: "pausing",
+          title: "Pausing Steam Download",
+        }),
+      ],
+    });
+
+    renderDownloadsRoute("/downloads");
+
+    expect(await screen.findByText("Up Next (0)")).toBeInTheDocument();
+    expect(screen.getByText("Unscheduled (1)")).toBeInTheDocument();
+    expect(screen.getByText("Pausing")).toBeInTheDocument();
+    expect(screen.queryByText("Running")).not.toBeInTheDocument();
+  });
+
   it("guards cancel clicks while the native command is pending", async () => {
     let resolveCancel!: () => void;
     launcherMocks.cancelDownload.mockReturnValue(
@@ -207,8 +233,12 @@ describe("DownloadsPage", () => {
       items: [
         makeDownloadItem({
           canCancel: true,
+          bytesDownloaded: 1024 * 1024,
+          bytesTotal: 2 * 1024 * 1024,
           gameId: "cancel-game",
           id: "download-cancel-game",
+          phase: "Downloading",
+          platform: "Xbox App / PC Game Pass",
           progress: 25,
           speed: "2 MB/s",
           status: "downloading",
@@ -225,6 +255,10 @@ describe("DownloadsPage", () => {
     expect(
       screen.getByRole("progressbar", { name: "Cancel Candidate download progress" }),
     ).toHaveAttribute("aria-valuenow", "25");
+    expect(screen.getByText("Xbox App · PC Game Pass")).toBeInTheDocument();
+    expect(screen.getByText("25% complete · Downloading")).toBeInTheDocument();
+    expect(screen.getByText("2 MBPS · 1.0 MB of 2.0 MB")).toBeInTheDocument();
+    expect(screen.getAllByText("2.0 MB/s")).toHaveLength(2);
     const cancelButton = screen.getByRole("button", { name: "Cancel" });
     fireEvent.click(cancelButton);
     fireEvent.click(cancelButton);

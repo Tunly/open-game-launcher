@@ -13,8 +13,28 @@ export interface SteamScrapeErrorEvent {
   steamId: string;
 }
 
+export interface SteamLoginSuccessEvent {
+  openidResponseUrl: string | null;
+  steamId: string;
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+export function normalizeSteamLoginSuccessEvent(payload: unknown): SteamLoginSuccessEvent | null {
+  if (typeof payload === "string") {
+    const steamId = payload.trim();
+    return /^\d{17}$/.test(steamId) ? { openidResponseUrl: null, steamId } : null;
+  }
+  if (!isRecord(payload)) return null;
+  const steamId = typeof payload.steamId === "string" ? payload.steamId.trim() : "";
+  const openidResponseUrl =
+    typeof payload.openidResponseUrl === "string" ? payload.openidResponseUrl.trim() : "";
+  if (!/^\d{17}$/.test(steamId) || !openidResponseUrl || openidResponseUrl.length > 16_384) {
+    return null;
+  }
+  return { openidResponseUrl, steamId };
 }
 
 function isScrapedSteamGame(value: unknown) {
@@ -94,6 +114,10 @@ export function gogRefreshToken(): Promise<GogToken> {
 }
 
 export function gogGetToken(): Promise<GogToken | null> {
+  if (!isTauri()) {
+    return Promise.resolve(null);
+  }
+
   return invokeCommand<GogToken | null>("gog_get_token");
 }
 
@@ -114,6 +138,10 @@ export function openEaLoginWindow(): Promise<void> {
 }
 
 export function eaGetToken(): Promise<EaToken | null> {
+  if (!isTauri()) {
+    return Promise.resolve(null);
+  }
+
   return invokeCommand<EaToken | null>("ea_get_token");
 }
 
@@ -122,6 +150,10 @@ export function eaLogout(): Promise<void> {
 }
 
 export function eaFetchOwnedGames(): Promise<OwnedGame[]> {
+  if (!isTauri()) {
+    return Promise.resolve([]);
+  }
+
   return invokeCommand<OwnedGame[]>("ea_fetch_owned_games");
 }
 
@@ -150,6 +182,12 @@ export function fetchXboxOwnedGames(code: string): Promise<XboxFetchResult> {
 }
 
 export function launchXboxGame(pfn: string): Promise<void> {
+  if (!isTauri()) {
+    return Promise.reject(
+      new Error("Launching Xbox games is available only in the OG-Launcher desktop app."),
+    );
+  }
+
   return invokeCommand<void>("launch_xbox_game", { pfn });
 }
 
@@ -158,6 +196,10 @@ export function installXboxGame(pfn: string): Promise<void> {
 }
 
 export function fetchGamePassCatalog(): Promise<OwnedGame[]> {
+  if (!isTauri()) {
+    return Promise.resolve([]);
+  }
+
   const language =
     typeof navigator === "undefined" || !navigator.language ? "en-US" : navigator.language;
   let market = "US";
@@ -333,6 +375,10 @@ export function normalizeSteamOwnedGames(games: unknown): OwnedGame[] {
 }
 
 export function fetchSteamOwnedGames(steamId: string): Promise<OwnedGame[]> {
+  if (!isTauri()) {
+    return Promise.resolve([]);
+  }
+
   return invokeCommand<OwnedGame[]>("fetch_steam_owned_games", { steamId });
 }
 
@@ -342,10 +388,18 @@ export function fetchGogOwnedGames(): Promise<OwnedGame[]> {
 }
 
 export async function fetchEpicOwnedGames(): Promise<OwnedGame[]> {
+  if (!isTauri()) {
+    return [];
+  }
+
   return invokeCommand<OwnedGame[]>("fetch_epic_owned_games");
 }
 
 export async function fetchUbisoftOwnedGames(): Promise<OwnedGame[]> {
+  if (!isTauri()) {
+    return [];
+  }
+
   return invokeCommand<OwnedGame[]>("fetch_ubisoft_owned_games");
 }
 

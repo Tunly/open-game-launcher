@@ -585,7 +585,8 @@ describe("ingestTrustedAchievements", () => {
     };
 
     const { hydrateGamesWithRemoteAchievements } = await import("../achievements");
-    const hydrated = await hydrateGamesWithRemoteAchievements([first, second]);
+    const onError = vi.fn();
+    const hydrated = await hydrateGamesWithRemoteAchievements([first, second], { onError });
 
     expect(hydrated[0]?.achievements).toEqual([]);
     expect(hydrated[1]?.achievements?.[0]).toMatchObject({ id: "ACH_REMOTE", name: "Remote Win" });
@@ -593,5 +594,7 @@ describe("ingestTrustedAchievements", () => {
       "[OG-Launcher] Remote achievements unavailable for Half-Life 2:",
       expect.any(Error),
     );
+    expect(onError).toHaveBeenCalledWith(expect.any(Error), first);
+    expect(onError).toHaveBeenCalledTimes(1);
   });
 });

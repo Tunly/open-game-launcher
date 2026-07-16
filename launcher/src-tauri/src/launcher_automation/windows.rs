@@ -478,9 +478,9 @@ fn semantic_tree_hash<N: SemanticNode>(nodes: &[N]) -> Result<String, BackendErr
     Ok(format!("{hash:016x}"))
 }
 
-/// Live `uiautomation` 0.25 adapter. This stays disabled until the documented
-/// optional dependency and feature are added to Cargo.toml by an integration
-/// slice. Keeping it feature-gated prevents accidental partial automation.
+/// Live `uiautomation` 0.25 adapter. The Windows desktop build enables this
+/// feature by default; unsupported targets and explicit no-default-feature
+/// builds continue to fail closed.
 #[cfg(all(windows, feature = "windows-uiautomation"))]
 pub mod uiautomation_025 {
     use std::rc::Rc;

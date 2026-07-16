@@ -1,4 +1,5 @@
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { Suspense, type ReactNode } from "react";
 import { MemoryRouter, Route, Routes, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -8,6 +9,11 @@ import { LibraryPage } from "./LibraryPage";
 
 const gameDetailPanelMock = vi.hoisted(() => vi.fn());
 const launchCrossPlayJoinMock = vi.hoisted(() => vi.fn());
+const tauriMocks = vi.hoisted(() => ({ isTauri: vi.fn() }));
+const shareTokenMocks = vi.hoisted(() => ({
+  redeemShareToken: vi.fn(),
+  resolveShareToken: vi.fn(),
+}));
 const useLibrarySyncMock = vi.hoisted(() => vi.fn());
 const useProviderPickingMock = vi.hoisted(() =>
   vi.fn((options: UseProviderPickingOptions) => {
@@ -24,6 +30,10 @@ const useProviderPickingMock = vi.hoisted(() =>
 );
 
 const noop = vi.fn();
+
+vi.mock("@tauri-apps/api/core", () => ({
+  isTauri: tauriMocks.isTauri,
+}));
 
 vi.mock("../components/library/AddGameDialog", () => ({
   AddGameDialog: () => null,
@@ -49,6 +59,21 @@ vi.mock("../components/library/LibrarySidebar", () => ({
 
 vi.mock("../components/library/ProviderPickerDialog", () => ({
   ProviderPickerDialog: () => null,
+}));
+
+vi.mock("../context/LibraryProvider", () => ({
+  LibraryProvider: ({
+    children,
+    value,
+  }: {
+    children: ReactNode;
+    value: { statusMessage: string | null };
+  }) => (
+    <>
+      <output aria-label="Library status">{value.statusMessage}</output>
+      {children}
+    </>
+  ),
 }));
 
 vi.mock("../hooks/library/useAchievementAutoSync", () => ({
@@ -151,8 +176,21 @@ vi.mock("../hooks/library/useProviderPicking", () => ({
 }));
 
 vi.mock("../lib/launcher", () => ({
+  getCrossPlayLaunchIdentity: (game: Game) => {
+    const externalId = game.externalId?.trim();
+    if (!externalId) throw new Error("missing exact provider launch identity");
+    return externalId;
+  },
   launchCrossPlayJoin: (...args: unknown[]) => launchCrossPlayJoinMock(...args),
+  toClientPlatformId: (value: string | null | undefined) => {
+    const provider = value?.trim().toLowerCase();
+    if (provider === "origin") return "ea";
+    if (provider === "uplay") return "ubisoft";
+    return provider || null;
+  },
 }));
+
+vi.mock("../lib/supabase/social", () => shareTokenMocks);
 
 vi.mock("../stores/downloadStore", () => ({
   selectCompletedCount: (state: { items: Array<{ status: string }> }) =>
@@ -161,14 +199,13 @@ vi.mock("../stores/downloadStore", () => ({
     selector({ items: [] }),
 }));
 
-import { Suspense } from "react";
-
 function makeGame(overrides: Partial<Game> = {}): Game {
   return {
     id: "steam-neon-circuit",
     title: "Neon Circuit",
     slug: "neon-circuit",
     description: "",
+    externalId: "480",
     version: "1.0",
     status: "installed",
     platform: "windows",
@@ -192,6 +229,7 @@ function LibraryRoute({ initialEntry }: { initialEntry: string }) {
             path="/library"
           />
           <Route element={<FriendsRouteProbe />} path="/friends" />
+          <Route element={<DownloadsRouteProbe />} path="/downloads" />
         </Routes>
       </Suspense>
     </MemoryRouter>
@@ -224,10 +262,30 @@ function FriendsRouteProbe() {
   );
 }
 
+function DownloadsRouteProbe() {
+  const location = useLocation();
+
+  return <div data-testid="downloads-route">{location.pathname}</div>;
+}
+
 describe("LibraryPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    launchCrossPlayJoinMock.mockResolvedValue("steam://run/neon-circuit");
+    tauriMocks.isTauri.mockReturnValue(true);
+    launchCrossPlayJoinMock.mockResolvedValue("steam://run/480");
+    shareTokenMocks.resolveShareToken.mockResolvedValue({
+      expiresAt: "2026-07-15T12:30:00.000Z",
+      gameInviteId: "invite-id",
+      gameTitle: "Neon Circuit",
+      platform: "steam",
+    });
+    shareTokenMocks.redeemShareToken.mockResolvedValue({
+      acceptedAt: "2026-07-15T12:00:00.000Z",
+      gameInviteId: "invite-id",
+      gameTitle: "Neon Circuit",
+      platform: "steam",
+      status: "accepted",
+    });
     useLibrarySyncMock.mockReturnValue(makeLibrarySyncResult());
   });
 
@@ -307,8 +365,10 @@ describe("LibraryPage", () => {
     view.rerender(<LibraryRoute initialEntry={initialEntry} />);
 
     await waitFor(() => {
-      expect(launchCrossPlayJoinMock).toHaveBeenCalledWith("steam", "neon-circuit");
+      expect(launchCrossPlayJoinMock).toHaveBeenCalledWith("steam", "480");
     });
+    expect(shareTokenMocks.resolveShareToken).toHaveBeenCalledWith("invite-1");
+    expect(shareTokenMocks.redeemShareToken).toHaveBeenCalledWith("invite-1");
     expect(launchCrossPlayJoinMock).toHaveBeenCalledTimes(1);
     expect(screen.getByTestId("library-route")).toHaveTextContent(/^\/library$/);
   });
@@ -351,11 +411,113 @@ describe("LibraryPage", () => {
     expect(launchCrossPlayJoinMock).not.toHaveBeenCalled();
   });
 
+  it("selects the requested provider variant and launches its external id", async () => {
+    useLibrarySyncMock.mockReturnValue(
+      makeLibrarySyncResult({
+        installedGames: [
+          makeGame({ externalId: "EpicCatalogItem", id: "epic-neon", launcher: "epic" }),
+          makeGame({ externalId: "480", id: "steam-neon", launcher: "steam" }),
+        ],
+      }),
+    );
+
+    renderLibraryRoute("/library?join=Neon%20Circuit&platform=steam");
+
+    await waitFor(() => {
+      expect(launchCrossPlayJoinMock).toHaveBeenCalledWith("steam", "480");
+    });
+    expect(launchCrossPlayJoinMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not fall back to an internal wrapper id when externalId is missing", async () => {
+    useLibrarySyncMock.mockReturnValue(
+      makeLibrarySyncResult({
+        installedGames: [makeGame({ externalId: undefined, id: "steam-owned-480" })],
+      }),
+    );
+
+    renderLibraryRoute("/library?join=Neon%20Circuit&platform=steam");
+
+    await waitFor(() => {
+      expect(screen.getByRole("status", { name: /library status/i })).toHaveTextContent(
+        /missing exact provider launch identity/i,
+      );
+    });
+    expect(launchCrossPlayJoinMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects an invalid invite without opening a provider game", async () => {
+    shareTokenMocks.resolveShareToken.mockResolvedValue(null);
+    useLibrarySyncMock.mockReturnValue(makeLibrarySyncResult({ installedGames: [makeGame()] }));
+
+    renderLibraryRoute("/library?join=Neon%20Circuit&platform=steam&invite=expired-token");
+
+    await waitFor(() => {
+      expect(screen.getByRole("status", { name: /library status/i })).toHaveTextContent(
+        /invalid, expired, or already used/i,
+      );
+    });
+    expect(shareTokenMocks.redeemShareToken).not.toHaveBeenCalled();
+    expect(launchCrossPlayJoinMock).not.toHaveBeenCalled();
+  });
+
+  it("accepts a valid invite but honestly reports that only the provider game was opened", async () => {
+    useLibrarySyncMock.mockReturnValue(makeLibrarySyncResult({ installedGames: [makeGame()] }));
+
+    renderLibraryRoute("/library?join=Tampered%20Title&platform=epic&invite=valid-token");
+
+    await waitFor(() => {
+      expect(screen.getByRole("status", { name: /library status/i })).toHaveTextContent(
+        /invite accepted\. opened neon circuit on steam/i,
+      );
+    });
+    expect(screen.getByRole("status", { name: /library status/i })).toHaveTextContent(
+      /does not contain a provider session target/i,
+    );
+    expect(launchCrossPlayJoinMock).toHaveBeenCalledWith("steam", "480");
+  });
+
+  it("reserves shell space for the footer instead of clipping it below the full-height grid", () => {
+    const { container } = renderLibraryRoute("/library");
+
+    const shell = container.querySelector(".library-steam-shell");
+    const contentGrid = shell?.firstElementChild;
+    const footer = screen.getByRole("contentinfo");
+
+    expect(shell).toHaveClass("flex", "h-full", "min-h-0", "flex-col", "overflow-hidden");
+    expect(contentGrid).toHaveClass("grid", "min-h-0", "flex-1");
+    expect(contentGrid).not.toHaveClass("h-full");
+    expect(footer).toHaveClass("h-10", "shrink-0");
+  });
+
   it("routes the footer Friends & Chat control to the chat tab", () => {
     renderLibraryRoute("/library");
 
     fireEvent.click(screen.getByRole("button", { name: /friends & chat \+/i }));
 
     expect(screen.getByTestId("friends-route")).toHaveTextContent("/friends?tab=chat");
+  });
+
+  it("routes the footer Downloads control to the downloads page", () => {
+    renderLibraryRoute("/library");
+
+    fireEvent.click(screen.getByRole("button", { name: /downloads - 0 of 0 items complete/i }));
+
+    expect(screen.getByTestId("downloads-route")).toHaveTextContent("/downloads");
+  });
+
+  it("marks Add a Game desktop-only and disables it in the browser", () => {
+    tauriMocks.isTauri.mockReturnValue(false);
+
+    renderLibraryRoute("/library");
+
+    const addGameButton = screen.getByRole("button", {
+      name: /add a game — desktop only/i,
+    });
+    expect(addGameButton).toBeDisabled();
+    expect(addGameButton).toHaveAttribute(
+      "title",
+      "Adding local games requires the OG-Launcher desktop app.",
+    );
   });
 });

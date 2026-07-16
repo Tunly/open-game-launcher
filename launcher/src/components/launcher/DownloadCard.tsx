@@ -97,8 +97,9 @@ export function DownloadCard({
               : isExternal
                 ? "External"
                 : "Locked";
-  const phaseLabel = item.phase ? ` // ${item.phase}` : "";
+  const phaseLabel = item.phase ? ` · ${item.phase}` : "";
   const byteLabel = formatByteProgress(item);
+  const speedLabel = formatTransferRateLabel(item.speed);
   const displayProgress = Number.isFinite(item.progress)
     ? Math.min(100, Math.max(0, item.progress))
     : 0;
@@ -145,7 +146,7 @@ export function DownloadCard({
               <span
                 className={`neo-copy border px-1.5 py-0.5 text-[8px] font-extrabold uppercase shadow-[1px_1px_0_#171411] ${platformColors[item.platform] || "border-black bg-[#efe6d4] text-[#171411]"}`}
               >
-                {item.platform}
+                {item.platform.replaceAll("/", "·")}
               </span>
             )}
             <span
@@ -174,7 +175,7 @@ export function DownloadCard({
               {displayProgress}% complete{phaseLabel}
             </span>
             <span className="neo-copy text-[10px] font-bold text-[#5b403f] uppercase">
-              {byteLabel ? `${item.speed} // ${byteLabel}` : item.speed}
+              {byteLabel ? `${speedLabel} · ${byteLabel}` : speedLabel}
             </span>
           </div>
         </div>
@@ -276,7 +277,11 @@ function formatByteProgress(item: DownloadItem) {
   }
 
   const downloaded = item.bytesDownloaded ?? 0;
-  return `${formatBytes(downloaded)} / ${formatBytes(item.bytesTotal)}`;
+  return `${formatBytes(downloaded)} of ${formatBytes(item.bytesTotal)}`;
+}
+
+function formatTransferRateLabel(value: string) {
+  return value.replace(/\b(B|KB|MB|GB)\s*\/\s*S\b/gi, "$1PS").replaceAll("/", " ");
 }
 
 function formatBytes(bytes: number) {

@@ -125,14 +125,14 @@ fn default_og_manifest_format_version() -> u32 {
 
 #[tauri::command]
 pub async fn list_installed_games() -> Result<Vec<InstalledGame>, String> {
-    Ok(list_installed_games_from_cache(read_installed_games_cache))
+    list_installed_games_from_cache(read_installed_games_cache_result)
 }
 
-fn list_installed_games_from_cache<F>(read_cache: F) -> Vec<InstalledGame>
+fn list_installed_games_from_cache<F>(read_cache: F) -> Result<Vec<InstalledGame>, String>
 where
-    F: FnOnce() -> Option<Vec<InstalledGame>>,
+    F: FnOnce() -> Result<Vec<InstalledGame>, String>,
 {
-    read_cache().unwrap_or_default()
+    read_cache()
 }
 
 #[tauri::command]
@@ -239,6 +239,7 @@ pub async fn add_manual_game(input: AddManualGameRequest) -> Result<InstalledGam
     if !path.exists() {
         return Err(format!("Path was not found: {install_path}"));
     }
+    let executable = resolve_manual_game_executable(&path, title)?;
 
     let asset_root = if path.is_dir() {
         path.as_path()
@@ -254,6 +255,12 @@ pub async fn add_manual_game(input: AddManualGameRequest) -> Result<InstalledGam
     );
     game.icon_url = find_local_icon_asset(asset_root);
     game.logo_url = find_local_logo_asset(asset_root);
+    game.executable_path = Some(path_to_string(executable.clone()));
+    game.process_names = executable
+        .file_name()
+        .and_then(|name| name.to_str())
+        .map(|name| vec![name.to_string()])
+        .unwrap_or_default();
 
     game = sync_game_metadata(game).await;
 
@@ -366,20 +373,24 @@ pub struct MoveGameRequest {
 
 #[tauri::command]
 pub async fn move_game(input: MoveGameRequest) -> Result<(), String> {
-    let games = read_installed_games_cache().unwrap_or_default();
-
-    let game_index = games
-        .iter()
-        .position(|g| g.id == input.game_id)
+    let game_id = normalize_game_id(input.game_id)?;
+    let game = read_installed_games_cache_result()?
+        .into_iter()
+        .find(|game| game.id == game_id)
         .ok_or_else(|| "Game was not found in the cache.".to_string())?;
+    ensure_game_can_be_moved(&game)?;
 
-    let old_path = games[game_index]
+    let old_path = game
         .install_path
         .as_ref()
         .ok_or_else(|| "Game has no install path.".to_string())?;
 
-    let old_path_buf = PathBuf::from(old_path);
-    let new_path_buf = PathBuf::from(&input.new_path);
+    let old_path_buf = PathBuf::from(old_path)
+        .canonicalize()
+        .map_err(|error| format!("Could not resolve the existing game path: {error}"))?;
+    let new_path_buf = PathBuf::from(&input.new_path)
+        .canonicalize()
+        .map_err(|error| format!("Could not resolve the target directory: {error}"))?;
 
     if !old_path_buf.exists() {
         return Err("Old install path does not exist.".to_string());
@@ -405,16 +416,64 @@ pub async fn move_game(input: MoveGameRequest) -> Result<(), String> {
         );
     }
 
+    let relocated_executable = game
+        .executable_path
+        .as_deref()
+        .map(|path| relocated_game_path(Path::new(path), &old_path_buf, &final_new_path))
+        .transpose()?;
+
     fs::rename(&old_path_buf, &final_new_path)
         .map_err(|e| format!("Failed to move game; no cache entry was changed: {e}"))?;
 
+    let moved_path = final_new_path.clone();
     let final_new_path = final_new_path.to_string_lossy().to_string();
-    update_installed_game_cache(&input.game_id, move |game| {
+    let rollback_path = old_path_buf.clone();
+    if let Err(error) = update_installed_game_cache(&game_id, move |game| {
         game.install_path = Some(final_new_path);
+        game.executable_path = relocated_executable;
         Ok(())
-    })?;
+    }) {
+        return match fs::rename(&moved_path, &rollback_path) {
+            Ok(()) => Err(format!(
+                "The library cache update failed after moving the game, so the file move was rolled back: {error}"
+            )),
+            Err(rollback_error) => Err(format!(
+                "The library cache update failed after moving the game, and the file rollback also failed: {error}. Rollback error: {rollback_error}"
+            )),
+        };
+    }
 
     Ok(())
+}
+
+fn ensure_game_can_be_moved(game: &InstalledGame) -> Result<(), String> {
+    let is_manual = is_manual_game(game) || launcher_key_from_source(&game.launcher) == "manual";
+    let is_managed = game
+        .install_path
+        .as_deref()
+        .is_some_and(|path| is_og_managed_install_path(Path::new(path)));
+    if is_manual || is_managed {
+        return Ok(());
+    }
+
+    Err(format!(
+        "{} is managed by {}. Move it with the provider client so its installation metadata stays valid.",
+        game.title,
+        launcher_display_name(&game.launcher)
+    ))
+}
+
+fn relocated_game_path(path: &Path, old_root: &Path, new_root: &Path) -> Result<String, String> {
+    let path = path.canonicalize().map_err(|error| {
+        format!("Could not resolve the configured game executable before moving: {error}")
+    })?;
+    let old_root = old_root
+        .canonicalize()
+        .map_err(|error| format!("Could not resolve the existing game path: {error}"))?;
+    let relative = path.strip_prefix(&old_root).map_err(|_| {
+        "The configured executable is outside the game path. No files were moved.".to_string()
+    })?;
+    Ok(path_to_string(new_root.join(relative)))
 }
 
 #[cfg(windows)]
@@ -547,12 +606,32 @@ pub async fn launch_game(app: AppHandle, game_id: String) -> Result<LaunchGameRe
 
 #[tauri::command]
 pub async fn sync_game_achievements(
+    app: tauri::AppHandle,
+    game_id: String,
+    steam_id: Option<String>,
+    fallback_game: Option<InstalledGame>,
+) -> Result<SyncGameAchievementsResponse, String> {
+    sync_steam_achievements_impl(app, game_id, steam_id, fallback_game).await
+}
+
+#[tauri::command]
+pub async fn sync_steam_session_achievements(
+    app: tauri::AppHandle,
+    game_id: String,
+    steam_id: Option<String>,
+    fallback_game: Option<InstalledGame>,
+) -> Result<SyncGameAchievementsResponse, String> {
+    sync_steam_achievements_impl(app, game_id, steam_id, fallback_game).await
+}
+
+async fn sync_steam_achievements_impl(
+    app: tauri::AppHandle,
     game_id: String,
     steam_id: Option<String>,
     fallback_game: Option<InstalledGame>,
 ) -> Result<SyncGameAchievementsResponse, String> {
     let game_id = normalize_game_id(game_id)?;
-    println!("[open-game-launcher] sync_game_achievements requested for {game_id}");
+    println!("[open-game-launcher] Steam session achievement sync requested for {game_id}");
 
     let (game, should_persist_to_native_cache) = resolve_achievement_sync_game(
         &game_id,
@@ -566,7 +645,42 @@ pub async fn sync_game_achievements(
         )
     })?;
 
-    let achievements = fetch_steam_achievements(appid, steam_id).await?;
+    let steam_id = steam_id
+        .map(|steam_id| steam_id.trim().to_string())
+        .filter(|steam_id| !steam_id.is_empty());
+    let (achievements, achievement_source) = if let Some(steam_id) = steam_id.as_deref() {
+        match crate::commands::system::fetch_steam_session_achievements(&app, steam_id, appid).await
+        {
+            Ok(achievements) if !achievements.is_empty() => {
+                (achievements, "steam_authenticated_session")
+            }
+            Ok(_) => {
+                eprintln!(
+                    "[open-game-launcher] Authenticated Steam session returned no achievements for {}. Trying the keyless Community fallback.",
+                    game.title
+                );
+                (
+                    fetch_steam_achievements(appid, Some(steam_id.to_string())).await?,
+                    "steam_community_fallback",
+                )
+            }
+            Err(error) => {
+                eprintln!(
+                    "[open-game-launcher] Authenticated Steam session was unavailable for {}: {error}. Trying the keyless Community fallback.",
+                    game.title
+                );
+                (
+                    fetch_steam_achievements(appid, Some(steam_id.to_string())).await?,
+                    "steam_community_fallback",
+                )
+            }
+        }
+    } else {
+        (
+            fetch_steam_achievements(appid, None).await?,
+            "steam_community_fallback",
+        )
+    };
     if achievements.is_empty() {
         return Err(format!(
             "Steam returned no achievements for {}. The game may not expose public achievement data.",
@@ -596,14 +710,20 @@ pub async fn sync_game_achievements(
     };
 
     Ok(SyncGameAchievementsResponse {
+        achievement_source: Some(achievement_source.to_string()),
         game_id,
         success: true,
         game: game.clone(),
         synced_achievements,
         unlocked_achievements,
         message: format!(
-            "{} achievements synced: {unlocked_achievements}/{synced_achievements} unlocked.",
-            game.title
+            "{} achievements synced from {}: {unlocked_achievements}/{synced_achievements} unlocked.",
+            game.title,
+            if achievement_source == "steam_authenticated_session" {
+                "the authenticated Steam session"
+            } else {
+                "the Steam Community fallback"
+            }
         ),
     })
 }
@@ -718,6 +838,7 @@ pub async fn sync_local_game_achievements(
     };
 
     Ok(SyncGameAchievementsResponse {
+        achievement_source: None,
         game_id,
         success: true,
         game: game.clone(),
@@ -785,7 +906,7 @@ async fn sync_best_effort_achievements(
                 }
                 Err(error) => {
                     eprintln!(
-                        "[open-game-launcher] Legendary achievement metadata failed for {}: {error}. Trying local cache.",
+                        "[open-game-launcher] Legendary achievement metadata unavailable for {}: {error}. Trying local cache.",
                         game.title
                     );
                 }
@@ -2198,10 +2319,9 @@ fn achievement_identity_keys(achievement: &UnifiedAchievement) -> Vec<String> {
     keys
 }
 
-#[tauri::command]
-pub fn uninstall_game(game_id: String) -> Result<UninstallGameResponse, String> {
+pub fn uninstall_local_game(game_id: String) -> Result<UninstallGameResponse, String> {
     let game_id = normalize_game_id(game_id)?;
-    println!("[open-game-launcher] uninstall_game requested for {game_id}");
+    println!("[open-game-launcher] uninstall_local_game requested for {game_id}");
 
     let mut game = read_installed_games_cache()
         .unwrap_or_default()
@@ -2241,88 +2361,135 @@ pub fn uninstall_game(game_id: String) -> Result<UninstallGameResponse, String> 
         }
     }
 
-    if game.launcher == "xbox" {
-        let raw_pfn = game
-            .id
-            .strip_prefix("xbox-")
-            .unwrap_or(&game.id)
-            .split('!')
-            .next()
-            .unwrap_or(&game.id);
-        // The PFN segment before the first `_` is what Get-AppxPackage matches
-        // against. It must be alphanumeric — any other character is rejected so
-        // we cannot smuggle PowerShell metacharacters (`"`, `$`, backtick)
-        // into the `-Command` string below.
-        let pfn = raw_pfn.split('_').next().unwrap_or(raw_pfn);
-        if pfn.is_empty() || pfn.len() > 128 || !pfn.chars().all(|c| c.is_ascii_alphanumeric()) {
-            return Err(format!(
-                "Refusing to launch uninstall: package family name '{pfn}' is not a safe identifier."
-            ));
-        }
-        // PowerShell string interpolation is the previous injection sink. We
-        // build the script with the value embedded as a `-Name` argument
-        // literal that has been pre-validated, and additionally call the
-        // script via stdin (`-Command -`) so the value can never be reparsed
-        // by the shell.
-        let script = format!(
-            "$ErrorActionPreference = 'Stop'\n\
-             $pkg = Get-AppxPackage -Name '*{pfn}*' -ErrorAction SilentlyContinue\n\
-             if ($pkg) {{ Remove-AppxPackage -Package $pkg.PackageFullName }}\n"
-        );
-        let mut child = std::process::Command::new("powershell");
-        child
-            .args(["-NoProfile", "-NonInteractive", "-Command", "-"])
-            .stdin(std::process::Stdio::piped())
-            .stdout(std::process::Stdio::null())
-            .stderr(std::process::Stdio::null());
-        match child.spawn() {
-            Ok(mut child) => {
-                if let Some(stdin) = child.stdin.as_mut() {
-                    use std::io::Write;
-                    let _ = stdin.write_all(script.as_bytes());
-                }
-                // PowerShell uninstall is fire-and-forget; we deliberately do
-                // not block on `wait()` because the call already returned and
-                // the parent has nothing meaningful to do with the exit code.
-                drop(child);
-                game = update_installed_game_cache(&game_id, |game| {
-                    mark_game_not_installed(game);
-                    Ok(())
-                })?;
-                return Ok(UninstallGameResponse {
-                    game_id,
-                    success: true,
-                    removed_from_library: false,
-                    game: Some(game.clone()),
-                    message: format!("{} uninstall was launched via PowerShell.", game.title),
-                });
-            }
-            Err(e) => {
-                return Err(format!("Failed to launch Xbox uninstaller: {}", e));
-            }
-        }
-    }
-
-    if let Some(uri) = uninstall_uri_for_game(&game) {
-        open_uri(&uri).map_err(|error| format!("Could not open uninstall flow: {error}"))?;
-        return Ok(UninstallGameResponse {
-            game_id,
-            success: true,
-            removed_from_library: false,
-            game: Some(game.clone()),
-            message: format!(
-                "{} uninstall was handed off to {}.",
-                game.title,
-                launcher_display_name(&game.launcher)
-            ),
-        });
-    }
-
     Err(format!(
-        "{} is managed by {}. Open that launcher to uninstall it, or remove only manually added entries from OG Launcher.",
-        game.title,
-        launcher_display_name(&game.launcher)
+        "{} is not an OG-managed or manually added game; use the confirmed provider action instead.",
+        game.title
     ))
+}
+
+pub fn uninstall_xbox_game(game_id: String) -> Result<UninstallGameResponse, String> {
+    let game_id = normalize_game_id(game_id)?;
+    println!("[open-game-launcher] uninstall_xbox_game requested for {game_id}");
+
+    let game = read_installed_games_cache_result()?
+        .into_iter()
+        .find(|game| game.id == game_id)
+        .ok_or_else(|| format!("Game '{game_id}' was not found in the local library cache."))?;
+    if launcher_key_from_source(&game.launcher) != "xbox" {
+        return Err("The selected game is not an Xbox package.".to_string());
+    }
+    let package_family_name = xbox_package_family_name_for_game(&game)
+        .ok_or_else(|| "Xbox uninstall requires an exact package family name.".to_string())?;
+
+    remove_exact_xbox_package(package_family_name)?;
+    let game = update_installed_game_cache(&game_id, |game| {
+        mark_game_not_installed(game);
+        Ok(())
+    })?;
+
+    Ok(UninstallGameResponse {
+        game_id,
+        success: true,
+        removed_from_library: false,
+        game: Some(game.clone()),
+        message: format!(
+            "{} was uninstalled and the package removal was verified.",
+            game.title
+        ),
+    })
+}
+
+fn validated_xbox_package_family_name(value: &str) -> Option<&str> {
+    let value = value.trim();
+    let (name, publisher_id) = value.rsplit_once('_')?;
+    (!name.is_empty()
+        && !publisher_id.is_empty()
+        && value.len() <= 256
+        && name
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric() || matches!(character, '.' | '-'))
+        && publisher_id
+            .chars()
+            .all(|character| character.is_ascii_alphanumeric()))
+    .then_some(value)
+}
+
+pub fn xbox_package_family_name_for_game(game: &InstalledGame) -> Option<&str> {
+    game.launch_uri
+        .as_deref()
+        .and_then(|uri| uri.strip_prefix("shell:AppsFolder\\"))
+        .and_then(|aumid| aumid.split('!').next())
+        .and_then(validated_xbox_package_family_name)
+        .or_else(|| {
+            game.id
+                .strip_prefix("xbox-")
+                .and_then(|id| id.split('!').next())
+                .and_then(validated_xbox_package_family_name)
+        })
+        .or_else(|| {
+            game.external_id
+                .as_deref()
+                .and_then(validated_xbox_package_family_name)
+        })
+}
+
+#[cfg(target_os = "windows")]
+fn remove_exact_xbox_package(package_family_name: &str) -> Result<(), String> {
+    use std::io::Write;
+    use std::os::windows::process::CommandExt;
+
+    const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+    const SCRIPT: &str = r#"$ErrorActionPreference = 'Stop'
+$pfn = $env:OG_LAUNCHER_XBOX_PFN
+$packages = @(Get-AppxPackage | Where-Object { $_.PackageFamilyName -ceq $pfn })
+if ($packages.Count -ne 1) { throw "Expected exactly one installed Xbox package for the selected game." }
+$package = $packages[0]
+if ($package.NonRemovable) { throw "The selected Xbox package is marked as non-removable." }
+Remove-AppxPackage -Package $package.PackageFullName -ErrorAction Stop
+$remaining = @(Get-AppxPackage | Where-Object { $_.PackageFamilyName -ceq $pfn })
+if ($remaining.Count -ne 0) { throw "Xbox package is still installed after Remove-AppxPackage returned." }
+"#;
+
+    let mut command = Command::new("powershell");
+    command
+        .args(["-NoProfile", "-NonInteractive", "-Command", "-"])
+        .env("OG_LAUNCHER_XBOX_PFN", package_family_name)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::piped())
+        .creation_flags(CREATE_NO_WINDOW);
+    let mut child = command
+        .spawn()
+        .map_err(|error| format!("Could not start the Xbox package uninstaller: {error}"))?;
+    child
+        .stdin
+        .take()
+        .ok_or_else(|| "Could not open the Xbox uninstaller input stream.".to_string())?
+        .write_all(SCRIPT.as_bytes())
+        .map_err(|error| format!("Could not send the Xbox uninstall command: {error}"))?;
+    let output = child
+        .wait_with_output()
+        .map_err(|error| format!("Could not wait for the Xbox uninstaller: {error}"))?;
+    if output.status.success() {
+        return Ok(());
+    }
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let detail = stderr.trim().chars().take(500).collect::<String>();
+    Err(if detail.is_empty() {
+        format!(
+            "Xbox package uninstall failed with status {}.",
+            output.status
+        )
+    } else {
+        format!("Xbox package uninstall failed: {detail}")
+    })
+}
+
+#[cfg(not(target_os = "windows"))]
+fn remove_exact_xbox_package(_package_family_name: &str) -> Result<(), String> {
+    Err("Native Xbox package uninstall is available only on Windows.".to_string())
 }
 
 // Watcher logic
@@ -2615,24 +2782,6 @@ pub fn remove_managed_install_path(path: &Path) -> Result<(), String> {
             .map_err(|error| format!("Could not remove install folder: {error}"))
     } else {
         fs::remove_file(path).map_err(|error| format!("Could not remove install file: {error}"))
-    }
-}
-
-pub fn uninstall_uri_for_game(game: &InstalledGame) -> Option<String> {
-    match game.launcher.as_str() {
-        "steam" => game
-            .external_id
-            .as_deref()
-            .map(|external_id| format!("steam://uninstall/{external_id}")),
-        "epic" => game.launch_uri.as_deref().map(|uri| {
-            uri.replace("action=launch", "action=uninstall")
-                .replace("action=install", "action=uninstall")
-        }),
-        "gog" => game
-            .external_id
-            .as_deref()
-            .map(|external_id| format!("goggalaxy://open-game-view/{external_id}")),
-        _ => None,
     }
 }
 
@@ -3996,18 +4145,58 @@ pub fn is_file_executable(path: &Path) -> bool {
 
     #[cfg(unix)]
     {
-        if let Ok(metadata) = fs::metadata(path) {
-            return metadata.permissions().mode() & 0o111 != 0;
-        }
+        return fs::metadata(path)
+            .map(|metadata| metadata.permissions().mode() & 0o111 != 0)
+            .unwrap_or(false);
     }
 
-    if let Some(extension) = path.extension().and_then(|ext| ext.to_str()) {
-        return extension.eq_ignore_ascii_case("exe")
-            || extension.eq_ignore_ascii_case("bat")
-            || extension.eq_ignore_ascii_case("cmd");
+    #[cfg(target_os = "windows")]
+    {
+        return path
+            .extension()
+            .and_then(|extension| extension.to_str())
+            .is_some_and(|extension| {
+                extension.eq_ignore_ascii_case("exe")
+                    || extension.eq_ignore_ascii_case("bat")
+                    || extension.eq_ignore_ascii_case("cmd")
+            });
     }
 
+    #[allow(unreachable_code)]
     false
+}
+
+fn resolve_manual_game_executable(path: &Path, title: &str) -> Result<PathBuf, String> {
+    find_launch_executable(path, title).ok_or_else(|| {
+        if path.is_file() {
+            format!(
+                "Selected file is not a supported executable for {}.",
+                current_platform_name()
+            )
+        } else {
+            format!(
+                "No supported executable was found in the selected {} folder.",
+                current_platform_name()
+            )
+        }
+    })
+}
+
+fn current_platform_name() -> &'static str {
+    #[cfg(target_os = "windows")]
+    {
+        return "Windows";
+    }
+    #[cfg(target_os = "macos")]
+    {
+        return "macOS";
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        return "Linux";
+    }
+    #[allow(unreachable_code)]
+    "this platform"
 }
 
 pub fn find_launch_executable(install_path: &Path, title: &str) -> Option<PathBuf> {
@@ -4520,6 +4709,23 @@ mod tests {
     }
 
     #[test]
+    fn xbox_package_family_name_requires_an_exact_safe_identity() {
+        assert_eq!(
+            validated_xbox_package_family_name("Microsoft.ForzaHorizon5_8wekyb3d8bbwe"),
+            Some("Microsoft.ForzaHorizon5_8wekyb3d8bbwe")
+        );
+        for invalid in [
+            "",
+            "Microsoft.ForzaHorizon5",
+            "Microsoft.ForzaHorizon5_",
+            "Microsoft.Forza Horizon5_8wekyb3d8bbwe",
+            "Microsoft.ForzaHorizon5_8wekyb3d8bbwe;Remove-Item",
+        ] {
+            assert_eq!(validated_xbox_package_family_name(invalid), None);
+        }
+    }
+
+    #[test]
     fn managed_games_root_is_not_a_single_install_path() {
         let games_root = open_game_launcher_data_dir().unwrap().join("games");
 
@@ -4760,6 +4966,53 @@ mod tests {
             Path::new(r"C:\Games\Test"),
             Path::new(r"D:\Library\Test")
         ));
+    }
+
+    #[test]
+    fn move_rejects_provider_managed_games_without_touching_the_provider_library() {
+        let provider_game = installed_game(
+            "steam-440",
+            "Team Fortress 2".to_string(),
+            "steam".to_string(),
+            Some("/provider/steamapps/common/Team Fortress 2".to_string()),
+            None,
+        );
+
+        let error = ensure_game_can_be_moved(&provider_game).unwrap_err();
+
+        assert!(error.contains("managed by Steam"));
+        assert!(error.contains("provider client"));
+    }
+
+    #[test]
+    fn move_allows_manually_registered_games() {
+        let manual_game = installed_game(
+            "manual-local-game",
+            "Local Game".to_string(),
+            "manual".to_string(),
+            Some("/games/local-game".to_string()),
+            None,
+        );
+
+        assert!(ensure_game_can_be_moved(&manual_game).is_ok());
+    }
+
+    #[test]
+    fn move_relocates_the_executable_path_relative_to_the_game_root() {
+        let root = unique_temp_dir("move-relative-executable");
+        let old_root = root.join("old");
+        let new_root = root.join("new");
+        let executable = old_root.join("bin").join("game.exe");
+        fs::create_dir_all(executable.parent().unwrap()).unwrap();
+        fs::write(&executable, b"game").unwrap();
+
+        let relocated = relocated_game_path(&executable, &old_root, &new_root).unwrap();
+
+        assert_eq!(
+            relocated,
+            path_to_string(new_root.join("bin").join("game.exe"))
+        );
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
@@ -5019,10 +5272,43 @@ mod tests {
     }
 
     #[test]
-    fn cache_only_library_list_returns_empty_on_cache_miss() {
-        let games = list_installed_games_from_cache(|| None);
+    fn cache_only_library_list_propagates_cache_read_errors() {
+        let error = list_installed_games_from_cache(|| {
+            Err("SQLite games collection could not be read".to_string())
+        })
+        .unwrap_err();
 
-        assert!(games.is_empty());
+        assert_eq!(error, "SQLite games collection could not be read");
+    }
+
+    #[test]
+    fn manual_game_path_rejects_non_executable_files() {
+        let root = unique_temp_dir("manual-non-executable");
+        let notes = root.join("release-notes.txt");
+        fs::write(&notes, b"not a game").unwrap();
+
+        let error = resolve_manual_game_executable(&notes, "Release Notes").unwrap_err();
+
+        assert!(error.contains("not a supported executable"));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn manual_game_path_accepts_a_platform_executable() {
+        let root = unique_temp_dir("manual-executable");
+        #[cfg(target_os = "windows")]
+        let executable = root.join("actual-game.exe");
+        #[cfg(unix)]
+        let executable = root.join("actual-game");
+        fs::write(&executable, b"game binary fixture").unwrap();
+        #[cfg(unix)]
+        fs::set_permissions(&executable, fs::Permissions::from_mode(0o755)).unwrap();
+
+        assert_eq!(
+            resolve_manual_game_executable(&executable, "Actual Game").unwrap(),
+            executable
+        );
+        let _ = fs::remove_dir_all(root);
     }
 
     #[test]

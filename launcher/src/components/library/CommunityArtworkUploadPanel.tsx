@@ -79,7 +79,7 @@ export function CommunityArtworkUploadPanel({
     >
       <input
         ref={inputRef}
-        accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml"
+        accept="image/png,image/jpeg,image/webp"
         className="hidden"
         type="file"
         onChange={(event) => {

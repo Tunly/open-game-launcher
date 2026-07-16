@@ -1,12 +1,35 @@
-import { Circle, Gamepad2, LogIn, MessageSquare, Send, Trash2, UserRound } from "lucide-react";
+import {
+  Circle,
+  Gamepad2,
+  Link2,
+  LogIn,
+  MessageSquare,
+  Send,
+  Trash2,
+  UserRound,
+} from "lucide-react";
 import { Link } from "react-router-dom";
 
+import { buildPlatformRoster, type PlatformFriendGroup } from "../../lib/friends-roster";
 import { getPresenceGameLine, getPresencePlatformLabel } from "../../lib/supabase/presence";
+import type { FriendLink, PlatformType } from "../../lib/types/friends";
 import type { Friendship, UserPresence } from "../../lib/types/profile";
+
+const PLATFORM_LABELS: Record<PlatformType, string> = {
+  steam: "Steam",
+  epic: "Epic Games",
+  gog: "GOG",
+  ea: "EA App",
+  xbox: "Xbox",
+  battlenet: "Battle.net",
+  ubisoft: "Ubisoft Connect",
+  og: "OG-Launcher",
+};
 
 export function FriendsList({
   currentUserId,
   friends,
+  friendLinks = [],
   onRemove,
   onOpenChat,
   onOpenInvite,
@@ -17,6 +40,7 @@ export function FriendsList({
 }: {
   currentUserId: string;
   friends: Friendship[];
+  friendLinks?: FriendLink[];
   onRemove?: (friendship: Friendship) => void;
   onOpenChat?: (friendId: string) => void;
   onOpenInvite?: (friendId: string) => void;
@@ -25,126 +49,135 @@ export function FriendsList({
   presenceByUserId?: Record<string, UserPresence>;
   selectedFriendId?: string | null;
 }) {
+  const roster = buildPlatformRoster(currentUserId, friends, friendLinks);
+
   return (
     <div className="space-y-3">
-      {friends.length > 0 ? (
-        friends.map((friendship) => {
-          const friendId =
-            friendship.requesterId === currentUserId
-              ? friendship.addresseeId
-              : friendship.requesterId;
-          const presence = presenceByUserId[friendId];
-          const status = presence?.status ?? "offline";
-          const gameLine = presence ? getPresenceGameLine(presence) : null;
-          const platformLabel = presence
-            ? getPresencePlatformLabel(presence.platform, presence.platformSource)
-            : null;
-          const isSelected = selectedFriendId === friendId;
-          const displayName = friendship.profile?.displayName ?? friendship.profile?.username;
-          const username = friendship.profile?.username;
+      {friends.length > 0 || roster.externalGroups.length > 0 ? (
+        <>
+          {friends.map((friendship) => {
+            const friendId =
+              friendship.requesterId === currentUserId
+                ? friendship.addresseeId
+                : friendship.requesterId;
+            const presence = presenceByUserId[friendId];
+            const status = presence?.status ?? "offline";
+            const gameLine = presence ? getPresenceGameLine(presence) : null;
+            const platformLabel = presence
+              ? getPresencePlatformLabel(presence.platform, presence.platformSource)
+              : null;
+            const isSelected = selectedFriendId === friendId;
+            const displayName = friendship.profile?.displayName ?? friendship.profile?.username;
+            const username = friendship.profile?.username;
+            const platforms = roster.platformsByUserId.get(friendId) ?? [];
 
-          return (
-            <div
-              key={friendship.id}
-              className={`block w-full border-[3px] border-black shadow-[3px_3px_0_#171411] transition ${
-                isSelected ? "bg-[#8cf5e4]" : "bg-[#f6edd8] hover:-translate-y-0.5"
-              }`}
-            >
-              <button
-                className="block w-full cursor-pointer p-4 text-left"
-                type="button"
-                onClick={() => onSelectFriend?.(friendId)}
+            return (
+              <div
+                key={friendship.id}
+                className={`block w-full border-[3px] border-black shadow-[3px_3px_0_#171411] transition ${
+                  isSelected ? "bg-[#8cf5e4]" : "bg-[#f6edd8] hover:-translate-y-0.5"
+                }`}
               >
-                <div className="flex items-start gap-3">
-                  <Avatar
-                    avatarUrl={friendship.profile?.avatarUrl ?? null}
-                    displayName={displayName ?? null}
-                    username={username ?? null}
-                  />
-                  <div className="min-w-0 flex-1">
-                    <p className="neo-title truncate text-2xl leading-none text-[#171411]">
-                      {displayName ?? "Unknown player"}
-                    </p>
-                    {username ? (
-                      <p className="neo-copy mt-1 truncate text-[10px] font-black tracking-[0.12em] text-[#5b403f] uppercase">
-                        @{username}
+                <button
+                  className="block w-full cursor-pointer p-4 text-left"
+                  type="button"
+                  onClick={() => onSelectFriend?.(friendId)}
+                >
+                  <div className="flex items-start gap-3">
+                    <Avatar
+                      avatarUrl={friendship.profile?.avatarUrl ?? null}
+                      displayName={displayName ?? null}
+                      username={username ?? null}
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className="neo-title truncate text-2xl leading-none text-[#171411]">
+                        {displayName ?? "Unknown player"}
                       </p>
-                    ) : null}
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      <p className={statusBadgeClassName(status)}>
-                        <Circle className="h-2.5 w-2.5 fill-current" />
-                        {status}
-                      </p>
+                      {username ? (
+                        <p className="neo-copy mt-1 truncate text-[10px] font-black tracking-[0.12em] text-[#5b403f] uppercase">
+                          @{username}
+                        </p>
+                      ) : null}
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <p className={statusBadgeClassName(status)}>
+                          <Circle className="h-2.5 w-2.5 fill-current" />
+                          {status}
+                        </p>
+                        <PlatformBadges includeOg platforms={platforms} />
+                      </div>
                     </div>
                   </div>
-                </div>
-              </button>
-              {gameLine ? (
-                <div className="flex flex-wrap items-center gap-2 px-4 pb-4">
-                  <p className="neo-copy inline-flex max-w-full items-center gap-2 border-2 border-black bg-[#fff9ed] px-3 py-2 text-[10px] font-black tracking-[0.12em] text-[#171411] uppercase shadow-[2px_2px_0_#171411]">
-                    <Gamepad2 className="h-4 w-4 shrink-0 text-[#b7102a]" />
-                    <span className="truncate">{gameLine}</span>
-                  </p>
-                  <span className={platformBadgeClassName(Boolean(platformLabel))}>
-                    {platformLabel ?? "Source unknown"}
-                  </span>
-                  {onJoinGame && presence?.currentGameId ? (
-                    <button
-                      className="neo-copy inline-flex items-center gap-1 border-2 border-black bg-[#087d6d] px-2 py-1 text-[10px] font-black text-white uppercase shadow-[2px_2px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#065e53]"
-                      type="button"
-                      onClick={() => onJoinGame(presence.currentGameId!)}
+                </button>
+                {gameLine ? (
+                  <div className="flex flex-wrap items-center gap-2 px-4 pb-4">
+                    <p className="neo-copy inline-flex max-w-full items-center gap-2 border-2 border-black bg-[#fff9ed] px-3 py-2 text-[10px] font-black tracking-[0.12em] text-[#171411] uppercase shadow-[2px_2px_0_#171411]">
+                      <Gamepad2 className="h-4 w-4 shrink-0 text-[#b7102a]" />
+                      <span className="truncate">{gameLine}</span>
+                    </p>
+                    <span className={platformBadgeClassName(Boolean(platformLabel))}>
+                      {platformLabel ?? "Source unknown"}
+                    </span>
+                    {onJoinGame && presence?.currentGameId ? (
+                      <button
+                        className="neo-copy inline-flex items-center gap-1 border-2 border-black bg-[#087d6d] px-2 py-1 text-[10px] font-black text-white uppercase shadow-[2px_2px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#065e53]"
+                        type="button"
+                        onClick={() => onJoinGame(presence.currentGameId!)}
+                      >
+                        <LogIn className="h-3 w-3" />
+                        Smart Join
+                      </button>
+                    ) : null}
+                  </div>
+                ) : null}
+                <div className="flex flex-wrap items-center justify-end gap-2 border-t-2 border-black bg-[#efe6d4] px-3 py-2">
+                  {username ? (
+                    <Link
+                      className="neo-copy inline-flex items-center gap-1 border-2 border-black bg-[#fff9ed] px-2 py-1 text-[10px] font-black tracking-[0.12em] text-[#171411] uppercase shadow-[1px_1px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#8cf5e4]"
+                      to={`/u/${username}`}
                     >
-                      <LogIn className="h-3 w-3" />
-                      Smart Join
+                      <UserRound className="h-3 w-3" />
+                      Profile
+                    </Link>
+                  ) : null}
+                  {onOpenChat ? (
+                    <button
+                      className="neo-copy inline-flex items-center gap-1 border-2 border-black bg-[#fff9ed] px-2 py-1 text-[10px] font-black tracking-[0.12em] text-[#171411] uppercase shadow-[1px_1px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#8cf5e4]"
+                      type="button"
+                      onClick={() => onOpenChat(friendId)}
+                    >
+                      <MessageSquare className="h-3 w-3" />
+                      Chat
+                    </button>
+                  ) : null}
+                  {onOpenInvite ? (
+                    <button
+                      className="neo-copy inline-flex items-center gap-1 border-2 border-black bg-[#fff9ed] px-2 py-1 text-[10px] font-black tracking-[0.12em] text-[#171411] uppercase shadow-[1px_1px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#8cf5e4]"
+                      type="button"
+                      onClick={() => onOpenInvite(friendId)}
+                    >
+                      <Send className="h-3 w-3" />
+                      Invite
+                    </button>
+                  ) : null}
+                  {onRemove ? (
+                    <button
+                      className="neo-copy inline-flex items-center gap-1 border-2 border-black bg-[#fff9ed] px-2 py-1 text-[10px] font-black tracking-[0.12em] text-[#b7102a] uppercase shadow-[1px_1px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#f3c3c9] disabled:opacity-60"
+                      disabled={!onRemove}
+                      type="button"
+                      onClick={() => onRemove(friendship)}
+                    >
+                      <Trash2 className="h-3 w-3" />
+                      Remove
                     </button>
                   ) : null}
                 </div>
-              ) : null}
-              <div className="flex flex-wrap items-center justify-end gap-2 border-t-2 border-black bg-[#efe6d4] px-3 py-2">
-                {username ? (
-                  <Link
-                    className="neo-copy inline-flex items-center gap-1 border-2 border-black bg-[#fff9ed] px-2 py-1 text-[10px] font-black tracking-[0.12em] text-[#171411] uppercase shadow-[1px_1px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#8cf5e4]"
-                    to={`/u/${username}`}
-                  >
-                    <UserRound className="h-3 w-3" />
-                    Profile
-                  </Link>
-                ) : null}
-                {onOpenChat ? (
-                  <button
-                    className="neo-copy inline-flex items-center gap-1 border-2 border-black bg-[#fff9ed] px-2 py-1 text-[10px] font-black tracking-[0.12em] text-[#171411] uppercase shadow-[1px_1px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#8cf5e4]"
-                    type="button"
-                    onClick={() => onOpenChat(friendId)}
-                  >
-                    <MessageSquare className="h-3 w-3" />
-                    Chat
-                  </button>
-                ) : null}
-                {onOpenInvite ? (
-                  <button
-                    className="neo-copy inline-flex items-center gap-1 border-2 border-black bg-[#fff9ed] px-2 py-1 text-[10px] font-black tracking-[0.12em] text-[#171411] uppercase shadow-[1px_1px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#8cf5e4]"
-                    type="button"
-                    onClick={() => onOpenInvite(friendId)}
-                  >
-                    <Send className="h-3 w-3" />
-                    Invite
-                  </button>
-                ) : null}
-                {onRemove ? (
-                  <button
-                    className="neo-copy inline-flex items-center gap-1 border-2 border-black bg-[#fff9ed] px-2 py-1 text-[10px] font-black tracking-[0.12em] text-[#b7102a] uppercase shadow-[1px_1px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#f3c3c9] disabled:opacity-60"
-                    disabled={!onRemove}
-                    type="button"
-                    onClick={() => onRemove(friendship)}
-                  >
-                    <Trash2 className="h-3 w-3" />
-                    Remove
-                  </button>
-                ) : null}
               </div>
-            </div>
-          );
-        })
+            );
+          })}
+          {roster.externalGroups.map((group) => (
+            <PlatformFriendCard group={group} key={group.key} />
+          ))}
+        </>
       ) : (
         <p className="neo-copy border-2 border-dashed border-black bg-[#f6edd8] p-3 text-[12px] leading-5 font-bold text-[#655f58] uppercase">
           No friends yet.
@@ -152,6 +185,61 @@ export function FriendsList({
       )}
     </div>
   );
+}
+
+function PlatformFriendCard({ group }: { group: PlatformFriendGroup }) {
+  const platforms = Array.from(new Set(group.links.map((link) => link.platform)));
+
+  return (
+    <article className="border-[3px] border-black bg-[#f6edd8] shadow-[3px_3px_0_#171411]">
+      <div className="p-4">
+        <div className="flex items-start gap-3">
+          <Avatar avatarUrl={group.avatarUrl} displayName={group.displayName} username={null} />
+          <div className="min-w-0 flex-1">
+            <p className="neo-title truncate text-2xl leading-none text-[#171411]">
+              {group.displayName}
+            </p>
+            <p className="neo-copy mt-1 text-[9px] font-black tracking-[0.12em] text-[#5b403f] uppercase">
+              Platform friend · OG account not linked
+            </p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <p className="neo-copy inline-flex items-center gap-1 border-2 border-black bg-[#e3d5ba] px-2 py-1 text-[10px] font-black tracking-[0.12em] text-[#5b403f] uppercase shadow-[2px_2px_0_#171411]">
+                <Link2 className="h-3 w-3" />
+                Imported
+              </p>
+              <PlatformBadges platforms={platforms} />
+            </div>
+          </div>
+        </div>
+      </div>
+      <div className="border-t-2 border-black bg-[#efe6d4] px-3 py-2">
+        <p className="neo-copy text-[9px] leading-4 font-bold tracking-[0.1em] text-[#5b403f] uppercase">
+          Presence and OG actions become available after the account is linked.
+        </p>
+      </div>
+    </article>
+  );
+}
+
+function PlatformBadges({
+  includeOg = false,
+  platforms,
+}: {
+  includeOg?: boolean;
+  platforms: PlatformType[];
+}) {
+  const visiblePlatforms = Array.from(
+    new Set(includeOg ? (["og", ...platforms] as PlatformType[]) : platforms),
+  );
+
+  return visiblePlatforms.map((platform) => (
+    <span
+      className="neo-copy inline-flex items-center border-2 border-black bg-[#fff9ed] px-2 py-1 text-[10px] font-black tracking-[0.12em] text-[#171411] uppercase shadow-[2px_2px_0_#171411]"
+      key={platform}
+    >
+      {PLATFORM_LABELS[platform]}
+    </span>
+  ));
 }
 
 function Avatar({

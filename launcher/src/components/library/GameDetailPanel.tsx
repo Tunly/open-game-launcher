@@ -97,6 +97,23 @@ export function GameDetailPanel({ verifyMode }: { verifyMode?: string | null }) 
       isDiscoveringGames={ctx.sync.isDiscoveringGames}
       discoveryMessage={ctx.sync.discoveryMessage}
       runAutomaticLibrarySync={ctx.sync.runAutomaticLibrarySync}
+      requestLibraryRescanOnNextFocus={ctx.sync.requestLibraryRescanOnNextFocus}
+      onVerifiedUninstall={(gameId) =>
+        ctx.sync.setInstalledGames((current) =>
+          current.map((game) =>
+            game.id === gameId
+              ? {
+                  ...game,
+                  status: "not_installed",
+                  installPath: undefined,
+                  executablePath: undefined,
+                  processNames: [],
+                  launchUri: undefined,
+                }
+              : game,
+          ),
+        )
+      }
       customArtwork={
         selectedVariants[0] ? (ctx.sync.customArtwork[selectedVariants[0].id] ?? null) : null
       }
@@ -106,6 +123,14 @@ export function GameDetailPanel({ verifyMode }: { verifyMode?: string | null }) 
       onArtworkDrop={ctx.sync.handleArtworkDrop}
       onConfirmArtwork={ctx.sync.handleConfirmArtwork}
       onResetCustomArtwork={ctx.sync.handleResetCustomArtwork}
+      onApplyCustomArtworkUrl={ctx.sync.handleApplyCustomArtworkUrl}
+      onPlaytimeChanged={(gameId, nextMinutes) =>
+        ctx.sync.setInstalledGames((current) =>
+          current.map((game) =>
+            game.id === gameId ? { ...game, playtimeMinutes: nextMinutes } : game,
+          ),
+        )
+      }
       pendingArtworkFile={ctx.sync.pendingArtworkFile}
       pendingArtworkKind={ctx.sync.pendingArtworkKind}
       pendingArtworkGameId={ctx.sync.pendingArtworkGameId}

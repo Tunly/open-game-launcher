@@ -58,6 +58,10 @@ function formatBytesPerSecond(bytes: number): string {
   return `${val.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
 }
 
+function formatTransferRateLabel(value: string): string {
+  return value.replace(/\b(B|KB|MB|GB)\s*\/\s*S\b/gi, "$1PS").replaceAll("/", " ");
+}
+
 function readLibrarySnapshot(): Game[] {
   try {
     const snapshot = localStorage.getItem(STORAGE_KEYS.LIBRARY_SNAPSHOT);
@@ -350,7 +354,7 @@ export function DownloadsPage() {
             Downloads
           </h1>
           <p className="neo-copy mt-1 text-[10px] font-bold text-[#5b403f] uppercase">
-            {items.length} game jobs // {activeModItems.length} mod jobs
+            {items.length} game jobs · {activeModItems.length} mod jobs
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
@@ -523,7 +527,7 @@ export function DownloadsPage() {
                 </div>
                 <div>
                   <p className="neo-copy mb-1 text-[10px] font-black text-[#55504a] uppercase">
-                    {item.progress}% {item.speed ? `// ${item.speed}` : ""}
+                    {item.progress}% {item.speed ? `· ${formatTransferRateLabel(item.speed)}` : ""}
                   </p>
                   <div
                     aria-label={`${item.title} install progress`}

@@ -33,6 +33,9 @@ const platformMocks = vi.hoisted(() => ({
   getMyPlatformAccounts: vi.fn(),
   getPlatformAccountsForUser: vi.fn(),
 }));
+const friendLinkMocks = vi.hoisted(() => ({
+  getMyFriendLinks: vi.fn(),
+}));
 const activityMocks = vi.hoisted(() => ({
   getFriendActivityFeed: vi.fn(),
   postActivity: vi.fn(),
@@ -65,6 +68,7 @@ vi.mock("../hooks/useCurrentUser", () => ({
 vi.mock("../lib/supabase/profile", () => profileMocks);
 vi.mock("../lib/supabase/presence", () => presenceMocks);
 vi.mock("../lib/supabase/platform-accounts", () => platformMocks);
+vi.mock("../lib/supabase/friend-links", () => friendLinkMocks);
 vi.mock("../lib/supabase/activity", () => activityMocks);
 vi.mock("../lib/supabase/social", () => socialMocks);
 vi.mock("../lib/supabase/crossplay", () => crossplayMocks);
@@ -149,6 +153,7 @@ describe("FriendsPage", () => {
     presenceMocks.getVisiblePresence.mockResolvedValue([]);
     platformMocks.getMyPlatformAccounts.mockResolvedValue([]);
     platformMocks.getPlatformAccountsForUser.mockResolvedValue([]);
+    friendLinkMocks.getMyFriendLinks.mockResolvedValue([]);
     activityMocks.getFriendActivityFeed.mockResolvedValue([]);
     activityMocks.postActivity.mockResolvedValue({ id: "status-1" });
     socialMocks.getMyGameInvites.mockResolvedValue([]);
@@ -182,6 +187,31 @@ describe("FriendsPage", () => {
     expect(screen.getByRole("heading", { name: /cross-platform invites/i })).toBeInTheDocument();
     expect(screen.getByDisplayValue("Neon Drift")).toBeInTheDocument();
     expect(screen.getByText(/Invite handoff staged for Packet Ghost/i)).toBeInTheDocument();
+  });
+
+  it("updates the local roster when a request is accepted", () => {
+    renderFriendsPage();
+
+    const request = screen.getByText("Vector Kid").closest("div");
+    if (!request) throw new Error("Vector Kid request not found.");
+    fireEvent.click(within(request).getByRole("button", { name: "Accept" }));
+
+    expect(screen.queryByText("Wants to join your Neon Drift bracket.")).not.toBeInTheDocument();
+    expect(screen.getByText(/Vector Kid added to your local roster/i)).toBeInTheDocument();
+    expect(screen.getAllByText("Vector Kid").length).toBeGreaterThan(0);
+  });
+
+  it("updates local block state instead of only staging a message", () => {
+    renderFriendsPage();
+
+    const result = screen.getByText("Null Byte").closest("div");
+    if (!result) throw new Error("Null Byte result not found.");
+    fireEvent.click(within(result).getByRole("button", { name: "Block" }));
+
+    expect(screen.getByText(/Null Byte blocked locally/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Unblock" }));
+    expect(screen.getByText(/Static Knight unblocked locally/i)).toBeInTheDocument();
+    expect(screen.getByText("No muted players.")).toBeInTheDocument();
   });
 
   it("renders the local activity tab with Steam-like feed regions", () => {
@@ -222,6 +252,89 @@ describe("FriendsPage", () => {
       });
     });
     expect(await screen.findByText("Status posted to friend activity.")).toBeVisible();
+  });
+
+  it("loads imported platform friends into the main Friends roster", async () => {
+    useCurrentUserMock.mockReturnValue({
+      isConfigured: true,
+      isLoading: false,
+      user: { id: "user-1" },
+    });
+    profileMocks.getFriends.mockResolvedValue(configuredFriendships());
+    friendLinkMocks.getMyFriendLinks.mockResolvedValue([
+      {
+        createdAt: "2026-06-17T08:00:00.000Z",
+        dismissed: false,
+        id: "steam-link",
+        matchMethod: "linked_account",
+        matchedUserId: "friend-1",
+        mergeGroupId: null,
+        ownerId: "user-1",
+        platform: "steam",
+        platformFriendAvatar: null,
+        platformFriendId: "steam-packet-ghost",
+        platformFriendName: "Packet Ghost",
+        updatedAt: "2026-06-17T08:00:00.000Z",
+      },
+      {
+        createdAt: "2026-06-17T08:00:00.000Z",
+        dismissed: false,
+        id: "epic-link",
+        matchMethod: null,
+        matchedUserId: null,
+        mergeGroupId: "arcade-witch-group",
+        ownerId: "user-1",
+        platform: "epic",
+        platformFriendAvatar: null,
+        platformFriendId: "epic-arcade-witch",
+        platformFriendName: "Arcade Witch",
+        updatedAt: "2026-06-17T08:00:00.000Z",
+      },
+      {
+        createdAt: "2026-06-17T08:00:00.000Z",
+        dismissed: false,
+        id: "gog-link",
+        matchMethod: null,
+        matchedUserId: null,
+        mergeGroupId: "arcade-witch-group",
+        ownerId: "user-1",
+        platform: "gog",
+        platformFriendAvatar: null,
+        platformFriendId: "gog-arcade-witch",
+        platformFriendName: "Arcade Witch",
+        updatedAt: "2026-06-17T08:00:00.000Z",
+      },
+      {
+        createdAt: "2026-06-17T08:00:00.000Z",
+        dismissed: true,
+        id: "hidden-link",
+        matchMethod: null,
+        matchedUserId: null,
+        mergeGroupId: null,
+        ownerId: "user-1",
+        platform: "xbox",
+        platformFriendAvatar: null,
+        platformFriendId: "hidden-xbox-contact",
+        platformFriendName: "Hidden Contact",
+        updatedAt: "2026-06-17T08:00:00.000Z",
+      },
+    ]);
+
+    renderFriendsPage();
+
+    expect(await screen.findByRole("heading", { name: /friends \/ all platforms/i })).toBeVisible();
+    expect(await screen.findByText("Arcade Witch")).toBeVisible();
+    expect(screen.getByText("Steam")).toBeVisible();
+    expect(screen.getByText("Epic Games")).toBeVisible();
+    expect(screen.getByText("GOG")).toBeVisible();
+    expect(screen.getAllByText("Packet Ghost")).toHaveLength(1);
+    expect(screen.getAllByText("Arcade Witch")).toHaveLength(1);
+    expect(screen.queryByText("Hidden Contact")).not.toBeInTheDocument();
+    const friendsMetric = screen.getByText("Friends", { selector: "span" }).parentElement
+      ?.parentElement;
+    expect(friendsMetric).not.toBeNull();
+    expect(within(friendsMetric!).getByText("3")).toBeVisible();
+    expect(friendLinkMocks.getMyFriendLinks).toHaveBeenCalledOnce();
   });
 
   it("loads the selected friend's real platforms for invite feasibility", async () => {

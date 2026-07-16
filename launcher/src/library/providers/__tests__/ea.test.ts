@@ -131,7 +131,11 @@ describe("mergeEaOwned", () => {
     const setStatusMessage = vi.fn();
     const result = await mergeEaOwned([], makeContext({ setStatusMessage }));
     expect(result.warnings.length).toBe(1);
-    expect(result.statusMessage).toMatch(/EA library sync failed/);
+    expect(result.warnings[0]).toContain("401 unauthorized");
+    expect(result.statusMessage).toBe(
+      "EA library could not be refreshed. Open Settings > EA App to reconnect, then try again.",
+    );
+    expect(result.statusMessage).not.toContain("401 unauthorized");
   });
 
   it("removes the cached token when the error mentions 'expired'", async () => {

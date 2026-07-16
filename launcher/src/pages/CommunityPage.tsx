@@ -25,7 +25,7 @@ import {
 } from "lucide-react";
 import { type FormEvent, useEffect, useMemo, useState } from "react";
 
-import { ActivityFeed } from "../components/friends/ActivityFeed";
+import { ActivityFeed, type ActivityFeedProfile } from "../components/friends/ActivityFeed";
 import { BroadcastChatModerationShadowPanel } from "../components/community/BroadcastChatModerationShadowPanel";
 import { BroadcastAudienceStatusContractPanel } from "../components/community/BroadcastAudienceStatusContractPanel";
 import { BroadcastProviderCallbackContractPanel } from "../components/community/BroadcastProviderCallbackContractPanel";
@@ -673,6 +673,9 @@ function CommunityLivePage() {
   const { error: authError, isConfigured, isLoading: isAuthLoading, user } = useCurrentUser();
   const userId = user?.id ?? null;
   const [friendIds, setFriendIds] = useState<string[]>([]);
+  const [friendProfiles, setFriendProfiles] = useState<ReadonlyMap<string, ActivityFeedProfile>>(
+    new Map(),
+  );
   const [isFriendsLoading, setIsFriendsLoading] = useState(false);
   const [friendsError, setFriendsError] = useState<string | null>(null);
   const [friendsRefreshVersion, setFriendsRefreshVersion] = useState(0);
@@ -685,10 +688,15 @@ function CommunityLivePage() {
   const canUseCommunity = isConfigured && !isAuthLoading && Boolean(userId);
   const friendCountLabel =
     canUseCommunity && !isFriendsLoading && !friendsError ? String(friendIds.length) : "—";
+  const feedUserIds = useMemo(
+    () => (userId ? Array.from(new Set([userId, ...friendIds])) : friendIds),
+    [friendIds, userId],
+  );
 
   useEffect(() => {
     if (!isConfigured || !userId) {
       setFriendIds([]);
+      setFriendProfiles(new Map());
       setFriendsError(null);
       setIsFriendsLoading(false);
       return;
@@ -711,11 +719,24 @@ function CommunityLivePage() {
               .filter((friendId) => friendId && friendId !== userId),
           ),
         );
+        const nextProfiles = new Map<string, ActivityFeedProfile>();
+        for (const friendship of friends) {
+          const otherFriendId: string =
+            friendship.requesterId === userId ? friendship.addresseeId : friendship.requesterId;
+          if (!friendship.profile || !otherFriendId || otherFriendId === userId) continue;
+          nextProfiles.set(otherFriendId, {
+            avatarUrl: friendship.profile.avatarUrl,
+            displayName: friendship.profile.displayName,
+            username: friendship.profile.username,
+          });
+        }
         setFriendIds(nextFriendIds);
+        setFriendProfiles(nextProfiles);
       })
       .catch((error: unknown) => {
         if (!active) return;
         setFriendIds([]);
+        setFriendProfiles(new Map());
         setFriendsError(error instanceof Error ? error.message : String(error));
       })
       .finally(() => {
@@ -787,9 +808,15 @@ function CommunityLivePage() {
     feedContent = (
       <>
         {friendIds.length === 0 ? (
-          <CommunityLiveNotice copy="You have no accepted friends yet. Your feed can still show your own visible activity; add friends to receive their updates." />
+          <CommunityLiveNotice copy="You have no accepted friends yet. Showing your own visible activity; add friends to receive their updates." />
         ) : null}
-        <ActivityFeed friendIds={friendIds} key={feedVersion} />
+        <ActivityFeed
+          currentUserId={userId}
+          friendIds={feedUserIds}
+          key={feedVersion}
+          profiles={friendProfiles}
+          scope="community"
+        />
       </>
     );
   }

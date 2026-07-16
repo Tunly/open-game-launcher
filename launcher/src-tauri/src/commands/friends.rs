@@ -1,4 +1,7 @@
-use serde::Serialize;
+use std::collections::{HashMap, HashSet};
+use std::time::Duration;
+
+use serde::{Deserialize, Serialize};
 
 use super::secure_store;
 
@@ -14,6 +17,32 @@ pub struct PlatformFriend {
     pub display_name: String,
     pub avatar_url: Option<String>,
     pub online_status: String,
+}
+
+const EPIC_FRIENDS_URL: &str =
+    "https://friends-public-service-prod.ol.epicgames.com/friends/api/v1";
+const EPIC_ACCOUNTS_URL: &str =
+    "https://account-public-service-prod.ol.epicgames.com/account/api/public/account";
+const EPIC_LAUNCHER_USER_AGENT: &str = "EpicGamesLauncher/14.0.8-22004686+++Portal+Release-Live";
+
+#[derive(Deserialize)]
+struct LegendaryBearerToken {
+    access_token: String,
+    account_id: String,
+}
+
+#[derive(Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct EpicFriendRelationship {
+    account_id: String,
+    alias: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct EpicAccountProfile {
+    id: String,
+    display_name: Option<String>,
 }
 
 // ============================================================================
@@ -234,79 +263,170 @@ fn read_gog_access_token() -> Result<String, String> {
 }
 
 // ============================================================================
-// Epic Friends — uses Legendary CLI friends list
+// Epic Friends - uses Legendary for a fresh bearer token, then Epic friend services.
 // ============================================================================
 
 #[tauri::command]
 pub async fn fetch_epic_friends() -> Result<Vec<PlatformFriend>, String> {
-    // Epic friends require the Legendary CLI to be authenticated
-    let data_dir = super::games::core::open_game_launcher_data_dir()
-        .ok_or_else(|| "Could not determine data directory.".to_string())?;
+    let token = load_legendary_bearer_token().await?;
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(15))
+        .user_agent(EPIC_LAUNCHER_USER_AGENT)
+        .build()
+        .map_err(|_| "Could not initialize the Epic friends connection.".to_string())?;
 
-    let legendary_path = data_dir.join("tools").join(if cfg!(target_os = "windows") {
-        "legendary.exe"
-    } else {
-        "legendary"
-    });
-
-    if !legendary_path.exists() {
-        return Err(
-            "Legendary CLI not installed. Connect Epic Games first in Settings.".to_string(),
-        );
-    }
-
-    let output = tokio::process::Command::new(&legendary_path)
-        .args(["friends", "list", "--json"])
-        .output()
+    let response = client
+        .get(format!("{EPIC_FRIENDS_URL}/{}/friends", token.account_id))
+        .bearer_auth(&token.access_token)
+        .send()
         .await
-        .map_err(|e| format!("Failed to run Legendary: {e}"))?;
+        .map_err(|_| {
+            "Could not reach Epic friends. Check your connection and try again.".to_string()
+        })?;
 
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        return Err(format!("Legendary friends failed: {}", stderr.trim()));
+    if response.status() == reqwest::StatusCode::UNAUTHORIZED
+        || response.status() == reqwest::StatusCode::FORBIDDEN
+    {
+        return Err("Epic session expired. Reconnect Epic Games in Settings.".to_string());
+    }
+    if !response.status().is_success() {
+        return Err(format!(
+            "Epic friends are temporarily unavailable (HTTP {}).",
+            response.status().as_u16()
+        ));
     }
 
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    let parsed: serde_json::Value = serde_json::from_str(&stdout)
-        .map_err(|e| format!("Failed to parse Legendary output: {e}"))?;
+    let relationships = response
+        .json::<Vec<EpicFriendRelationship>>()
+        .await
+        .map_err(|_| "Epic returned an invalid friends response.".to_string())?;
+    if relationships.is_empty() {
+        return Ok(Vec::new());
+    }
 
-    let mut friends = Vec::new();
+    let account_ids = relationships
+        .iter()
+        .map(|friend| friend.account_id.trim())
+        .filter(|account_id| !account_id.is_empty())
+        .collect::<HashSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>();
+    let mut profiles = HashMap::new();
 
-    if let Some(friend_list) = parsed.as_array() {
-        for friend in friend_list {
-            let account_id = friend
-                .get("account_id")
-                .and_then(|v| v.as_str())
-                .unwrap_or_default()
-                .to_string();
-            let display_name = friend
-                .get("display_name")
-                .and_then(|v| v.as_str())
-                .unwrap_or("Epic User")
-                .to_string();
-            let status = friend
-                .get("status")
-                .and_then(|v| v.as_str())
-                .unwrap_or("offline");
-            let online_status = match status {
-                "online" | "ONLINE" | "playing" => "online",
-                "away" | "AWAY" => "away",
-                _ => "offline",
-            };
+    for account_id_chunk in account_ids.chunks(100) {
+        let query = account_id_chunk
+            .iter()
+            .map(|account_id| ("accountId", *account_id))
+            .collect::<Vec<_>>();
+        let response = client
+            .get(EPIC_ACCOUNTS_URL)
+            .bearer_auth(&token.access_token)
+            .query(&query)
+            .send()
+            .await
+            .map_err(|_| {
+                "Could not load Epic friend names. Check your connection and try again.".to_string()
+            })?;
 
-            if !account_id.is_empty() {
-                friends.push(PlatformFriend {
-                    platform: "epic".to_string(),
-                    platform_id: account_id,
-                    display_name,
-                    avatar_url: None,
-                    online_status: online_status.to_string(),
-                });
+        if response.status() == reqwest::StatusCode::UNAUTHORIZED
+            || response.status() == reqwest::StatusCode::FORBIDDEN
+        {
+            return Err("Epic session expired. Reconnect Epic Games in Settings.".to_string());
+        }
+        if !response.status().is_success() {
+            return Err(format!(
+                "Epic friend names are temporarily unavailable (HTTP {}).",
+                response.status().as_u16()
+            ));
+        }
+
+        let loaded_profiles = response
+            .json::<Vec<EpicAccountProfile>>()
+            .await
+            .map_err(|_| "Epic returned an invalid account response.".to_string())?;
+        for profile in loaded_profiles {
+            if let Some(display_name) = non_empty_string(profile.display_name.as_deref()) {
+                profiles.insert(profile.id, display_name.to_string());
             }
         }
     }
 
-    Ok(friends)
+    Ok(map_epic_platform_friends(relationships, &profiles))
+}
+
+async fn load_legendary_bearer_token() -> Result<LegendaryBearerToken, String> {
+    let legendary_path = super::epic::ensure_legendary_binary().await?;
+    let output = tokio::time::timeout(
+        Duration::from_secs(20),
+        tokio::process::Command::new(&legendary_path)
+            .args(["get-token", "--bearer", "--json"])
+            .output(),
+    )
+    .await
+    .map_err(|_| "Epic session refresh timed out. Try again.".to_string())?
+    .map_err(|_| "Could not refresh the Epic session. Reconnect in Settings.".to_string())?;
+
+    if !output.status.success() {
+        return Err("Epic session expired. Reconnect Epic Games in Settings.".to_string());
+    }
+
+    parse_legendary_bearer_token(&output.stdout)
+}
+
+fn parse_legendary_bearer_token(output: &[u8]) -> Result<LegendaryBearerToken, String> {
+    let token = serde_json::from_slice::<LegendaryBearerToken>(output).map_err(|_| {
+        "Legendary returned an invalid Epic session. Reconnect in Settings.".to_string()
+    })?;
+    if token.access_token.trim().is_empty() || token.account_id.trim().is_empty() {
+        return Err("Epic session is incomplete. Reconnect Epic Games in Settings.".to_string());
+    }
+    Ok(token)
+}
+
+fn map_epic_platform_friends(
+    relationships: Vec<EpicFriendRelationship>,
+    profiles: &HashMap<String, String>,
+) -> Vec<PlatformFriend> {
+    let mut seen = HashSet::new();
+
+    relationships
+        .into_iter()
+        .filter_map(|relationship| {
+            let account_id = relationship.account_id.trim();
+            if account_id.is_empty() || !seen.insert(account_id.to_string()) {
+                return None;
+            }
+
+            let display_name = profiles
+                .get(account_id)
+                .and_then(|name| non_empty_string(Some(name.as_str())))
+                .or_else(|| non_empty_string(relationship.alias.as_deref()))
+                .map(ToOwned::to_owned)
+                .unwrap_or_else(|| format!("Epic Player {}", account_id_suffix(account_id)));
+
+            Some(PlatformFriend {
+                platform: "epic".to_string(),
+                platform_id: account_id.to_string(),
+                display_name,
+                avatar_url: None,
+                online_status: "unknown".to_string(),
+            })
+        })
+        .collect()
+}
+
+fn non_empty_string(value: Option<&str>) -> Option<&str> {
+    value.map(str::trim).filter(|value| !value.is_empty())
+}
+
+fn account_id_suffix(account_id: &str) -> &str {
+    let start = account_id
+        .char_indices()
+        .rev()
+        .nth(5)
+        .map(|(index, _)| index)
+        .unwrap_or(0);
+    &account_id[start..]
 }
 
 // ============================================================================
@@ -387,4 +507,64 @@ pub async fn fetch_xbox_friends(xbox_token: String) -> Result<Vec<PlatformFriend
     }
 
     Ok(friends)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parses_legendary_bearer_token_without_exposing_it() {
+        let token = parse_legendary_bearer_token(
+            br#"{"access_token":"secret-access-token","account_id":"epic-account-1"}"#,
+        )
+        .expect("valid bearer token");
+
+        assert_eq!(token.account_id, "epic-account-1");
+        assert_eq!(token.access_token, "secret-access-token");
+
+        let error =
+            parse_legendary_bearer_token(br#"{"access_token":"","account_id":"epic-account-1"}"#)
+                .err()
+                .expect("empty token must fail");
+        assert!(!error.contains("epic-account-1"));
+    }
+
+    #[test]
+    fn maps_epic_friends_with_profiles_aliases_and_safe_fallbacks() {
+        let relationships = vec![
+            EpicFriendRelationship {
+                account_id: "epic-account-1".to_string(),
+                alias: Some("Ignored alias".to_string()),
+            },
+            EpicFriendRelationship {
+                account_id: "epic-account-2".to_string(),
+                alias: Some("Squad Mate".to_string()),
+            },
+            EpicFriendRelationship {
+                account_id: "1234567890abcdef".to_string(),
+                alias: None,
+            },
+            EpicFriendRelationship {
+                account_id: "epic-account-1".to_string(),
+                alias: None,
+            },
+            EpicFriendRelationship {
+                account_id: "   ".to_string(),
+                alias: None,
+            },
+        ];
+        let profiles = HashMap::from([("epic-account-1".to_string(), "Display Name".to_string())]);
+
+        let friends = map_epic_platform_friends(relationships, &profiles);
+
+        assert_eq!(friends.len(), 3);
+        assert_eq!(friends[0].display_name, "Display Name");
+        assert_eq!(friends[1].display_name, "Squad Mate");
+        assert_eq!(friends[2].display_name, "Epic Player abcdef");
+        assert!(friends.iter().all(|friend| friend.platform == "epic"));
+        assert!(friends
+            .iter()
+            .all(|friend| friend.online_status == "unknown"));
+    }
 }

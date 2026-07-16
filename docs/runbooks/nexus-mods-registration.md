@@ -33,8 +33,9 @@ Use the following metadata when contacting `support@nexusmods.com`:
   value)
 - **Source:** <https://github.com/Tunly/open-game-launcher>
 - **License:** AGPL-3.0-only
-- **Logo:** `launcher/src-tauri/icons/icon.png`; it has a dark background and is
-  suitable for the Nexus application list
+- **Logo:** `launcher/src-tauri/icons/icon.png`; it uses the red OG-Launcher
+  badge with the white retro joystick and is suitable for the Nexus application
+  list
 - **Purpose:** Desktop game launcher with a simple Nexus Mods browser, official
   browser SSO, Premium/direct native ZIP/7z installation and Free-user NXM
   continuation

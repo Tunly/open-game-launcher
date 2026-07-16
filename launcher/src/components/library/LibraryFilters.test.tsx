@@ -6,15 +6,29 @@ import { LibraryFilters } from "./LibraryFilters";
 
 const mocks = vi.hoisted(() => ({
   context: null as unknown,
+  applyDynamicCollection: vi.fn(),
+  clearManualCollectionSelection: vi.fn(),
   resetAdvancedFilters: vi.fn(),
+  saveCurrentFilterAsCollection: vi.fn(),
+  selectManualCollection: vi.fn(),
   setAdvancedFilters: vi.fn(),
+  setSelectedCollectionName: vi.fn(),
 }));
 
 vi.mock("../../context/useLibraryContext", () => ({
   useLibraryContext: () => mocks.context,
 }));
 
-function installContext(showGamePassCatalog: boolean) {
+function installContext(
+  showGamePassCatalog: boolean,
+  options: {
+    dynamicCollections?: { name: string }[];
+    manualCollections?: Record<string, string[]>;
+    newCollectionName?: string;
+    selectedCollectionName?: string | null;
+    selectedManualCollectionName?: string | null;
+  } = {},
+) {
   mocks.context = {
     filters: {
       advancedFilters: { ...initialAdvancedFilters, showGamePassCatalog },
@@ -22,20 +36,20 @@ function installContext(showGamePassCatalog: boolean) {
       setAdvancedFilters: mocks.setAdvancedFilters,
     },
     manual: {
-      clearManualCollectionSelection: vi.fn(),
+      clearManualCollectionSelection: mocks.clearManualCollectionSelection,
       customCategories: {},
-      manualCollections: {},
-      selectManualCollection: vi.fn(),
-      selectedManualCollectionName: null,
+      manualCollections: options.manualCollections ?? {},
+      selectManualCollection: mocks.selectManualCollection,
+      selectedManualCollectionName: options.selectedManualCollectionName ?? null,
     },
     dynamic: {
-      applyDynamicCollection: vi.fn(),
-      dynamicCollections: [],
-      newCollectionName: "",
-      saveCurrentFilterAsCollection: vi.fn(),
-      selectedCollectionName: null,
+      applyDynamicCollection: mocks.applyDynamicCollection,
+      dynamicCollections: options.dynamicCollections ?? [],
+      newCollectionName: options.newCollectionName ?? "",
+      saveCurrentFilterAsCollection: mocks.saveCurrentFilterAsCollection,
+      selectedCollectionName: options.selectedCollectionName ?? null,
       setNewCollectionName: vi.fn(),
-      setSelectedCollectionName: vi.fn(),
+      setSelectedCollectionName: mocks.setSelectedCollectionName,
     },
   };
 }
@@ -44,6 +58,11 @@ describe("LibraryFilters", () => {
   beforeEach(() => {
     mocks.resetAdvancedFilters.mockReset();
     mocks.setAdvancedFilters.mockReset();
+    mocks.applyDynamicCollection.mockReset();
+    mocks.clearManualCollectionSelection.mockReset();
+    mocks.saveCurrentFilterAsCollection.mockReset();
+    mocks.selectManualCollection.mockReset();
+    mocks.setSelectedCollectionName.mockReset();
     installContext(true);
   });
 
@@ -94,5 +113,58 @@ describe("LibraryFilters", () => {
     expect(screen.queryByText("Steam Achievements")).not.toBeInTheDocument();
     expect(screen.queryByText("Steam Trading Cards")).not.toBeInTheDocument();
     expect(screen.queryByText("Steam Workshop")).not.toBeInTheDocument();
+  });
+
+  it("clears the manual selection before applying a dynamic collection", () => {
+    installContext(true, {
+      dynamicCollections: [{ name: "Recently Played" }],
+      selectedManualCollectionName: "Favorites",
+    });
+    render(<LibraryFilters isOpen onClose={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Recently Played" }));
+
+    expect(mocks.clearManualCollectionSelection).toHaveBeenCalledOnce();
+    expect(mocks.applyDynamicCollection).toHaveBeenCalledWith("Recently Played");
+  });
+
+  it("clears the dynamic selection before applying a manual collection", () => {
+    installContext(true, {
+      manualCollections: { Favorites: ["g1"] },
+      selectedCollectionName: "Recently Played",
+    });
+    render(<LibraryFilters isOpen onClose={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Favorites" }));
+
+    expect(mocks.setSelectedCollectionName).toHaveBeenCalledWith(null);
+    expect(mocks.selectManualCollection).toHaveBeenCalledWith("Favorites");
+  });
+
+  it("global reset clears manual and dynamic collection selections", () => {
+    installContext(true, {
+      selectedCollectionName: "Recently Played",
+      selectedManualCollectionName: "Favorites",
+    });
+    render(<LibraryFilters isOpen onClose={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Reset All" }));
+
+    expect(mocks.resetAdvancedFilters).toHaveBeenCalledOnce();
+    expect(mocks.clearManualCollectionSelection).toHaveBeenCalledOnce();
+    expect(mocks.setSelectedCollectionName).toHaveBeenCalledWith(null);
+  });
+
+  it("clears a manual selection when saving and selecting a dynamic collection", () => {
+    installContext(true, {
+      newCollectionName: "My Smart List",
+      selectedManualCollectionName: "Favorites",
+    });
+    render(<LibraryFilters isOpen onClose={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+
+    expect(mocks.clearManualCollectionSelection).toHaveBeenCalledOnce();
+    expect(mocks.saveCurrentFilterAsCollection).toHaveBeenCalledWith("My Smart List");
   });
 });

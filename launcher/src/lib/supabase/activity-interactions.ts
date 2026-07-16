@@ -7,6 +7,22 @@ import { buildRealtimeInFilters } from "./realtime-filters";
 
 const commentSelect = "id, activity_id, author_id, body, created_at";
 
+export type ActivityCommentCursor = Pick<ActivityComment, "createdAt" | "id">;
+
+export interface ActivityCommentPage {
+  comments: ActivityComment[];
+  nextCursor: ActivityCommentCursor | null;
+}
+
+interface ActivityCommentPageOptions {
+  before?: ActivityCommentCursor;
+  limit?: number;
+}
+
+function activityCommentCursorFilter(cursor: ActivityCommentCursor) {
+  return `created_at.lt.${cursor.createdAt},and(created_at.eq.${cursor.createdAt},id.lt.${cursor.id})`;
+}
+
 function toComment(row: UnknownRecord): ActivityComment {
   return {
     activityId: rowString(row, "activity_id"),
@@ -48,17 +64,34 @@ export async function getActivityInteractionSummaries(activityIds: string[]) {
   );
 }
 
-export async function getActivityComments(activityId: string, limit = 8) {
+export async function getActivityComments(
+  activityId: string,
+  { before, limit = 8 }: ActivityCommentPageOptions = {},
+): Promise<ActivityCommentPage> {
   const client = getSupabaseClient();
-  const { data, error } = await client
+  const normalizedLimit = Math.max(1, Math.min(Number.isFinite(limit) ? Math.trunc(limit) : 8, 50));
+  let query = client
     .from("activity_comments")
     .select(commentSelect)
     .eq("activity_id", activityId)
     .order("created_at", { ascending: false })
-    .order("id", { ascending: false })
-    .limit(Math.max(1, Math.min(limit, 50)));
+    .order("id", { ascending: false });
+  if (before) {
+    query = query.or(activityCommentCursorFilter(before));
+  }
+  const { data, error } = await query.limit(normalizedLimit + 1);
   handleError(error);
-  return (data ?? []).map((row) => toComment(row as UnknownRecord)).reverse();
+
+  const pageRows = (data ?? []).slice(0, normalizedLimit);
+  const comments = pageRows.map((row) => toComment(row as UnknownRecord)).reverse();
+  const oldestComment = comments[0];
+  return {
+    comments,
+    nextCursor:
+      (data?.length ?? 0) > normalizedLimit && oldestComment
+        ? { createdAt: oldestComment.createdAt, id: oldestComment.id }
+        : null,
+  };
 }
 
 export async function addActivityComment(activityId: string, body: string) {
@@ -101,7 +134,7 @@ export async function setActivityRateUp(activityId: string, active: boolean) {
 }
 
 export interface ActivityInteractionRealtimeHandlers {
-  onCommentDeleted: (comment: ActivityComment) => void;
+  onCommentDeleted: (comment: Pick<ActivityComment, "activityId" | "id">) => void;
   onCommentUpsert: (comment: ActivityComment) => void;
   onReactionChanged: (change: { active: boolean; activityId: string; userId: string }) => void;
 }
@@ -121,13 +154,19 @@ export function subscribeToActivityInteractions(
   const client = supabase;
   let channel: RealtimeChannel = client.channel(`og-activity-interactions-${crypto.randomUUID()}`);
 
-  const handleComment = (payload: RealtimePostgresChangesPayload<UnknownRecord>) => {
+  const handleCommentUpsert = (payload: RealtimePostgresChangesPayload<UnknownRecord>) => {
     const row = changedRow(payload);
     const activityId = rowString(row, "activity_id");
     if (!activityId || !watchedIds.has(activityId)) return;
-    const comment = toComment(row);
-    if (payload.eventType === "DELETE") handlers.onCommentDeleted(comment);
-    else handlers.onCommentUpsert(comment);
+    handlers.onCommentUpsert(toComment(row));
+  };
+
+  const handleCommentDeleted = (payload: RealtimePostgresChangesPayload<UnknownRecord>) => {
+    const row = payload.new as UnknownRecord;
+    const activityId = rowString(row, "activity_id");
+    const commentId = rowString(row, "comment_id");
+    if (!activityId || !commentId || !watchedIds.has(activityId)) return;
+    handlers.onCommentDeleted({ activityId, id: commentId });
   };
 
   const handleReaction = (payload: RealtimePostgresChangesPayload<UnknownRecord>) => {
@@ -147,7 +186,17 @@ export function subscribeToActivityInteractions(
       .on(
         "postgres_changes",
         { event: "INSERT", filter, schema: "public", table: "activity_comments" },
-        handleComment,
+        handleCommentUpsert,
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          filter,
+          schema: "public",
+          table: "activity_comment_deletions",
+        },
+        handleCommentDeleted,
       )
       .on(
         "postgres_changes",
@@ -156,19 +205,14 @@ export function subscribeToActivityInteractions(
       );
   }
 
-  // DELETE events are intentionally unfiltered: Postgres Realtime cannot reliably
-  // apply column filters to old rows. The watched-id set keeps the client scope narrow.
-  channel = channel
-    .on(
-      "postgres_changes",
-      { event: "DELETE", schema: "public", table: "activity_comments" },
-      handleComment,
-    )
-    .on(
-      "postgres_changes",
-      { event: "DELETE", schema: "public", table: "activity_reactions" },
-      handleReaction,
-    );
+  // Reaction keys include activity_id, so DELETE payloads remain actionable under RLS.
+  // Comment deletes use the trigger-backed event table above because Supabase exposes
+  // only primary-key columns from DELETE old rows when RLS is enabled.
+  channel = channel.on(
+    "postgres_changes",
+    { event: "DELETE", schema: "public", table: "activity_reactions" },
+    handleReaction,
+  );
 
   channel = channel.subscribe();
   return () => {

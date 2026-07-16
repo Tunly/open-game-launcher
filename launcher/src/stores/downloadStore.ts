@@ -15,11 +15,10 @@ const ACTIVE_STATUSES = new Set<DownloadStatus>([
   "queued",
   "starting",
   "downloading",
-  "pausing",
   "resuming",
   "installing",
 ]);
-const PAUSED_STATUSES = new Set<DownloadStatus>(["paused"]);
+const PAUSED_STATUSES = new Set<DownloadStatus>(["pausing", "paused"]);
 const PAUSE_TOGGLE_STATUSES = new Set<DownloadStatus>(["downloading", "paused"]);
 
 export const useDownloadStore = create<DownloadState>()((set) => ({

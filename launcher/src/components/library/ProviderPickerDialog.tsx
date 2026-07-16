@@ -13,7 +13,7 @@ export interface ProviderPickerState {
 interface ProviderPickerDialogProps {
   state: ProviderPickerState | null;
   onClose: () => void;
-  onSelect: (game: Game) => Promise<void>;
+  onSelect: (game: Game, mode: ProviderPickerState["mode"]) => Promise<void>;
 }
 
 export function ProviderPickerDialog({ state, onClose, onSelect }: ProviderPickerDialogProps) {
@@ -21,13 +21,24 @@ export function ProviderPickerDialog({ state, onClose, onSelect }: ProviderPicke
     return null;
   }
 
+  const hasInstallCandidates = state.variants.some((variant) => variant.status === "not_installed");
+  const hasUpdateCandidates = state.variants.some(
+    (variant) => variant.status === "update_available",
+  );
+  const installModeLabel =
+    hasInstallCandidates && hasUpdateCandidates
+      ? "Choose install / update platform"
+      : hasUpdateCandidates
+        ? "Choose update platform"
+        : "Choose install platform";
+
   return (
     <div className="fixed inset-0 z-[85] grid place-items-center bg-[#171411]/90 bg-[radial-gradient(circle,rgba(255,249,237,0.14)_1px,transparent_1px)] bg-[length:10px_10px] px-4">
       <div className="w-full max-w-[560px] border-4 border-black bg-[#fbf4e7] shadow-[8px_8px_0_#171411]">
         <div className="flex items-center justify-between gap-3 border-b-4 border-black bg-[#b7102a] px-4 py-3 text-white">
           <div className="min-w-0">
             <p className="neo-copy text-[10px] font-black tracking-[0.14em] uppercase">
-              {state.mode === "play" ? "Choose launch platform" : "Choose install platform"}
+              {state.mode === "play" ? "Choose launch platform" : installModeLabel}
             </p>
             <h2 className="neo-title truncate text-2xl leading-none uppercase">{state.title}</h2>
           </div>
@@ -45,6 +56,7 @@ export function ProviderPickerDialog({ state, onClose, onSelect }: ProviderPicke
           {state.variants.map((variant) => {
             const source = getGameSource(variant);
             const isPlayMode = state.mode === "play";
+            const isUpdateAction = !isPlayMode && variant.status === "update_available";
             const ActionIcon = isPlayMode ? Play : Download;
 
             return (
@@ -54,7 +66,7 @@ export function ProviderPickerDialog({ state, onClose, onSelect }: ProviderPicke
                 className="grid w-full grid-cols-[36px_minmax(0,1fr)_auto] items-center gap-3 border-4 border-black bg-[#f4ead8] p-3 text-left shadow-[3px_3px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#efe3cf]"
                 onClick={() => {
                   onClose();
-                  void onSelect(variant);
+                  void onSelect(variant, state.mode);
                 }}
               >
                 <span className="grid h-9 w-9 place-items-center border-2 border-black bg-[#fbf4e7]">
@@ -75,7 +87,7 @@ export function ProviderPickerDialog({ state, onClose, onSelect }: ProviderPicke
                   }`}
                 >
                   <ActionIcon className="h-4 w-4" />
-                  {isPlayMode ? "Play" : "Install"}
+                  {isPlayMode ? "Play" : isUpdateAction ? "Update" : "Install"}
                 </span>
               </button>
             );

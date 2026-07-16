@@ -101,6 +101,21 @@ function ownedAchievementGame(id: string, title: string): OwnedGame {
   };
 }
 
+function achievementPageGame(id: string, title: string, overrides: Partial<Game> = {}): Game {
+  return {
+    achievements: [{ id: `${id}-achievement`, name: `${title} Achievement`, unlockedAt: null }],
+    achievementsSyncedAt: new Date().toISOString(),
+    description: "",
+    id,
+    launcher: "manual",
+    platform: "windows",
+    status: "installed",
+    title,
+    version: "1.0.0",
+    ...overrides,
+  };
+}
+
 describe("AchievementsPage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -139,6 +154,110 @@ describe("AchievementsPage", () => {
     await screen.findByText("No achievement-enabled games found.");
     expect(screen.queryByText("Player Archive")).not.toBeInTheDocument();
     expect(screen.queryByText("Local Player")).not.toBeInTheDocument();
+  });
+
+  it("exposes accessible page, filter, and sort controls", async () => {
+    launcherMocks.listInstalledGames.mockResolvedValueOnce([
+      achievementPageGame("steam-accessible", "Accessible Game", {
+        launcher: "steam",
+        lastPlayedAt: new Date().toISOString(),
+      }),
+    ]);
+
+    renderAchievementsRoute("/achievements");
+
+    expect(
+      await screen.findByRole("heading", { level: 1, name: "Achievements" }),
+    ).toBeInTheDocument();
+    expect(screen.getByRole("searchbox", { name: "Search achievement games" })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Achievement game views" })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Sort achievement games" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("group", { name: "Filter achievement games by source" }),
+    ).toBeInTheDocument();
+
+    expect(screen.getByRole("button", { name: /all games/i })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(screen.getByRole("button", { name: "Achievement Completion" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /recently played/i }));
+    expect(screen.getByRole("button", { name: "Last Played" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    expect(screen.getByRole("button", { name: "Achievement Completion" })).toHaveAttribute(
+      "aria-pressed",
+      "false",
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Steam" }));
+    expect(screen.getByRole("button", { name: "Steam" })).toHaveAttribute("aria-pressed", "true");
+  });
+
+  it("sorts the recently played view by latest play time", async () => {
+    launcherMocks.listInstalledGames.mockResolvedValueOnce([
+      achievementPageGame("manual-oldest", "Oldest", { lastPlayedAt: "2026-07-01T10:00:00Z" }),
+      achievementPageGame("manual-newest", "Newest", { lastPlayedAt: "2026-07-15T10:00:00Z" }),
+      achievementPageGame("manual-middle", "Middle", { lastPlayedAt: "2026-07-10T10:00:00Z" }),
+    ]);
+
+    renderAchievementsRoute("/achievements");
+    await screen.findByRole("heading", { name: "Newest" });
+    fireEvent.click(screen.getByRole("button", { name: /recently played/i }));
+
+    expect(
+      screen.getAllByRole("heading", { level: 2 }).map((heading) => heading.textContent),
+    ).toEqual(["Newest", "Middle", "Oldest"]);
+  });
+
+  it("retries a failed local archive load", async () => {
+    launcherMocks.listInstalledGames
+      .mockRejectedValueOnce(new Error("Desktop bridge unavailable"))
+      .mockResolvedValueOnce([achievementPageGame("manual-retry", "Retry Game")]);
+
+    renderAchievementsRoute("/achievements");
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Desktop bridge unavailable");
+    fireEvent.click(screen.getByRole("button", { name: "Retry loading achievements" }));
+
+    expect(await screen.findByRole("heading", { name: "Retry Game" })).toBeInTheDocument();
+    expect(launcherMocks.listInstalledGames).toHaveBeenCalledTimes(2);
+    expect(screen.queryByText("Desktop bridge unavailable")).not.toBeInTheDocument();
+  });
+
+  it("shows and retries a cloud hydration warning without hiding local data", async () => {
+    const game = achievementPageGame("manual-cloud-retry", "Cloud Retry Game", {
+      launcher: "steam",
+    });
+    launcherMocks.listInstalledGames.mockResolvedValue([game]);
+    achievementMocks.hydrateGamesWithRemoteAchievements
+      .mockImplementationOnce(
+        (games: Game[], options: { onError?: (error: unknown, game: Game) => void }) => {
+          options.onError?.(new Error("network unavailable"), games[0]);
+          return Promise.resolve(games);
+        },
+      )
+      .mockResolvedValueOnce([game]);
+
+    renderAchievementsRoute("/achievements");
+
+    expect(await screen.findByRole("heading", { name: "Cloud Retry Game" })).toBeInTheDocument();
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Cloud achievements could not be refreshed",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Retry archive update" }));
+
+    await waitFor(() =>
+      expect(achievementMocks.hydrateGamesWithRemoteAchievements).toHaveBeenCalledTimes(2),
+    );
+    expect(
+      screen.queryByText(/cloud achievements could not be refreshed/i),
+    ).not.toBeInTheDocument();
   });
 
   it("shows a hosted OG Launcher test game without a native installation", async () => {
@@ -213,9 +332,10 @@ describe("AchievementsPage", () => {
       const heading = screen.getByRole("heading", { name: "Uninstalled Catalog Game" });
       expect(within(heading.closest("article")!).getByText("0/1")).toBeInTheDocument();
     });
-    expect(achievementMocks.hydrateGamesWithRemoteAchievements).toHaveBeenCalledWith([ownedGame], {
-      userId: null,
-    });
+    expect(achievementMocks.hydrateGamesWithRemoteAchievements).toHaveBeenCalledWith(
+      [ownedGame],
+      expect.objectContaining({ onError: expect.any(Function), userId: null }),
+    );
     expect(launcherMocks.syncGameAchievements).not.toHaveBeenCalled();
   });
 
@@ -436,9 +556,10 @@ describe("AchievementsPage", () => {
     expect(
       await screen.findByRole("status", { name: /refreshing achievement archive/i }),
     ).toBeInTheDocument();
-    expect(achievementMocks.hydrateGamesWithRemoteAchievements).toHaveBeenCalledWith([localGame], {
-      userId: "user-fast",
-    });
+    expect(achievementMocks.hydrateGamesWithRemoteAchievements).toHaveBeenCalledWith(
+      [localGame],
+      expect.objectContaining({ onError: expect.any(Function), userId: "user-fast" }),
+    );
 
     await act(async () => {
       remoteHydration.resolve([hydratedGame]);
@@ -489,7 +610,10 @@ describe("AchievementsPage", () => {
       expect(launcherMocks.syncGameAchievements).toHaveBeenCalledWith(staleGame);
       expect(achievementMocks.hydrateGamesWithRemoteAchievements).toHaveBeenCalledWith(
         [staleGame],
-        { userId: "shared-loader-user" },
+        expect.objectContaining({
+          onError: expect.any(Function),
+          userId: "shared-loader-user",
+        }),
       );
     });
     expect(screen.getAllByRole("status", { name: /refreshing achievement archive/i })).toHaveLength(
@@ -819,7 +943,7 @@ describe("AchievementsPage", () => {
     await waitFor(() =>
       expect(achievementMocks.hydrateGamesWithRemoteAchievements).toHaveBeenCalledWith(
         [localGame],
-        { userId: "restored-user" },
+        expect.objectContaining({ onError: expect.any(Function), userId: "restored-user" }),
       ),
     );
   });
@@ -980,7 +1104,7 @@ describe("AchievementsPage", () => {
     );
     expect(achievementMocks.hydrateGamesWithRemoteAchievements).toHaveBeenLastCalledWith(
       [localGame],
-      { userId: "user-new" },
+      expect.objectContaining({ onError: expect.any(Function), userId: "user-new" }),
     );
     expect(await screen.findByRole("heading", { name: "Account Game" })).toBeInTheDocument();
     expect(

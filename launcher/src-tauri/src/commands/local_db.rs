@@ -6,7 +6,7 @@ use std::fmt::Write as _;
 use std::path::PathBuf;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-const SCHEMA_VERSION: i64 = 1;
+const SCHEMA_VERSION: i64 = 2;
 
 fn is_cloud_sync_kind(kind: &str) -> bool {
     matches!(kind, "games" | "downloads")
@@ -25,7 +25,11 @@ where
     T: DeserializeOwned,
 {
     let mut statement = conn
-        .prepare("SELECT json FROM local_entities WHERE kind = ?1 ORDER BY updated_at ASC, id ASC")
+        .prepare(
+            "SELECT json FROM local_entities
+             WHERE kind = ?1 AND deleted_at IS NULL
+             ORDER BY updated_at ASC, id ASC",
+        )
         .map_err(|error| format!("Could not prepare local DB collection read: {error}"))?;
     let rows = statement
         .query_map(params![kind], |row| row.get::<_, String>(0))
@@ -50,7 +54,8 @@ where
     let conn = open_connection()?;
     let json = conn
         .query_row(
-            "SELECT json FROM local_entities WHERE kind = ?1 AND id = ?2",
+            "SELECT json FROM local_entities
+             WHERE kind = ?1 AND id = ?2 AND deleted_at IS NULL",
             params![kind, id],
             |row| row.get::<_, String>(0),
         )
@@ -72,7 +77,7 @@ where
     let json = serde_json::to_string(item)
         .map_err(|error| format!("Could not encode local DB {kind} item '{id}': {error}"))?;
     let conn = open_connection()?;
-    upsert_serialized_item(&conn, kind, id, &json, now_unix_secs())
+    upsert_serialized_item(&conn, kind, id, &json, now_unix_millis())
 }
 
 pub fn insert_item<T>(kind: &str, id: &str, item: &T) -> Result<(), String>
@@ -86,7 +91,7 @@ where
     conn.execute(
         "INSERT INTO local_entities (kind, id, json, updated_at, dirty, sync_status)
          VALUES (?1, ?2, ?3, ?4, 1, 'pending')",
-        params![kind, id, json, now_unix_secs()],
+        params![kind, id, json, now_unix_millis()],
     )
     .map_err(|error| format!("Could not insert local DB {kind} item '{id}': {error}"))?;
     Ok(())
@@ -183,7 +188,10 @@ where
 
     let existing = {
         let mut statement = conn
-            .prepare("SELECT id, json FROM local_entities WHERE kind = ?1")
+            .prepare(
+                "SELECT id, json FROM local_entities
+                 WHERE kind = ?1 AND deleted_at IS NULL",
+            )
             .map_err(|error| {
                 format!("Could not prepare local DB {kind} reconciliation: {error}")
             })?;
@@ -204,7 +212,7 @@ where
         existing
     };
 
-    let now = now_unix_secs();
+    let now = now_unix_millis();
     for (id, json) in &desired {
         if existing.get(id) == Some(json) {
             continue;
@@ -213,11 +221,9 @@ where
     }
 
     for id in existing.keys().filter(|id| !desired.contains_key(*id)) {
-        conn.execute(
-            "DELETE FROM local_entities WHERE kind = ?1 AND id = ?2",
-            params![kind, id],
-        )
-        .map_err(|error| format!("Could not delete stale local DB {kind} item '{id}': {error}"))?;
+        tombstone_or_delete_item_with_connection(conn, kind, id, None).map_err(|error| {
+            format!("Could not delete stale local DB {kind} item '{id}': {error}")
+        })?;
     }
 
     Ok(())
@@ -231,13 +237,16 @@ fn upsert_serialized_item(
     updated_at: i64,
 ) -> Result<(), String> {
     conn.execute(
-        "INSERT INTO local_entities (kind, id, json, updated_at, dirty, sync_status)
-         VALUES (?1, ?2, ?3, ?4, 1, 'pending')
+        "INSERT INTO local_entities
+           (kind, id, json, updated_at, dirty, sync_status, deleted_at)
+         VALUES (?1, ?2, ?3, ?4, 1, 'pending', NULL)
          ON CONFLICT(kind, id) DO UPDATE SET
            json = excluded.json,
-           updated_at = excluded.updated_at,
+           updated_at = MAX(excluded.updated_at, local_entities.updated_at + 1),
            dirty = 1,
-           sync_status = 'pending'",
+           sync_status = 'pending',
+           last_synced_at = NULL,
+           deleted_at = NULL",
         params![kind, id, json, updated_at],
     )
     .map_err(|error| format!("Could not write local DB {kind} item '{id}': {error}"))?;
@@ -287,7 +296,8 @@ where
         .map_err(|error| format!("Could not start local DB {kind} item transaction: {error}"))?;
     let json = tx
         .query_row(
-            "SELECT json FROM local_entities WHERE kind = ?1 AND id = ?2",
+            "SELECT json FROM local_entities
+             WHERE kind = ?1 AND id = ?2 AND deleted_at IS NULL",
             params![kind, id],
             |row| row.get::<_, String>(0),
         )
@@ -304,9 +314,10 @@ where
     let changed = tx
         .execute(
             "UPDATE local_entities
-             SET json = ?3, updated_at = ?4, dirty = 1, sync_status = 'pending'
-             WHERE kind = ?1 AND id = ?2",
-            params![kind, id, json, now_unix_secs()],
+             SET json = ?3, updated_at = MAX(?4, updated_at + 1), dirty = 1,
+                 sync_status = 'pending', last_synced_at = NULL, deleted_at = NULL
+             WHERE kind = ?1 AND id = ?2 AND deleted_at IS NULL",
+            params![kind, id, json, now_unix_millis()],
         )
         .map_err(|error| format!("Could not write local DB {kind} item '{id}': {error}"))?;
     if changed != 1 {
@@ -323,11 +334,8 @@ where
 pub fn remove_item(kind: &str, id: &str) -> Result<(), String> {
     let id = normalized_item_id(kind, id)?;
     let conn = open_connection()?;
-    conn.execute(
-        "DELETE FROM local_entities WHERE kind = ?1 AND id = ?2",
-        params![kind, id],
-    )
-    .map_err(|error| format!("Could not delete local DB {kind} item: {error}"))?;
+    tombstone_or_delete_item_with_connection(&conn, kind, id, None)
+        .map_err(|error| format!("Could not delete local DB {kind} item: {error}"))?;
     Ok(())
 }
 
@@ -339,13 +347,54 @@ where
     let json = serde_json::to_string(expected)
         .map_err(|error| format!("Could not encode local DB {kind} item '{id}': {error}"))?;
     let conn = open_connection()?;
-    let removed = conn
-        .execute(
-            "DELETE FROM local_entities WHERE kind = ?1 AND id = ?2 AND json = ?3",
-            params![kind, id, json],
-        )
+    let removed = tombstone_or_delete_item_with_connection(&conn, kind, id, Some(&json))
         .map_err(|error| format!("Could not conditionally delete local DB {kind} item: {error}"))?;
     Ok(removed == 1)
+}
+
+fn tombstone_or_delete_item_with_connection(
+    conn: &Connection,
+    kind: &str,
+    id: &str,
+    expected_json: Option<&str>,
+) -> Result<usize, rusqlite::Error> {
+    if !is_cloud_sync_kind(kind) {
+        return match expected_json {
+            Some(json) => conn.execute(
+                "DELETE FROM local_entities
+                 WHERE kind = ?1 AND id = ?2 AND json = ?3 AND deleted_at IS NULL",
+                params![kind, id, json],
+            ),
+            None => conn.execute(
+                "DELETE FROM local_entities WHERE kind = ?1 AND id = ?2",
+                params![kind, id],
+            ),
+        };
+    }
+
+    let deleted_at = now_unix_millis();
+    match expected_json {
+        Some(json) => conn.execute(
+            "UPDATE local_entities
+             SET json = '{}', updated_at = MAX(?4, updated_at + 1), dirty = 1,
+                 sync_status = 'pending', last_synced_at = NULL,
+                 deleted_at = MAX(?4, updated_at + 1)
+             WHERE kind = ?1 AND id = ?2 AND json = ?3 AND deleted_at IS NULL",
+            params![kind, id, json, deleted_at],
+        ),
+        None => conn.execute(
+            "INSERT INTO local_entities
+               (kind, id, json, updated_at, dirty, sync_status, last_synced_at, deleted_at)
+             VALUES (?1, ?2, '{}', ?3, 1, 'pending', NULL, ?3)
+             ON CONFLICT(kind, id) DO UPDATE SET
+               json = '{}',
+               updated_at = MAX(excluded.updated_at, local_entities.updated_at + 1),
+               dirty = 1,
+               sync_status = 'pending', last_synced_at = NULL,
+               deleted_at = MAX(excluded.deleted_at, local_entities.updated_at + 1)",
+            params![kind, id, deleted_at],
+        ),
+    }
 }
 
 #[tauri::command]
@@ -371,11 +420,11 @@ fn mark_local_entities_synced_with_connection(
     let tx = conn
         .transaction_with_behavior(TransactionBehavior::Immediate)
         .map_err(|error| format!("Could not start local DB sync transaction: {error}"))?;
-    let now = now_unix_secs();
+    let now = now_unix_millis();
     {
         let mut read_statement = tx
             .prepare(
-                "SELECT json, updated_at, dirty
+                "SELECT json, updated_at, dirty, deleted_at
                  FROM local_entities
                  WHERE kind = ?1 AND id = ?2",
             )
@@ -397,15 +446,16 @@ fn mark_local_entities_synced_with_connection(
                         row.get::<_, String>(0)?,
                         row.get::<_, i64>(1)?,
                         row.get::<_, i64>(2)?,
+                        row.get::<_, Option<i64>>(3)?,
                     ))
                 })
                 .optional()
                 .map_err(|error| format!("Could not read local DB sync token: {error}"))?;
-            let Some((json, updated_at, dirty)) = current else {
+            let Some((json, updated_at, dirty, deleted_at)) = current else {
                 continue;
             };
             if dirty == 0
-                || local_entity_sync_token(&entity.kind, &entity.id, &json, updated_at)
+                || local_entity_sync_token(&entity.kind, &entity.id, &json, updated_at, deleted_at)
                     != entity.sync_token
             {
                 continue;
@@ -433,46 +483,108 @@ fn apply_remote_local_entities_with_connection(
         .transaction_with_behavior(TransactionBehavior::Immediate)
         .map_err(|error| format!("Could not start local DB remote apply transaction: {error}"))?;
     {
-        let mut statement = tx
+        let mut read_statement = tx
             .prepare(
-                "INSERT INTO local_entities (kind, id, json, updated_at, dirty, sync_status, last_synced_at)
-                 VALUES (?1, ?2, ?3, ?4, 0, 'synced', ?5)
+                "SELECT json, updated_at, deleted_at
+                 FROM local_entities WHERE kind = ?1 AND id = ?2",
+            )
+            .map_err(|error| format!("Could not prepare local DB remote read: {error}"))?;
+        let mut write_statement = tx
+            .prepare(
+                "INSERT INTO local_entities
+                   (kind, id, json, updated_at, dirty, sync_status, last_synced_at, deleted_at)
+                 VALUES (?1, ?2, ?3, ?4, 0, 'synced', ?5, ?6)
                  ON CONFLICT(kind, id) DO UPDATE SET
-                   json = CASE
-                     WHEN excluded.updated_at > local_entities.updated_at
-                     THEN excluded.json ELSE local_entities.json END,
-                   updated_at = CASE
-                     WHEN excluded.updated_at > local_entities.updated_at
-                     THEN excluded.updated_at ELSE local_entities.updated_at END,
-                   dirty = CASE
-                     WHEN excluded.updated_at > local_entities.updated_at
-                     THEN 0 ELSE local_entities.dirty END,
-                   sync_status = CASE
-                     WHEN excluded.updated_at > local_entities.updated_at
-                     THEN 'synced' ELSE local_entities.sync_status END,
-                   last_synced_at = excluded.last_synced_at",
+                   json = excluded.json,
+                   updated_at = excluded.updated_at,
+                   dirty = 0,
+                   sync_status = 'synced',
+                   last_synced_at = excluded.last_synced_at,
+                   deleted_at = excluded.deleted_at",
             )
             .map_err(|error| format!("Could not prepare local DB remote apply: {error}"))?;
-        let now = now_unix_secs();
+        let now = now_unix_millis();
         for entity in entities {
             if !is_cloud_sync_kind(&entity.kind) {
                 continue;
             }
-            let json = serde_json::to_string(&entity.entity)
+
+            let current = read_statement
+                .query_row(params![&entity.kind, &entity.id], |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, i64>(1)?,
+                        row.get::<_, Option<i64>>(2)?,
+                    ))
+                })
+                .optional()
+                .map_err(|error| {
+                    format!("Could not read local entity before remote apply: {error}")
+                })?;
+            if current
+                .as_ref()
+                .is_some_and(|(_, updated_at, _)| *updated_at >= entity.updated_at)
+            {
+                continue;
+            }
+
+            let deleted_at = entity.deleted_at.map(|_| entity.updated_at);
+            let remote_entity = if deleted_at.is_some() {
+                serde_json::json!({})
+            } else {
+                merge_portable_remote_entity(
+                    &entity.kind,
+                    entity.entity,
+                    current
+                        .as_ref()
+                        .filter(|(_, _, deleted_at)| deleted_at.is_none())
+                        .and_then(|(json, _, _)| serde_json::from_str(json).ok()),
+                )
+            };
+            let json = serde_json::to_string(&remote_entity)
                 .map_err(|error| format!("Could not encode remote entity: {error}"))?;
-            statement
+            write_statement
                 .execute(params![
                     entity.kind,
                     entity.id,
                     json,
                     entity.updated_at,
-                    now
+                    now,
+                    deleted_at,
                 ])
                 .map_err(|error| format!("Could not apply remote entity: {error}"))?;
         }
     }
     tx.commit()
         .map_err(|error| format!("Could not commit local DB remote apply: {error}"))
+}
+
+fn merge_portable_remote_entity(
+    kind: &str,
+    remote: serde_json::Value,
+    local: Option<serde_json::Value>,
+) -> serde_json::Value {
+    let mut remote = portable_local_entity(kind, remote, false);
+    if kind != "games" {
+        return remote;
+    }
+
+    let Some(remote_object) = remote.as_object_mut() else {
+        return remote;
+    };
+    let local_object = local.as_ref().and_then(serde_json::Value::as_object);
+    for key in [
+        "status",
+        "installPath",
+        "executablePath",
+        "processNames",
+        "launchUri",
+    ] {
+        if let Some(value) = local_object.and_then(|object| object.get(key)) {
+            remote_object.insert(key.to_string(), value.clone());
+        }
+    }
+    remote
 }
 
 #[tauri::command]
@@ -522,6 +634,8 @@ pub struct LocalEntityPayload {
     pub entity: serde_json::Value,
     pub updated_at: i64,
     #[serde(default)]
+    pub deleted_at: Option<i64>,
+    #[serde(default)]
     pub sync_token: String,
 }
 
@@ -543,11 +657,12 @@ fn read_entities_for_sync_with_connection(
     dirty_only: bool,
 ) -> Result<Vec<LocalEntityPayload>, String> {
     let sql = if dirty_only {
-        "SELECT kind, id, json, updated_at FROM local_entities
+        "SELECT kind, id, json, updated_at, deleted_at FROM local_entities
          WHERE dirty = 1 AND kind IN ('games', 'downloads')
          ORDER BY updated_at ASC, kind ASC, id ASC"
     } else {
-        "SELECT kind, id, json, updated_at FROM local_entities ORDER BY updated_at ASC, kind ASC, id ASC"
+        "SELECT kind, id, json, updated_at, deleted_at
+         FROM local_entities ORDER BY updated_at ASC, kind ASC, id ASC"
     };
     let mut statement = conn
         .prepare(sql)
@@ -559,40 +674,74 @@ fn read_entities_for_sync_with_connection(
                 row.get::<_, String>(1)?,
                 row.get::<_, String>(2)?,
                 row.get::<_, i64>(3)?,
+                row.get::<_, Option<i64>>(4)?,
             ))
         })
         .map_err(|error| format!("Could not read local DB sync rows: {error}"))?;
 
     let mut entities = Vec::new();
     for row in rows {
-        let (kind, id, json, updated_at) =
+        let (kind, id, json, updated_at, deleted_at) =
             row.map_err(|error| format!("Could not read local DB sync row: {error}"))?;
-        let entity = serde_json::from_str::<serde_json::Value>(&json)
+        let stored_entity = serde_json::from_str::<serde_json::Value>(&json)
             .map_err(|error| format!("Could not decode local DB sync entity: {error}"))?;
+        let entity = portable_local_entity(&kind, stored_entity, deleted_at.is_some());
         entities.push(LocalEntityPayload {
-            sync_token: local_entity_sync_token(&kind, &id, &json, updated_at),
+            sync_token: local_entity_sync_token(&kind, &id, &json, updated_at, deleted_at),
             kind,
             id,
             entity,
             updated_at,
+            deleted_at,
         });
     }
     Ok(entities)
 }
 
-fn local_entity_sync_token(kind: &str, id: &str, json: &str, updated_at: i64) -> String {
+fn local_entity_sync_token(
+    kind: &str,
+    id: &str,
+    json: &str,
+    updated_at: i64,
+    deleted_at: Option<i64>,
+) -> String {
     let mut hasher = Sha256::new();
     for value in [kind.as_bytes(), id.as_bytes(), json.as_bytes()] {
         hasher.update((value.len() as u64).to_be_bytes());
         hasher.update(value);
     }
     hasher.update(updated_at.to_be_bytes());
+    hasher.update(deleted_at.unwrap_or(-1).to_be_bytes());
     let digest = hasher.finalize();
     let mut token = String::with_capacity(digest.len() * 2);
     for byte in digest {
         write!(&mut token, "{byte:02x}").expect("writing SHA-256 to a String cannot fail");
     }
     token
+}
+
+fn portable_local_entity(
+    kind: &str,
+    mut entity: serde_json::Value,
+    deleted: bool,
+) -> serde_json::Value {
+    if deleted {
+        return serde_json::json!({});
+    }
+    if kind != "games" {
+        return entity;
+    }
+
+    if let Some(object) = entity.as_object_mut() {
+        for key in ["installPath", "executablePath", "processNames", "launchUri"] {
+            object.remove(key);
+        }
+        object.insert(
+            "status".to_string(),
+            serde_json::Value::String("not_installed".to_string()),
+        );
+    }
+    entity
 }
 
 pub(crate) fn open_connection() -> Result<Connection, String> {
@@ -638,6 +787,7 @@ fn migrate(conn: &Connection) -> Result<(), String> {
           dirty INTEGER NOT NULL DEFAULT 1,
           sync_status TEXT NOT NULL DEFAULT 'pending',
           last_synced_at INTEGER,
+          deleted_at INTEGER,
           PRIMARY KEY (kind, id)
         );
 
@@ -648,6 +798,32 @@ fn migrate(conn: &Connection) -> Result<(), String> {
         ",
     )
     .map_err(|error| format!("Could not migrate local DB schema: {error}"))?;
+
+    let has_deleted_at = {
+        let mut statement = conn
+            .prepare("PRAGMA table_info(local_entities)")
+            .map_err(|error| format!("Could not inspect local DB schema: {error}"))?;
+        let columns = statement
+            .query_map([], |row| row.get::<_, String>(1))
+            .map_err(|error| format!("Could not read local DB schema: {error}"))?;
+        let mut found = false;
+        for column in columns {
+            if column.map_err(|error| format!("Could not read local DB column: {error}"))?
+                == "deleted_at"
+            {
+                found = true;
+                break;
+            }
+        }
+        found
+    };
+    if !has_deleted_at {
+        conn.execute(
+            "ALTER TABLE local_entities ADD COLUMN deleted_at INTEGER",
+            [],
+        )
+        .map_err(|error| format!("Could not add local DB tombstones: {error}"))?;
+    }
 
     let existing_version = conn
         .query_row(
@@ -685,10 +861,10 @@ fn data_dir() -> Option<PathBuf> {
         .map(|dir| dir.join("open-game-launcher"))
 }
 
-fn now_unix_secs() -> i64 {
+fn now_unix_millis() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_secs() as i64)
+        .map(|duration| duration.as_millis() as i64)
         .unwrap_or(0)
 }
 
@@ -772,6 +948,49 @@ mod tests {
         assert_eq!(games[0].id, "keep");
         assert_eq!(games[0].achievements, ["latest"]);
         assert_eq!(games[0].playtime, 3);
+    }
+
+    #[test]
+    fn schema_v1_database_is_upgraded_with_tombstones_without_losing_rows() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE local_metadata (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+             INSERT INTO local_metadata (key, value) VALUES ('schema_version', '1');
+             CREATE TABLE local_entities (
+               kind TEXT NOT NULL,
+               id TEXT NOT NULL,
+               json TEXT NOT NULL,
+               updated_at INTEGER NOT NULL,
+               dirty INTEGER NOT NULL DEFAULT 1,
+               sync_status TEXT NOT NULL DEFAULT 'pending',
+               last_synced_at INTEGER,
+               PRIMARY KEY (kind, id)
+             );
+             INSERT INTO local_entities
+               (kind, id, json, updated_at, dirty, sync_status)
+             VALUES ('games', 'game-a', '{}', 1, 0, 'synced');",
+        )
+        .unwrap();
+
+        migrate(&conn).unwrap();
+
+        let (count, deleted_at): (i64, Option<i64>) = conn
+            .query_row(
+                "SELECT COUNT(*), deleted_at FROM local_entities",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        let version: String = conn
+            .query_row(
+                "SELECT value FROM local_metadata WHERE key = 'schema_version'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 1);
+        assert_eq!(deleted_at, None);
+        assert_eq!(version, SCHEMA_VERSION.to_string());
     }
 
     #[test]
@@ -1068,7 +1287,7 @@ mod tests {
         })
         .unwrap();
         upsert_serialized_item(&conn, "games", "game-a", &original, 42).unwrap();
-        let stale_token = local_entity_sync_token("games", "game-a", &original, 42);
+        let stale_token = local_entity_sync_token("games", "game-a", &original, 42, None);
 
         let newer = serde_json::to_string(&TestGame {
             id: "game-a".to_string(),
@@ -1118,7 +1337,7 @@ mod tests {
             vec![LocalEntityKey {
                 kind: "games".to_string(),
                 id: "game-a".to_string(),
-                sync_token: local_entity_sync_token("games", "game-a", &json, 42),
+                sync_token: local_entity_sync_token("games", "game-a", &json, 42, None),
             }],
         )
         .unwrap();
@@ -1158,6 +1377,7 @@ mod tests {
                     "playtime": 1
                 }),
                 updated_at: 42,
+                deleted_at: None,
                 sync_token: String::new(),
             }],
         )
@@ -1204,6 +1424,7 @@ mod tests {
                     "playtime": 1
                 }),
                 updated_at: 50,
+                deleted_at: None,
                 sync_token: String::new(),
             }],
         )
@@ -1237,5 +1458,252 @@ mod tests {
                 .collect::<Vec<_>>(),
             ["games", "downloads"]
         );
+    }
+
+    #[test]
+    fn cloud_entity_deletion_is_a_syncable_tombstone_hidden_from_local_reads() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        migrate(&conn).unwrap();
+        upsert_serialized_item(
+            &conn,
+            "games",
+            "game-a",
+            r#"{"id":"game-a","status":"installed"}"#,
+            42,
+        )
+        .unwrap();
+
+        tombstone_or_delete_item_with_connection(&conn, "games", "game-a", None).unwrap();
+
+        assert!(
+            read_item_with_connection_for_test::<serde_json::Value>(&conn, "games", "game-a")
+                .is_none()
+        );
+        let pending = read_entities_for_sync_with_connection(&conn, true).unwrap();
+        assert_eq!(pending.len(), 1);
+        assert_eq!(pending[0].entity, serde_json::json!({}));
+        assert!(pending[0].deleted_at.is_some());
+
+        let key = LocalEntityKey {
+            kind: pending[0].kind.clone(),
+            id: pending[0].id.clone(),
+            sync_token: pending[0].sync_token.clone(),
+        };
+        mark_local_entities_synced_with_connection(&mut conn, vec![key]).unwrap();
+        let dirty: i64 = conn
+            .query_row(
+                "SELECT dirty FROM local_entities WHERE kind = 'games' AND id = 'game-a'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(dirty, 0);
+    }
+
+    #[test]
+    fn recreating_a_tombstoned_entity_advances_its_timestamp() {
+        let conn = Connection::open_in_memory().unwrap();
+        migrate(&conn).unwrap();
+        upsert_serialized_item(&conn, "games", "game-a", "{}", 42).unwrap();
+        tombstone_or_delete_item_with_connection(&conn, "games", "game-a", None).unwrap();
+        let deleted_at: i64 = conn
+            .query_row(
+                "SELECT deleted_at FROM local_entities
+                 WHERE kind = 'games' AND id = 'game-a'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+
+        // Simulate a recreate in the same clock tick. The live row must sort
+        // after its tombstone when both are mirrored to per-device cloud rows.
+        upsert_serialized_item(
+            &conn,
+            "games",
+            "game-a",
+            r#"{"id":"game-a","status":"not_installed"}"#,
+            deleted_at,
+        )
+        .unwrap();
+
+        let (updated_at, current_deleted_at): (i64, Option<i64>) = conn
+            .query_row(
+                "SELECT updated_at, deleted_at FROM local_entities
+                 WHERE kind = 'games' AND id = 'game-a'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert!(updated_at > deleted_at);
+        assert_eq!(current_deleted_at, None);
+    }
+
+    #[test]
+    fn newer_remote_tombstone_blocks_older_remote_live_row() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        migrate(&conn).unwrap();
+        upsert_serialized_item(
+            &conn,
+            "games",
+            "game-a",
+            r#"{"id":"game-a","status":"installed"}"#,
+            100,
+        )
+        .unwrap();
+
+        apply_remote_local_entities_with_connection(
+            &mut conn,
+            vec![LocalEntityPayload {
+                kind: "games".to_string(),
+                id: "game-a".to_string(),
+                entity: serde_json::json!({}),
+                updated_at: 200,
+                deleted_at: Some(200),
+                sync_token: String::new(),
+            }],
+        )
+        .unwrap();
+        apply_remote_local_entities_with_connection(
+            &mut conn,
+            vec![LocalEntityPayload {
+                kind: "games".to_string(),
+                id: "game-a".to_string(),
+                entity: serde_json::json!({"id": "game-a", "status": "installed"}),
+                updated_at: 150,
+                deleted_at: None,
+                sync_token: String::new(),
+            }],
+        )
+        .unwrap();
+
+        let (updated_at, deleted_at): (i64, Option<i64>) = conn
+            .query_row(
+                "SELECT updated_at, deleted_at FROM local_entities
+                 WHERE kind = 'games' AND id = 'game-a'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(updated_at, 200);
+        assert_eq!(deleted_at, Some(200));
+        assert!(
+            read_collection_with_connection::<serde_json::Value>(&conn, "games")
+                .unwrap()
+                .is_empty()
+        );
+    }
+
+    #[test]
+    fn pending_game_payload_omits_device_installation_state() {
+        let conn = Connection::open_in_memory().unwrap();
+        migrate(&conn).unwrap();
+        upsert_serialized_item(
+            &conn,
+            "games",
+            "game-a",
+            r#"{"id":"game-a","title":"Arcade","status":"installed","installPath":"C:\\Games\\Arcade","executablePath":"C:\\Games\\Arcade\\game.exe","processNames":["game.exe"],"launchUri":"steam://run/1"}"#,
+            42,
+        )
+        .unwrap();
+
+        let pending = read_entities_for_sync_with_connection(&conn, true).unwrap();
+        let game = pending[0].entity.as_object().unwrap();
+        assert_eq!(
+            game.get("status"),
+            Some(&serde_json::json!("not_installed"))
+        );
+        for key in ["installPath", "executablePath", "processNames", "launchUri"] {
+            assert!(!game.contains_key(key));
+        }
+    }
+
+    #[test]
+    fn remote_game_metadata_preserves_this_devices_installation_state() {
+        let mut conn = Connection::open_in_memory().unwrap();
+        migrate(&conn).unwrap();
+        let local = serde_json::json!({
+            "id": "game-a",
+            "title": "Old title",
+            "status": "installed",
+            "installPath": "C:\\Games\\Arcade",
+            "executablePath": "C:\\Games\\Arcade\\game.exe",
+            "processNames": ["game.exe"],
+            "launchUri": "steam://run/1"
+        });
+        conn.execute(
+            "INSERT INTO local_entities (kind, id, json, updated_at, dirty, sync_status)
+             VALUES ('games', 'game-a', ?1, 100, 0, 'synced')",
+            params![serde_json::to_string(&local).unwrap()],
+        )
+        .unwrap();
+
+        apply_remote_local_entities_with_connection(
+            &mut conn,
+            vec![
+                LocalEntityPayload {
+                    kind: "games".to_string(),
+                    id: "game-a".to_string(),
+                    entity: serde_json::json!({
+                        "id": "game-a",
+                        "title": "Cloud title",
+                        "status": "installed",
+                        "installPath": "D:\\OtherDevice",
+                        "executablePath": "D:\\OtherDevice\\bad.exe",
+                        "processNames": ["bad.exe"],
+                        "launchUri": "other://device"
+                    }),
+                    updated_at: 200,
+                    deleted_at: None,
+                    sync_token: String::new(),
+                },
+                LocalEntityPayload {
+                    kind: "games".to_string(),
+                    id: "game-b".to_string(),
+                    entity: serde_json::json!({
+                        "id": "game-b",
+                        "title": "Cloud-only game",
+                        "status": "installed",
+                        "installPath": "D:\\OtherDevice"
+                    }),
+                    updated_at: 200,
+                    deleted_at: None,
+                    sync_token: String::new(),
+                },
+            ],
+        )
+        .unwrap();
+
+        let game_a =
+            read_item_with_connection_for_test::<serde_json::Value>(&conn, "games", "game-a")
+                .unwrap();
+        assert_eq!(game_a["title"], "Cloud title");
+        assert_eq!(game_a["status"], "installed");
+        assert_eq!(game_a["installPath"], "C:\\Games\\Arcade");
+        assert_eq!(game_a["executablePath"], "C:\\Games\\Arcade\\game.exe");
+        assert_eq!(game_a["processNames"], serde_json::json!(["game.exe"]));
+        assert_eq!(game_a["launchUri"], "steam://run/1");
+
+        let game_b =
+            read_item_with_connection_for_test::<serde_json::Value>(&conn, "games", "game-b")
+                .unwrap();
+        assert_eq!(game_b["status"], "not_installed");
+        assert!(game_b.get("installPath").is_none());
+    }
+
+    fn read_item_with_connection_for_test<T: DeserializeOwned>(
+        conn: &Connection,
+        kind: &str,
+        id: &str,
+    ) -> Option<T> {
+        let json = conn
+            .query_row(
+                "SELECT json FROM local_entities
+                 WHERE kind = ?1 AND id = ?2 AND deleted_at IS NULL",
+                params![kind, id],
+                |row| row.get::<_, String>(0),
+            )
+            .optional()
+            .unwrap()?;
+        Some(serde_json::from_str(&json).unwrap())
     }
 }

@@ -1,5 +1,5 @@
 import { act, renderHook } from "@testing-library/react";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { useLibraryFilters } from "../useLibraryFilters";
 import { STORAGE_KEYS } from "../../../lib/storage-keys";
@@ -21,6 +21,11 @@ function makeGame(overrides: Partial<Game> = {}): Game {
 describe("useLibraryFilters", () => {
   beforeEach(() => {
     window.localStorage.clear();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
   });
 
   it("returns initial state", () => {
@@ -193,5 +198,31 @@ describe("useLibraryFilters", () => {
       }),
     );
     expect(result.current.baseLibraryGames.some((g) => g.id === "g1")).toBe(true);
+  });
+
+  it("keeps filter state usable when the debounced localStorage write fails", () => {
+    vi.useFakeTimers();
+    vi.spyOn(Storage.prototype, "setItem").mockImplementation(() => {
+      throw new Error("quota exceeded");
+    });
+    const { result } = renderHook(() =>
+      useLibraryFilters({
+        installedGames: [],
+        customArtwork: {},
+        favorites: {},
+        hiddenGames: {},
+        customCategories: {},
+        manualCollections: {},
+        selectedManualCollectionName: null,
+        isDiscoveringGames: false,
+      }),
+    );
+
+    act(() => {
+      result.current.setSearchQuery("still works");
+      vi.advanceTimersByTime(150);
+    });
+
+    expect(result.current.searchQuery).toBe("still works");
   });
 });

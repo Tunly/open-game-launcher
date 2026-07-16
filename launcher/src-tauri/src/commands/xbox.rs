@@ -1949,6 +1949,7 @@ pub async fn sync_xbox_achievements(
 
     Ok(
         crate::commands::games::types::SyncGameAchievementsResponse {
+            achievement_source: None,
             game_id,
             success: true,
             game,

@@ -84,9 +84,12 @@ import {
   previewPlatformClientAutoApply,
   previewPlatformClientInstall,
   getGameActionCapabilities,
+  moveGame,
   prepareGameActionConfirmation,
   runGameAction,
   savePlatformClientModificationConfig,
+  stopGame,
+  syncGameSaves,
   toClientPlatformId,
 } from "../../lib/launcher";
 import {
@@ -130,6 +133,16 @@ const IgdbCrossPlayReadinessPanel = React.lazy(() =>
     default: m.IgdbCrossPlayReadinessPanel,
   })),
 );
+const CommunityArtworkPanel = React.lazy(() =>
+  import("./CommunityArtworkPanel").then((m) => ({
+    default: m.CommunityArtworkPanel,
+  })),
+);
+const PlaytimeEditorPanel = React.lazy(() =>
+  import("./GameDetails/PlaytimeEditorPanel").then((m) => ({
+    default: m.PlaytimeEditorPanel,
+  })),
+);
 import { GameUpdateFeed } from "./GameUpdateFeed";
 import { ArtworkPreviewModal } from "./ArtworkPreviewModal";
 import type { CrossStoreSaveMigrationReadiness } from "../../lib/cross-store-save-migration-readiness";
@@ -158,6 +171,12 @@ interface PendingGameAction {
 }
 
 type SelectedGameActionBinding = Pick<PendingGameAction, "gameId" | "provider" | "title">;
+
+type SelectedCopyUtilityAction = "move" | "save_sync" | "stop";
+
+interface PendingMoveAction extends SelectedGameActionBinding {
+  targetPath: string;
+}
 
 function unavailableNativeCapability(
   action: GameAction,
@@ -692,6 +711,8 @@ export interface GameDetailsProps {
   isDiscoveringGames: boolean;
   discoveryMessage: string | null;
   runAutomaticLibrarySync: (force: boolean) => Promise<void>;
+  requestLibraryRescanOnNextFocus?: () => void;
+  onVerifiedUninstall?: (gameId: string) => void;
   customArtwork: GameCustomArtwork | null;
   customArtworkByGameId?: Record<string, GameCustomArtwork>;
   artworkGameId?: string;
@@ -699,6 +720,13 @@ export interface GameDetailsProps {
   onArtworkDrop: (gameId: string, kind: CustomArtworkKind, file: File) => void;
   onConfirmArtwork: (dataUrl: string, kind: CustomArtworkKind) => void;
   onResetCustomArtwork: (gameId: string, kind?: CustomArtworkKind) => void;
+  onApplyCustomArtworkUrl?: (
+    gameId: string,
+    kind: CustomArtworkKind,
+    url: string,
+    sourceLabel: string,
+  ) => void;
+  onPlaytimeChanged?: (gameId: string, nextMinutes: number) => void;
   pendingArtworkFile: File | null;
   pendingArtworkKind: CustomArtworkKind;
   pendingArtworkGameId: string | null;
@@ -740,12 +768,16 @@ export function GameDetails({
   isDiscoveringGames,
   discoveryMessage,
   runAutomaticLibrarySync,
+  requestLibraryRescanOnNextFocus,
+  onVerifiedUninstall,
   customArtwork,
   customArtworkByGameId,
   artworkGameId,
   onArtworkDrop,
   onConfirmArtwork,
   onResetCustomArtwork,
+  onApplyCustomArtworkUrl,
+  onPlaytimeChanged,
   pendingArtworkFile,
   pendingArtworkKind,
   openArtworkPreview,
@@ -772,6 +804,14 @@ export function GameDetails({
   const [gameActionResult, setGameActionResult] = useState<GameActionResult | null>(null);
   const [gameActionError, setGameActionError] = useState<string | null>(null);
   const [pendingGameAction, setPendingGameAction] = useState<PendingGameAction | null>(null);
+  const [busySelectedCopyUtility, setBusySelectedCopyUtility] =
+    useState<SelectedCopyUtilityAction | null>(null);
+  const [pendingMoveAction, setPendingMoveAction] = useState<PendingMoveAction | null>(null);
+  const [selectedCopyUtilityMessage, setSelectedCopyUtilityMessage] = useState<string | null>(null);
+  const [selectedCopyUtilityError, setSelectedCopyUtilityError] = useState<string | null>(null);
+  const [selectedCopyUtilityOutcome, setSelectedCopyUtilityOutcome] = useState<
+    "completed" | "warning" | null
+  >(null);
   const capabilityRequestIdRef = useRef(0);
   const selectedGameActionBindingRef = useRef<SelectedGameActionBinding | null>(null);
   const coverArtworkInputRef = useRef<HTMLInputElement>(null);
@@ -900,10 +940,46 @@ export function GameDetails({
   const selectedSourceClientId = toClientPlatformId(
     selectedVariant ? getGameSource(selectedVariant) : null,
   );
+  const selectedVariantSource = selectedVariant ? getGameSource(selectedVariant) : "unknown";
   const isSelectedVariantRunning = selectedVariant
     ? (runningGameIds?.has(selectedVariant.id) ??
       (variantsForActions.length === 1 && isGameRunning))
     : false;
+  const selectedVariantCanMove = Boolean(
+    isDesktopRuntime &&
+    selectedVariant?.installPath &&
+    selectedVariant.status !== "not_installed" &&
+    ["manual", "ogl"].includes(selectedVariantSource) &&
+    !isSelectedVariantRunning,
+  );
+  const selectedVariantCanSyncSaves = Boolean(
+    isDesktopRuntime &&
+    selectedVariant?.status !== "not_installed" &&
+    (selectedVariant?.saveFiles?.length ?? 0) > 0 &&
+    !isSelectedVariantRunning,
+  );
+  const selectedVariantCanStop = Boolean(isDesktopRuntime && isSelectedVariantRunning);
+  const selectedVariantMoveReason = !isDesktopRuntime
+    ? "Install moves are available only in the OG-Launcher desktop app."
+    : isSelectedVariantRunning
+      ? "Stop this copy before moving its files."
+      : !selectedVariant?.installPath || selectedVariant.status === "not_installed"
+        ? "This copy has no local install path to move."
+        : !["manual", "ogl"].includes(selectedVariantSource)
+          ? `Move this ${getSourceDisplayLabel(selectedVariantSource)} install with its provider client.`
+          : "Move this OG-managed or manual copy to another folder on the same drive.";
+  const selectedVariantSaveSyncReason = !isDesktopRuntime
+    ? "Local save backup is available only in the OG-Launcher desktop app."
+    : isSelectedVariantRunning
+      ? "Stop this copy before backing up its save data."
+      : (selectedVariant?.saveFiles?.length ?? 0) === 0
+        ? "No save paths are tracked for this copy."
+        : `Copy ${selectedVariant?.saveFiles?.length ?? 0} tracked save path(s) into the local OG-Launcher backup cache.`;
+  const selectedVariantStopReason = !isDesktopRuntime
+    ? "Stopping games is available only in the OG-Launcher desktop app."
+    : isSelectedVariantRunning
+      ? "Stop the path-verified process for this exact selected copy."
+      : "This selected copy is not running.";
   const selectedActionContext: GameActionRuntimeContext | null = selectedVariant
     ? {
         runtime: isDesktopRuntime ? "desktop" : "browser",
@@ -924,7 +1000,6 @@ export function GameDetails({
     : null;
   const selectedVariantGameId = selectedVariant?.id ?? null;
   const selectedVariantTitle = selectedVariant?.title ?? null;
-  const selectedVariantSource = selectedVariant ? getGameSource(selectedVariant) : "unknown";
   const isOglCatalogOnly =
     enrichedSelectedGame?.status === "not_installed" &&
     selectedVariantSource === "ogl" &&
@@ -998,6 +1073,9 @@ export function GameDetails({
   const gameActionCapabilities = selectedCopyActionCapabilities
     ? {
         support: selectedCopyActionCapabilities.support,
+        checkUpdate: isDesktopRuntime
+          ? resolveDisplayedNativeCapability("check_update", "Check for Updates")
+          : selectedCopyActionCapabilities.check_update,
         update: isDesktopRuntime
           ? resolveDisplayedNativeCapability("update", "Update Selected Copy")
           : selectedCopyActionCapabilities.update,
@@ -1264,9 +1342,14 @@ export function GameDetails({
     setCollectionRenameInput("");
     setPendingCollectionDelete(null);
     setPendingGameAction(null);
+    setPendingMoveAction(null);
     setBusyGameAction(null);
+    setBusySelectedCopyUtility(null);
     setGameActionResult(null);
     setGameActionError(null);
+    setSelectedCopyUtilityMessage(null);
+    setSelectedCopyUtilityError(null);
+    setSelectedCopyUtilityOutcome(null);
     setAchievementFilter("all");
     setAchievementSort("rarity");
     setIsClientManagerOpen(false);
@@ -1289,8 +1372,12 @@ export function GameDetails({
     setIsClientManagerOpen(false);
     setClientManagerBusyAction(null);
     setPendingGameAction(null);
+    setPendingMoveAction(null);
     setGameActionResult(null);
     setGameActionError(null);
+    setSelectedCopyUtilityMessage(null);
+    setSelectedCopyUtilityError(null);
+    setSelectedCopyUtilityOutcome(null);
   }, [selectedVariant?.id]);
 
   useEffect(() => {
@@ -1367,7 +1454,7 @@ export function GameDetails({
     );
   }
 
-  function selectionMatchesGameAction(snapshot: PendingGameAction): boolean {
+  function selectionMatchesGameAction(snapshot: SelectedGameActionBinding): boolean {
     const current = selectedGameActionBindingRef.current;
     return Boolean(
       current &&
@@ -1375,6 +1462,155 @@ export function GameDetails({
       current.title === snapshot.title &&
       current.provider === snapshot.provider,
     );
+  }
+
+  function beginSelectedCopyUtility(action: SelectedCopyUtilityAction) {
+    setBusySelectedCopyUtility(action);
+    setSelectedCopyUtilityMessage(null);
+    setSelectedCopyUtilityError(null);
+    setSelectedCopyUtilityOutcome(null);
+    setGameActionResult(null);
+    setGameActionError(null);
+  }
+
+  async function handleStopSelectedCopy() {
+    if (!selectedVariant || !selectedVariantCanStop || busySelectedCopyUtility || busyGameAction) {
+      return;
+    }
+
+    const snapshot: SelectedGameActionBinding = {
+      gameId: selectedVariant.id,
+      provider: selectedVariantSource,
+      title: selectedVariant.title,
+    };
+    beginSelectedCopyUtility("stop");
+    try {
+      const result = await stopGame(snapshot.gameId);
+      if (result.gameId !== snapshot.gameId || !result.success) {
+        throw new Error(
+          result.message || "The desktop backend did not verify that the game stopped.",
+        );
+      }
+      setSelectedCopyUtilityMessage(result.message);
+      setSelectedCopyUtilityOutcome("completed");
+      setStatusMessage(result.message);
+    } catch (error) {
+      const message = getErrorMessage(error);
+      setSelectedCopyUtilityError(message);
+      setStatusMessage(`Stop failed: ${message}`);
+    } finally {
+      setBusySelectedCopyUtility(null);
+    }
+  }
+
+  async function handleChooseMoveTarget() {
+    if (!selectedVariant || !selectedVariantCanMove || busySelectedCopyUtility || busyGameAction) {
+      return;
+    }
+
+    const snapshot: SelectedGameActionBinding = {
+      gameId: selectedVariant.id,
+      provider: selectedVariantSource,
+      title: selectedVariant.title,
+    };
+    beginSelectedCopyUtility("move");
+    try {
+      const { open } = await import("@tauri-apps/plugin-dialog");
+      const targetPath = await open({
+        directory: true,
+        multiple: false,
+        title: `Move ${snapshot.title} to...`,
+      });
+      if (typeof targetPath !== "string") {
+        return;
+      }
+      if (!selectionMatchesGameAction(snapshot)) {
+        throw new Error("The selected copy changed before the move was confirmed. Nothing moved.");
+      }
+      setPendingMoveAction({ ...snapshot, targetPath });
+    } catch (error) {
+      const message = getErrorMessage(error);
+      setSelectedCopyUtilityError(message);
+      setStatusMessage(`Move could not be prepared: ${message}`);
+    } finally {
+      setBusySelectedCopyUtility(null);
+    }
+  }
+
+  async function handleConfirmMove() {
+    const snapshot = pendingMoveAction;
+    if (!snapshot || busySelectedCopyUtility || busyGameAction) return;
+    if (!selectionMatchesGameAction(snapshot)) {
+      setPendingMoveAction(null);
+      const message = "The selected copy changed before confirmation. Nothing moved.";
+      setSelectedCopyUtilityError(message);
+      setStatusMessage(`Move blocked: ${message}`);
+      return;
+    }
+
+    beginSelectedCopyUtility("move");
+    try {
+      await moveGame({ gameId: snapshot.gameId, newPath: snapshot.targetPath });
+      setPendingMoveAction(null);
+      let message = `${snapshot.title} was moved and its local library path was updated.`;
+      let outcome: "completed" | "warning" = "completed";
+      try {
+        await runAutomaticLibrarySync(false);
+      } catch (error) {
+        message += ` Library refresh failed: ${getErrorMessage(error)}`;
+        outcome = "warning";
+      }
+      setSelectedCopyUtilityMessage(message);
+      setSelectedCopyUtilityOutcome(outcome);
+      setStatusMessage(message);
+    } catch (error) {
+      const message = getErrorMessage(error);
+      setSelectedCopyUtilityError(message);
+      setStatusMessage(`Move failed: ${message}`);
+    } finally {
+      setBusySelectedCopyUtility(null);
+    }
+  }
+
+  async function handleSyncSelectedCopySaves() {
+    if (
+      !selectedVariant ||
+      !selectedVariantCanSyncSaves ||
+      busySelectedCopyUtility ||
+      busyGameAction
+    ) {
+      return;
+    }
+
+    const snapshot: SelectedGameActionBinding = {
+      gameId: selectedVariant.id,
+      provider: selectedVariantSource,
+      title: selectedVariant.title,
+    };
+    beginSelectedCopyUtility("save_sync");
+    try {
+      const result = await syncGameSaves(snapshot.gameId);
+      if (result.gameId !== snapshot.gameId) {
+        throw new Error("The desktop backend returned save data for a different game.");
+      }
+      let message = result.message;
+      let outcome: "completed" | "warning" = result.success ? "completed" : "warning";
+      try {
+        await runAutomaticLibrarySync(false);
+      } catch (error) {
+        message += ` Library refresh failed: ${getErrorMessage(error)}`;
+        outcome = "warning";
+      }
+      setSelectedCopyUtilityMessage(message);
+      setSelectedCopyUtilityOutcome(outcome);
+      setStatusMessage(message);
+    } catch (error) {
+      const message = getErrorMessage(error);
+      setSelectedCopyUtilityError(message);
+      setStatusMessage(`Save backup failed: ${message}`);
+    } finally {
+      setBusySelectedCopyUtility(null);
+    }
   }
 
   async function executeBoundGameAction(snapshot: PendingGameAction, confirmationToken?: string) {
@@ -1398,9 +1634,12 @@ export function GameDetails({
 
     let displayedResult = result;
     let librarySyncWarning: string | null = null;
+    if (result.rescanRecommended && result.outcome === "handoff_required") {
+      requestLibraryRescanOnNextFocus?.();
+    }
     if (result.libraryChanged || result.rescanRecommended) {
       try {
-        await runAutomaticLibrarySync(true);
+        await runAutomaticLibrarySync(result.rescanRecommended);
       } catch (error) {
         librarySyncWarning = `Library sync failed: ${getErrorMessage(error)}`;
         displayedResult = {
@@ -1408,6 +1647,9 @@ export function GameDetails({
           details: [...result.details, librarySyncWarning],
         };
       }
+    }
+    if (result.action === "uninstall" && result.outcome === "completed") {
+      onVerifiedUninstall?.(snapshot.gameId);
     }
 
     if (!selectionMatchesGameAction(snapshot)) {
@@ -3011,6 +3253,33 @@ export function GameDetails({
                               </span>
                             </button>
                             <button
+                              className="min-h-16 border-2 border-black bg-[#8cf5e4] px-2 py-2 text-left shadow-[2px_2px_0_#171411] disabled:cursor-not-allowed disabled:bg-[#ded3c1] disabled:text-[#655f58] disabled:shadow-none"
+                              disabled={
+                                !gameActionCapabilities.checkUpdate.available ||
+                                busyGameAction !== null
+                              }
+                              title={gameActionCapabilities.checkUpdate.reason}
+                              type="button"
+                              onClick={() =>
+                                handleRequestGameAction(
+                                  "check_update",
+                                  gameActionCapabilities.checkUpdate as GameActionCapability,
+                                )
+                              }
+                            >
+                              <span className="neo-copy flex items-center gap-1 text-[10px] font-black uppercase">
+                                <RefreshCw
+                                  className={`h-4 w-4 ${busyGameAction === "check_update" ? "animate-spin" : ""}`}
+                                />
+                                {busyGameAction === "check_update"
+                                  ? "Checking..."
+                                  : gameActionCapabilities.checkUpdate.label}
+                              </span>
+                              <span className="neo-copy mt-1 block text-[8px] leading-3 font-bold uppercase">
+                                {gameActionCapabilities.checkUpdate.reason}
+                              </span>
+                            </button>
+                            <button
                               className="min-h-16 border-2 border-black bg-[#e8c843] px-2 py-2 text-left shadow-[2px_2px_0_#171411] disabled:cursor-not-allowed disabled:bg-[#ded3c1] disabled:text-[#655f58] disabled:shadow-none"
                               disabled={
                                 !gameActionCapabilities.update.available || busyGameAction !== null
@@ -3133,6 +3402,79 @@ export function GameDetails({
                                 {gameActionCapabilities.clientManager.reason}
                               </span>
                             </button>
+                            <button
+                              className="min-h-16 border-2 border-black bg-[#b7102a] px-2 py-2 text-left text-white shadow-[2px_2px_0_#171411] disabled:cursor-not-allowed disabled:bg-[#ded3c1] disabled:text-[#655f58] disabled:shadow-none"
+                              disabled={
+                                !selectedVariantCanStop ||
+                                busySelectedCopyUtility !== null ||
+                                busyGameAction !== null
+                              }
+                              title={selectedVariantStopReason}
+                              type="button"
+                              onClick={() => void handleStopSelectedCopy()}
+                            >
+                              <span className="neo-copy flex items-center gap-1 text-[10px] font-black uppercase">
+                                {busySelectedCopyUtility === "stop" ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <Power className="h-4 w-4" />
+                                )}
+                                {busySelectedCopyUtility === "stop" ? "Stopping..." : "Stop Game"}
+                              </span>
+                              <span className="neo-copy mt-1 block text-[8px] leading-3 font-bold uppercase">
+                                {selectedVariantStopReason}
+                              </span>
+                            </button>
+                            <button
+                              className="min-h-16 border-2 border-black bg-[#e8c843] px-2 py-2 text-left shadow-[2px_2px_0_#171411] disabled:cursor-not-allowed disabled:bg-[#ded3c1] disabled:text-[#655f58] disabled:shadow-none"
+                              disabled={
+                                !selectedVariantCanMove ||
+                                busySelectedCopyUtility !== null ||
+                                busyGameAction !== null
+                              }
+                              title={selectedVariantMoveReason}
+                              type="button"
+                              onClick={() => void handleChooseMoveTarget()}
+                            >
+                              <span className="neo-copy flex items-center gap-1 text-[10px] font-black uppercase">
+                                {busySelectedCopyUtility === "move" ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <FolderOpen className="h-4 w-4" />
+                                )}
+                                {busySelectedCopyUtility === "move"
+                                  ? "Preparing..."
+                                  : "Move Install"}
+                              </span>
+                              <span className="neo-copy mt-1 block text-[8px] leading-3 font-bold uppercase">
+                                {selectedVariantMoveReason}
+                              </span>
+                            </button>
+                            <button
+                              className="min-h-16 border-2 border-black bg-[#8cf5e4] px-2 py-2 text-left shadow-[2px_2px_0_#171411] disabled:cursor-not-allowed disabled:bg-[#ded3c1] disabled:text-[#655f58] disabled:shadow-none"
+                              disabled={
+                                !selectedVariantCanSyncSaves ||
+                                busySelectedCopyUtility !== null ||
+                                busyGameAction !== null
+                              }
+                              title={selectedVariantSaveSyncReason}
+                              type="button"
+                              onClick={() => void handleSyncSelectedCopySaves()}
+                            >
+                              <span className="neo-copy flex items-center gap-1 text-[10px] font-black uppercase">
+                                {busySelectedCopyUtility === "save_sync" ? (
+                                  <Loader2 className="h-4 w-4 animate-spin" />
+                                ) : (
+                                  <Save className="h-4 w-4" />
+                                )}
+                                {busySelectedCopyUtility === "save_sync"
+                                  ? "Backing Up..."
+                                  : "Backup Saves"}
+                              </span>
+                              <span className="neo-copy mt-1 block text-[8px] leading-3 font-bold uppercase">
+                                {selectedVariantSaveSyncReason}
+                              </span>
+                            </button>
                           </div>
 
                           <div
@@ -3149,6 +3491,22 @@ export function GameDetails({
                                 >
                                   {gameActionOutcomeLabel(gameActionResult.outcome)}
                                 </span>
+                              ) : busySelectedCopyUtility ? (
+                                <span className="neo-copy flex items-center gap-1 border-2 border-black bg-[#e8c843] px-2 py-0.5 text-[8px] font-black uppercase">
+                                  <Loader2 className="h-3 w-3 animate-spin" /> Working
+                                </span>
+                              ) : selectedCopyUtilityMessage && selectedCopyUtilityOutcome ? (
+                                <span
+                                  className={`neo-copy border-2 border-black px-2 py-0.5 text-[8px] font-black uppercase ${
+                                    selectedCopyUtilityOutcome === "warning"
+                                      ? "bg-[#e8c843] text-[#171411]"
+                                      : "bg-[#087d6d] text-white"
+                                  }`}
+                                >
+                                  {selectedCopyUtilityOutcome === "warning"
+                                    ? "Completed with warning"
+                                    : "Completed"}
+                                </span>
                               ) : isLoadingGameActionCapabilities ? (
                                 <span className="neo-copy flex items-center gap-1 border-2 border-black bg-[#e8c843] px-2 py-0.5 text-[8px] font-black uppercase">
                                   <Loader2 className="h-3 w-3 animate-spin" /> Loading
@@ -3156,17 +3514,21 @@ export function GameDetails({
                               ) : null}
                             </div>
                             <p className="neo-copy mt-1 text-[9px] font-black uppercase">
-                              {gameActionError
-                                ? `Action failed: ${gameActionError}`
-                                : gameActionCapabilityError
-                                  ? `Capabilities unavailable: ${gameActionCapabilityError}`
-                                  : gameActionResult
-                                    ? gameActionResult.message
-                                    : isLoadingGameActionCapabilities
-                                      ? "Reading native capabilities for this exact selected copy."
-                                      : isDesktopRuntime
-                                        ? "Choose an available action for this selected copy."
-                                        : "Native actions stay disabled in the browser preview."}
+                              {selectedCopyUtilityError
+                                ? `Utility failed: ${selectedCopyUtilityError}`
+                                : selectedCopyUtilityMessage
+                                  ? selectedCopyUtilityMessage
+                                  : gameActionError
+                                    ? `Action failed: ${gameActionError}`
+                                    : gameActionCapabilityError
+                                      ? `Capabilities unavailable: ${gameActionCapabilityError}`
+                                      : gameActionResult
+                                        ? gameActionResult.message
+                                        : isLoadingGameActionCapabilities
+                                          ? "Reading native capabilities for this exact selected copy."
+                                          : isDesktopRuntime
+                                            ? "Choose an available action for this selected copy."
+                                            : "Native actions stay disabled in the browser preview."}
                             </p>
                             {gameActionResult?.details.length ? (
                               <ul className="neo-copy mt-1 list-inside list-disc text-[8px] font-bold uppercase">
@@ -3251,6 +3613,22 @@ export function GameDetails({
                                 artwork.
                               </p>
                             )}
+                            {selectedVariant && onApplyCustomArtworkUrl ? (
+                              <React.Suspense fallback={null}>
+                                <CommunityArtworkPanel
+                                  artwork={selectedVariantArtwork}
+                                  game={selectedVariant}
+                                  onApply={(candidate) =>
+                                    onApplyCustomArtworkUrl(
+                                      selectedVariant.id,
+                                      candidate.kind,
+                                      candidate.url,
+                                      candidate.sourceLabel,
+                                    )
+                                  }
+                                />
+                              </React.Suspense>
+                            ) : null}
                           </div>
                         </section>
 
@@ -3587,6 +3965,19 @@ export function GameDetails({
                     </div>
 
                     <GameUpdateFeed game={enrichedSelectedGame} />
+                    {selectedVariant && onPlaytimeChanged ? (
+                      <div className="mt-4">
+                        <React.Suspense fallback={null}>
+                          <PlaytimeEditorPanel
+                            game={selectedVariant}
+                            onPlaytimeChanged={(nextMinutes) =>
+                              onPlaytimeChanged(selectedVariant.id, nextMinutes)
+                            }
+                            onStatusMessage={setStatusMessage}
+                          />
+                        </React.Suspense>
+                      </div>
+                    ) : null}
                   </section>
 
                   {/* Right Column: RICH METADATA & Hardware cards */}
@@ -3821,6 +4212,11 @@ export function GameDetails({
                 <p className="neo-copy mt-4 text-[13px] leading-6 font-bold text-[#55504a] uppercase">
                   {isDiscoveringGames ? "Loading library..." : discoveryMessage}
                 </p>
+                {statusMessage ? (
+                  <p className="neo-copy mt-3 border-2 border-black bg-[#f5d6d9] px-3 py-2 text-[11px] leading-5 font-black text-[#77101f] uppercase shadow-[2px_2px_0_#171411]">
+                    {statusMessage}
+                  </p>
+                ) : null}
                 <p className="neo-copy mt-3 text-[11px] leading-5 font-bold text-[#55504a] uppercase">
                   Auto-sync watches Steam, Epic Games, GOG, Ubisoft, Xbox, Battle.net, and EA App
                   installations on this PC.
@@ -3852,6 +4248,20 @@ export function GameDetails({
           setGameActionError(null);
         }}
         onConfirm={() => void handleConfirmGameAction()}
+      />
+      <ConfirmDialog
+        cancelLabel="Cancel"
+        confirmLabel={busySelectedCopyUtility === "move" ? "Moving..." : "Move Game"}
+        destructive
+        message={`Move ${pendingMoveAction?.title ?? "this game"} into ${pendingMoveAction?.targetPath ?? "the selected folder"}. OG-Launcher will move the entire install folder on the same drive and update this exact local copy.`}
+        open={pendingMoveAction !== null}
+        title={selectedCopyUtilityError ? "Move Failed" : "Confirm Install Move"}
+        onCancel={() => {
+          if (busySelectedCopyUtility === "move") return;
+          setPendingMoveAction(null);
+          setSelectedCopyUtilityError(null);
+        }}
+        onConfirm={() => void handleConfirmMove()}
       />
       <ArtworkPreviewModal
         isOpen={pendingArtworkFile !== null}

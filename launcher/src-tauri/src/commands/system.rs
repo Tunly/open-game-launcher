@@ -1,4 +1,4 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::{
     collections::{BTreeMap, BTreeSet, HashMap},
     env, fs,
@@ -11,6 +11,7 @@ use std::{
         Mutex,
     },
     thread,
+    time::Duration,
 };
 use tauri::Manager;
 use uuid::Uuid;
@@ -27,8 +28,12 @@ const STEAM_ID64_BASE: u64 = 76_561_197_960_265_728;
 static STEAM_CALLBACK_SERVER_STARTED: AtomicBool = AtomicBool::new(false);
 static STEAM_WINDOW_OPEN_LOCK: Mutex<()> = Mutex::new(());
 static ACTIVE_STEAM_SCRAPE_REQUEST: Mutex<Option<SteamScrapeRequest>> = Mutex::new(None);
+static ACTIVE_STEAM_ACHIEVEMENT_REQUEST: Mutex<Option<SteamAchievementRequest>> = Mutex::new(None);
+static STEAM_ACHIEVEMENT_RESULT: Mutex<Option<SteamAchievementResult>> = Mutex::new(None);
 static ACTIVE_STEAM_LOGIN_STATE: Mutex<Option<String>> = Mutex::new(None);
 static NEXT_STEAM_SCRAPE_GENERATION: AtomicU64 = AtomicU64::new(1);
+const STEAM_ACHIEVEMENT_XML_MAX_BYTES: usize = 4 * 1024 * 1024;
+const STEAM_ACHIEVEMENT_SESSION_TIMEOUT: Duration = Duration::from_secs(25);
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -361,12 +366,162 @@ struct SteamScrapeRequest {
     steam_id: String,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct SteamAchievementRequest {
+    request_id: String,
+    steam_id: String,
+    steam_app_id: u32,
+}
+
+#[derive(Debug)]
+struct SteamAchievementResult {
+    request_id: String,
+    result: Result<Vec<crate::commands::games::types::UnifiedAchievement>, String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SteamAchievementPayload {
+    request_id: String,
+    steam_id: String,
+    steam_app_id: String,
+    #[serde(default)]
+    xml: Option<String>,
+    #[serde(default)]
+    error: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct SteamLoginSuccessEvent {
+    steam_id: String,
+    openid_response_url: String,
+}
+
 fn next_steam_scrape_request(steam_id: &str, source: SteamScrapeSource) -> SteamScrapeRequest {
     SteamScrapeRequest {
         generation: NEXT_STEAM_SCRAPE_GENERATION.fetch_add(1, Ordering::Relaxed),
         request_id: Uuid::new_v4().to_string(),
         source,
         steam_id: steam_id.to_string(),
+    }
+}
+
+fn next_steam_achievement_request(steam_id: &str, steam_app_id: u32) -> SteamAchievementRequest {
+    SteamAchievementRequest {
+        request_id: Uuid::new_v4().to_string(),
+        steam_id: steam_id.to_string(),
+        steam_app_id,
+    }
+}
+
+fn set_active_steam_achievement_request(request: SteamAchievementRequest) {
+    *STEAM_ACHIEVEMENT_RESULT
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
+    *ACTIVE_STEAM_ACHIEVEMENT_REQUEST
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(request);
+}
+
+fn clear_active_steam_achievement_request(request: &SteamAchievementRequest) {
+    let mut active = ACTIVE_STEAM_ACHIEVEMENT_REQUEST
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if active.as_ref() == Some(request) {
+        *active = None;
+    }
+}
+
+fn steam_achievement_request_is_current(request: &SteamAchievementRequest) -> bool {
+    ACTIVE_STEAM_ACHIEVEMENT_REQUEST
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .as_ref()
+        == Some(request)
+}
+
+fn take_steam_achievement_result(
+    request: &SteamAchievementRequest,
+) -> Option<Result<Vec<crate::commands::games::types::UnifiedAchievement>, String>> {
+    let mut result = STEAM_ACHIEVEMENT_RESULT
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if result
+        .as_ref()
+        .is_some_and(|result| result.request_id == request.request_id)
+    {
+        return result.take().map(|result| result.result);
+    }
+    None
+}
+
+fn parse_steam_achievement_payload(
+    payload: SteamAchievementPayload,
+    request: &SteamAchievementRequest,
+) -> Result<Vec<crate::commands::games::types::UnifiedAchievement>, String> {
+    if payload.request_id != request.request_id
+        || payload.steam_id != request.steam_id
+        || payload.steam_app_id != request.steam_app_id.to_string()
+    {
+        return Err(
+            "Steam achievement result correlation did not match the active request.".to_string(),
+        );
+    }
+    if payload.error.is_some() {
+        return Err(
+            "The authenticated Steam Community session could not expose achievements for this game."
+                .to_string(),
+        );
+    }
+    let xml = payload
+        .xml
+        .filter(|xml| !xml.trim().is_empty())
+        .ok_or_else(|| "Steam achievement session returned no XML data.".to_string())?;
+    if xml.len() > STEAM_ACHIEVEMENT_XML_MAX_BYTES {
+        return Err("Steam achievement session response exceeded the safe size limit.".to_string());
+    }
+    crate::commands::games::detect::parse_steam_community_xml_achievements(&xml, &request.steam_id)
+}
+
+fn accept_steam_achievement_payload(payload: SteamAchievementPayload) -> bool {
+    let request = ACTIVE_STEAM_ACHIEVEMENT_REQUEST
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .clone();
+    let Some(request) = request else {
+        return false;
+    };
+    if payload.request_id != request.request_id
+        || payload.steam_id != request.steam_id
+        || payload.steam_app_id != request.steam_app_id.to_string()
+    {
+        return false;
+    }
+
+    let parsed = parse_steam_achievement_payload(payload, &request);
+    *STEAM_ACHIEVEMENT_RESULT
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(SteamAchievementResult {
+        request_id: request.request_id.clone(),
+        result: parsed,
+    });
+    clear_active_steam_achievement_request(&request);
+    true
+}
+
+fn cancel_active_steam_achievement_request(message: &str) {
+    let request = ACTIVE_STEAM_ACHIEVEMENT_REQUEST
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .take();
+    if let Some(request) = request {
+        *STEAM_ACHIEVEMENT_RESULT
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(SteamAchievementResult {
+            request_id: request.request_id,
+            result: Err(message.to_string()),
+        });
     }
 }
 
@@ -529,6 +684,16 @@ fn request_target(headers: &str) -> Option<&str> {
     Some(target)
 }
 
+fn steam_openid_response_url(target: &str) -> Result<String, String> {
+    if !target.starts_with('/') {
+        return Err("Steam OpenID callback target is invalid.".to_string());
+    }
+
+    reqwest::Url::parse(&format!("http://localhost:18234{target}"))
+        .map(|url| url.to_string())
+        .map_err(|error| format!("Steam OpenID callback URL is invalid: {error}"))
+}
+
 fn verify_steam_openid_callback_with(
     target: &str,
     expected_state: &str,
@@ -537,7 +702,7 @@ fn verify_steam_openid_callback_with(
     if !target.starts_with('/') {
         return Err("Steam OpenID callback target is invalid.".to_string());
     }
-    let callback = reqwest::Url::parse(&format!("http://localhost:18234{target}"))
+    let callback = reqwest::Url::parse(&steam_openid_response_url(target)?)
         .map_err(|error| format!("Steam OpenID callback URL is invalid: {error}"))?;
     if callback.path() != "/" {
         return Err("Steam OpenID callback path is invalid.".to_string());
@@ -833,10 +998,44 @@ fn start_local_callback_server(app: tauri::AppHandle) {
                 continue;
             }
 
-            // CASE 2: GET / (OpenID Login Redirect)
-            let steam_id = request_target(&headers_str).and_then(|target| {
+            // CASE 2: POST /steam-achievements (authenticated Steam WebView result)
+            if headers_str
+                .lines()
+                .next()
+                .is_some_and(|line| line == "POST /steam-achievements HTTP/1.1")
+            {
+                let accepted = serde_json::from_str::<SteamAchievementPayload>(&body_str)
+                    .map(accept_steam_achievement_payload)
+                    .unwrap_or(false);
+                if accepted {
+                    park_steam_window(&app, SteamScrapeSource::Login);
+                } else {
+                    println!(
+                        "[Steam Achievements] Ignored an invalid or stale WebView result."
+                    );
+                }
+
+                let response = "HTTP/1.1 200 OK\r\n\
+                                Access-Control-Allow-Origin: *\r\n\
+                                Connection: close\r\n\
+                                Content-Length: 0\r\n\r\n";
+                let _ = stream.write_all(response.as_bytes());
+                continue;
+            }
+
+            // CASE 3: GET / (OpenID Login Redirect)
+            let steam_login = request_target(&headers_str).and_then(|target| {
                 match verify_steam_openid_callback(target) {
-                    Ok(steam_id) => Some(steam_id),
+                    Ok(steam_id) => steam_openid_response_url(target)
+                        .map(|openid_response_url| SteamLoginSuccessEvent {
+                            steam_id,
+                            openid_response_url,
+                        })
+                        .map_err(|error| {
+                            println!("[Steam Login] Rejected callback URL: {error}");
+                            error
+                        })
+                        .ok(),
                     Err(error) => {
                         println!("[Steam Login] Rejected callback: {error}");
                         None
@@ -844,7 +1043,8 @@ fn start_local_callback_server(app: tauri::AppHandle) {
                 }
             });
 
-            if let Some(sid) = steam_id {
+            if let Some(login) = steam_login {
+                    let sid = login.steam_id.clone();
                     println!("[Steam Login] Extracted SteamID64: {}", sid);
 
                     let scrape_request =
@@ -863,7 +1063,7 @@ fn start_local_callback_server(app: tauri::AppHandle) {
                     );
 
                     use tauri::Emitter;
-                    let _ = app.emit("steam_login_success", sid.clone());
+                    let _ = app.emit("steam_login_success", login);
 
                     // Respond with a page that immediately redirects to their games list.
                     // Since they just logged in inside the Webview, cookies are fully active!
@@ -944,6 +1144,72 @@ fn steam_scraper_script() -> &'static str {
             console.log("[Steam Scraper] Active!");
 
             const pageUrl = new URL(window.location.href);
+            const achievementRequestId =
+                pageUrl.searchParams.get("ogl_achievement_request_id") || "";
+            const expectedAchievementSteamId =
+                pageUrl.searchParams.get("ogl_steam_id") || "";
+            const statsMatch = pageUrl.pathname.match(/^\/profiles\/(\d+)\/stats\/(\d+)\/?$/i);
+            if (
+                achievementRequestId &&
+                statsMatch &&
+                statsMatch[1] === expectedAchievementSteamId &&
+                pageUrl.hostname === "steamcommunity.com"
+            ) {
+                const steamId = statsMatch[1];
+                const steamAppId = statsMatch[2];
+
+                function postAchievementResult(payload) {
+                    if (window.__ogSteamAchievementPosted) return;
+                    window.__ogSteamAchievementPosted = true;
+                    fetch("http://127.0.0.1:18234/steam-achievements", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            ...payload,
+                            requestId: achievementRequestId,
+                            steamId,
+                            steamAppId
+                        })
+                    }).catch((error) => {
+                        window.__ogSteamAchievementPosted = false;
+                        console.error("[Steam Achievements] Result delivery failed:", error);
+                    });
+                }
+
+                function scrapeAchievementXml() {
+                    window.__ogSteamAchievementAttempts =
+                        (window.__ogSteamAchievementAttempts || 0) + 1;
+                    const playerStats = document.querySelector("playerstats");
+                    if (playerStats) {
+                        const returnedSteamId =
+                            document.querySelector("steamID64")?.textContent?.trim() || "";
+                        if (returnedSteamId !== steamId) {
+                            postAchievementResult({ error: "account_mismatch" });
+                            return;
+                        }
+                        const xml = new XMLSerializer().serializeToString(document);
+                        postAchievementResult({ xml });
+                        return;
+                    }
+
+                    const bodyText = document.body ? document.body.innerText || "" : "";
+                    const xmlError = document.querySelector("error")?.textContent?.trim() || "";
+                    if (
+                        xmlError ||
+                        /sign\s*in|login|required|private|not available/i.test(bodyText) ||
+                        (document.readyState === "complete" &&
+                            window.__ogSteamAchievementAttempts >= 5)
+                    ) {
+                        postAchievementResult({ error: "session_unavailable" });
+                    }
+                }
+
+                window.addEventListener("DOMContentLoaded", scrapeAchievementXml);
+                window.addEventListener("load", scrapeAchievementXml);
+                setInterval(scrapeAchievementXml, 1000);
+                return;
+            }
+
             const requestId = pageUrl.searchParams.get("ogl_request_id") || "";
             const source = pageUrl.searchParams.get("ogl_source") || "";
             const profileMatch = pageUrl.pathname.match(/^\/profiles\/(\d+)\/games\/?$/i);
@@ -1138,6 +1404,9 @@ fn steam_scraper_script() -> &'static str {
 #[tauri::command]
 pub async fn open_steam_login_window(app: tauri::AppHandle) -> Result<(), String> {
     start_local_callback_server(app.clone());
+    cancel_active_steam_achievement_request(
+        "Steam achievement sync was interrupted by a new Steam login.",
+    );
 
     let login_state = Uuid::new_v4().to_string();
     let parsed_url = steam_login_url(&login_state)?;
@@ -1205,6 +1474,92 @@ fn steam_scraper_url(
         .append_pair("ogl_request_id", request_id)
         .append_pair("ogl_source", source.as_str());
     Ok(url.to_string())
+}
+
+fn steam_achievement_scraper_url(request: &SteamAchievementRequest) -> Result<String, String> {
+    if request.steam_id.len() != 17
+        || !request
+            .steam_id
+            .chars()
+            .all(|character| character.is_ascii_digit())
+    {
+        return Err("Steam achievement sync requires a valid SteamID64.".to_string());
+    }
+    let mut url = reqwest::Url::parse(&format!(
+        "https://steamcommunity.com/profiles/{}/stats/{}/",
+        request.steam_id, request.steam_app_id
+    ))
+    .map_err(|error| format!("Failed to build Steam achievement URL: {error}"))?;
+    url.query_pairs_mut()
+        .append_pair("xml", "1")
+        .append_pair("l", "english")
+        .append_pair("ogl_achievement_request_id", &request.request_id)
+        .append_pair("ogl_steam_id", &request.steam_id);
+    Ok(url.to_string())
+}
+
+pub(crate) async fn fetch_steam_session_achievements(
+    app: &tauri::AppHandle,
+    steam_id: &str,
+    steam_app_id: u32,
+) -> Result<Vec<crate::commands::games::types::UnifiedAchievement>, String> {
+    let steam_id = steam_id.trim();
+    let request = next_steam_achievement_request(steam_id, steam_app_id);
+    let url = steam_achievement_scraper_url(&request)?;
+    let parsed_url = url
+        .parse()
+        .map_err(|error| format!("Failed to parse Steam achievement URL: {error}"))?;
+
+    start_local_callback_server(app.clone());
+    let navigation = with_steam_window_open_lock(|| {
+        if has_active_login_scrape(&ACTIVE_STEAM_SCRAPE_REQUEST) {
+            return Err(
+                "Steam account login is still loading the library; session achievements will retry via fallback."
+                    .to_string(),
+            );
+        }
+        set_active_steam_achievement_request(request.clone());
+        if let Some(existing_window) = app.get_webview_window("steam-login") {
+            existing_window.navigate(parsed_url).map_err(|error| {
+                format!("Failed to navigate Steam achievement session: {error}")
+            })?;
+            let _ = existing_window.hide();
+            return Ok(());
+        }
+
+        tauri::WebviewWindowBuilder::new(
+            app,
+            "steam-login",
+            tauri::WebviewUrl::External(parsed_url),
+        )
+        .title("Steam Session Sync")
+        .inner_size(800.0, 600.0)
+        .visible(false)
+        .initialization_script(steam_scraper_script())
+        .build()
+        .map_err(|error| format!("Failed to create Steam achievement session window: {error}"))?;
+        Ok(())
+    });
+    if let Err(error) = navigation {
+        clear_active_steam_achievement_request(&request);
+        return Err(error);
+    }
+
+    let deadline = tokio::time::Instant::now() + STEAM_ACHIEVEMENT_SESSION_TIMEOUT;
+    loop {
+        if let Some(result) = take_steam_achievement_result(&request) {
+            return result;
+        }
+        if !steam_achievement_request_is_current(&request) {
+            return Err("Steam achievement session request was superseded.".to_string());
+        }
+        if tokio::time::Instant::now() >= deadline {
+            clear_active_steam_achievement_request(&request);
+            park_steam_window(app, SteamScrapeSource::Login);
+            return Err("Authenticated Steam achievement session timed out.".to_string());
+        }
+        tokio::time::sleep(Duration::from_millis(100)).await;
+    }
 }
 
 fn with_steam_window_open_lock<T>(action: impl FnOnce() -> Result<T, String>) -> Result<T, String> {
@@ -2280,6 +2635,64 @@ mod tests {
         assert!(script.contains("requestId"));
         assert!(script.contains("source"));
         assert!(script.contains("steamId"));
+        assert!(script.contains("ogl_achievement_request_id"));
+        assert!(script.contains("/steam-achievements"));
+        assert!(script.contains("XMLSerializer"));
+    }
+
+    #[test]
+    fn steam_achievement_url_uses_the_authenticated_profile_stats_page() {
+        let request = SteamAchievementRequest {
+            request_id: "achievement-request-123".to_string(),
+            steam_id: "76561198000000001".to_string(),
+            steam_app_id: 440,
+        };
+        let url = steam_achievement_scraper_url(&request).unwrap();
+
+        assert_eq!(
+            url,
+            "https://steamcommunity.com/profiles/76561198000000001/stats/440/?xml=1&l=english&ogl_achievement_request_id=achievement-request-123&ogl_steam_id=76561198000000001"
+        );
+        assert!(steam_achievement_scraper_url(&SteamAchievementRequest {
+            steam_id: "invalid".to_string(),
+            ..request
+        })
+        .is_err());
+    }
+
+    #[test]
+    fn steam_achievement_payload_requires_exact_request_and_account_correlation() {
+        let request = SteamAchievementRequest {
+            request_id: "achievement-request-123".to_string(),
+            steam_id: "76561198000000001".to_string(),
+            steam_app_id: 440,
+        };
+        let xml = r#"<playerstats><steamID64>76561198000000001</steamID64><achievements><achievement><name>First Win</name><apiname>ACH_FIRST_WIN</apiname><unlockTimestamp>1767225600</unlockTimestamp></achievement></achievements></playerstats>"#;
+        let achievements = parse_steam_achievement_payload(
+            SteamAchievementPayload {
+                error: None,
+                request_id: request.request_id.clone(),
+                steam_app_id: "440".to_string(),
+                steam_id: request.steam_id.clone(),
+                xml: Some(xml.to_string()),
+            },
+            &request,
+        )
+        .unwrap();
+
+        assert_eq!(achievements.len(), 1);
+        assert_eq!(achievements[0].id, "ACH_FIRST_WIN");
+        assert!(parse_steam_achievement_payload(
+            SteamAchievementPayload {
+                error: None,
+                request_id: "stale-request".to_string(),
+                steam_app_id: "440".to_string(),
+                steam_id: request.steam_id.clone(),
+                xml: Some(xml.to_string()),
+            },
+            &request,
+        )
+        .is_err());
     }
 
     #[test]
@@ -2389,6 +2802,30 @@ mod tests {
         })
         .unwrap();
         assert_eq!(verified, steam_id);
+
+        let response_url = steam_openid_response_url(&target).unwrap();
+        let parsed_response_url = reqwest::Url::parse(&response_url).unwrap();
+        assert_eq!(
+            parsed_response_url.origin().ascii_serialization(),
+            "http://localhost:18234"
+        );
+        assert_eq!(
+            parsed_response_url
+                .query_pairs()
+                .find(|(key, _)| key == "openid.claimed_id")
+                .map(|(_, value)| value.into_owned()),
+            Some(identity.clone())
+        );
+
+        let event = serde_json::to_value(SteamLoginSuccessEvent {
+            steam_id: steam_id.to_string(),
+            openid_response_url: response_url,
+        })
+        .unwrap();
+        assert_eq!(event["steamId"], steam_id);
+        assert!(event["openidResponseUrl"]
+            .as_str()
+            .is_some_and(|value| value.starts_with("http://localhost:18234/")));
 
         assert!(verify_steam_openid_callback_with(&target, state, |_| Ok(false)).is_err());
         assert!(

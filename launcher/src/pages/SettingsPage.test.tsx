@@ -1544,3 +1544,21 @@ describe("SettingsPage external completion evidence summary", () => {
     );
   });
 });
+
+describe("SettingsPage Steam hosted relay", () => {
+  beforeEach(() => {
+    tauriIsTauriMock.mockReturnValue(false);
+    window.localStorage.clear();
+  });
+
+  it("shows the secret-free hosted boundary and preserves the local fallback state", () => {
+    window.localStorage.setItem("launcher.steamId", JSON.stringify("76561198000000000"));
+    window.localStorage.setItem("launcher.steamUsername", JSON.stringify("Manga Pilot"));
+
+    renderSettingsRoute("/settings");
+
+    expect(screen.getByText(/No provider secret is shipped in the launcher/i)).toBeInTheDocument();
+    expect(screen.getByText("Manga Pilot")).toBeInTheDocument();
+    expect(screen.getByText("Local fallback")).toBeInTheDocument();
+  });
+});

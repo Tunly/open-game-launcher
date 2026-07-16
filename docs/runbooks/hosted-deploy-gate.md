@@ -78,6 +78,18 @@ pnpm hosted:deploy-gate:scheduler-packet
 pnpm hosted:deploy-gate:test
 ```
 
+For a targeted Steam account-link and trusted achievement-relay deployment,
+set `OGL_HOSTED_DEPLOY_FUNCTIONS=link-steam-account,relay-steam-achievements`.
+Both functions deploy with `verify_jwt=true`; never add `--no-verify-jwt` for
+either function. The scoped hosted smoke sends only `OPTIONS` requests and does
+not link an account, contact Steam provider APIs, or persist achievements.
+The relay is intentionally keyless: its scoped runtime preflight does not
+require `STEAM_WEB_API_KEY` or `ACHIEVEMENT_INGESTION_ATTESTATION_SECRET`.
+`STEAM_WEB_API_KEY` remains required only when the independent
+`poll-platform-presence` function is selected. See
+`docs/runbooks/steam-achievement-relay-e2e.md` for the redacted fail-closed
+probe and local native-session handoff.
+
 Legacy `pnpm hosted:deploy-gate <action>` invocations remain supported for
 local compatibility, but CI and this runbook use explicit aliases so dry-run,
 live deploy, and smoke-only steps are easy to distinguish.
@@ -121,6 +133,13 @@ same user storage buckets as the local account deletion contract, so an empty
 Those `runId` values must be safe evidence identifiers, not copied tokens,
 Stripe secrets, bearer values, JWT-shaped strings, or hosted cron secret names;
 unsafe values fail validation without printing the raw value.
+
+`link-steam-account` and `relay-steam-achievements` are authenticated hosted
+boundaries. The launcher supplies only its normal authenticated user session;
+the hosted relay has no Steam provider key or ingestion-attestation authority.
+It fails closed with `steam_login_session_required`, `persistence=local_only`,
+and `trust=client_session`. Native Steam login-session ingestion remains local
+and does not award hosted XP.
 
 When `hosted_deploy_dry_run` is `true`, the deploy step runs
 `pnpm hosted:deploy-gate:deploy:dry-run`. It prints deploy commands, does not

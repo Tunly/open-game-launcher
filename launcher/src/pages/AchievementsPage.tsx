@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { Award, Gamepad2, Loader2, Search, Settings, Trophy } from "lucide-react";
+import { Award, Gamepad2, Loader2, RefreshCw, Search, Settings, Trophy } from "lucide-react";
 
 import { getGameAssetUrl, getGameBannerStyle } from "../lib/assets";
 import { AchievementCacheReadinessPanel } from "../components/achievements/AchievementCacheReadinessPanel";
@@ -42,7 +42,7 @@ import {
 } from "../lib/achievement-archive-sync";
 
 type GameTab = "recent" | "all" | "perfect" | "unfinished";
-type GameSort = "playtime" | "name" | "completion";
+type GameSort = "lastPlayed" | "playtime" | "name" | "completion";
 
 type GameAchievementRow = {
   group: GameGroup;
@@ -62,6 +62,7 @@ const TABS: { key: GameTab; label: string }[] = [
 ];
 
 const SORTS: { key: GameSort; label: string }[] = [
+  { key: "lastPlayed", label: "Last Played" },
   { key: "playtime", label: "Playtime" },
   { key: "name", label: "Name" },
   { key: "completion", label: "Achievement Completion" },
@@ -406,6 +407,9 @@ export function AchievementsPage() {
   const [isProviderSyncing, setIsProviderSyncing] = useState(false);
   const [isHydrating, setIsHydrating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [providerWarning, setProviderWarning] = useState<string | null>(null);
+  const [hydrationWarning, setHydrationWarning] = useState<string | null>(null);
+  const [loadAttempt, setLoadAttempt] = useState(0);
   const [activeTab, setActiveTab] = useState<GameTab>("all");
   const [sortMode, setSortMode] = useState<GameSort>("completion");
   const [searchQuery, setSearchQuery] = useState("");
@@ -417,6 +421,9 @@ export function AchievementsPage() {
     setLocalGames(null);
     setGames([]);
     setError(null);
+    setProviderWarning(null);
+    setHydrationWarning(null);
+    setStatusMessage(null);
     setIsLoading(true);
     setIsProviderSyncing(false);
     void (async () => {
@@ -472,6 +479,11 @@ export function AchievementsPage() {
             })
             .catch((err) => {
               console.warn("[OG-Launcher] Achievement provider refresh skipped:", err);
+              if (mounted) {
+                setProviderWarning(
+                  "Provider achievements could not be refreshed. Local archive data is still available.",
+                );
+              }
             })
             .finally(() => {
               if (mounted) setIsProviderSyncing(false);
@@ -486,7 +498,7 @@ export function AchievementsPage() {
     return () => {
       mounted = false;
     };
-  }, [shouldSkipRemoteHydration]);
+  }, [loadAttempt, shouldSkipRemoteHydration]);
 
   useEffect(() => {
     if (!localGames) {
@@ -502,8 +514,18 @@ export function AchievementsPage() {
     }
 
     let mounted = true;
+    setHydrationWarning(null);
     setIsHydrating(true);
-    void hydrateGamesWithRemoteAchievements(localGames, { userId })
+    void hydrateGamesWithRemoteAchievements(localGames, {
+      onError: () => {
+        if (mounted) {
+          setHydrationWarning(
+            "Cloud achievements could not be refreshed. Showing the latest local archive data.",
+          );
+        }
+      },
+      userId,
+    })
       .then((hydratedGames) => {
         if (mounted) setGames(hydratedGames);
       })
@@ -591,6 +613,14 @@ export function AchievementsPage() {
     next = [...next];
     if (sortMode === "name") {
       next.sort((left, right) => left.group.title.localeCompare(right.group.title));
+    } else if (sortMode === "lastPlayed") {
+      next.sort((left, right) => {
+        const leftTime = parseTime(left.group.lastPlayedAt);
+        const rightTime = parseTime(right.group.lastPlayedAt);
+        return leftTime === rightTime
+          ? left.group.title.localeCompare(right.group.title)
+          : rightTime - leftTime;
+      });
     } else if (sortMode === "playtime") {
       next.sort(
         (left, right) =>
@@ -611,16 +641,33 @@ export function AchievementsPage() {
 
   if (error) {
     return (
-      <section className="neo-dots space-y-6">
-        <div className="border-4 border-[#b7102a] bg-[#f5d6d9] p-4 text-sm font-bold text-[#77101f] shadow-[4px_4px_0_#171411]">
-          Failed to load achievements: {error}
+      <section aria-labelledby="achievements-heading" className="neo-dots space-y-6">
+        <h1 className="sr-only" id="achievements-heading">
+          Achievements
+        </h1>
+        <div
+          className="border-4 border-[#b7102a] bg-[#f5d6d9] p-4 text-sm font-bold text-[#77101f] shadow-[4px_4px_0_#171411]"
+          role="alert"
+        >
+          <p>Failed to load achievements: {error}</p>
+          <button
+            className="neo-copy mt-3 inline-flex items-center gap-2 border-2 border-black bg-[#b7102a] px-3 py-2 text-[10px] font-black text-white uppercase shadow-[2px_2px_0_#171411] focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-[#087d6d]"
+            onClick={() => setLoadAttempt((attempt) => attempt + 1)}
+            type="button"
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
+            Retry loading achievements
+          </button>
         </div>
       </section>
     );
   }
 
   return (
-    <section className="neo-dots space-y-5">
+    <section aria-labelledby="achievements-heading" className="neo-dots space-y-5">
+      <h1 className="sr-only" id="achievements-heading">
+        Achievements
+      </h1>
       <div className="mx-auto max-w-[980px] border-4 border-black bg-[#fbf4e7] shadow-[6px_6px_0_#171411]">
         <div className="flex flex-wrap gap-2 border-b-4 border-black bg-[#171411] px-4 py-3 text-[#fbf4e7]">
           <div className="flex flex-wrap gap-2">
@@ -632,8 +679,31 @@ export function AchievementsPage() {
         </div>
 
         {statusMessage ? (
-          <div className="neo-copy border-b-4 border-black bg-[#087d6d] px-4 py-2 text-[10px] font-black text-white uppercase">
+          <div
+            aria-live="polite"
+            className="neo-copy border-b-4 border-black bg-[#087d6d] px-4 py-2 text-[10px] font-black text-white uppercase"
+            role="status"
+          >
             {statusMessage}
+          </div>
+        ) : null}
+
+        {providerWarning || hydrationWarning ? (
+          <div
+            className="grid gap-2 border-b-4 border-black bg-[#f5d6d9] px-4 py-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
+            role="alert"
+          >
+            <p className="neo-copy text-[10px] leading-4 font-black text-[#77101f] uppercase">
+              {[providerWarning, hydrationWarning].filter(Boolean).join(" ")}
+            </p>
+            <button
+              className="neo-copy inline-flex items-center gap-2 justify-self-start border-2 border-black bg-[#b7102a] px-3 py-1.5 text-[9px] font-black text-white uppercase shadow-[2px_2px_0_#171411] focus-visible:outline-4 focus-visible:outline-offset-2 focus-visible:outline-[#087d6d] sm:justify-self-end"
+              onClick={() => setLoadAttempt((attempt) => attempt + 1)}
+              type="button"
+            >
+              <RefreshCw className="h-3.5 w-3.5" />
+              Retry archive update
+            </button>
           </div>
         ) : null}
 
@@ -650,14 +720,18 @@ export function AchievementsPage() {
         ) : null}
 
         <div className="border-b-4 border-black bg-[#f6edd8] px-4 pt-3">
-          <div className="flex flex-wrap gap-4">
+          <div aria-label="Achievement game views" className="flex flex-wrap gap-4" role="group">
             {TABS.map((tab) => {
               const active = activeTab === tab.key;
               return (
                 <button
                   key={tab.key}
                   type="button"
-                  onClick={() => setActiveTab(tab.key)}
+                  aria-pressed={active}
+                  onClick={() => {
+                    setActiveTab(tab.key);
+                    if (tab.key === "recent") setSortMode("lastPlayed");
+                  }}
                   className={`neo-copy border-b-4 px-1 pb-2 text-[11px] font-black uppercase transition ${
                     active
                       ? "border-[#087d6d] text-[#087d6d]"
@@ -672,10 +746,11 @@ export function AchievementsPage() {
         </div>
 
         <div className="grid gap-3 border-b-4 border-black bg-[#efe6d4] p-3 md:grid-cols-[minmax(220px,1fr)_auto]">
-          <label className="flex h-10 min-w-0 items-center gap-2 border-[3px] border-black bg-[#fbf4e7] px-3 shadow-[2px_2px_0_#171411]">
+          <label className="flex h-10 min-w-0 items-center gap-2 border-[3px] border-black bg-[#fbf4e7] px-3 shadow-[2px_2px_0_#171411] focus-within:outline-4 focus-within:outline-offset-2 focus-within:outline-[#087d6d]">
             <Search className="h-4 w-4 text-[#5b403f]" />
             <input
               className="neo-copy min-w-0 flex-1 bg-transparent text-[12px] font-black text-[#171411] uppercase outline-none placeholder:text-[#655f58]"
+              aria-label="Search achievement games"
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
               placeholder="Find a game"
@@ -683,12 +758,17 @@ export function AchievementsPage() {
             />
           </label>
 
-          <div className="flex flex-wrap items-center gap-2">
+          <div
+            aria-label="Sort achievement games"
+            className="flex flex-wrap items-center gap-2"
+            role="group"
+          >
             <Settings className="h-4 w-4 text-[#5b403f]" />
             {SORTS.map((sort) => (
               <button
                 key={sort.key}
                 type="button"
+                aria-pressed={sortMode === sort.key}
                 onClick={() => setSortMode(sort.key)}
                 className={`neo-copy border-2 border-black px-2 py-1 text-[10px] font-black uppercase shadow-[2px_2px_0_#171411] ${
                   sortMode === sort.key ? "bg-[#087d6d] text-white" : "bg-[#fbf4e7] text-[#171411]"
@@ -698,12 +778,17 @@ export function AchievementsPage() {
               </button>
             ))}
           </div>
-          <div className="flex flex-wrap items-center gap-2 md:col-span-2">
+          <div
+            aria-label="Filter achievement games by source"
+            className="flex flex-wrap items-center gap-2 md:col-span-2"
+            role="group"
+          >
             <span className="neo-copy text-[10px] font-black text-[#5b403f] uppercase">Source</span>
             {["all", ...sourceFilters].map((source) => (
               <button
                 key={source}
                 type="button"
+                aria-pressed={sourceFilter === source}
                 onClick={() => setSourceFilter(source)}
                 className={`neo-copy border-2 border-black px-2 py-1 text-[10px] font-black uppercase shadow-[2px_2px_0_#171411] ${
                   sourceFilter === source

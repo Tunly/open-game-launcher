@@ -2,18 +2,30 @@ import { invoke } from "@tauri-apps/api/core";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
+  addManualGame,
   applyCrossStoreSaveCopy,
   auditStagedPluginRegistry,
   clearBroadcastStreamKeySecret,
+  eaFetchOwnedGames,
+  eaGetToken,
   ejectBackupExternalDrive,
+  fetchEpicOwnedGames,
+  fetchGamePassCatalog,
+  fetchSteamOwnedGames,
+  fetchUbisoftOwnedGames,
   getBroadcastStreamKeyVaultStatus,
   getDiskInfo,
   getLatestBackupStatus,
   listInstalledGames,
+  gogGetToken,
+  moveGame,
   refreshInstalledGames,
   openAchievementCacheFolder,
   isSteamScrapedGamesEventForAccount,
   isSteamScrapeErrorEventForAccount,
+  launchGame,
+  launchXboxGame,
+  stopGame,
   openEpicLoginWindow,
   openSteamLoginWindow,
   reviewPluginActivationPlan,
@@ -30,7 +42,9 @@ import {
   setBroadcastStreamKeySecret,
   runBackupPlan,
   scanLocalPluginManifests,
+  startDownload,
   stageSignedPluginPackage,
+  syncGameSaves,
 } from "../launcher";
 
 describe("launcher browser guards", () => {
@@ -41,7 +55,31 @@ describe("launcher browser guards", () => {
   it("uses an honest empty installed-game inventory outside Tauri", async () => {
     await expect(listInstalledGames()).resolves.toEqual([]);
     await expect(refreshInstalledGames()).resolves.toEqual([]);
+    await expect(gogGetToken()).resolves.toBeNull();
+    await expect(eaGetToken()).resolves.toBeNull();
+    await expect(eaFetchOwnedGames()).resolves.toEqual([]);
+    await expect(fetchSteamOwnedGames("76561198000000001")).resolves.toEqual([]);
+    await expect(fetchEpicOwnedGames()).resolves.toEqual([]);
+    await expect(fetchUbisoftOwnedGames()).resolves.toEqual([]);
+    await expect(fetchGamePassCatalog()).resolves.toEqual([]);
     await expect(openAchievementCacheFolder()).rejects.toThrow("desktop app");
+    expect(invoke).not.toHaveBeenCalled();
+  });
+
+  it("blocks local registration, play, and install commands outside Tauri", async () => {
+    await expect(
+      addManualGame({ title: "Browser Game", installPath: "C:\\Games\\browser.exe" }),
+    ).rejects.toThrow("desktop app");
+    await expect(launchGame("manual-browser-game")).rejects.toThrow("desktop app");
+    await expect(stopGame("manual-browser-game")).rejects.toThrow("desktop app");
+    await expect(moveGame({ gameId: "manual-browser-game", newPath: "C:\\Games" })).rejects.toThrow(
+      "desktop app",
+    );
+    await expect(syncGameSaves("manual-browser-game")).rejects.toThrow("desktop app");
+    await expect(launchXboxGame("Microsoft.Test_8wekyb3d8bbwe")).rejects.toThrow("desktop app");
+    await expect(startDownload("steam-owned-440", "Team Fortress 2")).rejects.toThrow(
+      "desktop app",
+    );
     expect(invoke).not.toHaveBeenCalled();
   });
 

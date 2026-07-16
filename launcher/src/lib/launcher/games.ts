@@ -3,9 +3,9 @@ import type {
   Game,
   LaunchGameResponse,
   RepairGameFilesResponse,
+  StopGameResponse,
   SyncGameAchievementsResponse,
   SyncGameSavesResponse,
-  UninstallGameResponse,
   VerifyGameFilesResponse,
 } from "./types";
 import type {
@@ -53,10 +53,18 @@ export function openAchievementCacheFolder(provider?: string): Promise<string> {
 }
 
 export function addManualGame(input: { title: string; installPath: string }): Promise<Game> {
+  if (!isTauri()) {
+    return Promise.reject(new Error(DESKTOP_GAME_ACTIONS_REQUIRED));
+  }
+
   return invokeCommand<Game>("add_manual_game", { input });
 }
 
 export function moveGame(input: { gameId: string; newPath: string }): Promise<void> {
+  if (!isTauri()) {
+    return Promise.reject(new Error(DESKTOP_GAME_ACTIONS_REQUIRED));
+  }
+
   return invokeCommand<void>("move_game", { input });
 }
 
@@ -105,15 +113,30 @@ export function repairGameFiles(gameId: string): Promise<RepairGameFilesResponse
 }
 
 export async function launchGame(gameId: string): Promise<LaunchGameResponse> {
+  if (!isTauri()) {
+    throw new Error(DESKTOP_GAME_ACTIONS_REQUIRED);
+  }
+
   const response = await invokeCommand<LaunchGameResponse>("launch_game", { gameId });
   writeActivePerformanceGameContext({ gameId });
   return response;
+}
+
+export function stopGame(gameId: string): Promise<StopGameResponse> {
+  if (!isTauri()) {
+    return Promise.reject(new Error(DESKTOP_GAME_ACTIONS_REQUIRED));
+  }
+
+  return invokeCommand<StopGameResponse>("stop_game", { gameId });
 }
 
 export function syncGameAchievements(
   game: Game,
   steamId?: string,
 ): Promise<SyncGameAchievementsResponse> {
+  if (game.launcher === "steam") {
+    return syncSteamSessionAchievements(game, steamId);
+  }
   if (game.launcher === "xbox") {
     const titleId = game.externalId?.trim() || game.id || game.title;
     // Xbox uses its own sync command
@@ -137,10 +160,21 @@ export function syncGameAchievements(
   });
 }
 
-export function uninstallGame(gameId: string): Promise<UninstallGameResponse> {
-  return invokeCommand<UninstallGameResponse>("uninstall_game", { gameId });
+export function syncSteamSessionAchievements(
+  game: Game,
+  steamId?: string,
+): Promise<SyncGameAchievementsResponse> {
+  return invokeCommand<SyncGameAchievementsResponse>("sync_steam_session_achievements", {
+    fallbackGame: game,
+    gameId: game.id,
+    steamId,
+  });
 }
 
 export function syncGameSaves(gameId: string): Promise<SyncGameSavesResponse> {
+  if (!isTauri()) {
+    return Promise.reject(new Error(DESKTOP_GAME_ACTIONS_REQUIRED));
+  }
+
   return invokeCommand<SyncGameSavesResponse>("sync_game_saves", { gameId });
 }

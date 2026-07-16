@@ -7,6 +7,11 @@ import type { Game } from "../../lib/types";
 const getGameUpdates = vi.fn();
 const resolveSteamAppId = vi.fn();
 const openExternalUrl = vi.fn();
+const tauriMocks = vi.hoisted(() => ({ isTauri: vi.fn() }));
+
+vi.mock("@tauri-apps/api/core", () => ({
+  isTauri: tauriMocks.isTauri,
+}));
 
 vi.mock("../../lib/game-updates", () => ({
   getGameUpdates: (game: Game) => getGameUpdates(game),
@@ -32,8 +37,33 @@ describe("GameUpdateFeed", () => {
     getGameUpdates.mockReset();
     resolveSteamAppId.mockReset();
     openExternalUrl.mockReset();
+    tauriMocks.isTauri.mockReturnValue(true);
     resolveSteamAppId.mockReturnValue("730");
     openExternalUrl.mockResolvedValue(undefined);
+  });
+
+  it("uses a normal external link for Read Notes in the browser", async () => {
+    tauriMocks.isTauri.mockReturnValue(false);
+    getGameUpdates.mockResolvedValue([
+      {
+        id: "news-1",
+        source: "steam",
+        sourceId: "730",
+        title: "Patch Notes",
+        url: "https://store.steampowered.com/news/app/730/view/1",
+        publishedAt: "2026-06-04T00:00:00.000Z",
+        excerpt: "Fixes and balance updates.",
+        kind: "patch",
+      },
+    ]);
+
+    render(<GameUpdateFeed game={game} />);
+
+    const link = await screen.findByRole("link", { name: /read notes/i });
+    expect(link).toHaveAttribute("href", "https://store.steampowered.com/news/app/730/view/1");
+    expect(link).toHaveAttribute("target", "_blank");
+    expect(link).toHaveAttribute("rel", expect.stringContaining("noopener"));
+    expect(openExternalUrl).not.toHaveBeenCalled();
   });
 
   it("renders Read Notes and opens the update URL", async () => {

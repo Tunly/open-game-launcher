@@ -290,6 +290,34 @@ describe("useAchievementAutoSync", () => {
     });
   });
 
+  it("does not re-ingest a server-verified hosted relay response as local-only", async () => {
+    const steamGame = game({
+      id: "steam-1",
+      title: "Steam Game",
+      launcher: "steam",
+      achievements: [syncedAchievement()],
+    });
+    providerState.syncByProvider.set(
+      "steam",
+      vi.fn().mockResolvedValue({
+        ...syncResponse(steamGame),
+        achievementPersistence: "hosted",
+      }),
+    );
+
+    const { hook } = renderSyncHook(group([steamGame]), [steamGame]);
+
+    await waitFor(() => {
+      expect(hook.result.current.games[0]?.achievementProviderStatuses).toContainEqual(
+        expect.objectContaining({ message: "steam synced", status: "available" }),
+      );
+    });
+    expect(providerState.ingestTrustedAchievements).not.toHaveBeenCalled();
+    expect(hook.result.current.games[0]?.achievementProviderStatuses?.[0]?.message).not.toMatch(
+      /local only/i,
+    );
+  });
+
   it("does not submit trusted achievement ingestion when provider sync fails", async () => {
     vi.spyOn(console, "warn").mockImplementation(() => undefined);
     const steamGame = game({
@@ -349,6 +377,37 @@ describe("useAchievementAutoSync", () => {
       safeMessage,
     );
     expect(warnSpy).toHaveBeenCalledWith("[OG-Launcher] Auto achievement sync failed:", rawFailure);
+    warnSpy.mockRestore();
+  });
+
+  it("treats missing Epic best-effort sources as unavailable without a noisy auto-sync warning", async () => {
+    const diagnosticMessage =
+      "No local epic achievement cache found for Epic Archive. Checked: C:\\Users\\Player\\cache.json. Epic public fallback failed: No public Epic achievement page matched Epic Archive.";
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    const epicGame = game({
+      id: "epic-owned-archive",
+      launcher: "epic",
+      status: "not_installed",
+      title: "Epic Archive",
+    });
+    const epicSync = vi.fn().mockRejectedValue(new Error(diagnosticMessage));
+    providerState.syncByProvider.set("epic", epicSync);
+
+    const { hook } = renderSyncHook(group([epicGame]), [epicGame]);
+
+    await waitFor(() => {
+      expect(hook.result.current.games[0]?.achievementProviderStatuses?.[0]).toMatchObject({
+        source: "epic",
+        status: "not_connected",
+      });
+    });
+    expect(warnSpy).not.toHaveBeenCalledWith(
+      "[OG-Launcher] Auto achievement sync failed:",
+      diagnosticMessage,
+    );
+    expect(providerState.updateAchievementProviderStatus).not.toHaveBeenCalled();
+    hook.rerender({ selectedGroup: group([{ ...epicGame }]) });
+    await waitFor(() => expect(epicSync).toHaveBeenCalledTimes(1));
     warnSpy.mockRestore();
   });
 

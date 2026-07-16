@@ -15,6 +15,7 @@ interface LauncherLocalEntityRow {
   entity_id: string;
   entity: Record<string, unknown>;
   local_updated_at: number;
+  deleted_at: string | null;
 }
 
 interface LauncherLocalEntitySelectRow {
@@ -22,6 +23,7 @@ interface LauncherLocalEntitySelectRow {
   entity_id: string;
   entity: unknown;
   local_updated_at: number | null;
+  deleted_at: string | null;
 }
 
 interface QueryError {
@@ -70,8 +72,9 @@ export async function syncLocalEntitiesWithSupabase(userId: string) {
       device_id: deviceId,
       kind: entity.kind,
       entity_id: entity.id,
-      entity: entity.entity,
+      entity: toPortableEntity(entity),
       local_updated_at: entity.updatedAt,
+      deleted_at: entity.deletedAt == null ? null : localTimestampToIsoString(entity.deletedAt),
     }));
 
     const { error } = await table.upsert(rows, {
@@ -92,7 +95,7 @@ export async function syncLocalEntitiesWithSupabase(userId: string) {
   }
 
   const { data, error } = await table
-    .select("kind, entity_id, entity, local_updated_at")
+    .select("kind, entity_id, entity, local_updated_at, deleted_at")
     .eq("user_id", userId)
     .order("local_updated_at", { ascending: true });
 
@@ -100,23 +103,64 @@ export async function syncLocalEntitiesWithSupabase(userId: string) {
     throw error;
   }
 
-  const remoteEntities: LocalEntityPayload[] = [];
+  const remoteEntitiesByKey = new Map<string, LocalEntityPayload>();
   for (const row of data ?? []) {
     if (!isLocalEntityKind(row.kind)) {
       continue;
     }
-    remoteEntities.push({
+    const remoteEntity: LocalEntityPayload = {
       kind: row.kind,
       id: row.entity_id,
       entity: toObject(row.entity),
       updatedAt: Number(row.local_updated_at ?? 0),
+      deletedAt: typeof row.deleted_at === "string" ? Number(row.local_updated_at ?? 0) : null,
       syncToken: "",
-    });
+    };
+    const key = `${remoteEntity.kind}\u0000${remoteEntity.id}`;
+    const current = remoteEntitiesByKey.get(key);
+    if (
+      !current ||
+      remoteEntity.updatedAt > current.updatedAt ||
+      (remoteEntity.updatedAt === current.updatedAt &&
+        remoteEntity.deletedAt != null &&
+        current.deletedAt == null)
+    ) {
+      remoteEntitiesByKey.set(key, remoteEntity);
+    }
   }
 
+  const remoteEntities = [...remoteEntitiesByKey.values()].sort(
+    (left, right) => left.updatedAt - right.updatedAt,
+  );
   if (remoteEntities.length > 0) {
     await applyRemoteLocalEntities(remoteEntities);
   }
+}
+
+function toPortableEntity(entity: LocalEntityPayload) {
+  if (entity.deletedAt != null) {
+    return {};
+  }
+
+  const portable = { ...entity.entity };
+  if (entity.kind === "games") {
+    delete portable.installPath;
+    delete portable.executablePath;
+    delete portable.processNames;
+    delete portable.launchUri;
+    // Installation state belongs to the receiving device. A newly discovered
+    // cloud game starts uninstalled; native merge logic preserves an existing
+    // device's current state.
+    portable.status = "not_installed";
+  }
+  return portable;
+}
+
+function localTimestampToIsoString(timestamp: number) {
+  // Schema v1 stored seconds. Schema v2 writes milliseconds, but accepting
+  // either makes pending tombstones created during an upgrade safe to upload.
+  const milliseconds = timestamp < 1_000_000_000_000 ? timestamp * 1_000 : timestamp;
+  return new Date(milliseconds).toISOString();
 }
 
 function getOrCreateDeviceId() {

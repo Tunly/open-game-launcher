@@ -51,6 +51,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ### Added
 
+- Authenticated Steam account linking via native OpenID callback and a trusted
+  hosted Steam achievement relay with attestation-bound ingestion.
 - Activity feed events for Store purchases, friend relationships, achievements,
   play sessions, and status posts.
 - RLS-protected activity reactions and comments with Realtime updates.

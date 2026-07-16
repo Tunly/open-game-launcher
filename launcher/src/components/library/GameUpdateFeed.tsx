@@ -1,5 +1,6 @@
 import { ExternalLink, Loader2, Newspaper } from "lucide-react";
 import { useEffect, useState } from "react";
+import { isTauri } from "@tauri-apps/api/core";
 
 import { getErrorMessage } from "../../lib/formatters";
 import { getGameUpdates, resolveSteamAppId, type GameUpdateItem } from "../../lib/game-updates";
@@ -22,6 +23,7 @@ export function GameUpdateFeed({ game }: GameUpdateFeedProps) {
     error: null,
   });
   const steamAppId = resolveSteamAppId(game);
+  const isDesktopRuntime = isTauri();
 
   useEffect(() => {
     let isActive = true;
@@ -101,7 +103,7 @@ export function GameUpdateFeed({ game }: GameUpdateFeedProps) {
                 {item.excerpt}
               </p>
             ) : null}
-            {item.url ? (
+            {item.url && isDesktopRuntime ? (
               <button
                 className="neo-copy mt-3 inline-flex items-center gap-1 border-2 border-black bg-[#171411] px-2 py-1 text-[10px] font-black text-white uppercase shadow-[2px_2px_0_#b7102a] hover:bg-[#087d6d]"
                 type="button"
@@ -115,6 +117,16 @@ export function GameUpdateFeed({ game }: GameUpdateFeedProps) {
                 Read Notes
                 <ExternalLink className="h-3 w-3" />
               </button>
+            ) : item.url ? (
+              <a
+                className="neo-copy mt-3 inline-flex items-center gap-1 border-2 border-black bg-[#171411] px-2 py-1 text-[10px] font-black text-white uppercase shadow-[2px_2px_0_#b7102a] hover:bg-[#087d6d]"
+                href={item.url}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                Read Notes
+                <ExternalLink className="h-3 w-3" />
+              </a>
             ) : null}
           </div>
         </article>

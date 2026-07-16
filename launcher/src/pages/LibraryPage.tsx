@@ -1,7 +1,8 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
+import { isTauri } from "@tauri-apps/api/core";
 
-import { LibrarySidebar } from "../components/library/LibrarySidebar";
+import { LibrarySidebar, type LibraryGroupOption } from "../components/library/LibrarySidebar";
 import { LibraryFilters } from "../components/library/LibraryFilters";
 import { AddGameDialog } from "../components/library/AddGameDialog";
 import { ProviderPickerDialog } from "../components/library/ProviderPickerDialog";
@@ -10,8 +11,14 @@ const GameDetailPanel = React.lazy(() =>
 );
 import { useDownloadStore, selectCompletedCount } from "../stores/downloadStore";
 import { LibraryProvider } from "../context/LibraryProvider";
-import { launchCrossPlayJoin } from "../lib/launcher";
-import { isPlayableGame } from "../lib/game-groups";
+import {
+  getCrossPlayLaunchIdentity,
+  launchCrossPlayJoin,
+  toClientPlatformId,
+} from "../lib/launcher";
+import { isPlayableGame, type GameGroup } from "../lib/game-groups";
+import { redeemShareToken, resolveShareToken } from "../lib/supabase/social";
+import type { Game } from "../lib/types";
 
 import { useLibrarySync } from "../hooks/library/useLibrarySync";
 import { useLibraryFilters } from "../hooks/library/useLibraryFilters";
@@ -20,15 +27,61 @@ import { useDynamicCollections } from "../hooks/library/useDynamicCollections";
 import { useAchievementAutoSync } from "../hooks/library/useAchievementAutoSync";
 import { useProviderPicking } from "../hooks/library/useProviderPicking";
 
+function matchesGameReference(game: Game, reference: string) {
+  const wanted = reference.trim().toLowerCase();
+  if (!wanted) return false;
+
+  return [game.slug, game.id, game.externalId, game.title].some(
+    (value) => typeof value === "string" && value.trim().toLowerCase() === wanted,
+  );
+}
+
+function findInstalledProviderGame(games: Game[], reference: string, platform: string) {
+  const requestedProvider = toClientPlatformId(platform);
+  if (!requestedProvider) return null;
+
+  return (
+    games.find(
+      (game) =>
+        isPlayableGame(game) &&
+        matchesGameReference(game, reference) &&
+        toClientPlatformId(game.launcher) === requestedProvider,
+    ) ?? null
+  );
+}
+
+function formatGroupLabel(value: string) {
+  return value.replace(/[_-]+/g, " ").replace(/\b\w/g, (character) => character.toUpperCase());
+}
+
+function groupLibraryGames(groups: GameGroup[], option: LibraryGroupOption) {
+  if (option === "none") return {};
+
+  return groups.reduce<Record<string, GameGroup[]>>((grouped, group) => {
+    const game = group.displayGame;
+    const rawLabel =
+      option === "source"
+        ? (game.launcher ?? "Manual")
+        : option === "platform"
+          ? game.platform
+          : game.status;
+    const label = formatGroupLabel(rawLabel || "Other");
+    (grouped[label] ??= []).push(group);
+    return grouped;
+  }, {});
+}
+
 export function LibraryPage() {
   const gameListScrollRef = useRef<HTMLDivElement>(null);
   const claimedJoinRequestRef = useRef<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [isAddGameOpen, setIsAddGameOpen] = useState(false);
+  const [groupOption, setGroupOption] = useState<LibraryGroupOption>("none");
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const downloadCount = useDownloadStore((s) => s.items.length);
   const completedDownloadCount = useDownloadStore(selectCompletedCount);
+  const isDesktopRuntime = isTauri();
 
   const sync = useLibrarySync({ setStatusMessage });
   const manual = useManualCollections();
@@ -46,6 +99,7 @@ export function LibraryPage() {
     setAdvancedFilters: filters.setAdvancedFilters,
     setActivePlatformFilter: filters.setActivePlatformFilter,
     setSearchQuery: filters.setSearchQuery,
+    setSortOption: filters.setSortOption,
     currentAdvancedFilters: filters.advancedFilters,
     currentPlatformFilter: filters.activePlatformFilter,
     currentSearchQuery: filters.searchQuery,
@@ -61,6 +115,10 @@ export function LibraryPage() {
     selectedGroup: filters.selectedGroup,
     setStatusMessage,
   });
+  const groupedGames = useMemo(
+    () => groupLibraryGames(filters.filteredGroups, groupOption),
+    [filters.filteredGroups, groupOption],
+  );
 
   useEffect(() => {
     const requestedGameId = searchParams.get("game");
@@ -94,8 +152,8 @@ export function LibraryPage() {
       return;
     }
 
-    const platform = searchParams.get("platform") ?? "";
-    const invite = searchParams.get("invite") ?? "";
+    const platform = searchParams.get("platform")?.trim() ?? "";
+    const invite = searchParams.get("invite")?.trim() ?? "";
     const requestKey = `${joinSlug}\u0000${platform}\u0000${invite}`;
     if (claimedJoinRequestRef.current === requestKey) {
       return;
@@ -108,42 +166,60 @@ export function LibraryPage() {
     next.delete("invite");
     setSearchParams(next, { replace: true });
 
-    const wanted = joinSlug.toLowerCase();
+    void (async () => {
+      let inviteAccepted = false;
+      let requestedGame = joinSlug;
+      let requestedPlatform = platform;
+      let match: Game | null = null;
 
-    const match = sync.installedGames.find((game) => {
-      if (!isPlayableGame(game)) {
-        return false;
-      }
+      try {
+        if (invite) {
+          const resolvedInvite = await resolveShareToken(invite);
+          if (!resolvedInvite) {
+            throw new Error("the invite token is invalid, expired, or already used");
+          }
 
-      const candidates = [game.slug, game.id, game.externalId, game.title]
-        .filter((value): value is string => typeof value === "string" && value.length > 0)
-        .map((value) => value.toLowerCase());
-      return candidates.includes(wanted);
-    });
+          requestedGame = resolvedInvite.gameTitle;
+          requestedPlatform = resolvedInvite.platform?.trim() || requestedPlatform;
+        }
 
-    if (!match) {
-      setStatusMessage(
-        `Could not join "${joinSlug}" — game is not installed yet. Install it first.`,
-      );
-      return;
-    }
+        if (!requestedPlatform) {
+          throw new Error("the invite does not identify a launcher platform");
+        }
 
-    const gameSlug = match.slug || match.id;
-    if (!platform) {
-      setStatusMessage(`Could not join "${match.title}" — missing platform parameter.`);
-      return;
-    }
+        match = findInstalledProviderGame(sync.installedGames, requestedGame, requestedPlatform);
+        if (!match) {
+          throw new Error(
+            `the ${requestedPlatform} version is not installed yet. Install it first`,
+          );
+        }
 
-    void launchCrossPlayJoin(platform, gameSlug)
-      .then((uri) => {
-        const inviteSuffix = invite ? " with invite token" : "";
-        setStatusMessage(`Joining ${match.title} on ${platform}${inviteSuffix}…`);
-        console.info("[deep-link] launched", uri);
-      })
-      .catch((error: unknown) => {
+        if (invite) {
+          const redeemedInvite = await redeemShareToken(invite);
+          if (!redeemedInvite || redeemedInvite.status !== "accepted") {
+            throw new Error("the invite token could not be accepted");
+          }
+          inviteAccepted = true;
+        }
+
+        const gameIdentity = getCrossPlayLaunchIdentity(match);
+        const uri = await launchCrossPlayJoin(requestedPlatform, gameIdentity);
+        setStatusMessage(
+          inviteAccepted
+            ? `Invite accepted. Opened ${match.title} on ${requestedPlatform}; this invite does not contain a provider session target, so finish joining in the game.`
+            : `Opened ${match.title} on ${requestedPlatform}.`,
+        );
+        console.info("[deep-link] opened provider game", uri);
+      } catch (error: unknown) {
         const message = error instanceof Error ? error.message : String(error);
-        setStatusMessage(`Could not join ${match.title}: ${message}`);
-      });
+        const title = match?.title ?? requestedGame;
+        setStatusMessage(
+          inviteAccepted
+            ? `Invite accepted, but ${title} could not be opened: ${message}`
+            : `Could not open ${title}: ${message}`,
+        );
+      }
+    })();
   }, [
     searchParams,
     setSearchParams,
@@ -209,8 +285,8 @@ export function LibraryPage() {
         setStatusMessage,
       }}
     >
-      <div className="library-steam-shell h-full min-h-0 overflow-hidden border-x-0 border-black bg-[#fbf4e7] text-[#171411] sm:border-x-4">
-        <div className="relative grid h-full min-h-0 min-w-0 grid-cols-1 md:grid-cols-[260px_minmax(0,1fr)] lg:grid-cols-[290px_minmax(0,1fr)]">
+      <div className="library-steam-shell flex h-full min-h-0 flex-col overflow-hidden border-x-0 border-black bg-[#fbf4e7] text-[#171411] sm:border-x-4">
+        <div className="relative grid min-h-0 min-w-0 flex-1 grid-cols-1 md:grid-cols-[260px_minmax(0,1fr)] lg:grid-cols-[290px_minmax(0,1fr)]">
           <LibrarySidebar
             games={filters.libraryGroups}
             filteredGames={filters.filteredGroups}
@@ -224,15 +300,15 @@ export function LibraryPage() {
             advancedFilters={filters.advancedFilters}
             hasActiveFilters={filters.hasActiveFilters}
             onResetFilters={filters.resetAdvancedFilters}
-            groupOption={"none"}
-            groupedGames={{}}
+            groupOption={groupOption}
+            groupedGames={groupedGames}
+            setGroupOption={setGroupOption}
             selectedGroup={filters.selectedGroup}
             setSelectedGroup={(group) => filters.setSelectedGroupId(group.id)}
             favorites={manual.favorites}
             gameRuntimeById={sync.gameRuntimeById}
             runningGameIds={sync.runningGameIds}
             listScrollRef={gameListScrollRef}
-            setIsAddGameOpen={setIsAddGameOpen}
             onArtworkDrop={sync.handleArtworkDrop}
           />
           <LibraryFilters
@@ -256,18 +332,30 @@ export function LibraryPage() {
           onSelect={picking.handlePlayVariant}
         />
 
-        <footer className="flex h-10 items-center justify-between border-t-4 border-black bg-[#f4ead8] px-4 text-[14px] font-black">
+        <footer className="flex h-10 shrink-0 items-center justify-between border-t-4 border-black bg-[#f4ead8] px-4 text-[14px] font-black">
           <button
             type="button"
+            disabled={!isDesktopRuntime}
+            aria-label={isDesktopRuntime ? "Add a Game" : "Add a Game — Desktop Only"}
+            title={
+              isDesktopRuntime
+                ? "Add a local game"
+                : "Adding local games requires the OG-Launcher desktop app."
+            }
+            className="disabled:cursor-not-allowed disabled:text-[#655f58]"
             onClick={() => {
               setIsAddGameOpen(true);
             }}
           >
-            + Add a Game
+            {isDesktopRuntime ? "+ Add a Game" : "+ Add a Game — Desktop Only"}
           </button>
-          <span className="hidden sm:inline">
+          <button
+            type="button"
+            className="hidden hover:text-[#b7102a] sm:inline"
+            onClick={() => navigate("/downloads")}
+          >
             Downloads - {completedDownloadCount} of {downloadCount} items Complete
-          </span>
+          </button>
           <button type="button" onClick={() => navigate("/friends?tab=chat")}>
             Friends & Chat +
           </button>

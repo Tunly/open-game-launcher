@@ -1,4 +1,6 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import type { ReactElement } from "react";
+import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ActivityFeed } from "./ActivityFeed";
@@ -25,10 +27,14 @@ vi.mock("../../lib/supabase/presence", () => ({
     metadata.platform === "steam" ? "Steam" : null,
 }));
 
+function renderFeed(ui: ReactElement) {
+  return render(<MemoryRouter>{ui}</MemoryRouter>);
+}
+
 describe("ActivityFeed", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    interactionMocks.getActivityComments.mockResolvedValue([]);
+    interactionMocks.getActivityComments.mockResolvedValue({ comments: [], nextCursor: null });
     interactionMocks.getActivityInteractionSummaries.mockResolvedValue(new Map());
     interactionMocks.setActivityRateUp.mockResolvedValue({
       activityId: "activity-1",
@@ -46,7 +52,7 @@ describe("ActivityFeed", () => {
         gameId: "neon-runner",
         gameTitle: "Neon Runner",
         id: "activity-1",
-        metadata: { platform: "steam" },
+        metadata: { platform: "steam", productSlug: "neon-runner" },
         type: "game_start",
         userId: "friend-12345678",
         visibility: "friends_only",
@@ -97,7 +103,7 @@ describe("ActivityFeed", () => {
       },
     ]);
 
-    render(
+    renderFeed(
       <ActivityFeed
         friendIds={["friend-12345678", "friend-87654321"]}
         profiles={
@@ -125,6 +131,14 @@ describe("ActivityFeed", () => {
     expect(screen.getByText(/Unlocked "Hard Reset" in Mecha Shift on Steam/i)).toBeInTheDocument();
     expect(screen.getByText("Queue is clear. Ready for co-op.")).toBeInTheDocument();
     expect(screen.getAllByText("Packet Ghost").length).toBeGreaterThan(0);
+    expect(screen.getAllByRole("link", { name: "Packet Ghost" })[0]).toHaveAttribute(
+      "href",
+      "/u/packetghost",
+    );
+    expect(screen.getByRole("link", { name: "Neon Runner" })).toHaveAttribute(
+      "href",
+      "/store?slug=neon-runner",
+    );
     expect(screen.getByText(/Added Paper Orbit to their wishlist/i)).toBeInTheDocument();
     expect(screen.getByText(/Now owns Boss Rush EX/i)).toBeInTheDocument();
     expect(screen.getAllByRole("button", { name: /rate up/i })[0]).toBeDisabled();
@@ -132,11 +146,28 @@ describe("ActivityFeed", () => {
   });
 
   it("renders the empty state when no friend activity is available", async () => {
-    render(<ActivityFeed friendIds={[]} />);
+    renderFeed(<ActivityFeed friendIds={[]} />);
 
     expect(await screen.findByText(/No recent activity from friends/i)).toBeInTheDocument();
     expect(activityMocks.getFriendActivityFeed).not.toHaveBeenCalled();
     expect(activityMocks.subscribeToFriendActivity).not.toHaveBeenCalled();
+  });
+
+  it("uses account-specific empty and error copy for My Activity", async () => {
+    activityMocks.getFriendActivityFeed
+      .mockResolvedValueOnce([])
+      .mockRejectedValueOnce(new Error("account feed unavailable"));
+
+    const view = renderFeed(
+      <ActivityFeed currentUserId="user-1" friendIds={["user-1"]} scope="mine" />,
+    );
+    expect(await screen.findByText(/No recent activity on your account/i)).toBeInTheDocument();
+
+    view.unmount();
+    renderFeed(<ActivityFeed currentUserId="user-1" friendIds={["user-1"]} scope="mine" />);
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Your activity could not be loaded.",
+    );
   });
 
   it("shows the load error and retries with the same filtered friend IDs", async () => {
@@ -144,7 +175,7 @@ describe("ActivityFeed", () => {
       .mockRejectedValueOnce(new Error("activity service unavailable"))
       .mockResolvedValueOnce([]);
 
-    render(<ActivityFeed friendIds={["friend-12345678"]} />);
+    renderFeed(<ActivityFeed friendIds={["friend-12345678"]} />);
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Friend activity could not be loaded.",
@@ -188,15 +219,18 @@ describe("ActivityFeed", () => {
         ],
       ]),
     );
-    interactionMocks.getActivityComments.mockResolvedValue([
-      {
-        activityId: "activity-1",
-        authorId: "user-1",
-        body: "Already installed.",
-        createdAt,
-        id: "comment-1",
-      },
-    ]);
+    interactionMocks.getActivityComments.mockResolvedValue({
+      comments: [
+        {
+          activityId: "activity-1",
+          authorId: "user-1",
+          body: "Already installed.",
+          createdAt,
+          id: "comment-1",
+        },
+      ],
+      nextCursor: null,
+    });
     interactionMocks.addActivityComment.mockResolvedValue({
       activityId: "activity-1",
       authorId: "user-1",
@@ -205,7 +239,7 @@ describe("ActivityFeed", () => {
       id: "comment-2",
     });
 
-    render(<ActivityFeed currentUserId="user-1" friendIds={["friend-1"]} />);
+    renderFeed(<ActivityFeed currentUserId="user-1" friendIds={["friend-1"]} />);
 
     const rateButton = await screen.findByRole("button", { name: /rate up neon runner/i });
     await waitFor(() => expect(rateButton).toHaveTextContent("Rate Up 3"));
@@ -235,11 +269,132 @@ describe("ActivityFeed", () => {
 
   it("does not reload when an equivalent friend id array is passed", async () => {
     activityMocks.getFriendActivityFeed.mockResolvedValue([]);
-    const view = render(<ActivityFeed friendIds={["friend-2", "friend-1"]} />);
+    const view = renderFeed(<ActivityFeed friendIds={["friend-2", "friend-1"]} />);
     expect(await screen.findByText(/No recent activity from friends/i)).toBeInTheDocument();
 
-    view.rerender(<ActivityFeed friendIds={["friend-1", "friend-2"]} />);
+    view.rerender(
+      <MemoryRouter>
+        <ActivityFeed friendIds={["friend-1", "friend-2"]} />
+      </MemoryRouter>,
+    );
 
     await waitFor(() => expect(activityMocks.getFriendActivityFeed).toHaveBeenCalledTimes(1));
+  });
+
+  it("loads older comments with a stable cursor and prepends them chronologically", async () => {
+    const newerCreatedAt = "2026-07-14T12:01:00.000Z";
+    const olderCreatedAt = "2026-07-14T12:00:00.000Z";
+    activityMocks.getFriendActivityFeed.mockResolvedValue([
+      {
+        achievementName: null,
+        createdAt: newerCreatedAt,
+        gameId: null,
+        gameTitle: "Neon Runner",
+        id: "activity-1",
+        metadata: {},
+        type: "status",
+        userId: "friend-1",
+        visibility: "friends_only",
+      },
+    ]);
+    interactionMocks.getActivityComments
+      .mockResolvedValueOnce({
+        comments: [
+          {
+            activityId: "activity-1",
+            authorId: "friend-1",
+            body: "Newer comment",
+            createdAt: newerCreatedAt,
+            id: "comment-2",
+          },
+        ],
+        nextCursor: { createdAt: newerCreatedAt, id: "comment-2" },
+      })
+      .mockResolvedValueOnce({
+        comments: [
+          {
+            activityId: "activity-1",
+            authorId: "friend-1",
+            body: "Older comment",
+            createdAt: olderCreatedAt,
+            id: "comment-1",
+          },
+        ],
+        nextCursor: null,
+      });
+
+    renderFeed(<ActivityFeed currentUserId="user-1" friendIds={["friend-1"]} />);
+
+    fireEvent.click(await screen.findByRole("button", { name: /comments/i }));
+    expect(await screen.findByText("Newer comment")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /load older comments/i }));
+
+    expect(await screen.findByText("Older comment")).toBeInTheDocument();
+    expect(interactionMocks.getActivityComments).toHaveBeenNthCalledWith(1, "activity-1", {
+      limit: 8,
+    });
+    expect(interactionMocks.getActivityComments).toHaveBeenNthCalledWith(2, "activity-1", {
+      before: { createdAt: newerCreatedAt, id: "comment-2" },
+      limit: 8,
+    });
+    expect(screen.queryByRole("button", { name: /load older comments/i })).not.toBeInTheDocument();
+    const renderedComments = screen.getAllByText(/^(Older|Newer) comment$/);
+    expect(renderedComments.map((node) => node.textContent)).toEqual([
+      "Older comment",
+      "Newer comment",
+    ]);
+  });
+
+  it("surfaces failures from async realtime refresh and profile work", async () => {
+    let realtimeHandlers:
+      | {
+          onCommentUpsert: (comment: {
+            activityId: string;
+            authorId: string;
+            body: string;
+            createdAt: string;
+            id: string;
+          }) => void;
+          onReactionChanged: (change: { activityId: string }) => void;
+        }
+      | undefined;
+    interactionMocks.subscribeToActivityInteractions.mockImplementation((...args: unknown[]) => {
+      realtimeHandlers = args[1] as NonNullable<typeof realtimeHandlers>;
+      return vi.fn();
+    });
+    activityMocks.getFriendActivityFeed.mockResolvedValue([
+      {
+        achievementName: null,
+        createdAt: "2026-07-14T12:00:00.000Z",
+        gameId: null,
+        gameTitle: "Neon Runner",
+        id: "activity-1",
+        metadata: {},
+        type: "status",
+        userId: "friend-1",
+        visibility: "friends_only",
+      },
+    ]);
+    renderFeed(<ActivityFeed currentUserId="user-1" friendIds={["friend-1"]} />);
+    await waitFor(() => expect(realtimeHandlers).toBeDefined());
+
+    profileMocks.getProfilesForUsers.mockRejectedValueOnce(new Error("profile lookup unavailable"));
+    act(() => {
+      realtimeHandlers?.onCommentUpsert({
+        activityId: "activity-1",
+        authorId: "friend-2",
+        body: "Live comment",
+        createdAt: "2026-07-14T12:01:00.000Z",
+        id: "comment-live",
+      });
+    });
+    expect(await screen.findByRole("alert")).toHaveTextContent("profile lookup unavailable");
+
+    interactionMocks.getActivityInteractionSummaries.mockRejectedValueOnce(
+      new Error("summary refresh unavailable"),
+    );
+    act(() => realtimeHandlers?.onReactionChanged({ activityId: "activity-1" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("summary refresh unavailable");
+    expect(screen.getByRole("button", { name: /retry interaction data/i })).toBeInTheDocument();
   });
 });

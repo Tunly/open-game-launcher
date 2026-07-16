@@ -15,12 +15,16 @@ const launcherMocks = vi.hoisted(() => ({
   getPlatformClientUpdateStatus: vi.fn(),
   isTauri: vi.fn(),
   listen: vi.fn(),
+  moveGame: vi.fn(),
+  openDirectory: vi.fn(),
   openExternalUrl: vi.fn(),
   pollPlatformClientHealth: vi.fn(),
   prepareGameActionConfirmation: vi.fn(),
   previewPlatformClientAutoApply: vi.fn(),
   previewPlatformClientInstall: vi.fn(),
   runGameAction: vi.fn(),
+  stopGame: vi.fn(),
+  syncGameSaves: vi.fn(),
 }));
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -31,6 +35,10 @@ vi.mock("@tauri-apps/api/event", () => ({
   listen: launcherMocks.listen,
 }));
 
+vi.mock("@tauri-apps/plugin-dialog", () => ({
+  open: launcherMocks.openDirectory,
+}));
+
 vi.mock("../../lib/launcher", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../lib/launcher")>()),
   getGameActionCapabilities: launcherMocks.getGameActionCapabilities,
@@ -38,12 +46,15 @@ vi.mock("../../lib/launcher", async (importOriginal) => ({
   getPlatformClientInstallerMetadata: launcherMocks.getPlatformClientInstallerMetadata,
   getPlatformClientModificationConfig: launcherMocks.getPlatformClientModificationConfig,
   getPlatformClientUpdateStatus: launcherMocks.getPlatformClientUpdateStatus,
+  moveGame: launcherMocks.moveGame,
   openExternalUrl: launcherMocks.openExternalUrl,
   pollPlatformClientHealth: launcherMocks.pollPlatformClientHealth,
   prepareGameActionConfirmation: launcherMocks.prepareGameActionConfirmation,
   previewPlatformClientAutoApply: launcherMocks.previewPlatformClientAutoApply,
   previewPlatformClientInstall: launcherMocks.previewPlatformClientInstall,
   runGameAction: launcherMocks.runGameAction,
+  stopGame: launcherMocks.stopGame,
+  syncGameSaves: launcherMocks.syncGameSaves,
 }));
 
 vi.mock("../../lib/supabase/crossplay", () => ({
@@ -60,9 +71,26 @@ describe("GameDetails actions", () => {
     launcherMocks.getPlatformClientModificationConfig.mockResolvedValue(null);
     launcherMocks.getPlatformClientUpdateStatus.mockResolvedValue(null);
     launcherMocks.listen.mockResolvedValue(() => undefined);
+    launcherMocks.moveGame.mockResolvedValue(undefined);
+    launcherMocks.openDirectory.mockResolvedValue(null);
     launcherMocks.pollPlatformClientHealth.mockResolvedValue([]);
     launcherMocks.previewPlatformClientAutoApply.mockResolvedValue(null);
     launcherMocks.previewPlatformClientInstall.mockResolvedValue(null);
+    launcherMocks.stopGame.mockResolvedValue({
+      gameId: "local-test-game",
+      message: "Local Test Game was stopped.",
+      pid: 4242,
+      success: true,
+    });
+    launcherMocks.syncGameSaves.mockResolvedValue({
+      game: selectedGame,
+      gameId: "local-test-game",
+      message: "Local Test Game save sync completed.",
+      missingFiles: [],
+      success: true,
+      syncedFiles: ["C:\\OG Launcher\\save-cache\\slot-1.sav"],
+      syncRoot: "C:\\OG Launcher\\save-cache",
+    });
   });
 
   it("does not render screenshot or platform cloud save panels", async () => {
@@ -206,18 +234,26 @@ describe("GameDetails actions", () => {
     expect(screen.queryByText("Up to date")).not.toBeInTheDocument();
   });
 
-  it("does not show the community artwork import deck in game settings", () => {
-    renderGameDetails();
+  it("shows the community artwork import deck in game settings and applies artwork", async () => {
+    const onApplyCustomArtworkUrl = vi.fn();
+    renderGameDetails({}, { onApplyCustomArtworkUrl });
 
     fireEvent.click(screen.getByRole("button", { name: "Game Settings" }));
 
     expect(
-      screen.queryByRole("region", { name: "Community artwork import deck" }),
-    ).not.toBeInTheDocument();
-    expect(screen.queryByText("Community Art Deck")).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: /import panel break cover/i }),
-    ).not.toBeInTheDocument();
+      await screen.findByRole(
+        "region",
+        { name: "Community artwork import deck" },
+        { timeout: 5_000 },
+      ),
+    ).toBeInTheDocument();
+    fireEvent.click(screen.getByTitle("Import Panel Break Cover"));
+    expect(onApplyCustomArtworkUrl).toHaveBeenCalledWith(
+      "local-test-game",
+      "cover",
+      "/artwork/community-panel-cover.svg",
+      "Panel Break Cover",
+    );
   });
 
   it("keeps custom artwork local-only", () => {
@@ -322,6 +358,107 @@ describe("GameDetails actions", () => {
     });
   });
 
+  it("exposes and runs the native check-for-updates capability", async () => {
+    launcherMocks.isTauri.mockReturnValue(true);
+    launcherMocks.getGameActionCapabilities.mockResolvedValue([
+      capability("check_update", {
+        label: "Check OG-managed update",
+        reason: "Reads signed update metadata without changing game files.",
+      }),
+    ]);
+    launcherMocks.runGameAction.mockResolvedValue(
+      actionResult("check_update", "ogl-managed-game", "og", {
+        message: "No signed update is available.",
+        outcome: "not_needed",
+      }),
+    );
+
+    renderGameDetails({ id: "ogl-managed-game", launcher: "ogl" });
+    fireEvent.click(screen.getByRole("button", { name: "Game Settings" }));
+
+    const checkButton = await screen.findByRole("button", {
+      name: /Check OG-managed update/i,
+    });
+    await waitFor(() => expect(checkButton).toBeEnabled());
+    fireEvent.click(checkButton);
+
+    await waitFor(() => {
+      expect(launcherMocks.runGameAction).toHaveBeenCalledWith({
+        action: "check_update",
+        gameId: "ogl-managed-game",
+        expectedProvider: "ogl",
+        expectedTitle: "Local Test Game",
+      });
+    });
+  });
+
+  it("stops only the exact path-verified running copy", async () => {
+    const setStatusMessage = vi.fn();
+    launcherMocks.isTauri.mockReturnValue(true);
+
+    renderGameDetails(
+      {},
+      {
+        isGameRunning: true,
+        runningGameIds: new Set(["local-test-game"]),
+        setStatusMessage,
+      },
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Game Settings" }));
+    fireEvent.click(screen.getByRole("button", { name: /Stop Game/i }));
+
+    await waitFor(() => {
+      expect(launcherMocks.stopGame).toHaveBeenCalledWith("local-test-game");
+      expect(setStatusMessage).toHaveBeenCalledWith("Local Test Game was stopped.");
+    });
+  });
+
+  it("backs up tracked save paths and reloads their metadata", async () => {
+    const runAutomaticLibrarySync = vi.fn().mockResolvedValue(undefined);
+    launcherMocks.isTauri.mockReturnValue(true);
+
+    renderGameDetails(
+      {
+        saveFiles: [{ id: "slot-1", path: "C:\\Games\\Local Test Game\\slot-1.sav" }],
+      },
+      { runAutomaticLibrarySync },
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Game Settings" }));
+    fireEvent.click(screen.getByRole("button", { name: /Backup Saves/i }));
+
+    await waitFor(() => {
+      expect(launcherMocks.syncGameSaves).toHaveBeenCalledWith("local-test-game");
+      expect(runAutomaticLibrarySync).toHaveBeenCalledWith(false);
+    });
+    expect(screen.getByText("Local Test Game save sync completed.")).toBeVisible();
+  });
+
+  it("confirms and runs a same-drive move for a manual install", async () => {
+    const runAutomaticLibrarySync = vi.fn().mockResolvedValue(undefined);
+    launcherMocks.isTauri.mockReturnValue(true);
+    launcherMocks.openDirectory.mockResolvedValue("C:\\Games Two");
+
+    renderGameDetails({ launcher: "manual" }, { runAutomaticLibrarySync });
+    fireEvent.click(screen.getByRole("button", { name: "Game Settings" }));
+    fireEvent.click(screen.getByRole("button", { name: /Move Install/i }));
+
+    const dialog = await screen.findByRole("dialog", { name: "Confirm Install Move" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Move Game" }));
+
+    await waitFor(() => {
+      expect(launcherMocks.openDirectory).toHaveBeenCalledWith({
+        directory: true,
+        multiple: false,
+        title: "Move Local Test Game to...",
+      });
+      expect(launcherMocks.moveGame).toHaveBeenCalledWith({
+        gameId: "local-test-game",
+        newPath: "C:\\Games Two",
+      });
+      expect(runAutomaticLibrarySync).toHaveBeenCalledWith(false);
+    });
+  });
+
   it("prepares a short-lived exact grant and immediately binds it to the confirmed action", async () => {
     const runAutomaticLibrarySync = vi.fn().mockResolvedValue(undefined);
     launcherMocks.isTauri.mockReturnValue(true);
@@ -373,14 +510,66 @@ describe("GameDetails actions", () => {
         expectedTitle: "Local Test Game",
         confirmationToken: "short-lived-token",
       });
-      expect(runAutomaticLibrarySync).toHaveBeenCalledWith(true);
+      expect(runAutomaticLibrarySync).toHaveBeenCalledWith(false);
     });
     expect(launcherMocks.prepareGameActionConfirmation.mock.invocationCallOrder[0]).toBeLessThan(
       launcherMocks.runGameAction.mock.invocationCallOrder[0],
     );
   });
 
+  it("marks a verified completed uninstall as not installed after the native rescan", async () => {
+    const runAutomaticLibrarySync = vi.fn().mockResolvedValue(undefined);
+    const onVerifiedUninstall = vi.fn();
+    launcherMocks.isTauri.mockReturnValue(true);
+    launcherMocks.getGameActionCapabilities.mockResolvedValue([
+      capability("uninstall", {
+        destructive: true,
+        label: "Uninstall Xbox Game",
+        mode: "os_automation",
+        reason: "Remove and verify the exact Xbox package.",
+        requiresConfirmation: true,
+      }),
+    ]);
+    launcherMocks.prepareGameActionConfirmation.mockResolvedValue({
+      action: "uninstall",
+      confirmationToken: "uninstall-token",
+      expiresAt: "2026-07-13T00:02:00Z",
+      expiresInSeconds: 120,
+      gameId: "xbox-installed",
+    });
+    launcherMocks.runGameAction.mockResolvedValue(
+      actionResult("uninstall", "xbox-installed", "xbox", {
+        libraryChanged: true,
+        message: "Xbox package removal verified.",
+        outcome: "completed",
+      }),
+    );
+
+    renderGameDetails(
+      { id: "xbox-installed", launcher: "xbox", status: "installed" },
+      { onVerifiedUninstall, runAutomaticLibrarySync },
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Game Settings" }));
+    const uninstallButton = await screen.findByRole("button", { name: /Uninstall Xbox Game/i });
+    fireEvent.click(uninstallButton);
+    fireEvent.click(
+      within(screen.getByRole("dialog", { name: "Confirm Selected Copy Action" })).getByRole(
+        "button",
+        { name: "Uninstall Xbox Game" },
+      ),
+    );
+
+    await waitFor(() => {
+      expect(runAutomaticLibrarySync).toHaveBeenCalledWith(false);
+      expect(onVerifiedUninstall).toHaveBeenCalledWith("xbox-installed");
+    });
+    expect(runAutomaticLibrarySync.mock.invocationCallOrder[0]).toBeLessThan(
+      onVerifiedUninstall.mock.invocationCallOrder[0],
+    );
+  });
+
   it("reports provider handoff as handoff required, never completed", async () => {
+    const requestLibraryRescanOnNextFocus = vi.fn();
     launcherMocks.isTauri.mockReturnValue(true);
     launcherMocks.getGameActionCapabilities.mockResolvedValue([
       capability("repair", {
@@ -403,10 +592,14 @@ describe("GameDetails actions", () => {
       actionResult("repair", "steam-handoff", "steam", {
         message: "Steam opened; finish the repair there.",
         outcome: "handoff_required",
+        rescanRecommended: true,
       }),
     );
 
-    renderGameDetails({ id: "steam-handoff", launcher: "steam" });
+    renderGameDetails(
+      { id: "steam-handoff", launcher: "steam" },
+      { requestLibraryRescanOnNextFocus },
+    );
     fireEvent.click(screen.getByRole("button", { name: "Game Settings" }));
     const repairButton = await screen.findByRole("button", { name: /Repair in Steam/i });
     fireEvent.click(repairButton);
@@ -420,6 +613,7 @@ describe("GameDetails actions", () => {
     expect(await screen.findByText("Handoff required")).toBeVisible();
     expect(screen.getByText("Steam opened; finish the repair there.")).toBeVisible();
     expect(screen.queryByText("Completed")).not.toBeInTheDocument();
+    expect(requestLibraryRescanOnNextFocus).toHaveBeenCalledOnce();
   });
 
   it("ignores a stale capability response after the selected variant changes", async () => {
@@ -589,6 +783,16 @@ describe("GameDetails actions", () => {
     expect(handlePlay).not.toHaveBeenCalled();
   });
 
+  it("shows provider and sync errors in the empty library state", () => {
+    renderGameDetails(null, {
+      discoveryMessage: "No installed games were detected on this PC.",
+      statusMessage: "Steam authentication failed. Sign in and retry.",
+    });
+
+    expect(screen.getByText("No Games Detected")).toBeVisible();
+    expect(screen.getByText("Steam authentication failed. Sign in and retry.")).toBeVisible();
+  });
+
   it("opens only the resolver-owned HTTPS support destination", () => {
     const openWindow = vi.spyOn(window, "open").mockImplementation(() => null);
     renderGameDetails({ id: "steam-support-game", launcher: "steam" });
@@ -728,11 +932,11 @@ const selectedGame: Game = {
 };
 
 function renderGameDetails(
-  gameOverrides: Partial<Game> = {},
+  gameOverrides: Partial<Game> | null = {},
   propOverrides: Partial<GameDetailsProps> = {},
 ) {
   const noop = vi.fn();
-  const game = { ...selectedGame, ...gameOverrides };
+  const game = gameOverrides === null ? null : { ...selectedGame, ...gameOverrides };
 
   return render(
     <MemoryRouter>

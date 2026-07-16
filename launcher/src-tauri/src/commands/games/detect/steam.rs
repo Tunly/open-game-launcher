@@ -877,19 +877,6 @@ pub async fn fetch_steam_achievements(
         .or_else(|| env::var("VITE_STEAM_ID").ok())
         .map(|id| id.trim().trim_matches('"').to_string())
         .filter(|id| !id.is_empty());
-    let web_api_key = env::var("STEAM_WEB_API_KEY")
-        .ok()
-        .and_then(|value| normalize_steam_web_api_key(&value));
-
-    let player_fut = async {
-        if let (Some(steam_id), Some(web_api_key)) = (steam_id.as_deref(), web_api_key.as_deref()) {
-            fetch_steam_player_achievements(appid, steam_id, web_api_key)
-                .await
-                .unwrap_or_default()
-        } else {
-            Vec::new()
-        }
-    };
     let community_fut = async {
         if let Some(steam_id) = steam_id.as_deref() {
             fetch_steam_community_xml_achievements(appid, steam_id)
@@ -905,9 +892,9 @@ pub async fn fetch_steam_achievements(
             .unwrap_or_default()
     };
 
-    let (player, community, rarity) = tokio::join!(player_fut, community_fut, rarity_fut);
+    let (community, rarity) = tokio::join!(community_fut, rarity_fut);
 
-    let merged = merge_achievement_sources(player, community, Vec::new(), &rarity);
+    let merged = merge_achievement_sources(Vec::new(), community, Vec::new(), &rarity);
 
     if merged.is_empty() {
         return Err(
@@ -1009,89 +996,6 @@ async fn fetch_steam_global_achievement_percentages(
     Ok(map)
 }
 
-fn normalize_steam_web_api_key(value: &str) -> Option<String> {
-    let value = value.trim().trim_matches('"');
-    (value.len() == 32 && value.bytes().all(|byte| byte.is_ascii_hexdigit()))
-        .then(|| value.to_string())
-}
-
-async fn fetch_steam_player_achievements(
-    appid: u32,
-    steam_id: &str,
-    web_api_key: &str,
-) -> Result<Vec<UnifiedAchievement>, String> {
-    let client = crate::commands::http::shared_http_client();
-    let query = vec![
-        ("key", web_api_key.to_string()),
-        ("appid", appid.to_string()),
-        ("steamid", steam_id.to_string()),
-        ("l", "en".to_string()),
-    ];
-
-    let response = client
-        .get("https://api.steampowered.com/ISteamUserStats/GetPlayerAchievements/v0001/")
-        .query(&query)
-        .send()
-        .await
-        .map_err(|error| format!("Could not contact Steam achievements API: {error}"))?;
-    let json: serde_json::Value = response
-        .json()
-        .await
-        .map_err(|error| format!("Could not parse Steam achievements API response: {error}"))?;
-
-    let achievements = json
-        .get("playerstats")
-        .and_then(|stats| stats.get("achievements"))
-        .and_then(|achievements| achievements.as_array())
-        .ok_or_else(|| "Steam did not return player achievements for this game.".to_string())?;
-
-    Ok(achievements
-        .iter()
-        .filter_map(|achievement| {
-            let id = achievement
-                .get("apiname")
-                .or_else(|| achievement.get("name"))
-                .and_then(|value| value.as_str())?
-                .to_string();
-            let name = achievement
-                .get("name")
-                .and_then(|value| value.as_str())
-                .unwrap_or(&id)
-                .to_string();
-            let unlocked = achievement
-                .get("achieved")
-                .and_then(|value| value.as_u64())
-                .unwrap_or_default()
-                > 0;
-            let unlocked_at = if unlocked {
-                achievement
-                    .get("unlocktime")
-                    .and_then(|value| value.as_u64())
-                    .filter(|timestamp| *timestamp > 0)
-                    .map(unix_timestamp_to_iso)
-                    .or_else(|| Some(unix_timestamp_to_iso(current_unix_timestamp())))
-            } else {
-                None
-            };
-
-            Some(UnifiedAchievement {
-                id,
-                name,
-                description: achievement
-                    .get("description")
-                    .and_then(|value| value.as_str())
-                    .map(ToOwned::to_owned),
-                icon_url: None,
-                unlocked_at,
-                rarity: None,
-                source: Some("steam".to_string()),
-                source_achievement_id: None,
-                provider_confidence: Some("official".to_string()),
-            })
-        })
-        .collect())
-}
-
 async fn fetch_steam_community_xml_achievements(
     appid: u32,
     steam_id: &str,
@@ -1114,8 +1018,27 @@ async fn fetch_steam_community_xml_achievements(
         .text()
         .await
         .map_err(|error| format!("Could not read Steam Community achievements XML: {error}"))?;
+    parse_steam_community_xml_achievements(&xml, steam_id)
+}
+
+pub(crate) fn parse_steam_community_xml_achievements(
+    xml: &str,
+    expected_steam_id: &str,
+) -> Result<Vec<UnifiedAchievement>, String> {
+    let returned_steam_id = xml_tag_text(xml, "steamID64").ok_or_else(|| {
+        "Steam Community achievement data did not identify an account.".to_string()
+    })?;
+    if returned_steam_id != expected_steam_id {
+        return Err("Steam Community achievement data belongs to another account.".to_string());
+    }
+    if let Some(error) = xml_tag_text(xml, "error") {
+        return Err(format!(
+            "Steam Community achievement data is unavailable: {error}"
+        ));
+    }
+
     let mut achievements = Vec::new();
-    let mut remaining = xml.as_str();
+    let mut remaining = xml;
 
     while let Some(start_index) = remaining.find("<achievement") {
         let after_start = &remaining[start_index..];
@@ -1342,13 +1265,26 @@ mod tests {
     use super::*;
 
     #[test]
-    fn validates_steam_web_api_keys_before_player_achievement_requests() {
+    fn parses_session_achievement_xml_only_for_the_expected_steam_account() {
+        let xml = r#"<?xml version="1.0"?>
+<playerstats>
+  <steamID64>76561198000000001</steamID64>
+  <achievements>
+    <achievement><name><![CDATA[First Win]]></name><apiname>ACH_FIRST_WIN</apiname><description><![CDATA[Win once.]]></description><iconClosed>https://cdn.example/closed.jpg</iconClosed><unlockTimestamp>1767225600</unlockTimestamp></achievement>
+    <achievement><name>Still Locked</name><apiname>ACH_LOCKED</apiname></achievement>
+  </achievements>
+</playerstats>"#;
+
+        let achievements =
+            parse_steam_community_xml_achievements(xml, "76561198000000001").unwrap();
+        assert_eq!(achievements.len(), 2);
+        assert_eq!(achievements[0].id, "ACH_FIRST_WIN");
         assert_eq!(
-            normalize_steam_web_api_key(" 0123456789abcdef0123456789ABCDEF ").as_deref(),
-            Some("0123456789abcdef0123456789ABCDEF")
+            achievements[0].unlocked_at.as_deref(),
+            Some("2026-01-01T00:00:00Z")
         );
-        assert!(normalize_steam_web_api_key("short").is_none());
-        assert!(normalize_steam_web_api_key("z123456789abcdef0123456789abcdef").is_none());
+        assert!(achievements[1].unlocked_at.is_none());
+        assert!(parse_steam_community_xml_achievements(xml, "76561198000000002").is_err());
     }
 
     #[test]

@@ -19,8 +19,17 @@ vi.mock("../lib/supabase/activity", () => ({
 }));
 
 vi.mock("../components/friends/ActivityFeed", () => ({
-  ActivityFeed: ({ friendIds }: { friendIds: string[] }) => {
-    activityFeedPropsMock(friendIds);
+  ActivityFeed: (props: {
+    currentUserId?: string | null;
+    friendIds: string[];
+    profiles?: ReadonlyMap<
+      string,
+      { avatarUrl: string | null; displayName: string | null; username: string }
+    >;
+    scope?: "community" | "friends" | "mine";
+  }) => {
+    const { friendIds } = props;
+    activityFeedPropsMock(props);
     return <div data-testid="live-activity-feed">Live friend IDs: {friendIds.join(", ")}</div>;
   },
 }));
@@ -44,10 +53,20 @@ describe("CommunityPage live activity", () => {
     profileMocks.getFriends.mockResolvedValue([
       {
         addresseeId: "friend-2",
+        profile: {
+          avatarUrl: "https://example.com/friend-2.png",
+          displayName: "Friend Two",
+          username: "friend-two",
+        },
         requesterId: "user-current",
       },
       {
         addresseeId: "user-current",
+        profile: {
+          avatarUrl: null,
+          displayName: "Friend One",
+          username: "friend-one",
+        },
         requesterId: "friend-1",
       },
     ]);
@@ -59,8 +78,25 @@ describe("CommunityPage live activity", () => {
 
     expect(screen.getByRole("heading", { name: /community activity/i })).toBeInTheDocument();
     expect(profileMocks.getFriends).toHaveBeenCalledWith("user-current");
-    expect(await screen.findByTestId("live-activity-feed")).toHaveTextContent("friend-2, friend-1");
-    expect(activityFeedPropsMock).toHaveBeenLastCalledWith(["friend-2", "friend-1"]);
+    expect(await screen.findByTestId("live-activity-feed")).toHaveTextContent(
+      "user-current, friend-2, friend-1",
+    );
+    const feedProps = activityFeedPropsMock.mock.lastCall?.[0];
+    expect(feedProps).toMatchObject({
+      currentUserId: "user-current",
+      friendIds: ["user-current", "friend-2", "friend-1"],
+      scope: "community",
+    });
+    expect(feedProps.profiles.get("friend-2")).toEqual({
+      avatarUrl: "https://example.com/friend-2.png",
+      displayName: "Friend Two",
+      username: "friend-two",
+    });
+    expect(feedProps.profiles.get("friend-1")).toEqual({
+      avatarUrl: null,
+      displayName: "Friend One",
+      username: "friend-one",
+    });
     expect(screen.queryByRole("region", { name: /popular hubs/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("region", { name: /community workshop/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("region", { name: /community market/i })).not.toBeInTheDocument();
@@ -89,7 +125,11 @@ describe("CommunityPage live activity", () => {
     );
     expect(within(composer).getByRole("textbox", { name: /status for accepted/i })).toHaveValue("");
     expect(activityFeedPropsMock.mock.calls.length).toBeGreaterThan(feedRenderCountBeforePost);
-    expect(activityFeedPropsMock).toHaveBeenLastCalledWith(["friend-2", "friend-1"]);
+    expect(activityFeedPropsMock.mock.lastCall?.[0]).toMatchObject({
+      currentUserId: "user-current",
+      friendIds: ["user-current", "friend-2", "friend-1"],
+      scope: "community",
+    });
   });
 
   it("shows an honest unavailable state when Supabase is not configured", () => {

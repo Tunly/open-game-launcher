@@ -81,15 +81,19 @@ export function useLibraryFilters(options: UseLibraryFiltersOptions): UseLibrary
 
   useEffect(() => {
     const timeout = window.setTimeout(() => {
-      localStorage.setItem(
-        STORAGE_KEYS.LIBRARY_FILTER_STATE,
-        JSON.stringify({
-          activePlatformFilter,
-          advancedFilters,
-          searchQuery,
-          sortOption,
-        } satisfies PersistedLibraryFilterState),
-      );
+      try {
+        localStorage.setItem(
+          STORAGE_KEYS.LIBRARY_FILTER_STATE,
+          JSON.stringify({
+            activePlatformFilter,
+            advancedFilters,
+            searchQuery,
+            sortOption,
+          } satisfies PersistedLibraryFilterState),
+        );
+      } catch {
+        // Storage can be unavailable or full. Keep the in-memory filters usable.
+      }
     }, 150);
 
     return () => window.clearTimeout(timeout);

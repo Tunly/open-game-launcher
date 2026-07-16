@@ -11,6 +11,7 @@ import {
   Trophy,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { Link } from "react-router-dom";
 
 import type {
   ActivityComment,
@@ -25,6 +26,7 @@ import {
   getActivityInteractionSummaries,
   setActivityRateUp,
   subscribeToActivityInteractions,
+  type ActivityCommentCursor,
 } from "../../lib/supabase/activity-interactions";
 import { getActivityPlatformLabel } from "../../lib/supabase/presence";
 import { getProfilesForUsers } from "../../lib/supabase/profile";
@@ -38,6 +40,7 @@ interface ActivityFeedProps {
   };
   previewItems?: ActivityFeedItem[];
   profiles?: ReadonlyMap<string, ActivityFeedProfile>;
+  scope?: "community" | "friends" | "mine";
 }
 
 export interface ActivityFeedProfile {
@@ -45,6 +48,8 @@ export interface ActivityFeedProfile {
   displayName: string | null;
   username: string;
 }
+
+const ACTIVITY_COMMENT_PAGE_SIZE = 8;
 
 function timeAgo(dateStr: string): string {
   const diff = Date.now() - new Date(dateStr).getTime();
@@ -171,6 +176,7 @@ function ActivityFeedArticle({
   comments,
   currentUserId,
   errorMessage,
+  hasMoreComments,
   index,
   interactionsEnabled,
   item,
@@ -179,6 +185,8 @@ function ActivityFeedArticle({
   onAddComment,
   onDeleteComment,
   onLoadComments,
+  onLoadOlderComments,
+  onRetryInteractionData,
   onToggleReaction,
   profiles,
   summary,
@@ -186,6 +194,7 @@ function ActivityFeedArticle({
   comments: ActivityComment[] | undefined;
   currentUserId: string | null;
   errorMessage: string | null;
+  hasMoreComments: boolean;
   index: number;
   interactionsEnabled: boolean;
   item: ActivityFeedItem;
@@ -194,6 +203,8 @@ function ActivityFeedArticle({
   onAddComment: (body: string) => Promise<void>;
   onDeleteComment: (commentId: string) => Promise<void>;
   onLoadComments: () => Promise<void>;
+  onLoadOlderComments: () => Promise<void>;
+  onRetryInteractionData: () => Promise<void>;
   onToggleReaction: () => Promise<void>;
   profiles?: ReadonlyMap<string, ActivityFeedProfile>;
   summary: ActivityInteractionSummary;
@@ -227,12 +238,12 @@ function ActivityFeedArticle({
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             {profile?.username ? (
-              <a
+              <Link
                 className="neo-copy text-[11px] font-black tracking-[0.08em] text-[#171411] uppercase underline-offset-2 hover:text-[#b7102a] hover:underline"
-                href={`/u/${encodeURIComponent(profile.username)}`}
+                to={`/u/${encodeURIComponent(profile.username)}`}
               >
                 {player}
-              </a>
+              </Link>
             ) : (
               <p className="neo-copy text-[11px] font-black tracking-[0.08em] text-[#171411] uppercase">
                 {player}
@@ -278,12 +289,12 @@ function ActivityFeedArticle({
           )}
           <div className="min-w-0 border-[3px] border-black bg-[#f6edd8] p-3">
             {typeof item.metadata.productSlug === "string" ? (
-              <a
+              <Link
                 className="neo-title block truncate text-3xl leading-none text-[#171411] underline-offset-4 hover:text-[#b7102a] hover:underline"
-                href={`/store?slug=${encodeURIComponent(item.metadata.productSlug)}`}
+                to={`/store?slug=${encodeURIComponent(item.metadata.productSlug)}`}
               >
                 {gameTitle}
-              </a>
+              </Link>
             ) : (
               <p className="neo-title truncate text-3xl leading-none text-[#171411]">{gameTitle}</p>
             )}
@@ -309,6 +320,7 @@ function ActivityFeedArticle({
         currentUserId={currentUserId}
         enabled={interactionsEnabled}
         errorMessage={errorMessage}
+        hasMoreComments={hasMoreComments}
         item={item}
         loadingComments={loadingComments}
         mutationPending={mutationPending}
@@ -317,6 +329,8 @@ function ActivityFeedArticle({
         onAddComment={onAddComment}
         onDeleteComment={onDeleteComment}
         onLoadComments={onLoadComments}
+        onLoadOlderComments={onLoadOlderComments}
+        onRetryInteractionData={onRetryInteractionData}
         onToggleReaction={onToggleReaction}
       />
 
@@ -332,12 +346,15 @@ function ActivityInteractions({
   currentUserId,
   enabled,
   errorMessage,
+  hasMoreComments,
   item,
   loadingComments,
   mutationPending,
   onAddComment,
   onDeleteComment,
   onLoadComments,
+  onLoadOlderComments,
+  onRetryInteractionData,
   onToggleReaction,
   profiles,
   summary,
@@ -346,12 +363,15 @@ function ActivityInteractions({
   currentUserId: string | null;
   enabled: boolean;
   errorMessage: string | null;
+  hasMoreComments: boolean;
   item: ActivityFeedItem;
   loadingComments: boolean;
   mutationPending: boolean;
   onAddComment: (body: string) => Promise<void>;
   onDeleteComment: (commentId: string) => Promise<void>;
   onLoadComments: () => Promise<void>;
+  onLoadOlderComments: () => Promise<void>;
+  onRetryInteractionData: () => Promise<void>;
   onToggleReaction: () => Promise<void>;
   profiles?: ReadonlyMap<string, ActivityFeedProfile>;
   summary: ActivityInteractionSummary;
@@ -420,7 +440,7 @@ function ActivityInteractions({
 
       {commentsOpen ? (
         <div className="mt-3 space-y-2 border-[3px] border-black bg-[#efe6d4] p-3" id={panelId}>
-          {loadingComments ? (
+          {loadingComments && comments === undefined ? (
             <p className="neo-copy flex items-center gap-2 text-[9px] font-black text-[#655f58] uppercase">
               <Loader2 className="h-4 w-4 animate-spin" /> Loading comments...
             </p>
@@ -467,6 +487,18 @@ function ActivityInteractions({
             </p>
           )}
 
+          {comments && comments.length > 0 && hasMoreComments ? (
+            <button
+              className="neo-copy flex h-9 w-full items-center justify-center gap-2 border-2 border-black bg-[#fff9ed] px-3 text-[9px] font-black tracking-[0.1em] text-[#171411] uppercase shadow-[2px_2px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#8cf5e4] disabled:opacity-55"
+              disabled={loadingComments}
+              type="button"
+              onClick={() => void onLoadOlderComments()}
+            >
+              {loadingComments ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+              {loadingComments ? "Loading older comments..." : "Load older comments"}
+            </button>
+          ) : null}
+
           {enabled ? (
             <form
               className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]"
@@ -511,12 +543,24 @@ function ActivityInteractions({
         </p>
       ) : null}
       {errorMessage ? (
-        <p
+        <div
           className="neo-copy mt-2 border-2 border-black bg-[#f3c3c9] p-2 text-[9px] font-black text-[#171411] uppercase"
           role="alert"
         >
-          {errorMessage}
-        </p>
+          <p>{errorMessage}</p>
+          <button
+            className="mt-2 border-2 border-black bg-[#b7102a] px-2 py-1 text-[8px] text-white shadow-[1px_1px_0_#171411] disabled:opacity-55"
+            disabled={loadingComments}
+            type="button"
+            onClick={() =>
+              void (commentsOpen && comments === undefined
+                ? onLoadComments()
+                : onRetryInteractionData())
+            }
+          >
+            {commentsOpen && comments === undefined ? "Retry comments" : "Retry interaction data"}
+          </button>
+        </div>
       ) : null}
     </div>
   );
@@ -554,6 +598,11 @@ function commentsByActivity(values: ActivityComment[] = []) {
   return grouped;
 }
 
+function compareComments(left: ActivityComment, right: ActivityComment) {
+  const createdAtOrder = left.createdAt.localeCompare(right.createdAt);
+  return createdAtOrder === 0 ? left.id.localeCompare(right.id) : createdAtOrder;
+}
+
 function emptySummary(activityId: string): ActivityInteractionSummary {
   return {
     activityId,
@@ -569,6 +618,7 @@ export function ActivityFeed({
   previewInteractions,
   previewItems,
   profiles,
+  scope = "friends",
 }: ActivityFeedProps) {
   const [items, setItems] = useState<ActivityFeedItem[]>(previewItems ?? []);
   const [loading, setLoading] = useState(!previewItems);
@@ -581,6 +631,9 @@ export function ActivityFeed({
     summariesByActivity(previewInteractions?.summaries),
   );
   const [comments, setComments] = useState(() => commentsByActivity(previewInteractions?.comments));
+  const [commentCursors, setCommentCursors] = useState<
+    ReadonlyMap<string, ActivityCommentCursor | null>
+  >(new Map());
   const [interactionProfiles, setInteractionProfiles] = useState<
     ReadonlyMap<string, ActivityFeedProfile>
   >(profiles ?? new Map());
@@ -692,6 +745,7 @@ export function ActivityFeed({
     if (previewInteractions) {
       setSummaries(summariesByActivity(previewInteractions.summaries));
       setComments(commentsByActivity(previewInteractions.comments));
+      setCommentCursors(new Map());
       return;
     }
     if (!interactionsEnabled || activityIds.length === 0) return;
@@ -714,6 +768,17 @@ export function ActivityFeed({
 
   useEffect(() => {
     if (!interactionsEnabled || activityIds.length === 0) return;
+    const reportRealtimeError = (activityId: string, error: unknown, fallback: string) => {
+      const message = error instanceof Error && error.message.trim() ? error.message : fallback;
+      setInteractionErrors((current) => new Map(current).set(activityId, message));
+      setRealtimeMessage(fallback);
+    };
+    const refreshRealtimeSummary = (activityId: string) => {
+      void refreshInteractionSummaries([activityId]).catch((error: unknown) => {
+        reportRealtimeError(activityId, error, "Live interaction totals could not be refreshed.");
+      });
+    };
+
     return subscribeToActivityInteractions(activityIds, {
       onCommentDeleted: (comment) => {
         setComments((current) => {
@@ -725,7 +790,7 @@ export function ActivityFeed({
           );
           return next;
         });
-        void refreshInteractionSummaries([comment.activityId]);
+        refreshRealtimeSummary(comment.activityId);
         setRealtimeMessage("A friend activity comment was removed.");
       },
       onCommentUpsert: (comment) => {
@@ -735,20 +800,26 @@ export function ActivityFeed({
           const next = new Map(current);
           next.set(
             comment.activityId,
-            [...existing.filter((item) => item.id !== comment.id), comment].sort((a, b) =>
-              a.createdAt.localeCompare(b.createdAt),
-            ),
+            [...existing.filter((item) => item.id !== comment.id), comment].sort(compareComments),
           );
           return next;
         });
-        void getProfilesForUsers([comment.authorId]).then((loadedProfiles) => {
-          setInteractionProfiles((current) => new Map([...current, ...loadedProfiles]));
-        });
-        void refreshInteractionSummaries([comment.activityId]);
+        void getProfilesForUsers([comment.authorId])
+          .then((loadedProfiles) => {
+            setInteractionProfiles((current) => new Map([...current, ...loadedProfiles]));
+          })
+          .catch((error: unknown) => {
+            reportRealtimeError(
+              comment.activityId,
+              error,
+              "The live comment author could not be loaded.",
+            );
+          });
+        refreshRealtimeSummary(comment.activityId);
         setRealtimeMessage("New friend activity comment received.");
       },
       onReactionChanged: ({ activityId }) => {
-        void refreshInteractionSummaries([activityId]);
+        refreshRealtimeSummary(activityId);
         setRealtimeMessage("Friend activity ratings updated.");
       },
     });
@@ -777,9 +848,10 @@ export function ActivityFeed({
     setLoadingCommentIds((current) => new Set(current).add(activityId));
     setInteractionError(activityId, null);
     try {
-      const loaded = await getActivityComments(activityId);
-      setComments((current) => new Map(current).set(activityId, loaded));
-      const authorIds = Array.from(new Set(loaded.map((comment) => comment.authorId)));
+      const page = await getActivityComments(activityId, { limit: ACTIVITY_COMMENT_PAGE_SIZE });
+      setComments((current) => new Map(current).set(activityId, page.comments));
+      setCommentCursors((current) => new Map(current).set(activityId, page.nextCursor));
+      const authorIds = Array.from(new Set(page.comments.map((comment) => comment.authorId)));
       if (authorIds.length > 0) {
         const loadedProfiles = await getProfilesForUsers(authorIds);
         setInteractionProfiles((current) => new Map([...current, ...loadedProfiles]));
@@ -789,13 +861,71 @@ export function ActivityFeed({
         activityId,
         error instanceof Error ? error.message : "Comments could not be loaded.",
       );
-      throw error;
     } finally {
       setLoadingCommentIds((current) => {
         const next = new Set(current);
         next.delete(activityId);
         return next;
       });
+    }
+  }
+
+  async function loadOlderComments(activityId: string) {
+    const before = commentCursors.get(activityId);
+    if (!before || loadingCommentIds.has(activityId)) return;
+    setLoadingCommentIds((current) => new Set(current).add(activityId));
+    setInteractionError(activityId, null);
+    try {
+      const page = await getActivityComments(activityId, {
+        before,
+        limit: ACTIVITY_COMMENT_PAGE_SIZE,
+      });
+      setComments((current) => {
+        const existing = current.get(activityId) ?? [];
+        const combined = [...page.comments, ...existing]
+          .filter(
+            (comment, index, values) =>
+              values.findIndex((candidate) => candidate.id === comment.id) === index,
+          )
+          .sort(compareComments);
+        return new Map(current).set(activityId, combined);
+      });
+      setCommentCursors((current) => new Map(current).set(activityId, page.nextCursor));
+      const authorIds = Array.from(new Set(page.comments.map((comment) => comment.authorId)));
+      if (authorIds.length > 0) {
+        const loadedProfiles = await getProfilesForUsers(authorIds);
+        setInteractionProfiles((current) => new Map([...current, ...loadedProfiles]));
+      }
+    } catch (error) {
+      setInteractionError(
+        activityId,
+        error instanceof Error ? error.message : "Older comments could not be loaded.",
+      );
+    } finally {
+      setLoadingCommentIds((current) => {
+        const next = new Set(current);
+        next.delete(activityId);
+        return next;
+      });
+    }
+  }
+
+  async function retryInteractionData(activityId: string) {
+    setInteractionError(activityId, null);
+    try {
+      await refreshInteractionSummaries([activityId]);
+      const authorIds = Array.from(
+        new Set((comments.get(activityId) ?? []).map((comment) => comment.authorId)),
+      );
+      if (authorIds.length > 0) {
+        const loadedProfiles = await getProfilesForUsers(authorIds);
+        setInteractionProfiles((current) => new Map([...current, ...loadedProfiles]));
+      }
+    } catch (error) {
+      setInteractionError(
+        activityId,
+        error instanceof Error ? error.message : "Interaction data could not be refreshed.",
+      );
     }
   }
 
@@ -896,7 +1026,11 @@ export function ActivityFeed({
         role="alert"
       >
         <p className="neo-title text-2xl leading-none text-[#171411]">
-          Friend activity could not be loaded.
+          {scope === "mine"
+            ? "Your activity could not be loaded."
+            : scope === "community"
+              ? "Community activity could not be loaded."
+              : "Friend activity could not be loaded."}
         </p>
         <p className="neo-copy mt-2 text-[11px] leading-5 font-bold text-[#5b403f]">{loadError}</p>
         <button
@@ -913,7 +1047,11 @@ export function ActivityFeed({
   if (items.length === 0) {
     return (
       <p className="neo-copy border-2 border-dashed border-black bg-[#f6edd8] p-4 text-center text-[11px] font-bold text-[#655f58] uppercase">
-        No recent activity from friends.
+        {scope === "mine"
+          ? "No recent activity on your account."
+          : scope === "community"
+            ? "No recent community activity."
+            : "No recent activity from friends."}
       </p>
     );
   }
@@ -961,6 +1099,7 @@ export function ActivityFeed({
               comments={comments.get(item.id)}
               currentUserId={currentUserId}
               errorMessage={interactionErrors.get(item.id) ?? null}
+              hasMoreComments={Boolean(commentCursors.get(item.id))}
               index={index}
               interactionsEnabled={interactionsEnabled}
               item={item}
@@ -971,6 +1110,8 @@ export function ActivityFeed({
               onAddComment={(body) => addComment(item.id, body)}
               onDeleteComment={(commentId) => removeComment(item.id, commentId)}
               onLoadComments={() => loadComments(item.id)}
+              onLoadOlderComments={() => loadOlderComments(item.id)}
+              onRetryInteractionData={() => retryInteractionData(item.id)}
               onToggleReaction={() => toggleReaction(item.id)}
             />
           </div>

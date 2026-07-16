@@ -3,6 +3,7 @@ import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ActivityPage } from "./ActivityPage";
+import type { ActivityFeedItem } from "../lib/types/friends";
 
 const mocks = vi.hoisted(() => ({
   getFriendActivityFeed: vi.fn(),
@@ -41,12 +42,27 @@ vi.mock("../lib/supabase/presence", () => ({
   subscribeToPresenceChanges: mocks.subscribeToPresenceChanges,
 }));
 
-function renderPage() {
+function renderPage(initialEntry = "/activity") {
   return render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={[initialEntry]}>
       <ActivityPage />
     </MemoryRouter>,
   );
+}
+
+function activityItem(overrides: Partial<ActivityFeedItem> = {}): ActivityFeedItem {
+  return {
+    achievementName: null,
+    createdAt: "2026-07-16T12:00:00.000Z",
+    gameId: null,
+    gameTitle: null,
+    id: "activity-1",
+    metadata: {},
+    type: "status",
+    userId: "user-1",
+    visibility: "friends_only",
+    ...overrides,
+  };
 }
 
 describe("ActivityPage", () => {
@@ -73,6 +89,19 @@ describe("ActivityPage", () => {
       "/activity/recap",
     );
     expect(screen.getByRole("heading", { name: /friend list/i })).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: /upcoming events/i })).not.toBeInTheDocument();
+  });
+
+  it("shows only the current player's sample items in the local My Activity preview", () => {
+    renderPage("/activity?view=mine");
+
+    expect(screen.getByRole("heading", { name: /^my activity$/i })).toBeInTheDocument();
+    expect(screen.getByText(/sample activity for your own player profile/i)).toBeInTheDocument();
+    expect(screen.getByText("Loadout locked. Night run starts at 21:00.")).toBeInTheDocument();
+    expect(screen.getByText(/Unlocked "Perfect Line" in Neon Drift/i)).toBeInTheDocument();
+    expect(screen.getAllByText("You")).toHaveLength(2);
+    expect(screen.queryByText(/Added Neon Drift to their wishlist/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/Now owns Phantom Arcade/i)).not.toBeInTheDocument();
   });
 
   it("loads real friends and posts a friends-only status", async () => {
@@ -110,5 +139,148 @@ describe("ActivityPage", () => {
       });
     });
     expect(await screen.findByText(/status posted to your friends/i)).toBeInTheDocument();
+  });
+
+  it("loads My Activity without waiting for the friend roster", async () => {
+    mocks.useCurrentUser.mockReturnValue({
+      isConfigured: true,
+      isLoading: false,
+      user: { id: "user-1" },
+    });
+    mocks.getFriends.mockReturnValue(new Promise(() => undefined));
+    mocks.getFriendActivityFeed.mockResolvedValue([
+      activityItem({ metadata: { text: "Solo queue ready." } }),
+    ]);
+
+    renderPage("/activity?view=mine");
+
+    expect(await screen.findByText("Solo queue ready.")).toBeInTheDocument();
+    expect(mocks.getFriendActivityFeed).toHaveBeenCalledWith(["user-1"], 30);
+    expect(screen.getByText(/feed remains available/i)).toBeInTheDocument();
+  });
+
+  it("keeps the feed available when friend profiles fail and retries friend data", async () => {
+    mocks.useCurrentUser.mockReturnValue({
+      isConfigured: true,
+      isLoading: false,
+      user: { id: "user-1" },
+    });
+    mocks.getFriends.mockResolvedValue([{ addresseeId: "friend-1", requesterId: "user-1" }]);
+    mocks.getProfilesForUsers
+      .mockRejectedValueOnce(new Error("Profile relay offline"))
+      .mockResolvedValue(
+        new Map([
+          ["friend-1", { avatarUrl: null, displayName: "Signal Fox", username: "signalfox" }],
+        ]),
+      );
+    mocks.getVisiblePresence.mockResolvedValue([
+      { currentGameTitle: "Neon Drift", status: "online", userId: "friend-1" },
+    ]);
+    mocks.getFriendActivityFeed.mockImplementation(async (ids: string[]) =>
+      ids.includes("friend-1")
+        ? [
+            activityItem({
+              gameTitle: "Neon Drift",
+              id: "friend-activity",
+              type: "game_start",
+              userId: "friend-1",
+            }),
+          ]
+        : [],
+    );
+
+    renderPage();
+
+    expect(await screen.findByText(/Started playing Neon Drift/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Friend profiles unavailable/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /retry friend data/i }));
+
+    expect(await screen.findByText("Signal Fox")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.queryByText(/Friend profiles unavailable/i)).not.toBeInTheDocument();
+    });
+    expect(mocks.getProfilesForUsers).toHaveBeenCalledTimes(2);
+  });
+
+  it("uses offline presence fallbacks without blocking friend activity", async () => {
+    mocks.useCurrentUser.mockReturnValue({
+      isConfigured: true,
+      isLoading: false,
+      user: { id: "user-1" },
+    });
+    mocks.getFriends.mockResolvedValue([{ addresseeId: "friend-1", requesterId: "user-1" }]);
+    mocks.getProfilesForUsers.mockResolvedValue(
+      new Map([
+        ["friend-1", { avatarUrl: null, displayName: "Signal Fox", username: "signalfox" }],
+      ]),
+    );
+    mocks.getVisiblePresence.mockRejectedValue(new Error("Presence relay offline"));
+    mocks.getFriendActivityFeed.mockImplementation(async (ids: string[]) =>
+      ids.includes("friend-1")
+        ? [
+            activityItem({
+              gameTitle: "Mecha Signal",
+              id: "friend-achievement",
+              type: "game_start",
+              userId: "friend-1",
+            }),
+          ]
+        : [],
+    );
+
+    renderPage();
+
+    expect(await screen.findByText(/Started playing Mecha Signal/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Friend presence unavailable/i)).toBeInTheDocument();
+    expect(screen.getByText("offline")).toBeInTheDocument();
+  });
+
+  it("reports a friend-roster partial failure while retaining the current user's feed", async () => {
+    mocks.useCurrentUser.mockReturnValue({
+      isConfigured: true,
+      isLoading: false,
+      user: { id: "user-1" },
+    });
+    mocks.getFriends.mockRejectedValue(new Error("Roster relay offline"));
+    mocks.getFriendActivityFeed.mockResolvedValue([
+      activityItem({ metadata: { text: "Feed survives roster loss." } }),
+    ]);
+
+    renderPage();
+
+    expect(await screen.findByText("Feed survives roster loss.")).toBeInTheDocument();
+    expect(await screen.findByText(/Friend roster unavailable/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /retry friend data/i })).toBeEnabled();
+  });
+
+  it("does not retain another user's friend data when the auth user changes", async () => {
+    let currentUserId = "user-1";
+    mocks.useCurrentUser.mockImplementation(() => ({
+      isConfigured: true,
+      isLoading: false,
+      user: { id: currentUserId },
+    }));
+    mocks.getFriends.mockImplementation(async (userId: string) => {
+      if (userId === "user-2") throw new Error("New roster unavailable");
+      return [{ addresseeId: "friend-1", requesterId: "user-1" }];
+    });
+    mocks.getProfilesForUsers.mockResolvedValue(
+      new Map([
+        ["friend-1", { avatarUrl: null, displayName: "Signal Fox", username: "signalfox" }],
+      ]),
+    );
+    const view = renderPage();
+    expect(await screen.findByText("Signal Fox")).toBeInTheDocument();
+
+    currentUserId = "user-2";
+    view.rerender(
+      <MemoryRouter>
+        <ActivityPage />
+      </MemoryRouter>,
+    );
+
+    expect(screen.queryByText("Signal Fox")).not.toBeInTheDocument();
+    expect(await screen.findByText(/Friend roster unavailable/i)).toBeInTheDocument();
+    expect(mocks.getFriendActivityFeed).toHaveBeenCalledWith(["user-2"], 30);
   });
 });

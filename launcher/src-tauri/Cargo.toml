@@ -12,7 +12,7 @@ name = "open_game_launcher_lib"
 crate-type = ["rlib"]
 
 [features]
-default = []
+default = ["windows-uiautomation"]
 linux-atspi = ["dep:atspi"]
 macos-axuielement = ["dep:axuielement"]
 windows-uiautomation = ["dep:uiautomation"]

@@ -400,6 +400,9 @@ verify_jwt = true
 [functions.invite-hosted-proof]
 verify_jwt = true
 
+[functions.link-steam-account]
+verify_jwt = true
+
 [functions.notify-price-drop]
 verify_jwt = false
 
@@ -410,6 +413,9 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.rawg-assets]
+verify_jwt = true
+
+[functions.relay-steam-achievements]
 verify_jwt = true
 
 [functions.request-account-deletion]

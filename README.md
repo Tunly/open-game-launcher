@@ -14,7 +14,7 @@ until all external evidence gates pass.
 | Area                   | Current boundary                                                                                                                               |
 | ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
 | Library                | Installed-game scan, cache, manual games, collections, metadata, artwork, launch, move, repair, update, and removal flows                      |
-| Providers              | Local/client integration paths for Steam, GOG, Epic, Xbox/Game Pass, Ubisoft, Battle.net, and EA; live provider proof remains external         |
+| Providers              | Local/client integration paths for Steam, GOG, Epic, Xbox/Game Pass, Ubisoft, Battle.net, and EA; authenticated Steam linking and hosted achievement relay are implemented, while live provider proof remains external |
 | Social                 | Supabase Auth, profiles, friends, chat, invites, presence, authenticated activity, reactions, comments, and privacy/RLS guards                 |
 | Store                  | Hosted catalog, orders, entitlements, and download contracts; paid production commerce remains disabled pending live Stripe and provider proof |
 | Mods                   | No-slug Nexus Mods website search handoff plus Steam Workshop read-only/client-managed integration; registered Nexus native mode is optional     |
@@ -162,7 +162,7 @@ inventory instead of maintaining it here.
 | `/downloads`                  | Download queue and local readiness panels                  |
 | `/friends`                    | Friends, requests, search, blocks, and smart join          |
 | `/family`                     | Device-local family preview and invites                    |
-| `/achievements`               | Achievements dashboard                                     |
+| `/achievements`               | Achievements dashboard with local/provider sync status      |
 | `/activity`                   | Authenticated friends feed, posts, reactions, and comments |
 | `/activity/recap`             | Local yearly game activity recap                           |
 | `/auth`                       | Sign in and sign up                                        |
@@ -220,6 +220,10 @@ Core decisions:
   saves, Workshop subscriptions, and their own launch protocols.
 - Provider automation is capability-checked and fail-closed on unsupported
   client builds.
+- Steam account linking uses a native OpenID handoff to an authenticated hosted
+  function. Trusted Steam achievement relay data is attested server-side before
+  it reaches the existing ingestion boundary; live provider E2E remains a
+  release-gate requirement.
 
 ## Product Boundaries
 

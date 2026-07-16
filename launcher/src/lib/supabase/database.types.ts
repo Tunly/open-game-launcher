@@ -216,6 +216,27 @@ export type Database = {
           },
         ]
       }
+      activity_comment_deletions: {
+        Row: {
+          activity_id: string
+          comment_id: string
+          deleted_at: string
+          event_id: string
+        }
+        Insert: {
+          activity_id: string
+          comment_id: string
+          deleted_at?: string
+          event_id?: string
+        }
+        Update: {
+          activity_id?: string
+          comment_id?: string
+          deleted_at?: string
+          event_id?: string
+        }
+        Relationships: []
+      }
       activity_comments: {
         Row: {
           activity_id: string

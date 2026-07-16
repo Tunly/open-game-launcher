@@ -191,6 +191,8 @@ jobs:
           deno-version: v2.8.3
       - name: Validate hosted deploy gate script
         run: node --test scripts/hosted-deploy-gate.test.mjs
+      - name: Validate hosted Steam achievement relay E2E runner
+        run: node --test scripts/hosted-steam-achievement-e2e.test.mjs
       - name: Validate external completion evidence script
         run: node --test scripts/external-evidence-check.test.mjs
       - name: Validate hosted cron evidence script

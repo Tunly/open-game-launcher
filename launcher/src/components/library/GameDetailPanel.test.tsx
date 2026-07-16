@@ -21,6 +21,8 @@ vi.mock("./GameDetails", () => ({
     hostedCommunityArtworkModerationConsole?: { modeLabel: string };
     hostedCommunityArtworkReadiness?: { statusLabel: string };
     igdbCrossPlayReadinessPlan?: { statusLabel: string };
+    onApplyCustomArtworkUrl?: (...args: unknown[]) => void;
+    onPlaytimeChanged?: (...args: unknown[]) => void;
     selectedGame?: { externalId?: string; title?: string } | null;
   }) => (
     <section aria-label="game details mock">
@@ -44,6 +46,8 @@ vi.mock("./GameDetails", () => ({
       {props.hostedCommunityArtworkModerationConsole ? (
         <p>Hosted moderation: {props.hostedCommunityArtworkModerationConsole.modeLabel}</p>
       ) : null}
+      {props.onApplyCustomArtworkUrl ? <p>Community artwork wired</p> : null}
+      {props.onPlaytimeChanged ? <p>Playtime editor wired</p> : null}
     </section>
   ),
 }));
@@ -56,6 +60,8 @@ describe("GameDetailPanel verification modes", () => {
     expect(screen.queryByText(/Cross-store E2E/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/IGDB readiness/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Hosted artwork/i)).not.toBeInTheDocument();
+    expect(screen.getByText("Community artwork wired")).toBeInTheDocument();
+    expect(screen.getByText("Playtime editor wired")).toBeInTheDocument();
   });
 
   it("keeps cross-store save sync verification on the local planner", () => {

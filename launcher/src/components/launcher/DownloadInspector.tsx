@@ -17,7 +17,7 @@ function formatBytes(bytes: number | null | undefined) {
 }
 
 function relativeTime(timestamp: number | undefined) {
-  if (!timestamp) return "N/A";
+  if (!timestamp) return "Not available";
   const now = Math.floor(Date.now() / 1000);
   const diff = now - timestamp;
   if (diff < 5) return "just now";
@@ -37,7 +37,7 @@ const rows: { label: string; getValue: (item: DownloadItem) => string; isError?:
     getValue: (item) => {
       const dl = formatBytes(item.bytesDownloaded);
       const total = formatBytes(item.bytesTotal);
-      return item.bytesTotal ? `${dl} / ${total}` : dl;
+      return item.bytesTotal ? `${dl} of ${total}` : dl;
     },
   },
   { label: "Last Update", getValue: (item) => relativeTime(item.lastUpdatedAt) },

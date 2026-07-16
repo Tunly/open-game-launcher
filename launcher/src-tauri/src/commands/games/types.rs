@@ -163,6 +163,15 @@ pub struct LaunchGameResponse {
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
+pub struct StopGameResponse {
+    pub game_id: String,
+    pub success: bool,
+    pub pid: u32,
+    pub message: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct VerifyGameFilesResponse {
     pub game_id: String,
     pub checked_files: u32,
@@ -213,6 +222,8 @@ pub struct SyncGameSavesResponse {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SyncGameAchievementsResponse {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub achievement_source: Option<String>,
     pub game_id: String,
     pub success: bool,
     pub game: InstalledGame,

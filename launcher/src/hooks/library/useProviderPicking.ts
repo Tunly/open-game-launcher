@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
+import { isTauri } from "@tauri-apps/api/core";
 
 import { launchGame, launchXboxGame, startDownload } from "../../lib/launcher";
 import { syncGamePlaytimeStats } from "../../lib/supabase/playtime";
@@ -15,24 +16,16 @@ type ProviderPickerState = {
   variants: Game[];
 } | null;
 
-const EXTERNAL_INSTALL_PREFIXES = [
-  "steam-owned-",
-  "steam-",
-  "gog-owned-",
-  "gog-",
-  "epic-owned-",
-  "ea-owned-",
-  "ubisoft-owned-",
-  "battlenet-owned-",
-  "xbox-owned-",
-  "xbox-",
-];
+type ProviderPickerMode = NonNullable<ProviderPickerState>["mode"];
 
-function shouldQueueExternalInstall(game: Game) {
-  return (
-    game.status !== "installed" &&
-    EXTERNAL_INSTALL_PREFIXES.some((prefix) => game.id.startsWith(prefix))
-  );
+function isInstallOrUpdateCandidate(game: Game) {
+  return isInstallableGame(game) || game.status === "update_available";
+}
+
+function desktopActionMessage(mode: ProviderPickerMode) {
+  return mode === "play"
+    ? "Launching games is available only in the OG-Launcher desktop app."
+    : "Installing and updating games is available only in the OG-Launcher desktop app.";
 }
 
 const XBOX_PACKAGE_FAMILY_NAME_PATTERN = /^[a-z0-9][a-z0-9.-]*_[a-z0-9]{13}$/i;
@@ -78,7 +71,7 @@ export interface UseProviderPickingResult {
   providerPicker: ProviderPickerState;
   setProviderPicker: Dispatch<SetStateAction<ProviderPickerState>>;
   handlePlay: () => Promise<void>;
-  handlePlayVariant: (game: Game) => Promise<void>;
+  handlePlayVariant: (game: Game, mode?: ProviderPickerMode) => Promise<void>;
   handleInstallFromProvider: () => Promise<void>;
 }
 
@@ -89,11 +82,47 @@ export function useProviderPicking({
   const [providerPicker, setProviderPicker] = useState<ProviderPickerState>(null);
   const { logGameStart } = useActivityLogger();
 
-  const handlePlayVariant = async (game: Game) => {
+  const handleInstallOrUpdateVariant = async (game: Game) => {
     setStatusMessage(null);
 
+    if (!isTauri()) {
+      setStatusMessage(desktopActionMessage("install"));
+      return;
+    }
+
     try {
-      if (shouldQueueExternalInstall(game)) {
+      if (!isInstallOrUpdateCandidate(game)) {
+        setStatusMessage(`${game.title} is already installed and up to date.`);
+        return;
+      }
+
+      const response = await startDownload(
+        game.id,
+        game.title,
+        game.downloadUrl,
+        game.downloadSha256,
+      );
+      setStatusMessage(response.message);
+    } catch (error) {
+      setStatusMessage(getErrorMessage(error));
+    }
+  };
+
+  const handlePlayVariant = async (game: Game, mode: ProviderPickerMode = "play") => {
+    if (mode === "install") {
+      await handleInstallOrUpdateVariant(game);
+      return;
+    }
+
+    setStatusMessage(null);
+
+    if (!isTauri()) {
+      setStatusMessage(desktopActionMessage("play"));
+      return;
+    }
+
+    try {
+      if (!isPlayableGame(game)) {
         const response = await startDownload(
           game.id,
           game.title,
@@ -127,28 +156,22 @@ export function useProviderPicking({
         return;
       }
 
-      if (game.status === "installed") {
-        const response = await launchGame(game.id);
-        setStatusMessage(response.message);
-        trackActivePerformanceGame(game);
-        void logGameStart(game.id, game.title, { launcher: game.launcher });
-        void trackPlaySessionStart(game);
-        return;
-      }
-
-      const response = await startDownload(
-        game.id,
-        game.title,
-        game.downloadUrl,
-        game.downloadSha256,
-      );
+      const response = await launchGame(game.id);
       setStatusMessage(response.message);
+      trackActivePerformanceGame(game);
+      void logGameStart(game.id, game.title, { launcher: game.launcher });
+      void trackPlaySessionStart(game);
     } catch (error) {
       setStatusMessage(getErrorMessage(error));
     }
   };
 
   const handlePlay = async () => {
+    if (!isTauri()) {
+      setStatusMessage(desktopActionMessage("play"));
+      return;
+    }
+
     if (!selectedGroup) {
       return;
     }
@@ -168,7 +191,7 @@ export function useProviderPicking({
       return;
     }
 
-    const installableVariants = selectedGroup.variants.filter(isInstallableGame);
+    const installableVariants = selectedGroup.variants.filter(isInstallOrUpdateCandidate);
     if (installableVariants.length > 1) {
       setProviderPicker({
         mode: "install",
@@ -179,16 +202,24 @@ export function useProviderPicking({
     }
 
     if (installableVariants.length === 1) {
-      await handlePlayVariant(installableVariants[0]);
+      await handlePlayVariant(installableVariants[0], "install");
+      return;
     }
+
+    setStatusMessage(`No installable copy of ${selectedGroup.title} is available.`);
   };
 
   const handleInstallFromProvider = async () => {
+    if (!isTauri()) {
+      setStatusMessage(desktopActionMessage("install"));
+      return;
+    }
+
     if (!selectedGroup) {
       return;
     }
 
-    const installableVariants = selectedGroup.variants.filter(isInstallableGame);
+    const installableVariants = selectedGroup.variants.filter(isInstallOrUpdateCandidate);
     if (installableVariants.length > 1) {
       setProviderPicker({
         mode: "install",
@@ -199,8 +230,11 @@ export function useProviderPicking({
     }
 
     if (installableVariants.length === 1) {
-      await handlePlayVariant(installableVariants[0]);
+      await handlePlayVariant(installableVariants[0], "install");
+      return;
     }
+
+    setStatusMessage(`${selectedGroup.title} is already installed and up to date.`);
   };
 
   return {

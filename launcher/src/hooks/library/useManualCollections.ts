@@ -18,50 +18,89 @@ export interface UseManualCollectionsResult {
   clearManualCollectionSelection: () => void;
 }
 
-function readJsonRecord<T>(key: string, fallback: T): T {
+function isBooleanRecord(value: unknown): value is Record<string, boolean> {
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    Object.values(value).every((entry) => typeof entry === "boolean")
+  );
+}
+
+function isStringArrayRecord(value: unknown): value is Record<string, string[]> {
+  return (
+    value !== null &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    Object.values(value).every(
+      (entry) => Array.isArray(entry) && entry.every((item) => typeof item === "string"),
+    )
+  );
+}
+
+function readJsonRecord<T>(key: string, fallback: T, isValid: (value: unknown) => value is T): T {
   try {
     const saved = localStorage.getItem(key);
-    return saved ? (JSON.parse(saved) as T) : fallback;
+    if (!saved) {
+      return fallback;
+    }
+
+    const parsed: unknown = JSON.parse(saved);
+    return isValid(parsed) ? parsed : fallback;
   } catch {
     return fallback;
   }
 }
 
+function writeJson(key: string, value: unknown) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // Storage can be unavailable or full. Keep the in-memory library usable.
+  }
+}
+
 export function useManualCollections(): UseManualCollectionsResult {
   const [favorites, setFavorites] = useState<Record<string, boolean>>(() =>
-    readJsonRecord(STORAGE_KEYS.LIBRARY_FAVORITES, {}),
+    readJsonRecord(STORAGE_KEYS.LIBRARY_FAVORITES, {}, isBooleanRecord),
   );
   const [hiddenGames, setHiddenGames] = useState<Record<string, boolean>>(() =>
-    readJsonRecord(STORAGE_KEYS.LIBRARY_HIDDEN, {}),
+    readJsonRecord(STORAGE_KEYS.LIBRARY_HIDDEN, {}, isBooleanRecord),
   );
   const [customCategories, setCustomCategories] = useState<Record<string, string[]>>(() =>
-    readJsonRecord(STORAGE_KEYS.LIBRARY_CUSTOM_CATEGORIES, {}),
+    readJsonRecord(STORAGE_KEYS.LIBRARY_CUSTOM_CATEGORIES, {}, isStringArrayRecord),
   );
   const [manualCollections, setManualCollections] = useState<Record<string, string[]>>(() =>
-    readJsonRecord(STORAGE_KEYS.LIBRARY_MANUAL_COLLECTIONS, {}),
+    readJsonRecord(STORAGE_KEYS.LIBRARY_MANUAL_COLLECTIONS, {}, isStringArrayRecord),
   );
   const [selectedManualCollectionName, setSelectedManualCollectionName] = useState<string | null>(
     null,
   );
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.LIBRARY_FAVORITES, JSON.stringify(favorites));
+    writeJson(STORAGE_KEYS.LIBRARY_FAVORITES, favorites);
   }, [favorites]);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.LIBRARY_HIDDEN, JSON.stringify(hiddenGames));
+    writeJson(STORAGE_KEYS.LIBRARY_HIDDEN, hiddenGames);
   }, [hiddenGames]);
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEYS.LIBRARY_CUSTOM_CATEGORIES, JSON.stringify(customCategories));
+    writeJson(STORAGE_KEYS.LIBRARY_CUSTOM_CATEGORIES, customCategories);
   }, [customCategories]);
 
   useEffect(() => {
-    localStorage.setItem(
-      STORAGE_KEYS.LIBRARY_MANUAL_COLLECTIONS,
-      JSON.stringify(manualCollections),
-    );
+    writeJson(STORAGE_KEYS.LIBRARY_MANUAL_COLLECTIONS, manualCollections);
   }, [manualCollections]);
+
+  useEffect(() => {
+    if (
+      selectedManualCollectionName !== null &&
+      !Object.prototype.hasOwnProperty.call(manualCollections, selectedManualCollectionName)
+    ) {
+      setSelectedManualCollectionName(null);
+    }
+  }, [manualCollections, selectedManualCollectionName]);
 
   function selectManualCollection(name: string) {
     setSelectedManualCollectionName(name);

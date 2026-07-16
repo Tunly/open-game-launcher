@@ -53,7 +53,8 @@ export async function mergeEaOwned(games: Game[], context: MergeContext): Promis
     if (msg.includes("expired") || msg.includes("not connected")) {
       clearLegacyEaTokenCopy();
     }
-    statusMessage = `Warning: EA library sync failed: ${msg}`;
+    statusMessage =
+      "EA library could not be refreshed. Open Settings > EA App to reconnect, then try again.";
     return { games, warnings, statusMessage };
   }
 }

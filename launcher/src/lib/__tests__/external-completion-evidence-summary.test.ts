@@ -49,7 +49,6 @@ function validEnvValue(name: string) {
     PRESENCE_POLL_SECRET: "presencePoll9f8e7d6c5b4a392817abcd",
     PRESENCE_PROVIDER_TOKEN: "presenceProvider9f8e7d6c5b4a392817",
     PRICE_DROP_NOTIFY_SECRET: "priceDrop9f8e7d6c5b4a392817263abcd",
-    STEAM_WEB_API_KEY: "0123456789abcdef0123456789abcdef",
     STRIPE_SECRET_KEY: "sk_live_51OgLauncherEvidenceAlpha1234567890",
     STRIPE_WEBHOOK_SECRET: "whsec_51OgLauncherEvidenceAlpha1234567890",
     SUPABASE_URL: "https://awebfvfyqzwapcgixdfj.supabase.co",

@@ -74,6 +74,7 @@ type RemoteAchievementUnlock = {
 };
 
 export type RemoteAchievementHydrationOptions = {
+  onError?: (error: unknown, game: Game) => void;
   userId?: string | null;
 };
 
@@ -442,6 +443,7 @@ async function hydrateGameWithRemoteAchievements(
   client: ReturnType<typeof getSupabaseClient>,
   game: Game,
   userId: string | null,
+  onError?: RemoteAchievementHydrationOptions["onError"],
 ): Promise<{ game: Game; transportUnavailable: boolean }> {
   const provider = normalizeProvider(null, game);
   if (!REMOTE_ACHIEVEMENT_PROVIDERS.has(provider)) {
@@ -473,6 +475,7 @@ async function hydrateGameWithRemoteAchievements(
     };
   } catch (error) {
     console.warn(`[OG-Launcher] Remote achievements unavailable for ${game.title}:`, error);
+    onError?.(error, game);
     return {
       game,
       transportUnavailable: isRemoteAchievementTransportUnavailable(error),
@@ -507,7 +510,12 @@ export async function hydrateGamesWithRemoteAchievements(
         continue;
       }
 
-      const result = await hydrateGameWithRemoteAchievements(client, games[gameIndex], userId);
+      const result = await hydrateGameWithRemoteAchievements(
+        client,
+        games[gameIndex],
+        userId,
+        options.onError,
+      );
       hydratedGames[gameIndex] = result.game;
       if (result.transportUnavailable) {
         transportUnavailable = true;

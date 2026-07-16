@@ -78,11 +78,27 @@ export function LibraryFilters({ isOpen, onClose }: LibraryFiltersProps) {
 
   function onResetAdvanced() {
     ctx.filters.resetAdvancedFilters();
+    onClearCollectionSelection();
   }
 
   function onClearCollectionSelection() {
     ctx.manual.clearManualCollectionSelection();
     ctx.dynamic.setSelectedCollectionName(null);
+  }
+
+  function onApplyDynamicCollection(name: string) {
+    ctx.manual.clearManualCollectionSelection();
+    applyDynamicCollection(name);
+  }
+
+  function onSelectManualCollection(name: string) {
+    ctx.dynamic.setSelectedCollectionName(null);
+    selectManualCollection(name);
+  }
+
+  function onSaveDynamicCollection(name: string) {
+    ctx.manual.clearManualCollectionSelection();
+    saveCurrentFilterAsCollection(name);
   }
 
   return (
@@ -358,7 +374,7 @@ export function LibraryFilters({ isOpen, onClose }: LibraryFiltersProps) {
                 <button
                   key={`dynamic-${collection.name}`}
                   type="button"
-                  onClick={() => applyDynamicCollection(collection.name)}
+                  onClick={() => onApplyDynamicCollection(collection.name)}
                   className={`border-2 border-black px-2 py-0.5 text-[10px] font-black uppercase transition ${
                     selectedCollectionName === collection.name
                       ? "bg-[#b7102a] text-white shadow-[1px_1px_0_#000]"
@@ -372,7 +388,7 @@ export function LibraryFilters({ isOpen, onClose }: LibraryFiltersProps) {
                 <button
                   key={`manual-${collectionName}`}
                   type="button"
-                  onClick={() => selectManualCollection(collectionName)}
+                  onClick={() => onSelectManualCollection(collectionName)}
                   className={`border-2 border-black px-2 py-0.5 text-[10px] font-black uppercase transition ${
                     selectedManualCollectionName === collectionName
                       ? "bg-[#139a82] text-white shadow-[1px_1px_0_#000]"
@@ -400,7 +416,7 @@ export function LibraryFilters({ isOpen, onClose }: LibraryFiltersProps) {
               className="neo-copy h-8 flex-1 border-2 border-black bg-[#f4ead8] px-2 text-[11px] font-bold outline-none"
             />
             <button
-              onClick={() => saveCurrentFilterAsCollection(newCollectionName)}
+              onClick={() => onSaveDynamicCollection(newCollectionName)}
               disabled={!newCollectionName.trim()}
               className="border-2 border-black bg-[#b7102a] px-3 py-1 text-[10px] font-black text-white uppercase hover:bg-[#9a0b20] disabled:opacity-45"
               type="button"

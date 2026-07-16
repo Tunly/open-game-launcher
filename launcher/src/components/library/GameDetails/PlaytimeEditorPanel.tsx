@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { isTauri } from "@tauri-apps/api/core";
 import {
   ChevronLeft,
   ChevronRight,
@@ -214,9 +215,15 @@ export function PlaytimeEditorPanel({
     setIsSavingTotal(true);
     setEditTotalError(null);
     try {
-      await setCachedGamePlaytime(game.id, parsed);
+      const canUpdateLocalCache = isTauri();
+      if (canUpdateLocalCache) {
+        await setCachedGamePlaytime(game.id, parsed);
+      }
       if (userId && catalogGameId) {
         await updateUserGamePlaytime(userId, catalogGameId, parsed);
+      }
+      if (!canUpdateLocalCache && (!userId || !catalogGameId)) {
+        throw new Error("Open the desktop app or sign in to update playtime.");
       }
       if (!mountedRef.current) return;
       onPlaytimeChanged?.(parsed);
@@ -363,7 +370,7 @@ export function PlaytimeEditorPanel({
           <button
             aria-label="Edit total playtime"
             className="flex h-8 items-center gap-1.5 border-2 border-black bg-[#b7102a] px-3 text-[11px] font-black text-white uppercase shadow-[2px_2px_0_#171411] hover:bg-[#990a20] disabled:cursor-not-allowed disabled:opacity-50"
-            disabled={!isSignedIn}
+            disabled={!isSignedIn && !isTauri()}
             type="button"
             onClick={openEditTotal}
           >
@@ -521,7 +528,7 @@ export function PlaytimeEditorPanel({
                 />
               </label>
               <p className="neo-copy text-[10px] font-bold text-[#5b403f] uppercase">
-                Updates both the local cache and the Supabase aggregate (
+                Updates the desktop cache and, when signed in, the hosted aggregate (
                 {formatHours(Number(editTotalValue) || 0)}).
               </p>
               {editTotalError ? (

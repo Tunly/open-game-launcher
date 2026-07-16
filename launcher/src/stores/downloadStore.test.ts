@@ -191,12 +191,13 @@ describe("downloadStore derived counts", () => {
           makeItem({ gameId: "b", status: "paused" }),
           makeItem({ gameId: "c", status: "completed" }),
           makeItem({ gameId: "d", status: "failed" }),
+          makeItem({ gameId: "e", status: "pausing" }),
         ]);
     });
 
     const state = useDownloadStore.getState();
     expect(selectActiveCount(state)).toBe(1);
-    expect(selectPausedCount(state)).toBe(1);
+    expect(selectPausedCount(state)).toBe(2);
     expect(selectCompletedCount(state)).toBe(1);
   });
 
@@ -223,13 +224,14 @@ describe("downloadStore predicate helpers", () => {
     ["completed", true, false, false],
     ["failed", true, false, false],
     ["downloading", false, true, true],
+    ["pausing", false, false, true],
     ["paused", false, false, true],
     ["queued", false, true, true],
   ] as const)("classifies %s status", (status, terminal, active, live) => {
     const item = makeItem({ status });
     expect(isTerminalDownloadItem(item)).toBe(terminal);
     expect(isActiveDownloadItem(item)).toBe(active);
-    expect(isPausedDownloadItem(item)).toBe(status === "paused");
+    expect(isPausedDownloadItem(item)).toBe(status === "pausing" || status === "paused");
     expect(isLiveDownloadItem(item)).toBe(live);
   });
 });

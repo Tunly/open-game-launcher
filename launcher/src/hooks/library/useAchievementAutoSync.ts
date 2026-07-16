@@ -112,7 +112,7 @@ export function useAchievementAutoSync({
           );
           if (!options.silent) {
             setStatusMessage(outcome.status.message);
-          } else {
+          } else if (outcome.status.status === "failed") {
             console.warn("[OG-Launcher] Auto achievement sync failed:", outcome.diagnosticMessage);
           }
           return;
@@ -132,13 +132,18 @@ export function useAchievementAutoSync({
             (achievement) => achievement.unlockedAt && !previousUnlocked.has(achievement.id),
           ) ?? [];
 
-        const ingestion = await ingestTrustedAchievements({
-          game: response.game,
-          provider: provider.provider,
-          providerConfidence: provider.stability,
-          syncedAt: response.game.achievementsSyncedAt ?? null,
-        });
-        const isLocalOnly = ingestion.persistence === "local_only" || ingestion.skipped;
+        const hostedByProviderRelay = response.achievementPersistence === "hosted";
+        const ingestion = hostedByProviderRelay
+          ? null
+          : await ingestTrustedAchievements({
+              game: response.game,
+              provider: provider.provider,
+              providerConfidence: provider.stability,
+              syncedAt: response.game.achievementsSyncedAt ?? null,
+            });
+        const isLocalOnly =
+          !hostedByProviderRelay &&
+          (ingestion?.persistence === "local_only" || ingestion?.skipped === true);
         const message = isLocalOnly
           ? `${response.message} Local only; hosted profile was not updated.`
           : response.message;

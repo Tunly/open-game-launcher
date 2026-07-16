@@ -20,6 +20,7 @@ import {
   cronDryRunSmokes,
   deriveFunctionsBaseUrl,
   deployFunctions,
+  getRuntimeSecretNames,
   getDeployFunctions,
   getSmokePlan,
   hostedDeployGatePacket,
@@ -430,7 +431,12 @@ test("hosted deploy gate packet summarizes handoff without secret values", () =>
 
   assert.match(output, /Hosted deploy gate operator packet/);
   assert.match(output, /Function base URL: configured/);
-  assert.match(output, /Deploy functions: 15\/15 selected/);
+  assert.match(
+    output,
+    new RegExp(
+      `Deploy functions: ${deployFunctions.length}\/${deployFunctions.length} selected`,
+    ),
+  );
   assert.match(output, /Runtime Secret Names Checked By Preflight/);
   assert.match(output, /stripe-webhook \(verify_jwt=false\)/);
   assert.match(
@@ -490,7 +496,10 @@ test("hosted deploy gate packet mirrors scoped smoke plan", () => {
     SUPABASE_PROJECT_REF: "awebfvfyqzwapcgixdfj",
   });
 
-  assert.match(output, /Deploy functions: 1\/15 selected/);
+  assert.match(
+    output,
+    new RegExp(`Deploy functions: 1\/${deployFunctions.length} selected`),
+  );
   assert.match(output, /rawg-assets \(verify_jwt=true\)/);
   assert.match(output, /rawg-assets: OPTIONS module\/env sanity/);
   assert.doesNotMatch(output, /notify-price-drop: POST dry-run/);
@@ -1419,6 +1428,47 @@ test("deploy plan covers every Supabase Edge Function directory", () => {
   assert.deepEqual(deployFunctions.map((fn) => fn.name).sort(), functionDirs);
 });
 
+test("Steam account link and achievement relay stay JWT-protected", () => {
+  for (const name of ["link-steam-account", "relay-steam-achievements"]) {
+    const fn = deployFunctions.find((item) => item.name === name);
+    assert.deepEqual(fn, { name, verifyJwt: true });
+    assert.equal(optionsSmokes.some((smoke) => smoke.name === name), true);
+    assert.match(
+      supabaseConfig,
+      new RegExp(`\\[functions\\.${name}\\]\\s+verify_jwt = true`, "i"),
+    );
+  }
+});
+
+test("Steam relay preflight is keyless while Steam presence keeps its API key", () => {
+  const relaySecrets = getRuntimeSecretNames({
+    OGL_HOSTED_DEPLOY_FUNCTIONS: "link-steam-account,relay-steam-achievements",
+  });
+  assert.equal(relaySecrets.includes("STEAM_WEB_API_KEY"), false);
+  assert.equal(
+    relaySecrets.includes("ACHIEVEMENT_INGESTION_ATTESTATION_SECRET"),
+    false,
+  );
+  assert.equal(
+    getRuntimeSecretNames({
+      OGL_HOSTED_DEPLOY_FUNCTIONS: "poll-platform-presence",
+    }).includes("STEAM_WEB_API_KEY"),
+    true,
+  );
+  for (const obsoleteName of [
+    "STEAM_OPENID_RETURN_TO",
+    "STEAM_OPENID_REALM",
+    "STEAM_ACCOUNT_LINK_STATE_SECRET",
+  ]) {
+    assert.equal(runtimeSecretNames.includes(obsoleteName), false);
+  }
+  assert.match(
+    runbook,
+    /OGL_HOSTED_DEPLOY_FUNCTIONS=link-steam-account,relay-steam-achievements/,
+  );
+  assert.match(runbook, /Both functions deploy with `verify_jwt=true`/);
+});
+
 test("Supabase function config parser reads explicit verify_jwt values", () => {
   const entries = parseSupabaseFunctionVerifyJwtConfig(`
     [functions.notify-price-drop]
@@ -1853,6 +1903,49 @@ test("runOptionsSmoke validates CORS origin and methods", async () => {
       ),
     /Access-Control-Allow-Methods must include OPTIONS/,
   );
+});
+
+test("ingest-achievements OPTIONS smoke requires the attestation contract header", async () => {
+  const env = { SUPABASE_URL: "https://awebfvfyqzwapcgixdfj.supabase.co" };
+  const smoke = optionsSmokes.find(
+    (item) => item.name === "ingest-achievements",
+  );
+  assert.ok(smoke);
+
+  await assert.rejects(
+    () =>
+      runOptionsSmoke(
+        smoke,
+        env,
+        async () =>
+          new Response(null, {
+            headers: {
+              "Access-Control-Allow-Headers":
+                "authorization, x-account-deletion-secret, x-client-info, apikey, content-type",
+              "Access-Control-Allow-Methods": "GET, OPTIONS, POST",
+              "Access-Control-Allow-Origin": "*",
+            },
+            status: 200,
+          }),
+      ),
+    /Access-Control-Allow-Headers must include x-achievement-attestation/,
+  );
+
+  const result = await runOptionsSmoke(
+    smoke,
+    env,
+    async () =>
+      new Response(null, {
+        headers: {
+          "Access-Control-Allow-Headers":
+            "authorization, x-achievement-attestation, x-client-info, apikey, content-type",
+          "Access-Control-Allow-Methods": "GET, OPTIONS, POST",
+          "Access-Control-Allow-Origin": "*",
+        },
+        status: 200,
+      }),
+  );
+  assert.equal(result.status, 200);
 });
 
 test("runSmoke executes only scoped smoke plan", async () => {

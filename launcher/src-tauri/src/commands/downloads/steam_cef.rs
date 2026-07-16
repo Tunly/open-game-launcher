@@ -58,7 +58,7 @@ pub(crate) fn toggle_steam_download_pause(
 
     let app_clone = app.clone();
     let game_id_clone = game_id.to_string();
-    tokio::runtime::Handle::current().spawn_blocking(move || {
+    spawn_steam_control_job(move || {
         let result = try_control_steam_download_with_timeout(app_id, action);
         finish_steam_download_control(
             &app_clone,
@@ -70,6 +70,10 @@ pub(crate) fn toggle_steam_download_pause(
     });
 
     Ok(())
+}
+
+fn spawn_steam_control_job(job: impl FnOnce() + Send + 'static) {
+    let _ = tauri::async_runtime::spawn_blocking(job);
 }
 
 fn set_steam_download_control_pending(
@@ -566,4 +570,23 @@ fn cdp_message(value: &serde_json::Value) -> String {
         .or_else(|| value.get("value").and_then(|message| message.as_str()))
         .unwrap_or("unknown Steam CDP error")
         .to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::spawn_steam_control_job;
+    use std::time::Duration;
+
+    #[test]
+    fn steam_control_job_can_start_from_a_synchronous_command_context() {
+        let (sender, receiver) = std::sync::mpsc::channel();
+
+        spawn_steam_control_job(move || {
+            let _ = sender.send(());
+        });
+
+        receiver
+            .recv_timeout(Duration::from_secs(2))
+            .expect("Steam control job should run without requiring Handle::current()");
+    }
 }

@@ -48,8 +48,7 @@ function renderSidebar(overrides: Partial<React.ComponentProps<typeof LibrarySid
     listScrollRef,
     searchQuery: "",
     selectedGroup: null,
-    setAddGameError: vi.fn(),
-    setIsAddGameOpen: vi.fn(),
+    setGroupOption: vi.fn(),
     setIsFilterPopupOpen: vi.fn(),
     setSearchQuery: vi.fn(),
     setSelectedGroup: vi.fn(),
@@ -94,6 +93,17 @@ describe("LibrarySidebar", () => {
     expect(screen.getByText(/Steam \(1\)/)).toBeInTheDocument();
   });
 
+  it("changes the grouping through the header control", () => {
+    const setGroupOption = vi.fn();
+    renderSidebar({ setGroupOption });
+
+    fireEvent.change(screen.getByRole("combobox", { name: "Group library" }), {
+      target: { value: "source" },
+    });
+
+    expect(setGroupOption).toHaveBeenCalledWith("source");
+  });
+
   it("toggles the advanced filter popup via the filter button", () => {
     const setIsFilterPopupOpen = vi.fn();
     renderSidebar({ isFilterPopupOpen: false, setIsFilterPopupOpen });
@@ -108,10 +118,12 @@ describe("LibrarySidebar", () => {
     const { container } = renderSidebar();
 
     const sortSelect = screen.getByRole("combobox", { name: "Sort library" });
+    const groupSelect = screen.getByRole("combobox", { name: "Group library" });
     const filterButton = screen.getByRole("button", { name: "Advanced filters" });
     const searchInput = screen.getByRole("searchbox", { name: "Search library" });
 
     expect(sortSelect.compareDocumentPosition(searchInput)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+    expect(groupSelect.compareDocumentPosition(searchInput)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     expect(filterButton.compareDocumentPosition(searchInput)).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING,
     );
@@ -133,15 +145,10 @@ describe("LibrarySidebar", () => {
     expect(onResetFilters).toHaveBeenCalledTimes(1);
   });
 
-  it("emits setIsAddGameOpen when the Add a Game button is pressed", () => {
-    const setIsAddGameOpen = vi.fn();
-    const setAddGameError = vi.fn();
-    renderSidebar({ setAddGameError, setIsAddGameOpen });
+  it("does not duplicate the Add a Game action inside the sidebar", () => {
+    renderSidebar();
 
-    fireEvent.click(screen.getByRole("button", { name: /\+ Add a Game/ }));
-
-    expect(setAddGameError).toHaveBeenCalledWith(null);
-    expect(setIsAddGameOpen).toHaveBeenCalledWith(true);
+    expect(screen.queryByRole("button", { name: /\+ Add a Game/i })).not.toBeInTheDocument();
   });
 
   it("shows the empty-state message when no games match", () => {
