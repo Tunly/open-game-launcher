@@ -248,3 +248,57 @@ fn validated_redirect_url(
     validate_remote_url_syntax(&next)?;
     Ok(next)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn remote_url_policy_rejects_unsafe_schemes_credentials_fragments_and_ips() {
+        assert!(parse_and_validate_remote_url("https://93.184.216.34/mod.zip").is_ok());
+        assert!(parse_and_validate_remote_url("https://[2606:4700:4700::1111]/mod.zip").is_ok());
+
+        for unsafe_url in [
+            "http://example.com/mod.zip",
+            "https://user:secret@example.com/mod.zip",
+            "https://example.com/mod.zip#payload",
+            "https://127.0.0.1/mod.zip",
+            "https://2130706433/mod.zip",
+            "https://10.0.0.1/mod.zip",
+            "https://169.254.169.254/latest/meta-data",
+            "https://192.0.2.1/mod.zip",
+            "https://[::1]/mod.zip",
+            "https://[fc00::1]/mod.zip",
+            "https://[fe80::1]/mod.zip",
+            "https://[2001:db8::1]/mod.zip",
+        ] {
+            assert!(
+                parse_and_validate_remote_url(unsafe_url).is_err(),
+                "{unsafe_url} should be rejected"
+            );
+        }
+    }
+
+    #[test]
+    fn dns_resolution_policy_rejects_any_non_public_result() {
+        let public = SocketAddr::from(([93, 184, 216, 34], 443));
+        let private = SocketAddr::from(([192, 168, 1, 10], 443));
+
+        assert!(validate_resolved_addresses(&[public]).is_ok());
+        assert!(validate_resolved_addresses(&[public, private]).is_err());
+        assert!(validate_resolved_addresses(&[]).is_err());
+    }
+
+    #[test]
+    fn redirect_policy_revalidates_targets_and_enforces_hop_limit() {
+        let base = Url::parse("https://example.com/releases/mod.zip").unwrap();
+        let relative = validated_redirect_url(&base, "../cdn/mod.zip", 0, 5).unwrap();
+        assert_eq!(relative.as_str(), "https://example.com/cdn/mod.zip");
+
+        assert!(validated_redirect_url(&base, "http://example.com/mod.zip", 0, 5).is_err());
+        assert!(validated_redirect_url(&base, "https://127.0.0.1/mod.zip", 0, 5).is_err());
+        assert!(validated_redirect_url(&base, "https://user@example.com/mod.zip", 0, 5).is_err());
+        assert!(validated_redirect_url(&base, "https://example.com/mod.zip#part", 0, 5).is_err());
+        assert!(validated_redirect_url(&base, "/next.zip", 5, 5).is_err());
+    }
+}
