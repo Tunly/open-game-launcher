@@ -11,16 +11,6 @@ import { ActivitySection } from "./ActivitySection";
 
 const useUserPlaySessionsMock = vi.hoisted(() => vi.fn());
 
-vi.mock("recharts", () => ({
-  Bar: () => null,
-  BarChart: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
-  CartesianGrid: () => null,
-  ResponsiveContainer: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
-  Tooltip: () => null,
-  XAxis: () => null,
-  YAxis: () => null,
-}));
-
 vi.mock("../../hooks/useUserPlaySessions", () => ({
   useUserPlaySessions: useUserPlaySessionsMock,
 }));
@@ -115,6 +105,16 @@ describe("ActivitySection performance history links", () => {
         ),
       ).toHaveAttribute("href", "/activity/recap");
     });
+
+    expect(useUserPlaySessionsMock).toHaveBeenCalledWith({
+      since: expect.any(Date),
+      until: expect.any(Date),
+    });
+    const [{ since, until }] = useUserPlaySessionsMock.mock.calls.at(-1) as [
+      { since: Date; until: Date },
+    ];
+    expect(until.getTime() - since.getTime()).toBeGreaterThan(330 * 24 * 60 * 60 * 1_000);
+    expect(until.getTime() - since.getTime()).toBeLessThan(370 * 24 * 60 * 60 * 1_000);
   });
 
   it("renders local preview sessions when Supabase is not configured", async () => {

@@ -3,11 +3,11 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { Session } from "@supabase/supabase-js";
 
 import { isSupabaseConfigured, supabaseConfigError } from "../../lib/supabase/config";
+import { clearSupabaseAuthCache, supabase } from "../../lib/supabase/client";
 import type { CapturedPresenceSession } from "../../lib/supabase/presence";
 import type { GameLifecycleEvent } from "../../lib/types";
 import { AuthContext, type AuthContextValue } from "./auth-context";
 
-type SupabaseClientModule = typeof import("../../lib/supabase/client");
 type CapturedPresenceIdentity = CapturedPresenceSession;
 const presenceHeartbeatMs = 5 * 60_000;
 
@@ -32,7 +32,6 @@ function forgetCapturedPresenceIdentity(
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const supabaseModuleRef = useRef<SupabaseClientModule | null>(null);
   const activePresenceIdentityRef = useRef<CapturedPresenceIdentity | null>(null);
   const latestPresenceSessionByUserRef = useRef(new Map<string, CapturedPresenceIdentity>());
   const [session, setSession] = useState<Session | null>(null);
@@ -50,48 +49,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let isMounted = true;
     let subscription: { unsubscribe: () => void } | null = null;
 
-    void import("../../lib/supabase/client")
-      .then((module) => {
-        if (!isMounted) {
-          return;
-        }
+    if (!supabase) {
+      setIsLoading(false);
+      return;
+    }
 
-        supabaseModuleRef.current = module;
-        const { supabase } = module;
-        if (!supabase) {
-          setIsLoading(false);
-          return;
-        }
+    void supabase.auth.getSession().then(({ data, error: sessionError }) => {
+      if (!isMounted) {
+        return;
+      }
+      if (sessionError) {
+        setError(sessionError.message);
+      }
+      setSession(data.session);
+      setIsLoading(false);
+    });
 
-        void supabase.auth.getSession().then(({ data, error: sessionError }) => {
-          if (!isMounted) {
-            return;
-          }
-          if (sessionError) {
-            setError(sessionError.message);
-          }
-          setSession(data.session);
-          setIsLoading(false);
-        });
-
-        const authListener = supabase.auth.onAuthStateChange((_event, nextSession) => {
-          if (!isMounted) {
-            return;
-          }
-          module.clearSupabaseAuthCache();
-          setSession(nextSession);
-          setIsLoading(false);
-        });
-        subscription = authListener.data.subscription;
-      })
-      .catch((loadError: unknown) => {
-        if (!isMounted) {
-          return;
-        }
-
-        setError(loadError instanceof Error ? loadError.message : String(loadError));
-        setIsLoading(false);
-      });
+    const authListener = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      if (!isMounted) {
+        return;
+      }
+      clearSupabaseAuthCache();
+      setSession(nextSession);
+      setIsLoading(false);
+    });
+    subscription = authListener.data.subscription;
 
     return () => {
       isMounted = false;
@@ -276,9 +258,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       session,
       user: session?.user ?? null,
       signOut: async () => {
-        const module = supabaseModuleRef.current ?? (await import("../../lib/supabase/client"));
-        supabaseModuleRef.current = module;
-        const { supabase } = module;
         if (!supabase) {
           return;
         }
@@ -302,7 +281,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (capturedSession) {
           forgetCapturedPresenceIdentity(latestPresenceSessionByUserRef.current, capturedSession);
         }
-        module.clearSupabaseAuthCache();
+        clearSupabaseAuthCache();
       },
     }),
     [error, isLoading, session],

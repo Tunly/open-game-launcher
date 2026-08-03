@@ -62,4 +62,12 @@ export default tseslint.config(
       globals: globals.node,
     },
   },
+  {
+    files: ["e2e/**/*.mjs"],
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: "module",
+      globals: globals.node,
+    },
+  },
 );

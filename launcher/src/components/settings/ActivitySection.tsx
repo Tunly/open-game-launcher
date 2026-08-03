@@ -8,7 +8,6 @@ import {
   Sparkles,
   Trophy,
 } from "lucide-react";
-import { Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { Link } from "react-router-dom";
 
 import { useUserPlaySessions } from "../../hooks/useUserPlaySessions";
@@ -52,14 +51,6 @@ const HOUR_LABELS = Array.from({ length: 24 }, (_, hour) => {
   if (hour < 12) return `${hour}a`;
   return `${hour - 12}p`;
 });
-
-const AXIS_TICK_STYLE = {
-  fill: "#171411",
-  fontFamily: '"JetBrains Mono", "Courier New", ui-monospace, monospace',
-  fontSize: 10,
-  fontWeight: 700,
-  textTransform: "uppercase" as const,
-};
 
 interface ChartPoint {
   label: string;
@@ -334,25 +325,6 @@ function createLocalActivitySessions(now: Date): UserPlaySession[] {
   ];
 }
 
-interface ActivityChartTooltipProps {
-  active?: boolean;
-  label?: string | number;
-  payload?: Array<{ value?: number | string }>;
-}
-
-function ActivityChartTooltip({ active, label, payload }: ActivityChartTooltipProps) {
-  if (!active || !payload || payload.length === 0) {
-    return null;
-  }
-  const minutes = Number(payload[0]?.value ?? 0);
-  return (
-    <div className="neo-copy border-2 border-black bg-[#fff9ed] px-3 py-2 text-[10px] font-black uppercase shadow-[3px_3px_0_#1f1c0f]">
-      <span className="block text-[#171411]">{String(label ?? "")}</span>
-      <span className="mt-1 block text-[#087d6d]">{formatPlayTimeMinutes(minutes)}</span>
-    </div>
-  );
-}
-
 function describeRange(range: ActivityRange): string {
   switch (range) {
     case "day":
@@ -377,48 +349,81 @@ function ActivityBarChart({ data, range, totalMinutes }: ActivityBarChartProps) 
   const ariaLabel = `${describeRange(range)} bar chart, total playtime ${formatPlayTimeMinutes(
     totalMinutes,
   )}`;
+  const width = 1000;
+  const height = 260;
+  const plotTop = 10;
+  const plotBottom = 218;
+  const plotHeight = plotBottom - plotTop;
+  const labelEvery = range === "month" ? 3 : range === "day" ? 3 : 1;
+  const maxMinutes = Math.max(1, ...data.map((point) => point.minutes));
+  const slotWidth = width / Math.max(1, data.length);
+  const barWidth = Math.max(5, slotWidth - Math.min(12, slotWidth * 0.28));
+
   return (
     <div
       aria-label={ariaLabel}
       className="h-72 w-full border-2 border-black bg-[#fff9ed] p-3 shadow-[3px_3px_0_#1f1c0f]"
       role="img"
     >
-      <ResponsiveContainer
-        height="100%"
-        initialDimension={{ width: 1, height: 1 }}
-        minHeight={1}
-        minWidth={1}
-        width="100%"
+      <svg
+        aria-hidden="true"
+        className="h-full w-full"
+        preserveAspectRatio="none"
+        viewBox={`0 0 ${width} ${height}`}
       >
-        <BarChart data={data} margin={{ top: 8, right: 8, left: 0, bottom: 4 }}>
-          <CartesianGrid
-            stroke="#171411"
-            strokeDasharray="2 4"
-            strokeOpacity={0.18}
-            vertical={false}
-          />
-          <XAxis
-            dataKey="label"
-            interval={range === "month" ? 2 : 0}
-            stroke="#171411"
-            tick={AXIS_TICK_STYLE}
-            tickLine={false}
-          />
-          <YAxis
-            stroke="#171411"
-            tick={AXIS_TICK_STYLE}
-            tickLine={false}
-            width={48}
-            tickFormatter={(value: number) => formatPlayTimeMinutes(value)}
-          />
-          <Tooltip
-            content={<ActivityChartTooltip />}
-            cursor={{ fill: "#087d6d", fillOpacity: 0.12 }}
-            wrapperStyle={{ outline: "none" }}
-          />
-          <Bar dataKey="minutes" fill="#087d6d" stroke="#171411" strokeWidth={2} />
-        </BarChart>
-      </ResponsiveContainer>
+        {[0, 0.25, 0.5, 0.75, 1].map((fraction) => {
+          const y = plotBottom - plotHeight * fraction;
+          return (
+            <line
+              key={fraction}
+              stroke="#171411"
+              strokeDasharray="4 8"
+              strokeOpacity="0.2"
+              strokeWidth="2"
+              x1="0"
+              x2={width}
+              y1={y}
+              y2={y}
+            />
+          );
+        })}
+        {data.map((point, index) => {
+          const barHeight = Math.max(
+            point.minutes > 0 ? 3 : 0,
+            (point.minutes / maxMinutes) * plotHeight,
+          );
+          const x = index * slotWidth + (slotWidth - barWidth) / 2;
+          const y = plotBottom - barHeight;
+          return (
+            <g key={point.key}>
+              <title>{`${point.label}: ${formatPlayTimeMinutes(point.minutes)}`}</title>
+              <rect
+                fill="#087d6d"
+                height={barHeight}
+                stroke="#171411"
+                strokeWidth="2"
+                vectorEffect="non-scaling-stroke"
+                width={barWidth}
+                x={x}
+                y={y}
+              />
+              {index % labelEvery === 0 ? (
+                <text
+                  fill="#171411"
+                  fontFamily="ui-monospace, monospace"
+                  fontSize="15"
+                  fontWeight="800"
+                  textAnchor="middle"
+                  x={x + barWidth / 2}
+                  y="248"
+                >
+                  {point.label}
+                </text>
+              ) : null}
+            </g>
+          );
+        })}
+      </svg>
     </div>
   );
 }
@@ -483,8 +488,9 @@ function TopGamesList({ games, range, totalMinutes }: TopGamesListProps) {
 
 export function ActivitySection() {
   const [range, setRange] = useState<ActivityRange>("week");
-  const { sessions, isConfigured, isLoading, error } = useUserPlaySessions();
   const now = useMemo(() => new Date(), []);
+  const activityHistoryWindow = useMemo(() => getRangeWindow("year", now), [now]);
+  const { sessions, isConfigured, isLoading, error } = useUserPlaySessions(activityHistoryWindow);
   const localPreviewSessions = useMemo(
     () => (isConfigured ? [] : createLocalActivitySessions(now)),
     [isConfigured, now],

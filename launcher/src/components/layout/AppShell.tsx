@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode, type RefObject } from "react";
 import { isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import {
@@ -26,7 +26,6 @@ import {
   type AppShellSkinId,
 } from "../../lib/app-shell-skins";
 import { selectActiveCount, useDownloadStore } from "../../stores/downloadStore";
-import { useModInstallStore } from "../../stores/modInstallStore";
 import { useLauncherUpdateStore } from "../../stores/launcherUpdateStore";
 import {
   BACKUP_REMINDER_SETTINGS_CHANGED_EVENT,
@@ -41,13 +40,11 @@ import {
 } from "../../lib/backup-reminder";
 import {
   getDownloadQueue,
-  getModQueue,
   runBackupPlan,
   runScheduledPlatformClientUpdateChecks,
 } from "../../lib/launcher";
 import { STORAGE_KEYS } from "../../lib/storage-keys";
 import type { DownloadItem } from "../../lib/types";
-import type { ModInstallQueueItem } from "../../lib/types/mods";
 
 interface AppShellProps {
   activePage: PageKey;
@@ -136,6 +133,10 @@ export function AppShell({
   const [shellSkinId, setShellSkinId] = useState<AppShellSkinId>(() => readAppShellSkinId());
   const notificationMenuRef = useRef<HTMLDivElement | null>(null);
   const profileMenuRef = useRef<HTMLDivElement | null>(null);
+  const notificationTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const profileTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const wasNotificationMenuOpenRef = useRef(false);
+  const wasProfileMenuOpenRef = useRef(false);
   const isAutoBackupRunningRef = useRef(false);
   const accountLabel = authDisplayName ?? authEmail ?? "Account";
   const avatarInitials = getInitials(accountLabel);
@@ -205,73 +206,6 @@ export function AppShell({
     };
   }, []);
 
-  // Hydrate mod installs once for the whole main window, then keep every page
-  // synchronized through the single desktop progress event.
-  useEffect(() => {
-    let active = true;
-    let hydrated = false;
-    let unlistenProgress: (() => void) | null = null;
-    const pendingProgress = new Map<string, ModInstallQueueItem>();
-
-    function applyProgressItem(item: ModInstallQueueItem) {
-      const state = useModInstallStore.getState();
-      const current = state.items.find((entry) => entry.installId === item.installId);
-      if (!current || isQueueItemAtLeastAsRecent(item, current)) {
-        state.upsertItem(item);
-      }
-    }
-
-    function applyPendingProgress() {
-      if (!active) return;
-      for (const item of pendingProgress.values()) {
-        applyProgressItem(item);
-      }
-      pendingProgress.clear();
-    }
-
-    const listenerRegistration = isTauri()
-      ? listen<ModInstallQueueItem>("mod_install_progress", (event) => {
-          if (!active) return;
-          if (!hydrated) {
-            pendingProgress.set(event.payload.installId, event.payload);
-            return;
-          }
-          applyProgressItem(event.payload);
-        }).then((unlisten) => {
-          if (active) {
-            unlistenProgress = unlisten;
-          } else {
-            unlisten();
-          }
-        })
-      : Promise.resolve();
-
-    async function hydrateModQueue() {
-      await Promise.allSettled([listenerRegistration]);
-      if (!active) return;
-
-      try {
-        const queue = await getModQueue();
-        if (!active) return;
-        useModInstallStore.getState().setItems(queue);
-        hydrated = true;
-        applyPendingProgress();
-      } catch {
-        if (!active) return;
-        hydrated = true;
-        applyPendingProgress();
-      }
-    }
-
-    void hydrateModQueue();
-
-    return () => {
-      active = false;
-      pendingProgress.clear();
-      unlistenProgress?.();
-    };
-  }, []);
-
   useEffect(() => {
     if (!isProfileMenuOpen && !isNotificationMenuOpen) {
       return;
@@ -307,6 +241,20 @@ export function AppShell({
       document.removeEventListener("pointerdown", handlePointerDown);
       document.removeEventListener("keydown", handleKeyDown);
     };
+  }, [isNotificationMenuOpen, isProfileMenuOpen]);
+
+  useEffect(() => {
+    if (wasNotificationMenuOpenRef.current && !isNotificationMenuOpen && !isProfileMenuOpen) {
+      notificationTriggerRef.current?.focus();
+    }
+    wasNotificationMenuOpenRef.current = isNotificationMenuOpen;
+  }, [isNotificationMenuOpen, isProfileMenuOpen]);
+
+  useEffect(() => {
+    if (wasProfileMenuOpenRef.current && !isProfileMenuOpen && !isNotificationMenuOpen) {
+      profileTriggerRef.current?.focus();
+    }
+    wasProfileMenuOpenRef.current = isProfileMenuOpen;
   }, [isNotificationMenuOpen, isProfileMenuOpen]);
 
   useEffect(() => {
@@ -633,7 +581,7 @@ export function AppShell({
             <button
               className="neo-title app-shell-brand max-w-[min(65vw,420px)] min-w-0 shrink truncate text-left text-[1.75rem] leading-none sm:text-[2rem] lg:text-[2.5rem] xl:text-[3rem]"
               type="button"
-              onClick={() => onNavigate("store")}
+              onClick={() => onNavigate("library")}
             >
               OG-Launcher
             </button>
@@ -652,6 +600,9 @@ export function AppShell({
             <div className="ml-auto flex shrink-0 items-start gap-2 pt-0.5 sm:gap-3">
               <div ref={notificationMenuRef} className="relative">
                 <TopIconButton
+                  ariaExpanded={isNotificationMenuOpen}
+                  ariaHasPopup="dialog"
+                  buttonRef={notificationTriggerRef}
                   label="Notifications"
                   onClick={() => {
                     setIsNotificationMenuOpen((isOpen) => !isOpen);
@@ -691,6 +642,7 @@ export function AppShell({
               {authEmail ? (
                 <div ref={profileMenuRef} className="relative">
                   <button
+                    ref={profileTriggerRef}
                     aria-expanded={isProfileMenuOpen}
                     aria-haspopup="menu"
                     aria-label="Open profile menu"
@@ -761,11 +713,17 @@ export function AppShell({
 }
 
 function TopIconButton({
+  ariaExpanded,
+  ariaHasPopup,
+  buttonRef,
   children,
   disabled = false,
   label,
   onClick,
 }: {
+  ariaExpanded?: boolean;
+  ariaHasPopup?: "dialog" | "menu";
+  buttonRef?: RefObject<HTMLButtonElement | null>;
   children: ReactNode;
   disabled?: boolean;
   label: string;
@@ -773,6 +731,9 @@ function TopIconButton({
 }) {
   return (
     <button
+      ref={buttonRef}
+      aria-expanded={ariaExpanded}
+      aria-haspopup={ariaHasPopup}
       aria-label={label}
       className="app-shell-surface app-shell-highlight-hover relative flex h-12 w-12 items-center justify-center border-[3px] border-black shadow-[3px_3px_0_#1f1c0f] transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-45"
       disabled={disabled}
@@ -799,11 +760,25 @@ function NotificationMenu({
   readNotificationIds: Set<string>;
   unreadNotificationCount: number;
 }) {
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const menu = menuRef.current;
+    menu?.querySelector<HTMLButtonElement>("button:not([disabled])")?.focus();
+
+    const handleKeyDown = (event: KeyboardEvent) =>
+      handleMenuKeyDown(event, menu, "button:not([disabled])");
+    menu?.addEventListener("keydown", handleKeyDown);
+    return () => menu?.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
   return (
     <div
+      ref={menuRef}
       aria-label="Notifications"
       className="app-shell-surface absolute top-full right-0 z-50 mt-3 w-[min(22rem,calc(100vw-2rem))] border-4 border-black p-3 shadow-[7px_7px_0_#1f1c0f]"
       role="dialog"
+      tabIndex={-1}
     >
       <div className="mb-3 flex items-start justify-between gap-3 border-b-2 border-black pb-3">
         <div>
@@ -954,10 +929,22 @@ function ProfileMenu({
   onNavigate: (page: PageKey) => void;
   onRoute?: (path: string) => void;
 }) {
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    menuRef.current?.querySelector<HTMLButtonElement>('[role="menuitem"]:not([disabled])')?.focus();
+  }, []);
+
   return (
     <div
+      ref={menuRef}
+      aria-label="Account menu"
       className="app-shell-surface absolute top-full right-0 z-50 mt-3 w-72 border-4 border-black p-3 shadow-[7px_7px_0_#1f1c0f]"
       role="menu"
+      tabIndex={-1}
+      onKeyDown={(event) =>
+        handleMenuKeyDown(event, menuRef.current, '[role="menuitem"]:not([disabled])')
+      }
     >
       <div className="mb-3 flex min-w-0 items-center gap-3 border-b-2 border-black pb-3">
         <Avatar
@@ -1009,6 +996,37 @@ function ProfileMenu({
       </div>
     </div>
   );
+}
+
+function handleMenuKeyDown(
+  event: { key: string; preventDefault: () => void },
+  container: HTMLElement | null,
+  selector: string,
+) {
+  if (!container || !["ArrowDown", "ArrowUp", "Home", "End"].includes(event.key)) return;
+
+  const items = Array.from(container.querySelectorAll<HTMLButtonElement>(selector));
+  if (items.length === 0) return;
+
+  event.preventDefault();
+  const currentIndex = items.findIndex((item) => item === document.activeElement);
+  if (event.key === "Home") {
+    items[0]?.focus();
+    return;
+  }
+  if (event.key === "End") {
+    items.at(-1)?.focus();
+    return;
+  }
+
+  const direction = event.key === "ArrowDown" ? 1 : -1;
+  const nextIndex =
+    currentIndex < 0
+      ? direction === 1
+        ? 0
+        : items.length - 1
+      : (currentIndex + direction + items.length) % items.length;
+  items[nextIndex]?.focus();
 }
 
 function getInitials(label: string) {

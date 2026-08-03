@@ -13,6 +13,5 @@ export * from "./downloads";
 export * from "./cross-store";
 export * from "./platform-auth";
 export * from "./friends";
-export * from "./mods";
 export * from "./local-sync";
 export * from "./misc";

@@ -279,6 +279,36 @@ describe("useLibrarySync", () => {
     expect(mocks.listInstalledGames).toHaveBeenCalled();
   });
 
+  it("does not report the initial library as hydrated while a non-empty snapshot is reconciling", async () => {
+    const staleGame = makeGame({ id: "steam-stale" });
+    const requestedGame = makeGame({ id: "steam-requested" });
+    window.localStorage.setItem(STORAGE_KEYS.LIBRARY_SNAPSHOT, JSON.stringify([staleGame]));
+
+    let resolveNativeGames!: (games: Game[]) => void;
+    mocks.listInstalledGames.mockReturnValue(
+      new Promise<Game[]>((resolve) => {
+        resolveNativeGames = resolve;
+      }),
+    );
+
+    const { result } = renderLibrarySync();
+
+    expect(result.current.installedGames).toEqual([staleGame]);
+    expect(result.current.isDiscoveringGames).toBe(false);
+    expect(result.current.hasCompletedInitialLibraryLoad).toBe(false);
+
+    await act(async () => {
+      resolveNativeGames([requestedGame]);
+    });
+
+    await waitFor(() => {
+      expect(result.current.installedGames).toEqual([
+        expect.objectContaining({ id: requestedGame.id, launcher: "steam" }),
+      ]);
+      expect(result.current.hasCompletedInitialLibraryLoad).toBe(true);
+    });
+  });
+
   it("adds hosted OG Launcher catalog games to the library inventory", async () => {
     mocks.mergeOglCatalog.mockImplementation(async (games: Game[]) => ({
       games: [

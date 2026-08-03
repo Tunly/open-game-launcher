@@ -102,6 +102,9 @@ const validHostedDeployEvidence =
 const rolloutProof =
   "Hosted community artwork rollout is exercised beyond fixtures.";
 const rolloutEvidence = "run-community-artwork-rollout-123";
+const fixedEvidenceClock = Object.freeze({
+  OGL_EXTERNAL_EVIDENCE_NOW: "2026-06-17T12:00:00.000Z",
+});
 
 function requiredEvidenceFieldsForArtifact(gate, artifactPath) {
   return [
@@ -157,7 +160,7 @@ function gateSpecificEvidenceDetails(gate) {
         return "- Session/run ID: overlay-session-run-123 duration:30m";
       }
       if (field === "Provider/client matrix") {
-        return "- Provider/client matrix: provider-client matrix Nexus Steam Workshop workflow-123";
+        return "- Provider/client matrix: provider-client matrix workflow-123";
       }
       if (field === "Hosted deploy evidence") {
         return `- Hosted deploy evidence: ${validHostedDeployEvidence}`;
@@ -187,8 +190,6 @@ function proofEvidenceValueForProof(proof, fallback) {
     return "workflow-account-deletion-123";
   if (proof.includes("Hosted price-drop scheduler"))
     return "workflow-price-drop-123";
-  if (proof.includes("Nexus website search handoff and Steam Workshop"))
-    return "run-nexus-steam-workshop-live-provider-123";
   if (proof.includes("Non-Steam presence"))
     return "run-non-steam-presence-bridge-provider-123";
   if (proof.includes("Provider-approved catalog/cloud"))
@@ -450,8 +451,8 @@ function externalSummaryGateBlock(id) {
 }
 
 const configuredEnv = Object.freeze({
+  ...fixedEvidenceClock,
   ACCOUNT_DELETION_PROCESSOR_SECRET: "acctDel9f8e7d6c5b4a392817263abcd",
-  OGL_EXTERNAL_EVIDENCE_NOW: "2026-06-17T12:00:00.000Z",
   PRESENCE_POLL_SECRET: "presencePoll9f8e7d6c5b4a392817abcd",
   PRESENCE_PROVIDER_TOKEN: "presenceProvider9f8e7d6c5b4a392817",
   PRICE_DROP_NOTIFY_SECRET: "priceDrop9f8e7d6c5b4a392817263abcd",
@@ -2067,7 +2068,7 @@ test("preflight status blocks template-only banner once proof or detail rows are
 
   const checkedProofStatus = gateStatus(
     gate,
-    {},
+    fixedEvidenceClock,
     fakeExists(gate.artifactPaths),
     fakeRead({
       [artifactPath]: [
@@ -2402,7 +2403,7 @@ test("preflight status rejects checked proofs without proof-specific evidence ma
 
   const status = gateStatus(
     gate,
-    {},
+    fixedEvidenceClock,
     fakeExists(gate.artifactPaths),
     fakeRead({
       "docs/verification/external/hardware-os-e2e.md":
@@ -2427,7 +2428,7 @@ test("preflight status rejects generic proof-specific evidence mappings", () => 
 
   const status = gateStatus(
     gate,
-    {},
+    fixedEvidenceClock,
     fakeExists(gate.artifactPaths),
     fakeRead({
       "docs/verification/external/hardware-os-e2e.md": [
@@ -2504,7 +2505,7 @@ test("preflight status requires compound provider proof evidence terms", () => {
   const artifactPath =
     "docs/verification/external/provider-live-integrations.md";
   const compoundProof =
-    "Nexus website search handoff and Steam Workshop client handoff are verified against live providers.";
+    "Achievement/provider cache E2E runs against real client data.";
 
   const contentWithCompoundProofEvidence = (value) =>
     [
@@ -2524,39 +2525,39 @@ test("preflight status requires compound provider proof evidence terms", () => {
       capturedEvidenceDetails(),
     ].join("\n");
 
-  const modOnlyStatus = gateStatus(
+  const partialStatus = gateStatus(
     gate,
     configuredEnv,
     fakeExists(gate.artifactPaths),
     fakeRead({
       [artifactPath]: contentWithCompoundProofEvidence(
-        "run-provider-modio-staging-probe-123",
+        "run-provider-cache-staging-probe-123",
       ),
     }),
   );
 
-  assert.equal(modOnlyStatus.ready, false);
-  assert.deepEqual(modOnlyStatus.missingProofs, []);
-  assert.deepEqual(modOnlyStatus.missingEvidenceDetails, [
+  assert.equal(partialStatus.ready, false);
+  assert.deepEqual(partialStatus.missingProofs, []);
+  assert.deepEqual(partialStatus.missingEvidenceDetails, [
     {
       field: `Evidence for ${compoundProof}`,
       path: artifactPath,
     },
   ]);
 
-  const bothProvidersStatus = gateStatus(
+  const completeStatus = gateStatus(
     gate,
     configuredEnv,
     fakeExists(gate.artifactPaths),
     fakeRead({
       [artifactPath]: contentWithCompoundProofEvidence(
-        "run-nexus-steam-workshop-live-provider-123",
+        "run-achievement-provider-cache-real-client-123",
       ),
     }),
   );
 
-  assert.equal(bothProvidersStatus.ready, true);
-  assert.deepEqual(bothProvidersStatus.missingEvidenceDetails, []);
+  assert.equal(completeStatus.ready, true);
+  assert.deepEqual(completeStatus.missingEvidenceDetails, []);
 });
 
 test("preflight status requires hardware OS proof and matrix to name every OS title client lane", () => {
@@ -2790,7 +2791,7 @@ test("preflight status rejects weak proof-specific run IDs without digits", () =
 
   const status = gateStatus(
     gate,
-    {},
+    fixedEvidenceClock,
     fakeExists(gate.artifactPaths),
     fakeRead({
       "docs/verification/external/hardware-os-e2e.md": [
@@ -2878,7 +2879,7 @@ test("preflight status rejects placeholder evidence detail values", () => {
 
   const status = gateStatus(
     gate,
-    {},
+    fixedEvidenceClock,
     fakeExists(gate.artifactPaths),
     fakeRead({
       "docs/verification/external/hardware-os-e2e.md": proofContent(
@@ -2929,7 +2930,7 @@ test("preflight status rejects weak evidence detail values", () => {
 
   const status = gateStatus(
     gate,
-    {},
+    fixedEvidenceClock,
     fakeExists(gate.artifactPaths),
     fakeRead({
       "docs/verification/external/hardware-os-e2e.md": proofContent(
@@ -4319,11 +4320,10 @@ test("preflight status blocks raw provider API key artifact content", () => {
     "docs/verification/external/provider-live-integrations.md";
   const rawProviderSecrets = [
     "STEAM_WEB_API_KEY=steam_live_super_secret_1234567890",
-    "NEXUS_API_KEY=nexus_live_super_secret_1234567890",
     "RAWG_API_KEY=rawg_live_super_secret_1234567890",
     "PRESENCE_PROVIDER_TOKEN=presence_live_super_secret_1234567890",
-    "X-Api-Key: nexus_live_super_secret_1234567890",
-    "Authorization: Token modio_live_super_secret_1234567890",
+    "X-Api-Key: provider_...90",
+    "Authorization: Token provider_...7890",
   ];
 
   for (const rawProviderSecret of rawProviderSecrets) {
@@ -4360,9 +4360,8 @@ test("preflight status blocks raw provider API key artifact content", () => {
         "STEAM_WEB_API_KEY=[redacted]",
         "RAWG_API_KEY=[redacted]",
         "PRESENCE_PROVIDER_TOKEN=<redacted>",
-        "NEXUS_API_KEY=***",
-        "X-Api-Key: [redacted]",
-        "Authorization: Token [redacted]",
+        "X-Api-Key: ***",
+        "Authorization: Token ***",
       ].join("\n"),
     }),
   );
@@ -4651,7 +4650,7 @@ test("artifactTemplate prints required proof checklist rows without secret value
   assert.match(template, /`sha256:<64-hex>` reference/);
   assert.match(template, /Accepted dashboard URL hosts are Supabase/);
   assert.match(template, /Proof evidence values must name the proof lane/);
-  assert.match(template, /nexus-steam-workshop-live-provider/);
+  assert.match(template, /non-steam-presence-bridge-provider/);
   assert.match(
     template,
     /run:.*probe-.*session-.*workflow-.*deployment-.*artifact-/s,
@@ -5039,17 +5038,17 @@ test("provider runbook documents non-Steam presence bridge collection inputs", (
   assert.match(providerRunbook, /provider bridge run ID/);
 });
 
-test("mods documentation advertises only the current Nexus and Steam Workshop lanes", () => {
+test("documentation no longer advertises the removed mods product surface", () => {
   assert.doesNotMatch(readme, /scan_mod_directory/);
   assert.doesNotMatch(featurePlan, /scan_mod_directory/);
   assert.doesNotMatch(readme, /Nexus\/CurseForge/);
   assert.doesNotMatch(featurePlan, /Nexus\/CurseForge/);
   assert.doesNotMatch(readme, /run_mod_provider_staging_probe/);
   assert.doesNotMatch(featurePlan, /run_mod_provider_staging_probe/);
-  assert.match(readme, /Nexus Mods[\s\S]*Steam Workshop/);
-  assert.match(featurePlan, /Nexus Mods[\s\S]*Steam Workshop/);
+  assert.doesNotMatch(readme, /Nexus Mods[\s\S]*Steam Workshop/);
+  assert.doesNotMatch(featurePlan, /Nexus Mods[\s\S]*Steam Workshop/);
   for (const document of [readme, featurePlan, prBody, security, changelog, localAudit]) {
-    assert.match(document, /no[- ]slug/i);
+    assert.doesNotMatch(document, /no[- ]slug/i);
   }
   assert.doesNotMatch(prBody, /Nexus requires a registered app ID/i);
   assert.doesNotMatch(security, /active surface is limited to the registered Nexus/i);
@@ -5123,7 +5122,7 @@ test("verification manifest and guide document the external next handoff", () =>
     "pnpm completion:gate:external",
   ];
   for (const row of externalSummaryRows) {
-    assert.deepEqual(row.routes, ["/settings"]);
+    assert.deepEqual(row.routes, ["/settings", "/settings/diagnostics"]);
     assert.deepEqual(row.verify, ["external-completion-evidence-summary"]);
   }
   for (const command of documentedCommands) {

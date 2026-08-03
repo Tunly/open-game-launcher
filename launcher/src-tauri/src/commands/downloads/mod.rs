@@ -9,6 +9,7 @@ mod internal_lifecycle;
 mod lifecycle;
 mod queue;
 mod reconcile;
+mod remote_security;
 mod start;
 mod steam_cef;
 mod steam_state;

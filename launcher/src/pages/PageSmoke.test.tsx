@@ -15,10 +15,8 @@ import { FamilyPage } from "./FamilyPage";
 import { FpsHudPage } from "./FpsHudPage";
 import { FriendsPage } from "./FriendsPage";
 import { GameActivityDashboardPage } from "./GameActivityDashboardPage";
-import { HomePage } from "./HomePage";
 import { InviteFallbackPage } from "./InviteFallbackPage";
 import { LibraryPage } from "./LibraryPage";
-import { ModsPage } from "./ModsPage";
 import { NewsPage } from "./NewsPage";
 import { NotFoundPage } from "./NotFoundPage";
 import { OverlayPage } from "./OverlayPage";
@@ -47,13 +45,9 @@ const familyMocks = vi.hoisted(() => ({
 const launcherMocks = vi.hoisted(() => ({
   archiveDownload: vi.fn(),
   authenticateEpicLegendary: vi.fn(),
-  browseMods: vi.fn(),
   cancelDownload: vi.fn(),
-  cancelModInstall: vi.fn(),
   clearBroadcastStreamKeySecret: vi.fn(),
-  connectNexus: vi.fn(),
   detectHardwareInfo: vi.fn(),
-  disconnectNexus: vi.fn(),
   eaGetToken: vi.fn(),
   eaLogout: vi.fn(),
   fetchSteamProfileName: vi.fn(),
@@ -62,33 +56,25 @@ const launcherMocks = vi.hoisted(() => ({
   getDefaultInstallDir: vi.fn(),
   getDownloadQueue: vi.fn(),
   getLicenseDeviceId: vi.fn(),
-  getModProviderStatus: vi.fn(),
-  getNxmHandlerStatus: vi.fn(),
   getSystemInfo: vi.fn(),
   gogExchangeCode: vi.fn(),
   gogGetToken: vi.fn(),
   gogLogout: vi.fn(),
   launchCrossPlayJoin: vi.fn(),
   launchGame: vi.fn(),
-  installMod: vi.fn(),
   listInstalledGames: vi.fn(),
-  listManagedMods: vi.fn(),
   normalizeSteamOwnedGames: vi.fn(),
   openBattleNetLoginWindow: vi.fn(),
   openEaLoginWindow: vi.fn(),
   openEpicLoginWindow: vi.fn(),
   openGogLoginWindow: vi.fn(),
-  openProviderMod: vi.fn(),
-  openNxmHandlerSettings: vi.fn(),
   openSteamLoginWindow: vi.fn(),
   openXboxLoginWindow: vi.fn(),
   pauseDownload: vi.fn(),
   processBattleNetGamesPayload: vi.fn(),
   scanLocalPluginManifests: vi.fn(),
   setBroadcastStreamKeySecret: vi.fn(),
-  setModEnabled: vi.fn(),
   stageSignedPluginPackage: vi.fn(),
-  removeMod: vi.fn(),
   validateLicense: vi.fn(),
 }));
 
@@ -169,16 +155,6 @@ const noop = vi.fn();
 
 vi.mock("@tauri-apps/api/event", () => ({
   listen: vi.fn(() => Promise.resolve(() => undefined)),
-}));
-
-vi.mock("recharts", () => ({
-  CartesianGrid: () => null,
-  Line: () => null,
-  LineChart: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
-  ResponsiveContainer: ({ children }: { children?: ReactNode }) => <div>{children}</div>,
-  Tooltip: () => null,
-  XAxis: () => null,
-  YAxis: () => null,
 }));
 
 vi.mock("../components/launcher/StoreGameCard", () => ({
@@ -302,6 +278,7 @@ vi.mock("../hooks/library/useLibrarySync", () => ({
     customArtwork: {},
     discoveryMessage: null,
     gameRuntimeById: {},
+    hasCompletedInitialLibraryLoad: true,
     handleApplyCustomArtworkUrl: noop,
     handleArtworkDrop: noop,
     handleConfirmArtwork: noop,
@@ -407,19 +384,15 @@ vi.mock("../stores/downloadStore", () => {
     isActiveDownloadItem: (item: { status?: string }) =>
       item.status === "downloading" || item.status === "queued",
     isPausedDownloadItem: (item: { status?: string }) => item.status === "paused",
+    selectActiveCount: (value: { items: Array<{ status: string }> }) =>
+      value.items.filter((item) => item.status === "downloading" || item.status === "queued")
+        .length,
     selectCompletedCount: (value: { items: Array<{ status: string }> }) =>
       value.items.filter((item) => item.status === "completed").length,
     selectTotalProgress: () => 0,
     useDownloadStore,
   };
 });
-
-vi.mock("../stores/modInstallStore", () => ({
-  selectActiveModInstallCount: () => 0,
-  selectCompletedModInstallCount: () => 0,
-  selectDelegatedModInstallCount: () => 0,
-  useModInstallStore: (selector: (value: { items: never[] }) => unknown) => selector({ items: [] }),
-}));
 
 function renderRoute(ui: ReactNode, initialEntry = "/") {
   return render(<MemoryRouter initialEntries={[initialEntry]}>{ui}</MemoryRouter>);
@@ -482,6 +455,12 @@ function pollPerformanceMetricCallCount() {
     .length;
 }
 
+function overlayClickThroughCallCount() {
+  return vi
+    .mocked(invoke)
+    .mock.calls.filter(([command]) => command === "set_in_game_overlay_click_through").length;
+}
+
 describe("routed page smoke coverage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -508,39 +487,12 @@ describe("routed page smoke coverage", () => {
     familyMocks.listFamilySharedGames.mockResolvedValue([]);
     launcherMocks.archiveDownload.mockResolvedValue(undefined);
     launcherMocks.authenticateEpicLegendary.mockResolvedValue("Epic authenticated.");
-    launcherMocks.browseMods.mockResolvedValue({
-      items: [],
-      message: null,
-      nextCursor: null,
-      total: 0,
-    });
     launcherMocks.cancelDownload.mockResolvedValue(undefined);
-    launcherMocks.cancelModInstall.mockResolvedValue(undefined);
     launcherMocks.clearBroadcastStreamKeySecret.mockResolvedValue({
       configured: false,
       message: "Stream-key vault empty.",
     });
-    launcherMocks.connectNexus.mockResolvedValue({
-      action: "disconnect",
-      actionLabel: "Disconnect Nexus",
-      available: true,
-      connected: true,
-      message: "Connected.",
-      provider: "nexus",
-      supportsBrowse: true,
-      supportsNativeInstall: false,
-    });
     launcherMocks.detectHardwareInfo.mockResolvedValue(null);
-    launcherMocks.disconnectNexus.mockResolvedValue({
-      action: "connect",
-      actionLabel: "Connect Nexus",
-      available: true,
-      connected: false,
-      message: "Disconnected.",
-      provider: "nexus",
-      supportsBrowse: false,
-      supportsNativeInstall: false,
-    });
     launcherMocks.eaGetToken.mockResolvedValue(null);
     launcherMocks.eaLogout.mockResolvedValue(undefined);
     launcherMocks.fetchSteamProfileName.mockResolvedValue("Steam User");
@@ -552,23 +504,6 @@ describe("routed page smoke coverage", () => {
     launcherMocks.getDefaultInstallDir.mockResolvedValue("/games");
     launcherMocks.getDownloadQueue.mockResolvedValue([]);
     launcherMocks.getLicenseDeviceId.mockResolvedValue("device-test");
-    launcherMocks.getModProviderStatus.mockResolvedValue({
-      action: "none",
-      actionLabel: null,
-      available: false,
-      connected: false,
-      message: "No game selected.",
-      provider: "nexus",
-      supportsBrowse: false,
-      supportsNativeInstall: false,
-    });
-    launcherMocks.getNxmHandlerStatus.mockResolvedValue({
-      isDefault: true,
-      message: "OG-Launcher handles Nexus download links.",
-      registered: true,
-      state: "registered",
-    });
-    launcherMocks.openNxmHandlerSettings.mockResolvedValue(undefined);
     launcherMocks.getSystemInfo.mockResolvedValue({
       appVersion: "0.1.0",
       arch: "web",
@@ -579,25 +514,12 @@ describe("routed page smoke coverage", () => {
     launcherMocks.gogLogout.mockResolvedValue(undefined);
     launcherMocks.launchCrossPlayJoin.mockResolvedValue(undefined);
     launcherMocks.launchGame.mockResolvedValue(undefined);
-    launcherMocks.installMod.mockResolvedValue({
-      delegatedUrl: null,
-      installId: null,
-      message: "Provider opened.",
-      status: "handoff",
-    });
     launcherMocks.listInstalledGames.mockResolvedValue([]);
-    launcherMocks.listManagedMods.mockResolvedValue([]);
     launcherMocks.normalizeSteamOwnedGames.mockImplementation((games) => games);
     launcherMocks.openBattleNetLoginWindow.mockResolvedValue(undefined);
     launcherMocks.openEaLoginWindow.mockResolvedValue(undefined);
     launcherMocks.openEpicLoginWindow.mockResolvedValue(undefined);
     launcherMocks.openGogLoginWindow.mockResolvedValue(undefined);
-    launcherMocks.openProviderMod.mockResolvedValue({
-      delegatedUrl: null,
-      installId: null,
-      message: "Provider opened.",
-      status: "handoff",
-    });
     launcherMocks.openSteamLoginWindow.mockResolvedValue(undefined);
     launcherMocks.openXboxLoginWindow.mockResolvedValue(undefined);
     launcherMocks.pauseDownload.mockResolvedValue(undefined);
@@ -606,8 +528,6 @@ describe("routed page smoke coverage", () => {
       configured: true,
       message: "Stream-key vault staged.",
     });
-    launcherMocks.setModEnabled.mockResolvedValue(undefined);
-    launcherMocks.removeMod.mockResolvedValue(undefined);
     launcherMocks.validateLicense.mockResolvedValue({ ok: true });
     newsMocks.listPublishedNews.mockResolvedValue([newsItem]);
     achievementMocks.hydrateGamesWithRemoteAchievements.mockImplementation((games) =>
@@ -691,13 +611,6 @@ describe("routed page smoke coverage", () => {
     window.localStorage.clear();
   });
 
-  it("renders the home play desk", () => {
-    renderRoute(<HomePage />);
-
-    expect(screen.getByRole("heading", { name: /play desk/i })).toBeInTheDocument();
-    expect(screen.getByText("Launcher HQ")).toBeInTheDocument();
-  });
-
   it("renders the documented library route shell", async () => {
     renderRoutedPage(<LibraryPage />, "/library");
 
@@ -761,13 +674,6 @@ describe("routed page smoke coverage", () => {
 
     expect(screen.getByText(/there are no downloads in the queue/i)).toBeInTheDocument();
     expect(launcherMocks.getDownloadQueue).not.toHaveBeenCalled();
-  });
-
-  it("renders the mods manager route after local library load", async () => {
-    renderRoutedPage(<ModsPage />, "/mods");
-
-    expect(await screen.findByRole("heading", { name: /mod manager/i })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: /my mods/i })).toBeInTheDocument();
   });
 
   it("renders the yearly activity route", () => {
@@ -1076,6 +982,9 @@ describe("routed page smoke coverage", () => {
         enabled: true,
       }),
     );
+    const clickThroughCalls = overlayClickThroughCallCount();
+    fireEvent.resize(window);
+    await waitFor(() => expect(overlayClickThroughCallCount()).toBe(clickThroughCalls));
     expect(screen.queryByRole("button", { name: "Back to Game" })).not.toBeInTheDocument();
     expect(screen.getByTitle("Unpin")).toBeInTheDocument();
   });

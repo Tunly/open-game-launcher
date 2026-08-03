@@ -117,18 +117,20 @@ struct PlaytimeEntry {
 }
 
 pub fn load_ea_token() -> Option<EaToken> {
-    let json = secure_store::get_secret("ea").ok().flatten()?;
+    let json = secure_store::get_secret_keychain_only("ea")
+        .ok()
+        .flatten()?;
     serde_json::from_str(&json).ok()
 }
 
 fn save_ea_token(token: &EaToken) -> Result<(), String> {
     let json =
         serde_json::to_string(token).map_err(|e| format!("Failed to serialize EA token: {e}"))?;
-    secure_store::set_secret("ea", &json)
+    secure_store::set_secret_keychain_only("ea", &json)
 }
 
-fn delete_ea_token() {
-    let _ = secure_store::delete_secret("ea");
+fn delete_ea_token() -> Result<(), String> {
+    secure_store::delete_secret_keychain_only("ea")
 }
 
 fn now_secs() -> u64 {
@@ -330,7 +332,7 @@ async fn graphql_get(client: &Client, token: &str, url: &str) -> Result<serde_js
         .map_err(|e| format!("EA GraphQL request failed: {e}"))?;
 
     if response.status() == reqwest::StatusCode::UNAUTHORIZED {
-        delete_ea_token();
+        let _ = delete_ea_token();
         return Err("EA session expired. Please sign in again.".to_string());
     }
 
@@ -464,7 +466,7 @@ async fn fetch_legacy_offers_batch(
         .map_err(|e| format!("EA legacy catalog request failed: {e}"))?;
 
     if response.status() == reqwest::StatusCode::UNAUTHORIZED {
-        delete_ea_token();
+        let _ = delete_ea_token();
         return Err("EA session expired. Please sign in again.".to_string());
     }
 
@@ -682,15 +684,14 @@ pub fn ea_get_token() -> Option<EaToken> {
     if is_ea_token_valid(&token) {
         Some(token)
     } else {
-        delete_ea_token();
+        let _ = delete_ea_token();
         None
     }
 }
 
 #[tauri::command]
 pub fn ea_logout() -> Result<(), String> {
-    delete_ea_token();
-    Ok(())
+    delete_ea_token()
 }
 
 #[tauri::command]
@@ -699,7 +700,7 @@ pub async fn ea_fetch_owned_games() -> Result<Vec<OwnedGame>, String> {
         "EA account not connected. Sign in under Settings > Connected Accounts.".to_string()
     })?;
     if !is_ea_token_valid(&token) {
-        delete_ea_token();
+        let _ = delete_ea_token();
         return Err("EA session expired. Please sign in again.".to_string());
     }
 

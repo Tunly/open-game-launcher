@@ -136,10 +136,8 @@ const pageRouteTokens = Object.freeze({
   FpsHudPage: ["/fps-hud"],
   FriendsPage: ["/friends", "/invite/"],
   GameActivityDashboardPage: ["/activity"],
-  HomePage: ["/home"],
   InviteFallbackPage: ["/invite/"],
   LibraryPage: ["/library"],
-  ModsPage: ["/mods"],
   NewsPage: ["/news"],
   NotFoundPage: ["404", "unknown-route"],
   OverlayPage: ["/overlay"],
@@ -176,9 +174,6 @@ function expectedRouteTokensForUiPath(path) {
   if (/^launcher\/src\/components\/friends\//.test(path)) {
     return ["/friends", "/invite/"];
   }
-  if (/^launcher\/src\/components\/mods\//.test(path)) {
-    return ["/mods"];
-  }
   if (/^launcher\/src\/components\/achievements\//.test(path)) {
     return ["/achievements"];
   }
@@ -208,9 +203,6 @@ function expectedRouteTokensForUiPath(path) {
   }
   if (/^launcher\/src\/lib\/(?:friend|invite|social|crossplay)/.test(path)) {
     return ["/friends", "/invite/"];
-  }
-  if (/^launcher\/src\/lib\/mods?/.test(path)) {
-    return ["/mods"];
   }
   return [];
 }

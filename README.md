@@ -2,7 +2,7 @@
 
 Open-source desktop game launcher built with Tauri, React, TypeScript, Rust,
 and Supabase. OG Launcher brings local and provider libraries, downloads,
-achievements, friends, chat, activity, mods, and launcher settings into one
+achievements, friends, chat, activity, and launcher settings into one
 Retro Manga interface.
 
 ## Project Status
@@ -17,7 +17,6 @@ until all external evidence gates pass.
 | Providers              | Local/client integration paths for Steam, GOG, Epic, Xbox/Game Pass, Ubisoft, Battle.net, and EA; authenticated Steam linking and hosted achievement relay are implemented, while live provider proof remains external |
 | Social                 | Supabase Auth, profiles, friends, chat, invites, presence, authenticated activity, reactions, comments, and privacy/RLS guards                 |
 | Store                  | Hosted catalog, orders, entitlements, and download contracts; paid production commerce remains disabled pending live Stripe and provider proof |
-| Mods                   | No-slug Nexus Mods website search handoff plus Steam Workshop read-only/client-managed integration; registered Nexus native mode is optional     |
 | Desktop                | Tauri shell, native library/download/provider commands, deep links, transparent overlay window, and system telemetry                           |
 | Evidence-only surfaces | Some unfinished hosted, marketplace, plugin, family, broadcast, and provider states exist only behind explicit `?verify=...` routes            |
 
@@ -89,25 +88,6 @@ Or start only the browser frontend:
 pnpm dev
 ```
 
-### Nexus Mods
-
-Nexus works without an API key or application slug: OG-Launcher hands the
-selected game and search to the official Nexus Mods website. It does not scrape
-Nexus pages and never reports that handoff as an installed mod.
-
-An optional registered development build can enable official SSO, native cards
-and supported direct installs by exporting the public application slug into the
-native process that starts Tauri:
-
-```powershell
-$env:NEXUS_MODS_APP_ID="your_registered_nexus_application_id"
-pnpm tauri dev
-```
-
-Do not put `NEXUS_MODS_APP_ID` in `launcher/.env.local`; Vite variables are not
-native process variables. Normal releases do not require this value, and OG
-Launcher intentionally has no manual Nexus API-key field.
-
 ### Supabase and RAWG
 
 The application can use a linked Supabase project and the `rawg-assets` Edge
@@ -153,12 +133,10 @@ inventory instead of maintaining it here.
 | Route                         | Purpose                                                    |
 | ----------------------------- | ---------------------------------------------------------- |
 | `/`                           | Redirect to `/library`                                     |
-| `/home`                       | Launcher home                                              |
 | `/library`                    | Game library and selected-copy details                     |
 | `/store`                      | Store discovery, cart, checkout, and orders                |
 | `/community`                  | Authenticated community and friend activity                |
 | `/news`                       | News feed                                                  |
-| `/mods`                       | Nexus Mods / Steam Workshop browser and managed mods       |
 | `/downloads`                  | Download queue and local readiness panels                  |
 | `/friends`                    | Friends, requests, search, blocks, and smart join          |
 | `/family`                     | Device-local family preview and invites                    |
@@ -232,12 +210,8 @@ be presented as production or live-provider completion.
 
 - Provider clients own first-party cloud saves. Cross-store save copy is a
   consent-gated local copy/rollback tool, not hosted cloud storage.
-- Mods use a no-slug official Nexus website search handoff and Steam Workshop
-  read-only/client-managed flows. An optional registered Nexus build may add
-  SSO, authenticated native ZIP/7z installation and NXM continuation with
-  transactional ownership/rollback. Native Steam catalog and subscription
-  mutation remain disabled until Valve grants the required app context or
-  credentials.
+- Native Steam catalog and subscription mutation remain disabled until Valve
+  grants the required app context or credentials.
 - The overlay is a separate Tauri window. It does not inject into games, bypass
   anti-cheat, or claim real game-process FPS measurement.
 - Preview products and store contracts do not enable paid production commerce.

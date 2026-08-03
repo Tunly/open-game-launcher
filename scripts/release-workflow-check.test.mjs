@@ -115,6 +115,25 @@ test("release workflow contract requires release tags to wait for coverage", () 
   ]);
 });
 
+test("release workflow contract requires the real desktop E2E smoke", () => {
+  const broken = ciWorkflow.replace(
+    "        run: pnpm test:e2e:desktop",
+    "        run: pnpm test",
+  );
+
+  assert.deepEqual(errorsFor(broken), [
+    "desktop E2E must execute the UI to IPC smoke",
+  ]);
+});
+
+test("release workflow contract makes the release boundary wait for desktop E2E", () => {
+  const broken = ciWorkflow.replace("        desktop-e2e-windows,\n", "");
+
+  assert.deepEqual(errorsFor(broken), [
+    "release-boundary-gate must depend on desktop-e2e-windows",
+  ]);
+});
+
 test("release workflow contract keeps the packaged platform matrix pinned", () => {
   const broken = ciWorkflow.replace(
     "          - os: windows-2025",
@@ -160,13 +179,46 @@ test("release workflow contract reads build-upload needs structurally", () => {
 });
 
 test("release workflow contract validates signing secrets before building", () => {
-  const broken = ciWorkflow.replace(
-    "          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}\n          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}\n      - name: Build (Tauri)",
-    "          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}\n      - name: Build (Tauri)",
+  const start = ciWorkflow.indexOf(
+    "      - name: Validate Windows updater signing secrets\n",
   );
+  const end = ciWorkflow.indexOf(
+    "      - name: Import Windows Authenticode certificate\n",
+  );
+  assert.ok(start >= 0 && end > start);
+  const signingStep = ciWorkflow
+    .slice(start, end)
+    .replace(
+      "          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}\n",
+      "",
+    );
+  const broken =
+    ciWorkflow.slice(0, start) + signingStep + ciWorkflow.slice(end);
 
   assert.deepEqual(errorsFor(broken), [
     "build-upload signing secret validation must pass TAURI_SIGNING_PRIVATE_KEY from secrets",
+  ]);
+});
+
+test("release workflow contract requires Authenticode certificate import", () => {
+  const broken = ciWorkflow.replace(
+    "      - name: Import Windows Authenticode certificate",
+    "      - name: Import detached certificate fixture",
+  );
+
+  assert.deepEqual(errorsFor(broken), [
+    "build-upload must import the Windows Authenticode certificate",
+  ]);
+});
+
+test("release workflow contract verifies macOS notarization", () => {
+  const broken = ciWorkflow.replace(
+    "      - name: Verify macOS code signing and notarization",
+    "      - name: Skip macOS code signing and notarization",
+  );
+
+  assert.deepEqual(errorsFor(broken), [
+    "build-upload must run Verify macOS code signing and notarization",
   ]);
 });
 
@@ -245,6 +297,17 @@ test("release workflow contract requires updater generator tests in CI", () => {
   ]);
 });
 
+test("release workflow contract requires desktop E2E contract tests in CI", () => {
+  const broken = ciWorkflow.replace(
+    "      - name: Validate desktop E2E contract\n        run: node --test scripts/desktop-e2e-contract.test.mjs\n",
+    "",
+  );
+
+  assert.deepEqual(errorsFor(broken), [
+    "script validation must run desktop E2E contract tests",
+  ]);
+});
+
 test("release workflow contract requires the Windows updater signature", () => {
   const broken = ciWorkflow.replace(
     "              launcher/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/**/*.exe.sig\n",
@@ -278,8 +341,9 @@ test("release workflow contract passes signing secrets to the Tauri build", () =
   ]);
 });
 
-test("release workflow does not require a Nexus application slug", () => {
+test("release workflow has no nexus mod dependency", () => {
   assert.doesNotMatch(ciWorkflow, /NEXUS_MODS_APP_ID/);
+  assert.doesNotMatch(ciWorkflow, /nexus/i);
   assert.deepEqual(errorsFor(ciWorkflow), []);
 });
 

@@ -72,6 +72,13 @@ Deno.test("presence poll adapters load platform accounts with filters and provid
           },
           { id: "missing-user", platform: "epic" },
         ],
+        platform_presence_poll_cache: [{
+          cache: { fetchedAt: "2026-06-15T11:59:30.000Z" },
+          platform_account_id: "steam-account",
+        }],
+        provider_account_verifications: [{
+          platform_account_id: "steam-account",
+        }],
       },
       operations,
     }),
@@ -88,7 +95,10 @@ Deno.test("presence poll adapters load platform accounts with filters and provid
   assertEquals(await adapters.loadPlatformAccounts(pollRequest), [
     {
       id: "steam-account",
-      metadata: { keep: true },
+      metadata: {
+        keep: true,
+        presencePollCache: { fetchedAt: "2026-06-15T11:59:30.000Z" },
+      },
       platform: "steam",
       platformUserId: "steam-user",
       updatedAt: "2026-06-15T11:00:00.000Z",
@@ -96,6 +106,37 @@ Deno.test("presence poll adapters load platform accounts with filters and provid
     },
   ]);
   assertEquals(operations, [
+    { args: ["provider_account_verifications"], method: "from" },
+    {
+      args: ["platform_account_id"],
+      method: "select",
+      table: "provider_account_verifications",
+    },
+    {
+      args: ["user_id", [userId]],
+      method: "in",
+      table: "provider_account_verifications",
+    },
+    {
+      args: ["platform", ["steam", "epic"]],
+      method: "in",
+      table: "provider_account_verifications",
+    },
+    {
+      args: ["updated_at", { ascending: true }],
+      method: "order",
+      table: "provider_account_verifications",
+    },
+    {
+      args: [25],
+      method: "limit",
+      table: "provider_account_verifications",
+    },
+    {
+      args: [],
+      method: "returns",
+      table: "provider_account_verifications",
+    },
     { args: ["platform_accounts"], method: "from" },
     {
       args: ["id, user_id, platform, platform_user_id, metadata, updated_at"],
@@ -103,12 +144,7 @@ Deno.test("presence poll adapters load platform accounts with filters and provid
       table: "platform_accounts",
     },
     {
-      args: ["user_id", [userId]],
-      method: "in",
-      table: "platform_accounts",
-    },
-    {
-      args: ["platform", ["steam", "epic"]],
+      args: ["id", ["steam-account"]],
       method: "in",
       table: "platform_accounts",
     },
@@ -119,7 +155,67 @@ Deno.test("presence poll adapters load platform accounts with filters and provid
     },
     { args: [25], method: "limit", table: "platform_accounts" },
     { args: [], method: "returns", table: "platform_accounts" },
+    { args: ["platform_presence_poll_cache"], method: "from" },
+    {
+      args: ["platform_account_id, cache"],
+      method: "select",
+      table: "platform_presence_poll_cache",
+    },
+    {
+      args: ["platform_account_id", ["steam-account"]],
+      method: "in",
+      table: "platform_presence_poll_cache",
+    },
+    {
+      args: [],
+      method: "returns",
+      table: "platform_presence_poll_cache",
+    },
   ]);
+});
+
+Deno.test("presence poll adapters reject unverified account ids and client metadata caches", async () => {
+  const operations: Operation[] = [];
+  const adapters = createPresencePollAdapters({
+    cadenceMs: 60_000,
+    maxBatchSize: 100,
+    pollPlatformPresence: async () => providerResult(),
+    pollSecret: "presence-secret",
+    supabaseAdmin: supabaseStub({
+      dataByTable: {
+        platform_accounts: [{
+          id: "unverified-epic-account",
+          metadata: {
+            presencePollCache: { fetchedAt: "2099-01-01T00:00:00.000Z" },
+          },
+          platform: "epic",
+          platform_user_id: "claimed-provider-id",
+          updated_at: fetchedAt,
+          user_id: userId,
+        }],
+        provider_account_verifications: [],
+      },
+      operations,
+    }),
+  });
+
+  assertEquals(
+    await adapters.loadPlatformAccounts({
+      dryRun: false,
+      force: false,
+      limit: 25,
+      platforms: [],
+      triggerSource: "scheduled",
+      userIds: [],
+    }),
+    [],
+  );
+  assertEquals(
+    operations.some((operation) =>
+      operation.table === "platform_presence_poll_cache"
+    ),
+    false,
+  );
 });
 
 Deno.test("presence poll adapters load existing presence with deduped ids and strict status normalization", async () => {
@@ -208,7 +304,7 @@ Deno.test("presence poll adapters load existing presence with deduped ids and st
   ]);
 });
 
-Deno.test("presence poll adapters write result and skip poll caches while preserving metadata", async () => {
+Deno.test("presence poll adapters write result and skip caches to the service-only table", async () => {
   const operations: Operation[] = [];
   const adapters = createPresencePollAdapters({
     cadenceMs: 60_000,
@@ -236,51 +332,52 @@ Deno.test("presence poll adapters write result and skip poll caches while preser
   );
 
   assertEquals(operations, [
-    { args: ["platform_accounts"], method: "from" },
+    { args: ["platform_presence_poll_cache"], method: "from" },
     {
       args: [
         {
-          metadata: {
-            keep: true,
-            presencePollCache: {
-              currentGameTitle: "Half-Life 3",
-              fetchedAt,
-              platform: "steam",
-              platformGameId: "steam-42",
-              source: "steam_web_api",
-              status: "online",
-            },
+          cache: {
+            currentGameTitle: "Half-Life 3",
+            fetchedAt,
+            platform: "steam",
+            platformGameId: "steam-42",
+            source: "steam_web_api",
+            status: "online",
           },
+          platform_account_id: "account-1",
         },
+        { onConflict: "platform_account_id" },
       ],
-      method: "update",
-      table: "platform_accounts",
+      method: "upsert",
+      table: "platform_presence_poll_cache",
     },
-    { args: ["id", "account-1"], method: "eq", table: "platform_accounts" },
-    { args: [], method: "returns", table: "platform_accounts" },
-    { args: ["platform_accounts"], method: "from" },
+    {
+      args: [],
+      method: "returns",
+      table: "platform_presence_poll_cache",
+    },
+    { args: ["platform_presence_poll_cache"], method: "from" },
     {
       args: [
         {
-          metadata: {
-            presencePollCache: {
-              fetchedAt,
-              platform: "epic",
-              reason: "rate-limited",
-              retryAfterSeconds: 45,
-            },
+          cache: {
+            fetchedAt,
+            platform: "epic",
+            reason: "rate-limited",
+            retryAfterSeconds: 45,
           },
+          platform_account_id: "epic-account",
         },
+        { onConflict: "platform_account_id" },
       ],
-      method: "update",
-      table: "platform_accounts",
+      method: "upsert",
+      table: "platform_presence_poll_cache",
     },
     {
-      args: ["id", "epic-account"],
-      method: "eq",
-      table: "platform_accounts",
+      args: [],
+      method: "returns",
+      table: "platform_presence_poll_cache",
     },
-    { args: [], method: "returns", table: "platform_accounts" },
   ]);
 });
 

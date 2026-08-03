@@ -380,6 +380,17 @@ function FriendsPageForAccount({ auth }: { auth: ReturnType<typeof useCurrentUse
     [],
   );
   const [searchParams, setSearchParams] = useSearchParams();
+  const searchParamsRef = useRef(searchParams);
+  searchParamsRef.current = searchParams;
+  const updateSearchParams = useCallback(
+    (update: (next: URLSearchParams) => void) => {
+      const next = new URLSearchParams(searchParamsRef.current);
+      update(next);
+      searchParamsRef.current = next;
+      setSearchParams(next, { replace: true });
+    },
+    [setSearchParams],
+  );
   const initialTab = (searchParams.get("tab") as TabKey | null) ?? "friends";
   const [activeTab, setActiveTab] = useState<TabKey>(
     (TABS.some((t) => t.key === initialTab) ? initialTab : "friends") as TabKey,
@@ -401,15 +412,15 @@ function FriendsPageForAccount({ auth }: { auth: ReturnType<typeof useCurrentUse
   const switchTab = useCallback(
     (tab: TabKey) => {
       setActiveTab(tab);
-      const next = new URLSearchParams(searchParams);
-      if (tab === "friends") {
-        next.delete("tab");
-      } else {
-        next.set("tab", tab);
-      }
-      setSearchParams(next, { replace: true });
+      updateSearchParams((next) => {
+        if (tab === "friends") {
+          next.delete("tab");
+        } else {
+          next.set("tab", tab);
+        }
+      });
     },
-    [searchParams, setSearchParams],
+    [updateSearchParams],
   );
   const [friends, setFriends] = useState<Friendship[]>([]);
   const [friendLinks, setFriendLinks] = useState<FriendLink[]>([]);
@@ -434,6 +445,13 @@ function FriendsPageForAccount({ auth }: { auth: ReturnType<typeof useCurrentUse
   function selectFriend(friendId: string | null) {
     setThread(null);
     setSelectedFriendId(friendId);
+    updateSearchParams((next) => {
+      if (friendId) {
+        next.set("friend", friendId);
+      } else {
+        next.delete("friend");
+      }
+    });
   }
 
   async function handleJoinGame(gameId: string) {
@@ -652,11 +670,24 @@ function FriendsPageForAccount({ auth }: { auth: ReturnType<typeof useCurrentUse
       return;
     }
 
+    const requestedFriendId = searchParams.get("friend");
+    if (requestedFriendId && friendIds.includes(requestedFriendId)) {
+      if (selectedFriendId !== requestedFriendId) {
+        setThread(null);
+        setSelectedFriendId(requestedFriendId);
+      }
+      return;
+    }
+
+    if (requestedFriendId) {
+      updateSearchParams((next) => next.delete("friend"));
+    }
+
     if (!selectedFriendId || !friendIds.includes(selectedFriendId)) {
       setThread(null);
       setSelectedFriendId(friendIds[0]);
     }
-  }, [friendIds, selectedFriendId]);
+  }, [friendIds, searchParams, selectedFriendId, updateSearchParams]);
 
   useEffect(() => {
     if (!isConfigured || !user) {

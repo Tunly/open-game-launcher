@@ -318,16 +318,34 @@ async function readStoreOrderPaymentRecordForRefund(
   orderId: string | null,
   paymentIntentId: string | null,
 ): Promise<StoreOrderPaymentRecord | null> {
+  let metadataOrder: StoreOrderPaymentRecord | null = null;
   if (orderId) {
-    const order = await readStoreOrderPaymentRecord(orderId);
-    if (order) return order;
+    metadataOrder = await readStoreOrderPaymentRecord(orderId);
   }
+
   if (paymentIntentId) {
-    const order = await readStoreOrderPaymentRecordByPaymentIntent(
+    if (metadataOrder?.stripe_payment_intent === paymentIntentId) {
+      return metadataOrder;
+    }
+    if (
+      metadataOrder?.stripe_payment_intent &&
+      metadataOrder.stripe_payment_intent !== paymentIntentId
+    ) {
+      throw new Error("Stripe refund order payment intent mismatch");
+    }
+    const paymentIntentOrder = await readStoreOrderPaymentRecordByPaymentIntent(
       paymentIntentId,
     );
-    if (order) return order;
+    if (
+      metadataOrder && paymentIntentOrder &&
+      metadataOrder.id !== paymentIntentOrder.id
+    ) {
+      throw new Error("Stripe refund order metadata mismatch");
+    }
+    if (paymentIntentOrder) return paymentIntentOrder;
   }
+
+  if (metadataOrder) return metadataOrder;
   return await readStoreOrderPaymentRecordByProviderRefund(refundId);
 }
 

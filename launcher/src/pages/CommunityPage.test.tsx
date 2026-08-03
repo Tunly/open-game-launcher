@@ -186,9 +186,9 @@ describe("CommunityPage verification preview activity shell", () => {
       "page",
     );
     expect(within(nav).getByRole("button", { name: "Discussions" })).toBeInTheDocument();
-    expect(within(nav).getByRole("button", { name: "Workshop" })).toBeInTheDocument();
     expect(within(nav).getByRole("button", { name: "Market" })).toBeInTheDocument();
     expect(within(nav).getByRole("button", { name: "Broadcasts" })).toBeInTheDocument();
+    expect(within(nav).queryByRole("button", { name: "Workshop" })).not.toBeInTheDocument();
     expect(screen.getByRole("region", { name: /community section board/i })).toHaveTextContent(
       "Live Arcade Lobby",
     );
@@ -208,7 +208,9 @@ describe("CommunityPage verification preview activity shell", () => {
     expect(
       within(contentTypeGroup).getByRole("button", { name: "Broadcasts" }),
     ).toBeInTheDocument();
-    expect(within(contentTypeGroup).getByRole("button", { name: "Workshop" })).toBeInTheDocument();
+    expect(
+      within(contentTypeGroup).queryByRole("button", { name: "Workshop" }),
+    ).not.toBeInTheDocument();
   });
 
   it("filters visible activity cards by community content type", () => {
@@ -249,17 +251,17 @@ describe("CommunityPage verification preview activity shell", () => {
 
     const home = screen.getByRole("region", { name: /community activity home/i });
     const nav = within(home).getByRole("navigation", { name: /community sections/i });
-    fireEvent.click(within(nav).getByRole("button", { name: "Workshop" }));
+    fireEvent.click(within(nav).getByRole("button", { name: "Broadcasts" }));
 
-    expect(within(nav).getByRole("button", { name: "Workshop" })).toHaveAttribute(
+    expect(within(nav).getByRole("button", { name: "Broadcasts" })).toHaveAttribute(
       "aria-current",
       "page",
     );
     expect(screen.getByRole("region", { name: /community section board/i })).toHaveTextContent(
-      "Workshop Dispatch",
+      "Broadcast Switchboard",
     );
     const feed = screen.getByRole("region", { name: /community feed/i });
-    expect(feed).toHaveTextContent("Steel Battalion X raid slot free");
+    expect(feed).toHaveTextContent("Netrunner Phantom Cup locks Friday");
     expect(feed).not.toHaveTextContent("Neo-Tokyo Drift ranked queue opens");
   });
 
@@ -292,8 +294,8 @@ describe("CommunityPage verification preview activity shell", () => {
 
     const hubDetails = screen.getByRole("region", { name: /game community hub details/i });
     expect(hubDetails).toHaveTextContent("Steel Battalion X");
-    expect(hubDetails).toHaveTextContent("24");
-    expect(hubDetails).toHaveTextContent("Workshop");
+    expect(hubDetails).toHaveTextContent("34");
+    expect(hubDetails).toHaveTextContent("Threads");
     expect(hubDetails).toHaveTextContent("9");
     expect(hubDetails).toHaveTextContent("Market");
   });
@@ -332,15 +334,8 @@ describe("CommunityPage verification preview activity shell", () => {
     expect(discussions).toHaveTextContent("Local reply card");
   });
 
-  it("toggles workshop subscription, market watch, and moderation status locally", () => {
+  it("toggles market watch and moderation status locally", () => {
     render(<CommunityPage />);
-
-    const workshop = screen.getByRole("region", { name: /community workshop/i });
-    fireEvent.click(within(workshop).getByRole("button", { name: "Subscribe" }));
-    expect(within(workshop).getByRole("button", { name: "Subscribed locally" })).toHaveAttribute(
-      "aria-pressed",
-      "true",
-    );
 
     const market = screen.getByRole("region", { name: /community market/i });
     fireEvent.click(within(market).getByRole("button", { name: "Watch" }));

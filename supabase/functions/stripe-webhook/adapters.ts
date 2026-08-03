@@ -320,6 +320,22 @@ export function createStripeWebhookAdapters(
     if (metadataUserId && metadataUserId !== order.user_id) {
       throw new Error(`Stripe session ${sessionId} user metadata mismatch`);
     }
+    if (
+      order.stripe_session_id && order.stripe_session_id !== sessionId
+    ) {
+      throw new Error(`Stripe session ${sessionId} order association mismatch`);
+    }
+
+    const paymentIntentId = readCheckoutSessionPaymentSnapshot(checkoutSession)
+      .stripePaymentIntent;
+    if (
+      paymentIntentId && order.stripe_payment_intent &&
+      paymentIntentId !== order.stripe_payment_intent
+    ) {
+      throw new Error(
+        `Stripe session ${sessionId} payment intent association mismatch`,
+      );
+    }
 
     return order;
   }

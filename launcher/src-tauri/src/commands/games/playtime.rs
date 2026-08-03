@@ -402,7 +402,7 @@ fn normalize_path(path: &str) -> String {
     let normalized = normalized.trim_end_matches('/');
     #[cfg(target_os = "windows")]
     {
-        return normalized.to_lowercase();
+        normalized.to_lowercase()
     }
     #[cfg(not(target_os = "windows"))]
     {
@@ -1251,7 +1251,7 @@ mod tests {
             window: None,
         };
 
-        assert!(find_running_game_process(&game, &[process.clone()]).is_some());
+        assert!(find_running_game_process(&game, std::slice::from_ref(&process)).is_some());
         assert!(observed_process_for_safe_stop(&game, &process).is_none());
     }
 

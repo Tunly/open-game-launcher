@@ -71,7 +71,7 @@ describe("AppLayout hosted shell skin hydration", () => {
     window.removeEventListener(APP_SHELL_SKIN_CHANGED_EVENT, eventSpy);
   });
 
-  it("falls back to the home page key for unknown routes", () => {
+  it("falls back to the library page key for unknown routes", () => {
     mocks.useCurrentUser.mockReturnValue({
       isConfigured: false,
       isLoading: false,
@@ -91,7 +91,7 @@ describe("AppLayout hosted shell skin hydration", () => {
 
     expect(container.querySelector("[data-active-page]")).toHaveAttribute(
       "data-active-page",
-      "home",
+      "library",
     );
   });
 });

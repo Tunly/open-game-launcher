@@ -145,6 +145,27 @@ mod overlay_settings_tests {
         assert!(error.contains("close failed"));
         assert_eq!(window.close_calls.get(), 1);
     }
+
+    #[test]
+    fn external_overlay_starts_without_stealing_game_focus() {
+        let source = include_str!("overlay.rs");
+        let toggle_command = source
+            .rsplit_once("pub fn toggle_in_game_overlay")
+            .expect("overlay toggle command should exist")
+            .1
+            .split_once("/// Make the external overlay window")
+            .expect("overlay click-through command should follow the toggle command")
+            .0;
+
+        assert!(
+            toggle_command.contains(".focused(false)"),
+            "the external overlay must be created without foreground activation"
+        );
+        assert!(
+            !toggle_command.contains("set_focus"),
+            "opening the external overlay must preserve the game's foreground focus"
+        );
+    }
 }
 
 #[tauri::command]
@@ -181,10 +202,10 @@ pub fn toggle_in_game_overlay(app: tauri::AppHandle) -> Result<bool, String> {
             .always_on_top(true)
             .skip_taskbar(true)
             .transparent(true)
+            .focused(false)
             .build()
             .map_err(|e| format!("Failed to create overlay window: {e}"))?;
         install_floating_window_guard(&window, "Overlay");
-        let _ = window.set_focus();
         Ok(true)
     }
 }

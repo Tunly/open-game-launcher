@@ -2,6 +2,7 @@ import { assertEquals } from "https://deno.land/std@0.224.0/assert/mod.ts";
 
 import {
   handleStripeCreateCheckout,
+  StoreCheckoutProductConflictError,
   type StripeCheckoutSessionParams,
   type StripeCreateCheckoutHandlerDeps,
 } from "./handler.ts";
@@ -233,6 +234,40 @@ Deno.test("stripe checkout handler fulfills free orders without Stripe sessions"
   ]);
 });
 
+Deno.test("stripe checkout handler rejects a concurrent product claim before Stripe", async () => {
+  const failedOrders: string[] = [];
+  let stripeCalls = 0;
+  const response = await handleStripeCreateCheckout(
+    checkoutRequest({
+      checkout_attempt_id: checkoutAttemptId,
+      product_ids: [paidProductId],
+    }),
+    stubDeps({
+      createCheckoutSession: async () => {
+        stripeCalls += 1;
+        return {
+          id: "cs_should_not_exist",
+          payment_intent: null,
+          url: "https://checkout.stripe.test/nope",
+        };
+      },
+      createOrderItems: () => {
+        throw new StoreCheckoutProductConflictError();
+      },
+      markOrderFailed: async (orderId) => {
+        failedOrders.push(orderId);
+      },
+    }),
+  );
+
+  assertEquals(response.status, 409);
+  assertEquals(await response.json(), {
+    error: "One or more products are already owned or have an active checkout.",
+  });
+  assertEquals(failedOrders, ["order-1"]);
+  assertEquals(stripeCalls, 0);
+});
+
 Deno.test("stripe checkout handler creates paid Checkout Sessions with idempotency", async () => {
   const orders: Array<{ attemptId: string; subtotal: number; userId: string }> =
     [];
@@ -278,6 +313,7 @@ Deno.test("stripe checkout handler creates paid Checkout Sessions with idempoten
       createOrderItems: async (_orderId, items) => {
         orderItems.push(...items);
       },
+      checkoutAllowedOrigins: ["https://app.example"],
     }),
   );
 
@@ -328,6 +364,61 @@ Deno.test("stripe checkout handler creates paid Checkout Sessions with idempoten
   ]);
 });
 
+Deno.test("stripe checkout handler ignores an untrusted request Origin and redirect URLs", async () => {
+  const sessions: StripeCheckoutSessionParams[] = [];
+  const response = await handleStripeCreateCheckout(
+    checkoutRequest(
+      {
+        cancel_url: "https://evil.example/cancel",
+        checkout_attempt_id: checkoutAttemptId,
+        product_ids: [paidProductId],
+        success_url: "https://evil.example/success",
+      },
+      { origin: "https://evil.example" },
+    ),
+    stubDeps({
+      createCheckoutSession: async (params) => {
+        sessions.push(params);
+        return {
+          id: "cs_safe_redirect",
+          payment_intent: null,
+          url: "https://checkout.stripe.test/safe",
+        };
+      },
+    }),
+  );
+
+  assertEquals(response.status, 200);
+  assertEquals(
+    sessions[0].success_url,
+    "http://localhost:1420/store?tab=orders&session_id={CHECKOUT_SESSION_ID}",
+  );
+  assertEquals(
+    sessions[0].cancel_url,
+    "http://localhost:1420/store?tab=browse",
+  );
+});
+
+Deno.test("stripe checkout handler fails before order creation without a trusted fallback", async () => {
+  let orderWrites = 0;
+  const response = await handleStripeCreateCheckout(
+    checkoutRequest({
+      checkout_attempt_id: checkoutAttemptId,
+      product_ids: [paidProductId],
+    }),
+    stubDeps({
+      checkoutUrlFallback: "http://public.example",
+      createOrder: async () => {
+        orderWrites += 1;
+        return { order: order(), status: "created" };
+      },
+    }),
+  );
+
+  assertEquals(response.status, 500);
+  assertEquals(orderWrites, 0);
+});
+
 Deno.test("stripe checkout handler marks failed orders when item writes fail", async () => {
   const failedOrders: string[] = [];
   const response = await handleStripeCreateCheckout(
@@ -352,7 +443,7 @@ Deno.test("stripe checkout handler marks failed orders when item writes fail", a
   assertEquals(failedOrders, ["order-1"]);
 });
 
-Deno.test("stripe checkout handler marks failed orders when session creation fails", async () => {
+Deno.test("stripe checkout handler retains product claims when session creation is ambiguous", async () => {
   const failedOrders: string[] = [];
   const response = await handleStripeCreateCheckout(
     checkoutRequest({
@@ -373,10 +464,10 @@ Deno.test("stripe checkout handler marks failed orders when session creation fai
   assertEquals(await response.json(), {
     error: "Checkout could not be completed.",
   });
-  assertEquals(failedOrders, ["order-1"]);
+  assertEquals(failedOrders, []);
 });
 
-Deno.test("stripe checkout handler marks failed orders when session attach fails", async () => {
+Deno.test("stripe checkout handler retains product claims when a created session cannot attach", async () => {
   const failedOrders: string[] = [];
   const response = await handleStripeCreateCheckout(
     checkoutRequest({
@@ -397,7 +488,7 @@ Deno.test("stripe checkout handler marks failed orders when session attach fails
   assertEquals(await response.json(), {
     error: "Checkout could not be completed.",
   });
-  assertEquals(failedOrders, ["order-1"]);
+  assertEquals(failedOrders, []);
 });
 
 function checkoutRequest(
@@ -454,6 +545,7 @@ function stubDeps(
   return {
     attachStripeSessionToOrder: async () => {},
     authenticateRequest: async () => ({ status: "ok", userId }),
+    checkoutAllowedOrigins: [],
     checkoutUrlFallback: "http://localhost:1420",
     createCheckoutSession: async () => ({
       id: "cs_default",

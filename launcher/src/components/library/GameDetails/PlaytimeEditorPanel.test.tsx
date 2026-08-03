@@ -82,4 +82,19 @@ describe("PlaytimeEditorPanel", () => {
     expect(onPlaytimeChanged).toHaveBeenCalledWith(135);
     expect(onStatusMessage).toHaveBeenCalledWith("Playtime updated.");
   });
+
+  it("traps the editor as a labelled modal and restores focus after Escape", async () => {
+    render(<PlaytimeEditorPanel game={game} />);
+    await waitFor(() => expect(mocks.listGameSessions).toHaveBeenCalled());
+
+    const opener = screen.getByRole("button", { name: "Edit total playtime" });
+    opener.focus();
+    fireEvent.click(opener);
+
+    expect(screen.getByRole("dialog", { name: "Edit Total Playtime" })).toBeVisible();
+    expect(screen.getByRole("spinbutton")).toHaveFocus();
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: "Edit Total Playtime" })).not.toBeInTheDocument();
+    expect(opener).toHaveFocus();
+  });
 });

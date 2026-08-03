@@ -246,6 +246,12 @@ export function releaseWorkflowReport({ content, root = repoRoot } = {}) {
       "node --test scripts/release-workflow-check.test.mjs",
       "script validation must run release workflow contract tests",
     );
+    pushMissing(
+      errors,
+      scriptValidationJob,
+      "node --test scripts/desktop-e2e-contract.test.mjs",
+      "script validation must run desktop E2E contract tests",
+    );
   }
 
   const releaseBoundaryGate = workflowJobBlock(
@@ -290,6 +296,7 @@ export function releaseWorkflowReport({ content, root = repoRoot } = {}) {
       "pnpm completion:gate:external",
     );
     for (const requiredNeed of [
+      "desktop-e2e-windows",
       "frontend",
       "coverage",
       "rust-fmt",
@@ -330,6 +337,36 @@ export function releaseWorkflowReport({ content, root = repoRoot } = {}) {
     }
   }
 
+  const desktopE2E = workflowJobBlock(workflow, "desktop-e2e-windows");
+  if (!desktopE2E) {
+    errors.push("workflow must define desktop-e2e-windows job");
+  } else {
+    for (const [requiredValue, message] of [
+      [
+        "runs-on: windows-2025",
+        "desktop E2E must run on the pinned Windows runner",
+      ],
+      [
+        "cargo install tauri-driver --version 2.0.6 --locked",
+        "desktop E2E must install the pinned Tauri driver",
+      ],
+      [
+        "--debug --no-bundle --target x86_64-pc-windows-msvc -- --locked",
+        "desktop E2E must build the real Windows desktop binary",
+      ],
+      [
+        "run: pnpm test:e2e:desktop",
+        "desktop E2E must execute the UI to IPC smoke",
+      ],
+      [
+        "OGL_E2E_APP_BINARY: src-tauri/target/x86_64-pc-windows-msvc/debug/open-game-launcher.exe",
+        "desktop E2E must target the built launcher executable",
+      ],
+    ]) {
+      pushMissing(errors, desktopE2E, requiredValue, message);
+    }
+  }
+
   const buildUpload = workflowJobBlock(workflow, "build-upload");
   if (!buildUpload) {
     errors.push("workflow must define build-upload job");
@@ -345,6 +382,9 @@ export function releaseWorkflowReport({ content, root = repoRoot } = {}) {
     }
     if (!hasJobNeed(buildUpload, "coverage")) {
       errors.push("build-upload must depend on coverage");
+    }
+    if (!hasJobNeed(buildUpload, "desktop-e2e-windows")) {
+      errors.push("build-upload must depend on desktop-e2e-windows");
     }
     const matrixRows = buildUploadMatrixRows(buildUpload);
     for (const contract of buildUploadArtifactContracts) {
@@ -412,6 +452,10 @@ export function releaseWorkflowReport({ content, root = repoRoot } = {}) {
       for (const secretName of [
         "TAURI_SIGNING_PRIVATE_KEY",
         "TAURI_SIGNING_PRIVATE_KEY_PASSWORD",
+        "APPLE_CERTIFICATE",
+        "APPLE_CERTIFICATE_PASSWORD",
+        "APPLE_API_KEY",
+        "APPLE_API_ISSUER",
       ]) {
         if (!hasSecretEnvAssignment(tauriBuildStep, secretName)) {
           errors.push(
@@ -446,6 +490,9 @@ export function releaseWorkflowReport({ content, root = repoRoot } = {}) {
         "if: runner.os == 'Windows'",
         "TAURI_SIGNING_PRIVATE_KEY is required for Windows updater releases.",
         "TAURI_SIGNING_PRIVATE_KEY_PASSWORD is required for Windows updater releases.",
+        "WINDOWS_CERTIFICATE is required for Windows Authenticode releases.",
+        "WINDOWS_CERTIFICATE_PASSWORD is required for Windows Authenticode releases.",
+        "WINDOWS_TIMESTAMP_URL is required for Windows Authenticode releases.",
       ]) {
         pushMissing(
           errors,
@@ -457,12 +504,73 @@ export function releaseWorkflowReport({ content, root = repoRoot } = {}) {
       for (const secretName of [
         "TAURI_SIGNING_PRIVATE_KEY",
         "TAURI_SIGNING_PRIVATE_KEY_PASSWORD",
+        "WINDOWS_CERTIFICATE",
+        "WINDOWS_CERTIFICATE_PASSWORD",
       ]) {
         if (!hasSecretEnvAssignment(signingSecretsStep, secretName)) {
           errors.push(
             `build-upload signing secret validation must pass ${secretName} from secrets`,
           );
         }
+      }
+    }
+    const windowsCertificateStep = workflowStepWithName(
+      buildUpload,
+      "Import Windows Authenticode certificate",
+    );
+    if (!windowsCertificateStep) {
+      errors.push(
+        "build-upload must import the Windows Authenticode certificate",
+      );
+    } else {
+      for (const requiredValue of [
+        "certificateThumbprint",
+        "digestAlgorithm",
+        "timestampUrl",
+      ]) {
+        pushMissing(
+          errors,
+          windowsCertificateStep,
+          requiredValue,
+          `Windows Authenticode setup must configure ${requiredValue}`,
+        );
+      }
+    }
+    const macSigningStep = workflowStepWithName(
+      buildUpload,
+      "Validate macOS signing and notarization secrets",
+    );
+    if (!macSigningStep) {
+      errors.push(
+        "build-upload must validate macOS signing and notarization secrets",
+      );
+    } else {
+      for (const secretName of [
+        "APPLE_CERTIFICATE",
+        "APPLE_CERTIFICATE_PASSWORD",
+        "APPLE_API_KEY",
+        "APPLE_API_ISSUER",
+        "APPLE_API_PRIVATE_KEY",
+      ]) {
+        if (!hasSecretEnvAssignment(macSigningStep, secretName)) {
+          errors.push(
+            `macOS signing validation must pass ${secretName} from secrets`,
+          );
+        }
+      }
+      pushMissing(
+        errors,
+        macSigningStep,
+        "APPLE_API_KEY_PATH=$key_path",
+        "macOS signing validation must prepare the notarization private key",
+      );
+    }
+    for (const stepName of [
+      "Verify Windows Authenticode signatures",
+      "Verify macOS code signing and notarization",
+    ]) {
+      if (!workflowStepWithName(buildUpload, stepName)) {
+        errors.push(`build-upload must run ${stepName}`);
       }
     }
     if (!artifactInventoryStep) {

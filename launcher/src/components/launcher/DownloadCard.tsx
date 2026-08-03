@@ -1,5 +1,5 @@
 import { Pause, Play, RotateCcw, X } from "lucide-react";
-import { useState } from "react";
+import { memo, useState } from "react";
 
 import type { DownloadItem, DownloadStatus, Game } from "../../lib/types";
 import { isTerminalDownloadItem } from "../../stores/downloadStore";
@@ -58,7 +58,7 @@ const platformColors: Record<string, string> = {
   "OG Store": "bg-[#087d6d] text-white border-black",
 };
 
-export function DownloadCard({
+function DownloadCardComponent({
   index = 0,
   item,
   game,
@@ -123,6 +123,8 @@ export function DownloadCard({
               src={imageUrl}
               alt=""
               className="h-full w-full object-cover"
+              decoding="async"
+              loading="lazy"
               onError={() => setFailedImageUrl(imageUrl ?? null)}
             />
           ) : (
@@ -270,6 +272,8 @@ export function DownloadCard({
     </div>
   );
 }
+
+export const DownloadCard = memo(DownloadCardComponent);
 
 function formatByteProgress(item: DownloadItem) {
   if (!item.bytesTotal || item.bytesTotal <= 0) {

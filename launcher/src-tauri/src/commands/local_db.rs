@@ -80,23 +80,6 @@ where
     upsert_serialized_item(&conn, kind, id, &json, now_unix_millis())
 }
 
-pub fn insert_item<T>(kind: &str, id: &str, item: &T) -> Result<(), String>
-where
-    T: Serialize,
-{
-    let id = normalized_item_id(kind, id)?;
-    let json = serde_json::to_string(item)
-        .map_err(|error| format!("Could not encode local DB {kind} item '{id}': {error}"))?;
-    let conn = open_connection()?;
-    conn.execute(
-        "INSERT INTO local_entities (kind, id, json, updated_at, dirty, sync_status)
-         VALUES (?1, ?2, ?3, ?4, 1, 'pending')",
-        params![kind, id, json, now_unix_millis()],
-    )
-    .map_err(|error| format!("Could not insert local DB {kind} item '{id}': {error}"))?;
-    Ok(())
-}
-
 /// Replaces an authoritative collection snapshot and removes rows omitted from it.
 /// Read-modify-write callers must use `mutate_collection` so their read occurs after
 /// SQLite's writer lock has been acquired.
@@ -1442,12 +1425,12 @@ mod tests {
     }
 
     #[test]
-    fn pending_cloud_sync_excludes_machine_local_mod_entities() {
+    fn pending_cloud_sync_excludes_machine_local_entities() {
         let conn = Connection::open_in_memory().unwrap();
         migrate(&conn).unwrap();
         upsert_serialized_item(&conn, "games", "game-a", "{}", 1).unwrap();
         upsert_serialized_item(&conn, "downloads", "game-b", "{}", 2).unwrap();
-        upsert_serialized_item(&conn, "mod_installs", "mod-a", "{}", 3).unwrap();
+        upsert_serialized_item(&conn, "machine_local", "local-a", "{}", 3).unwrap();
 
         let pending = read_entities_for_sync_with_connection(&conn, true).unwrap();
 

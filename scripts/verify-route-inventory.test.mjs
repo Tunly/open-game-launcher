@@ -148,7 +148,7 @@ test("collectAppRoutePathsFromText extracts router paths", () => {
       export const router = createBrowserRouter([
         { path: "/", element: <Navigate to="/library" replace /> },
         { path: "relative-child", element: page(<RelativePage />) },
-        { path: "/home", element: page(<HomePage />) },
+        { path: "/library", element: page(<LibraryPage />) },
         { path: "/activity", element: page(<ActivityPage />) },
         { path: "/u/:username", element: page(<ProfilePage />) },
         { path: "*", element: page(<NotFoundPage />) },
@@ -159,9 +159,9 @@ test("collectAppRoutePathsFromText extracts router paths", () => {
 
   assert.deepEqual(
     [...routePaths.keys()],
-    ["/activity", "/home", "/u/:username", "relative-child"],
+    ["/activity", "/library", "/u/:username", "relative-child"],
   );
-  assert.deepEqual(routePaths.get("/home"), ["launcher/src/app/router.tsx:5"]);
+  assert.deepEqual(routePaths.get("/library"), ["launcher/src/app/router.tsx:5"]);
 });
 
 test("verifyRouteInventory accepts documented verify routes", () => {
@@ -183,12 +183,12 @@ test("verifyRouteInventory accepts documented verify routes", () => {
 test("verifyRouteInventory rejects normal app routes without screenshot evidence", () => {
   const { root, cleanup } = tempRepo();
   try {
-    writeRouter(root, ["/home", "/library"]);
+    writeRouter(root, ["/store", "/library"]);
     writeFixture(
       root,
       "",
-      "- `screenshots/home-local.png` - `/home` documented.",
-      ["screenshots/home-local.png"],
+      "- `screenshots/store-local.png` - `/store` documented.",
+      ["screenshots/store-local.png"],
     );
 
     assert.match(
@@ -523,8 +523,11 @@ test("current route inventory has curated visual coverage and explicit legacy al
   const result = verifyRouteInventory();
 
   assert.equal(result.sourceFlags.size, 49);
-  assert.equal(result.appRoutePaths.size, 23);
-  assert.equal(result.appRouteArtifacts.size, 23);
+  assert.equal(result.appRoutePaths.size, 22);
+  assert.equal(result.appRouteArtifacts.size, 22);
+  assert.equal(result.appRoutePaths.has("/home"), false);
+  assert.equal(result.appRoutePaths.has("/mods"), false);
+  assert.equal(result.appRoutePaths.has("/library"), true);
   assert.deepEqual(result.errors, []);
   assert.equal(
     result.documentedScreenshots.size,
@@ -552,8 +555,8 @@ test("current route inventory has curated visual coverage and explicit legacy al
       line.includes("normal app route paths"),
     ),
     [
-      "Discovered 23 normal app route paths in launcher/src/app/router.tsx.",
-      "Verified screenshot artifact coverage for 23 normal app route paths.",
+      "Discovered 22 normal app route paths in launcher/src/app/router.tsx.",
+      "Verified screenshot artifact coverage for 22 normal app route paths.",
     ],
   );
 });

@@ -153,6 +153,63 @@ describe("ActivityFeed", () => {
     expect(activityMocks.subscribeToFriendActivity).not.toHaveBeenCalled();
   });
 
+  it("loads interaction summaries only for newly paginated activity", async () => {
+    const initialItems = Array.from({ length: 30 }, (_, index) => ({
+      achievementName: null,
+      createdAt: new Date(Date.now() - index * 60_000).toISOString(),
+      gameId: `game-${index}`,
+      gameTitle: `Game ${index}`,
+      id: `activity-${index}`,
+      metadata: {},
+      type: "game_start" as const,
+      userId: "friend-1",
+      visibility: "friends_only" as const,
+    }));
+    const olderItem = {
+      ...initialItems[0],
+      createdAt: new Date(Date.now() - 31 * 60_000).toISOString(),
+      gameId: "older-game",
+      gameTitle: "Older Game",
+      id: "activity-older",
+    };
+    activityMocks.getFriendActivityFeed
+      .mockResolvedValueOnce(initialItems)
+      .mockResolvedValueOnce([olderItem]);
+    interactionMocks.getActivityInteractionSummaries.mockImplementation(
+      async (ids: string[]) =>
+        new Map(
+          ids.map((activityId) => [
+            activityId,
+            {
+              activityId,
+              commentCount: 0,
+              reactedByCurrentUser: false,
+              reactionCount: 0,
+            },
+          ]),
+        ),
+    );
+
+    renderFeed(<ActivityFeed currentUserId="user-1" friendIds={["friend-1"]} />);
+
+    const loadOlderButton = await screen.findByRole("button", { name: /load older activity/i });
+    await waitFor(() => {
+      expect(interactionMocks.getActivityInteractionSummaries).toHaveBeenCalledWith(
+        initialItems.map((item) => item.id),
+      );
+    });
+
+    fireEvent.click(loadOlderButton);
+
+    expect(await screen.findByText("Older Game")).toBeInTheDocument();
+    await waitFor(() => {
+      expect(interactionMocks.getActivityInteractionSummaries).toHaveBeenLastCalledWith([
+        "activity-older",
+      ]);
+    });
+    expect(interactionMocks.getActivityInteractionSummaries).toHaveBeenCalledTimes(2);
+  });
+
   it("uses account-specific empty and error copy for My Activity", async () => {
     activityMocks.getFriendActivityFeed
       .mockResolvedValueOnce([])

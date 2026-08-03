@@ -11,6 +11,8 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 1420",
     "build": "tsc -b && vite build",
+    "bundle:check": "node scripts/check-bundle-budget.mjs",
+    "build:budget": "pnpm build && pnpm bundle:check",
     "preview": "vite preview",
     "prepare": "node scripts/prepare-husky.mjs",
     "tauri": "tauri",
@@ -23,6 +25,7 @@
     "format": "prettier --write \"src/**/*.{ts,tsx,css,md,json}\" \"*.{ts,tsx,js,json,md}\"",
     "format:check": "prettier --check \"src/**/*.{ts,tsx,css,md,json}\" \"*.{ts,tsx,js,json,md}\"",
     "test": "vitest run",
+    "test:e2e:desktop": "node --test --test-timeout=120000 e2e/desktop-smoke.test.mjs",
     "test:watch": "vitest",
     "test:cov": "vitest run --coverage",
     "lint-staged": "lint-staged --cwd .. --config ../lint-staged.config.mjs"
@@ -39,7 +42,6 @@
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-router-dom": "^7.18.1",
-    "recharts": "3.9.2",
     "tailwind-merge": "^3.6.0",
     "zod": "^4.4.3",
     "zustand": "^5.0.14"
@@ -67,6 +69,7 @@
     "postcss": "^8.5.16",
     "prettier": "^3.9.4",
     "prettier-plugin-tailwindcss": "^0.8.0",
+    "selenium-webdriver": "4.46.0",
     "supabase": "2.109.0",
     "tailwindcss": "^4.3.1",
     "typescript": "^6.0.3",

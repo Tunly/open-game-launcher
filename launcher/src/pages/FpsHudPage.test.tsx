@@ -3,7 +3,7 @@ import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 
-import { FpsHudPage } from "./FpsHudPage";
+import { FpsHudPage, FRAME_REPORT_INTERVAL_MS } from "./FpsHudPage";
 import { writeActivePerformanceGameContext } from "../lib/performance-context";
 import { ACTIVE_GAME_PERFORMANCE_POLL_INTERVAL_MS } from "../lib/performance-polling";
 import type { NativeOverlaySettings } from "../lib/types/overlay";
@@ -52,6 +52,10 @@ const metrics: RealtimeMetrics = {
 function pollCallCount() {
   return vi.mocked(invoke).mock.calls.filter(([command]) => command === "poll_performance_metrics")
     .length;
+}
+
+function frameReportCalls() {
+  return vi.mocked(invoke).mock.calls.filter(([command]) => command === "report_frame_rendered");
 }
 
 describe("FpsHudPage performance polling", () => {
@@ -112,6 +116,36 @@ describe("FpsHudPage performance polling", () => {
       await Promise.resolve();
     });
     expect(pollCallCount()).toBe(2);
+  });
+
+  it("batches rendered frames into one native IPC report per second", async () => {
+    let frameCallback: FrameRequestCallback | undefined;
+    vi.stubGlobal(
+      "requestAnimationFrame",
+      vi.fn((callback: FrameRequestCallback) => {
+        frameCallback = callback;
+        return 1;
+      }),
+    );
+    writeActivePerformanceGameContext({
+      gameId: "game-1",
+      gameTitle: "Game 1",
+      launcher: "steam",
+    });
+
+    render(<FpsHudPage />);
+    await act(async () => Promise.resolve());
+
+    act(() => frameCallback?.(0));
+    for (let frame = 1; frame < 60; frame += 1) {
+      act(() => frameCallback?.((FRAME_REPORT_INTERVAL_MS * frame) / 60));
+    }
+    expect(frameReportCalls()).toHaveLength(0);
+
+    act(() => frameCallback?.(FRAME_REPORT_INTERVAL_MS));
+    expect(frameReportCalls()).toEqual([
+      ["report_frame_rendered", { elapsedMs: FRAME_REPORT_INTERVAL_MS, frameCount: 60 }],
+    ]);
   });
 
   it("does not poll native metrics without active game context", async () => {

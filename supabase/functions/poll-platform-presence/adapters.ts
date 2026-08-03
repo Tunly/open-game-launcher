@@ -115,17 +115,44 @@ async function loadPlatformAccounts(
   supabaseAdmin: SupabaseAdminClient,
   pollRequest: PollRequest,
 ): Promise<PlatformAccountRow[]> {
-  let query = tableClient(supabaseAdmin, "platform_accounts")
-    .select("id, user_id, platform, platform_user_id, metadata, updated_at");
+  let verificationQuery = tableClient(
+    supabaseAdmin,
+    "provider_account_verifications",
+  ).select("platform_account_id");
 
   if (pollRequest.userIds.length > 0) {
-    query = query.in("user_id", pollRequest.userIds);
+    verificationQuery = verificationQuery.in("user_id", pollRequest.userIds);
   }
   if (pollRequest.platforms.length > 0) {
-    query = query.in("platform", pollRequest.platforms);
+    verificationQuery = verificationQuery.in(
+      "platform",
+      pollRequest.platforms,
+    );
   }
 
-  const { data, error } = await query
+  const { data: verificationRows, error: verificationError } =
+    await verificationQuery
+      .order("updated_at", { ascending: true })
+      .limit(pollRequest.limit)
+      .returns<unknown[]>();
+  if (verificationError) {
+    throw new Error(verificationError.message);
+  }
+
+  const verifiedAccountIds = Array.from(
+    new Set(
+      (verificationRows ?? [])
+        .map((row) => readStringRecord(row, "platform_account_id"))
+        .filter((value): value is string => Boolean(value)),
+    ),
+  );
+  if (verifiedAccountIds.length === 0) {
+    return [];
+  }
+
+  const { data, error } = await tableClient(supabaseAdmin, "platform_accounts")
+    .select("id, user_id, platform, platform_user_id, metadata, updated_at")
+    .in("id", verifiedAccountIds)
     .order("updated_at", { ascending: true })
     .limit(pollRequest.limit)
     .returns<unknown[]>();
@@ -133,9 +160,42 @@ async function loadPlatformAccounts(
     throw new Error(error.message);
   }
 
-  return (data ?? [])
+  const accounts = (data ?? [])
     .map(toPlatformAccount)
     .filter(Boolean) as PlatformAccountRow[];
+  if (accounts.length === 0) {
+    return [];
+  }
+  const verifiedIds = accounts.map((account) => account.id);
+  const { data: cacheRows, error: cacheError } = await tableClient(
+    supabaseAdmin,
+    "platform_presence_poll_cache",
+  )
+    .select("platform_account_id, cache")
+    .in("platform_account_id", verifiedIds)
+    .returns<unknown[]>();
+  if (cacheError) {
+    throw new Error(cacheError.message);
+  }
+
+  const cacheByAccountId = new Map<string, Record<string, unknown>>();
+  for (const row of cacheRows ?? []) {
+    const accountId = readStringRecord(row, "platform_account_id");
+    const cache = readRecord(row, "cache");
+    if (accountId && cache) {
+      cacheByAccountId.set(accountId, cache);
+    }
+  }
+
+  return accounts.map((account) => {
+    const metadata = { ...account.metadata };
+    delete metadata[pollCacheKey];
+    const cache = cacheByAccountId.get(account.id);
+    return {
+      ...account,
+      metadata: cache ? { ...metadata, [pollCacheKey]: cache } : metadata,
+    };
+  });
 }
 
 async function loadExistingPresence(
@@ -198,9 +258,13 @@ async function writePollCache(
       status: result.status,
     };
 
-  const { error } = await tableClient(supabaseAdmin, "platform_accounts")
-    .update({ metadata: { ...account.metadata, [pollCacheKey]: cache } })
-    .eq("id", account.id)
+  const { error } = await tableClient(
+    supabaseAdmin,
+    "platform_presence_poll_cache",
+  )
+    .upsert({ platform_account_id: account.id, cache }, {
+      onConflict: "platform_account_id",
+    })
     .returns<unknown>();
   if (error) {
     throw new Error(error.message);
@@ -244,6 +308,22 @@ function normalizePresenceStatus(value: string | null): PresenceStatus | null {
 function readString(record: Record<string, unknown>, key: string) {
   const value = record[key];
   return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function readStringRecord(value: unknown, key: string) {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? readString(value as Record<string, unknown>, key)
+    : null;
+}
+
+function readRecord(value: unknown, key: string) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  const nested = (value as Record<string, unknown>)[key];
+  return nested && typeof nested === "object" && !Array.isArray(nested)
+    ? (nested as Record<string, unknown>)
+    : null;
 }
 
 function tableClient(

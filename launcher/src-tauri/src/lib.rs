@@ -101,24 +101,6 @@ pub fn run() {
                             let _ = window.set_focus();
                         }
                     }
-                } else if should_capture_nxm_link(
-                    &arg,
-                    commands::mod_manager::nexus_native_integration_configured(),
-                ) {
-                    let status = commands::nxm::capture_nxm_link(&arg);
-                    if let Some(window) = app.get_webview_window("main") {
-                        // The event contains only redacted game/mod metadata.
-                        // NXM authorization remains in the Rust-only pending store.
-                        let _ = window.emit("nxm-link-status", status);
-                        if app
-                            .state::<StartupState>()
-                            .transition_started
-                            .load(Ordering::Acquire)
-                        {
-                            let _ = window.show();
-                            let _ = window.set_focus();
-                        }
-                    }
                 }
             }
         }))
@@ -128,7 +110,6 @@ pub fn run() {
                     if event.state == ShortcutState::Pressed {
                         if let Some(window) = app.get_webview_window("in_game_overlay") {
                             let _ = window.emit("overlay-global-toggle", ());
-                            let _ = window.set_focus();
                         } else {
                             let _ = commands::overlay::toggle_in_game_overlay(app.clone());
                         }
@@ -170,22 +151,10 @@ pub fn run() {
             // Register the universallauncher:// protocol handler (Windows Registry)
             commands::deeplink::register_protocol_handler();
 
-            // Only a registered native Nexus build can complete nxm:// flows.
-            // The no-slug web-handoff build must not claim the protocol and
-            // accidentally intercept links it cannot safely continue.
-            if commands::mod_manager::nexus_native_integration_configured() {
-                commands::nxm::register_nxm_protocol_handler();
-            }
-
             // Keep startup links until the frontend explicitly claims them. Tauri
             // events are transient and setup runs before React subscribes.
             if let Some(link) = commands::deeplink::check_deep_link_on_startup() {
                 store_pending_deep_link(&app.state::<StartupState>().pending_deep_link, link);
-            }
-            // Parse startup NXM links into the Rust-only pending store. Only the
-            // redacted status can subsequently be claimed by the renderer.
-            if commands::mod_manager::nexus_native_integration_configured() {
-                let _ = commands::nxm::check_nxm_link_on_startup();
             }
 
             // Register the saved global overlay hotkey; defaults to Shift+F1.
@@ -196,9 +165,6 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             complete_startup,
             take_pending_deep_link,
-            commands::nxm::take_pending_nxm_status,
-            commands::nxm::get_nxm_handler_status,
-            commands::nxm::open_nxm_handler_settings,
             commands::system::get_system_info,
             commands::system::get_default_install_dir,
             commands::system::get_hardware_info,
@@ -282,18 +248,6 @@ pub fn run() {
             commands::plugin_system::review_plugin_activation_plan,
             commands::plugin_system::review_plugin_marketplace_update_index_trust,
             commands::plugin_system::review_plugin_update_signing_envelope,
-            commands::mod_install::get_mod_queue,
-            commands::mod_install::pause_mod_install,
-            commands::mod_install::cancel_mod_install,
-            commands::mod_manager::get_mod_provider_status,
-            commands::mod_manager::connect_nexus,
-            commands::mod_manager::disconnect_nexus,
-            commands::mod_manager::browse_mods,
-            commands::mod_manager::install_mod,
-            commands::mod_manager::list_managed_mods,
-            commands::mod_manager::set_mod_enabled,
-            commands::mod_manager::remove_mod,
-            commands::mod_manager::open_provider_mod,
             commands::battlenet::open_battlenet_login_window,
             commands::battlenet::process_battlenet_games_payload,
             commands::ea::open_ea_login_window,
@@ -377,10 +331,6 @@ fn claim_startup_transition(transition_started: &AtomicBool) -> bool {
     transition_started
         .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
         .is_ok()
-}
-
-fn should_capture_nxm_link(argument: &str, native_nexus_configured: bool) -> bool {
-    native_nexus_configured && commands::nxm::has_nxm_scheme(argument)
 }
 
 fn show_main_and_close_splash(app: &AppHandle) -> Result<(), String> {
@@ -521,48 +471,6 @@ mod startup_tests {
     use super::*;
 
     #[test]
-    fn security_arbitrary_url_mod_installer_is_not_exposed() {
-        let source = include_str!("lib.rs");
-        let handler_marker = "invoke_handler(tauri::generate_handler![";
-        let handler_start = source
-            .find(handler_marker)
-            .expect("Tauri invoke handler registration should exist");
-        let handler_tail = &source[handler_start + handler_marker.len()..];
-        let handler_end = handler_tail
-            .find(".build(tauri::generate_context!())")
-            .expect("Tauri invoke handler should be followed by app startup");
-        let registered_commands = &handler_tail[..handler_end];
-        for removed_command in [
-            ["install_mod_from", "_url"].concat(),
-            "start_mod_install".to_string(),
-            "scan_game_mods".to_string(),
-            "search_native_mods".to_string(),
-            "set_mod_provider_key".to_string(),
-        ] {
-            assert!(
-                !registered_commands.contains(&removed_command),
-                "removed mod command '{removed_command}' must not be exposed to the renderer"
-            );
-        }
-
-        for active_command in [
-            "commands::mod_manager::connect_nexus",
-            "commands::mod_manager::disconnect_nexus",
-            "commands::mod_manager::browse_mods",
-            "commands::mod_manager::install_mod",
-            "commands::mod_manager::list_managed_mods",
-            "commands::mod_manager::set_mod_enabled",
-            "commands::mod_manager::remove_mod",
-            "commands::mod_manager::open_provider_mod",
-        ] {
-            assert!(
-                registered_commands.contains(active_command),
-                "active mod command '{active_command}' must remain exposed"
-            );
-        }
-    }
-
-    #[test]
     fn pending_deep_link_is_retained_until_claimed_once() {
         let pending = Mutex::new(None);
         let link =
@@ -585,28 +493,20 @@ mod startup_tests {
     }
 
     #[test]
-    fn no_slug_build_does_not_capture_or_bundle_nxm_links() {
-        let link = "nxm://skyrim/mods/123/files/456?key=redacted&expires=2000000000&user_id=7";
-        assert!(!should_capture_nxm_link(link, false));
-        assert!(should_capture_nxm_link(link, true));
+    fn overlay_shortcut_does_not_force_focus_away_from_the_game() {
+        let source = include_str!("lib.rs");
+        let overlay_branch = source
+            .split_once("if let Some(window) = app.get_webview_window(\"in_game_overlay\")")
+            .expect("overlay shortcut branch should exist")
+            .1
+            .split_once("} else {")
+            .expect("overlay shortcut branch should retain its create fallback")
+            .0;
 
-        let base: serde_json::Value =
-            serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
-        let base_schemes = base
-            .pointer("/plugins/deep-link/desktop/schemes")
-            .and_then(serde_json::Value::as_array)
-            .unwrap();
-        assert_eq!(base_schemes, &[serde_json::json!("oglauncher")]);
-
-        let native: serde_json::Value =
-            serde_json::from_str(include_str!("../tauri.nexus.conf.json")).unwrap();
-        let native_schemes = native
-            .pointer("/plugins/deep-link/desktop/schemes")
-            .and_then(serde_json::Value::as_array)
-            .unwrap();
-        assert_eq!(
-            native_schemes,
-            &[serde_json::json!("oglauncher"), serde_json::json!("nxm")]
+        assert!(overlay_branch.contains("overlay-global-toggle"));
+        assert!(
+            !overlay_branch.contains("set_focus"),
+            "the global overlay hotkey must not foreground the overlay over an exclusive game"
         );
     }
 }

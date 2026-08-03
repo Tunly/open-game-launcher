@@ -257,6 +257,8 @@ function Avatar({
       <img
         alt={displayName ?? username ?? "Friend"}
         className="h-12 w-12 shrink-0 border-2 border-black object-cover shadow-[2px_2px_0_#171411]"
+        decoding="async"
+        loading="lazy"
         src={avatarUrl}
       />
     );

@@ -93,6 +93,24 @@ describe("LibrarySidebar", () => {
     expect(screen.getByText(/Steam \(1\)/)).toBeInTheDocument();
   });
 
+  it("windows large grouped libraries instead of mounting every row", () => {
+    const groups = Array.from({ length: 120 }, (_, index) =>
+      aggregateGameGroup([
+        makeGame({ id: `steam-${index}`, title: `Virtual Game ${String(index).padStart(3, "0")}` }),
+      ]),
+    );
+    renderSidebar({
+      filteredGames: groups,
+      games: groups,
+      groupOption: "source",
+      groupedGames: { Steam: groups },
+    });
+
+    expect(screen.getByText("Steam (120)")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Virtual Game 000/ })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /Virtual Game 119/ })).not.toBeInTheDocument();
+  });
+
   it("changes the grouping through the header control", () => {
     const setGroupOption = vi.fn();
     renderSidebar({ setGroupOption });

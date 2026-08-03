@@ -49,6 +49,7 @@ function validEnvValue(name: string) {
     PRESENCE_POLL_SECRET: "presencePoll9f8e7d6c5b4a392817abcd",
     PRESENCE_PROVIDER_TOKEN: "presenceProvider9f8e7d6c5b4a392817",
     PRICE_DROP_NOTIFY_SECRET: "priceDrop9f8e7d6c5b4a392817263abcd",
+    STEAM_WEB_API_KEY: "0123456789abcdef0123456789abcdef",
     STRIPE_SECRET_KEY: "sk_live_51OgLauncherEvidenceAlpha1234567890",
     STRIPE_WEBHOOK_SECRET: "whsec_51OgLauncherEvidenceAlpha1234567890",
     SUPABASE_URL: "https://awebfvfyqzwapcgixdfj.supabase.co",
@@ -155,9 +156,6 @@ function externalProofEvidenceFor(proof: string, fallback = "run-external-eviden
     return "run-license-key-custody-live-license-issuance-123";
   }
   if (proof.includes("Hosted price-drop scheduler")) return "workflow-price-drop-live-123";
-  if (proof.includes("Nexus website search handoff and Steam Workshop")) {
-    return "run-nexus-steam-workshop-live-provider-123";
-  }
   if (proof.includes("Non-Steam presence")) {
     return "run-non-steam-presence-bridge-provider-123";
   }
@@ -437,7 +435,7 @@ describe("external completion evidence summary", () => {
                 ...evidenceDetails,
                 "Live probe run ID": "live-provider-probe-run-123",
                 "Provider response evidence": "provider-response-probe-run-123",
-                "Provider/client matrix": "provider-client-matrix-nexus-steam-workshop-run-123",
+                "Provider/client matrix": "provider-client-matrix-run-123",
               },
               path: providerGate.artifactPaths[0],
               proofEvidence: Object.fromEntries(
@@ -1160,69 +1158,6 @@ describe("external completion evidence summary", () => {
       {
         field: "Redaction notes",
         path: storeGate.artifactPaths[0],
-      },
-    ]);
-  });
-
-  it("requires Nexus and Steam Workshop in provider compound evidence", () => {
-    const providerGate = EXTERNAL_COMPLETION_EVIDENCE_GATE_INPUTS.find(
-      (gate) => gate.id === "provider-live-integrations",
-    );
-    expect(providerGate).toBeDefined();
-
-    const compoundProof = providerGate!.proofRequirements.find((proof) =>
-      proof.includes("Nexus website search handoff and Steam Workshop"),
-    );
-    expect(compoundProof).toBeDefined();
-
-    const summary = buildExternalCompletionEvidenceSummary({
-      createdAt: "2026-06-16T00:00:00.000Z",
-      gates: [
-        {
-          ...providerGate!,
-          artifactEvidence: [
-            {
-              checkedProofs: providerGate!.proofRequirements,
-              evidenceDetails: {
-                ...evidenceDetails,
-                "Live probe run ID": "live-probe-run-123",
-                "Provider response evidence": "provider-response artifact run-123",
-                "Provider/client matrix": "provider-client-matrix-nexus-run-123",
-              },
-              path: providerGate!.artifactPaths[0],
-              proofEvidence: Object.fromEntries(
-                providerGate!.proofRequirements.map((proof) => [
-                  proof,
-                  proof === compoundProof
-                    ? "run-nexus-live-provider-probe-123"
-                    : externalProofEvidenceFor(proof),
-                ]),
-              ),
-              readable: true,
-            },
-          ],
-          envEvidence: envEvidenceFor(providerGate!),
-        },
-      ],
-      packetId: "external-evidence-provider-compound-parity-test",
-      validationNow,
-    });
-
-    expect(summary.gates[0]).toMatchObject({
-      missingEvidenceDetailCount: 1,
-      missingProofEvidenceCount: 1,
-      status: "blocked",
-    });
-    expect(summary.gates[0].artifactProofs[0].missingEvidenceDetails).toEqual([
-      {
-        field: "Provider/client matrix",
-        path: providerGate!.artifactPaths[0],
-      },
-    ]);
-    expect(summary.gates[0].artifactProofs[0].missingProofEvidenceMappings).toEqual([
-      {
-        path: providerGate!.artifactPaths[0],
-        proof: compoundProof,
       },
     ]);
   });

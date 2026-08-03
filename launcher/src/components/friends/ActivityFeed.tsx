@@ -228,6 +228,8 @@ function ActivityFeedArticle({
           <img
             alt={player}
             className="h-12 w-12 shrink-0 border-[3px] border-black object-cover shadow-[2px_2px_0_#c20b2f]"
+            decoding="async"
+            loading="lazy"
             src={profile.avatarUrl}
           />
         ) : (
@@ -278,6 +280,8 @@ function ActivityFeedArticle({
             <img
               alt={`${gameTitle} activity artwork`}
               className="h-32 w-full border-[3px] border-black object-cover shadow-[3px_3px_0_#171411]"
+              decoding="async"
+              loading="lazy"
               src={coverImageUrl}
             />
           ) : (
@@ -642,6 +646,8 @@ export function ActivityFeed({
   const [interactionErrors, setInteractionErrors] = useState<Map<string, string>>(new Map());
   const [realtimeMessage, setRealtimeMessage] = useState("");
   const requestIdRef = useRef(0);
+  const summariesRef = useRef(summaries);
+  summariesRef.current = summaries;
   const friendIdsKey = Array.from(new Set(friendIds.filter((id) => id.trim())))
     .sort()
     .join("|");
@@ -666,6 +672,9 @@ export function ActivityFeed({
     const requestId = ++requestIdRef.current;
 
     setItems([]);
+    const emptySummaries = new Map<string, ActivityInteractionSummary>();
+    summariesRef.current = emptySummaries;
+    setSummaries(emptySummaries);
     setLoadError(null);
 
     if (watchedUserIds.length === 0) {
@@ -750,16 +759,32 @@ export function ActivityFeed({
     }
     if (!interactionsEnabled || activityIds.length === 0) return;
 
+    const missingActivityIds = activityIds.filter((id) => !summariesRef.current.has(id));
+    if (missingActivityIds.length === 0) return;
+
     let active = true;
-    void getActivityInteractionSummaries(activityIds)
+    void getActivityInteractionSummaries(missingActivityIds)
       .then((next) => {
-        if (active) setSummaries(next);
+        if (!active) return;
+        setSummaries((current) => {
+          const merged = new Map(current);
+          for (const activityId of missingActivityIds) {
+            merged.set(activityId, next.get(activityId) ?? emptySummary(activityId));
+          }
+          return merged;
+        });
       })
       .catch((error: unknown) => {
         if (!active) return;
         const message =
           error instanceof Error ? error.message : "Interactions could not be loaded.";
-        setInteractionErrors(new Map(activityIds.map((id) => [id, message])));
+        setInteractionErrors((current) => {
+          const next = new Map(current);
+          for (const activityId of missingActivityIds) {
+            next.set(activityId, message);
+          }
+          return next;
+        });
       });
     return () => {
       active = false;

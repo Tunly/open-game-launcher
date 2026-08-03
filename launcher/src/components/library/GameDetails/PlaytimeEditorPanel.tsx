@@ -24,6 +24,7 @@ import {
 import { useCurrentUser } from "../../../hooks/useCurrentUser";
 import { getErrorMessage } from "../../../lib/formatters";
 import { ConfirmDialog } from "../../ui/ConfirmDialog";
+import { ModalDialog } from "../../ui/ModalDialog";
 
 const PAGE_SIZE = 10;
 
@@ -413,12 +414,18 @@ export function PlaytimeEditorPanel({
           </div>
 
           {isLoadingSessions ? (
-            <div className="flex items-center gap-2 py-2 text-[10px] font-bold text-[#55504a] uppercase">
+            <div
+              className="flex items-center gap-2 py-2 text-[10px] font-bold text-[#55504a] uppercase"
+              role="status"
+            >
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
               Loading sessions…
             </div>
           ) : sessionsError ? (
-            <p className="border-2 border-black bg-[#fbd6dc] p-2 text-[10px] font-black text-[#7a0918] uppercase">
+            <p
+              className="border-2 border-black bg-[#fbd6dc] p-2 text-[10px] font-black text-[#7a0918] uppercase"
+              role="alert"
+            >
               {sessionsError}
             </p>
           ) : catalogError && !catalogGameId ? (
@@ -486,11 +493,12 @@ export function PlaytimeEditorPanel({
       </div>
 
       {isEditTotalOpen ? (
-        <div
-          aria-label="Edit total playtime"
-          aria-modal="true"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-[#171411]/90 bg-[radial-gradient(circle,rgba(255,249,237,0.14)_1px,transparent_1px)] bg-[length:10px_10px] p-4"
-          role="dialog"
+        <ModalDialog
+          backdropClassName="fixed inset-0 z-50 flex items-center justify-center bg-[#171411]/90 bg-[radial-gradient(circle,rgba(255,249,237,0.14)_1px,transparent_1px)] bg-[length:10px_10px] p-4"
+          initialFocusSelector="input"
+          labelledBy="edit-total-playtime-title"
+          panelClassName="w-full max-w-[420px]"
+          onDismiss={closeEditTotal}
         >
           <form
             className="w-full max-w-[420px] border-4 border-black bg-[#fff9ed] shadow-[6px_6px_0_#1f1c0f]"
@@ -500,7 +508,12 @@ export function PlaytimeEditorPanel({
             }}
           >
             <div className="flex items-center justify-between border-b-2 border-black bg-[#171411] px-4 py-3 text-white">
-              <h3 className="neo-title text-lg leading-none uppercase">Edit Total Playtime</h3>
+              <h3
+                id="edit-total-playtime-title"
+                className="neo-title text-lg leading-none uppercase"
+              >
+                Edit Total Playtime
+              </h3>
               <button
                 aria-label="Close dialog"
                 className="grid h-7 w-7 place-items-center border-2 border-black bg-[#fbf4e7] text-[#171411]"
@@ -532,7 +545,10 @@ export function PlaytimeEditorPanel({
                 {formatHours(Number(editTotalValue) || 0)}).
               </p>
               {editTotalError ? (
-                <p className="neo-copy border-2 border-black bg-[#fbd6dc] px-3 py-2 text-[11px] font-black text-[#7a0918] uppercase">
+                <p
+                  className="neo-copy border-2 border-black bg-[#fbd6dc] px-3 py-2 text-[11px] font-black text-[#7a0918] uppercase"
+                  role="alert"
+                >
                   {editTotalError}
                 </p>
               ) : null}
@@ -554,15 +570,16 @@ export function PlaytimeEditorPanel({
               </div>
             </div>
           </form>
-        </div>
+        </ModalDialog>
       ) : null}
 
       {editingSession ? (
-        <div
-          aria-label="Edit play session"
-          aria-modal="true"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-[#171411]/90 bg-[radial-gradient(circle,rgba(255,249,237,0.14)_1px,transparent_1px)] bg-[length:10px_10px] p-4"
-          role="dialog"
+        <ModalDialog
+          backdropClassName="fixed inset-0 z-50 flex items-center justify-center bg-[#171411]/90 bg-[radial-gradient(circle,rgba(255,249,237,0.14)_1px,transparent_1px)] bg-[length:10px_10px] p-4"
+          initialFocusSelector="input"
+          labelledBy="edit-play-session-title"
+          panelClassName="w-full max-w-[440px]"
+          onDismiss={closeEditSession}
         >
           <form
             className="w-full max-w-[440px] border-4 border-black bg-[#fff9ed] shadow-[6px_6px_0_#1f1c0f]"
@@ -572,7 +589,9 @@ export function PlaytimeEditorPanel({
             }}
           >
             <div className="flex items-center justify-between border-b-2 border-black bg-[#171411] px-4 py-3 text-white">
-              <h3 className="neo-title text-lg leading-none uppercase">Edit Session</h3>
+              <h3 id="edit-play-session-title" className="neo-title text-lg leading-none uppercase">
+                Edit Session
+              </h3>
               <button
                 aria-label="Close dialog"
                 className="grid h-7 w-7 place-items-center border-2 border-black bg-[#fbf4e7] text-[#171411]"
@@ -629,7 +648,10 @@ export function PlaytimeEditorPanel({
                 />
               </label>
               {sessionEditError ? (
-                <p className="neo-copy border-2 border-black bg-[#fbd6dc] px-3 py-2 text-[11px] font-black text-[#7a0918] uppercase">
+                <p
+                  className="neo-copy border-2 border-black bg-[#fbd6dc] px-3 py-2 text-[11px] font-black text-[#7a0918] uppercase"
+                  role="alert"
+                >
                   {sessionEditError}
                 </p>
               ) : null}
@@ -651,7 +673,7 @@ export function PlaytimeEditorPanel({
               </div>
             </div>
           </form>
-        </div>
+        </ModalDialog>
       ) : null}
 
       <ConfirmDialog

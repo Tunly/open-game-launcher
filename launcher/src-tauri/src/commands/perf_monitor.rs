@@ -1,6 +1,5 @@
 use serde::Serialize;
 use std::sync::{Arc, Mutex, MutexGuard};
-use std::time::Instant;
 use sysinfo::System;
 
 const FPS_SOURCE_HUD_WEBVIEW: &str = "hud_webview";
@@ -55,27 +54,36 @@ impl SystemSampler {
 #[derive(Default)]
 struct FpsState {
     frame_count: u64,
-    last_time: Option<Instant>,
     current_fps: f64,
     current_frame_time_ms: f64,
 }
 
-/// Call this every rendered frame from the frontend to compute FPS.
-#[tauri::command]
-pub fn report_frame_rendered() {
-    let mut state = lock_recover(&FPS_STATE);
-    let now = Instant::now();
-    if let Some(last) = state.last_time {
-        let delta = now.duration_since(last).as_secs_f64() * 1000.0;
-        state.current_frame_time_ms = delta;
-        // smooth
-        let alpha = 0.1;
-        state.current_fps = state.current_fps * (1.0 - alpha) + (1000.0 / delta.max(1.0)) * alpha;
-    } else {
-        state.current_fps = 0.0;
+impl FpsState {
+    fn record_batch(&mut self, frame_count: u64, elapsed_ms: f64) {
+        if frame_count == 0 || !elapsed_ms.is_finite() || elapsed_ms <= 0.0 {
+            return;
+        }
+
+        let sample_fps = frame_count as f64 * 1000.0 / elapsed_ms;
+        let sample_frame_time_ms = elapsed_ms / frame_count as f64;
+        if self.frame_count == 0 {
+            self.current_fps = sample_fps;
+            self.current_frame_time_ms = sample_frame_time_ms;
+        } else {
+            let alpha = 0.35;
+            self.current_fps = self.current_fps * (1.0 - alpha) + sample_fps * alpha;
+            self.current_frame_time_ms =
+                self.current_frame_time_ms * (1.0 - alpha) + sample_frame_time_ms * alpha;
+        }
+        self.frame_count = self.frame_count.saturating_add(frame_count);
     }
-    state.last_time = Some(now);
-    state.frame_count += 1;
+}
+
+/// Record a batch of frames from the frontend instead of crossing the IPC
+/// boundary once per animation frame.
+#[tauri::command]
+pub fn report_frame_rendered(frame_count: u64, elapsed_ms: f64) {
+    lock_recover(&FPS_STATE).record_batch(frame_count, elapsed_ms);
 }
 
 #[tauri::command]
@@ -173,6 +181,27 @@ mod tests {
     #[test]
     fn converts_memory_bytes_to_rounded_megabytes() {
         assert_eq!(bytes_to_rounded_megabytes(1_572_864), 2.0);
+    }
+
+    #[test]
+    fn calculates_fps_from_a_frame_batch() {
+        let mut state = FpsState::default();
+        state.record_batch(60, 1_000.0);
+
+        assert_eq!(state.frame_count, 60);
+        assert_eq!(state.current_fps, 60.0);
+        assert!((state.current_frame_time_ms - (1_000.0 / 60.0)).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn ignores_invalid_frame_batches() {
+        let mut state = FpsState::default();
+        state.record_batch(0, 1_000.0);
+        state.record_batch(60, 0.0);
+        state.record_batch(60, f64::NAN);
+
+        assert_eq!(state.frame_count, 0);
+        assert_eq!(state.current_fps, 0.0);
     }
 
     #[test]

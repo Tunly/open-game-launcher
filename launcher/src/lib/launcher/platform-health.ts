@@ -91,7 +91,6 @@ function defaultClientModificationConfig(platformId: ClientPlatformId): ClientMo
     localInstallerPath: null,
     localUpdaterPath: null,
     assetCaches: [],
-    modRoots: [],
     pathOverlays: [],
     platformId,
     updatePolicy: "manual",

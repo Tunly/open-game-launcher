@@ -225,14 +225,6 @@ export interface ClientPathOverlay {
   notes?: string | null;
 }
 
-export interface ClientModRoot {
-  id: string;
-  label: string;
-  path: string;
-  enabled: boolean;
-  kind: string;
-}
-
 export interface ClientAssetCacheEntry {
   id: string;
   label: string;
@@ -253,7 +245,6 @@ export interface ClientModificationConfig {
   latestKnownVersion?: string | null;
   updatePolicy: ClientUpdatePolicy;
   pathOverlays: ClientPathOverlay[];
-  modRoots: ClientModRoot[];
   assetCaches: ClientAssetCacheEntry[];
   updatedAt?: string | null;
 }
@@ -712,7 +703,7 @@ export interface LocalSyncStatus {
 }
 
 export interface LocalEntityPayload {
-  kind: "games" | "downloads" | "mod_install_queue" | "mod_installs";
+  kind: "games" | "downloads";
   id: string;
   entity: Record<string, unknown>;
   updatedAt: number;
@@ -721,7 +712,7 @@ export interface LocalEntityPayload {
 }
 
 export interface LocalEntityKey {
-  kind: "games" | "downloads" | "mod_install_queue" | "mod_installs";
+  kind: "games" | "downloads";
   id: string;
   syncToken: string;
 }

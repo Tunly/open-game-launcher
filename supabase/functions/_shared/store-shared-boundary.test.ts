@@ -522,7 +522,7 @@ Deno.test(
   "syncStoreRefundFromStripeRefund inserts processed Stripe refunds and finalizes store orders",
   async () => {
     const supabase = new SupabaseStub([
-      result(order()),
+      result(order({ stripe_payment_intent: "pi_1" })),
       result(null),
       result({ id: "refund_row" }),
       result({}),
@@ -725,6 +725,29 @@ Deno.test("syncStoreRefundFromStripeRefund surfaces refund write errors", async 
           }),
         Error,
         "Failed to sync Stripe refund: write failed",
+      );
+    },
+  );
+});
+
+Deno.test("syncStoreRefundFromStripeRefund rejects mismatched order payment metadata", async () => {
+  const supabase = new SupabaseStub([
+    result(order({ stripe_payment_intent: "pi_other" })),
+  ]);
+
+  await withMockedStoreBoundary(
+    { supabase },
+    async ({ store }) => {
+      await assertRejects(
+        () =>
+          store.syncStoreRefundFromStripeRefund({
+            id: "re_mismatch",
+            metadata: { order_id: "order_1" },
+            payment_intent: "pi_1",
+            status: "succeeded",
+          }),
+        Error,
+        "Stripe refund order payment intent mismatch",
       );
     },
   );

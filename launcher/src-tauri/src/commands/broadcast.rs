@@ -109,7 +109,7 @@ pub fn set_broadcast_stream_key_secret(
     )?;
     let secret = normalize_stream_key_secret(&input.secret)?;
     let domain = broadcast_stream_key_domain(input.provider, &channel_id);
-    secure_store::set_secret(&domain, &secret)?;
+    secure_store::set_secret_keychain_only(&domain, &secret)?;
     let metadata = BroadcastStreamKeyVaultMetadata {
         id: broadcast_stream_key_metadata_id(input.provider, &channel_id),
         channel_id: channel_id.clone(),
@@ -143,7 +143,7 @@ pub fn clear_broadcast_stream_key_secret(
         &channel_id,
     )?;
     let domain = broadcast_stream_key_domain(input.provider, &channel_id);
-    secure_store::delete_secret(&domain)?;
+    secure_store::delete_secret_keychain_only(&domain)?;
     local_db::remove_item(
         STREAM_KEY_METADATA_COLLECTION,
         &broadcast_stream_key_metadata_id(input.provider, &channel_id),

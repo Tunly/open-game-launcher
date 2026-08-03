@@ -597,4 +597,46 @@ describe("ingestTrustedAchievements", () => {
     expect(onError).toHaveBeenCalledWith(expect.any(Error), first);
     expect(onError).toHaveBeenCalledTimes(1);
   });
+
+  it("stops a remote hydration batch when a Supabase query never settles", async () => {
+    vi.useFakeTimers();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    try {
+      const never = () => new Promise<never>(() => undefined);
+      mocks.from.mockImplementation((table: string) => {
+        if (table !== "games") return {};
+        return {
+          select: () => ({
+            contains: () => ({
+              limit: () => ({ maybeSingle: never }),
+            }),
+            eq: () => ({
+              limit: () => ({ maybeSingle: never }),
+            }),
+          }),
+        };
+      });
+
+      const { hydrateGamesWithRemoteAchievements } = await import("../achievements");
+      const onError = vi.fn();
+      const remoteGame: Game = { ...game, id: "steam-timeout-game", launcher: "steam" };
+      const hydration = hydrateGamesWithRemoteAchievements([remoteGame], {
+        onError,
+        userId: null,
+      });
+      await vi.advanceTimersByTimeAsync(0);
+      await vi.advanceTimersByTimeAsync(60_000);
+
+      await expect(hydration).resolves.toEqual([remoteGame]);
+      expect(onError).toHaveBeenCalledWith(
+        expect.objectContaining({
+          message: "Cloud achievement refresh for Half-Life 2 timed out after 60 seconds.",
+        }),
+        remoteGame,
+      );
+    } finally {
+      warn.mockRestore();
+      vi.useRealTimers();
+    }
+  });
 });

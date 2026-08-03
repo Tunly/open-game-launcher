@@ -83,6 +83,47 @@ describe("achievement provider sync", () => {
     expect(launcherMocks.updateAchievementProviderStatus).toHaveBeenCalledTimes(1);
   });
 
+  it("releases a provider queue when the native refresh never settles", async () => {
+    vi.useFakeTimers();
+    try {
+      const game: Game = {
+        achievements: [],
+        description: "",
+        externalId: "timeout-provider-game",
+        id: "xbox-timeout-provider-game",
+        launcher: "xbox",
+        platform: "windows",
+        status: "installed",
+        title: "Timeout Provider Game",
+        version: "1.0.0",
+      };
+      const provider: AchievementProvider = {
+        isAvailable: () => true,
+        message: "Xbox achievement sync available",
+        provider: "xbox",
+        stability: "official",
+        status: "available",
+        sync: vi.fn(() => new Promise<SyncGameAchievementsResponse>(() => undefined)),
+      };
+
+      const outcomePromise = syncAchievementProviderGame(game, provider);
+      await vi.advanceTimersByTimeAsync(0);
+      await vi.advanceTimersByTimeAsync(60_000);
+
+      await expect(outcomePromise).resolves.toMatchObject({
+        diagnosticMessage: "Xbox achievement sync timed out after 60 seconds.",
+        status: { source: "xbox", status: "failed" },
+        success: false,
+      });
+      expect(launcherMocks.updateAchievementProviderStatus).toHaveBeenCalledWith({
+        gameId: game.id,
+        status: expect.objectContaining({ source: "xbox", status: "failed" }),
+      });
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it("keeps Epic provider-only status in the frontend snapshot without a native row write", async () => {
     await persistAchievementProviderStatus("epic-owned-catalog-app", {
       message: "Epic achievements synced.",

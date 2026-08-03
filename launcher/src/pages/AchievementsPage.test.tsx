@@ -156,6 +156,41 @@ describe("AchievementsPage", () => {
     expect(screen.queryByText("Local Player")).not.toBeInTheDocument();
   });
 
+  it("calculates average completion with Steam's per-game weighting and final floor", async () => {
+    launcherMocks.listInstalledGames.mockResolvedValueOnce([
+      achievementPageGame("steam-short", "Short Catalog", {
+        achievements: [
+          { id: "short-1", name: "Short 1", unlockedAt: "2026-07-10T10:00:00Z" },
+          { id: "short-2", name: "Short 2", unlockedAt: null },
+        ],
+        launcher: "steam",
+      }),
+      achievementPageGame("steam-large", "Large Catalog", {
+        achievementSummary: {
+          unlocked: 90,
+          total: 1_000,
+          isPerfect: false,
+          source: "steam",
+        },
+        launcher: "steam",
+      }),
+      achievementPageGame("steam-not-started", "Not Started", {
+        achievementSummary: {
+          unlocked: 0,
+          total: 100,
+          isPerfect: false,
+          source: "steam",
+        },
+        launcher: "steam",
+      }),
+    ]);
+
+    renderAchievementsRoute("/achievements");
+
+    await screen.findByRole("heading", { name: "Short Catalog" });
+    expect(screen.getByText("Avg. Complete").parentElement).toHaveTextContent("29%");
+  });
+
   it("exposes accessible page, filter, and sort controls", async () => {
     launcherMocks.listInstalledGames.mockResolvedValueOnce([
       achievementPageGame("steam-accessible", "Accessible Game", {
@@ -572,6 +607,82 @@ describe("AchievementsPage", () => {
         screen.queryByRole("status", { name: /refreshing achievement archive/i }),
       ).not.toBeInTheDocument(),
     );
+  });
+
+  it("stops the archive loader when cloud hydration does not settle", async () => {
+    vi.useFakeTimers();
+    try {
+      const stalledHydration = deferred<Game[]>();
+      const localGame = achievementPageGame("manual-stalled-cloud", "Stalled Cloud Game");
+      launcherMocks.listInstalledGames.mockResolvedValueOnce([localGame]);
+      achievementMocks.hydrateGamesWithRemoteAchievements.mockReturnValueOnce(
+        stalledHydration.promise,
+      );
+      useCurrentUserMock.mockReturnValue({
+        isLoading: false,
+        user: { id: "stalled-cloud-user", user_metadata: {} },
+      });
+
+      renderAchievementsRoute("/achievements");
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+
+      expect(screen.getByRole("heading", { name: "Stalled Cloud Game" })).toBeInTheDocument();
+      expect(
+        screen.getByRole("status", { name: /refreshing achievement archive/i }),
+      ).toBeInTheDocument();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(15_000);
+      });
+
+      expect(
+        screen.queryByRole("status", { name: /refreshing achievement archive/i }),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("stops the archive loader when a provider refresh does not settle", async () => {
+    vi.useFakeTimers();
+    try {
+      const stalledProviderRefresh = deferred<SyncGameAchievementsResponse>();
+      const localGame = achievementPageGame("xbox-stalled-provider", "Stalled Provider Game", {
+        achievementsSyncedAt: "2026-07-01T10:00:00Z",
+        externalId: "987654321",
+        launcher: "xbox",
+      });
+      launcherMocks.listInstalledGames.mockResolvedValueOnce([localGame]);
+      launcherMocks.syncGameAchievements.mockReturnValueOnce(stalledProviderRefresh.promise);
+
+      renderAchievementsRoute("/achievements");
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+
+      expect(screen.getByRole("heading", { name: "Stalled Provider Game" })).toBeInTheDocument();
+      expect(
+        screen.getByRole("status", { name: /refreshing achievement archive/i }),
+      ).toBeInTheDocument();
+
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(15_000);
+      });
+
+      expect(
+        screen.queryByRole("status", { name: /refreshing achievement archive/i }),
+      ).not.toBeInTheDocument();
+
+      stalledProviderRefresh.resolve(syncResponse(localGame, localGame.achievements ?? []));
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("shows one shared loading indicator while cloud and provider updates overlap", async () => {

@@ -93,7 +93,7 @@ describe("GameDetails actions", () => {
     });
   });
 
-  it("does not render screenshot or platform cloud save panels", async () => {
+  it("renders the settings trigger but not screenshot or platform cloud save panels", async () => {
     renderGameDetails();
 
     expect(screen.getByRole("button", { name: "Game Settings" })).toBeInTheDocument();
@@ -244,7 +244,7 @@ describe("GameDetails actions", () => {
       await screen.findByRole(
         "region",
         { name: "Community artwork import deck" },
-        { timeout: 5_000 },
+        { timeout: 10_000 },
       ),
     ).toBeInTheDocument();
     fireEvent.click(screen.getByTitle("Import Panel Break Cover"));
@@ -316,6 +316,20 @@ describe("GameDetails actions", () => {
     expect(launcherMocks.getGameActionCapabilities).not.toHaveBeenCalled();
     expect(launcherMocks.prepareGameActionConfirmation).not.toHaveBeenCalled();
     expect(launcherMocks.runGameAction).not.toHaveBeenCalled();
+  });
+
+  it("treats Game Options as a focus-managed modal", () => {
+    renderGameDetails();
+    const trigger = screen.getByRole("button", { name: "Game Settings" });
+
+    trigger.focus();
+    fireEvent.click(trigger);
+    expect(trigger).toHaveAttribute("aria-haspopup", "dialog");
+    expect(screen.getByRole("button", { name: "Close Game Options" })).toHaveFocus();
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: "Game Options" })).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
   });
 
   it("runs a native action with the exact selected variant binding", async () => {

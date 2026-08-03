@@ -1539,7 +1539,11 @@ export function StorePage() {
               <h1 className="neo-title text-[3.25rem] leading-none text-[#fffaf0] sm:text-[4rem] lg:text-[4.5rem]">
                 {selectedProduct?.title ?? "Store Desk"}
               </h1>
-              <p className="mt-4 max-w-[560px] text-base leading-7 text-[#fffaf0] sm:text-lg">
+              <p
+                aria-live="polite"
+                className="mt-4 max-w-[560px] text-base leading-7 text-[#fffaf0] sm:text-lg"
+                role={catalogSource === "error" ? "alert" : undefined}
+              >
                 {selectedProduct
                   ? selectedProduct.description || "No product description has been published."
                   : catalogSource === "loading"
@@ -1769,7 +1773,10 @@ export function StorePage() {
         </section>
 
         {statusMessage ? (
-          <div className="neo-copy border-[3px] border-black bg-[#8cf5e4] p-3 text-[11px] font-black tracking-[0.12em] text-[#171411] uppercase shadow-[4px_4px_0_#171411]">
+          <div
+            className="neo-copy border-[3px] border-black bg-[#8cf5e4] p-3 text-[11px] font-black tracking-[0.12em] text-[#171411] uppercase shadow-[4px_4px_0_#171411]"
+            role="status"
+          >
             {statusMessage}
           </div>
         ) : null}

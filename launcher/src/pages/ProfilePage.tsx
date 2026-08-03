@@ -186,7 +186,7 @@ export function ProfilePage() {
         <div className="space-y-5">
           {isPrivacyGuardVerify ? <ProfilePrivacyGuardPanel guard={privacyGuard} /> : null}
 
-          <ProfileIntelDeck data={visibleData} isMock={state.isMock} isOwnProfile={isOwnProfile} />
+          <ProfileIntelDeck data={visibleData} isOwnProfile={isOwnProfile} />
           <ProfileHeader
             canUseSocialActions={Boolean(user) && !state.isMock}
             data={visibleData}
@@ -268,18 +268,14 @@ function ProfileShell({ children }: { children: ReactNode }) {
 
 function ProfileIntelDeck({
   data,
-  isMock,
   isOwnProfile,
 }: {
   data: ProfilePageData;
-  isMock: boolean;
   isOwnProfile: boolean;
 }) {
   const { profile, stats } = data;
   const readouts = [
-    ["Route", `/u/${profile.username}`],
     ["Access", profile.profileVisibility],
-    ["Mode", isMock ? "Local fallback" : "Supabase live"],
     ["Viewer", isOwnProfile ? "Owner" : "Public"],
   ];
 
@@ -287,16 +283,9 @@ function ProfileIntelDeck({
     <section className="overflow-hidden border-4 border-black bg-[#171411] shadow-[7px_7px_0_#1f1c0f]">
       <div className="grid gap-0 lg:grid-cols-[minmax(0,1fr)_420px]">
         <div className="p-5 text-[#fff9ed] sm:p-6">
-          <span className="neo-copy inline-flex border-2 border-black bg-[#b7102a] px-3 py-1 text-[10px] font-black tracking-[0.12em] text-white uppercase shadow-[3px_3px_0_#000]">
-            Public Player Card
-          </span>
-          <h1 className="neo-title mt-3 text-5xl leading-none md:text-7xl">
+          <h1 className="neo-title text-5xl leading-none md:text-7xl">
             {profile.displayName ?? profile.username}
           </h1>
-          <p className="neo-copy mt-3 max-w-3xl text-[11px] leading-5 font-black text-[#8cf5e4] uppercase">
-            Manga-profile dossier for library flex, rare unlocks, hardware rig, social links, and
-            guestbook activity inside the OG-Launcher network.
-          </p>
         </div>
         <div className="grid grid-cols-2 border-t-4 border-black bg-[#fff9ed] lg:border-t-0 lg:border-l-4">
           {readouts.map(([label, value]) => (

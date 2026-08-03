@@ -3,7 +3,6 @@ import { lazy, Suspense, type ReactNode } from "react";
 
 import { AppLayout } from "../components/layout/AppLayout";
 import { RouteErrorBoundary } from "../components/ui/AppErrorBoundary";
-import { MODS_PAGE_ENABLED } from "../lib/feature-flags";
 
 const AuthPage = lazy(() =>
   import("../pages/AuthPage").then((page) => ({ default: page.AuthPage })),
@@ -28,17 +27,11 @@ const GameActivityDashboardPage = lazy(() =>
     default: page.GameActivityDashboardPage,
   })),
 );
-const HomePage = lazy(() =>
-  import("../pages/HomePage").then((page) => ({ default: page.HomePage })),
-);
 const InviteFallbackPage = lazy(() =>
   import("../pages/InviteFallbackPage").then((page) => ({ default: page.InviteFallbackPage })),
 );
 const LibraryPage = lazy(() =>
   import("../pages/LibraryPage").then((page) => ({ default: page.LibraryPage })),
-);
-const ModsPage = lazy(() =>
-  import("../pages/ModsPage").then((page) => ({ default: page.ModsPage })),
 );
 const NotFoundPage = lazy(() =>
   import("../pages/NotFoundPage").then((page) => ({ default: page.NotFoundPage })),
@@ -57,6 +50,11 @@ const ProfilePage = lazy(() =>
 );
 const SettingsPage = lazy(() =>
   import("../pages/SettingsPage").then((page) => ({ default: page.SettingsPage })),
+);
+const SettingsDiagnosticsPage = lazy(() =>
+  import("../pages/SettingsDiagnosticsPage").then((page) => ({
+    default: page.SettingsDiagnosticsPage,
+  })),
 );
 
 const FamilyPage = lazy(() =>
@@ -111,7 +109,6 @@ export const router = createBrowserRouter([
     errorElement: <RouteErrorBoundary />,
     children: [
       { path: "/", element: <Navigate to="/library" replace /> },
-      { path: "/home", element: page(<HomePage />) },
       { path: "/library", element: page(<LibraryPage />) },
       { path: "/store", element: page(<StorePage />) },
       { path: "/community", element: page(<CommunityPage />) },
@@ -119,14 +116,11 @@ export const router = createBrowserRouter([
       { path: "/achievements", element: page(<AchievementsPage />) },
       { path: "/activity", element: page(<ActivityPage />) },
       { path: "/activity/recap", element: page(<GameActivityDashboardPage />) },
-      {
-        path: "/mods",
-        element: MODS_PAGE_ENABLED ? page(<ModsPage />) : <Navigate to="/library" replace />,
-      },
       { path: "/auth", element: page(<AuthPage />) },
       { path: "/invite/:token", element: page(<InviteFallbackPage />) },
       { path: "/u/:username", element: page(<ProfilePage />) },
       { path: "/settings/profile", element: page(<EditProfilePage />) },
+      { path: "/settings/diagnostics", element: page(<SettingsDiagnosticsPage />) },
       { path: "/settings", element: page(<SettingsPage />) },
       { path: "/settings/profile/customize", element: page(<ProfileCustomizePage />) },
       { path: "/settings/performance", element: page(<PerfHistoryPage />) },

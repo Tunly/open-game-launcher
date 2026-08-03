@@ -229,12 +229,60 @@ Deno.test("stripe webhook checkout lookup falls back to metadata order and rejec
   ]);
 });
 
+Deno.test("stripe webhook rejects conflicting session and payment associations", async () => {
+  const sessionSupabase = new SupabaseStub([
+    result(null),
+    result({
+      id: "order_1",
+      status: "pending",
+      stripe_payment_intent: null,
+      stripe_session_id: "cs_other",
+      total_cents: 1000,
+      user_id: "user_1",
+    }),
+  ]);
+  await assertRejects(
+    () =>
+      testAdapters(sessionSupabase).persistCheckoutSessionProgress(
+        "cs_1",
+        { metadata: { order_id: "order_1", user_id: "user_1" } },
+        "pending",
+      ),
+    Error,
+    "Stripe session cs_1 order association mismatch",
+  );
+
+  const paymentSupabase = new SupabaseStub([
+    result({
+      id: "order_1",
+      status: "pending",
+      stripe_payment_intent: "pi_other",
+      stripe_session_id: "cs_1",
+      total_cents: 1000,
+      user_id: "user_1",
+    }),
+  ]);
+  await assertRejects(
+    () =>
+      testAdapters(paymentSupabase).persistCheckoutSessionProgress(
+        "cs_1",
+        {
+          metadata: { order_id: "order_1", user_id: "user_1" },
+          payment_intent: "pi_1",
+        },
+        "pending",
+      ),
+    Error,
+    "Stripe session cs_1 payment intent association mismatch",
+  );
+});
+
 Deno.test("stripe webhook fulfilled orders sync payment data without reissuing licenses", async () => {
   const supabase = new SupabaseStub([
     result({
       id: "order_1",
       status: "fulfilled",
-      stripe_payment_intent: "pi_old",
+      stripe_payment_intent: "pi_new",
       stripe_session_id: "cs_1",
       total_cents: 1000,
       user_id: "user_1",

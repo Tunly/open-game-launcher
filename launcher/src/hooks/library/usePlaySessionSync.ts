@@ -50,9 +50,12 @@ export function usePlaySessionSync(): void {
     };
 
     void drain();
-    const interval = window.setInterval(() => {
+    const drainWhileVisible = () => {
+      if (document.visibilityState === "hidden") return;
       void drain();
-    }, 60_000);
+    };
+    const interval = window.setInterval(drainWhileVisible, 60_000);
+    document.addEventListener("visibilitychange", drainWhileVisible);
 
     const unlistenPromise = listen<PlaySession>("play_session_recorded", async (event) => {
       if (!isMounted) return;
@@ -70,6 +73,7 @@ export function usePlaySessionSync(): void {
     return () => {
       isMounted = false;
       window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", drainWhileVisible);
       void unlistenPromise.then((unlisten) => unlisten());
     };
   }, []);

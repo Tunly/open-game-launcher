@@ -197,6 +197,29 @@ describe("usePlaySessionSync", () => {
     expect(clearIntervalSpy).toHaveBeenCalledWith(73);
   });
 
+  it("pauses interval drains while hidden and catches up when the window becomes visible", async () => {
+    let intervalCallback: (() => void) | undefined;
+    let visibilityState: DocumentVisibilityState = "visible";
+    vi.spyOn(document, "visibilityState", "get").mockImplementation(() => visibilityState);
+    vi.spyOn(window, "setInterval").mockImplementation((callback: TimerHandler) => {
+      intervalCallback = callback as () => void;
+      return 91 as unknown as ReturnType<typeof window.setInterval>;
+    });
+
+    const hook = renderHook(() => usePlaySessionSync());
+    await waitFor(() => expect(mocks.getUnsyncedPlaySessions).toHaveBeenCalledTimes(1));
+
+    visibilityState = "hidden";
+    act(() => intervalCallback?.());
+    expect(mocks.getUnsyncedPlaySessions).toHaveBeenCalledTimes(1);
+
+    visibilityState = "visible";
+    act(() => document.dispatchEvent(new Event("visibilitychange")));
+    await waitFor(() => expect(mocks.getUnsyncedPlaySessions).toHaveBeenCalledTimes(2));
+
+    hook.unmount();
+  });
+
   it("stops a pending startup drain from pushing after unmount", async () => {
     let resolveSessions: ((sessions: PlaySession[]) => void) | undefined;
     mocks.getUnsyncedPlaySessions.mockImplementation(

@@ -1,6 +1,5 @@
 import {
   BookOpen,
-  CheckCircle2,
   Compass,
   Flag,
   Gamepad2,
@@ -20,7 +19,6 @@ import {
   UploadCloud,
   Users,
   Video,
-  Wrench,
   X,
 } from "lucide-react";
 import { type FormEvent, useEffect, useMemo, useState } from "react";
@@ -82,10 +80,10 @@ const COMMUNITY_VERIFY_ROUTES = new Set([
 ]);
 
 type CommunityContentType =
-  "all" | "artwork" | "broadcasts" | "videos" | "workshop" | "news" | "guides" | "reviews";
+  "all" | "artwork" | "broadcasts" | "videos" | "news" | "guides" | "reviews";
 
 type CommunitySortMode = "popular" | "recent";
-type CommunitySectionId = "home" | "discussions" | "workshop" | "market" | "broadcasts";
+type CommunitySectionId = "home" | "discussions" | "market" | "broadcasts";
 
 type CommunityActivityItem = {
   artClass: string;
@@ -138,7 +136,6 @@ type CommunityHub = {
   stat: string;
   tags: string[];
   title: string;
-  workshopItems: number;
 };
 
 type CommunityDiscussionTopic = {
@@ -149,14 +146,6 @@ type CommunityDiscussionTopic = {
   status: "open" | "pinned" | "locked";
   title: string;
   updated: string;
-};
-
-type CommunityWorkshopItem = {
-  creator: string;
-  downloads: string;
-  hubId: string;
-  id: string;
-  title: string;
 };
 
 type CommunityMarketListing = {
@@ -275,23 +264,6 @@ const communitySections: CommunitySection[] = [
   },
   {
     cards: [
-      { label: "Build drop", meta: "Hard-mode squad script", value: "Raid slot" },
-      { label: "Mod queue", meta: "Workshop tags reviewed", value: "24 builds" },
-      { label: "Safe launch", meta: "No provider writes", value: "Local proof" },
-    ],
-    description:
-      "Workshop mode narrows the feed to builds, squad tools, mod-style drops, and launcher-safe previews.",
-    filter: "workshop",
-    id: "workshop",
-    kicker: "Creator bench",
-    label: "Workshop",
-    stat: "24",
-    statLabel: "builds staged",
-    title: "Workshop Dispatch",
-    tone: "bg-[#171411] text-[#8cf5e4]",
-  },
-  {
-    cards: [
       { label: "Artwork desk", meta: "Community panels and cover drops", value: "18 drops" },
       { label: "Trade lane", meta: "Cosmetic requests only", value: "No checkout" },
       { label: "Gallery guard", meta: "Hosted rollout remains gated", value: "Local deck" },
@@ -335,7 +307,6 @@ const contentFilters: Array<{
   { icon: ImageIcon, id: "artwork", label: "Artwork" },
   { icon: Radio, id: "broadcasts", label: "Broadcasts" },
   { icon: Video, id: "videos", label: "Videos" },
-  { icon: Wrench, id: "workshop", label: "Workshop" },
   { icon: Newspaper, id: "news", label: "News" },
   { icon: BookOpen, id: "guides", label: "Guides" },
   { icon: MessageSquare, id: "reviews", label: "Reviews" },
@@ -354,12 +325,11 @@ const popularHubs: CommunityHub[] = [
     stat: "12.4k members",
     tags: ["racing", "arcade", "ranked"],
     title: "Neo-Tokyo Drift",
-    workshopItems: 17,
   },
   {
     artClass: "library-art-mech",
     broadcasts: 1,
-    description: "Co-op mech hub for raid squads, workshop loadouts, and community cover art.",
+    description: "Co-op mech hub for raid squads, custom loadouts, and community cover art.",
     discussions: 34,
     id: "steel-battalion-x",
     marketListings: 9,
@@ -368,7 +338,6 @@ const popularHubs: CommunityHub[] = [
     stat: "8.7k members",
     tags: ["co-op", "mech", "raid"],
     title: "Steel Battalion X",
-    workshopItems: 24,
   },
   {
     artClass: "library-art-phantom",
@@ -382,13 +351,12 @@ const popularHubs: CommunityHub[] = [
     stat: "5.2k members",
     tags: ["stealth", "puzzle", "tournament"],
     title: "Netrunner Phantom",
-    workshopItems: 8,
   },
 ];
 
 const peopleMatches = [
   ["KiraByte", "In Neo-Tokyo Drift", "online"],
-  ["NullVector", "Browsing workshop builds", "away"],
+  ["NullVector", "Browsing community hubs", "away"],
   ["ArcLight", "Posted a new guide", "online"],
 ] as const;
 
@@ -408,20 +376,6 @@ const activityFeed: CommunityActivityItem[] = [
     summary: "Official update thread with balance notes, driver tags, and event comments.",
     tone: "bg-[#b7102a] text-white",
     type: "news",
-  },
-  {
-    artClass: "library-art-mech",
-    author: "Redline Unit",
-    channel: "Squad Search",
-    hubId: "steel-battalion-x",
-    heat: 86,
-    headline: "Steel Battalion X raid slot free",
-    id: "workshop-steel-raid",
-    meta: "22 min // 4 slots",
-    recentRank: 2,
-    summary: "Players are forming a hard-mode group with voice and cross-play tags.",
-    tone: "bg-[#087d6d] text-white",
-    type: "workshop",
   },
   {
     artClass: "library-art-phantom",
@@ -528,30 +482,6 @@ const discussionTopics: CommunityDiscussionTopic[] = [
   },
 ];
 
-const workshopItems: CommunityWorkshopItem[] = [
-  {
-    creator: "NullVector",
-    downloads: "1.8k",
-    hubId: "steel-battalion-x",
-    id: "workshop-raid-script",
-    title: "Raid Signal Loadout Script",
-  },
-  {
-    creator: "KiraByte",
-    downloads: "940",
-    hubId: "neo-tokyo-drift",
-    id: "workshop-drift-hud",
-    title: "Drift Sector HUD Overlay",
-  },
-  {
-    creator: "ArcLight",
-    downloads: "620",
-    hubId: "netrunner-phantom",
-    id: "workshop-route-cards",
-    title: "Route Card Pack",
-  },
-];
-
 const marketListings: CommunityMarketListing[] = [
   {
     hubId: "steel-battalion-x",
@@ -581,12 +511,6 @@ const moderationQueue: CommunityModerationItem[] = [
     content: "Spoiler artwork without tag",
     id: "mod-spoiler-shot",
     reason: "Missing spoiler tag",
-    status: "pending",
-  },
-  {
-    content: "Workshop item duplicate report",
-    id: "mod-workshop-dupe",
-    reason: "Duplicate content review",
     status: "pending",
   },
 ];
@@ -992,7 +916,6 @@ function CommunityVerificationPage() {
   const [activeTopicId, setActiveTopicId] = useState(discussionTopics[0].id);
   const [topicReplyDraft, setTopicReplyDraft] = useState("");
   const [topicReplies, setTopicReplies] = useState<Record<string, string[]>>({});
-  const [subscribedWorkshopIds, setSubscribedWorkshopIds] = useState<string[]>([]);
   const [watchedMarketIds, setWatchedMarketIds] = useState<string[]>([]);
   const [moderationStatuses, setModerationStatuses] = useState<
     Record<string, CommunityModerationItem["status"]>
@@ -1038,7 +961,6 @@ function CommunityVerificationPage() {
     ...(topicReplies[selectedTopic.id] ?? []),
   ];
   const selectedHubTopics = discussionTopics.filter((topic) => topic.hubId === selectedHub.id);
-  const selectedHubWorkshopItems = workshopItems.filter((item) => item.hubId === selectedHub.id);
   const selectedHubMarketListings = marketListings.filter(
     (listing) => listing.hubId === selectedHub.id,
   );
@@ -1235,12 +1157,6 @@ function CommunityVerificationPage() {
     setTopicReplyDraft("");
   }
 
-  function handleToggleWorkshopSubscription(itemId: string) {
-    setSubscribedWorkshopIds((current) =>
-      current.includes(itemId) ? current.filter((id) => id !== itemId) : [...current, itemId],
-    );
-  }
-
   function handleToggleMarketWatch(listingId: string) {
     setWatchedMarketIds((current) =>
       current.includes(listingId)
@@ -1392,11 +1308,6 @@ function CommunityVerificationPage() {
         </div>
 
         <aside className="grid gap-4">
-          <CommunityWorkshopPanel
-            items={selectedHubWorkshopItems.length > 0 ? selectedHubWorkshopItems : workshopItems}
-            subscribedIds={subscribedWorkshopIds}
-            onToggleSubscribe={handleToggleWorkshopSubscription}
-          />
           <CommunityMarketPanel
             listings={
               selectedHubMarketListings.length > 0 ? selectedHubMarketListings : marketListings
@@ -1624,8 +1535,8 @@ function CommunityWelcomePanel() {
             Hubs, posts, guides, broadcasts
           </h2>
           <p className="neo-copy mt-3 max-w-2xl text-[10px] leading-5 font-black text-[#5b403f] uppercase">
-            Browse game hubs, find players, inspect workshop-style drops, and keep local posts in
-            this browser.
+            Browse game hubs, find players, inspect community drops, and keep local posts in this
+            browser.
           </p>
         </div>
         <Compass aria-hidden="true" className="h-10 w-10 text-[#087d6d]" />
@@ -1783,9 +1694,8 @@ function CommunityHubDetailPanel({
             {hub.description}
           </p>
 
-          <div className="mt-3 grid gap-3 md:grid-cols-5">
+          <div className="mt-3 grid gap-3 md:grid-cols-4">
             <HubStat label="Threads" value={hub.discussions} />
-            <HubStat label="Workshop" value={hub.workshopItems} />
             <HubStat label="Market" value={hub.marketListings} />
             <HubStat label="Broadcasts" value={hub.broadcasts} />
             <HubStat label="Visible feed" value={activityCount} />
@@ -2039,57 +1949,6 @@ function CommunityDiscussionPanel({
   );
 }
 
-function CommunityWorkshopPanel({
-  items,
-  onToggleSubscribe,
-  subscribedIds,
-}: {
-  items: CommunityWorkshopItem[];
-  onToggleSubscribe: (itemId: string) => void;
-  subscribedIds: string[];
-}) {
-  return (
-    <section
-      aria-label="Community workshop"
-      className="border-4 border-black bg-[#f5eedf] p-4 shadow-[5px_5px_0_#171411]"
-    >
-      <div className="flex items-center gap-3 border-b-4 border-black pb-3">
-        <Wrench aria-hidden="true" className="h-6 w-6 text-[#087d6d]" />
-        <h2 className="neo-title text-3xl leading-none text-[#171411]">Workshop</h2>
-      </div>
-      <div className="mt-3 grid gap-2">
-        {items.map((item) => {
-          const isSubscribed = subscribedIds.includes(item.id);
-          return (
-            <article
-              className="border-2 border-black bg-[#fff9ed] p-3 shadow-[2px_2px_0_#171411]"
-              key={item.id}
-            >
-              <p className="neo-copy text-[8px] font-black text-[#b7102a] uppercase">
-                {item.downloads} local installs // {item.creator}
-              </p>
-              <h3 className="mt-1 text-lg leading-tight font-black text-[#171411] uppercase">
-                {item.title}
-              </h3>
-              <button
-                aria-pressed={isSubscribed}
-                className={`neo-copy mt-3 inline-flex h-9 items-center gap-2 border-2 border-black px-3 text-[9px] font-black uppercase shadow-[2px_2px_0_#171411] ${
-                  isSubscribed ? "bg-[#8cf5e4] text-[#171411]" : "bg-[#087d6d] text-white"
-                }`}
-                type="button"
-                onClick={() => onToggleSubscribe(item.id)}
-              >
-                <CheckCircle2 aria-hidden="true" className="h-4 w-4" />
-                {isSubscribed ? "Subscribed locally" : "Subscribe"}
-              </button>
-            </article>
-          );
-        })}
-      </div>
-    </section>
-  );
-}
-
 function CommunityMarketPanel({
   listings,
   onToggleWatch,
@@ -2297,7 +2156,7 @@ function CommunityFilterDock({
             Community content
           </p>
           <h2 className="neo-title mt-1 text-3xl leading-none text-[#171411]">
-            All Artwork Broadcasts Videos Workshop News Guides Reviews
+            All Artwork Broadcasts Videos News Guides Reviews
           </h2>
         </div>
         <div className="flex flex-wrap gap-2" role="group" aria-label="Viewing sort">

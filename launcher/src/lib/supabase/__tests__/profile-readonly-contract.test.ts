@@ -35,4 +35,10 @@ describe("profile Supabase trusted progression contract", () => {
       "TODO: Move writes for badges, XP, entitlements, playtime, and achievements",
     );
   });
+
+  it("pins the achievement preview embed to the direct achievement foreign key", () => {
+    expect(profileSource).toContain(
+      "achievements!user_achievements_achievement_id_fkey(name, description, icon_url, rarity)",
+    );
+  });
 });

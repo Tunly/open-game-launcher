@@ -29,7 +29,6 @@ import {
 } from "lucide-react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { CartesianGrid, Line, LineChart, ResponsiveContainer, XAxis, YAxis } from "recharts";
 import { useCurrentUser } from "../hooks/useCurrentUser";
 import {
   getGroupMessages,
@@ -272,6 +271,9 @@ export function OverlayPage() {
     closeOverlayWindow();
   }, [closeOverlayWindow, openPanels, panelStates]);
 
+  const closeOverlayHandlerRef = useRef(closeOverlay);
+  closeOverlayHandlerRef.current = closeOverlay;
+
   const globalToggleHandlerRef = useRef<() => void>(() => undefined);
   globalToggleHandlerRef.current = () => {
     if (isChromeVisible) {
@@ -285,13 +287,13 @@ export function OverlayPage() {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") {
         event.preventDefault();
-        closeOverlay();
+        closeOverlayHandlerRef.current();
       }
     };
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [closeOverlay]);
+  }, []);
 
   useEffect(() => {
     if (!isTauri()) {
@@ -336,21 +338,22 @@ export function OverlayPage() {
     return () => window.removeEventListener("resize", clampPanelsToViewport);
   }, []);
 
+  const hasPinnedPanel = openPanels.some((panel) => panelStates[panel]?.pinned);
+  const clickThrough = !isChromeVisible && hasPinnedPanel;
+
   useEffect(() => {
     if (isChromeVisible) return;
-    if (openPanels.some((panel) => panelStates[panel]?.pinned)) return;
+    if (hasPinnedPanel) return;
     closeOverlayWindow();
-  }, [closeOverlayWindow, isChromeVisible, openPanels, panelStates]);
+  }, [closeOverlayWindow, hasPinnedPanel, isChromeVisible]);
 
   useEffect(() => {
     if (!isTauri()) return;
 
-    const hasPinnedPanel = openPanels.some((panel) => panelStates[panel]?.pinned);
-    const clickThrough = !isChromeVisible && hasPinnedPanel;
     void setInGameOverlayClickThrough(clickThrough).catch((error) => {
       console.warn("[overlay] pointer handling update failed:", error);
     });
-  }, [isChromeVisible, openPanels, panelStates]);
+  }, [clickThrough]);
 
   const blocked = acList.some((ac) => ac.blocks_overlay);
   const sessionSeconds = Math.max(0, Math.floor((now.getTime() - sessionStartedAt.current) / 1000));
@@ -2110,14 +2113,26 @@ function PerformanceLineChart({
   label: string;
   value: string;
 }) {
-  const [isChartReady, setIsChartReady] = useState(false);
-  const validPointCount = data.filter((point) => point.value != null).length;
   const domain = resolvePerformanceChartDomain(data, fallbackDomain);
-
-  useEffect(() => {
-    const frame = window.requestAnimationFrame(() => setIsChartReady(true));
-    return () => window.cancelAnimationFrame(frame);
-  }, []);
+  const chartWidth = 300;
+  const chartHeight = 52;
+  const [domainMin, domainMax] = domain;
+  const domainSpan = Math.max(1, domainMax - domainMin);
+  const chartPoints = data.map((point, index) => ({
+    ...point,
+    x: data.length <= 1 ? chartWidth / 2 : (index / (data.length - 1)) * chartWidth,
+    y:
+      point.value == null
+        ? null
+        : chartHeight - 3 - ((point.value - domainMin) / domainSpan) * (chartHeight - 6),
+  }));
+  const segments: Array<Array<{ x: number; y: number }>> = [];
+  for (const point of chartPoints) {
+    if (point.y == null) continue;
+    const previous = chartPoints[chartPoints.indexOf(point) - 1];
+    if (!previous || previous.y == null) segments.push([]);
+    segments.at(-1)?.push({ x: point.x, y: point.y });
+  }
 
   return (
     <div
@@ -2137,34 +2152,49 @@ function PerformanceLineChart({
         </span>
       </div>
       <div className="h-14 w-full overflow-hidden border-2 border-[#171411] bg-[#f6edd8]">
-        {isChartReady ? (
-          <ResponsiveContainer height="100%" minWidth={0} width="100%">
-            <LineChart data={data} margin={{ bottom: 2, left: 2, right: 2, top: 4 }}>
-              <CartesianGrid
+        <svg
+          aria-hidden="true"
+          className="h-full w-full"
+          preserveAspectRatio="none"
+          viewBox={`0 0 ${chartWidth} ${chartHeight}`}
+        >
+          {[0.25, 0.5, 0.75].map((fraction) => (
+            <line
+              key={fraction}
+              stroke="#171411"
+              strokeDasharray="2 4"
+              strokeOpacity="0.18"
+              x1="0"
+              x2={chartWidth}
+              y1={chartHeight * fraction}
+              y2={chartHeight * fraction}
+            />
+          ))}
+          {segments.map((segment, index) =>
+            segment.length === 1 ? (
+              <circle
+                key={index}
+                cx={segment[0].x}
+                cy={segment[0].y}
+                fill={color}
+                r="3"
                 stroke="#171411"
-                strokeDasharray="2 4"
-                strokeOpacity={0.18}
-                vertical={false}
+                strokeWidth="2"
+                vectorEffect="non-scaling-stroke"
               />
-              <XAxis dataKey="sample" hide type="number" />
-              <YAxis domain={domain} hide width={0} />
-              <Line
-                activeDot={false}
-                connectNulls={false}
-                dataKey="value"
-                dot={
-                  validPointCount < 2
-                    ? { fill: color, r: 3, stroke: "#171411", strokeWidth: 2 }
-                    : false
-                }
-                isAnimationActive={false}
+            ) : (
+              <polyline
+                key={index}
+                fill="none"
+                points={segment.map((point) => `${point.x},${point.y}`).join(" ")}
                 stroke={color}
-                strokeWidth={3}
-                type="monotone"
+                strokeLinejoin="round"
+                strokeWidth="3"
+                vectorEffect="non-scaling-stroke"
               />
-            </LineChart>
-          </ResponsiveContainer>
-        ) : null}
+            ),
+          )}
+        </svg>
       </div>
     </div>
   );

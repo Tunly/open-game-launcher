@@ -51,7 +51,7 @@ impl ProviderAutomationRunner for NativeProviderAutomationRunner {
     fn run(&self, invocation: &ProviderAutomationInvocation) -> ProviderAutomationResult {
         #[cfg(all(windows, feature = "windows-uiautomation"))]
         {
-            return run_live_windows(invocation);
+            run_live_windows(invocation)
         }
 
         #[cfg(not(all(windows, feature = "windows-uiautomation")))]

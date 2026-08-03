@@ -737,8 +737,10 @@ describe("SettingsPage One-Click Setup E2E readiness", () => {
   it("passes plugin-system fixture readiness only on the plugin verify route", () => {
     const base = renderSettingsRoute("/settings");
 
-    expect(screen.getByRole("region", { name: /plugin system mock/i })).toHaveTextContent(
-      "Plugin status: Local only // 11%",
+    expect(screen.queryByRole("region", { name: /plugin system mock/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /open diagnostics/i })).toHaveAttribute(
+      "href",
+      "/settings/diagnostics",
     );
     base.unmount();
 
@@ -752,8 +754,10 @@ describe("SettingsPage One-Click Setup E2E readiness", () => {
   it("passes native disabled-registry audit evidence only on the audit verify route", () => {
     const base = renderSettingsRoute("/settings");
 
-    expect(screen.getByRole("region", { name: /plugin system mock/i })).toHaveTextContent(
-      "audit none",
+    expect(screen.queryByRole("region", { name: /plugin system mock/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /open diagnostics/i })).toHaveAttribute(
+      "href",
+      "/settings/diagnostics",
     );
     base.unmount();
 
@@ -768,8 +772,10 @@ describe("SettingsPage One-Click Setup E2E readiness", () => {
   it("passes runtime sandbox process-boundary proof only on the sandbox verify route", () => {
     const base = renderSettingsRoute("/settings");
 
-    expect(screen.getByRole("region", { name: /plugin system mock/i })).toHaveTextContent(
-      "sandbox none",
+    expect(screen.queryByRole("region", { name: /plugin system mock/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /open diagnostics/i })).toHaveAttribute(
+      "href",
+      "/settings/diagnostics",
     );
     base.unmount();
 
@@ -784,8 +790,10 @@ describe("SettingsPage One-Click Setup E2E readiness", () => {
   it("passes update signing review evidence only on the update verify route", () => {
     const base = renderSettingsRoute("/settings");
 
-    expect(screen.getByRole("region", { name: /plugin system mock/i })).toHaveTextContent(
-      "update none",
+    expect(screen.queryByRole("region", { name: /plugin system mock/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /open diagnostics/i })).toHaveAttribute(
+      "href",
+      "/settings/diagnostics",
     );
     base.unmount();
 
@@ -799,8 +807,10 @@ describe("SettingsPage One-Click Setup E2E readiness", () => {
   it("passes marketplace update-index trust evidence only on the marketplace trust verify route", () => {
     const base = renderSettingsRoute("/settings");
 
-    expect(screen.getByRole("region", { name: /plugin system mock/i })).toHaveTextContent(
-      "marketplace none",
+    expect(screen.queryByRole("region", { name: /plugin system mock/i })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /open diagnostics/i })).toHaveAttribute(
+      "href",
+      "/settings/diagnostics",
     );
     base.unmount();
 
@@ -837,7 +847,7 @@ describe("SettingsPage One-Click Setup E2E readiness", () => {
       }),
     );
 
-    renderSettingsRoute("/settings");
+    renderSettingsRoute("/settings?section=diagnostics");
 
     expect(screen.getByRole("region", { name: /plugin system mock/i })).toHaveTextContent(
       "audit none",
@@ -873,7 +883,7 @@ describe("SettingsPage One-Click Setup E2E readiness", () => {
       }),
     );
 
-    renderSettingsRoute("/settings");
+    renderSettingsRoute("/settings?section=diagnostics");
 
     expect(screen.getByRole("region", { name: /plugin system mock/i })).toHaveTextContent(
       "sandbox none",
@@ -907,7 +917,7 @@ describe("SettingsPage One-Click Setup E2E readiness", () => {
       }),
     );
 
-    renderSettingsRoute("/settings");
+    renderSettingsRoute("/settings?section=diagnostics");
 
     expect(screen.getByRole("region", { name: /plugin system mock/i })).toHaveTextContent(
       "update none",
@@ -936,7 +946,7 @@ describe("SettingsPage One-Click Setup E2E readiness", () => {
       }),
     );
 
-    renderSettingsRoute("/settings");
+    renderSettingsRoute("/settings?section=diagnostics");
 
     expect(screen.getByRole("region", { name: /plugin system mock/i })).toHaveTextContent(
       "marketplace none",
@@ -966,7 +976,7 @@ describe("SettingsPage One-Click Setup E2E readiness", () => {
       }),
     );
 
-    renderSettingsRoute("/settings");
+    renderSettingsRoute("/settings?section=diagnostics");
 
     expect(screen.getByRole("region", { name: /plugin system mock/i })).toHaveTextContent(
       "Plugin status: Local only // 44%",
@@ -1015,7 +1025,7 @@ describe("SettingsPage One-Click Setup E2E readiness", () => {
       }),
     );
 
-    renderSettingsRoute("/settings");
+    renderSettingsRoute("/settings?section=diagnostics");
 
     const panel = screen.getByRole("region", { name: /plugin system mock/i });
     expect(panel).toHaveTextContent("Plugin status: Local only // 44%");
@@ -1031,7 +1041,7 @@ describe("SettingsPage One-Click Setup E2E readiness", () => {
   it("runs native disabled-registry audit into in-memory readiness state", async () => {
     tauriIsTauriMock.mockReturnValue(true);
 
-    renderSettingsRoute("/settings");
+    renderSettingsRoute("/settings?section=diagnostics");
 
     fireEvent.click(screen.getByRole("button", { name: /audit registry mock/i }));
 
@@ -1046,7 +1056,7 @@ describe("SettingsPage One-Click Setup E2E readiness", () => {
   it("runs native runtime sandbox proof into in-memory readiness state", async () => {
     tauriIsTauriMock.mockReturnValue(true);
 
-    renderSettingsRoute("/settings");
+    renderSettingsRoute("/settings?section=diagnostics");
 
     fireEvent.click(screen.getByRole("button", { name: /sandbox proof mock/i }));
 
@@ -1066,7 +1076,7 @@ describe("SettingsPage One-Click Setup E2E readiness", () => {
   it("runs native activation-plan review into in-memory readiness state", async () => {
     tauriIsTauriMock.mockReturnValue(true);
 
-    renderSettingsRoute("/settings");
+    renderSettingsRoute("/settings?section=diagnostics");
 
     fireEvent.change(screen.getByLabelText(/activation plugin mock/i), {
       target: { value: "local-import-demo" },
@@ -1097,7 +1107,7 @@ describe("SettingsPage One-Click Setup E2E readiness", () => {
   it("runs native update-envelope review into in-memory readiness state", async () => {
     tauriIsTauriMock.mockReturnValue(true);
 
-    renderSettingsRoute("/settings");
+    renderSettingsRoute("/settings?section=diagnostics");
 
     fireEvent.change(screen.getByLabelText(/update envelope mock/i), {
       target: { value: "/tmp/local-import-demo-update-envelope.json" },
@@ -1121,7 +1131,7 @@ describe("SettingsPage One-Click Setup E2E readiness", () => {
   it("runs native marketplace-index review into in-memory readiness state", async () => {
     tauriIsTauriMock.mockReturnValue(true);
 
-    renderSettingsRoute("/settings");
+    renderSettingsRoute("/settings?section=diagnostics");
 
     fireEvent.change(screen.getByLabelText(/marketplace index mock/i), {
       target: { value: "/tmp/plugin-marketplace-index.json" },
@@ -1156,7 +1166,7 @@ describe("SettingsPage One-Click Setup E2E readiness", () => {
       version: "1.0.0",
     });
 
-    renderSettingsRoute("/settings");
+    renderSettingsRoute("/settings?section=diagnostics");
 
     fireEvent.click(screen.getByRole("button", { name: /audit registry mock/i }));
     await waitFor(() =>

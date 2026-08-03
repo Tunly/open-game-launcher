@@ -70,16 +70,6 @@ pub struct ClientPathOverlay {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ClientModRoot {
-    id: String,
-    label: String,
-    path: String,
-    enabled: bool,
-    kind: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
 pub struct ClientAssetCacheEntry {
     id: String,
     label: String,
@@ -101,8 +91,6 @@ pub struct ClientModificationConfig {
     update_policy: String,
     #[serde(default)]
     path_overlays: Vec<ClientPathOverlay>,
-    #[serde(default)]
-    mod_roots: Vec<ClientModRoot>,
     #[serde(default)]
     asset_caches: Vec<ClientAssetCacheEntry>,
     updated_at: Option<String>,
@@ -2916,7 +2904,6 @@ fn default_client_config(client: &ClientDefinition) -> ClientModificationConfig 
         latest_known_version: None,
         update_policy: DEFAULT_UPDATE_POLICY.to_string(),
         path_overlays: Vec::new(),
-        mod_roots: Vec::new(),
         asset_caches: Vec::new(),
         updated_at: None,
     }
@@ -2953,7 +2940,6 @@ fn normalize_client_config_with_local_target_root(
         latest_known_version: trim_optional_text(input.latest_known_version),
         update_policy: normalize_update_policy(&input.update_policy)?,
         path_overlays: normalize_path_overlays(input.path_overlays),
-        mod_roots: normalize_mod_roots(input.mod_roots),
         asset_caches: normalize_asset_caches(input.asset_caches),
         updated_at,
     })
@@ -3014,37 +3000,6 @@ fn normalize_path_overlays(entries: Vec<ClientPathOverlay>) -> Vec<ClientPathOve
                 enabled: entry.enabled,
                 read_only: entry.read_only,
                 notes: trim_optional_text(entry.notes),
-            })
-        })
-        .collect()
-}
-
-fn normalize_mod_roots(entries: Vec<ClientModRoot>) -> Vec<ClientModRoot> {
-    entries
-        .into_iter()
-        .take(MAX_CONFIG_PATH_ENTRIES)
-        .enumerate()
-        .filter_map(|(index, entry)| {
-            let path = trim_text(entry.path);
-            if path.is_empty() {
-                return None;
-            }
-            let label = trim_text(entry.label);
-            let kind = trim_text(entry.kind);
-            Some(ClientModRoot {
-                id: normalize_entry_id(&entry.id, "mod-root", index, &path),
-                label: if label.is_empty() {
-                    format!("Mod Root {}", index + 1)
-                } else {
-                    label
-                },
-                path,
-                enabled: entry.enabled,
-                kind: if kind.is_empty() {
-                    "mods".to_string()
-                } else {
-                    kind
-                },
             })
         })
         .collect()
@@ -4439,13 +4394,6 @@ mod tests {
                     notes: None,
                 },
             ],
-            mod_roots: vec![ClientModRoot {
-                id: "".to_string(),
-                label: "".to_string(),
-                path: " /games/mods ".to_string(),
-                enabled: true,
-                kind: "".to_string(),
-            }],
             asset_caches: vec![
                 ClientAssetCacheEntry {
                     id: "".to_string(),
@@ -4491,9 +4439,6 @@ mod tests {
             config.path_overlays[0].notes.as_deref(),
             Some("mirror only")
         );
-        assert_eq!(config.mod_roots.len(), 1);
-        assert_eq!(config.mod_roots[0].label, "Mod Root 1");
-        assert_eq!(config.mod_roots[0].kind, "mods");
         assert_eq!(config.asset_caches.len(), 1);
         assert_eq!(config.asset_caches[0].label, "Hero Art");
         assert_eq!(config.asset_caches[0].cache_key, "steam-app-123");

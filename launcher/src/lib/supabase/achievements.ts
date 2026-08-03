@@ -79,6 +79,7 @@ export type RemoteAchievementHydrationOptions = {
 };
 
 const REMOTE_ACHIEVEMENT_HYDRATION_CONCURRENCY = 4;
+const REMOTE_ACHIEVEMENT_HYDRATION_TIMEOUT_MS = 60_000;
 const REMOTE_ACHIEVEMENT_PROVIDERS = new Set([
   "steam",
   "xbox",
@@ -483,6 +484,40 @@ async function hydrateGameWithRemoteAchievements(
   }
 }
 
+async function hydrateGameWithRemoteAchievementsWithinTimeout(
+  client: ReturnType<typeof getSupabaseClient>,
+  game: Game,
+  userId: string | null,
+  onError?: RemoteAchievementHydrationOptions["onError"],
+) {
+  let timeoutId: ReturnType<typeof globalThis.setTimeout> | null = null;
+  const timeout = new Promise<never>((_resolve, reject) => {
+    timeoutId = globalThis.setTimeout(() => {
+      reject(
+        new Error(
+          `Cloud achievement refresh for ${game.title} timed out after ${REMOTE_ACHIEVEMENT_HYDRATION_TIMEOUT_MS / 1_000} seconds.`,
+        ),
+      );
+    }, REMOTE_ACHIEVEMENT_HYDRATION_TIMEOUT_MS);
+  });
+
+  try {
+    return await Promise.race([
+      hydrateGameWithRemoteAchievements(client, game, userId, onError),
+      timeout,
+    ]);
+  } catch (error) {
+    console.warn(`[OG-Launcher] Remote achievements unavailable for ${game.title}:`, error);
+    onError?.(error, game);
+    return {
+      game,
+      transportUnavailable: isRemoteAchievementTransportUnavailable(error),
+    };
+  } finally {
+    if (timeoutId !== null) globalThis.clearTimeout(timeoutId);
+  }
+}
+
 export async function hydrateGamesWithRemoteAchievements(
   games: Game[],
   options: RemoteAchievementHydrationOptions = {},
@@ -510,7 +545,7 @@ export async function hydrateGamesWithRemoteAchievements(
         continue;
       }
 
-      const result = await hydrateGameWithRemoteAchievements(
+      const result = await hydrateGameWithRemoteAchievementsWithinTimeout(
         client,
         games[gameIndex],
         userId,

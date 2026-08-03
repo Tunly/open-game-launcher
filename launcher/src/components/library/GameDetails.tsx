@@ -65,7 +65,6 @@ import {
 } from "../../lib/formatters";
 import { getGameAssetUrl, getGameBannerStyle } from "../../lib/assets";
 import { getAchievementProviderStatusMessage } from "../../lib/achievement-status";
-import { MODS_PAGE_ENABLED } from "../../lib/feature-flags";
 import {
   buildClientPathOverlayPreflight,
   type ClientPathOverlayPreflight,
@@ -105,6 +104,7 @@ import {
 } from "../../lib/game-actions";
 import { isLiveDownloadItem, useDownloadStore } from "../../stores/downloadStore";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
+import { ModalDialog } from "../ui/ModalDialog";
 import { CrossPlayBadge } from "./CrossPlayBadge";
 import { getCrossPlayPlatforms } from "../../lib/supabase/crossplay";
 import type { CrossPlayPlatform } from "../../lib/types/crossplay";
@@ -143,8 +143,12 @@ const PlaytimeEditorPanel = React.lazy(() =>
     default: m.PlaytimeEditorPanel,
   })),
 );
-import { GameUpdateFeed } from "./GameUpdateFeed";
-import { ArtworkPreviewModal } from "./ArtworkPreviewModal";
+const GameUpdateFeed = React.lazy(() =>
+  import("./GameUpdateFeed").then((module) => ({ default: module.GameUpdateFeed })),
+);
+const ArtworkPreviewModal = React.lazy(() =>
+  import("./ArtworkPreviewModal").then((module) => ({ default: module.ArtworkPreviewModal })),
+);
 import type { CrossStoreSaveMigrationReadiness } from "../../lib/cross-store-save-migration-readiness";
 import type { CrossStoreSaveSyncPlan } from "../../lib/cross-store-save-sync-planner";
 import type { HostedCommunityArtworkReadiness } from "../../lib/hosted-community-artwork-readiness";
@@ -538,16 +542,6 @@ function makeEmptyPathOverlay(index: number): ClientModificationConfig["pathOver
   };
 }
 
-function makeEmptyModRoot(index: number): ClientModificationConfig["modRoots"][number] {
-  return {
-    enabled: true,
-    id: clientDraftEntryId("mod-root"),
-    kind: "mods",
-    label: `Mod Root ${index + 1}`,
-    path: "",
-  };
-}
-
 function makeEmptyAssetCache(index: number): ClientModificationConfig["assetCaches"][number] {
   return {
     cacheKey: "",
@@ -567,7 +561,6 @@ function makeEmptyClientConfig(platformId: NonNullable<ReturnType<typeof toClien
     latestKnownVersion: null,
     localInstallerPath: "",
     localUpdaterPath: "",
-    modRoots: [],
     pathOverlays: [],
     platformId,
     updatePolicy: "manual" as const,
@@ -1314,18 +1307,6 @@ export function GameDetails({
     void loadClientManagerState();
   }, [loadClientManagerState]);
 
-  useEffect(() => {
-    if (!isSettingsPopoverOpen) return;
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setIsSettingsPopoverOpen(false);
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isSettingsPopoverOpen]);
-
   const downloadItems = useDownloadStore((s) => s.items);
   const activeDownload = enrichedSelectedGame
     ? downloadItems.find(
@@ -1787,16 +1768,6 @@ export function GameDetails({
     }));
   }
 
-  function updateClientModRoot(
-    id: string,
-    patch: Partial<ClientModificationConfig["modRoots"][number]>,
-  ) {
-    updateClientConfigDraft((current) => ({
-      ...current,
-      modRoots: current.modRoots.map((entry) => (entry.id === id ? { ...entry, ...patch } : entry)),
-    }));
-  }
-
   function updateClientAssetCache(
     id: string,
     patch: Partial<ClientModificationConfig["assetCaches"][number]>,
@@ -2040,7 +2011,7 @@ export function GameDetails({
                       <span className="min-w-0 leading-none">
                         <span className="block truncate">{isGameRunning ? "Running" : "Play"}</span>
                         {isGameRunning && gameRuntime ? (
-                          <span className="neo-copy mt-1 block max-w-[130px] truncate text-[8px] font-black text-[#d8fff7] uppercase sm:max-w-[145px]">
+                          <span className="neo-copy mt-1 block max-w-[130px] truncate text-[10px] font-black text-[#d8fff7] uppercase sm:max-w-[145px]">
                             {gameRuntimeButtonDetail}
                           </span>
                         ) : null}
@@ -2050,6 +2021,7 @@ export function GameDetails({
                   <button
                     ref={settingsButtonRef}
                     aria-expanded={isSettingsPopoverOpen}
+                    aria-haspopup="dialog"
                     aria-label="Game Settings"
                     className={`grid h-[64px] w-[64px] shrink-0 place-items-center border-4 border-black text-[#171411] shadow-[3px_3px_0_#171411] transition-colors ${
                       isSettingsPopoverOpen ? "bg-[#efe3cf]" : "bg-[#fbf4e7] hover:bg-[#efe3cf]"
@@ -2060,18 +2032,6 @@ export function GameDetails({
                   >
                     <Settings className="h-7 w-7" />
                   </button>
-                  {MODS_PAGE_ENABLED && enrichedSelectedGame.status !== "not_installed" ? (
-                    <button
-                      className="flex h-[64px] min-w-0 flex-1 items-center justify-center gap-2 border-4 border-black bg-[#fbf4e7] px-3 text-[18px] font-black text-[#171411] uppercase shadow-[3px_3px_0_#171411] transition-colors hover:bg-[#8cf5e4]"
-                      type="button"
-                      onClick={() =>
-                        navigate(`/mods?gameId=${encodeURIComponent(enrichedSelectedGame.id)}`)
-                      }
-                    >
-                      <PackagePlus className="h-6 w-6" />
-                      Mods
-                    </button>
-                  ) : null}
                   {enrichedSelectedGame.status !== "not_installed" &&
                   hasInstallableVariants &&
                   onInstallFromProvider ? (
@@ -2096,24 +2056,24 @@ export function GameDetails({
                         <Power className="h-4 w-4 shrink-0 text-[#087d6d]" />
                         <div className="min-w-0">
                           <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-                            <span className="neo-copy text-[9px] font-black text-[#55504a] uppercase">
+                            <span className="neo-copy text-[10px] font-black text-[#55504a] uppercase">
                               Game Runtime
                             </span>
                             <span className="neo-copy truncate text-[11px] font-black text-[#171411] uppercase">
                               {gameRuntime.processName ?? "Process active"}
                             </span>
                             {gameRuntimeSourceBadge ? (
-                              <span className="neo-copy border-2 border-black bg-[#e8c843] px-1.5 py-0.5 text-[8px] font-black text-[#171411] uppercase shadow-[1px_1px_0_#171411]">
+                              <span className="neo-copy border-2 border-black bg-[#e8c843] px-1.5 py-0.5 text-[10px] font-black text-[#171411] uppercase shadow-[1px_1px_0_#171411]">
                                 {gameRuntimeSourceBadge}
                               </span>
                             ) : null}
                             {gameRuntime.windowHandle ? (
-                              <span className="neo-copy border-2 border-black bg-[#171411] px-1.5 py-0.5 text-[8px] font-black text-white uppercase shadow-[1px_1px_0_#171411]">
+                              <span className="neo-copy border-2 border-black bg-[#171411] px-1.5 py-0.5 text-[10px] font-black text-white uppercase shadow-[1px_1px_0_#171411]">
                                 HWND {gameRuntime.windowHandle}
                               </span>
                             ) : null}
                           </div>
-                          <p className="neo-copy mt-0.5 truncate text-[9px] font-bold text-[#655f58] uppercase">
+                          <p className="neo-copy mt-0.5 truncate text-[10px] font-bold text-[#655f58] uppercase">
                             {[
                               gameRuntime.pid ? `PID ${gameRuntime.pid}` : null,
                               formatRuntimeDuration(gameRuntime.uptimeSeconds)
@@ -2127,7 +2087,7 @@ export function GameDetails({
                           </p>
                         </div>
                       </div>
-                      <span className="neo-copy shrink-0 border-2 border-black bg-[#087d6d] px-1.5 py-0.5 text-[8px] font-black text-white uppercase shadow-[1px_1px_0_#171411]">
+                      <span className="neo-copy shrink-0 border-2 border-black bg-[#087d6d] px-1.5 py-0.5 text-[10px] font-black text-white uppercase shadow-[1px_1px_0_#171411]">
                         Running
                       </span>
                     </div>
@@ -2140,12 +2100,12 @@ export function GameDetails({
                           <h3 className="neo-title text-[17px] leading-none uppercase">
                             Client Manager
                           </h3>
-                          <p className="neo-copy mt-1 truncate text-[9px] font-black text-[#f6edd8] uppercase">
+                          <p className="neo-copy mt-1 truncate text-[10px] font-black text-[#f6edd8] uppercase">
                             {selectedSourceClientName} / local install signal / safe updater path
                           </p>
                         </div>
                         <span
-                          className={`neo-copy border-2 border-black px-2 py-1 text-[9px] font-black uppercase shadow-[2px_2px_0_#000] ${clientManagerStatusClass}`}
+                          className={`neo-copy border-2 border-black px-2 py-1 text-[10px] font-black uppercase shadow-[2px_2px_0_#000] ${clientManagerStatusClass}`}
                         >
                           {clientUpdateStatus?.statusLabel ?? "Loading"}
                         </span>
@@ -2155,7 +2115,7 @@ export function GameDetails({
                         <div className="min-w-0 space-y-3">
                           <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
                             <div className="border-2 border-black bg-[#efe6d4] p-2 shadow-[2px_2px_0_#171411]">
-                              <span className="neo-copy block text-[8px] font-black text-[#655f58] uppercase">
+                              <span className="neo-copy block text-[10px] font-black text-[#655f58] uppercase">
                                 Installed
                               </span>
                               <strong className="neo-title mt-1 block truncate text-[16px] uppercase">
@@ -2163,7 +2123,7 @@ export function GameDetails({
                               </strong>
                             </div>
                             <div className="border-2 border-black bg-[#efe6d4] p-2 shadow-[2px_2px_0_#171411]">
-                              <span className="neo-copy block text-[8px] font-black text-[#655f58] uppercase">
+                              <span className="neo-copy block text-[10px] font-black text-[#655f58] uppercase">
                                 Version
                               </span>
                               <strong className="neo-title mt-1 block truncate text-[16px] uppercase">
@@ -2171,7 +2131,7 @@ export function GameDetails({
                               </strong>
                             </div>
                             <div className="border-2 border-black bg-[#efe6d4] p-2 shadow-[2px_2px_0_#171411]">
-                              <span className="neo-copy block text-[8px] font-black text-[#655f58] uppercase">
+                              <span className="neo-copy block text-[10px] font-black text-[#655f58] uppercase">
                                 Latest
                               </span>
                               <strong className="neo-title mt-1 block truncate text-[16px] uppercase">
@@ -2179,13 +2139,13 @@ export function GameDetails({
                               </strong>
                             </div>
                             <div className="border-2 border-black bg-[#efe6d4] p-2 shadow-[2px_2px_0_#171411]">
-                              <span className="neo-copy block text-[8px] font-black text-[#655f58] uppercase">
+                              <span className="neo-copy block text-[10px] font-black text-[#655f58] uppercase">
                                 Scheduler
                               </span>
                               <strong className="neo-title mt-1 block truncate text-[16px] uppercase">
                                 {clientUpdateStatus?.schedulerEnabled ? "24h" : "Manual"}
                               </strong>
-                              <span className="neo-copy mt-1 block truncate text-[8px] font-black text-[#655f58] uppercase">
+                              <span className="neo-copy mt-1 block truncate text-[10px] font-black text-[#655f58] uppercase">
                                 {clientUpdateStatus?.schedulerEnabled
                                   ? `Next ${formatScheduleTime(clientUpdateStatus.nextScheduledCheckAt)}`
                                   : "Auto check off"}
@@ -2202,12 +2162,15 @@ export function GameDetails({
                                   "Client-manager metadata is not loaded.")}
                             </p>
                             {clientManagerError ? (
-                              <p className="neo-copy mt-2 border-2 border-black bg-[#b7102a] px-2 py-1 text-[9px] font-black text-white uppercase">
+                              <p
+                                className="neo-copy mt-2 border-2 border-black bg-[#b7102a] px-2 py-1 text-[10px] font-black text-white uppercase"
+                                role="alert"
+                              >
                                 {clientManagerError}
                               </p>
                             ) : null}
                             {clientUpdateStatus?.schedulerEnabled ? (
-                              <p className="neo-copy mt-2 border-2 border-black bg-[#fbf4e7] px-2 py-1 text-[9px] font-black text-[#655f58] uppercase">
+                              <p className="neo-copy mt-2 border-2 border-black bg-[#fbf4e7] px-2 py-1 text-[10px] font-black text-[#655f58] uppercase">
                                 Scheduled update check: last{" "}
                                 {formatRelativeTime(clientUpdateStatus.lastScheduledCheckAt)} / next{" "}
                                 {formatScheduleTime(clientUpdateStatus.nextScheduledCheckAt)}
@@ -2381,109 +2344,6 @@ export function GameDetails({
                                 ) : (
                                   <p className="neo-copy border-2 border-black bg-[#fbf4e7] px-2 py-3 text-[10px] font-black text-[#655f58] uppercase">
                                     No path overlays configured.
-                                  </p>
-                                )}
-                              </div>
-                            </div>
-
-                            <div className="min-w-0 border-2 border-black bg-[#efe6d4]">
-                              <div className="flex items-center justify-between gap-2 border-b-2 border-black px-2 py-1.5">
-                                <h4 className="neo-copy inline-flex items-center gap-1 text-[10px] font-black uppercase">
-                                  <FolderOpen className="h-4 w-4" />
-                                  Mod roots
-                                </h4>
-                                <button
-                                  className="grid h-7 w-7 place-items-center border-2 border-black bg-[#fbf4e7] shadow-[1px_1px_0_#171411] hover:bg-[#8cf5e4]"
-                                  type="button"
-                                  aria-label="Add mod root"
-                                  onClick={() =>
-                                    updateClientConfigDraft((current) => ({
-                                      ...current,
-                                      modRoots: [
-                                        ...current.modRoots,
-                                        makeEmptyModRoot(current.modRoots.length),
-                                      ],
-                                    }))
-                                  }
-                                >
-                                  <Plus className="h-4 w-4" />
-                                </button>
-                              </div>
-                              <div className="max-h-[280px] space-y-2 overflow-y-auto p-2">
-                                {clientModificationConfig?.modRoots.length ? (
-                                  clientModificationConfig.modRoots.map((root) => (
-                                    <div
-                                      key={root.id}
-                                      className="space-y-1.5 border-2 border-black bg-[#fbf4e7] p-2"
-                                    >
-                                      <div className="flex items-center gap-2">
-                                        <input
-                                          className="neo-copy h-8 min-w-0 flex-1 border-2 border-black bg-[#f6edd8] px-2 text-[10px] font-black uppercase outline-none"
-                                          value={root.label}
-                                          aria-label="Mod root label"
-                                          onChange={(event) =>
-                                            updateClientModRoot(root.id, {
-                                              label: event.currentTarget.value,
-                                            })
-                                          }
-                                        />
-                                        <button
-                                          className="grid h-8 w-8 shrink-0 place-items-center border-2 border-black bg-[#fbf4e7] text-[#b7102a] hover:bg-[#f6edd8]"
-                                          type="button"
-                                          aria-label="Remove mod root"
-                                          onClick={() =>
-                                            updateClientConfigDraft((current) => ({
-                                              ...current,
-                                              modRoots: current.modRoots.filter(
-                                                (entry) => entry.id !== root.id,
-                                              ),
-                                            }))
-                                          }
-                                        >
-                                          <Trash2 className="h-4 w-4" />
-                                        </button>
-                                      </div>
-                                      <input
-                                        className="neo-copy h-8 w-full border-2 border-black bg-[#f6edd8] px-2 text-[10px] font-bold outline-none"
-                                        value={root.path}
-                                        aria-label="Mod root path"
-                                        placeholder="Mod root path"
-                                        onChange={(event) =>
-                                          updateClientModRoot(root.id, {
-                                            path: event.currentTarget.value,
-                                          })
-                                        }
-                                      />
-                                      <div className="grid gap-1.5 sm:grid-cols-[minmax(0,1fr)_auto]">
-                                        <input
-                                          className="neo-copy h-8 min-w-0 border-2 border-black bg-[#f6edd8] px-2 text-[10px] font-bold outline-none"
-                                          value={root.kind}
-                                          aria-label="Mod root kind"
-                                          placeholder="Kind"
-                                          onChange={(event) =>
-                                            updateClientModRoot(root.id, {
-                                              kind: event.currentTarget.value,
-                                            })
-                                          }
-                                        />
-                                        <label className="neo-copy flex h-8 items-center gap-1 border-2 border-black bg-[#efe6d4] px-2 text-[9px] font-black uppercase">
-                                          <input
-                                            type="checkbox"
-                                            checked={root.enabled}
-                                            onChange={(event) =>
-                                              updateClientModRoot(root.id, {
-                                                enabled: event.currentTarget.checked,
-                                              })
-                                            }
-                                          />
-                                          Enabled
-                                        </label>
-                                      </div>
-                                    </div>
-                                  ))
-                                ) : (
-                                  <p className="neo-copy border-2 border-black bg-[#fbf4e7] px-2 py-3 text-[10px] font-black text-[#655f58] uppercase">
-                                    No mod roots configured.
                                   </p>
                                 )}
                               </div>
@@ -3120,7 +2980,7 @@ export function GameDetails({
                           {getGameSource(variant)}
                         </span>
                         <span
-                          className={`neo-copy border border-black px-1.5 py-0.5 text-[8px] font-black uppercase ${
+                          className={`neo-copy border border-black px-1.5 py-0.5 text-[10px] font-black uppercase ${
                             variant.status === "installed"
                               ? "bg-[#169b83] text-white"
                               : variant.status === "update_available"
@@ -3136,659 +2996,786 @@ export function GameDetails({
                 ) : null}
 
                 {isSettingsPopoverOpen && selectedVariant && gameActionCapabilities ? (
-                  <>
-                    <button
-                      aria-label="Close Game Options"
-                      className="fixed inset-0 z-40 cursor-default bg-[#171411]/55"
-                      type="button"
-                      onClick={() => setIsSettingsPopoverOpen(false)}
-                    />
-                    <section
-                      aria-labelledby="game-options-title"
-                      aria-modal="true"
-                      className="neo-dots fixed inset-x-3 top-[84px] bottom-3 z-50 flex min-w-0 flex-col border-4 border-black bg-[#efe3cf] shadow-[8px_8px_0_#171411] sm:right-4 sm:left-auto sm:w-[500px]"
-                      role="dialog"
-                    >
-                      <header className="flex items-start justify-between gap-3 border-b-4 border-black bg-[#171411] px-4 py-3 text-white">
-                        <div className="min-w-0">
-                          <span className="neo-copy text-[9px] font-black tracking-[0.18em] text-[#8cf5e4] uppercase">
-                            Selected copy dossier
+                  <ModalDialog
+                    backdropClassName="fixed inset-0 z-40 bg-[#171411]/55"
+                    labelledBy="game-options-title"
+                    panelClassName="neo-dots fixed inset-x-3 top-[84px] bottom-3 z-50 flex min-w-0 flex-col border-4 border-black bg-[#efe3cf] shadow-[8px_8px_0_#171411] sm:right-4 sm:left-auto sm:w-[500px]"
+                    onDismiss={() => setIsSettingsPopoverOpen(false)}
+                  >
+                    <header className="flex items-start justify-between gap-3 border-b-4 border-black bg-[#171411] px-4 py-3 text-white">
+                      <div className="min-w-0">
+                        <span className="neo-copy text-[10px] font-black tracking-[0.18em] text-[#8cf5e4] uppercase">
+                          Selected copy dossier
+                        </span>
+                        <h2
+                          id="game-options-title"
+                          className="neo-title truncate text-[25px] leading-none uppercase"
+                        >
+                          Game Options
+                        </h2>
+                        <p className="neo-copy mt-1 truncate text-[10px] font-black text-[#f6edd8] uppercase">
+                          {enrichedSelectedGame.title}
+                        </p>
+                      </div>
+                      <button
+                        aria-label="Close Game Options"
+                        className="neo-copy border-2 border-white bg-[#fbf4e7] px-2 py-1 text-[10px] font-black text-[#171411] uppercase shadow-[2px_2px_0_#b7102a] hover:bg-[#8cf5e4]"
+                        type="button"
+                        onClick={() => setIsSettingsPopoverOpen(false)}
+                      >
+                        Close
+                      </button>
+                    </header>
+
+                    <div className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-4">
+                      <section
+                        aria-label="Game copies"
+                        className="mb-4 border-4 border-black bg-[#f6edd8] shadow-[4px_4px_0_#171411]"
+                      >
+                        <div className="flex items-center justify-between gap-2 border-b-2 border-black bg-[#e8c843] px-3 py-2">
+                          <h3 className="neo-title text-[16px] leading-none uppercase">
+                            Choose Copy
+                          </h3>
+                          <span className="neo-copy border-2 border-black bg-[#fbf4e7] px-2 py-0.5 text-[10px] font-black uppercase">
+                            {variantsForActions.length}{" "}
+                            {variantsForActions.length === 1 ? "copy" : "copies"}
                           </span>
-                          <h2
-                            id="game-options-title"
-                            className="neo-title truncate text-[25px] leading-none uppercase"
-                          >
-                            Game Options
-                          </h2>
-                          <p className="neo-copy mt-1 truncate text-[10px] font-black text-[#f6edd8] uppercase">
-                            {enrichedSelectedGame.title}
-                          </p>
                         </div>
-                        <button
-                          className="neo-copy border-2 border-white bg-[#fbf4e7] px-2 py-1 text-[9px] font-black text-[#171411] uppercase shadow-[2px_2px_0_#b7102a] hover:bg-[#8cf5e4]"
-                          type="button"
-                          onClick={() => setIsSettingsPopoverOpen(false)}
-                        >
-                          Close
-                        </button>
-                      </header>
-
-                      <div className="min-h-0 flex-1 overflow-y-auto p-3 sm:p-4">
-                        <section
-                          aria-label="Game copies"
-                          className="mb-4 border-4 border-black bg-[#f6edd8] shadow-[4px_4px_0_#171411]"
-                        >
-                          <div className="flex items-center justify-between gap-2 border-b-2 border-black bg-[#e8c843] px-3 py-2">
-                            <h3 className="neo-title text-[16px] leading-none uppercase">
-                              Choose Copy
-                            </h3>
-                            <span className="neo-copy border-2 border-black bg-[#fbf4e7] px-2 py-0.5 text-[8px] font-black uppercase">
-                              {variantsForActions.length}{" "}
-                              {variantsForActions.length === 1 ? "copy" : "copies"}
-                            </span>
-                          </div>
-                          <div className="grid gap-2 p-2 sm:grid-cols-2">
-                            {variantsForActions.map((variant) => {
-                              const sourceLabel = getSourceDisplayLabel(getGameSource(variant));
-                              const isSelected = variant.id === selectedVariant.id;
-                              return (
-                                <button
-                                  key={variant.id}
-                                  aria-label={`Select ${sourceLabel} copy`}
-                                  aria-pressed={isSelected}
-                                  className={`flex min-w-0 items-center gap-2 border-2 border-black px-2 py-2 text-left shadow-[2px_2px_0_#171411] transition-colors ${
-                                    isSelected
-                                      ? "bg-[#169b83] text-white"
-                                      : "bg-[#fbf4e7] text-[#171411] hover:bg-[#8cf5e4]"
-                                  }`}
-                                  type="button"
-                                  onClick={() => setSelectedVariantId(variant.id)}
-                                >
-                                  <PlatformSourceIcon game={variant} className="h-5 w-5 shrink-0" />
-                                  <span className="min-w-0 flex-1">
-                                    <span className="neo-copy block truncate text-[11px] font-black uppercase">
-                                      {sourceLabel}
-                                    </span>
-                                    <span className="neo-copy block truncate text-[8px] font-black uppercase opacity-80">
-                                      {variant.status.replace("_", " ")}
-                                    </span>
+                        <div className="grid gap-2 p-2 sm:grid-cols-2">
+                          {variantsForActions.map((variant) => {
+                            const sourceLabel = getSourceDisplayLabel(getGameSource(variant));
+                            const isSelected = variant.id === selectedVariant.id;
+                            return (
+                              <button
+                                key={variant.id}
+                                aria-label={`Select ${sourceLabel} copy`}
+                                aria-pressed={isSelected}
+                                className={`flex min-w-0 items-center gap-2 border-2 border-black px-2 py-2 text-left shadow-[2px_2px_0_#171411] transition-colors ${
+                                  isSelected
+                                    ? "bg-[#169b83] text-white"
+                                    : "bg-[#fbf4e7] text-[#171411] hover:bg-[#8cf5e4]"
+                                }`}
+                                type="button"
+                                onClick={() => setSelectedVariantId(variant.id)}
+                              >
+                                <PlatformSourceIcon game={variant} className="h-5 w-5 shrink-0" />
+                                <span className="min-w-0 flex-1">
+                                  <span className="neo-copy block truncate text-[11px] font-black uppercase">
+                                    {sourceLabel}
                                   </span>
-                                  {isSelected ? (
-                                    <span className="neo-copy border-2 border-black bg-[#fbf4e7] px-1.5 py-0.5 text-[7px] font-black text-[#171411] uppercase">
-                                      Selected
-                                    </span>
-                                  ) : null}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </section>
+                                  <span className="neo-copy block truncate text-[10px] font-black uppercase opacity-80">
+                                    {variant.status.replace("_", " ")}
+                                  </span>
+                                </span>
+                                {isSelected ? (
+                                  <span className="neo-copy border-2 border-black bg-[#fbf4e7] px-1.5 py-0.5 text-[10px] font-black text-[#171411] uppercase">
+                                    Selected
+                                  </span>
+                                ) : null}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </section>
 
-                        <section
-                          aria-label="Selected copy actions"
-                          className="mb-4 border-4 border-black bg-[#fbf4e7] shadow-[4px_4px_0_#171411]"
-                        >
-                          <div className="flex items-center justify-between gap-2 border-b-2 border-black bg-[#b7102a] px-3 py-2 text-white">
-                            <h3 className="neo-title text-[17px] leading-none uppercase">
-                              Selected Copy
-                            </h3>
-                            <span className="neo-copy border-2 border-black bg-[#f6edd8] px-2 py-0.5 text-[8px] font-black text-[#171411] uppercase">
-                              {getSourceDisplayLabel(getGameSource(selectedVariant))}
-                            </span>
-                          </div>
-                          <div className="grid gap-2 p-2 sm:grid-cols-2">
-                            <button
-                              className="min-h-16 border-2 border-black bg-[#ded3c1] px-2 py-2 text-left disabled:cursor-not-allowed disabled:text-[#655f58]"
-                              disabled={!gameActionCapabilities.support.available}
-                              title={gameActionCapabilities.support.reason}
-                              type="button"
-                              onClick={() => void handleOpenSelectedSupport()}
-                            >
-                              <span className="neo-copy flex items-center gap-1 text-[10px] font-black uppercase">
-                                <CircleHelp className="h-4 w-4" />
-                                {gameActionCapabilities.support.label}
-                              </span>
-                              <span className="neo-copy mt-1 block text-[8px] leading-3 font-bold uppercase">
-                                {gameActionCapabilities.support.reason}
-                              </span>
-                            </button>
-                            <button
-                              className="min-h-16 border-2 border-black bg-[#8cf5e4] px-2 py-2 text-left shadow-[2px_2px_0_#171411] disabled:cursor-not-allowed disabled:bg-[#ded3c1] disabled:text-[#655f58] disabled:shadow-none"
-                              disabled={
-                                !gameActionCapabilities.checkUpdate.available ||
-                                busyGameAction !== null
-                              }
-                              title={gameActionCapabilities.checkUpdate.reason}
-                              type="button"
-                              onClick={() =>
-                                handleRequestGameAction(
-                                  "check_update",
-                                  gameActionCapabilities.checkUpdate as GameActionCapability,
-                                )
-                              }
-                            >
-                              <span className="neo-copy flex items-center gap-1 text-[10px] font-black uppercase">
-                                <RefreshCw
-                                  className={`h-4 w-4 ${busyGameAction === "check_update" ? "animate-spin" : ""}`}
-                                />
-                                {busyGameAction === "check_update"
-                                  ? "Checking..."
-                                  : gameActionCapabilities.checkUpdate.label}
-                              </span>
-                              <span className="neo-copy mt-1 block text-[8px] leading-3 font-bold uppercase">
-                                {gameActionCapabilities.checkUpdate.reason}
-                              </span>
-                            </button>
-                            <button
-                              className="min-h-16 border-2 border-black bg-[#e8c843] px-2 py-2 text-left shadow-[2px_2px_0_#171411] disabled:cursor-not-allowed disabled:bg-[#ded3c1] disabled:text-[#655f58] disabled:shadow-none"
-                              disabled={
-                                !gameActionCapabilities.update.available || busyGameAction !== null
-                              }
-                              title={gameActionCapabilities.update.reason}
-                              type="button"
-                              onClick={() =>
-                                handleRequestGameAction(
-                                  "update",
-                                  gameActionCapabilities.update as GameActionCapability,
-                                )
-                              }
-                            >
-                              <span className="neo-copy flex items-center gap-1 text-[10px] font-black uppercase">
-                                <Download
-                                  className={`h-4 w-4 ${busyGameAction === "update" ? "animate-pulse" : ""}`}
-                                />
-                                {busyGameAction === "update"
-                                  ? "Updating..."
-                                  : gameActionCapabilities.update.label}
-                              </span>
-                              <span className="neo-copy mt-1 block text-[8px] leading-3 font-bold uppercase">
-                                {gameActionCapabilities.update.reason}
-                              </span>
-                            </button>
-                            <button
-                              className="min-h-16 border-2 border-black bg-[#f6edd8] px-2 py-2 text-left shadow-[2px_2px_0_#171411] disabled:cursor-not-allowed disabled:bg-[#ded3c1] disabled:text-[#655f58] disabled:shadow-none"
-                              disabled={
-                                !gameActionCapabilities.verify.available || busyGameAction !== null
-                              }
-                              title={gameActionCapabilities.verify.reason}
-                              type="button"
-                              onClick={() =>
-                                handleRequestGameAction(
-                                  "verify",
-                                  gameActionCapabilities.verify as GameActionCapability,
-                                )
-                              }
-                            >
-                              <span className="neo-copy flex items-center gap-1 text-[10px] font-black uppercase">
-                                <RefreshCw
-                                  className={`h-4 w-4 ${busyGameAction === "verify" ? "animate-spin" : ""}`}
-                                />
-                                {busyGameAction === "verify"
-                                  ? "Verifying..."
-                                  : gameActionCapabilities.verify.label}
-                              </span>
-                              <span className="neo-copy mt-1 block text-[8px] leading-3 font-bold uppercase">
-                                {gameActionCapabilities.verify.reason}
-                              </span>
-                            </button>
-                            <button
-                              className="min-h-16 border-2 border-black bg-[#f6edd8] px-2 py-2 text-left shadow-[2px_2px_0_#171411] disabled:cursor-not-allowed disabled:bg-[#ded3c1] disabled:text-[#655f58] disabled:shadow-none"
-                              disabled={
-                                !gameActionCapabilities.repair.available || busyGameAction !== null
-                              }
-                              title={gameActionCapabilities.repair.reason}
-                              type="button"
-                              onClick={() =>
-                                handleRequestGameAction(
-                                  "repair",
-                                  gameActionCapabilities.repair as GameActionCapability,
-                                )
-                              }
-                            >
-                              <span className="neo-copy flex items-center gap-1 text-[10px] font-black uppercase">
-                                <RotateCcw
-                                  className={`h-4 w-4 ${busyGameAction === "repair" ? "animate-spin" : ""}`}
-                                />
-                                {busyGameAction === "repair"
-                                  ? "Repairing..."
-                                  : gameActionCapabilities.repair.label}
-                              </span>
-                              <span className="neo-copy mt-1 block text-[8px] leading-3 font-bold uppercase">
-                                {gameActionCapabilities.repair.reason}
-                              </span>
-                            </button>
-                            <button
-                              className="min-h-16 border-2 border-black bg-[#b7102a] px-2 py-2 text-left text-white shadow-[2px_2px_0_#171411] disabled:cursor-not-allowed disabled:bg-[#ded3c1] disabled:text-[#655f58] disabled:shadow-none"
-                              disabled={
-                                !gameActionCapabilities.uninstall.available ||
-                                busyGameAction !== null
-                              }
-                              title={gameActionCapabilities.uninstall.reason}
-                              type="button"
-                              onClick={() =>
-                                handleRequestGameAction(
-                                  gameActionCapabilities.uninstall.action as GameAction,
-                                  gameActionCapabilities.uninstall as GameActionCapability,
-                                )
-                              }
-                            >
-                              <span className="neo-copy flex items-center gap-1 text-[10px] font-black uppercase">
-                                <Trash2
-                                  className={`h-4 w-4 ${busyGameAction === gameActionCapabilities.uninstall.action ? "animate-pulse" : ""}`}
-                                />
-                                {busyGameAction === gameActionCapabilities.uninstall.action
-                                  ? "Working..."
-                                  : gameActionCapabilities.uninstall.label}
-                              </span>
-                              <span className="neo-copy mt-1 block text-[8px] leading-3 font-bold uppercase">
-                                {gameActionCapabilities.uninstall.reason}
-                              </span>
-                            </button>
-                            <button
-                              className="min-h-16 border-2 border-black bg-[#171411] px-2 py-2 text-left text-white shadow-[2px_2px_0_#b7102a] disabled:cursor-not-allowed disabled:bg-[#ded3c1] disabled:text-[#655f58] disabled:shadow-none"
-                              disabled={!gameActionCapabilities.clientManager.available}
-                              title={gameActionCapabilities.clientManager.reason}
-                              type="button"
-                              onClick={() => {
-                                setIsSettingsPopoverOpen(false);
-                                setIsClientManagerOpen(true);
-                              }}
-                            >
-                              <span className="neo-copy flex items-center gap-1 text-[10px] font-black uppercase">
-                                <Settings className="h-4 w-4" />
-                                {gameActionCapabilities.clientManager.label}
-                              </span>
-                              <span className="neo-copy mt-1 block text-[8px] leading-3 font-bold uppercase">
-                                {gameActionCapabilities.clientManager.reason}
-                              </span>
-                            </button>
-                            <button
-                              className="min-h-16 border-2 border-black bg-[#b7102a] px-2 py-2 text-left text-white shadow-[2px_2px_0_#171411] disabled:cursor-not-allowed disabled:bg-[#ded3c1] disabled:text-[#655f58] disabled:shadow-none"
-                              disabled={
-                                !selectedVariantCanStop ||
-                                busySelectedCopyUtility !== null ||
-                                busyGameAction !== null
-                              }
-                              title={selectedVariantStopReason}
-                              type="button"
-                              onClick={() => void handleStopSelectedCopy()}
-                            >
-                              <span className="neo-copy flex items-center gap-1 text-[10px] font-black uppercase">
-                                {busySelectedCopyUtility === "stop" ? (
-                                  <Loader2 className="h-4 w-4 animate-spin" />
-                                ) : (
-                                  <Power className="h-4 w-4" />
-                                )}
-                                {busySelectedCopyUtility === "stop" ? "Stopping..." : "Stop Game"}
-                              </span>
-                              <span className="neo-copy mt-1 block text-[8px] leading-3 font-bold uppercase">
-                                {selectedVariantStopReason}
-                              </span>
-                            </button>
-                            <button
-                              className="min-h-16 border-2 border-black bg-[#e8c843] px-2 py-2 text-left shadow-[2px_2px_0_#171411] disabled:cursor-not-allowed disabled:bg-[#ded3c1] disabled:text-[#655f58] disabled:shadow-none"
-                              disabled={
-                                !selectedVariantCanMove ||
-                                busySelectedCopyUtility !== null ||
-                                busyGameAction !== null
-                              }
-                              title={selectedVariantMoveReason}
-                              type="button"
-                              onClick={() => void handleChooseMoveTarget()}
-                            >
-                              <span className="neo-copy flex items-center gap-1 text-[10px] font-black uppercase">
-                                {busySelectedCopyUtility === "move" ? (
-                                  <Loader2 className="h-4 w-4 animate-spin" />
-                                ) : (
-                                  <FolderOpen className="h-4 w-4" />
-                                )}
-                                {busySelectedCopyUtility === "move"
-                                  ? "Preparing..."
-                                  : "Move Install"}
-                              </span>
-                              <span className="neo-copy mt-1 block text-[8px] leading-3 font-bold uppercase">
-                                {selectedVariantMoveReason}
-                              </span>
-                            </button>
-                            <button
-                              className="min-h-16 border-2 border-black bg-[#8cf5e4] px-2 py-2 text-left shadow-[2px_2px_0_#171411] disabled:cursor-not-allowed disabled:bg-[#ded3c1] disabled:text-[#655f58] disabled:shadow-none"
-                              disabled={
-                                !selectedVariantCanSyncSaves ||
-                                busySelectedCopyUtility !== null ||
-                                busyGameAction !== null
-                              }
-                              title={selectedVariantSaveSyncReason}
-                              type="button"
-                              onClick={() => void handleSyncSelectedCopySaves()}
-                            >
-                              <span className="neo-copy flex items-center gap-1 text-[10px] font-black uppercase">
-                                {busySelectedCopyUtility === "save_sync" ? (
-                                  <Loader2 className="h-4 w-4 animate-spin" />
-                                ) : (
-                                  <Save className="h-4 w-4" />
-                                )}
-                                {busySelectedCopyUtility === "save_sync"
-                                  ? "Backing Up..."
-                                  : "Backup Saves"}
-                              </span>
-                              <span className="neo-copy mt-1 block text-[8px] leading-3 font-bold uppercase">
-                                {selectedVariantSaveSyncReason}
-                              </span>
-                            </button>
-                          </div>
-
-                          <div
-                            aria-live="polite"
-                            className="mx-2 mb-2 border-2 border-black bg-[#efe3cf] p-2"
+                      <section
+                        aria-label="Selected copy actions"
+                        className="mb-4 border-4 border-black bg-[#fbf4e7] shadow-[4px_4px_0_#171411]"
+                      >
+                        <div className="flex items-center justify-between gap-2 border-b-2 border-black bg-[#b7102a] px-3 py-2 text-white">
+                          <h3 className="neo-title text-[17px] leading-none uppercase">
+                            Selected Copy
+                          </h3>
+                          <span className="neo-copy border-2 border-black bg-[#f6edd8] px-2 py-0.5 text-[10px] font-black text-[#171411] uppercase">
+                            {getSourceDisplayLabel(getGameSource(selectedVariant))}
+                          </span>
+                        </div>
+                        <div className="grid gap-2 p-2 sm:grid-cols-2">
+                          <button
+                            className="min-h-16 border-2 border-black bg-[#ded3c1] px-2 py-2 text-left disabled:cursor-not-allowed disabled:text-[#655f58]"
+                            disabled={!gameActionCapabilities.support.available}
+                            title={gameActionCapabilities.support.reason}
+                            type="button"
+                            onClick={() => void handleOpenSelectedSupport()}
                           >
-                            <div className="flex items-center justify-between gap-2">
-                              <span className="neo-copy text-[9px] font-black uppercase">
-                                Action status
-                              </span>
-                              {gameActionResult ? (
-                                <span
-                                  className={`neo-copy border-2 border-black px-2 py-0.5 text-[8px] font-black uppercase ${gameActionOutcomeClasses(gameActionResult.outcome)}`}
-                                >
-                                  {gameActionOutcomeLabel(gameActionResult.outcome)}
-                                </span>
-                              ) : busySelectedCopyUtility ? (
-                                <span className="neo-copy flex items-center gap-1 border-2 border-black bg-[#e8c843] px-2 py-0.5 text-[8px] font-black uppercase">
-                                  <Loader2 className="h-3 w-3 animate-spin" /> Working
-                                </span>
-                              ) : selectedCopyUtilityMessage && selectedCopyUtilityOutcome ? (
-                                <span
-                                  className={`neo-copy border-2 border-black px-2 py-0.5 text-[8px] font-black uppercase ${
-                                    selectedCopyUtilityOutcome === "warning"
-                                      ? "bg-[#e8c843] text-[#171411]"
-                                      : "bg-[#087d6d] text-white"
-                                  }`}
-                                >
-                                  {selectedCopyUtilityOutcome === "warning"
-                                    ? "Completed with warning"
-                                    : "Completed"}
-                                </span>
-                              ) : isLoadingGameActionCapabilities ? (
-                                <span className="neo-copy flex items-center gap-1 border-2 border-black bg-[#e8c843] px-2 py-0.5 text-[8px] font-black uppercase">
-                                  <Loader2 className="h-3 w-3 animate-spin" /> Loading
-                                </span>
-                              ) : null}
-                            </div>
-                            <p className="neo-copy mt-1 text-[9px] font-black uppercase">
-                              {selectedCopyUtilityError
-                                ? `Utility failed: ${selectedCopyUtilityError}`
-                                : selectedCopyUtilityMessage
-                                  ? selectedCopyUtilityMessage
-                                  : gameActionError
-                                    ? `Action failed: ${gameActionError}`
-                                    : gameActionCapabilityError
-                                      ? `Capabilities unavailable: ${gameActionCapabilityError}`
-                                      : gameActionResult
-                                        ? gameActionResult.message
-                                        : isLoadingGameActionCapabilities
-                                          ? "Reading native capabilities for this exact selected copy."
-                                          : isDesktopRuntime
-                                            ? "Choose an available action for this selected copy."
-                                            : "Native actions stay disabled in the browser preview."}
-                            </p>
-                            {gameActionResult?.details.length ? (
-                              <ul className="neo-copy mt-1 list-inside list-disc text-[8px] font-bold uppercase">
-                                {gameActionResult.details.map((detail) => (
-                                  <li key={detail}>{detail}</li>
-                                ))}
-                              </ul>
-                            ) : null}
-                          </div>
+                            <span className="neo-copy flex items-center gap-1 text-[10px] font-black uppercase">
+                              <CircleHelp className="h-4 w-4" />
+                              {gameActionCapabilities.support.label}
+                            </span>
+                            <span className="neo-copy mt-1 block text-[10px] leading-4 font-bold uppercase">
+                              {gameActionCapabilities.support.reason}
+                            </span>
+                          </button>
+                          <button
+                            className="min-h-16 border-2 border-black bg-[#8cf5e4] px-2 py-2 text-left shadow-[2px_2px_0_#171411] disabled:cursor-not-allowed disabled:bg-[#ded3c1] disabled:text-[#655f58] disabled:shadow-none"
+                            disabled={
+                              !gameActionCapabilities.checkUpdate.available ||
+                              busyGameAction !== null
+                            }
+                            title={gameActionCapabilities.checkUpdate.reason}
+                            type="button"
+                            onClick={() =>
+                              handleRequestGameAction(
+                                "check_update",
+                                gameActionCapabilities.checkUpdate as GameActionCapability,
+                              )
+                            }
+                          >
+                            <span className="neo-copy flex items-center gap-1 text-[10px] font-black uppercase">
+                              <RefreshCw
+                                className={`h-4 w-4 ${busyGameAction === "check_update" ? "animate-spin" : ""}`}
+                              />
+                              {busyGameAction === "check_update"
+                                ? "Checking..."
+                                : gameActionCapabilities.checkUpdate.label}
+                            </span>
+                            <span className="neo-copy mt-1 block text-[10px] leading-4 font-bold uppercase">
+                              {gameActionCapabilities.checkUpdate.reason}
+                            </span>
+                          </button>
+                          <button
+                            className="min-h-16 border-2 border-black bg-[#e8c843] px-2 py-2 text-left shadow-[2px_2px_0_#171411] disabled:cursor-not-allowed disabled:bg-[#ded3c1] disabled:text-[#655f58] disabled:shadow-none"
+                            disabled={
+                              !gameActionCapabilities.update.available || busyGameAction !== null
+                            }
+                            title={gameActionCapabilities.update.reason}
+                            type="button"
+                            onClick={() =>
+                              handleRequestGameAction(
+                                "update",
+                                gameActionCapabilities.update as GameActionCapability,
+                              )
+                            }
+                          >
+                            <span className="neo-copy flex items-center gap-1 text-[10px] font-black uppercase">
+                              <Download
+                                className={`h-4 w-4 ${busyGameAction === "update" ? "animate-pulse" : ""}`}
+                              />
+                              {busyGameAction === "update"
+                                ? "Updating..."
+                                : gameActionCapabilities.update.label}
+                            </span>
+                            <span className="neo-copy mt-1 block text-[10px] leading-4 font-bold uppercase">
+                              {gameActionCapabilities.update.reason}
+                            </span>
+                          </button>
+                          <button
+                            className="min-h-16 border-2 border-black bg-[#f6edd8] px-2 py-2 text-left shadow-[2px_2px_0_#171411] disabled:cursor-not-allowed disabled:bg-[#ded3c1] disabled:text-[#655f58] disabled:shadow-none"
+                            disabled={
+                              !gameActionCapabilities.verify.available || busyGameAction !== null
+                            }
+                            title={gameActionCapabilities.verify.reason}
+                            type="button"
+                            onClick={() =>
+                              handleRequestGameAction(
+                                "verify",
+                                gameActionCapabilities.verify as GameActionCapability,
+                              )
+                            }
+                          >
+                            <span className="neo-copy flex items-center gap-1 text-[10px] font-black uppercase">
+                              <RefreshCw
+                                className={`h-4 w-4 ${busyGameAction === "verify" ? "animate-spin" : ""}`}
+                              />
+                              {busyGameAction === "verify"
+                                ? "Verifying..."
+                                : gameActionCapabilities.verify.label}
+                            </span>
+                            <span className="neo-copy mt-1 block text-[10px] leading-4 font-bold uppercase">
+                              {gameActionCapabilities.verify.reason}
+                            </span>
+                          </button>
+                          <button
+                            className="min-h-16 border-2 border-black bg-[#f6edd8] px-2 py-2 text-left shadow-[2px_2px_0_#171411] disabled:cursor-not-allowed disabled:bg-[#ded3c1] disabled:text-[#655f58] disabled:shadow-none"
+                            disabled={
+                              !gameActionCapabilities.repair.available || busyGameAction !== null
+                            }
+                            title={gameActionCapabilities.repair.reason}
+                            type="button"
+                            onClick={() =>
+                              handleRequestGameAction(
+                                "repair",
+                                gameActionCapabilities.repair as GameActionCapability,
+                              )
+                            }
+                          >
+                            <span className="neo-copy flex items-center gap-1 text-[10px] font-black uppercase">
+                              <RotateCcw
+                                className={`h-4 w-4 ${busyGameAction === "repair" ? "animate-spin" : ""}`}
+                              />
+                              {busyGameAction === "repair"
+                                ? "Repairing..."
+                                : gameActionCapabilities.repair.label}
+                            </span>
+                            <span className="neo-copy mt-1 block text-[10px] leading-4 font-bold uppercase">
+                              {gameActionCapabilities.repair.reason}
+                            </span>
+                          </button>
+                          <button
+                            className="min-h-16 border-2 border-black bg-[#b7102a] px-2 py-2 text-left text-white shadow-[2px_2px_0_#171411] disabled:cursor-not-allowed disabled:bg-[#ded3c1] disabled:text-[#655f58] disabled:shadow-none"
+                            disabled={
+                              !gameActionCapabilities.uninstall.available || busyGameAction !== null
+                            }
+                            title={gameActionCapabilities.uninstall.reason}
+                            type="button"
+                            onClick={() =>
+                              handleRequestGameAction(
+                                gameActionCapabilities.uninstall.action as GameAction,
+                                gameActionCapabilities.uninstall as GameActionCapability,
+                              )
+                            }
+                          >
+                            <span className="neo-copy flex items-center gap-1 text-[10px] font-black uppercase">
+                              <Trash2
+                                className={`h-4 w-4 ${busyGameAction === gameActionCapabilities.uninstall.action ? "animate-pulse" : ""}`}
+                              />
+                              {busyGameAction === gameActionCapabilities.uninstall.action
+                                ? "Working..."
+                                : gameActionCapabilities.uninstall.label}
+                            </span>
+                            <span className="neo-copy mt-1 block text-[10px] leading-4 font-bold uppercase">
+                              {gameActionCapabilities.uninstall.reason}
+                            </span>
+                          </button>
+                          <button
+                            className="min-h-16 border-2 border-black bg-[#171411] px-2 py-2 text-left text-white shadow-[2px_2px_0_#b7102a] disabled:cursor-not-allowed disabled:bg-[#ded3c1] disabled:text-[#655f58] disabled:shadow-none"
+                            disabled={!gameActionCapabilities.clientManager.available}
+                            title={gameActionCapabilities.clientManager.reason}
+                            type="button"
+                            onClick={() => {
+                              setIsSettingsPopoverOpen(false);
+                              setIsClientManagerOpen(true);
+                            }}
+                          >
+                            <span className="neo-copy flex items-center gap-1 text-[10px] font-black uppercase">
+                              <Settings className="h-4 w-4" />
+                              {gameActionCapabilities.clientManager.label}
+                            </span>
+                            <span className="neo-copy mt-1 block text-[10px] leading-4 font-bold uppercase">
+                              {gameActionCapabilities.clientManager.reason}
+                            </span>
+                          </button>
+                          <button
+                            className="min-h-16 border-2 border-black bg-[#b7102a] px-2 py-2 text-left text-white shadow-[2px_2px_0_#171411] disabled:cursor-not-allowed disabled:bg-[#ded3c1] disabled:text-[#655f58] disabled:shadow-none"
+                            disabled={
+                              !selectedVariantCanStop ||
+                              busySelectedCopyUtility !== null ||
+                              busyGameAction !== null
+                            }
+                            title={selectedVariantStopReason}
+                            type="button"
+                            onClick={() => void handleStopSelectedCopy()}
+                          >
+                            <span className="neo-copy flex items-center gap-1 text-[10px] font-black uppercase">
+                              {busySelectedCopyUtility === "stop" ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <Power className="h-4 w-4" />
+                              )}
+                              {busySelectedCopyUtility === "stop" ? "Stopping..." : "Stop Game"}
+                            </span>
+                            <span className="neo-copy mt-1 block text-[10px] leading-4 font-bold uppercase">
+                              {selectedVariantStopReason}
+                            </span>
+                          </button>
+                          <button
+                            className="min-h-16 border-2 border-black bg-[#e8c843] px-2 py-2 text-left shadow-[2px_2px_0_#171411] disabled:cursor-not-allowed disabled:bg-[#ded3c1] disabled:text-[#655f58] disabled:shadow-none"
+                            disabled={
+                              !selectedVariantCanMove ||
+                              busySelectedCopyUtility !== null ||
+                              busyGameAction !== null
+                            }
+                            title={selectedVariantMoveReason}
+                            type="button"
+                            onClick={() => void handleChooseMoveTarget()}
+                          >
+                            <span className="neo-copy flex items-center gap-1 text-[10px] font-black uppercase">
+                              {busySelectedCopyUtility === "move" ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <FolderOpen className="h-4 w-4" />
+                              )}
+                              {busySelectedCopyUtility === "move" ? "Preparing..." : "Move Install"}
+                            </span>
+                            <span className="neo-copy mt-1 block text-[10px] leading-4 font-bold uppercase">
+                              {selectedVariantMoveReason}
+                            </span>
+                          </button>
+                          <button
+                            className="min-h-16 border-2 border-black bg-[#8cf5e4] px-2 py-2 text-left shadow-[2px_2px_0_#171411] disabled:cursor-not-allowed disabled:bg-[#ded3c1] disabled:text-[#655f58] disabled:shadow-none"
+                            disabled={
+                              !selectedVariantCanSyncSaves ||
+                              busySelectedCopyUtility !== null ||
+                              busyGameAction !== null
+                            }
+                            title={selectedVariantSaveSyncReason}
+                            type="button"
+                            onClick={() => void handleSyncSelectedCopySaves()}
+                          >
+                            <span className="neo-copy flex items-center gap-1 text-[10px] font-black uppercase">
+                              {busySelectedCopyUtility === "save_sync" ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <Save className="h-4 w-4" />
+                              )}
+                              {busySelectedCopyUtility === "save_sync"
+                                ? "Backing Up..."
+                                : "Backup Saves"}
+                            </span>
+                            <span className="neo-copy mt-1 block text-[10px] leading-4 font-bold uppercase">
+                              {selectedVariantSaveSyncReason}
+                            </span>
+                          </button>
+                        </div>
 
-                          <div className="border-t-2 border-black p-2">
-                            <input
-                              ref={coverArtworkInputRef}
-                              className="hidden"
-                              type="file"
-                              accept="image/*"
-                              onChange={(event) => {
-                                handleArtworkFileChange("cover", event.currentTarget.files);
-                                event.currentTarget.value = "";
-                              }}
-                            />
-                            <input
-                              ref={iconArtworkInputRef}
-                              className="hidden"
-                              type="file"
-                              accept="image/*"
-                              onChange={(event) => {
-                                handleArtworkFileChange("icon", event.currentTarget.files);
-                                event.currentTarget.value = "";
-                              }}
-                            />
-                            <input
-                              ref={logoArtworkInputRef}
-                              className="hidden"
-                              type="file"
-                              accept="image/*"
-                              onChange={(event) => {
-                                handleArtworkFileChange("logo", event.currentTarget.files);
-                                event.currentTarget.value = "";
-                              }}
-                            />
-                            <div className="mb-2 flex items-center justify-between gap-2">
-                              <h4 className="neo-title text-[15px] uppercase">Local Artwork</h4>
-                              <span className="neo-copy border-2 border-black bg-[#8cf5e4] px-2 py-0.5 text-[8px] font-black uppercase">
-                                Selected copy / local only
-                              </span>
-                            </div>
-                            <div className="grid grid-cols-3 gap-1">
-                              {(
-                                [
-                                  ["cover", "Banner"],
-                                  ["icon", "Icon"],
-                                  ["logo", "Logo"],
-                                ] as const
-                              ).map(([kind, label]) => (
-                                <button
-                                  key={kind}
-                                  type="button"
-                                  className="flex h-9 items-center justify-center gap-1 border-2 border-black bg-[#ded3c1] px-1 text-[9px] font-black uppercase hover:bg-[#8cf5e4]"
-                                  title={`Choose custom ${label.toLowerCase()} artwork`}
-                                  onClick={() => openArtworkPicker(kind)}
-                                >
-                                  <ImagePlus className="h-3.5 w-3.5" />
-                                  {label}
-                                </button>
-                              ))}
-                            </div>
-                            {hasCustomArtwork(selectedVariantArtwork) ? (
-                              <button
-                                type="button"
-                                className="mt-2 flex h-8 w-full items-center justify-center gap-1 border-2 border-black bg-[#fbf4e7] px-2 text-[9px] font-black uppercase hover:bg-[#e8c843]"
-                                onClick={() =>
-                                  primaryArtworkGameId && onResetCustomArtwork(primaryArtworkGameId)
-                                }
-                              >
-                                <RotateCcw className="h-3.5 w-3.5" />
-                                Reset Selected Copy Artwork
-                              </button>
-                            ) : (
-                              <p className="neo-copy mt-2 text-[9px] font-bold text-[#655f58] uppercase">
-                                Uses scanned {getSourceDisplayLabel(getGameSource(selectedVariant))}{" "}
-                                artwork.
-                              </p>
-                            )}
-                            {selectedVariant && onApplyCustomArtworkUrl ? (
-                              <React.Suspense fallback={null}>
-                                <CommunityArtworkPanel
-                                  artwork={selectedVariantArtwork}
-                                  game={selectedVariant}
-                                  onApply={(candidate) =>
-                                    onApplyCustomArtworkUrl(
-                                      selectedVariant.id,
-                                      candidate.kind,
-                                      candidate.url,
-                                      candidate.sourceLabel,
-                                    )
-                                  }
-                                />
-                              </React.Suspense>
-                            ) : null}
-                          </div>
-                        </section>
-
-                        <section
-                          aria-label="All copies organization"
-                          className="border-4 border-black bg-[#f6edd8] shadow-[4px_4px_0_#171411]"
+                        <div
+                          aria-live="polite"
+                          className="mx-2 mb-2 border-2 border-black bg-[#efe3cf] p-2"
                         >
-                          <div className="flex items-center justify-between gap-2 border-b-2 border-black bg-[#169b83] px-3 py-2 text-white">
-                            <h3 className="neo-title text-[17px] leading-none uppercase">
-                              Library Organization
-                            </h3>
-                            <span className="neo-copy border-2 border-black bg-[#fbf4e7] px-2 py-0.5 text-[8px] font-black text-[#171411] uppercase">
-                              All copies
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="neo-copy text-[10px] font-black uppercase">
+                              Action status
+                            </span>
+                            {gameActionResult ? (
+                              <span
+                                className={`neo-copy border-2 border-black px-2 py-0.5 text-[10px] font-black uppercase ${gameActionOutcomeClasses(gameActionResult.outcome)}`}
+                              >
+                                {gameActionOutcomeLabel(gameActionResult.outcome)}
+                              </span>
+                            ) : busySelectedCopyUtility ? (
+                              <span className="neo-copy flex items-center gap-1 border-2 border-black bg-[#e8c843] px-2 py-0.5 text-[10px] font-black uppercase">
+                                <Loader2 className="h-3 w-3 animate-spin" /> Working
+                              </span>
+                            ) : selectedCopyUtilityMessage && selectedCopyUtilityOutcome ? (
+                              <span
+                                className={`neo-copy border-2 border-black px-2 py-0.5 text-[10px] font-black uppercase ${
+                                  selectedCopyUtilityOutcome === "warning"
+                                    ? "bg-[#e8c843] text-[#171411]"
+                                    : "bg-[#087d6d] text-white"
+                                }`}
+                              >
+                                {selectedCopyUtilityOutcome === "warning"
+                                  ? "Completed with warning"
+                                  : "Completed"}
+                              </span>
+                            ) : isLoadingGameActionCapabilities ? (
+                              <span className="neo-copy flex items-center gap-1 border-2 border-black bg-[#e8c843] px-2 py-0.5 text-[10px] font-black uppercase">
+                                <Loader2 className="h-3 w-3 animate-spin" /> Loading
+                              </span>
+                            ) : null}
+                          </div>
+                          <p className="neo-copy mt-1 text-[10px] font-black uppercase">
+                            {selectedCopyUtilityError
+                              ? `Utility failed: ${selectedCopyUtilityError}`
+                              : selectedCopyUtilityMessage
+                                ? selectedCopyUtilityMessage
+                                : gameActionError
+                                  ? `Action failed: ${gameActionError}`
+                                  : gameActionCapabilityError
+                                    ? `Capabilities unavailable: ${gameActionCapabilityError}`
+                                    : gameActionResult
+                                      ? gameActionResult.message
+                                      : isLoadingGameActionCapabilities
+                                        ? "Reading native capabilities for this exact selected copy."
+                                        : isDesktopRuntime
+                                          ? "Choose an available action for this selected copy."
+                                          : "Native actions stay disabled in the browser preview."}
+                          </p>
+                          {gameActionResult?.details.length ? (
+                            <ul className="neo-copy mt-1 list-inside list-disc text-[10px] font-bold uppercase">
+                              {gameActionResult.details.map((detail) => (
+                                <li key={detail}>{detail}</li>
+                              ))}
+                            </ul>
+                          ) : null}
+                        </div>
+
+                        <div className="border-t-2 border-black p-2">
+                          <input
+                            ref={coverArtworkInputRef}
+                            className="hidden"
+                            type="file"
+                            accept="image/*"
+                            onChange={(event) => {
+                              handleArtworkFileChange("cover", event.currentTarget.files);
+                              event.currentTarget.value = "";
+                            }}
+                          />
+                          <input
+                            ref={iconArtworkInputRef}
+                            className="hidden"
+                            type="file"
+                            accept="image/*"
+                            onChange={(event) => {
+                              handleArtworkFileChange("icon", event.currentTarget.files);
+                              event.currentTarget.value = "";
+                            }}
+                          />
+                          <input
+                            ref={logoArtworkInputRef}
+                            className="hidden"
+                            type="file"
+                            accept="image/*"
+                            onChange={(event) => {
+                              handleArtworkFileChange("logo", event.currentTarget.files);
+                              event.currentTarget.value = "";
+                            }}
+                          />
+                          <div className="mb-2 flex items-center justify-between gap-2">
+                            <h4 className="neo-title text-[15px] uppercase">Local Artwork</h4>
+                            <span className="neo-copy border-2 border-black bg-[#8cf5e4] px-2 py-0.5 text-[10px] font-black uppercase">
+                              Selected copy / local only
                             </span>
                           </div>
-                          <div className="grid grid-cols-2 gap-2 border-b-2 border-black p-2">
-                            <button
-                              className={`border-2 border-black px-2 py-2 text-left shadow-[2px_2px_0_#171411] ${
-                                isGroupFavorite
-                                  ? "bg-[#b7102a] text-white"
-                                  : "bg-[#fbf4e7] hover:bg-[#e8c843]"
-                              }`}
-                              disabled={!groupActionCapabilities.favorite.available}
-                              title={groupActionCapabilities.favorite.reason}
-                              type="button"
-                              onClick={() => {
-                                const nextFavorite = !isGroupFavorite;
-                                setFavorites((previous) => ({
-                                  ...previous,
-                                  ...Object.fromEntries(variantIds.map((id) => [id, nextFavorite])),
-                                }));
-                              }}
-                            >
-                              <span className="neo-copy flex items-center gap-1 text-[10px] font-black uppercase">
-                                <Heart
-                                  className={`h-4 w-4 ${isGroupFavorite ? "fill-current" : ""}`}
-                                />
-                                {groupActionCapabilities.favorite.label}
-                              </span>
-                              <span className="neo-copy mt-1 block text-[8px] font-black uppercase">
-                                {favoriteScopeLabel}
-                              </span>
-                            </button>
-                            <button
-                              className={`border-2 border-black px-2 py-2 text-left shadow-[2px_2px_0_#171411] ${
-                                isGroupHidden
-                                  ? "bg-[#b7102a] text-white"
-                                  : "bg-[#fbf4e7] hover:bg-[#e8c843]"
-                              }`}
-                              disabled={!groupActionCapabilities.hidden.available}
-                              title={groupActionCapabilities.hidden.reason}
-                              type="button"
-                              onClick={() => {
-                                const nextHidden = !isGroupHidden;
-                                setHiddenGames((previous) => ({
-                                  ...previous,
-                                  ...Object.fromEntries(variantIds.map((id) => [id, nextHidden])),
-                                }));
-                              }}
-                            >
-                              <span className="neo-copy text-[10px] font-black uppercase">
-                                {groupActionCapabilities.hidden.label}
-                              </span>
-                              <span className="neo-copy mt-1 block text-[8px] font-black uppercase">
-                                {hiddenScopeLabel}
-                              </span>
-                            </button>
-                          </div>
-
-                          <div className="border-b-2 border-black p-2">
-                            <div className="mb-1 flex items-center justify-between gap-2">
-                              <h4 className="neo-title text-[14px] uppercase">
-                                {groupActionCapabilities.categories.label}
-                              </h4>
-                              <span className="neo-copy text-[8px] font-black uppercase">
-                                Applies to all copies
-                              </span>
-                            </div>
-                            <div className="flex gap-1">
-                              <input
-                                aria-label="New category for all copies"
-                                className="neo-copy h-8 min-w-0 flex-1 border-2 border-black bg-[#fbf4e7] px-2 text-[10px] font-bold outline-none"
-                                placeholder="e.g. Retro, Co-op"
-                                value={newCategoryInput}
-                                onChange={(event) => setNewCategoryInput(event.target.value)}
-                              />
+                          <div className="grid grid-cols-3 gap-1">
+                            {(
+                              [
+                                ["cover", "Banner"],
+                                ["icon", "Icon"],
+                                ["logo", "Logo"],
+                              ] as const
+                            ).map(([kind, label]) => (
                               <button
-                                className="border-2 border-black bg-[#171411] px-3 text-[10px] font-black text-white uppercase hover:bg-[#087d6d]"
+                                key={kind}
                                 type="button"
-                                onClick={() => {
-                                  const category = newCategoryInput.trim();
-                                  if (!category) return;
-                                  setCustomCategories((previous) => ({
-                                    ...previous,
-                                    ...Object.fromEntries(
-                                      variantIds.map((id) => [
-                                        id,
-                                        Array.from(new Set([...(previous[id] ?? []), category])),
-                                      ]),
-                                    ),
-                                  }));
-                                  setNewCategoryInput("");
-                                }}
+                                className="flex h-9 items-center justify-center gap-1 border-2 border-black bg-[#ded3c1] px-1 text-[10px] font-black uppercase hover:bg-[#8cf5e4]"
+                                title={`Choose custom ${label.toLowerCase()} artwork`}
+                                onClick={() => openArtworkPicker(kind)}
                               >
-                                Add
+                                <ImagePlus className="h-3.5 w-3.5" />
+                                {label}
                               </button>
-                            </div>
-                            <div className="mt-2 flex flex-wrap gap-1">
-                              {groupCategories.length > 0 ? (
-                                groupCategories.map((category) => {
-                                  const memberCount = variantIds.filter((id) =>
-                                    customCategories[id]?.includes(category),
-                                  ).length;
-                                  return (
-                                    <button
-                                      key={category}
-                                      className="neo-copy border-2 border-black bg-[#efe3cf] px-2 py-1 text-[8px] font-black uppercase hover:bg-[#b7102a] hover:text-white"
-                                      title={`Remove ${category} from all copies`}
-                                      type="button"
-                                      onClick={() =>
-                                        setCustomCategories((previous) => ({
-                                          ...previous,
-                                          ...Object.fromEntries(
-                                            variantIds.map((id) => [
-                                              id,
-                                              (previous[id] ?? []).filter(
-                                                (item) => item !== category,
-                                              ),
-                                            ]),
-                                          ),
-                                        }))
-                                      }
-                                    >
-                                      {category} / {memberCount}/{variantIds.length}
-                                    </button>
-                                  );
-                                })
-                              ) : (
-                                <span className="neo-copy text-[8px] font-bold text-[#655f58] uppercase">
-                                  No categories assigned.
-                                </span>
-                              )}
-                            </div>
+                            ))}
                           </div>
+                          {hasCustomArtwork(selectedVariantArtwork) ? (
+                            <button
+                              type="button"
+                              className="mt-2 flex h-8 w-full items-center justify-center gap-1 border-2 border-black bg-[#fbf4e7] px-2 text-[10px] font-black uppercase hover:bg-[#e8c843]"
+                              onClick={() =>
+                                primaryArtworkGameId && onResetCustomArtwork(primaryArtworkGameId)
+                              }
+                            >
+                              <RotateCcw className="h-3.5 w-3.5" />
+                              Reset Selected Copy Artwork
+                            </button>
+                          ) : (
+                            <p className="neo-copy mt-2 text-[10px] font-bold text-[#655f58] uppercase">
+                              Uses scanned {getSourceDisplayLabel(getGameSource(selectedVariant))}{" "}
+                              artwork.
+                            </p>
+                          )}
+                          {selectedVariant && onApplyCustomArtworkUrl ? (
+                            <React.Suspense fallback={null}>
+                              <CommunityArtworkPanel
+                                artwork={selectedVariantArtwork}
+                                game={selectedVariant}
+                                onApply={(candidate) =>
+                                  onApplyCustomArtworkUrl(
+                                    selectedVariant.id,
+                                    candidate.kind,
+                                    candidate.url,
+                                    candidate.sourceLabel,
+                                  )
+                                }
+                              />
+                            </React.Suspense>
+                          ) : null}
+                        </div>
+                      </section>
 
-                          <div className="p-2">
-                            <div className="mb-1 flex items-center justify-between gap-2">
-                              <h4 className="neo-title text-[14px] uppercase">
-                                {groupActionCapabilities.collections.label}
-                              </h4>
-                              <span className="neo-copy text-[8px] font-black uppercase">
-                                Applies to all copies
+                      <section
+                        aria-label="All copies organization"
+                        className="border-4 border-black bg-[#f6edd8] shadow-[4px_4px_0_#171411]"
+                      >
+                        <div className="flex items-center justify-between gap-2 border-b-2 border-black bg-[#169b83] px-3 py-2 text-white">
+                          <h3 className="neo-title text-[17px] leading-none uppercase">
+                            Library Organization
+                          </h3>
+                          <span className="neo-copy border-2 border-black bg-[#fbf4e7] px-2 py-0.5 text-[10px] font-black text-[#171411] uppercase">
+                            All copies
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2 border-b-2 border-black p-2">
+                          <button
+                            className={`border-2 border-black px-2 py-2 text-left shadow-[2px_2px_0_#171411] ${
+                              isGroupFavorite
+                                ? "bg-[#b7102a] text-white"
+                                : "bg-[#fbf4e7] hover:bg-[#e8c843]"
+                            }`}
+                            disabled={!groupActionCapabilities.favorite.available}
+                            title={groupActionCapabilities.favorite.reason}
+                            type="button"
+                            onClick={() => {
+                              const nextFavorite = !isGroupFavorite;
+                              setFavorites((previous) => ({
+                                ...previous,
+                                ...Object.fromEntries(variantIds.map((id) => [id, nextFavorite])),
+                              }));
+                            }}
+                          >
+                            <span className="neo-copy flex items-center gap-1 text-[10px] font-black uppercase">
+                              <Heart
+                                className={`h-4 w-4 ${isGroupFavorite ? "fill-current" : ""}`}
+                              />
+                              {groupActionCapabilities.favorite.label}
+                            </span>
+                            <span className="neo-copy mt-1 block text-[10px] font-black uppercase">
+                              {favoriteScopeLabel}
+                            </span>
+                          </button>
+                          <button
+                            className={`border-2 border-black px-2 py-2 text-left shadow-[2px_2px_0_#171411] ${
+                              isGroupHidden
+                                ? "bg-[#b7102a] text-white"
+                                : "bg-[#fbf4e7] hover:bg-[#e8c843]"
+                            }`}
+                            disabled={!groupActionCapabilities.hidden.available}
+                            title={groupActionCapabilities.hidden.reason}
+                            type="button"
+                            onClick={() => {
+                              const nextHidden = !isGroupHidden;
+                              setHiddenGames((previous) => ({
+                                ...previous,
+                                ...Object.fromEntries(variantIds.map((id) => [id, nextHidden])),
+                              }));
+                            }}
+                          >
+                            <span className="neo-copy text-[10px] font-black uppercase">
+                              {groupActionCapabilities.hidden.label}
+                            </span>
+                            <span className="neo-copy mt-1 block text-[10px] font-black uppercase">
+                              {hiddenScopeLabel}
+                            </span>
+                          </button>
+                        </div>
+
+                        <div className="border-b-2 border-black p-2">
+                          <div className="mb-1 flex items-center justify-between gap-2">
+                            <h4 className="neo-title text-[14px] uppercase">
+                              {groupActionCapabilities.categories.label}
+                            </h4>
+                            <span className="neo-copy text-[10px] font-black uppercase">
+                              Applies to all copies
+                            </span>
+                          </div>
+                          <div className="flex gap-1">
+                            <input
+                              aria-label="New category for all copies"
+                              className="neo-copy h-8 min-w-0 flex-1 border-2 border-black bg-[#fbf4e7] px-2 text-[10px] font-bold outline-none"
+                              placeholder="e.g. Retro, Co-op"
+                              value={newCategoryInput}
+                              onChange={(event) => setNewCategoryInput(event.target.value)}
+                            />
+                            <button
+                              className="border-2 border-black bg-[#171411] px-3 text-[10px] font-black text-white uppercase hover:bg-[#087d6d]"
+                              type="button"
+                              onClick={() => {
+                                const category = newCategoryInput.trim();
+                                if (!category) return;
+                                setCustomCategories((previous) => ({
+                                  ...previous,
+                                  ...Object.fromEntries(
+                                    variantIds.map((id) => [
+                                      id,
+                                      Array.from(new Set([...(previous[id] ?? []), category])),
+                                    ]),
+                                  ),
+                                }));
+                                setNewCategoryInput("");
+                              }}
+                            >
+                              Add
+                            </button>
+                          </div>
+                          <div className="mt-2 flex flex-wrap gap-1">
+                            {groupCategories.length > 0 ? (
+                              groupCategories.map((category) => {
+                                const memberCount = variantIds.filter((id) =>
+                                  customCategories[id]?.includes(category),
+                                ).length;
+                                return (
+                                  <button
+                                    key={category}
+                                    className="neo-copy border-2 border-black bg-[#efe3cf] px-2 py-1 text-[10px] font-black uppercase hover:bg-[#b7102a] hover:text-white"
+                                    title={`Remove ${category} from all copies`}
+                                    type="button"
+                                    onClick={() =>
+                                      setCustomCategories((previous) => ({
+                                        ...previous,
+                                        ...Object.fromEntries(
+                                          variantIds.map((id) => [
+                                            id,
+                                            (previous[id] ?? []).filter(
+                                              (item) => item !== category,
+                                            ),
+                                          ]),
+                                        ),
+                                      }))
+                                    }
+                                  >
+                                    {category} / {memberCount}/{variantIds.length}
+                                  </button>
+                                );
+                              })
+                            ) : (
+                              <span className="neo-copy text-[10px] font-bold text-[#655f58] uppercase">
+                                No categories assigned.
                               </span>
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="p-2">
+                          <div className="mb-1 flex items-center justify-between gap-2">
+                            <h4 className="neo-title text-[14px] uppercase">
+                              {groupActionCapabilities.collections.label}
+                            </h4>
+                            <span className="neo-copy text-[10px] font-black uppercase">
+                              Applies to all copies
+                            </span>
+                          </div>
+                          <select
+                            aria-label="Add all copies to collection"
+                            className="neo-copy mb-2 h-8 w-full border-2 border-black bg-[#fbf4e7] px-2 text-[10px] font-bold outline-none"
+                            defaultValue=""
+                            onChange={(event) => {
+                              const collection = event.currentTarget.value;
+                              if (!collection) return;
+                              setManualCollections((previous) => ({
+                                ...previous,
+                                [collection]: Array.from(
+                                  new Set([...(previous[collection] ?? []), ...variantIds]),
+                                ),
+                              }));
+                              event.currentTarget.value = "";
+                            }}
+                          >
+                            <option value="">Choose collection...</option>
+                            {Object.keys(manualCollections).map((collection) => (
+                              <option key={collection} value={collection}>
+                                {collection}
+                              </option>
+                            ))}
+                          </select>
+                          {Object.keys(manualCollections).length > 0 ? (
+                            <div className="mb-2 space-y-1.5">
+                              {Object.entries(manualCollections).map(([collection, gameIds]) => {
+                                const memberCount = variantIds.filter((id) =>
+                                  gameIds.includes(id),
+                                ).length;
+                                const isRenaming = renamingCollectionName === collection;
+                                const isDeletePending = pendingCollectionDelete === collection;
+                                return (
+                                  <div
+                                    key={collection}
+                                    className="border-2 border-black bg-[#efe3cf] p-1.5"
+                                  >
+                                    {isRenaming ? (
+                                      <div className="mb-1 flex gap-1">
+                                        <input
+                                          aria-label={`Rename ${collection}`}
+                                          className="neo-copy h-7 min-w-0 flex-1 border-2 border-black bg-[#fbf4e7] px-2 text-[10px] font-bold outline-none"
+                                          value={collectionRenameInput}
+                                          onChange={(event) =>
+                                            setCollectionRenameInput(event.target.value)
+                                          }
+                                        />
+                                        <button
+                                          className="neo-copy border-2 border-black bg-[#169b83] px-2 text-[10px] font-black text-white uppercase"
+                                          type="button"
+                                          onClick={() => {
+                                            const nextName = collectionRenameInput.trim();
+                                            if (!nextName) return;
+                                            setManualCollections((previous) => {
+                                              const next = { ...previous };
+                                              const sourceIds = next[collection] ?? [];
+                                              delete next[collection];
+                                              next[nextName] = Array.from(
+                                                new Set([...(next[nextName] ?? []), ...sourceIds]),
+                                              );
+                                              return next;
+                                            });
+                                            setRenamingCollectionName(null);
+                                            setCollectionRenameInput("");
+                                          }}
+                                        >
+                                          Save
+                                        </button>
+                                      </div>
+                                    ) : (
+                                      <div className="mb-1 flex items-center justify-between gap-2">
+                                        <span className="neo-copy truncate text-[10px] font-black uppercase">
+                                          {collection} / {memberCount}/{variantIds.length} copies
+                                        </span>
+                                        <button
+                                          className="neo-copy border-2 border-black bg-[#fbf4e7] px-1.5 py-0.5 text-[10px] font-black uppercase hover:bg-[#8cf5e4]"
+                                          type="button"
+                                          onClick={() => {
+                                            setRenamingCollectionName(collection);
+                                            setCollectionRenameInput(collection);
+                                            setPendingCollectionDelete(null);
+                                          }}
+                                        >
+                                          Rename local
+                                        </button>
+                                      </div>
+                                    )}
+                                    <div className="grid grid-cols-2 gap-1">
+                                      <button
+                                        className="neo-copy border-2 border-black bg-[#fbf4e7] px-1 py-1 text-[10px] font-black uppercase hover:bg-[#e8c843] disabled:cursor-not-allowed disabled:text-[#8b857c]"
+                                        disabled={memberCount === 0}
+                                        type="button"
+                                        onClick={() =>
+                                          setManualCollections((previous) => ({
+                                            ...previous,
+                                            [collection]: (previous[collection] ?? []).filter(
+                                              (id) => !variantIds.includes(id),
+                                            ),
+                                          }))
+                                        }
+                                      >
+                                        Remove all copies
+                                      </button>
+                                      <button
+                                        className="neo-copy border-2 border-black bg-[#b7102a] px-1 py-1 text-[10px] font-black text-white uppercase hover:bg-[#990a20]"
+                                        type="button"
+                                        onClick={() => {
+                                          if (!isDeletePending) {
+                                            setPendingCollectionDelete(collection);
+                                            setRenamingCollectionName(null);
+                                            return;
+                                          }
+                                          setManualCollections((previous) => {
+                                            const next = { ...previous };
+                                            delete next[collection];
+                                            return next;
+                                          });
+                                          setPendingCollectionDelete(null);
+                                        }}
+                                      >
+                                        {isDeletePending
+                                          ? "Confirm delete local collection"
+                                          : "Delete local collection"}
+                                      </button>
+                                    </div>
+                                  </div>
+                                );
+                              })}
                             </div>
-                            <select
-                              aria-label="Add all copies to collection"
-                              className="neo-copy mb-2 h-8 w-full border-2 border-black bg-[#fbf4e7] px-2 text-[10px] font-bold outline-none"
-                              defaultValue=""
-                              onChange={(event) => {
-                                const collection = event.currentTarget.value;
+                          ) : null}
+                          <div className="flex gap-1">
+                            <input
+                              aria-label="New collection for all copies"
+                              className="neo-copy h-8 min-w-0 flex-1 border-2 border-black bg-[#fbf4e7] px-2 text-[10px] font-bold outline-none"
+                              placeholder="New collection..."
+                              value={newCollectionInput}
+                              onChange={(event) => setNewCollectionInput(event.target.value)}
+                            />
+                            <button
+                              className="border-2 border-black bg-[#171411] px-3 text-[10px] font-black text-white uppercase hover:bg-[#087d6d]"
+                              type="button"
+                              onClick={() => {
+                                const collection = newCollectionInput.trim();
                                 if (!collection) return;
                                 setManualCollections((previous) => ({
                                   ...previous,
@@ -3796,163 +3783,26 @@ export function GameDetails({
                                     new Set([...(previous[collection] ?? []), ...variantIds]),
                                   ),
                                 }));
-                                event.currentTarget.value = "";
+                                setNewCollectionInput("");
                               }}
                             >
-                              <option value="">Choose collection...</option>
-                              {Object.keys(manualCollections).map((collection) => (
-                                <option key={collection} value={collection}>
-                                  {collection}
-                                </option>
-                              ))}
-                            </select>
-                            {Object.keys(manualCollections).length > 0 ? (
-                              <div className="mb-2 space-y-1.5">
-                                {Object.entries(manualCollections).map(([collection, gameIds]) => {
-                                  const memberCount = variantIds.filter((id) =>
-                                    gameIds.includes(id),
-                                  ).length;
-                                  const isRenaming = renamingCollectionName === collection;
-                                  const isDeletePending = pendingCollectionDelete === collection;
-                                  return (
-                                    <div
-                                      key={collection}
-                                      className="border-2 border-black bg-[#efe3cf] p-1.5"
-                                    >
-                                      {isRenaming ? (
-                                        <div className="mb-1 flex gap-1">
-                                          <input
-                                            aria-label={`Rename ${collection}`}
-                                            className="neo-copy h-7 min-w-0 flex-1 border-2 border-black bg-[#fbf4e7] px-2 text-[9px] font-bold outline-none"
-                                            value={collectionRenameInput}
-                                            onChange={(event) =>
-                                              setCollectionRenameInput(event.target.value)
-                                            }
-                                          />
-                                          <button
-                                            className="neo-copy border-2 border-black bg-[#169b83] px-2 text-[8px] font-black text-white uppercase"
-                                            type="button"
-                                            onClick={() => {
-                                              const nextName = collectionRenameInput.trim();
-                                              if (!nextName) return;
-                                              setManualCollections((previous) => {
-                                                const next = { ...previous };
-                                                const sourceIds = next[collection] ?? [];
-                                                delete next[collection];
-                                                next[nextName] = Array.from(
-                                                  new Set([
-                                                    ...(next[nextName] ?? []),
-                                                    ...sourceIds,
-                                                  ]),
-                                                );
-                                                return next;
-                                              });
-                                              setRenamingCollectionName(null);
-                                              setCollectionRenameInput("");
-                                            }}
-                                          >
-                                            Save
-                                          </button>
-                                        </div>
-                                      ) : (
-                                        <div className="mb-1 flex items-center justify-between gap-2">
-                                          <span className="neo-copy truncate text-[9px] font-black uppercase">
-                                            {collection} / {memberCount}/{variantIds.length} copies
-                                          </span>
-                                          <button
-                                            className="neo-copy border-2 border-black bg-[#fbf4e7] px-1.5 py-0.5 text-[7px] font-black uppercase hover:bg-[#8cf5e4]"
-                                            type="button"
-                                            onClick={() => {
-                                              setRenamingCollectionName(collection);
-                                              setCollectionRenameInput(collection);
-                                              setPendingCollectionDelete(null);
-                                            }}
-                                          >
-                                            Rename local
-                                          </button>
-                                        </div>
-                                      )}
-                                      <div className="grid grid-cols-2 gap-1">
-                                        <button
-                                          className="neo-copy border-2 border-black bg-[#fbf4e7] px-1 py-1 text-[7px] font-black uppercase hover:bg-[#e8c843] disabled:cursor-not-allowed disabled:text-[#8b857c]"
-                                          disabled={memberCount === 0}
-                                          type="button"
-                                          onClick={() =>
-                                            setManualCollections((previous) => ({
-                                              ...previous,
-                                              [collection]: (previous[collection] ?? []).filter(
-                                                (id) => !variantIds.includes(id),
-                                              ),
-                                            }))
-                                          }
-                                        >
-                                          Remove all copies
-                                        </button>
-                                        <button
-                                          className="neo-copy border-2 border-black bg-[#b7102a] px-1 py-1 text-[7px] font-black text-white uppercase hover:bg-[#990a20]"
-                                          type="button"
-                                          onClick={() => {
-                                            if (!isDeletePending) {
-                                              setPendingCollectionDelete(collection);
-                                              setRenamingCollectionName(null);
-                                              return;
-                                            }
-                                            setManualCollections((previous) => {
-                                              const next = { ...previous };
-                                              delete next[collection];
-                                              return next;
-                                            });
-                                            setPendingCollectionDelete(null);
-                                          }}
-                                        >
-                                          {isDeletePending
-                                            ? "Confirm delete local collection"
-                                            : "Delete local collection"}
-                                        </button>
-                                      </div>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            ) : null}
-                            <div className="flex gap-1">
-                              <input
-                                aria-label="New collection for all copies"
-                                className="neo-copy h-8 min-w-0 flex-1 border-2 border-black bg-[#fbf4e7] px-2 text-[10px] font-bold outline-none"
-                                placeholder="New collection..."
-                                value={newCollectionInput}
-                                onChange={(event) => setNewCollectionInput(event.target.value)}
-                              />
-                              <button
-                                className="border-2 border-black bg-[#171411] px-3 text-[10px] font-black text-white uppercase hover:bg-[#087d6d]"
-                                type="button"
-                                onClick={() => {
-                                  const collection = newCollectionInput.trim();
-                                  if (!collection) return;
-                                  setManualCollections((previous) => ({
-                                    ...previous,
-                                    [collection]: Array.from(
-                                      new Set([...(previous[collection] ?? []), ...variantIds]),
-                                    ),
-                                  }));
-                                  setNewCollectionInput("");
-                                }}
-                              >
-                                Create
-                              </button>
-                            </div>
+                              Create
+                            </button>
                           </div>
-                        </section>
-                      </div>
-                    </section>
-                  </>
+                        </div>
+                      </section>
+                    </div>
+                  </ModalDialog>
                 ) : null}
               </section>
 
               {/* Game Metadata & Activity Grid */}
               <section className="px-3 py-3 sm:px-4">
                 {statusMessage ? (
-                  <div className="neo-copy mb-3 border-2 border-black bg-[#e6dbc8] px-4 py-2 text-xs font-bold uppercase shadow-[2px_2px_0_#171411]">
+                  <div
+                    className="neo-copy mb-3 border-2 border-black bg-[#e6dbc8] px-4 py-2 text-xs font-bold uppercase shadow-[2px_2px_0_#171411]"
+                    role="status"
+                  >
                     {statusMessage}
                   </div>
                 ) : null}
@@ -3964,7 +3814,15 @@ export function GameDetails({
                       <h2 className="text-[15px] leading-none font-black uppercase">Activity</h2>
                     </div>
 
-                    <GameUpdateFeed game={enrichedSelectedGame} />
+                    <React.Suspense
+                      fallback={
+                        <div className="neo-copy h-24 border-2 border-black bg-[#f6edd8] p-3 text-[10px] font-black uppercase">
+                          Loading activity tape...
+                        </div>
+                      }
+                    >
+                      <GameUpdateFeed game={enrichedSelectedGame} />
+                    </React.Suspense>
                     {selectedVariant && onPlaytimeChanged ? (
                       <div className="mt-4">
                         <React.Suspense fallback={null}>
@@ -4213,7 +4071,10 @@ export function GameDetails({
                   {isDiscoveringGames ? "Loading library..." : discoveryMessage}
                 </p>
                 {statusMessage ? (
-                  <p className="neo-copy mt-3 border-2 border-black bg-[#f5d6d9] px-3 py-2 text-[11px] leading-5 font-black text-[#77101f] uppercase shadow-[2px_2px_0_#171411]">
+                  <p
+                    className="neo-copy mt-3 border-2 border-black bg-[#f5d6d9] px-3 py-2 text-[11px] leading-5 font-black text-[#77101f] uppercase shadow-[2px_2px_0_#171411]"
+                    role="alert"
+                  >
                     {statusMessage}
                   </p>
                 ) : null}
@@ -4263,13 +4124,17 @@ export function GameDetails({
         }}
         onConfirm={() => void handleConfirmMove()}
       />
-      <ArtworkPreviewModal
-        isOpen={pendingArtworkFile !== null}
-        file={pendingArtworkFile}
-        initialKind={pendingArtworkKind}
-        onClose={closeArtworkPreview}
-        onConfirm={onConfirmArtwork}
-      />
+      {pendingArtworkFile ? (
+        <React.Suspense fallback={null}>
+          <ArtworkPreviewModal
+            isOpen
+            file={pendingArtworkFile}
+            initialKind={pendingArtworkKind}
+            onClose={closeArtworkPreview}
+            onConfirm={onConfirmArtwork}
+          />
+        </React.Suspense>
+      ) : null}
     </>
   );
 }

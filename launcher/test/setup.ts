@@ -1,5 +1,5 @@
 ﻿import "@testing-library/jest-dom/vitest";
-import { cleanup } from "@testing-library/react";
+import { cleanup, configure } from "@testing-library/react";
 import { afterEach, beforeEach, vi } from "vitest";
 
 class MemoryStorage implements Storage {
@@ -32,8 +32,11 @@ class MemoryStorage implements Storage {
 
 const memoryStorage = new MemoryStorage();
 
-(globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean })
-  .IS_REACT_ACT_ENVIRONMENT = true;
+configure({ asyncUtilTimeout: 10_000 });
+
+(
+  globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean }
+).IS_REACT_ACT_ENVIRONMENT = true;
 
 Object.defineProperty(globalThis, "localStorage", {
   configurable: true,

@@ -216,6 +216,9 @@ describe("downloadStore derived counts", () => {
       useDownloadStore.getState().setItems([makeItem({ gameId: "c", status: "completed" })]);
     });
     expect(selectTotalProgress(useDownloadStore.getState())).toBe(100);
+
+    act(() => useDownloadStore.setState({ items: [] }));
+    expect(selectTotalProgress(useDownloadStore.getState())).toBe(0);
   });
 });
 

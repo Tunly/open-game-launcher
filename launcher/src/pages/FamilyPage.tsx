@@ -178,7 +178,10 @@ export function FamilyPage() {
   if (loading) {
     return (
       <section className="neo-dots grid min-h-[520px] place-items-center">
-        <div className="border-4 border-black bg-[#f4ead8] px-5 py-4 shadow-[6px_6px_0_#171411]">
+        <div
+          className="border-4 border-black bg-[#f4ead8] px-5 py-4 shadow-[6px_6px_0_#171411]"
+          role="status"
+        >
           <div className="flex items-center gap-3">
             <Loader2 className="h-6 w-6 animate-spin text-[#087d6d]" />
             <p className="neo-copy text-[12px] font-black text-[#171411] uppercase">
@@ -234,13 +237,19 @@ export function FamilyPage() {
       </div>
 
       {error ? (
-        <div className="neo-copy border-[3px] border-black bg-[#f5d6d9] p-3 text-[10px] leading-5 font-black text-[#77101f] uppercase shadow-[3px_3px_0_#171411]">
+        <div
+          className="neo-copy border-[3px] border-black bg-[#f5d6d9] p-3 text-[10px] leading-5 font-black text-[#77101f] uppercase shadow-[3px_3px_0_#171411]"
+          role="alert"
+        >
           {error}
         </div>
       ) : null}
 
       {statusMessage ? (
-        <div className="neo-copy border-[3px] border-black bg-[#8cf5e4] p-3 text-[10px] leading-5 font-black text-[#171411] uppercase shadow-[3px_3px_0_#171411]">
+        <div
+          className="neo-copy border-[3px] border-black bg-[#8cf5e4] p-3 text-[10px] leading-5 font-black text-[#171411] uppercase shadow-[3px_3px_0_#171411]"
+          role="status"
+        >
           {statusMessage}
         </div>
       ) : null}

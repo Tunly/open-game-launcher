@@ -1,12 +1,13 @@
-import type {
-  StripeCheckoutAuthResult,
-  StripeCheckoutCreateOrderResult,
-  StripeCheckoutOrder,
-  StripeCheckoutOrderItem,
-  StripeCheckoutProductRecord,
-  StripeCheckoutSession,
-  StripeCheckoutSessionParams,
-  StripeCreateCheckoutHandlerDeps,
+import {
+  StoreCheckoutProductConflictError,
+  type StripeCheckoutAuthResult,
+  type StripeCheckoutCreateOrderResult,
+  type StripeCheckoutOrder,
+  type StripeCheckoutOrderItem,
+  type StripeCheckoutProductRecord,
+  type StripeCheckoutSession,
+  type StripeCheckoutSessionParams,
+  type StripeCreateCheckoutHandlerDeps,
 } from "./handler.ts";
 
 type SupabaseQueryResult<T> = {
@@ -253,6 +254,9 @@ async function createOrderItems(
     .insert(items.map((item) => ({ ...item, order_id: orderId })));
 
   if (error) {
+    if (error.code === "23505") {
+      throw new StoreCheckoutProductConflictError(error.message);
+    }
     throw new Error(error.message);
   }
 }
@@ -263,7 +267,8 @@ async function markOrderFailed(
 ): Promise<void> {
   await tableClient(supabaseAdmin, "store_orders")
     .update({ status: "failed", updated_at: new Date().toISOString() })
-    .eq("id", orderId);
+    .eq("id", orderId)
+    .eq("status", "pending");
 }
 
 async function markFreeOrderFulfilled(

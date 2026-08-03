@@ -35,7 +35,7 @@ We follow [Conventional Commits](https://www.conventionalcommits.org/). Examples
 - `feat(overlay): add smart-join CTA to friend list`
 - `fix(rust): prevent shell injection in family::copy_invite`
 - `chore(tooling): add Prettier + Husky`
-- `test(stores): cover modInstallStore terminal states`
+- `test(stores): cover downloadStore terminal states`
 - `docs(roadmap): mark phase N as completed`
 
 Subject line ≤ 72 chars, body wraps at 100. Use the body to explain **why**, not what.

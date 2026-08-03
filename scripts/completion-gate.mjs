@@ -706,8 +706,24 @@ export function renderPlan() {
   return lines.join("\n");
 }
 
+export function spawnInvocation(
+  command,
+  args,
+  { env = process.env, platform = process.platform } = {},
+) {
+  if (platform === "win32" && command.toLowerCase() === "pnpm") {
+    return {
+      args: ["/d", "/s", "/c", "pnpm", ...args],
+      command: env.ComSpec ?? env.COMSPEC ?? "cmd.exe",
+    };
+  }
+
+  return { args, command };
+}
+
 export function run(command, args, { cwd = repoRoot, env = process.env } = {}) {
-  return spawnSync(command, args, {
+  const invocation = spawnInvocation(command, args, { env });
+  return spawnSync(invocation.command, invocation.args, {
     cwd,
     env,
     stdio: "inherit",

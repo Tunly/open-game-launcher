@@ -2,7 +2,6 @@
 export * from "../types";
 export * from "../types/backup";
 export * from "../types/friends";
-export * from "../types/mods";
 export * from "../types/store";
 
 import type {

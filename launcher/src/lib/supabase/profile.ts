@@ -1290,7 +1290,7 @@ async function getUserAchievementPreview(userId: string): Promise<AchievementPre
   const { data, error } = await client
     .from("user_achievements")
     .select(
-      "id, achievement_id, game_id, unlocked_at, achievements(name, description, icon_url, rarity), games(title)",
+      "id, achievement_id, game_id, unlocked_at, achievements!user_achievements_achievement_id_fkey(name, description, icon_url, rarity), games(title)",
     )
     .eq("user_id", userId)
     .order("unlocked_at", { ascending: false })

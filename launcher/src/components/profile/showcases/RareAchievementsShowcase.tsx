@@ -19,6 +19,8 @@ export function RareAchievementsShowcase({
                 <img
                   alt=""
                   className="h-14 w-14 shrink-0 border-[3px] border-black bg-[#b7102a] object-cover"
+                  decoding="async"
+                  loading="lazy"
                   src={achievement.iconUrl}
                 />
               ) : (

@@ -14,7 +14,12 @@ import { handleStripeCreateCheckout } from "./handler.ts";
 
 const SUPABASE_URL = requireEnv("SUPABASE_URL");
 const SUPABASE_ANON_KEY = requireEnv("SUPABASE_ANON_KEY");
-const CHECKOUT_URL_FALLBACK = "http://localhost:1420";
+const CHECKOUT_URL_FALLBACK = requireEnv("OGL_CHECKOUT_URL_FALLBACK");
+const CHECKOUT_ALLOWED_ORIGINS =
+  (Deno.env.get("OGL_CHECKOUT_ALLOWED_ORIGINS") ?? "")
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean);
 const adapters = createStripeCreateCheckoutAdapters({
   createClient,
   stripe,
@@ -26,6 +31,7 @@ const adapters = createStripeCreateCheckoutAdapters({
 Deno.serve((request) =>
   handleStripeCreateCheckout(request, {
     ...adapters,
+    checkoutAllowedOrigins: CHECKOUT_ALLOWED_ORIGINS,
     checkoutUrlFallback: CHECKOUT_URL_FALLBACK,
     createOrRetrieveCustomer: (userId) => createOrRetrieveCustomer(userId, { stripe }),
     getLicenseSigningConfig: () => ({

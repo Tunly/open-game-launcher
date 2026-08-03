@@ -10,8 +10,27 @@ import { LibraryRow } from "./LibraryRow";
 import { LibraryCustomScrollbar } from "./LibraryCustomScrollbar";
 
 const LIBRARY_ROW_HEIGHT = 56;
+const LIBRARY_GROUP_HEADER_HEIGHT = 38;
 const LIBRARY_ROW_OVERSCAN = 8;
 const LIBRARY_VIRTUALIZE_THRESHOLD = 80;
+
+type GroupedVirtualEntry =
+  | {
+      groupName: string;
+      height: number;
+      key: string;
+      offset: number;
+      type: "header";
+      count: number;
+    }
+  | {
+      groupName: string;
+      height: number;
+      key: string;
+      offset: number;
+      type: "game";
+      game: GameGroup;
+    };
 
 export type LibraryGroupOption = "none" | "source" | "platform" | "status";
 
@@ -77,6 +96,8 @@ export function LibrarySidebar({
   const [listViewport, setListViewport] = useState({ height: 0, scrollTop: 0 });
   const shouldVirtualize =
     groupOption === "none" && filteredGames.length > LIBRARY_VIRTUALIZE_THRESHOLD;
+  const shouldVirtualizeGroups =
+    groupOption !== "none" && filteredGames.length > LIBRARY_VIRTUALIZE_THRESHOLD;
   const virtualRows = useMemo(() => {
     if (!shouldVirtualize) {
       return {
@@ -102,6 +123,60 @@ export function LibrarySidebar({
       games: filteredGames.slice(startIndex, endIndex),
     };
   }, [filteredGames, listViewport.height, listViewport.scrollTop, shouldVirtualize]);
+  const groupedVirtualRows = useMemo(() => {
+    const entries: GroupedVirtualEntry[] = [];
+    let offset = 0;
+    for (const [groupName, groupGames] of Object.entries(groupedGames)) {
+      entries.push({
+        count: groupGames.length,
+        groupName,
+        height: LIBRARY_GROUP_HEADER_HEIGHT,
+        key: `header:${groupName}`,
+        offset,
+        type: "header",
+      });
+      offset += LIBRARY_GROUP_HEADER_HEIGHT;
+      for (const game of groupGames) {
+        entries.push({
+          game,
+          groupName,
+          height: LIBRARY_ROW_HEIGHT,
+          key: `game:${groupName}:${game.id}`,
+          offset,
+          type: "game",
+        });
+        offset += LIBRARY_ROW_HEIGHT;
+      }
+    }
+
+    if (!shouldVirtualizeGroups) {
+      return { activeHeader: null, afterHeight: 0, beforeHeight: 0, entries };
+    }
+
+    const overscanPixels = LIBRARY_ROW_OVERSCAN * LIBRARY_ROW_HEIGHT;
+    const visibleStart = Math.max(0, listViewport.scrollTop - overscanPixels);
+    const visibleEnd =
+      listViewport.scrollTop + Math.max(listViewport.height, LIBRARY_ROW_HEIGHT) + overscanPixels;
+    const visibleEntries = entries.filter(
+      (entry) => entry.offset + entry.height >= visibleStart && entry.offset <= visibleEnd,
+    );
+    const first = visibleEntries[0];
+    const last = visibleEntries.at(-1);
+    const activeHeader = [...entries]
+      .reverse()
+      .find(
+        (entry) =>
+          entry.type === "header" &&
+          entry.offset + LIBRARY_GROUP_HEADER_HEIGHT < listViewport.scrollTop,
+      );
+
+    return {
+      activeHeader: activeHeader?.type === "header" ? activeHeader : null,
+      afterHeight: last ? Math.max(0, offset - last.offset - last.height) : offset,
+      beforeHeight: first?.offset ?? 0,
+      entries: visibleEntries,
+    };
+  }, [groupedGames, listViewport.height, listViewport.scrollTop, shouldVirtualizeGroups]);
 
   useEffect(() => {
     const element = listScrollRef.current;
@@ -164,6 +239,14 @@ export function LibrarySidebar({
       runtime={group.variants.map((game) => gameRuntimeById[game.id]).find(Boolean)}
       onArtworkDrop={onArtworkDrop}
     />
+  );
+  const renderGroupHeader = (groupName: string, count: number, key = groupName) => (
+    <h3
+      key={key}
+      className="sticky top-0 z-10 border-b-2 border-black bg-[#efe3cf] py-1 text-[11px] font-black tracking-wider text-[#b7102a] uppercase shadow-[0_2px_0_#171411]"
+    >
+      {groupName} ({count})
+    </h3>
   );
 
   return (
@@ -243,12 +326,40 @@ export function LibrarySidebar({
                 <div className="py-8 text-center text-[12px] font-black text-[#686157] uppercase">
                   No games found
                 </div>
+              ) : shouldVirtualizeGroups ? (
+                <div>
+                  {groupedVirtualRows.activeHeader ? (
+                    <div className="pointer-events-none sticky top-0 z-20 h-0 overflow-visible">
+                      {renderGroupHeader(
+                        groupedVirtualRows.activeHeader.groupName,
+                        groupedVirtualRows.activeHeader.count,
+                        `active:${groupedVirtualRows.activeHeader.groupName}`,
+                      )}
+                    </div>
+                  ) : null}
+                  <div
+                    style={{
+                      paddingBottom: groupedVirtualRows.afterHeight,
+                      paddingTop: groupedVirtualRows.beforeHeight,
+                    }}
+                  >
+                    {groupedVirtualRows.entries.map((entry) =>
+                      entry.type === "header" ? (
+                        <div key={entry.key} style={{ height: entry.height }}>
+                          {renderGroupHeader(entry.groupName, entry.count)}
+                        </div>
+                      ) : (
+                        <div key={entry.key} className="pb-1" style={{ height: entry.height }}>
+                          {renderLibraryRow(entry.game)}
+                        </div>
+                      ),
+                    )}
+                  </div>
+                </div>
               ) : (
                 Object.entries(groupedGames).map(([groupName, groupGames]) => (
                   <div key={groupName} className="mb-4">
-                    <h3 className="sticky top-0 z-10 mb-2 border-b-2 border-black bg-[#efe3cf] py-1 text-[11px] font-black tracking-wider text-[#b7102a] uppercase shadow-[0_2px_0_#171411]">
-                      {groupName} ({groupGames.length})
-                    </h3>
+                    <div className="mb-2">{renderGroupHeader(groupName, groupGames.length)}</div>
                     <div className="space-y-1">{groupGames.map(renderLibraryRow)}</div>
                   </div>
                 ))

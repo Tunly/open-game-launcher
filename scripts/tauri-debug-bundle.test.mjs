@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   tauriDebugBundleArgs,
   tauriDebugBundleEnv,
+  tauriDebugBundleInvocation,
   runTauriDebugBundle,
 } from "./tauri-debug-bundle.mjs";
 
@@ -49,14 +50,11 @@ test("tauri debug bundle uses generic current-platform args off Linux", () => {
 });
 
 test("tauri debug bundle sets Linux packaging compatibility env defaults", () => {
-  assert.deepEqual(
-    tauriDebugBundleEnv({ KEEP: "yes" }, "linux"),
-    {
-      APPIMAGE_EXTRACT_AND_RUN: "1",
-      KEEP: "yes",
-      NO_STRIP: "1",
-    },
-  );
+  assert.deepEqual(tauriDebugBundleEnv({ KEEP: "yes" }, "linux"), {
+    APPIMAGE_EXTRACT_AND_RUN: "1",
+    KEEP: "yes",
+    NO_STRIP: "1",
+  });
   assert.deepEqual(
     tauriDebugBundleEnv(
       { APPIMAGE_EXTRACT_AND_RUN: "custom", NO_STRIP: "custom" },
@@ -70,6 +68,18 @@ test("tauri debug bundle sets Linux packaging compatibility env defaults", () =>
   assert.deepEqual(tauriDebugBundleEnv({ KEEP: "yes" }, "win32"), {
     KEEP: "yes",
   });
+});
+
+test("tauri debug bundle resolves pnpm through cmd on Windows", () => {
+  assert.deepEqual(
+    tauriDebugBundleInvocation("win32", {
+      ComSpec: "C:\\Windows\\System32\\cmd.exe",
+    }),
+    {
+      args: ["/d", "/s", "/c", "pnpm", ...tauriDebugBundleArgs("win32")],
+      command: "C:\\Windows\\System32\\cmd.exe",
+    },
+  );
 });
 
 test("runTauriDebugBundle delegates to pnpm and returns the command status", () => {

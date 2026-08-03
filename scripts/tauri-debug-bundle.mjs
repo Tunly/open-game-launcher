@@ -39,13 +39,29 @@ export function tauriDebugBundleEnv(
   return next;
 }
 
+export function tauriDebugBundleInvocation(
+  platform = process.platform,
+  env = process.env,
+) {
+  const args = tauriDebugBundleArgs(platform);
+  if (platform === "win32") {
+    return {
+      args: ["/d", "/s", "/c", "pnpm", ...args],
+      command: env.ComSpec ?? env.COMSPEC ?? "cmd.exe",
+    };
+  }
+
+  return { args, command: "pnpm" };
+}
+
 export function runTauriDebugBundle({
   cwd = repoRoot,
   env = process.env,
   platform = process.platform,
   runCommand = spawnSync,
 } = {}) {
-  const result = runCommand("pnpm", tauriDebugBundleArgs(platform), {
+  const invocation = tauriDebugBundleInvocation(platform, env);
+  const result = runCommand(invocation.command, invocation.args, {
     cwd,
     env: tauriDebugBundleEnv(env, platform),
     stdio: "inherit",

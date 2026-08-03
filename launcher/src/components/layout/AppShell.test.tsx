@@ -10,10 +10,8 @@ import {
 } from "../../lib/app-shell-skins";
 import { useLauncherUpdateStore } from "../../stores/launcherUpdateStore";
 import { useDownloadStore } from "../../stores/downloadStore";
-import { useModInstallStore } from "../../stores/modInstallStore";
-import { getDownloadQueue, getModQueue } from "../../lib/launcher";
+import { getDownloadQueue } from "../../lib/launcher";
 import type { DownloadItem } from "../../lib/types";
-import type { ModInstallQueueItem } from "../../lib/types/mods";
 import { AppShell } from "./AppShell";
 import type { PageKey } from "./Sidebar";
 
@@ -37,31 +35,11 @@ vi.mock("@tauri-apps/api/window", () => ({
 
 vi.mock("../../lib/launcher", () => ({
   getDownloadQueue: vi.fn(() => Promise.resolve([])),
-  getModQueue: vi.fn(() => Promise.resolve([])),
   runBackupPlan: vi.fn(() => Promise.resolve({ manifestId: "manifest", message: "Backup done" })),
   runScheduledPlatformClientUpdateChecks: vi.fn(() =>
     Promise.resolve({ checkedAt: "2026-06-12T10:00:00.000Z", message: "", updateCount: 0 }),
   ),
 }));
-
-function makeModQueueItem(overrides: Partial<ModInstallQueueItem> = {}): ModInstallQueueItem {
-  return {
-    id: "mod-install-1",
-    installId: "mod-install-1",
-    gameId: "game-1",
-    title: "Startup Mod",
-    provider: "nexus",
-    progress: 10,
-    speed: "1 MB/s",
-    status: "downloading",
-    phase: "Downloading",
-    canPause: false,
-    canCancel: true,
-    external: false,
-    lastUpdatedAt: 1,
-    ...overrides,
-  };
-}
 
 function makeDownloadItem(overrides: Partial<DownloadItem> = {}): DownloadItem {
   return {
@@ -82,40 +60,10 @@ beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(listen).mockImplementation(() => Promise.resolve(() => undefined));
   vi.mocked(getDownloadQueue).mockResolvedValue([]);
-  vi.mocked(getModQueue).mockResolvedValue([]);
   useDownloadStore.setState({ items: [] });
-  useModInstallStore.setState({ items: [] });
 });
 
 describe("AppShell browser-local shell skins", () => {
-  it("hydrates the central mod queue and applies global progress events", async () => {
-    vi.mocked(getModQueue).mockResolvedValue([makeModQueueItem()]);
-    renderShell({ isDesktop: true });
-
-    await waitFor(() => {
-      expect(useModInstallStore.getState().items).toHaveLength(1);
-    });
-    expect(useModInstallStore.getState().items[0]).toMatchObject({
-      installId: "mod-install-1",
-      progress: 10,
-    });
-
-    const progressCall = vi
-      .mocked(listen)
-      .mock.calls.find(([eventName]) => eventName === "mod_install_progress");
-    expect(progressCall).toBeDefined();
-
-    act(() => {
-      const handler = progressCall?.[1] as (event: { payload: ModInstallQueueItem }) => void;
-      handler({ payload: makeModQueueItem({ progress: 65, lastUpdatedAt: 2 }) });
-    });
-
-    expect(useModInstallStore.getState().items[0]).toMatchObject({
-      installId: "mod-install-1",
-      progress: 65,
-    });
-  });
-
   it("keeps progress events that arrive while the download queue is hydrating", async () => {
     let resolveQueue!: (items: DownloadItem[]) => void;
     vi.mocked(getDownloadQueue).mockReturnValue(
@@ -207,72 +155,6 @@ describe("AppShell browser-local shell skins", () => {
     });
 
     expect(useDownloadStore.getState().items[0]).toMatchObject({
-      eventRevision: 101,
-      lastUpdatedAt: 10,
-      progress: 100,
-    });
-  });
-
-  it("keeps a newer mod snapshot when an older progress event was buffered", async () => {
-    let resolveQueue!: (items: ModInstallQueueItem[]) => void;
-    vi.mocked(getModQueue).mockReturnValue(
-      new Promise((resolve) => {
-        resolveQueue = resolve;
-      }),
-    );
-    renderShell({ isDesktop: true });
-
-    const progressCall = vi
-      .mocked(listen)
-      .mock.calls.find(([eventName]) => eventName === "mod_install_progress");
-    expect(progressCall).toBeDefined();
-
-    act(() => {
-      const handler = progressCall?.[1] as (event: { payload: ModInstallQueueItem }) => void;
-      handler({ payload: makeModQueueItem({ progress: 40, lastUpdatedAt: 10 }) });
-    });
-
-    await act(async () => {
-      resolveQueue([makeModQueueItem({ progress: 80, lastUpdatedAt: 20 })]);
-      await Promise.resolve();
-    });
-
-    expect(useModInstallStore.getState().items[0]).toMatchObject({
-      installId: "mod-install-1",
-      lastUpdatedAt: 20,
-      progress: 80,
-    });
-  });
-
-  it("uses event revisions when mod updates share the same second", async () => {
-    let resolveQueue!: (items: ModInstallQueueItem[]) => void;
-    vi.mocked(getModQueue).mockReturnValue(
-      new Promise((resolve) => {
-        resolveQueue = resolve;
-      }),
-    );
-    renderShell({ isDesktop: true });
-
-    const progressCall = vi
-      .mocked(listen)
-      .mock.calls.find(([eventName]) => eventName === "mod_install_progress");
-    act(() => {
-      const handler = progressCall?.[1] as (event: { payload: ModInstallQueueItem }) => void;
-      handler({
-        payload: makeModQueueItem({
-          eventRevision: 100,
-          lastUpdatedAt: 10,
-          progress: 40,
-        }),
-      });
-    });
-
-    await act(async () => {
-      resolveQueue([makeModQueueItem({ eventRevision: 101, lastUpdatedAt: 10, progress: 100 })]);
-      await Promise.resolve();
-    });
-
-    expect(useModInstallStore.getState().items[0]).toMatchObject({
       eventRevision: 101,
       lastUpdatedAt: 10,
       progress: 100,
@@ -373,11 +255,22 @@ describe("AppShell browser-local shell skins", () => {
   });
 
   it("keeps the OG-Launcher brand and required primary nav in the header", () => {
-    renderShell();
+    const onNavigate = vi.fn();
+    renderShell({ onNavigate });
 
     const header = screen.getByRole("banner");
-    expect(within(header).getByRole("button", { name: "OG-Launcher" })).toBeInTheDocument();
-    for (const label of ["Store", "Library", "Community", "Downloads"]) {
+    const brand = within(header).getByRole("button", { name: "OG-Launcher" });
+    expect(brand).toBeInTheDocument();
+    fireEvent.click(brand);
+    expect(onNavigate).toHaveBeenCalledWith("library");
+    for (const label of [
+      "Library",
+      "Achievements",
+      "Activity",
+      "Downloads",
+      "Store",
+      "Community",
+    ]) {
       expect(within(header).getByRole("button", { name: label })).toBeInTheDocument();
     }
   });
@@ -417,6 +310,44 @@ describe("AppShell browser-local shell skins", () => {
     expect(within(dialog).queryByText(/three new indie titles/i)).not.toBeInTheDocument();
   });
 
+  it("exposes notification popup state and restores its trigger focus on Escape", () => {
+    renderShell();
+    const trigger = screen.getByRole("button", { name: "Notifications" });
+
+    expect(trigger).toHaveAttribute("aria-haspopup", "dialog");
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(trigger);
+    expect(trigger).toHaveAttribute("aria-expanded", "true");
+    expect(screen.getByRole("button", { name: "Close notifications" })).toHaveFocus();
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("dialog", { name: "Notifications" })).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+  });
+
+  it("supports roving profile-menu keyboard navigation and focus restore", () => {
+    renderShell({ isAuthenticated: true });
+    const trigger = screen.getByRole("button", { name: "Open profile menu" });
+
+    fireEvent.click(trigger);
+    const menu = screen.getByRole("menu", { name: "Account menu" });
+    const viewProfile = within(menu).getByRole("menuitem", { name: "View profile" });
+    const friends = within(menu).getByRole("menuitem", { name: "Friends" });
+    const logout = within(menu).getByRole("menuitem", { name: "Logout" });
+    expect(viewProfile).toHaveFocus();
+
+    fireEvent.keyDown(viewProfile, { key: "ArrowDown" });
+    expect(friends).toHaveFocus();
+    fireEvent.keyDown(friends, { key: "End" });
+    expect(logout).toHaveFocus();
+    fireEvent.keyDown(logout, { key: "Home" });
+    expect(viewProfile).toHaveFocus();
+
+    fireEvent.keyDown(document, { key: "Escape" });
+    expect(screen.queryByRole("menu", { name: "Account menu" })).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+  });
+
   it("announces a signed launcher update and routes its action to settings", () => {
     const onNavigate = vi.fn();
     act(() => {
@@ -438,7 +369,12 @@ describe("AppShell browser-local shell skins", () => {
     const dialog = screen.getByRole("dialog", { name: "Notifications" });
     expect(within(dialog).getByText("OG Launcher Update")).toBeInTheDocument();
     expect(within(dialog).getByText(/signed version v0.2.0/i)).toBeInTheDocument();
-    fireEvent.click(within(dialog).getByRole("button", { name: /review update/i }));
+    const reviewUpdate = within(dialog).getByRole("button", { name: /review update/i });
+    fireEvent.keyDown(screen.getByRole("button", { name: "Close notifications" }), {
+      key: "ArrowDown",
+    });
+    expect(reviewUpdate).toHaveFocus();
+    fireEvent.click(reviewUpdate);
     expect(onNavigate).toHaveBeenCalledWith("settings");
 
     act(() => {
@@ -514,10 +450,10 @@ function renderShell({
       activePage="library"
       authAvatarUrl={null}
       authDisplayName={null}
-      authEmail={null}
-      authProfilePath={null}
+      authEmail={isAuthenticated ? "akira@example.com" : null}
+      authProfilePath={isAuthenticated ? "/profile/akira" : null}
       authUsername={null}
-      isAuthConfigured={false}
+      isAuthConfigured={isAuthenticated}
       isAuthLoading={false}
       isAuthProfileLoading={false}
       isAuthenticated={isAuthenticated}

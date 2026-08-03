@@ -35,14 +35,6 @@ be presented as proof of those external outcomes.
   Manga/OG-Launcher styling or overflow result.
 - Activity uses `/activity` for the friend feed and `/activity/recap` for the
   local sample-data yearly recap.
-- New mod rows are constrained to Nexus Mods and Steam Workshop. Preserved
-  legacy database rows do not make retired provider controls or key screens
-  current product evidence.
-- The normal no-slug Nexus website handoff and read-only Steam ACF parser are
-  locally testable. The optional native Nexus ZIP/7z engine, NXM
-  secret-redaction/claim flow, and transactional ownership rollback are also
-  covered locally, but registration, account entitlement, CDN delivery, and
-  Valve authorization remain separate external evidence.
 - First-party Cloud Saves are removed. Cross-Store Save Copy evidence covers
   explicit local file actions, consent-gated apply/rollback, manifests, hashes,
   and sandbox verification only; it does not prove provider-cloud or Supabase
@@ -93,10 +85,8 @@ artifacts for these lanes:
   key custody and issuance, and hosted price-drop scheduling.
 - Hosted Supabase cron: scheduled price-drop, account-deletion, and presence
   runs with valid fresh evidence rows.
-- Provider integrations: no-slug Nexus website and Steam Workshop handoffs,
-  presence bridges, approved catalog/cloud-transfer flows, and real achievement
-  cache runs. Registered Nexus SSO/catalog evidence is optional native-track
-  evidence, not a normal-release prerequisite.
+- Provider integrations: presence bridges, approved catalog/cloud-transfer
+  flows, and real achievement cache runs.
 - Hardware/OS E2E: overlay/fullscreen/anti-cheat, long native sessions,
   external-drive backup/restore across supported systems, and real-client
   mount/apply behavior.

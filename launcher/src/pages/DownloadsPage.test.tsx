@@ -5,7 +5,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { DownloadItem } from "../lib/types";
 import { STORAGE_KEYS } from "../lib/storage-keys";
 import { useDownloadStore } from "../stores/downloadStore";
-import { useModInstallStore } from "../stores/modInstallStore";
 
 const launcherMocks = vi.hoisted(() => ({
   archiveDownload: vi.fn((gameId: string) => {
@@ -13,7 +12,6 @@ const launcherMocks = vi.hoisted(() => ({
     return Promise.resolve();
   }),
   cancelDownload: vi.fn(() => Promise.resolve()),
-  cancelModInstall: vi.fn(() => Promise.resolve()),
   getDownloadQueue: vi.fn(() => Promise.resolve([])),
   launchGame: vi.fn(() => Promise.resolve()),
   listInstalledGames: vi.fn(() => Promise.resolve([])),
@@ -25,7 +23,6 @@ vi.mock("../lib/launcher", async (importOriginal) => {
     ...actual,
     archiveDownload: launcherMocks.archiveDownload,
     cancelDownload: launcherMocks.cancelDownload,
-    cancelModInstall: launcherMocks.cancelModInstall,
     getDownloadQueue: launcherMocks.getDownloadQueue,
     launchGame: launcherMocks.launchGame,
     listInstalledGames: launcherMocks.listInstalledGames,
@@ -63,8 +60,6 @@ beforeEach(() => {
   launcherMocks.archiveDownload.mockResolvedValue(undefined);
   launcherMocks.cancelDownload.mockReset();
   launcherMocks.cancelDownload.mockResolvedValue(undefined);
-  launcherMocks.cancelModInstall.mockReset();
-  launcherMocks.cancelModInstall.mockResolvedValue(undefined);
   launcherMocks.getDownloadQueue.mockReset();
   launcherMocks.getDownloadQueue.mockResolvedValue([]);
   launcherMocks.launchGame.mockReset();
@@ -74,50 +69,15 @@ beforeEach(() => {
   launcherMocks.pauseDownload.mockReset();
   launcherMocks.pauseDownload.mockResolvedValue(undefined);
   useDownloadStore.setState({ items: [] });
-  useModInstallStore.setState({ items: [] });
 });
 
 afterEach(() => {
   vi.unstubAllEnvs();
   window.localStorage.clear();
   useDownloadStore.setState({ items: [] });
-  useModInstallStore.setState({ items: [] });
 });
 
 describe("DownloadsPage", () => {
-  it("renders and cancels installs from the central hydrated mod queue", async () => {
-    useModInstallStore.getState().setItems([
-      {
-        id: "mod-install-1",
-        installId: "mod-install-1",
-        gameId: "game-1",
-        title: "Central Queue Mod",
-        provider: "nexus",
-        progress: 42,
-        speed: "1 MB/s",
-        status: "downloading",
-        phase: "Downloading",
-        canPause: false,
-        canCancel: true,
-        external: false,
-        lastUpdatedAt: 1,
-      },
-    ]);
-
-    renderDownloadsRoute("/downloads");
-
-    expect(await screen.findByText("Central Queue Mod")).toBeInTheDocument();
-    expect(screen.getByText("0 game jobs · 1 mod jobs")).toBeInTheDocument();
-    expect(screen.getByText("42% · 1 MBPS")).toBeInTheDocument();
-    expect(screen.getAllByText("0 B/s")).toHaveLength(2);
-    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
-
-    await waitFor(() => {
-      expect(launcherMocks.cancelModInstall).toHaveBeenCalledWith("mod-install-1");
-      expect(screen.queryByText("Central Queue Mod")).not.toBeInTheDocument();
-    });
-  });
-
   it("renders the queue without the removed source chooser", async () => {
     launcherMocks.getDownloadQueue.mockResolvedValue([]);
     launcherMocks.listInstalledGames.mockResolvedValue([]);
@@ -275,51 +235,6 @@ describe("DownloadsPage", () => {
 
     await waitFor(() => {
       expect(screen.queryByText("Cancel Candidate")).not.toBeInTheDocument();
-    });
-  });
-
-  it("guards mod cancel clicks while the native command is pending", async () => {
-    let resolveCancel!: () => void;
-    launcherMocks.cancelModInstall.mockReturnValue(
-      new Promise<void>((resolve) => {
-        resolveCancel = resolve;
-      }),
-    );
-    useModInstallStore.getState().setItems([
-      {
-        id: "mod-install-pending",
-        installId: "mod-install-pending",
-        gameId: "game-1",
-        title: "Pending Mod",
-        provider: "nexus",
-        progress: 42,
-        speed: "1 MB/s",
-        status: "downloading",
-        phase: "Downloading",
-        canPause: false,
-        canCancel: true,
-        external: false,
-        lastUpdatedAt: 1,
-      },
-    ]);
-
-    renderDownloadsRoute("/downloads");
-
-    const cancelButton = await screen.findByRole("button", { name: "Cancel" });
-    fireEvent.click(cancelButton);
-    fireEvent.click(cancelButton);
-
-    expect(launcherMocks.cancelModInstall).toHaveBeenCalledTimes(1);
-    expect(cancelButton).toBeDisabled();
-    expect(cancelButton).toHaveAccessibleName("Cancelling...");
-
-    await act(async () => {
-      resolveCancel();
-      await Promise.resolve();
-    });
-
-    await waitFor(() => {
-      expect(screen.queryByText("Pending Mod")).not.toBeInTheDocument();
     });
   });
 

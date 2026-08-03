@@ -247,7 +247,7 @@ pub async fn fetch_gog_friends() -> Result<Vec<PlatformFriend>, String> {
 }
 
 fn read_gog_access_token() -> Result<String, String> {
-    let Some(raw) = secure_store::get_secret("gog")? else {
+    let Some(raw) = secure_store::get_secret_keychain_only("gog")? else {
         return Err("GOG token missing. Reconnect in Settings.".to_string());
     };
     let value: serde_json::Value =

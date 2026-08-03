@@ -242,21 +242,23 @@ struct GogAchievementItem {
 // Token Storage
 // ============================================================================
 
-/// Load the GOG token from OS keychain (with file fallback).
+/// Load the GOG token from the OS keychain.
 pub fn load_gog_token() -> Option<GogToken> {
-    let json = secure_store::get_secret("gog").ok().flatten()?;
+    let json = secure_store::get_secret_keychain_only("gog")
+        .ok()
+        .flatten()?;
     serde_json::from_str(&json).ok()
 }
 
-/// Save the GOG token to OS keychain (with file fallback).
+/// Save the GOG token to the OS keychain. Fail closed if it is unavailable.
 pub fn save_gog_token(token: &GogToken) -> Result<(), String> {
     let json =
         serde_json::to_string(token).map_err(|e| format!("Failed to serialize GOG token: {e}"))?;
-    secure_store::set_secret("gog", &json)
+    secure_store::set_secret_keychain_only("gog", &json)
 }
 
-fn delete_gog_token() {
-    let _ = secure_store::delete_secret("gog");
+fn delete_gog_token() -> Result<(), String> {
+    secure_store::delete_secret_keychain_only("gog")
 }
 
 // ============================================================================
@@ -290,7 +292,7 @@ async fn ensure_valid_token(token: &mut GogToken) -> Result<(), String> {
         .map_err(|e| format!("GOG token refresh request failed: {e}"))?;
 
     if !resp.status().is_success() {
-        delete_gog_token();
+        let _ = delete_gog_token();
         return Err(format!(
             "GOG token refresh failed with status: {}",
             resp.status()
@@ -303,7 +305,7 @@ async fn ensure_valid_token(token: &mut GogToken) -> Result<(), String> {
         .map_err(|e| format!("Failed to parse GOG token refresh response: {e}"))?;
 
     if data.error.is_some() {
-        delete_gog_token();
+        let _ = delete_gog_token();
         return Err(format!("GOG token refresh error: {:?}", data.error));
     }
 
@@ -342,7 +344,7 @@ async fn gog_api_get(
 
     if resp.status().as_u16() == 401 {
         // Token might be invalid even after refresh attempt
-        delete_gog_token();
+        let _ = delete_gog_token();
         return Err("GOG token expired and refresh failed. Please re-login.".to_string());
     }
 
@@ -563,8 +565,7 @@ pub async fn gog_get_token() -> Result<Option<GogToken>, String> {
 
 #[tauri::command]
 pub async fn gog_logout() -> Result<(), String> {
-    delete_gog_token();
-    Ok(())
+    delete_gog_token()
 }
 
 async fn fetch_gog_owned_games_from_catalog(

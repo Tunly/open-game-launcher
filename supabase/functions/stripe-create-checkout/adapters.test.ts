@@ -1,10 +1,14 @@
 import {
   assertEquals,
   assertObjectMatch,
+  assertRejects,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 
 import { createStripeCreateCheckoutAdapters } from "./adapters.ts";
-import type { StripeCheckoutSessionParams } from "./handler.ts";
+import {
+  StoreCheckoutProductConflictError,
+  type StripeCheckoutSessionParams,
+} from "./handler.ts";
 
 Deno.test("stripe checkout adapters authenticate without live Supabase secrets", async () => {
   const calls: unknown[] = [];
@@ -222,6 +226,30 @@ Deno.test("stripe checkout adapters attach Stripe session update shape", async (
     method: "eq",
     table: "store_orders",
   });
+});
+
+Deno.test("stripe checkout adapters classify DB product claim conflicts", async () => {
+  const adapters = createStripeCreateCheckoutAdapters({
+    ...deps(),
+    supabaseAdmin: supabaseStub({
+      error: {
+        code: "23505",
+        message: "Store product is already reserved or owned by this user",
+      },
+    }),
+  });
+
+  await assertRejects(
+    () =>
+      adapters.createOrderItems("order-2", [{
+        price_cents_snapshot: 1500,
+        product_id: "product-1",
+        quantity: 1,
+        title_snapshot: "Game",
+      }]),
+    StoreCheckoutProductConflictError,
+    "already reserved or owned",
+  );
 });
 
 Deno.test("stripe checkout adapters return only checkout session response fields", async () => {

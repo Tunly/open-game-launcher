@@ -12,7 +12,7 @@ import { pollPlatformPresence } from "./provider-client.ts";
  * - STEAM_WEB_API_KEY: enables direct Steam presence polling
  * - <PLATFORM>_PRESENCE_ENDPOINT: optional POST bridge for EPIC/GOG/EA/XBOX/BATTLENET/UBISOFT
  * - PRESENCE_PROVIDER_TOKEN: optional bearer token sent to provider bridge endpoints
- * - PRESENCE_POLL_CADENCE_SECONDS: default 60, persisted in platform_accounts.metadata
+ * - PRESENCE_POLL_CADENCE_SECONDS: default 60, persisted in the service-only poll cache
  */
 
 const SUPABASE_URL = requireEnv("SUPABASE_URL");

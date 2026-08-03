@@ -3,11 +3,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => {
   const authGetUser = vi.fn();
   const from = vi.fn();
+  const getCurrentSupabaseUser = vi.fn();
   const getSupabaseClient = vi.fn();
-  return { authGetUser, from, getSupabaseClient };
+  return { authGetUser, from, getCurrentSupabaseUser, getSupabaseClient };
 });
 
 vi.mock("../client", () => ({
+  getCurrentSupabaseUser: mocks.getCurrentSupabaseUser,
   getSupabaseClient: mocks.getSupabaseClient,
 }));
 
@@ -16,9 +18,11 @@ describe("store wishlist and price alerts", () => {
     vi.resetModules();
     mocks.authGetUser.mockReset();
     mocks.from.mockReset();
+    mocks.getCurrentSupabaseUser.mockReset();
     mocks.getSupabaseClient.mockReset();
 
     mocks.authGetUser.mockResolvedValue({ data: { user: { id: "user-1" } }, error: null });
+    mocks.getCurrentSupabaseUser.mockResolvedValue({ id: "user-1" });
     mocks.getSupabaseClient.mockReturnValue({
       auth: { getUser: mocks.authGetUser },
       from: mocks.from,

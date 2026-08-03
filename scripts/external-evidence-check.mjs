@@ -231,17 +231,11 @@ export const evidenceGates = Object.freeze([
       },
     ],
     requiredProofs: [
-      "Nexus website search handoff and Steam Workshop client handoff are verified against live providers.",
       "Non-Steam presence bridges return redacted live provider evidence.",
       "Provider-approved catalog/cloud transfer flows are verified.",
       "Achievement/provider cache E2E runs against real client data.",
     ],
     captureHandoffs: {
-      "Nexus website search handoff and Steam Workshop client handoff are verified against live providers.": {
-        capture:
-          "Hand off an installed game and search to the official Nexus Mods website, open a verified Steam AppID in Steam Workshop, and attach redacted provider/client evidence.",
-        terms: ["Nexus", "Steam Workshop", "live-provider"],
-      },
       "Non-Steam presence bridges return redacted live provider evidence.": {
         capture:
           "Exercise non-Steam presence bridges against live provider sessions and attach redacted response evidence for the presence bridge lane.",
@@ -398,7 +392,7 @@ const forbiddenArtifactPatterns = Object.freeze([
   {
     label: "Raw provider API key",
     pattern:
-      /\b(?:STEAM_WEB_API_KEY|NEXUS_API_KEY|RAWG_API_KEY|PRESENCE_PROVIDER_TOKEN)\s*[:=]\s*(?!(?:\[?redacted\]?|<redacted>|\*{3,})(?:\s|$))[^\s`"'<>]{8,}/i,
+      /\b(?:STEAM_WEB_API_KEY|RAWG_API_KEY|PRESENCE_PROVIDER_TOKEN)\s*[:=]\s*(?!(?:\[?redacted\]?|<redacted>|\*{3,})(?:\s|$))[^\s`"'<>]{8,}/i,
   },
   {
     label: "Raw license signing key",
@@ -1577,13 +1571,7 @@ const fieldSpecificEvidenceValidators = Object.freeze({
   "Provider response evidence": (value) =>
     evidenceIdentifierValueMatches(value, [/provider/i, /response/i, /probe/i]),
   "Provider/client matrix": (value) =>
-    evidenceIdentifierValueMatchesAll(value, [
-      /matrix/i,
-      /provider/i,
-      /client/i,
-      /nexus/i,
-      /steam[-_\s]?workshop/i,
-    ]),
+    evidenceIdentifierValueMatchesAll(value, [/matrix/i, /provider/i, /client/i]),
   "Run ID": runIdValueIsSpecific,
   "Session/run ID": sessionRunEvidenceValueIsSpecific,
   "Stripe Dashboard evidence": stripeDashboardEvidenceValueIsSpecific,
@@ -1962,9 +1950,6 @@ function expectedProofEvidenceValuePatterns(proof) {
     return [
       /(?:account[-_\s]?deletions?|process[-_\s]?account[-_\s]?deletions|account_deletion_processor_runs)/i,
     ];
-  }
-  if (/nexus website search handoff and steam workshop/.test(normalizedProof)) {
-    return [/nexus/i, /steam[-_\s]?workshop/i, /live[-_\s]?provider/i];
   }
   if (/non-steam presence/.test(normalizedProof)) {
     return [/non[-_\s]?steam/i, /presence/i, /bridge/i, /provider/i];
@@ -2432,7 +2417,7 @@ export function artifactTemplate(gate, artifactPath) {
     "",
     "For every checked proof, add a specific redacted run/dashboard/workflow/artifact locator, signed log, or `sha256:<64-hex>` reference. Accepted dashboard URL hosts are Supabase, Stripe live Dashboard, GitHub Actions/releases/deployments, Vercel, Netlify, Cloudflare, App Store Connect, and Google Play Console; otherwise use `run:`/`artifact:`/`sha256:`. Local/example URLs and generic text do not pass.",
     "Stripe Dashboard evidence must use a concrete event, invoice, or tax/invoice-settings path, not generic `/settings`, `/customers`, or `/payments` pages.",
-    "Proof evidence values must name the proof lane: `stripe-webhook`, `stripe-tax-invoice`, `license-key-custody-live-license-issuance`, `price-drop`, `presence-poll`, `account-deletion`, `nexus-steam-workshop-live-provider`, `non-steam-presence-bridge-provider`, `provider-approved-catalog-cloud-transfer`, `achievement-provider-cache-real-client`, `fullscreen-anti-cheat-overlay`, `backup-restore`, `client-mount-apply-provider-client`, `community-artwork-rollout`, `plugin-marketplace-execution-update`, or `hosted-deploy`. Compound values must include their required providers, OSes, duration/window, and matrix fields; bare `evt_...` is accepted only for Stripe webhook proof.",
+    "Proof evidence values must name the proof lane: `stripe-webhook`, `stripe-tax-invoice`, `license-key-custody-live-license-issuance`, `price-drop`, `presence-poll`, `account-deletion`, `non-steam-presence-bridge-provider`, `provider-approved-catalog-cloud-transfer`, `achievement-provider-cache-real-client`, `fullscreen-anti-cheat-overlay`, `backup-restore`, `client-mount-apply-provider-client`, `community-artwork-rollout`, `plugin-marketplace-execution-update`, or `hosted-deploy`. Compound values must include their required providers, OSes, duration/window, and matrix fields; bare `evt_...` is accepted only for Stripe webhook proof.",
     "",
     ...requiredProofs.map((proof) => `- Evidence for ${proof}:`),
     "",
@@ -2443,7 +2428,7 @@ export function artifactTemplate(gate, artifactPath) {
       : "Add concrete redacted locators or IDs containing digits (`run:`, `probe-`, `session-`, `workflow-`, `deployment-`, or `artifact-`). Hosted cron Run IDs may use lane-specific collector IDs; Stripe webhook IDs must be bare `evt_...` values.",
     ...(requiredArtifactEvidenceFields.includes("Provider/client matrix")
       ? [
-          "Provider/client matrix values must include both `Nexus` and `Steam Workshop`.",
+          "Provider/client matrix values must include `matrix`, `provider`, and `client`.",
         ]
       : []),
     ...(requiredArtifactEvidenceFields.includes("Community rollout evidence")
@@ -2686,7 +2671,7 @@ function fieldRequirementHint(field, group = null) {
     case "Redaction notes":
       return "positive redaction statement such as raw secrets removed or tokens redacted";
     case "Provider/client matrix":
-      return "include both Nexus and Steam Workshop plus provider-client evidence";
+      return "include matrix, provider, and client evidence";
     case "Community rollout evidence":
       return "include community artwork rollout evidence";
     case "Marketplace evidence":

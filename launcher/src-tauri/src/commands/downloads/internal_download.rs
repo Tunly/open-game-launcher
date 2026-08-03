@@ -12,7 +12,7 @@ use crate::commands::downloads::types::{
 use crate::commands::downloads::utils::{
     calculate_active_progress, download_file_name, sanitize_download_file_name, verify_sha256,
 };
-use crate::commands::mod_install::{
+use crate::commands::downloads::remote_security::{
     parse_and_validate_remote_url, send_validated_remote_request_with_headers,
 };
 

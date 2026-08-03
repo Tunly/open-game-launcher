@@ -2,6 +2,11 @@ import { Check, Heart, ShoppingCart } from "lucide-react";
 
 import type { StoreGame } from "../../lib/types";
 
+const euroCurrencyFormatter = new Intl.NumberFormat("en-US", {
+  currency: "EUR",
+  style: "currency",
+});
+
 interface StoreGameCardProps {
   game: StoreGame;
   isAdded: boolean;
@@ -19,10 +24,7 @@ function formatPrice(game: StoreGame) {
     return "Free";
   }
 
-  return new Intl.NumberFormat("en-US", {
-    currency: "EUR",
-    style: "currency",
-  }).format(game.price);
+  return euroCurrencyFormatter.format(game.price);
 }
 
 export function StoreGameCard({
@@ -51,6 +53,8 @@ export function StoreGameCard({
           <img
             alt=""
             className="absolute inset-0 h-full w-full object-cover"
+            decoding="async"
+            loading="lazy"
             src={game.coverImageUrl}
           />
         ) : (
@@ -117,10 +121,7 @@ export function StoreGameCard({
       >
         {game.originalPrice && game.originalPrice > game.price ? (
           <span className="block border-b-2 border-black bg-[#5b403f] px-2 py-0.5 text-[8px] text-[#f6edd8] line-through">
-            {new Intl.NumberFormat("en-US", {
-              currency: "EUR",
-              style: "currency",
-            }).format(game.originalPrice)}
+            {euroCurrencyFormatter.format(game.originalPrice)}
           </span>
         ) : null}
         <span className="block bg-[#b7102a] px-2 py-1 text-sm leading-none">{buyLabel}</span>

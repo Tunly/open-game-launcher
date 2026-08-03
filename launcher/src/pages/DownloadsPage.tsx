@@ -1,16 +1,14 @@
-import { Settings, Trash2, XCircle } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Settings, Trash2 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useNavigate } from "react-router-dom";
 
 import { DownloadCard } from "../components/launcher/DownloadCard";
 import type { Game } from "../lib/types";
-import type { ModInstallQueueItem } from "../lib/types/mods";
 import {
   archiveDownload,
   cancelDownload,
-  cancelModInstall,
   pauseDownload,
   listInstalledGames,
   launchGame,
@@ -23,7 +21,6 @@ import {
   isPausedDownloadItem,
   useDownloadStore,
 } from "../stores/downloadStore";
-import { useModInstallStore } from "../stores/modInstallStore";
 
 interface DownloadCommandError {
   gameId: string;
@@ -58,10 +55,6 @@ function formatBytesPerSecond(bytes: number): string {
   return `${val.toFixed(i === 0 ? 0 : 1)} ${units[i]}`;
 }
 
-function formatTransferRateLabel(value: string): string {
-  return value.replace(/\b(B|KB|MB|GB)\s*\/\s*S\b/gi, "$1PS").replaceAll("/", " ");
-}
-
 function readLibrarySnapshot(): Game[] {
   try {
     const snapshot = localStorage.getItem(STORAGE_KEYS.LIBRARY_SNAPSHOT);
@@ -88,20 +81,18 @@ export function DownloadsPage() {
   const [pendingCommands, setPendingCommands] = useState<Map<string, PendingDownloadCommand>>(
     () => new Map(),
   );
-  const [pendingModInstallIds, setPendingModInstallIds] = useState<Set<string>>(() => new Set());
   const [isClearingCompleted, setIsClearingCompleted] = useState(false);
   const [debugMode] = useDebugMode();
   const navigate = useNavigate();
 
   // Load games database to fetch cover artwork for download items
   const [games, setGames] = useState<Game[]>([]);
-  const modItems = useModInstallStore((state) => state.items);
-  const removeModItem = useModInstallStore((state) => state.removeItem);
   const [sessionPeakBytes, setSessionPeakBytes] = useState(0);
   const pendingCommandTimeoutsRef = useRef<number[]>([]);
   const pendingCommandsRef = useRef<Map<string, PendingDownloadCommand>>(new Map());
-  const pendingModInstallIdsRef = useRef<Set<string>>(new Set());
   const isClearingCompletedRef = useRef(false);
+  const itemsRef = useRef(items);
+  itemsRef.current = items;
 
   useEffect(() => {
     let active = true;
@@ -176,13 +167,6 @@ export function DownloadsPage() {
     pendingCommands.has(item.gameId),
   );
 
-  const activeModItems = useMemo(() => {
-    return modItems.filter(
-      (item) =>
-        item.status !== "completed" && item.status !== "failed" && item.status !== "cancelled",
-    );
-  }, [modItems]);
-
   // Aggregate download speed and peak tracking
   const totalSpeedBytes = useMemo(() => {
     return activeItems.reduce((sum, item) => sum + parseSpeedToBytes(item.speed), 0);
@@ -197,92 +181,104 @@ export function DownloadsPage() {
   const activeSpeedStr = formatBytesPerSecond(totalSpeedBytes);
   const peakSpeedStr = formatBytesPerSecond(sessionPeakBytes);
 
-  function beginGameCommand(gameId: string, command: PendingDownloadCommand) {
+  const beginGameCommand = useCallback((gameId: string, command: PendingDownloadCommand) => {
     if (pendingCommandsRef.current.has(gameId)) return false;
 
     pendingCommandsRef.current.set(gameId, command);
     setPendingCommands((current) => new Map(current).set(gameId, command));
     return true;
-  }
+  }, []);
 
-  function finishGameCommand(gameId: string) {
+  const finishGameCommand = useCallback((gameId: string) => {
     pendingCommandsRef.current.delete(gameId);
     setPendingCommands((current) => {
       const next = new Map(current);
       next.delete(gameId);
       return next;
     });
-  }
+  }, []);
 
-  async function handlePauseToggle(id: string) {
-    const item = items.find((x) => x.id === id);
-    if (!item) return;
-    if (!beginGameCommand(item.gameId, "pause")) return;
+  const handlePauseToggle = useCallback(
+    async (id: string) => {
+      const item = itemsRef.current.find((x) => x.id === id);
+      if (!item) return;
+      if (!beginGameCommand(item.gameId, "pause")) return;
 
-    try {
-      setCommandError(null);
-      await pauseDownload(item.gameId);
-    } catch (err) {
-      setCommandError(getErrorMessage(err));
-      console.error("Failed to toggle pause:", err);
-    } finally {
-      const timeoutId = window.setTimeout(() => {
+      try {
+        setCommandError(null);
+        await pauseDownload(item.gameId);
+      } catch (err) {
+        setCommandError(getErrorMessage(err));
+        console.error("Failed to toggle pause:", err);
+      } finally {
+        const timeoutId = window.setTimeout(() => {
+          finishGameCommand(item.gameId);
+          pendingCommandTimeoutsRef.current = pendingCommandTimeoutsRef.current.filter(
+            (storedTimeoutId) => storedTimeoutId !== timeoutId,
+          );
+        }, 500);
+        pendingCommandTimeoutsRef.current.push(timeoutId);
+      }
+    },
+    [beginGameCommand, finishGameCommand],
+  );
+
+  const handleCancel = useCallback(
+    async (id: string) => {
+      const item = itemsRef.current.find((x) => x.id === id);
+      if (!item) return;
+      if (!beginGameCommand(item.gameId, "cancel")) return;
+
+      try {
+        setCommandError(null);
+        await cancelDownload(item.gameId);
+        removeItem(item.gameId);
+      } catch (err) {
+        setCommandError(getErrorMessage(err));
+        console.error("Failed to cancel download:", err);
+      } finally {
         finishGameCommand(item.gameId);
-        pendingCommandTimeoutsRef.current = pendingCommandTimeoutsRef.current.filter(
-          (storedTimeoutId) => storedTimeoutId !== timeoutId,
-        );
-      }, 500);
-      pendingCommandTimeoutsRef.current.push(timeoutId);
-    }
-  }
+      }
+    },
+    [beginGameCommand, finishGameCommand, removeItem],
+  );
 
-  async function handleCancel(id: string) {
-    const item = items.find((x) => x.id === id);
-    if (!item) return;
-    if (!beginGameCommand(item.gameId, "cancel")) return;
+  const handleArchive = useCallback(
+    async (id: string) => {
+      const item = itemsRef.current.find((x) => x.id === id);
+      if (!item) return;
+      if (!beginGameCommand(item.gameId, "archive")) return;
 
-    try {
-      setCommandError(null);
-      await cancelDownload(item.gameId);
-      removeItem(item.gameId);
-    } catch (err) {
-      setCommandError(getErrorMessage(err));
-      console.error("Failed to cancel download:", err);
-    } finally {
-      finishGameCommand(item.gameId);
-    }
-  }
+      try {
+        setCommandError(null);
+        await archiveDownload(item.gameId);
+        removeItem(item.gameId);
+      } catch (err) {
+        setCommandError(getErrorMessage(err));
+        console.error("Failed to archive download:", err);
+      } finally {
+        finishGameCommand(item.gameId);
+      }
+    },
+    [beginGameCommand, finishGameCommand, removeItem],
+  );
 
-  async function handleArchive(id: string) {
-    const item = items.find((x) => x.id === id);
-    if (!item) return;
-    if (!beginGameCommand(item.gameId, "archive")) return;
+  const handleLaunchGame = useCallback(
+    async (gameId: string) => {
+      if (!beginGameCommand(gameId, "launch")) return;
 
-    try {
-      setCommandError(null);
-      await archiveDownload(item.gameId);
-      removeItem(item.gameId);
-    } catch (err) {
-      setCommandError(getErrorMessage(err));
-      console.error("Failed to archive download:", err);
-    } finally {
-      finishGameCommand(item.gameId);
-    }
-  }
-
-  async function handleLaunchGame(gameId: string) {
-    if (!beginGameCommand(gameId, "launch")) return;
-
-    try {
-      setCommandError(null);
-      await launchGame(gameId);
-    } catch (err) {
-      setCommandError(getErrorMessage(err));
-      console.error("Failed to launch game:", err);
-    } finally {
-      finishGameCommand(gameId);
-    }
-  }
+      try {
+        setCommandError(null);
+        await launchGame(gameId);
+      } catch (err) {
+        setCommandError(getErrorMessage(err));
+        console.error("Failed to launch game:", err);
+      } finally {
+        finishGameCommand(gameId);
+      }
+    },
+    [beginGameCommand, finishGameCommand],
+  );
 
   async function handleClearAllCompleted() {
     if (isClearingCompletedRef.current) return;
@@ -318,27 +314,6 @@ export function DownloadsPage() {
     }
   }
 
-  async function handleModCancel(item: ModInstallQueueItem) {
-    if (pendingModInstallIdsRef.current.has(item.installId)) return;
-
-    pendingModInstallIdsRef.current.add(item.installId);
-    setPendingModInstallIds((current) => new Set(current).add(item.installId));
-    try {
-      setCommandError(null);
-      await cancelModInstall(item.installId);
-      removeModItem(item.installId);
-    } catch (err) {
-      setCommandError(getErrorMessage(err));
-    } finally {
-      pendingModInstallIdsRef.current.delete(item.installId);
-      setPendingModInstallIds((current) => {
-        const next = new Set(current);
-        next.delete(item.installId);
-        return next;
-      });
-    }
-  }
-
   return (
     <section aria-labelledby="downloads-title" className="space-y-6">
       {/* System Monitor Header Dashboard */}
@@ -354,7 +329,7 @@ export function DownloadsPage() {
             Downloads
           </h1>
           <p className="neo-copy mt-1 text-[10px] font-bold text-[#5b403f] uppercase">
-            {items.length} game jobs · {activeModItems.length} mod jobs
+            {items.length} game jobs
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
@@ -494,72 +469,6 @@ export function DownloadsPage() {
           </div>
         ) : null}
       </div>
-
-      {/* Mod Installs Section */}
-      {activeModItems.length > 0 && (
-        <div className="mt-6">
-          <div className="mb-3 flex items-center justify-between border-b-2 border-black pb-1.5">
-            <h2 className="neo-title text-base font-black tracking-wider text-[#171411] uppercase">
-              Mod Installs ({activeModItems.length})
-            </h2>
-          </div>
-          <div className="space-y-3">
-            {activeModItems.map((item) => (
-              <article
-                key={item.installId}
-                className="grid gap-3 border-4 border-black bg-[#f5eedf] p-3 shadow-[4px_4px_0_#171411] lg:grid-cols-[1fr_140px_auto] lg:items-center"
-              >
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="neo-copy border-2 border-black bg-[#087d6d] px-2 py-0.5 text-[9px] font-black text-white uppercase">
-                      {item.provider}
-                    </span>
-                    <span className="neo-copy text-[10px] font-black text-[#55504a] uppercase">
-                      {item.phase}
-                    </span>
-                  </div>
-                  <h3 className="neo-title mt-1 text-lg leading-none font-black break-words text-[#171411] uppercase sm:truncate">
-                    {item.title}
-                  </h3>
-                  <p className="neo-copy mt-1 text-[10px] font-black text-[#5b403f] uppercase">
-                    {gamesMap.get(item.gameId)?.title ?? item.gameId}
-                  </p>
-                </div>
-                <div>
-                  <p className="neo-copy mb-1 text-[10px] font-black text-[#55504a] uppercase">
-                    {item.progress}% {item.speed ? `· ${formatTransferRateLabel(item.speed)}` : ""}
-                  </p>
-                  <div
-                    aria-label={`${item.title} install progress`}
-                    aria-valuemax={100}
-                    aria-valuemin={0}
-                    aria-valuenow={item.progress}
-                    className="h-3 border-2 border-black bg-[#efe6d4]"
-                    role="progressbar"
-                  >
-                    <div className="h-full bg-[#c20b2f]" style={{ width: `${item.progress}%` }} />
-                  </div>
-                </div>
-                {item.canCancel && (
-                  <button
-                    className={`neo-copy flex h-9 items-center justify-center gap-2 border-2 border-black px-3 text-[10px] font-black uppercase ${
-                      pendingModInstallIds.has(item.installId)
-                        ? "cursor-not-allowed bg-[#efe6d4] text-[#55504a]"
-                        : "bg-[#f6edd8] shadow-[2px_2px_0_#171411] hover:bg-[#e2d8c3]"
-                    }`}
-                    disabled={pendingModInstallIds.has(item.installId)}
-                    type="button"
-                    onClick={() => void handleModCancel(item)}
-                  >
-                    <XCircle className="h-4 w-4" />
-                    {pendingModInstallIds.has(item.installId) ? "Cancelling..." : "Cancel"}
-                  </button>
-                )}
-              </article>
-            ))}
-          </div>
-        </div>
-      )}
     </section>
   );
 }

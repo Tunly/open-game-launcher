@@ -73,7 +73,7 @@ pub(crate) fn toggle_steam_download_pause(
 }
 
 fn spawn_steam_control_job(job: impl FnOnce() + Send + 'static) {
-    let _ = tauri::async_runtime::spawn_blocking(job);
+    drop(tauri::async_runtime::spawn_blocking(job));
 }
 
 fn set_steam_download_control_pending(

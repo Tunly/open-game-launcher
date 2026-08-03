@@ -50,11 +50,19 @@ export type StripeCheckoutCreateOrderResult =
   | { order: StripeCheckoutOrder; status: "created" }
   | { errorMessage: string; status: "duplicate_attempt" };
 
+export class StoreCheckoutProductConflictError extends Error {
+  constructor(message = "A requested product is already reserved or owned") {
+    super(message);
+    this.name = "StoreCheckoutProductConflictError";
+  }
+}
+
 export interface StripeCreateCheckoutHandlerDeps {
   attachStripeSessionToOrder: (
     orderId: string,
     input: { paymentIntentId: string | null; sessionId: string },
   ) => Promise<void>;
+  checkoutAllowedOrigins: string[];
   checkoutUrlFallback: string;
   createCheckoutSession: (
     params: StripeCheckoutSessionParams,
@@ -213,6 +221,13 @@ export async function handleStripeCreateCheckout(
       (total, item) => total + item.price_cents_snapshot * item.quantity,
       0,
     );
+    const checkoutOrigin = subtotalCents > 0
+      ? resolveCheckoutOrigin(request, deps)
+      : null;
+
+    if (subtotalCents > 0 && !checkoutOrigin) {
+      throw new Error("No trusted checkout redirect origin is configured.");
+    }
 
     const orderResult = await deps.createOrder({
       checkoutAttemptId,
@@ -237,6 +252,15 @@ export async function handleStripeCreateCheckout(
       await deps.createOrderItems(order.id, orderItems);
     } catch (error) {
       await deps.markOrderFailed(order.id);
+      if (error instanceof StoreCheckoutProductConflictError) {
+        return jsonResponse(
+          {
+            error:
+              "One or more products are already owned or have an active checkout.",
+          },
+          409,
+        );
+      }
       throw error instanceof Error
         ? new Error(`Failed to create order items: ${error.message}`)
         : error;
@@ -268,15 +292,14 @@ export async function handleStripeCreateCheckout(
       });
     }
 
-    const origin = request.headers.get("origin") ?? deps.checkoutUrlFallback;
     const successUrl = checkoutRedirectUrl(
       success_url,
-      origin,
+      checkoutOrigin!,
       "/store?tab=orders&session_id={CHECKOUT_SESSION_ID}",
     );
     const cancelUrl = checkoutRedirectUrl(
       cancel_url,
-      origin,
+      checkoutOrigin!,
       "/store?tab=browse",
     );
     const customer = await deps.createOrRetrieveCustomer(userId);
@@ -308,7 +331,9 @@ export async function handleStripeCreateCheckout(
         },
       );
     } catch (error) {
-      await deps.markOrderFailed(order.id);
+      // A transport failure can happen after Stripe has already created the
+      // idempotent Session. Keep the DB claim pending so another attempt cannot
+      // create a second payable Session for the same product.
       throw error;
     }
 
@@ -318,7 +343,8 @@ export async function handleStripeCreateCheckout(
         sessionId: session.id,
       });
     } catch (error) {
-      await deps.markOrderFailed(order.id);
+      // The Session definitely exists and carries order_id metadata. The
+      // webhook can still attach and fulfill it, so retain the checkout claim.
       throw error instanceof Error
         ? new Error(
           `Failed to attach Stripe session to order: ${error.message}`,
@@ -400,6 +426,44 @@ function checkoutRedirectUrl(
   }
 
   return fallback;
+}
+
+function resolveCheckoutOrigin(
+  request: Request,
+  deps: Pick<
+    StripeCreateCheckoutHandlerDeps,
+    "checkoutAllowedOrigins" | "checkoutUrlFallback"
+  >,
+): string | null {
+  const fallbackOrigin = readTrustedOrigin(deps.checkoutUrlFallback);
+  if (!fallbackOrigin) return null;
+
+  const allowedOrigins = new Set(
+    deps.checkoutAllowedOrigins
+      .map(readTrustedOrigin)
+      .filter((origin): origin is string => origin !== null),
+  );
+  allowedOrigins.add(fallbackOrigin);
+
+  const requestOrigin = readTrustedOrigin(request.headers.get("origin"));
+  return requestOrigin && allowedOrigins.has(requestOrigin)
+    ? requestOrigin
+    : fallbackOrigin;
+}
+
+function readTrustedOrigin(value: string | null | undefined): string | null {
+  if (!value?.trim()) return null;
+
+  try {
+    const parsed = new URL(value.trim());
+    const isLocalHttp =
+      parsed.protocol === "http:" &&
+      (parsed.hostname === "127.0.0.1" || parsed.hostname === "localhost");
+    if (parsed.protocol !== "https:" && !isLocalHttp) return null;
+    return parsed.origin;
+  } catch {
+    return null;
+  }
 }
 
 function effectivePriceCents(product: StripeCheckoutProductRecord): number {

@@ -17,6 +17,8 @@ export function FavoriteGamesShowcase({ games }: { games: LibraryPreviewItem[] }
                 <img
                   alt=""
                   className="h-24 w-full border-b-[3px] border-black object-cover"
+                  decoding="async"
+                  loading="lazy"
                   src={game.coverUrl}
                 />
               ) : (

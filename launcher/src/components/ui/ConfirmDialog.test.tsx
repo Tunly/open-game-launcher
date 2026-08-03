@@ -31,7 +31,9 @@ describe("ConfirmDialog", () => {
   it("uses the Retro Manga ink halftone backdrop", () => {
     render(<ConfirmDialog {...baseProps} open />);
 
-    const backdrop = screen.getByRole("dialog", { name: "Confirm action" });
+    const backdrop = screen.getByRole("dialog", { name: "Confirm action" }).parentElement;
+    expect(backdrop).not.toBeNull();
+    if (!backdrop) return;
     expect(backdrop.className).toContain("neo-dots-ink");
     expect(backdrop.className).not.toContain("backdrop-blur");
     expect(backdrop.className).not.toContain("bg-black/45");

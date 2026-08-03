@@ -2,6 +2,7 @@ import {
   useState,
   useCallback,
   useEffect,
+  useRef,
   type RefObject,
   type PointerEvent as ReactPointerEvent,
 } from "react";
@@ -104,6 +105,19 @@ export function LibraryCustomScrollbar({
   targetRef: RefObject<HTMLElement | null>;
 }) {
   const { scrollbarState, updateScrollbar } = useLibraryScrollbar(targetRef);
+  const dragCleanupRef = useRef<(() => void) | null>(null);
+
+  const stopDragging = useCallback(() => {
+    dragCleanupRef.current?.();
+  }, []);
+
+  useEffect(() => stopDragging, [stopDragging]);
+
+  useEffect(() => {
+    if (!scrollbarState.visible) {
+      stopDragging();
+    }
+  }, [scrollbarState.visible, stopDragging]);
 
   const scrollToThumbPosition = useCallback(
     (track: HTMLDivElement, clientY: number, thumbOffset: number) => {
@@ -160,21 +174,40 @@ export function LibraryCustomScrollbar({
             return;
           }
 
+          stopDragging();
           const thumbOffset = event.clientY - thumb.getBoundingClientRect().top;
           thumb.setPointerCapture(event.pointerId);
+          const pointerId = event.pointerId;
+          let cleaned = false;
 
           const handlePointerMove = (moveEvent: PointerEvent) => {
             scrollToThumbPosition(track, moveEvent.clientY, thumbOffset);
           };
 
-          const handlePointerUp = (upEvent: PointerEvent) => {
-            thumb.releasePointerCapture(upEvent.pointerId);
+          const cleanupDrag = () => {
+            if (cleaned) return;
+            cleaned = true;
+            if (dragCleanupRef.current === cleanupDrag) {
+              dragCleanupRef.current = null;
+            }
             document.removeEventListener("pointermove", handlePointerMove);
             document.removeEventListener("pointerup", handlePointerUp);
+            document.removeEventListener("pointercancel", handlePointerCancel);
+            thumb.removeEventListener("lostpointercapture", handleLostPointerCapture);
+            if (thumb.hasPointerCapture(pointerId)) {
+              thumb.releasePointerCapture(pointerId);
+            }
           };
 
+          const handlePointerUp = () => cleanupDrag();
+          const handlePointerCancel = () => cleanupDrag();
+          const handleLostPointerCapture = () => cleanupDrag();
+
           document.addEventListener("pointermove", handlePointerMove);
-          document.addEventListener("pointerup", handlePointerUp, { once: true });
+          document.addEventListener("pointerup", handlePointerUp);
+          document.addEventListener("pointercancel", handlePointerCancel);
+          thumb.addEventListener("lostpointercapture", handleLostPointerCapture);
+          dragCleanupRef.current = cleanupDrag;
         }}
       />
     </div>

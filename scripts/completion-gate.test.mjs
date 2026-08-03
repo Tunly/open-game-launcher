@@ -25,6 +25,7 @@ import {
   releaseBoundaryEnv,
   renderStatus,
   runCompletionGate,
+  spawnInvocation,
 } from "./completion-gate.mjs";
 import {
   completionGateRunIdEnvName,
@@ -501,7 +502,7 @@ test("Rust toolchain is pinned consistently across local metadata and CI", () =>
       /uses:\s+dtolnay\/rust-toolchain@([0-9a-f]{40})\s+#\s+([^\n]+)/g,
     ),
   ].map((match) => match[2]);
-  assert.equal(ciToolchainRefs.length, 5);
+  assert.equal(ciToolchainRefs.length, 6);
   assert.deepEqual([...new Set(ciToolchainRefs)], [channel]);
   const rustBuildWindowsJob = ciJobBlock("rust-build-windows");
   assert.match(rustBuildWindowsJob, /^    runs-on:\s+windows-2025$/m);
@@ -529,6 +530,23 @@ test("Rust toolchain is pinned consistently across local metadata and CI", () =>
   )?.[1];
   assert.equal(cargoRustVersion, "1.95");
   assert.equal(channel.split(".").slice(0, 2).join("."), cargoRustVersion);
+});
+
+test("completion runner resolves pnpm through cmd on Windows", () => {
+  assert.deepEqual(
+    spawnInvocation("pnpm", ["--dir", "launcher", "typecheck"], {
+      env: { ComSpec: "C:\\Windows\\System32\\cmd.exe" },
+      platform: "win32",
+    }),
+    {
+      args: ["/d", "/s", "/c", "pnpm", "--dir", "launcher", "typecheck"],
+      command: "C:\\Windows\\System32\\cmd.exe",
+    },
+  );
+  assert.deepEqual(
+    spawnInvocation("pnpm", ["typecheck"], { env: {}, platform: "linux" }),
+    { args: ["typecheck"], command: "pnpm" },
+  );
 });
 
 test("plan prints every gate command without running commands", () => {
@@ -1122,14 +1140,8 @@ test("release tags require external evidence gate before release artifacts", () 
     /^    if: startsWith\(github\.ref, 'refs\/tags\/v'\)$/m,
   );
   assert.match(createReleaseJob, /^    needs: \[build-upload\]$/m);
-  assert.match(
-    createReleaseJob,
-    /actions\/download-artifact@[0-9a-f]{40}/,
-  );
-  assert.match(
-    createReleaseJob,
-    /softprops\/action-gh-release@[0-9a-f]{40}/,
-  );
+  assert.match(createReleaseJob, /actions\/download-artifact@[0-9a-f]{40}/);
+  assert.match(createReleaseJob, /softprops\/action-gh-release@[0-9a-f]{40}/);
 });
 
 test("external evidence runbook documents release-gated coverage", () => {

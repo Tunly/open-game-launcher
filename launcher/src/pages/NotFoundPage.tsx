@@ -1,4 +1,4 @@
-import { ArrowLeft, Home, Radio, SearchX } from "lucide-react";
+import { ArrowLeft, Radio, SearchX } from "lucide-react";
 import { Link } from "react-router-dom";
 
 export function NotFoundPage() {
@@ -46,13 +46,6 @@ export function NotFoundPage() {
               >
                 <ArrowLeft className="h-4 w-4" />
                 Back to Library
-              </Link>
-              <Link
-                className="neo-copy inline-flex h-11 items-center gap-2 border-[3px] border-black bg-[#fff9ed] px-4 text-[10px] font-black text-[#171411] uppercase shadow-[4px_4px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#8cf5e4]"
-                to="/home"
-              >
-                <Home className="h-4 w-4" />
-                Open Play Desk
               </Link>
             </div>
           </div>

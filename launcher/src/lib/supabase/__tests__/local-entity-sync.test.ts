@@ -43,7 +43,7 @@ describe("local entity cloud sync", () => {
       {
         entity: { id: "install-1", targetRoot: "C:\\Games\\Arcade" },
         id: "install-1",
-        kind: "mod_installs",
+        kind: "local_only",
         syncToken: "local-only-token",
         updatedAt: 101,
       },

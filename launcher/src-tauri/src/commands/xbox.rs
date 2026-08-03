@@ -35,12 +35,14 @@ const MICROSOFT_STORE_PRODUCT_ID_LENGTH: usize = 12;
 const DEFAULT_GAME_PASS_LANGUAGE: &str = "en-US";
 const DEFAULT_GAME_PASS_MARKET: &str = "US";
 
-fn save_xbox_token(refresh_token: &str) {
-    let _ = secure_store::set_secret("xbox", refresh_token);
+fn save_xbox_token(refresh_token: &str) -> Result<(), String> {
+    secure_store::set_secret_keychain_only("xbox", refresh_token)
 }
 
 fn load_xbox_token() -> Option<String> {
-    secure_store::get_secret("xbox").ok().flatten()
+    secure_store::get_secret_keychain_only("xbox")
+        .ok()
+        .flatten()
 }
 
 #[derive(Deserialize)]
@@ -844,7 +846,7 @@ pub async fn fetch_xbox_owned_games(code: String) -> Result<XboxFetchResult, Str
             return Err(e);
         }
     };
-    save_xbox_token(&oauth_token.refresh_token);
+    save_xbox_token(&oauth_token.refresh_token)?;
 
     println!("[Xbox] Got OAuth token. Authenticating Xbox Live...");
     let xbl_auth = match authenticate_xbox_live(&oauth_token.access_token).await {
@@ -1848,7 +1850,7 @@ pub async fn sync_xbox_achievements(
 
     let refresh_token = load_xbox_token().ok_or("Xbox account not linked or token missing")?;
     let oauth_token = refresh_xbox_oauth_token(&refresh_token).await?;
-    save_xbox_token(&oauth_token.refresh_token);
+    save_xbox_token(&oauth_token.refresh_token)?;
 
     let xbl_auth = authenticate_xbox_live(&oauth_token.access_token).await?;
     let xsts_auth = authorize_xsts(&xbl_auth.token).await?;

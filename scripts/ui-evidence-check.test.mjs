@@ -97,10 +97,10 @@ test("parseGitStatusPaths ignores deleted UI sources and screenshot artifacts", 
       [
         " D launcher/src/pages/RemovedPage.tsx",
         "D  docs/verification/screenshots/removed.png",
-        " M launcher/src/pages/HomePage.tsx",
+        " M launcher/src/pages/LibraryPage.tsx",
       ].join("\n"),
     ),
-    ["launcher/src/pages/HomePage.tsx"],
+    ["launcher/src/pages/LibraryPage.tsx"],
   );
 });
 
@@ -334,7 +334,7 @@ test("uiEvidenceReport accepts documented local Retro Manga screenshot evidence"
 test("uiEvidenceReport requires screenshot route family to match the UI change", () => {
   const root = fixtureRoot();
   writePngFixture(root, "docs/verification/screenshots/downloads.png");
-  writePngFixture(root, "docs/verification/screenshots/home.png");
+  writePngFixture(root, "docs/verification/screenshots/library.png");
   writePngFixture(root, "docs/verification/screenshots/settings.png");
 
   const wrongRouteReport = uiEvidenceReport({
@@ -366,9 +366,9 @@ test("uiEvidenceReport requires screenshot route family to match the UI change",
   assert.equal(matchingRouteReport.ready, true);
   assert.deepEqual(matchingRouteReport.findings, []);
 
-  const unrelatedHomeRouteReport = uiEvidenceReport({
+  const unrelatedLibraryRouteReport = uiEvidenceReport({
     changedPaths: [
-      "launcher/src/pages/HomePage.tsx",
+      "launcher/src/pages/LibraryPage.tsx",
       "docs/verification/screenshots/settings.png",
     ],
     manifestRows:
@@ -376,24 +376,24 @@ test("uiEvidenceReport requires screenshot route family to match the UI change",
     root,
   });
 
-  assert.equal(unrelatedHomeRouteReport.ready, false);
+  assert.equal(unrelatedLibraryRouteReport.ready, false);
   assert.match(
-    unrelatedHomeRouteReport.findings.join("\n"),
-    /HomePage\.tsx.*affected route family \(\/home\)/,
+    unrelatedLibraryRouteReport.findings.join("\n"),
+    /LibraryPage\.tsx.*affected route family \(\/library\)/,
   );
 
-  const matchingHomeRouteReport = uiEvidenceReport({
+  const matchingLibraryRouteReport = uiEvidenceReport({
     changedPaths: [
-      "launcher/src/pages/HomePage.tsx",
-      "docs/verification/screenshots/home.png",
+      "launcher/src/pages/LibraryPage.tsx",
+      "docs/verification/screenshots/library.png",
     ],
     manifestRows:
-      "- `screenshots/home.png` - `/home` local Retro Manga launcher panel with OG-Launcher header and no horizontal overflow.",
+      "- `screenshots/library.png` - `/library` local Retro Manga launcher panel with OG-Launcher header and no horizontal overflow.",
     root,
   });
 
-  assert.equal(matchingHomeRouteReport.ready, true);
-  assert.deepEqual(matchingHomeRouteReport.findings, []);
+  assert.equal(matchingLibraryRouteReport.ready, true);
+  assert.deepEqual(matchingLibraryRouteReport.findings, []);
 });
 
 test("uiEvidenceReport maps the FPS HUD page to its registered /fps-hud route", () => {

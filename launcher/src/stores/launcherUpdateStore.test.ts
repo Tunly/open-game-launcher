@@ -106,6 +106,25 @@ describe("launcher update store", () => {
     expect(state.lastCheckedAt).toBe(checkedAt.toISOString());
   });
 
+  it("maps permission and unknown check errors to safe localized messages", async () => {
+    setLauncherUpdateAdapterForTests(
+      makeAdapter({ check: vi.fn().mockRejectedValue(new Error("EACCES: access denied")) }),
+    );
+    await checkForLauncherUpdate();
+    expect(useLauncherUpdateStore.getState().error).toBe(
+      "Das Launcher-Update konnte wegen fehlender Berechtigungen nicht installiert werden.",
+    );
+
+    resetLauncherUpdateStateForTests();
+    setLauncherUpdateAdapterForTests(
+      makeAdapter({ check: vi.fn().mockRejectedValue(new Error("unexpected updater response")) }),
+    );
+    await checkForLauncherUpdate();
+    expect(useLauncherUpdateStore.getState().error).toBe(
+      "Die Launcher-Update-Prüfung ist fehlgeschlagen. Bitte versuche es später erneut.",
+    );
+  });
+
   it("deduplicates concurrent update checks", async () => {
     let finishCheck: ((update: LauncherUpdateHandle | null) => void) | undefined;
     const check = vi.fn(
@@ -173,6 +192,25 @@ describe("launcher update store", () => {
     });
   });
 
+  it("finishes safely if an updater emits Finished after progress was cleared", async () => {
+    const update = makeUpdate({
+      downloadAndInstall: vi.fn(async (onEvent) => {
+        useLauncherUpdateStore.setState({ progress: null });
+        onEvent({ event: "Finished", data: {} });
+      }),
+    });
+    setLauncherUpdateAdapterForTests(makeAdapter({ check: vi.fn().mockResolvedValue(update) }));
+    await checkForLauncherUpdate();
+
+    await installLauncherUpdate();
+
+    expect(useLauncherUpdateStore.getState().progress).toEqual({
+      downloadedBytes: 0,
+      totalBytes: null,
+      percentage: null,
+    });
+  });
+
   it("deduplicates concurrent installs and relaunches once", async () => {
     let finishInstall: (() => void) | undefined;
     const update = makeUpdate({
@@ -216,6 +254,20 @@ describe("launcher update store", () => {
     await installLauncherUpdate();
     expect(downloadAndInstall).toHaveBeenCalledTimes(2);
     expect(adapter.relaunch).toHaveBeenCalledOnce();
+  });
+
+  it("uses the generic install error without exposing unexpected details", async () => {
+    const update = makeUpdate({
+      downloadAndInstall: vi.fn().mockRejectedValue(new Error("unexpected installer failure")),
+    });
+    setLauncherUpdateAdapterForTests(makeAdapter({ check: vi.fn().mockResolvedValue(update) }));
+    await checkForLauncherUpdate();
+
+    await installLauncherUpdate();
+
+    expect(useLauncherUpdateStore.getState().error).toBe(
+      "Das Launcher-Update konnte nicht installiert werden. Bitte versuche es erneut.",
+    );
   });
 
   it("fails safely when install is requested without a checked update", async () => {

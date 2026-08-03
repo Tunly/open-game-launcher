@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { X, ImagePlus } from "lucide-react";
 import type { CustomArtworkKind } from "../../lib/custom-artwork";
 import { compressAndReadImage, isAllowedImageType } from "../../lib/image-compress";
+import { ModalDialog } from "../ui/ModalDialog";
 
 interface ArtworkPreviewModalProps {
   isOpen: boolean;
@@ -83,86 +84,86 @@ export function ArtworkPreviewModal({
   }
 
   return (
-    <div
-      aria-label="Artwork Preview"
-      aria-modal="true"
-      className="fixed inset-0 z-[80] grid place-items-center bg-[#171411]/90 bg-[radial-gradient(circle,rgba(255,249,237,0.14)_1px,transparent_1px)] bg-[length:10px_10px] px-4"
-      role="dialog"
+    <ModalDialog
+      backdropClassName="fixed inset-0 z-[80] grid place-items-center bg-[#171411]/90 bg-[radial-gradient(circle,rgba(255,249,237,0.14)_1px,transparent_1px)] bg-[length:10px_10px] px-4"
+      labelledBy="artwork-preview-title"
+      panelClassName="w-full max-w-[520px] border-4 border-black bg-[#fbf4e7] shadow-[8px_8px_0_#171411]"
+      onDismiss={onClose}
     >
-      <div className="w-full max-w-[520px] border-4 border-black bg-[#fbf4e7] shadow-[8px_8px_0_#171411]">
-        <div className="flex items-center justify-between border-b-4 border-black bg-[#b7102a] px-4 py-3 text-white">
-          <h2 className="neo-title text-2xl leading-none uppercase">Custom Artwork</h2>
+      <div className="flex items-center justify-between border-b-4 border-black bg-[#b7102a] px-4 py-3 text-white">
+        <h2 id="artwork-preview-title" className="neo-title text-2xl leading-none uppercase">
+          Custom Artwork
+        </h2>
+        <button
+          type="button"
+          className="grid h-8 w-8 place-items-center border-2 border-black bg-[#fbf4e7] text-[#171411] shadow-[2px_2px_0_#171411]"
+          onClick={onClose}
+          aria-label="Close preview"
+        >
+          <X className="h-5 w-5" />
+        </button>
+      </div>
+
+      <div className="space-y-4 p-4">
+        <div className="flex gap-1">
+          {(["cover", "icon", "logo"] as const).map((kind) => (
+            <button
+              key={kind}
+              type="button"
+              className={`flex-1 border-2 border-black px-3 py-2 text-[11px] font-black uppercase transition ${
+                selectedKind === kind
+                  ? "bg-[#169b83] text-white shadow-[2px_2px_0_#171411]"
+                  : "bg-[#efe3cf] text-[#171411] hover:bg-[#dfd4c1]"
+              }`}
+              onClick={() => setSelectedKind(kind)}
+            >
+              {KIND_LABELS[kind]}
+            </button>
+          ))}
+        </div>
+
+        <div className="flex min-h-[200px] items-center justify-center border-2 border-dashed border-black bg-[#efe6d4]">
+          {isCompressing ? (
+            <span className="neo-copy text-[11px] font-bold text-[#55504a] uppercase" role="status">
+              Processing...
+            </span>
+          ) : error ? (
+            <span className="neo-copy text-[11px] font-bold text-[#c20b2f] uppercase" role="alert">
+              {error}
+            </span>
+          ) : previewUrl ? (
+            <img
+              src={previewUrl}
+              alt="Artwork preview"
+              className="max-h-[200px] max-w-full object-contain"
+            />
+          ) : (
+            <ImagePlus className="h-12 w-12 text-[#b8ad9e]" />
+          )}
+        </div>
+
+        <p className="neo-copy text-[10px] font-bold text-[#655f58] uppercase">
+          The image will be resized and saved as JPEG.
+        </p>
+
+        <div className="flex flex-wrap justify-end gap-2 border-t-2 border-black pt-3">
           <button
             type="button"
-            className="grid h-8 w-8 place-items-center border-2 border-black bg-[#fbf4e7] text-[#171411] shadow-[2px_2px_0_#171411]"
+            className="border-2 border-black bg-[#efe3cf] px-4 py-2 text-[12px] font-black uppercase"
             onClick={onClose}
-            aria-label="Close preview"
           >
-            <X className="h-5 w-5" />
+            Cancel
+          </button>
+          <button
+            type="button"
+            disabled={!previewUrl || isCompressing}
+            className="border-2 border-black bg-[#169b83] px-4 py-2 text-[12px] font-black text-white uppercase shadow-[3px_3px_0_#171411] disabled:cursor-not-allowed disabled:opacity-60"
+            onClick={handleConfirm}
+          >
+            Save Artwork
           </button>
         </div>
-
-        <div className="space-y-4 p-4">
-          <div className="flex gap-1">
-            {(["cover", "icon", "logo"] as const).map((kind) => (
-              <button
-                key={kind}
-                type="button"
-                className={`flex-1 border-2 border-black px-3 py-2 text-[11px] font-black uppercase transition ${
-                  selectedKind === kind
-                    ? "bg-[#169b83] text-white shadow-[2px_2px_0_#171411]"
-                    : "bg-[#efe3cf] text-[#171411] hover:bg-[#dfd4c1]"
-                }`}
-                onClick={() => setSelectedKind(kind)}
-              >
-                {KIND_LABELS[kind]}
-              </button>
-            ))}
-          </div>
-
-          <div className="flex min-h-[200px] items-center justify-center border-2 border-dashed border-black bg-[#efe6d4]">
-            {isCompressing ? (
-              <span className="neo-copy text-[11px] font-bold text-[#55504a] uppercase">
-                Processing...
-              </span>
-            ) : error ? (
-              <span className="neo-copy text-[11px] font-bold text-[#c20b2f] uppercase">
-                {error}
-              </span>
-            ) : previewUrl ? (
-              <img
-                src={previewUrl}
-                alt="Artwork preview"
-                className="max-h-[200px] max-w-full object-contain"
-              />
-            ) : (
-              <ImagePlus className="h-12 w-12 text-[#b8ad9e]" />
-            )}
-          </div>
-
-          <p className="neo-copy text-[10px] font-bold text-[#655f58] uppercase">
-            The image will be resized and saved as JPEG.
-          </p>
-
-          <div className="flex flex-wrap justify-end gap-2 border-t-2 border-black pt-3">
-            <button
-              type="button"
-              className="border-2 border-black bg-[#efe3cf] px-4 py-2 text-[12px] font-black uppercase"
-              onClick={onClose}
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              disabled={!previewUrl || isCompressing}
-              className="border-2 border-black bg-[#169b83] px-4 py-2 text-[12px] font-black text-white uppercase shadow-[3px_3px_0_#171411] disabled:cursor-not-allowed disabled:opacity-60"
-              onClick={handleConfirm}
-            >
-              Save Artwork
-            </button>
-          </div>
-        </div>
       </div>
-    </div>
+    </ModalDialog>
   );
 }

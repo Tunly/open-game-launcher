@@ -68,6 +68,39 @@ describe("retired feature removal migration contracts", () => {
     expect(migration).toMatch(/drop policy if exists price_history_read_public/i);
   });
 
+  it("refuses to discard mod data or unknown dependants", () => {
+    const migration = readMigration("20260802120000_remove_mod_support.sql");
+
+    for (const table of [
+      "user_mod_install_files",
+      "user_mod_profile_entries",
+      "user_mod_installs",
+      "mod_catalog_dependencies",
+      "mod_catalog_files",
+      "mod_catalog_versions",
+      "mod_catalog_entries",
+      "mod_provider_game_mappings",
+      "mod_dependencies",
+      "mod_files",
+      "mod_versions",
+      "mod_reviews",
+      "mods",
+      "mod_profiles",
+    ]) {
+      expectSafeRemoval(migration, table);
+    }
+
+    expect(migration).toMatch(/while mod rows remain/i);
+    expect(migration).toMatch(/while mod storage objects remain/i);
+    expect(migration).toMatch(/drop trigger if exists set_mod_catalog_entries_updated_at/i);
+    expect(migration).toMatch(/drop trigger if exists set_user_mod_installs_updated_at/i);
+    expect(migration).toMatch(/drop trigger if exists set_mod_provider_game_mappings_updated_at/i);
+    expect(migration).toMatch(/drop policy if exists mods_read_public on public\.mods/i);
+    expect(migration).toMatch(
+      /drop policy if exists user_mod_installs_own_select on public\.user_mod_installs/i,
+    );
+  });
+
   it("preflights all remote/mobile tables and drops only known dependencies", () => {
     const migration = readMigration("20260708123000_remove_remote_mobile_companion.sql");
 

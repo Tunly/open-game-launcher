@@ -1,4 +1,4 @@
-import { getSupabaseClient } from "./client";
+import { getCurrentSupabaseUser, getSupabaseClient } from "./client";
 import type { Database } from "./database.types";
 import type {
   BuildArch,
@@ -525,9 +525,7 @@ export async function createStoreProduct(
 
 export async function getCartItems(): Promise<StoreCartItem[]> {
   const client = getSupabaseClient();
-  const {
-    data: { user },
-  } = await client.auth.getUser();
+  const user = await getCurrentSupabaseUser();
   if (!user) return [];
   const { data, error } = await client
     .from("store_cart_items")
@@ -568,9 +566,7 @@ export async function removeFromCart(productId: string): Promise<void> {
 
 export async function listMyStoreWishlist(): Promise<StoreWishlistItem[]> {
   const client = getSupabaseClient();
-  const {
-    data: { user },
-  } = await client.auth.getUser();
+  const user = await getCurrentSupabaseUser();
   if (!user) return [];
   const { data, error } = await client
     .from("store_wishlist")
@@ -715,9 +711,7 @@ export async function removeStorePriceAlert(productId: string): Promise<void> {
 
 export async function listMyOrders(): Promise<StoreOrder[]> {
   const client = getSupabaseClient();
-  const {
-    data: { user },
-  } = await client.auth.getUser();
+  const user = await getCurrentSupabaseUser();
   if (!user) return [];
   const { data, error } = await client
     .from("store_orders")
@@ -767,9 +761,7 @@ export async function listMyOrderItems(orderIds: string | string[]): Promise<Sto
 
 export async function listMyStoreRefundRequests(): Promise<StoreRefundRequest[]> {
   const client = getSupabaseClient();
-  const {
-    data: { user },
-  } = await client.auth.getUser();
+  const user = await getCurrentSupabaseUser();
   if (!user) return [];
   const { data, error } = await client
     .from("store_order_refund_requests")
@@ -815,9 +807,7 @@ export async function requestStoreOrderRefund(
 
 export async function listMyStoreOrderInvoices(): Promise<StoreOrderInvoice[]> {
   const client = getSupabaseClient();
-  const {
-    data: { user },
-  } = await client.auth.getUser();
+  const user = await getCurrentSupabaseUser();
   if (!user) return [];
   const { data, error } = await client
     .from("store_order_invoices")
@@ -892,9 +882,7 @@ export async function createStoreBuildDownloadTicket(
 
 export async function getMyLicenses(): Promise<StoreLicense[]> {
   const client = getSupabaseClient();
-  const {
-    data: { user },
-  } = await client.auth.getUser();
+  const user = await getCurrentSupabaseUser();
   if (!user) return [];
   const { data, error } = await client
     .from("store_licenses")

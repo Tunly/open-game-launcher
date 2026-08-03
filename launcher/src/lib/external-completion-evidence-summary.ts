@@ -351,14 +351,13 @@ export const EXTERNAL_COMPLETION_EVIDENCE_GATE_INPUTS: ExternalCompletionEvidenc
     id: "provider-live-integrations",
     label: "Provider live integrations",
     localEvidence:
-      "Provider adapters, cache policy, mod staging, cloud transfer, and bridge contracts are covered locally.",
+      "Provider adapters, cache policy, cloud transfer, and bridge contracts are covered locally.",
     proofRequirements: [
-      "Nexus website search handoff and Steam Workshop client handoff are verified against live providers.",
       "Non-Steam presence bridges return redacted live provider evidence.",
       "Provider-approved catalog/cloud transfer flows are verified.",
       "Achievement/provider cache E2E runs against real client data.",
     ],
-    requiredEnv: ["PRESENCE_PROVIDER_TOKEN"],
+    requiredEnv: ["STEAM_WEB_API_KEY", "PRESENCE_PROVIDER_TOKEN"],
     skippedProof:
       "No provider-key staging packet, redacted bridge proof, or real-client cache E2E attached.",
     surface: "Provider Gate",
@@ -761,7 +760,7 @@ const forbiddenArtifactPatterns = [
   {
     label: "Raw provider API key",
     pattern:
-      /\b(?:STEAM_WEB_API_KEY|NEXUS_API_KEY|PRESENCE_PROVIDER_TOKEN)\s*[:=]\s*(?!(?:\[?redacted\]?|<redacted>|\*{3,})(?:\s|$))[^\s`"'<>]{8,}/i,
+      /\b(?:STEAM_WEB_API_KEY|RAWG_API_KEY|PRESENCE_PROVIDER_TOKEN)\s*[:=]\s*(?!(?:\[?redacted\]?|<redacted>|\*{3,})(?:\s|$))[^\s`"'<>]{8,}/i,
   },
   {
     label: "Raw provider API key",
@@ -1426,13 +1425,7 @@ const fieldSpecificEvidenceValidators: Partial<Record<string, EvidenceDetailFiel
   "Provider response evidence": (value) =>
     evidenceIdentifierValueMatches(value, [/provider/i, /response/i, /probe/i]),
   "Provider/client matrix": (value) =>
-    evidenceIdentifierValueMatchesAll(value, [
-      /matrix/i,
-      /provider/i,
-      /client/i,
-      /nexus/i,
-      /steam[-_\s]?workshop/i,
-    ]),
+    evidenceIdentifierValueMatchesAll(value, [/matrix/i, /provider/i, /client/i]),
   "Release ref": releaseRefValueIsValid,
   "Run ID": evidenceIdentifierValueIsSpecific,
   "Session/run ID": (value) =>
@@ -1541,9 +1534,6 @@ function expectedProofEvidenceValuePattern(proof: string) {
   }
   if (/process-account-deletions/.test(normalizedProof)) {
     return /(?:account[-_\s]?deletions?|process[-_\s]?account[-_\s]?deletions|account_deletion_processor_runs)/i;
-  }
-  if (/nexus website search handoff and steam workshop/.test(normalizedProof)) {
-    return [/nexus/i, /steam[-_\s]?workshop/i, /live[-_\s]?provider/i];
   }
   if (/non-steam presence/.test(normalizedProof)) {
     return [/non[-_\s]?steam/i, /presence/i, /bridge/i, /provider/i];
@@ -1661,6 +1651,7 @@ const envShapeValidators: Partial<Record<string, (value: string) => boolean>> = 
   PRESENCE_POLL_SECRET: (value) => secretValueLooksPlausible(value, 32),
   PRESENCE_PROVIDER_TOKEN: (value) => secretValueLooksPlausible(value, 24),
   PRICE_DROP_NOTIFY_SECRET: (value) => secretValueLooksPlausible(value, 32),
+  STEAM_WEB_API_KEY: (value) => /^[a-f0-9]{32}$/i.test(value),
   STRIPE_SECRET_KEY: (value) => /^sk_live_[a-z0-9]{16,}$/i.test(value),
   STRIPE_WEBHOOK_SECRET: (value) => /^whsec_[a-z0-9]{16,}$/i.test(value),
   SUPABASE_FUNCTIONS_BASE_URL: (value) =>

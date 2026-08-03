@@ -42,7 +42,6 @@ describe("client manager helpers", () => {
     await expect(getPlatformClientModificationConfig("gog")).resolves.toMatchObject({
       displayName: "GOG Galaxy",
       assetCaches: [],
-      modRoots: [],
       pathOverlays: [],
       platformId: "gog",
       updatePolicy: "manual",

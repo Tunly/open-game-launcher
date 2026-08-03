@@ -4,8 +4,18 @@ import { isTauri } from "@tauri-apps/api/core";
 
 import { LibrarySidebar, type LibraryGroupOption } from "../components/library/LibrarySidebar";
 import { LibraryFilters } from "../components/library/LibraryFilters";
-import { AddGameDialog } from "../components/library/AddGameDialog";
-import { ProviderPickerDialog } from "../components/library/ProviderPickerDialog";
+const loadAddGameDialog = () => import("../components/library/AddGameDialog");
+const loadFriendsChatPopup = () => import("../components/library/FriendsChatPopup");
+const loadProviderPickerDialog = () => import("../components/library/ProviderPickerDialog");
+const AddGameDialog = React.lazy(() =>
+  loadAddGameDialog().then((module) => ({ default: module.AddGameDialog })),
+);
+const FriendsChatPopup = React.lazy(() =>
+  loadFriendsChatPopup().then((module) => ({ default: module.FriendsChatPopup })),
+);
+const ProviderPickerDialog = React.lazy(() =>
+  loadProviderPickerDialog().then((module) => ({ default: module.ProviderPickerDialog })),
+);
 const GameDetailPanel = React.lazy(() =>
   import("../components/library/GameDetailPanel").then((m) => ({ default: m.GameDetailPanel })),
 );
@@ -74,8 +84,10 @@ function groupLibraryGames(groups: GameGroup[], option: LibraryGroupOption) {
 export function LibraryPage() {
   const gameListScrollRef = useRef<HTMLDivElement>(null);
   const claimedJoinRequestRef = useRef<string | null>(null);
+  const claimedPlayRequestRef = useRef<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [isAddGameOpen, setIsAddGameOpen] = useState(false);
+  const [isFriendsChatOpen, setIsFriendsChatOpen] = useState(false);
   const [groupOption, setGroupOption] = useState<LibraryGroupOption>("none");
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -123,20 +135,31 @@ export function LibraryPage() {
   useEffect(() => {
     const requestedGameId = searchParams.get("game");
     if (!requestedGameId) return;
+    const requestedAction = searchParams.get("action");
+
+    // The first render may contain a non-empty but stale browser snapshot.
+    // Keep the deep-link intact until the native/provider inventory has been
+    // reconciled so a valid target cannot be rejected prematurely.
+    if (!sync.hasCompletedInitialLibraryLoad) return;
 
     const match = sync.installedGames.find((game) => game.id === requestedGameId);
     if (match) {
       filters.setPendingSelectedGameId(match.id);
+      if (requestedAction === "play" && claimedPlayRequestRef.current !== match.id) {
+        claimedPlayRequestRef.current = match.id;
+        void picking.handlePlayVariant(match);
+      }
     } else if (sync.shouldShowLibraryLoading || sync.isDiscoveringGames) {
       return;
     } else {
-      setStatusMessage("The requested achievement game is no longer in this library.");
+      setStatusMessage("The requested game is no longer in this library.");
     }
 
     const next = new URLSearchParams(searchParams);
     next.delete("game");
+    next.delete("action");
     setSearchParams(next, { replace: true });
-  }, [filters, searchParams, setSearchParams, sync]);
+  }, [filters, picking, searchParams, setSearchParams, sync]);
 
   // Deep-link `?join=...&platform=...&invite=...` from a universallauncher://join URL.
   // The Rust deep-link handler navigates here, but this is where we actually trigger
@@ -320,17 +343,44 @@ export function LibraryPage() {
           </React.Suspense>
         </div>
 
-        <AddGameDialog
-          isOpen={isAddGameOpen}
-          onClose={() => setIsAddGameOpen(false)}
-          onAddGame={handleAddManualGame}
-        />
+        {isAddGameOpen ? (
+          <React.Suspense fallback={null}>
+            <AddGameDialog
+              isOpen
+              onClose={() => setIsAddGameOpen(false)}
+              onAddGame={handleAddManualGame}
+            />
+          </React.Suspense>
+        ) : null}
 
-        <ProviderPickerDialog
-          state={picking.providerPicker}
-          onClose={() => picking.setProviderPicker(null)}
-          onSelect={picking.handlePlayVariant}
-        />
+        {picking.providerPicker ? (
+          <React.Suspense fallback={null}>
+            <ProviderPickerDialog
+              state={picking.providerPicker}
+              onClose={() => picking.setProviderPicker(null)}
+              onSelect={picking.handlePlayVariant}
+            />
+          </React.Suspense>
+        ) : null}
+
+        {isFriendsChatOpen ? (
+          <React.Suspense fallback={null}>
+            <FriendsChatPopup
+              onClose={() => setIsFriendsChatOpen(false)}
+              onOpenSocial={(tab, friendId) => {
+                const params = new URLSearchParams();
+                if (tab !== "friends") {
+                  params.set("tab", tab);
+                }
+                if (friendId) {
+                  params.set("friend", friendId);
+                }
+                const query = params.toString();
+                navigate(query ? `/friends?${query}` : "/friends");
+              }}
+            />
+          </React.Suspense>
+        ) : null}
 
         <footer className="flex h-10 shrink-0 items-center justify-between border-t-4 border-black bg-[#f4ead8] px-4 text-[14px] font-black">
           <button
@@ -343,6 +393,8 @@ export function LibraryPage() {
                 : "Adding local games requires the OG-Launcher desktop app."
             }
             className="disabled:cursor-not-allowed disabled:text-[#655f58]"
+            onFocus={() => void loadAddGameDialog()}
+            onPointerEnter={() => void loadAddGameDialog()}
             onClick={() => {
               setIsAddGameOpen(true);
             }}
@@ -356,8 +408,15 @@ export function LibraryPage() {
           >
             Downloads - {completedDownloadCount} of {downloadCount} items Complete
           </button>
-          <button type="button" onClick={() => navigate("/friends?tab=chat")}>
-            Friends & Chat +
+          <button
+            aria-controls="library-friends-chat-popup"
+            aria-expanded={isFriendsChatOpen}
+            type="button"
+            onFocus={() => void loadFriendsChatPopup()}
+            onPointerEnter={() => void loadFriendsChatPopup()}
+            onClick={() => setIsFriendsChatOpen((current) => !current)}
+          >
+            Friends & Chat {isFriendsChatOpen ? "−" : "+"}
           </button>
         </footer>
       </div>

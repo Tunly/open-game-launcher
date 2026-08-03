@@ -1,6 +1,6 @@
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { StrictMode } from "react";
-import { MemoryRouter } from "react-router-dom";
+import { MemoryRouter, useLocation } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { FriendsPage } from "./FriendsPage";
@@ -78,8 +78,15 @@ function renderFriendsPage(initialEntry = "/friends") {
   return render(
     <MemoryRouter initialEntries={[initialEntry]}>
       <FriendsPage />
+      <FriendsLocationProbe />
     </MemoryRouter>,
   );
+}
+
+function FriendsLocationProbe() {
+  const location = useLocation();
+
+  return <output data-testid="friends-location">{`${location.pathname}${location.search}`}</output>;
 }
 
 function localFriendCard(name: string) {
@@ -521,6 +528,45 @@ describe("FriendsPage", () => {
     });
 
     expect(screen.queryByText("Private message for Packet Ghost")).not.toBeInTheDocument();
+  });
+
+  it("opens the requested friend from the library chat popup", async () => {
+    useCurrentUserMock.mockReturnValue({
+      isConfigured: true,
+      isLoading: false,
+      user: { id: "user-1" },
+    });
+    profileMocks.getFriends.mockResolvedValue(configuredFriendships());
+
+    renderFriendsPage("/friends?tab=chat&friend=friend-2");
+
+    await waitFor(() => {
+      expect(screen.getByRole("combobox")).toHaveValue("friend-2");
+    });
+    expect(socialMocks.getDirectThread).toHaveBeenCalledWith("friend-2");
+  });
+
+  it("updates the friend deep-link when the user selects a different chat", async () => {
+    useCurrentUserMock.mockReturnValue({
+      isConfigured: true,
+      isLoading: false,
+      user: { id: "user-1" },
+    });
+    profileMocks.getFriends.mockResolvedValue(configuredFriendships());
+
+    renderFriendsPage("/friends?tab=chat&friend=friend-1");
+
+    const selector = await screen.findByRole("combobox");
+    await waitFor(() => expect(selector).toHaveValue("friend-1"));
+    fireEvent.change(selector, { target: { value: "friend-2" } });
+
+    await waitFor(() => {
+      expect(selector).toHaveValue("friend-2");
+      expect(screen.getByTestId("friends-location")).toHaveTextContent(
+        "/friends?tab=chat&friend=friend-2",
+      );
+    });
+    expect(socialMocks.getDirectThread).toHaveBeenCalledWith("friend-2");
   });
 
   it("isolates delayed refresh results when the signed-in account changes", async () => {

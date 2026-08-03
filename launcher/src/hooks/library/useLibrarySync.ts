@@ -144,6 +144,7 @@ export interface UseLibrarySyncResult {
   runningGameIds: Set<string>;
   gameRuntimeById: Record<string, GameRuntimeStatus>;
   isDiscoveringGames: boolean;
+  hasCompletedInitialLibraryLoad: boolean;
   discoveryMessage: string | null;
   initialLibrarySnapshot: Game[];
   runAutomaticLibrarySync: (forceRefresh?: boolean) => Promise<void>;
@@ -199,6 +200,7 @@ export function useLibrarySync({ setStatusMessage }: UseLibrarySyncOptions): Use
     () => ({}),
   );
   const [isDiscoveringGames, setIsDiscoveringGames] = useState(initialLibrarySnapshot.length === 0);
+  const [hasCompletedInitialLibraryLoad, setHasCompletedInitialLibraryLoad] = useState(false);
   const [discoveryMessage, setDiscoveryMessage] = useState<string | null>(null);
   const [logoCandidateIndexes, setLogoCandidateIndexes] = useState<Record<string, number>>(
     () => ({}),
@@ -213,6 +215,14 @@ export function useLibrarySync({ setStatusMessage }: UseLibrarySyncOptions): Use
   const automaticSyncPendingForceRefreshRef = useRef(false);
   const lastFocusSyncAtRef = useRef(0);
   const libraryRescanOnNextFocusRef = useRef(false);
+  const isLibrarySyncMountedRef = useRef(false);
+
+  useEffect(() => {
+    isLibrarySyncMountedRef.current = true;
+    return () => {
+      isLibrarySyncMountedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     installedGamesRef.current = installedGames;
@@ -462,6 +472,15 @@ export function useLibrarySync({ setStatusMessage }: UseLibrarySyncOptions): Use
         automaticSyncPendingRef.current = false;
         automaticSyncPendingForceRefreshRef.current = false;
         await runAutomaticLibrarySync(pendingForceRefresh);
+      }
+
+      // A non-empty browser snapshot only makes first paint faster. Consumers
+      // that need an authoritative inventory must wait until the native cache
+      // and provider pipeline have completed at least once. The mounted ref
+      // also covers React StrictMode's effect replay, where the active replay
+      // queues its work behind the first pass.
+      if (isLibrarySyncMountedRef.current) {
+        setHasCompletedInitialLibraryLoad(true);
       }
 
       if (!isMounted) {
@@ -892,6 +911,7 @@ export function useLibrarySync({ setStatusMessage }: UseLibrarySyncOptions): Use
     runningGameIds,
     gameRuntimeById,
     isDiscoveringGames,
+    hasCompletedInitialLibraryLoad,
     discoveryMessage,
     initialLibrarySnapshot,
     runAutomaticLibrarySync,

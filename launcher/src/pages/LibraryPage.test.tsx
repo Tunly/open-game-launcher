@@ -15,6 +15,8 @@ const shareTokenMocks = vi.hoisted(() => ({
   resolveShareToken: vi.fn(),
 }));
 const useLibrarySyncMock = vi.hoisted(() => vi.fn());
+const setPendingSelectedGameIdMock = vi.hoisted(() => vi.fn());
+const handlePlayVariantMock = vi.hoisted(() => vi.fn());
 const useProviderPickingMock = vi.hoisted(() =>
   vi.fn((options: UseProviderPickingOptions) => {
     void options;
@@ -22,7 +24,7 @@ const useProviderPickingMock = vi.hoisted(() =>
     return {
       handleInstallFromProvider: vi.fn(),
       handlePlay: vi.fn(),
-      handlePlayVariant: vi.fn(),
+      handlePlayVariant: handlePlayVariantMock,
       providerPicker: null,
       setProviderPicker: vi.fn(),
     };
@@ -47,6 +49,16 @@ vi.mock("../components/library/GameDetailPanel", () => ({
       <section aria-label="Game detail panel mock" data-verify-mode={props.verifyMode ?? "null"} />
     );
   },
+}));
+
+vi.mock("../components/library/FriendsChatPopup", () => ({
+  FriendsChatPopup: ({ onClose }: { onClose: () => void }) => (
+    <section aria-label="Friends and chat" role="dialog">
+      <button type="button" onClick={onClose}>
+        Close friends and chat
+      </button>
+    </section>
+  ),
 }));
 
 vi.mock("../components/library/LibraryFilters", () => ({
@@ -104,7 +116,7 @@ vi.mock("../hooks/library/useLibraryFilters", () => ({
     setActivePlatformFilter: noop,
     setAdvancedFilters: noop,
     setIsFilterPopupOpen: noop,
-    setPendingSelectedGameId: noop,
+    setPendingSelectedGameId: setPendingSelectedGameIdMock,
     setSearchQuery: noop,
     setSelectedGroupId: noop,
     setSortOption: noop,
@@ -119,6 +131,7 @@ vi.mock("../hooks/library/useLibrarySync", () => ({
 function makeLibrarySyncResult(
   overrides: Partial<{
     installedGames: Game[];
+    hasCompletedInitialLibraryLoad: boolean;
     isDiscoveringGames: boolean;
     shouldShowLibraryLoading: boolean;
   }> = {},
@@ -131,6 +144,7 @@ function makeLibrarySyncResult(
     customArtwork: {},
     discoveryMessage: null,
     gameRuntimeById: {},
+    hasCompletedInitialLibraryLoad: overrides.hasCompletedInitialLibraryLoad ?? true,
     handleApplyCustomArtworkUrl: noop,
     handleArtworkDrop: noop,
     handleConfirmArtwork: noop,
@@ -341,6 +355,63 @@ describe("LibraryPage", () => {
     expect(options).not.toHaveProperty("maybeAutoSyncOnLaunch");
   });
 
+  it("keeps a game deep-link while a stale non-empty snapshot is still hydrating", async () => {
+    const initialEntry = "/library?game=steam-requested&verify=keep-me";
+    useLibrarySyncMock.mockReturnValue(
+      makeLibrarySyncResult({
+        installedGames: [makeGame({ id: "steam-stale" })],
+        hasCompletedInitialLibraryLoad: false,
+        isDiscoveringGames: false,
+        shouldShowLibraryLoading: false,
+      }),
+    );
+    const view = renderLibraryRoute(initialEntry);
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(setPendingSelectedGameIdMock).not.toHaveBeenCalled();
+    expect(screen.getByTestId("library-route")).toHaveTextContent(initialEntry);
+
+    useLibrarySyncMock.mockReturnValue(
+      makeLibrarySyncResult({
+        installedGames: [makeGame({ id: "steam-requested" })],
+        hasCompletedInitialLibraryLoad: true,
+      }),
+    );
+    view.rerender(<LibraryRoute initialEntry={initialEntry} />);
+
+    await waitFor(() => {
+      expect(setPendingSelectedGameIdMock).toHaveBeenCalledWith("steam-requested");
+      expect(screen.getByTestId("library-route")).toHaveTextContent("/library?verify=keep-me");
+    });
+    expect(screen.getByRole("status", { name: /library status/i })).toBeEmptyDOMElement();
+  });
+
+  it("launches a requested game once and preserves unrelated query state", async () => {
+    const requestedGame = makeGame({ id: "steam-requested" });
+    const initialEntry = "/library?game=steam-requested&action=play&verify=keep-me";
+    useLibrarySyncMock.mockReturnValue(makeLibrarySyncResult({ installedGames: [requestedGame] }));
+    const view = renderLibraryRoute(initialEntry);
+
+    await waitFor(() => {
+      expect(handlePlayVariantMock).toHaveBeenCalledWith(requestedGame);
+      expect(screen.getByTestId("library-route")).toHaveTextContent("/library?verify=keep-me");
+    });
+
+    useLibrarySyncMock.mockReturnValue(
+      makeLibrarySyncResult({ installedGames: [{ ...requestedGame }] }),
+    );
+    view.rerender(<LibraryRoute initialEntry={initialEntry} />);
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    expect(handlePlayVariantMock).toHaveBeenCalledTimes(1);
+  });
+
   it("waits for startup library discovery before consuming a cross-play join", async () => {
     const initialEntry = "/library?join=Neon%20Circuit&platform=steam&invite=invite-1";
     useLibrarySyncMock.mockReturnValue(
@@ -490,12 +561,17 @@ describe("LibraryPage", () => {
     expect(footer).toHaveClass("h-10", "shrink-0");
   });
 
-  it("routes the footer Friends & Chat control to the chat tab", () => {
+  it("opens and closes the footer Friends & Chat popup without leaving the library", async () => {
     renderLibraryRoute("/library");
 
     fireEvent.click(screen.getByRole("button", { name: /friends & chat \+/i }));
 
-    expect(screen.getByTestId("friends-route")).toHaveTextContent("/friends?tab=chat");
+    expect(await screen.findByRole("dialog", { name: /friends and chat/i })).toBeVisible();
+    expect(screen.getByTestId("library-route")).toHaveTextContent("/library");
+
+    fireEvent.click(screen.getByRole("button", { name: /close friends and chat/i }));
+
+    expect(screen.queryByRole("dialog", { name: /friends and chat/i })).not.toBeInTheDocument();
   });
 
   it("routes the footer Downloads control to the downloads page", () => {

@@ -12,11 +12,11 @@ use std::path::PathBuf;
 const KEYRING_SERVICE: &str = "OpenGameLauncher";
 const KEYRING_FALLBACK_DIR: &str = "open-game-launcher";
 const KEYRING_FALLBACK_FILE: &str = ".keyring-fallback.enc";
+const CREDENTIAL_STORE_UNAVAILABLE: &str = "The OS credential store is unavailable.";
 
-/// Salt used to derive the fallback-file encryption key. Mixed with a
-/// machine-bound string so the file is useless if copied to another machine.
-/// This is a defence-in-depth measure: the *real* protection is the OS
-/// keychain — this file should only exist when the keychain is unavailable.
+/// Salt used to read and rewrite the encrypted fallback created by older app
+/// versions. New credentials are never written to this application-managed
+/// store; it remains only for one-time migration into the OS keychain.
 const FALLBACK_DERIVATION_SALT: &[u8] = b"OG-Launcher/fallback-store/v1";
 
 /// `Argon2id` is the recommended PHC winner. Tuned to take ~250ms on a
@@ -152,46 +152,27 @@ fn decrypt(blob: &str) -> Result<Vec<u8>, String> {
         .map_err(|e| format!("Decrypt fallback: {e}"))
 }
 
-/// Stores a secret for a given domain in OS keychain.
-/// Falls back to an encrypted local file if keychain is unavailable.
-pub fn set_secret(domain: &str, value: &str) -> Result<(), String> {
-    validate_domain(domain)?;
-    match entry(domain) {
-        Ok(e) => match e.set_password(value) {
-            Ok(()) => Ok(()),
-            Err(_) => write_fallback(domain, value),
-        },
-        Err(_) => write_fallback(domain, value),
-    }
-}
-
-/// Stores a high-sensitivity credential in the OS keychain only. Unlike the
-/// generic platform-token helper, this never writes an application file.
+/// Stores a high-sensitivity credential in the OS keychain only. This never
+/// writes an application-managed credential file.
 pub fn set_secret_keychain_only(domain: &str, value: &str) -> Result<(), String> {
-    validate_domain(domain)?;
-    // Never retain a legacy application-file copy for keychain-only domains,
-    // even when the platform credential service is temporarily unavailable.
-    delete_fallback(domain);
-    let keyring_entry =
-        entry(domain).map_err(|_| "The OS credential store is unavailable.".to_string())?;
-    keyring_entry
-        .set_password(value)
-        .map_err(|_| "The OS credential store is unavailable.".to_string())?;
-    Ok(())
+    set_secret_keychain_only_with(domain, value, |secret| {
+        let keyring_entry = entry(domain).map_err(|_| CREDENTIAL_STORE_UNAVAILABLE.to_string())?;
+        keyring_entry
+            .set_password(secret)
+            .map_err(|_| CREDENTIAL_STORE_UNAVAILABLE.to_string())
+    })
 }
 
-/// Retrieves a secret for a given domain from OS keychain.
-/// Falls back to local file if keychain is unavailable.
-pub fn get_secret(domain: &str) -> Result<Option<String>, String> {
+fn set_secret_keychain_only_with<F>(domain: &str, value: &str, store: F) -> Result<(), String>
+where
+    F: FnOnce(&str) -> Result<(), String>,
+{
     validate_domain(domain)?;
-    match entry(domain) {
-        Ok(e) => match e.get_password() {
-            Ok(value) => Ok(Some(value)),
-            Err(keyring::Error::NoEntry) => read_fallback(domain),
-            Err(_) => read_fallback(domain),
-        },
-        Err(_) => read_fallback(domain),
-    }
+    // A new credential supersedes any legacy fallback value. Purge it even if
+    // the new keychain write fails so a stale file credential can never be
+    // resurrected later.
+    delete_fallback(domain);
+    store(value)
 }
 
 /// Reads a high-sensitivity credential exclusively from the OS keychain.
@@ -199,22 +180,35 @@ pub fn get_secret_keychain_only(domain: &str) -> Result<Option<String>, String> 
     validate_domain(domain)?;
     match entry(domain) {
         Ok(entry) => match entry.get_password() {
-            Ok(value) => Ok(Some(value)),
-            Err(keyring::Error::NoEntry) => Ok(None),
-            Err(_) => Err("The OS credential store is unavailable.".to_string()),
+            Ok(value) => {
+                // A verified keychain copy makes any historical file copy
+                // redundant and safe to remove.
+                delete_fallback(domain);
+                Ok(Some(value))
+            }
+            Err(keyring::Error::NoEntry) => migrate_fallback_to_keychain(domain, |secret| {
+                entry
+                    .set_password(secret)
+                    .map_err(|_| CREDENTIAL_STORE_UNAVAILABLE.to_string())
+            }),
+            Err(_) => Err(CREDENTIAL_STORE_UNAVAILABLE.to_string()),
         },
-        Err(_) => Err("The OS credential store is unavailable.".to_string()),
+        Err(_) => Err(CREDENTIAL_STORE_UNAVAILABLE.to_string()),
     }
 }
 
-/// Deletes a secret for a given domain from OS keychain and fallback.
-pub fn delete_secret(domain: &str) -> Result<(), String> {
-    validate_domain(domain)?;
-    if let Ok(e) = entry(domain) {
-        let _ = e.delete_credential();
-    }
+fn migrate_fallback_to_keychain<F>(domain: &str, store: F) -> Result<Option<String>, String>
+where
+    F: FnOnce(&str) -> Result<(), String>,
+{
+    let Some(value) = read_fallback(domain)? else {
+        return Ok(None);
+    };
+    // Delete only after the OS credential store confirms the write. A failed
+    // migration remains recoverable but is never returned to production code.
+    store(&value)?;
     delete_fallback(domain);
-    Ok(())
+    Ok(Some(value))
 }
 
 /// Deletes a keychain-only credential and purges any historical fallback copy.
@@ -223,9 +217,9 @@ pub fn delete_secret_keychain_only(domain: &str) -> Result<(), String> {
     let result = match entry(domain) {
         Ok(keyring_entry) => match keyring_entry.delete_credential() {
             Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
-            Err(_) => Err("The OS credential store is unavailable.".to_string()),
+            Err(_) => Err(CREDENTIAL_STORE_UNAVAILABLE.to_string()),
         },
-        Err(_) => Err("The OS credential store is unavailable.".to_string()),
+        Err(_) => Err(CREDENTIAL_STORE_UNAVAILABLE.to_string()),
     };
     delete_fallback(domain);
     result
@@ -261,6 +255,12 @@ fn write_fallback_map(map: &mut FallbackMap) -> Result<(), String> {
     let Some(path) = fallback_path() else {
         return Err("No config dir available for fallback storage".to_string());
     };
+    if map.entries.is_empty() {
+        if path.exists() {
+            fs::remove_file(&path).map_err(|e| format!("Remove empty fallback: {e}"))?;
+        }
+        return Ok(());
+    }
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|e| format!("Create fallback dir: {e}"))?;
     }
@@ -301,6 +301,7 @@ fn write_fallback_map(map: &mut FallbackMap) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(test)]
 fn write_fallback(domain: &str, value: &str) -> Result<(), String> {
     validate_domain(domain)?;
     let mut map = read_fallback_map();
@@ -336,25 +337,53 @@ pub fn migrate_legacy_tokens() {
     };
     let launcher_dir = config_dir.join(KEYRING_FALLBACK_DIR);
 
+    // Every entry in this historical file was supplied to a secret-storage
+    // API. Migrate all valid domains, including dynamically named broadcast
+    // stream keys, so no legacy credential is stranded on disk.
+    let fallback_domains: Vec<String> = read_fallback_map()
+        .entries
+        .into_keys()
+        .filter(|domain| validate_domain(domain).is_ok())
+        .collect();
+    for domain in fallback_domains {
+        let _ = get_secret_keychain_only(&domain);
+    }
+
+    // Only actual historical credential files belong here. In particular,
+    // ea-legacy-offers.json and steam scraper data are catalog/cache data, not
+    // authentication tokens.
     const LEGACY_TOKEN_FILES: &[(&str, &str)] = &[
         ("gog", "gog_auth.json"),
         ("xbox", "xbox_token.json"),
-        ("ea", "ea-legacy-offers.json"),
         ("epic", "epic_token.json"),
         ("ubisoft", "ubisoft_token.json"),
         ("battlenet", "battlenet_token.json"),
-        ("steam", "steam_scraper.json"),
     ];
 
     for (domain, filename) in LEGACY_TOKEN_FILES {
-        if get_secret(domain).ok().flatten().is_some() {
+        let legacy_path = launcher_dir.join(filename);
+        let migrated_path = legacy_path.with_extension("json.migrated");
+        if get_secret_keychain_only(domain).ok().flatten().is_some() {
+            let _ = fs::remove_file(&legacy_path);
+            let _ = fs::remove_file(&migrated_path);
             continue;
         }
-        let legacy_path = launcher_dir.join(filename);
-        if let Ok(contents) = fs::read_to_string(&legacy_path) {
+
+        let source_path = if legacy_path.exists() {
+            Some(&legacy_path)
+        } else if migrated_path.exists() {
+            Some(&migrated_path)
+        } else {
+            None
+        };
+        if let Some(source_path) = source_path {
+            let Ok(contents) = fs::read_to_string(source_path) else {
+                continue;
+            };
             let trimmed = contents.trim();
-            if !trimmed.is_empty() && set_secret(domain, &contents).is_ok() {
-                let _ = fs::rename(&legacy_path, legacy_path.with_extension("json.migrated"));
+            if !trimmed.is_empty() && set_secret_keychain_only(domain, &contents).is_ok() {
+                let _ = fs::remove_file(&legacy_path);
+                let _ = fs::remove_file(&migrated_path);
             }
         }
     }
@@ -515,10 +544,58 @@ mod tests {
     fn invalid_domains_do_not_create_fallback_file() {
         let _guard = fallback_test_guard("invalid-domain");
 
-        assert!(set_secret("bad/domain", "should-not-write").is_err());
+        assert!(write_fallback("bad/domain", "should-not-write").is_err());
         assert!(read_fallback("bad/domain").is_err());
         delete_fallback("bad/domain");
 
         assert!(!fallback_file_path().exists());
+    }
+
+    #[test]
+    fn keychain_only_write_failure_purges_stale_fallback() {
+        let _guard = fallback_test_guard("keychain-write-failure");
+        write_fallback("gog", "stale-token").unwrap();
+
+        let error = set_secret_keychain_only_with("gog", "new-token", |_| {
+            Err(CREDENTIAL_STORE_UNAVAILABLE.to_string())
+        })
+        .expect_err("unavailable keychain must fail closed");
+
+        assert_eq!(error, CREDENTIAL_STORE_UNAVAILABLE);
+        assert_eq!(read_fallback("gog").unwrap(), None);
+        assert!(!fallback_file_path().exists());
+    }
+
+    #[test]
+    fn fallback_migration_deletes_source_only_after_confirmed_write() {
+        let _guard = fallback_test_guard("migration-success");
+        write_fallback("xbox", "legacy-refresh-token").unwrap();
+        let mut stored = None;
+
+        let migrated = migrate_fallback_to_keychain("xbox", |secret| {
+            stored = Some(secret.to_string());
+            Ok(())
+        })
+        .unwrap();
+
+        assert_eq!(stored.as_deref(), Some("legacy-refresh-token"));
+        assert_eq!(migrated.as_deref(), Some("legacy-refresh-token"));
+        assert_eq!(read_fallback("xbox").unwrap(), None);
+        assert!(!fallback_file_path().exists());
+    }
+
+    #[test]
+    fn fallback_migration_failure_keeps_source_but_returns_no_secret() {
+        let _guard = fallback_test_guard("migration-failure");
+        write_fallback("ea", "legacy-access-token").unwrap();
+
+        let migrated =
+            migrate_fallback_to_keychain("ea", |_| Err(CREDENTIAL_STORE_UNAVAILABLE.to_string()));
+
+        assert_eq!(migrated.unwrap_err(), CREDENTIAL_STORE_UNAVAILABLE);
+        assert_eq!(
+            read_fallback("ea").unwrap().as_deref(),
+            Some("legacy-access-token")
+        );
     }
 }

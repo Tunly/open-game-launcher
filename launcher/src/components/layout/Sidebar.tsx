@@ -1,25 +1,21 @@
+import { useEffect, useRef } from "react";
 import {
   Activity,
   Gamepad2,
   HardDriveDownload,
   MessageSquareMore,
-  PackagePlus,
   Store,
   Trophy,
   type LucideIcon,
 } from "lucide-react";
-
-import { MODS_PAGE_ENABLED } from "../../lib/feature-flags";
-import { cn } from "../../lib/utils";
+import { clsx } from "clsx";
 
 export type PageKey =
-  | "home"
   | "library"
   | "store"
   | "community"
   | "downloads"
   | "activity"
-  | "mods"
   | "achievements"
   | "settings"
   | "profile"
@@ -46,9 +42,6 @@ const navItems: NavItem[] = [
   { key: "achievements", label: "Achievements", icon: Trophy },
   { key: "activity", label: "Activity", icon: Activity },
   { key: "downloads", label: "Downloads", icon: HardDriveDownload },
-  ...(MODS_PAGE_ENABLED
-    ? ([{ key: "mods", label: "Mods", icon: PackagePlus }] satisfies NavItem[])
-    : []),
   { key: "store", label: "Store", icon: Store },
   { key: "community", label: "Community", icon: MessageSquareMore },
 ];
@@ -59,9 +52,20 @@ export function Sidebar({
   isDisabled = false,
   onNavigate,
 }: SidebarProps) {
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const activeItem =
+      scrollContainerRef.current?.querySelector<HTMLElement>('[aria-current="page"]');
+    activeItem?.scrollIntoView?.({ behavior: "smooth", block: "nearest", inline: "center" });
+  }, [activePage]);
+
   return (
-    <nav className="min-w-0 overflow-hidden">
-      <div className="flex scrollbar-none gap-1 overflow-x-auto px-0.5 pb-1 sm:gap-2 sm:px-1">
+    <nav className="min-w-0">
+      <div
+        ref={scrollContainerRef}
+        className="flex [scrollbar-width:thin] [scrollbar-color:#171411_#efe3cf] gap-1 overflow-x-auto px-0.5 pb-2 sm:gap-2 sm:px-1"
+      >
         {navItems.map((item) => {
           const Icon = item.icon;
           const isActive = item.key && activePage === item.key;
@@ -72,7 +76,7 @@ export function Sidebar({
               key={item.label}
               aria-current={isActive ? "page" : undefined}
               aria-label={item.label}
-              className={cn(
+              className={clsx(
                 "neo-copy relative flex h-10 shrink-0 items-center gap-2 border-2 px-2 text-[11px] font-bold uppercase transition disabled:cursor-not-allowed disabled:opacity-45 sm:px-3 xl:px-4",
                 isActive
                   ? "app-shell-active-nav border-black"
@@ -83,7 +87,7 @@ export function Sidebar({
               onClick={() => item.key && onNavigate(item.key)}
             >
               <Icon className="h-5 w-5" />
-              <span className="xs:inline hidden xl:inline">{item.label}</span>
+              <span className="whitespace-nowrap">{item.label}</span>
               {showBadge ? (
                 <span className="neo-copy app-shell-primary absolute top-0 -right-1 flex h-5 min-w-5 items-center justify-center border-2 border-black px-1 text-[10px] font-black">
                   {downloadCount}

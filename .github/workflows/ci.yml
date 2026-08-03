@@ -83,6 +83,8 @@ jobs:
         env:
           VITE_SUPABASE_URL: https://example.supabase.co
           VITE_SUPABASE_ANON_KEY: dummy
+      - name: Enforce bundle budget
+        run: pnpm bundle:check
 
   # ---------- Rust: formatting ----------
   rust-fmt:
@@ -148,6 +150,43 @@ jobs:
         working-directory: launcher/src-tauri
         run: cargo check --locked --lib --target x86_64-pc-windows-msvc
 
+  # ---------- Desktop: UI -> IPC -> Rust smoke ----------
+  desktop-e2e-windows:
+    name: Desktop E2E (Windows WebDriver)
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6
+        with:
+          version: 9.15.4
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+          cache-dependency-path: launcher/pnpm-lock.yaml
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+      - uses: Swatinem/rust-cache@e18b497796c12c097a38f9edb9d0641fb99eee32 # v2
+        with:
+          workspaces: launcher/src-tauri -> target
+      - name: Install frontend dependencies
+        working-directory: launcher
+        run: pnpm install --frozen-lockfile
+      - name: Install pinned Tauri and Edge WebDriver tools
+        shell: pwsh
+        run: |
+          cargo install tauri-driver --version 2.0.6 --locked
+          cargo install --git https://github.com/chippers/msedgedriver-tool --rev 8c4b34f51b45f5cf08013366d703de464ab871d1 --locked
+          & "$HOME/.cargo/bin/msedgedriver-tool.exe"
+          $PWD.Path | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+      - name: Build desktop smoke binary
+        working-directory: launcher
+        run: node ./node_modules/@tauri-apps/cli/tauri.js build --debug --no-bundle --target x86_64-pc-windows-msvc -- --locked
+      - name: Run desktop smoke
+        working-directory: launcher
+        run: pnpm test:e2e:desktop
+        env:
+          OGL_E2E_APP_BINARY: src-tauri/target/x86_64-pc-windows-msvc/debug/open-game-launcher.exe
+
   # ---------- Supabase: db lint ----------
   # Runs on push/PR and the manual hosted-deploy gate path, because it spins up
   # a Postgres container and the cold-start is ~30s.
@@ -209,6 +248,8 @@ jobs:
         run: node --test scripts/generate-updater-manifest.test.mjs
       - name: Validate release workflow contract
         run: node --test scripts/release-workflow-check.test.mjs
+      - name: Validate desktop E2E contract
+        run: node --test scripts/desktop-e2e-contract.test.mjs
       - name: Validate UI evidence guard
         run: node --test scripts/ui-evidence-check.test.mjs
       - name: Check UI screenshot evidence for changed UI files
@@ -288,6 +329,7 @@ jobs:
     environment: hosted-production
     needs:
       [
+        desktop-e2e-windows,
         frontend,
         coverage,
         rust-fmt,
@@ -348,6 +390,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     needs:
       [
+        desktop-e2e-windows,
         frontend,
         coverage,
         rust-fmt,
@@ -415,19 +458,116 @@ jobs:
             echo "TAURI_SIGNING_PRIVATE_KEY_PASSWORD is required for Windows updater releases." >&2
             exit 1
           }
+          test -n "${WINDOWS_CERTIFICATE:-}" || {
+            echo "WINDOWS_CERTIFICATE is required for Windows Authenticode releases." >&2
+            exit 1
+          }
+          test -n "${WINDOWS_CERTIFICATE_PASSWORD:-}" || {
+            echo "WINDOWS_CERTIFICATE_PASSWORD is required for Windows Authenticode releases." >&2
+            exit 1
+          }
+          test -n "${WINDOWS_TIMESTAMP_URL:-}" || {
+            echo "WINDOWS_TIMESTAMP_URL is required for Windows Authenticode releases." >&2
+            exit 1
+          }
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+          WINDOWS_TIMESTAMP_URL: ${{ vars.WINDOWS_TIMESTAMP_URL }}
+      - name: Import Windows Authenticode certificate
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+          WINDOWS_TIMESTAMP_URL: ${{ vars.WINDOWS_TIMESTAMP_URL }}
+        run: |
+          $certificatePath = Join-Path $env:RUNNER_TEMP "ogl-release-signing.pfx"
+          [IO.File]::WriteAllBytes(
+            $certificatePath,
+            [Convert]::FromBase64String($env:WINDOWS_CERTIFICATE)
+          )
+          $password = ConvertTo-SecureString $env:WINDOWS_CERTIFICATE_PASSWORD -AsPlainText -Force
+          $certificate = Import-PfxCertificate `
+            -FilePath $certificatePath `
+            -CertStoreLocation Cert:\CurrentUser\My `
+            -Password $password
+          if (-not $certificate.Thumbprint) {
+            throw "The Windows signing certificate was imported without a thumbprint."
+          }
+
+          $configPath = Join-Path $env:GITHUB_WORKSPACE "launcher/src-tauri/tauri.windows.conf.json"
+          $config = Get-Content -LiteralPath $configPath -Raw | ConvertFrom-Json
+          $config.bundle.windows | Add-Member -NotePropertyName certificateThumbprint -NotePropertyValue $certificate.Thumbprint -Force
+          $config.bundle.windows | Add-Member -NotePropertyName digestAlgorithm -NotePropertyValue "sha256" -Force
+          $config.bundle.windows | Add-Member -NotePropertyName timestampUrl -NotePropertyValue $env:WINDOWS_TIMESTAMP_URL -Force
+          $config | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath $configPath -Encoding utf8
+      - name: Validate macOS signing and notarization secrets
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_PRIVATE_KEY: ${{ secrets.APPLE_API_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          for name in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_API_KEY APPLE_API_ISSUER APPLE_API_PRIVATE_KEY; do
+            test -n "${!name:-}" || {
+              echo "$name is required for signed and notarized macOS releases." >&2
+              exit 1
+            }
+          done
+          key_path="$RUNNER_TEMP/AuthKey_${APPLE_API_KEY}.p8"
+          printf '%s' "$APPLE_API_PRIVATE_KEY" | openssl base64 -d -A > "$key_path"
+          chmod 600 "$key_path"
+          echo "APPLE_API_KEY_PATH=$key_path" >> "$GITHUB_ENV"
       - name: Build (Tauri)
         working-directory: launcher
         run: node ./node_modules/@tauri-apps/cli/tauri.js build --target ${{ matrix.target }} ${{ matrix.tauri_config }} -- --locked
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
           # linuxdeploy's bundled strip does not understand RELR sections in
           # current Ubuntu/rolling-release shared libraries.
           APPIMAGE_EXTRACT_AND_RUN: ${{ runner.os == 'Linux' && '1' || '' }}
           NO_STRIP: ${{ runner.os == 'Linux' && '1' || '' }}
+      - name: Verify Windows Authenticode signatures
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $installers = Get-ChildItem `
+            -Path "launcher/src-tauri/target/${{ matrix.target }}/release/bundle" `
+            -Recurse `
+            -Filter *.exe
+          if (-not $installers) {
+            throw "No Windows installer was found for Authenticode verification."
+          }
+          foreach ($installer in $installers) {
+            $signature = Get-AuthenticodeSignature -LiteralPath $installer.FullName
+            if ($signature.Status -ne "Valid") {
+              throw "Invalid Authenticode signature for $($installer.FullName): $($signature.Status)"
+            }
+          }
+      - name: Verify macOS code signing and notarization
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          app_path="$(find "launcher/src-tauri/target/${{ matrix.target }}/release/bundle/macos" -maxdepth 1 -name '*.app' -print -quit)"
+          dmg_path="$(find "launcher/src-tauri/target/${{ matrix.target }}/release/bundle/dmg" -maxdepth 1 -name '*.dmg' -print -quit)"
+          test -n "$app_path"
+          test -n "$dmg_path"
+          codesign --verify --deep --strict --verbose=2 "$app_path"
+          spctl --assess --type execute --verbose=2 "$app_path"
+          xcrun stapler validate "$dmg_path"
       - name: Validate release artifact inventory
         shell: bash
         run: |

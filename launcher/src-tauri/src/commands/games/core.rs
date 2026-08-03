@@ -4442,7 +4442,7 @@ const SUPABASE_ACCESS_TOKEN_SECRET_DOMAIN: &str = "supabase-access-token";
 
 pub fn read_supabase_access_token() -> Option<String> {
     if let Some(token) =
-        crate::commands::secure_store::get_secret(SUPABASE_ACCESS_TOKEN_SECRET_DOMAIN)
+        crate::commands::secure_store::get_secret_keychain_only(SUPABASE_ACCESS_TOKEN_SECRET_DOMAIN)
             .ok()
             .flatten()
             .map(|token| token.trim().to_string())
@@ -4460,11 +4460,17 @@ pub fn read_supabase_access_token() -> Option<String> {
         let _ = fs::remove_file(path);
         return None;
     }
-    if crate::commands::secure_store::set_secret(SUPABASE_ACCESS_TOKEN_SECRET_DOMAIN, &token)
-        .is_ok()
+    if crate::commands::secure_store::set_secret_keychain_only(
+        SUPABASE_ACCESS_TOKEN_SECRET_DOMAIN,
+        &token,
+    )
+    .is_err()
     {
-        let _ = fs::remove_file(path);
+        // Fail closed: retain the legacy source for a later migration attempt,
+        // but never expose it to the running application.
+        return None;
     }
+    let _ = fs::remove_file(path);
     Some(token)
 }
 
@@ -4473,14 +4479,19 @@ pub fn cache_supabase_access_token(token: String) -> Result<(), String> {
     let legacy_path = supabase_access_token_path();
     let trimmed = token.trim();
     if trimmed.is_empty() {
-        crate::commands::secure_store::delete_secret(SUPABASE_ACCESS_TOKEN_SECRET_DOMAIN)?;
+        let keychain_result = crate::commands::secure_store::delete_secret_keychain_only(
+            SUPABASE_ACCESS_TOKEN_SECRET_DOMAIN,
+        );
         if let Some(path) = legacy_path.filter(|path| path.exists()) {
             fs::remove_file(path).map_err(|error| error.to_string())?;
         }
-        return Ok(());
+        return keychain_result;
     }
 
-    crate::commands::secure_store::set_secret(SUPABASE_ACCESS_TOKEN_SECRET_DOMAIN, trimmed)?;
+    crate::commands::secure_store::set_secret_keychain_only(
+        SUPABASE_ACCESS_TOKEN_SECRET_DOMAIN,
+        trimmed,
+    )?;
     if let Some(path) = legacy_path.filter(|path| path.exists()) {
         fs::remove_file(path).map_err(|error| error.to_string())?;
     }

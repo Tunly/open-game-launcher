@@ -48,4 +48,14 @@ describe("Retro Manga static visual system", () => {
     expect(appShell).not.toContain("app-library-main neo-dots h-[calc(100vh-80px)]");
     expect(indexCss).not.toMatch(/\.tauri-runtime\s+\.app-library-main\s*\{[^}]*height:/s);
   });
+
+  it("keeps keyboard focus visible and respects reduced-motion preferences", () => {
+    const indexCss = readFileSync(join(sourceRoot, "index.css"), "utf8");
+
+    for (const control of ["input", "select", "textarea"]) {
+      expect(indexCss).toContain(`${control}:focus-visible`);
+    }
+    expect(indexCss).toContain("@media (prefers-reduced-motion: reduce)");
+    expect(indexCss).toContain("outline: 3px solid var(--og-shell-brand) !important");
+  });
 });

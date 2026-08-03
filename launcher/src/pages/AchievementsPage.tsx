@@ -40,6 +40,10 @@ import {
   hasPendingAchievementArchiveSync,
   syncAchievementArchiveGames,
 } from "../lib/achievement-archive-sync";
+import {
+  calculateSteamAverageGameCompletionRate,
+  calculateSteamGameCompletionPercent,
+} from "../lib/achievement-completion";
 
 type GameTab = "recent" | "all" | "perfect" | "unfinished";
 type GameSort = "lastPlayed" | "playtime" | "name" | "completion";
@@ -80,6 +84,17 @@ const ACHIEVEMENT_INVENTORY_PROVIDERS: ProviderMerger[] = [
   mergeGamePassCatalog,
 ];
 
+const ACHIEVEMENT_ARCHIVE_REFRESH_TIMEOUT_MS = 15_000;
+
+function startAchievementArchiveRefreshWatchdog(operationLabel: string, onTimeout: () => void) {
+  return globalThis.setTimeout(() => {
+    console.warn(
+      `[OG-Launcher] ${operationLabel} is still running after ${ACHIEVEMENT_ARCHIVE_REFRESH_TIMEOUT_MS / 1_000} seconds; hiding the busy indicator while local archive data remains available.`,
+    );
+    onTimeout();
+  }, ACHIEVEMENT_ARCHIVE_REFRESH_TIMEOUT_MS);
+}
+
 function parseTime(value?: string | null): number {
   if (!value) return Number.NEGATIVE_INFINITY;
   const parsed = Date.parse(value);
@@ -106,7 +121,7 @@ function buildRow(group: GameGroup): GameAchievementRow {
   const unlocked =
     achievementSummary?.unlocked ??
     completionAchievements.filter((achievement) => achievement.unlockedAt).length;
-  const completion = total > 0 ? Math.round((unlocked / total) * 100) : 0;
+  const completion = calculateSteamGameCompletionPercent({ total, unlocked });
   const isPerfect = achievementSummary
     ? achievementSummary.isPerfect && unlocked >= total
     : total > 0 && unlocked === total;
@@ -418,6 +433,7 @@ export function AchievementsPage() {
 
   useEffect(() => {
     let mounted = true;
+    let providerRefreshWatchdog: ReturnType<typeof globalThis.setTimeout> | null = null;
     setLocalGames(null);
     setGames([]);
     setError(null);
@@ -470,6 +486,12 @@ export function AchievementsPage() {
 
         if (!shouldSkipRemoteHydration && hasPendingAchievementArchiveSync(allGames) && mounted) {
           setIsProviderSyncing(true);
+          providerRefreshWatchdog = startAchievementArchiveRefreshWatchdog(
+            "Provider achievement refresh",
+            () => {
+              if (mounted) setIsProviderSyncing(false);
+            },
+          );
           void syncAchievementArchiveGames(allGames)
             .then((syncedGames) => {
               if (mounted) {
@@ -486,6 +508,10 @@ export function AchievementsPage() {
               }
             })
             .finally(() => {
+              if (providerRefreshWatchdog !== null) {
+                globalThis.clearTimeout(providerRefreshWatchdog);
+                providerRefreshWatchdog = null;
+              }
               if (mounted) setIsProviderSyncing(false);
             });
         }
@@ -497,6 +523,9 @@ export function AchievementsPage() {
     })();
     return () => {
       mounted = false;
+      if (providerRefreshWatchdog !== null) {
+        globalThis.clearTimeout(providerRefreshWatchdog);
+      }
     };
   }, [loadAttempt, shouldSkipRemoteHydration]);
 
@@ -516,6 +545,12 @@ export function AchievementsPage() {
     let mounted = true;
     setHydrationWarning(null);
     setIsHydrating(true);
+    const hydrationRefreshWatchdog = startAchievementArchiveRefreshWatchdog(
+      "Cloud achievement refresh",
+      () => {
+        if (mounted) setIsHydrating(false);
+      },
+    );
     void hydrateGamesWithRemoteAchievements(localGames, {
       onError: () => {
         if (mounted) {
@@ -531,13 +566,20 @@ export function AchievementsPage() {
       })
       .catch((err) => {
         console.warn("[OG-Launcher] Remote achievement hydration skipped:", err);
+        if (mounted) {
+          setHydrationWarning(
+            "Cloud achievements could not be refreshed. Showing the latest local archive data.",
+          );
+        }
       })
       .finally(() => {
+        globalThis.clearTimeout(hydrationRefreshWatchdog);
         if (mounted) setIsHydrating(false);
       });
 
     return () => {
       mounted = false;
+      globalThis.clearTimeout(hydrationRefreshWatchdog);
     };
   }, [isAuthLoading, localGames, shouldSkipRemoteHydration, user?.id]);
 
@@ -561,7 +603,7 @@ export function AchievementsPage() {
     const total = rows.reduce((sum, row) => sum + row.total, 0);
     const unlocked = rows.reduce((sum, row) => sum + row.unlocked, 0);
     const perfect = rows.filter((row) => row.isPerfect).length;
-    const pct = total > 0 ? Math.round((unlocked / total) * 100) : 0;
+    const pct = calculateSteamAverageGameCompletionRate(rows);
     return { total, unlocked, perfect, pct };
   }, [rows]);
 
@@ -674,7 +716,7 @@ export function AchievementsPage() {
             <StatCard label="Total" value={stats.total} tone="paper" />
             <StatCard label="Unlocked" value={stats.unlocked} tone="teal" />
             <StatCard label="Perfect" value={stats.perfect} tone="red" />
-            <StatCard label="Complete" value={`${stats.pct}%`} tone="ink" />
+            <StatCard label="Avg. Complete" value={`${stats.pct}%`} tone="ink" />
           </div>
         </div>
 

@@ -41,11 +41,6 @@ hardware proof still follows the external completion gates:
 - **Activity interactions**: Feed visibility is checked server-side for reads
   and writes; reactions/comments use owner-bound RPCs and RLS, with deletion
   restricted to the author or owning activity where applicable.
-- **Mod providers**: The active surface is limited to an official no-slug Nexus
-  website handoff and Steam client handoff. Optional registered Nexus native
-  support stores user credentials only in the OS keychain; provider credentials
-  and app secrets must not be accepted through browser storage or committed
-  config. No-slug builds do not register or capture `nxm://` links.
 
 ## Best practices for contributors
 

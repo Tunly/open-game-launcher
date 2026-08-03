@@ -34,6 +34,26 @@ type AchievementProviderSyncFailure = {
 export type AchievementProviderSyncOutcome =
   AchievementProviderSyncSuccess | AchievementProviderSyncFailure;
 
+const ACHIEVEMENT_PROVIDER_SYNC_TIMEOUT_MS = 60_000;
+
+function syncProviderWithTimeout(game: Game, provider: AchievementProvider) {
+  const providerSync = Promise.resolve().then(() => provider.sync(game));
+  let timeoutId: ReturnType<typeof globalThis.setTimeout> | null = null;
+  const timeout = new Promise<never>((_resolve, reject) => {
+    timeoutId = globalThis.setTimeout(() => {
+      reject(
+        new Error(
+          `${getAchievementProviderDisplayName(provider.provider)} achievement sync timed out after ${ACHIEVEMENT_PROVIDER_SYNC_TIMEOUT_MS / 1_000} seconds.`,
+        ),
+      );
+    }, ACHIEVEMENT_PROVIDER_SYNC_TIMEOUT_MS);
+  });
+
+  return Promise.race([providerSync, timeout]).finally(() => {
+    if (timeoutId !== null) globalThis.clearTimeout(timeoutId);
+  });
+}
+
 function normalizeSource(source: string) {
   return source
     .trim()
@@ -118,7 +138,7 @@ export function syncAchievementProviderGame(
     provider: provider.provider,
     sync: async () => {
       try {
-        const response = await provider.sync(game);
+        const response = await syncProviderWithTimeout(game, provider);
         validateProviderResponse(game, provider, response);
         const status: GameAchievementProviderStatus = {
           message: response.message,

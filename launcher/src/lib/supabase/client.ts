@@ -1,5 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
-import type { User, UserResponse } from "@supabase/supabase-js";
+import type { UserResponse } from "@supabase/supabase-js";
 import type { Database } from "./database.types";
 import { supabaseAnonKey, supabaseConfigError, supabaseUrl } from "./config";
 
@@ -10,61 +10,58 @@ function createSupabaseClient() {
     return null;
   }
 
-  const client = createClient<Database>(supabaseUrl, supabaseAnonKey, {
+  return createClient<Database>(supabaseUrl, supabaseAnonKey, {
     auth: {
       autoRefreshToken: true,
       detectSessionInUrl: true,
       persistSession: true,
     },
   });
-
-  const requestUser = client.auth.getUser.bind(client.auth);
-  client.auth.getUser = ((jwt?: string) =>
-    jwt ? requestUser(jwt) : getCachedAuthUserResponse(requestUser)) as typeof client.auth.getUser;
-
-  return client;
 }
 
 export const supabase = createSupabaseClient();
 
-const authUserCacheTtlMs = 30 * 60_000;
-let authUserCache: { expiresAt: number; user: User } | null = null;
-let authUserRequest: Promise<UserResponse> | null = null;
+type AuthUserRequest = {
+  generation: number;
+  promise: Promise<UserResponse>;
+};
 
-function isFresh(expiresAt: number) {
-  return expiresAt > Date.now();
-}
+let authGeneration = 0;
+let authUserRequest: AuthUserRequest | null = null;
 
 export function clearSupabaseAuthCache() {
-  authUserCache = null;
+  authGeneration += 1;
   authUserRequest = null;
 }
 
-async function getCachedAuthUserResponse(
+async function getCurrentAuthUserResponse(
   requestUser: (jwt?: string) => Promise<UserResponse>,
 ): Promise<UserResponse> {
-  if (authUserCache && isFresh(authUserCache.expiresAt)) {
-    return { data: { user: authUserCache.user }, error: null };
-  }
-
-  if (authUserRequest) {
-    return authUserRequest;
-  }
-
-  authUserRequest = requestUser().then((response) => {
-    if (!response.error) {
-      authUserCache = {
-        expiresAt: Date.now() + authUserCacheTtlMs,
-        user: response.data.user,
+  while (true) {
+    const generation = authGeneration;
+    let request = authUserRequest;
+    if (!request || request.generation !== generation) {
+      request = {
+        generation,
+        promise: requestUser(),
       };
+      authUserRequest = request;
     }
-    return response;
-  });
 
-  try {
-    return await authUserRequest;
-  } finally {
-    authUserRequest = null;
+    try {
+      const response = await request.promise;
+      if (generation === authGeneration) {
+        return response;
+      }
+    } catch (error) {
+      if (generation === authGeneration) {
+        throw error;
+      }
+    } finally {
+      if (authUserRequest === request) {
+        authUserRequest = null;
+      }
+    }
   }
 }
 
@@ -78,7 +75,7 @@ export function getSupabaseClient() {
 
 export async function getCurrentSupabaseUser() {
   const client = getSupabaseClient();
-  const { data, error } = await client.auth.getUser();
+  const { data, error } = await getCurrentAuthUserResponse(client.auth.getUser.bind(client.auth));
   if (error) {
     throw new Error(error.message);
   }

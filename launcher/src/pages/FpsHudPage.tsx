@@ -14,6 +14,8 @@ import { createBrowserPreviewMetrics } from "../lib/performance-preview";
 import type { RealtimeMetrics } from "../lib/types/performance";
 import type { NativeOverlaySettings } from "../lib/types/overlay";
 
+export const FRAME_REPORT_INTERVAL_MS = 1_000;
+
 export function FpsHudPage() {
   const [metrics, setMetrics] = useState<RealtimeMetrics | null>(null);
   const [isBrowserPreview, setIsBrowserPreview] = useState(() => !isTauri());
@@ -103,8 +105,20 @@ export function FpsHudPage() {
     tick();
     const iv = setInterval(tick, ACTIVE_GAME_PERFORMANCE_POLL_INTERVAL_MS);
 
-    const reportLoop = () => {
-      invoke("report_frame_rendered").catch(() => {});
+    let frameCount = 0;
+    let reportWindowStartedAt: number | null = null;
+    const reportLoop: FrameRequestCallback = (timestamp) => {
+      if (reportWindowStartedAt === null) {
+        reportWindowStartedAt = timestamp;
+      } else {
+        frameCount += 1;
+        const elapsedMs = timestamp - reportWindowStartedAt;
+        if (elapsedMs >= FRAME_REPORT_INTERVAL_MS) {
+          void invoke("report_frame_rendered", { elapsedMs, frameCount }).catch(() => {});
+          frameCount = 0;
+          reportWindowStartedAt = timestamp;
+        }
+      }
       rafRef.current = requestAnimationFrame(reportLoop);
     };
     if (runsInTauri) {

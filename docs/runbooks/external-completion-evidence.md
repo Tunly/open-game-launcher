@@ -187,14 +187,9 @@ Artifact:
 
 - [`docs/verification/external/provider-live-integrations.md`](../verification/external/provider-live-integrations.md)
 
-Proof covers Nexus website search handoff and Steam Workshop handoff against live
-providers, non-Steam presence bridges, approved catalog/cloud transfers and
+Proof covers non-Steam presence bridges, approved catalog/cloud transfers and
 achievement/provider-cache E2E against real client data. The provider/client
-matrix must name both `Nexus` and `Steam Workshop`.
-
-Use `open_provider_mod` for the no-slug Nexus website search handoff and for a
-verified Steam AppID. Copy only redacted run and provider locators. A separately
-registered native Nexus build is optional and is not a release prerequisite.
+matrix must name `matrix`, `provider`, and `client`.
 
 For the bridge lane, deploy `poll-platform-presence` with the Supabase service
 configuration, scheduler secret, `PRESENCE_PROVIDER_TOKEN`, and
