@@ -227,12 +227,11 @@ export async function buildExportPayload(
     legacyModIds,
     warnings,
   );
-  const modVersionIds = pluckIds(modVersions);
   data.mod_versions = modVersions;
   data.mod_files = await deps.readRowsIn(
     "mod_files",
     "mod_version_id",
-    modVersionIds,
+    pluckIds(modVersions),
     warnings,
   );
   data.mod_dependencies = await deps.readRowsIn(
