@@ -225,7 +225,7 @@ export async function buildExportPayload(
   const modVersions = await deps.readRowsIn(
     "mod_versions",
     "mod_id",
-    legacyModIds,
+    modReadIds ?? [],
     warnings,
   );
   const modVersionIds = pluckIds(modVersions);
@@ -239,7 +239,7 @@ export async function buildExportPayload(
   data.mod_dependencies = await deps.readRowsIn(
     "mod_dependencies",
     "mod_id",
-    legacyModIds,
+    modReadIds ?? [],
     warnings,
   );
   data.__warnings = warnings;
