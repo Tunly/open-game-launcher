@@ -224,19 +224,17 @@ export async function buildExportPayload(
   const modVersions = await deps.readRowsIn(
     "mod_versions",
     "mod_id",
-    legacyModIds,
+    legacyMods.length > 0 ? legacyModIds : [],
     warnings,
   );
   const modVersionIds = legacyMods.length > 0 ? pluckIds(modVersions) : [];
-  data.mod_versions = legacyMods.length === 0 ? [] : modVersions;
-  data.mod_files = legacyMods.length === 0
-    ? []
-    : await deps.readRowsIn(
-        "mod_files",
-        "mod_version_id",
-        modVersionIds,
-        warnings,
-      );
+  data.mod_versions = modVersions;
+  data.mod_files = await deps.readRowsIn(
+    "mod_files",
+    "mod_version_id",
+    modVersionIds,
+    warnings,
+  );
   data.mod_dependencies = await deps.readRowsIn(
     "mod_dependencies",
     "mod_id",
