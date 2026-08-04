@@ -239,7 +239,7 @@ export async function buildExportPayload(
   data.mod_dependencies = await deps.readRowsIn(
     "mod_dependencies",
     "mod_id",
-    legacyModIds,
+    modReadIds,
     warnings,
   );
   data.__warnings = warnings;
