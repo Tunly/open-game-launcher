@@ -220,7 +220,7 @@ export async function buildExportPayload(
   );
 
   const legacyMods = Array.isArray(data.mods) ? data.mods as JsonObject[] : [];
-  const legacyModIds = pluckIds(legacyMods);
+  const legacyModIds = legacyMods.length > 0 ? pluckIds(legacyMods) : [];
   const modVersions = await deps.readRowsIn(
     "mod_versions",
     "mod_id",
