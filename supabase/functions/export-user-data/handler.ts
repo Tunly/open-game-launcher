@@ -229,7 +229,7 @@ export async function buildExportPayload(
     warnings,
   );
   const modVersionIds = legacyMods.length > 0 ? pluckIds(modVersions) : [];
-  data.mod_versions = modReadIds === null ? [] : modVersions;
+  data.mod_versions = legacyMods.length > 0 ? modVersions : [];
   data.mod_files = modReadIds === null
     ? []
     : await deps.readRowsIn(
