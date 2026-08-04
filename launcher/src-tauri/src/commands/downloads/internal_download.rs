@@ -5,15 +5,16 @@ use futures_util::StreamExt;
 use reqwest::header::{HeaderMap, HeaderValue, RANGE};
 use tokio::sync::watch;
 
+use crate::commands::downloads::remote_security::{
+    parse_and_validate_remote_url, send_validated_remote_request_with_headers,
+};
+use crate::commands::downloads::settings::get_download_settings;
 use crate::commands::downloads::types::{
     cancellable_sleep, emit_download_progress, redact_download_error_message,
     update_download_metrics, update_download_status, InternalDownloadSource,
 };
 use crate::commands::downloads::utils::{
     calculate_active_progress, download_file_name, sanitize_download_file_name, verify_sha256,
-};
-use crate::commands::downloads::remote_security::{
-    parse_and_validate_remote_url, send_validated_remote_request_with_headers,
 };
 
 const MAX_INTERNAL_DOWNLOAD_BYTES: u64 = 64 * 1024 * 1024 * 1024;
@@ -239,6 +240,13 @@ async fn download_internal_game_file_once(
     let mut downloaded = offset;
     let mut bytes_since_last_update = 0u64;
     let mut last_update = Instant::now();
+    let settings = get_download_settings()?;
+    let bandwidth_limit_bytes = settings
+        .bandwidth_limit_kbps
+        .map(u64::from)
+        .map(|kbps| kbps.saturating_mul(1024));
+    let mut throttle_window_started = Instant::now();
+    let mut throttle_window_bytes = 0u64;
 
     let mut file = tokio::fs::OpenOptions::new()
         .create(true)
@@ -315,6 +323,19 @@ async fn download_internal_game_file_once(
 
         downloaded = next_downloaded;
         bytes_since_last_update = bytes_since_last_update.saturating_add(chunk.len() as u64);
+        if let Some(limit_bytes) = bandwidth_limit_bytes {
+            throttle_window_bytes = throttle_window_bytes.saturating_add(chunk.len() as u64);
+            let elapsed = throttle_window_started.elapsed();
+            let expected =
+                Duration::from_secs_f64(throttle_window_bytes as f64 / limit_bytes as f64);
+            if expected > elapsed {
+                tokio::time::sleep(expected - elapsed).await;
+            }
+            if throttle_window_started.elapsed() >= Duration::from_secs(1) {
+                throttle_window_started = Instant::now();
+                throttle_window_bytes = 0;
+            }
+        }
 
         let elapsed_ms = last_update.elapsed().as_millis();
         if elapsed_ms >= 300 {

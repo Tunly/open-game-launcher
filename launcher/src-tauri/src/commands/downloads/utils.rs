@@ -96,6 +96,16 @@ pub(crate) fn download_lookup_keys(game_id: &str) -> Vec<String> {
 }
 
 pub(crate) fn default_install_dir(game_id: &str) -> Option<PathBuf> {
+    let settings = crate::commands::downloads::settings::get_download_settings().ok();
+    if let Some(root) = settings
+        .as_ref()
+        .and_then(|settings| settings.install_root.as_ref())
+    {
+        let root_path = PathBuf::from(root);
+        if root_path.is_absolute() {
+            return Some(root_path.join(game_id));
+        }
+    }
     dirs::data_local_dir()
         .or_else(dirs::data_dir)
         .map(|dir| dir.join("open-game-launcher").join("games").join(game_id))

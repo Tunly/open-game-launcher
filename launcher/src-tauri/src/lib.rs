@@ -294,6 +294,8 @@ pub fn run() {
             commands::downloads::get_download_queue,
             commands::downloads::check_provider_health,
             commands::downloads::reconcile_downloads,
+            commands::downloads::get_download_settings_command,
+            commands::downloads::save_download_settings_command,
             commands::local_db::apply_remote_local_entities,
             commands::local_db::get_all_local_entities,
             commands::local_db::get_local_database_path,

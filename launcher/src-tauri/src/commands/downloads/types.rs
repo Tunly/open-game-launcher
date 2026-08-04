@@ -30,6 +30,7 @@ pub enum DownloadStartStatus {
     Started,
     AlreadyQueued,
     AlreadyInstalled,
+    ConcurrencyLimitReached,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

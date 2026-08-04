@@ -2,7 +2,7 @@ import { act, fireEvent, render, screen, waitFor } from "@testing-library/react"
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { DownloadItem } from "../lib/types";
+import type { DownloadItem, Game } from "../lib/types";
 import { STORAGE_KEYS } from "../lib/storage-keys";
 import { useDownloadStore } from "../stores/downloadStore";
 
@@ -14,8 +14,23 @@ const launcherMocks = vi.hoisted(() => ({
   cancelDownload: vi.fn(() => Promise.resolve()),
   getDownloadQueue: vi.fn(() => Promise.resolve([])),
   launchGame: vi.fn(() => Promise.resolve()),
-  listInstalledGames: vi.fn(() => Promise.resolve([])),
+  listInstalledGames: vi.fn<() => Promise<Game[]>>(() => Promise.resolve([])),
   pauseDownload: vi.fn(() => Promise.resolve()),
+  checkProviderHealth: vi.fn(() => Promise.resolve([])),
+  reconcileDownloads: vi.fn(() =>
+    Promise.resolve({ installedRemoved: [], activeRestored: [], staleCleaned: [], errors: [] }),
+  ),
+  getDownloadSettings: vi.fn(() =>
+    Promise.resolve({ bandwidthLimitKbps: null, maxConcurrentDownloads: 3, installRoot: null }),
+  ),
+  saveDownloadSettings: vi.fn(
+    (settings: {
+      bandwidthLimitKbps: number | null;
+      maxConcurrentDownloads: number;
+      installRoot: string | null;
+    }) => Promise.resolve(settings),
+  ),
+  startDownload: vi.fn(() => Promise.resolve({ status: "started" })),
 }));
 vi.mock("../lib/launcher", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../lib/launcher")>();
@@ -27,6 +42,11 @@ vi.mock("../lib/launcher", async (importOriginal) => {
     launchGame: launcherMocks.launchGame,
     listInstalledGames: launcherMocks.listInstalledGames,
     pauseDownload: launcherMocks.pauseDownload,
+    checkProviderHealth: launcherMocks.checkProviderHealth,
+    reconcileDownloads: launcherMocks.reconcileDownloads,
+    getDownloadSettings: launcherMocks.getDownloadSettings,
+    saveDownloadSettings: launcherMocks.saveDownloadSettings,
+    startDownload: launcherMocks.startDownload,
   };
 });
 
@@ -68,6 +88,25 @@ beforeEach(() => {
   launcherMocks.listInstalledGames.mockResolvedValue([]);
   launcherMocks.pauseDownload.mockReset();
   launcherMocks.pauseDownload.mockResolvedValue(undefined);
+  launcherMocks.checkProviderHealth.mockReset();
+  launcherMocks.checkProviderHealth.mockResolvedValue([]);
+  launcherMocks.reconcileDownloads.mockReset();
+  launcherMocks.reconcileDownloads.mockResolvedValue({
+    installedRemoved: [],
+    activeRestored: [],
+    staleCleaned: [],
+    errors: [],
+  });
+  launcherMocks.getDownloadSettings.mockReset();
+  launcherMocks.getDownloadSettings.mockResolvedValue({
+    bandwidthLimitKbps: null,
+    maxConcurrentDownloads: 3,
+    installRoot: null,
+  });
+  launcherMocks.saveDownloadSettings.mockReset();
+  launcherMocks.saveDownloadSettings.mockImplementation((settings) => Promise.resolve(settings));
+  launcherMocks.startDownload.mockReset();
+  launcherMocks.startDownload.mockResolvedValue({ status: "started" });
   useDownloadStore.setState({ items: [] });
 });
 
@@ -85,7 +124,8 @@ describe("DownloadsPage", () => {
     renderDownloadsRoute("/downloads?verify=removed-download-source");
 
     expect(await screen.findByRole("heading", { level: 1, name: "Downloads" })).toBeInTheDocument();
-    expect(await screen.findByText("There are no downloads in the queue")).toBeInTheDocument();
+    expect(await screen.findByText("Queue clear")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Open Library" })).toBeInTheDocument();
     expect(launcherMocks.getDownloadQueue).not.toHaveBeenCalled();
     expect(screen.queryByText(/Total Progress/i)).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "All" })).not.toBeInTheDocument();
@@ -284,7 +324,7 @@ describe("DownloadsPage", () => {
     renderDownloadsRoute("/downloads");
 
     expect(await screen.findByRole("heading", { level: 1, name: "Downloads" })).toBeInTheDocument();
-    expect(screen.getByText("There are no downloads in the queue")).toBeInTheDocument();
+    expect(screen.getByText("Queue clear")).toBeInTheDocument();
   });
 
   it("reports partial clear-all failures and keeps failed items visible", async () => {
@@ -316,5 +356,100 @@ describe("DownloadsPage", () => {
     expect(
       screen.getByRole("heading", { level: 3, name: "Retained Download" }),
     ).toBeInTheDocument();
+  });
+
+  it("retries a failed download with its library source metadata", async () => {
+    launcherMocks.listInstalledGames.mockResolvedValue([
+      {
+        id: "failed-game",
+        title: "Retry Candidate",
+        description: "",
+        version: "1",
+        status: "not_installed",
+        platform: "windows",
+        downloadUrl: "https://cdn.example.test/game.zip",
+        downloadSha256: "abc123",
+      } as Game,
+    ]);
+    useDownloadStore.setState({
+      items: [
+        makeDownloadItem({
+          gameId: "failed-game",
+          id: "download-failed-game",
+          status: "failed",
+          title: "Retry Candidate",
+          error: "Network error",
+        }),
+      ],
+    });
+
+    renderDownloadsRoute("/downloads");
+    fireEvent.click(await screen.findByRole("button", { name: "Retry" }));
+
+    await waitFor(() => {
+      expect(launcherMocks.startDownload).toHaveBeenCalledWith(
+        "failed-game",
+        "Retry Candidate",
+        "https://cdn.example.test/game.zip",
+        "abc123",
+      );
+    });
+  });
+
+  it("runs queue reconciliation from the downloads header", async () => {
+    renderDownloadsRoute("/downloads");
+
+    fireEvent.click(await screen.findByRole("button", { name: "Refresh download state" }));
+
+    await waitFor(() => {
+      expect(launcherMocks.reconcileDownloads).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  it("opens and closes the download settings panel", async () => {
+    renderDownloadsRoute("/downloads");
+
+    const settingsToggle = await screen.findByRole("button", { name: "Download settings" });
+    expect(settingsToggle).toHaveAttribute("aria-expanded", "false");
+    expect(
+      screen.queryByRole("region", { name: "Download settings panel" }),
+    ).not.toBeInTheDocument();
+
+    fireEvent.click(settingsToggle);
+    expect(
+      await screen.findByRole("region", { name: "Download settings panel" }),
+    ).toBeInTheDocument();
+    expect(settingsToggle).toHaveAttribute("aria-expanded", "true");
+
+    fireEvent.click(settingsToggle);
+    expect(
+      screen.queryByRole("region", { name: "Download settings panel" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("saves the folder, bandwidth, and parallel downloads together", async () => {
+    renderDownloadsRoute("/downloads");
+    fireEvent.click(await screen.findByRole("button", { name: "Download settings" }));
+    await screen.findByRole("region", { name: "Download settings panel" });
+
+    fireEvent.change(screen.getByRole("textbox", { name: "Install folder" }), {
+      target: { value: "D:\\Games" },
+    });
+    fireEvent.change(screen.getByRole("combobox", { name: "Bandwidth limit" }), {
+      target: { value: "1024" },
+    });
+    fireEvent.change(screen.getByRole("combobox", { name: "Parallel downloads" }), {
+      target: { value: "2" },
+    });
+
+    fireEvent.click(screen.getByRole("button", { name: "Save settings" }));
+
+    await waitFor(() => {
+      expect(launcherMocks.saveDownloadSettings).toHaveBeenCalledWith({
+        bandwidthLimitKbps: 1024,
+        maxConcurrentDownloads: 2,
+        installRoot: "D:\\Games",
+      });
+    });
   });
 });

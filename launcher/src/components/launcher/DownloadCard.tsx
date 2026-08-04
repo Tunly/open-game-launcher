@@ -1,4 +1,4 @@
-import { Pause, Play, RotateCcw, X } from "lucide-react";
+import { Pause, Play, RotateCcw, RotateCw, X } from "lucide-react";
 import { memo, useState } from "react";
 
 import type { DownloadItem, DownloadStatus, Game } from "../../lib/types";
@@ -10,12 +10,13 @@ interface DownloadCardProps {
   index?: number;
   item: DownloadItem;
   game?: Game;
-  pendingAction?: "pause" | "cancel" | "archive" | "launch" | "clear";
+  pendingAction?: "pause" | "cancel" | "archive" | "launch" | "clear" | "retry";
   debugMode?: boolean;
   onArchive: (id: string) => void | Promise<void>;
   onCancel: (id: string) => void;
   onPauseToggle: (id: string) => void;
   onLaunch?: (gameId: string) => void | Promise<void>;
+  onRetry?: (id: string) => void | Promise<void>;
 }
 
 const statusLabel: Record<DownloadStatus, string> = {
@@ -68,6 +69,7 @@ function DownloadCardComponent({
   onCancel,
   onPauseToggle,
   onLaunch,
+  onRetry,
 }: DownloadCardProps) {
   const isTerminal = isTerminalDownloadItem(item);
   const commandPending = Boolean(pendingAction);
@@ -100,6 +102,7 @@ function DownloadCardComponent({
   const phaseLabel = item.phase ? ` · ${item.phase}` : "";
   const byteLabel = formatByteProgress(item);
   const speedLabel = formatTransferRateLabel(item.speed);
+  const etaLabel = formatEta(item.eta);
   const displayProgress = Number.isFinite(item.progress)
     ? Math.min(100, Math.max(0, item.progress))
     : 0;
@@ -178,6 +181,7 @@ function DownloadCardComponent({
             </span>
             <span className="neo-copy text-[10px] font-bold text-[#5b403f] uppercase">
               {byteLabel ? `${speedLabel} · ${byteLabel}` : speedLabel}
+              {etaLabel ? ` · ETA ${etaLabel}` : ""}
             </span>
           </div>
         </div>
@@ -198,6 +202,22 @@ function DownloadCardComponent({
             >
               <Play className="h-3.5 w-3.5 fill-current" />
               {pendingAction === "launch" ? "Launching..." : "Play"}
+            </button>
+          ) : null}
+
+          {isTerminal && (item.status === "failed" || item.status === "error") && onRetry ? (
+            <button
+              disabled={commandPending}
+              onClick={() => void onRetry(item.id)}
+              className={`neo-copy flex items-center justify-center gap-1.5 border-2 border-black px-3 py-2 text-xs font-bold uppercase ${
+                commandPending
+                  ? "cursor-not-allowed bg-[#efe6d4] text-[#55504a]"
+                  : "bg-[#087d6d] text-white shadow-[2px_2px_0_#171411] hover:bg-[#087d6d]/90 active:translate-x-[1px] active:translate-y-[1px] active:shadow-[1px_1px_0_#171411]"
+              }`}
+              type="button"
+            >
+              <RotateCw className="h-3.5 w-3.5" />
+              {pendingAction === "retry" ? "Retrying..." : "Retry"}
             </button>
           ) : null}
 
@@ -300,4 +320,15 @@ function formatBytes(bytes: number) {
 
   const mb = bytes / 1024 / 1024;
   return `${mb.toFixed(mb >= 10 ? 0 : 1)} MB`;
+}
+
+function formatEta(eta: number | undefined) {
+  if (!eta || !Number.isFinite(eta) || eta <= 0 || eta >= 999) return "";
+  const totalSeconds = Math.round(eta);
+  if (totalSeconds < 60) return `${totalSeconds}s`;
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  if (minutes < 60) return `${minutes}m ${seconds}s`;
+  const hours = Math.floor(minutes / 60);
+  return `${hours}h ${minutes % 60}m`;
 }

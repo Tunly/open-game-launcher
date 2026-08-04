@@ -2,6 +2,7 @@ use tauri::AppHandle;
 use tauri::Emitter;
 
 use crate::commands::downloads::history::{remember_download_item, remove_download_history_item};
+use crate::commands::downloads::reconcile::clean_removed_steam_history;
 use crate::commands::downloads::steam_state::{
     calculate_steam_progress, extract_vdf_string, parse_steam_download_state, steam_phase,
     steam_progress_bytes, steam_status_label,
@@ -17,6 +18,11 @@ use crate::commands::downloads::utils::get_dir_size;
 pub fn start_global_download_watcher(app: AppHandle) {
     tauri::async_runtime::spawn(async move {
         loop {
+            // A game removed in Steam loses its app manifest. Drop terminal
+            // download entries for such games so they do not linger in the
+            // Downloads tab.
+            let _ = clean_removed_steam_history();
+
             if let Some(steam_path) = crate::commands::games::detect::find_steam_dir() {
                 let mut folders = vec![steam_path.clone()];
                 let libraries =

@@ -156,6 +156,25 @@ async fn start_download_lifecycle(
         });
     }
 
+    // Only internal downloads run through the launcher's own transfer engine.
+    // External launcher trackers (Steam, Epic, ...) download inside their own
+    // platform client, so they are not counted against the parallel limit.
+    if matches!(&lifecycle, DownloadLifecycle::Internal { .. }) {
+        let settings = crate::commands::downloads::settings::get_download_settings()?;
+        let active_internal_count = guard.values().filter(|active| !active.external).count();
+        if active_internal_count >= settings.max_concurrent_downloads as usize {
+            return Ok(StartDownloadResponse {
+                game_id: game_id.clone(),
+                download_id: download_id.clone(),
+                status: DownloadStartStatus::ConcurrencyLimitReached,
+                message: format!(
+                    "Maximum of {} parallel downloads reached. Pause or wait for an active download before starting another.",
+                    settings.max_concurrent_downloads
+                ),
+            });
+        }
+    }
+
     let (pause_tx, pause_rx) = watch::channel(false);
     let (cancel_tx, cancel_rx) = watch::channel(false);
     let worker_generation = next_download_worker_generation();

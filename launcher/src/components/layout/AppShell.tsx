@@ -646,7 +646,7 @@ export function AppShell({
                     aria-expanded={isProfileMenuOpen}
                     aria-haspopup="menu"
                     aria-label="Open profile menu"
-                    className="app-shell-surface app-shell-dim-hover flex h-12 items-center gap-2 border-[3px] border-black p-1 shadow-[3px_3px_0_#1f1c0f] transition hover:-translate-y-0.5"
+                    className="app-shell-surface app-shell-dim-hover flex h-12 items-center gap-2 border-[3px] border-black p-1 transition hover:-translate-y-0.5"
                     disabled={isAuthLoading || !isAuthConfigured}
                     type="button"
                     onClick={() => {
@@ -735,7 +735,7 @@ function TopIconButton({
       aria-expanded={ariaExpanded}
       aria-haspopup={ariaHasPopup}
       aria-label={label}
-      className="app-shell-surface app-shell-highlight-hover relative flex h-12 w-12 items-center justify-center border-[3px] border-black shadow-[3px_3px_0_#1f1c0f] transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-45"
+      className="app-shell-surface app-shell-highlight-hover relative flex h-12 w-12 items-center justify-center border-[3px] border-black transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-45"
       disabled={disabled}
       type="button"
       onClick={onClick}

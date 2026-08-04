@@ -56,3 +56,17 @@ export function checkProviderHealth(): Promise<ProviderHealthStatus[]> {
 export function reconcileDownloads(): Promise<ReconciliationResult> {
   return invokeCommand<ReconciliationResult>("reconcile_downloads");
 }
+
+export interface DownloadSettings {
+  bandwidthLimitKbps: number | null;
+  maxConcurrentDownloads: number;
+  installRoot: string | null;
+}
+
+export function getDownloadSettings(): Promise<DownloadSettings> {
+  return invokeCommand<DownloadSettings>("get_download_settings_command");
+}
+
+export function saveDownloadSettings(settings: DownloadSettings): Promise<DownloadSettings> {
+  return invokeCommand<DownloadSettings>("save_download_settings_command", { settings });
+}

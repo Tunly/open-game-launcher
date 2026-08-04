@@ -10,6 +10,7 @@ mod lifecycle;
 mod queue;
 mod reconcile;
 mod remote_security;
+mod settings;
 mod start;
 mod steam_cef;
 mod steam_state;
@@ -19,6 +20,7 @@ mod watcher;
 
 pub use health::ProviderHealthStatus;
 pub use reconcile::ReconciliationResult;
+pub use settings::DownloadSettings;
 pub(crate) use types::{clear_download_suppression, suppress_download_emissions};
 pub use types::{DownloadItemPayload, DownloadStartStatus, StartDownloadResponse};
 pub(crate) use utils::normalize_game_id as normalize_download_game_id;
@@ -94,4 +96,16 @@ pub fn check_provider_health() -> Result<Vec<ProviderHealthStatus>, String> {
 #[tauri::command]
 pub fn reconcile_downloads(app: tauri::AppHandle) -> Result<ReconciliationResult, String> {
     reconcile::reconcile_downloads(app)
+}
+
+#[tauri::command]
+pub fn get_download_settings_command() -> Result<DownloadSettings, String> {
+    settings::get_download_settings()
+}
+
+#[tauri::command]
+pub fn save_download_settings_command(
+    settings: DownloadSettings,
+) -> Result<DownloadSettings, String> {
+    settings::save_download_settings(settings)
 }

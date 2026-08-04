@@ -1,4 +1,4 @@
-import { Settings, Trash2 } from "lucide-react";
+import { Settings, Trash2, RefreshCw, Gauge } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -12,6 +12,10 @@ import {
   pauseDownload,
   listInstalledGames,
   launchGame,
+  startDownload,
+  reconcileDownloads,
+  getDownloadSettings,
+  saveDownloadSettings,
 } from "../lib/launcher";
 import { getErrorMessage } from "../lib/formatters";
 import { useDebugMode } from "../hooks/useDebugMode";
@@ -27,7 +31,7 @@ interface DownloadCommandError {
   message: string;
 }
 
-type PendingDownloadCommand = "pause" | "cancel" | "archive" | "launch" | "clear";
+type PendingDownloadCommand = "pause" | "cancel" | "archive" | "launch" | "clear" | "retry";
 
 // Parse download speed string into numerical bytes/sec
 function parseSpeedToBytes(speedStr: string): number {
@@ -82,6 +86,12 @@ export function DownloadsPage() {
     () => new Map(),
   );
   const [isClearingCompleted, setIsClearingCompleted] = useState(false);
+  const [isReconciling, setIsReconciling] = useState(false);
+  const [settingsPanelOpen, setSettingsPanelOpen] = useState(false);
+  const [bandwidthLimitKbps, setBandwidthLimitKbps] = useState<number | null>(null);
+  const [maxConcurrentDownloads, setMaxConcurrentDownloads] = useState(3);
+  const [installRootInput, setInstallRootInput] = useState("");
+  const [isSavingSettings, setIsSavingSettings] = useState(false);
   const [debugMode] = useDebugMode();
   const navigate = useNavigate();
 
@@ -111,6 +121,16 @@ export function DownloadsPage() {
     return () => {
       active = false;
     };
+  }, []);
+
+  useEffect(() => {
+    void getDownloadSettings()
+      .then((settings) => {
+        setBandwidthLimitKbps(settings.bandwidthLimitKbps);
+        setMaxConcurrentDownloads(settings.maxConcurrentDownloads);
+        setInstallRootInput(settings.installRoot ?? "");
+      })
+      .catch(() => undefined);
   }, []);
 
   useEffect(() => {
@@ -280,6 +300,65 @@ export function DownloadsPage() {
     [beginGameCommand, finishGameCommand],
   );
 
+  const handleRetry = useCallback(
+    async (id: string) => {
+      const item = itemsRef.current.find((x) => x.id === id);
+      if (!item || !beginGameCommand(item.gameId, "retry")) return;
+
+      try {
+        setCommandError(null);
+        const game = gamesMap.get(item.gameId);
+        await startDownload(item.gameId, item.title, game?.downloadUrl, game?.downloadSha256);
+      } catch (err) {
+        setCommandError(getErrorMessage(err));
+      } finally {
+        finishGameCommand(item.gameId);
+      }
+    },
+    [beginGameCommand, finishGameCommand, gamesMap],
+  );
+
+  const handleReconcile = useCallback(async () => {
+    if (isReconciling) return;
+    setIsReconciling(true);
+    try {
+      setCommandError(null);
+      await reconcileDownloads();
+    } catch (err) {
+      setCommandError(getErrorMessage(err));
+    } finally {
+      setIsReconciling(false);
+    }
+  }, [isReconciling]);
+
+  const handleBandwidthChange = useCallback(async (value: string) => {
+    const next = value === "unlimited" ? null : Number(value);
+    if (next !== null && (!Number.isInteger(next) || next < 1)) return;
+    setBandwidthLimitKbps(next);
+  }, []);
+
+  const handleSaveSettings = useCallback(async () => {
+    if (isSavingSettings) return;
+    setIsSavingSettings(true);
+    try {
+      setCommandError(null);
+      const saved = await saveDownloadSettings({
+        bandwidthLimitKbps,
+        maxConcurrentDownloads,
+        installRoot: installRootInput.trim() || null,
+      });
+      setBandwidthLimitKbps(saved.bandwidthLimitKbps);
+      setMaxConcurrentDownloads(saved.maxConcurrentDownloads);
+      setInstallRootInput(saved.installRoot ?? "");
+    } catch (err) {
+      setCommandError(getErrorMessage(err));
+    } finally {
+      setIsSavingSettings(false);
+    }
+  }, [isSavingSettings, bandwidthLimitKbps, maxConcurrentDownloads, installRootInput]);
+
+  const CONCURRENT_OPTIONS = [1, 2, 3, 4, 6, 8];
+
   async function handleClearAllCompleted() {
     if (isClearingCompletedRef.current) return;
 
@@ -348,11 +427,22 @@ export function DownloadsPage() {
             </span>
           </div>
           <button
+            aria-label="Refresh download state"
+            disabled={isReconciling}
+            onClick={() => void handleReconcile()}
+            className="ml-2 flex h-10 w-10 items-center justify-center border-2 border-black bg-[#f5eedf] shadow-[2px_2px_0_#171411] hover:bg-[#efe6d4] disabled:cursor-not-allowed disabled:opacity-60"
+            type="button"
+            title="Refresh download state"
+          >
+            <RefreshCw className={`h-4 w-4 ${isReconciling ? "animate-spin" : ""}`} />
+          </button>
+          <button
+            aria-expanded={settingsPanelOpen}
             aria-label="Download settings"
-            onClick={() => navigate("/settings")}
+            onClick={() => setSettingsPanelOpen((open) => !open)}
             className="ml-2 flex h-10 w-10 items-center justify-center border-2 border-black bg-[#f5eedf] shadow-[2px_2px_0_#171411] hover:bg-[#efe6d4] active:translate-x-[1px] active:translate-y-[1px] active:shadow-[1px_1px_0_#171411]"
             type="button"
-            title="Settings"
+            title="Download settings"
           >
             <Settings className="h-4 w-4" />
           </button>
@@ -366,6 +456,75 @@ export function DownloadsPage() {
           role="alert"
         >
           {commandError}
+        </div>
+      ) : null}
+
+      {settingsPanelOpen ? (
+        <div
+          aria-label="Download settings panel"
+          className="border-2 border-black bg-[#f5eedf] p-4 shadow-[3px_3px_0_#171411]"
+          role="region"
+        >
+          <div className="mb-3 flex items-center gap-2">
+            <Gauge className="h-4 w-4" />
+            <span className="neo-copy text-[10px] font-black uppercase">Download settings</span>
+          </div>
+          <div className="grid gap-4 md:grid-cols-3">
+            <label className="neo-copy block text-[10px] font-bold uppercase">
+              Install folder
+              <input
+                aria-label="Install folder"
+                className="mt-1 w-full border-2 border-black bg-[#efe6d4] px-2 py-1 font-mono text-xs font-normal normal-case"
+                onChange={(event) => setInstallRootInput(event.target.value)}
+                placeholder="Empty = default folder"
+                type="text"
+                value={installRootInput}
+              />
+            </label>
+            <label className="neo-copy block text-[10px] font-bold uppercase">
+              Bandwidth limit
+              <select
+                aria-label="Bandwidth limit"
+                className="mt-1 w-full border-2 border-black bg-[#efe6d4] px-2 py-1"
+                value={bandwidthLimitKbps === null ? "unlimited" : String(bandwidthLimitKbps)}
+                onChange={(event) => void handleBandwidthChange(event.target.value)}
+              >
+                <option value="unlimited">Unlimited</option>
+                <option value="512">512 KB/s</option>
+                <option value="1024">1 MB/s</option>
+                <option value="5120">5 MB/s</option>
+                <option value="10240">10 MB/s</option>
+              </select>
+            </label>
+            <label className="neo-copy block text-[10px] font-bold uppercase">
+              Parallel downloads
+              <select
+                aria-label="Parallel downloads"
+                className="mt-1 w-full border-2 border-black bg-[#efe6d4] px-2 py-1"
+                value={String(maxConcurrentDownloads)}
+                onChange={(event) => setMaxConcurrentDownloads(Number(event.target.value))}
+              >
+                {CONCURRENT_OPTIONS.map((option) => (
+                  <option key={option} value={String(option)}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <div className="mt-4 flex items-center gap-3">
+            <button
+              disabled={isSavingSettings}
+              onClick={() => void handleSaveSettings()}
+              className="border-2 border-black bg-[#ffd400] px-4 py-1.5 text-[10px] font-black uppercase shadow-[2px_2px_0_#171411] hover:bg-[#f0c800] active:translate-x-[1px] active:translate-y-[1px] active:shadow-[1px_1px_0_#171411] disabled:cursor-not-allowed disabled:opacity-60"
+              type="button"
+            >
+              {isSavingSettings ? "Saving..." : "Save settings"}
+            </button>
+            <span className="neo-copy text-[10px] font-bold text-[#5b403f]">
+              Limit applies to new downloads.
+            </span>
+          </div>
         </div>
       ) : null}
 
@@ -391,12 +550,23 @@ export function DownloadsPage() {
                   onArchive={handleArchive}
                   onCancel={handleCancel}
                   onPauseToggle={handlePauseToggle}
+                  onRetry={handleRetry}
                 />
               ))}
             </div>
           ) : (
             <div className="neo-copy border-2 border-dashed border-black bg-[#efe6d4]/40 p-6 text-center text-xs font-bold text-[#55504a] uppercase">
-              There are no downloads in the queue
+              <div className="mx-auto max-w-xl space-y-3">
+                <p className="neo-title text-lg font-black text-[#171411] uppercase">Queue clear</p>
+                <p>Start a game install or update from your Library or the OG Store.</p>
+                <button
+                  className="neo-copy border-2 border-black bg-[#087d6d] px-4 py-2 text-xs font-bold text-white uppercase shadow-[2px_2px_0_#171411] hover:bg-[#07685d]"
+                  onClick={() => navigate("/library")}
+                  type="button"
+                >
+                  Open Library
+                </button>
+              </div>
             </div>
           )}
         </div>
@@ -421,6 +591,7 @@ export function DownloadsPage() {
                   onArchive={handleArchive}
                   onCancel={handleCancel}
                   onPauseToggle={handlePauseToggle}
+                  onRetry={handleRetry}
                 />
               ))}
             </div>
@@ -463,6 +634,7 @@ export function DownloadsPage() {
                   onCancel={handleCancel}
                   onPauseToggle={handlePauseToggle}
                   onLaunch={handleLaunchGame}
+                  onRetry={handleRetry}
                 />
               ))}
             </div>
