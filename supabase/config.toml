@@ -417,23 +417,15 @@ verify_jwt = false
 [functions.rawg-assets]
 verify_jwt = true
 
+[functions.rawg-store-catalog]
+verify_jwt = false
+
 [functions.relay-steam-achievements]
 verify_jwt = true
 
 [functions.request-account-deletion]
 verify_jwt = true
 
-[functions.store-download-build]
-verify_jwt = true
-
-[functions.store-order-support]
-verify_jwt = true
-
-[functions.stripe-create-checkout]
-verify_jwt = true
-
-[functions.stripe-webhook]
-verify_jwt = false
 
 [analytics]
 enabled = true

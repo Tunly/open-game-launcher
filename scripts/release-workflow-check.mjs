@@ -323,8 +323,6 @@ export function releaseWorkflowReport({ content, root = repoRoot } = {}) {
         "ACCOUNT_DELETION_PROCESSOR_SECRET",
         "PRICE_DROP_NOTIFY_SECRET",
         "PRESENCE_POLL_SECRET",
-        "STRIPE_SECRET_KEY",
-        "STRIPE_WEBHOOK_SECRET",
         "STEAM_WEB_API_KEY",
         "PRESENCE_PROVIDER_TOKEN",
       ]) {

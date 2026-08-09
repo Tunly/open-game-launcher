@@ -7,7 +7,6 @@ import { invoke, isTauri } from "@tauri-apps/api/core";
 
 import { AchievementsPage } from "./AchievementsPage";
 import { AuthPage } from "./AuthPage";
-import { CommunityPage } from "./CommunityPage";
 import { DeveloperPortalPage } from "./DeveloperPortalPage";
 import { DownloadsPage } from "./DownloadsPage";
 import { EditProfilePage } from "./EditProfilePage";
@@ -46,16 +45,14 @@ const launcherMocks = vi.hoisted(() => ({
   archiveDownload: vi.fn(),
   authenticateEpicLegendary: vi.fn(),
   cancelDownload: vi.fn(),
-  clearBroadcastStreamKeySecret: vi.fn(),
   detectHardwareInfo: vi.fn(),
   eaGetToken: vi.fn(),
   eaLogout: vi.fn(),
   fetchSteamProfileName: vi.fn(),
   fetchXboxOwnedGames: vi.fn(),
-  getBroadcastStreamKeyVaultStatus: vi.fn(),
   getDefaultInstallDir: vi.fn(),
   getDownloadQueue: vi.fn(),
-  getLicenseDeviceId: vi.fn(),
+  getDownloadSettings: vi.fn(),
   getSystemInfo: vi.fn(),
   gogExchangeCode: vi.fn(),
   gogGetToken: vi.fn(),
@@ -73,9 +70,7 @@ const launcherMocks = vi.hoisted(() => ({
   pauseDownload: vi.fn(),
   processBattleNetGamesPayload: vi.fn(),
   scanLocalPluginManifests: vi.fn(),
-  setBroadcastStreamKeySecret: vi.fn(),
   stageSignedPluginPackage: vi.fn(),
-  validateLicense: vi.fn(),
 }));
 
 const newsMocks = vi.hoisted(() => ({
@@ -87,35 +82,28 @@ const achievementMocks = vi.hoisted(() => ({
 }));
 
 const storeMocks = vi.hoisted(() => ({
-  addToCart: vi.fn(),
   addToStoreWishlist: vi.fn(),
-  createStoreBuildDownloadTicket: vi.fn(),
-  getCartItems: vi.fn(),
-  getMyLicenses: vi.fn(),
-  getMyOrderByStripeSession: vi.fn(),
+  createStoreCheckout: vi.fn(),
   getMyStoreReview: vi.fn(),
   getLatestStorePriceDropNotificationRunEvidence: vi.fn(),
   isTrustedStorePriceDropNotificationRunEvidence: vi.fn(),
-  listMyOrderItems: vi.fn(),
-  listMyOrders: vi.fn(),
-  listMyStoreOrderInvoices: vi.fn(),
   listMyStorePriceAlerts: vi.fn(),
-  listMyStoreRefundRequests: vi.fn(),
   listMyStoreReviewReports: vi.fn(),
   listMyStoreWishlist: vi.fn(),
   listPublishedProducts: vi.fn(),
   listStoreProductReviews: vi.fn(),
   listStoreReviewReplies: vi.fn(),
-  removeFromCart: vi.fn(),
   removeFromStoreWishlist: vi.fn(),
   removeStorePriceAlert: vi.fn(),
   reportStoreReview: vi.fn(),
-  requestStoreOrderRefund: vi.fn(),
   submitDeveloperApplication: vi.fn(),
-  syncStoreOrderInvoice: vi.fn(),
   upsertStorePriceAlert: vi.fn(),
   upsertStoreReview: vi.fn(),
   upsertStoreReviewReply: vi.fn(),
+}));
+
+const storeApiMocks = vi.hoisted(() => ({
+  listApiStoreProducts: vi.fn(),
 }));
 
 const performanceMocks = vi.hoisted(() => ({
@@ -367,6 +355,7 @@ vi.mock("../lib/supabase/presence", () => presenceMocks);
 vi.mock("../lib/supabase/performance", () => performanceMocks);
 
 vi.mock("../lib/supabase/store", () => storeMocks);
+vi.mock("../lib/store-api", () => storeApiMocks);
 
 vi.mock("../lib/supabase/social", () => socialMocks);
 
@@ -488,22 +477,17 @@ describe("routed page smoke coverage", () => {
     launcherMocks.archiveDownload.mockResolvedValue(undefined);
     launcherMocks.authenticateEpicLegendary.mockResolvedValue("Epic authenticated.");
     launcherMocks.cancelDownload.mockResolvedValue(undefined);
-    launcherMocks.clearBroadcastStreamKeySecret.mockResolvedValue({
-      configured: false,
-      message: "Stream-key vault empty.",
-    });
     launcherMocks.detectHardwareInfo.mockResolvedValue(null);
     launcherMocks.eaGetToken.mockResolvedValue(null);
     launcherMocks.eaLogout.mockResolvedValue(undefined);
     launcherMocks.fetchSteamProfileName.mockResolvedValue("Steam User");
     launcherMocks.fetchXboxOwnedGames.mockResolvedValue({ games: [], gamertag: "Xbox User" });
-    launcherMocks.getBroadcastStreamKeyVaultStatus.mockResolvedValue({
-      configured: false,
-      message: "Stream-key vault empty.",
-    });
     launcherMocks.getDefaultInstallDir.mockResolvedValue("/games");
     launcherMocks.getDownloadQueue.mockResolvedValue([]);
-    launcherMocks.getLicenseDeviceId.mockResolvedValue("device-test");
+    launcherMocks.getDownloadSettings.mockResolvedValue({
+      bandwidthLimitKbps: 0,
+      maxConcurrentDownloads: 2,
+    });
     launcherMocks.getSystemInfo.mockResolvedValue({
       appVersion: "0.1.0",
       arch: "web",
@@ -524,43 +508,26 @@ describe("routed page smoke coverage", () => {
     launcherMocks.openXboxLoginWindow.mockResolvedValue(undefined);
     launcherMocks.pauseDownload.mockResolvedValue(undefined);
     launcherMocks.processBattleNetGamesPayload.mockResolvedValue([]);
-    launcherMocks.setBroadcastStreamKeySecret.mockResolvedValue({
-      configured: true,
-      message: "Stream-key vault staged.",
-    });
-    launcherMocks.validateLicense.mockResolvedValue({ ok: true });
     newsMocks.listPublishedNews.mockResolvedValue([newsItem]);
     achievementMocks.hydrateGamesWithRemoteAchievements.mockImplementation((games) =>
       Promise.resolve(games),
     );
-    storeMocks.addToCart.mockResolvedValue(undefined);
     storeMocks.addToStoreWishlist.mockResolvedValue(undefined);
-    storeMocks.createStoreBuildDownloadTicket.mockResolvedValue({
-      downloadUrl: "https://example.test/download",
-    });
-    storeMocks.getCartItems.mockResolvedValue([]);
-    storeMocks.getMyLicenses.mockResolvedValue([]);
-    storeMocks.getMyOrderByStripeSession.mockResolvedValue(null);
+    storeApiMocks.listApiStoreProducts.mockResolvedValue([]);
+    storeMocks.createStoreCheckout.mockResolvedValue({ id: null, status: "fulfilled", url: null });
     storeMocks.getMyStoreReview.mockResolvedValue(null);
     storeMocks.getLatestStorePriceDropNotificationRunEvidence.mockResolvedValue(null);
     storeMocks.isTrustedStorePriceDropNotificationRunEvidence.mockReturnValue(false);
-    storeMocks.listMyOrderItems.mockResolvedValue([]);
-    storeMocks.listMyOrders.mockResolvedValue([]);
-    storeMocks.listMyStoreOrderInvoices.mockResolvedValue([]);
     storeMocks.listMyStorePriceAlerts.mockResolvedValue([]);
-    storeMocks.listMyStoreRefundRequests.mockResolvedValue([]);
     storeMocks.listMyStoreReviewReports.mockResolvedValue([]);
     storeMocks.listMyStoreWishlist.mockResolvedValue([]);
     storeMocks.listPublishedProducts.mockResolvedValue([]);
     storeMocks.listStoreProductReviews.mockResolvedValue([]);
     storeMocks.listStoreReviewReplies.mockResolvedValue([]);
-    storeMocks.removeFromCart.mockResolvedValue(undefined);
     storeMocks.removeFromStoreWishlist.mockResolvedValue(undefined);
     storeMocks.removeStorePriceAlert.mockResolvedValue(undefined);
     storeMocks.reportStoreReview.mockResolvedValue(undefined);
-    storeMocks.requestStoreOrderRefund.mockResolvedValue(undefined);
     storeMocks.submitDeveloperApplication.mockResolvedValue(null);
-    storeMocks.syncStoreOrderInvoice.mockResolvedValue(null);
     storeMocks.upsertStorePriceAlert.mockResolvedValue(undefined);
     storeMocks.upsertStoreReview.mockResolvedValue(null);
     storeMocks.upsertStoreReviewReply.mockResolvedValue(null);
@@ -625,54 +592,32 @@ describe("routed page smoke coverage", () => {
     });
   });
 
-  it("renders the honest empty hosted store shelf", async () => {
+  it("renders a usable local store catalog when no hosted products are published", async () => {
     renderRoutedPage(<StorePage />, "/store");
     await act(async () => {
       await Promise.resolve();
       await Promise.resolve();
     });
 
-    expect(screen.queryByRole("heading", { name: /wasteland drifter/i })).not.toBeInTheDocument();
-    expect(screen.queryByRole("region", { name: /store catalog source/i })).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("region", { name: /price-drop scheduler readiness/i }),
-    ).not.toBeInTheDocument();
     await waitFor(() => {
       expect(storeMocks.listPublishedProducts).toHaveBeenCalled();
     });
-    expect(storeMocks.listMyOrders).not.toHaveBeenCalled();
-    expect(storeMocks.listMyStorePriceAlerts).not.toHaveBeenCalled();
-  });
-
-  it("renders the community activity board", () => {
-    renderRoutedPage(<CommunityPage />, "/community");
-
-    expect(screen.getByRole("heading", { name: /community activity/i })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: /community feed/i })).toBeInTheDocument();
-  });
-
-  it("renders the broadcasting audience status verify route", () => {
-    window.history.replaceState(
-      null,
-      "",
-      "/community?verify=broadcasting-audience-status-contract",
-    );
-
-    renderRoutedPage(
-      <CommunityPage />,
-      "/community",
-      "/community?verify=broadcasting-audience-status-contract",
-    );
-
     expect(
-      screen.getByRole("region", { name: /broadcasting audience status contract/i }),
+      await screen.findByRole("heading", { name: /games für alle plattformen/i }),
     ).toBeInTheDocument();
+    expect(screen.getByText(/lokaler katalog/i)).toBeInTheDocument();
+    expect(
+      screen.getAllByText(/Void Harvest|Petal & Ash|Dungeon Post|Crimson Circuit/i).length,
+    ).toBeGreaterThan(0);
+    expect(
+      screen.getAllByText(/Void Harvest|Petal & Ash|Dungeon Post|Crimson Circuit/i).length,
+    ).toBeGreaterThan(0);
   });
 
   it("renders the downloads queue route", async () => {
     renderRoutedPage(<DownloadsPage />, "/downloads");
 
-    expect(screen.getByText(/there are no downloads in the queue/i)).toBeInTheDocument();
+    expect(screen.getByText(/queue clear/i)).toBeInTheDocument();
     expect(launcherMocks.getDownloadQueue).not.toHaveBeenCalled();
   });
 

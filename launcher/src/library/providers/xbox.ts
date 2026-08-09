@@ -53,6 +53,26 @@ function matchingXboxGame(game: Game, index: ReturnType<typeof xboxGameIndex>): 
     : titleMatch;
 }
 
+function isXboxNonGameOwnedItem(title: string): boolean {
+  const normalized = title
+    .toLowerCase()
+    .replace(/[_-]/g, " ")
+    .split(/\s+/)
+    .filter(Boolean)
+    .join(" ");
+
+  // Call of Duty hub DLC placeholders: "BO7 DLC01 Game Stub 01",
+  // "BO7 DLC17 Standard Launch Tracker", "BO7 DLC56 Game Pass Pack 03".
+  const isBlackOpsSevenHubItem = /^(?:b07|bo7)\b/.test(normalized) && normalized.includes(" dlc");
+
+  return (
+    isBlackOpsSevenHubItem ||
+    normalized.includes(" game stub") ||
+    normalized.includes(" launch tracker") ||
+    normalized.includes(" game pass pack")
+  );
+}
+
 function xboxPackageFamilyName(game: Game): string | undefined {
   const idCandidate = game.id.replace(/^xbox-(?:owned-)?/i, "");
   for (const candidate of [idCandidate, game.launchUri]) {
@@ -109,15 +129,25 @@ export async function mergeXboxOwned(
       return { games, warnings, statusMessage };
     }
 
-    const ownedXboxGames = xboxRaw.map(ownedGameToGame);
+    const ownedXboxGames = xboxRaw
+      .map(ownedGameToGame)
+      .filter((game) => !isXboxNonGameOwnedItem(game.title));
     const ownedIndex = xboxGameIndex(ownedXboxGames);
-    const enrichedGames = games.map((game) => {
-      if (game.launcher !== "xbox" && !game.id.toLowerCase().startsWith("xbox-")) {
-        return game;
-      }
-      const owned = matchingXboxGame(game, ownedIndex);
-      return owned ? mergeXboxArtwork(game, owned) : game;
-    });
+    const enrichedGames = games
+      .filter(
+        (game) =>
+          !(
+            (game.launcher === "xbox" || game.id.toLowerCase().startsWith("xbox-")) &&
+            isXboxNonGameOwnedItem(game.title)
+          ),
+      )
+      .map((game) => {
+        if (game.launcher !== "xbox" && !game.id.toLowerCase().startsWith("xbox-")) {
+          return game;
+        }
+        const owned = matchingXboxGame(game, ownedIndex);
+        return owned ? mergeXboxArtwork(game, owned) : game;
+      });
     const existingXboxGames = enrichedGames.filter(
       (game) => game.launcher === "xbox" || game.id.toLowerCase().startsWith("xbox-"),
     );

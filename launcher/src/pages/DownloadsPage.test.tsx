@@ -11,6 +11,7 @@ const launcherMocks = vi.hoisted(() => ({
     void gameId;
     return Promise.resolve();
   }),
+
   cancelDownload: vi.fn(() => Promise.resolve()),
   getDownloadQueue: vi.fn(() => Promise.resolve([])),
   launchGame: vi.fn(() => Promise.resolve()),
@@ -37,6 +38,7 @@ vi.mock("../lib/launcher", async (importOriginal) => {
   return {
     ...actual,
     archiveDownload: launcherMocks.archiveDownload,
+
     cancelDownload: launcherMocks.cancelDownload,
     getDownloadQueue: launcherMocks.getDownloadQueue,
     launchGame: launcherMocks.launchGame,
@@ -78,6 +80,7 @@ beforeEach(() => {
   window.localStorage.clear();
   launcherMocks.archiveDownload.mockReset();
   launcherMocks.archiveDownload.mockResolvedValue(undefined);
+
   launcherMocks.cancelDownload.mockReset();
   launcherMocks.cancelDownload.mockResolvedValue(undefined);
   launcherMocks.getDownloadQueue.mockReset();
@@ -406,31 +409,48 @@ describe("DownloadsPage", () => {
     });
   });
 
-  it("opens and closes the download settings panel", async () => {
+  it("does not offer internal retry for failed external provider rows", async () => {
+    useDownloadStore.setState({
+      items: [
+        makeDownloadItem({
+          external: true,
+          gameId: "steam-owned-1234",
+          id: "download-steam-owned-1234",
+          status: "error",
+          title: "External Failure",
+        }),
+      ],
+    });
+
+    renderDownloadsRoute("/downloads");
+
+    expect(
+      await screen.findByRole("heading", { level: 3, name: "External Failure" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Retry" })).not.toBeInTheDocument();
+  });
+
+  it("opens and closes the download settings modal", async () => {
     renderDownloadsRoute("/downloads");
 
     const settingsToggle = await screen.findByRole("button", { name: "Download settings" });
     expect(settingsToggle).toHaveAttribute("aria-expanded", "false");
-    expect(
-      screen.queryByRole("region", { name: "Download settings panel" }),
-    ).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "Download settings" })).not.toBeInTheDocument();
 
     fireEvent.click(settingsToggle);
-    expect(
-      await screen.findByRole("region", { name: "Download settings panel" }),
-    ).toBeInTheDocument();
+    const settingsDialog = await screen.findByRole("dialog", { name: "Download settings" });
+    expect(settingsDialog).toBeInTheDocument();
     expect(settingsToggle).toHaveAttribute("aria-expanded", "true");
+    expect(settingsDialog).toHaveAttribute("aria-modal", "true");
 
-    fireEvent.click(settingsToggle);
-    expect(
-      screen.queryByRole("region", { name: "Download settings panel" }),
-    ).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Close download settings" }));
+    expect(screen.queryByRole("dialog", { name: "Download settings" })).not.toBeInTheDocument();
   });
 
   it("saves the folder, bandwidth, and parallel downloads together", async () => {
     renderDownloadsRoute("/downloads");
     fireEvent.click(await screen.findByRole("button", { name: "Download settings" }));
-    await screen.findByRole("region", { name: "Download settings panel" });
+    await screen.findByRole("dialog", { name: "Download settings" });
 
     fireEvent.change(screen.getByRole("textbox", { name: "Install folder" }), {
       target: { value: "D:\\Games" },

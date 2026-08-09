@@ -1,12 +1,13 @@
 import { Loader2, Search, Shield, Trophy, UserPlus, Users } from "lucide-react";
-import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 
 import { ActivityFeed, type ActivityFeedProfile } from "../components/friends/ActivityFeed";
 import { useCurrentUser } from "../hooks/useCurrentUser";
-import { postActivity } from "../lib/supabase/activity";
 import { getVisiblePresence, subscribeToPresenceChanges } from "../lib/supabase/presence";
 import { getFriends, getProfilesForUsers } from "../lib/supabase/profile";
+import { listInstalledGames } from "../lib/launcher";
+import type { Game } from "../lib/types";
 import type {
   ActivityComment,
   ActivityFeedItem,
@@ -214,16 +215,26 @@ export function ActivityPage() {
   const [friendDataWarning, setFriendDataWarning] = useState<string | null>(null);
   const [friendDataVersion, setFriendDataVersion] = useState(0);
   const [query, setQuery] = useState("");
-  const [statusText, setStatusText] = useState("");
-  const [statusGameTitle, setStatusGameTitle] = useState("");
-  const [posting, setPosting] = useState(false);
-  const [notice, setNotice] = useState<string | null>(null);
-  const [feedVersion, setFeedVersion] = useState(0);
+  const [artworkGames, setArtworkGames] = useState<Game[]>([]);
   const requestedFriendDataUserIdRef = useRef<string | null>(null);
   const isPreview =
     !isConfigured || (import.meta.env.DEV && searchParams.get("verify") === "activity-preview");
   const isMyActivity = searchParams.get("view") === "mine";
   const presenceFriendIdsKey = friends.map((friend) => friend.id).join("|");
+
+  useEffect(() => {
+    let active = true;
+    void listInstalledGames()
+      .then((games) => {
+        if (active) setArtworkGames(games);
+      })
+      .catch(() => {
+        if (active) setArtworkGames([]);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!isConfigured || !user) {
@@ -376,29 +387,6 @@ export function ActivityPage() {
     [isMyActivity, isPreview],
   );
 
-  async function submitStatus(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const text = statusText.trim();
-    if (!text || posting || !user) return;
-    setPosting(true);
-    setNotice(null);
-    try {
-      await postActivity("status", {
-        gameTitle: statusGameTitle.trim() || null,
-        metadata: { text },
-        visibility: "friends_only",
-      });
-      setStatusText("");
-      setStatusGameTitle("");
-      setNotice("Status posted to your friends.");
-      setFeedVersion((value) => value + 1);
-    } catch (error) {
-      setNotice(error instanceof Error ? error.message : "Status could not be posted.");
-    } finally {
-      setPosting(false);
-    }
-  }
-
   if (authLoading) {
     return (
       <div className="grid min-h-[420px] place-items-center">
@@ -461,68 +449,6 @@ export function ActivityPage() {
       ) : (
         <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_310px]">
           <div className="min-w-0 space-y-4">
-            <section className="border-[5px] border-black bg-[#efe6d4] shadow-[6px_6px_0_#171411]">
-              <div className="border-b-[5px] border-black bg-[#171411] px-4 py-3 text-[#fff9ed]">
-                <h2 className="neo-title text-4xl leading-none">Activity Transmission</h2>
-              </div>
-              {isPreview ? (
-                <p className="neo-copy m-3 border-[3px] border-black bg-[#fff9ed] p-3 text-[10px] font-black text-[#5b403f] uppercase shadow-[3px_3px_0_#171411]">
-                  Status posting is disabled in local preview mode.
-                </p>
-              ) : (
-                <form
-                  className="grid gap-3 p-3 sm:grid-cols-[52px_minmax(0,1fr)]"
-                  onSubmit={(event) => void submitStatus(event)}
-                >
-                  <Avatar name="OG" />
-                  <div>
-                    <label className="sr-only" htmlFor="activity-status">
-                      Post a status to your friends
-                    </label>
-                    <textarea
-                      className="neo-copy min-h-20 w-full resize-y border-[3px] border-black bg-[#fff9ed] p-3 text-[11px] font-black text-[#171411] uppercase shadow-[3px_3px_0_#171411] outline-none placeholder:text-[#655f58] focus:bg-[#8cf5e4]"
-                      id="activity-status"
-                      maxLength={1000}
-                      placeholder="Post a status to your friends..."
-                      value={statusText}
-                      onChange={(event) => setStatusText(event.target.value)}
-                    />
-                    <label
-                      className="neo-copy mt-3 block text-[9px] font-black tracking-[0.1em] text-[#171411] uppercase"
-                      htmlFor="activity-game-title"
-                    >
-                      Tag with game <span className="text-[#655f58]">// optional</span>
-                    </label>
-                    <input
-                      className="neo-copy mt-1 h-10 w-full border-[3px] border-black bg-[#fff9ed] px-3 text-[10px] font-black text-[#171411] uppercase shadow-[3px_3px_0_#171411] outline-none placeholder:text-[#655f58] focus:bg-[#8cf5e4]"
-                      id="activity-game-title"
-                      maxLength={200}
-                      placeholder="Game title"
-                      value={statusGameTitle}
-                      onChange={(event) => setStatusGameTitle(event.target.value)}
-                    />
-                    <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-                      <span className="neo-copy text-[9px] font-black text-[#655f58] uppercase">
-                        {statusText.length}/1000 // friends only
-                      </span>
-                      <button
-                        className="neo-copy border-[3px] border-black bg-[#b7102a] px-5 py-2 text-[10px] font-black tracking-[0.12em] text-white uppercase shadow-[3px_3px_0_#171411] disabled:opacity-50"
-                        disabled={!statusText.trim() || posting}
-                        type="submit"
-                      >
-                        {posting ? "Posting..." : "Post status"}
-                      </button>
-                    </div>
-                    {notice ? (
-                      <p className="neo-copy mt-2 text-[10px] font-black text-[#007166] uppercase">
-                        {notice}
-                      </p>
-                    ) : null}
-                  </div>
-                </form>
-              )}
-            </section>
-
             <section className="border-[5px] border-black bg-[#f5eedf] p-3 shadow-[6px_6px_0_#171411]">
               {!isPreview && friendDataWarning ? (
                 <div
@@ -556,9 +482,9 @@ export function ActivityPage() {
                 </p>
               ) : null}
               <ActivityFeed
+                artworkGames={artworkGames}
                 currentUserId={isPreview ? PREVIEW_CURRENT_USER_ID : (user?.id ?? null)}
                 friendIds={feedUserIds}
-                key={feedVersion}
                 previewInteractions={visiblePreviewInteractions}
                 previewItems={visiblePreviewItems}
                 profiles={visibleProfiles}

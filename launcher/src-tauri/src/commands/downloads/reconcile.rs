@@ -84,11 +84,31 @@ pub fn reconcile_downloads(app: AppHandle) -> Result<ReconciliationResult, Strin
             stale_cleaned: Vec::new(),
             errors: Vec::new(),
         };
-        result.stale_cleaned.extend(clean_removed_steam_history());
         let mut updated_items: Vec<DownloadItemPayload> = Vec::new();
 
         for mut item in std::mem::take(history) {
             let is_terminal = is_terminal_download_status(&item.status);
+
+            // Keep Steam cleanup inside this history mutation. A separate load/write
+            // here could be overwritten by the outer closure and resurrect rows.
+            if detect::find_steam_dir().is_some() {
+                let manifest_exists = steam_app_id_from_download_id(&item.game_id)
+                    .is_some_and(|app_id| find_steam_app_manifest(app_id).is_some());
+                let has_active_worker = get_download_manager()
+                    .lock()
+                    .map(|guard| guard.contains_key(&item.game_id))
+                    .unwrap_or(false);
+                if should_remove_removed_steam_entry(
+                    &item.game_id,
+                    &item.status,
+                    true,
+                    manifest_exists,
+                    has_active_worker,
+                ) {
+                    result.stale_cleaned.push(item.game_id.clone());
+                    continue;
+                }
+            }
 
             if !is_terminal {
                 let is_now_installed = installed_by_id.get(&item.game_id).copied().unwrap_or(false);

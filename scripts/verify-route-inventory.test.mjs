@@ -522,9 +522,9 @@ test("verifyRouteInventory allows legacy aliases only when canonical route is do
 test("current route inventory has curated visual coverage and explicit legacy aliases", () => {
   const result = verifyRouteInventory();
 
-  assert.equal(result.sourceFlags.size, 49);
-  assert.equal(result.appRoutePaths.size, 22);
-  assert.equal(result.appRouteArtifacts.size, 22);
+  assert.equal(result.sourceFlags.size, 38);
+  assert.equal(result.appRoutePaths.size, 21);
+  assert.equal(result.appRouteArtifacts.size, 21);
   assert.equal(result.appRoutePaths.has("/home"), false);
   assert.equal(result.appRoutePaths.has("/mods"), false);
   assert.equal(result.appRoutePaths.has("/library"), true);
@@ -555,8 +555,8 @@ test("current route inventory has curated visual coverage and explicit legacy al
       line.includes("normal app route paths"),
     ),
     [
-      "Discovered 22 normal app route paths in launcher/src/app/router.tsx.",
-      "Verified screenshot artifact coverage for 22 normal app route paths.",
+      "Discovered 21 normal app route paths in launcher/src/app/router.tsx.",
+      "Verified screenshot artifact coverage for 21 normal app route paths.",
     ],
   );
 });

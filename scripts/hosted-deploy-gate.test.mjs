@@ -438,7 +438,7 @@ test("hosted deploy gate packet summarizes handoff without secret values", () =>
     ),
   );
   assert.match(output, /Runtime Secret Names Checked By Preflight/);
-  assert.match(output, /stripe-webhook \(verify_jwt=false\)/);
+  assert.doesNotMatch(output, /stripe-webhook/);
   assert.match(
     output,
     /poll-platform-presence: POST dry-run using PRESENCE_POLL_SECRET/,
@@ -505,7 +505,7 @@ test("hosted deploy gate packet mirrors scoped smoke plan", () => {
   assert.doesNotMatch(output, /notify-price-drop: POST dry-run/);
   assert.doesNotMatch(output, /poll-platform-presence: POST dry-run/);
   assert.doesNotMatch(output, /process-account-deletions: POST dry-run/);
-  assert.doesNotMatch(output, /stripe-webhook: OPTIONS module\/env sanity/);
+  assert.doesNotMatch(output, /stripe-webhook/);
 });
 
 test("deriveFunctionsBaseUrl prefers explicit functions URL", () => {
@@ -1080,7 +1080,7 @@ test("plan command mirrors scoped smoke plan", () => {
   assert.match(result.stdout, /rawg-assets: OPTIONS module\/env sanity/);
   assert.doesNotMatch(result.stdout, /notify-price-drop: POST dry-run/);
   assert.doesNotMatch(result.stdout, /process-account-deletions: POST dry-run/);
-  assert.doesNotMatch(result.stdout, /stripe-webhook: OPTIONS module\/env sanity/);
+  assert.doesNotMatch(result.stdout, /stripe-webhook/);
 });
 
 test("deploy env rejects short fake project refs as missing", () => {
@@ -1497,15 +1497,11 @@ test("Supabase function config validator rejects missing and mismatched verify_j
     `,
     [
       { name: "notify-price-drop", verifyJwt: false },
-      { name: "store-download-build", verifyJwt: true },
-      { name: "stripe-webhook", verifyJwt: false },
     ],
   );
 
   assert.deepEqual(result.errors, [
     "Supabase config [functions.notify-price-drop] verify_jwt=true does not match deploy plan verify_jwt=false.",
-    "Supabase config [functions.store-download-build] is missing an explicit verify_jwt value.",
-    "Supabase config missing [functions.stripe-webhook] verify_jwt = false.",
   ]);
 });
 

@@ -10,8 +10,6 @@ const fakeSecretEnv = Object.freeze({
   PRESENCE_POLL_SECRET: "presence_poll_0123456789abcdef0123456789",
   PRICE_DROP_NOTIFY_SECRET: "price_drop_0123456789abcdef0123456789",
   STEAM_WEB_API_KEY: "steam_0123456789abcdef",
-  STRIPE_SECRET_KEY: "sk_live_0123456789abcdef",
-  STRIPE_WEBHOOK_SECRET: "whsec_0123456789abcdef",
   SUPABASE_ACCESS_TOKEN: "sbp_0123456789abcdef0123456789abcdef",
   SUPABASE_ANON_KEY: "anon_0123456789abcdef",
   SUPABASE_AUTH_JWT: "bearer.jwt.payload",

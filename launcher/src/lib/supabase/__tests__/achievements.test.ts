@@ -473,7 +473,7 @@ describe("ingestTrustedAchievements", () => {
     expect(mocks.from).not.toHaveBeenCalled();
   });
 
-  it("stops scheduling more remote games after a transport failure", async () => {
+  it("isolates a transport failure so later remote games are still attempted", async () => {
     let catalogQueries = 0;
     let definitionQueries = 0;
     mocks.from.mockImplementation((table: string) => {
@@ -519,9 +519,9 @@ describe("ingestTrustedAchievements", () => {
 
     expect(hydrated).toEqual(remoteGames);
     expect(catalogQueries).toBeGreaterThan(0);
-    expect(catalogQueries).toBeLessThanOrEqual(4);
+    expect(catalogQueries).toBe(8);
     expect(definitionQueries).toBeGreaterThan(0);
-    expect(definitionQueries).toBeLessThanOrEqual(4);
+    expect(definitionQueries).toBe(8);
     expect(warn).toHaveBeenCalled();
   });
 

@@ -19,7 +19,6 @@ describe("removed screenshot product boundary", () => {
     expect(read("launcher/src/pages/FriendsPage.tsx")).not.toMatch(
       /synced screenshots|gallery shots|\/ \d+ images/i,
     );
-    expect(read("launcher/src/pages/CommunityPage.tsx")).not.toMatch(/controller notes/i);
   });
 
   it("keeps generated active schema types screenshot-free", () => {

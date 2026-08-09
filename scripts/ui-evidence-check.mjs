@@ -128,7 +128,6 @@ function manifestEntryForScreenshot(manifest, screenshotPath) {
 const pageRouteTokens = Object.freeze({
   AchievementsPage: ["/achievements"],
   AuthPage: ["/auth"],
-  CommunityPage: ["/community"],
   DeveloperPortalPage: ["/developer"],
   DownloadsPage: ["/downloads"],
   EditProfilePage: ["/settings/profile"],
@@ -159,9 +158,6 @@ function expectedRouteTokensForUiPath(path) {
   if (/^launcher\/src\/components\/settings\//.test(path)) {
     return ["/settings"];
   }
-  if (/^launcher\/src\/components\/community\//.test(path)) {
-    return ["/community"];
-  }
   if (/^launcher\/src\/components\/library\//.test(path)) {
     return ["/library"];
   }
@@ -185,9 +181,6 @@ function expectedRouteTokensForUiPath(path) {
   }
   if (/^launcher\/src\/lib\/(?:library-|game-|custom-artwork|provider-)/.test(path)) {
     return ["/library"];
-  }
-  if (/^launcher\/src\/lib\/(?:broadcast|public-screenshot|community-)/.test(path)) {
-    return ["/community"];
   }
   if (/^launcher\/src\/lib\/(?:profile|app-wide-theme|theme-skin)/.test(path)) {
     return ["/u/", "/settings/profile"];

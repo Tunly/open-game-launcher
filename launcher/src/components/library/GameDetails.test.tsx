@@ -134,6 +134,33 @@ describe("GameDetails actions", () => {
     expect(screen.queryByText(/achievement auto-sync runs/i)).not.toBeInTheDocument();
   });
 
+  it("shows only the provider name when a failed sync still produced achievements", () => {
+    renderGameDetails({
+      achievements: [
+        {
+          id: "first-clear",
+          name: "First Clear",
+          description: "Finish the opening route.",
+          iconUrl: undefined,
+          unlockedAt: "2026-07-28T10:00:00.000Z",
+        },
+      ],
+      achievementProviderStatuses: [
+        {
+          message:
+            "Authenticated Steam achievement session was unavailable: Authenticated Steam achievement session timed out.",
+          source: "steam",
+          stability: "official",
+          status: "failed",
+        },
+      ],
+    });
+
+    expect(screen.getByText("Steam")).toBeInTheDocument();
+    expect(screen.queryByText(/steam: failed/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/steam: failed/i)).toBeNull();
+  });
+
   it("hides persisted achievement cache diagnostics", () => {
     const safeMessage =
       "No readable Ubisoft achievement data was found on this PC. Launch the game through Ubisoft Connect, then try again.";
@@ -211,6 +238,82 @@ describe("GameDetails actions", () => {
     });
 
     expect(screen.queryByText(/synced\s+just now/i)).not.toBeInTheDocument();
+  });
+
+  it("opens a Steam-style achievement viewer with all achievements when an achievement is clicked", () => {
+    renderGameDetails({
+      title: "Palworld",
+      achievements: [
+        {
+          id: "first-clear",
+          name: "First Clear",
+          description: "Finish the opening route.",
+          iconUrl: "https://cdn.example.test/ach-first-clear.png",
+          rarity: 12.5,
+          unlockedAt: "2026-07-01T10:00:00.000Z",
+          source: "steam",
+        },
+        {
+          id: "secret-route",
+          name: "Secret Route",
+          description: "Find the hidden route.",
+        },
+      ],
+    });
+
+    fireEvent.click(screen.getByText("First Clear"));
+
+    const dialog = screen.getByRole("dialog", { name: /achievements/i });
+    // Header mit Fortschrittsbalken wie bei Steam
+    expect(within(dialog).getByText(/1 of 2 achievements earned/i)).toBeInTheDocument();
+    expect(within(dialog).getByText(/50%/i)).toBeInTheDocument();
+    // Viewer zeigt ALLE Achievements, nicht nur das geklickte
+    expect(within(dialog).getByText("First Clear")).toBeInTheDocument();
+    expect(within(dialog).getByText("Secret Route")).toBeInTheDocument();
+    // Icon, Beschreibung, globaler Prozentsatz
+    expect(within(dialog).getByAltText("First Clear")).toHaveAttribute(
+      "src",
+      "https://cdn.example.test/ach-first-clear.png",
+    );
+    expect(within(dialog).getByText("Finish the opening route.")).toBeInTheDocument();
+    expect(within(dialog).getByText("12.5%")).toBeInTheDocument();
+  });
+
+  it("closes the achievement viewer via the close button", () => {
+    renderGameDetails({
+      achievements: [
+        {
+          id: "first-clear",
+          name: "First Clear",
+          description: "Finish the opening route.",
+        },
+      ],
+    });
+
+    fireEvent.click(screen.getByText("First Clear"));
+    expect(screen.getByRole("dialog", { name: /achievements/i })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Close achievement viewer" }));
+    expect(screen.queryByRole("dialog", { name: /achievements/i })).not.toBeInTheDocument();
+  });
+
+  it("shows locked achievements in the viewer without an unlock date", () => {
+    renderGameDetails({
+      achievements: [
+        {
+          id: "secret-route",
+          name: "Secret Route",
+          description: "Find the hidden route.",
+          rarity: 2,
+        },
+      ],
+    });
+
+    fireEvent.click(screen.getByText("Secret Route"));
+
+    const dialog = screen.getByRole("dialog", { name: /achievements/i });
+    expect(within(dialog).getByText("2.0%")).toBeInTheDocument();
+    expect(within(dialog).queryByText(/unlocked/i)).not.toBeInTheDocument();
   });
 
   it("does not fabricate friend play or wishlist activity", () => {

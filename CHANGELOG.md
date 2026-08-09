@@ -47,6 +47,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
   hosted Steam achievement relay with attestation-bound ingestion.
 - Activity feed events for Store purchases, friend relationships, achievements,
   play sessions, and status posts.
+- The store shows a clearly labeled local example catalog (four entries) when
+  the hosted catalog is empty or unreachable; example entries cannot be
+  wishlisted and are never presented as hosted or purchasable products.
 - RLS-protected activity reactions and comments with Realtime updates.
 - Local completion and external-evidence gates for Store/Stripe, hosted cron,
   provider integrations, hardware/OS, and rollout tracks.

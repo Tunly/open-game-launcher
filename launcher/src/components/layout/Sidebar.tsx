@@ -3,7 +3,6 @@ import {
   Activity,
   Gamepad2,
   HardDriveDownload,
-  MessageSquareMore,
   Store,
   Trophy,
   type LucideIcon,
@@ -13,7 +12,6 @@ import { clsx } from "clsx";
 export type PageKey =
   | "library"
   | "store"
-  | "community"
   | "downloads"
   | "activity"
   | "achievements"
@@ -21,7 +19,6 @@ export type PageKey =
   | "profile"
   | "friends"
   | "family"
-  | "developer"
   | "news";
 
 interface NavItem {
@@ -43,7 +40,6 @@ const navItems: NavItem[] = [
   { key: "activity", label: "Activity", icon: Activity },
   { key: "downloads", label: "Downloads", icon: HardDriveDownload },
   { key: "store", label: "Store", icon: Store },
-  { key: "community", label: "Community", icon: MessageSquareMore },
 ];
 
 export function Sidebar({
@@ -57,14 +53,14 @@ export function Sidebar({
   useEffect(() => {
     const activeItem =
       scrollContainerRef.current?.querySelector<HTMLElement>('[aria-current="page"]');
-    activeItem?.scrollIntoView?.({ behavior: "smooth", block: "nearest", inline: "center" });
+    activeItem?.scrollIntoView?.({ behavior: "auto", block: "nearest", inline: "center" });
   }, [activePage]);
 
   return (
     <nav className="min-w-0">
       <div
         ref={scrollContainerRef}
-        className="flex [scrollbar-width:thin] [scrollbar-color:#171411_#efe3cf] gap-1 overflow-x-auto px-0.5 pb-2 sm:gap-2 sm:px-1"
+        className="app-shell-primary-nav flex flex-nowrap items-center gap-1 overflow-visible px-0.5 sm:gap-2 sm:px-1"
       >
         {navItems.map((item) => {
           const Icon = item.icon;

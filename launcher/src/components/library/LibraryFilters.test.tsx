@@ -148,7 +148,7 @@ describe("LibraryFilters", () => {
     });
     render(<LibraryFilters isOpen onClose={vi.fn()} />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Reset All" }));
+    fireEvent.click(screen.getByRole("button", { name: "Reset Filters" }));
 
     expect(mocks.resetAdvancedFilters).toHaveBeenCalledOnce();
     expect(mocks.clearManualCollectionSelection).toHaveBeenCalledOnce();
@@ -166,5 +166,19 @@ describe("LibraryFilters", () => {
 
     expect(mocks.clearManualCollectionSelection).toHaveBeenCalledOnce();
     expect(mocks.saveCurrentFilterAsCollection).toHaveBeenCalledWith("My Smart List");
+  });
+
+  it("clears a checkbox filter in one state update", () => {
+    installContext(true);
+    (
+      mocks.context as { filters: { advancedFilters: { players: string[] } } }
+    ).filters.advancedFilters.players = ["Singleplayer"];
+    render(<LibraryFilters isOpen onClose={vi.fn()} />);
+
+    mocks.setAdvancedFilters.mockClear();
+    fireEvent.click(screen.getByRole("button", { name: "Clear Player Count" }));
+
+    expect(mocks.setAdvancedFilters).toHaveBeenCalledWith(expect.objectContaining({ players: [] }));
+    expect(mocks.setAdvancedFilters).toHaveBeenCalledTimes(1);
   });
 });

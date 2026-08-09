@@ -1,10 +1,11 @@
 import { Pause, Play, RotateCcw, RotateCw, X } from "lucide-react";
-import { memo, useState } from "react";
+import { memo, useEffect, useState } from "react";
 
 import type { DownloadItem, DownloadStatus, Game } from "../../lib/types";
 import { isTerminalDownloadItem } from "../../stores/downloadStore";
 import { DownloadInspector } from "./DownloadInspector";
 import { getGameAssetUrl } from "../../lib/assets";
+import { getGameIconCandidates } from "../../lib/formatters";
 
 interface DownloadCardProps {
   index?: number;
@@ -107,10 +108,20 @@ function DownloadCardComponent({
     ? Math.min(100, Math.max(0, item.progress))
     : 0;
 
-  // Cover image URL or fallback to logoUrl
-  const imageUrl = game ? getGameAssetUrl(game.coverUrl || game.logoUrl) : undefined;
-  const [failedImageUrl, setFailedImageUrl] = useState<string | null>(null);
-  const showImage = Boolean(imageUrl && failedImageUrl !== imageUrl);
+  // Match the Achievements page: prefer cover art, then icon/logo fallbacks.
+  const iconCandidates = game
+    ? [game.coverUrl, ...getGameIconCandidates(game)].filter(
+        (url, index, urls): url is string => Boolean(url) && urls.indexOf(url) === index,
+      )
+    : [];
+  const [iconCandidateIndex, setIconCandidateIndex] = useState(0);
+  const imageUrl = getGameAssetUrl(iconCandidates[iconCandidateIndex]);
+  const isCover = iconCandidateIndex === 0 && Boolean(game?.coverUrl);
+  const showImage = Boolean(imageUrl);
+
+  useEffect(() => {
+    setIconCandidateIndex(0);
+  }, [game?.id, game?.iconUrl, game?.logoUrl, game?.coverUrl]);
 
   // Rotate deterministic art patterns when a game has no cover asset.
   const placeholderClasses = ["library-art-tokyo", "library-art-mech", "library-art-phantom"];
@@ -120,15 +131,19 @@ function DownloadCardComponent({
     <div className="w-full">
       <article className="grid grid-cols-1 items-center gap-4 border-4 border-black bg-[#f5eedf] p-4 shadow-[4px_4px_0_#171411] md:grid-cols-[auto_1fr_auto]">
         {/* Game Cover / Icon */}
-        <div className="relative flex h-24 w-full flex-shrink-0 items-center justify-center overflow-hidden border-2 border-black bg-[#171411] md:h-20 md:w-36">
+        <div className="relative flex aspect-video w-full flex-shrink-0 items-center justify-center overflow-hidden border-2 border-black bg-[#171411] md:w-36">
           {showImage ? (
             <img
               src={imageUrl}
               alt=""
-              className="h-full w-full object-cover"
+              className={`h-full w-full ${isCover ? "object-cover" : "object-contain p-2"}`}
               decoding="async"
               loading="lazy"
-              onError={() => setFailedImageUrl(imageUrl ?? null)}
+              onError={() =>
+                setIconCandidateIndex((current) =>
+                  current + 1 >= iconCandidates.length ? iconCandidates.length : current + 1,
+                )
+              }
             />
           ) : (
             <div
@@ -205,7 +220,10 @@ function DownloadCardComponent({
             </button>
           ) : null}
 
-          {isTerminal && (item.status === "failed" || item.status === "error") && onRetry ? (
+          {isTerminal &&
+          !isExternal &&
+          (item.status === "failed" || item.status === "error") &&
+          onRetry ? (
             <button
               disabled={commandPending}
               onClick={() => void onRetry(item.id)}

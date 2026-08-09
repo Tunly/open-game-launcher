@@ -264,7 +264,7 @@ describe("aggregateGameGroup achievements", () => {
     expect(merged.sourceIds).toEqual(["gog:same-provider-id"]);
   });
 
-  it("uses name-only matching with lower confidence", () => {
+  it("keeps same-name achievements with different descriptions separate", () => {
     const steam = makeGame({
       id: "steam-1",
       launcher: "steam",
@@ -278,8 +278,12 @@ describe("aggregateGameGroup achievements", () => {
 
     const group = aggregateGameGroup([steam, gog]);
 
-    expect(group.achievements).toHaveLength(1);
-    expect(group.achievements[0].matchConfidence).toBe("name");
+    expect(group.achievements).toHaveLength(2);
+    expect(
+      group.achievements.every(
+        (item) => item.matchConfidence === "additional" || item.matchConfidence === "exact",
+      ),
+    ).toBe(true);
   });
 
   it("preserves explicit provider statuses on grouped games", () => {
@@ -326,6 +330,32 @@ describe("aggregateGameGroup achievements", () => {
     });
     expect(group.displayGame.achievementProviderStatuses).toEqual(
       group.achievementProviderStatuses,
+    );
+  });
+
+  it("prefers an available provider status with newer or richer data", () => {
+    const stale = makeGame({
+      id: "steam-stale",
+      launcher: "steam",
+      achievements: [],
+      achievementsSyncedAt: "2026-01-01T00:00:00Z",
+      achievementProviderStatuses: [
+        { source: "steam", status: "failed", stability: "official", message: "old failure" },
+      ],
+    });
+    const fresh = makeGame({
+      id: "steam-fresh",
+      launcher: "steam",
+      achievements: [achievement({ id: "fresh", name: "Fresh" })],
+      achievementsSyncedAt: "2026-01-02T00:00:00Z",
+      achievementProviderStatuses: [
+        { source: "steam", status: "available", stability: "official", message: "fresh data" },
+      ],
+    });
+
+    const group = aggregateGameGroup([stale, fresh]);
+    expect(group.achievementProviderStatuses).toContainEqual(
+      expect.objectContaining({ status: "available", message: "fresh data" }),
     );
   });
 });

@@ -28,7 +28,7 @@ const evidenceDetails: Record<ExternalCompletionEvidenceDetailField, string> = {
   Operator: "Release Ops",
   "Release ref": "refs/tags/v0.1.0",
   "Redacted run IDs, dashboard links, screenshots, or signed deployment logs":
-    "run-external-evidence-123 https://dashboard.stripe.com/events/evt_redacted",
+    "run-external-evidence-123",
   "Redaction notes": "Raw secrets removed before commit",
 };
 const validHostedDeployEvidence =
@@ -50,8 +50,6 @@ function validEnvValue(name: string) {
     PRESENCE_PROVIDER_TOKEN: "presenceProvider9f8e7d6c5b4a392817",
     PRICE_DROP_NOTIFY_SECRET: "priceDrop9f8e7d6c5b4a392817263abcd",
     STEAM_WEB_API_KEY: "0123456789abcdef0123456789abcdef",
-    STRIPE_SECRET_KEY: "sk_live_51OgLauncherEvidenceAlpha1234567890",
-    STRIPE_WEBHOOK_SECRET: "whsec_51OgLauncherEvidenceAlpha1234567890",
     SUPABASE_URL: "https://awebfvfyqzwapcgixdfj.supabase.co",
   };
   return values[name] ?? `value9f8e7d6c5b4a392817263-${name.toLowerCase()}`;
@@ -60,24 +58,17 @@ function validEnvValue(name: string) {
 function validStoreArtifactEvidence(
   gate: ExternalCompletionEvidenceGateInput,
 ): ExternalCompletionEvidenceArtifactInput[] {
-  const [checkoutArtifact, schedulerArtifact] = gate.artifactProofs ?? [];
+  const [schedulerArtifact] = gate.artifactProofs ?? [];
 
   return [
     {
-      checkedProofs: checkoutArtifact.requiredProofs,
+      checkedProofs: schedulerArtifact.requiredProofs,
       evidenceDetails: {
         ...evidenceDetails,
-        "Stripe Dashboard evidence": "https://dashboard.stripe.com/events/evt_redacted",
-        "Stripe webhook event ID": "evt_oglauncherlive123",
-        "Supabase function log run ID": "run-supabase-stripe-webhook-123",
-        "License key custody evidence": "license-key-custody workflow-123",
-        "Live license issuance evidence": "live-license-issuance workflow-123",
       },
-      path: checkoutArtifact.path,
+      path: schedulerArtifact.path,
       proofEvidence: {
-        [checkoutArtifact.requiredProofs[0]]: "run-stripe-webhook-live-123",
-        [checkoutArtifact.requiredProofs[1]]: "run-stripe-dashboard-tax-123",
-        [checkoutArtifact.requiredProofs[2]]: "run-license-key-custody-live-license-issuance-123",
+        [schedulerArtifact.requiredProofs[0]]: "workflow-price-drop-live-123",
       },
       readable: true,
     },
@@ -215,15 +206,13 @@ describe("external completion evidence summary", () => {
       ...new Set(EXTERNAL_COMPLETION_EVIDENCE_GATE_INPUTS.flatMap((gate) => gate.artifactPaths)),
     ];
 
-    expect(artifactPaths).toHaveLength(6);
+    expect(artifactPaths).toHaveLength(4);
     expect(artifactPaths).toEqual(
       expect.arrayContaining([
         "docs/verification/external/hardware-os-e2e.md",
         "docs/verification/external/hosted-supabase-cron.md",
         "docs/verification/external/provider-live-integrations.md",
         "docs/verification/external/rollout-tracks.md",
-        "docs/verification/external/store-price-drop-scheduler-live.md",
-        "docs/verification/external/store-stripe-live-staging.md",
       ]),
     );
     for (const artifactPath of artifactPaths) {
@@ -238,7 +227,7 @@ describe("external completion evidence summary", () => {
     expect(summary.statusLabel).toBe("External Evidence Required");
     expect(summary.passCount).toBe(0);
     expect(summary.reviewCount).toBe(0);
-    expect(summary.blockedCount).toBe(5);
+    expect(summary.blockedCount).toBe(4);
     expect(summary.warningCount).toBe(0);
     expect(summary.blockedClaims).toContain("No external proof claim");
     expect(summary.blockedClaims).toContain("No live provider credential rendered");
@@ -253,7 +242,6 @@ describe("external completion evidence summary", () => {
       "pnpm completion:gate:external",
     ]);
     expect(summary.gates.map((gate) => gate.id)).toEqual([
-      "store-stripe-live",
       "hosted-supabase-cron",
       "provider-live-integrations",
       "hardware-os-e2e",
@@ -267,15 +255,15 @@ describe("external completion evidence summary", () => {
     ).toBe(true);
     expect(summary.gates[0].recommendedCommands).toEqual(
       expect.arrayContaining([
-        "OGL_EXTERNAL_EVIDENCE_GATES=store-stripe-live pnpm external:evidence:status",
-        "OGL_EXTERNAL_EVIDENCE_GATES=store-stripe-live pnpm external:evidence:template",
-        "OGL_HOSTED_CRON_EVIDENCE_CHECKS=price-drop pnpm hosted:cron-evidence",
-        "OGL_HOSTED_CRON_EVIDENCE_CHECKS=price-drop pnpm hosted:cron-evidence:artifact-hints",
-        "OGL_EXTERNAL_EVIDENCE_GATES=store-stripe-live pnpm external:evidence:preflight",
+        "OGL_EXTERNAL_EVIDENCE_GATES=hosted-supabase-cron pnpm external:evidence:status",
+        "OGL_EXTERNAL_EVIDENCE_GATES=hosted-supabase-cron pnpm external:evidence:template",
+        "pnpm hosted:cron-evidence",
+        "pnpm hosted:cron-evidence:artifact-hints",
+        "OGL_EXTERNAL_EVIDENCE_GATES=hosted-supabase-cron pnpm external:evidence:preflight",
       ]),
     );
     expect(summary.gates[0].nextAction).toBe(
-      "Set 4 non-placeholder environment value(s), then rerun OGL_EXTERNAL_EVIDENCE_GATES=store-stripe-live pnpm external:evidence:status.",
+      "Set 4 non-placeholder environment value(s), then rerun OGL_EXTERNAL_EVIDENCE_GATES=hosted-supabase-cron pnpm external:evidence:status.",
     );
     expect(summary.gates.find((gate) => gate.id === "hardware-os-e2e")?.nextAction).toBe(
       "Capture real external proof, then check the assigned artifact row(s) only after evidence is attached.",

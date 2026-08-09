@@ -45,8 +45,16 @@ export function archiveDownload(gameId: string): Promise<void> {
   return invokeCommand<void>("archive_download", { gameId });
 }
 
+export function removeDownloadHistoryItem(gameId: string): Promise<void> {
+  return invokeCommand<void>("remove_download_history_item", { gameId });
+}
+
 export function getDownloadQueue(): Promise<DownloadItem[]> {
   return invokeCommand<DownloadItem[]>("get_download_queue");
+}
+
+export function getXboxAppDownloads(): Promise<DownloadItem[]> {
+  return invokeCommand<DownloadItem[]>("get_xbox_app_downloads");
 }
 
 export function checkProviderHealth(): Promise<ProviderHealthStatus[]> {

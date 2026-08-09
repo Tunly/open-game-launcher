@@ -4,6 +4,7 @@ import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ActivityFeed } from "./ActivityFeed";
+import type { Game } from "../../lib/types";
 
 const activityMocks = vi.hoisted(() => ({
   getFriendActivityFeed: vi.fn(),
@@ -29,6 +30,18 @@ vi.mock("../../lib/supabase/presence", () => ({
 
 function renderFeed(ui: ReactElement) {
   return render(<MemoryRouter>{ui}</MemoryRouter>);
+}
+
+function artworkGame(overrides: Partial<Game> = {}): Game {
+  return {
+    id: "steam-neon-runner",
+    title: "Neon Runner",
+    description: "",
+    platform: "windows",
+    status: "installed",
+    version: "1.0",
+    ...overrides,
+  };
 }
 
 describe("ActivityFeed", () => {
@@ -131,6 +144,7 @@ describe("ActivityFeed", () => {
     expect(screen.getByText(/Unlocked "Hard Reset" in Mecha Shift on Steam/i)).toBeInTheDocument();
     expect(screen.getByText("Queue is clear. Ready for co-op.")).toBeInTheDocument();
     expect(screen.getAllByText("Packet Ghost").length).toBeGreaterThan(0);
+    expect(screen.queryByText("PA")).not.toBeInTheDocument();
     expect(screen.getAllByRole("link", { name: "Packet Ghost" })[0]).toHaveAttribute(
       "href",
       "/u/packetghost",
@@ -141,8 +155,142 @@ describe("ActivityFeed", () => {
     );
     expect(screen.getByText(/Added Paper Orbit to their wishlist/i)).toBeInTheDocument();
     expect(screen.getByText(/Now owns Boss Rush EX/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Live feed item #/i)).not.toBeInTheDocument();
     expect(screen.getAllByRole("button", { name: /rate up/i })[0]).toBeDisabled();
     expect(screen.getAllByRole("button", { name: /comments/i }).length).toBeGreaterThan(0);
+  });
+
+  it("uses the same cover-first artwork candidates as the achievements page", async () => {
+    renderFeed(
+      <ActivityFeed
+        artworkGames={[
+          artworkGame({
+            coverUrl: "https://cdn.example.test/neon-cover.jpg",
+            iconUrl: "https://cdn.example.test/neon-icon.png",
+          }),
+        ]}
+        friendIds={["friend-1"]}
+        previewItems={[
+          {
+            achievementName: null,
+            createdAt: new Date().toISOString(),
+            gameId: "steam-neon-runner",
+            gameTitle: "Neon Runner",
+            id: "activity-artwork",
+            metadata: {},
+            type: "game_start",
+            userId: "friend-1",
+            visibility: "friends_only",
+          },
+        ]}
+      />,
+    );
+
+    expect(await screen.findByAltText("Neon Runner activity artwork")).toHaveAttribute(
+      "src",
+      "https://cdn.example.test/neon-cover.jpg",
+    );
+  });
+
+  it("matches artwork through the activity's local game id", async () => {
+    renderFeed(
+      <ActivityFeed
+        artworkGames={[
+          artworkGame({
+            id: "local-neon-runner",
+            coverUrl: "https://cdn.example.test/local-cover.jpg",
+          }),
+        ]}
+        friendIds={["friend-1"]}
+        previewItems={[
+          {
+            achievementName: null,
+            createdAt: new Date().toISOString(),
+            gameId: null,
+            gameTitle: "Neon Runner",
+            id: "activity-local-id",
+            metadata: { localGameId: "local-neon-runner" },
+            type: "game_start",
+            userId: "friend-1",
+            visibility: "friends_only",
+          },
+        ]}
+      />,
+    );
+
+    expect(await screen.findByAltText("Neon Runner activity artwork")).toHaveAttribute(
+      "src",
+      "https://cdn.example.test/local-cover.jpg",
+    );
+  });
+
+  it("falls back from a failed cover to the game's icon", async () => {
+    renderFeed(
+      <ActivityFeed
+        artworkGames={[
+          artworkGame({
+            coverUrl: "https://cdn.example.test/broken-cover.jpg",
+            iconUrl: "https://cdn.example.test/neon-icon.png",
+          }),
+        ]}
+        friendIds={["friend-1"]}
+        previewItems={[
+          {
+            achievementName: null,
+            createdAt: new Date().toISOString(),
+            gameId: "steam-neon-runner",
+            gameTitle: "Neon Runner",
+            id: "activity-artwork-fallback",
+            metadata: {},
+            type: "game_start",
+            userId: "friend-1",
+            visibility: "friends_only",
+          },
+        ]}
+      />,
+    );
+
+    const image = await screen.findByAltText("Neon Runner activity artwork");
+    fireEvent.error(image);
+    expect(await screen.findByAltText("Neon Runner activity artwork")).toHaveAttribute(
+      "src",
+      "https://cdn.example.test/neon-icon.png",
+    );
+  });
+
+  it("uses the neutral gamepad fallback when every artwork candidate fails", async () => {
+    renderFeed(
+      <ActivityFeed
+        artworkGames={[
+          artworkGame({
+            coverUrl: "https://cdn.example.test/broken-cover.jpg",
+            iconUrl: "https://cdn.example.test/broken-icon.png",
+          }),
+        ]}
+        friendIds={["friend-1"]}
+        previewItems={[
+          {
+            achievementName: null,
+            createdAt: new Date().toISOString(),
+            gameId: "steam-neon-runner",
+            gameTitle: "Neon Runner",
+            id: "activity-artwork-empty",
+            metadata: {},
+            type: "game_start",
+            userId: "friend-1",
+            visibility: "friends_only",
+          },
+        ]}
+      />,
+    );
+
+    const image = await screen.findByAltText("Neon Runner activity artwork");
+    fireEvent.error(image);
+    const iconImage = await screen.findByAltText("Neon Runner activity artwork");
+    fireEvent.error(iconImage);
+    const fallback = screen.getByRole("img", { name: "Neon Runner activity artwork" });
+    expect(fallback.querySelector("svg")).toBeInTheDocument();
+    expect(screen.queryByAltText("Neon Runner activity artwork")).not.toBeInTheDocument();
   });
 
   it("renders the empty state when no friend activity is available", async () => {

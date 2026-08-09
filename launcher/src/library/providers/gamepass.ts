@@ -17,6 +17,23 @@ import {
   preferXboxArtwork,
 } from "./xbox-metadata";
 
+function isXboxGamePassNonGameItem(title: string): boolean {
+  const normalized = title
+    .toLowerCase()
+    .replace(/[_-]/g, " ")
+    .split(/\s+/)
+    .filter(Boolean)
+    .join(" ");
+
+  return (
+    ((normalized.startsWith("b07 ") || normalized.startsWith("bo7 ")) &&
+      normalized.includes(" dlc")) ||
+    normalized.includes(" game stub") ||
+    normalized.includes(" launch tracker") ||
+    normalized.includes(" game pass pack")
+  );
+}
+
 function persistCatalogCache(value: string, warnings: string[]) {
   try {
     localStorage.setItem(STORAGE_KEYS.GAME_PASS_CATALOG_CACHE, value);
@@ -134,11 +151,13 @@ export async function mergeGamePassCatalog(
     return { games, warnings, statusMessage };
   }
 
-  const catalogGames = catalogRaw.map((catalogGame) => ({
-    ...ownedGameToGame(catalogGame),
-    catalogSource: "pc_game_pass" as const,
-    productCategory: "game",
-  }));
+  const catalogGames = catalogRaw
+    .map((catalogGame) => ({
+      ...ownedGameToGame(catalogGame),
+      catalogSource: "pc_game_pass" as const,
+      productCategory: "game",
+    }))
+    .filter((game) => !isXboxGamePassNonGameItem(game.title));
   const enrichedGames = mergeCatalogArtwork(games, catalogGames);
   const existingIds = new Set(enrichedGames.map((game) => game.id.toLowerCase()));
   const existingXboxExternalIds = new Set(

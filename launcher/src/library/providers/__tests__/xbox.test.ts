@@ -196,6 +196,31 @@ describe("Xbox metadata matching", () => {
     });
   });
 
+  it("filters Call of Duty hub DLC placeholders from the owned cache", async () => {
+    localStorage.setItem(
+      STORAGE_KEYS.XBOX_GAMES_CACHE,
+      JSON.stringify([
+        linkedXboxGame({ id: "xbox-BO7DLC01", title: "BO7 DLC01 Game Stub 01" }),
+        linkedXboxGame({ id: "xbox-B07DLC19", title: "B07 DLC19 Game Pass Launch Tracker" }),
+        linkedXboxGame({ id: "xbox-BO7DLC17", title: "BO7 DLC17 Standard Launch Tracker" }),
+        linkedXboxGame({ id: "xbox-BO7DLC56", title: "BO7 DLC56 Game Pass Pack 03" }),
+        linkedXboxGame({ id: "xbox-COD", title: "Call of Duty®", externalId: "9COD0001" }),
+        linkedXboxGame({
+          id: "xbox-BO7",
+          title: "Call of Duty: Black Ops 7",
+          externalId: "9BO70001",
+        }),
+      ]),
+    );
+
+    const result = await mergeXboxOwned([], makeContext());
+
+    expect(result.games.map((game) => game.title)).toEqual([
+      "Call of Duty®",
+      "Call of Duty: Black Ops 7",
+    ]);
+  });
+
   it("normalizes only known Xbox catalog qualifiers", () => {
     expect(normalizeXboxCatalogTitle("Roadside Research (Spielvorschau)")).toBe(
       normalizeXboxCatalogTitle("Roadside Research"),

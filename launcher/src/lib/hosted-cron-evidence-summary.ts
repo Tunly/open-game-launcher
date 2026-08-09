@@ -64,7 +64,6 @@ export const HOSTED_CRON_EVIDENCE_BLOCKED_CLAIMS = [
   "No verify-route Supabase write",
   "Dry-run rows do not pass",
   "Stale rows do not pass",
-  "No Stripe webhook or dashboard proof",
   "No production deployment proof",
 ] as const;
 

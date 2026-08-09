@@ -7,14 +7,7 @@ describe("Sidebar", () => {
   it("keeps navigation labels visible when the header becomes narrow", () => {
     render(<Sidebar activePage="library" onNavigate={vi.fn()} />);
 
-    for (const label of [
-      "Library",
-      "Achievements",
-      "Activity",
-      "Downloads",
-      "Store",
-      "Community",
-    ]) {
+    for (const label of ["Library", "Achievements", "Activity", "Downloads", "Store"]) {
       expect(screen.getByText(label)).not.toHaveClass("hidden");
     }
   });
@@ -35,10 +28,10 @@ describe("Sidebar", () => {
     HTMLElement.prototype.scrollIntoView = scrollIntoView;
 
     const { rerender } = render(<Sidebar activePage="library" onNavigate={vi.fn()} />);
-    rerender(<Sidebar activePage="community" onNavigate={vi.fn()} />);
+    rerender(<Sidebar activePage="downloads" onNavigate={vi.fn()} />);
 
     expect(scrollIntoView).toHaveBeenLastCalledWith({
-      behavior: "smooth",
+      behavior: "auto",
       block: "nearest",
       inline: "center",
     });

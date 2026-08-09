@@ -38,6 +38,22 @@ export function getAchievementProviderDisplayName(source: string): string {
   return PROVIDER_LABELS[normalized] ?? (source.trim() || "Provider");
 }
 
+/**
+ * Returns the short provider badge label. When a sync failed or data is private
+ * but achievements are still visible (e.g. keyless Steam fallback data), only
+ * the provider name is shown instead of a red "Steam: failed" badge.
+ */
+export function getAchievementProviderStatusLabel(
+  provider: AchievementProviderStatus,
+  hasAchievements: boolean,
+): string {
+  const providerLabel = getAchievementProviderDisplayName(provider.source);
+  if (hasAchievements && (provider.status === "failed" || provider.status === "private")) {
+    return providerLabel;
+  }
+  return `${providerLabel}: ${provider.status}`;
+}
+
 function getAchievementProviderFallbackMessage(provider: AchievementProviderStatus): string {
   const providerLabel = getAchievementProviderDisplayName(provider.source);
   switch (provider.status) {

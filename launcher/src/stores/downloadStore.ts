@@ -4,6 +4,7 @@ import type { DownloadItem, DownloadStatus } from "../lib/types";
 export interface DownloadState {
   items: DownloadItem[];
   setItems: (items: DownloadItem[]) => void;
+  replaceProviderItems: (provider: string, items: DownloadItem[]) => void;
   upsertItem: (item: DownloadItem) => void;
   upsertItems: (items: DownloadItem[]) => void;
   removeItem: (gameId: string) => void;
@@ -33,6 +34,13 @@ export const useDownloadStore = create<DownloadState>()((set) => ({
         .slice(-MAX_RETAINED_TERMINAL_ITEMS);
 
       return { items: capRetainedTerminalItems([...normalizedItems, ...retainedTerminalItems]) };
+    }),
+
+  replaceProviderItems: (provider, items) =>
+    set((state) => {
+      const normalizedItems = items.map(normalizeDownloadItem);
+      const retainedItems = state.items.filter((item) => item.provider !== provider);
+      return { items: capRetainedTerminalItems([...retainedItems, ...normalizedItems]) };
     }),
 
   upsertItem: (item) =>

@@ -2936,6 +2936,81 @@ export type Database = {
           },
         ]
       }
+      store_catalog: {
+        Row: {
+          id: string
+          external_id: string
+          source: string
+          title: string
+          slug: string
+          description: string | null
+          short_description: string | null
+          publisher: string | null
+          release_date: string | null
+          genres: string[]
+          tags: string[]
+          platforms: string[]
+          price_cents: number
+          discount_percent: number
+          cover_image_url: string | null
+          rating: number | null
+          ratings_count: number
+          downloads_count: number
+          metadata: Json
+          last_synced_at: string
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          external_id: string
+          source: string
+          title: string
+          slug: string
+          description?: string | null
+          short_description?: string | null
+          publisher?: string | null
+          release_date?: string | null
+          genres?: string[]
+          tags?: string[]
+          platforms?: string[]
+          price_cents?: number
+          discount_percent?: number
+          cover_image_url?: string | null
+          rating?: number | null
+          ratings_count?: number
+          downloads_count?: number
+          metadata?: Json
+          last_synced_at?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          external_id?: string
+          source?: string
+          title?: string
+          slug?: string
+          description?: string | null
+          short_description?: string | null
+          publisher?: string | null
+          release_date?: string | null
+          genres?: string[]
+          tags?: string[]
+          platforms?: string[]
+          price_cents?: number
+          discount_percent?: number
+          cover_image_url?: string | null
+          rating?: number | null
+          ratings_count?: number
+          downloads_count?: number
+          metadata?: Json
+          last_synced_at?: string
+          created_at?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       store_products: {
         Row: {
           cover_image_url: string | null

@@ -17,6 +17,7 @@ mod steam_state;
 mod types;
 mod utils;
 mod watcher;
+mod xbox_app;
 
 pub use health::ProviderHealthStatus;
 pub use reconcile::ReconciliationResult;
@@ -47,8 +48,20 @@ pub(crate) fn archive_download_record(app: &tauri::AppHandle, game_id: &str) -> 
 }
 
 #[tauri::command]
+pub fn remove_download_history_item(game_id: String) -> Result<(), String> {
+    history::remove_download_history_item(&crate::commands::downloads::utils::normalize_game_id(
+        game_id,
+    )?)
+}
+
+#[tauri::command]
 pub fn get_download_queue() -> Result<Vec<DownloadItemPayload>, String> {
     queue::get_download_queue()
+}
+
+#[tauri::command]
+pub fn get_xbox_app_downloads() -> Result<Vec<DownloadItemPayload>, String> {
+    xbox_app::get_xbox_app_downloads()
 }
 
 #[tauri::command]

@@ -448,6 +448,11 @@ fn is_steam_non_game_manifest(app_id: Option<&str>, title: &str) -> bool {
         || normalized.contains("dedicated server")
         || normalized.ends_with(" sdk")
         || normalized.contains(" sdk ")
+        // Call of Duty hub DLC placeholders: "BO7 DLC01 Game Stub 01",
+        // "BO7 DLC17 Standard Launch Tracker", "BO7 DLC56 Game Pass Pack 03".
+        || normalized.contains(" game stub")
+        || normalized.contains(" launch tracker")
+        || normalized.contains(" game pass pack")
 }
 
 fn steam_logo_urls(app_id: &str) -> Vec<String> {
@@ -1338,7 +1343,27 @@ mod tests {
             None,
             "Proton EasyAntiCheat Runtime"
         ));
+        assert!(is_steam_non_game_manifest(
+            Some("1234567"),
+            "BO7 DLC01 Game Stub 01"
+        ));
+        assert!(is_steam_non_game_manifest(
+            Some("1234568"),
+            "BO7 DLC17 Standard Launch Tracker"
+        ));
+        assert!(is_steam_non_game_manifest(
+            Some("1234569"),
+            "BO7 DLC19 Game Pass Launch Tracker"
+        ));
+        assert!(is_steam_non_game_manifest(
+            Some("1234570"),
+            "BO7 DLC56 Game Pass Pack 03"
+        ));
         assert!(!is_steam_non_game_manifest(Some("4000"), "Garry's Mod"));
+        assert!(!is_steam_non_game_manifest(
+            Some("2734790"),
+            "Call of Duty: Black Ops 7"
+        ));
     }
 
     #[test]

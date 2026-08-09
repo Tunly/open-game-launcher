@@ -111,17 +111,6 @@ describe("LibrarySidebar", () => {
     expect(screen.queryByRole("button", { name: /Virtual Game 119/ })).not.toBeInTheDocument();
   });
 
-  it("changes the grouping through the header control", () => {
-    const setGroupOption = vi.fn();
-    renderSidebar({ setGroupOption });
-
-    fireEvent.change(screen.getByRole("combobox", { name: "Group library" }), {
-      target: { value: "source" },
-    });
-
-    expect(setGroupOption).toHaveBeenCalledWith("source");
-  });
-
   it("toggles the advanced filter popup via the filter button", () => {
     const setIsFilterPopupOpen = vi.fn();
     renderSidebar({ isFilterPopupOpen: false, setIsFilterPopupOpen });
@@ -132,16 +121,15 @@ describe("LibrarySidebar", () => {
     expect(setIsFilterPopupOpen).toHaveBeenCalledWith(true);
   });
 
-  it("keeps sorting and filters in the header above the search field", () => {
+  it("keeps the remaining filter control in the header above the search field", () => {
     const { container } = renderSidebar();
 
-    const sortSelect = screen.getByRole("combobox", { name: "Sort library" });
-    const groupSelect = screen.getByRole("combobox", { name: "Group library" });
+    expect(screen.queryByRole("combobox", { name: "Group library" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("combobox", { name: "Sort library" })).not.toBeInTheDocument();
+
     const filterButton = screen.getByRole("button", { name: "Advanced filters" });
     const searchInput = screen.getByRole("searchbox", { name: "Search library" });
 
-    expect(sortSelect.compareDocumentPosition(searchInput)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
-    expect(groupSelect.compareDocumentPosition(searchInput)).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     expect(filterButton.compareDocumentPosition(searchInput)).toBe(
       Node.DOCUMENT_POSITION_FOLLOWING,
     );

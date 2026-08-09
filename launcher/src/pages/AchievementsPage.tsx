@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { Award, Gamepad2, Loader2, RefreshCw, Search, Settings, Trophy } from "lucide-react";
 
-import { getGameAssetUrl, getGameBannerStyle } from "../lib/assets";
+import { getGameAssetUrl } from "../lib/assets";
 import { AchievementCacheReadinessPanel } from "../components/achievements/AchievementCacheReadinessPanel";
 import { AchievementHostedHydrationContractPanel } from "../components/achievements/AchievementHostedHydrationContractPanel";
 import {
@@ -30,10 +30,12 @@ import {
   type ProviderMerger,
 } from "../library/providers";
 import type { Game } from "../lib/types";
+import { AchievementViewerModal } from "../components/library/AchievementViewerModal";
 import { PlatformSourceIcon } from "../components/library/PlatformIcons";
 import { useCurrentUser } from "../hooks/useCurrentUser";
 import {
   getAchievementProviderDisplayName,
+  getAchievementProviderStatusLabel,
   getAchievementProviderStatusMessage,
 } from "../lib/achievement-status";
 import {
@@ -159,13 +161,6 @@ function gameMatchesSearch(row: GameAchievementRow, query: string): boolean {
   );
 }
 
-function getRowArtworkStyle(group: GameGroup) {
-  return getGameBannerStyle(group.primaryGame.coverUrl, {
-    backgroundPosition: "center",
-    backgroundSize: "cover",
-  });
-}
-
 function SourceBadges({ group }: { group: GameGroup }) {
   return (
     <div className="flex flex-wrap items-center gap-1">
@@ -200,6 +195,7 @@ function ProviderStatusBadges({ group }: { group: GameGroup }) {
   if (statuses.length === 0) {
     return null;
   }
+  const hasAchievements = (group.achievements ?? []).length > 0;
 
   return (
     <div className="mt-2 flex flex-wrap items-center gap-1">
@@ -207,13 +203,16 @@ function ProviderStatusBadges({ group }: { group: GameGroup }) {
       {statuses.map((provider) => (
         <span
           key={provider.source}
-          className={`neo-copy border-2 border-black px-1.5 py-0.5 text-[8px] font-black uppercase ${providerStatusClass(
-            provider.status,
-            provider.stability,
-          )}`}
+          className={`neo-copy border-2 border-black px-1.5 py-0.5 text-[8px] font-black uppercase ${
+            provider.status === "available"
+              ? "bg-[#087d6d] text-white"
+              : hasAchievements && (provider.status === "failed" || provider.status === "private")
+                ? "bg-[#fbf4e7] text-[#55504a]"
+                : providerStatusClass(provider.status, provider.stability)
+          }`}
           title={getAchievementProviderStatusMessage(provider)}
         >
-          {getAchievementProviderDisplayName(provider.source)}: {provider.status}
+          {getAchievementProviderStatusLabel(provider, hasAchievements)}
         </span>
       ))}
     </div>
@@ -221,22 +220,43 @@ function ProviderStatusBadges({ group }: { group: GameGroup }) {
 }
 
 function ArtworkPanel({ group }: { group: GameGroup }) {
-  const iconCandidate = getGameIconCandidates(group.primaryGame).map(getGameAssetUrl).find(Boolean);
+  // Cover first, then icon/logo candidates, so every row gets a usable image
+  // even when the preferred art is missing or fails to load.
+  const candidates = useMemo(
+    () =>
+      [group.primaryGame.coverUrl, ...getGameIconCandidates(group.primaryGame)].filter(
+        (url, index, urls): url is string => Boolean(url) && urls.indexOf(url) === index,
+      ),
+    [group.primaryGame],
+  );
+  const [candidateIndex, setCandidateIndex] = useState(0);
+  const imageUrl = getGameAssetUrl(candidates[candidateIndex]);
+  const isCover = candidateIndex === 0 && Boolean(group.primaryGame.coverUrl);
+
+  useEffect(() => {
+    setCandidateIndex(0);
+  }, [candidates]);
 
   return (
-    <div
-      className="relative h-[92px] min-h-[92px] overflow-hidden border-[3px] border-black bg-[#171411]"
-      style={getRowArtworkStyle(group)}
-    >
-      {!group.primaryGame.coverUrl ? (
+    <div className="relative aspect-video w-full overflow-hidden border-[3px] border-black bg-[#171411]">
+      {imageUrl ? (
+        <img
+          alt=""
+          className={`h-full w-full ${isCover ? "object-cover" : "object-contain p-2"}`}
+          decoding="async"
+          loading="lazy"
+          src={imageUrl}
+          onError={() =>
+            setCandidateIndex((current) =>
+              current + 1 >= candidates.length ? candidates.length : current + 1,
+            )
+          }
+        />
+      ) : (
         <div className="grid h-full place-items-center bg-[#171411] text-[#fbf4e7]">
-          {iconCandidate ? (
-            <img alt="" className="h-full w-full object-cover" src={iconCandidate} />
-          ) : (
-            <Gamepad2 className="h-9 w-9" />
-          )}
+          <Gamepad2 className="h-9 w-9" />
         </div>
-      ) : null}
+      )}
       <div className="neo-dots absolute inset-0 opacity-20" />
       <div className="absolute right-0 bottom-0 left-0 border-t-2 border-black bg-[#171411]/80 px-2 py-1">
         <SourceBadges group={group} />
@@ -256,7 +276,13 @@ function ProgressBar({ value }: { value: number }) {
   );
 }
 
-function GameRow({ row }: { row: GameAchievementRow }) {
+function GameRow({
+  row,
+  onViewFullList,
+}: {
+  row: GameAchievementRow;
+  onViewFullList: (row: GameAchievementRow) => void;
+}) {
   const { group, total, unlocked, completion, isPerfect, recentAchievements } = row;
   const attentionStatus = group.achievementProviderStatuses?.find(
     (provider) => provider.status !== "available",
@@ -269,6 +295,7 @@ function GameRow({ row }: { row: GameAchievementRow }) {
   const attentionProviderLabel = attentionStatus
     ? getAchievementProviderDisplayName(attentionStatus.source)
     : "Achievement";
+  const hasAchievementData = group.achievements.length > 0;
   const achievementProgressLabel =
     total > 0 ? `${unlocked}/${total}` : attentionStatus ? "Unavailable" : "Not synced";
 
@@ -351,7 +378,7 @@ function GameRow({ row }: { row: GameAchievementRow }) {
             </div>
           ) : null}
 
-          {total === 0 || attentionStatus ? (
+          {total === 0 || (attentionStatus && !hasAchievementData) ? (
             <div
               aria-label={`${attentionProviderLabel} achievement sync unavailable`}
               className="mt-3 grid gap-2 border-2 border-black bg-[#fbf4e7] px-2 py-1.5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end"
@@ -368,12 +395,13 @@ function GameRow({ row }: { row: GameAchievementRow }) {
               </Link>
             </div>
           ) : (
-            <Link
-              className="neo-copy mt-3 inline-flex border-2 border-black bg-[#171411] px-2 py-1 text-[9px] font-black text-[#fbf4e7] uppercase shadow-[2px_2px_0_#171411] hover:-translate-y-0.5"
-              to={`/library?game=${encodeURIComponent(libraryGameId)}`}
+            <button
+              className="neo-copy mt-3 inline-flex border-2 border-black bg-[#171411] px-2 py-1 text-[9px] font-black text-[#fbf4e7] uppercase transition-colors hover:bg-[#2b2722]"
+              onClick={() => onViewFullList(row)}
+              type="button"
             >
               View Full List
-            </Link>
+            </button>
           )}
         </div>
       </div>
@@ -430,6 +458,7 @@ export function AchievementsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [sourceFilter, setSourceFilter] = useState("all");
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [achievementViewerRow, setAchievementViewerRow] = useState<GameAchievementRow | null>(null);
 
   useEffect(() => {
     let mounted = true;
@@ -456,6 +485,14 @@ export function AchievementsPage() {
           return launcher === game.launcher ? game : { ...game, launcher };
         });
 
+        // Show the native/local achievement archive as soon as the desktop list is
+        // available. Provider inventory enrichment can continue in the background
+        // without blocking the first useful render of this page.
+        if (mounted) {
+          setGames(allGames);
+          setIsLoading(false);
+        }
+
         if (!shouldSkipRemoteHydration) {
           const providerContext = {
             forceRefresh: false,
@@ -480,6 +517,8 @@ export function AchievementsPage() {
         }
 
         if (mounted) {
+          // Keep the provider-enriched list as the hydration source once the
+          // background inventory pass has completed.
           setLocalGames(allGames);
           setGames(allGames);
         }
@@ -876,9 +915,22 @@ export function AchievementsPage() {
             </div>
           </div>
         ) : (
-          visibleRows.map((row) => <GameRow key={row.group.id} row={row} />)
+          visibleRows.map((row) => (
+            <GameRow key={row.group.id} row={row} onViewFullList={setAchievementViewerRow} />
+          ))
         )}
       </div>
+
+      {achievementViewerRow ? (
+        <AchievementViewerModal
+          achievements={achievementViewerRow.group.achievements}
+          completionAchievements={achievementViewerRow.group.achievements.filter(
+            (achievement) => !achievement.isAdditional,
+          )}
+          gameTitle={achievementViewerRow.group.title}
+          onClose={() => setAchievementViewerRow(null)}
+        />
+      ) : null}
     </section>
   );
 }

@@ -41,9 +41,6 @@ export const STORAGE_KEYS = {
   XBOX_USERNAME: "launcher.xboxUsername",
   GAME_PASS_CATALOG_CACHE: "launcher.gamePassCatalogCache",
 
-  STORE_CART: "og-launcher:store:cart",
-  STORE_OWNED: "og-launcher:store:owned",
-  STORE_ORDERS: "og-launcher:store:orders",
   STORE_PRICE_ALERTS: "og-launcher:store:priceAlerts",
   STORE_WISHLIST: "og-launcher:store:wishlist",
 } as const;

@@ -620,7 +620,7 @@ test("hostedCronEvidencePacket and artifact hints can focus one cron lane", () =
   assert.match(packet, /Gate-Specific Evidence/);
   assert.match(
     packet,
-    /matching `OGL_EXTERNAL_EVIDENCE_GATES=store-stripe-live pnpm external:evidence:preflight` command/,
+    /matching `OGL_EXTERNAL_EVIDENCE_GATES=hosted-supabase-cron pnpm external:evidence:preflight` command/,
   );
   assert.doesNotMatch(
     packet,

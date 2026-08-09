@@ -19,8 +19,6 @@ function makeGame(overrides: Partial<StoreGame> = {}): StoreGame {
 }
 
 const handlers = {
-  onAddToCart: vi.fn(),
-  onBuyNow: vi.fn(),
   onToggleWishlist: vi.fn(),
   onViewDetails: vi.fn(),
 };
@@ -28,14 +26,7 @@ const handlers = {
 describe("StoreGameCard", () => {
   it("renders the hosted cover and publisher metadata", () => {
     const { container } = render(
-      <StoreGameCard
-        game={makeGame()}
-        isAdded={false}
-        isInCart={false}
-        isProcessing={false}
-        isWishlisted={false}
-        {...handlers}
-      />,
+      <StoreGameCard game={makeGame()} isWishlisted={false} {...handlers} />,
     );
 
     expect(screen.getByText("Hosted Publisher")).toBeInTheDocument();
@@ -48,9 +39,6 @@ describe("StoreGameCard", () => {
     render(
       <StoreGameCard
         game={makeGame({ coverImageUrl: undefined })}
-        isAdded={false}
-        isInCart={false}
-        isProcessing={false}
         isWishlisted={false}
         {...handlers}
       />,

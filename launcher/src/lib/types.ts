@@ -115,9 +115,11 @@ export interface StoreGame {
   coverImageUrl?: string;
   downloadsCount?: number;
   price: number;
+  priceAvailable?: boolean;
   originalPrice?: number;
   discountPercent?: number;
   isFree?: boolean;
+  temporaryFreeUntil?: string;
   platform: Platform[];
   developer?: string;
   publisher?: string;

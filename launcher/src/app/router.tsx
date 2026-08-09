@@ -7,9 +7,6 @@ import { RouteErrorBoundary } from "../components/ui/AppErrorBoundary";
 const AuthPage = lazy(() =>
   import("../pages/AuthPage").then((page) => ({ default: page.AuthPage })),
 );
-const CommunityPage = lazy(() =>
-  import("../pages/CommunityPage").then((page) => ({ default: page.CommunityPage })),
-);
 const DownloadsPage = lazy(() =>
   import("../pages/DownloadsPage").then((page) => ({ default: page.DownloadsPage })),
 );
@@ -60,9 +57,6 @@ const SettingsDiagnosticsPage = lazy(() =>
 const FamilyPage = lazy(() =>
   import("../pages/FamilyPage").then((page) => ({ default: page.FamilyPage })),
 );
-const DeveloperPortalPage = lazy(() =>
-  import("../pages/DeveloperPortalPage").then((page) => ({ default: page.DeveloperPortalPage })),
-);
 const NewsPage = lazy(() =>
   import("../pages/NewsPage").then((page) => ({ default: page.NewsPage })),
 );
@@ -111,7 +105,6 @@ export const router = createBrowserRouter([
       { path: "/", element: <Navigate to="/library" replace /> },
       { path: "/library", element: page(<LibraryPage />) },
       { path: "/store", element: page(<StorePage />) },
-      { path: "/community", element: page(<CommunityPage />) },
       { path: "/downloads", element: page(<DownloadsPage />) },
       { path: "/achievements", element: page(<AchievementsPage />) },
       { path: "/activity", element: page(<ActivityPage />) },
@@ -127,7 +120,6 @@ export const router = createBrowserRouter([
       { path: "/settings/privacy", element: page(<PrivacySettingsPage />) },
       { path: "/friends", element: page(<FriendsPage />) },
       { path: "/family", element: page(<FamilyPage />) },
-      { path: "/developer", element: page(<DeveloperPortalPage />) },
       { path: "/news", element: page(<NewsPage />) },
       { path: "*", element: page(<NotFoundPage />) },
     ],

@@ -1125,8 +1125,6 @@ test("release tags require external evidence gate before release artifacts", () 
     "ACCOUNT_DELETION_PROCESSOR_SECRET",
     "PRICE_DROP_NOTIFY_SECRET",
     "PRESENCE_POLL_SECRET",
-    "STRIPE_SECRET_KEY",
-    "STRIPE_WEBHOOK_SECRET",
     "STEAM_WEB_API_KEY",
     "PRESENCE_PROVIDER_TOKEN",
   ]) {
@@ -1184,9 +1182,9 @@ test("release boundary external checks ignore scoped evidence and freshness over
   assert.deepEqual(
     releaseBoundaryEnv({
       KEEP_ME: "yes",
-      OGL_EXTERNAL_EVIDENCE_GATES: "store-stripe-live",
+      OGL_EXTERNAL_EVIDENCE_GATES: "hosted-supabase-cron",
       OGL_EXTERNAL_EVIDENCE_NOW: "2030-01-01T00:00:00.000Z",
-      OGL_HOSTED_DEPLOY_FUNCTIONS: "stripe-webhook",
+      OGL_HOSTED_DEPLOY_FUNCTIONS: "notify-price-drop",
       OGL_HOSTED_CRON_EVIDENCE_CHECKS: "price-drop",
       OGL_HOSTED_CRON_FRESHNESS_HOURS: "9999",
       [completionGateRunIdEnvName]: "user-run",
@@ -1218,9 +1216,9 @@ test("release boundary external checks ignore scoped evidence and freshness over
     action: "external",
     env: {
       KEEP_ME: "yes",
-      OGL_EXTERNAL_EVIDENCE_GATES: "store-stripe-live",
+      OGL_EXTERNAL_EVIDENCE_GATES: "hosted-supabase-cron",
       OGL_EXTERNAL_EVIDENCE_NOW: "2030-01-01T00:00:00.000Z",
-      OGL_HOSTED_DEPLOY_FUNCTIONS: "stripe-webhook",
+      OGL_HOSTED_DEPLOY_FUNCTIONS: "notify-price-drop",
       OGL_HOSTED_CRON_EVIDENCE_CHECKS: "price-drop",
       OGL_HOSTED_CRON_FRESHNESS_HOURS: "9999",
       [completionGateRunIdEnvName]: "user-run",

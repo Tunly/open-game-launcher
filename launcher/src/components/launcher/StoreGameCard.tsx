@@ -1,4 +1,4 @@
-import { Check, Heart, ShoppingCart } from "lucide-react";
+import { Heart } from "lucide-react";
 
 import type { StoreGame } from "../../lib/types";
 
@@ -9,40 +9,38 @@ const euroCurrencyFormatter = new Intl.NumberFormat("en-US", {
 
 interface StoreGameCardProps {
   game: StoreGame;
-  isAdded: boolean;
-  isInCart: boolean;
-  isProcessing: boolean;
   isWishlisted: boolean;
-  onAddToCart: (gameId: string) => void;
-  onBuyNow: (gameId: string) => void;
+  isProcessing?: boolean;
+  platformLabels?: string[];
   onToggleWishlist: (gameId: string) => void;
   onViewDetails: (gameId: string) => void;
+  onBuyNow?: (gameId: string) => void;
 }
 
 function formatPrice(game: StoreGame) {
-  if (game.isFree || game.price === 0) {
-    return "Free";
-  }
-
+  if (game.priceAvailable === false) return "Price unavailable";
+  if (game.isFree || game.price === 0) return "Free";
   return euroCurrencyFormatter.format(game.price);
+}
+
+function formatPlatform(value: string) {
+  return value.replace(/[_-]+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
 export function StoreGameCard({
   game,
-  isAdded,
-  isInCart,
-  isProcessing,
   isWishlisted,
-  onAddToCart,
-  onBuyNow,
+  isProcessing = false,
+  platformLabels = [],
   onToggleWishlist,
   onViewDetails,
+  onBuyNow,
 }: StoreGameCardProps) {
   const priceLabel = formatPrice(game);
-  const buyLabel = isAdded ? "Owned" : game.isFree ? "Claim" : priceLabel;
+  const labels = platformLabels.length > 0 ? platformLabels : game.platform;
 
   return (
-    <article className="group relative overflow-hidden border-[3px] border-black bg-[#171411] shadow-[4px_4px_0_#171411] transition hover:-translate-y-0.5">
+    <article className="group relative overflow-hidden border-[3px] border-black bg-[#171411] shadow-[4px_4px_0_#171411]">
       <button
         aria-label={`View details for ${game.title}`}
         className="steam-game-banner relative block w-full overflow-hidden bg-[#302c25] text-left"
@@ -75,62 +73,50 @@ export function StoreGameCard({
           </p>
         </div>
         <div className="absolute top-2 left-2 flex max-w-[calc(100%-84px)] flex-wrap gap-1.5">
-          {(game.genres ?? [game.tagLine]).slice(0, 3).map((genre) => (
+          {labels.slice(0, 4).map((label) => (
             <span
-              key={genre}
+              key={label}
               className="neo-copy border-2 border-black bg-[#fff9ed] px-2 py-1 text-[8px] font-black tracking-[0.08em] text-[#171411] uppercase shadow-[2px_2px_0_#171411]"
             >
-              {genre}
+              {formatPlatform(label)}
             </span>
           ))}
         </div>
       </button>
-      <div className="absolute top-2 right-2 z-10 flex gap-1.5">
+      <div className="border-t-2 border-black bg-[#fff9ed] p-3">
+        <div className="flex items-center justify-between gap-2">
+          <span className="neo-copy text-[12px] font-black text-[#171411] uppercase">
+            {priceLabel}
+          </span>
+          {game.discountPercent ? (
+            <span className="neo-copy border-2 border-black bg-[#8cf5e4] px-2 py-1 text-[9px] font-black text-[#171411] uppercase">
+              -{game.discountPercent}%
+            </span>
+          ) : null}
+        </div>
+        <div className="mt-2">
+          <button
+            className="neo-copy h-9 w-full border-2 border-black bg-[#b7102a] px-2 text-[9px] font-black text-white uppercase disabled:opacity-50"
+            disabled={isProcessing || !onBuyNow}
+            type="button"
+            onClick={() => onBuyNow?.(game.id)}
+          >
+            {isProcessing ? "Opening store" : "Open platform store"}
+          </button>
+        </div>
+      </div>
+      <div className="absolute top-2 right-2 z-10">
         <button
           aria-label={
             isWishlisted ? `Remove ${game.title} from wishlist` : `Wishlist ${game.title}`
           }
-          className={`flex h-9 w-9 items-center justify-center border-2 border-black shadow-[2px_2px_0_#171411] ${
-            isWishlisted ? "bg-[#b7102a] text-white" : "bg-[#fff9ed] text-[#171411]"
-          }`}
+          className={`flex h-9 w-9 items-center justify-center border-2 border-black shadow-[2px_2px_0_#171411] ${isWishlisted ? "bg-[#b7102a] text-white" : "bg-[#fff9ed] text-[#171411]"}`}
           type="button"
           onClick={() => onToggleWishlist(game.id)}
         >
           <Heart className={`h-4 w-4 ${isWishlisted ? "fill-current" : ""}`} />
         </button>
-        <button
-          aria-label={isInCart ? `${game.title} is in cart` : `Add ${game.title} to cart`}
-          className="flex h-9 w-9 items-center justify-center border-2 border-black bg-[#087d6d] text-white shadow-[2px_2px_0_#171411] disabled:opacity-60"
-          disabled={isInCart || isAdded || isProcessing}
-          type="button"
-          onClick={() => onAddToCart(game.id)}
-        >
-          {isInCart || isAdded ? (
-            <Check className="h-5 w-5" />
-          ) : (
-            <ShoppingCart className="h-5 w-5" />
-          )}
-        </button>
       </div>
-      <button
-        aria-label={`${isAdded ? "Owned" : game.isFree ? "Claim" : "Buy now"} - ${priceLabel}`}
-        className="neo-copy absolute right-2 bottom-2 z-10 min-w-24 border-2 border-black bg-[#171411] text-right text-[10px] font-black tracking-[0.08em] text-[#fff9ed] uppercase shadow-[2px_2px_0_#171411] disabled:opacity-70"
-        disabled={isAdded || isProcessing}
-        type="button"
-        onClick={() => onBuyNow(game.id)}
-      >
-        {game.originalPrice && game.originalPrice > game.price ? (
-          <span className="block border-b-2 border-black bg-[#5b403f] px-2 py-0.5 text-[8px] text-[#f6edd8] line-through">
-            {euroCurrencyFormatter.format(game.originalPrice)}
-          </span>
-        ) : null}
-        <span className="block bg-[#b7102a] px-2 py-1 text-sm leading-none">{buyLabel}</span>
-      </button>
-      {game.discountPercent ? (
-        <span className="neo-copy absolute bottom-2 left-2 z-10 border-2 border-black bg-[#8cf5e4] px-2 py-1 text-[11px] leading-none font-black text-[#171411] uppercase shadow-[2px_2px_0_#171411]">
-          -{game.discountPercent}%
-        </span>
-      ) : null}
     </article>
   );
 }

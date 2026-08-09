@@ -37,9 +37,10 @@ pub fn get_download_settings() -> Result<DownloadSettings, String> {
     }
     let contents = std::fs::read_to_string(&path)
         .map_err(|error| format!("Could not read download settings: {error}"))?;
-    normalize_settings(serde_json::from_str(&contents).map_err(|error| {
-        format!("Could not parse download settings: {error}")
-    })?)
+    normalize_settings(
+        serde_json::from_str(&contents)
+            .map_err(|error| format!("Could not parse download settings: {error}"))?,
+    )
 }
 
 pub fn save_download_settings(settings: DownloadSettings) -> Result<DownloadSettings, String> {
@@ -94,9 +95,8 @@ pub fn normalize_install_root(value: Option<String>) -> Result<Option<String>, S
 
 fn normalize_settings(mut settings: DownloadSettings) -> Result<DownloadSettings, String> {
     settings.bandwidth_limit_kbps = normalize_bandwidth_limit(settings.bandwidth_limit_kbps)?;
-    settings.max_concurrent_downloads = normalize_max_concurrent_downloads(
-        settings.max_concurrent_downloads,
-    )?;
+    settings.max_concurrent_downloads =
+        normalize_max_concurrent_downloads(settings.max_concurrent_downloads)?;
     settings.install_root = normalize_install_root(settings.install_root)?;
     Ok(settings)
 }
@@ -142,7 +142,10 @@ mod tests {
     #[test]
     fn install_root_requires_an_absolute_path() {
         assert_eq!(normalize_install_root(None).unwrap(), None);
-        assert_eq!(normalize_install_root(Some("   ".to_string())).unwrap(), None);
+        assert_eq!(
+            normalize_install_root(Some("   ".to_string())).unwrap(),
+            None
+        );
         assert!(normalize_install_root(Some("D:\\Games".to_string())).is_ok());
         assert!(normalize_install_root(Some("relative/games".to_string())).is_err());
     }
@@ -152,7 +155,10 @@ mod tests {
         let legacy = r#"{"bandwidthLimitKbps": 2048}"#;
         let parsed: DownloadSettings = serde_json::from_str(legacy).unwrap();
         assert_eq!(parsed.bandwidth_limit_kbps, Some(2048));
-        assert_eq!(parsed.max_concurrent_downloads, DEFAULT_MAX_CONCURRENT_DOWNLOADS);
+        assert_eq!(
+            parsed.max_concurrent_downloads,
+            DEFAULT_MAX_CONCURRENT_DOWNLOADS
+        );
         assert_eq!(parsed.install_root, None);
     }
 }

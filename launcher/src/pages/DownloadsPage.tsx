@@ -1,4 +1,4 @@
-import { Settings, Trash2, RefreshCw, Gauge } from "lucide-react";
+import { Settings, Trash2, RefreshCw, Gauge, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
@@ -12,6 +12,7 @@ import {
   pauseDownload,
   listInstalledGames,
   launchGame,
+  getXboxAppDownloads,
   startDownload,
   reconcileDownloads,
   getDownloadSettings,
@@ -19,6 +20,7 @@ import {
 } from "../lib/launcher";
 import { getErrorMessage } from "../lib/formatters";
 import { useDebugMode } from "../hooks/useDebugMode";
+import { ModalDialog } from "../components/ui/ModalDialog";
 import { STORAGE_KEYS } from "../lib/storage-keys";
 import {
   isActiveDownloadItem,
@@ -120,6 +122,26 @@ export function DownloadsPage() {
 
     return () => {
       active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isTauri()) return;
+    let active = true;
+    const refreshXboxDownloads = () => {
+      void getXboxAppDownloads()
+        .then((xboxItems) => {
+          if (active) {
+            useDownloadStore.getState().replaceProviderItems("xbox", xboxItems);
+          }
+        })
+        .catch(() => undefined);
+    };
+    refreshXboxDownloads();
+    const interval = window.setInterval(refreshXboxDownloads, 2000);
+    return () => {
+      active = false;
+      window.clearInterval(interval);
     };
   }, []);
 
@@ -271,11 +293,13 @@ export function DownloadsPage() {
 
       try {
         setCommandError(null);
+        // Use the canonical native removal path so late worker events are
+        // suppressed and the authoritative removal event is emitted.
         await archiveDownload(item.gameId);
         removeItem(item.gameId);
       } catch (err) {
         setCommandError(getErrorMessage(err));
-        console.error("Failed to archive download:", err);
+        console.error("Failed to remove download:", err);
       } finally {
         finishGameCommand(item.gameId);
       }
@@ -398,9 +422,6 @@ export function DownloadsPage() {
       {/* System Monitor Header Dashboard */}
       <div className="flex flex-col items-stretch gap-4 border-4 border-black bg-[#efe6d4] p-4 shadow-[4px_4px_0_#171411] md:flex-row md:items-center md:justify-between">
         <div className="min-w-0">
-          <p className="neo-copy text-[9px] font-black tracking-[0.18em] text-[#c20b2f] uppercase">
-            Transfer Control
-          </p>
           <h1
             id="downloads-title"
             className="neo-title text-3xl leading-none font-black text-[#171411] uppercase"
@@ -426,26 +447,28 @@ export function DownloadsPage() {
               {activeItems.length}
             </span>
           </div>
-          <button
-            aria-label="Refresh download state"
-            disabled={isReconciling}
-            onClick={() => void handleReconcile()}
-            className="ml-2 flex h-10 w-10 items-center justify-center border-2 border-black bg-[#f5eedf] shadow-[2px_2px_0_#171411] hover:bg-[#efe6d4] disabled:cursor-not-allowed disabled:opacity-60"
-            type="button"
-            title="Refresh download state"
-          >
-            <RefreshCw className={`h-4 w-4 ${isReconciling ? "animate-spin" : ""}`} />
-          </button>
-          <button
-            aria-expanded={settingsPanelOpen}
-            aria-label="Download settings"
-            onClick={() => setSettingsPanelOpen((open) => !open)}
-            className="ml-2 flex h-10 w-10 items-center justify-center border-2 border-black bg-[#f5eedf] shadow-[2px_2px_0_#171411] hover:bg-[#efe6d4] active:translate-x-[1px] active:translate-y-[1px] active:shadow-[1px_1px_0_#171411]"
-            type="button"
-            title="Download settings"
-          >
-            <Settings className="h-4 w-4" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              aria-label="Refresh download state"
+              disabled={isReconciling}
+              onClick={() => void handleReconcile()}
+              className="flex h-10 w-10 items-center justify-center border-2 border-black bg-[#f5eedf] shadow-[2px_2px_0_#171411] hover:bg-[#efe6d4] disabled:cursor-not-allowed disabled:opacity-60"
+              type="button"
+              title="Refresh download state"
+            >
+              <RefreshCw className={`h-4 w-4 ${isReconciling ? "animate-spin" : ""}`} />
+            </button>
+            <button
+              aria-expanded={settingsPanelOpen}
+              aria-label="Download settings"
+              onClick={() => setSettingsPanelOpen((open) => !open)}
+              className="flex h-10 w-10 items-center justify-center border-2 border-black bg-[#f5eedf] shadow-[2px_2px_0_#171411] hover:bg-[#efe6d4] active:translate-x-[1px] active:translate-y-[1px] active:shadow-[1px_1px_0_#171411]"
+              type="button"
+              title="Download settings"
+            >
+              <Settings className="h-4 w-4" />
+            </button>
+          </div>
         </div>
       </div>
 
@@ -460,14 +483,28 @@ export function DownloadsPage() {
       ) : null}
 
       {settingsPanelOpen ? (
-        <div
-          aria-label="Download settings panel"
-          className="border-2 border-black bg-[#f5eedf] p-4 shadow-[3px_3px_0_#171411]"
-          role="region"
+        <ModalDialog
+          labelledBy="download-settings-title"
+          backdropClassName="fixed inset-0 z-50 grid place-items-center bg-[#171411]/75 p-4"
+          panelClassName="w-full max-w-2xl border-4 border-black bg-[#f5eedf] p-4 shadow-[5px_5px_0_#171411]"
+          initialFocusSelector="input"
+          onDismiss={() => setSettingsPanelOpen(false)}
         >
-          <div className="mb-3 flex items-center gap-2">
-            <Gauge className="h-4 w-4" />
-            <span className="neo-copy text-[10px] font-black uppercase">Download settings</span>
+          <div className="mb-4 flex items-center justify-between border-b-2 border-black pb-3">
+            <div className="flex items-center gap-2">
+              <Gauge className="h-5 w-5" />
+              <h2 id="download-settings-title" className="neo-title text-lg font-black">
+                Download settings
+              </h2>
+            </div>
+            <button
+              aria-label="Close download settings"
+              className="flex h-9 w-9 items-center justify-center border-2 border-black bg-[#efe6d4] shadow-[2px_2px_0_#171411] hover:bg-[#e2d8c3]"
+              onClick={() => setSettingsPanelOpen(false)}
+              type="button"
+            >
+              <X className="h-4 w-4" />
+            </button>
           </div>
           <div className="grid gap-4 md:grid-cols-3">
             <label className="neo-copy block text-[10px] font-bold uppercase">
@@ -525,10 +562,8 @@ export function DownloadsPage() {
               Limit applies to new downloads.
             </span>
           </div>
-        </div>
+        </ModalDialog>
       ) : null}
-
-      {/* Downloader Queue List Groups */}
       <div className="space-y-8">
         {/* 1. UP NEXT / ACTIVE Sektion */}
         <div>

@@ -20,7 +20,6 @@
     {"file":"screenshots/settings-profile-local-save-success.png","routes":["/settings/profile"],"verify":[],"purpose":"settings profile save success state","boundary":"local"},
     {"file":"screenshots/friends-activity-steam-like-local.png","routes":["/activity"],"verify":[],"purpose":"friends activity steam like state","boundary":"mock"},
     {"file":"screenshots/friends-roster-action-handoff-local.png","routes":["/friends"],"verify":[],"purpose":"friends roster action handoff state","boundary":"local"},
-    {"file":"screenshots/community-create-post-verify-local.png","routes":["/community"],"verify":["community-create-post"],"purpose":"community create post verify state","boundary":"browser"},
     {"file":"screenshots/privacy-settings-local-save-success.png","routes":["/settings/privacy"],"verify":[],"purpose":"privacy settings save success state","boundary":"local"},
     {"file":"screenshots/settings-external-completion-evidence-summary-local.png","routes":["/settings","/settings/diagnostics"],"verify":["external-completion-evidence-summary"],"purpose":"settings diagnostics and external completion evidence summary state","boundary":"preflight"},
     {"file":"screenshots/settings-external-completion-evidence-summary-mobile.png","routes":["/settings","/settings/diagnostics"],"verify":["external-completion-evidence-summary"],"purpose":"settings diagnostics and external completion evidence summary state","boundary":"preflight"},

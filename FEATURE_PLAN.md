@@ -10,7 +10,7 @@
 > keinen eigenen Cloud-Save-Dienst mehr an.
 >
 > **Lokale Evidence-Grenze:** `/settings?verify=external-completion-evidence-summary`
-> zeigt Store/Stripe, Hosted Cron, Provider-Live, Hardware/OS und Rollout als
+> zeigt Hosted Cron, Provider-Live, Hardware/OS und Rollout als
 > lokalen No-Write-Nachweisplan mit Env-Namen, Artefaktpfaden und
 > Proof-Anforderungen. Die dort gelisteten Gates bleiben offen, bis die echten
 > externen Artefakte aus `docs/runbooks/external-completion-evidence.md`
@@ -32,7 +32,7 @@ Implementierungslücke, externer Evidenz und bewusst entferntem Scope.
 | Desktop-Shell und Retro-Manga-UI                            | Lokal implementiert                                         | Tauri-2-Shell, Header-Navigation und das in `docs/PROJECT_DESIGN.md` festgelegte visuelle System sind aktiv; der Tailwind-4-Static-Contract schützt die zentralen Design-Tokens.                                                                                                                                                                                                                                                                                          |
 | Library und Downloads                                       | Lokal implementiert                                         | Native Erkennung, Cache, manuelles Hinzufügen, Start/Move, Collections, Integritätsprüfung, persistente Last-Played-Aktivität, Download-Queue und externe Launcher-Verfolgung sind aktiv. Das Game-Options-Dossier trennt ausgewählte Kopie und gruppenweite Metadatenaktionen.                                                                                                         |
 | Plattformbibliotheken                                       | Lokal implementiert, Provider-Evidenz offen                 | Steam, GOG, Epic/Legendary, Xbox, PC Game Pass, Ubisoft, Battle.net und EA sind in der Provider-Pipeline. Xbox-Paketartwork wird app-lokal materialisiert, TitleHub-Artwork bleibt erhalten, und Game-Pass-Enrichment nutzt Store-IDs vor konservativem Titel-Fallback. Live-Provider-Nachweise bleiben Teil von `provider-live-integrations`.                                                                                                                            |
-| Store                                                       | Vertraglich/lokal implementiert, Produktion blockiert       | Katalog, Cart, Orders, Entitlements, Checkout-/Webhook-/Refund-Verträge und Offline-Lizenzprüfung existieren. Bundled Preview-Produkte sind keine Commerce-Produkte; Paid Checkout, Live-Webhook, Tax/Invoice und produktive Key-Custody benötigen echte Stripe-/Provider-Konfiguration.                                                                                                                                                                                  |
+| Store                                                       | Lokal implementiert                                       | Katalog, Wishlist, Reviews und Preisalarme bleiben aktiv. Entwicklerportal und eigene Produktveröffentlichung werden nicht mehr als Verkaufsweg verwendet. Der OG Launcher verkauft keine Spiele selbst und besitzt keinen eigenen Warenkorb, Checkout, keine Lizenzen und keine Refund-Abwicklung. Bei einer Kaufaktion wird ausschließlich an den offiziellen Store der jeweiligen Plattform weitergeleitet.                                                                                                                                                                                  |
 | Achievements                                                | Lokal implementiert, Hosted-Relay vorhanden; Provider-E2E offen | Steam/Xbox-Sync, PC-Game-Pass-Katalogtitel, lokale Provider-Archive, Cross-Platform-Aggregation, Providerstatus, Sidecars, Epic-Fallback, Supabase-Hydration und ein providerweiser Sync-Koordinator sind vorhanden. Steam-Account-Linking per OpenID und ein attestierter Hosted-Relay sind implementiert; Live-Provider-E2E bleibt offen. Pop-up-Benachrichtigungen wurden bewusst entfernt. |
 | Community                                                   | Normale Route gehostet; Review-Hubs lokal                   | `/community` lädt echte Supabase-Aktivität des eigenen Accounts und akzeptierter Freunde, schreibt eigene `friends_only`-Statusposts und bindet Reaktionen sowie Kommentare an. Hub/Workshop/Market/Broadcasting-Fixtures und der lokale Create-Post-Beleg sind ausschließlich explizite `?verify=...`-Reviewpfade.                                                                                                                                                     |
 | Activity und Performance                                    | Freundes-Feed und Recap lokal implementiert; Game-FPS offen | `/activity` ist der echte Freundes-Feed für Spiel-, Achievement-, Store- und Status-Aktivität. Reaktionen und Kommentare sind über RLS-geschützte Tabellen/RPCs und Realtime angebunden; der bisherige Jahresrückblick liegt unter `/activity/recap`. CPU-Prozentwerte nutzen einen persistenten sysinfo-Delta-Sampler. HUD-FPS bleibt als Webview-Proxy klar beschriftet; echte Game-FPS bleiben offen.                                                                  |
@@ -41,7 +41,7 @@ Implementierungslücke, externer Evidenz und bewusst entferntem Scope.
 | Client Manager, Presence, Backup, Artwork und Invites | Lokale Implementierung/Staging vorhanden                    | Sichere lokale Pfade sind implementiert. Normales Custom Artwork ist ausschließlich lokal pro ausgewählter Kopie. Provider-approved Apply/Mount, Hosted Cron, Cross-OS-Drive-E2E und Hosted-Invite-E2E bleiben offen. |
 | Plugin-System und Broadcasting                              | Readiness/Verträge, kein Live-Produktpfad                   | Plugin-Packages bleiben in einer disabled Registry und werden nicht ausgeführt. Broadcasting bleibt auf Verify-Routen ohne echte OAuth-, RTMP-, Chat-, VOD- oder Audience-Mutation.                                                                                                                                                                                                                                                                                       |
 | Entfernte Produktfeatures                                   | Abgeschlossen entfernt                                      | First-party Cloud Saves, Controller-Support, Screenshot-Capture/-Galerie und Achievement-Popups sind bewusst außerhalb des Produkts; Removal-Migrationen und Boundary-Tests verhindern eine versehentliche Wiederaufnahme.                                                                                                                                                                                                                                                |
-| Release                                                     | Nicht freigegeben                                           | `store-stripe-live`, `hosted-supabase-cron`, `provider-live-integrations`, `hardware-os-e2e` und `rollout-tracks` stehen weiterhin bei `0/5` externer Evidenz. Ein frischer vollständiger `pnpm completion:gate` ist vor einer Freigabe erforderlich.                                                                                                                                                                                                                     |
+| Release                                                     | Nicht freigegeben                                           | `hosted-supabase-cron`, `provider-live-integrations`, `hardware-os-e2e` und `rollout-tracks` bleiben bis zur externen Evidenz offen. Ein frischer vollständiger `pnpm completion:gate` ist vor einer Freigabe erforderlich.                                                                                                                                                                                                                     |
 
 ## Aktive Arbeitspakete
 
@@ -54,8 +54,7 @@ externen Release-Nachweise liefern.
 - **Client Manager:** Provider-freigegebene Apply-/Mount-Mechanismen,
   Terms-Freigabe und reale Client-/OS-Kompatibilität. Fremde Client-Binaries
   werden nicht automatisch heruntergeladen.
-- **Store:** Live Stripe Checkout, Webhook-/Refund-/Tax-/Invoice-Nachweise,
-  produktive Lizenzsignierung und Provider-Konfiguration.
+- **Store:** Katalog-, Review-, Wishlist- und Preisalarm-E2E bleiben aktiv. Entwicklerportal, eigene Produktveröffentlichung und Entwicklerantworten werden nicht mehr als OG-Store-Verkaufsweg verwendet. Der OG Launcher verkauft keine Spiele selbst, stellt keinen eigenen Warenkorb oder Checkout bereit und erzeugt keine Lizenzen, Bestellungen oder Refunds. Kaufaktionen leiten ausschließlich an offizielle Plattform-Stores weiter.
 - **Achievements:** Live-E2E für GOG, Epic, EA, Ubisoft und Battle.net sowie
   der externe Nachweis für Steam-Account-Linking und den Hosted-Relay.
 - **Presence:** gehosteter Scheduler und reale Nicht-Steam-Provider-Bridges.
@@ -77,12 +76,11 @@ OS-Evidenz.
 
 ## Externe Release-Gates
 
-Alle fünf Gates bleiben offen, bis die redigierten Artefakte den Preflight
+Alle vier Gates bleiben offen, bis die redigierten Artefakte den Preflight
 bestehen:
 
 | Gate                         | Erforderlicher Nachweis                                                     |
 | ---------------------------- | --------------------------------------------------------------------------- |
-| `store-stripe-live`          | Live Checkout/Webhook/Refund/Tax/Invoice und Price-Drop-Scheduler           |
 | `hosted-supabase-cron`       | reale Scheduler-Runs für Price Drop, Presence und Account Deletion          |
 | `provider-live-integrations` | reale Provider-, Library-, Achievement- und Presence-Nachweise |
 | `hardware-os-e2e`            | Overlay-, Backup-/Restore- und OS-/Hardware-E2E                             |

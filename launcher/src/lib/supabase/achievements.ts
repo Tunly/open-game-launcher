@@ -239,16 +239,13 @@ function mergeAchievements(
   const byKey = new Map<string, UnifiedAchievement>();
   const orderedKeys: string[] = [];
 
-  for (const achievement of game.achievements ?? []) {
-    const key = achievementMapKey(achievement, provider);
-    byKey.set(key, achievement);
-    orderedKeys.push(key);
-  }
-
   for (const remote of remoteAchievements) {
     const key = achievementMapKey(remote, provider);
+    const local = (game.achievements ?? []).find(
+      (achievement) => achievementMapKey(achievement, provider) === key,
+    );
     const current = byKey.get(key);
-    if (!current) {
+    if (!current && !local) {
       byKey.set(key, remote);
       orderedKeys.push(key);
       continue;
@@ -256,15 +253,19 @@ function mergeAchievements(
 
     byKey.set(key, {
       ...remote,
+      ...local,
       ...current,
-      description: current.description ?? remote.description,
-      iconUrl: current.iconUrl ?? remote.iconUrl,
-      providerConfidence: current.providerConfidence ?? remote.providerConfidence,
-      rarity: current.rarity ?? remote.rarity,
-      source: current.source ?? remote.source,
-      sourceAchievementId: current.sourceAchievementId ?? remote.sourceAchievementId,
-      unlockedAt: current.unlockedAt ?? remote.unlockedAt ?? null,
+      description: local?.description ?? current?.description ?? remote.description,
+      iconUrl: local?.iconUrl ?? current?.iconUrl ?? remote.iconUrl,
+      providerConfidence:
+        local?.providerConfidence ?? current?.providerConfidence ?? remote.providerConfidence,
+      rarity: local?.rarity ?? current?.rarity ?? remote.rarity,
+      source: local?.source ?? current?.source ?? remote.source,
+      sourceAchievementId:
+        local?.sourceAchievementId ?? current?.sourceAchievementId ?? remote.sourceAchievementId,
+      unlockedAt: local?.unlockedAt ?? current?.unlockedAt ?? remote.unlockedAt ?? null,
     });
+    if (!current) orderedKeys.push(key);
   }
 
   return orderedKeys
@@ -463,10 +464,6 @@ async function hydrateGameWithRemoteAchievements(
       catalogGameId,
       provider,
     );
-    if (remoteAchievements.length === 0) {
-      return { game, transportUnavailable: false };
-    }
-
     return {
       game: {
         ...game,
@@ -534,17 +531,11 @@ export async function hydrateGamesWithRemoteAchievements(
   const client = getSupabaseClient();
   const hydratedGames = new Array<Game>(games.length);
   let nextGameIndex = 0;
-  let transportUnavailable = false;
 
   const hydrateNextGame = async () => {
     while (nextGameIndex < games.length) {
       const gameIndex = nextGameIndex;
       nextGameIndex += 1;
-      if (transportUnavailable) {
-        hydratedGames[gameIndex] = games[gameIndex];
-        continue;
-      }
-
       const result = await hydrateGameWithRemoteAchievementsWithinTimeout(
         client,
         games[gameIndex],
@@ -552,9 +543,6 @@ export async function hydrateGamesWithRemoteAchievements(
         options.onError,
       );
       hydratedGames[gameIndex] = result.game;
-      if (result.transportUnavailable) {
-        transportUnavailable = true;
-      }
     }
   };
 

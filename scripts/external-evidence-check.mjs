@@ -57,14 +57,6 @@ const hostedCronArtifactEvidenceGroups = Object.freeze([
   },
 ]);
 
-const stripeLiveEvidenceFields = Object.freeze([
-  "Stripe webhook event ID",
-  "Stripe Dashboard evidence",
-  "Supabase function log run ID",
-  "License key custody evidence",
-  "Live license issuance evidence",
-]);
-
 const providerEvidenceFields = Object.freeze([
   "Provider/client matrix",
   "Live probe run ID",
@@ -84,99 +76,6 @@ const rolloutEvidenceFields = Object.freeze([
 ]);
 
 export const evidenceGates = Object.freeze([
-  {
-    id: "store-stripe-live",
-    title: "Store and Stripe live staging",
-    requiredEnv: [
-      "SUPABASE_URL",
-      "STRIPE_SECRET_KEY",
-      "STRIPE_WEBHOOK_SECRET",
-      "PRICE_DROP_NOTIFY_SECRET",
-    ],
-    artifactTitles: {
-      "docs/verification/external/store-price-drop-scheduler-live.md":
-        "Store price-drop scheduler live",
-    },
-    artifactEnv: [
-      {
-        path: "docs/verification/external/store-stripe-live-staging.md",
-        requiredEnv: [
-          "SUPABASE_URL",
-          "STRIPE_SECRET_KEY",
-          "STRIPE_WEBHOOK_SECRET",
-        ],
-      },
-      {
-        path: "docs/verification/external/store-price-drop-scheduler-live.md",
-        requiredEnv: ["SUPABASE_URL", "PRICE_DROP_NOTIFY_SECRET"],
-      },
-    ],
-    artifactPaths: [
-      "docs/verification/external/store-stripe-live-staging.md",
-      "docs/verification/external/store-price-drop-scheduler-live.md",
-    ],
-    artifactProofs: [
-      {
-        path: "docs/verification/external/store-stripe-live-staging.md",
-        requiredProofs: [
-          "Stripe webhook signature delivery reaches stripe-webhook.",
-          "Stripe Tax and invoice settings are verified in Dashboard.",
-          "Production license signing key custody and live license issuance are verified.",
-        ],
-      },
-      {
-        path: "docs/verification/external/store-price-drop-scheduler-live.md",
-        requiredProofs: [
-          "Hosted price-drop scheduler writes fresh run evidence.",
-        ],
-      },
-    ],
-    artifactEvidenceFields: [
-      {
-        path: "docs/verification/external/store-stripe-live-staging.md",
-        requiredFields: stripeLiveEvidenceFields,
-      },
-      {
-        path: "docs/verification/external/store-price-drop-scheduler-live.md",
-        requiredFields: hostedCronEvidenceFields,
-        expectedValues: {
-          Function: /^notify-price-drop$/i,
-          "Hosted cron table": /^store_price_drop_notification_runs$/i,
-          Scheduled: /^scheduled$/i,
-          Status: /^completed$/i,
-        },
-      },
-    ],
-    requiredProofs: [
-      "Stripe webhook signature delivery reaches stripe-webhook.",
-      "Stripe Tax and invoice settings are verified in Dashboard.",
-      "Production license signing key custody and live license issuance are verified.",
-      "Hosted price-drop scheduler writes fresh run evidence.",
-    ],
-    captureHandoffs: {
-      "Stripe webhook signature delivery reaches stripe-webhook.": {
-        capture:
-          "Trigger a live Stripe webhook delivery to stripe-webhook, then attach the redacted Stripe event locator and Supabase function log run ID.",
-        terms: ["stripe-webhook", "evt_"],
-      },
-      "Stripe Tax and invoice settings are verified in Dashboard.": {
-        capture:
-          "Capture redacted Stripe live Dashboard evidence for Tax, invoice creation, and billing settings used by the release checkout lane.",
-        terms: ["stripe-tax-invoice", "dashboard"],
-      },
-      "Production license signing key custody and live license issuance are verified.":
-        {
-          capture:
-            "Capture redacted hosted runtime-secret custody evidence for the production license signing key, then issue a live license through the Stripe webhook fulfillment path and attach the redacted license/order/function locator without exposing the signing key.",
-          terms: ["license-key-custody", "live-license-issuance"],
-        },
-      "Hosted price-drop scheduler writes fresh run evidence.": {
-        capture:
-          "Run `pnpm hosted:deploy-gate:scheduler-packet`, capture redacted scheduler dashboard/config proof, then run the price-drop scheduled lane and collect `OGL_HOSTED_CRON_EVIDENCE_CHECKS=price-drop pnpm hosted:cron-evidence:artifact-hints` for the redacted `store_price_drop_notification_runs` row with `notify-price-drop`, `scheduled`, `dry_run=false`, and `completed`; artifact hints fill Gate-Specific Evidence only and do not satisfy the proof row by themselves.",
-        terms: ["price-drop", "store_price_drop_notification_runs"],
-      },
-    },
-  },
   {
     id: "hosted-supabase-cron",
     title: "Hosted Supabase cron",
@@ -364,14 +263,6 @@ const actionAliases = Object.freeze({
 });
 
 const forbiddenArtifactPatterns = Object.freeze([
-  {
-    label: "Stripe secret key",
-    pattern: /\b(?:sk|rk)_(?:live|test)_[a-z0-9_=-]+/i,
-  },
-  {
-    label: "Stripe webhook secret",
-    pattern: /whsec_[a-z0-9_=-]+/i,
-  },
   {
     label: "Bearer token",
     pattern: /bearer\s+[a-z0-9._~+/=-]{12,}/i,
@@ -1179,10 +1070,6 @@ const allowedEvidenceUrlPatterns = Object.freeze([
     path: /^\/project\/[a-z0-9]{20}\/.+/i,
   },
   {
-    host: /^dashboard\.stripe\.com$/i,
-    path: /^\/(?:accts?\/[^/]+\/)?(?:events|webhooks|settings|invoices|tax|logs|customers|payments|payment-links|subscriptions)\/?.*/i,
-  },
-  {
     host: /^github\.com$/i,
     path: /^\/[^/\s]+\/[^/\s]+\/(?:actions\/runs\/\d+|releases\/tag\/[^/\s]+|deployments\/[^/\s]+|pull\/\d+|commit\/[a-f0-9]{7,40})(?:\/.*)?$/i,
   },
@@ -1374,78 +1261,6 @@ function hostedCronCollectorRunIdValueIsSpecific(value) {
   );
 }
 
-function stripeDashboardPathWithoutAccount(pathname) {
-  const normalized = pathname.replace(/\/+$/g, "") || "/";
-  const accountMatch = normalized.match(/^\/accts?\/[^/]+(\/.*)?$/i);
-  return accountMatch ? (accountMatch[1] ?? "/") : normalized;
-}
-
-const specificStripeDashboardPathPatterns = Object.freeze([
-  /^\/events\/evt_[a-z0-9]{8,}(?:\/.*)?$/i,
-  /^\/webhooks\/we_[a-z0-9]{8,}(?:\/.*)?$/i,
-  /^\/logs\/(?:log|req)_[a-z0-9]{8,}(?:\/.*)?$/i,
-  /^\/invoices\/in_[a-z0-9]{8,}(?:\/.*)?$/i,
-  /^\/payments\/(?:ch|cs|pi|py)_(?:live_|test_)?[a-z0-9]{8,}(?:\/.*)?$/i,
-  /^\/payment-links\/plink_[a-z0-9]{8,}(?:\/.*)?$/i,
-  /^\/subscriptions\/sub_[a-z0-9]{8,}(?:\/.*)?$/i,
-  /^\/customers\/cus_[a-z0-9]{8,}(?:\/.*)?$/i,
-  /^\/settings\/(?:billing|invoice|invoicing|tax)(?:\/.*)?$/i,
-  /^\/tax\/(?:calculations|registrations|settings|transactions)\/.+$/i,
-]);
-
-function stripeDashboardUrlIsSpecific(url) {
-  if (
-    !/^dashboard\.stripe\.com$/i.test(url.hostname) ||
-    !evidenceUrlIsAllowed(url)
-  ) {
-    return false;
-  }
-  const path = stripeDashboardPathWithoutAccount(url.pathname);
-  return specificStripeDashboardPathPatterns.some((pattern) =>
-    pattern.test(path),
-  );
-}
-
-function valueContainsStripeDashboardUrl(value) {
-  const urls = value.match(/\bhttps:\/\/[^\s<>)\]]+/gi) ?? [];
-  return urls.some((rawUrl) => {
-    try {
-      const url = new URL(normalizeEvidenceUrl(rawUrl));
-      return /^dashboard\.stripe\.com$/i.test(url.hostname);
-    } catch {
-      return false;
-    }
-  });
-}
-
-function valueContainsSpecificStripeDashboardUrl(value) {
-  const urls = value.match(/\bhttps:\/\/[^\s<>)\]]+/gi) ?? [];
-  return urls.some((rawUrl) => {
-    try {
-      return stripeDashboardUrlIsSpecific(
-        new URL(normalizeEvidenceUrl(rawUrl)),
-      );
-    } catch {
-      return false;
-    }
-  });
-}
-
-function valueContainsGenericStripeDashboardUrl(value) {
-  const urls = value.match(/\bhttps:\/\/[^\s<>)\]]+/gi) ?? [];
-  return urls.some((rawUrl) => {
-    try {
-      const url = new URL(normalizeEvidenceUrl(rawUrl));
-      return (
-        /^dashboard\.stripe\.com$/i.test(url.hostname) &&
-        !stripeDashboardUrlIsSpecific(url)
-      );
-    } catch {
-      return false;
-    }
-  });
-}
-
 function evidenceIdentifierValueMatches(value, patterns) {
   if (!evidenceIdentifierValueIsSpecific(value)) return false;
   return patterns.some((pattern) => pattern.test(value));
@@ -1454,33 +1269,6 @@ function evidenceIdentifierValueMatches(value, patterns) {
 function evidenceIdentifierValueMatchesAll(value, patterns) {
   if (!evidenceIdentifierValueIsSpecific(value)) return false;
   return patterns.every((pattern) => pattern.test(value));
-}
-
-function stripeEventIdValueIsSpecific(value) {
-  const cleaned = clean(value);
-  if (evidenceLocatorContainsLocalVerificationPath(cleaned)) return false;
-  if (evidenceLocatorContainsBlockedLocalPath(cleaned)) return false;
-  if (evidenceLocatorContainsRejectedUrl(cleaned)) return false;
-  return /^evt_[a-z0-9]{8,}$/i.test(cleaned);
-}
-
-function stripeDashboardEvidenceValueIsSpecific(value) {
-  const cleaned = clean(value);
-  if (evidenceLocatorContainsLocalVerificationPath(cleaned)) return false;
-  if (evidenceLocatorContainsBlockedLocalPath(cleaned)) return false;
-  if (evidenceLocatorContainsRejectedUrl(cleaned)) return false;
-  if (valueContainsStripeDashboardUrl(cleaned)) {
-    return (
-      valueContainsSpecificStripeDashboardUrl(cleaned) &&
-      !valueContainsGenericStripeDashboardUrl(cleaned)
-    );
-  }
-  return evidenceIdentifierValueMatches(cleaned, [
-    /stripe/i,
-    /dashboard/i,
-    /tax/i,
-    /invoice/i,
-  ]);
 }
 
 const measuredSessionDurationPattern =
@@ -1574,8 +1362,6 @@ const fieldSpecificEvidenceValidators = Object.freeze({
     evidenceIdentifierValueMatchesAll(value, [/matrix/i, /provider/i, /client/i]),
   "Run ID": runIdValueIsSpecific,
   "Session/run ID": sessionRunEvidenceValueIsSpecific,
-  "Stripe Dashboard evidence": stripeDashboardEvidenceValueIsSpecific,
-  "Stripe webhook event ID": stripeEventIdValueIsSpecific,
   "Supabase function log run ID": evidenceIdentifierValueIsSpecific,
 });
 
@@ -1674,8 +1460,6 @@ const envShapeValidators = Object.freeze({
   PRESENCE_PROVIDER_TOKEN: (value) => secretValueLooksPlausible(value, 24),
   PRICE_DROP_NOTIFY_SECRET: (value) => secretValueLooksPlausible(value, 32),
   STEAM_WEB_API_KEY: (value) => /^[a-f0-9]{32}$/i.test(value),
-  STRIPE_SECRET_KEY: (value) => /^sk_live_[a-z0-9]{16,}$/i.test(value),
-  STRIPE_WEBHOOK_SECRET: (value) => /^whsec_[a-z0-9]{16,}$/i.test(value),
   SUPABASE_FUNCTIONS_URL: (value) =>
     supabaseProjectUrlIsConfigured(value, /^\/functions\/v1\/?$/),
   SUPABASE_FUNCTIONS_BASE_URL: (value) =>
@@ -1912,10 +1696,10 @@ function templateOnlyFindingsFromArtifactContent(
 }
 
 function proofEvidenceValueIsValid(value) {
-  return proofEvidenceValueIssueReason(value) === null;
+  return proofEvidenceIssueReason(value) === null;
 }
 
-function proofEvidenceValueIssueReason(value) {
+function proofEvidenceIssueReason(value) {
   const locatorReason = evidenceLocatorIssueReason(value);
   if (locatorReason) return locatorReason;
   return evidenceLocatorValueIsSpecific(value) ? null : "malformed_locator";
@@ -1923,16 +1707,6 @@ function proofEvidenceValueIssueReason(value) {
 
 function expectedProofEvidenceValuePatterns(proof) {
   const normalizedProof = proof.toLowerCase();
-  if (/stripe webhook signature/.test(normalizedProof)) {
-    return [
-      /(?:stripe[-_\s]?webhook|webhook[-_\s]?signature|dashboard\.stripe\.com\/(?:accts?\/[^/]+\/)?(?:events\/evt_[a-z0-9]{8,}|webhooks\/we_[a-z0-9]{8,})|evt_[a-z0-9]{8,})/i,
-    ];
-  }
-  if (/stripe tax and invoice/.test(normalizedProof)) {
-    return [
-      /(?:stripe[-_\s]?(?:tax|invoice)|dashboard[-_\s]?(?:tax|invoice)|tax[-_\s]?invoice|dashboard\.stripe\.com\/(?:accts?\/[^/]+\/)?(?:settings\/(?:billing|invoice|invoicing|tax)|invoices\/in_[a-z0-9]{8,}|tax\/(?:calculations|registrations|settings|transactions)\/.+))/i,
-    ];
-  }
   if (/license signing key custody/.test(normalizedProof)) {
     return [/license/i, /key/i, /custody/i, /live/i, /issuance/i];
   }
@@ -2008,23 +1782,11 @@ function proofEvidenceValueIsValidForProof(proof, value) {
 }
 
 function proofEvidenceValueIssueReasonForProof(proof, value) {
-  if (
-    /stripe webhook signature/i.test(proof) &&
-    stripeEventIdValueIsSpecific(value)
-  ) {
-    return null;
-  }
   if (/hosted production deployment/i.test(proof)) {
     return hostedDeployWorkflowEvidenceIssueReason(value);
   }
-  const locatorReason = proofEvidenceValueIssueReason(value);
+  const locatorReason = proofEvidenceIssueReason(value);
   if (locatorReason) return locatorReason;
-  if (
-    /stripe (?:webhook signature|tax and invoice)/i.test(proof) &&
-    valueContainsGenericStripeDashboardUrl(value)
-  ) {
-    return "missing_lane_terms";
-  }
   const expectedPatterns = expectedProofEvidenceValuePatterns(proof);
   return expectedPatterns.every((pattern) => pattern.test(value))
     ? null
@@ -2415,9 +2177,8 @@ export function artifactTemplate(gate, artifactPath) {
     "",
     "## Proof Evidence Mapping",
     "",
-    "For every checked proof, add a specific redacted run/dashboard/workflow/artifact locator, signed log, or `sha256:<64-hex>` reference. Accepted dashboard URL hosts are Supabase, Stripe live Dashboard, GitHub Actions/releases/deployments, Vercel, Netlify, Cloudflare, App Store Connect, and Google Play Console; otherwise use `run:`/`artifact:`/`sha256:`. Local/example URLs and generic text do not pass.",
-    "Stripe Dashboard evidence must use a concrete event, invoice, or tax/invoice-settings path, not generic `/settings`, `/customers`, or `/payments` pages.",
-    "Proof evidence values must name the proof lane: `stripe-webhook`, `stripe-tax-invoice`, `license-key-custody-live-license-issuance`, `price-drop`, `presence-poll`, `account-deletion`, `non-steam-presence-bridge-provider`, `provider-approved-catalog-cloud-transfer`, `achievement-provider-cache-real-client`, `fullscreen-anti-cheat-overlay`, `backup-restore`, `client-mount-apply-provider-client`, `community-artwork-rollout`, `plugin-marketplace-execution-update`, or `hosted-deploy`. Compound values must include their required providers, OSes, duration/window, and matrix fields; bare `evt_...` is accepted only for Stripe webhook proof.",
+    "For every checked proof, add a specific redacted run/dashboard/workflow/artifact locator, signed log, or `sha256:<64-hex>` reference. Accepted dashboard URL hosts are Supabase, GitHub Actions/releases/deployments, Vercel, Netlify, Cloudflare, App Store Connect, and Google Play Console; otherwise use `run:`/`artifact:`/`sha256:`. Local/example URLs and generic text do not pass.",
+    "Proof evidence values must name the proof lane: `price-drop`, `presence-poll`, `account-deletion`, `non-steam-presence-bridge-provider`, `provider-approved-catalog-cloud-transfer`, `achievement-provider-cache-real-client`, `fullscreen-anti-cheat-overlay`, `backup-restore`, `client-mount-apply-provider-client`, `community-artwork-rollout`, `plugin-marketplace-execution-update`, or `hosted-deploy`. Compound values must include their required providers, OSes, duration/window, and matrix fields.",
     "",
     ...requiredProofs.map((proof) => `- Evidence for ${proof}:`),
     "",
@@ -2425,7 +2186,7 @@ export function artifactTemplate(gate, artifactPath) {
     "",
     requiredArtifactEvidenceFields.length === 0
       ? "- none"
-      : "Add concrete redacted locators or IDs containing digits (`run:`, `probe-`, `session-`, `workflow-`, `deployment-`, or `artifact-`). Hosted cron Run IDs may use lane-specific collector IDs; Stripe webhook IDs must be bare `evt_...` values.",
+      : "Add concrete redacted locators or IDs containing digits (`run:`, `probe-`, `session-`, `workflow-`, `deployment-`, or `artifact-`). Hosted cron Run IDs may use lane-specific collector IDs.",
     ...(requiredArtifactEvidenceFields.includes("Provider/client matrix")
       ? [
           "Provider/client matrix values must include `matrix`, `provider`, and `client`.",
@@ -2509,7 +2270,7 @@ export function artifactTemplate(gate, artifactPath) {
     "",
     "Preflight scans artifact content for secret-shaped values.",
     "",
-    "- Raw provider keys, Stripe secrets, bearer tokens, JWTs, Supabase service-role/auth/access tokens, scheduler secrets, private keys, and webhook secrets are absent.",
+    "- Raw provider keys, bearer tokens, JWTs, Supabase service-role/auth/access tokens, scheduler secrets, and private keys are absent.",
     "- Logs and screenshots are redacted before this artifact is committed.",
   ].join("\n");
 }
@@ -2569,7 +2330,6 @@ function artifactUsesHostedCronEvidence(gate, artifactPath) {
 
 function hostedCronEvidenceCheckIdsForGate(gate) {
   if (!gateUsesHostedCronEvidence(gate)) return [];
-  if (gate.id === "store-stripe-live") return ["price-drop"];
   return ["price-drop", "presence-poll", "account-deletion"];
 }
 

@@ -19,7 +19,7 @@ const evidenceDetails: Record<ExternalCompletionEvidenceDetailField, string> = {
   Operator: "Release Ops",
   "Release ref": "refs/tags/v0.1.0",
   "Redacted run IDs, dashboard links, screenshots, or signed deployment logs":
-    "run-external-evidence-123 https://dashboard.stripe.com/events/evt_redacted",
+    "run-external-evidence-123",
   "Redaction notes": "Raw secrets removed before commit",
 };
 
@@ -37,32 +37,23 @@ function validEnvValue(name: string) {
     PRESENCE_PROVIDER_TOKEN: "presenceProvider9f8e7d6c5b4a392817",
     PRICE_DROP_NOTIFY_SECRET: "priceDrop9f8e7d6c5b4a392817263abcd",
     STEAM_WEB_API_KEY: "0123456789abcdef0123456789abcdef",
-    STRIPE_SECRET_KEY: "sk_live_51OgLauncherEvidenceAlpha1234567890",
-    STRIPE_WEBHOOK_SECRET: "whsec_51OgLauncherEvidenceAlpha1234567890",
     SUPABASE_URL: "https://awebfvfyqzwapcgixdfj.supabase.co",
   };
   return values[name] ?? `value9f8e7d6c5b4a392817263-${name.toLowerCase()}`;
 }
 
 function validStoreArtifactEvidence(gate: ExternalCompletionEvidenceGateInput) {
-  const [checkoutArtifact, schedulerArtifact] = gate.artifactProofs ?? [];
+  const [schedulerArtifact] = gate.artifactProofs ?? [];
 
   return [
     {
-      checkedProofs: checkoutArtifact.requiredProofs,
+      checkedProofs: schedulerArtifact.requiredProofs,
       evidenceDetails: {
         ...evidenceDetails,
-        "Stripe Dashboard evidence": "https://dashboard.stripe.com/events/evt_redacted",
-        "Stripe webhook event ID": "evt_oglauncherlive123",
-        "Supabase function log run ID": "run-supabase-stripe-webhook-123",
-        "License key custody evidence": "license-key-custody workflow-123",
-        "Live license issuance evidence": "live-license-issuance workflow-123",
       },
-      path: checkoutArtifact.path,
+      path: schedulerArtifact.path,
       proofEvidence: {
-        [checkoutArtifact.requiredProofs[0]]: "run-stripe-webhook-live-123",
-        [checkoutArtifact.requiredProofs[1]]: "run-stripe-dashboard-tax-123",
-        [checkoutArtifact.requiredProofs[2]]: "run-license-key-custody-live-license-issuance-123",
+        [schedulerArtifact.requiredProofs[0]]: "workflow-price-drop-live-123",
       },
       readable: true,
     },
@@ -100,19 +91,17 @@ describe("ExternalCompletionEvidenceSummaryPanel", () => {
 
     expect(within(panel).getByText("External Completion Evidence")).toBeInTheDocument();
     expect(within(panel).getByText("External Evidence Required")).toBeInTheDocument();
-    expect(within(panel).getAllByText("Store and Stripe live staging").length).toBeGreaterThan(0);
     expect(within(panel).getAllByText("Hosted Supabase cron").length).toBeGreaterThan(0);
     expect(within(panel).getAllByText("Provider live integrations").length).toBeGreaterThan(0);
     expect(within(panel).getAllByText("Hardware and OS E2E").length).toBeGreaterThan(0);
     expect(within(panel).getAllByText("Rollout tracks").length).toBeGreaterThan(0);
     expect(within(panel).getAllByText(rolloutProof).length).toBeGreaterThan(0);
     expect(panel).not.toHaveTextContent(/community artwork\/screenshots|screenshot-rollout/i);
-    expect(within(panel).getByText("STRIPE_WEBHOOK_SECRET")).toBeInTheDocument();
     expect(within(panel).getByText("ACCOUNT_DELETION_PROCESSOR_SECRET")).toBeInTheDocument();
     expect(within(panel).getByText("No external proof claim")).toBeInTheDocument();
     expect(within(panel).getByText("No hosted cron scheduled-row proof")).toBeInTheDocument();
     expect(within(panel).getAllByText("CLI-Style Blockers").length).toBeGreaterThan(0);
-    expect(within(panel).getAllByText("Operator Commands").length).toBe(5);
+    expect(within(panel).getAllByText("Operator Commands").length).toBe(4);
     const releaseCommands = within(panel).getByRole("group", {
       name: /release boundary commands/i,
     });
@@ -128,47 +117,30 @@ describe("ExternalCompletionEvidenceSummaryPanel", () => {
       name: /committed external artifact snapshot/i,
     });
     expect(within(artifactSnapshot).getByText("Committed Artifact Snapshot")).toBeVisible();
-    expect(within(artifactSnapshot).getByRole("article", { name: "Readable: 6/6" })).toBeVisible();
+    expect(within(artifactSnapshot).getByRole("article", { name: "Readable: 4/4" })).toBeVisible();
     expect(
-      within(artifactSnapshot).getByRole("article", { name: "Artifact Ready: 0/6" }),
+      within(artifactSnapshot).getByRole("article", { name: "Artifact Ready: 0/4" }),
     ).toBeVisible();
     expect(
-      within(artifactSnapshot).getByRole("article", { name: "Proof Rows Missing: 17" }),
+      within(artifactSnapshot).getByRole("article", { name: "Proof Rows Missing: 14" }),
     ).toBeVisible();
     expect(
-      within(artifactSnapshot).getByRole("article", { name: "Details Missing: 80" }),
+      within(artifactSnapshot).getByRole("article", { name: "Details Missing: 50" }),
     ).toBeVisible();
-    expect(within(artifactSnapshot).getAllByText("Yes")).toHaveLength(6);
+    expect(within(artifactSnapshot).getAllByText("Yes")).toHaveLength(4);
     expect(within(artifactSnapshot).getAllByText("blocked").length).toBeGreaterThan(0);
-    const storeArtifact = within(artifactSnapshot).getByRole("article", {
-      name: /store and stripe live staging artifact docs\/verification\/external\/store-stripe-live-staging\.md/i,
-    });
-    expect(
-      within(storeArtifact).getByText("docs/verification/external/store-stripe-live-staging.md"),
-    ).toBeVisible();
     expect(within(artifactSnapshot).getByText(/Sanitized committed snapshot only/i)).toBeVisible();
     expect(
-      within(
-        screen.getByRole("article", {
-          name: /store and stripe live staging external evidence gate/i,
-        }),
-      ).queryByText("pnpm external:evidence:packet"),
-    ).not.toBeInTheDocument();
-    expect(
       within(panel).getByText(
-        "OGL_EXTERNAL_EVIDENCE_GATES=store-stripe-live pnpm external:evidence:status",
+        "OGL_EXTERNAL_EVIDENCE_GATES=hosted-supabase-cron pnpm external:evidence:status",
       ),
     ).toBeVisible();
     expect(
       within(panel)
-        .getByText("OGL_EXTERNAL_EVIDENCE_GATES=store-stripe-live pnpm external:evidence:status")
+        .getByText("OGL_EXTERNAL_EVIDENCE_GATES=hosted-supabase-cron pnpm external:evidence:status")
         .closest("code"),
     ).toHaveClass("normal-case");
-    expect(
-      within(panel).getByText(
-        "OGL_HOSTED_CRON_EVIDENCE_CHECKS=price-drop pnpm hosted:cron-evidence:artifact-hints",
-      ),
-    ).toBeVisible();
+    expect(within(panel).getByText("pnpm hosted:cron-evidence:artifact-hints")).toBeVisible();
     expect(
       within(panel).getAllByText("pnpm hosted:deploy-gate:scheduler-packet").length,
     ).toBeGreaterThanOrEqual(1);
@@ -183,10 +155,10 @@ describe("ExternalCompletionEvidenceSummaryPanel", () => {
       within(panel).getAllByText("docs/verification/external/store-price-drop-scheduler-live.md")
         .length,
     ).toBeGreaterThan(0);
-    expect(within(panel).getAllByText("Next Operator Action")).toHaveLength(5);
+    expect(within(panel).getAllByText("Next Operator Action")).toHaveLength(4);
     expect(
       within(panel).getByText(
-        "Set 4 non-placeholder environment value(s), then rerun OGL_EXTERNAL_EVIDENCE_GATES=store-stripe-live pnpm external:evidence:status.",
+        "Set 4 non-placeholder environment value(s), then rerun OGL_EXTERNAL_EVIDENCE_GATES=hosted-supabase-cron pnpm external:evidence:status.",
       ),
     ).toBeVisible();
     expect(

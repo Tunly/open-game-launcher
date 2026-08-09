@@ -32,6 +32,13 @@ describe("Button", () => {
     expect(screen.getByRole("button")).toHaveAttribute("type", "button");
   });
 
+  it("keeps interactive buttons flat without an offset shadow", () => {
+    render(<Button>Save</Button>);
+    const button = screen.getByRole("button", { name: "Save" });
+
+    expect(button.className).not.toMatch(/shadow-/);
+  });
+
   it("applies variant and size classes", () => {
     render(
       <Button size="sm" variant="secondary">

@@ -17,10 +17,6 @@ export const deployFunctions = Object.freeze([
   { name: "rawg-assets", verifyJwt: true },
   { name: "relay-steam-achievements", verifyJwt: true },
   { name: "request-account-deletion", verifyJwt: true },
-  { name: "store-download-build", verifyJwt: true },
-  { name: "store-order-support", verifyJwt: true },
-  { name: "stripe-create-checkout", verifyJwt: true },
-  { name: "stripe-webhook", verifyJwt: false },
 ]);
 
 export const cronDryRunSmokes = Object.freeze([
@@ -196,9 +192,6 @@ export const runtimeSecretNames = Object.freeze([
   "SUPABASE_URL",
   "SUPABASE_ANON_KEY",
   "SUPABASE_SERVICE_ROLE_KEY",
-  "STRIPE_SECRET_KEY",
-  "STRIPE_WEBHOOK_SECRET",
-  "OGL_LICENSE_SIGNING_KEY",
   "RAWG_API_KEY",
   "PRICE_DROP_NOTIFY_SECRET",
   "ACCOUNT_DELETION_PROCESSOR_SECRET",

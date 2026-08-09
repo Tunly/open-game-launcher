@@ -20,7 +20,6 @@ pub mod perf_monitor;
 pub mod plugin_runtime_sandbox;
 pub mod plugin_system;
 pub mod secure_store;
-pub mod stripe;
 pub mod system;
 pub mod ubisoft;
 pub mod uri_safety;

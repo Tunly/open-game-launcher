@@ -263,34 +263,26 @@ describe("AppShell browser-local shell skins", () => {
     expect(brand).toBeInTheDocument();
     fireEvent.click(brand);
     expect(onNavigate).toHaveBeenCalledWith("library");
-    for (const label of [
-      "Library",
-      "Achievements",
-      "Activity",
-      "Downloads",
-      "Store",
-      "Community",
-    ]) {
+    for (const label of ["Library", "Achievements", "Activity", "Downloads", "Store"]) {
       expect(within(header).getByRole("button", { name: label })).toBeInTheDocument();
     }
   });
 
-  it("keeps the brand row above the primary navigation row", () => {
+  it("keeps the OG-Launcher brand next to the primary navigation in one header row", () => {
     renderShell();
 
     const header = screen.getByRole("banner");
-    const brandRow = header.querySelector(".app-shell-brand-row");
+    const brand = within(header).getByRole("button", { name: "OG-Launcher" });
     const navRow = header.querySelector(".app-shell-nav-row");
 
-    expect(header).toHaveClass("flex-col");
-    expect(brandRow).toContainElement(within(header).getByRole("button", { name: "OG-Launcher" }));
+    expect(header).toHaveClass("flex");
+    expect(header).not.toHaveClass("flex-col");
+    expect(brand.parentElement).toBe(header);
+    expect(navRow?.parentElement).toBe(header);
     expect(navRow).toContainElement(within(header).getByRole("button", { name: "Library" }));
     expect(navRow).toContainElement(within(header).getByRole("button", { name: "Notifications" }));
     expect(navRow).toContainElement(within(header).getByRole("button", { name: "Login" }));
-    expect(brandRow).not.toContainElement(
-      within(header).getByRole("button", { name: "Notifications" }),
-    );
-    expect(brandRow?.nextElementSibling).toBe(navRow);
+    expect(navRow).not.toContainElement(brand);
   });
 
   it("shows an honest empty notification feed without invented account events", () => {
@@ -334,6 +326,12 @@ describe("AppShell browser-local shell skins", () => {
     const viewProfile = within(menu).getByRole("menuitem", { name: "View profile" });
     const friends = within(menu).getByRole("menuitem", { name: "Friends" });
     const logout = within(menu).getByRole("menuitem", { name: "Logout" });
+    expect(viewProfile).not.toHaveClass("hover:-translate-y-0.5");
+    expect(friends).not.toHaveClass("hover:-translate-y-0.5");
+    expect(within(menu).getByRole("menuitem", { name: "Settings" })).not.toHaveClass(
+      "hover:-translate-y-0.5",
+    );
+    expect(logout).not.toHaveClass("hover:-translate-y-0.5");
     expect(viewProfile).toHaveFocus();
 
     fireEvent.keyDown(viewProfile, { key: "ArrowDown" });
@@ -391,26 +389,24 @@ describe("AppShell browser-local shell skins", () => {
     });
   });
 
-  it("places desktop window controls in the header brand row without a separate title bar", async () => {
+  it("places desktop window controls in the header without a separate title bar", async () => {
     const { container } = renderShell({ isDesktop: true });
 
     const header = screen.getByRole("banner");
-    const brandRow = header.querySelector(".app-shell-brand-row");
 
     expect(container.querySelector(".app-shell-titlebar")).not.toBeInTheDocument();
     expect(await within(header).findByRole("button", { name: "Minimize" })).toBeInTheDocument();
     expect(within(header).getByRole("button", { name: "Maximize" })).toBeInTheDocument();
     expect(within(header).getByRole("button", { name: "Close" })).toBeInTheDocument();
-    expect(brandRow).toContainElement(within(header).getByRole("button", { name: "Close" }));
-    expect(brandRow?.querySelector(".app-window-controls")).toBeInTheDocument();
-    expect(brandRow?.querySelector(".app-window-controls")).not.toHaveClass("border-[3px]");
-    expect(brandRow?.querySelector(".app-window-control-button")).toHaveClass(
+    expect(header.querySelector(".app-window-controls")).toBeInTheDocument();
+    expect(header.querySelector(".app-window-controls")).not.toHaveClass("border-[3px]");
+    expect(header.querySelector(".app-window-control-button")).toHaveClass(
       "border-transparent",
       "bg-transparent",
     );
-    const dragRegion = brandRow?.querySelector("[data-tauri-drag-region]");
+    const dragRegion = header.querySelector("[data-tauri-drag-region]");
     expect(dragRegion).toBeInTheDocument();
-    expect(dragRegion).toHaveClass("self-stretch", "min-h-8");
+    expect(dragRegion).toHaveClass("self-stretch", "min-h-8", "max-w-[10%]");
 
     tauriWindowMock.currentWindow.startDragging.mockClear();
     fireEvent.mouseDown(dragRegion as Element, { button: 0 });

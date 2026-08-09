@@ -64,8 +64,6 @@ export function LibrarySidebar({
   filteredGames,
   searchQuery,
   setSearchQuery,
-  sortOption,
-  setSortOption,
   isFilterPopupOpen,
   setIsFilterPopupOpen,
   activePlatformFilter,
@@ -73,7 +71,6 @@ export function LibrarySidebar({
   hasActiveFilters: hasActiveFiltersProp,
   onResetFilters,
   groupOption,
-  setGroupOption,
   groupedGames,
   selectedGroup,
   setSelectedGroup,
@@ -259,31 +256,7 @@ export function LibrarySidebar({
               {hasActiveFilters ? ` / ${games.length}` : ""})
             </span>
           </div>
-          <div className="flex shrink-0 items-center gap-2 pr-2">
-            <select
-              value={groupOption}
-              onChange={(event) => setGroupOption(event.target.value as LibraryGroupOption)}
-              className="neo-copy h-6 cursor-pointer border-2 border-black bg-[#d8cbb7] text-[10px] font-black tracking-wider uppercase outline-none"
-              aria-label="Group library"
-              title="Group"
-            >
-              <option value="none">No Groups</option>
-              <option value="source">Provider</option>
-              <option value="platform">Platform</option>
-              <option value="status">Status</option>
-            </select>
-            <select
-              value={sortOption}
-              onChange={(event) => setSortOption(event.target.value as LibrarySortOption)}
-              className="neo-copy h-6 cursor-pointer border-2 border-black bg-[#d8cbb7] text-[10px] font-black tracking-wider uppercase outline-none"
-              aria-label="Sort library"
-              title="Sort"
-            >
-              <option value="alphabetical">A-Z</option>
-              <option value="last_played">Recent</option>
-              <option value="playtime">Playtime</option>
-              <option value="size">Size</option>
-            </select>
+          <div className="flex shrink-0 items-center pr-2">
             <button
               type="button"
               onClick={() => setIsFilterPopupOpen(!isFilterPopupOpen)}

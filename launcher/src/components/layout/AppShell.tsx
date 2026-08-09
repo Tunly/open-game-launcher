@@ -17,7 +17,7 @@ import {
 } from "lucide-react";
 
 import { Sidebar, type PageKey } from "./Sidebar";
-import { DesktopWindowChrome } from "./DesktopWindowChrome";
+import { DesktopWindowChrome, WindowDragRegion } from "./DesktopWindowChrome";
 import {
   APP_SHELL_SKIN_CHANGED_EVENT,
   APP_SHELL_SKIN_STORAGE_KEY,
@@ -573,22 +573,19 @@ export function AppShell({
         }
       >
         <header
-          className={`app-main-header app-shell-header sticky top-0 z-30 flex min-h-20 w-full max-w-full flex-col items-stretch gap-2 overflow-visible border-b-[7px] border-black px-3 py-3 sm:px-4 lg:px-5 ${
+          className={`app-main-header app-shell-header sticky top-0 z-30 flex min-h-20 w-full max-w-full items-center gap-3 overflow-visible border-b-[7px] border-black px-3 py-3 sm:px-4 lg:px-5 ${
             isLibraryPage ? "shrink-0" : ""
           }`}
         >
-          <div className="app-shell-brand-row flex min-w-0 items-center gap-3">
-            <button
-              className="neo-title app-shell-brand max-w-[min(65vw,420px)] min-w-0 shrink truncate text-left text-[1.75rem] leading-none sm:text-[2rem] lg:text-[2.5rem] xl:text-[3rem]"
-              type="button"
-              onClick={() => onNavigate("library")}
-            >
-              OG-Launcher
-            </button>
-            <DesktopWindowChrome />
-          </div>
+          <button
+            className="neo-title app-shell-brand max-w-[min(65vw,420px)] min-w-0 shrink truncate text-left text-[1.75rem] leading-none sm:text-[2rem] lg:text-[2.5rem] xl:text-[3rem]"
+            type="button"
+            onClick={() => onNavigate("library")}
+          >
+            OG-Launcher
+          </button>
 
-          <div className="app-shell-nav-row flex min-w-0 items-start gap-3">
+          <div className="app-shell-nav-row flex min-w-0 flex-1 items-center gap-3">
             <div className="min-w-0 flex-1">
               <Sidebar
                 activePage={activePage}
@@ -597,13 +594,16 @@ export function AppShell({
               />
             </div>
 
-            <div className="ml-auto flex shrink-0 items-start gap-2 pt-0.5 sm:gap-3">
+            <WindowDragRegion />
+
+            <div className="ml-auto flex shrink-0 items-center gap-1 sm:gap-2">
               <div ref={notificationMenuRef} className="relative">
                 <TopIconButton
                   ariaExpanded={isNotificationMenuOpen}
                   ariaHasPopup="dialog"
                   buttonRef={notificationTriggerRef}
                   label="Notifications"
+                  noLift
                   onClick={() => {
                     setIsNotificationMenuOpen((isOpen) => !isOpen);
                     setIsProfileMenuOpen(false);
@@ -614,7 +614,7 @@ export function AppShell({
                       {unreadNotificationCount}
                     </span>
                   ) : null}
-                  <Bell className="h-5 w-5" />
+                  <Bell className="h-4 w-4" />
                 </TopIconButton>
 
                 {isNotificationMenuOpen ? (
@@ -646,7 +646,7 @@ export function AppShell({
                     aria-expanded={isProfileMenuOpen}
                     aria-haspopup="menu"
                     aria-label="Open profile menu"
-                    className="app-shell-surface app-shell-dim-hover flex h-12 items-center gap-2 border-[3px] border-black p-1 transition hover:-translate-y-0.5"
+                    className="app-shell-surface app-shell-dim-hover flex h-10 items-center gap-1.5 border-2 border-black p-1 transition"
                     disabled={isAuthLoading || !isAuthConfigured}
                     type="button"
                     onClick={() => {
@@ -659,7 +659,7 @@ export function AppShell({
                       initials={avatarInitials}
                       label={accountLabel}
                     />
-                    <ChevronDown aria-hidden="true" className="mr-1 h-4 w-4 text-[#1f1c0f]" />
+                    <ChevronDown aria-hidden="true" className="mr-0.5 h-3.5 w-3.5 text-[#1f1c0f]" />
                   </button>
 
                   {isProfileMenuOpen ? (
@@ -683,11 +683,13 @@ export function AppShell({
                   disabled={isAuthLoading || !isAuthConfigured}
                   onClick={() => onRoute?.("/auth")}
                 >
-                  <LogIn className="h-5 w-5" />
+                  <LogIn className="h-4 w-4" />
                 </TopIconButton>
               )}
             </div>
           </div>
+
+          <DesktopWindowChrome />
         </header>
 
         <main
@@ -719,6 +721,7 @@ function TopIconButton({
   children,
   disabled = false,
   label,
+  noLift = false,
   onClick,
 }: {
   ariaExpanded?: boolean;
@@ -727,6 +730,7 @@ function TopIconButton({
   children: ReactNode;
   disabled?: boolean;
   label: string;
+  noLift?: boolean;
   onClick: () => void;
 }) {
   return (
@@ -735,7 +739,9 @@ function TopIconButton({
       aria-expanded={ariaExpanded}
       aria-haspopup={ariaHasPopup}
       aria-label={label}
-      className="app-shell-surface app-shell-highlight-hover relative flex h-12 w-12 items-center justify-center border-[3px] border-black transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-45"
+      className={`app-shell-surface app-shell-dim-hover relative flex h-10 w-10 items-center justify-center border-2 border-black transition disabled:cursor-not-allowed disabled:opacity-45 ${
+        noLift ? "" : "hover:-translate-y-0.5"
+      }`}
       disabled={disabled}
       type="button"
       onClick={onClick}
@@ -789,7 +795,7 @@ function NotificationMenu({
         </div>
         <button
           aria-label="Close notifications"
-          className="app-shell-surface-dim app-shell-highlight-hover flex h-9 w-9 items-center justify-center border-2 border-black shadow-[2px_2px_0_#1f1c0f]"
+          className="app-shell-surface-dim app-shell-dim-hover flex h-9 w-9 items-center justify-center border-2 border-black shadow-[2px_2px_0_#1f1c0f]"
           type="button"
           onClick={onClose}
         >
@@ -1049,7 +1055,7 @@ function Avatar({
   label: string;
   size?: "md" | "lg";
 }) {
-  const sizeClass = size === "lg" ? "h-12 w-12 text-sm" : "h-9 w-9 text-xs";
+  const sizeClass = size === "lg" ? "h-10 w-10 text-sm" : "h-8 w-8 text-xs";
 
   if (avatarUrl) {
     return (
@@ -1085,9 +1091,7 @@ function ProfileMenuItem({
 }) {
   return (
     <button
-      className={`neo-copy flex h-11 w-full items-center gap-3 border-2 border-black px-3 text-left text-[11px] font-black tracking-[0.1em] uppercase shadow-[2px_2px_0_#1f1c0f] transition hover:-translate-y-0.5 ${
-        tone === "danger" ? "app-shell-primary" : "app-shell-surface-dim"
-      } disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0`}
+      className={`neo-copy flex h-11 w-full items-center gap-3 border-2 border-black px-3 text-left text-[11px] font-black tracking-[0.1em] uppercase shadow-[2px_2px_0_#1f1c0f] transition ${tone === "danger" ? "app-shell-primary" : "app-shell-surface-dim"} disabled:cursor-not-allowed disabled:opacity-50`}
       disabled={disabled}
       role="menuitem"
       type="button"

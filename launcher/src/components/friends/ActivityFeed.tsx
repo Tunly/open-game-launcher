@@ -1,14 +1,11 @@
 import {
   Gamepad2,
-  Heart,
   Loader2,
   MessageSquare,
   PackageCheck,
   Send,
-  ShoppingBag,
   ThumbsUp,
   Trash2,
-  Trophy,
 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
@@ -18,6 +15,9 @@ import type {
   ActivityFeedItem,
   ActivityInteractionSummary,
 } from "../../lib/types/friends";
+import type { Game } from "../../lib/types";
+import { getGameAssetUrl } from "../../lib/assets";
+import { getGameIconCandidates, getGameSource, normalizeLauncherKey } from "../../lib/formatters";
 import { getFriendActivityFeed, subscribeToFriendActivity } from "../../lib/supabase/activity";
 import {
   addActivityComment,
@@ -32,6 +32,7 @@ import { getActivityPlatformLabel } from "../../lib/supabase/presence";
 import { getProfilesForUsers } from "../../lib/supabase/profile";
 
 interface ActivityFeedProps {
+  artworkGames?: readonly Game[];
   currentUserId?: string | null;
   friendIds: string[];
   previewInteractions?: {
@@ -85,32 +86,40 @@ function playerLabel(userId: string, profiles?: ReadonlyMap<string, ActivityFeed
   return profile?.displayName ?? profile?.username ?? `Player ${userId.slice(0, 8)}`;
 }
 
-function gameArtClassName(gameTitle: string | null, index: number) {
-  const title = gameTitle?.toLowerCase() ?? "";
+function activityArtworkGame(
+  item: ActivityFeedItem,
+  games: readonly Game[] | undefined,
+): Game | undefined {
+  if (!games || games.length === 0) return undefined;
+  const localIds = [item.gameId, item.metadata.localGameId].filter(
+    (value): value is string => typeof value === "string" && value.trim().length > 0,
+  );
+  const byLocalId = games.find((game) => localIds.includes(game.id));
+  if (byLocalId) return byLocalId;
+  const activitySource = normalizeLauncherKey(
+    typeof item.metadata.platform === "string"
+      ? item.metadata.platform
+      : typeof item.metadata.launcher === "string"
+        ? item.metadata.launcher
+        : undefined,
+  );
+  const byExternalId = games.find((game) => {
+    const externalId = game.externalId?.trim();
+    const gameSource = getGameSource(game);
+    return Boolean(
+      externalId &&
+      activitySource !== "unknown" &&
+      gameSource === activitySource &&
+      [item.metadata.platformGameId, item.metadata.externalGameId].includes(externalId),
+    );
+  });
 
-  if (title.includes("mecha") || title.includes("shift")) return "library-art-mech";
-  if (title.includes("phantom") || title.includes("boss")) return "library-art-phantom";
-  if (title.includes("neon") || title.includes("drift")) return "library-art-tokyo";
+  if (byExternalId) return byExternalId;
 
-  return ["card-art-drift", "card-art-crash", "card-art-blood"][index % 3];
-}
-
-function ActivityIcon({ type }: { type: string }) {
-  switch (type) {
-    case "game_start":
-    case "game_stop":
-      return <Gamepad2 className="h-4 w-4 text-[#087d6d]" />;
-    case "achievement_unlocked":
-      return <Trophy className="h-4 w-4 text-[#c20b2f]" />;
-    case "wishlist_added":
-      return <Heart className="h-4 w-4 text-[#c20b2f]" />;
-    case "game_purchased":
-      return <ShoppingBag className="h-4 w-4 text-[#087d6d]" />;
-    case "status":
-      return <MessageSquare className="h-4 w-4 text-[#087d6d]" />;
-    default:
-      return <Gamepad2 className="h-4 w-4 text-[#55504a]" />;
-  }
+  const normalizedTitle = item.gameTitle?.trim().toLocaleLowerCase();
+  return normalizedTitle
+    ? games.find((game) => game.title.trim().toLocaleLowerCase() === normalizedTitle)
+    : undefined;
 }
 
 function activityDescription(item: ActivityFeedItem): string {
@@ -173,11 +182,11 @@ function activityDetail(item: ActivityFeedItem) {
 }
 
 function ActivityFeedArticle({
+  artworkGame,
   comments,
   currentUserId,
   errorMessage,
   hasMoreComments,
-  index,
   interactionsEnabled,
   item,
   loadingComments,
@@ -195,7 +204,6 @@ function ActivityFeedArticle({
   currentUserId: string | null;
   errorMessage: string | null;
   hasMoreComments: boolean;
-  index: number;
   interactionsEnabled: boolean;
   item: ActivityFeedItem;
   loadingComments: boolean;
@@ -206,6 +214,7 @@ function ActivityFeedArticle({
   onLoadOlderComments: () => Promise<void>;
   onRetryInteractionData: () => Promise<void>;
   onToggleReaction: () => Promise<void>;
+  artworkGame?: Game;
   profiles?: ReadonlyMap<string, ActivityFeedProfile>;
   summary: ActivityInteractionSummary;
 }) {
@@ -214,12 +223,27 @@ function ActivityFeedArticle({
   const gameTitle = item.gameTitle ?? "Unknown game";
   const player = item.userId === currentUserId ? "You" : playerLabel(item.userId, profiles);
   const profile = profiles?.get(item.userId);
-  const artClassName = gameArtClassName(item.gameTitle, index);
-  const coverImageUrl =
+  const metadataCoverImageUrl =
     typeof item.metadata.coverImageUrl === "string" && item.metadata.coverImageUrl.trim()
       ? item.metadata.coverImageUrl
       : null;
+  const artworkCandidates = artworkGame
+    ? [artworkGame.coverUrl, ...getGameIconCandidates(artworkGame)].filter(
+        (url, candidateIndex, candidates): url is string =>
+          Boolean(url) && candidates.indexOf(url) === candidateIndex,
+      )
+    : metadataCoverImageUrl
+      ? [metadataCoverImageUrl]
+      : [];
+  const [artworkCandidateIndex, setArtworkCandidateIndex] = useState(0);
+  const artworkImageUrl = getGameAssetUrl(artworkCandidates[artworkCandidateIndex]);
+  const isCover = artworkCandidateIndex === 0 && Boolean(artworkGame?.coverUrl);
   const isStatus = item.type === "status";
+  const artworkCandidatesKey = artworkCandidates.join("|");
+
+  useEffect(() => {
+    setArtworkCandidateIndex(0);
+  }, [artworkGame?.id, artworkCandidatesKey]);
 
   return (
     <article className="border-[3px] border-black bg-[#fff9ed] p-3 shadow-[3px_3px_0_#171411]">
@@ -232,11 +256,7 @@ function ActivityFeedArticle({
             loading="lazy"
             src={profile.avatarUrl}
           />
-        ) : (
-          <div className="neo-title flex h-12 w-12 shrink-0 items-center justify-center border-[3px] border-black bg-[#171411] text-xl leading-none text-[#fff9ed] shadow-[2px_2px_0_#c20b2f]">
-            {player.slice(0, 2).toUpperCase()}
-          </div>
-        )}
+        ) : null}
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             {profile?.username ? (
@@ -262,34 +282,38 @@ function ActivityFeedArticle({
             {activityDescription(item)}
           </p>
         </div>
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center border-2 border-black bg-[#f6edd8] shadow-[2px_2px_0_#171411]">
-          <ActivityIcon type={item.type} />
-        </span>
       </div>
 
       {isStatus ? (
         <div className="mt-3 border-[3px] border-black bg-[#f6edd8] p-4 shadow-[3px_3px_0_#171411]">
           <p className="text-sm leading-6 font-black text-[#171411]">{statusText(item)}</p>
-          <span className="neo-copy mt-3 inline-flex border-2 border-black bg-[#fff9ed] px-2 py-1 text-[9px] font-black tracking-[0.12em] text-[#171411] uppercase shadow-[1px_1px_0_#171411]">
+          <span className="neo-copy mt-3 inline-flex border-2 border-black bg-[#fff9ed] px-2 py-1 text-[9px] font-black tracking-[0.12em] text-[#171411] uppercase">
             {item.visibility}
           </span>
         </div>
       ) : (
         <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(180px,260px)_minmax(0,1fr)]">
-          {coverImageUrl ? (
+          {artworkImageUrl ? (
             <img
               alt={`${gameTitle} activity artwork`}
-              className="h-32 w-full border-[3px] border-black object-cover shadow-[3px_3px_0_#171411]"
+              className={`aspect-video w-full border-[3px] border-black bg-[#171411] ${isCover ? "object-cover" : "object-contain p-2"}`}
               decoding="async"
               loading="lazy"
-              src={coverImageUrl}
+              src={artworkImageUrl}
+              onError={() =>
+                setArtworkCandidateIndex((current) =>
+                  current + 1 >= artworkCandidates.length ? artworkCandidates.length : current + 1,
+                )
+              }
             />
           ) : (
             <div
               aria-label={`${gameTitle} activity artwork`}
-              className={`min-h-28 border-[3px] border-black shadow-[3px_3px_0_#171411] ${artClassName}`}
+              className="grid aspect-video w-full place-items-center border-[3px] border-black bg-[#171411] text-[#fbf4e7]"
               role="img"
-            />
+            >
+              <Gamepad2 className="h-9 w-9" />
+            </div>
           )}
           <div className="min-w-0 border-[3px] border-black bg-[#f6edd8] p-3">
             {typeof item.metadata.productSlug === "string" ? (
@@ -308,7 +332,7 @@ function ActivityFeedArticle({
                   {platformLabel ?? "Source unknown"}
                 </span>
               ) : null}
-              <span className="neo-copy border-2 border-black bg-[#fff9ed] px-2 py-1 text-[9px] font-black tracking-[0.12em] text-[#171411] uppercase shadow-[1px_1px_0_#171411]">
+              <span className="neo-copy border-2 border-black bg-[#fff9ed] px-2 py-1 text-[9px] font-black tracking-[0.12em] text-[#171411] uppercase">
                 {item.visibility}
               </span>
             </div>
@@ -337,10 +361,6 @@ function ActivityFeedArticle({
         onRetryInteractionData={onRetryInteractionData}
         onToggleReaction={onToggleReaction}
       />
-
-      <p className="neo-copy mt-3 border-t-2 border-black pt-2 text-[8px] font-black tracking-[0.12em] text-[#655f58] uppercase">
-        Live feed item #{String(index + 1).padStart(2, "0")}
-      </p>
     </article>
   );
 }
@@ -457,10 +477,7 @@ function ActivityInteractions({
               const canDelete =
                 enabled && (comment.authorId === currentUserId || item.userId === currentUserId);
               return (
-                <article
-                  className="border-2 border-black bg-[#fff9ed] p-2 shadow-[1px_1px_0_#171411]"
-                  key={comment.id}
-                >
+                <article className="border-2 border-black bg-[#fff9ed] p-2" key={comment.id}>
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="neo-copy text-[8px] font-black tracking-[0.1em] text-[#b7102a] uppercase">
@@ -473,7 +490,7 @@ function ActivityInteractions({
                     {canDelete ? (
                       <button
                         aria-label={`Delete comment by ${author}`}
-                        className="flex h-8 w-8 shrink-0 items-center justify-center border-2 border-black bg-[#b7102a] text-white shadow-[1px_1px_0_#171411] disabled:opacity-50"
+                        className="flex h-8 w-8 shrink-0 items-center justify-center border-2 border-black bg-[#b7102a] text-white disabled:opacity-50"
                         disabled={mutationPending}
                         type="button"
                         onClick={() => void onDeleteComment(comment.id)}
@@ -553,7 +570,7 @@ function ActivityInteractions({
         >
           <p>{errorMessage}</p>
           <button
-            className="mt-2 border-2 border-black bg-[#b7102a] px-2 py-1 text-[8px] text-white shadow-[1px_1px_0_#171411] disabled:opacity-55"
+            className="mt-2 border-2 border-black bg-[#b7102a] px-2 py-1 text-[8px] text-white disabled:opacity-55"
             disabled={loadingComments}
             type="button"
             onClick={() =>
@@ -617,6 +634,7 @@ function emptySummary(activityId: string): ActivityInteractionSummary {
 }
 
 export function ActivityFeed({
+  artworkGames,
   currentUserId = null,
   friendIds,
   previewInteractions,
@@ -1121,11 +1139,11 @@ export function ActivityFeed({
               </div>
             ) : null}
             <ActivityFeedArticle
+              artworkGame={activityArtworkGame(item, artworkGames)}
               comments={comments.get(item.id)}
               currentUserId={currentUserId}
               errorMessage={interactionErrors.get(item.id) ?? null}
               hasMoreComments={Boolean(commentCursors.get(item.id))}
-              index={index}
               interactionsEnabled={interactionsEnabled}
               item={item}
               loadingComments={loadingCommentIds.has(item.id)}
@@ -1181,7 +1199,7 @@ export function ActivityFeed({
 
 function platformBadgeClassName(hasPlatform: boolean) {
   const baseClassName =
-    "neo-copy inline-flex border-2 border-black px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.12em] shadow-[1px_1px_0_#171411]";
+    "neo-copy inline-flex border-2 border-black px-2 py-0.5 text-[9px] font-black uppercase tracking-[0.12em]";
 
   return hasPlatform
     ? `${baseClassName} bg-[#8cf5e4] text-[#171411]`

@@ -86,7 +86,17 @@ function normalizeLegacyGamePassCatalogGame(game: Game): Game | null {
 function normalizeLibrarySnapshotGames(games: Game[]): Game[] {
   return games.flatMap((game) => {
     const normalized = normalizeLegacyGamePassCatalogGame(game);
-    return normalized ? [normalized] : [];
+    if (!normalized) return [];
+    const title = normalized.title.toLowerCase().replace(/[_-]/g, " ");
+    if (
+      ((title.startsWith("b07 ") || title.startsWith("bo7 ")) && title.includes(" dlc")) ||
+      title.includes(" game stub") ||
+      title.includes(" launch tracker") ||
+      title.includes(" game pass pack")
+    ) {
+      return [];
+    }
+    return [normalized];
   });
 }
 
@@ -347,7 +357,7 @@ export function useLibrarySync({ setStatusMessage }: UseLibrarySyncOptions): Use
             }
           }
           if (result.statusMessage) {
-            setStatusMessage(result.statusMessage);
+            if (shouldApplyResult()) setStatusMessage(result.statusMessage);
           }
           games = result.games;
           if (provider === mergeBattlenetOwned) {
@@ -429,7 +439,7 @@ export function useLibrarySync({ setStatusMessage }: UseLibrarySyncOptions): Use
         while (true) {
           automaticSyncPendingRef.current = false;
           automaticSyncPendingForceRefreshRef.current = false;
-          await loadInstalledGames(nextForceRefresh, () => true, false);
+          await loadInstalledGames(nextForceRefresh, () => isLibrarySyncMountedRef.current, false);
           if (!automaticSyncPendingRef.current) break;
           nextForceRefresh = automaticSyncPendingForceRefreshRef.current;
         }

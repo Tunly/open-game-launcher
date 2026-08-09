@@ -64,6 +64,7 @@ describe("GameUpdateFeed", () => {
     expect(link).toHaveAttribute("target", "_blank");
     expect(link).toHaveAttribute("rel", expect.stringContaining("noopener"));
     expect(openExternalUrl).not.toHaveBeenCalled();
+    expect(link.className).not.toContain("shadow-[2px_2px_0_#b7102a]");
   });
 
   it("renders Read Notes and opens the update URL", async () => {
@@ -88,6 +89,7 @@ describe("GameUpdateFeed", () => {
     expect(openExternalUrl).toHaveBeenCalledWith(
       "https://store.steampowered.com/news/app/730/view/1",
     );
+    expect(button.className).not.toContain("shadow-[2px_2px_0_#b7102a]");
   });
 
   it("does not render Read Notes when no URL is available", async () => {

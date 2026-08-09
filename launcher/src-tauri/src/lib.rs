@@ -15,6 +15,9 @@ use tauri::{
 };
 use tauri_plugin_global_shortcut::ShortcutState;
 
+use tauri::menu::{Menu, MenuItem};
+use tauri::tray::TrayIconBuilder;
+
 const STARTUP_FALLBACK_DELAY: Duration = Duration::from_secs(15);
 
 #[derive(Default)]
@@ -128,7 +131,10 @@ pub fn run() {
             if let Some(window) = app.get_webview_window("main") {
                 keep_window_on_visible_monitor(&window);
                 attach_window_bounds_guard(&window);
+                attach_minimize_to_tray_on_close(&window);
             }
+
+            setup_tray_icon(app.handle())?;
 
             spawn_startup_fallback(app);
 
@@ -229,9 +235,6 @@ pub fn run() {
             commands::crossplay::launch_cross_play_join,
             commands::crossplay::resolve_game_external_id,
             commands::family::copy_family_invite,
-            commands::stripe::create_stripe_checkout_session,
-            commands::stripe::get_license_device_id,
-            commands::stripe::validate_license,
             commands::perf_monitor::poll_performance_metrics,
             commands::overlay::toggle_in_game_overlay,
             commands::overlay::set_in_game_overlay_click_through,
@@ -292,6 +295,8 @@ pub fn run() {
             commands::downloads::cancel_download,
             commands::downloads::archive_download,
             commands::downloads::get_download_queue,
+            commands::downloads::get_xbox_app_downloads,
+            commands::downloads::remove_download_history_item,
             commands::downloads::check_provider_health,
             commands::downloads::reconcile_downloads,
             commands::downloads::get_download_settings_command,
@@ -417,6 +422,55 @@ fn local_env_file_candidates() -> Vec<PathBuf> {
     candidates
 }
 
+// Keeps the launcher running in the background (tray) when the main window is
+// closed instead of quitting the whole app. Re-opening just shows the window.
+fn attach_minimize_to_tray_on_close(window: &WebviewWindow) {
+    let guarded_window = window.clone();
+    window.on_window_event(move |event| {
+        if let WindowEvent::CloseRequested { api, .. } = event {
+            api.prevent_close();
+            let _ = guarded_window.hide();
+        }
+    });
+}
+
+// Builds the system tray icon with an Open/Exit menu. The tray is what lets the
+// user bring the window back after it was hidden on close, and offers a real
+// "Quit" so they can fully exit instead of leaving it running invisibly.
+fn setup_tray_icon(app: &AppHandle) -> tauri::Result<()> {
+    let open_item = MenuItem::with_id(
+        app,
+        "tray-open",
+        "Open Game Launcher anzeigen",
+        true,
+        None::<&str>,
+    )?;
+    let quit_item = MenuItem::with_id(app, "tray-quit", "Beenden", true, None::<&str>)?;
+    let menu = Menu::with_items(app, &[&open_item, &quit_item])?;
+
+    let mut tray = TrayIconBuilder::with_id("main-tray")
+        .menu(&menu)
+        .show_menu_on_left_click(true)
+        .tooltip("Open Game Launcher");
+
+    if let Some(icon) = app.default_window_icon() {
+        tray = tray.icon(icon.clone());
+    }
+
+    tray.on_menu_event(|app, event| match event.id().as_ref() {
+        "tray-open" => {
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+        }
+        "tray-quit" => app.exit(0),
+        _ => {}
+    })
+    .build(app)
+    .map(|_| ())
+}
+
 fn attach_window_bounds_guard(window: &WebviewWindow) {
     let guarded_window = window.clone();
     window.on_window_event(move |event| {
@@ -509,6 +563,50 @@ mod startup_tests {
         assert!(
             !overlay_branch.contains("set_focus"),
             "the global overlay hotkey must not foreground the overlay over an exclusive game"
+        );
+    }
+
+    #[test]
+    fn closing_the_main_window_hides_to_tray_instead_of_quitting() {
+        let source = include_str!("lib.rs");
+
+        // The close handler must prevent the default close so the window is not
+        // destroyed (which, as the last window, would quit the whole app), and
+        // must hide instead. The tray's quit path is what truly exits.
+        let close_handler = source
+            .split_once("fn attach_minimize_to_tray_on_close")
+            .expect("close-to-tray handler should exist")
+            .1
+            .split_once("fn setup_tray_icon")
+            .expect("tray setup should follow the close handler")
+            .0;
+
+        assert!(close_handler.contains("CloseRequested"));
+        assert!(
+            close_handler.contains("prevent_close"),
+            "close must be prevented so the window is not destroyed"
+        );
+        assert!(
+            close_handler.contains(".hide()"),
+            "window should be hidden, not closed"
+        );
+
+        // The main window must be wired to the close-to-tray handler at startup.
+        assert!(source.contains("attach_minimize_to_tray_on_close("));
+
+        // A real quit path must exist on the tray menu.
+        let tray = source
+            .split_once("fn setup_tray_icon")
+            .expect("tray icon setup should exist")
+            .1;
+        assert!(tray.contains("tray-quit"));
+        assert!(
+            tray.contains("app.exit(0)"),
+            "the tray quit item must fully exit the app"
+        );
+        assert!(
+            tray.contains("tray-open"),
+            "the tray must offer a way to reopen the window"
         );
     }
 }

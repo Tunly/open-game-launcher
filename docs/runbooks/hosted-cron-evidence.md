@@ -71,10 +71,8 @@ Remove-Item Env:OGL_EXTERNAL_EVIDENCE_GATES
 ```
 
 Without `OGL_HOSTED_CRON_EVIDENCE_CHECKS` or `--checks`, the collector checks
-all scheduler lanes. `store-stripe-live` only needs the `price-drop` lane; use
-`OGL_HOSTED_CRON_EVIDENCE_CHECKS=price-drop` or `--checks=price-drop` for that
-artifact so presence and account-deletion rows do not block the Store/Stripe
-handoff.
+all scheduler lanes. Use `--checks` only for interim lane diagnostics; the
+release artifact always covers price-drop, presence, and account-deletion.
 
 Without `OGL_HOSTED_CRON_FRESHNESS_HOURS`, lane freshness defaults are:
 
@@ -151,9 +149,7 @@ operator handoffs and do not create release proof by themselves.
 Both outputs are redacted handoff text only. The hosted cron packet does not check proof rows before an operator reviews artifacts. It does not mark external
 completion, does not prove scheduler dashboard ownership, and must not include
 raw REST URLs, bearer tokens, Supabase keys, scheduler secrets, or other secret
-values. When scoped to `price-drop`, the packet points to
-`OGL_EXTERNAL_EVIDENCE_GATES=store-stripe-live pnpm external:evidence:preflight`;
-when all three default scheduler lanes validate, it points to
+values. The packet points to
 `OGL_EXTERNAL_EVIDENCE_GATES=hosted-supabase-cron pnpm external:evidence:preflight`.
 
 The report should include:

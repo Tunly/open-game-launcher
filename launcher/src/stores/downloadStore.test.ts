@@ -62,6 +62,20 @@ describe("useDownloadStore", () => {
     expect(useDownloadStore.getState().items.map((item) => item.gameId)).toEqual(["b"]);
   });
 
+  it("replaces a provider snapshot and removes rows that disappeared", () => {
+    act(() => {
+      useDownloadStore
+        .getState()
+        .setItems([
+          makeItem({ gameId: "xbox-old", provider: "xbox" }),
+          makeItem({ gameId: "internal", provider: "launcher" }),
+        ]);
+      useDownloadStore.getState().replaceProviderItems("xbox", []);
+    });
+
+    expect(useDownloadStore.getState().items.map((item) => item.gameId)).toEqual(["internal"]);
+  });
+
   it("setItems caps terminal items even when the native queue returns many old rows", () => {
     const initial: DownloadItem[] = Array.from({ length: 150 }, (_, index) =>
       makeItem({ gameId: `done-${index}`, status: "completed" }),

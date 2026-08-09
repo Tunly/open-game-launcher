@@ -2032,6 +2032,11 @@ fn is_steam_non_game_owned_item(app_id: Option<&str>, title: &str) -> bool {
         || normalized.contains("dedicated server")
         || normalized.ends_with(" sdk")
         || normalized.contains(" sdk ")
+        // Call of Duty hub DLC placeholders: "BO7 DLC01 Game Stub 01",
+        // "BO7 DLC17 Standard Launch Tracker", "BO7 DLC56 Game Pass Pack 03".
+        || normalized.contains(" game stub")
+        || normalized.contains(" launch tracker")
+        || normalized.contains(" game pass pack")
 }
 
 fn find_steam_cached_asset(steam_dir: &Path, app_id: &str, filenames: &[&str]) -> Option<String> {
@@ -2916,7 +2921,11 @@ mod tests {
         let json = r#"[
             {"appid": 228980, "name": "Steamworks Common Redistributables"},
             {"appid": 1070560, "name": "Steam Linux Runtime 1.0 (scout)"},
-            {"appid": 4000, "name": "Garry's Mod"}
+            {"appid": 4000, "name": "Garry's Mod"},
+            {"appid": 3123456, "name": "BO7 DLC01 Game Stub 01"},
+            {"appid": 3123457, "name": "BO7 DLC17 Standard Launch Tracker"},
+            {"appid": 3123458, "name": "BO7 DLC19 Game Pass Launch Tracker"},
+            {"appid": 3123459, "name": "BO7 DLC56 Game Pass Pack 03"}
         ]"#;
 
         let games = parse_rg_games_json(json, "76561198000000000");

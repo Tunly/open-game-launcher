@@ -319,6 +319,51 @@ function steamImageUrl(appId: string, asset: string) {
   return `https://cdn.cloudflare.steamstatic.com/steam/apps/${appId}/${asset}`;
 }
 
+const STEAM_NON_GAME_APP_IDS = new Set([
+  "228980", // Steamworks Common Redistributables
+  "1070560", // Steam Linux Runtime 1.0 (scout)
+  "1391110", // Steam Linux Runtime 2.0 (soldier)
+  "1628350", // Steam Linux Runtime 3.0 (sniper)
+  "1887720", // Proton Experimental
+  "2102450", // Proton 9.0
+  "2289880", // Steam Linux Runtime 4.0 (soldier)
+  "250820", // SteamVR
+  "1826330", // Steam Audio
+]);
+
+function isSteamNonGameOwnedItem(appId: string, title: string): boolean {
+  if (STEAM_NON_GAME_APP_IDS.has(appId)) {
+    return true;
+  }
+
+  const normalized = title
+    .toLowerCase()
+    .replaceAll("_", " ")
+    .replaceAll("-", " ")
+    .split(/\s+/)
+    .filter(Boolean)
+    .join(" ");
+
+  return (
+    normalized === "steamworks common redistributables" ||
+    normalized.startsWith("steam linux runtime") ||
+    normalized.startsWith("proton ") ||
+    normalized.includes("proton easyanticheat runtime") ||
+    normalized.includes("proton battleye runtime") ||
+    normalized.includes("steamvr") ||
+    normalized.includes("steam vr") ||
+    normalized.includes("common redistributable") ||
+    normalized.includes("dedicated server") ||
+    normalized.endsWith(" sdk") ||
+    normalized.includes(" sdk ") ||
+    // Call of Duty hub DLC placeholders: "BO7 DLC01 Game Stub 01",
+    // "BO7 DLC17 Standard Launch Tracker", "BO7 DLC56 Game Pass Pack 03".
+    normalized.includes(" game stub") ||
+    normalized.includes(" launch tracker") ||
+    normalized.includes(" game pass pack")
+  );
+}
+
 export function normalizeSteamOwnedGames(games: unknown): OwnedGame[] {
   if (!Array.isArray(games)) {
     return [];
@@ -336,6 +381,10 @@ export function normalizeSteamOwnedGames(games: unknown): OwnedGame[] {
     const title = readString(record, ["title", "name"]);
 
     if (!appId || !title) {
+      return [];
+    }
+
+    if (isSteamNonGameOwnedItem(appId, title)) {
       return [];
     }
 

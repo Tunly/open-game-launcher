@@ -115,13 +115,6 @@ export function LibraryFilters({ isOpen, onClose }: LibraryFiltersProps) {
         </h3>
         <div className="flex items-center gap-1">
           <button
-            onClick={onResetAdvanced}
-            className="neo-copy border-2 border-black bg-[#efe3cf] px-2 py-1 text-[9px] font-black uppercase hover:bg-[#d8cbb7]"
-            type="button"
-          >
-            Reset All
-          </button>
-          <button
             onClick={onClose}
             className="grid h-8 w-8 place-items-center border-2 border-black bg-[#efe3cf] hover:bg-[#d8cbb7]"
             type="button"
@@ -197,6 +190,7 @@ export function LibraryFilters({ isOpen, onClose }: LibraryFiltersProps) {
           title="Player Count"
           values={advancedFilters.players}
           options={[...PLAYER_OPTIONS]}
+          onClear={() => setAdvancedFilters({ ...advancedFilters, players: [] })}
           onToggle={(value) =>
             setAdvancedFilters({
               ...advancedFilters,
@@ -209,6 +203,7 @@ export function LibraryFilters({ isOpen, onClose }: LibraryFiltersProps) {
           title="Hardware Compatibility"
           values={advancedFilters.hardware}
           options={[...HARDWARE_OPTIONS]}
+          onClear={() => setAdvancedFilters({ ...advancedFilters, hardware: [] })}
           onToggle={(value) =>
             setAdvancedFilters({
               ...advancedFilters,
@@ -240,6 +235,7 @@ export function LibraryFilters({ isOpen, onClose }: LibraryFiltersProps) {
           title="Play Status"
           values={advancedFilters.status}
           options={[...STATUS_OPTIONS]}
+          onClear={() => setAdvancedFilters({ ...advancedFilters, status: [] })}
           onToggle={(value) =>
             setAdvancedFilters({
               ...advancedFilters,
@@ -460,11 +456,13 @@ function FilterCheckboxSection({
   title,
   values,
   options,
+  onClear,
   onToggle,
 }: {
   title: string;
   values: string[];
   options: string[];
+  onClear?: () => void;
   onToggle: (value: string) => void;
 }) {
   return (
@@ -473,10 +471,13 @@ function FilterCheckboxSection({
         <span>{title}</span>
         {values.length > 0 && (
           <button
+            aria-label={`Clear ${title}`}
             onClick={() =>
-              options.forEach((opt) => {
-                if (values.includes(opt)) onToggle(opt);
-              })
+              onClear
+                ? onClear()
+                : options.forEach((opt) => {
+                    if (values.includes(opt)) onToggle(opt);
+                  })
             }
             className="text-[10px] lowercase underline"
             type="button"

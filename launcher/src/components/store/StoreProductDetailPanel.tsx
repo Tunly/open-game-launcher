@@ -1,25 +1,16 @@
-import { formatCurrency } from "../../lib/store-formatters";
 import type { StoreGame } from "../../lib/types";
 import type { StoreProduct } from "../../lib/types/store";
 
 export function ProductDetailPanel({
   game,
   storeProduct,
-  isOwned,
   isWishlisted,
-  isProcessing,
-  onAddToCart,
-  onBuyNow,
   onToggleWishlist,
 }: {
   game: StoreGame;
   storeProduct: StoreProduct | null;
-  isOwned: boolean;
   isWishlisted: boolean;
-  isProcessing: boolean;
-  onAddToCart: (gameId: string) => void;
-  onBuyNow: (gameId: string) => void;
-  onToggleWishlist: (gameId: string) => void;
+  onToggleWishlist: () => void;
 }) {
   return (
     <section className="grid overflow-hidden border-4 border-black bg-[#fff9ed] shadow-[6px_6px_0_#171411] lg:grid-cols-[minmax(0,1fr)_360px]">
@@ -57,35 +48,23 @@ export function ProductDetailPanel({
           <ProductFact label="Publisher" value={game.publisher ?? "Not listed"} />
           <ProductFact label="Platforms" value={game.platform.join(", ")} />
           <ProductFact label="Genres" value={(game.genres ?? [game.tagLine]).join(", ")} />
-          <ProductFact label="Price" value={formatCurrency(game.price)} />
+          <ProductFact label="Price" value="Price shown in platform store" />
         </div>
         <SystemRequirementsPanel
           minRequirements={storeProduct?.minSystemRequirements ?? null}
           recRequirements={storeProduct?.recSystemRequirements ?? null}
         />
         <div className="grid gap-2">
-          <button
-            className="neo-copy h-11 border-2 border-black bg-[#b7102a] text-[11px] font-black tracking-[0.12em] text-white uppercase shadow-[3px_3px_0_#171411] disabled:opacity-50"
-            disabled={isOwned || isProcessing}
-            type="button"
-            onClick={() => onBuyNow(game.id)}
-          >
-            {isOwned ? "Owned" : game.isFree ? "Claim" : "Buy Now"}
-          </button>
-          <button
-            className="neo-copy h-11 border-2 border-black bg-[#007166] text-[11px] font-black tracking-[0.12em] text-white uppercase shadow-[3px_3px_0_#171411] disabled:opacity-50"
-            disabled={isOwned || isProcessing}
-            type="button"
-            onClick={() => onAddToCart(game.id)}
-          >
-            Add To Cart
-          </button>
+          <div className="neo-copy border-2 border-black bg-[#f6edd8] p-3 text-[10px] font-black tracking-[0.1em] text-[#655f58] uppercase">
+            Catalog and redirect only. Purchases take place exclusively in the official platform
+            store.
+          </div>
           <button
             className={`neo-copy h-11 border-2 border-black text-[11px] font-black tracking-[0.12em] uppercase shadow-[3px_3px_0_#171411] ${
               isWishlisted ? "bg-[#b7102a] text-white" : "bg-[#fff9ed] text-[#171411]"
             }`}
             type="button"
-            onClick={() => onToggleWishlist(game.id)}
+            onClick={onToggleWishlist}
           >
             {isWishlisted ? "Wishlisted" : "Add To Wishlist"}
           </button>

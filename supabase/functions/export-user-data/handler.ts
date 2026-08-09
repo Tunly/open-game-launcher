@@ -165,33 +165,6 @@ export async function buildExportPayload(
     warnings,
   );
 
-  const orders = await deps.readRows(
-    "store_orders",
-    "user_id",
-    userId,
-    warnings,
-  );
-  const orderIds = pluckIds(orders);
-  data.store_cart_items = await deps.readRows(
-    "store_cart_items",
-    "user_id",
-    userId,
-    warnings,
-  );
-  data.store_orders = orders;
-  data.store_order_items = await deps.readRowsIn(
-    "store_order_items",
-    "order_id",
-    orderIds,
-    warnings,
-  );
-  data.store_licenses = await deps.readRows(
-    "store_licenses",
-    "user_id",
-    userId,
-    warnings,
-  );
-
   const familyGroups = await deps.readRows(
     "family_groups",
     "owner_id",
@@ -222,30 +195,26 @@ export async function buildExportPayload(
   const legacyMods = Array.isArray(data.mods) ? data.mods as JsonObject[] : [];
   const legacyModIds = pluckIds(legacyMods);
   const modReadIds = legacyMods.length > 0 ? legacyModIds : null;
-  const modVersions = modReadIds === null ? [] : await deps.readRowsIn(
+  const modVersions = await deps.readRowsIn(
     "mod_versions",
     "mod_id",
-    modReadIds,
+    legacyModIds,
     warnings,
   );
   const modVersionIds = legacyMods.length > 0 ? pluckIds(modVersions) : [];
-  data.mod_versions = legacyMods.length > 0 ? modVersions : [];
-  data.mod_files = modReadIds === null
-    ? []
-    : await deps.readRowsIn(
-        "mod_files",
-        "mod_version_id",
-        modVersionIds,
-        warnings,
-      );
-  data.mod_dependencies = modReadIds === null
-    ? []
-    : await deps.readRowsIn(
-        "mod_dependencies",
-        "mod_id",
-        modReadIds,
-        warnings,
-      );
+  data.mod_versions = modReadIds === null ? [] : modVersions;
+  data.mod_files = await deps.readRowsIn(
+    "mod_files",
+    "mod_version_id",
+    modVersionIds,
+    warnings,
+  );
+  data.mod_dependencies = await deps.readRowsIn(
+    "mod_dependencies",
+    "mod_id",
+    legacyModIds,
+    warnings,
+  );
   data.__warnings = warnings;
 
   return {

@@ -234,6 +234,86 @@ describe("AchievementsPage", () => {
     expect(screen.getByRole("button", { name: "Steam" })).toHaveAttribute("aria-pressed", "true");
   });
 
+  it("uses a 16:9 frame for achievement game artwork", async () => {
+    launcherMocks.listInstalledGames.mockResolvedValueOnce([
+      achievementPageGame("steam-artwork", "Artwork Game", {
+        coverUrl: "https://cdn.example.test/artwork-game.jpg",
+        launcher: "steam",
+      }),
+    ]);
+
+    renderAchievementsRoute("/achievements");
+
+    const heading = await screen.findByRole("heading", { name: "Artwork Game" });
+    const artworkFrame = heading.closest("article")!.querySelector("img")?.parentElement;
+
+    expect(artworkFrame).toHaveClass("aspect-video");
+    expect(artworkFrame?.querySelector("img")).toHaveClass("object-cover");
+  });
+
+  it("opens the full achievement list like the library viewer", async () => {
+    launcherMocks.listInstalledGames.mockResolvedValueOnce([
+      achievementPageGame("steam-full-list", "Full List Game", {
+        achievements: [
+          {
+            id: "first-clear",
+            name: "First Clear",
+            description: "Finish the opening route.",
+            source: "steam",
+            unlockedAt: "2026-07-12T12:00:00Z",
+          },
+          {
+            id: "secret-route",
+            name: "Secret Route",
+            description: "Find the hidden route.",
+            source: "steam",
+            unlockedAt: null,
+          },
+        ],
+        launcher: "steam",
+      }),
+    ]);
+
+    renderAchievementsRoute("/achievements");
+
+    const heading = await screen.findByRole("heading", { name: "Full List Game" });
+    const row = within(heading.closest("article")!);
+    fireEvent.click(row.getByRole("button", { name: /view full list/i }));
+
+    const dialog = screen.getByRole("dialog", { name: /achievements/i });
+    expect(within(dialog).getByText("1 of 2 achievements earned")).toBeInTheDocument();
+    expect(within(dialog).getByText("First Clear")).toBeInTheDocument();
+    expect(within(dialog).getByText("Secret Route")).toBeInTheDocument();
+    expect(within(dialog).getByText("Finish the opening route.")).toBeInTheDocument();
+    expect(row.getByRole("button", { name: /view full list/i })).not.toHaveClass(
+      "hover:-translate-y-0.5",
+    );
+    expect(row.getByRole("button", { name: /view full list/i })).not.toHaveClass(
+      "shadow-[2px_2px_0_#171411]",
+    );
+    expect(row.getByRole("button", { name: /view full list/i })).toHaveClass("hover:bg-[#2b2722]");
+  });
+
+  it("closes the full achievement list with its close button", async () => {
+    launcherMocks.listInstalledGames.mockResolvedValueOnce([
+      achievementPageGame("steam-close-list", "Close List Game", {
+        achievements: [
+          { id: "achievement-1", name: "Achievement One", source: "steam", unlockedAt: null },
+        ],
+        launcher: "steam",
+      }),
+    ]);
+
+    renderAchievementsRoute("/achievements");
+
+    const heading = await screen.findByRole("heading", { name: "Close List Game" });
+    const row = within(heading.closest("article")!);
+    fireEvent.click(row.getByRole("button", { name: /view full list/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Close achievement viewer" }));
+
+    expect(screen.queryByRole("dialog", { name: /achievements/i })).not.toBeInTheDocument();
+  });
+
   it("sorts the recently played view by latest play time", async () => {
     launcherMocks.listInstalledGames.mockResolvedValueOnce([
       achievementPageGame("manual-oldest", "Oldest", { lastPlayedAt: "2026-07-01T10:00:00Z" }),
@@ -327,10 +407,7 @@ describe("AchievementsPage", () => {
     expect(row.getByTitle("OG Launcher")).toBeInTheDocument();
     expect(row.getByText("OG Launcher: available")).toBeInTheDocument();
     expect(launcherMocks.syncGameAchievements).not.toHaveBeenCalled();
-    expect(row.getByRole("link", { name: /view full list/i })).toHaveAttribute(
-      "href",
-      "/library?game=ogl-neon-runners",
-    );
+    expect(row.getByRole("button", { name: /view full list/i })).toBeInTheDocument();
   });
 
   it("shows hosted definitions for a provider game that is not installed or signed in", async () => {
@@ -541,6 +618,29 @@ describe("AchievementsPage", () => {
 
     expect(await screen.findByText("Steam Refresh Unlock")).toBeInTheDocument();
     expect(launcherMocks.syncGameAchievements).toHaveBeenCalledWith(steamGame, "steam-user");
+  });
+
+  it("renders local achievement rows before a slow provider inventory refresh finishes", async () => {
+    const slowProviderRefresh = deferred<OwnedGame[]>();
+    const localGame = achievementPageGame("steam-fast-inventory", "Fast Inventory Game", {
+      launcher: "steam",
+      externalId: "7654321",
+    });
+    localStorage.setItem(STORAGE_KEYS.STEAM_ID, JSON.stringify("steam-user"));
+    launcherMocks.listInstalledGames.mockResolvedValueOnce([localGame]);
+    launcherMocks.fetchSteamOwnedGames.mockReturnValueOnce(slowProviderRefresh.promise);
+
+    renderAchievementsRoute("/achievements");
+
+    expect(await screen.findByRole("heading", { name: "Fast Inventory Game" })).toBeInTheDocument();
+    expect(
+      screen.queryByRole("status", { name: /loading local achievement games/i }),
+    ).not.toBeInTheDocument();
+
+    await act(async () => {
+      slowProviderRefresh.resolve([]);
+      await slowProviderRefresh.promise;
+    });
   });
 
   it("renders local achievement rows without waiting for cloud hydration", async () => {
@@ -1078,10 +1178,7 @@ describe("AchievementsPage", () => {
     expect(screen.queryByRole("button", { name: /my game stats/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /my game content/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /more actions for/i })).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: /view full list/i })).toHaveAttribute(
-      "href",
-      "/library?game=real-game",
-    );
+    expect(screen.getByRole("button", { name: /view full list/i })).toBeInTheDocument();
   });
 
   it("replaces persisted provider diagnostics with a safe retry message", async () => {
@@ -1132,6 +1229,109 @@ describe("AchievementsPage", () => {
       "href",
       "/library?game=ubisoft-rainbow-six",
     );
+  });
+
+  it("shows only the provider name when a failed sync still produced achievements", async () => {
+    const game: Game = {
+      achievements: [
+        { id: "first-run", name: "First Run", unlockedAt: "2026-07-28T10:00:00.000Z" },
+      ],
+      achievementProviderStatuses: [
+        {
+          message:
+            "Authenticated Steam achievement session was unavailable: Authenticated Steam achievement session timed out.",
+          source: "steam",
+          stability: "official",
+          status: "failed",
+        },
+      ],
+      description: "",
+      id: "steam-palworld",
+      launcher: "steam",
+      platform: "windows",
+      status: "installed",
+      title: "Palworld",
+      version: "1.0.0",
+    };
+    launcherMocks.listInstalledGames.mockResolvedValueOnce([game]);
+
+    renderAchievementsRoute("/achievements");
+
+    const heading = await screen.findByRole("heading", { name: "Palworld" });
+    const rowView = within(heading.closest("article")!);
+
+    expect(rowView.getByText("Steam")).toBeInTheDocument();
+    expect(rowView.queryByText(/steam: failed/i)).not.toBeInTheDocument();
+  });
+
+  it("keeps the full achievement list available when a provider warning has data", async () => {
+    const game = achievementPageGame("steam-warning-with-data", "Warning With Data", {
+      achievements: [
+        {
+          id: "warning-achievement",
+          name: "Warning Achievement",
+          source: "steam",
+          unlockedAt: null,
+        },
+      ],
+      achievementProviderStatuses: [
+        {
+          message: "Steam sync failed after cached data was loaded.",
+          source: "steam",
+          stability: "official",
+          status: "failed",
+        },
+      ],
+      launcher: "steam",
+    });
+    launcherMocks.listInstalledGames.mockResolvedValueOnce([game]);
+
+    renderAchievementsRoute("/achievements");
+
+    const heading = await screen.findByRole("heading", { name: "Warning With Data" });
+    const row = within(heading.closest("article")!);
+    expect(row.getByRole("button", { name: /view full list/i })).toBeInTheDocument();
+    expect(
+      row.queryByRole("link", { name: /open in library|retry in library/i }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("keeps modal progress consistent with the row when additional achievements exist", async () => {
+    const sharedAchievement = {
+      id: "shared-achievement",
+      name: "Shared Achievement",
+      source: "steam",
+      unlockedAt: "2026-07-12T12:00:00Z",
+    };
+    const additionalAchievement = {
+      id: "xbox-exclusive-achievement",
+      name: "Xbox Exclusive Achievement",
+      source: "xbox",
+      unlockedAt: null,
+    };
+    launcherMocks.listInstalledGames.mockResolvedValueOnce([
+      achievementPageGame("steam-cross-platform", "Cross Platform Modal Game", {
+        achievements: [sharedAchievement],
+        externalId: "101",
+        launcher: "steam",
+      }),
+      achievementPageGame("xbox-cross-platform", "Cross Platform Modal Game", {
+        achievements: [additionalAchievement],
+        externalId: "202",
+        launcher: "xbox",
+      }),
+    ]);
+
+    renderAchievementsRoute("/achievements");
+
+    const heading = await screen.findByRole("heading", { name: "Cross Platform Modal Game" });
+    const row = within(heading.closest("article")!);
+    expect(row.getByText("1/1")).toBeInTheDocument();
+    fireEvent.click(row.getByRole("button", { name: /view full list/i }));
+
+    const dialog = screen.getByRole("dialog", { name: /achievements/i });
+    expect(within(dialog).getByText("1 of 1 achievements earned")).toBeInTheDocument();
+    expect(within(dialog).getByText("Xbox Exclusive Achievement")).toBeInTheDocument();
   });
 
   it("marks a provider unavailable when its background sync has no readable data", async () => {

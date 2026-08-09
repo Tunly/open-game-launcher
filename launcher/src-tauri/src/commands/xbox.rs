@@ -947,6 +947,9 @@ pub async fn fetch_xbox_owned_games(code: String) -> Result<XboxFetchResult, Str
             .clone()
             .unwrap_or_else(|| "Unknown Xbox Game".to_string());
         let clean_name = clean_xbox_title_name(&raw_name);
+        if is_xbox_non_game_owned_item(&clean_name) {
+            continue;
+        }
 
         let display_image_url = titlehub_display_image_url(&title);
         let last_played = title.title_history.and_then(|th| th.last_time_played);
@@ -1685,6 +1688,26 @@ fn clean_xbox_title_name(name: &str) -> String {
         .to_string()
 }
 
+fn is_xbox_non_game_owned_item(title: &str) -> bool {
+    let normalized = title
+        .to_lowercase()
+        .replace(['_', '-'], " ")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+
+    // Call of Duty hub DLC placeholders: "BO7 DLC01 Game Stub 01",
+    // "BO7 DLC17 Standard Launch Tracker", "BO7 DLC56 Game Pass Pack 03".
+    let is_black_ops_seven_hub_item =
+        (normalized.starts_with("b07 ") || normalized.starts_with("bo7 "))
+            && normalized.contains(" dlc");
+
+    is_black_ops_seven_hub_item
+        || normalized.contains(" game stub")
+        || normalized.contains(" launch tracker")
+        || normalized.contains(" game pass pack")
+}
+
 fn normalize_title_match(value: &str) -> String {
     value
         .chars()
@@ -1984,6 +2007,17 @@ mod tests {
         let address = SocketAddr::from(([192, 0, 2, 10], 49_152));
 
         assert!(build_loopback_callback_url(address).is_err());
+    }
+
+    #[test]
+    fn filters_call_of_duty_hub_dlc_placeholders() {
+        assert!(is_xbox_non_game_owned_item("BO7 DLC01 Game Stub 01"));
+        assert!(is_xbox_non_game_owned_item("BO7 DLC17 Standard Launch Tracker"));
+        assert!(is_xbox_non_game_owned_item("BO7 DLC19 Game Pass Launch Tracker"));
+        assert!(is_xbox_non_game_owned_item("BO7 DLC56 Game Pass Pack 03"));
+        assert!(!is_xbox_non_game_owned_item("Call of Duty®"));
+        assert!(!is_xbox_non_game_owned_item("Call of Duty: Black Ops 7"));
+        assert!(!is_xbox_non_game_owned_item("Garry's Mod"));
     }
 
     #[test]

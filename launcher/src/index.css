@@ -235,6 +235,38 @@
     background: var(--og-shell-paper-dim);
   }
 
+  .app-shell-primary-nav {
+    min-width: 0;
+    overflow: visible;
+  }
+
+  @media (max-width: 1100px) {
+    .app-shell-brand {
+      max-width: 25vw !important;
+      font-size: 2rem !important;
+    }
+
+    .app-shell-primary-nav {
+      zoom: 0.85;
+    }
+  }
+
+  @media (max-width: 800px) {
+    .app-shell-header {
+      gap: 0.5rem !important;
+      padding-inline: 0.5rem !important;
+    }
+
+    .app-shell-brand {
+      max-width: 22vw !important;
+      font-size: 1.5rem !important;
+    }
+
+    .app-shell-primary-nav {
+      zoom: 0.7;
+    }
+  }
+
   .app-shell-muted-text {
     color: var(--og-shell-muted);
   }
@@ -625,6 +657,26 @@
 
   .cup-two::after {
     background: #4aa5c8;
+  }
+
+  /* Buttons stay flat and planted; panel/card hover motion remains intentional. */
+  button,
+  a,
+  label,
+  input,
+  select,
+  textarea,
+  [role="button"],
+  [role="menuitem"] {
+    box-shadow: none !important;
+  }
+
+  button:hover,
+  [role="button"]:hover,
+  [role="menuitem"]:hover {
+    /* Disable both legacy transform utilities and Tailwind's individual translate property. */
+    transform: none !important;
+    translate: none !important;
   }
 
   /* Hide scrollbar but keep functionality */

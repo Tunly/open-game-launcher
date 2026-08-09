@@ -50,6 +50,7 @@ import {
 import { Metric } from "./Metric";
 import { LibraryCustomScrollbar } from "./LibraryCustomScrollbar";
 import { PlatformSourceIcon } from "./PlatformIcons";
+import { AchievementViewerModal } from "./AchievementViewerModal";
 import {
   formatAchievementProgress,
   formatPlayTime,
@@ -64,7 +65,10 @@ import {
   getSourceDisplayLabel,
 } from "../../lib/formatters";
 import { getGameAssetUrl, getGameBannerStyle } from "../../lib/assets";
-import { getAchievementProviderStatusMessage } from "../../lib/achievement-status";
+import {
+  getAchievementProviderStatusLabel,
+  getAchievementProviderStatusMessage,
+} from "../../lib/achievement-status";
 import {
   buildClientPathOverlayPreflight,
   type ClientPathOverlayPreflight,
@@ -314,13 +318,6 @@ function formatRuntimeDuration(seconds: number | null | undefined): string | nul
   const hours = Math.floor(minutes / 60);
   const restMinutes = minutes % 60;
   return restMinutes > 0 ? `${hours}h ${restMinutes}m` : `${hours}h`;
-}
-
-function formatLastInputLabel(seconds: number | null | undefined): string | null {
-  if (seconds == null || seconds < 0) return null;
-  if (seconds < 10) return "Input active";
-  const duration = formatRuntimeDuration(seconds);
-  return duration ? `Input ${duration}` : null;
 }
 
 function runtimeMetadataLabel(input: {
@@ -786,6 +783,7 @@ export function GameDetails({
   const [pendingCollectionDelete, setPendingCollectionDelete] = useState<string | null>(null);
   const [achievementFilter, setAchievementFilter] = useState("all");
   const [achievementSort, setAchievementSort] = useState<"rarity" | "name" | "date">("rarity");
+  const [achievementsViewerOpen, setAchievementsViewerOpen] = useState(false);
   const [nativeGameActionCapabilities, setNativeGameActionCapabilities] =
     useState<NativeGameActionCapabilities | null>(null);
   const [nativeGameActionCapabilitiesGameId, setNativeGameActionCapabilitiesGameId] = useState<
@@ -1134,10 +1132,6 @@ export function GameDetails({
     ? `${isCrossSourceRuntime ? "Via " : ""}${gameRuntimeSourceLabel}`
     : null;
   const gameRuntimeMetadata = gameRuntime ? runtimeMetadataLabel(gameRuntime) : null;
-  const gameRuntimeInputLabel = gameRuntime
-    ? formatLastInputLabel(gameRuntime.lastInputSeconds)
-    : null;
-  const gameRuntimeWindowLabel = gameRuntime ? runtimeWindowLabel(gameRuntime) : null;
   const gameRuntimeButtonDetail = gameRuntime
     ? [isCrossSourceRuntime ? gameRuntimeSourceBadge : null, gameRuntimeMetadata]
         .filter(Boolean)
@@ -1170,7 +1164,13 @@ export function GameDetails({
     [clientModificationConfig],
   );
   const isClientManagerBusy = clientManagerBusyAction !== null;
+  const clientManagerRequestIdRef = useRef(0);
   const loadClientManagerState = useCallback(async () => {
+    const requestId = ++clientManagerRequestIdRef.current;
+    const requestedClientId = selectedSourceClientId;
+    const isCurrentRequest = () =>
+      requestId === clientManagerRequestIdRef.current &&
+      selectedSourceClientId === requestedClientId;
     if (!selectedSourceClientId) {
       setClientInstallerMetadata(null);
       setClientInstallStagePlan(null);
@@ -1195,6 +1195,7 @@ export function GameDetails({
           getPlatformClientUpdateStatus(selectedSourceClientId),
           getPlatformClientAssetCacheLookup(),
         ]);
+      if (!isCurrentRequest()) return;
       setClientInstallerMetadata(metadata);
       setClientInstallStagePlan(installStagePlan);
       setClientAutoApplyPlan(autoApplyPlan);
@@ -1202,6 +1203,7 @@ export function GameDetails({
       setClientUpdateStatus(updateStatus);
       setClientAssetCacheLookup(assetLookup);
     } catch (error) {
+      if (!isCurrentRequest()) return;
       setClientManagerError(getErrorMessage(error));
       setClientInstallerMetadata(null);
       setClientInstallStagePlan(null);
@@ -1210,7 +1212,7 @@ export function GameDetails({
       setClientAssetCacheLookup(null);
       setClientUpdateStatus(null);
     } finally {
-      setIsClientManagerLoading(false);
+      if (isCurrentRequest()) setIsClientManagerLoading(false);
     }
   }, [selectedSourceClientId]);
   function handleBannerDragOver(event: React.DragEvent) {
@@ -1979,7 +1981,7 @@ export function GameDetails({
                     </div>
                   ) : isOglCatalogOnly ? (
                     <button
-                      className="flex h-[64px] min-w-[205px] flex-1 cursor-not-allowed items-center justify-center gap-3 border-4 border-black bg-[#efe6d4] px-5 text-[18px] font-black text-[#655f58] uppercase shadow-[3px_3px_0_#171411] sm:flex-none"
+                      className="flex h-[64px] min-w-[205px] flex-1 cursor-not-allowed items-center justify-center gap-3 border-4 border-black bg-[#efe6d4] px-5 text-[18px] font-black text-[#655f58] uppercase sm:flex-none"
                       title="This OG Launcher catalog game does not have an installable build yet."
                       type="button"
                       disabled
@@ -1989,7 +1991,7 @@ export function GameDetails({
                     </button>
                   ) : enrichedSelectedGame.status === "not_installed" ? (
                     <button
-                      className="flex h-[64px] min-w-[205px] flex-1 items-center justify-center gap-3 border-4 border-black bg-[#b7102a] px-5 text-[22px] font-black text-white uppercase shadow-[3px_3px_0_#171411] transition-colors hover:bg-[#990a20] sm:flex-none xl:text-[26px]"
+                      className="flex h-[64px] min-w-[205px] flex-1 items-center justify-center gap-3 border-4 border-black bg-[#b7102a] px-5 text-[22px] font-black text-white uppercase transition-colors hover:bg-[#990a20] sm:flex-none xl:text-[26px]"
                       type="button"
                       onClick={() => void handlePlay()}
                     >
@@ -1998,7 +2000,7 @@ export function GameDetails({
                     </button>
                   ) : (
                     <button
-                      className="flex h-[64px] min-w-[205px] flex-1 items-center justify-center gap-3 border-4 border-black bg-[#169b83] px-5 text-[22px] font-black text-white uppercase shadow-[3px_3px_0_#171411] transition-colors hover:bg-[#087d6d] disabled:cursor-default disabled:bg-[#087d6d] sm:flex-none sm:text-[26px]"
+                      className="flex h-[64px] min-w-[205px] flex-1 items-center justify-center gap-3 border-4 border-black bg-[#169b83] px-5 text-[22px] font-black text-white uppercase transition-colors hover:bg-[#087d6d] disabled:cursor-default disabled:bg-[#087d6d] sm:flex-none sm:text-[26px]"
                       type="button"
                       disabled={isGameRunning}
                       onClick={() => void handlePlay()}
@@ -2023,7 +2025,7 @@ export function GameDetails({
                     aria-expanded={isSettingsPopoverOpen}
                     aria-haspopup="dialog"
                     aria-label="Game Settings"
-                    className={`grid h-[64px] w-[64px] shrink-0 place-items-center border-4 border-black text-[#171411] shadow-[3px_3px_0_#171411] transition-colors ${
+                    className={`grid h-[64px] w-[64px] shrink-0 place-items-center border-4 border-black text-[#171411] transition-colors ${
                       isSettingsPopoverOpen ? "bg-[#efe3cf]" : "bg-[#fbf4e7] hover:bg-[#efe3cf]"
                     }`}
                     title="Game Settings"
@@ -2036,7 +2038,7 @@ export function GameDetails({
                   hasInstallableVariants &&
                   onInstallFromProvider ? (
                     <button
-                      className="flex h-[64px] min-w-0 flex-1 items-center justify-center gap-2 border-4 border-black bg-[#e8c843] px-3 text-[16px] font-black text-[#171411] uppercase shadow-[3px_3px_0_#171411] transition-colors hover:bg-[#f0d95a]"
+                      className="flex h-[64px] min-w-0 flex-1 items-center justify-center gap-2 border-4 border-black bg-[#e8c843] px-3 text-[16px] font-black text-[#171411] uppercase transition-colors hover:bg-[#f0d95a]"
                       type="button"
                       onClick={() => void onInstallFromProvider()}
                     >
@@ -2047,52 +2049,6 @@ export function GameDetails({
                 </div>
 
                 <div className="min-w-0 space-y-2">
-                  {isGameRunning && gameRuntime ? (
-                    <div
-                      className="flex min-w-0 flex-wrap items-center justify-between gap-2 border-2 border-black bg-[#fbf4e7] px-2 py-1.5 shadow-[2px_2px_0_#171411]"
-                      title={gameRuntimeButtonDetail || "Game process is active"}
-                    >
-                      <div className="flex min-w-0 flex-1 items-center gap-2">
-                        <Power className="h-4 w-4 shrink-0 text-[#087d6d]" />
-                        <div className="min-w-0">
-                          <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-                            <span className="neo-copy text-[10px] font-black text-[#55504a] uppercase">
-                              Game Runtime
-                            </span>
-                            <span className="neo-copy truncate text-[11px] font-black text-[#171411] uppercase">
-                              {gameRuntime.processName ?? "Process active"}
-                            </span>
-                            {gameRuntimeSourceBadge ? (
-                              <span className="neo-copy border-2 border-black bg-[#e8c843] px-1.5 py-0.5 text-[10px] font-black text-[#171411] uppercase shadow-[1px_1px_0_#171411]">
-                                {gameRuntimeSourceBadge}
-                              </span>
-                            ) : null}
-                            {gameRuntime.windowHandle ? (
-                              <span className="neo-copy border-2 border-black bg-[#171411] px-1.5 py-0.5 text-[10px] font-black text-white uppercase shadow-[1px_1px_0_#171411]">
-                                HWND {gameRuntime.windowHandle}
-                              </span>
-                            ) : null}
-                          </div>
-                          <p className="neo-copy mt-0.5 truncate text-[10px] font-bold text-[#655f58] uppercase">
-                            {[
-                              gameRuntime.pid ? `PID ${gameRuntime.pid}` : null,
-                              formatRuntimeDuration(gameRuntime.uptimeSeconds)
-                                ? `Uptime ${formatRuntimeDuration(gameRuntime.uptimeSeconds)}`
-                                : null,
-                              gameRuntimeInputLabel,
-                              gameRuntimeWindowLabel,
-                            ]
-                              .filter(Boolean)
-                              .join(" / ") || "Runtime signal active"}
-                          </p>
-                        </div>
-                      </div>
-                      <span className="neo-copy shrink-0 border-2 border-black bg-[#087d6d] px-1.5 py-0.5 text-[10px] font-black text-white uppercase shadow-[1px_1px_0_#171411]">
-                        Running
-                      </span>
-                    </div>
-                  ) : null}
-
                   {selectedSourceClientId && isClientManagerOpen ? (
                     <section className="neo-dots min-w-0 border-4 border-black bg-[#fbf4e7] shadow-[4px_4px_0_#171411]">
                       <div className="flex flex-wrap items-center justify-between gap-2 border-b-2 border-black bg-[#171411] px-3 py-2 text-white">
@@ -3877,21 +3833,27 @@ export function GameDetails({
 
                       {achievementProviderStatuses.length > 0 ? (
                         <div className="flex flex-wrap gap-1 border-b-2 border-black bg-[#efe6d4] px-2 py-1.5">
-                          {achievementProviderStatuses.map((provider) => (
-                            <span
-                              key={provider.source}
-                              className={`neo-copy border-2 border-black px-1.5 py-0.5 text-[8px] font-black uppercase ${
-                                provider.status === "available"
-                                  ? "bg-[#087d6d] text-white"
-                                  : provider.status === "failed" || provider.status === "private"
-                                    ? "bg-[#b7102a] text-white"
-                                    : "bg-[#fbf4e7] text-[#55504a]"
-                              }`}
-                              title={getAchievementProviderStatusMessage(provider)}
-                            >
-                              {provider.source}: {provider.status}
-                            </span>
-                          ))}
+                          {achievementProviderStatuses.map((provider) => {
+                            const hasAchievements = achievements.length > 0;
+                            const showFailureColor =
+                              (provider.status === "failed" || provider.status === "private") &&
+                              !hasAchievements;
+                            return (
+                              <span
+                                key={provider.source}
+                                className={`neo-copy border-2 border-black px-1.5 py-0.5 text-[8px] font-black uppercase ${
+                                  provider.status === "available"
+                                    ? "bg-[#087d6d] text-white"
+                                    : showFailureColor
+                                      ? "bg-[#b7102a] text-white"
+                                      : "bg-[#fbf4e7] text-[#55504a]"
+                                }`}
+                                title={getAchievementProviderStatusMessage(provider)}
+                              >
+                                {getAchievementProviderStatusLabel(provider, hasAchievements)}
+                              </span>
+                            );
+                          })}
                         </div>
                       ) : null}
 
@@ -3943,9 +3905,11 @@ export function GameDetails({
                               const achievementSources = achievementMeta.sourceLabels ?? [];
 
                               return (
-                                <article
+                                <button
                                   key={achievement.id}
-                                  className={`grid grid-cols-[38px_minmax(0,1fr)_auto] items-center gap-2 border-2 border-black p-2 ${
+                                  type="button"
+                                  onClick={() => setAchievementsViewerOpen(true)}
+                                  className={`grid w-full grid-cols-[38px_minmax(0,1fr)_auto] items-center gap-2 border-2 border-black p-2 text-left transition-transform hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-[3px_3px_0_#171411] ${
                                     isUnlocked ? "bg-[#efe3cf]" : "bg-[#f6edd8] opacity-75"
                                   }`}
                                 >
@@ -3960,8 +3924,11 @@ export function GameDetails({
                                       <img
                                         alt=""
                                         className="h-full w-full object-cover"
+                                        decoding="async"
+                                        height={38}
                                         loading="lazy"
                                         src={achievement.iconUrl}
+                                        width={38}
                                       />
                                     ) : (
                                       <Award className="h-5 w-5" />
@@ -4021,7 +3988,7 @@ export function GameDetails({
                                       )}
                                     </div>
                                   </div>
-                                </article>
+                                </button>
                               );
                             })}
                             {filterAndSortAchievements(
@@ -4134,6 +4101,13 @@ export function GameDetails({
             onConfirm={onConfirmArtwork}
           />
         </React.Suspense>
+      ) : null}
+      {achievementsViewerOpen ? (
+        <AchievementViewerModal
+          gameTitle={selectedGame?.title ?? enrichedSelectedGame?.title ?? "Unknown Game"}
+          achievements={achievements}
+          onClose={() => setAchievementsViewerOpen(false)}
+        />
       ) : null}
     </>
   );

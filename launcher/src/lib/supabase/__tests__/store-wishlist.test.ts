@@ -109,97 +109,6 @@ describe("store wishlist and price alerts", () => {
     });
   });
 
-  it("loads latest sanitized price-drop notification run evidence", async () => {
-    const chain = makeMaybeSingleChain({
-      alerts_marked_count: 2,
-      candidate_count: 3,
-      completed_at: "2026-06-14T14:05:00.000Z",
-      dry_run: false,
-      limit_count: 500,
-      notifications_recorded_count: 2,
-      requested_alert_count: 0,
-      requested_product_count: 0,
-      requested_user_count: 0,
-      run_id: "price-drop-run-1",
-      scanned_count: 10,
-      status: "completed",
-      trigger_source: "scheduled",
-    });
-    mocks.from.mockReturnValue(chain);
-
-    const { getLatestStorePriceDropNotificationRunEvidence } = await import("../store");
-    const result = await getLatestStorePriceDropNotificationRunEvidence();
-
-    expect(mocks.from).toHaveBeenCalledWith("store_price_drop_notification_runs");
-    expect(chain.select).toHaveBeenCalled();
-    expect(chain.order).toHaveBeenCalledWith("completed_at", { ascending: false });
-    expect(chain.limit).toHaveBeenCalledWith(1);
-    expect(result).toEqual({
-      alertsMarkedCount: 2,
-      candidateCount: 3,
-      completedAt: "2026-06-14T14:05:00.000Z",
-      dryRun: false,
-      limit: 500,
-      notificationsRecordedCount: 2,
-      requestedAlertCount: 0,
-      requestedProductCount: 0,
-      requestedUserCount: 0,
-      runId: "price-drop-run-1",
-      scannedCount: 10,
-      status: "completed",
-      triggerSource: "scheduled",
-    });
-  });
-
-  it("treats missing price-drop notification run schema as no evidence", async () => {
-    const chain = makeMaybeSingleChain(null, {
-      code: "42P01",
-      message: "relation store_price_drop_notification_runs does not exist",
-    });
-    mocks.from.mockReturnValue(chain);
-
-    const { getLatestStorePriceDropNotificationRunEvidence } = await import("../store");
-    await expect(getLatestStorePriceDropNotificationRunEvidence()).resolves.toBeNull();
-  });
-
-  it("trusts only fresh scheduled non-dry-run price-drop evidence", async () => {
-    const { isTrustedStorePriceDropNotificationRunEvidence } = await import("../store");
-    const evidence = {
-      alertsMarkedCount: 2,
-      candidateCount: 3,
-      completedAt: "2026-06-14T14:05:00.000Z",
-      dryRun: false,
-      limit: 500,
-      notificationsRecordedCount: 2,
-      requestedAlertCount: 0,
-      requestedProductCount: 0,
-      requestedUserCount: 0,
-      runId: "price-drop-run-1",
-      scannedCount: 10,
-      status: "completed",
-      triggerSource: "scheduled",
-    };
-
-    expect(
-      isTrustedStorePriceDropNotificationRunEvidence(evidence, "2026-06-14T15:00:00.000Z"),
-    ).toBe(true);
-    expect(
-      isTrustedStorePriceDropNotificationRunEvidence(
-        { ...evidence, dryRun: true },
-        "2026-06-14T15:00:00.000Z",
-      ),
-    ).toBe(false);
-    expect(
-      isTrustedStorePriceDropNotificationRunEvidence(
-        { ...evidence, triggerSource: "hosted_deploy_gate" },
-        "2026-06-14T15:00:00.000Z",
-      ),
-    ).toBe(false);
-    expect(
-      isTrustedStorePriceDropNotificationRunEvidence(evidence, "2026-06-14T17:00:01.000Z"),
-    ).toBe(false);
-  });
-
   it("upserts and clears store price alerts", async () => {
     const upsertChain = { upsert: vi.fn(() => Promise.resolve({ error: null })) };
     const updateChain = makeMutationChain();
@@ -224,38 +133,6 @@ describe("store wishlist and price alerts", () => {
     expect(updateChain.eq).toHaveBeenNthCalledWith(2, "product_id", "product-1");
   });
 
-  it("loads order items for multiple orders in one query", async () => {
-    const chain = {
-      in: vi.fn(() =>
-        Promise.resolve({
-          data: [
-            {
-              id: "item-1",
-              order_id: "order-1",
-              price_cents_snapshot: 1299,
-              product_id: "product-1",
-              quantity: 1,
-              title_snapshot: "Cyber Drift",
-            },
-          ],
-          error: null,
-        }),
-      ),
-      select: vi.fn(),
-    };
-    chain.select.mockReturnValue(chain);
-    mocks.from.mockReturnValue(chain);
-
-    const { listMyOrderItems } = await import("../store");
-    const result = await listMyOrderItems(["order-1", "order-2", "order-1"]);
-
-    expect(mocks.from).toHaveBeenCalledTimes(1);
-    expect(chain.in).toHaveBeenCalledWith("order_id", ["order-1", "order-2"]);
-    expect(result).toEqual([
-      expect.objectContaining({ id: "item-1", orderId: "order-1", productId: "product-1" }),
-    ]);
-  });
-
   it("reuses the published product catalog across repeated reads", async () => {
     const chain = makeSelectChain([
       {
@@ -278,19 +155,6 @@ describe("store wishlist and price alerts", () => {
     expect(mocks.from).toHaveBeenCalledTimes(1);
   });
 });
-
-function makeMaybeSingleChain(
-  data: unknown,
-  error: { code?: string; message: string } | null = null,
-) {
-  const chain = {
-    limit: vi.fn(() => chain),
-    maybeSingle: vi.fn(() => Promise.resolve({ data, error })),
-    order: vi.fn(() => chain),
-    select: vi.fn(() => chain),
-  };
-  return chain;
-}
 
 function makeSelectChain(rows: unknown[]) {
   const chain = {

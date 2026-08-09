@@ -1099,7 +1099,6 @@ function selectedCheckIds(checks) {
 
 function externalEvidenceGateForChecks(checks) {
   const ids = selectedCheckIds(checks);
-  if (ids.length === 1 && ids[0] === "price-drop") return "store-stripe-live";
   const expected = new Set(cronEvidenceChecks.map((check) => check.id));
   const selected = new Set(ids);
   if (
@@ -1121,13 +1120,6 @@ function externalEvidencePreflightHandoff(checks) {
 }
 
 function artifactPasteTargetLines(checks) {
-  const ids = checks.map((check) => check.id);
-  if (ids.length === 1 && ids[0] === "price-drop") {
-    return [
-      "- price-drop: paste `pnpm hosted:cron-evidence:artifact-hints --checks=price-drop` output into `docs/verification/external/store-price-drop-scheduler-live.md` under `Gate-Specific Evidence`.",
-    ];
-  }
-
   if (externalEvidenceGateForChecks(checks) === "hosted-supabase-cron") {
     return checks.map(
       (check) =>
@@ -1136,7 +1128,7 @@ function artifactPasteTargetLines(checks) {
   }
 
   return [
-    "- No single artifact target maps to this selected cron subset; collect `price-drop` only for `docs/verification/external/store-price-drop-scheduler-live.md` or all scheduler lanes for `docs/verification/external/hosted-supabase-cron.md`.",
+    "- No single artifact target maps to this selected cron subset; collect all scheduler lanes for `docs/verification/external/hosted-supabase-cron.md`.",
   ];
 }
 

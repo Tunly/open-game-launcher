@@ -137,7 +137,7 @@ where
 
 #[tauri::command]
 pub async fn refresh_installed_games() -> Result<Vec<InstalledGame>, String> {
-    let cached_games = read_installed_games_cache().unwrap_or_default();
+    let cached_games = read_installed_games_cache_result()?;
     let baseline_games = cached_games
         .iter()
         .map(|game| (game.id.clone(), game.clone()))
@@ -2258,12 +2258,11 @@ pub(crate) fn preserve_known_unlocks(
             previous_unlocks.insert(key, unlocked_at.clone());
         }
     }
-    let new_keys: HashSet<String> = new_achievements
-        .iter()
-        .flat_map(achievement_identity_keys)
-        .collect();
-
-    let mut result: Vec<UnifiedAchievement> = new_achievements
+    // A successful provider response is authoritative about the definition
+    // set. Preserve known unlock timestamps only when the same achievement is
+    // still present. Do not append missing previous definitions: that made
+    // deleted or remapped provider achievements live forever in the cache.
+    new_achievements
         .into_iter()
         .map(|mut ach| {
             if ach.unlocked_at.is_none() {
@@ -2276,19 +2275,7 @@ pub(crate) fn preserve_known_unlocks(
             }
             ach
         })
-        .collect();
-
-    // Keep any previous achievement the new fetch is missing (transient API gaps, dropped IDs).
-    for prev in previous {
-        if !achievement_identity_keys(prev)
-            .iter()
-            .any(|key| new_keys.contains(key))
-        {
-            result.push(prev.clone());
-        }
-    }
-
-    result
+        .collect()
 }
 
 fn achievement_identity_keys(achievement: &UnifiedAchievement) -> Vec<String> {
@@ -6367,7 +6354,7 @@ mod tests {
     }
 
     #[test]
-    fn preserve_known_unlocks_keeps_missing_previous_only_once() {
+    fn preserve_known_unlocks_drops_definitions_missing_from_authoritative_snapshot() {
         let previous = vec![UnifiedAchievement {
             id: "same-id".to_string(),
             name: "Story".to_string(),
@@ -6387,7 +6374,7 @@ mod tests {
             unlocked_at: None,
             rarity: None,
             source: Some("gog".to_string()),
-            source_achievement_id: Some("story".to_string()),
+            source_achievement_id: Some("other-story".to_string()),
             provider_confidence: Some("unofficial".to_string()),
         }];
 
@@ -6395,10 +6382,7 @@ mod tests {
 
         assert_eq!(merged.len(), 1);
         assert_eq!(merged[0].id, "other-id");
-        assert_eq!(
-            merged[0].unlocked_at.as_deref(),
-            Some("2026-01-03T00:00:00Z")
-        );
+        assert_eq!(merged[0].unlocked_at, None);
     }
 
     #[test]

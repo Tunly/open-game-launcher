@@ -8,11 +8,11 @@ import type { ActivityFeedItem } from "../lib/types/friends";
 const mocks = vi.hoisted(() => ({
   getFriendActivityFeed: vi.fn(),
   getFriends: vi.fn(),
+  listInstalledGames: vi.fn(),
   getProfilesForUsers: vi.fn(),
   getVisiblePresence: vi.fn(),
   getActivityInteractionSummaries: vi.fn(),
   subscribeToActivityInteractions: vi.fn(() => vi.fn()),
-  postActivity: vi.fn(),
   subscribeToFriendActivity: vi.fn(() => vi.fn()),
   subscribeToPresenceChanges: vi.fn(() => vi.fn()),
   useCurrentUser: vi.fn(),
@@ -21,7 +21,6 @@ const mocks = vi.hoisted(() => ({
 vi.mock("../hooks/useCurrentUser", () => ({ useCurrentUser: mocks.useCurrentUser }));
 vi.mock("../lib/supabase/activity", () => ({
   getFriendActivityFeed: mocks.getFriendActivityFeed,
-  postActivity: mocks.postActivity,
   subscribeToFriendActivity: mocks.subscribeToFriendActivity,
 }));
 vi.mock("../lib/supabase/activity-interactions", () => ({
@@ -36,6 +35,7 @@ vi.mock("../lib/supabase/profile", () => ({
   getFriends: mocks.getFriends,
   getProfilesForUsers: mocks.getProfilesForUsers,
 }));
+vi.mock("../lib/launcher", () => ({ listInstalledGames: mocks.listInstalledGames }));
 vi.mock("../lib/supabase/presence", () => ({
   getActivityPlatformLabel: () => "Steam",
   getVisiblePresence: mocks.getVisiblePresence,
@@ -71,10 +71,10 @@ describe("ActivityPage", () => {
     mocks.useCurrentUser.mockReturnValue({ isConfigured: false, isLoading: false, user: null });
     mocks.getFriendActivityFeed.mockResolvedValue([]);
     mocks.getFriends.mockResolvedValue([]);
+    mocks.listInstalledGames.mockResolvedValue([]);
     mocks.getProfilesForUsers.mockResolvedValue(new Map());
     mocks.getVisiblePresence.mockResolvedValue([]);
     mocks.getActivityInteractionSummaries.mockResolvedValue(new Map());
-    mocks.postActivity.mockResolvedValue({ id: "status-1" });
   });
 
   it("renders the Steam-like local activity preview in the manga visual system", async () => {
@@ -89,7 +89,33 @@ describe("ActivityPage", () => {
       "/activity/recap",
     );
     expect(screen.getByRole("heading", { name: /friend list/i })).toBeInTheDocument();
+    expect(
+      screen.queryByRole("heading", { name: /activity transmission/i }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByPlaceholderText(/post a status to your friends/i)).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /post status/i })).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: /upcoming events/i })).not.toBeInTheDocument();
+  });
+
+  it("loads local game artwork for the activity feed without blocking the feed", async () => {
+    mocks.listInstalledGames.mockResolvedValue([
+      {
+        id: "steam-neon-drift",
+        title: "Neon Drift",
+        description: "",
+        coverUrl: "https://cdn.example.test/neon-drift-cover.jpg",
+        platform: "windows",
+        status: "installed",
+        version: "1.0",
+      },
+    ]);
+
+    renderPage();
+
+    expect((await screen.findAllByAltText("Neon Drift activity artwork"))[0]).toHaveAttribute(
+      "src",
+      "https://cdn.example.test/neon-drift-cover.jpg",
+    );
   });
 
   it("shows only the current player's sample items in the local My Activity preview", () => {
@@ -102,43 +128,6 @@ describe("ActivityPage", () => {
     expect(screen.getAllByText("You")).toHaveLength(2);
     expect(screen.queryByText(/Added Neon Drift to their wishlist/i)).not.toBeInTheDocument();
     expect(screen.queryByText(/Now owns Phantom Arcade/i)).not.toBeInTheDocument();
-  });
-
-  it("loads real friends and posts a friends-only status", async () => {
-    mocks.useCurrentUser.mockReturnValue({
-      isConfigured: true,
-      isLoading: false,
-      user: { id: "user-1" },
-    });
-    mocks.getFriends.mockResolvedValue([{ addresseeId: "friend-1", requesterId: "user-1" }]);
-    mocks.getProfilesForUsers.mockResolvedValue(
-      new Map([
-        ["friend-1", { avatarUrl: null, displayName: "Signal Fox", username: "signalfox" }],
-      ]),
-    );
-    mocks.getVisiblePresence.mockResolvedValue([
-      { currentGameTitle: "Neon Drift", status: "online", userId: "friend-1" },
-    ]);
-
-    renderPage();
-
-    expect(await screen.findByText("Signal Fox")).toBeInTheDocument();
-    fireEvent.change(screen.getByLabelText(/post a status to your friends/i), {
-      target: { value: "Ready for co-op" },
-    });
-    fireEvent.change(screen.getByLabelText(/tag with game/i), {
-      target: { value: "Neon Drift" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: /post status/i }));
-
-    await waitFor(() => {
-      expect(mocks.postActivity).toHaveBeenCalledWith("status", {
-        gameTitle: "Neon Drift",
-        metadata: { text: "Ready for co-op" },
-        visibility: "friends_only",
-      });
-    });
-    expect(await screen.findByText(/status posted to your friends/i)).toBeInTheDocument();
   });
 
   it("loads My Activity without waiting for the friend roster", async () => {

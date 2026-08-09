@@ -38,11 +38,11 @@ export function DeveloperPortalPage() {
       setError("");
       setIsSubmitting(true);
       const { submitDeveloperApplication } = await import("../lib/supabase/store");
-      await submitDeveloperApplication(
-        studioName.trim(),
-        website.trim() || null,
-        desc.trim() || null,
-      );
+      await submitDeveloperApplication({
+        studioName: studioName.trim(),
+        website: website.trim() || null,
+        description: desc.trim() || null,
+      });
       setSubmitted(true);
     } catch (submitError: unknown) {
       setError(getErrorMessage(submitError));

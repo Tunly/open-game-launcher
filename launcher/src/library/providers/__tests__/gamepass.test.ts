@@ -66,6 +66,45 @@ describe("mergeGamePassCatalog", () => {
     window.localStorage.clear();
   });
 
+  it("filters Black Ops 7 DLC placeholders from the Game Pass catalog", async () => {
+    const now = Date.now();
+    localStorage.setItem(
+      STORAGE_KEYS.GAME_PASS_CATALOG_CACHE,
+      serializeGamePassCatalogCache(
+        {
+          games: normalizeGamePassCatalogGames([
+            ownedCatalogGame({
+              id: "xbox-b07-dlc01",
+              externalId: "B07DLC000001",
+              title: "B07 DLC01 Game Stub 01",
+            }),
+            ownedCatalogGame({
+              id: "xbox-b07-dlc19",
+              externalId: "B07DLC000019",
+              title: "B07 DLC19 Game Pass Launch Tracker",
+            }),
+            ownedCatalogGame({
+              id: "xbox-b07-dlc56",
+              externalId: "B07DLC000056",
+              title: "B07 DLC56 Game Pass Pack 03",
+            }),
+            ownedCatalogGame({
+              id: "xbox-real",
+              externalId: "FORZA0000001",
+              title: "Forza Horizon 5",
+            }),
+          ]),
+          fetchedAt: now,
+        },
+        now,
+      ),
+    );
+
+    const result = await mergeGamePassCatalog([], makeContext());
+
+    expect(result.games.map((game) => game.title)).toEqual(["Forza Horizon 5"]);
+  });
+
   it("merges a fresh cache as installable Xbox games without a network call", async () => {
     const now = Date.now();
     localStorage.setItem(

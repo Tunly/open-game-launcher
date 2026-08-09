@@ -105,7 +105,7 @@ export function GameUpdateFeed({ game }: GameUpdateFeedProps) {
             ) : null}
             {item.url && isDesktopRuntime ? (
               <button
-                className="neo-copy mt-3 inline-flex items-center gap-1 border-2 border-black bg-[#171411] px-2 py-1 text-[10px] font-black text-white uppercase shadow-[2px_2px_0_#b7102a] hover:bg-[#087d6d]"
+                className="neo-copy mt-3 inline-flex items-center gap-1 border-2 border-black bg-[#171411] px-2 py-1 text-[10px] font-black text-white uppercase hover:bg-[#087d6d]"
                 type="button"
                 onClick={() => {
                   if (!item.url) return;
@@ -119,7 +119,7 @@ export function GameUpdateFeed({ game }: GameUpdateFeedProps) {
               </button>
             ) : item.url ? (
               <a
-                className="neo-copy mt-3 inline-flex items-center gap-1 border-2 border-black bg-[#171411] px-2 py-1 text-[10px] font-black text-white uppercase shadow-[2px_2px_0_#b7102a] hover:bg-[#087d6d]"
+                className="neo-copy mt-3 inline-flex items-center gap-1 border-2 border-black bg-[#171411] px-2 py-1 text-[10px] font-black text-white uppercase hover:bg-[#087d6d]"
                 href={item.url}
                 target="_blank"
                 rel="noopener noreferrer"

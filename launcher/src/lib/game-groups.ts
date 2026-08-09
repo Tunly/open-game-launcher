@@ -352,10 +352,9 @@ export function aggregateAchievements(games: Game[]): GroupedAchievement[] {
         current = byNameDescriptionKey.get(nameDescriptionKey);
         matchConfidence = "name_description";
       }
-      if (!current && nameKey) {
-        current = byNameKey.get(nameKey);
-        matchConfidence = "name";
-      }
+      // A name-only match is too weak across providers: different games can
+      // legitimately reuse achievement names. Keep those rows separate unless
+      // the provider ID or name+description establishes identity.
 
       if (current) {
         mergeGroupedAchievement(current, game, achievement, matchConfidence);
@@ -405,8 +404,21 @@ function achievementProviderStatusForSource(
   variantsForSource: Game[],
 ): AchievementProviderStatus {
   const explicitStatus = variantsForSource
-    .flatMap((game) => game.achievementProviderStatuses ?? [])
-    .find((status) => status.source === source);
+    .flatMap((game) =>
+      (game.achievementProviderStatuses ?? [])
+        .filter((status) => status.source === source)
+        .map((status) => ({ game, status })),
+    )
+    .sort((left, right) => {
+      const statusRank = (status: AchievementProviderStatus["status"]) =>
+        status === "available" ? 0 : status === "failed" ? 2 : 1;
+      return (
+        statusRank(left.status.status) - statusRank(right.status.status) ||
+        (right.game.achievements?.length ?? 0) - (left.game.achievements?.length ?? 0) ||
+        Date.parse(right.game.achievementsSyncedAt ?? "") -
+          Date.parse(left.game.achievementsSyncedAt ?? "")
+      );
+    })[0]?.status;
   if (explicitStatus) {
     return explicitStatus;
   }
