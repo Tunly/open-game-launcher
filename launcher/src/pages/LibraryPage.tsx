@@ -29,6 +29,7 @@ import {
 import { isPlayableGame, type GameGroup } from "../lib/game-groups";
 import { redeemShareToken, resolveShareToken } from "../lib/supabase/social";
 import type { Game } from "../lib/types";
+import { auditLibraryArtwork, getLibraryArtworkUrls } from "../lib/library-artwork-audit";
 
 import { useLibrarySync } from "../hooks/library/useLibrarySync";
 import { useLibraryFilters } from "../hooks/library/useLibraryFilters";
@@ -89,6 +90,7 @@ export function LibraryPage() {
   const [isAddGameOpen, setIsAddGameOpen] = useState(false);
   const [isFriendsChatOpen, setIsFriendsChatOpen] = useState(false);
   const [groupOption, setGroupOption] = useState<LibraryGroupOption>("none");
+  const [invalidArtworkUrls, setInvalidArtworkUrls] = useState<Set<string>>(() => new Set());
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const downloadCount = useDownloadStore((s) => s.items.length);
@@ -131,6 +133,42 @@ export function LibraryPage() {
     () => groupLibraryGames(filters.filteredGroups, groupOption),
     [filters.filteredGroups, groupOption],
   );
+  const artworkAudit = useMemo(
+    () => auditLibraryArtwork(filters.enrichedLibraryGames ?? [], invalidArtworkUrls),
+    [filters.enrichedLibraryGames, invalidArtworkUrls],
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    const urls = getLibraryArtworkUrls(filters.enrichedLibraryGames ?? []);
+    if (urls.length === 0 || typeof Image === "undefined") return;
+
+    void Promise.all(
+      urls.map(
+        (url) =>
+          new Promise<[string, boolean]>((resolve) => {
+            const image = new Image();
+            image.onload = () => resolve([url, true]);
+            image.onerror = () => resolve([url, false]);
+            image.src = url;
+          }),
+      ),
+    ).then((results) => {
+      if (cancelled) return;
+      setInvalidArtworkUrls((current) => {
+        const next = new Set(current);
+        for (const [url, valid] of results) {
+          if (valid) next.delete(url);
+          else next.add(url);
+        }
+        return next;
+      });
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [filters.enrichedLibraryGames]);
 
   useEffect(() => {
     const requestedGameId = searchParams.get("game");
@@ -333,6 +371,7 @@ export function LibraryPage() {
             runningGameIds={sync.runningGameIds}
             listScrollRef={gameListScrollRef}
             onArtworkDrop={sync.handleArtworkDrop}
+            artworkAudit={artworkAudit}
           />
           <LibraryFilters
             isOpen={filters.isFilterPopupOpen}

@@ -31,6 +31,7 @@ export interface ItadGame {
   id: string;
   title: string;
   slug?: string;
+  type?: string | null;
   assets?: { boxart?: string; banner300?: string };
 }
 
@@ -80,7 +81,7 @@ export const ITAD_SHOP_IDS: Record<string, number> = {
 };
 
 const ITAD_GAME_BATCH_SIZE = 200;
-const ITAD_DISCOVERY_LIMIT = 200;
+const ITAD_DISCOVERY_LIMIT = 500;
 const UPSERT_BATCH_SIZE = 50;
 
 export async function handleSyncStoreCatalog(
@@ -184,7 +185,7 @@ export async function fetchItadGameList(
   url.searchParams.set("key", apiKey);
   const result = await fetchJson(url);
   if (!Array.isArray(result)) return [];
-  return result.filter(isItadGame).slice(0, ITAD_DISCOVERY_LIMIT);
+  return result.filter(isItadGame).filter((game) => !isExcludedItadType(game)).slice(0, ITAD_DISCOVERY_LIMIT);
 }
 
 export async function fetchItadPrices(
@@ -229,9 +230,8 @@ export async function fetchItadPrices(
 }
 
 function toCatalogRow(game: ItadGame, price: ItadPrice | undefined, igdb: IgdbGame | undefined): StoreCatalogRow | null {
-  if (!price) return null;
-  const platform = platformName(price.shopId);
-  if (!platform) return null;
+  const platform = price ? platformName(price.shopId) : null;
+  if (!platform && !igdb) return null;
   const now = new Date().toISOString();
   return {
     external_id: `itad-${game.id}`,
@@ -239,14 +239,14 @@ function toCatalogRow(game: ItadGame, price: ItadPrice | undefined, igdb: IgdbGa
     title: igdb?.name ?? game.title,
     slug: igdb?.slug ?? game.slug ?? game.id,
     description: igdb?.summary ?? null,
-    short_description: platform,
+    short_description: platform ?? "Official platform store",
     publisher: igdb?.involved_companies?.find((company) => company.publisher)?.company?.name ?? null,
     release_date: igdb?.first_release_date ? new Date(igdb.first_release_date * 1000).toISOString() : null,
     genres: igdb?.genres?.map((genre) => genre.name).filter((name): name is string => Boolean(name)) ?? [],
     tags: ["IGDB", "ITAD"],
-    platforms: [platform, ...(igdb?.platforms?.map((value) => value.name).filter((name): name is string => Boolean(name)) ?? [])].filter((value, index, values) => values.indexOf(value) === index),
-    price_cents: price.priceCents,
-    discount_percent: price.discountPercent,
+    platforms: [platform, ...(igdb?.platforms?.map((value) => value.name).filter((name): name is string => Boolean(name)) ?? [])].filter((value, index, values): value is string => Boolean(value) && values.indexOf(value) === index),
+    price_cents: price?.priceCents ?? 0,
+    discount_percent: price?.discountPercent ?? 0,
     cover_image_url: igdb?.cover?.image_id
       ? `https://images.igdb.com/igdb/image/upload/t_cover_big/${igdb.cover.image_id}.jpg`
       : game.assets?.boxart ?? game.assets?.banner300 ?? null,
@@ -256,10 +256,10 @@ function toCatalogRow(game: ItadGame, price: ItadPrice | undefined, igdb: IgdbGa
     metadata: {
       apiSource: "igdb+itad",
       externalId: game.id,
-      platformLinks: { [platform]: price.storeUrl },
-      priceUnavailable: false,
+      platformLinks: price ? { [platform as string]: price.storeUrl } : {},
+      priceUnavailable: !price,
       currency: "EUR",
-      shopId: price.shopId,
+      shopId: price?.shopId ?? null,
     },
     last_synced_at: now,
   };
@@ -313,12 +313,16 @@ function platformName(shopId: number) {
   return Object.entries(ITAD_SHOP_IDS).find(([, id]) => id === shopId)?.[0] ?? null;
 }
 
+function isExcludedItadType(game: ItadGame) {
+  const type = game.type?.toLowerCase();
+  return type === "dlc" || type === "soundtrack" || type === "demo" || type === "software";
+}
+
 function isItadGame(value: unknown): value is ItadGame {
   if (!value || typeof value !== "object") return false;
   const record = value as Record<string, unknown>;
-  return typeof record.id === "string" &&
-    typeof record.title === "string" &&
-    record.title.trim().length > 0;
+  if (typeof record.id !== "string" || typeof record.title !== "string" || record.title.trim().length === 0) return false;
+  return true;
 }
 
 async function defaultFetchJson(url: URL, init?: RequestInit): Promise<unknown> {

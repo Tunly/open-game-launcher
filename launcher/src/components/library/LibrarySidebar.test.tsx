@@ -166,6 +166,19 @@ describe("LibrarySidebar", () => {
     ).toBeInTheDocument();
   });
 
+  it("lists missing artwork grouped by launcher", () => {
+    renderSidebar({
+      artworkAudit: {
+        totalGames: 2,
+        missingCount: 1,
+        byLauncher: [{ launcher: "steam", label: "Steam", games: ["Missing Game"] }],
+      },
+    });
+
+    expect(screen.getByText("Missing artwork (1)")).toBeInTheDocument();
+    expect(screen.getByText("Missing Game")).toBeInTheDocument();
+  });
+
   it("shows cross-source runtime metadata for grouped variants", async () => {
     const steamGame = makeGame({
       id: "steam-440",

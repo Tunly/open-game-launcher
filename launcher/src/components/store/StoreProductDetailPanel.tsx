@@ -6,11 +6,15 @@ export function ProductDetailPanel({
   storeProduct,
   isWishlisted,
   onToggleWishlist,
+  onOpenStore,
+  onClose,
 }: {
   game: StoreGame;
   storeProduct: StoreProduct | null;
   isWishlisted: boolean;
   onToggleWishlist: () => void;
+  onOpenStore: () => void;
+  onClose: () => void;
 }) {
   return (
     <section className="grid overflow-hidden border-4 border-black bg-[#fff9ed] shadow-[6px_6px_0_#171411] lg:grid-cols-[minmax(0,1fr)_360px]">
@@ -35,6 +39,15 @@ export function ProductDetailPanel({
         </div>
       </div>
       <aside className="p-5">
+        <div className="mb-4 flex justify-end">
+          <button
+            className="neo-copy border-2 border-black bg-[#f6edd8] px-3 py-2 text-[10px] font-black uppercase shadow-[2px_2px_0_#171411]"
+            type="button"
+            onClick={onClose}
+          >
+            Close
+          </button>
+        </div>
         <div className="border-b-[3px] border-black pb-4">
           <p className="neo-copy text-[10px] font-black tracking-[0.12em] text-[#b7102a] uppercase">
             {game.publisher ?? "Publisher not listed"}
@@ -67,6 +80,13 @@ export function ProductDetailPanel({
             onClick={onToggleWishlist}
           >
             {isWishlisted ? "Wishlisted" : "Add To Wishlist"}
+          </button>
+          <button
+            className="neo-copy h-11 border-2 border-black bg-[#b7102a] text-[11px] font-black tracking-[0.12em] text-white uppercase shadow-[3px_3px_0_#171411]"
+            type="button"
+            onClick={onOpenStore}
+          >
+            Open official platform store
           </button>
         </div>
       </aside>

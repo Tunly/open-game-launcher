@@ -26,7 +26,7 @@
     {"file":"screenshots/settings-launcher-update-browser.png","routes":["/settings"],"verify":[],"purpose":"desktop signed OG Launcher self-update panel with browser and Windows-only guard, visually separated from the platform client timer","boundary":"browser"},
     {"file":"screenshots/settings-launcher-update-browser-mobile.png","routes":["/settings"],"verify":[],"purpose":"mobile signed OG Launcher self-update panel with responsive stacked controls and browser and Windows-only guard","boundary":"browser"},
     {"file":"screenshots/settings-profile-customize-local-draft.png","routes":["/settings/profile/customize"],"verify":[],"purpose":"settings profile customize draft state","boundary":"browser"},
-    {"file":"screenshots/store-cart-checkout-retro-manga-mobile.png","routes":["/store"],"verify":[],"purpose":"store cart checkout retro manga state","boundary":"local"},
+    {"file":"screenshots/store-catalog-redirect-retro-manga-mobile.png","routes":["/store"],"verify":[],"purpose":"store catalog, pagination, filters, wishlist, and official-platform redirect state","boundary":"local"},
     {"file":"screenshots/store-local-preview-current.png","routes":["/store"],"verify":[],"purpose":"store preview current state","boundary":"local"},
     {"file":"screenshots/overlay-anti-cheat-blocked-fallback.png","routes":["/overlay"],"verify":[],"purpose":"overlay anti cheat blocked fallback state","boundary":"mock"},
     {"file":"screenshots/overlay-hard-edge-chrome-retro-manga.png","routes":["/overlay"],"verify":[],"purpose":"overlay hard edge chrome retro manga state","boundary":"local"},

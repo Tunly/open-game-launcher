@@ -9,7 +9,7 @@ const storeMocks = vi.hoisted(() => ({
   addToStoreWishlist: vi.fn(),
   openExternalUrl: vi.fn(),
   listMyStoreWishlist: vi.fn(),
-  listPublishedProducts: vi.fn(),
+  listPublishedProductsPage: vi.fn(),
   removeFromStoreWishlist: vi.fn(),
 }));
 
@@ -38,7 +38,7 @@ const apiMocks = vi.hoisted(() => ({
 }));
 
 const catalogMocks = vi.hoisted(() => ({
-  listStoreCatalog: vi.fn(),
+  listStoreCatalogPage: vi.fn(),
 }));
 
 vi.mock("../lib/supabase/store", () => storeMocks);
@@ -94,8 +94,10 @@ function renderStore() {
 describe("StorePage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    storeMocks.listPublishedProductsPage.mockReset();
+    catalogMocks.listStoreCatalogPage.mockReset();
     authMocks.user = { id: "user-1" };
-    storeMocks.listPublishedProducts.mockResolvedValue([
+    storeMocks.listPublishedProductsPage.mockResolvedValue([
       makeProduct(),
       makeProduct({
         id: "22222222-2222-4222-8222-222222222222",
@@ -105,7 +107,7 @@ describe("StorePage", () => {
         title: "Second Game",
       }),
     ]);
-    catalogMocks.listStoreCatalog.mockResolvedValue([]);
+    catalogMocks.listStoreCatalogPage.mockResolvedValue([]);
     storeMocks.listMyStoreWishlist.mockResolvedValue([]);
     storeMocks.addToStoreWishlist.mockResolvedValue(undefined);
     storeMocks.removeFromStoreWishlist.mockResolvedValue(undefined);
@@ -125,7 +127,7 @@ describe("StorePage", () => {
   });
 
   it("hides games sold through key reseller pages", async () => {
-    storeMocks.listPublishedProducts.mockResolvedValueOnce([
+    storeMocks.listPublishedProductsPage.mockResolvedValueOnce([
       makeProduct({
         metadata: { purchaseUrl: "https://www.g2a.com/example-key" },
         platforms: ["Steam"],
@@ -138,7 +140,7 @@ describe("StorePage", () => {
   });
 
   it("hides games that have no supported platform", async () => {
-    storeMocks.listPublishedProducts.mockResolvedValueOnce([
+    storeMocks.listPublishedProductsPage.mockResolvedValueOnce([
       makeProduct({ platforms: ["playstation", "nintendo"], title: "Unsupported Game" }),
     ]);
     renderStore();
@@ -147,7 +149,7 @@ describe("StorePage", () => {
   });
 
   it("adds API games instead of hiding them when hosted products exist", async () => {
-    catalogMocks.listStoreCatalog.mockResolvedValueOnce([
+    catalogMocks.listStoreCatalogPage.mockResolvedValueOnce([
       makeProduct({
         id: "33333333-3333-4333-8333-333333333333",
         metadata: { purchaseUrl: "https://store.example/api-game" },
@@ -159,6 +161,50 @@ describe("StorePage", () => {
     renderStore();
 
     expect((await screen.findAllByText("API Game")).length).toBeGreaterThan(0);
+  });
+
+  it("loads the next catalog page only after pressing the bottom button", async () => {
+    const firstPage = Array.from({ length: 40 }, (_, index) =>
+      makeProduct({
+        id: `10000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+        slug: `page-one-${index}`,
+        title: `Page One Game ${index}`,
+      }),
+    );
+    const secondPage = [
+      makeProduct({
+        id: "99999999-9999-4999-8999-999999999999",
+        slug: "page-two-game",
+        title: "Page Two Game",
+      }),
+    ];
+    storeMocks.listPublishedProductsPage
+      .mockReset()
+      .mockResolvedValueOnce(firstPage)
+      .mockResolvedValueOnce(secondPage);
+
+    renderStore();
+    expect((await screen.findAllByText("Page One Game 0")).length).toBeGreaterThan(0);
+    expect(screen.queryByText("Page Two Game")).not.toBeInTheDocument();
+    expect(storeMocks.listPublishedProductsPage).toHaveBeenCalledWith(
+      expect.objectContaining({ page: 0, pageSize: 40 }),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: /Next page/i }));
+    expect((await screen.findAllByText("Page Two Game")).length).toBeGreaterThan(0);
+    expect(storeMocks.listPublishedProductsPage).toHaveBeenCalledWith(
+      expect.objectContaining({ page: 1, pageSize: 40 }),
+    );
+    storeMocks.listPublishedProductsPage.mockResolvedValue([
+      makeProduct(),
+      makeProduct({
+        id: "22222222-2222-4222-8222-222222222222",
+        platforms: ["linux", "macos"],
+        priceCents: 999,
+        slug: "second-game",
+        title: "Second Game",
+      }),
+    ]);
   });
 
   it("filters games by a platform", async () => {
@@ -189,7 +235,7 @@ describe("StorePage", () => {
   });
 
   it("opens the generated platform store link when metadata has no URL", async () => {
-    storeMocks.listPublishedProducts.mockResolvedValueOnce([
+    storeMocks.listPublishedProductsPage.mockResolvedValueOnce([
       makeProduct({
         metadata: {},
         platforms: ["gog"],

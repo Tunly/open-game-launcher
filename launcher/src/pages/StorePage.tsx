@@ -1,20 +1,22 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useSearchParams } from "react-router-dom";
 import { isTauri } from "@tauri-apps/api/core";
 import { Tag } from "lucide-react";
 
 import { EmptyStorePanel } from "../components/store/EmptyStorePanel";
+import { ProductDetailPanel } from "../components/store/StoreProductDetailPanel";
 import { StoreProductRow } from "../components/store/StoreProductRow";
 
 import { useCurrentUser } from "../hooks/useCurrentUser";
 import {
   addToStoreWishlist,
   listMyStoreWishlist,
-  listPublishedProducts,
+  listPublishedProductsPage,
   removeFromStoreWishlist,
 } from "../lib/supabase/store";
 import { openExternalUrl } from "../lib/launcher/platform-auth";
 import { filterSupportedPlatforms, isKeyResellerName } from "../lib/store-api";
-import { listStoreCatalog } from "../lib/supabase/store-catalog";
+import { listStoreCatalogPage } from "../lib/supabase/store-catalog";
 import { EXAMPLE_STORE_CATALOG } from "../lib/store-example-catalog";
 import type { Platform, StoreGame } from "../lib/types";
 import type { StoreProduct } from "../lib/types/store";
@@ -75,6 +77,28 @@ function readMetadataUrl(value: unknown) {
     : null;
 }
 
+function isAllowedPlatformUrl(value: string) {
+  try {
+    const url = new URL(value);
+    if (url.protocol === "steam:" || url.protocol === "ms-windows-store:") return true;
+    if (url.protocol !== "https:") return false;
+    return [
+      "store.steampowered.com",
+      "www.gog.com",
+      "store.epicgames.com",
+      "www.xbox.com",
+      "apps.microsoft.com",
+      "store.playstation.com",
+      "www.nintendo.com",
+      "www.ea.com",
+      "store.ubisoft.com",
+      "us.shop.battle.net",
+    ].some((host) => url.hostname === host || url.hostname.endsWith(`.${host}`));
+  } catch {
+    return false;
+  }
+}
+
 function getPlatformPurchaseUrl(product: StoreProduct) {
   const metadata = product.metadata;
   const normalizedPlatforms = product.platforms.map((value) => value.trim().toLowerCase());
@@ -109,12 +133,12 @@ function getPlatformPurchaseUrl(product: StoreProduct) {
     const platformUrl = readMetadataUrl(
       entries.find(([key]) => key.toLowerCase() === platform)?.[1],
     );
-    if (platformUrl) return platformUrl;
+    if (platformUrl && isAllowedPlatformUrl(platformUrl)) return platformUrl;
   }
 
   for (const key of ["purchaseUrl", "storeUrl", "platformUrl", "buyUrl"]) {
     const url = readMetadataUrl(metadata[key]);
-    if (url) return url;
+    if (url && isAllowedPlatformUrl(url)) return url;
   }
 
   const externalId = metadata.externalId ?? metadata.appId ?? metadata.storeId;
@@ -184,6 +208,7 @@ function mapExampleToStoreProduct(game: StoreGame): StoreProduct {
 }
 
 const LOCAL_FALLBACK_PRODUCTS = EXAMPLE_STORE_CATALOG.map(mapExampleToStoreProduct);
+const STORE_PAGE_SIZE = 40;
 
 function mapProductToGame(product: StoreProduct): StoreGame {
   const price = effectivePrice(product);
@@ -216,41 +241,78 @@ function mapProductToGame(product: StoreProduct): StoreGame {
 
 export function StorePage() {
   const { user } = useCurrentUser();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [products, setProducts] = useState<StoreProduct[]>([]);
   const [catalogSource, setCatalogSource] = useState<"hosted" | "api" | "mixed" | "local">(
     "hosted",
   );
   const [wishlistIds, setWishlistIds] = useState<Set<string>>(new Set());
-  const [search, setSearch] = useState("");
-  const [platform, setPlatform] = useState("all");
-  const [priceFilter] = useState<PriceFilter>("all");
+  const [search, setSearch] = useState(() => searchParams.get("q") ?? "");
+  const [platform, setPlatform] = useState(() => searchParams.get("platform") ?? "all");
+  const [priceFilter, setPriceFilter] = useState<PriceFilter>("all");
   const [isLoading, setIsLoading] = useState(true);
   const [, setIsProcessing] = useState(false);
 
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
-  const [visibleGameLimit, setVisibleGameLimit] = useState(40);
+  const [catalogPage, setCatalogPage] = useState(0);
+  const [hasMoreProducts, setHasMoreProducts] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [selectedProductId, setSelectedProductId] = useState<string | null>(() =>
+    searchParams.get("game"),
+  );
   const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [hideFree, setHideFree] = useState(false);
+  const [discountsOnly, setDiscountsOnly] = useState(false);
   const [hideWishlist, setHideWishlist] = useState(false);
-  const [sortBy, setSortBy] = useState("relevance");
+  const [sortBy, setSortBy] = useState(() => searchParams.get("sort") ?? "relevance");
   const [maxPrice, setMaxPrice] = useState(100);
   const [isFilterSidebarOpen, setIsFilterSidebarOpen] = useState(false);
 
+  const pageQuery = useMemo(
+    () => ({
+      search,
+      platform,
+      maxPrice:
+        priceFilter === "under-15"
+          ? Math.min(maxPrice, 15)
+          : maxPrice >= 100
+            ? undefined
+            : maxPrice,
+      freeOnly: priceFilter === "free",
+      discountsOnly: discountsOnly || priceFilter === "discounts",
+      sortBy: sortBy as "relevance" | "release" | "price-low" | "price-high" | "name",
+      pageSize: STORE_PAGE_SIZE,
+    }),
+    [discountsOnly, maxPrice, platform, priceFilter, search, sortBy],
+  );
+
   useEffect(() => {
-    setVisibleGameLimit(40);
-  }, [platform, priceFilter, search]);
+    setSearchParams(
+      (current) => {
+        const next = new URLSearchParams(current);
+        if (search.trim()) next.set("q", search.trim());
+        else next.delete("q");
+        if (platform !== "all") next.set("platform", platform);
+        else next.delete("platform");
+        if (sortBy !== "relevance") next.set("sort", sortBy);
+        else next.delete("sort");
+        return next;
+      },
+      { replace: true },
+    );
+  }, [platform, search, setSearchParams, sortBy]);
 
   useEffect(() => {
     let cancelled = false;
-
     async function loadStore() {
       setIsLoading(true);
       setErrorMessage(null);
       const [hostedResult, catalogResult] = await Promise.allSettled([
-        listPublishedProducts(),
-        listStoreCatalog(),
+        listPublishedProductsPage({ page: 0, ...pageQuery }),
+        listStoreCatalogPage({ page: 0, ...pageQuery }),
       ]);
+      if (cancelled) return;
       const hostedProducts =
         hostedResult.status === "fulfilled"
           ? hostedResult.value
@@ -263,35 +325,80 @@ export function StorePage() {
               .map(keepNonKeyshopPlatforms)
               .filter((product): product is StoreProduct => product !== null)
           : [];
-
-      if (cancelled) return;
-
-      // Keep developer-published products first, but also show the materialized ITAD catalog.
       const mergedProducts = [...hostedProducts, ...catalogProducts].filter(
         (product, index, all) =>
           all.findIndex((candidate) => candidate.id === product.id) === index,
       );
-      if (mergedProducts.length > 0) {
-        setProducts(mergedProducts);
-        setCatalogSource(
-          hostedProducts.length > 0 && catalogProducts.length > 0
+      setProducts(mergedProducts.length > 0 ? mergedProducts : LOCAL_FALLBACK_PRODUCTS);
+      setCatalogSource(
+        mergedProducts.length > 0
+          ? hostedProducts.length > 0 && catalogProducts.length > 0
             ? "mixed"
             : hostedProducts.length > 0
               ? "hosted"
-              : "api",
-        );
-      } else {
-        setProducts(LOCAL_FALLBACK_PRODUCTS);
-        setCatalogSource("local");
-      }
+              : "api"
+          : "local",
+      );
+      setHasMoreProducts(
+        (hostedResult.status === "fulfilled" && hostedResult.value.length === STORE_PAGE_SIZE) ||
+          (catalogResult.status === "fulfilled" && catalogResult.value.length === STORE_PAGE_SIZE),
+      );
+      setCatalogPage(0);
       setIsLoading(false);
+      if (
+        selectedProductId &&
+        !mergedProducts.some((product) => product.id === selectedProductId)
+      ) {
+        setSelectedProductId(null);
+      }
+      if (hostedResult.status === "rejected" && catalogResult.status === "rejected")
+        setErrorMessage("Der Shop-Katalog konnte nicht geladen werden.");
     }
-
     void loadStore();
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [pageQuery, selectedProductId]);
+
+  async function loadNextCatalogPage() {
+    if (isLoadingMore || !hasMoreProducts) return;
+    setIsLoadingMore(true);
+    setErrorMessage(null);
+    const nextPage = catalogPage + 1;
+    const [hostedResult, catalogResult] = await Promise.allSettled([
+      listPublishedProductsPage({ page: nextPage, ...pageQuery }),
+      listStoreCatalogPage({ page: nextPage, ...pageQuery }),
+    ]);
+    const nextHosted =
+      hostedResult.status === "fulfilled"
+        ? hostedResult.value
+            .map(keepNonKeyshopPlatforms)
+            .filter((product): product is StoreProduct => product !== null)
+        : [];
+    const nextCatalog =
+      catalogResult.status === "fulfilled"
+        ? catalogResult.value
+            .map(keepNonKeyshopPlatforms)
+            .filter((product): product is StoreProduct => product !== null)
+        : [];
+    const nextProducts = [...nextHosted, ...nextCatalog];
+    if (nextProducts.length > 0) {
+      setProducts((current) =>
+        [...current, ...nextProducts].filter(
+          (product, index, all) =>
+            all.findIndex((candidate) => candidate.id === product.id) === index,
+        ),
+      );
+      setCatalogPage(nextPage);
+      setHasMoreProducts(
+        (hostedResult.status === "fulfilled" && hostedResult.value.length === STORE_PAGE_SIZE) ||
+          (catalogResult.status === "fulfilled" && catalogResult.value.length === STORE_PAGE_SIZE),
+      );
+    } else setHasMoreProducts(false);
+    if (hostedResult.status === "rejected" && catalogResult.status === "rejected")
+      setErrorMessage("Weitere Shop-Spiele konnten nicht geladen werden.");
+    setIsLoadingMore(false);
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -388,8 +495,7 @@ export function StorePage() {
     sortBy,
     wishlistIds,
   ]);
-  const paginatedGames = visibleGames.slice(0, visibleGameLimit);
-  const hasMoreGames = paginatedGames.length < visibleGames.length;
+  const paginatedGames = visibleGames;
   const featuredGames = visibleGames.slice(0, 5);
   async function toggleWishlist(gameId: string) {
     const product = products.find((item) => item.id === gameId);
@@ -520,6 +626,17 @@ export function StorePage() {
           <option value="price-high">Price: high to low</option>
           <option value="name">Name</option>
         </select>
+        <select
+          aria-label="Price filter"
+          className="neo-copy border-2 border-black bg-[#fff9ed] px-2 text-[10px] font-black uppercase"
+          value={priceFilter}
+          onChange={(event) => setPriceFilter(event.target.value as PriceFilter)}
+        >
+          <option value="all">All prices</option>
+          <option value="free">Free games</option>
+          <option value="under-15">Under €15</option>
+          <option value="discounts">Discounts</option>
+        </select>
         <button
           className="neo-copy border-2 border-black bg-[#f6edd8] px-3 py-2 text-[10px] font-black uppercase lg:hidden"
           type="button"
@@ -545,7 +662,17 @@ export function StorePage() {
                 aria-label={`View featured game ${game.title}`}
                 className={`group relative overflow-hidden border-[3px] border-black bg-[#171411] text-left shadow-[4px_4px_0_#171411] ${index === 0 ? "md:row-span-2 md:min-h-[270px]" : "min-h-[128px]"}`}
                 type="button"
-                onClick={() => openPlatformStores([game.id])}
+                onClick={() => {
+                  setSelectedProductId(game.id);
+                  setSearchParams(
+                    (current) => {
+                      const next = new URLSearchParams(current);
+                      next.set("game", game.id);
+                      return next;
+                    },
+                    { replace: true },
+                  );
+                }}
               >
                 {game.coverImageUrl ? (
                   <img
@@ -568,6 +695,34 @@ export function StorePage() {
           })}
         </div>
       </section>
+
+      {selectedProductId
+        ? (() => {
+            const selectedProduct =
+              products.find((product) => product.id === selectedProductId) ?? null;
+            const selectedGame = selectedProduct ? mapProductToGame(selectedProduct) : null;
+            return selectedGame ? (
+              <ProductDetailPanel
+                game={selectedGame}
+                storeProduct={selectedProduct}
+                isWishlisted={wishlistIds.has(selectedGame.id)}
+                onToggleWishlist={() => void toggleWishlist(selectedGame.id)}
+                onOpenStore={() => void openPlatformStores([selectedGame.id])}
+                onClose={() => {
+                  setSelectedProductId(null);
+                  setSearchParams(
+                    (current) => {
+                      const next = new URLSearchParams(current);
+                      next.delete("game");
+                      return next;
+                    },
+                    { replace: true },
+                  );
+                }}
+              />
+            ) : null;
+          })()
+        : null}
 
       <section
         className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_250px]"
@@ -596,7 +751,17 @@ export function StorePage() {
                     isWishlisted={wishlistIds.has(game.id)}
                     onOpenStore={(gameId) => void openPlatformStores([gameId])}
                     onToggleWishlist={(gameId) => void toggleWishlist(gameId)}
-                    onViewDetails={() => undefined}
+                    onViewDetails={(gameId) => {
+                      setSelectedProductId(gameId);
+                      setSearchParams(
+                        (current) => {
+                          const next = new URLSearchParams(current);
+                          next.set("game", gameId);
+                          return next;
+                        },
+                        { replace: true },
+                      );
+                    }}
                   />
                 );
               })}
@@ -604,23 +769,31 @@ export function StorePage() {
           ) : (
             <EmptyStorePanel label="No published games match your filters." />
           )}
-          {hasMoreGames ? (
-            <button
-              className="neo-copy mt-4 w-full border-2 border-black bg-[#8cf5e4] px-4 py-3 text-[10px] font-black uppercase"
-              type="button"
-              onClick={() => setVisibleGameLimit((current) => current + 40)}
-            >
-              Load more games ({visibleGames.length - paginatedGames.length})
-            </button>
+          {hasMoreProducts ? (
+            <div className="mt-5 flex flex-col items-center gap-2 border-t-2 border-black pt-4">
+              <span className="neo-copy text-[10px] font-black uppercase">
+                Page {catalogPage + 1} loaded // more games available
+              </span>
+              <button
+                className="neo-copy w-full border-2 border-black bg-[#8cf5e4] px-4 py-3 text-[10px] font-black uppercase shadow-[3px_3px_0_#171411]"
+                type="button"
+                disabled={isLoadingMore}
+                onClick={() => void loadNextCatalogPage()}
+              >
+                {isLoadingMore ? "Loading next page..." : "Next page // load more games"}
+              </button>
+            </div>
           ) : null}
         </div>
         <StoreFilterSidebar
           className={isFilterSidebarOpen ? "block" : "hidden lg:block"}
+          discountsOnly={discountsOnly}
           hideFree={hideFree}
           hideWishlist={hideWishlist}
           selectedTags={selectedTags}
           onHideFreeChange={setHideFree}
           onHideWishlistChange={setHideWishlist}
+          onDiscountsOnlyChange={setDiscountsOnly}
           onTagsChange={setSelectedTags}
           maxPrice={maxPrice}
           onMaxPriceChange={setMaxPrice}
@@ -641,11 +814,13 @@ export function StorePage() {
 
 function StoreFilterSidebar({
   className = "",
+  discountsOnly,
   hideFree,
   hideWishlist,
   selectedTags,
   onHideFreeChange,
   onHideWishlistChange,
+  onDiscountsOnlyChange,
   onTagsChange,
   maxPrice,
   onMaxPriceChange,
@@ -653,9 +828,11 @@ function StoreFilterSidebar({
   className?: string;
   hideFree: boolean;
   hideWishlist: boolean;
+  discountsOnly: boolean;
   selectedTags: string[];
   onHideFreeChange: (value: boolean) => void;
   onHideWishlistChange: (value: boolean) => void;
+  onDiscountsOnlyChange: (value: boolean) => void;
   onTagsChange: (value: string[]) => void;
   maxPrice: number;
   onMaxPriceChange: (value: number) => void;
@@ -685,7 +862,11 @@ function StoreFilterSidebar({
         <p className="neo-copy text-[10px] font-black uppercase">
           {maxPrice >= 100 ? "Any price" : `Up to €${maxPrice}`}
         </p>
-        <FilterCheck label="Discounts & events" />
+        <FilterCheck
+          label="Discounts & events"
+          checked={discountsOnly}
+          onChange={onDiscountsOnlyChange}
+        />
         <FilterCheck
           label="Hide free to play items"
           checked={hideFree}
