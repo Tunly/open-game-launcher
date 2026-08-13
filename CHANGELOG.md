@@ -38,21 +38,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
   before conservative localized-title fallback.
 - PC Game Pass catalog-only titles are included in the Achievement inventory.
 - Direct/group chat creation, blocked-DM access, trusted playtime aggregation,
-  price-drop delivery, social-link replacement, invite transitions, and
+  provider integration changes, social-link replacement, invite transitions, and
   submitted artwork identity are hardened through atomic RPCs/RLS guards.
 
 ### Added
 
 - Authenticated Steam account linking via native OpenID callback and a trusted
   hosted Steam achievement relay with attestation-bound ingestion.
-- Activity feed events for Store purchases, friend relationships, achievements,
+- Activity feed events for Store activity, friend relationships, achievements,
   play sessions, and status posts.
 - The store shows a clearly labeled local example catalog (four entries) when
   the hosted catalog is empty or unreachable; example entries cannot be
   wishlisted and are never presented as hosted or purchasable products.
 - RLS-protected activity reactions and comments with Realtime updates.
-- Local completion and external-evidence gates for Store/Stripe, hosted cron,
-  provider integrations, hardware/OS, and rollout tracks.
+- Local completion and external-evidence gates for hosted cron, provider
+  integrations, hardware/OS, and rollout tracks.
 - Security hardening for URI opening, WebView scope/CSP, selected-copy game
   actions, trusted ingestion, social mutations, and path-contained local file
   operations.

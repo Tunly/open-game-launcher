@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 
@@ -122,7 +122,9 @@ describe("StorePage", () => {
     expect(screen.getByText("€19.99")).toBeInTheDocument();
     expect(screen.queryByText("Playstation")).not.toBeInTheDocument();
     expect(screen.getAllByText("Xbox").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Open platform store").length).toBeGreaterThan(0);
+    expect(
+      screen.getAllByRole("button", { name: /Open store for Platform Game/i }).length,
+    ).toBeGreaterThan(0);
     expect(screen.queryByText("Warenkorb")).not.toBeInTheDocument();
   });
 
@@ -214,7 +216,9 @@ describe("StorePage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Linux" }));
 
     expect((await screen.findAllByText("Second Game")).length).toBeGreaterThan(0);
-    expect(screen.queryByText("Platform Game")).not.toBeInTheDocument();
+    expect(
+      within(screen.getByRole("region", { name: "Product browser" })).queryByText("Platform Game"),
+    ).not.toBeInTheDocument();
   });
 
   it("opens the platform store directly", async () => {

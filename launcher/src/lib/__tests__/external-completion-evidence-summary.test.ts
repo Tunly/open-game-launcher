@@ -48,7 +48,6 @@ function validEnvValue(name: string) {
     ACCOUNT_DELETION_PROCESSOR_SECRET: "acctDel9f8e7d6c5b4a392817263abcd",
     PRESENCE_POLL_SECRET: "presencePoll9f8e7d6c5b4a392817abcd",
     PRESENCE_PROVIDER_TOKEN: "presenceProvider9f8e7d6c5b4a392817",
-    PRICE_DROP_NOTIFY_SECRET: "priceDrop9f8e7d6c5b4a392817263abcd",
     STEAM_WEB_API_KEY: "0123456789abcdef0123456789abcdef",
     SUPABASE_URL: "https://awebfvfyqzwapcgixdfj.supabase.co",
   };
@@ -68,7 +67,7 @@ function validStoreArtifactEvidence(
       },
       path: schedulerArtifact.path,
       proofEvidence: {
-        [schedulerArtifact.requiredProofs[0]]: "workflow-price-drop-live-123",
+        [schedulerArtifact.requiredProofs[0]]: "workflow-presence-poll-live-123",
       },
       readable: true,
     },
@@ -76,16 +75,16 @@ function validStoreArtifactEvidence(
       checkedProofs: schedulerArtifact.requiredProofs,
       evidenceDetails: {
         ...evidenceDetails,
-        Function: "notify-price-drop",
-        "Hosted cron table": "store_price_drop_notification_runs",
-        "Run ID": "run-price-drop-live-123",
+        Function: "poll-platform-presence",
+        "Hosted cron table": "presence_poll_runs",
+        "Run ID": "run-presence-poll-live-123",
         Scheduled: "scheduled",
         Status: "completed",
         "dry_run=false": "false",
       },
       path: schedulerArtifact.path,
       proofEvidence: {
-        [schedulerArtifact.requiredProofs[0]]: "workflow-price-drop-live-123",
+        [schedulerArtifact.requiredProofs[0]]: "workflow-presence-poll-live-123",
       },
       readable: true,
     },
@@ -109,12 +108,6 @@ function validHostedSupabaseCronArtifactEvidence(
     "presence-poll: Scheduled": "scheduled",
     "presence-poll: Status": "completed",
     "presence-poll: dry_run=false": "confirmed false",
-    "price-drop: Function": "notify-price-drop",
-    "price-drop: Hosted cron table": "store_price_drop_notification_runs",
-    "price-drop: Run ID": "price-drop-run-123",
-    "price-drop: Scheduled": "scheduled",
-    "price-drop: Status": "completed",
-    "price-drop: dry_run=false": "confirmed false",
   };
 
   return [
@@ -135,7 +128,6 @@ function validHostedSupabaseCronArtifactEvidence(
 
 function hostedCronProofEvidenceFor(proof: string) {
   if (proof.includes("poll-platform-presence")) return "workflow-presence-poll-123";
-  if (proof.includes("notify-price-drop")) return "workflow-price-drop-123";
   if (proof.includes("process-account-deletions")) return "workflow-account-deletion-123";
   return "workflow-hosted-cron-123";
 }
@@ -146,7 +138,6 @@ function externalProofEvidenceFor(proof: string, fallback = "run-external-eviden
   if (proof.includes("Production license signing key custody")) {
     return "run-license-key-custody-live-license-issuance-123";
   }
-  if (proof.includes("Hosted price-drop scheduler")) return "workflow-price-drop-live-123";
   if (proof.includes("Non-Steam presence")) {
     return "run-non-steam-presence-bridge-provider-123";
   }
@@ -499,7 +490,7 @@ describe("external completion evidence summary", () => {
       { name: "SUPABASE_URL", value: "https://example.supabase.co" },
       { name: "STRIPE_SECRET_KEY", value: "sk_test_51OgLauncherEvidenceAlpha1234567890" },
       { name: "STRIPE_WEBHOOK_SECRET", value: "whsec_short" },
-      { name: "PRICE_DROP_NOTIFY_SECRET", value: "vault:og-launcher:price_drop_notify_secret" },
+      { name: "PRESENCE_POLL_SECRET", value: "vault:og-launcher:presence_poll_secret" },
     ];
     const summary = buildExternalCompletionEvidenceSummary({
       createdAt: "2026-06-16T00:00:00.000Z",
@@ -535,9 +526,7 @@ describe("external completion evidence summary", () => {
     expect(cronGate).toBeDefined();
     const shortSchedulerSecret = `${"a".repeat(30)}1`;
     const invalidEnvEvidence = envEvidenceFor(cronGate!).map((item) =>
-      item.name === "PRICE_DROP_NOTIFY_SECRET" ||
-      item.name === "ACCOUNT_DELETION_PROCESSOR_SECRET" ||
-      item.name === "PRESENCE_POLL_SECRET"
+      item.name === "ACCOUNT_DELETION_PROCESSOR_SECRET" || item.name === "PRESENCE_POLL_SECRET"
         ? { ...item, value: shortSchedulerSecret }
         : item,
     );
@@ -556,7 +545,7 @@ describe("external completion evidence summary", () => {
     });
 
     expect(summary.gates[0]).toMatchObject({
-      missingEnvCount: 3,
+      missingEnvCount: 2,
       status: "blocked",
     });
     expect(JSON.stringify(summary)).not.toContain(shortSchedulerSecret);
@@ -1406,7 +1395,7 @@ describe("external completion evidence summary", () => {
     });
   });
 
-  it("rejects Store price-drop scheduler values that do not match CLI preflight", () => {
+  it("rejects hosted scheduler values that do not match CLI preflight", () => {
     const [storeGate] = EXTERNAL_COMPLETION_EVIDENCE_GATE_INPUTS;
     const artifactEvidence = validStoreArtifactEvidence(storeGate);
     artifactEvidence[1]!.evidenceDetails!["Scheduled"] = "true";
@@ -1420,7 +1409,7 @@ describe("external completion evidence summary", () => {
           envEvidence: envEvidenceFor(storeGate),
         },
       ],
-      packetId: "external-evidence-store-scheduler-expected-value-test",
+      packetId: "external-evidence-hosted-scheduler-expected-value-test",
       validationNow,
     });
 
@@ -1447,9 +1436,9 @@ describe("external completion evidence summary", () => {
         checkedProofs: cronGate!.proofRequirements,
         evidenceDetails: {
           ...evidenceDetails,
-          Function: "notify-price-drop",
-          "Hosted cron table": "store_price_drop_notification_runs",
-          "Run ID": "run-price-drop-live-123",
+          Function: "poll-platform-presence",
+          "Hosted cron table": "presence_poll_runs",
+          "Run ID": "run-presence-poll-live-123",
           Scheduled: "scheduled",
           Status: "completed",
           "dry_run=false": "confirmed false",
@@ -1479,18 +1468,12 @@ describe("external completion evidence summary", () => {
     });
 
     expect(genericSummary.gates[0]).toMatchObject({
-      missingEvidenceDetailCount: 18,
+      missingEvidenceDetailCount: 12,
       status: "blocked",
     });
     expect(
       genericSummary.gates[0].artifactProofs[0].missingEvidenceDetails.map(({ field }) => field),
     ).toEqual([
-      "price-drop: Hosted cron table",
-      "price-drop: Function",
-      "price-drop: Run ID",
-      "price-drop: Scheduled",
-      "price-drop: dry_run=false",
-      "price-drop: Status",
       "presence-poll: Hosted cron table",
       "presence-poll: Function",
       "presence-poll: Run ID",
@@ -1549,14 +1532,6 @@ describe("external completion evidence summary", () => {
                 "- Operator: Release Ops",
                 "- Redacted run IDs, dashboard links, screenshots, or signed deployment logs: run-hosted-cron-nested-123",
                 "- Redaction notes: Raw secrets removed before commit",
-                "## price-drop",
-                "### Details",
-                "- Hosted cron table: store_price_drop_notification_runs",
-                "- Function: notify-price-drop",
-                "- Run ID: price-drop-run-nested-123",
-                "- Scheduled: scheduled",
-                "- dry_run=false: confirmed false",
-                "- Status: completed",
                 "## presence-poll",
                 "### Details",
                 "- Hosted cron table: presence_poll_runs",
@@ -1616,16 +1591,8 @@ describe("external completion evidence summary", () => {
                 "- Operator: Release Ops",
                 "- Redacted run IDs, dashboard links, screenshots, or signed deployment logs: run-hosted-cron-nested-123",
                 "- Redaction notes: Raw secrets removed before commit",
-                "## price-drop",
-                "- Hosted cron table: store_price_drop_notification_runs",
-                "- Hosted cron table: wrong_table",
-                "- Function: notify-price-drop",
-                "- Run ID: price-drop-run-nested-123",
-                "- Scheduled: scheduled",
-                "- dry_run=false: confirmed false",
-                "- Status: completed",
                 "## presence-poll",
-                "- Hosted cron table: presence_poll_runs",
+                "- Hosted cron table: wrong_table",
                 "- Function: poll-platform-presence",
                 "- Run ID: presence-poll-run-nested-123",
                 "- Scheduled: scheduled",
@@ -1655,7 +1622,7 @@ describe("external completion evidence summary", () => {
     });
     expect(summary.gates[0].artifactProofs[0].missingEvidenceDetails).toEqual([
       {
-        field: "price-drop: Hosted cron table",
+        field: "presence-poll: Hosted cron table",
         path: artifactPath,
       },
     ]);
@@ -1668,8 +1635,7 @@ describe("external completion evidence summary", () => {
     expect(cronGate).toBeDefined();
 
     const artifactEvidence = validHostedSupabaseCronArtifactEvidence(cronGate!);
-    artifactEvidence[0]!.evidenceDetails!["presence-poll: Function"] = "notify-price-drop";
-    artifactEvidence[0]!.evidenceDetails!["price-drop: Scheduled"] = "true";
+    artifactEvidence[0]!.evidenceDetails!["presence-poll: Function"] = "rawg-assets";
     artifactEvidence[0]!.evidenceDetails!["account-deletion: Status"] = "succeeded";
 
     const summary = buildExternalCompletionEvidenceSummary({
@@ -1686,12 +1652,12 @@ describe("external completion evidence summary", () => {
     });
 
     expect(summary.gates[0]).toMatchObject({
-      missingEvidenceDetailCount: 3,
+      missingEvidenceDetailCount: 2,
       status: "blocked",
     });
     expect(
       summary.gates[0].artifactProofs[0].missingEvidenceDetails.map(({ field }) => field),
-    ).toEqual(["price-drop: Scheduled", "presence-poll: Function", "account-deletion: Status"]);
+    ).toEqual(["presence-poll: Function", "account-deletion: Status"]);
   });
 
   it("blocks scheduler proof evidence mappings that omit lane identity", () => {

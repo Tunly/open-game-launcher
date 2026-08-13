@@ -159,8 +159,8 @@ describe("useLibraryFilterPipeline", () => {
       coverUrl: "custom.png",
       iconUrl: "custom-icon.png",
     });
-    expect(result.current.baseLibraryGames.find((game) => game.id === "beta")?.coverUrl).toBe(
-      undefined,
+    expect(result.current.baseLibraryGames.find((game) => game.id === "beta")?.coverUrl).toMatch(
+      /^https:\/\/placehold\.co\//,
     );
     expect(filteredIds(result.current.filteredGroups)).toEqual(["alpha"]);
     expect(filteredIds(result.current.libraryGroups)).toEqual(["alpha", "beta"]);

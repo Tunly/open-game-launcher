@@ -38,17 +38,6 @@ export interface StoreWishlistItem {
   addedAt: string;
 }
 
-export interface StorePriceAlert {
-  id: string;
-  userId: string;
-  productId: string;
-  targetPriceCents: number;
-  isActive: boolean;
-  lastNotifiedAt: string | null;
-  createdAt: string;
-  updatedAt: string;
-}
-
 export interface StoreReview {
   id: string;
   productId: string;

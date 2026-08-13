@@ -1,6 +1,6 @@
 # Local Completion Audit
 
-Last reviewed: 2026-07-14.
+Last reviewed: 2026-08-10.
 
 This document defines what can be verified in a local checkout. It is not a
 release-readiness receipt and does not claim that live providers, hosted
@@ -81,9 +81,7 @@ Use `pnpm completion:gate:status` for the current status and
 remains blocked until `pnpm completion:gate:external` passes with real checked
 artifacts for these lanes:
 
-- Store/Stripe: webhook delivery, Dashboard tax/invoice configuration, license
-  key custody and issuance, and hosted price-drop scheduling.
-- Hosted Supabase cron: scheduled price-drop, account-deletion, and presence
+- Hosted Supabase cron: scheduled account-deletion and presence
   runs with valid fresh evidence rows.
 - Provider integrations: presence bridges, approved catalog/cloud-transfer
   flows, and real achievement cache runs.

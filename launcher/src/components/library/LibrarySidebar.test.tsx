@@ -166,17 +166,11 @@ describe("LibrarySidebar", () => {
     ).toBeInTheDocument();
   });
 
-  it("lists missing artwork grouped by launcher", () => {
-    renderSidebar({
-      artworkAudit: {
-        totalGames: 2,
-        missingCount: 1,
-        byLauncher: [{ launcher: "steam", label: "Steam", games: ["Missing Game"] }],
-      },
-    });
+  it("does not render a missing artwork section", () => {
+    renderSidebar({});
 
-    expect(screen.getByText("Missing artwork (1)")).toBeInTheDocument();
-    expect(screen.getByText("Missing Game")).toBeInTheDocument();
+    expect(screen.queryByText("Missing artwork (1)")).not.toBeInTheDocument();
+    expect(screen.queryByText("Missing Game")).not.toBeInTheDocument();
   });
 
   it("shows cross-source runtime metadata for grouped variants", async () => {

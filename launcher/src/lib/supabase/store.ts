@@ -3,7 +3,6 @@ import type { Database } from "./database.types";
 import type {
   DeveloperApplication,
   DevApplicationStatus,
-  StorePriceAlert,
   StoreProduct,
   StoreProductStatus,
   StoreReview,
@@ -19,7 +18,6 @@ import type {
 
 type StoreProductRow = Database["public"]["Tables"]["store_products"]["Row"];
 type StoreWishlistRow = Database["public"]["Tables"]["store_wishlist"]["Row"];
-type StorePriceAlertRow = Database["public"]["Tables"]["store_price_alerts"]["Row"];
 type StoreReviewRow = Database["public"]["Tables"]["store_reviews"]["Row"];
 type StoreReviewReportRow = Database["public"]["Tables"]["store_review_reports"]["Row"];
 type StoreReviewReplyRow = Database["public"]["Tables"]["store_review_replies"]["Row"];
@@ -30,8 +28,6 @@ const PRODUCT_SELECT = `id, title, slug, description, short_description, develop
   trailer_url, min_system_requirements, rec_system_requirements,
   rating, ratings_count, downloads_count, status, metadata, created_at, updated_at`;
 const WISHLIST_SELECT = `id, user_id, product_id, added_at`;
-const PRICE_ALERT_SELECT = `id, user_id, product_id, target_price_cents, is_active,
-  last_notified_at, created_at, updated_at`;
 const REVIEW_SELECT = `id, product_id, user_id, rating, title, body, is_published,
   is_hidden_by_reports, hidden_by_reports_at, created_at, updated_at`;
 const REVIEW_REPORT_SELECT = `id, review_id, reporter_user_id, reason, details, status,
@@ -105,19 +101,6 @@ export function mapStoreProductRow(row: StoreProductRow): StoreProduct {
 
 export function mapStoreWishlistRow(row: StoreWishlistRow): StoreWishlistItem {
   return { id: row.id, userId: row.user_id, productId: row.product_id, addedAt: row.added_at };
-}
-
-export function mapStorePriceAlertRow(row: StorePriceAlertRow): StorePriceAlert {
-  return {
-    id: row.id,
-    userId: row.user_id,
-    productId: row.product_id,
-    targetPriceCents: row.target_price_cents,
-    isActive: row.is_active,
-    lastNotifiedAt: row.last_notified_at,
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-  };
 }
 
 export function mapStoreReviewRow(row: StoreReviewRow): StoreReview {
@@ -339,58 +322,6 @@ export async function removeFromStoreWishlist(productId: string): Promise<void> 
   const { error } = await getSupabaseClient()
     .from("store_wishlist")
     .delete()
-    .eq("user_id", user.id)
-    .eq("product_id", productId);
-  if (error) throw new Error(error.message);
-}
-
-export async function listMyStorePriceAlerts(): Promise<StorePriceAlert[]> {
-  const {
-    data: { user },
-  } = await getSupabaseClient().auth.getUser();
-  if (!user) return [];
-  const { data, error } = await getSupabaseClient()
-    .from("store_price_alerts")
-    .select(PRICE_ALERT_SELECT)
-    .eq("user_id", user.id)
-    .eq("is_active", true)
-    .order("updated_at", { ascending: false });
-  if (error) throw new Error(error.message);
-  return (data ?? []).map((row) => mapStorePriceAlertRow(row as StorePriceAlertRow));
-}
-
-export async function upsertStorePriceAlert(
-  productId: string,
-  targetPriceCents: number,
-): Promise<void> {
-  if (!Number.isFinite(targetPriceCents) || targetPriceCents <= 0)
-    throw new Error("Price alert target must be greater than zero.");
-  const {
-    data: { user },
-  } = await getSupabaseClient().auth.getUser();
-  if (!user) return;
-  const { error } = await getSupabaseClient()
-    .from("store_price_alerts")
-    .upsert(
-      {
-        user_id: user.id,
-        product_id: productId,
-        target_price_cents: Math.round(targetPriceCents),
-        is_active: true,
-      },
-      { onConflict: "user_id,product_id" },
-    );
-  if (error) throw new Error(error.message);
-}
-
-export async function removeStorePriceAlert(productId: string): Promise<void> {
-  const {
-    data: { user },
-  } = await getSupabaseClient().auth.getUser();
-  if (!user) return;
-  const { error } = await getSupabaseClient()
-    .from("store_price_alerts")
-    .update({ is_active: false })
     .eq("user_id", user.id)
     .eq("product_id", productId);
   if (error) throw new Error(error.message);

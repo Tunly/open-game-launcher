@@ -10,7 +10,6 @@ Deno.test(
     assertIncludesAll(exportOwnUserIdTables, [
       "store_customers",
       "store_wishlist",
-      "store_price_alerts",
       "performance_sessions",
       "launcher_local_entities",
       "community_artwork_votes",

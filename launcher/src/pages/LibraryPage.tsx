@@ -29,7 +29,7 @@ import {
 import { isPlayableGame, type GameGroup } from "../lib/game-groups";
 import { redeemShareToken, resolveShareToken } from "../lib/supabase/social";
 import type { Game } from "../lib/types";
-import { auditLibraryArtwork, getLibraryArtworkUrls } from "../lib/library-artwork-audit";
+import { getLibraryArtworkUrls } from "../lib/library-artwork-audit";
 
 import { useLibrarySync } from "../hooks/library/useLibrarySync";
 import { useLibraryFilters } from "../hooks/library/useLibraryFilters";
@@ -90,7 +90,6 @@ export function LibraryPage() {
   const [isAddGameOpen, setIsAddGameOpen] = useState(false);
   const [isFriendsChatOpen, setIsFriendsChatOpen] = useState(false);
   const [groupOption, setGroupOption] = useState<LibraryGroupOption>("none");
-  const [invalidArtworkUrls, setInvalidArtworkUrls] = useState<Set<string>>(() => new Set());
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const downloadCount = useDownloadStore((s) => s.items.length);
@@ -133,10 +132,6 @@ export function LibraryPage() {
     () => groupLibraryGames(filters.filteredGroups, groupOption),
     [filters.filteredGroups, groupOption],
   );
-  const artworkAudit = useMemo(
-    () => auditLibraryArtwork(filters.enrichedLibraryGames ?? [], invalidArtworkUrls),
-    [filters.enrichedLibraryGames, invalidArtworkUrls],
-  );
 
   useEffect(() => {
     let cancelled = false;
@@ -153,16 +148,8 @@ export function LibraryPage() {
             image.src = url;
           }),
       ),
-    ).then((results) => {
+    ).then(() => {
       if (cancelled) return;
-      setInvalidArtworkUrls((current) => {
-        const next = new Set(current);
-        for (const [url, valid] of results) {
-          if (valid) next.delete(url);
-          else next.add(url);
-        }
-        return next;
-      });
     });
 
     return () => {
@@ -371,7 +358,6 @@ export function LibraryPage() {
             runningGameIds={sync.runningGameIds}
             listScrollRef={gameListScrollRef}
             onArtworkDrop={sync.handleArtworkDrop}
-            artworkAudit={artworkAudit}
           />
           <LibraryFilters
             isOpen={filters.isFilterPopupOpen}

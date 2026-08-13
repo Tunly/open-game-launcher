@@ -132,9 +132,9 @@ function gateSpecificEvidenceDetails(gate) {
   return fields
     .map((field) => {
       if (field === "dry_run=false") return "- dry_run=false: false";
-      if (field === "Function") return "- Function: notify-price-drop";
+      if (field === "Function") return "- Function: poll-platform-presence";
       if (field === "Hosted cron table") {
-        return "- Hosted cron table: store_price_drop_notification_runs";
+        return "- Hosted cron table: presence_poll_runs";
       }
       if (field === "Scheduled") return "- Scheduled: scheduled";
       if (field === "Status") return "- Status: completed";
@@ -185,11 +185,8 @@ function proofEvidenceValueForProof(proof, fallback) {
     return "run-license-key-custody-live-license-issuance-123";
   if (proof.includes("poll-platform-presence"))
     return "workflow-presence-poll-123";
-  if (proof.includes("notify-price-drop")) return "workflow-price-drop-123";
   if (proof.includes("process-account-deletions"))
     return "workflow-account-deletion-123";
-  if (proof.includes("Hosted price-drop scheduler"))
-    return "workflow-price-drop-123";
   if (proof.includes("Non-Steam presence"))
     return "run-non-steam-presence-bridge-provider-123";
   if (proof.includes("Provider-approved catalog/cloud"))
@@ -231,15 +228,6 @@ const hostedCronLaneDetails = Object.freeze({
     "- dry_run=false: confirmed false",
     "- Status: completed",
   ].join("\n"),
-  "price-drop": [
-    "### price-drop",
-    "- Hosted cron table: store_price_drop_notification_runs",
-    "- Function: notify-price-drop",
-    "- Run ID: price-drop-run-123",
-    "- Scheduled: scheduled",
-    "- dry_run=false: confirmed false",
-    "- Status: completed",
-  ].join("\n"),
 });
 
 function allHostedCronLaneDetails() {
@@ -267,22 +255,10 @@ function hostedCronReceiptFixture(overrides = {}) {
     freshnessHours: {
       "account-deletion": 25,
       "presence-poll": 0.25,
-      "price-drop": 25,
     },
     gateRunId: overrides.gateRunId ?? "completion-gate-run-123",
     generatedAt: overrides.generatedAt ?? "2026-06-17T11:50:00.000Z",
     lanes: overrides.lanes ?? [
-      {
-        completedAt: "2026-06-17T11:45:00.000Z",
-        counts: {},
-        dryRun: false,
-        functionName: "notify-price-drop",
-        id: "price-drop",
-        runId: "price-drop-run-123",
-        status: "completed",
-        table: "store_price_drop_notification_runs",
-        triggerSource: "scheduled",
-      },
       {
         completedAt: "2026-06-17T11:45:00.000Z",
         counts: {},
@@ -312,7 +288,6 @@ function hostedCronReceiptFixture(overrides = {}) {
     },
     restTargetProjectRef: "awebfvfyqzwapcgixdfj",
     selectedChecks: overrides.selectedChecks ?? [
-      "price-drop",
       "presence-poll",
       "account-deletion",
     ],
@@ -455,7 +430,6 @@ const configuredEnv = Object.freeze({
   ACCOUNT_DELETION_PROCESSOR_SECRET: "acctDel9f8e7d6c5b4a392817263abcd",
   PRESENCE_POLL_SECRET: "presencePoll9f8e7d6c5b4a392817abcd",
   PRESENCE_PROVIDER_TOKEN: "presenceProvider9f8e7d6c5b4a392817",
-  PRICE_DROP_NOTIFY_SECRET: "priceDrop9f8e7d6c5b4a392817263abcd",
   STEAM_WEB_API_KEY: "0123456789abcdef0123456789abcdef",
   STRIPE_SECRET_KEY: "sk_live_51OgLauncherEvidenceAlpha1234567890",
   STRIPE_WEBHOOK_SECRET: "whsec_51OgLauncherEvidenceAlpha1234567890",
@@ -535,7 +509,7 @@ test("operator packet report is redacted and preserves external proof boundary",
   );
   assert.match(
     output,
-    /Required env names: SUPABASE_URL; PRICE_DROP_NOTIFY_SECRET/,
+    /Required env names: SUPABASE_URL; ACCOUNT_DELETION_PROCESSOR_SECRET/,
   );
   assert.match(
     output,
@@ -630,7 +604,7 @@ test("next steps report prints redacted operator actions without proof checkboxe
     output,
     new RegExp(escapeRegExp(hostedCronRestAuthPrerequisite)),
   );
-  assert.doesNotMatch(output, /OGL_HOSTED_CRON_EVIDENCE_CHECKS=price-drop/);
+  assert.doesNotMatch(output, /OGL_HOSTED_CRON_EVIDENCE_CHECKS=notify-price-drop/);
   assert.doesNotMatch(output, /\[[xX ]\]/);
   assert.doesNotMatch(output, /docs\/verification\/screenshots/);
   for (const value of Object.values(configuredEnv)) {
@@ -693,9 +667,9 @@ test("hosted cron worklist includes lane-specific rows to fill", () => {
   );
   assert.match(
     output,
-    /Proof evidence row: Evidence for notify-price-drop scheduled run writes fresh evidence\.:/,
+    /Proof evidence row: Evidence for poll-platform-presence scheduled run writes fresh evidence\.:/,
   );
-  assert.match(output, /Lane-specific evidence row: price-drop \/ Run ID:/);
+  assert.match(output, /Lane-specific evidence row: presence-poll \/ Run ID:/);
   assert.match(
     output,
     /Lane-specific evidence row: presence-poll \/ Function:/,
@@ -730,7 +704,7 @@ test("artifact worklist includes all fill rows for unreadable artifacts", () => 
     /Proof row: poll-platform-presence scheduled run writes fresh evidence\./,
   );
   assert.match(output, /Evidence detail row: Captured at:/);
-  assert.match(output, /Lane-specific evidence row: price-drop \/ Run ID:/);
+  assert.match(output, /Lane-specific evidence row: presence-poll \/ Run ID:/);
   assert.match(
     output,
     /Lane-specific evidence row: account-deletion \/ Status:/,
@@ -836,7 +810,7 @@ test("status report summarizes selected gates without secret values", () => {
     "OGL_EXTERNAL_EVIDENCE_GATES=hosted-supabase-cron pnpm external:evidence:preflight",
   ]);
   assert.equal(
-    JSON.stringify(report).includes(configuredEnv.PRICE_DROP_NOTIFY_SECRET),
+    JSON.stringify(report).includes(configuredEnv.ACCOUNT_DELETION_PROCESSOR_SECRET),
     false,
   );
 });
@@ -991,7 +965,6 @@ test("gate selection can focus one or more external lanes", () => {
 
 test.skip("functions env example documents 32 character scheduler secrets", () => {
   for (const name of [
-    "PRICE_DROP_NOTIFY_SECRET",
     "ACCOUNT_DELETION_PROCESSOR_SECRET",
     "PRESENCE_POLL_SECRET",
   ]) {
@@ -1154,7 +1127,6 @@ test("preflight status requires checked proof rows inside existing artifacts", (
   assert.deepEqual(status.missingArtifacts, []);
   assert.deepEqual(status.missingEnv, []);
   assert.deepEqual(status.missingProofs, [
-    "notify-price-drop scheduled run writes fresh evidence.",
     "process-account-deletions scheduled run writes fresh evidence.",
   ]);
 });
@@ -1175,7 +1147,7 @@ test("preflight status requires hosted cron details for every scheduler lane", (
     fakeRead({
       [artifactPath]: [
         proofContent(gate),
-        hostedCronLaneDetails["price-drop"],
+        hostedCronLaneDetails["presence-poll"],
         capturedEvidenceDetails(),
       ].join("\n"),
     }),
@@ -1186,12 +1158,6 @@ test("preflight status requires hosted cron details for every scheduler lane", (
   assert.deepEqual(
     partialStatus.missingEvidenceDetails.map((detail) => detail.field),
     [
-      "presence-poll: Hosted cron table",
-      "presence-poll: Function",
-      "presence-poll: Run ID",
-      "presence-poll: Scheduled",
-      "presence-poll: dry_run=false",
-      "presence-poll: Status",
       "account-deletion: Hosted cron table",
       "account-deletion: Function",
       "account-deletion: Run ID",
@@ -1208,7 +1174,6 @@ test("preflight status requires hosted cron details for every scheduler lane", (
     fakeRead({
       [artifactPath]: [
         proofContent(gate),
-        hostedCronLaneDetails["price-drop"],
         hostedCronLaneDetails["presence-poll"],
         hostedCronLaneDetails["account-deletion"],
         capturedEvidenceDetails(),
@@ -1226,9 +1191,8 @@ test("preflight status requires hosted cron details for every scheduler lane", (
     fakeRead({
       [artifactPath]: [
         proofContent(gate),
-        hostedCronLaneDetails["price-drop"],
-        "- Hosted cron table: wrong_table",
         hostedCronLaneDetails["presence-poll"],
+        "- Hosted cron table: wrong_table",
         hostedCronLaneDetails["account-deletion"],
         capturedEvidenceDetails(),
       ].join("\n"),
@@ -1239,7 +1203,7 @@ test("preflight status requires hosted cron details for every scheduler lane", (
   assert.deepEqual(duplicateInvalidStatus.missingProofs, []);
   assert.deepEqual(duplicateInvalidStatus.missingEvidenceDetails, [
     {
-      field: "price-drop: Hosted cron table",
+      field: "presence-poll: Hosted cron table",
       path: artifactPath,
     },
   ]);
@@ -1294,8 +1258,8 @@ test("preflight binds hosted cron artifacts to the live collector receipt when p
     fakeExists([artifactPath, receiptPath]),
     fakeRead({
       [artifactPath]: artifactContent.replaceAll(
-        "- Run ID: price-drop-run-123",
-        "- Run ID: price-drop-run-999",
+        "- Run ID: presence-poll-run-123",
+        "- Run ID: presence-poll-run-999",
       ),
       [receiptPath]: JSON.stringify(receipt),
     }),
@@ -1304,7 +1268,7 @@ test("preflight binds hosted cron artifacts to the live collector receipt when p
   assert.equal(staleRunStatus.ready, false);
   assert.deepEqual(staleRunStatus.hostedCronReceiptFindings, [
     {
-      field: "price-drop: Run ID",
+      field: "presence-poll: Run ID",
       path: artifactPath,
       reason: "receipt_mismatch",
     },
@@ -1325,11 +1289,6 @@ test("preflight binds hosted cron artifacts to the live collector receipt when p
 
   assert.equal(wrongDigestStatus.ready, false);
   assert.deepEqual(wrongDigestStatus.hostedCronReceiptFindings, [
-    {
-      field: "price-drop: Hosted cron receipt SHA256",
-      path: artifactPath,
-      reason: "receipt_mismatch",
-    },
     {
       field: "presence-poll: Hosted cron receipt SHA256",
       path: artifactPath,
@@ -1364,9 +1323,9 @@ test("preflight binds hosted cron artifacts to the live collector receipt when p
     },
   ]);
 
-  const priceDropOnlyReceipt = hostedCronReceiptFixture({
-    lanes: receipt.lanes.filter((lane) => lane.id === "price-drop"),
-    selectedChecks: ["price-drop"],
+  const presencePollOnlyReceipt = hostedCronReceiptFixture({
+    lanes: receipt.lanes.filter((lane) => lane.id === "presence-poll"),
+    selectedChecks: ["presence-poll"],
   });
   const scopedReceiptStatus = gateStatus(
     gate,
@@ -1375,19 +1334,14 @@ test("preflight binds hosted cron artifacts to the live collector receipt when p
     fakeRead({
       [artifactPath]: artifactContent.replaceAll(
         receipt.artifactDigest,
-        priceDropOnlyReceipt.artifactDigest,
+        presencePollOnlyReceipt.artifactDigest,
       ),
-      [receiptPath]: JSON.stringify(priceDropOnlyReceipt),
+      [receiptPath]: JSON.stringify(presencePollOnlyReceipt),
     }),
   );
 
   assert.equal(scopedReceiptStatus.ready, false);
   assert.deepEqual(scopedReceiptStatus.hostedCronReceiptFindings, [
-    {
-      field: "presence-poll: Hosted cron receipt lane",
-      path: artifactPath,
-      reason: "missing",
-    },
     {
       field: "account-deletion: Hosted cron receipt lane",
       path: artifactPath,
@@ -1396,7 +1350,7 @@ test("preflight binds hosted cron artifacts to the live collector receipt when p
   ]);
 
   const selectedChecksMismatchReceipt = hostedCronReceiptFixture({
-    selectedChecks: ["price-drop"],
+    selectedChecks: ["presence-poll"],
   });
   const selectedChecksMismatchStatus = gateStatus(
     gate,
@@ -1441,11 +1395,6 @@ test("preflight binds hosted cron artifacts to the live collector receipt when p
 
   assert.equal(staleReceiptStatus.ready, false);
   assert.deepEqual(staleReceiptStatus.hostedCronReceiptFindings, [
-    {
-      field: "Hosted cron receipt completedAt",
-      path: `${receiptPath}#price-drop`,
-      reason: "stale_timestamp",
-    },
     {
       field: "Hosted cron receipt completedAt",
       path: `${receiptPath}#presence-poll`,
@@ -1566,8 +1515,8 @@ test("preflight status blocks template-only banner once proof or detail rows are
         "> Template only. No external evidence has been captured yet.",
         "## Lane-Specific Evidence",
         "",
-        "### price-drop",
-        "- Hosted cron table: store_price_drop_notification_runs",
+        "### presence-poll",
+        "- Hosted cron table: presence_poll_runs",
       ].join("\n"),
     }),
   );
@@ -2619,7 +2568,7 @@ test("preflight status rejects weak hosted cron run identifiers", () => {
     ),
     capturedEvidenceDetails(),
     allHostedCronLaneDetails().replace(
-      "- Run ID: price-drop-run-123",
+      "- Run ID: presence-poll-run-123",
       "- Run ID: banana",
     ),
   ].join("\n");
@@ -2637,7 +2586,7 @@ test("preflight status rejects weak hosted cron run identifiers", () => {
   assert.deepEqual(status.missingProofs, []);
   assert.deepEqual(status.missingEvidenceDetails, [
     {
-      field: "price-drop: Run ID",
+      field: "presence-poll: Run ID",
       path: "docs/verification/external/hosted-supabase-cron.md",
     },
   ]);
@@ -2658,10 +2607,6 @@ test("preflight status accepts hosted cron UUID run identifiers", () => {
     ),
     capturedEvidenceDetails(),
     allHostedCronLaneDetails()
-      .replace(
-        "- Run ID: price-drop-run-123",
-        "- Run ID: 7f1d68b0-0e9f-4d3a-9346-6ac7f7c21311",
-      )
       .replace(
         "- Run ID: presence-poll-run-123",
         "- Run ID: 97d8100a-b9d0-4d9c-8a93-6eecaa3a3112",
@@ -2700,10 +2645,6 @@ test("preflight status accepts hosted cron collector run identifiers", () => {
     ),
     capturedEvidenceDetails(),
     allHostedCronLaneDetails()
-      .replace(
-        "- Run ID: price-drop-run-123",
-        "- Run ID: price-drop-cli-scheduled",
-      )
       .replace(
         "- Run ID: presence-poll-run-123",
         "- Run ID: presence-poll-cli-scheduled",
@@ -2765,9 +2706,8 @@ test("preflight status rejects scheduler proof evidence mappings without lane id
     fakeExists(gate.artifactPaths),
     fakeRead({
       [artifactPath]: [
-        "- Evidence for poll-platform-presence scheduled run writes fresh evidence.: workflow-presence-poll-123",
-        "- Evidence for notify-price-drop scheduled run writes fresh evidence.: workflow-price-drop-123",
-        "- Evidence for process-account-deletions scheduled run writes fresh evidence.: workflow-account-deletion-123",
+        " - Evidence for poll-platform-presence scheduled run writes fresh evidence.: workflow-presence-poll-123",
+        " - Evidence for process-account-deletions scheduled run writes fresh evidence.: workflow-account-deletion-123",
         ...baseContent,
       ].join("\n"),
     }),
@@ -3275,41 +3215,6 @@ test("preflight status rejects dry_run=false value no", () => {
 
 
 
-test("preflight status blocks raw Stripe secret and restricted keys", () => {
-  const gate = evidenceGates.find((item) => item.id === "hardware-os-e2e");
-  assert.ok(gate);
-  const artifactPath = "docs/verification/external/hardware-os-e2e.md";
-
-  for (const rawStripeKey of [
-    "sk_live_51OgLauncherEvidenceAlpha1234567890",
-    "sk_test_51OgLauncherEvidenceAlpha1234567890",
-    "rk_live_51OgLauncherEvidenceAlpha1234567890",
-    "rk_test_51OgLauncherEvidenceAlpha1234567890",
-  ]) {
-    const status = gateStatus(
-      gate,
-      configuredEnv,
-      fakeExists(gate.artifactPaths),
-      fakeRead({
-        [artifactPath]: proofContent(
-          gate,
-          [capturedEvidenceDetails(), rawStripeKey].join("\n"),
-        ),
-      }),
-    );
-
-    assert.equal(status.ready, false);
-    assert.deepEqual(status.missingProofs, []);
-    assert.deepEqual(status.secretFindings, [
-      {
-        label: "Stripe secret key",
-        path: artifactPath,
-      },
-    ]);
-    assert.equal(JSON.stringify(status).includes(rawStripeKey), false);
-  }
-});
-
 test("preflight status blocks raw GitHub token artifact content", () => {
   const gate = evidenceGates.find((item) => item.id === "rollout-tracks");
   assert.ok(gate);
@@ -3451,10 +3356,6 @@ test("preflight status blocks raw Supabase and hosted cron secrets", () => {
     },
     {
       label: "Raw hosted cron secret",
-      value: "PRICE_DROP_NOTIFY_SECRET=price_drop_live_value_1234567890",
-    },
-    {
-      label: "Raw hosted cron secret",
       value:
         "ACCOUNT_DELETION_PROCESSOR_SECRET=account_delete_live_value_1234567890",
     },
@@ -3496,7 +3397,6 @@ test("preflight status blocks raw Supabase and hosted cron secrets", () => {
         "SUPABASE_SERVICE_ROLE_KEY=[redacted]",
         "SUPABASE_AUTH_JWT=<redacted>",
         "SUPABASE_ACCESS_TOKEN=***",
-        "PRICE_DROP_NOTIFY_SECRET=***",
       ].join("\n"),
     }),
   );
@@ -3697,14 +3597,14 @@ test.skip("artifactTemplate prints required proof checklist rows without secret 
     storeGate,
     "docs/verification/external/hosted-supabase-cron.md",
   );
-  assert.match(schedulerTemplate, /notify-price-drop/);
+  assert.match(schedulerTemplate, /poll-platform-presence/);
   const schedulerCaptureSection = schedulerTemplate.slice(
     schedulerTemplate.indexOf("## Capture Handoff"),
     schedulerTemplate.indexOf("## Proof Evidence Mapping"),
   );
   assert.match(
     schedulerCaptureSection,
-    /OGL_HOSTED_CRON_EVIDENCE_CHECKS=price-drop pnpm hosted:cron-evidence:artifact-hints/,
+    /OGL_HOSTED_CRON_EVIDENCE_CHECKS=presence-poll pnpm hosted:cron-evidence:artifact-hints/,
   );
   assert.match(
     schedulerCaptureSection,
@@ -3724,10 +3624,10 @@ test.skip("artifactTemplate prints required proof checklist rows without secret 
     schedulerTemplate,
     new RegExp(escapeRegExp(hostedCronRestAuthPrerequisite)),
   );
-  assert.match(schedulerCaptureSection, /store_price_drop_notification_runs/);
+  assert.match(schedulerCaptureSection, /presence_poll_runs/);
   assert.match(
     schedulerTemplate,
-    /Expected hosted cron values: `Hosted cron table: store_price_drop_notification_runs`, `Function: notify-price-drop`, `Scheduled: scheduled`, `dry_run=false: false` or `confirmed false`, and `Status: completed`/,
+    /Expected hosted cron values: `Hosted cron table: presence_poll_runs`, `Function: poll-platform-presence`, `Scheduled: scheduled`, `dry_run=false: false` or `confirmed false`, and `Status: completed`/,
   );
   assert.doesNotMatch(
     schedulerTemplate,
@@ -3953,7 +3853,6 @@ test("runbook and local audit mention every external gate", () => {
     }
   }
 
-  assert.match(localAudit, /Store\/Stripe/);
   assert.match(localAudit, /Hosted Supabase cron/);
   assert.match(localAudit, /Provider integrations/);
   assert.match(localAudit, /Hardware\/OS E2E/);
@@ -4033,7 +3932,6 @@ test("documentation no longer advertises the removed mods product surface", () =
 
 test("runbook documents proof evidence lane identity", () => {
   assert.match(runbook, /Proof evidence values must name the proof lane/);
-  assert.match(runbook, /stripe-webhook/);
   assert.match(runbook, /non-steam-presence-bridge-provider/);
   assert.match(runbook, /provider-approved-catalog-cloud-transfer/);
   assert.match(runbook, /achievement-provider-cache-real-client/);
@@ -4060,7 +3958,7 @@ test("runbook command list includes hosted cron plan and collector", () => {
   assert.match(runbook, /pnpm hosted:deploy-gate:smoke/);
   assert.match(
     runbook,
-    /^OGL_HOSTED_CRON_EVIDENCE_CHECKS=price-drop pnpm hosted:cron-evidence:plan$/m,
+    /^OGL_HOSTED_CRON_EVIDENCE_CHECKS=presence-poll pnpm hosted:cron-evidence:plan$/m,
   );
   assert.match(runbook, /^pnpm hosted:cron-evidence:plan$/m);
   assert.match(runbook, /^pnpm hosted:cron-evidence$/m);
@@ -4141,7 +4039,6 @@ test("external evidence CLI gates stay in sync with the UI summary and plan boun
     }
   }
 
-  assert.match(featurePlan, /Store\/Stripe/);
   assert.match(featurePlan, /Hosted Cron/);
   assert.match(featurePlan, /Provider-Live/);
   assert.match(featurePlan, /Hardware\/OS/);

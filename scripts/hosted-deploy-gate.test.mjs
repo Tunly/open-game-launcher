@@ -201,7 +201,7 @@ function spawnDirectDeployDryRunWithRuntimeSecretNames(secretNames) {
       encoding: "utf8",
       env: {
         ...process.env,
-        OGL_HOSTED_DEPLOY_FUNCTIONS: "notify-price-drop",
+        OGL_HOSTED_DEPLOY_FUNCTIONS: "process-account-deletions",
         PATH: `${fakeBin}${delimiter}${process.env.PATH ?? ""}`,
         SUPABASE_ACCESS_TOKEN: plausibleSupabaseAccessToken,
         SUPABASE_PROJECT_REF: "awebfvfyqzwapcgixdfj",
@@ -423,7 +423,6 @@ test("hosted deploy gate packet summarizes handoff without secret values", () =>
   const output = hostedDeployGatePacket({
     ACCOUNT_DELETION_PROCESSOR_SECRET: plausibleAccountDeletionSecret,
     PRESENCE_POLL_SECRET: plausiblePresencePollSecret,
-    PRICE_DROP_NOTIFY_SECRET: plausiblePriceDropSecret,
     SUPABASE_ACCESS_TOKEN: plausibleSupabaseAccessToken,
     SUPABASE_PROJECT_REF: "awebfvfyqzwapcgixdfj",
     SUPABASE_URL: "https://awebfvfyqzwapcgixdfj.supabase.co",
@@ -460,7 +459,6 @@ test("hosted deploy gate packet summarizes handoff without secret values", () =>
   for (const secret of [
     plausibleAccountDeletionSecret,
     plausiblePresencePollSecret,
-    plausiblePriceDropSecret,
     plausibleSupabaseAccessToken,
     "https://awebfvfyqzwapcgixdfj.supabase.co",
   ]) {
@@ -481,7 +479,6 @@ test("hosted deploy gate packet lists missing env names without failing", () => 
   assert.match(output, /Preflight env: missing/);
   assert.match(output, /Scheduler base URL state: missing/);
   assert.match(output, /SUPABASE_ACCESS_TOKEN/);
-  assert.match(output, /PRICE_DROP_NOTIFY_SECRET/);
   assert.match(
     output,
     /SUPABASE_FUNCTIONS_URL or SUPABASE_URL or SUPABASE_PROJECT_REF/,
@@ -502,7 +499,6 @@ test("hosted deploy gate packet mirrors scoped smoke plan", () => {
   );
   assert.match(output, /rawg-assets \(verify_jwt=true\)/);
   assert.match(output, /rawg-assets: OPTIONS module\/env sanity/);
-  assert.doesNotMatch(output, /notify-price-drop: POST dry-run/);
   assert.doesNotMatch(output, /poll-platform-presence: POST dry-run/);
   assert.doesNotMatch(output, /process-account-deletions: POST dry-run/);
   assert.doesNotMatch(output, /stripe-webhook/);
@@ -595,7 +591,6 @@ test("preflight rejects mismatched hosted deploy project refs without echoing th
   const env = {
     ACCOUNT_DELETION_PROCESSOR_SECRET: plausibleAccountDeletionSecret,
     PRESENCE_POLL_SECRET: plausiblePresencePollSecret,
-    PRICE_DROP_NOTIFY_SECRET: plausiblePriceDropSecret,
     SUPABASE_ACCESS_TOKEN: plausibleSupabaseAccessToken,
     SUPABASE_FUNCTIONS_URL:
       "https://bbbbbbbbbbbbbbbbbbbb.supabase.co/functions/v1",
@@ -753,7 +748,6 @@ test("scheduler packet mirrors schedulerPlan and runbook content", () => {
 test("scheduler-packet command emits redacted config without secret values", () => {
   const secretValues = [
     plausiblePresencePollSecret,
-    plausiblePriceDropSecret,
     plausibleAccountDeletionSecret,
   ];
   const result = spawnSync(
@@ -763,9 +757,8 @@ test("scheduler-packet command emits redacted config without secret values", () 
       encoding: "utf8",
       env: {
         ...process.env,
-        ACCOUNT_DELETION_PROCESSOR_SECRET: secretValues[2],
+        ACCOUNT_DELETION_PROCESSOR_SECRET: secretValues[1],
         PRESENCE_POLL_SECRET: secretValues[0],
-        PRICE_DROP_NOTIFY_SECRET: secretValues[1],
       },
     },
   );
@@ -867,11 +860,11 @@ test("runtime secret preflight parses Supabase CLI names without values", () => 
       JSON.stringify({
         secrets: [
           { digest: "hidden", name: "SUPABASE_URL" },
-          { name: "PRICE_DROP_NOTIFY_SECRET" },
+          { name: "PRESENCE_POLL_SECRET" },
         ],
       }),
     ),
-    ["PRICE_DROP_NOTIFY_SECRET", "SUPABASE_URL"],
+    ["PRESENCE_POLL_SECRET", "SUPABASE_URL"],
   );
   assert.deepEqual(
     parseSupabaseRuntimeSecretNames(`
@@ -1014,7 +1007,6 @@ test("preflight requires deploy and dry-run smoke secrets", () => {
     [
       "SUPABASE_ACCESS_TOKEN",
       "ACCOUNT_DELETION_PROCESSOR_SECRET",
-      "PRICE_DROP_NOTIFY_SECRET",
       "PRESENCE_POLL_SECRET",
     ],
   );
@@ -1023,22 +1015,20 @@ test("preflight requires deploy and dry-run smoke secrets", () => {
 test("deploy function override scopes smoke plans consistently", () => {
   assert.deepEqual(
     getSmokePlan({
-      OGL_HOSTED_DEPLOY_FUNCTIONS: "notify-price-drop,rawg-assets",
+      OGL_HOSTED_DEPLOY_FUNCTIONS: "process-account-deletions,rawg-assets",
     }),
     {
       cronDryRunSmokes: [
         {
-          body: {
-            alertIds: ["00000000-0000-4000-8000-000000000000"],
-            dryRun: true,
-            limit: 1,
-            triggerSource: "hosted_deploy_gate",
-          },
-          name: "notify-price-drop",
-          secretEnv: "PRICE_DROP_NOTIFY_SECRET",
+          body: { dry_run: true, limit: 1, triggerSource: "hosted_deploy_gate" },
+          name: "process-account-deletions",
+          secretEnv: "ACCOUNT_DELETION_PROCESSOR_SECRET",
         },
       ],
-      optionsSmokes: [{ name: "notify-price-drop" }, { name: "rawg-assets" }],
+      optionsSmokes: [
+        { name: "process-account-deletions" },
+        { name: "rawg-assets" },
+      ],
     },
   );
   assert.deepEqual(getSmokePlan({ OGL_HOSTED_DEPLOY_FUNCTIONS: "rawg-assets" }), {
@@ -1057,10 +1047,10 @@ test("smoke env requirements follow scoped cron smoke selection", () => {
   );
   assert.deepEqual(
     missingRequiredEnv("smoke", {
-      OGL_HOSTED_DEPLOY_FUNCTIONS: "notify-price-drop,rawg-assets",
+      OGL_HOSTED_DEPLOY_FUNCTIONS: "process-account-deletions,rawg-assets",
       SUPABASE_PROJECT_REF: "awebfvfyqzwapcgixdfj",
     }),
-    ["PRICE_DROP_NOTIFY_SECRET"],
+    ["ACCOUNT_DELETION_PROCESSOR_SECRET"],
   );
 });
 
@@ -1078,7 +1068,6 @@ test("plan command mirrors scoped smoke plan", () => {
   assert.equal(result.stderr, "");
   assert.match(result.stdout, /rawg-assets \(verify_jwt=true\)/);
   assert.match(result.stdout, /rawg-assets: OPTIONS module\/env sanity/);
-  assert.doesNotMatch(result.stdout, /notify-price-drop: POST dry-run/);
   assert.doesNotMatch(result.stdout, /process-account-deletions: POST dry-run/);
   assert.doesNotMatch(result.stdout, /stripe-webhook/);
 });
@@ -1097,7 +1086,6 @@ test("preflight and smoke reject placeholder env values without printing them", 
   const placeholderEnv = {
     ACCOUNT_DELETION_PROCESSOR_SECRET: "set",
     PRESENCE_POLL_SECRET: "replace-with-random-cron-secret",
-    PRICE_DROP_NOTIFY_SECRET: "secret-value",
     SUPABASE_ACCESS_TOKEN: "placeholder",
     SUPABASE_PROJECT_REF: "YOUR-PROJECT-REF",
     SUPABASE_URL: "https://awebfvfyqzwapcgixdfj.supabase.co",
@@ -1107,7 +1095,6 @@ test("preflight and smoke reject placeholder env values without printing them", 
     "SUPABASE_ACCESS_TOKEN",
     "SUPABASE_PROJECT_REF",
     "ACCOUNT_DELETION_PROCESSOR_SECRET",
-    "PRICE_DROP_NOTIFY_SECRET",
     "PRESENCE_POLL_SECRET",
   ]);
 
@@ -1142,7 +1129,6 @@ test("preflight rejects weak auth env values without printing them", () => {
   const env = {
     ACCOUNT_DELETION_PROCESSOR_SECRET: "short-account-secret",
     PRESENCE_POLL_SECRET: plausiblePresencePollSecret,
-    PRICE_DROP_NOTIFY_SECRET: "configured-price-drop-secret",
     SUPABASE_ACCESS_TOKEN: "configured-access-token",
     SUPABASE_PROJECT_REF: "awebfvfyqzwapcgixdfj",
     SUPABASE_URL: "https://awebfvfyqzwapcgixdfj.supabase.co",
@@ -1151,7 +1137,6 @@ test("preflight rejects weak auth env values without printing them", () => {
   assert.deepEqual(missingRequiredEnv("preflight", env), [
     "SUPABASE_ACCESS_TOKEN",
     "ACCOUNT_DELETION_PROCESSOR_SECRET",
-    "PRICE_DROP_NOTIFY_SECRET",
   ]);
 });
 
@@ -1323,7 +1308,7 @@ test("dry-run smoke rejects missing smoke secret before fetch", async () => {
 test("deploy command disables JWT verification for cron functions", () => {
   assert.deepEqual(
     buildDeployCommand(
-      { name: "notify-price-drop", verifyJwt: false },
+      { name: "poll-platform-presence", verifyJwt: false },
       { SUPABASE_PROJECT_REF: "awebfvfyqzwapcgixdfj" },
     ),
     {
@@ -1334,7 +1319,7 @@ test("deploy command disables JWT verification for cron functions", () => {
         "supabase",
         "functions",
         "deploy",
-        "notify-price-drop",
+        "poll-platform-presence",
         "--project-ref",
         "awebfvfyqzwapcgixdfj",
         "--no-verify-jwt",
@@ -1348,7 +1333,7 @@ test("deploy command rejects short fake project refs without echoing them", () =
   assert.throws(
     () =>
       buildDeployCommand(
-        { name: "notify-price-drop", verifyJwt: false },
+        { name: "poll-platform-presence", verifyJwt: false },
         { SUPABASE_PROJECT_REF: "abc123" },
       ),
     (error) => {
@@ -1369,14 +1354,14 @@ test("direct deploy dry-run runs verify_jwt config preflight before deploy comma
   assert.match(result.stdout, /Preflight OK for action: deploy/);
   assert.match(result.stdout, /Supabase function verify_jwt config OK/);
   assert.match(result.stdout, /Supabase runtime secret names OK/);
-  assert.match(result.stdout, /supabase functions deploy notify-price-drop/);
+  assert.match(result.stdout, /supabase functions deploy process-account-deletions/);
   assert.ok(
     result.stdout.indexOf("Supabase function verify_jwt config OK") <
-      result.stdout.indexOf("supabase functions deploy notify-price-drop"),
+      result.stdout.indexOf("supabase functions deploy process-account-deletions"),
   );
   assert.ok(
     result.stdout.indexOf("Supabase runtime secret names OK") <
-      result.stdout.indexOf("supabase functions deploy notify-price-drop"),
+      result.stdout.indexOf("supabase functions deploy process-account-deletions"),
   );
 });
 
@@ -1389,7 +1374,7 @@ test("direct deploy dry-run stops before deploy commands when runtime secrets ar
   assert.match(result.stderr, /Missing Supabase runtime secret names/);
   assert.match(result.stderr, /RAWG_API_KEY/);
   assert.equal(
-    result.stdout.includes("supabase functions deploy notify-price-drop"),
+    result.stdout.includes("supabase functions deploy poll-platform-presence"),
     false,
   );
 });
@@ -1402,7 +1387,7 @@ test("direct deploy dry-run rejects short fake project refs before commands", ()
       encoding: "utf8",
       env: {
         ...process.env,
-        OGL_HOSTED_DEPLOY_FUNCTIONS: "notify-price-drop",
+        OGL_HOSTED_DEPLOY_FUNCTIONS: "poll-platform-presence",
         SUPABASE_ACCESS_TOKEN: plausibleSupabaseAccessToken,
         SUPABASE_PROJECT_REF: "abc123",
       },
@@ -1414,7 +1399,7 @@ test("direct deploy dry-run rejects short fake project refs before commands", ()
   assert.match(result.stderr, /SUPABASE_PROJECT_REF/);
   assert.equal(result.stderr.includes("abc123"), false);
   assert.equal(
-    result.stdout.includes("supabase functions deploy notify-price-drop"),
+    result.stdout.includes("supabase functions deploy poll-platform-presence"),
     false,
   );
 });
@@ -1471,7 +1456,7 @@ test("Steam relay preflight is keyless while Steam presence keeps its API key", 
 
 test("Supabase function config parser reads explicit verify_jwt values", () => {
   const entries = parseSupabaseFunctionVerifyJwtConfig(`
-    [functions.notify-price-drop]
+    [functions.poll-platform-presence]
     verify_jwt = false
 
     [functions.store-download-build]
@@ -1481,7 +1466,7 @@ test("Supabase function config parser reads explicit verify_jwt values", () => {
   assert.deepEqual(
     [...entries.entries()].map(([name, entry]) => [name, entry.verifyJwt]),
     [
-      ["notify-price-drop", false],
+      ["poll-platform-presence", false],
       ["store-download-build", true],
     ],
   );
@@ -1490,18 +1475,18 @@ test("Supabase function config parser reads explicit verify_jwt values", () => {
 test("Supabase function config validator rejects missing and mismatched verify_jwt entries", () => {
   const result = validateSupabaseFunctionVerifyJwtConfig(
     `
-    [functions.notify-price-drop]
+    [functions.poll-platform-presence]
     verify_jwt = true
 
     [functions.store-download-build]
     `,
     [
-      { name: "notify-price-drop", verifyJwt: false },
+      { name: "poll-platform-presence", verifyJwt: false },
     ],
   );
 
   assert.deepEqual(result.errors, [
-    "Supabase config [functions.notify-price-drop] verify_jwt=true does not match deploy plan verify_jwt=false.",
+    "Supabase config [functions.poll-platform-presence] verify_jwt=true does not match deploy plan verify_jwt=false.",
   ]);
 });
 
@@ -1520,10 +1505,10 @@ test("hosted deploy preflight rejects verify_jwt config drift", () => {
     () =>
       runVerifyJwtConfigPreflight(
         `
-        [functions.notify-price-drop]
+        [functions.poll-platform-presence]
         verify_jwt = true
         `,
-        [{ name: "notify-price-drop", verifyJwt: false }],
+        [{ name: "poll-platform-presence", verifyJwt: false }],
       ),
     /Supabase function verify_jwt config preflight failed/,
   );
@@ -1549,7 +1534,7 @@ test("deploy function override rejects unknown function names", () => {
     () =>
       getDeployFunctions({
         OGL_HOSTED_DEPLOY_FUNCTIONS:
-          "notify-price-drop,eyJsecret_should_not_echo.value.token",
+          "poll-platform-presence,eyJsec...oken",
       }),
     (error) => {
       assert.match(error.message, /Unknown function/);
@@ -1606,27 +1591,6 @@ test("dry-run smoke validation rejects mutating responses", () => {
   );
 
   assert.deepEqual(
-    validateSmokePayload("notify-price-drop", {
-      alertsMarked: 1,
-      deliveryMode: "user_notifications",
-      dryRun: false,
-      evidenceRecorded: false,
-      notificationsRecorded: 1,
-      runId: "",
-      triggerSource: "manual",
-    }),
-    [
-      "dryRun must be true.",
-      "deliveryMode must be dry_run.",
-      "notificationsRecorded must be 0.",
-      "alertsMarked must be 0.",
-      "evidenceRecorded must be true.",
-      "runId must be present.",
-      "triggerSource must be hosted_deploy_gate.",
-    ],
-  );
-
-  assert.deepEqual(
     validateSmokePayload("poll-platform-presence", {
       activityInserted: 1,
       dryRun: false,
@@ -1653,14 +1617,13 @@ test("dry-run smoke validation rejects unsafe run IDs without echoing them", asy
     "whsec_should_not_echo_1234567890",
     "Bearer abcdefghijklmnop",
     "eyJsecretShouldNotEcho1234567890.payloadShouldNotEcho1234567890.signatureShouldNotEcho1234567890",
-    "PRICE_DROP_NOTIFY_SECRET",
+    "PRESENCE_POLL_SECRET",
   ]) {
-    const errors = validateSmokePayload("notify-price-drop", {
-      alertsMarked: 0,
-      deliveryMode: "dry_run",
+    const errors = validateSmokePayload("poll-platform-presence", {
+      activityInserted: 0,
       dryRun: true,
       evidenceRecorded: true,
-      notificationsRecorded: 0,
+      presenceUpdated: 0,
       runId: unsafeRunId,
       triggerSource: "hosted_deploy_gate",
     });
@@ -1670,13 +1633,12 @@ test("dry-run smoke validation rejects unsafe run IDs without echoing them", asy
   }
 
   assert.deepEqual(
-    validateSmokePayload("notify-price-drop", {
-      alertsMarked: 0,
-      deliveryMode: "dry_run",
+    validateSmokePayload("poll-platform-presence", {
+      activityInserted: 0,
       dryRun: true,
       evidenceRecorded: true,
-      notificationsRecorded: 0,
-      runId: "price-drop-run-1",
+      presenceUpdated: 0,
+      runId: "presence-poll-run-1",
       triggerSource: "hosted_deploy_gate",
     }),
     [],

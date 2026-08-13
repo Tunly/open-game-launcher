@@ -98,7 +98,7 @@ export function buildHostedCronEvidenceSummary({
     reviewCount,
     statusLabel: passCount === totalCount ? "Ready" : "External Evidence Required",
     summary:
-      "Local no-write summary for hosted scheduler evidence. Price-drop, account deletion, and presence cron lanes require fresh non-dry-run rows with trigger_source=scheduled, valid aggregate counts, failed_count=0, a safe Supabase REST target, redacted secret handling, and external dashboard/config proof before production readiness can be claimed.",
+      "Local no-write summary for hosted scheduler evidence. Account deletion and presence cron lanes require fresh non-dry-run rows with trigger_source=scheduled, valid aggregate counts, failed_count=0, a safe Supabase REST target, redacted secret handling, and external dashboard/config proof before production readiness can be claimed.",
     totalCount,
   };
 }
@@ -108,26 +108,6 @@ export function createVerifyHostedCronEvidenceSummary() {
     createdAt: "2026-06-16T00:00:00.000Z",
     packetId: "hosted-cron-evidence-summary-local-001",
     jobs: [
-      {
-        aggregateCountStatus: "valid",
-        containsSecretMaterial: false,
-        evidenceRecorded: true,
-        evidenceTable: "store_price_drop_notification_runs",
-        failedCount: 0,
-        functionName: "notify-price-drop",
-        id: "price-drop",
-        label: "Price-Drop Scheduler",
-        mode: "dry_run",
-        mutationProof: false,
-        observedAt: "2026-06-15T23:50:00.000Z",
-        restTargetSafe: true,
-        rowScope: "sanitized dry-run candidate aggregate",
-        runId: "price-drop-dry-run-local-001",
-        schedulerConfigProof: false,
-        secretRedacted: true,
-        triggerSource: "manual",
-        verifyRouteWrite: false,
-      },
       {
         aggregateCountStatus: "invalid",
         containsSecretMaterial: false,

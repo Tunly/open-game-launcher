@@ -8,7 +8,6 @@ const fakeSecretEnv = Object.freeze({
     "account_deletion_0123456789abcdef0123456789",
   OGL_EXTERNAL_EVIDENCE_GATES: "hardware-os-e2e",
   PRESENCE_POLL_SECRET: "presence_poll_0123456789abcdef0123456789",
-  PRICE_DROP_NOTIFY_SECRET: "price_drop_0123456789abcdef0123456789",
   STEAM_WEB_API_KEY: "steam_0123456789abcdef",
   SUPABASE_ACCESS_TOKEN: "sbp_0123456789abcdef0123456789abcdef",
   SUPABASE_ANON_KEY: "anon_0123456789abcdef",
@@ -64,7 +63,7 @@ test("release evidence bundle does not print raw environment values", () => {
       `Bundle leaked raw env value ${value}`,
     );
   }
-  assert.match(output, /Authorization: Bearer \$PRICE_DROP_NOTIFY_SECRET/);
+  assert.match(output, /Authorization: Bearer \$PRESENCE_POLL_SECRET/);
   assert.match(output, /Selected gates: 1/);
   assert.match(output, /Hardware and OS E2E \(hardware-os-e2e\)/);
 });

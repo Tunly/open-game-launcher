@@ -1,5 +1,15 @@
 type GameStatus = "installed" | "not_installed" | "update_available";
-export type Platform = "windows" | "linux" | "macos";
+export type Platform =
+  | "windows"
+  | "linux"
+  | "macos"
+  | "Steam"
+  | "GOG"
+  | "Epic Games"
+  | "Xbox"
+  | "EA"
+  | "Ubisoft"
+  | "Battle.net";
 export type CatalogSource = "pc_game_pass";
 type LauncherType =
   "steam" | "epic" | "ubisoft" | "ea" | "battlenet" | "gog" | "xbox" | "ogl" | "manual" | "unknown";

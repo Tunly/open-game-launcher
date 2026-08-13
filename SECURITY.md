@@ -29,13 +29,14 @@ production-ready.
 The checkout contains the following local hardening. Hosted, provider, and
 hardware proof still follows the external completion gates:
 
-- **RLS**: Implemented access policies on `store_orders`, `store_order_items`, `store_builds`, and `store_licenses`, and blocked self-publishing in `store_products`.
+- **RLS**: The active catalog is read-only for clients through `store_catalog`.
+  Historical commerce tables remain in migration history and are not an active
+  OG Store flow.
 - **Rust backend**: Eliminated shell, PowerShell, and path-traversal injection vectors, replaced plaintext-token JSON fallback with the OS keychain, and swapped `Mutex::lock().unwrap()` for poisoned-lock-aware variants to prevent lock poisoning.
 - **Platform auth**: GOG and EA bearer tokens stay in the native secure store; frontend flows remove legacy browser token copies, and Epic keeps only a non-sensitive connected-session marker while Legendary owns credentials.
 - **Install manifests**: Signed OG install manifests verify with a public key; `OGL_INSTALL_MANIFEST_SIGNING_KEY` is a release/staging secret and must never be committed or bundled into public client builds.
 - **Atomic social/data mutations**: Direct-message and group-room creation,
-  trusted playtime aggregation, price-drop delivery, social-link replacement,
-  achievement ingestion cursors, invite-status changes, and submitted artwork
+  trusted playtime aggregation, social-link replacement, achievement ingestion cursors, invite-status changes, and submitted artwork
   identity are constrained through narrow RPCs, RLS, and migration-level guards.
 - **Activity interactions**: Feed visibility is checked server-side for reads
   and writes; reactions/comments use owner-bound RPCs and RLS, with deletion

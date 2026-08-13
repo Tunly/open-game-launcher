@@ -35,7 +35,6 @@ function validEnvValue(name: string) {
     ACCOUNT_DELETION_PROCESSOR_SECRET: "acctDel9f8e7d6c5b4a392817263abcd",
     PRESENCE_POLL_SECRET: "presencePoll9f8e7d6c5b4a392817abcd",
     PRESENCE_PROVIDER_TOKEN: "presenceProvider9f8e7d6c5b4a392817",
-    PRICE_DROP_NOTIFY_SECRET: "priceDrop9f8e7d6c5b4a392817263abcd",
     STEAM_WEB_API_KEY: "0123456789abcdef0123456789abcdef",
     SUPABASE_URL: "https://awebfvfyqzwapcgixdfj.supabase.co",
   };
@@ -53,7 +52,7 @@ function validStoreArtifactEvidence(gate: ExternalCompletionEvidenceGateInput) {
       },
       path: schedulerArtifact.path,
       proofEvidence: {
-        [schedulerArtifact.requiredProofs[0]]: "workflow-price-drop-live-123",
+        [schedulerArtifact.requiredProofs[0]]: "workflow-presence-poll-live-123",
       },
       readable: true,
     },
@@ -61,16 +60,16 @@ function validStoreArtifactEvidence(gate: ExternalCompletionEvidenceGateInput) {
       checkedProofs: schedulerArtifact.requiredProofs,
       evidenceDetails: {
         ...evidenceDetails,
-        Function: "notify-price-drop",
-        "Hosted cron table": "store_price_drop_notification_runs",
-        "Run ID": "run-price-drop-live-123",
+        Function: "poll-platform-presence",
+        "Hosted cron table": "presence_poll_runs",
+        "Run ID": "run-presence-poll-live-123",
         Scheduled: "scheduled",
         Status: "completed",
         "dry_run=false": "false",
       },
       path: schedulerArtifact.path,
       proofEvidence: {
-        [schedulerArtifact.requiredProofs[0]]: "workflow-price-drop-live-123",
+        [schedulerArtifact.requiredProofs[0]]: "workflow-presence-poll-live-123",
       },
       readable: true,
     },
@@ -152,8 +151,7 @@ describe("ExternalCompletionEvidenceSummaryPanel", () => {
     ).toBeVisible();
     expect(within(panel).getAllByText("Artifact Proof Map").length).toBeGreaterThan(0);
     expect(
-      within(panel).getAllByText("docs/verification/external/store-price-drop-scheduler-live.md")
-        .length,
+      within(panel).getAllByText("docs/verification/external/hosted-supabase-cron.md").length,
     ).toBeGreaterThan(0);
     expect(within(panel).getAllByText("Next Operator Action")).toHaveLength(4);
     expect(
@@ -167,7 +165,8 @@ describe("ExternalCompletionEvidenceSummaryPanel", () => {
       ).length,
     ).toBeGreaterThan(0);
     expect(
-      within(panel).getAllByText("Hosted price-drop scheduler writes fresh run evidence.").length,
+      within(panel).getAllByText("Hosted Supabase cron scheduler lanes write fresh run evidence.")
+        .length,
     ).toBeGreaterThan(0);
     expect(within(panel).getAllByText("Missing checked row").length).toBeGreaterThan(0);
     expect(within(panel).getAllByText(/Secret Scan: Clean; no raw secrets rendered/i).length).toBe(

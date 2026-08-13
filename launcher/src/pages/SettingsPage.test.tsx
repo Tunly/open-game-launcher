@@ -1441,7 +1441,6 @@ describe("SettingsPage hosted cron evidence summary", () => {
     });
 
     expect(within(panel).getByText("Hosted Cron Evidence")).toBeInTheDocument();
-    expect(within(panel).getByText("Price-Drop Scheduler")).toBeInTheDocument();
     expect(within(panel).getByText("Account Deletion Processor")).toBeInTheDocument();
     expect(within(panel).getByText("Presence Polling")).toBeInTheDocument();
     expect(panel).toHaveTextContent("trigger_source=scheduled");

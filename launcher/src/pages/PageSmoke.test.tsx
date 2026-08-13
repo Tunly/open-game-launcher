@@ -85,19 +85,15 @@ const storeMocks = vi.hoisted(() => ({
   addToStoreWishlist: vi.fn(),
   createStoreCheckout: vi.fn(),
   getMyStoreReview: vi.fn(),
-  getLatestStorePriceDropNotificationRunEvidence: vi.fn(),
-  isTrustedStorePriceDropNotificationRunEvidence: vi.fn(),
-  listMyStorePriceAlerts: vi.fn(),
   listMyStoreReviewReports: vi.fn(),
   listMyStoreWishlist: vi.fn(),
   listPublishedProducts: vi.fn(),
+  listPublishedProductsPage: vi.fn(),
   listStoreProductReviews: vi.fn(),
   listStoreReviewReplies: vi.fn(),
   removeFromStoreWishlist: vi.fn(),
-  removeStorePriceAlert: vi.fn(),
   reportStoreReview: vi.fn(),
   submitDeveloperApplication: vi.fn(),
-  upsertStorePriceAlert: vi.fn(),
   upsertStoreReview: vi.fn(),
   upsertStoreReviewReply: vi.fn(),
 }));
@@ -516,19 +512,15 @@ describe("routed page smoke coverage", () => {
     storeApiMocks.listApiStoreProducts.mockResolvedValue([]);
     storeMocks.createStoreCheckout.mockResolvedValue({ id: null, status: "fulfilled", url: null });
     storeMocks.getMyStoreReview.mockResolvedValue(null);
-    storeMocks.getLatestStorePriceDropNotificationRunEvidence.mockResolvedValue(null);
-    storeMocks.isTrustedStorePriceDropNotificationRunEvidence.mockReturnValue(false);
-    storeMocks.listMyStorePriceAlerts.mockResolvedValue([]);
     storeMocks.listMyStoreReviewReports.mockResolvedValue([]);
     storeMocks.listMyStoreWishlist.mockResolvedValue([]);
     storeMocks.listPublishedProducts.mockResolvedValue([]);
+    storeMocks.listPublishedProductsPage.mockResolvedValue([]);
     storeMocks.listStoreProductReviews.mockResolvedValue([]);
     storeMocks.listStoreReviewReplies.mockResolvedValue([]);
     storeMocks.removeFromStoreWishlist.mockResolvedValue(undefined);
-    storeMocks.removeStorePriceAlert.mockResolvedValue(undefined);
     storeMocks.reportStoreReview.mockResolvedValue(undefined);
     storeMocks.submitDeveloperApplication.mockResolvedValue(null);
-    storeMocks.upsertStorePriceAlert.mockResolvedValue(undefined);
     storeMocks.upsertStoreReview.mockResolvedValue(null);
     storeMocks.upsertStoreReviewReply.mockResolvedValue(null);
     performanceMocks.listPerformanceSessions.mockResolvedValue([]);
@@ -600,15 +592,9 @@ describe("routed page smoke coverage", () => {
     });
 
     await waitFor(() => {
-      expect(storeMocks.listPublishedProducts).toHaveBeenCalled();
+      expect(storeMocks.listPublishedProductsPage).toHaveBeenCalled();
     });
-    expect(
-      await screen.findByRole("heading", { name: /games für alle plattformen/i }),
-    ).toBeInTheDocument();
-    expect(screen.getByText(/lokaler katalog/i)).toBeInTheDocument();
-    expect(
-      screen.getAllByText(/Void Harvest|Petal & Ash|Dungeon Post|Crimson Circuit/i).length,
-    ).toBeGreaterThan(0);
+    expect((await screen.findAllByText(/^STORE$/i)).length).toBeGreaterThan(0);
     expect(
       screen.getAllByText(/Void Harvest|Petal & Ash|Dungeon Post|Crimson Circuit/i).length,
     ).toBeGreaterThan(0);
@@ -675,11 +661,11 @@ describe("routed page smoke coverage", () => {
     fireEvent.click(submitButton);
 
     await waitFor(() =>
-      expect(storeMocks.submitDeveloperApplication).toHaveBeenCalledWith(
-        "Redline Studio",
-        "https://redline.example",
-        "Arcade launch plan",
-      ),
+      expect(storeMocks.submitDeveloperApplication).toHaveBeenCalledWith({
+        studioName: "Redline Studio",
+        website: "https://redline.example",
+        description: "Arcade launch plan",
+      }),
     );
     expect(await screen.findByText("Application queued")).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: /review pending/i })).toBeInTheDocument();
@@ -698,11 +684,11 @@ describe("routed page smoke coverage", () => {
     fireEvent.click(screen.getByRole("button", { name: /submit application/i }));
 
     await waitFor(() =>
-      expect(storeMocks.submitDeveloperApplication).toHaveBeenCalledWith(
-        "Redline Studio",
-        null,
-        null,
-      ),
+      expect(storeMocks.submitDeveloperApplication).toHaveBeenCalledWith({
+        studioName: "Redline Studio",
+        website: null,
+        description: null,
+      }),
     );
     expect(await screen.findByText("Supabase is not configured.")).toBeInTheDocument();
     expect(screen.getByLabelText("Studio Name")).toHaveValue("  Redline Studio  ");

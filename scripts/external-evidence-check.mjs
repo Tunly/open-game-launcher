@@ -26,16 +26,6 @@ const hostedCronRestCollectorPrerequisites = Object.freeze([
 
 const hostedCronArtifactEvidenceGroups = Object.freeze([
   {
-    heading: "price-drop",
-    requiredFields: hostedCronEvidenceFields,
-    expectedValues: {
-      Function: /^notify-price-drop$/i,
-      "Hosted cron table": /^store_price_drop_notification_runs$/i,
-      Scheduled: /^scheduled$/i,
-      Status: /^completed$/i,
-    },
-  },
-  {
     heading: "presence-poll",
     requiredFields: hostedCronEvidenceFields,
     expectedValues: {
@@ -81,7 +71,6 @@ export const evidenceGates = Object.freeze([
     title: "Hosted Supabase cron",
     requiredEnv: [
       "SUPABASE_URL",
-      "PRICE_DROP_NOTIFY_SECRET",
       "ACCOUNT_DELETION_PROCESSOR_SECRET",
       "PRESENCE_POLL_SECRET",
     ],
@@ -94,7 +83,6 @@ export const evidenceGates = Object.freeze([
     ],
     requiredProofs: [
       "poll-platform-presence scheduled run writes fresh evidence.",
-      "notify-price-drop scheduled run writes fresh evidence.",
       "process-account-deletions scheduled run writes fresh evidence.",
     ],
     captureHandoffs: {
@@ -102,11 +90,6 @@ export const evidenceGates = Object.freeze([
         capture:
           "Run the presence scheduled lane, use `pnpm hosted:cron-evidence:artifact-hints --checks=presence-poll` for interim validation, then remember that the final hosted-supabase-cron proof needs unscoped grouped `pnpm hosted:cron-evidence:artifact-hints` output after all three scheduler lanes are fresh; paste the reviewed latest non-dry-run `presence_poll_runs` row for `poll-platform-presence`.",
         terms: ["presence-poll", "presence_poll_runs"],
-      },
-      "notify-price-drop scheduled run writes fresh evidence.": {
-        capture:
-          "Run the price-drop scheduled lane, use `pnpm hosted:cron-evidence:artifact-hints --checks=price-drop` for interim validation, then remember that the final hosted-supabase-cron proof needs unscoped grouped `pnpm hosted:cron-evidence:artifact-hints` output after all three scheduler lanes are fresh; paste the reviewed latest non-dry-run `store_price_drop_notification_runs` row for `notify-price-drop`.",
-        terms: ["price-drop", "store_price_drop_notification_runs"],
       },
       "process-account-deletions scheduled run writes fresh evidence.": {
         capture:
@@ -321,7 +304,7 @@ const forbiddenArtifactPatterns = Object.freeze([
   {
     label: "Raw hosted cron secret",
     pattern:
-      /\b(?:PRICE_DROP_NOTIFY_SECRET|ACCOUNT_DELETION_PROCESSOR_SECRET|PRESENCE_POLL_SECRET)\s*[:=]\s*(?!(?:\[?redacted\]?|<redacted>|\*{3,})(?:\s|$))[^\s`"'<>]{8,}/i,
+      /\b(?:ACCOUNT_DELETION_PROCESSOR_SECRET|PRESENCE_POLL_SECRET)\s*[:=]\s*(?!(?:\[?redacted\]?|<redacted>|\*{3,})(?:\s|$))[^\s`"'<>]{8,}/i,
   },
   {
     label: "JWT-like token",
@@ -742,12 +725,21 @@ function hostedCronArtifactUsesReceipt(gate, artifactPath) {
   return artifactUsesHostedCronEvidence(gate, artifactPath);
 }
 
-function hostedCronLaneForFlatArtifact(gate, artifactPath) {
-  const expectedValues = expectedEvidenceValuesForArtifact(gate, artifactPath);
-  if (expectedValues?.Function?.test("notify-price-drop")) {
-    return "price-drop";
+function hostedCronLaneForFunction(expectedFunction) {
+  if (!expectedFunction || typeof expectedFunction.test !== "function") return "";
+  const expectedSource = String(expectedFunction.source ?? expectedFunction);
+  for (const group of hostedCronArtifactEvidenceGroups) {
+    const groupFunction = group.expectedValues?.Function;
+    if (groupFunction && String(groupFunction.source ?? groupFunction) === expectedSource) {
+      return group.heading;
+    }
   }
   return "";
+}
+
+function hostedCronLaneForFlatArtifact(gate, artifactPath) {
+  const expectedValues = expectedEvidenceValuesForArtifact(gate, artifactPath);
+  return expectedValues?.Function ? hostedCronLaneForFunction(expectedValues.Function) : "";
 }
 
 function hostedCronReceiptArtifactFinding(path, field, reason) {
@@ -1247,7 +1239,7 @@ function hostedCronCollectorRunIdValueIsSpecific(value) {
   if (evidenceLocatorContainsBlockedLocalPath(cleaned)) return false;
   if (evidenceLocatorContainsRejectedUrl(cleaned)) return false;
   if (
-    /sk_(?:live|test)_|whsec_|bearer\s+[a-z0-9._~+/=-]{12,}|eyJ[a-zA-Z0-9_-]{8,}\.[a-zA-Z0-9_-]{8,}\.[a-zA-Z0-9_-]{8,}|\b(?:SUPABASE_SERVICE_ROLE_KEY|SUPABASE_ANON_KEY|SUPABASE_AUTH_JWT|PRICE_DROP_NOTIFY_SECRET|ACCOUNT_DELETION_PROCESSOR_SECRET|PRESENCE_POLL_SECRET)\b/i.test(
+    /sk_(?:live|test)_|whsec_|bearer\s+[a-z0-9._~+/=-]{12,}|eyJ[a-zA-Z0-9_-]{8,}\.[a-zA-Z0-9_-]{8,}\.[a-zA-Z0-9_-]{8,}|\b(?:SUPABASE_SERVICE_ROLE_KEY|SUPABASE_ANON_KEY|SUPABASE_AUTH_JWT|ACCOUNT_DELETION_PROCESSOR_SECRET|PRESENCE_POLL_SECRET)\b/i.test(
       cleaned,
     )
   ) {
@@ -1458,7 +1450,6 @@ const envShapeValidators = Object.freeze({
     secretValueLooksPlausible(value, 32),
   PRESENCE_POLL_SECRET: (value) => secretValueLooksPlausible(value, 32),
   PRESENCE_PROVIDER_TOKEN: (value) => secretValueLooksPlausible(value, 24),
-  PRICE_DROP_NOTIFY_SECRET: (value) => secretValueLooksPlausible(value, 32),
   STEAM_WEB_API_KEY: (value) => /^[a-f0-9]{32}$/i.test(value),
   SUPABASE_FUNCTIONS_URL: (value) =>
     supabaseProjectUrlIsConfigured(value, /^\/functions\/v1\/?$/),
@@ -1709,11 +1700,6 @@ function expectedProofEvidenceValuePatterns(proof) {
   const normalizedProof = proof.toLowerCase();
   if (/license signing key custody/.test(normalizedProof)) {
     return [/license/i, /key/i, /custody/i, /live/i, /issuance/i];
-  }
-  if (/(?:price-drop|notify-price-drop)/.test(normalizedProof)) {
-    return [
-      /(?:price[-_\s]?drop|notify[-_\s]?price[-_\s]?drop|store_price_drop_notification_runs)/i,
-    ];
   }
   if (/poll-platform-presence/.test(normalizedProof)) {
     return [
@@ -2178,7 +2164,7 @@ export function artifactTemplate(gate, artifactPath) {
     "## Proof Evidence Mapping",
     "",
     "For every checked proof, add a specific redacted run/dashboard/workflow/artifact locator, signed log, or `sha256:<64-hex>` reference. Accepted dashboard URL hosts are Supabase, GitHub Actions/releases/deployments, Vercel, Netlify, Cloudflare, App Store Connect, and Google Play Console; otherwise use `run:`/`artifact:`/`sha256:`. Local/example URLs and generic text do not pass.",
-    "Proof evidence values must name the proof lane: `price-drop`, `presence-poll`, `account-deletion`, `non-steam-presence-bridge-provider`, `provider-approved-catalog-cloud-transfer`, `achievement-provider-cache-real-client`, `fullscreen-anti-cheat-overlay`, `backup-restore`, `client-mount-apply-provider-client`, `community-artwork-rollout`, `plugin-marketplace-execution-update`, or `hosted-deploy`. Compound values must include their required providers, OSes, duration/window, and matrix fields.",
+    "Proof evidence values must name the proof lane: `presence-poll`, `account-deletion`, `non-steam-presence-bridge-provider`, `provider-approved-catalog-cloud-transfer`, `achievement-provider-cache-real-client`, `fullscreen-anti-cheat-overlay`, `backup-restore`, `client-mount-apply-provider-client`, `community-artwork-rollout`, `plugin-marketplace-execution-update`, or `hosted-deploy`. Compound values must include their required providers, OSes, duration/window, and matrix fields.",
     "",
     ...requiredProofs.map((proof) => `- Evidence for ${proof}:`),
     "",
@@ -2219,7 +2205,7 @@ export function artifactTemplate(gate, artifactPath) {
       : []),
     ...(requiredArtifactEvidenceFields.includes("Hosted cron table")
       ? [
-          "Expected hosted cron values: `Hosted cron table: store_price_drop_notification_runs`, `Function: notify-price-drop`, `Scheduled: scheduled`, `dry_run=false: false` or `confirmed false`, and `Status: completed`.",
+          "Expected hosted cron values: `Hosted cron table: presence_poll_runs`, `Function: poll-platform-presence`, `Scheduled: scheduled`, `dry_run=false: false` or `confirmed false`, and `Status: completed`.",
         ]
       : []),
     "",
@@ -2240,7 +2226,7 @@ export function artifactTemplate(gate, artifactPath) {
     ...(requiredArtifactEvidenceGroups.length === 0
       ? []
       : [
-          "Expected hosted cron values: `Hosted cron table: store_price_drop_notification_runs`, `Function: notify-price-drop`, `Scheduled: scheduled`, `dry_run=false: false` or `confirmed false`, and `Status: completed` for price-drop; `Hosted cron table: presence_poll_runs`, `Function: poll-platform-presence`, `Scheduled: scheduled`, `dry_run=false: false` or `confirmed false`, and `Status: completed` for presence-poll; `Hosted cron table: account_deletion_processor_runs`, `Function: process-account-deletions`, `Scheduled: scheduled`, `dry_run=false: false` or `confirmed false`, and `Status: completed` for account-deletion.",
+          "Expected hosted cron values: `Hosted cron table: presence_poll_runs`, `Function: poll-platform-presence`, `Scheduled: scheduled`, `dry_run=false: false` or `confirmed false`, and `Status: completed` for presence-poll; `Hosted cron table: account_deletion_processor_runs`, `Function: process-account-deletions`, `Scheduled: scheduled`, `dry_run=false: false` or `confirmed false`, and `Status: completed` for account-deletion.",
         ]),
     "",
     ...requiredArtifactEvidenceGroups.flatMap((group) => [
@@ -2330,11 +2316,11 @@ function artifactUsesHostedCronEvidence(gate, artifactPath) {
 
 function hostedCronEvidenceCheckIdsForGate(gate) {
   if (!gateUsesHostedCronEvidence(gate)) return [];
-  return ["price-drop", "presence-poll", "account-deletion"];
+  return ["presence-poll", "account-deletion"];
 }
 
 function hostedCronEvidenceCommandPrefix(checkIds) {
-  const allCheckIds = ["price-drop", "presence-poll", "account-deletion"];
+  const allCheckIds = ["presence-poll", "account-deletion"];
   const includesAllChecks =
     checkIds.length === allCheckIds.length &&
     checkIds.every((id, index) => id === allCheckIds[index]);

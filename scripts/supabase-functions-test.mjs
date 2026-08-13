@@ -54,7 +54,7 @@ export function buildDenoArgs(testFiles) {
     "--lock=deno.lock",
     "--frozen=true",
     "--node-modules-dir=auto",
-    "--allow-env=SUPABASE_URL,SUPABASE_ANON_KEY,SUPABASE_SERVICE_ROLE_KEY",
+    "--allow-env=SUPABASE_URL,SUPABASE_ANON_KEY,SUPABASE_SERVICE_ROLE_KEY,OGL_LICENSE_SIGNING_KEY",
     "--allow-read=supabase",
     ...testFiles,
   ];

@@ -3,8 +3,6 @@
 This gate is manual by design. It deploys Supabase Edge Functions only from a
 GitHub Environment and then runs hosted smokes before any scheduler is enabled.
 Cron smokes must not mutate user-facing data; `poll-platform-presence` writes
-only a sanitized `presence_poll_runs` evidence record, `notify-price-drop`
-writes only a sanitized `store_price_drop_notification_runs` evidence record,
 and `process-account-deletions` writes only a sanitized
 `account_deletion_processor_runs` evidence record.
 
@@ -15,7 +13,6 @@ Create `hosted-staging` and `hosted-production` environments with:
 - `SUPABASE_ACCESS_TOKEN`
 - `SUPABASE_PROJECT_REF`
 - `SUPABASE_URL`
-- `PRICE_DROP_NOTIFY_SECRET`
 - `ACCOUNT_DELETION_PROCESSOR_SECRET`
 - `PRESENCE_POLL_SECRET`
 
@@ -34,9 +31,10 @@ Runtime secrets must also exist in the Supabase project before deploy/smoke:
 the deploy-gate preflight checks the following minimum set:
 `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`,
 `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `OGL_LICENSE_SIGNING_KEY`,
-`RAWG_API_KEY`, `PRICE_DROP_NOTIFY_SECRET`,
+`RAWG_API_KEY`,
 `ACCOUNT_DELETION_PROCESSOR_SECRET`, `PRESENCE_POLL_SECRET`,
-`STEAM_WEB_API_KEY`, `PRESENCE_PROVIDER_TOKEN`, and optional
+`STEAM_WEB_API_KEY`, `PRESENCE_PROVIDER_TOKEN`, `IGDB_CLIENT_ID`,
+`IGDB_CLIENT_SECRET`, `ITAD_API_KEY`, and optional
 `<PLATFORM>_PRESENCE_ENDPOINT` bridge URLs.
 
 Individual functions may require additional configuration that is not part of
@@ -121,7 +119,6 @@ secret names in the target project. `deploy` runs
 `pnpm --dir launcher exec supabase functions deploy` for the known function set.
 `smoke` calls live hosted functions with dry-run payloads and fails if a
 response writes notifications, presence rows, activity rows, or account
-deletions. The presence, price-drop, and account-deletion smokes also fail
 unless the hosted functions return server-authored evidence `runId` values.
 OPTIONS smokes cover CORS/module sanity for every deployed Edge Function without
 mutating rows. Each OPTIONS response must return
@@ -174,7 +171,6 @@ Supabase project ref. When the packet detects a mismatch it reports a redacted
 copyable scheduler command/URL fields until the target refs are corrected.
 
 - `poll-platform-presence`: every minute, Authorization: Bearer `$PRESENCE_POLL_SECRET`, body `{"dryRun":false,"force":false,"limit":100,"triggerSource":"scheduled"}`
-- `notify-price-drop`: hourly or after price imports, Authorization: Bearer `$PRICE_DROP_NOTIFY_SECRET`, body `{"dryRun":false,"limit":500,"triggerSource":"scheduled"}`
 - `process-account-deletions`: daily, Authorization: Bearer `$ACCOUNT_DELETION_PROCESSOR_SECRET`, body `{"dry_run":false,"execute":true,"limit":20,"triggerSource":"scheduled"}`
 
 Each scheduled request must use the exact bearer secret shown above; keep the

@@ -13,12 +13,10 @@ For the read-only REST collector:
 - `SUPABASE_SERVICE_ROLE_KEY` or both `SUPABASE_ANON_KEY` and `SUPABASE_AUTH_JWT`
 - optional `OGL_HOSTED_CRON_FRESHNESS_HOURS` (overrides all lane defaults)
 - optional `OGL_HOSTED_CRON_EVIDENCE_CHECKS` comma-separated check IDs
-  (default: `price-drop,presence-poll,account-deletion`)
 
 For the `hosted-supabase-cron` external evidence preflight:
 
 - `SUPABASE_URL`
-- `PRICE_DROP_NOTIFY_SECRET`
 - `ACCOUNT_DELETION_PROCESSOR_SECRET`
 - `PRESENCE_POLL_SECRET`
 
@@ -49,19 +47,15 @@ pnpm hosted:cron-evidence:plan
 pnpm hosted:cron-evidence
 pnpm hosted:cron-evidence:packet
 pnpm hosted:cron-evidence:artifact-hints
-OGL_HOSTED_CRON_EVIDENCE_CHECKS=price-drop pnpm hosted:cron-evidence:packet
-OGL_HOSTED_CRON_EVIDENCE_CHECKS=price-drop pnpm hosted:cron-evidence:artifact-hints
-pnpm hosted:cron-evidence:packet --checks=price-drop
-pnpm hosted:cron-evidence:artifact-hints --checks=price-drop
+OGL_HOSTED_CRON_EVIDENCE_CHECKS=presence-poll pnpm hosted:cron-evidence:artifact-hints
+pnpm hosted:cron-evidence:artifact-hints --checks=presence-poll
 OGL_EXTERNAL_EVIDENCE_GATES=hosted-supabase-cron pnpm external:evidence:preflight
 pnpm completion:gate:external
 ```
 
-On PowerShell, prefer `--checks=price-drop` where available. For env-scoped
 commands use:
 
 ```powershell
-$env:OGL_HOSTED_CRON_EVIDENCE_CHECKS='price-drop'
 pnpm hosted:cron-evidence:packet
 Remove-Item Env:OGL_HOSTED_CRON_EVIDENCE_CHECKS
 
@@ -72,11 +66,9 @@ Remove-Item Env:OGL_EXTERNAL_EVIDENCE_GATES
 
 Without `OGL_HOSTED_CRON_EVIDENCE_CHECKS` or `--checks`, the collector checks
 all scheduler lanes. Use `--checks` only for interim lane diagnostics; the
-release artifact always covers price-drop, presence, and account-deletion.
 
 Without `OGL_HOSTED_CRON_FRESHNESS_HOURS`, lane freshness defaults are:
 
-- `price-drop`: `25` hours
 - `presence-poll`: `0.25` hours / 15 minutes
 - `account-deletion`: `25` hours
 
@@ -87,7 +79,6 @@ window.
 
 The selected checks read the latest scheduled attempt for each selected table:
 
-- `store_price_drop_notification_runs`
 - `presence_poll_runs`
 - `account_deletion_processor_runs`
 
@@ -103,12 +94,6 @@ skipping backward to an older passing-shaped row. Each row must have:
 - a safe non-secret `run_id` evidence identifier
 - all selected aggregate count fields present as numeric non-negative integers
 - aggregate counts that match the lane semantics:
-  - price-drop `scanned_count <= limit_count`, `candidate_count <= scanned_count`,
-    `notifications_recorded_count = candidate_count`, `alerts_marked_count =
-candidate_count`, and `skipped_summary` total matching
-    `scanned_count - candidate_count`; `skipped_summary.inactive = 0` is
-    required for completion so inactive-recipient skips do not mask an
-    incomplete hosted scheduler lane
   - presence `polled_count + skipped_count = scanned_count`,
     `provider_result_summary.total = polled_count`, `skipped_summary.total =
 skipped_count`, `presence_updated_count <= polled_count`, and
@@ -135,11 +120,8 @@ plan prefix, reuses the same validated rows, and prints only the paste-clean
 Artifact Evidence Details required by external artifacts: Hosted cron table,
 Function, Run ID, Scheduled,
 `dry_run=false`, and Status. For the full `hosted-supabase-cron` gate, details
-are grouped per lane under `### price-drop`, `### presence-poll`, and
 `### account-deletion`. Each checked scheduler proof needs its own matching
 lane block; one generic cron detail block cannot satisfy all three hosted cron
-proofs. When scoped only to `price-drop`, details are printed flat so they can
-be pasted into `docs/verification/external/store-price-drop-scheduler-live.md`.
 During `pnpm completion:gate:external`, the collector also writes a gitignored
 `.codex/completion-gate/hosted-cron-<run>.json` receipt and the artifact hints
 include `Hosted cron receipt SHA256`; the following
@@ -169,7 +151,6 @@ safe redacted run IDs, lane-scoped artifact detail blocks, numeric aggregate
 counts, semantically consistent aggregate summaries, and zero failure counts
 where the evidence table reports
 failures. The collector verifies row shape, freshness, safe REST target
-derivation, count relationships, summary totals, and the price-drop
 `skipped_summary.inactive = 0` completion rule; the external evidence artifact
 must still include scheduler configuration or dashboard evidence proving the row
 came from the real scheduler and not a manual authorized call.

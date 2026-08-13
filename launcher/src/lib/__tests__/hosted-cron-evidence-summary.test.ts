@@ -29,14 +29,12 @@ describe("hosted cron evidence summary", () => {
     expect(summary.blockedClaims).toContain("Dry-run rows do not pass");
     expect(summary.blockedClaims).toContain("Stale rows do not pass");
     expect(summary.jobs.map((job) => job.functionName)).toEqual([
-      "notify-price-drop",
       "process-account-deletions",
       "poll-platform-presence",
     ]);
     expect(summary.jobs.map((job) => job.id)).toContain("presence-poll");
-    expect(summary.jobs[0].evidence).toContain("triggerSource:manual");
-    expect(summary.jobs[1].evidence).toContain("aggregateCount:invalid");
-    expect(summary.jobs[2].evidence).toContain("aggregateCount:missing");
+    expect(summary.jobs[0].evidence).toContain("aggregateCount:invalid");
+    expect(summary.jobs[1].evidence).toContain("aggregateCount:missing");
     expect(JSON.stringify(summary)).not.toMatch(/secret_[a-z0-9]|sk_live|bearer\s+[a-z0-9]/i);
   });
 
@@ -50,9 +48,9 @@ describe("hosted cron evidence summary", () => {
           aggregateCountStatus: "valid",
           containsSecretMaterial: false,
           evidenceRecorded: true,
-          evidenceTable: "store_price_drop_notification_runs",
+          evidenceTable: "presence_poll_runs",
           failedCount: 0,
-          functionName: "notify-price-drop",
+          functionName: "poll-platform-presence",
           id: "fresh",
           label: "Fresh",
           mode: "scheduled",

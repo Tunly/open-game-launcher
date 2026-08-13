@@ -22,7 +22,7 @@ const hostedCronEvidenceFields = [
   "Status",
 ] as const;
 
-const hostedSupabaseCronLaneIds = ["price-drop", "presence-poll", "account-deletion"] as const;
+const hostedSupabaseCronLaneIds = ["presence-poll", "account-deletion"] as const;
 
 const releaseTagPattern =
   /^v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(?:0|[1-9]\d*)(?:-(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|\d*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
@@ -53,17 +53,7 @@ const hostedCronExpectedValuesByLane: Record<
     Scheduled: /^scheduled$/i,
     Status: /^completed$/i,
   },
-  "price-drop": {
-    Function: /^notify-price-drop$/i,
-    "Hosted cron table": /^store_price_drop_notification_runs$/i,
-    Scheduled: /^scheduled$/i,
-    Status: /^completed$/i,
-  },
 };
-
-const storePriceDropSchedulerExpectedValues: Partial<
-  Record<(typeof hostedCronEvidenceFields)[number], RegExp>
-> = hostedCronExpectedValuesByLane["price-drop"];
 
 const providerEvidenceFields = [
   "Provider/client matrix",
@@ -263,18 +253,12 @@ export const EXTERNAL_COMPLETION_EVIDENCE_GATE_INPUTS: ExternalCompletionEvidenc
     id: "hosted-supabase-cron",
     label: "Hosted Supabase cron",
     localEvidence:
-      "Hosted cron UI and script contracts compare price-drop, account deletion, and presence lanes.",
+      "Hosted cron UI and script contracts compare account deletion and presence lanes.",
     proofRequirements: [
       "poll-platform-presence scheduled run writes fresh evidence.",
-      "notify-price-drop scheduled run writes fresh evidence.",
       "process-account-deletions scheduled run writes fresh evidence.",
     ],
-    requiredEnv: [
-      "SUPABASE_URL",
-      "PRICE_DROP_NOTIFY_SECRET",
-      "ACCOUNT_DELETION_PROCESSOR_SECRET",
-      "PRESENCE_POLL_SECRET",
-    ],
+    requiredEnv: ["SUPABASE_URL", "ACCOUNT_DELETION_PROCESSOR_SECRET", "PRESENCE_POLL_SECRET"],
     skippedProof: "No real-secret scheduled non-dry-run rows are attached for all three functions.",
     surface: "Scheduler Gate",
   },
@@ -720,7 +704,7 @@ const forbiddenArtifactPatterns = [
   {
     label: "Raw hosted cron secret",
     pattern:
-      /\b(?:PRICE_DROP_NOTIFY_SECRET|ACCOUNT_DELETION_PROCESSOR_SECRET|PRESENCE_POLL_SECRET)\s*[:=]\s*(?!(?:\[?redacted\]?|<redacted>|\*{3,})(?:\s|$))[^\s`"'<>]{8,}/i,
+      /\b(?:ACCOUNT_DELETION_PROCESSOR_SECRET|PRESENCE_POLL_SECRET)\s*[:=]\s*(?!(?:\[?redacted\]?|<redacted>|\*{3,})(?:\s|$))[^\s`"'<>]{8,}/i,
   },
   {
     label: "JWT-like token",
@@ -1347,9 +1331,6 @@ function expectedEvidenceDetailValuePattern(field: ExternalCompletionEvidenceDet
   if (hostedCronLane && isHostedSupabaseCronLaneEvidenceField(unscopedField)) {
     return hostedCronExpectedValuesByLane[hostedCronLane][unscopedField];
   }
-  if (isHostedSupabaseCronLaneEvidenceField(unscopedField)) {
-    return storePriceDropSchedulerExpectedValues[unscopedField];
-  }
   return undefined;
 }
 
@@ -1411,9 +1392,6 @@ function expectedProofEvidenceValuePattern(proof: string) {
   const normalizedProof = proof.toLowerCase();
   if (/license signing key custody/.test(normalizedProof)) {
     return [/license/i, /key/i, /custody/i, /live/i, /issuance/i];
-  }
-  if (/(?:price-drop|notify-price-drop)/.test(normalizedProof)) {
-    return /(?:price[-_\s]?drop|notify[-_\s]?price[-_\s]?drop|store_price_drop_notification_runs)/i;
   }
   if (/poll-platform-presence/.test(normalizedProof)) {
     return /(?:presence[-_\s]?poll|poll[-_\s]?platform[-_\s]?presence|presence_poll_runs)/i;
@@ -1533,7 +1511,6 @@ const envShapeValidators: Partial<Record<string, (value: string) => boolean>> = 
   ACCOUNT_DELETION_PROCESSOR_SECRET: (value) => secretValueLooksPlausible(value, 32),
   PRESENCE_POLL_SECRET: (value) => secretValueLooksPlausible(value, 32),
   PRESENCE_PROVIDER_TOKEN: (value) => secretValueLooksPlausible(value, 24),
-  PRICE_DROP_NOTIFY_SECRET: (value) => secretValueLooksPlausible(value, 32),
   STEAM_WEB_API_KEY: (value) => /^[a-f0-9]{32}$/i.test(value),
   SUPABASE_FUNCTIONS_BASE_URL: (value) =>
     supabaseProjectUrlIsConfigured(value, /^\/functions\/v1\/?$/),

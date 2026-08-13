@@ -16,7 +16,7 @@ until all external evidence gates pass.
 | Library                | Installed-game scan, cache, manual games, collections, metadata, artwork, launch, move, repair, update, and removal flows                      |
 | Providers              | Local/client integration paths for Steam, GOG, Epic, Xbox/Game Pass, Ubisoft, Battle.net, and EA; authenticated Steam linking and hosted achievement relay are implemented, while live provider proof remains external |
 | Social                 | Supabase Auth, profiles, friends, chat, invites, presence, authenticated activity, reactions, comments, and privacy/RLS guards                 |
-| Store                  | Hosted catalog with wishlist, reviews, price alerts, and developer product surfaces; paid checkout is not part of the launcher |
+| Store                  | Materialized ITAD/IGDB catalog with wishlist, reviews, and official-platform redirects; OG commerce is not part of the launcher |
 | Desktop                | Tauri shell, native library/download/provider commands, deep links, transparent overlay window, and system telemetry                           |
 | Evidence-only surfaces | Some unfinished hosted, marketplace, plugin, family, broadcast, and provider states exist only behind explicit `?verify=...` routes            |
 
@@ -87,26 +87,26 @@ Or start only the browser frontend:
 pnpm dev
 ```
 
-### Supabase and RAWG
+### Supabase catalog sync
 
-The application can use a linked Supabase project and the `rawg-assets` Edge
-Function for artwork:
+The application uses a linked Supabase project. Artwork can use the
+`rawg-assets` Edge Function, while the Store catalog is synchronized server-side
+by `sync-store-catalog`:
 
 ```bash
 pnpm supabase login
 pnpm supabase link --project-ref your_project_ref
-pnpm supabase secrets set RAWG_API_KEY=your_rawg_key
+pnpm supabase secrets set IGDB_CLIENT_ID=your_twitch_client_id IGDB_CLIENT_SECRET=your_twitch_client_secret ITAD_API_KEY=your_itad_key
 pnpm supabase functions deploy rawg-assets
-pnpm supabase functions deploy rawg-store-catalog
+pnpm supabase functions deploy sync-store-catalog
 ```
 
-The Store uses `rawg-store-catalog` for a multi-platform catalog and only maps
-RAWG entries to official Steam, Epic, GOG, Xbox, Ubisoft, EA, and Battle.net
-stores. Key-reseller entries are rejected. Prices are not invented when RAWG
-has no price data; those cards show `Preis nicht verfügbar` and Buy opens the
-official store link. For local Edge Function serving, put server-only values in
-`supabase/functions/.env.local`, never in client bundles. Hosted deployment,
-scheduler configuration, secrets, and proof capture are documented in:
+`sync-store-catalog` uses ITAD for discovery and prices and IGDB for metadata,
+then writes normalized rows to `store_catalog`. Unknown prices stay unavailable.
+Store actions open an allowlisted official platform URL. For local Edge Function
+serving, put server-only values in `supabase/functions/.env.local`, never in
+client bundles. Hosted deployment, scheduler configuration, secrets, and proof
+capture are documented in:
 
 - [Hosted deploy gate](./docs/runbooks/hosted-deploy-gate.md)
 - [Hosted cron evidence](./docs/runbooks/hosted-cron-evidence.md)
@@ -138,7 +138,7 @@ inventory instead of maintaining it here.
 | ----------------------------- | ---------------------------------------------------------- |
 | `/`                           | Redirect to `/library`                                     |
 | `/library`                    | Game library and selected-copy details                     |
-| `/store`                      | Store discovery, cart, checkout, and orders                |
+| `/store`                      | Catalog discovery, filters, wishlist, reviews, and official-store redirects |
 | `/community`                  | Authenticated community and friend activity                |
 | `/news`                       | News feed                                                  |
 | `/downloads`                  | Download queue and local readiness panels                  |
@@ -155,7 +155,6 @@ inventory instead of maintaining it here.
 | `/settings/profile/customize` | Theme and showcase customization                           |
 | `/settings/performance`       | Performance history and playtime filters                   |
 | `/settings/privacy`           | Visibility controls                                        |
-| `/developer`                  | Store developer portal                                     |
 | `/overlay`                    | Separate in-game overlay window                            |
 | `/fps-hud`                    | Standalone FPS HUD                                         |
 | `*`                           | Not found                                                  |
@@ -218,11 +217,13 @@ be presented as production or live-provider completion.
   grants the required app context or credentials.
 - The overlay is a separate Tauri window. It does not inject into games, bypass
   anti-cheat, or claim real game-process FPS measurement.
-- Preview products and store contracts do not enable paid production commerce.
-  Live Stripe, webhook, tax, license, and provider evidence is required.
-- The store falls back to a clearly labeled local example catalog (four entries)
-  only when the hosted catalog is empty or unreachable; example entries are not
-  hosted products or owned licenses, and Buy opens a platform-store search link.
+- The Store is catalog-and-redirect only. It has no OG cart, checkout, payment,
+  order, license, invoice, fulfillment, refund, or developer-publishing flow.
+  Historical commerce tables and migrations are compatibility history, not an
+  active product surface.
+- The store falls back to a clearly labeled local example catalog only when the
+  hosted catalog is empty or unreachable. Example entries are not hosted
+  products or owned licenses, and actions open a platform-store search link.
 - Presence polling, account-deletion jobs, provider integrations, hosted
   invites, and hardware/OS workflows require live external evidence.
 - Plugins are staged and audited but not executed. Broadcasting has no live

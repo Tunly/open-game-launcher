@@ -10,13 +10,15 @@ export const deployFunctions = Object.freeze([
   { name: "ingest-achievements", verifyJwt: true },
   { name: "ingest-playtime", verifyJwt: true },
   { name: "invite-hosted-proof", verifyJwt: true },
+  { name: "igdb-assets", verifyJwt: true },
   { name: "link-steam-account", verifyJwt: true },
-  { name: "notify-price-drop", verifyJwt: false },
   { name: "poll-platform-presence", verifyJwt: false },
   { name: "process-account-deletions", verifyJwt: false },
   { name: "rawg-assets", verifyJwt: true },
+  { name: "rawg-store-catalog", verifyJwt: true },
   { name: "relay-steam-achievements", verifyJwt: true },
   { name: "request-account-deletion", verifyJwt: true },
+  { name: "sync-store-catalog", verifyJwt: false },
 ]);
 
 export const cronDryRunSmokes = Object.freeze([
@@ -24,16 +26,6 @@ export const cronDryRunSmokes = Object.freeze([
     body: { dry_run: true, limit: 1, triggerSource: "hosted_deploy_gate" },
     name: "process-account-deletions",
     secretEnv: "ACCOUNT_DELETION_PROCESSOR_SECRET",
-  },
-  {
-    body: {
-      alertIds: ["00000000-0000-4000-8000-000000000000"],
-      dryRun: true,
-      limit: 1,
-      triggerSource: "hosted_deploy_gate",
-    },
-    name: "notify-price-drop",
-    secretEnv: "PRICE_DROP_NOTIFY_SECRET",
   },
   {
     body: {
@@ -75,12 +67,6 @@ export const schedulerPlan = Object.freeze([
     cadence: "every minute",
     functionName: "poll-platform-presence",
     secretEnv: "PRESENCE_POLL_SECRET",
-  },
-  {
-    body: { dryRun: false, limit: 500, triggerSource: "scheduled" },
-    cadence: "hourly or after price imports",
-    functionName: "notify-price-drop",
-    secretEnv: "PRICE_DROP_NOTIFY_SECRET",
   },
   {
     body: { dry_run: false, execute: true, limit: 20, triggerSource: "scheduled" },
@@ -193,7 +179,6 @@ export const runtimeSecretNames = Object.freeze([
   "SUPABASE_ANON_KEY",
   "SUPABASE_SERVICE_ROLE_KEY",
   "RAWG_API_KEY",
-  "PRICE_DROP_NOTIFY_SECRET",
   "ACCOUNT_DELETION_PROCESSOR_SECRET",
   "PRESENCE_POLL_SECRET",
   "STEAM_WEB_API_KEY",
@@ -293,7 +278,7 @@ function safeCronSmokeSecret(value) {
 }
 
 const secretLikeSmokeRunIdPattern =
-  /sk_(?:live|test)_|whsec_|bearer\s+[a-z0-9._~+/=-]{12,}|eyJ[a-zA-Z0-9_-]{8,}\.[a-zA-Z0-9_-]{8,}\.[a-zA-Z0-9_-]{8,}|\b(?:SUPABASE_SERVICE_ROLE_KEY|SUPABASE_ANON_KEY|SUPABASE_AUTH_JWT|PRICE_DROP_NOTIFY_SECRET|ACCOUNT_DELETION_PROCESSOR_SECRET|PRESENCE_POLL_SECRET)\b/i;
+  /sk_(?:live|test)_|whsec_|bearer\s+[a-z0-9._~+/=-]{12,}|eyJ[a-zA-Z0-9_-]{8,}\.[a-zA-Z0-9_-]{8,}\.[a-zA-Z0-9_-]{8,}|\b(?:SUPABASE_SERVICE_ROLE_KEY|SUPABASE_ANON_KEY|SUPABASE_AUTH_JWT|ACCOUNT_DELETION_PROCESSOR_SECRET|PRESENCE_POLL_SECRET)\b/i;
 const safeSmokeRunIdPattern = /^[a-z0-9][a-z0-9._:-]{2,127}$/i;
 
 function safeSmokeRunId(value) {
@@ -771,24 +756,6 @@ export function validateSmokePayload(functionName, payload) {
         "storageBuckets must list all account deletion user storage buckets.",
       );
     }
-    if (payload.evidenceRecorded !== true) {
-      errors.push("evidenceRecorded must be true.");
-    }
-    const runIdError = smokeRunIdValidationError(payload.runId);
-    if (runIdError) errors.push(runIdError);
-    if (payload.triggerSource !== "hosted_deploy_gate") {
-      errors.push("triggerSource must be hosted_deploy_gate.");
-    }
-  }
-
-  if (functionName === "notify-price-drop") {
-    if (payload.dryRun !== true) errors.push("dryRun must be true.");
-    if (payload.deliveryMode !== "dry_run")
-      errors.push("deliveryMode must be dry_run.");
-    if (payload.notificationsRecorded !== 0) {
-      errors.push("notificationsRecorded must be 0.");
-    }
-    if (payload.alertsMarked !== 0) errors.push("alertsMarked must be 0.");
     if (payload.evidenceRecorded !== true) {
       errors.push("evidenceRecorded must be true.");
     }

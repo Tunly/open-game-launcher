@@ -80,7 +80,6 @@ const plausibleSupabaseAccessToken =
   "sbp_0123456789abcdef0123456789abcdef01234567";
 const plausibleAccountDeletionSecret =
   "account_deletion_0123456789abcdef0123456789";
-const plausiblePriceDropSecret = "price_drop_0123456789abcdef0123456789abcdef";
 
 function jwtJsonPart(value) {
   return Buffer.from(JSON.stringify(value)).toString("base64url");
@@ -604,7 +603,6 @@ test("plan prints every gate command without running commands", () => {
 test("status report summarizes readiness without running commands or leaking env values", () => {
   const env = {
     ACCOUNT_DELETION_PROCESSOR_SECRET: plausibleAccountDeletionSecret,
-    PRICE_DROP_NOTIFY_SECRET: plausiblePriceDropSecret,
     SUPABASE_ACCESS_TOKEN: plausibleSupabaseAccessToken,
     SUPABASE_PROJECT_REF: projectRef,
     SUPABASE_SERVICE_ROLE_KEY: serviceRoleJwt,
@@ -652,7 +650,6 @@ test("status report summarizes readiness without running commands or leaking env
   ]);
   assert.deepEqual(report.external.hostedCron.missingEnv, []);
   assert.deepEqual(report.external.hostedCron.selectedChecks, [
-    "price-drop",
     "presence-poll",
     "account-deletion",
   ]);
@@ -987,15 +984,14 @@ test("status report ignores scoped evidence env at the release boundary", () => 
   const report = completionStatusReport({
     env: {
       OGL_EXTERNAL_EVIDENCE_GATES: "hardware-os-e2e",
-      OGL_HOSTED_CRON_EVIDENCE_CHECKS: "price-drop",
+      OGL_HOSTED_CRON_EVIDENCE_CHECKS: "presence-poll",
     },
     platform: "linux",
   });
 
-  assert.equal(report.external.evidence.totalCount, 5);
+  assert.equal(report.external.evidence.totalCount, 4);
   assert.equal(report.external.evidence.readyCount, 0);
   assert.deepEqual(report.external.hostedCron.selectedChecks, [
-    "price-drop",
     "presence-poll",
     "account-deletion",
   ]);
@@ -1123,7 +1119,6 @@ test("release tags require external evidence gate before release artifacts", () 
     "SUPABASE_ANON_KEY",
     "SUPABASE_AUTH_JWT",
     "ACCOUNT_DELETION_PROCESSOR_SECRET",
-    "PRICE_DROP_NOTIFY_SECRET",
     "PRESENCE_POLL_SECRET",
     "STEAM_WEB_API_KEY",
     "PRESENCE_PROVIDER_TOKEN",
@@ -1184,8 +1179,8 @@ test("release boundary external checks ignore scoped evidence and freshness over
       KEEP_ME: "yes",
       OGL_EXTERNAL_EVIDENCE_GATES: "hosted-supabase-cron",
       OGL_EXTERNAL_EVIDENCE_NOW: "2030-01-01T00:00:00.000Z",
-      OGL_HOSTED_DEPLOY_FUNCTIONS: "notify-price-drop",
-      OGL_HOSTED_CRON_EVIDENCE_CHECKS: "price-drop",
+      OGL_HOSTED_DEPLOY_FUNCTIONS: "poll-platform-presence",
+      OGL_HOSTED_CRON_EVIDENCE_CHECKS: "presence-poll",
       OGL_HOSTED_CRON_FRESHNESS_HOURS: "9999",
       [completionGateRunIdEnvName]: "user-run",
       [hostedCronEvidenceReceiptEnvName]: ".codex/user-receipt.json",
@@ -1218,8 +1213,8 @@ test("release boundary external checks ignore scoped evidence and freshness over
       KEEP_ME: "yes",
       OGL_EXTERNAL_EVIDENCE_GATES: "hosted-supabase-cron",
       OGL_EXTERNAL_EVIDENCE_NOW: "2030-01-01T00:00:00.000Z",
-      OGL_HOSTED_DEPLOY_FUNCTIONS: "notify-price-drop",
-      OGL_HOSTED_CRON_EVIDENCE_CHECKS: "price-drop",
+      OGL_HOSTED_DEPLOY_FUNCTIONS: "poll-platform-presence",
+      OGL_HOSTED_CRON_EVIDENCE_CHECKS: "presence-poll",
       OGL_HOSTED_CRON_FRESHNESS_HOURS: "9999",
       [completionGateRunIdEnvName]: "user-run",
       [hostedCronEvidenceReceiptEnvName]: ".codex/user-receipt.json",

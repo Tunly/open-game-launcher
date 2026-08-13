@@ -20,28 +20,6 @@ const jwtClockSkewSeconds = 300;
 
 export const cronEvidenceChecks = Object.freeze([
   {
-    defaultFreshnessHours: 25,
-    id: "price-drop",
-    functionName: "notify-price-drop",
-    table: "store_price_drop_notification_runs",
-    select: [
-      "run_id",
-      "trigger_source",
-      "dry_run",
-      "limit_count",
-      "requested_alert_count",
-      "requested_product_count",
-      "requested_user_count",
-      "scanned_count",
-      "candidate_count",
-      "notifications_recorded_count",
-      "alerts_marked_count",
-      "skipped_summary",
-      "completed_at",
-      "status",
-    ],
-  },
-  {
     defaultFreshnessHours: 0.25,
     id: "presence-poll",
     functionName: "poll-platform-presence",
@@ -288,7 +266,7 @@ function uniqueRestTargetProjectRefs(env = process.env) {
 }
 
 const secretLikeEvidenceValuePattern =
-  /(?:sk|rk)_(?:live|test)_|whsec_|bearer\s+[a-z0-9._~+/=-]{12,}|eyJ[a-zA-Z0-9_-]{8,}\.[a-zA-Z0-9_-]{8,}\.[a-zA-Z0-9_-]{8,}|\b(?:SUPABASE_SERVICE_ROLE_KEY|SUPABASE_ANON_KEY|SUPABASE_AUTH_JWT|PRICE_DROP_NOTIFY_SECRET|ACCOUNT_DELETION_PROCESSOR_SECRET|PRESENCE_POLL_SECRET)\b/i;
+  /(?:sk|rk)_(?:live|test)_|whsec_|bearer\s+[a-z0-9._~+/=-]{12,}|eyJ[a-zA-Z0-9_-]{8,}\.[a-zA-Z0-9_-]{8,}\.[a-zA-Z0-9_-]{8,}|\b(?:SUPABASE_SERVICE_ROLE_KEY|SUPABASE_ANON_KEY|SUPABASE_AUTH_JWT|ACCOUNT_DELETION_PROCESSOR_SECRET|PRESENCE_POLL_SECRET)\b/i;
 const safeRunIdPattern = /^[a-z0-9][a-z0-9._:-]{2,127}$/i;
 const uuidRunIdPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -616,41 +594,6 @@ function addSummaryTotalMismatchError(
 }
 
 function addCountRelationshipErrors(check, row, counts, errors) {
-  if (check.id === "price-drop") {
-    const skippedTotal = readSummaryTotal(row.skipped_summary);
-    addGreaterThanError(errors, counts, "scanned_count", "limit_count");
-    addGreaterThanError(errors, counts, "candidate_count", "scanned_count");
-    addSummaryTotalMismatchError(
-      errors,
-      skippedTotal,
-      counts.scanned_count === undefined || counts.candidate_count === undefined
-        ? undefined
-        : counts.scanned_count - counts.candidate_count,
-      "skipped_summary",
-      "scanned_count - candidate_count",
-    );
-    addSumMismatchError(
-      errors,
-      counts,
-      ["notifications_recorded_count"],
-      "candidate_count",
-    );
-    addSumMismatchError(
-      errors,
-      counts,
-      ["alerts_marked_count"],
-      "candidate_count",
-    );
-    const inactiveSkips = readRecord(row.skipped_summary)?.inactive;
-    const inactiveSkipCount = evidenceCount(inactiveSkips);
-    if (inactiveSkips === undefined || inactiveSkipCount === null) {
-      errors.push("skipped_summary.inactive missing or invalid.");
-    } else if (inactiveSkipCount > 0) {
-      errors.push("skipped_summary.inactive is greater than 0.");
-    }
-    return;
-  }
-
   if (check.id === "presence-poll") {
     addSumMismatchError(
       errors,
@@ -1035,9 +978,6 @@ export function artifactHintsFromResults(
     "",
     "Use these lines as Artifact Evidence Details after operator review. This output does not complete proof checklist rows.",
   ];
-  const flatPriceDropStoreArtifact =
-    checks.length === 1 && checks[0]?.id === "price-drop";
-
   for (const check of checks) {
     const result = resultById.get(check.id);
     const runId = safeRunId(result?.runId);
@@ -1045,20 +985,6 @@ export function artifactHintsFromResults(
       throw new Error(
         "Hosted cron evidence is incomplete; artifact hints require every selected scheduled non-dry-run row to validate.",
       );
-    }
-
-    if (flatPriceDropStoreArtifact) {
-      lines.push(
-        "",
-        `- Hosted cron table: ${check.table}`,
-        `- Function: ${check.functionName}`,
-        `- Run ID: ${runId}`,
-        "- Scheduled: scheduled",
-        "- dry_run=false: confirmed false",
-        "- Status: completed",
-        ...hostedCronReceiptDigestLines(receiptDigest),
-      );
-      continue;
     }
 
     lines.push(

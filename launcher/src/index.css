@@ -314,6 +314,15 @@
       repeating-linear-gradient(112deg, #242424 0 13px, #0e0e0e 13px 27px, #333 27px 29px);
   }
 
+  .store-art-fallback {
+    background:
+      radial-gradient(circle at 86% 28%, #f6f2e8 0 14%, transparent 15%),
+      radial-gradient(circle at 82% 24%, rgba(140, 245, 228, 0.55) 0 8%, transparent 9%),
+      linear-gradient(112deg, transparent 0 38%, rgba(183, 16, 42, 0.5) 39% 43%, transparent 44%),
+      repeating-linear-gradient(90deg, rgba(23, 20, 17, 0.22) 0 3px, transparent 4px 16px),
+      linear-gradient(180deg, #1c2a2b, #171411 61%, #b7102a);
+  }
+
   .card-art-drift {
     background:
       radial-gradient(circle at 86% 28%, #f6f2e8 0 14%, transparent 15%),

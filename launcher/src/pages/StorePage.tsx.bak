@@ -1,0 +1,1226 @@
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
+import { useSearchParams } from "react-router-dom";
+import { isTauri } from "@tauri-apps/api/core";
+import { Tag } from "lucide-react";
+
+import { EmptyStorePanel } from "../components/store/EmptyStorePanel";
+import { ProductDetailPanel } from "../components/store/StoreProductDetailPanel";
+import { StoreProductRow } from "../components/store/StoreProductRow";
+
+import { useCurrentUser } from "../hooks/useCurrentUser";
+import {
+  addToStoreWishlist,
+  listMyStoreWishlist,
+  listPublishedProductsPage,
+  removeFromStoreWishlist,
+} from "../lib/supabase/store";
+import { openExternalUrl } from "../lib/launcher/platform-auth";
+import { filterSupportedPlatforms, isKeyResellerName } from "../lib/store-api";
+import { listStoreCatalogPage } from "../lib/supabase/store-catalog";
+import { EXAMPLE_STORE_CATALOG } from "../lib/store-example-catalog";
+import type { Platform, StoreGame } from "../lib/types";
+import type { StoreProduct } from "../lib/types/store";
+
+type PriceFilter = "all" | "free" | "under-15" | "discounts";
+
+function isDesktopPlatform(value: string): value is Platform {
+  return value === "windows" || value === "linux" || value === "macos";
+}
+
+function keepNonKeyshopPlatforms(product: StoreProduct): StoreProduct | null {
+  const metadataLinks = [
+    product.metadata.purchaseUrl,
+    product.metadata.storeUrl,
+    product.metadata.platformUrl,
+    product.metadata.buyUrl,
+  ];
+  const platformLinks = [
+    product.metadata.platformUrls,
+    product.metadata.storeUrls,
+    product.metadata.storeLinks,
+    product.metadata.platformLinks,
+    product.metadata.urls,
+  ].flatMap((value) =>
+    value && typeof value === "object" && !Array.isArray(value) ? Object.values(value) : [],
+  );
+  const storeDetails = [
+    product.publisher,
+    product.shortDescription,
+    ...metadataLinks,
+    ...platformLinks,
+  ].filter((value): value is string => typeof value === "string");
+  if (storeDetails.some(isKeyResellerName)) return null;
+
+  return filterSupportedPlatforms(product);
+}
+
+function platformLabel(value: string) {
+  return value.replace(/[_-]+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
+
+function primaryPlatform(product: StoreProduct) {
+  return platformLabel(product.platforms[0] ?? "platform");
+}
+
+function FilterChip({ label, onRemove }: { label: string; onRemove: () => void }) {
+  return (
+    <button
+      className="border-2 border-black bg-[#f6edd8] px-2 py-1"
+      type="button"
+      onClick={onRemove}
+    >
+      {label} ×
+    </button>
+  );
+}
+
+function firstText(...values: Array<string | null | undefined>) {
+  return values.find((value) => typeof value === "string" && value.trim())?.trim() ?? "";
+}
+
+function hasAvailablePrice(product: StoreProduct) {
+  return product.metadata.priceUnavailable !== true;
+}
+
+function effectivePrice(product: StoreProduct) {
+  const price = product.priceCents / 100;
+  return Math.round(price * Math.max(0, 100 - product.discountPercent)) / 100;
+}
+
+function readMetadataUrl(value: unknown) {
+  return typeof value === "string" && /^[a-z][a-z0-9+.-]*:\/\//i.test(value.trim())
+    ? value.trim()
+    : null;
+}
+
+function isAllowedPlatformUrl(value: string) {
+  try {
+    const url = new URL(value);
+    if (url.protocol === "steam:" || url.protocol === "ms-windows-store:") return true;
+    if (url.protocol !== "https:") return false;
+    return [
+      "store.steampowered.com",
+      "www.gog.com",
+      "store.epicgames.com",
+      "www.xbox.com",
+      "apps.microsoft.com",
+      "store.playstation.com",
+      "www.nintendo.com",
+      "www.ea.com",
+      "store.ubisoft.com",
+      "us.shop.battle.net",
+    ].some((host) => url.hostname === host || url.hostname.endsWith(`.${host}`));
+  } catch {
+    return false;
+  }
+}
+
+function getPlatformPurchaseUrl(product: StoreProduct) {
+  const metadata = product.metadata;
+  const normalizedPlatforms = product.platforms.map((value) => value.trim().toLowerCase());
+  const platform =
+    normalizedPlatforms.find((value) =>
+      [
+        "steam",
+        "epic",
+        "epic games",
+        "gog",
+        "xbox",
+        "playstation",
+        "ps5",
+        "ps4",
+        "nintendo",
+        "switch",
+        "ea",
+        "ubisoft",
+        "battlenet",
+        "battle.net",
+        "windows",
+      ].includes(value),
+    ) ?? normalizedPlatforms[0];
+  const platformUrls =
+    metadata.platformUrls ??
+    metadata.storeUrls ??
+    metadata.storeLinks ??
+    metadata.platformLinks ??
+    metadata.urls;
+  if (platformUrls && typeof platformUrls === "object" && !Array.isArray(platformUrls)) {
+    const entries = Object.entries(platformUrls as Record<string, unknown>);
+    const platformUrl = readMetadataUrl(
+      entries.find(([key]) => key.toLowerCase() === platform)?.[1],
+    );
+    if (platformUrl && isAllowedPlatformUrl(platformUrl)) return platformUrl;
+  }
+
+  for (const key of ["purchaseUrl", "storeUrl", "platformUrl", "buyUrl"]) {
+    const url = readMetadataUrl(metadata[key]);
+    if (url && isAllowedPlatformUrl(url)) return url;
+  }
+
+  const externalId = metadata.externalId ?? metadata.appId ?? metadata.storeId;
+  const id =
+    typeof externalId === "string" || typeof externalId === "number"
+      ? encodeURIComponent(String(externalId))
+      : null;
+  const title = encodeURIComponent(product.title);
+  if (platform === "steam")
+    return id ? `steam://store/${id}` : `https://store.steampowered.com/search/?term=${title}`;
+  if (platform === "epic" || platform === "epic games")
+    return `https://store.epicgames.com/en-US/p/${encodeURIComponent(product.slug)}`;
+
+  if (platform === "gog") return `https://www.gog.com/en/game/${encodeURIComponent(product.slug)}`;
+  if (platform === "xbox")
+    return id
+      ? `ms-windows-store://pdp/?productid=${id}`
+      : `https://www.xbox.com/en-US/search?q=${title}`;
+  if (platform === "playstation" || platform === "ps5" || platform === "ps4")
+    return `https://store.playstation.com/en-us/search/${title}`;
+  if (platform === "nintendo" || platform === "switch")
+    return `https://www.nintendo.com/us/search/#q=${title}`;
+  if (platform === "ea") return `https://www.ea.com/games/${encodeURIComponent(product.slug)}`;
+  if (platform === "ubisoft")
+    return `https://store.ubisoft.com/${encodeURIComponent(product.slug)}`;
+  if (platform === "battlenet" || platform === "battle.net")
+    return `https://us.shop.battle.net/en-us/family/${encodeURIComponent(product.slug)}`;
+
+  if (platform === "windows") return `https://apps.microsoft.com/search?query=${title}`;
+  return `https://store.steampowered.com/search/?term=${title}`;
+}
+
+function mapExampleToStoreProduct(game: StoreGame): StoreProduct {
+  const platform = game.platform[0] ?? "windows";
+  const query = encodeURIComponent(game.title);
+  const platformUrl =
+    platform === "windows"
+      ? `https://apps.microsoft.com/search?query=${query}`
+      : `https://store.steampowered.com/search/?term=${query}`;
+
+  return {
+    id: game.id,
+    title: game.title,
+    slug: game.slug ?? game.id,
+    description: game.description,
+    shortDescription: game.tagLine,
+    developerId: "local-example-catalog",
+    publisher: game.publisher ?? null,
+    releaseDate: game.releaseDate ?? null,
+    genres: game.genres ?? [],
+    tags: [],
+    platforms: game.platform,
+    priceCents: Math.round(game.price * 100),
+    discountPercent: game.discountPercent ?? 0,
+    coverImageUrl: game.coverImageUrl ?? null,
+    trailerUrl: null,
+    minSystemRequirements: {},
+    recSystemRequirements: {},
+    rating: game.rating ?? null,
+    ratingsCount: game.ratingsCount ?? 0,
+    downloadsCount: game.downloadsCount ?? 0,
+    status: "published",
+    metadata: { platformLinks: { [platform]: platformUrl }, localExample: true },
+    createdAt: game.releaseDate ?? "2026-01-01T00:00:00.000Z",
+    updatedAt: game.releaseDate ?? "2026-01-01T00:00:00.000Z",
+  };
+}
+
+const LOCAL_FALLBACK_PRODUCTS = EXAMPLE_STORE_CATALOG.map(mapExampleToStoreProduct);
+const STORE_PAGE_SIZE = 40;
+
+function mapProductToGame(product: StoreProduct): StoreGame {
+  const price = effectivePrice(product);
+  return {
+    id: product.id,
+    slug: product.slug,
+    title: product.title,
+    description: firstText(product.description, product.shortDescription),
+    coverImageUrl: product.coverImageUrl ?? undefined,
+    downloadsCount: product.downloadsCount,
+    price,
+    priceAvailable: hasAvailablePrice(product),
+    originalPrice:
+      hasAvailablePrice(product) && product.discountPercent > 0
+        ? product.priceCents / 100
+        : undefined,
+    discountPercent: hasAvailablePrice(product) ? product.discountPercent || undefined : undefined,
+    isFree: hasAvailablePrice(product) && price === 0,
+    platform: product.platforms.filter(isDesktopPlatform),
+    publisher: product.publisher ?? undefined,
+    rating: product.rating ?? undefined,
+    ratingsCount: product.ratingsCount,
+    releaseDate: product.releaseDate ?? undefined,
+    genres: product.genres.length > 0 ? product.genres : undefined,
+    tagLine:
+      firstText(product.shortDescription, product.tags.join(" / "), product.genres.join(" / ")) ||
+      "Game",
+  };
+}
+
+export function StorePage() {
+  const { user } = useCurrentUser();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const [products, setProducts] = useState<StoreProduct[]>([]);
+  const [catalogSource, setCatalogSource] = useState<"hosted" | "api" | "mixed" | "local">(
+    "hosted",
+  );
+  const [wishlistIds, setWishlistIds] = useState<Set<string>>(new Set());
+  const [search, setSearch] = useState(() => searchParams.get("q") ?? "");
+  const [platform, setPlatform] = useState(() => searchParams.get("platform") ?? "all");
+  const [priceFilter, setPriceFilter] = useState<PriceFilter>(() => {
+    const value = searchParams.get("price");
+    return value === "free" || value === "under-15" || value === "discounts" ? value : "all";
+  });
+  const [isLoading, setIsLoading] = useState(true);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [catalogPage, setCatalogPage] = useState(0);
+  const [hasMoreProducts, setHasMoreProducts] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [selectedProductId, setSelectedProductId] = useState<string | null>(() =>
+    searchParams.get("game"),
+  );
+  const [selectedTags, setSelectedTags] = useState<string[]>(() =>
+    (searchParams.get("tags") ?? "").split(",").filter(Boolean),
+  );
+  const [tagSearch, setTagSearch] = useState("");
+  const [hideFree, setHideFree] = useState(() => searchParams.get("hideFree") === "1");
+  const [discountsOnly, setDiscountsOnly] = useState(() => searchParams.get("discounts") === "1");
+  const [hideWishlist, setHideWishlist] = useState(() => searchParams.get("hideWishlist") === "1");
+  const [sortBy, setSortBy] = useState(() => searchParams.get("sort") ?? "relevance");
+  const [maxPrice, setMaxPrice] = useState(() => {
+    const rawValue = searchParams.get("maxPrice");
+    if (rawValue === null) return 100;
+    const value = Number(rawValue);
+    return Number.isFinite(value) && value >= 0 && value <= 100 ? value : 100;
+  });
+  const [isFilterSidebarOpen, setIsFilterSidebarOpen] = useState(false);
+  const [showFeatured, setShowFeatured] = useState(
+    () => localStorage.getItem("og-store-featured") !== "0",
+  );
+  const [catalogRetryToken, setCatalogRetryToken] = useState(0);
+
+  const pageQuery = useMemo(
+    () => ({
+      search,
+      platform,
+      maxPrice:
+        priceFilter === "under-15"
+          ? Math.min(maxPrice, 15)
+          : maxPrice >= 100
+            ? undefined
+            : maxPrice,
+      freeOnly: priceFilter === "free",
+      discountsOnly: discountsOnly || priceFilter === "discounts",
+      sortBy: sortBy as "relevance" | "release" | "price-low" | "price-high" | "name",
+      pageSize: STORE_PAGE_SIZE,
+    }),
+    [discountsOnly, maxPrice, platform, priceFilter, search, sortBy],
+  );
+
+  useEffect(() => {
+    setSearchParams(
+      (current) => {
+        const next = new URLSearchParams(current);
+        if (search.trim()) next.set("q", search.trim());
+        else next.delete("q");
+        if (platform !== "all") next.set("platform", platform);
+        else next.delete("platform");
+        if (sortBy !== "relevance") next.set("sort", sortBy);
+        else next.delete("sort");
+        if (priceFilter !== "all") next.set("price", priceFilter);
+        else next.delete("price");
+        if (selectedTags.length > 0) next.set("tags", selectedTags.join(","));
+        else next.delete("tags");
+        if (hideFree) next.set("hideFree", "1");
+        else next.delete("hideFree");
+        if (discountsOnly) next.set("discounts", "1");
+        else next.delete("discounts");
+        if (hideWishlist) next.set("hideWishlist", "1");
+        else next.delete("hideWishlist");
+        if (maxPrice < 100) next.set("maxPrice", String(maxPrice));
+        else next.delete("maxPrice");
+        return next;
+      },
+      { replace: true },
+    );
+  }, [
+    discountsOnly,
+    hideFree,
+    hideWishlist,
+    maxPrice,
+    platform,
+    priceFilter,
+    search,
+    selectedTags,
+    setSearchParams,
+    sortBy,
+  ]);
+
+  const fetchProductsPage = useCallback(
+    async (
+      page: number,
+    ): Promise<{
+      products: StoreProduct[];
+      hostedLength: number;
+      catalogLength: number;
+      bothRejected: boolean;
+    }> => {
+      const [hostedResult, catalogResult] = await Promise.allSettled([
+        listPublishedProductsPage({ page, ...pageQuery }),
+        listStoreCatalogPage({ page, ...pageQuery }),
+      ]);
+      const hostedProducts =
+        hostedResult.status === "fulfilled"
+          ? hostedResult.value
+              .map(keepNonKeyshopPlatforms)
+              .filter((product): product is StoreProduct => product !== null)
+          : [];
+      const catalogProducts =
+        catalogResult.status === "fulfilled"
+          ? catalogResult.value
+              .map(keepNonKeyshopPlatforms)
+              .filter((product): product is StoreProduct => product !== null)
+          : [];
+      return {
+        products: [...hostedProducts, ...catalogProducts].filter(
+          (product, index, all) =>
+            all.findIndex((candidate) => candidate.id === product.id) === index,
+        ),
+        hostedLength: hostedResult.status === "fulfilled" ? hostedResult.value.length : 0,
+        catalogLength: catalogResult.status === "fulfilled" ? catalogResult.value.length : 0,
+        bothRejected: hostedResult.status === "rejected" && catalogResult.status === "rejected",
+      };
+    },
+    [pageQuery],
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadStore() {
+      setIsLoading(true);
+      setErrorMessage(null);
+      const {
+        products: mergedProducts,
+        hostedLength,
+        catalogLength,
+        bothRejected,
+      } = await fetchProductsPage(0);
+      if (cancelled) return;
+      setProducts(mergedProducts.length > 0 ? mergedProducts : LOCAL_FALLBACK_PRODUCTS);
+      setCatalogSource(
+        mergedProducts.length > 0
+          ? hostedLength > 0 && catalogLength > 0
+            ? "mixed"
+            : hostedLength > 0
+              ? "hosted"
+              : "api"
+          : "local",
+      );
+      setHasMoreProducts(hostedLength === STORE_PAGE_SIZE || catalogLength === STORE_PAGE_SIZE);
+      setCatalogPage(0);
+      setIsLoading(false);
+      if (
+        selectedProductId &&
+        !mergedProducts.some((product) => product.id === selectedProductId)
+      ) {
+        setSelectedProductId(null);
+      }
+      if (bothRejected) setErrorMessage("The store catalog could not be loaded.");
+    }
+    void loadStore();
+    return () => {
+      cancelled = true;
+    };
+  }, [fetchProductsPage, selectedProductId, catalogRetryToken]);
+
+  async function loadNextCatalogPage() {
+    if (isLoadingMore || !hasMoreProducts) return;
+    setIsLoadingMore(true);
+    setErrorMessage(null);
+    const nextPage = catalogPage + 1;
+    const {
+      products: nextProducts,
+      hostedLength,
+      catalogLength,
+      bothRejected,
+    } = await fetchProductsPage(nextPage);
+    if (nextProducts.length > 0) {
+      setProducts((current) =>
+        [...current, ...nextProducts].filter(
+          (product, index, all) =>
+            all.findIndex((candidate) => candidate.id === product.id) === index,
+        ),
+      );
+      setCatalogPage(nextPage);
+      setHasMoreProducts(hostedLength === STORE_PAGE_SIZE || catalogLength === STORE_PAGE_SIZE);
+    } else setHasMoreProducts(false);
+    if (bothRejected) setErrorMessage("More store games could not be loaded.");
+    setIsLoadingMore(false);
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!user) {
+      setWishlistIds(new Set());
+      return;
+    }
+
+    void listMyStoreWishlist()
+      .then((items) => {
+        if (!cancelled) setWishlistIds(new Set(items.map((item) => item.productId)));
+      })
+      .catch(() => {
+        if (!cancelled) setWishlistIds(new Set());
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [user]);
+
+  useEffect(() => {
+    if (!selectedProductId) return;
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setSelectedProductId(null);
+        setSearchParams(
+          (current) => {
+            const next = new URLSearchParams(current);
+            next.delete("game");
+            return next;
+          },
+          { replace: true },
+        );
+      }
+    }
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [selectedProductId, setSearchParams]);
+
+  const gamesById = useMemo(
+    () => new Map(products.map((product) => [product.id, mapProductToGame(product)])),
+    [products],
+  );
+  const priceDataById = useMemo(
+    () =>
+      new Map(
+        products.map((p) => [p.id, { price: effectivePrice(p), hasPrice: hasAvailablePrice(p) }]),
+      ),
+    [products],
+  );
+  const availablePlatforms = useMemo(
+    () =>
+      Array.from(new Set(products.flatMap((product) => product.platforms)))
+        .filter(Boolean)
+        .sort((a, b) => a.localeCompare(b)),
+    [products],
+  );
+  const allTags = useMemo(
+    () =>
+      Array.from(new Set(products.flatMap((product) => product.tags).filter(Boolean))).sort(
+        (a, b) => a.localeCompare(b),
+      ),
+    [products],
+  );
+  const visibleGames = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    const sorted = products
+      .filter((product) => {
+        const game = gamesById.get(product.id);
+        if (!game) return false;
+        const text = [
+          product.title,
+          product.description,
+          product.publisher,
+          ...product.platforms,
+          ...product.genres,
+          ...product.tags,
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+        const matchesSearch = !query || text.includes(query);
+        const matchesTags =
+          selectedTags.length === 0 || selectedTags.every((tag) => text.includes(tag));
+        const matchesHideFree = !hideFree || !game.isFree;
+        const matchesWishlist = !hideWishlist || !wishlistIds.has(product.id);
+        const pd = priceDataById.get(product.id);
+        const price = pd?.price ?? 0;
+        const priceAvailable = pd?.hasPrice ?? false;
+        const matchesPrice =
+          priceFilter === "all" ||
+          (priceAvailable && priceFilter === "free" && price === 0) ||
+          (priceAvailable && priceFilter === "under-15" && price > 0 && price < 15) ||
+          (priceAvailable && priceFilter === "discounts" && product.discountPercent > 0);
+        const matchesPriceCap = !priceAvailable || price <= maxPrice;
+        return (
+          matchesSearch &&
+          matchesTags &&
+          matchesHideFree &&
+          matchesWishlist &&
+          matchesPriceCap &&
+          (platform === "all" || product.platforms.includes(platform)) &&
+          matchesPrice
+        );
+      })
+      .map((product) => gamesById.get(product.id)!)
+      .sort((a, b) => {
+        if (sortBy === "price-low") return (a.price ?? 0) - (b.price ?? 0);
+        if (sortBy === "price-high") return (b.price ?? 0) - (a.price ?? 0);
+        if (sortBy === "release")
+          return String(b.releaseDate ?? "").localeCompare(String(a.releaseDate ?? ""));
+        if (sortBy === "name") return a.title.localeCompare(b.title);
+        return (b.downloadsCount ?? 0) - (a.downloadsCount ?? 0);
+      });
+    return sorted;
+  }, [
+    gamesById,
+    hideFree,
+    hideWishlist,
+    maxPrice,
+    platform,
+    priceFilter,
+    products,
+    priceDataById,
+    search,
+    selectedTags,
+    sortBy,
+    wishlistIds,
+  ]);
+  const featuredGames = useMemo(
+    () =>
+      products
+        .map((product) => gamesById.get(product.id)!)
+        .sort((a, b) => (b.downloadsCount ?? 0) - (a.downloadsCount ?? 0))
+        .slice(0, 5),
+    [gamesById, products],
+  );
+  const activeFilterCount =
+    Number(Boolean(search.trim())) +
+    Number(platform !== "all") +
+    Number(priceFilter !== "all") +
+    Number(selectedTags.length > 0) +
+    Number(hideFree) +
+    Number(discountsOnly) +
+    Number(hideWishlist) +
+    Number(maxPrice < 100);
+  const clearFilters = () => {
+    setSearch("");
+    setPlatform("all");
+    setPriceFilter("all");
+    setSelectedTags([]);
+    setHideFree(false);
+    setDiscountsOnly(false);
+    setHideWishlist(false);
+    setMaxPrice(100);
+  };
+
+  function toggleFeatured() {
+    setShowFeatured((visible) => {
+      const next = !visible;
+      localStorage.setItem("og-store-featured", next ? "1" : "0");
+      return next;
+    });
+  }
+
+  function retryCatalog() {
+    setErrorMessage(null);
+    setCatalogPage(0);
+    setProducts([]);
+    setCatalogRetryToken((token) => token + 1);
+  }
+  async function toggleWishlist(gameId: string) {
+    const product = products.find((item) => item.id === gameId);
+    if (product?.metadata.localExample === true) {
+      setStatusMessage("Local preview games cannot be saved.");
+      return;
+    }
+    if (!user) {
+      setErrorMessage("Please sign in to save games.");
+      return;
+    }
+
+    const isWishlisted = wishlistIds.has(gameId);
+    setWishlistIds((current) => {
+      const next = new Set(current);
+      if (isWishlisted) next.delete(gameId);
+      else next.add(gameId);
+      return next;
+    });
+
+    try {
+      if (isWishlisted) await removeFromStoreWishlist(gameId);
+      else await addToStoreWishlist(gameId);
+      setStatusMessage(isWishlisted ? "Removed from wishlist." : "Added to wishlist.");
+    } catch (error) {
+      setWishlistIds((current) => {
+        const next = new Set(current);
+        if (isWishlisted) next.add(gameId);
+        else next.delete(gameId);
+        return next;
+      });
+      setErrorMessage(error instanceof Error ? error.message : "The wishlist could not be saved.");
+    }
+  }
+
+  async function openPlatformStores(gameIds: string[]) {
+    if (gameIds.length === 0) return;
+    setErrorMessage(null);
+    setStatusMessage(null);
+    try {
+      const productsToOpen = gameIds
+        .map((gameId) => products.find((product) => product.id === gameId))
+        .filter((product): product is StoreProduct => Boolean(product));
+      if (productsToOpen.length === 0) throw new Error("No platform game selected.");
+
+      const openUrl = isTauri()
+        ? openExternalUrl
+        : (url: string) => window.open(url, "_blank", "noopener,noreferrer");
+      const results = await Promise.allSettled(
+        productsToOpen.map(async (product) => {
+          const platformUrl = getPlatformPurchaseUrl(product);
+          if (!platformUrl)
+            throw new Error(`${product.title} does not have a platform store link yet.`);
+          await openUrl(platformUrl);
+        }),
+      );
+      const errors = results
+        .filter((r) => r.status === "rejected")
+        .map((r) => (r as PromiseRejectedResult).reason);
+      if (errors.length > 0) throw new Error(errors.join("; "));
+      setStatusMessage("The official platform store was opened. The purchase takes place there.");
+    } catch (error) {
+      setErrorMessage(
+        error instanceof Error ? error.message : "The platform store could not be opened.",
+      );
+    }
+  }
+
+  return (
+    <div className="min-h-[600px] space-y-6">
+      {errorMessage ? (
+        <div
+          className="neo-copy border-2 border-black bg-[#f6edd8] p-3 text-[10px] font-black uppercase"
+          role="alert"
+        >
+          <span>{errorMessage}</span>
+          <button
+            className="ml-3 border-2 border-black bg-[#8cf5e4] px-2 py-1"
+            type="button"
+            onClick={retryCatalog}
+          >
+            Retry catalog
+          </button>
+        </div>
+      ) : null}
+      {statusMessage ? (
+        <div
+          className="neo-copy border-2 border-black bg-[#8cf5e4] p-3 text-[10px] font-black uppercase"
+          role="status"
+        >
+          {statusMessage}
+        </div>
+      ) : null}
+
+      <div className="flex flex-wrap gap-2 pb-3">
+        <button
+          className={`neo-copy border-2 border-black px-3 py-2 text-[10px] font-black uppercase ${platform === "all" ? "bg-[#007166] text-white" : "bg-[#fff9ed]"}`}
+          type="button"
+          onClick={() => setPlatform("all")}
+        >
+          All platforms
+        </button>
+        {availablePlatforms.map((value) => (
+          <button
+            key={value}
+            className={`neo-copy border-2 border-black px-3 py-2 text-[10px] font-black uppercase ${platform === value ? "bg-[#007166] text-white" : "bg-[#fff9ed]"}`}
+            type="button"
+            onClick={() => setPlatform(value)}
+          >
+            {platformLabel(value)}
+          </button>
+        ))}
+      </div>
+
+      <div className="flex flex-wrap gap-2 pb-3">
+        <label className="neo-copy flex min-w-[240px] flex-1 items-center gap-2 border-2 border-black bg-[#fff9ed] px-3 py-2 text-[10px] font-black uppercase">
+          <span className="text-[#b7102a]">⌕</span>
+          <span className="sr-only">Search the store</span>
+          <input
+            className="min-w-0 flex-1 bg-transparent text-[11px] outline-none"
+            placeholder="Search the store"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+          />
+        </label>
+        <select
+          aria-label="Sort by"
+          className="neo-copy border-2 border-black bg-[#fff9ed] px-2 text-[10px] font-black uppercase"
+          value={sortBy}
+          onChange={(event) => setSortBy(event.target.value)}
+        >
+          <option value="relevance">Sort by relevance</option>
+          <option value="release">Release date</option>
+          <option value="price-low">Price: low to high</option>
+          <option value="price-high">Price: high to low</option>
+          <option value="name">Name</option>
+        </select>
+        <select
+          aria-label="Price filter"
+          className="neo-copy border-2 border-black bg-[#fff9ed] px-2 text-[10px] font-black uppercase"
+          value={priceFilter}
+          onChange={(event) => setPriceFilter(event.target.value as PriceFilter)}
+        >
+          <option value="all">All prices</option>
+          <option value="free">Free games</option>
+          <option value="under-15">Under €15</option>
+          <option value="discounts">Discounts</option>
+        </select>
+        <button
+          className="neo-copy border-2 border-black bg-[#f6edd8] px-3 py-2 text-[10px] font-black uppercase lg:hidden"
+          type="button"
+          onClick={() => setIsFilterSidebarOpen((open) => !open)}
+        >
+          {isFilterSidebarOpen ? "Hide filters" : "Show filters"}
+        </button>
+      </div>
+      {activeFilterCount > 0 ? (
+        <div className="neo-copy flex flex-wrap items-center gap-2 pb-3 text-[9px] font-black uppercase">
+          <span className="text-[#b7102a]">Active filters:</span>
+          {search.trim() ? (
+            <FilterChip label={`Search: ${search.trim()}`} onRemove={() => setSearch("")} />
+          ) : null}
+          {platform !== "all" ? (
+            <FilterChip label={platformLabel(platform)} onRemove={() => setPlatform("all")} />
+          ) : null}
+          {priceFilter !== "all" ? (
+            <FilterChip
+              label={priceFilter === "under-15" ? "Under €15" : priceFilter}
+              onRemove={() => setPriceFilter("all")}
+            />
+          ) : null}
+          {selectedTags.map((tag) => (
+            <FilterChip
+              key={tag}
+              label={tag}
+              onRemove={() => setSelectedTags(selectedTags.filter((value) => value !== tag))}
+            />
+          ))}
+          <button
+            className="border-2 border-black bg-[#8cf5e4] px-2 py-1"
+            type="button"
+            onClick={clearFilters}
+          >
+            Clear all
+          </button>
+        </div>
+      ) : null}
+
+      <section aria-labelledby="featured-games-title" className="space-y-3">
+        <div className="flex items-end justify-between border-b-2 border-black pb-2">
+          <h2 id="featured-games-title" className="neo-title text-3xl leading-none">
+            Featured games
+          </h2>
+          <div className="flex items-center gap-2">
+            <span className="neo-copy text-[10px] font-black uppercase">
+              Top picks // catalog-wide
+            </span>
+            <button
+              className="neo-copy border-2 border-black bg-[#f6edd8] px-2 py-1 text-[9px] font-black uppercase"
+              type="button"
+              onClick={toggleFeatured}
+            >
+              {showFeatured ? "Hide" : "Show"}
+            </button>
+          </div>
+        </div>
+        {showFeatured && isLoading ? (
+          <div
+            className="grid gap-3 md:grid-cols-[minmax(0,2fr)_repeat(3,minmax(0,1fr))]"
+            aria-label="Loading featured games"
+          >
+            <StoreFeaturedSkeleton featured />
+            <StoreFeaturedSkeleton />
+            <StoreFeaturedSkeleton />
+            <StoreFeaturedSkeleton />
+          </div>
+        ) : showFeatured ? (
+          <div className="grid gap-3 md:grid-cols-[minmax(0,2fr)_repeat(3,minmax(0,1fr))]">
+            {featuredGames.map((game, index) => {
+              const product = products.find((item) => item.id === game.id)!;
+              return (
+                <button
+                  key={game.id}
+                  aria-label={`View featured game ${game.title}`}
+                  className={`group relative overflow-hidden border-[3px] border-black bg-[#171411] text-left shadow-[4px_4px_0_#171411] ${index === 0 ? "md:row-span-2 md:min-h-[270px]" : "min-h-[128px]"}`}
+                  type="button"
+                  onClick={() => {
+                    setSelectedProductId(game.id);
+                    setSearchParams(
+                      (current) => {
+                        const next = new URLSearchParams(current);
+                        next.set("game", game.id);
+                        return next;
+                      },
+                      { replace: true },
+                    );
+                  }}
+                >
+                  {game.coverImageUrl ? (
+                    <img
+                      alt=""
+                      className="absolute inset-0 h-full w-full object-cover"
+                      src={game.coverImageUrl}
+                    />
+                  ) : null}
+                  <span className="neo-dots-ink absolute inset-0 opacity-70" />
+                  <span className="absolute inset-x-2 bottom-2 border-2 border-black bg-[#171411] p-3">
+                    <span className="neo-copy block text-[8px] font-black tracking-[0.12em] text-[#8cf5e4] uppercase">
+                      {product.platforms[0] ?? "Platform"}
+                    </span>
+                    <span className="neo-title mt-1 block text-xl leading-none text-[#fff9ed]">
+                      {game.title}
+                    </span>
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        ) : null}
+      </section>
+
+      {selectedProductId
+        ? (() => {
+            const selectedProduct =
+              products.find((product) => product.id === selectedProductId) ?? null;
+            const selectedGame = selectedProduct ? mapProductToGame(selectedProduct) : null;
+            return selectedGame ? (
+              <ProductDetailPanel
+                game={selectedGame}
+                storeProduct={selectedProduct}
+                isWishlisted={wishlistIds.has(selectedGame.id)}
+                onToggleWishlist={() => void toggleWishlist(selectedGame.id)}
+                onOpenStore={() => void openPlatformStores([selectedGame.id])}
+                onClose={() => {
+                  setSelectedProductId(null);
+                  setSearchParams(
+                    (current) => {
+                      const next = new URLSearchParams(current);
+                      next.delete("game");
+                      return next;
+                    },
+                    { replace: true },
+                  );
+                }}
+              />
+            ) : null;
+          })()
+        : null}
+
+      <section
+        className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_250px]"
+        aria-label="Product browser"
+      >
+        <div>
+          <div className="mb-4 flex items-end justify-between border-b-2 border-black pb-2">
+            <h2 id="store-games-title" className="neo-title text-3xl leading-none">
+              All games
+            </h2>
+            <span className="neo-copy text-right text-[10px] font-black uppercase">
+              {visibleGames.length} results
+              {activeFilterCount > 0 ? ` // ${activeFilterCount} filters active` : ""}
+            </span>
+          </div>
+          {isLoading ? (
+            <div className="space-y-3" aria-label="Loading store catalog">
+              {Array.from({ length: 4 }, (_, index) => (
+                <StoreRowSkeleton key={index} />
+              ))}
+            </div>
+          ) : visibleGames.length > 0 ? (
+            <div className="space-y-3">
+              {visibleGames.map((game) => {
+                const product = products.find((item) => item.id === game.id)!;
+                return (
+                  <StoreProductRow
+                    key={game.id}
+                    game={game}
+                    platforms={product.platforms}
+                    platformName={primaryPlatform(product)}
+                    isWishlisted={wishlistIds.has(game.id)}
+                    onOpenStore={(gameId) => void openPlatformStores([gameId])}
+                    onToggleWishlist={(gameId) => void toggleWishlist(gameId)}
+                    onViewDetails={(gameId) => {
+                      setSelectedProductId(gameId);
+                      setSearchParams(
+                        (current) => {
+                          const next = new URLSearchParams(current);
+                          next.set("game", gameId);
+                          return next;
+                        },
+                        { replace: true },
+                      );
+                    }}
+                  />
+                );
+              })}
+            </div>
+          ) : (
+            <div className="space-y-3">
+              <EmptyStorePanel
+                label={
+                  search.trim()
+                    ? `No games match “${search.trim()}”.`
+                    : "No published games match your filters."
+                }
+              />
+              {activeFilterCount > 0 ? (
+                <button
+                  className="neo-copy border-2 border-black bg-[#8cf5e4] px-3 py-2 text-[10px] font-black uppercase shadow-[3px_3px_0_#171411]"
+                  type="button"
+                  onClick={clearFilters}
+                >
+                  Clear all filters
+                </button>
+              ) : null}
+            </div>
+          )}
+          {hasMoreProducts ? (
+            <div className="mt-5 flex flex-col items-center gap-2 border-t-2 border-black pt-4">
+              <span className="neo-copy text-[10px] font-black uppercase">
+                Page {catalogPage + 1} loaded // more games available
+              </span>
+              <button
+                className="neo-copy w-full border-2 border-black bg-[#8cf5e4] px-4 py-3 text-[10px] font-black uppercase shadow-[3px_3px_0_#171411]"
+                type="button"
+                disabled={isLoadingMore}
+                onClick={() => void loadNextCatalogPage()}
+              >
+                {isLoadingMore ? "Loading next page..." : "Next page // load more games"}
+              </button>
+            </div>
+          ) : null}
+        </div>
+        <StoreFilterSidebar
+          className={isFilterSidebarOpen ? "block" : "hidden lg:block"}
+          allTags={allTags}
+          discountsOnly={discountsOnly}
+          hideFree={hideFree}
+          hideWishlist={hideWishlist}
+          selectedTags={selectedTags}
+          onHideFreeChange={setHideFree}
+          onHideWishlistChange={setHideWishlist}
+          onDiscountsOnlyChange={setDiscountsOnly}
+          onTagsChange={setSelectedTags}
+          tagSearch={tagSearch}
+          onTagSearchChange={setTagSearch}
+          maxPrice={maxPrice}
+          onMaxPriceChange={setMaxPrice}
+        />
+      </section>
+
+      <div className="neo-copy flex items-center gap-2 border-2 border-black bg-[#f6edd8] p-3 text-[9px] font-black uppercase">
+        <Tag className="h-4 w-4 text-[#b7102a]" />{" "}
+        {catalogSource === "local"
+          ? "Local example catalog: Open store opens the matching platform store."
+          : catalogSource === "mixed" || catalogSource === "api"
+            ? "Live games from the store catalog: Open store opens the official platform store."
+            : "Open store opens the configured store link for the relevant platform."}
+      </div>
+    </div>
+  );
+}
+
+function StoreRowSkeleton() {
+  return (
+    <div
+      className="grid animate-pulse grid-cols-[104px_minmax(0,1fr)_auto] gap-3 border-2 border-black bg-[#f6edd8] p-2 shadow-[3px_3px_0_#171411] sm:grid-cols-[150px_minmax(0,1fr)_150px]"
+      aria-hidden="true"
+    >
+      <div className="h-20 border-2 border-black bg-[#d8cdbb] sm:h-24" />
+      <div className="space-y-3 py-2">
+        <div className="h-6 w-3/4 bg-[#d8cdbb]" />
+        <div className="h-3 w-1/2 bg-[#d8cdbb]" />
+        <div className="h-5 w-2/3 bg-[#d8cdbb]" />
+      </div>
+      <div className="flex flex-col items-end justify-between py-2">
+        <div className="h-3 w-16 bg-[#d8cdbb]" />
+        <div className="h-5 w-14 bg-[#d8cdbb]" />
+        <div className="h-8 w-24 bg-[#d8cdbb]" />
+      </div>
+    </div>
+  );
+}
+
+function StoreFeaturedSkeleton({ featured = false }: { featured?: boolean }) {
+  return (
+    <div
+      className={`animate-pulse border-[3px] border-black bg-[#302c25] shadow-[4px_4px_0_#171411] ${featured ? "md:row-span-2 md:min-h-[270px]" : "min-h-[128px]"}`}
+      aria-hidden="true"
+    >
+      <div className="h-full min-h-[128px] bg-[#413a31]" />
+    </div>
+  );
+}
+
+function StoreFilterSidebar({
+  className = "",
+  allTags = [],
+  discountsOnly,
+  hideFree,
+  hideWishlist,
+  selectedTags,
+  onHideFreeChange,
+  onHideWishlistChange,
+  onDiscountsOnlyChange,
+  onTagsChange,
+  tagSearch,
+  onTagSearchChange,
+  maxPrice,
+  onMaxPriceChange,
+}: {
+  className?: string;
+  allTags: string[];
+  hideFree: boolean;
+  hideWishlist: boolean;
+  discountsOnly: boolean;
+  selectedTags: string[];
+  onHideFreeChange: (value: boolean) => void;
+  onHideWishlistChange: (value: boolean) => void;
+  onDiscountsOnlyChange: (value: boolean) => void;
+  onTagsChange: (value: string[]) => void;
+  tagSearch: string;
+  onTagSearchChange: (value: string) => void;
+  maxPrice: number;
+  onMaxPriceChange: (value: number) => void;
+}) {
+  const availableTags =
+    allTags.length > 0 ? allTags : ["singleplayer", "indie", "action", "casual", "adventure"];
+  const tags = availableTags
+    .filter((tag) => tag.toLowerCase().includes(tagSearch.trim().toLowerCase()))
+    .slice(0, 20);
+  const toggleTag = (tag: string) =>
+    onTagsChange(
+      selectedTags.includes(tag)
+        ? selectedTags.filter((value) => value !== tag)
+        : [...selectedTags, tag],
+    );
+  return (
+    <aside
+      className={`${className} space-y-3 lg:sticky lg:top-4 lg:self-start`}
+      aria-label="Store filters sidebar"
+    >
+      <FilterPanel title="Narrow by price">
+        <input
+          aria-label="Maximum price"
+          className="w-full accent-[#b7102a]"
+          type="range"
+          min="0"
+          max="100"
+          step="1"
+          value={maxPrice}
+          onChange={(event) => onMaxPriceChange(Number(event.target.value))}
+        />
+        <p className="neo-copy text-[10px] font-black uppercase">
+          {maxPrice >= 100 ? "Any price" : `Up to €${maxPrice}`}
+        </p>
+        <FilterCheck
+          label="Discounts & events"
+          checked={discountsOnly}
+          onChange={onDiscountsOnlyChange}
+        />
+        <FilterCheck
+          label="Hide free to play items"
+          checked={hideFree}
+          onChange={onHideFreeChange}
+        />
+      </FilterPanel>
+      <FilterPanel title="Narrow by preferences">
+        <FilterCheck disabled label="Hide ignored items" />
+        <FilterCheck disabled label="Hide items in my library" />
+        <FilterCheck
+          label="Hide items on my wishlist"
+          checked={hideWishlist}
+          onChange={onHideWishlistChange}
+        />
+      </FilterPanel>
+      <FilterPanel title="Narrow by tag">
+        {tags.map((tag) => (
+          <FilterCheck
+            key={tag}
+            label={tag}
+            checked={selectedTags.includes(tag)}
+            onChange={() => toggleTag(tag)}
+          />
+        ))}
+        <input
+          aria-label="Search for more tags"
+          className="neo-copy w-full border-2 border-black bg-[#fff9ed] px-2 py-2 text-[9px] uppercase"
+          placeholder="Search for more tags"
+          value={tagSearch}
+          onChange={(event) => onTagSearchChange(event.target.value)}
+        />
+      </FilterPanel>
+      {[
+        "Show selected types",
+        "Narrow by number of players",
+        "Narrow by feature",
+        "Narrow by controller support",
+        "Narrow by accessibility",
+        "Narrow by Deck Compatibility",
+        "Narrow by VR support",
+        "Narrow by OS",
+        "Narrow by language",
+      ].map((title) => (
+        <FilterPanel key={title} title={title} collapsed />
+      ))}
+    </aside>
+  );
+}
+
+function FilterPanel({
+  title,
+  collapsed = false,
+  children,
+}: {
+  title: string;
+  collapsed?: boolean;
+  children?: ReactNode;
+}) {
+  return (
+    <details
+      className="border-2 border-black bg-[#f6edd8] shadow-[3px_3px_0_#171411]"
+      open={!collapsed}
+    >
+      <summary className="neo-copy cursor-pointer list-none bg-[#171411] px-3 py-2 text-[10px] font-black text-[#fff9ed] uppercase">
+        {title}
+      </summary>
+      {children ? <div className="space-y-2 p-3">{children}</div> : null}
+    </details>
+  );
+}
+
+function FilterCheck({
+  label,
+  checked = false,
+  disabled = false,
+  onChange,
+}: {
+  label: string;
+  checked?: boolean;
+  disabled?: boolean;
+  onChange?: (value: boolean) => void;
+}) {
+  return (
+    <label
+      className={`neo-copy flex items-center gap-2 text-[9px] font-black uppercase ${disabled ? "opacity-40" : ""}`}
+    >
+      <input
+        checked={checked}
+        className="accent-[#b7102a]"
+        disabled={disabled}
+        type="checkbox"
+        onChange={(event) => onChange?.(event.target.checked)}
+      />
+      {label}
+    </label>
+  );
+}

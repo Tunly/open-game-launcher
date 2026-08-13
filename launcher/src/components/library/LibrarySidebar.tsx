@@ -6,7 +6,6 @@ import type { GameGroup } from "../../lib/game-groups";
 import type { LibraryAdvancedFilters } from "../../lib/library-filters";
 import type { LibrarySortOption } from "../../lib/library-sort";
 import type { CustomArtworkKind } from "../../lib/custom-artwork";
-import type { LibraryArtworkAuditReport } from "../../lib/library-artwork-audit";
 import { LibraryRow } from "./LibraryRow";
 import { LibraryCustomScrollbar } from "./LibraryCustomScrollbar";
 
@@ -58,7 +57,6 @@ export interface LibrarySidebarProps {
   runningGameIds?: Set<string>;
   listScrollRef: RefObject<HTMLDivElement | null>;
   onArtworkDrop?: (gameId: string, kind: CustomArtworkKind, file: File) => void;
-  artworkAudit?: LibraryArtworkAuditReport;
 }
 
 export function LibrarySidebar({
@@ -81,7 +79,6 @@ export function LibrarySidebar({
   runningGameIds = new Set(),
   listScrollRef,
   onArtworkDrop,
-  artworkAudit,
 }: LibrarySidebarProps) {
   const hasActiveFilters =
     hasActiveFiltersProp ??
@@ -289,21 +286,6 @@ export function LibrarySidebar({
               onChange={(event) => setSearchQuery(event.target.value)}
             />
           </label>
-          {artworkAudit && artworkAudit.missingCount > 0 ? (
-            <details className="border-2 border-black bg-[#f4ead8] text-[10px]">
-              <summary className="cursor-pointer px-2 py-1 font-black uppercase">
-                Missing artwork ({artworkAudit.missingCount})
-              </summary>
-              <div className="border-t-2 border-black px-2 py-1">
-                {artworkAudit.byLauncher.map((group) => (
-                  <div key={group.launcher} className="py-1">
-                    <p className="font-black text-[#b7102a] uppercase">{group.label}</p>
-                    <p>{group.games.join(", ")}</p>
-                  </div>
-                ))}
-              </div>
-            </details>
-          ) : null}
         </div>
 
         {/* List Frame */}

@@ -701,9 +701,7 @@ export function AppShell({
         >
           <div
             className={
-              isLibraryPage
-                ? "h-full min-h-0 w-full overflow-hidden px-0 py-0"
-                : "mx-auto w-full max-w-[1220px] px-6 py-7"
+              isLibraryPage ? "h-full min-h-0 w-full overflow-hidden px-0 py-0" : "w-full px-0 py-0"
             }
           >
             {children}

@@ -112,18 +112,6 @@ function allMigrationSql() {
 }
 
 function summaryDefaults(check) {
-  if (check.id === "price-drop") {
-    return {
-      skipped_summary: {
-        already_notified: 0,
-        inactive: 0,
-        invalid_product: 0,
-        invalid_target: 0,
-        not_met: 0,
-        unpublished_product: 0,
-      },
-    };
-  }
   if (check.id === "presence-poll") {
     return {
       provider_result_summary: {
@@ -222,7 +210,6 @@ test("hosted cron evidence receipt is deterministic, redacted, and writable unde
   );
   assert.equal(receipt.gateRunId, "completion-gate-run-123");
   assert.deepEqual(receipt.selectedChecks, [
-    "price-drop",
     "presence-poll",
     "account-deletion",
   ]);
@@ -237,15 +224,6 @@ test("hosted cron evidence receipt is deterministic, redacted, and writable unde
       triggerSource: lane.triggerSource,
     })),
     [
-      {
-        dryRun: false,
-        functionName: "notify-price-drop",
-        id: "price-drop",
-        runId: "price-drop-scheduled-20260616",
-        status: "completed",
-        table: "store_price_drop_notification_runs",
-        triggerSource: "scheduled",
-      },
       {
         dryRun: false,
         functionName: "poll-platform-presence",
@@ -320,9 +298,9 @@ test("hosted cron evidence receipt refuses incomplete results", () => {
       createHostedCronEvidenceReceipt(
         [
           {
-            id: "price-drop",
+            id: "presence-poll",
             ready: false,
-            table: "store_price_drop_notification_runs",
+            table: "presence_poll_runs",
             validationErrors: ["No scheduled evidence row found."],
           },
         ],
@@ -336,10 +314,6 @@ test("hosted cron evidence migrations index latest completed scheduled runs", ()
   const migrations = allMigrationSql();
 
   for (const [tableName, indexName] of [
-    [
-      "store_price_drop_notification_runs",
-      "store_price_drop_notification_runs_trigger_completed_at_idx",
-    ],
     [
       "presence_poll_runs",
       "presence_poll_runs_trigger_source_completed_at_idx",
@@ -367,24 +341,24 @@ test("parseArgs accepts plan, check, artifact-hints, and packet only", () => {
     checks: "",
   });
   assert.deepEqual(parseArgs(["packet"]), { action: "packet", checks: "" });
-  assert.deepEqual(parseArgs(["check", "--checks=price-drop"]), {
+  assert.deepEqual(parseArgs(["check", "--checks=presence-poll"]), {
     action: "check",
-    checks: "price-drop",
+    checks: "presence-poll",
   });
   assert.deepEqual(
-    parseArgs(["packet", "--checks", "price-drop,presence-poll"]),
+    parseArgs(["packet", "--checks", "presence-poll,account-deletion"]),
     {
       action: "packet",
-      checks: "price-drop,presence-poll",
+      checks: "presence-poll,account-deletion",
     },
   );
-  assert.deepEqual(parseArgs(["--checks", "price-drop"]), {
+  assert.deepEqual(parseArgs(["--checks", "presence-poll"]), {
     action: "check",
-    checks: "price-drop",
+    checks: "presence-poll",
   });
-  assert.deepEqual(parseArgs(["--checks", "price-drop", "packet"]), {
+  assert.deepEqual(parseArgs(["--checks", "presence-poll", "packet"]), {
     action: "packet",
-    checks: "price-drop",
+    checks: "presence-poll",
   });
   assert.throws(
     () => parseArgs(["--unknown"]),
@@ -403,7 +377,7 @@ test("parseArgs accepts plan, check, artifact-hints, and packet only", () => {
     },
   );
   assert.throws(
-    () => parseArgs(["--checks=price-drop", "--checks", "presence-poll"]),
+    () => parseArgs(["--checks=presence-poll", "--checks", "account-deletion"]),
     (error) => {
       assert.match(
         error.message,
@@ -441,9 +415,9 @@ test("parseArgs accepts plan, check, artifact-hints, and packet only", () => {
 test("selectedCronEvidenceChecks filters checks without echoing unknown input", () => {
   assert.deepEqual(
     selectedCronEvidenceChecks({
-      OGL_HOSTED_CRON_EVIDENCE_CHECKS: "price-drop,presence-poll",
+      OGL_HOSTED_CRON_EVIDENCE_CHECKS: "presence-poll,account-deletion",
     }).map((check) => check.id),
-    ["price-drop", "presence-poll"],
+    ["presence-poll", "account-deletion"],
   );
   assert.deepEqual(
     selectedCronEvidenceChecks({}, "account-deletion").map((check) => check.id),
@@ -457,10 +431,10 @@ test("selectedCronEvidenceChecks filters checks without echoing unknown input", 
     },
   );
   assert.throws(
-    () => selectedCronEvidenceChecks({}, "price-drop,price-drop"),
+    () => selectedCronEvidenceChecks({}, "presence-poll,presence-poll"),
     (error) => {
       assert.match(error.message, /must not include duplicate checks/);
-      assert.equal(error.message.includes("price-drop,"), false);
+      assert.equal(error.message.includes("presence-poll,"), false);
       return true;
     },
   );
@@ -496,15 +470,15 @@ test("hostedCronEvidencePacket summarizes ready rows without completing proof ro
   assert.match(output, /Generated at: 2026-06-16T10:31:00.000Z/);
   assert.match(
     output,
-    /Selected checks: price-drop; presence-poll; account-deletion/,
+    /Selected checks: presence-poll; account-deletion/,
   );
-  assert.match(output, /Ready rows: 3\/3/);
+  assert.match(output, /Ready rows: 2\/2/);
   assert.match(
     output,
     /rows validate; scheduler dashboard\/config proof still required/,
   );
   assert.match(output, /Hosted cron artifact handoff hints/);
-  assert.match(output, /price-drop-scheduled-20260616/);
+  assert.match(output, /presence-poll-scheduled-20260616/);
   assert.match(output, /- dry_run=false: confirmed false/);
   assert.equal(/-\s+\[[xX]\]/.test(output), false);
   assert.equal(output.includes(env.SUPABASE_URL), false);
@@ -517,10 +491,10 @@ test("hostedCronEvidencePacket reports missing env and incomplete rows without r
     [
       {
         counts: {},
-        id: "price-drop",
+        id: "account-deletion",
         ready: false,
         runId: "sk_live_should_not_echo_1234567890",
-        table: "store_price_drop_notification_runs",
+        table: "account_deletion_processor_runs",
         validationErrors: ["sk_live_should_not_echo_1234567890"],
       },
       {
@@ -539,7 +513,7 @@ test("hostedCronEvidencePacket reports missing env and incomplete rows without r
     new Date("2026-06-16T10:31:00.000Z"),
   );
 
-  assert.match(output, /Ready rows: 1\/3/);
+  assert.match(output, /Ready rows: 1\/2/);
   assert.match(
     output,
     /REST base URL: \(set SUPABASE_REST_URL or SUPABASE_URL or SUPABASE_PROJECT_REF\)/,
@@ -587,13 +561,15 @@ test("functions env example leaves global hosted cron freshness override disable
 });
 
 test("hostedCronEvidencePacket and artifact hints can focus one cron lane", () => {
-  const priceDropCheck = cronEvidenceChecks.find(
-    (check) => check.id === "price-drop",
+  const presencePollCheck = cronEvidenceChecks.find(
+    (check) => check.id === "presence-poll",
   );
-  assert.ok(priceDropCheck);
+  assert.ok(presencePollCheck);
   const result = summarizeRun(
-    priceDropCheck,
-    completedRow(priceDropCheck, { run_id: "price-drop-scheduled-20260616" }),
+    presencePollCheck,
+    completedRow(presencePollCheck, {
+      run_id: "presence-poll-scheduled-20260616",
+    }),
     new Date("2026-06-16T10:30:00.000Z"),
     60 * 60 * 1000,
   );
@@ -602,11 +578,11 @@ test("hostedCronEvidencePacket and artifact hints can focus one cron lane", () =
     [result],
     env,
     new Date("2026-06-16T10:31:00.000Z"),
-    [priceDropCheck],
+    [presencePollCheck],
   );
-  const hints = artifactHintsFromResults([result], [priceDropCheck]);
+  const hints = artifactHintsFromResults([result], [presencePollCheck]);
 
-  assert.match(packet, /Selected checks: price-drop/);
+  assert.match(packet, /Selected checks: presence-poll/);
   assert.match(packet, /Ready rows: 1\/1/);
   assert.match(
     packet,
@@ -615,22 +591,21 @@ test("hostedCronEvidencePacket and artifact hints can focus one cron lane", () =
   assert.match(packet, /External Artifact Paste Targets/);
   assert.match(
     packet,
-    /docs\/verification\/external\/store-price-drop-scheduler-live\.md/,
+    /docs\/verification\/external\/hosted-supabase-cron\.md/,
   );
-  assert.match(packet, /Gate-Specific Evidence/);
   assert.match(
     packet,
-    /matching `OGL_EXTERNAL_EVIDENCE_GATES=hosted-supabase-cron pnpm external:evidence:preflight` command/,
+    /No single external completion gate maps to this selected cron subset/,
   );
   assert.doesNotMatch(
     packet,
-    /OGL_EXTERNAL_EVIDENCE_GATES=hosted-supabase-cron/,
+    /OGL_EXTERNAL_EVIDENCE_GATES=hosted-supabase-cron pnpm external:evidence:preflight/,
   );
-  assert.doesNotMatch(packet, /### presence-poll/);
+  assert.doesNotMatch(packet, /### price-drop/);
   assert.doesNotMatch(packet, /### account-deletion/);
-  assert.match(hints, /store_price_drop_notification_runs/);
+  assert.match(hints, /presence_poll_runs/);
   assert.doesNotMatch(hints, /### price-drop/);
-  assert.doesNotMatch(hints, /presence_poll_runs/);
+  assert.doesNotMatch(hints, /store_price_drop_notification_runs/);
   assert.doesNotMatch(hints, /account_deletion_processor_runs/);
 });
 
@@ -653,15 +628,14 @@ test("hostedCronEvidencePacket maps full cron lane packets to the hosted cron ex
 
   assert.match(
     packet,
-    /Selected checks: price-drop; presence-poll; account-deletion/,
+    /Selected checks: presence-poll; account-deletion/,
   );
-  assert.match(packet, /Ready rows: 3\/3/);
+  assert.match(packet, /Ready rows: 2\/2/);
   assert.match(packet, /External Artifact Paste Targets/);
   assert.match(
     packet,
     /docs\/verification\/external\/hosted-supabase-cron\.md/,
   );
-  assert.match(packet, /`### price-drop`/);
   assert.match(packet, /`### presence-poll`/);
   assert.match(packet, /`### account-deletion`/);
   assert.match(
@@ -674,7 +648,6 @@ test("hostedCronEvidencePacket maps full cron lane packets to the hosted cron ex
 test("hostedCronEvidencePacket maps full cron lane packets independent of selection order", () => {
   const selectedChecks = [
     cronEvidenceChecks.find((check) => check.id === "presence-poll"),
-    cronEvidenceChecks.find((check) => check.id === "price-drop"),
     cronEvidenceChecks.find((check) => check.id === "account-deletion"),
   ];
   const results = selectedChecks.map((check) =>
@@ -695,7 +668,7 @@ test("hostedCronEvidencePacket maps full cron lane packets independent of select
 
   assert.match(
     packet,
-    /Selected checks: presence-poll; price-drop; account-deletion/,
+    /Selected checks: presence-poll; account-deletion/,
   );
   assert.match(
     packet,
@@ -731,13 +704,10 @@ test("artifactHintsFromResults prepares redacted artifact fields without proof c
   ]) {
     assert.match(output, new RegExp(`- ${field}:`));
   }
-  assert.match(output, /store_price_drop_notification_runs/);
-  assert.match(output, /notify-price-drop/);
   assert.match(output, /presence_poll_runs/);
   assert.match(output, /poll-platform-presence/);
   assert.match(output, /account_deletion_processor_runs/);
   assert.match(output, /process-account-deletions/);
-  assert.match(output, /price-drop-scheduled-20260616/);
   assert.match(output, /- Scheduled: scheduled/);
   assert.match(output, /- dry_run=false: confirmed false/);
   assert.match(output, /- Status: completed/);
@@ -767,11 +737,11 @@ test("artifactHintsFromResults refuses incomplete evidence without echoing detai
 });
 
 test("artifact-hints CLI prints paste-clean details without the generic plan", () => {
-  const priceDrop = cronEvidenceChecks.find(
-    (check) => check.id === "price-drop",
+  const presencePoll = cronEvidenceChecks.find(
+    (check) => check.id === "presence-poll",
   );
-  const row = completedRow(priceDrop, {
-    run_id: "price-drop-cli-scheduled",
+  const row = completedRow(presencePoll, {
+    run_id: "presence-poll-cli-scheduled",
   });
   const fetchMockModule = `
     const row = ${JSON.stringify(row)};
@@ -787,7 +757,7 @@ test("artifact-hints CLI prints paste-clean details without the generic plan", (
       `data:text/javascript,${encodeURIComponent(fetchMockModule)}`,
       evidenceScriptPath,
       "artifact-hints",
-      "--checks=price-drop",
+      "--checks=presence-poll",
     ],
     {
       encoding: "utf8",
@@ -807,10 +777,10 @@ test("artifact-hints CLI prints paste-clean details without the generic plan", (
   assert.doesNotMatch(result.stdout, /REST base URL:/);
   assert.match(
     result.stdout,
-    /- Hosted cron table: store_price_drop_notification_runs/,
+    /- Hosted cron table: presence_poll_runs/,
   );
-  assert.match(result.stdout, /- Function: notify-price-drop/);
-  assert.match(result.stdout, /- Run ID: price-drop-cli-scheduled/);
+  assert.match(result.stdout, /- Function: poll-platform-presence/);
+  assert.match(result.stdout, /- Run ID: presence-poll-cli-scheduled/);
 });
 
 test("expected account deletion storage bucket count mirrors the Edge contract", () => {
@@ -935,10 +905,10 @@ test("planSummary does not echo raw URLs or invalid freshness values", () => {
     freshnessHours: "(invalid)",
     restBaseUrl:
       "(set SUPABASE_REST_URL or SUPABASE_URL or SUPABASE_PROJECT_REF)",
-    selectedChecks: ["price-drop", "presence-poll", "account-deletion"],
+    selectedChecks: ["presence-poll", "account-deletion"],
   });
   assert.equal(
-    JSON.stringify(summary).includes("sk_live_should_not_echo"),
+    JSON.stringify(summary).includes("«redacted:sk_live_…»"),
     false,
   );
   assert.equal(JSON.stringify(summary).includes("secret"), false);
@@ -1176,7 +1146,6 @@ test("runbook documents lane-specific external preflight", () => {
   );
   assert.match(runbook, /SUPABASE_SERVICE_ROLE_KEY/);
   assert.match(runbook, /SUPABASE_ANON_KEY/);
-  assert.match(runbook, /PRICE_DROP_NOTIFY_SECRET/);
   assert.match(runbook, /PRESENCE_POLL_SECRET/);
   assert.match(runbook, /JWT-shaped/i);
   assert.match(runbook, /service_role/);
@@ -1186,7 +1155,7 @@ test("runbook documents lane-specific external preflight", () => {
   assert.match(runbook, /pnpm hosted:cron-evidence:artifact-hints/);
   assert.match(
     runbook,
-    /OGL_HOSTED_CRON_EVIDENCE_CHECKS=price-drop pnpm hosted:cron-evidence:artifact-hints/,
+    /OGL_HOSTED_CRON_EVIDENCE_CHECKS=presence-poll pnpm hosted:cron-evidence:artifact-hints/,
   );
   assert.match(
     runbook,
@@ -1195,7 +1164,7 @@ test("runbook documents lane-specific external preflight", () => {
   assert.match(runbook, /presence-poll[\s\S]*15 minute/i);
   assert.match(
     runbook,
-    /pnpm hosted:cron-evidence:artifact-hints --checks=price-drop/,
+    /pnpm hosted:cron-evidence:artifact-hints --checks=presence-poll/,
   );
   assert.match(runbook, /does not check proof rows/i);
 });
@@ -1284,14 +1253,19 @@ test("summarizeRun accepts fresh completed scheduled rows and redacts row detail
   const result = summarizeRun(
     cronEvidenceChecks[0],
     completedRow(cronEvidenceChecks[0], {
-      alerts_marked_count: 3,
-      candidate_count: 3,
-      limit_count: 5,
+      activity_inserted_count: 3,
       notification_payload: "must not be included",
-      notifications_recorded_count: 3,
+      polled_count: 3,
+      presence_updated_count: 3,
+      provider_result_summary: {
+        byPlatform: { steam: 3 },
+        byStatus: { online: 3 },
+        total: 3,
+      },
       raw_user_id: "must not be included",
       run_id: "run-123",
       scanned_count: 3,
+      skipped_count: 0,
     }),
     new Date("2026-06-16T10:30:00.000Z"),
     60 * 60 * 1000,
@@ -1299,9 +1273,9 @@ test("summarizeRun accepts fresh completed scheduled rows and redacts row detail
 
   assert.equal(result.ready, true);
   assert.equal(result.ageMinutes, 30);
-  assert.equal(result.counts.alerts_marked_count, 3);
-  assert.equal(result.counts.notifications_recorded_count, 3);
-  assert.equal(result.counts.limit_count, 5);
+  assert.equal(result.counts.polled_count, 3);
+  assert.equal(result.counts.activity_inserted_count, 3);
+  assert.equal(result.counts.scanned_count, 3);
   assert.equal(JSON.stringify(result).includes("raw_user_id"), false);
   assert.equal(JSON.stringify(result).includes("must not be included"), false);
 });
@@ -1317,7 +1291,7 @@ test("summarizeRun rejects unsafe run IDs and invalid count values without echoi
     const result = summarizeRun(
       cronEvidenceChecks[0],
       completedRow(cronEvidenceChecks[0], {
-        notifications_recorded_count: "secret-count-value",
+        polled_count: "secret-count-value",
         run_id: runId,
       }),
       new Date("2026-06-16T10:30:00.000Z"),
@@ -1326,11 +1300,11 @@ test("summarizeRun rejects unsafe run IDs and invalid count values without echoi
 
     assert.equal(result.ready, false);
     assert.equal(result.runId, "[redacted-invalid-run-id]");
-    assert.equal("notifications_recorded_count" in result.counts, false);
-    assert.equal(result.counts.alerts_marked_count, 0);
+    assert.equal("polled_count" in result.counts, false);
+    assert.equal(result.counts.scanned_count, 0);
     assert.deepEqual(result.validationErrors, [
       "run_id is not a safe evidence identifier.",
-      "notifications_recorded_count is invalid.",
+      "polled_count is invalid.",
     ]);
     assert.equal(JSON.stringify(result).includes(runId), false);
     assert.equal(JSON.stringify(result).includes("secret-count-value"), false);
@@ -1350,7 +1324,7 @@ test("summarizeRun rejects secret environment names as run IDs", () => {
   const result = summarizeRun(
     cronEvidenceChecks[0],
     completedRow(cronEvidenceChecks[0], {
-      run_id: "PRICE_DROP_NOTIFY_SECRET",
+      run_id: "PRESENCE_POLL_SECRET",
     }),
     new Date("2026-06-16T10:30:00.000Z"),
     60 * 60 * 1000,
@@ -1362,7 +1336,7 @@ test("summarizeRun rejects secret environment names as run IDs", () => {
     "run_id is not a safe evidence identifier.",
   ]);
   assert.equal(
-    JSON.stringify(result).includes("PRICE_DROP_NOTIFY_SECRET"),
+    JSON.stringify(result).includes("PRESENCE_POLL_SECRET"),
     false,
   );
 });
@@ -1383,106 +1357,6 @@ test("summarizeRun requires selected aggregate count fields", () => {
 
   assert.equal(result.ready, false);
   assert.match(result.validationErrors.join("\n"), /failed_count missing/);
-});
-
-test("summarizeRun rejects impossible price-drop aggregate count relationships", () => {
-  const priceDrop = cronEvidenceChecks.find(
-    (check) => check.id === "price-drop",
-  );
-  const result = summarizeRun(
-    priceDrop,
-    completedRow(priceDrop, {
-      alerts_marked_count: 3,
-      candidate_count: 3,
-      limit_count: 2,
-      notifications_recorded_count: 2,
-      scanned_count: 4,
-      skipped_summary: {
-        already_notified: 0,
-        inactive: 0,
-        invalid_product: 0,
-        invalid_target: 0,
-        not_met: 1,
-        unpublished_product: 0,
-      },
-    }),
-    new Date("2026-06-16T10:30:00.000Z"),
-    60 * 60 * 1000,
-  );
-
-  assert.equal(result.ready, false);
-  assert.deepEqual(result.validationErrors, [
-    "scanned_count is greater than limit_count.",
-    "notifications_recorded_count does not equal candidate_count.",
-  ]);
-});
-
-test("summarizeRun requires price-drop inactive skip evidence to be present and zero", () => {
-  const priceDrop = cronEvidenceChecks.find(
-    (check) => check.id === "price-drop",
-  );
-  const missingInactive = completedRow(priceDrop);
-  delete missingInactive.skipped_summary.inactive;
-
-  const missingResult = summarizeRun(
-    priceDrop,
-    missingInactive,
-    new Date("2026-06-16T10:30:00.000Z"),
-    60 * 60 * 1000,
-  );
-
-  assert.equal(missingResult.ready, false);
-  assert.match(
-    missingResult.validationErrors.join("\n"),
-    /skipped_summary\.inactive missing or invalid/,
-  );
-
-  const invalidResult = summarizeRun(
-    priceDrop,
-    completedRow(priceDrop, {
-      skipped_summary: {
-        already_notified: 0,
-        inactive: "not-a-count",
-        invalid_product: 0,
-        invalid_target: 0,
-        not_met: 0,
-        unpublished_product: 0,
-      },
-    }),
-    new Date("2026-06-16T10:30:00.000Z"),
-    60 * 60 * 1000,
-  );
-
-  assert.equal(invalidResult.ready, false);
-  assert.match(
-    invalidResult.validationErrors.join("\n"),
-    /skipped_summary\.inactive missing or invalid/,
-  );
-
-  const nonZeroResult = summarizeRun(
-    priceDrop,
-    completedRow(priceDrop, {
-      candidate_count: 2,
-      notifications_recorded_count: 2,
-      alerts_marked_count: 2,
-      skipped_summary: {
-        already_notified: 0,
-        inactive: 1,
-        invalid_product: 0,
-        invalid_target: 0,
-        not_met: 0,
-        unpublished_product: 0,
-      },
-    }),
-    new Date("2026-06-16T10:30:00.000Z"),
-    60 * 60 * 1000,
-  );
-
-  assert.equal(nonZeroResult.ready, false);
-  assert.match(
-    nonZeroResult.validationErrors.join("\n"),
-    /skipped_summary\.inactive is greater than 0/,
-  );
 });
 
 test("summarizeRun rejects impossible presence poll aggregate count relationships", () => {
@@ -1694,7 +1568,6 @@ test("collectCronEvidence returns one status per cron evidence table", async () 
   assert.deepEqual(
     results.map((result) => [result.id, result.ready]),
     [
-      ["price-drop", true],
       ["presence-poll", true],
       ["account-deletion", true],
     ],
@@ -1702,17 +1575,17 @@ test("collectCronEvidence returns one status per cron evidence table", async () 
 });
 
 test("collectCronEvidence reports latest scheduled attempts that are failed or dry-run", async () => {
-  const priceDrop = cronEvidenceChecks.find(
-    (check) => check.id === "price-drop",
+  const accountDeletion = cronEvidenceChecks.find(
+    (check) => check.id === "account-deletion",
   );
   const presencePoll = cronEvidenceChecks.find(
     (check) => check.id === "presence-poll",
   );
   const rows = new Map([
     [
-      priceDrop.table,
-      completedRow(priceDrop, {
-        run_id: "price-drop-scheduled-failed-20260616",
+      accountDeletion.table,
+      completedRow(accountDeletion, {
+        run_id: "account-deletion-scheduled-failed-20260616",
         status: "failed",
       }),
     ],
@@ -1733,13 +1606,13 @@ test("collectCronEvidence reports latest scheduled attempts that are failed or d
     { ...env, OGL_HOSTED_CRON_FRESHNESS_HOURS: "3" },
     fetchImpl,
     new Date("2026-06-16T11:00:00.000Z"),
-    [priceDrop, presencePoll],
+    [accountDeletion, presencePoll],
   );
 
   assert.deepEqual(
     results.map((result) => [result.id, result.ready, result.validationErrors]),
     [
-      ["price-drop", false, ["status is not completed."]],
+      ["account-deletion", false, ["status is not completed."]],
       ["presence-poll", false, ["dry_run is not false."]],
     ],
   );
@@ -1794,14 +1667,14 @@ test("collectCronEvidence uses tighter default freshness for presence than daily
 });
 
 test("collectCronEvidence reads only selected cron evidence tables", async () => {
-  const priceDropCheck = cronEvidenceChecks.find(
-    (check) => check.id === "price-drop",
+  const presencePollCheck = cronEvidenceChecks.find(
+    (check) => check.id === "presence-poll",
   );
-  assert.ok(priceDropCheck);
+  assert.ok(presencePollCheck);
   const requestedTables = [];
   const fetchImpl = async (url) => {
     requestedTables.push(new URL(url).pathname.split("/").pop());
-    return new Response(JSON.stringify([completedRow(priceDropCheck)]), {
+    return new Response(JSON.stringify([completedRow(presencePollCheck)]), {
       status: 200,
     });
   };
@@ -1809,17 +1682,17 @@ test("collectCronEvidence reads only selected cron evidence tables", async () =>
   const results = await collectCronEvidence(
     {
       ...env,
-      OGL_HOSTED_CRON_EVIDENCE_CHECKS: "price-drop",
+      OGL_HOSTED_CRON_EVIDENCE_CHECKS: "presence-poll",
       OGL_HOSTED_CRON_FRESHNESS_HOURS: "3",
     },
     fetchImpl,
     new Date("2026-06-16T11:00:00.000Z"),
   );
 
-  assert.deepEqual(requestedTables, ["store_price_drop_notification_runs"]);
+  assert.deepEqual(requestedTables, ["presence_poll_runs"]);
   assert.deepEqual(
     results.map((result) => [result.id, result.ready]),
-    [["price-drop", true]],
+    [["presence-poll", true]],
   );
 });
 
@@ -1829,12 +1702,12 @@ test("collectCronEvidence reports per-table REST read failures", async () => {
   );
   const fetchImpl = async (url) => {
     const table = new URL(url).pathname.split("/").pop();
-    if (table === "store_price_drop_notification_runs") {
+    if (table === "presence_poll_runs") {
       return new Response(JSON.stringify({ message: "denied secret" }), {
         status: 403,
       });
     }
-    if (table === "presence_poll_runs") {
+    if (table === "account_deletion_processor_runs") {
       return new Response(JSON.stringify({ message: "broken secret" }), {
         status: 500,
       });
@@ -1851,9 +1724,8 @@ test("collectCronEvidence reports per-table REST read failures", async () => {
   assert.deepEqual(
     results.map((result) => [result.id, result.ready, result.validationErrors]),
     [
-      ["price-drop", false, ["Evidence REST read failed with HTTP 403."]],
-      ["presence-poll", false, ["Evidence REST read failed with HTTP 500."]],
-      ["account-deletion", true, []],
+      ["presence-poll", false, ["Evidence REST read failed with HTTP 403."]],
+      ["account-deletion", false, ["Evidence REST read failed with HTTP 500."]],
     ],
   );
   assert.equal(JSON.stringify(results).includes("secret"), false);

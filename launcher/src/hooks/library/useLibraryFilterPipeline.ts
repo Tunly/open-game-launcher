@@ -1,6 +1,9 @@
-import { useDeferredValue, useMemo } from "react";
+import { useDeferredValue, useEffect, useMemo, useState } from "react";
 
 import { applyCustomArtwork, type GameCustomArtwork } from "../../lib/custom-artwork";
+import { getKnownProviderArtworkCandidates } from "../../lib/provider-artwork-fallback";
+import { fetchIgdbArtwork, applyIgdbArtwork } from "../../lib/supabase/igdb-artwork";
+import { applyArtworkFallback } from "../../lib/library-artwork-fallback";
 import { groupGames, type GameGroup } from "../../lib/game-groups";
 import {
   countActiveAdvancedFilters,
@@ -62,12 +65,59 @@ export function useLibraryFilterPipeline(
     selectedGroupId,
   } = options;
 
+  const [igdbArtworkByTitle, setIgdbArtworkByTitle] = useState<
+    Record<string, Parameters<typeof applyIgdbArtwork>[1]>
+  >({});
+
+  useEffect(() => {
+    let cancelled = false;
+    const titles = [...new Set(installedGames.map((game) => game.title.trim()).filter(Boolean))];
+    if (titles.length === 0) return;
+
+    void Promise.all(
+      titles.map(async (title) => [title, await fetchIgdbArtwork(title)] as const),
+    ).then((results) => {
+      if (cancelled) return;
+      setIgdbArtworkByTitle((current) => {
+        const next = { ...current };
+        for (const [title, artwork] of results) {
+          if (artwork && (artwork.coverUrl || artwork.iconUrl || artwork.logoUrl))
+            next[title] = artwork;
+        }
+        return next;
+      });
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [installedGames]);
+
   const baseLibraryGames = useMemo(
     () =>
       installedGames
         .filter((game) => !shouldHideNonGameLibraryEntry(game))
-        .map((game) => applyCustomArtwork(game, customArtwork[game.id])),
-    [customArtwork, installedGames],
+        .map((game) => {
+          const candidates = getKnownProviderArtworkCandidates(game);
+          const withProviderCandidates =
+            candidates.length === 0
+              ? game
+              : {
+                  ...game,
+                  coverUrl: game.coverUrl ?? candidates[0],
+                  iconUrl: game.iconUrl ?? candidates[0],
+                  logoUrl: game.logoUrl ?? candidates[0],
+                  iconUrls: [...new Set([...(game.iconUrls ?? []), ...candidates])],
+                  logoUrls: [...new Set([...(game.logoUrls ?? []), ...candidates])],
+                };
+          return applyArtworkFallback(
+            applyIgdbArtwork(
+              applyCustomArtwork(withProviderCandidates, customArtwork[game.id]),
+              igdbArtworkByTitle[game.title.trim()] ?? {},
+            ),
+          );
+        }),
+    [customArtwork, igdbArtworkByTitle, installedGames],
   );
 
   const enrichedLibraryGames = useMemo(
