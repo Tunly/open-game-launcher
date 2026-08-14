@@ -136,6 +136,16 @@ jobs:
           workspaces: launcher/src-tauri -> target
       - name: Install Linux system dependencies
         run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf libasound2-dev libgtk-3-dev libglib2.0-dev
+      - name: Start a Secret Service for keyring-backed tests
+        run: |
+          # Keyring tests (secure_store, broadcast stream keys) need a
+          # real Secret Service. Headless runners have none, so start
+          # gnome-keyring on a private DBus session.
+          sudo apt-get install -y gnome-keyring dbus-x11
+          export DBUS_SESSION_BUS_ADDRESS="unix:path=$RUNNER_TEMP/dbus"
+          dbus-daemon --session --address="unix:path=$RUNNER_TEMP/dbus" --fork
+          echo "temporary-password" | gnome-keyring-daemon --unlock --replace --components=secrets
+          echo "DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS" >> "$GITHUB_ENV"
       - name: Test
         working-directory: launcher/src-tauri
         run: cargo test --locked
