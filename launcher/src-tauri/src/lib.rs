@@ -128,6 +128,21 @@ pub fn run() {
 
     let app = builder
         .setup(|app| {
+            // WebDriver E2E mode: the webdriver binds to the first webview it
+            // sees. The splashscreen is the first window and closes shortly
+            // after startup, which kills the session before the smoke test can
+            // attach to the main window. When OGL_E2E is set, skip the splash
+            // transition entirely and expose the main window immediately.
+            if std::env::var_os("OGL_E2E").is_some() {
+                if let Some(splashscreen) = app.get_webview_window("splashscreen") {
+                    let _ = splashscreen.close();
+                }
+                if let Some(window) = app.get_webview_window("main") {
+                    let _ = window.show();
+                    let _ = window.set_focus();
+                }
+            }
+
             if let Some(window) = app.get_webview_window("main") {
                 keep_window_on_visible_monitor(&window);
                 attach_window_bounds_guard(&window);
