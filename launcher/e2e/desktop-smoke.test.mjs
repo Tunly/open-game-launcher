@@ -60,10 +60,29 @@ before(async () => {
   capabilities.setBrowserName("wry");
   capabilities.set("tauri:options", { application: path.resolve(application) });
 
-  session = await new Builder()
-    .usingServer(`http://${driverHost}:${driverPort}/`)
-    .withCapabilities(capabilities)
-    .build();
+  // WebView2 on CI runners can be slow to spin up its DevTools pipe. The
+  // first session creation occasionally fails with "DevToolsActivePort file
+  // doesn't exist"; retrying after the process settles fixes it.
+  let lastError;
+  for (let attempt = 1; attempt <= 3; attempt += 1) {
+    try {
+      session = await new Builder()
+        .usingServer(`http://${driverHost}:${driverPort}/`)
+        .withCapabilities(capabilities)
+        .build();
+      break;
+    } catch (error) {
+      lastError = error;
+      await session?.quit().catch(() => undefined);
+      session = undefined;
+      if (attempt < 3) {
+        await new Promise((resolve) => setTimeout(resolve, 5_000));
+      }
+    }
+  }
+  if (!session) {
+    throw lastError;
+  }
   await session.manage().setTimeouts({ implicit: 500, pageLoad: 30_000, script: 20_000 });
 });
 
