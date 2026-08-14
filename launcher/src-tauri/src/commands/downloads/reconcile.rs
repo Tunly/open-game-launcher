@@ -63,21 +63,6 @@ pub fn reconcile_downloads(app: AppHandle) -> Result<ReconciliationResult, Strin
         })
         .collect::<std::collections::HashMap<_, _>>();
 
-    let epic_installed: std::collections::HashSet<String> = {
-        detect::scan_epic_games()
-            .into_iter()
-            .map(|g| g.id)
-            .collect()
-    };
-    let ea_installed: std::collections::HashSet<String> =
-        { detect::scan_ea_games().into_iter().map(|g| g.id).collect() };
-    let battlenet_installed: std::collections::HashSet<String> = {
-        detect::scan_battlenet_games()
-            .into_iter()
-            .map(|g| g.id)
-            .collect()
-    };
-
     let (result, history_len) = mutate_download_history(move |history| {
         let mut result = ReconciliationResult {
             installed_removed: Vec::new(),
@@ -129,18 +114,12 @@ pub fn reconcile_downloads(app: AppHandle) -> Result<ReconciliationResult, Strin
             if !is_terminal && !is_terminal_download_status(&item.status) {
                 let age = now.saturating_sub(item.last_updated_at);
                 if item.last_updated_at > 0 && age > stale_threshold {
-                    let provider_confirms =
-                        if let Some(app_id) = steam_app_id_from_download_id(&item.game_id) {
-                            steam_download_work_exists(app_id)
-                        } else if item.game_id.starts_with("epic-") {
-                            epic_installed.contains(&item.game_id)
-                        } else if item.game_id.starts_with("ea-") {
-                            ea_installed.contains(&item.game_id)
-                        } else if item.game_id.starts_with("battlenet-") {
-                            battlenet_installed.contains(&item.game_id)
-                        } else {
-                            false
-                        };
+                    // Provider taxonomy lives in provider.rs; every external
+                    // provider has a confirmation branch, so Ubisoft/Xbox
+                    // entries are no longer silently cleaned as stale.
+                    let provider_confirms = super::provider::classify(&item.game_id)
+                        .confirms_still_live(&item.game_id)
+                        .unwrap_or(false);
 
                     if !provider_confirms {
                         result.stale_cleaned.push(item.game_id.clone());

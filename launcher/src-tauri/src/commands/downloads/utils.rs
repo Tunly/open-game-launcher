@@ -2,13 +2,10 @@ use std::path::PathBuf;
 
 use crate::commands::games::{detect, read_installed_games_cache, GameStatus, InstalledGame};
 
+use super::provider::{classify, is_external_tracker_game_id as provider_is_external_tracker};
+
 pub(crate) fn is_external_tracker_game_id(game_id: &str) -> bool {
-    game_id.starts_with("steam-")
-        || game_id.starts_with("epic-owned-")
-        || game_id.starts_with("ea-owned-")
-        || game_id.starts_with("ubisoft-owned-")
-        || game_id.starts_with("battlenet-owned-")
-        || game_id.starts_with("xbox-")
+    provider_is_external_tracker(game_id)
 }
 
 pub(crate) fn is_steam_tracker_game_id(game_id: &str) -> bool {
@@ -185,61 +182,15 @@ pub(crate) fn verify_sha256(
 }
 
 pub(crate) fn get_platform_from_game_id(game_id: &str) -> String {
-    if game_id.starts_with("steam-") {
-        "Steam".to_string()
-    } else if game_id.starts_with("epic-") {
-        "Epic Games".to_string()
-    } else if game_id.starts_with("gog-") {
-        "GOG Galaxy".to_string()
-    } else if game_id.starts_with("ea-") {
-        "EA App".to_string()
-    } else if game_id.starts_with("ubisoft-") {
-        "Ubisoft Connect".to_string()
-    } else if game_id.starts_with("xbox-") {
-        "Xbox App / PC Game Pass".to_string()
-    } else if game_id.starts_with("battlenet-") {
-        "Battle.net".to_string()
-    } else {
-        "OG Store".to_string()
-    }
+    classify(game_id).platform_label().to_string()
 }
 
 pub(crate) fn provider_key_from_game_id(game_id: &str) -> String {
-    if game_id.starts_with("steam-") {
-        "steam".to_string()
-    } else if game_id.starts_with("epic-") {
-        "epic".to_string()
-    } else if game_id.starts_with("gog-") {
-        "gog".to_string()
-    } else if game_id.starts_with("ea-") {
-        "ea".to_string()
-    } else if game_id.starts_with("ubisoft-") {
-        "ubisoft".to_string()
-    } else if game_id.starts_with("xbox-") {
-        "xbox".to_string()
-    } else if game_id.starts_with("battlenet-") {
-        "battlenet".to_string()
-    } else {
-        "internal".to_string()
-    }
+    classify(game_id).provider_key().to_string()
 }
 
 pub(crate) fn progress_source_from_game_id(game_id: &str) -> String {
-    if game_id.starts_with("steam-") {
-        "steam_acf".to_string()
-    } else if game_id.starts_with("epic-") {
-        "epic_stderr".to_string()
-    } else if game_id.starts_with("gog-") {
-        "gog_api".to_string()
-    } else if game_id.starts_with("ea-")
-        || game_id.starts_with("ubisoft-")
-        || game_id.starts_with("battlenet-")
-        || game_id.starts_with("xbox-")
-    {
-        "external_tracker".to_string()
-    } else {
-        "http_range".to_string()
-    }
+    classify(game_id).progress_source().to_string()
 }
 
 pub(crate) fn normalize_game_id(game_id: String) -> Result<String, String> {

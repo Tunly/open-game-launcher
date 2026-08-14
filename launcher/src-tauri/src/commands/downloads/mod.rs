@@ -7,6 +7,7 @@ mod install;
 mod internal_download;
 mod internal_lifecycle;
 mod lifecycle;
+mod provider;
 mod queue;
 mod reconcile;
 mod remote_security;
