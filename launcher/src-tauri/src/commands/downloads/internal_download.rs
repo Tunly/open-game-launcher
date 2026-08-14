@@ -395,7 +395,6 @@ async fn download_internal_game_file_once(
 
 fn validated_internal_download_url(value: &str) -> Result<reqwest::Url, String> {
     parse_and_validate_remote_url(value)
-        .map_err(|error| error.replace("mod", "download").replace("Mod", "Download"))
 }
 
 fn verify_download_checksum_or_remove(
