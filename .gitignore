@@ -1,5 +1,6 @@
 # Local config / secrets
 .codex/
+.obsidian/
 supabase/.branches/
 supabase/.temp/
 supabase/functions/.env
