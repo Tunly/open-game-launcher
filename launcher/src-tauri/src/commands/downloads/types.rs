@@ -278,6 +278,35 @@ impl DownloadStatusKind {
     pub(crate) fn is_steam_control_pending(self) -> bool {
         matches!(self, Self::Pausing | Self::Resuming)
     }
+
+    /// Transition into the paused state. Legal only from downloading.
+    pub(crate) fn transition_paused(self) -> Option<Self> {
+        match self {
+            Self::Downloading => Some(Self::Paused),
+            _ => None,
+        }
+    }
+
+    /// Transition back into downloading. Legal only from paused.
+    pub(crate) fn transition_resumed(self) -> Option<Self> {
+        match self {
+            Self::Paused => Some(Self::Downloading),
+            _ => None,
+        }
+    }
+
+    /// Transition into the installing/commit state. Legal only from a
+    /// cancellable (non-terminal, pausable) state; the caller additionally
+    /// guards against a cancelled worker via its cancel channel.
+    pub(crate) fn begin_commit(self) -> Result<Self, String> {
+        if !self.is_cancellable() {
+            return Err(format!(
+                "Download commit cannot begin while its status is '{}'.",
+                self.as_str()
+            ));
+        }
+        Ok(Self::Installing)
+    }
 }
 
 pub(crate) fn validated_download_status(status: &str) -> &'static str {
@@ -390,8 +419,8 @@ fn toggle_download_pause_in_map(
         return Ok(None);
     };
 
-    match download.status.as_str() {
-        DOWNLOAD_STATUS_DOWNLOADING => {
+    match DownloadStatusKind::parse(&download.status) {
+        Some(kind) if kind.transition_paused().is_some() => {
             download.paused = true;
             download.status = DOWNLOAD_STATUS_PAUSED.to_string();
             download.speed = "Paused".to_string();
@@ -399,7 +428,7 @@ fn toggle_download_pause_in_map(
             download.raw_status = DOWNLOAD_STATUS_PAUSED.to_string();
             let _ = download.pause_tx.send(true);
         }
-        DOWNLOAD_STATUS_PAUSED => {
+        Some(kind) if kind.transition_resumed().is_some() => {
             download.paused = false;
             download.status = DOWNLOAD_STATUS_DOWNLOADING.to_string();
             download.speed = "Connecting...".to_string();
@@ -439,7 +468,9 @@ fn request_download_cancellation_in_map(
         return Ok(DownloadCancellationTransition::Missing);
     };
 
-    if !download.can_cancel || !is_cancellable_download_status(&download.status) {
+    if !download.can_cancel
+        || !DownloadStatusKind::parse(&download.status).is_some_and(|kind| kind.is_cancellable())
+    {
         return Ok(DownloadCancellationTransition::Rejected {
             status: download.status.clone(),
         });
@@ -484,12 +515,16 @@ fn begin_download_commit_in_map(
     {
         return Ok(None);
     }
-    if !download.can_cancel || !is_cancellable_download_status(&download.status) {
-        return Err(format!(
-            "Download commit cannot begin while its status is '{}'.",
-            download.status
-        ));
-    }
+    // Commit legality is a property of the current state, not a separate
+    // can_cancel flag re-derived by every caller.
+    DownloadStatusKind::parse(&download.status)
+        .ok_or_else(|| {
+            format!(
+                "Download commit cannot begin while its status is '{}'.",
+                download.status
+            )
+        })?
+        .begin_commit()?;
 
     download.status = DOWNLOAD_STATUS_INSTALLING.to_string();
     download.speed = "Installing".to_string();
@@ -1170,6 +1205,35 @@ mod tests {
         assert!(!is_restart_interrupted_download_status(
             DOWNLOAD_STATUS_COMPLETED
         ));
+    }
+
+    #[test]
+    fn download_status_transitions_are_state_driven() {
+        // Pause/resume legality is a property of the current state.
+        assert_eq!(
+            DownloadStatusKind::Downloading.transition_paused(),
+            Some(DownloadStatusKind::Paused)
+        );
+        assert_eq!(
+            DownloadStatusKind::Paused.transition_resumed(),
+            Some(DownloadStatusKind::Downloading)
+        );
+        assert_eq!(DownloadStatusKind::Paused.transition_paused(), None);
+        assert_eq!(DownloadStatusKind::Completed.transition_paused(), None);
+        assert_eq!(DownloadStatusKind::Queued.transition_resumed(), None);
+
+        // Commit legality: only cancellable states may begin a commit.
+        assert_eq!(
+            DownloadStatusKind::Downloading.begin_commit(),
+            Ok(DownloadStatusKind::Installing)
+        );
+        assert_eq!(
+            DownloadStatusKind::Paused.begin_commit(),
+            Ok(DownloadStatusKind::Installing)
+        );
+        assert!(DownloadStatusKind::Completed.begin_commit().is_err());
+        assert!(DownloadStatusKind::Installing.begin_commit().is_err());
+        assert!(DownloadStatusKind::Failed.begin_commit().is_err());
     }
 
     #[test]
