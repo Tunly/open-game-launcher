@@ -81,6 +81,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) 
 
 ### Added
 
+- GitHub issue forms (`.github/ISSUE_TEMPLATE/`: bug report, feature request,
+  config) and a pull request template (`.github/PULL_REQUEST_TEMPLATE.md`)
+  that enforce reproduction details, environment info, the DCO sign-off, and
+  the project's verification and product-boundary checklist.
 - Authenticated Steam account linking via native OpenID callback and a trusted
   hosted Steam achievement relay with attestation-bound ingestion.
 - Activity feed events for Store activity, friend relationships, achievements,

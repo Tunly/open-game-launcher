@@ -1,0 +1,81 @@
+name: "✨ Feature Request"
+description: Suggest a new feature or improvement.
+title: "[Feature]: "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the suggestion! Before submitting, please consider:
+
+        - **Check [FEATURE_PLAN.md](https://github.com/NousResearch/open-game-launcher/blob/main/FEATURE_PLAN.md)** — the product backlog and consciously removed features are documented there. Some ideas are intentionally out of scope (first-party cloud saves, mod installs, game injection, broadcasting).
+        - **Search [existing issues](https://github.com/NousResearch/open-game-launcher/issues)** — someone may have already proposed this.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or Use Case
+      description: What problem does this solve? What are you trying to do that you can't today?
+      placeholder: |
+        I'm trying to [workflow] with the launcher but currently there's no way to...
+    validations:
+      required: true
+
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed Solution
+      description: How do you think this should work? Be as specific as you can — routes, UI behavior, native commands.
+      placeholder: |
+        Add a new route /library/xyz that ...
+        Or: Add a setting under /settings/performance that ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives Considered
+      description: What other approaches did you consider? Why is the proposed solution better?
+
+  - type: dropdown
+    id: type
+    attributes:
+      label: Feature Type
+      options:
+        - Library / game management
+        - Downloads
+        - Store / catalog
+        - Achievements
+        - Community / social
+        - Desktop / Tauri shell
+        - Settings
+        - Backend / Supabase
+        - Developer experience (tests, docs, CI)
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: scope
+    attributes:
+      label: Scope
+      description: How big is this change?
+      options:
+        - Small (single file, < 50 lines)
+        - Medium (few files, < 300 lines)
+        - Large (new module or significant refactor)
+
+  - type: checkboxes
+    id: pr-ready
+    attributes:
+      label: Contribution
+      options:
+        - label: I'd like to implement this myself and submit a PR
+
+  - type: input
+    id: verify-route
+    attributes:
+      label: Verify-Route Flag (optional)
+      description: If this feature is evidence-only or staged, which `?verify=...` flag should expose it?
+      placeholder: "?verify=family-preview"

@@ -26,7 +26,8 @@ pnpm --dir launcher tauri dev
    - `chore/<short-slug>` for tooling / refactors
 2. Run `pnpm --dir launcher typecheck && pnpm --dir launcher lint && pnpm --dir launcher test` before opening a PR.
 3. Sign off each commit (`git commit -s`) — see the DCO requirement below.
-4. Open a PR with a clear description and link any related issues.
+4. Open a PR using [`.github/PULL_REQUEST_TEMPLATE.md`](./.github/PULL_REQUEST_TEMPLATE.md)
+   with a clear description and link any related issues.
 
 ## Commit conventions
 
@@ -66,8 +67,9 @@ you are authorized to associate with the contribution.
 ## Reporting issues
 
 Open a normal GitHub issue with a clear title, reproduction or proposal,
-affected platform, and relevant logs. This repository currently has no issue
-templates, so no template filename is required. For security issues, **do
-not** open a public issue — follow `SECURITY.md` instead.
+affected platform, and relevant logs. Issue templates live in
+`.github/ISSUE_TEMPLATE/` (bug report, feature request) — use them, they
+enforce the required reproduction and environment fields. For security
+issues, **do not** open a public issue — follow `SECURITY.md` instead.
 
 Contributions are licensed under AGPL-3.0.

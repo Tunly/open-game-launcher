@@ -1,0 +1,11 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 📖 Contributing Guide
+    url: https://github.com/NousResearch/open-game-launcher/blob/main/CONTRIBUTING.md
+    about: Read this before submitting a PR — DCO, commit conventions, and checks.
+  - name: 🗺️ Feature Plan
+    url: https://github.com/NousResearch/open-game-launcher/blob/main/FEATURE_PLAN.md
+    about: Product backlog, external release gates, and consciously removed features.
+  - name: 🔒 Security
+    url: https://github.com/NousResearch/open-game-launcher/blob/main/SECURITY.md
+    about: Report vulnerabilities privately — do not open a public issue.

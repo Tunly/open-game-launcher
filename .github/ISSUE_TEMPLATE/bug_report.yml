@@ -1,0 +1,133 @@
+name: "🐛 Bug Report"
+description: Report a bug — something that's broken, crashes, or behaves incorrectly.
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a bug! Please fill out the sections below so we can reproduce and fix it quickly.
+
+        **Before submitting**, please:
+        - [ ] Search [existing issues](https://github.com/NousResearch/open-game-launcher/issues) to avoid duplicates
+        - [ ] Pull the latest `main` and confirm the bug still exists
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug Description
+      description: A clear description of what's broken. Include error messages, tracebacks, or screenshots if relevant.
+      placeholder: |
+        What happened? What did you expect to happen instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to Reproduce
+      description: Minimal steps to trigger the bug. The more specific, the faster we can fix it.
+      placeholder: |
+        1. Start the launcher (`pnpm tauri dev`)
+        2. Navigate to /library
+        3. Click on game "X"
+        4. Error appears: ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected Behavior
+      description: What should have happened instead?
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual Behavior
+      description: What actually happened? Include full error output if available.
+    validations:
+      required: true
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Affected Area
+      description: Which part of the launcher is affected?
+      multiple: true
+      options:
+        - Library (scan, cache, game details, launch)
+        - Downloads (queue, resume, provider trackers)
+        - Store (catalog, wishlist, reviews, redirects)
+        - Achievements (sync, sidecars, relay)
+        - Community / Social (activity, friends, chat, profiles)
+        - Desktop / Tauri shell (overlay, deep links, native commands)
+        - Settings (profile, performance, privacy)
+        - Auth / Supabase backend (RLS, Edge Functions, migrations)
+        - Other
+    validations:
+      required: true
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Operating System
+      description: Which platform are you on?
+      multiple: true
+      options:
+        - Linux
+        - Windows
+        - macOS
+    validations:
+      required: true
+
+  - type: input
+    id: os-version
+    attributes:
+      label: OS Version
+      description: e.g. Arch Linux (kernel 6.10), Ubuntu 24.04, Windows 11, macOS 15.2
+      placeholder: Arch Linux
+
+  - type: input
+    id: build
+    attributes:
+      label: Build / Commit
+      description: Output of `git rev-parse HEAD` (or the release version if a build exists)
+      placeholder: "734d732"
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs (optional)
+      description: |
+        Paste relevant output from the `pnpm tauri dev` console, the Rust panic/error
+        output, or browser devtools. If the launcher writes an app log, include that too.
+      placeholder: |
+        [tauri] error: ...
+      render: shell
+
+  - type: textarea
+    id: root-cause
+    attributes:
+      label: Root Cause Analysis (optional)
+      description: |
+        If you've dug into the code and identified the root cause, share it here.
+        Include file paths, line numbers, and code snippets if possible. This massively speeds up fixes.
+      placeholder: |
+        The bug is in `launcher/src/components/library/GameDetails.tsx` line 2604.
+        The action bar is rendered before the selected copy is resolved, so ...
+
+  - type: textarea
+    id: proposed-fix
+    attributes:
+      label: Proposed Fix (optional)
+      description: If you have a fix in mind (or a PR ready), describe it here.
+
+  - type: checkboxes
+    id: pr-ready
+    attributes:
+      label: Are you willing to submit a PR for this?
+      options:
+        - label: I'd like to fix this myself and submit a PR
