@@ -60,7 +60,53 @@ export const exportAdditionalUserScopedReads = [
     key: "store_products",
     table: "store_products",
   },
+  {
+    column: "owner_id",
+    key: "family_groups",
+    table: "family_groups",
+  },
+  {
+    column: "user_id",
+    key: "family_members",
+    table: "family_members",
+  },
 ] as const;
+
+export type ExportChildTableRead = {
+  /** Payload key the child rows are exported under. */
+  key: string;
+  /** Table the child rows are read from. */
+  table: string;
+  /** Column in the child table holding the parent key value. */
+  column: string;
+  /** Parent table whose exported rows provide the key values. */
+  childOf: {
+    table: string;
+    column: string;
+  };
+};
+
+/**
+ * Two-level relation reads: child rows are fetched with the parent key values
+ * exported under the parent table's payload key. Each entry is one parent
+ * source; entries sharing a `key` are unioned into a single `in()` read.
+ * Removing a parent or child table from the manifest removes it from the
+ * export entirely - no runtime schema-drift guards needed.
+ */
+export const exportChildTableReads = [
+  {
+    childOf: { column: "id", table: "family_groups" },
+    column: "family_id",
+    key: "family_shared_games",
+    table: "family_shared_games",
+  },
+  {
+    childOf: { column: "family_id", table: "family_members" },
+    column: "family_id",
+    key: "family_shared_games",
+    table: "family_shared_games",
+  },
+] as const satisfies readonly ExportChildTableRead[];
 
 const exportPrimaryKeyOverrides: Record<string, readonly string[]> = {
   chat_room_members: ["room_id", "user_id"],

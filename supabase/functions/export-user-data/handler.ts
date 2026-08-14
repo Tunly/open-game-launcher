@@ -1,5 +1,6 @@
 import {
   exportAdditionalUserScopedReads,
+  exportChildTableReads,
   exportOwnUserIdTables,
 } from "./contract.ts";
 
@@ -165,32 +166,35 @@ export async function buildExportPayload(
     warnings,
   );
 
-  const familyGroups = await deps.readRows(
-    "family_groups",
-    "owner_id",
-    userId,
-    warnings,
-  );
-  const familyMemberships = await deps.readRows(
-    "family_members",
-    "user_id",
-    userId,
-    warnings,
-  );
-  const familyIds = uniqueStrings([
-    ...pluckIds(familyGroups),
-    ...familyMemberships
-      .map((row) => readString(row, "family_id"))
-      .filter(Boolean),
-  ]);
-  data.family_groups = familyGroups;
-  data.family_members = familyMemberships;
-  data.family_shared_games = await deps.readRowsIn(
-    "family_shared_games",
-    "family_id",
-    familyIds,
-    warnings,
-  );
+  // Two-level relation reads: child rows are fetched with the parent key
+  // values already exported above. Every relation is manifest data in
+  // contract.ts, so removing a table from the manifest (instead of guarding
+  // a read at runtime) removes it from the export entirely.
+  const childReads = new Map<
+    string,
+    { column: string; table: string; values: string[] }
+  >();
+  for (const subgraph of exportChildTableReads) {
+    const parentRows =
+      (data[subgraph.childOf.table] as JsonObject[] | undefined) ?? [];
+    const parentValues = parentRows
+      .map((row) => readString(row, subgraph.childOf.column))
+      .filter(isString);
+    const existing = childReads.get(subgraph.key);
+    childReads.set(subgraph.key, {
+      column: subgraph.column,
+      table: subgraph.table,
+      values: uniqueStrings([...(existing?.values ?? []), ...parentValues]),
+    });
+  }
+  for (const [key, read] of childReads) {
+    data[key] = await deps.readRowsIn(
+      read.table,
+      read.column,
+      read.values,
+      warnings,
+    );
+  }
 
   data.__warnings = warnings;
 
@@ -212,10 +216,6 @@ function asJsonObject(value: unknown): JsonObject {
   return value && typeof value === "object" && !Array.isArray(value)
     ? value as JsonObject
     : {};
-}
-
-function pluckIds(rows: JsonObject[]) {
-  return rows.map((row) => readString(row, "id")).filter(isString);
 }
 
 function readString(row: JsonObject, key: string) {

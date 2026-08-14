@@ -1,5 +1,6 @@
 import {
   exportAdditionalUserScopedReads,
+  exportChildTableReads,
   exportOrderColumns,
   exportOwnUserIdTables,
 } from "./contract.ts";
@@ -54,6 +55,21 @@ Deno.test(
       "community_artwork_moderation_audit.reviewer_user_id",
       "share_tokens.created_by",
       "store_products.developer_id",
+    ]);
+  },
+);
+
+Deno.test(
+  "user export child relation reads cover family shared games",
+  () => {
+    const subgraphs = exportChildTableReads.map(
+      (read) =>
+        `${read.key}:${read.table}.${read.column}<-${read.childOf.table}.${read.childOf.column}`,
+    );
+
+    assertIncludesAll(subgraphs, [
+      "family_shared_games:family_shared_games.family_id<-family_groups.id",
+      "family_shared_games:family_shared_games.family_id<-family_members.family_id",
     ]);
   },
 );
