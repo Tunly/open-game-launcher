@@ -8,7 +8,7 @@ Deno.test(
   "user export own-user table coverage includes newer hosted data",
   () => {
     assertIncludesAll(exportOwnUserIdTables, [
-      "store_customers",
+      "store_reviews",
       "store_wishlist",
       "performance_sessions",
       "launcher_local_entities",

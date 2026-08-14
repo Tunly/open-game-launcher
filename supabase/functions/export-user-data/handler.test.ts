@@ -63,7 +63,7 @@ Deno.test("export user data handler requires caller auth before reads", async ()
 });
 
 Deno.test(
-  "export user data payload includes dependent store family and mod reads",
+  "export user data payload includes dependent family reads",
   async () => {
     const reads: string[] = [];
     const inReads: Array<{ column: string; table: string; values: string[] }> =
@@ -82,17 +82,11 @@ Deno.test(
             { family_id: "family-1", id: "membership-2" },
           ],
           friend_links: [{ id: "friend-link-1" }],
-          mods: [{ id: "mod-1" }],
           profiles: [{ id: userId, username: "og-user" }],
-          store_orders: [{ id: "order-1" }, { id: "order-2" }],
           store_products: [{ id: "product-1" }],
         },
         rowsByInTable: {
           family_shared_games: [{ family_id: "family-2", id: "shared-1" }],
-          mod_dependencies: [{ id: "dep-1", mod_id: "mod-1" }],
-          mod_files: [{ id: "file-1", mod_version_id: "version-1" }],
-          mod_versions: [{ id: "version-1", mod_id: "mod-1" }],
-          store_order_items: [{ id: "item-1", order_id: "order-1" }],
         },
         rowsByOrTable: {
           friendships: [{ id: "friendship-1" }],
@@ -113,20 +107,8 @@ Deno.test(
     assertEquals(payload.data.profiles, [{ id: userId, username: "og-user" }]);
     assertEquals(payload.data.friend_links, [{ id: "friend-link-1" }]);
     assertEquals(payload.data.store_products, [{ id: "product-1" }]);
-    assertEquals(payload.data.store_order_items, [
-      { id: "item-1", order_id: "order-1" },
-    ]);
     assertEquals(payload.data.family_shared_games, [
       { family_id: "family-2", id: "shared-1" },
-    ]);
-    assertEquals(payload.data.mod_versions, [
-      { id: "version-1", mod_id: "mod-1" },
-    ]);
-    assertEquals(payload.data.mod_files, [
-      { id: "file-1", mod_version_id: "version-1" },
-    ]);
-    assertEquals(payload.data.mod_dependencies, [
-      { id: "dep-1", mod_id: "mod-1" },
     ]);
     assertEquals(payload.data.friendships, [{ id: "friendship-1" }]);
     assertEquals(payload.data.game_invites, [{ id: "invite-1" }]);
@@ -134,6 +116,8 @@ Deno.test(
 
     assertEquals(reads.includes(`profiles.id.${userId}`), true);
     assertEquals(reads.includes(`store_products.developer_id.${userId}`), true);
+    assertEquals(reads.includes(`mods.user_id.${userId}`), false);
+    assertEquals(reads.includes(`store_orders.user_id.${userId}`), false);
     assertEquals(orReads, [
       `friendships:requester_id.eq.${userId},addressee_id.eq.${userId}`,
       `profile_comments:profile_user_id.eq.${userId},author_id.eq.${userId}`,
@@ -145,22 +129,10 @@ Deno.test(
     );
     assertEquals(inReads, [
       {
-        column: "order_id",
-        table: "store_order_items",
-        values: ["order-1", "order-2"],
-      },
-      {
         column: "family_id",
         table: "family_shared_games",
         values: ["family-1", "family-2"],
       },
-      { column: "mod_id", table: "mod_versions", values: ["mod-1"] },
-      {
-        column: "mod_version_id",
-        table: "mod_files",
-        values: ["version-1"],
-      },
-      { column: "mod_id", table: "mod_dependencies", values: ["mod-1"] },
     ]);
   },
 );
@@ -197,7 +169,7 @@ Deno.test("export user data payload carries read warnings", async () => {
   const payload = await buildExportPayload(
     { ...user(), app_metadata: "invalid", user_metadata: null },
     payloadDeps({
-      warningTables: new Set(["profiles", "store_orders"]),
+      warningTables: new Set(["profiles", "store_products"]),
     }),
   );
 
@@ -205,7 +177,7 @@ Deno.test("export user data payload carries read warnings", async () => {
   assertEquals(payload.user.userMetadata, {});
   assertEquals(payload.data.__warnings, [
     "Skipped missing table profiles.",
-    "Skipped missing table store_orders.",
+    "Skipped missing table store_products.",
   ]);
 });
 
