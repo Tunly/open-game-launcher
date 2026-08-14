@@ -225,7 +225,8 @@ function finishProgress(progress: LauncherUpdateProgress | null): LauncherUpdate
   if (!progress) {
     return { downloadedBytes: 0, totalBytes: null, percentage: null };
   }
-  if (progress.totalBytes === null) return progress;
+  // A zero or unknown total has no meaningful completion percentage.
+  if (progress.totalBytes === null || progress.totalBytes === 0) return progress;
   return {
     downloadedBytes: progress.totalBytes,
     totalBytes: progress.totalBytes,

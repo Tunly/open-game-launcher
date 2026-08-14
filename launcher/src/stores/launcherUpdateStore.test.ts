@@ -277,4 +277,105 @@ describe("launcher update store", () => {
       error: "Es wurde noch kein installierbares Launcher-Update gefunden.",
     });
   });
+
+  it("defers install while a check is still in flight", async () => {
+    let finishCheck: ((update: LauncherUpdateHandle | null) => void) | undefined;
+    const check = vi.fn(
+      () =>
+        new Promise<LauncherUpdateHandle | null>((resolve) => {
+          finishCheck = resolve;
+        }),
+    );
+    setLauncherUpdateAdapterForTests(makeAdapter({ check }));
+
+    const checkPromise = checkForLauncherUpdate();
+    const install = installLauncherUpdate();
+    await vi.waitFor(() => expect(check).toHaveBeenCalledOnce());
+
+    expect(install).toBe(checkPromise);
+    expect(useLauncherUpdateStore.getState().status).toBe("checking");
+
+    finishCheck?.(null);
+    await Promise.all([checkPromise, install]);
+  });
+
+  it("falls back to the installed version when the update omits currentVersion", async () => {
+    const update = makeUpdate({ currentVersion: undefined });
+    setLauncherUpdateAdapterForTests(makeAdapter({ check: vi.fn().mockResolvedValue(update) }));
+    await checkForLauncherUpdate();
+
+    expect(useLauncherUpdateStore.getState()).toMatchObject({
+      status: "available",
+      currentVersion: "0.1.0",
+      latestVersion: "0.2.0",
+    });
+  });
+
+  it("clears notes when the update body is empty", async () => {
+    const update = makeUpdate({ body: undefined });
+    setLauncherUpdateAdapterForTests(makeAdapter({ check: vi.fn().mockResolvedValue(update) }));
+    await checkForLauncherUpdate();
+
+    expect(useLauncherUpdateStore.getState().notes).toBeNull();
+  });
+
+  it("does not fabricate a percentage when the announced total is zero", async () => {
+    const update = makeUpdate({
+      downloadAndInstall: vi.fn(async (onEvent) => {
+        onEvent({ event: "Started", data: { contentLength: 0 } });
+        onEvent({ event: "Progress", data: { chunkLength: 10 } });
+        onEvent({ event: "Finished", data: {} });
+      }),
+    });
+    setLauncherUpdateAdapterForTests(makeAdapter({ check: vi.fn().mockResolvedValue(update) }));
+    await checkForLauncherUpdate();
+
+    await installLauncherUpdate();
+
+    expect(useLauncherUpdateStore.getState().progress).toEqual({
+      downloadedBytes: 10,
+      totalBytes: 0,
+      percentage: null,
+    });
+  });
+
+  it("ignores negative byte counts from the updater", async () => {
+    const update = makeUpdate({
+      downloadAndInstall: vi.fn(async (onEvent) => {
+        onEvent({ event: "Started", data: { contentLength: -5 } });
+        onEvent({ event: "Progress", data: { chunkLength: 512 } });
+        onEvent({ event: "Finished", data: {} });
+      }),
+    });
+    setLauncherUpdateAdapterForTests(makeAdapter({ check: vi.fn().mockResolvedValue(update) }));
+    await checkForLauncherUpdate();
+
+    await installLauncherUpdate();
+
+    expect(useLauncherUpdateStore.getState().progress).toEqual({
+      downloadedBytes: 512,
+      totalBytes: null,
+      percentage: null,
+    });
+  });
+
+  it("counts a progress event without a chunk length as zero bytes", async () => {
+    const update = makeUpdate({
+      downloadAndInstall: vi.fn(async (onEvent) => {
+        onEvent({ event: "Started", data: { contentLength: 100 } });
+        onEvent({ event: "Progress", data: {} });
+        onEvent({ event: "Finished", data: {} });
+      }),
+    });
+    setLauncherUpdateAdapterForTests(makeAdapter({ check: vi.fn().mockResolvedValue(update) }));
+    await checkForLauncherUpdate();
+
+    await installLauncherUpdate();
+
+    expect(useLauncherUpdateStore.getState().progress).toEqual({
+      downloadedBytes: 100,
+      totalBytes: 100,
+      percentage: 100,
+    });
+  });
 });
