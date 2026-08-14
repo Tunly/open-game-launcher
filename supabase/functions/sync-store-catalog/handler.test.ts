@@ -25,12 +25,12 @@ Deno.test("POST without ITAD key returns 500", async () => {
   assertEquals(response.status, 500);
 });
 
-Deno.test("discovers games from ITAD game list", async () => {
+Deno.test("discovers games from ITAD game list, excluding DLC/other non-game types", async () => {
   const games = await fetchItadGameList("key", async (url) => {
     assertStringIncludes(url.toString(), "/unstable/games/list/v1");
     return [{ id: "itad-1", title: "Test Game", slug: "test-game" }, { id: "dlc-1", title: "DLC", type: "dlc" }];
   });
-  assertEquals(games.map((game) => game.id), ["itad-1", "dlc-1"]);
+  assertEquals(games.map((game) => game.id), ["itad-1"]);
 });
 
 Deno.test("fetches ITAD v3 prices with supported shops", async () => {
