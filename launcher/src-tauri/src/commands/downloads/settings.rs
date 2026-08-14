@@ -146,7 +146,10 @@ mod tests {
             normalize_install_root(Some("   ".to_string())).unwrap(),
             None
         );
+        #[cfg(windows)]
         assert!(normalize_install_root(Some("D:\\Games".to_string())).is_ok());
+        #[cfg(not(windows))]
+        assert!(normalize_install_root(Some("/opt/games".to_string())).is_ok());
         assert!(normalize_install_root(Some("relative/games".to_string())).is_err());
     }
 

@@ -126,7 +126,8 @@ fn collect_download_items(
         else {
             continue;
         };
-        let game_title = find_game_title(texts, index).unwrap_or_else(|| "Xbox App download".to_string());
+        let game_title =
+            find_game_title(texts, index).unwrap_or_else(|| "Xbox App download".to_string());
         let game_id = format!("xbox-download-{}", slug(&game_title));
         if !seen_game_ids.insert(game_id.clone()) {
             continue;
@@ -170,6 +171,7 @@ fn collect_download_items(
 
 // Full readout such as "Downloading 12,3 GB von 27,4 GB" or
 // "Wird heruntergeladen (45 %)". Returns (percent, downloaded, total, speed).
+#[cfg(all(windows, feature = "windows-uiautomation"))]
 fn parse_download_text(value: &str) -> Option<(u32, u64, u64, Option<String>)> {
     let lower = value.to_lowercase();
     if !lower.contains("download") && !lower.contains("heruntergeladen") {
@@ -179,16 +181,19 @@ fn parse_download_text(value: &str) -> Option<(u32, u64, u64, Option<String>)> {
         .split_whitespace()
         .find_map(|part| part.trim_end_matches('%').parse::<u32>().ok());
     let parts: Vec<&str> = lower.split_whitespace().collect();
-    let marker = parts.iter().position(|part| *part == "von" || *part == "of")?;
+    let marker = parts
+        .iter()
+        .position(|part| *part == "von" || *part == "of")?;
     let downloaded = parse_size_at(&parts, marker.checked_sub(2)?)
         .or_else(|| parse_size_at(&parts, marker.checked_sub(1)?))?;
-    let total = parse_size_at(&parts, marker + 1)
-        .or_else(|| parse_size_at(&parts, marker + 2))?;
+    let total = parse_size_at(&parts, marker + 1).or_else(|| parse_size_at(&parts, marker + 2))?;
     let percent = explicit_percent.unwrap_or_else(|| {
         if total == 0 {
             0
         } else {
-            ((downloaded as f64 / total as f64) * 100.0).round().clamp(0.0, 100.0) as u32
+            ((downloaded as f64 / total as f64) * 100.0)
+                .round()
+                .clamp(0.0, 100.0) as u32
         }
     });
     let speed = lower
@@ -202,6 +207,7 @@ fn parse_download_text(value: &str) -> Option<(u32, u64, u64, Option<String>)> {
 
 // Bare progress readout such as "45 %", "45%", "Downloading 45 %" or
 // "Wird heruntergeladen 45 %". Returns the percentage.
+#[cfg(all(windows, feature = "windows-uiautomation"))]
 fn parse_percent_text(value: &str) -> Option<u32> {
     let lower = value.to_lowercase();
     if lower.chars().count() > 60 {
@@ -227,6 +233,7 @@ fn parse_percent_text(value: &str) -> Option<u32> {
     Some(percent)
 }
 
+#[cfg(all(windows, feature = "windows-uiautomation"))]
 fn find_game_title(texts: &[String], index: usize) -> Option<String> {
     let start = index.saturating_sub(12);
     for candidate in texts[start..index].iter().rev() {
@@ -237,6 +244,7 @@ fn find_game_title(texts: &[String], index: usize) -> Option<String> {
     None
 }
 
+#[cfg(all(windows, feature = "windows-uiautomation"))]
 fn infer_download_status(texts: &[String], index: usize) -> &'static str {
     let start = index.saturating_sub(6);
     let end = (index + 6).min(texts.len());
@@ -244,9 +252,7 @@ fn infer_download_status(texts: &[String], index: usize) -> &'static str {
     let mut has_resume = false;
     for text in &texts[start..end] {
         let lower = text.to_lowercase();
-        if lower.contains("fortsetzen")
-            || lower.contains("resume")
-            || lower.contains("fortgesetzt")
+        if lower.contains("fortsetzen") || lower.contains("resume") || lower.contains("fortgesetzt")
         {
             has_resume = true;
         }
@@ -264,6 +270,7 @@ fn infer_download_status(texts: &[String], index: usize) -> &'static str {
     "downloading"
 }
 
+#[cfg(all(windows, feature = "windows-uiautomation"))]
 fn looks_like_game_title(value: &str) -> bool {
     let trimmed = value.trim();
     if trimmed.is_empty() || trimmed.chars().count() > 80 {
@@ -273,7 +280,10 @@ fn looks_like_game_title(value: &str) -> bool {
         return false;
     }
     let lower = trimmed.to_lowercase();
-    if lower.chars().all(|ch| ch.is_ascii_digit() || ch.is_whitespace()) {
+    if lower
+        .chars()
+        .all(|ch| ch.is_ascii_digit() || ch.is_whitespace())
+    {
         return false;
     }
     if lower.contains(" von ") || lower.contains(" of ") {
@@ -337,6 +347,7 @@ fn looks_like_game_title(value: &str) -> bool {
     !STOPWORDS.iter().any(|word| lower == *word)
 }
 
+#[cfg(all(windows, feature = "windows-uiautomation"))]
 fn parse_size_at(parts: &[&str], index: usize) -> Option<u64> {
     let token = parts.get(index)?;
     if token.chars().all(|character| character.is_ascii_digit()) {
@@ -356,12 +367,13 @@ fn parse_size_at(parts: &[&str], index: usize) -> Option<u64> {
     parse_size(token, unit)
 }
 
+#[cfg(all(windows, feature = "windows-uiautomation"))]
 fn parse_size_token(token: &str) -> Option<u64> {
-    let split_at = token
-        .find(|character: char| character.is_ascii_alphabetic())?;
+    let split_at = token.find(|character: char| character.is_ascii_alphabetic())?;
     parse_size(&token[..split_at], &token[split_at..])
 }
 
+#[cfg(all(windows, feature = "windows-uiautomation"))]
 fn parse_size(number: &str, unit: &str) -> Option<u64> {
     let value = number.replace(',', ".").parse::<f64>().ok()?;
     let multiplier = if unit.trim_end_matches('·').eq_ignore_ascii_case("gb") {
@@ -372,6 +384,7 @@ fn parse_size(number: &str, unit: &str) -> Option<u64> {
     Some((value * multiplier) as u64)
 }
 
+#[cfg(all(windows, feature = "windows-uiautomation"))]
 fn slug(value: &str) -> String {
     let mut result = String::new();
     for character in value.to_lowercase().chars() {
@@ -385,6 +398,7 @@ fn slug(value: &str) -> String {
 }
 
 #[cfg(test)]
+#[cfg(all(windows, feature = "windows-uiautomation"))]
 mod tests {
     use super::*;
 
@@ -400,8 +414,9 @@ mod tests {
 
     #[test]
     fn parses_english_readout_with_decimal_dots() {
-        let (percent, downloaded, total, _) = parse_download_text("Downloading 45 % · 1.2 GB of 5.6 GB")
-            .expect("english readout should parse");
+        let (percent, downloaded, total, _) =
+            parse_download_text("Downloading 45 % · 1.2 GB of 5.6 GB")
+                .expect("english readout should parse");
         assert_eq!(percent, 45);
         assert_eq!(downloaded, (1.2_f64 * 1024.0 * 1024.0 * 1024.0) as u64);
         assert_eq!(total, (5.6_f64 * 1024.0 * 1024.0 * 1024.0) as u64);
@@ -409,8 +424,9 @@ mod tests {
 
     #[test]
     fn parses_integer_readout() {
-        let (percent, downloaded, total, _) = parse_download_text("Downloading 45 % · 123 MB of 456 MB")
-            .expect("integer readout should parse");
+        let (percent, downloaded, total, _) =
+            parse_download_text("Downloading 45 % · 123 MB of 456 MB")
+                .expect("integer readout should parse");
         assert_eq!(percent, 45);
         assert_eq!(downloaded, 123 * 1024 * 1024);
         assert_eq!(total, 456 * 1024 * 1024);
@@ -418,9 +434,8 @@ mod tests {
 
     #[test]
     fn derives_progress_when_transfer_readout_has_no_percent() {
-        let (percent, downloaded, total, _) =
-            parse_download_text("Downloading 12.3 GB of 27.4 GB")
-                .expect("size-only readout should parse");
+        let (percent, downloaded, total, _) = parse_download_text("Downloading 12.3 GB of 27.4 GB")
+            .expect("size-only readout should parse");
         assert_eq!(percent, 45);
         assert_eq!(downloaded, (12.3_f64 * 1024.0 * 1024.0 * 1024.0) as u64);
         assert_eq!(total, (27.4_f64 * 1024.0 * 1024.0 * 1024.0) as u64);

@@ -34,6 +34,7 @@ pub struct ReconciliationResult {
 ///   * no app manifest exists for the game (it was uninstalled or removed),
 ///   * the entry reached a terminal state, and
 ///   * no live download worker still holds the entry.
+///
 /// Non-terminal entries (a freshly queued install while Steam has not yet
 /// created its manifest) are deliberately kept.
 fn should_remove_removed_steam_entry(

@@ -3031,12 +3031,14 @@ mod tests {
         BackupExternalDriveOsEjectRequest,
         Vec<BackupWriteProofDiskEvidence>,
     ) {
-        let mut disk = removable_write_proof_disk(target);
+        let disk = removable_write_proof_disk(target);
         #[cfg(target_os = "windows")]
-        {
+        let disk = {
+            let mut disk = disk;
             let mount_root = target.ancestors().last().unwrap_or(target);
             disk.mount_point = path_to_string(mount_root.to_path_buf());
-        }
+            disk
+        };
         let mut request = os_eject_request(path_to_string(target.to_path_buf()));
         request.expected_mount_point = disk.mount_point.clone();
         (request, vec![disk])

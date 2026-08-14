@@ -252,7 +252,7 @@ impl PlannedGameAction {
         }
     }
 
-    #[cfg(test)]
+    #[cfg(all(test, windows, feature = "windows-uiautomation"))]
     fn mode(&self) -> GameActionMode {
         self.mode
     }
@@ -1463,6 +1463,7 @@ mod tests {
     }
 
     #[test]
+    #[cfg(all(windows, feature = "windows-uiautomation"))]
     fn xbox_uninstall_uses_verified_native_package_removal() {
         let mut xbox = game("xbox-forza-horizon-5", "Forza Horizon 5", "xbox");
         xbox.external_id = Some("9NKX70BBCDRN".to_string());
