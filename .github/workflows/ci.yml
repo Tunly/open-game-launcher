@@ -200,6 +200,13 @@ jobs:
         run: pnpm test:e2e:desktop
         env:
           OGL_E2E_APP_BINARY: src-tauri/target/x86_64-pc-windows-msvc/debug/open-game-launcher.exe
+          # GitHub Windows runners run as an elevated runneradmin user.
+          # WebView2 de-elevates itself in that case and then cannot read the
+          # elevated user's AppData directory, so the DevTools pipe never
+          # starts ("DevToolsActivePort file doesn't exist"). Point WebView2
+          # at a writable runner-owned directory instead. See
+          # https://github.com/tauri-apps/tauri/issues/13926
+          WEBVIEW2_USER_DATA_FOLDER: D:\a\_temp\ogl-webview2-user-data
 
   # ---------- Supabase: db lint ----------
   # Runs on push/PR and the manual hosted-deploy gate path, because it spins up
