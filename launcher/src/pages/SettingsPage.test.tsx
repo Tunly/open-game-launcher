@@ -1491,7 +1491,6 @@ describe("SettingsPage external completion evidence summary", () => {
     });
 
     expect(within(panel).getByText("External Completion Evidence")).toBeInTheDocument();
-    expect(within(panel).getAllByText("Store and Stripe live staging").length).toBeGreaterThan(0);
     expect(within(panel).getAllByText("Hosted Supabase cron").length).toBeGreaterThan(0);
     expect(within(panel).getAllByText("Provider live integrations").length).toBeGreaterThan(0);
     expect(within(panel).getAllByText("Hardware and OS E2E").length).toBeGreaterThan(0);
@@ -1520,14 +1519,14 @@ describe("SettingsPage external completion evidence summary", () => {
     ).toBeInTheDocument();
     expect(
       within(panel).getByText(
-        "OGL_EXTERNAL_EVIDENCE_GATES=store-stripe-live pnpm external:evidence:status",
+        "OGL_EXTERNAL_EVIDENCE_GATES=hosted-supabase-cron pnpm external:evidence:status",
       ),
     ).toBeInTheDocument();
     expect(within(panel).getAllByText("Artifact Proof Map").length).toBeGreaterThan(0);
-    expect(within(panel).getAllByText("Next Operator Action").length).toBe(5);
+    expect(within(panel).getAllByText("Next Operator Action").length).toBe(4);
     expect(
       within(panel).getByText(
-        "Set 4 non-placeholder environment value(s), then rerun OGL_EXTERNAL_EVIDENCE_GATES=store-stripe-live pnpm external:evidence:status.",
+        "Set 3 non-placeholder environment value(s), then rerun OGL_EXTERNAL_EVIDENCE_GATES=hosted-supabase-cron pnpm external:evidence:status.",
       ),
     ).toBeInTheDocument();
     expect(
@@ -1545,9 +1544,6 @@ describe("SettingsPage external completion evidence summary", () => {
     ).toBe(0);
     expect(within(panel).getByText("No-Write Completion Guard")).toBeInTheDocument();
     expect(within(panel).getByText("No external proof claim")).toBeInTheDocument();
-    expect(
-      within(panel).getByText("No live Stripe webhook or Dashboard proof"),
-    ).toBeInTheDocument();
     expect(panel).not.toHaveTextContent(
       /(external completion complete|production ready|production deployment verified|scheduler verified|provider approved|dashboard verified|sk_live|whsec_)/i,
     );

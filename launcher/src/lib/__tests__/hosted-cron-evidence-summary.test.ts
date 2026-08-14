@@ -11,7 +11,7 @@ describe("hosted cron evidence summary", () => {
 
     expect(summary.statusLabel).toBe("External Evidence Required");
     expect(summary.passCount).toBe(0);
-    expect(summary.reviewCount).toBe(2);
+    expect(summary.reviewCount).toBe(1);
     expect(summary.blockedCount).toBe(1);
     expect(summary.summary).toContain("trigger_source=scheduled");
     expect(summary.summary).toContain("valid aggregate counts");

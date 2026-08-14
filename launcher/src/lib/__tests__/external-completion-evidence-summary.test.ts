@@ -57,35 +57,57 @@ function validEnvValue(name: string) {
 function validStoreArtifactEvidence(
   gate: ExternalCompletionEvidenceGateInput,
 ): ExternalCompletionEvidenceArtifactInput[] {
-  const [schedulerArtifact] = gate.artifactProofs ?? [];
+  // The Lib's artifact-proof helper falls back to gate.proofRequirements when
+  // no per-artifact proof map is configured; mirror that here.
+  const artifactPath = gate.artifactPaths[0];
+  const requiredProofs =
+    gate.artifactProofs?.find((item) => item.path === artifactPath)?.requiredProofs ??
+    gate.proofRequirements;
 
+  // The hosted-supabase-cron gate requires lane-prefixed detail fields
+  // ("account-deletion: ...", "presence-poll: ..."). Produce a fixture that
+  // satisfies every gate-specific field so single-field mutation tests (e.g.
+  // redaction notes, release boundary) observe only their own finding.
+  const laneDetails =
+    gate.id === "hosted-supabase-cron"
+      ? {
+          "account-deletion: Function": "process-account-deletions",
+          "account-deletion: Hosted cron table": "account_deletion_processor_runs",
+          "account-deletion: Run ID": "account-deletion-run-123",
+          "account-deletion: Scheduled": "scheduled",
+          "account-deletion: Status": "completed",
+          "account-deletion: dry_run=false": "confirmed false",
+          "presence-poll: Function": "poll-platform-presence",
+          "presence-poll: Hosted cron table": "presence_poll_runs",
+          "presence-poll: Run ID": "presence-poll-run-123",
+          "presence-poll: Scheduled": "scheduled",
+          "presence-poll: Status": "completed",
+          "presence-poll: dry_run=false": "confirmed false",
+        }
+      : {};
+
+  const proofEvidence = Object.fromEntries(
+    requiredProofs.map((proof) => [
+      proof,
+      proof.includes("poll-platform-presence")
+        ? "workflow-presence-poll-123"
+        : proof.includes("process-account-deletions")
+          ? "workflow-account-deletion-123"
+          : "workflow-hosted-cron-123",
+    ]),
+  );
+
+  // The Lib keys artifact evidence by artifact path (last row wins), so a
+  // fixture must carry exactly one row per path for mutations to be visible.
   return [
     {
-      checkedProofs: schedulerArtifact.requiredProofs,
+      checkedProofs: requiredProofs,
       evidenceDetails: {
         ...evidenceDetails,
+        ...laneDetails,
       },
-      path: schedulerArtifact.path,
-      proofEvidence: {
-        [schedulerArtifact.requiredProofs[0]]: "workflow-presence-poll-live-123",
-      },
-      readable: true,
-    },
-    {
-      checkedProofs: schedulerArtifact.requiredProofs,
-      evidenceDetails: {
-        ...evidenceDetails,
-        Function: "poll-platform-presence",
-        "Hosted cron table": "presence_poll_runs",
-        "Run ID": "run-presence-poll-live-123",
-        Scheduled: "scheduled",
-        Status: "completed",
-        "dry_run=false": "false",
-      },
-      path: schedulerArtifact.path,
-      proofEvidence: {
-        [schedulerArtifact.requiredProofs[0]]: "workflow-presence-poll-live-123",
-      },
+      path: artifactPath,
+      proofEvidence,
       readable: true,
     },
   ];
@@ -254,7 +276,7 @@ describe("external completion evidence summary", () => {
       ]),
     );
     expect(summary.gates[0].nextAction).toBe(
-      "Set 4 non-placeholder environment value(s), then rerun OGL_EXTERNAL_EVIDENCE_GATES=hosted-supabase-cron pnpm external:evidence:status.",
+      `Set ${EXTERNAL_COMPLETION_EVIDENCE_GATE_INPUTS[0].requiredEnv.length} non-placeholder environment value(s), then rerun OGL_EXTERNAL_EVIDENCE_GATES=hosted-supabase-cron pnpm external:evidence:status.`,
     );
     expect(summary.gates.find((gate) => gate.id === "hardware-os-e2e")?.nextAction).toBe(
       "Capture real external proof, then check the assigned artifact row(s) only after evidence is attached.",
@@ -315,8 +337,8 @@ describe("external completion evidence summary", () => {
     });
     expect(summary.gates[0].blockers).toEqual(
       expect.arrayContaining([
-        "4 missing, placeholder, or malformed environment value(s)",
-        "2 unreadable artifact file(s)",
+        `${storeGate.requiredEnv.length} missing, placeholder, or malformed environment value(s)`,
+        `${storeGate.artifactPaths.length} unreadable artifact file(s)`,
         `${storeGate.proofRequirements.length} missing checked proof row(s)`,
       ]),
     );
@@ -383,23 +405,18 @@ describe("external completion evidence summary", () => {
     });
     expect(summary.gates[1]).toMatchObject({
       missingArtifactCount: 1,
-      missingEnvCount: 3,
-      missingProofCount: 3,
+      missingEnvCount: cronGate!.requiredEnv.length - 1,
+      missingProofCount: cronGate!.proofRequirements.length,
       status: "blocked",
     });
   });
 
   it("uses a packet-scoped pass label only when every evidence gate passes", () => {
-    const [storeGate, cronGate, providerGate, hardwareGate, rolloutGate] =
+    const [cronGate, providerGate, hardwareGate, rolloutGate] =
       EXTERNAL_COMPLETION_EVIDENCE_GATE_INPUTS;
     const summary = buildExternalCompletionEvidenceSummary({
       createdAt: "2026-06-16T00:00:00.000Z",
       gates: [
-        {
-          ...storeGate,
-          artifactEvidence: validStoreArtifactEvidence(storeGate),
-          envEvidence: envEvidenceFor(storeGate),
-        },
         {
           ...cronGate,
           artifactEvidence: validHostedSupabaseCronArtifactEvidence(cronGate),
@@ -486,12 +503,10 @@ describe("external completion evidence summary", () => {
 
   it("blocks env evidence values that do not match CLI shape requirements", () => {
     const [storeGate] = EXTERNAL_COMPLETION_EVIDENCE_GATE_INPUTS;
-    const invalidEnvEvidence = [
-      { name: "SUPABASE_URL", value: "https://example.supabase.co" },
-      { name: "STRIPE_SECRET_KEY", value: "sk_test_51OgLauncherEvidenceAlpha1234567890" },
-      { name: "STRIPE_WEBHOOK_SECRET", value: "whsec_short" },
-      { name: "PRESENCE_POLL_SECRET", value: "vault:og-launcher:presence_poll_secret" },
-    ];
+    const invalidEnvEvidence = storeGate.requiredEnv.map((name) => ({
+      name,
+      value: "invalid-placeholder",
+    }));
     const summary = buildExternalCompletionEvidenceSummary({
       createdAt: "2026-06-16T00:00:00.000Z",
       gates: [
@@ -508,11 +523,11 @@ describe("external completion evidence summary", () => {
     expect(summary.passCount).toBe(0);
     expect(summary.reviewCount).toBe(0);
     expect(summary.gates[0]).toMatchObject({
-      missingEnvCount: 4,
+      missingEnvCount: storeGate.requiredEnv.length,
       status: "blocked",
     });
     expect(summary.gates[0].blockers).toContain(
-      "4 missing, placeholder, or malformed environment value(s)",
+      `${storeGate.requiredEnv.length} missing, placeholder, or malformed environment value(s)`,
     );
     for (const { value } of invalidEnvEvidence) {
       expect(JSON.stringify(summary)).not.toContain(value);
@@ -554,7 +569,7 @@ describe("external completion evidence summary", () => {
   it("blocks artifacts missing gate-specific evidence fields", () => {
     const [storeGate] = EXTERNAL_COMPLETION_EVIDENCE_GATE_INPUTS;
     const artifactEvidence = validStoreArtifactEvidence(storeGate);
-    delete artifactEvidence[0]!.evidenceDetails!["Stripe webhook event ID"];
+    delete artifactEvidence[0]!.evidenceDetails!["presence-poll: Function"];
 
     const summary = buildExternalCompletionEvidenceSummary({
       createdAt: "2026-06-16T00:00:00.000Z",
@@ -575,7 +590,7 @@ describe("external completion evidence summary", () => {
     });
     expect(summary.gates[0].artifactProofs[0].missingEvidenceDetails).toEqual([
       {
-        field: "Stripe webhook event ID",
+        field: "presence-poll: Function",
         path: storeGate.artifactPaths[0],
       },
     ]);
@@ -647,8 +662,8 @@ describe("external completion evidence summary", () => {
   it("rejects release-boundary details that do not match expected CI tag and SHA", () => {
     const [storeGate] = EXTERNAL_COMPLETION_EVIDENCE_GATE_INPUTS;
     const artifactEvidence = validStoreArtifactEvidence(storeGate);
-    artifactEvidence[1]!.evidenceDetails!["Release ref"] = "refs/tags/v0.2.0";
-    artifactEvidence[1]!.evidenceDetails!["Commit SHA"] =
+    artifactEvidence[0]!.evidenceDetails!["Release ref"] = "refs/tags/v0.2.0";
+    artifactEvidence[0]!.evidenceDetails!["Commit SHA"] =
       "fedcba9876543210fedcba9876543210fedcba98";
 
     const summary = buildExternalCompletionEvidenceSummary({
@@ -662,8 +677,8 @@ describe("external completion evidence summary", () => {
       ],
       packetId: "external-evidence-release-boundary-mismatch-test",
       releaseBoundaryEnv: {
-        GITHUB_REF_NAME: "v0.2.0",
-        GITHUB_SHA: "fedcba9876543210fedcba9876543210fedcba98",
+        GITHUB_REF_NAME: "v0.1.0",
+        GITHUB_SHA: "0123456789abcdef0123456789abcdef01234567",
       },
       validationNow,
     });
@@ -693,7 +708,7 @@ describe("external completion evidence summary", () => {
       "run-123 docs/verification/screenshots/settings-external-completion-evidence-summary-local.png";
     const genericProofLocator = "run-generic-proof-123";
     const checkoutArtifact = artifactEvidence[0]!;
-    const checkoutProofs = storeGate.artifactProofs![0].requiredProofs;
+    const checkoutProofs = storeGate.proofRequirements;
 
     checkoutArtifact.evidenceDetails!["Captured at"] = "1970-01-01T00:00:00.000Z";
     checkoutArtifact.evidenceDetails![
@@ -927,8 +942,9 @@ describe("external completion evidence summary", () => {
   it("rejects Stripe Dashboard test-mode evidence URLs", () => {
     const [storeGate] = EXTERNAL_COMPLETION_EVIDENCE_GATE_INPUTS;
     const artifactEvidence = validStoreArtifactEvidence(storeGate);
-    artifactEvidence[0]!.evidenceDetails!["Stripe Dashboard evidence"] =
-      "https://dashboard.stripe.com/test/events/evt_123";
+    artifactEvidence[0]!.evidenceDetails![
+      "Redacted run IDs, dashboard links, screenshots, or signed deployment logs"
+    ] = "https://dashboard.stripe.com/test/events/evt_123";
 
     const summary = buildExternalCompletionEvidenceSummary({
       createdAt: "2026-06-16T00:00:00.000Z",
@@ -949,7 +965,7 @@ describe("external completion evidence summary", () => {
     });
     expect(summary.gates[0].artifactProofs[0].missingEvidenceDetails).toEqual([
       {
-        field: "Stripe Dashboard evidence",
+        field: "Redacted run IDs, dashboard links, screenshots, or signed deployment logs",
         path: storeGate.artifactPaths[0],
       },
     ]);
@@ -963,7 +979,9 @@ describe("external completion evidence summary", () => {
   ])("rejects evidence URLs with CLI-blocked URL parts: %s", (url) => {
     const [storeGate] = EXTERNAL_COMPLETION_EVIDENCE_GATE_INPUTS;
     const artifactEvidence = validStoreArtifactEvidence(storeGate);
-    artifactEvidence[0]!.evidenceDetails!["Stripe Dashboard evidence"] = url;
+    artifactEvidence[0]!.evidenceDetails![
+      "Redacted run IDs, dashboard links, screenshots, or signed deployment logs"
+    ] = url;
 
     const summary = buildExternalCompletionEvidenceSummary({
       createdAt: "2026-06-16T00:00:00.000Z",
@@ -984,17 +1002,19 @@ describe("external completion evidence summary", () => {
     });
     expect(summary.gates[0].artifactProofs[0].missingEvidenceDetails).toEqual([
       {
-        field: "Stripe Dashboard evidence",
+        field: "Redacted run IDs, dashboard links, screenshots, or signed deployment logs",
         path: storeGate.artifactPaths[0],
       },
     ]);
     expect(JSON.stringify(summary)).not.toContain(url);
   });
 
-  it("rejects generic locator IDs for Stripe Dashboard evidence", () => {
+  it("rejects weak locator values for evidence detail fields", () => {
     const [storeGate] = EXTERNAL_COMPLETION_EVIDENCE_GATE_INPUTS;
     const artifactEvidence = validStoreArtifactEvidence(storeGate);
-    artifactEvidence[0]!.evidenceDetails!["Stripe Dashboard evidence"] = "run-generic-123";
+    artifactEvidence[0]!.evidenceDetails![
+      "Redacted run IDs, dashboard links, screenshots, or signed deployment logs"
+    ] = "see attached later";
 
     const summary = buildExternalCompletionEvidenceSummary({
       createdAt: "2026-06-16T00:00:00.000Z",
@@ -1005,7 +1025,7 @@ describe("external completion evidence summary", () => {
           envEvidence: envEvidenceFor(storeGate),
         },
       ],
-      packetId: "external-evidence-stripe-dashboard-generic-id-test",
+      packetId: "external-evidence-weak-locator-value-test",
       validationNow,
     });
 
@@ -1015,7 +1035,7 @@ describe("external completion evidence summary", () => {
     });
     expect(summary.gates[0].artifactProofs[0].missingEvidenceDetails).toEqual([
       {
-        field: "Stripe Dashboard evidence",
+        field: "Redacted run IDs, dashboard links, screenshots, or signed deployment logs",
         path: storeGate.artifactPaths[0],
       },
     ]);
@@ -1025,7 +1045,7 @@ describe("external completion evidence summary", () => {
     const [storeGate] = EXTERNAL_COMPLETION_EVIDENCE_GATE_INPUTS;
     const artifactEvidence = validStoreArtifactEvidence(storeGate);
     artifactEvidence[0]!.proofEvidence = Object.fromEntries(
-      storeGate.artifactProofs![0].requiredProofs.map((proof, index) => [
+      storeGate.proofRequirements.map((proof, index) => [
         proof,
         `run-generic-store-stripe-${index + 1}`,
       ]),
@@ -1045,12 +1065,12 @@ describe("external completion evidence summary", () => {
     });
 
     expect(summary.gates[0]).toMatchObject({
-      missingProofEvidenceCount: storeGate.artifactProofs![0].requiredProofs.length,
+      missingProofEvidenceCount: storeGate.proofRequirements.length,
       status: "blocked",
     });
     expect(
       summary.gates[0].artifactProofs[0].missingProofEvidenceMappings.map(({ proof }) => proof),
-    ).toEqual(storeGate.artifactProofs![0].requiredProofs);
+    ).toEqual(storeGate.proofRequirements);
   });
 
   it("rejects weak gate-specific evidence detail values like the CLI preflight", () => {
@@ -1111,7 +1131,7 @@ describe("external completion evidence summary", () => {
     "not reviewed",
   ])("rejects Redaction notes without CLI-positive wording: %s", (redactionNotes) => {
     const [storeGate] = EXTERNAL_COMPLETION_EVIDENCE_GATE_INPUTS;
-    const artifactEvidence = validStoreArtifactEvidence(storeGate);
+    const artifactEvidence = validHostedSupabaseCronArtifactEvidence(storeGate);
     artifactEvidence[0]!.evidenceDetails!["Redaction notes"] = redactionNotes;
 
     const summary = buildExternalCompletionEvidenceSummary({
@@ -1398,7 +1418,7 @@ describe("external completion evidence summary", () => {
   it("rejects hosted scheduler values that do not match CLI preflight", () => {
     const [storeGate] = EXTERNAL_COMPLETION_EVIDENCE_GATE_INPUTS;
     const artifactEvidence = validStoreArtifactEvidence(storeGate);
-    artifactEvidence[1]!.evidenceDetails!["Scheduled"] = "true";
+    artifactEvidence[0]!.evidenceDetails!["presence-poll: Scheduled"] = "true";
 
     const summary = buildExternalCompletionEvidenceSummary({
       createdAt: "2026-06-16T00:00:00.000Z",
@@ -1417,10 +1437,10 @@ describe("external completion evidence summary", () => {
       missingEvidenceDetailCount: 1,
       status: "blocked",
     });
-    expect(summary.gates[0].artifactProofs[1].missingEvidenceDetails).toEqual([
+    expect(summary.gates[0].artifactProofs[0].missingEvidenceDetails).toEqual([
       {
-        field: "Scheduled",
-        path: storeGate.artifactPaths[1],
+        field: "presence-poll: Scheduled",
+        path: storeGate.artifactPaths[0],
       },
     ]);
   });
@@ -1688,7 +1708,7 @@ describe("external completion evidence summary", () => {
     });
 
     expect(genericSummary.gates[0]).toMatchObject({
-      missingProofEvidenceCount: 3,
+      missingProofEvidenceCount: cronGate!.proofRequirements.length,
       status: "blocked",
     });
     expect(
@@ -1851,7 +1871,7 @@ describe("external completion evidence summary", () => {
   it("blocks checked proofs that lack proof-specific evidence mappings", () => {
     const [storeGate] = EXTERNAL_COMPLETION_EVIDENCE_GATE_INPUTS;
     const artifactEvidence = validStoreArtifactEvidence(storeGate);
-    const missingMappingProof = storeGate.artifactProofs?.[0].requiredProofs[1] ?? "";
+    const missingMappingProof = storeGate.proofRequirements[1];
     delete artifactEvidence[0]!.proofEvidence![missingMappingProof];
 
     const summary = buildExternalCompletionEvidenceSummary({
@@ -1877,7 +1897,7 @@ describe("external completion evidence summary", () => {
     });
     expect(summary.gates[0].blockers).toContain("1 missing proof-specific Evidence for mapping(s)");
     expect(summary.gates[0].recommendedCommands).toContain(
-      "OGL_EXTERNAL_EVIDENCE_GATES=store-stripe-live pnpm external:evidence:template",
+      "OGL_EXTERNAL_EVIDENCE_GATES=hosted-supabase-cron pnpm external:evidence:template",
     );
     expect(summary.gates[0].artifactProofs[0].missingProofEvidenceMappings).toEqual([
       {
@@ -1929,7 +1949,7 @@ describe("external completion evidence summary", () => {
 
   it("reports secret-scan blockers without storing raw artifact content", () => {
     const [storeGate] = EXTERNAL_COMPLETION_EVIDENCE_GATE_INPUTS;
-    const rawSecret = "sk_live_forbiddenfixture123";
+    const rawSecret = "sk_live_secret";
     const summary = buildExternalCompletionEvidenceSummary({
       createdAt: "2026-06-16T00:00:00.000Z",
       gates: [
@@ -1940,7 +1960,6 @@ describe("external completion evidence summary", () => {
               ...validStoreArtifactEvidence(storeGate)[0],
               content: `- [x] ${storeGate.proofRequirements[0]}\n${rawSecret}`,
             },
-            validStoreArtifactEvidence(storeGate)[1],
           ],
           envEvidence: envEvidenceFor(storeGate),
         },
@@ -1951,16 +1970,17 @@ describe("external completion evidence summary", () => {
 
     expect(summary.gates[0].secretFindingCount).toBe(1);
     expect(summary.gates[0].blockers).toContain("1 blocked secret-scan finding(s)");
-    expect(JSON.stringify(summary)).toContain("Stripe secret key");
+    expect(JSON.stringify(summary)).toContain("Unredacted secret fixture");
     expect(JSON.stringify(summary)).not.toContain(rawSecret);
   });
 
   it("reports secret-scan blockers from structured evidence fields", () => {
     const [storeGate] = EXTERNAL_COMPLETION_EVIDENCE_GATE_INPUTS;
-    const rawSecret = "sk_live_structured_forbidden_fixture_123";
+    const rawSecret = "sk_live_secret";
     const artifactEvidence = validStoreArtifactEvidence(storeGate);
-    artifactEvidence[0]!.evidenceDetails!["Supabase function log run ID"] =
-      `run-supabase-stripe-webhook-123 ${rawSecret}`;
+    artifactEvidence[0]!.evidenceDetails![
+      "Redacted run IDs, dashboard links, screenshots, or signed deployment logs"
+    ] = `run-supabase-stripe-webhook-123 ${rawSecret}`;
 
     const summary = buildExternalCompletionEvidenceSummary({
       createdAt: "2026-06-16T00:00:00.000Z",
@@ -1977,16 +1997,16 @@ describe("external completion evidence summary", () => {
 
     expect(summary.gates[0].secretFindingCount).toBe(1);
     expect(summary.gates[0].blockers).toContain("1 blocked secret-scan finding(s)");
-    expect(JSON.stringify(summary)).toContain("Stripe secret key");
+    expect(JSON.stringify(summary)).toContain("Unredacted secret fixture");
     expect(JSON.stringify(summary)).not.toContain(rawSecret);
   });
 
-  it("reports Stripe test and restricted key secret-scan blockers like the CLI preflight", () => {
+  it("reports raw secret blockers like the CLI preflight", () => {
     const [storeGate] = EXTERNAL_COMPLETION_EVIDENCE_GATE_INPUTS;
     const artifactEvidence = validStoreArtifactEvidence(storeGate);
     artifactEvidence[0]!.content = [
-      "- STRIPE_SECRET_KEY=sk_test_51OgLauncherEvidenceAlpha1234567890",
-      "- STRIPE_RESTRICTED_KEY=rk_live_51OgLauncherEvidenceAlpha1234567890",
+      "- SECRET=sk_live_secret",
+      "- TOKEN=eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U",
     ].join("\n");
 
     const summary = buildExternalCompletionEvidenceSummary({
@@ -1998,18 +2018,17 @@ describe("external completion evidence summary", () => {
           envEvidence: envEvidenceFor(storeGate),
         },
       ],
-      packetId: "external-evidence-stripe-secret-scan-test",
+      packetId: "external-evidence-raw-secret-scan-test",
       validationNow,
     });
 
     expect(summary.gates[0]).toMatchObject({
-      secretFindingCount: 1,
+      secretFindingCount: 2,
       status: "blocked",
     });
-    expect(summary.gates[0].blockers).toContain("1 blocked secret-scan finding(s)");
-    expect(summary.gates[0].artifactProofs[0].secretFindingLabels).toEqual(["Stripe secret key"]);
-    expect(JSON.stringify(summary)).not.toContain("sk_test_51OgLauncherEvidenceAlpha1234567890");
-    expect(JSON.stringify(summary)).not.toContain("rk_live_51OgLauncherEvidenceAlpha1234567890");
+    expect(summary.gates[0].blockers).toContain("2 blocked secret-scan finding(s)");
+    expect(JSON.stringify(summary)).not.toContain("sk_live_secret");
+    expect(JSON.stringify(summary)).not.toContain("eyJhbGciOiJIUzI1NiJ9");
   });
 
   it("reports GitHub token blockers without exposing raw token values", () => {

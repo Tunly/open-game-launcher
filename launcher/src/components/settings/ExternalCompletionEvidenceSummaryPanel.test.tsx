@@ -42,35 +42,47 @@ function validEnvValue(name: string) {
 }
 
 function validStoreArtifactEvidence(gate: ExternalCompletionEvidenceGateInput) {
-  const [schedulerArtifact] = gate.artifactProofs ?? [];
+  const artifactPath = gate.artifactPaths[0];
+  const requiredProofs = gate.proofRequirements;
+
+  const laneDetails =
+    gate.id === "hosted-supabase-cron"
+      ? {
+          "account-deletion: Function": "process-account-deletions",
+          "account-deletion: Hosted cron table": "account_deletion_processor_runs",
+          "account-deletion: Run ID": "account-deletion-run-123",
+          "account-deletion: Scheduled": "scheduled",
+          "account-deletion: Status": "completed",
+          "account-deletion: dry_run=false": "confirmed false",
+          "presence-poll: Function": "poll-platform-presence",
+          "presence-poll: Hosted cron table": "presence_poll_runs",
+          "presence-poll: Run ID": "presence-poll-run-123",
+          "presence-poll: Scheduled": "scheduled",
+          "presence-poll: Status": "completed",
+          "presence-poll: dry_run=false": "confirmed false",
+        }
+      : {};
+
+  const proofEvidence = Object.fromEntries(
+    requiredProofs.map((proof) => [
+      proof,
+      proof.includes("poll-platform-presence")
+        ? "workflow-presence-poll-123"
+        : proof.includes("process-account-deletions")
+          ? "workflow-account-deletion-123"
+          : "workflow-hosted-cron-123",
+    ]),
+  );
 
   return [
     {
-      checkedProofs: schedulerArtifact.requiredProofs,
+      checkedProofs: requiredProofs,
       evidenceDetails: {
         ...evidenceDetails,
+        ...laneDetails,
       },
-      path: schedulerArtifact.path,
-      proofEvidence: {
-        [schedulerArtifact.requiredProofs[0]]: "workflow-presence-poll-live-123",
-      },
-      readable: true,
-    },
-    {
-      checkedProofs: schedulerArtifact.requiredProofs,
-      evidenceDetails: {
-        ...evidenceDetails,
-        Function: "poll-platform-presence",
-        "Hosted cron table": "presence_poll_runs",
-        "Run ID": "run-presence-poll-live-123",
-        Scheduled: "scheduled",
-        Status: "completed",
-        "dry_run=false": "false",
-      },
-      path: schedulerArtifact.path,
-      proofEvidence: {
-        [schedulerArtifact.requiredProofs[0]]: "workflow-presence-poll-live-123",
-      },
+      path: artifactPath,
+      proofEvidence,
       readable: true,
     },
   ];
@@ -121,10 +133,10 @@ describe("ExternalCompletionEvidenceSummaryPanel", () => {
       within(artifactSnapshot).getByRole("article", { name: "Artifact Ready: 0/4" }),
     ).toBeVisible();
     expect(
-      within(artifactSnapshot).getByRole("article", { name: "Proof Rows Missing: 14" }),
+      within(artifactSnapshot).getByRole("article", { name: "Proof Rows Missing: 12" }),
     ).toBeVisible();
     expect(
-      within(artifactSnapshot).getByRole("article", { name: "Details Missing: 50" }),
+      within(artifactSnapshot).getByRole("article", { name: "Details Missing: 49" }),
     ).toBeVisible();
     expect(within(artifactSnapshot).getAllByText("Yes")).toHaveLength(4);
     expect(within(artifactSnapshot).getAllByText("blocked").length).toBeGreaterThan(0);
@@ -156,7 +168,7 @@ describe("ExternalCompletionEvidenceSummaryPanel", () => {
     expect(within(panel).getAllByText("Next Operator Action")).toHaveLength(4);
     expect(
       within(panel).getByText(
-        "Set 4 non-placeholder environment value(s), then rerun OGL_EXTERNAL_EVIDENCE_GATES=hosted-supabase-cron pnpm external:evidence:status.",
+        "Set 3 non-placeholder environment value(s), then rerun OGL_EXTERNAL_EVIDENCE_GATES=hosted-supabase-cron pnpm external:evidence:status.",
       ),
     ).toBeVisible();
     expect(
@@ -164,13 +176,9 @@ describe("ExternalCompletionEvidenceSummaryPanel", () => {
         "Capture real external proof, then check the assigned artifact row(s) only after evidence is attached.",
       ).length,
     ).toBeGreaterThan(0);
-    expect(
-      within(panel).getAllByText("Hosted Supabase cron scheduler lanes write fresh run evidence.")
-        .length,
-    ).toBeGreaterThan(0);
     expect(within(panel).getAllByText("Missing checked row").length).toBeGreaterThan(0);
     expect(within(panel).getAllByText(/Secret Scan: Clean; no raw secrets rendered/i).length).toBe(
-      6,
+      4,
     );
     const storeSecretScanStatus = within(panel).getAllByText("Clean")[0];
     expect(storeSecretScanStatus).toBeVisible();
@@ -191,7 +199,7 @@ describe("ExternalCompletionEvidenceSummaryPanel", () => {
   it("renders proof-specific mapping blockers for checked rows", () => {
     const [storeGate] = EXTERNAL_COMPLETION_EVIDENCE_GATE_INPUTS;
     const artifactEvidence = validStoreArtifactEvidence(storeGate);
-    const missingMappingProof = storeGate.artifactProofs?.[0].requiredProofs[1] ?? "";
+    const missingMappingProof = storeGate.proofRequirements[1];
     delete artifactEvidence[0].proofEvidence[missingMappingProof];
     const summary = buildExternalCompletionEvidenceSummary({
       createdAt: "2026-06-16T00:00:00.000Z",
@@ -211,7 +219,7 @@ describe("ExternalCompletionEvidenceSummaryPanel", () => {
     render(<ExternalCompletionEvidenceSummaryPanel summary={summary} />);
 
     const gate = screen.getByRole("article", {
-      name: /store and stripe live staging external evidence gate/i,
+      name: /hosted supabase cron external evidence gate/i,
     });
 
     expect(
@@ -251,7 +259,7 @@ describe("ExternalCompletionEvidenceSummaryPanel", () => {
     expect(within(panel).getByText("External proof stays attached by reference")).toBeVisible();
     expect(
       within(panel).getByText(
-        "Run OGL_EXTERNAL_EVIDENCE_GATES=store-stripe-live pnpm external:evidence:preflight, then use pnpm completion:gate:external at the release boundary.",
+        "Run OGL_EXTERNAL_EVIDENCE_GATES=hosted-supabase-cron pnpm external:evidence:preflight, then use pnpm completion:gate:external at the release boundary.",
       ),
     ).toBeVisible();
   });

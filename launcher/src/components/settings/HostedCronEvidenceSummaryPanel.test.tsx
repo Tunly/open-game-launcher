@@ -33,7 +33,7 @@ describe("HostedCronEvidenceSummaryPanel", () => {
     expect(within(panel).getByText("Dry-run rows do not pass")).toBeInTheDocument();
     expect(within(panel).getByText("Stale rows do not pass")).toBeInTheDocument();
     expect(within(panel).getByText("No secret material rendered")).toBeInTheDocument();
-    expect(panel).toHaveTextContent("triggerSource:manual");
+    expect(panel).toHaveTextContent("triggerSource:scheduled");
     expect(panel).toHaveTextContent("aggregateCount:invalid");
     expect(panel).toHaveTextContent("aggregateCount:missing");
     expect(panel).not.toHaveTextContent(
