@@ -211,6 +211,10 @@ jobs:
           # at a writable runner-owned directory instead. See
           # https://github.com/tauri-apps/tauri/issues/13926
           WEBVIEW2_USER_DATA_FOLDER: D:\a\_temp\ogl-webview2-user-data
+          # Headless CI runners have no GPU; Chromium's GPU process can hang
+          # startup and the DevTools pipe is never written. Disable GPU and
+          # sandboxing for the smoke-test webview.
+          WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: --disable-gpu --no-sandbox --disable-dev-shm-usage
 
   # ---------- Supabase: db lint ----------
   # Runs on push/PR and the manual hosted-deploy gate path, because it spins up
