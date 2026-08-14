@@ -1698,9 +1698,9 @@ fn is_xbox_non_game_owned_item(title: &str) -> bool {
 
     // Call of Duty hub DLC placeholders: "BO7 DLC01 Game Stub 01",
     // "BO7 DLC17 Standard Launch Tracker", "BO7 DLC56 Game Pass Pack 03".
-    let is_black_ops_seven_hub_item =
-        (normalized.starts_with("b07 ") || normalized.starts_with("bo7 "))
-            && normalized.contains(" dlc");
+    let is_black_ops_seven_hub_item = (normalized.starts_with("b07 ")
+        || normalized.starts_with("bo7 "))
+        && normalized.contains(" dlc");
 
     is_black_ops_seven_hub_item
         || normalized.contains(" game stub")
@@ -2012,8 +2012,12 @@ mod tests {
     #[test]
     fn filters_call_of_duty_hub_dlc_placeholders() {
         assert!(is_xbox_non_game_owned_item("BO7 DLC01 Game Stub 01"));
-        assert!(is_xbox_non_game_owned_item("BO7 DLC17 Standard Launch Tracker"));
-        assert!(is_xbox_non_game_owned_item("BO7 DLC19 Game Pass Launch Tracker"));
+        assert!(is_xbox_non_game_owned_item(
+            "BO7 DLC17 Standard Launch Tracker"
+        ));
+        assert!(is_xbox_non_game_owned_item(
+            "BO7 DLC19 Game Pass Launch Tracker"
+        ));
         assert!(is_xbox_non_game_owned_item("BO7 DLC56 Game Pass Pack 03"));
         assert!(!is_xbox_non_game_owned_item("Call of Duty®"));
         assert!(!is_xbox_non_game_owned_item("Call of Duty: Black Ops 7"));
