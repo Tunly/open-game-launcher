@@ -1,7 +1,7 @@
 use tauri::AppHandle;
 use tauri::Emitter;
 
-use crate::commands::downloads::history::{remember_download_item, remove_download_history_item};
+use crate::commands::downloads::history::remember_download_item;
 use crate::commands::downloads::reconcile::clean_removed_steam_history;
 use crate::commands::downloads::steam_state::{
     calculate_steam_progress, extract_vdf_string, parse_steam_download_state, steam_phase,
@@ -10,10 +10,11 @@ use crate::commands::downloads::steam_state::{
 use crate::commands::downloads::types::{
     emit_download_progress, get_download_lifecycle_lock, get_download_manager,
     is_download_control_pending, is_download_suppressed, next_download_worker_generation,
-    pause_hold_feedback, payload_from_active_download, remove_active_download_if_current,
-    scope_download_worker, update_download_metrics, update_download_status, ActiveDownload,
+    payload_from_active_download, remove_active_download_if_current, scope_download_worker,
+    update_download_metrics, update_download_status, ActiveDownload,
 };
 use crate::commands::downloads::utils::get_dir_size;
+use crate::commands::downloads::worker::{exit_if_suppressed, pause_hold_loop};
 
 pub fn start_global_download_watcher(app: AppHandle) {
     tauri::async_runtime::spawn(async move {
@@ -147,59 +148,31 @@ pub fn start_global_download_watcher(app: AppHandle) {
                                                             let mut current_progress = progress;
                                                             let mut manifest_read_failures = 0u8;
                                                             loop {
-                                                                if is_download_suppressed(
-                                                                    &game_id_clone,
-                                                                ) {
-                                                                    let _ =
-                                                                    remove_download_history_item(
-                                                                        &game_id_clone,
-                                                                    );
-                                                                    remove_active_download_if_current(
+                                                                if exit_if_suppressed(
                                                                     &game_id_clone,
                                                                     &cancel_rx,
-                                                                );
+                                                                ) {
                                                                     return;
                                                                 }
                                                                 while *pause_rx.borrow() {
-                                                                    if is_download_suppressed(
+                                                                    if exit_if_suppressed(
                                                                         &game_id_clone,
+                                                                        &cancel_rx,
                                                                     ) {
-                                                                        let _ = remove_download_history_item(
-                                                                         &game_id_clone,
-                                                                     );
-                                                                        remove_active_download_if_current(
-                                                                         &game_id_clone,
-                                                                         &cancel_rx,
-                                                                     );
                                                                         return;
                                                                     }
-                                                                    let (
-                                                                        pause_status,
-                                                                        pause_speed,
-                                                                        pause_eta,
-                                                                    ) = pause_hold_feedback(
-                                                                        &game_id_clone,
-                                                                        "Steam Paused",
-                                                                    );
-                                                                    update_download_status(
-                                                                        &game_id_clone,
-                                                                        &pause_status,
-                                                                        &pause_speed,
-                                                                        current_progress,
-                                                                        pause_eta,
-                                                                    );
-                                                                    emit_download_progress(
+                                                                    if pause_hold_loop(
                                                                         &app_clone,
                                                                         &game_id_clone,
+                                                                        &pause_rx,
+                                                                        &cancel_rx,
                                                                         current_progress,
-                                                                        &pause_speed,
-                                                                        &pause_status,
-                                                                        pause_eta,
-                                                                    );
-                                                                    tokio::time::sleep(
-                                                                    tokio::time::Duration::from_millis(500),
-                                                                )
-                                                                .await;
+                                                                        "Steam Paused",
+                                                                    )
+                                                                    .await
+                                                                    {
+                                                                        return;
+                                                                    }
                                                                 }
 
                                                                 if let Ok(contents) =
@@ -376,17 +349,10 @@ pub fn start_global_download_watcher(app: AppHandle) {
                                                             .await;
                                                             }
 
-                                                            if is_download_suppressed(
+                                                            if exit_if_suppressed(
                                                                 &game_id_clone,
+                                                                &cancel_rx,
                                                             ) {
-                                                                let _ =
-                                                                    remove_download_history_item(
-                                                                        &game_id_clone,
-                                                                    );
-                                                                remove_active_download_if_current(
-                                                                    &game_id_clone,
-                                                                    &cancel_rx,
-                                                                );
                                                                 return;
                                                             }
 

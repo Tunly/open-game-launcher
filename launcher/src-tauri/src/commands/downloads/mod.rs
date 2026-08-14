@@ -18,6 +18,7 @@ mod steam_state;
 mod types;
 mod utils;
 mod watcher;
+mod worker;
 mod xbox_app;
 
 pub use health::ProviderHealthStatus;
