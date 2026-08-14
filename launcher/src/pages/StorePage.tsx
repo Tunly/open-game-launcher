@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { isTauri } from "@tauri-apps/api/core";
 
@@ -6,12 +6,11 @@ import { useCurrentUser } from "../hooks/useCurrentUser";
 import {
   addToStoreWishlist,
   listMyStoreWishlist,
-  listPublishedProductsPage,
   removeFromStoreWishlist,
 } from "../lib/supabase/store";
+import { queryCatalogPage } from "../lib/supabase/catalog-query";
 import { openExternalUrl } from "../lib/launcher/platform-auth";
 import { listInstalledGames, launchGame } from "../lib/launcher";
-import { listStoreCatalogPage } from "../lib/supabase/store-catalog";
 import { EXAMPLE_STORE_CATALOG } from "../lib/store-example-catalog";
 import type { Game } from "../lib/types";
 import type { StoreProduct } from "../lib/types/store";
@@ -20,7 +19,6 @@ import {
   findMatchingLibraryGame,
   getPlatformPurchaseUrl,
   isGameInLibrary,
-  keepNonKeyshopPlatforms,
   mapExampleToStoreProduct,
   mapProductToGame,
   PLATFORM_QUERY_VALUE,
@@ -296,27 +294,21 @@ export function StorePage() {
     [search, platform, priceFilter, sortBy],
   );
 
+  // Cross-batch dedup lives in queryCatalogPage; this Set accumulates the
+  // ids already shown so a product in both sources is never duplicated.
+  const seenProductIdsRef = useRef(new Set<string>());
+
   const fetchPage = useCallback(
     async (page: number) => {
-      const [hosted, catalog] = await Promise.allSettled([
-        listPublishedProductsPage({ page, ...pageQuery }),
-        listStoreCatalogPage({ page, ...pageQuery }),
-      ]);
-      const hostedP =
-        hosted.status === "fulfilled"
-          ? hosted.value.map(keepNonKeyshopPlatforms).filter((p): p is StoreProduct => p !== null)
-          : [];
-      const catalogP =
-        catalog.status === "fulfilled"
-          ? catalog.value.map(keepNonKeyshopPlatforms).filter((p): p is StoreProduct => p !== null)
-          : [];
+      const { products, hostedCount, catalogCount, bothFailed } = await queryCatalogPage(
+        { page, ...pageQuery },
+        seenProductIdsRef.current,
+      );
       return {
-        products: [...hostedP, ...catalogP].filter(
-          (p, i, a) => a.findIndex((x) => x.id === p.id) === i,
-        ),
-        hostedLen: hosted.status === "fulfilled" ? hosted.value.length : 0,
-        catalogLen: catalog.status === "fulfilled" ? catalog.value.length : 0,
-        bothRejected: hosted.status === "rejected" && catalog.status === "rejected",
+        products,
+        hostedLen: hostedCount,
+        catalogLen: catalogCount,
+        bothRejected: bothFailed,
       };
     },
     [pageQuery],

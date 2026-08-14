@@ -1,4 +1,5 @@
 import { getCurrentSupabaseUser, getSupabaseClient } from "./client";
+import { queryStorePageCore } from "./store-query-core";
 import type { Database } from "./database.types";
 import type {
   DeveloperApplication,
@@ -198,41 +199,16 @@ export interface StoreProductPageQuery {
 export async function listPublishedProductsPage(
   query: StoreProductPageQuery,
 ): Promise<StoreProduct[]> {
-  const safePage = Math.max(0, Math.floor(query.page));
-  const safePageSize = Math.max(1, Math.floor(query.pageSize));
-  const from = safePage * safePageSize;
-  const sortBy = query.sortBy ?? "relevance";
-  const sortColumn =
-    sortBy === "release"
-      ? "release_date"
-      : sortBy === "name"
-        ? "title"
-        : sortBy === "price-low" || sortBy === "price-high"
-          ? "price_cents"
-          : "downloads_count";
-  const ascending = sortBy === "price-low" || sortBy === "name";
-  let request = getSupabaseClient()
-    .from("store_products")
-    .select(PRODUCT_SELECT)
-    .eq("status", "published");
-  if (query.search?.trim()) {
-    const term = query.search.trim().replace(/[%,()]/g, " ");
-    request = request.or(
-      `title.ilike.%${term}%,description.ilike.%${term}%,publisher.ilike.%${term}%`,
-    );
-  }
-  if (query.platform && query.platform !== "all")
-    request = request.contains("platforms", [query.platform]);
-  if (query.maxPrice !== undefined && Number.isFinite(query.maxPrice))
-    request = request.lte("price_cents", Math.round(query.maxPrice * 100));
-  if (query.freeOnly) request = request.eq("price_cents", 0);
-  if (query.discountsOnly) request = request.gt("discount_percent", 0);
-  const { data, error } = await request
-    .order(sortColumn, { ascending, nullsFirst: false })
-    .order("id", { ascending: true })
-    .range(from, from + safePageSize - 1);
-  if (error) throw new Error(error.message);
-  return (data ?? []).map((row) => mapStoreProductRow(row as StoreProductRow));
+  return queryStorePageCore(
+    {
+      table: "store_products",
+      select: PRODUCT_SELECT,
+      idColumn: "id",
+      status: "published",
+      map: (row) => mapStoreProductRow(row as StoreProductRow),
+    },
+    query,
+  );
 }
 export async function getStoreProduct(slug: string): Promise<StoreProduct | null> {
   const { data, error } = await getSupabaseClient()

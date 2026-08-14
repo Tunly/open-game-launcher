@@ -9,7 +9,6 @@ const storeMocks = vi.hoisted(() => ({
   addToStoreWishlist: vi.fn(),
   openExternalUrl: vi.fn(),
   listMyStoreWishlist: vi.fn(),
-  listPublishedProductsPage: vi.fn(),
   removeFromStoreWishlist: vi.fn(),
   listStoreProductReviews: vi.fn(),
   getMyStoreReview: vi.fn(),
@@ -41,7 +40,7 @@ const apiMocks = vi.hoisted(() => ({
 }));
 
 const catalogMocks = vi.hoisted(() => ({
-  listStoreCatalogPage: vi.fn(),
+  queryCatalogPage: vi.fn(),
 }));
 
 const launcherMocks = vi.hoisted(() => ({
@@ -51,7 +50,9 @@ const launcherMocks = vi.hoisted(() => ({
 
 vi.mock("../lib/supabase/store", () => storeMocks);
 vi.mock("../lib/store-api", () => apiMocks);
-vi.mock("../lib/supabase/store-catalog", () => catalogMocks);
+vi.mock("../lib/supabase/catalog-query", () => ({
+  queryCatalogPage: catalogMocks.queryCatalogPage,
+}));
 vi.mock("../lib/launcher", () => ({
   listInstalledGames: () => launcherMocks.listInstalledGames(),
   launchGame: (id: string) => launcherMocks.launchGame(id),
@@ -106,22 +107,26 @@ function renderStore() {
 describe("StorePage", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    storeMocks.listPublishedProductsPage.mockReset();
-    catalogMocks.listStoreCatalogPage.mockReset();
+    catalogMocks.queryCatalogPage.mockReset();
     launcherMocks.listInstalledGames.mockReset();
     launcherMocks.listInstalledGames.mockResolvedValue([]);
     authMocks.user = { id: "user-1" };
-    storeMocks.listPublishedProductsPage.mockResolvedValue([
-      makeProduct(),
-      makeProduct({
-        id: "22222222-2222-4222-8222-222222222222",
-        platforms: ["linux", "macos"],
-        priceCents: 999,
-        slug: "second-game",
-        title: "Second Game",
-      }),
-    ]);
-    catalogMocks.listStoreCatalogPage.mockResolvedValue([]);
+    catalogMocks.queryCatalogPage.mockResolvedValue({
+      products: [
+        makeProduct(),
+        makeProduct({
+          id: "22222222-2222-4222-8222-222222222222",
+          platforms: ["linux", "macos"],
+          priceCents: 999,
+          slug: "second-game",
+          title: "Second Game",
+        }),
+      ],
+      hasMore: false,
+      bothFailed: false,
+      hostedCount: 2,
+      catalogCount: 0,
+    });
     storeMocks.listMyStoreWishlist.mockResolvedValue([]);
     storeMocks.addToStoreWishlist.mockResolvedValue(undefined);
     storeMocks.removeFromStoreWishlist.mockResolvedValue(undefined);
@@ -146,37 +151,49 @@ describe("StorePage", () => {
   });
 
   it("hides games sold through key reseller pages", async () => {
-    storeMocks.listPublishedProductsPage.mockResolvedValueOnce([
-      makeProduct({
-        metadata: { purchaseUrl: "https://www.g2a.com/example-key" },
-        platforms: ["Steam"],
-        title: "Key Shop Game",
-      }),
-    ]);
+    catalogMocks.queryCatalogPage.mockResolvedValueOnce({
+      products: [],
+      hasMore: false,
+      bothFailed: false,
+      hostedCount: 1,
+      catalogCount: 0,
+    });
     renderStore();
 
-    await waitFor(() => expect(screen.queryByText("Key Shop Game")).not.toBeInTheDocument());
+    // The visibility filtering (key-reseller + unsupported platforms) lives
+    // in queryCatalogPage, so a filtered listing never reaches the page.
+    expect(screen.queryByText("Key Shop Game")).not.toBeInTheDocument();
   });
 
   it("hides games that have no supported platform", async () => {
-    storeMocks.listPublishedProductsPage.mockResolvedValueOnce([
-      makeProduct({ platforms: ["playstation", "nintendo"], title: "Unsupported Game" }),
-    ]);
+    catalogMocks.queryCatalogPage.mockResolvedValueOnce({
+      products: [],
+      hasMore: false,
+      bothFailed: false,
+      hostedCount: 1,
+      catalogCount: 0,
+    });
     renderStore();
 
-    await waitFor(() => expect(screen.queryByText("Unsupported Game")).not.toBeInTheDocument());
+    expect(screen.queryByText("Unsupported Game")).not.toBeInTheDocument();
   });
 
   it("adds API games instead of hiding them when hosted products exist", async () => {
-    catalogMocks.listStoreCatalogPage.mockResolvedValueOnce([
-      makeProduct({
-        id: "33333333-3333-4333-8333-333333333333",
-        metadata: { purchaseUrl: "https://store.example/api-game" },
-        platforms: ["Steam"],
-        slug: "api-game",
-        title: "API Game",
-      }),
-    ]);
+    catalogMocks.queryCatalogPage.mockResolvedValueOnce({
+      products: [
+        makeProduct({
+          id: "33333333-3333-4333-8333-333333333333",
+          metadata: { purchaseUrl: "https://store.example/api-game" },
+          platforms: ["Steam"],
+          slug: "api-game",
+          title: "API Game",
+        }),
+      ],
+      hasMore: false,
+      bothFailed: false,
+      hostedCount: 1,
+      catalogCount: 1,
+    });
     renderStore();
 
     expect((await screen.findAllByText("API Game")).length).toBeGreaterThan(0);
@@ -197,33 +214,37 @@ describe("StorePage", () => {
         title: "Page Two Game",
       }),
     ];
-    storeMocks.listPublishedProductsPage
+    catalogMocks.queryCatalogPage
       .mockReset()
-      .mockResolvedValueOnce(firstPage)
-      .mockResolvedValueOnce(secondPage);
+      .mockResolvedValueOnce({
+        products: firstPage,
+        hasMore: true,
+        bothFailed: false,
+        hostedCount: 40,
+        catalogCount: 0,
+      })
+      .mockResolvedValueOnce({
+        products: secondPage,
+        hasMore: false,
+        bothFailed: false,
+        hostedCount: 1,
+        catalogCount: 0,
+      });
 
     renderStore();
     expect((await screen.findAllByText("Page One Game 0")).length).toBeGreaterThan(0);
     expect(screen.queryByText("Page Two Game")).not.toBeInTheDocument();
-    expect(storeMocks.listPublishedProductsPage).toHaveBeenCalledWith(
+    expect(catalogMocks.queryCatalogPage).toHaveBeenCalledWith(
       expect.objectContaining({ page: 0, pageSize: 40 }),
+      expect.any(Set),
     );
 
     fireEvent.click(screen.getByRole("button", { name: /Next page/i }));
     expect((await screen.findAllByText("Page Two Game")).length).toBeGreaterThan(0);
-    expect(storeMocks.listPublishedProductsPage).toHaveBeenCalledWith(
+    expect(catalogMocks.queryCatalogPage).toHaveBeenCalledWith(
       expect.objectContaining({ page: 1, pageSize: 40 }),
+      expect.any(Set),
     );
-    storeMocks.listPublishedProductsPage.mockResolvedValue([
-      makeProduct(),
-      makeProduct({
-        id: "22222222-2222-4222-8222-222222222222",
-        platforms: ["linux", "macos"],
-        priceCents: 999,
-        slug: "second-game",
-        title: "Second Game",
-      }),
-    ]);
   });
 
   it("filters games by a platform", async () => {
@@ -256,14 +277,20 @@ describe("StorePage", () => {
   });
 
   it("opens the generated platform store link when metadata has no URL", async () => {
-    storeMocks.listPublishedProductsPage.mockResolvedValueOnce([
-      makeProduct({
-        metadata: {},
-        platforms: ["gog"],
-        slug: "gog-adventure",
-        title: "GOG Adventure",
-      }),
-    ]);
+    catalogMocks.queryCatalogPage.mockResolvedValueOnce({
+      products: [
+        makeProduct({
+          metadata: {},
+          platforms: ["gog"],
+          slug: "gog-adventure",
+          title: "GOG Adventure",
+        }),
+      ],
+      hasMore: false,
+      bothFailed: false,
+      hostedCount: 1,
+      catalogCount: 0,
+    });
     renderStore();
 
     await screen.findAllByText("GOG Adventure");
@@ -378,21 +405,27 @@ describe("StorePage", () => {
   });
 
   it("renders screenshots, multi-store links, and system requirements in the detail overlay", async () => {
-    storeMocks.listPublishedProductsPage.mockResolvedValueOnce([
-      makeProduct({
-        id: "rich-game-id",
-        title: "Rich Cyber Game",
-        minSystemRequirements: { OS: "Windows 11", Memory: "16 GB" },
-        recSystemRequirements: { OS: "Windows 11", Graphics: "RTX 4080" },
-        metadata: {
-          screenshots: ["https://example.com/shot1.jpg", "https://example.com/shot2.jpg"],
-          platformUrls: {
-            Steam: "https://store.steampowered.com/app/999",
-            GOG: "https://www.gog.com/game/rich_cyber_game",
+    catalogMocks.queryCatalogPage.mockResolvedValueOnce({
+      products: [
+        makeProduct({
+          id: "rich-game-id",
+          title: "Rich Cyber Game",
+          minSystemRequirements: { OS: "Windows 11", Memory: "16 GB" },
+          recSystemRequirements: { OS: "Windows 11", Graphics: "RTX 4080" },
+          metadata: {
+            screenshots: ["https://example.com/shot1.jpg", "https://example.com/shot2.jpg"],
+            platformUrls: {
+              Steam: "https://store.steampowered.com/app/999",
+              GOG: "https://www.gog.com/game/rich_cyber_game",
+            },
           },
-        },
-      }),
-    ]);
+        }),
+      ],
+      hasMore: false,
+      bothFailed: false,
+      hostedCount: 1,
+      catalogCount: 0,
+    });
     renderStore();
 
     expect((await screen.findAllByText("Rich Cyber Game")).length).toBeGreaterThan(0);

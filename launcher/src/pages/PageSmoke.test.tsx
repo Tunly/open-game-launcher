@@ -98,6 +98,10 @@ const storeMocks = vi.hoisted(() => ({
   upsertStoreReviewReply: vi.fn(),
 }));
 
+const catalogQueryMocks = vi.hoisted(() => ({
+  queryCatalogPage: vi.fn(),
+}));
+
 const storeApiMocks = vi.hoisted(() => ({
   listApiStoreProducts: vi.fn(),
 }));
@@ -352,6 +356,9 @@ vi.mock("../lib/supabase/performance", () => performanceMocks);
 
 vi.mock("../lib/supabase/store", () => storeMocks);
 vi.mock("../lib/store-api", () => storeApiMocks);
+vi.mock("../lib/supabase/catalog-query", () => ({
+  queryCatalogPage: catalogQueryMocks.queryCatalogPage,
+}));
 
 vi.mock("../lib/supabase/social", () => socialMocks);
 
@@ -516,6 +523,13 @@ describe("routed page smoke coverage", () => {
     storeMocks.listMyStoreWishlist.mockResolvedValue([]);
     storeMocks.listPublishedProducts.mockResolvedValue([]);
     storeMocks.listPublishedProductsPage.mockResolvedValue([]);
+    catalogQueryMocks.queryCatalogPage.mockResolvedValue({
+      products: [],
+      hasMore: false,
+      bothFailed: false,
+      hostedCount: 0,
+      catalogCount: 0,
+    });
     storeMocks.listStoreProductReviews.mockResolvedValue([]);
     storeMocks.listStoreReviewReplies.mockResolvedValue([]);
     storeMocks.removeFromStoreWishlist.mockResolvedValue(undefined);
@@ -592,7 +606,7 @@ describe("routed page smoke coverage", () => {
     });
 
     await waitFor(() => {
-      expect(storeMocks.listPublishedProductsPage).toHaveBeenCalled();
+      expect(catalogQueryMocks.queryCatalogPage).toHaveBeenCalled();
     });
     expect((await screen.findAllByText(/^STORE$/i)).length).toBeGreaterThan(0);
     expect(
