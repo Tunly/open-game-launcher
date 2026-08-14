@@ -1,6 +1,6 @@
 # Local Completion Audit
 
-Last reviewed: 2026-08-10.
+Last reviewed: 2026-08-14.
 
 This document defines what can be verified in a local checkout. It is not a
 release-readiness receipt and does not claim that live providers, hosted

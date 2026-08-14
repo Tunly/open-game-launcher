@@ -1,14 +1,5 @@
 import { useEffect, useState } from "react";
-import {
-  Check,
-  ExternalLink,
-  Gamepad2,
-  Heart,
-  Monitor,
-  Play,
-  Star,
-  X,
-} from "lucide-react";
+import { Check, ExternalLink, Gamepad2, Heart, Monitor, Play, Star, X } from "lucide-react";
 
 import type { Game, StoreGame } from "../../lib/types";
 import type { StoreProduct, StoreReview } from "../../lib/types/store";

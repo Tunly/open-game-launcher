@@ -11,14 +11,14 @@ The application is under active development. Its main local product paths are
 implemented and covered by deterministic checks, but a release is not complete
 until all external evidence gates pass.
 
-| Area                   | Current boundary                                                                                                                               |
-| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| Library                | Installed-game scan, cache, manual games, collections, metadata, artwork, launch, move, repair, update, and removal flows                      |
+| Area                   | Current boundary                                                                                                                                                                                                       |
+| ---------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Library                | Installed-game scan, cache, manual games, collections, metadata, artwork, launch, move, repair, update, and removal flows                                                                                              |
 | Providers              | Local/client integration paths for Steam, GOG, Epic, Xbox/Game Pass, Ubisoft, Battle.net, and EA; authenticated Steam linking and hosted achievement relay are implemented, while live provider proof remains external |
-| Social                 | Supabase Auth, profiles, friends, chat, invites, presence, authenticated activity, reactions, comments, and privacy/RLS guards                 |
-| Store                  | Materialized ITAD/IGDB catalog with wishlist, reviews, and official-platform redirects; OG commerce is not part of the launcher |
-| Desktop                | Tauri shell, native library/download/provider commands, deep links, transparent overlay window, and system telemetry                           |
-| Evidence-only surfaces | Some unfinished hosted, marketplace, plugin, family, broadcast, and provider states exist only behind explicit `?verify=...` routes            |
+| Social                 | Supabase Auth, profiles, friends, chat, invites, presence, authenticated activity, reactions, comments, and privacy/RLS guards                                                                                         |
+| Store                  | Materialized ITAD/IGDB catalog with wishlist, reviews, and official-platform redirects; OG commerce is not part of the launcher                                                                                        |
+| Desktop                | Tauri shell, native library/download/provider commands, deep links, transparent overlay window, and system telemetry                                                                                                   |
+| Evidence-only surfaces | Some unfinished hosted, marketplace, plugin, family, broadcast, and provider states exist only behind explicit `?verify=...` routes                                                                                    |
 
 The four release gates are:
 
@@ -134,30 +134,30 @@ inventory instead of maintaining it here.
 
 ## Routes
 
-| Route                         | Purpose                                                    |
-| ----------------------------- | ---------------------------------------------------------- |
-| `/`                           | Redirect to `/library`                                     |
-| `/library`                    | Game library and selected-copy details                     |
+| Route                         | Purpose                                                                     |
+| ----------------------------- | --------------------------------------------------------------------------- |
+| `/`                           | Redirect to `/library`                                                      |
+| `/library`                    | Game library and selected-copy details                                      |
 | `/store`                      | Catalog discovery, filters, wishlist, reviews, and official-store redirects |
-| `/community`                  | Authenticated community and friend activity                |
-| `/news`                       | News feed                                                  |
-| `/downloads`                  | Download queue and local readiness panels                  |
-| `/friends`                    | Friends, requests, search, blocks, and smart join          |
-| `/family`                     | Device-local family preview and invites                    |
-| `/achievements`               | Achievements dashboard with local/provider sync status      |
-| `/activity`                   | Authenticated friends feed, posts, reactions, and comments |
-| `/activity/recap`             | Local yearly game activity recap                           |
-| `/auth`                       | Sign in and sign up                                        |
-| `/invite/:token`              | Invite web fallback                                        |
-| `/u/:username`                | Public profile                                             |
-| `/settings`                   | Launcher settings                                          |
-| `/settings/profile`           | Edit profile and social-link visibility                    |
-| `/settings/profile/customize` | Theme and showcase customization                           |
-| `/settings/performance`       | Performance history and playtime filters                   |
-| `/settings/privacy`           | Visibility controls                                        |
-| `/overlay`                    | Separate in-game overlay window                            |
-| `/fps-hud`                    | Standalone FPS HUD                                         |
-| `*`                           | Not found                                                  |
+| `/community`                  | Authenticated community and friend activity                                 |
+| `/news`                       | News feed                                                                   |
+| `/downloads`                  | Download queue and local readiness panels                                   |
+| `/friends`                    | Friends, requests, search, blocks, and smart join                           |
+| `/family`                     | Device-local family preview and invites                                     |
+| `/achievements`               | Achievements dashboard with local/provider sync status                      |
+| `/activity`                   | Authenticated friends feed, posts, reactions, and comments                  |
+| `/activity/recap`             | Local yearly game activity recap                                            |
+| `/auth`                       | Sign in and sign up                                                         |
+| `/invite/:token`              | Invite web fallback                                                         |
+| `/u/:username`                | Public profile                                                              |
+| `/settings`                   | Launcher settings                                                           |
+| `/settings/profile`           | Edit profile and social-link visibility                                     |
+| `/settings/profile/customize` | Theme and showcase customization                                            |
+| `/settings/performance`       | Performance history and playtime filters                                    |
+| `/settings/privacy`           | Visibility controls                                                         |
+| `/overlay`                    | Separate in-game overlay window                                             |
+| `/fps-hud`                    | Standalone FPS HUD                                                          |
+| `*`                           | Not found                                                                   |
 
 Verification-only route flags are intentionally omitted from this onboarding
 list. They are discovered directly from production source; the curated visual
@@ -176,7 +176,9 @@ launcher/src/
   stores/              Zustand stores
 launcher/src-tauri/src/
   commands/            native provider, game, download, and system features
-  launcher_automation/ fail-closed provider automation contracts
+  launcher_automation/ fail-closed provider automation contracts (Windows
+                       backend default; session/linux/macos backends compile
+                       only behind non-default features)
 supabase/
   functions/           Edge Functions and shared adapters
   migrations/          schema, RLS, RPC, and removal contracts

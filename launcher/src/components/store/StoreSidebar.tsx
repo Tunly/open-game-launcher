@@ -152,9 +152,7 @@ export function StoreSidebar({
             if (e.target === e.currentTarget) onMobileClose();
           }}
         >
-          <div
-            className="absolute top-0 bottom-0 left-0 w-[260px] overflow-y-auto border-r-2 border-black bg-[#f5eedf] p-4"
-          >
+          <div className="absolute top-0 bottom-0 left-0 w-[260px] overflow-y-auto border-r-2 border-black bg-[#f5eedf] p-4">
             <div className="mb-4 flex items-center justify-between border-b-2 border-black pb-2">
               <div className="neo-title text-sm text-[#171411]">Store Navigation</div>
               <button
