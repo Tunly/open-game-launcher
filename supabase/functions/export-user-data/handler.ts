@@ -192,29 +192,6 @@ export async function buildExportPayload(
     warnings,
   );
 
-  const legacyMods = Array.isArray(data.mods) ? data.mods as JsonObject[] : [];
-  const legacyModIds = pluckIds(legacyMods);
-  const modReadIds = legacyMods.length > 0 ? legacyModIds : null;
-  const modVersions = await deps.readRowsIn(
-    "mod_versions",
-    "mod_id",
-    legacyModIds,
-    warnings,
-  );
-  const modVersionIds = legacyMods.length > 0 ? pluckIds(modVersions) : [];
-  data.mod_versions = modReadIds === null ? [] : modVersions;
-  data.mod_files = await deps.readRowsIn(
-    "mod_files",
-    "mod_version_id",
-    modVersionIds,
-    warnings,
-  );
-  data.mod_dependencies = await deps.readRowsIn(
-    "mod_dependencies",
-    "mod_id",
-    legacyModIds,
-    warnings,
-  );
   data.__warnings = warnings;
 
   return {
