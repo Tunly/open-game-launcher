@@ -13,6 +13,11 @@ crate-type = ["rlib"]
 
 [features]
 default = ["windows-uiautomation"]
+# Legacy maintenance-automation state machine (AutomationSession). Unreachable
+# from any live code path: providers.rs + runner.rs (used by actions.rs) never
+# import it. Kept behind a non-default feature instead of deleted so the
+# Windows UI-automation path can be wired up later without archaeology.
+automation-session = []
 linux-atspi = ["dep:atspi"]
 macos-axuielement = ["dep:axuielement"]
 windows-uiautomation = ["dep:uiautomation"]

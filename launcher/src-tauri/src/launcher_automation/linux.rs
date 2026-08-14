@@ -435,7 +435,8 @@ pub mod native {
         let count = proxy.n_actions().await?;
         for index in 0..count {
             if proxy.get_name(index).await? == expected_name {
-                return proxy.do_action(index).await;
+                let performed = proxy.do_action(index).await?;
+                return Ok(performed);
             }
         }
         Ok(false)
