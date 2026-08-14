@@ -8,6 +8,7 @@ use std::{
 use uuid::Uuid;
 
 use crate::commands::games::sha256_file_hex;
+use crate::commands::save_mirror;
 
 const CROSS_STORE_SAVE_APPLY_OPERATION: &str = "cross_store_save_native_copy_apply";
 const CROSS_STORE_SAVE_ROLLBACK_OPERATION: &str = "cross_store_save_native_copy_rollback";
@@ -328,31 +329,20 @@ pub fn apply_cross_store_save_copy(
             &file.target_path,
             "target file path",
         )?;
-        fs::copy(&file.source_path, &file.target_path)
-            .map_err(|error| format!("Could not copy cross-store save file: {error}"))?;
-        let copied_sha256 = sha256_file_hex(&file.target_path)?;
-        if copied_sha256 != file.source_sha256 {
-            return Err(format!(
-                "Cross-store post-copy SHA-256 mismatch for {}.",
-                file.target_relative_path
-            ));
-        }
-        let copied_size = fs::metadata(&file.target_path)
-            .map_err(|error| format!("Could not inspect copied cross-store save: {error}"))?
-            .len();
-        if copied_size != file.source_size_bytes {
-            return Err(format!(
-                "Cross-store post-copy size mismatch for {}.",
-                file.target_relative_path
-            ));
-        }
+        let copied_size = save_mirror::mirror_file(
+            &file.source_path,
+            &file.target_path,
+            &resolved.target_root,
+            Some(&file.source_sha256),
+            Some(file.source_size_bytes),
+        )?;
         bytes_copied = bytes_copied.saturating_add(copied_size);
         result_files.push(CrossStoreSaveAppliedFile {
             id: file.id,
             source_relative_path: file.source_relative_path,
             target_relative_path: file.target_relative_path,
             size_bytes: copied_size,
-            sha256: copied_sha256,
+            sha256: file.source_sha256,
             backed_up: file.backup_relative_path.is_some(),
             backup_relative_path: file.backup_relative_path,
             backup_size_bytes: file.backup_size_bytes,
