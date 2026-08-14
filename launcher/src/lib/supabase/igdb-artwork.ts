@@ -1,7 +1,7 @@
 import type { Game } from "../types";
 import { getSupabaseClient, isSupabaseConfigured } from "./client";
 
-type IgdbAssetResponse = {
+export type IgdbAssetResponse = {
   coverUrl?: string | null;
   iconUrl?: string | null;
   logoUrl?: string | null;

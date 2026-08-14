@@ -1,4 +1,5 @@
 import type { Game } from "./types";
+import { isSteamAppId, steamArtworkUrl } from "./steam-artwork-urls";
 import {
   buildProviderArtworkPolicyEvidence,
   type ProviderArtworkPolicyEvidence,
@@ -116,26 +117,28 @@ export function getAutoArtworkCandidates(game: Game): CustomArtworkCandidate[] {
 
   pushArtworkCandidate(candidates, "cover", game.coverUrl, "Current Cover");
   if (steamAppId) {
+    const headerUrl = steamArtworkUrl(steamAppId, "header");
     pushArtworkCandidate(
       candidates,
       "cover",
-      `https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/${steamAppId}/header.jpg`,
+      headerUrl,
       "Steam Header",
       buildProviderArtworkPolicyEvidence({
         provider: "steam",
         sourceId: steamAppId,
-        url: `https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/${steamAppId}/header.jpg`,
+        url: headerUrl,
       }),
     );
+    const capsuleUrl = steamArtworkUrl(steamAppId, "capsule600x900");
     pushArtworkCandidate(
       candidates,
       "cover",
-      `https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/${steamAppId}/library_600x900.jpg`,
+      capsuleUrl,
       "Steam Capsule",
       buildProviderArtworkPolicyEvidence({
         provider: "steam",
         sourceId: steamAppId,
-        url: `https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/${steamAppId}/library_600x900.jpg`,
+        url: capsuleUrl,
       }),
     );
   }
@@ -144,15 +147,16 @@ export function getAutoArtworkCandidates(game: Game): CustomArtworkCandidate[] {
     pushArtworkCandidate(candidates, "icon", url, "Launcher Icon");
   }
   if (steamAppId) {
+    const iconUrl = steamArtworkUrl(steamAppId, "capsule184");
     pushArtworkCandidate(
       candidates,
       "icon",
-      `https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/${steamAppId}/capsule_184x69.jpg`,
+      iconUrl,
       "Steam Icon",
       buildProviderArtworkPolicyEvidence({
         provider: "steam",
         sourceId: steamAppId,
-        url: `https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/${steamAppId}/capsule_184x69.jpg`,
+        url: iconUrl,
       }),
     );
   }
@@ -161,15 +165,16 @@ export function getAutoArtworkCandidates(game: Game): CustomArtworkCandidate[] {
     pushArtworkCandidate(candidates, "logo", url, "Launcher Logo");
   }
   if (steamAppId) {
+    const logoUrl = steamArtworkUrl(steamAppId, "logo");
     pushArtworkCandidate(
       candidates,
       "logo",
-      `https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/${steamAppId}/logo.png`,
+      logoUrl,
       "Steam Logo",
       buildProviderArtworkPolicyEvidence({
         provider: "steam",
         sourceId: steamAppId,
-        url: `https://shared.cloudflare.steamstatic.com/store_item_assets/steam/apps/${steamAppId}/logo.png`,
+        url: logoUrl,
       }),
     );
   }
@@ -222,7 +227,7 @@ function getSteamAppId(game: Game): string | null {
     return null;
   }
   const rawId = game.externalId ?? game.id.replace(/^steam-/, "");
-  return /^\d{1,10}$/.test(rawId) ? rawId : null;
+  return isSteamAppId(rawId) ? rawId : null;
 }
 
 function isRemoteImageUrl(url: string): boolean {

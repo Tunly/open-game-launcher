@@ -17,6 +17,7 @@ import {
   useLibraryFilterPipeline,
   type UseLibraryFilterPipelineResult,
 } from "./useLibraryFilterPipeline";
+import { useIgdbArtworkByTitle } from "./useIgdbArtwork";
 
 // useLibraryFilters combines state management with the filter pipeline hook.
 // The state is owned here; the pipeline is a pure derivation of those state
@@ -102,6 +103,7 @@ export function useLibraryFilters(options: UseLibraryFiltersOptions): UseLibrary
   const pipeline = useLibraryFilterPipeline({
     installedGames,
     customArtwork,
+    igdbArtworkByTitle: useIgdbArtworkByTitle(installedGames.map((game) => game.title)),
     favorites,
     hiddenGames,
     customCategories,
