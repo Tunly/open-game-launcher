@@ -11,6 +11,9 @@ const storeMocks = vi.hoisted(() => ({
   listMyStoreWishlist: vi.fn(),
   listPublishedProductsPage: vi.fn(),
   removeFromStoreWishlist: vi.fn(),
+  listStoreProductReviews: vi.fn(),
+  getMyStoreReview: vi.fn(),
+  upsertStoreReview: vi.fn(),
 }));
 
 const authMocks = vi.hoisted(() => ({
@@ -41,9 +44,18 @@ const catalogMocks = vi.hoisted(() => ({
   listStoreCatalogPage: vi.fn(),
 }));
 
+const launcherMocks = vi.hoisted(() => ({
+  listInstalledGames: vi.fn(),
+  launchGame: vi.fn(),
+}));
+
 vi.mock("../lib/supabase/store", () => storeMocks);
 vi.mock("../lib/store-api", () => apiMocks);
 vi.mock("../lib/supabase/store-catalog", () => catalogMocks);
+vi.mock("../lib/launcher", () => ({
+  listInstalledGames: () => launcherMocks.listInstalledGames(),
+  launchGame: (id: string) => launcherMocks.launchGame(id),
+}));
 vi.mock("../lib/launcher/platform-auth", () => ({
   openExternalUrl: storeMocks.openExternalUrl,
 }));
@@ -96,6 +108,8 @@ describe("StorePage", () => {
     vi.clearAllMocks();
     storeMocks.listPublishedProductsPage.mockReset();
     catalogMocks.listStoreCatalogPage.mockReset();
+    launcherMocks.listInstalledGames.mockReset();
+    launcherMocks.listInstalledGames.mockResolvedValue([]);
     authMocks.user = { id: "user-1" };
     storeMocks.listPublishedProductsPage.mockResolvedValue([
       makeProduct(),
@@ -111,6 +125,9 @@ describe("StorePage", () => {
     storeMocks.listMyStoreWishlist.mockResolvedValue([]);
     storeMocks.addToStoreWishlist.mockResolvedValue(undefined);
     storeMocks.removeFromStoreWishlist.mockResolvedValue(undefined);
+    storeMocks.listStoreProductReviews.mockResolvedValue([]);
+    storeMocks.getMyStoreReview.mockResolvedValue(null);
+    storeMocks.upsertStoreReview.mockResolvedValue(null);
     storeMocks.openExternalUrl.mockResolvedValue(undefined);
     vi.spyOn(window, "open").mockImplementation(() => null);
   });
@@ -276,5 +293,119 @@ describe("StorePage", () => {
       ),
     );
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
+  it("filters games by wishlist in the sidebar", async () => {
+    storeMocks.listMyStoreWishlist.mockResolvedValueOnce([
+      { productId: "22222222-2222-4222-8222-222222222222" },
+    ]);
+    renderStore();
+
+    await screen.findAllByText("Platform Game");
+    fireEvent.click(screen.getByRole("button", { name: "Filter by wishlist" }));
+
+    expect(await screen.findByText("Your Wishlist")).toBeInTheDocument();
+    expect((await screen.findAllByText("Second Game")).length).toBeGreaterThan(0);
+    expect(
+      within(screen.getByRole("region", { name: "Product browser" })).queryByText("Platform Game"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("displays owned badge when a game is in the installed library", async () => {
+    launcherMocks.listInstalledGames.mockResolvedValueOnce([
+      { id: "11111111-1111-4111-8111-111111111111", title: "Platform Game", status: "installed" },
+    ]);
+    renderStore();
+
+    expect((await screen.findAllByText("Owned")).length).toBeGreaterThan(0);
+  });
+
+  it("filters games by price range", async () => {
+    renderStore();
+
+    await screen.findAllByText("Platform Game");
+    fireEvent.click(screen.getByRole("button", { name: "Under 10 €" }));
+
+    expect((await screen.findAllByText("Second Game")).length).toBeGreaterThan(0);
+    expect(
+      within(screen.getByRole("region", { name: "Product browser" })).queryByText("Platform Game"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("shows a Spielen button when an installed game is in the library", async () => {
+    launcherMocks.listInstalledGames.mockResolvedValueOnce([
+      { id: "11111111-1111-4111-8111-111111111111", title: "Platform Game", status: "installed" },
+    ]);
+    renderStore();
+
+    expect((await screen.findAllByRole("button", { name: /Spielen/i })).length).toBeGreaterThan(0);
+  });
+
+  it("launches an installed game from the detail overlay", async () => {
+    launcherMocks.launchGame.mockResolvedValueOnce({ status: "launched" } as never);
+    launcherMocks.listInstalledGames.mockResolvedValueOnce([
+      { id: "11111111-1111-4111-8111-111111111111", title: "Platform Game", status: "installed" },
+    ]);
+    renderStore();
+
+    await screen.findAllByText("Platform Game");
+    fireEvent.click(screen.getByRole("button", { name: "More Info" }));
+
+    const dialog = await screen.findByRole("dialog", { name: "Platform Game details" });
+    fireEvent.click(within(dialog).getByRole("button", { name: /Spielen/i }));
+
+    await waitFor(() =>
+      expect(launcherMocks.launchGame).toHaveBeenCalledWith("11111111-1111-4111-8111-111111111111"),
+    );
+  });
+
+  it("shows an In Bibliothek button for an owned but not installed game", async () => {
+    launcherMocks.listInstalledGames.mockResolvedValueOnce([
+      {
+        id: "11111111-1111-4111-8111-111111111111",
+        title: "Platform Game",
+        status: "not_installed",
+      },
+    ]);
+    renderStore();
+
+    await screen.findAllByText("Platform Game");
+    fireEvent.click(screen.getByRole("button", { name: "More Info" }));
+
+    const dialog = await screen.findByRole("dialog", { name: "Platform Game details" });
+    expect(within(dialog).getByRole("button", { name: /In Bibliothek/i })).toBeInTheDocument();
+    expect(within(dialog).queryByRole("button", { name: /Spielen/i })).not.toBeInTheDocument();
+  });
+
+  it("renders screenshots, multi-store links, and system requirements in the detail overlay", async () => {
+    storeMocks.listPublishedProductsPage.mockResolvedValueOnce([
+      makeProduct({
+        id: "rich-game-id",
+        title: "Rich Cyber Game",
+        minSystemRequirements: { OS: "Windows 11", Memory: "16 GB" },
+        recSystemRequirements: { OS: "Windows 11", Graphics: "RTX 4080" },
+        metadata: {
+          screenshots: ["https://example.com/shot1.jpg", "https://example.com/shot2.jpg"],
+          platformUrls: {
+            Steam: "https://store.steampowered.com/app/999",
+            GOG: "https://www.gog.com/game/rich_cyber_game",
+          },
+        },
+      }),
+    ]);
+    renderStore();
+
+    expect((await screen.findAllByText("Rich Cyber Game")).length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByRole("button", { name: "More Info" }));
+
+    const dialog = await screen.findByRole("dialog", { name: "Rich Cyber Game details" });
+    expect(dialog).toBeInTheDocument();
+    expect(within(dialog).getByText("System Requirements")).toBeInTheDocument();
+    expect(within(dialog).getByText("Minimum Requirements")).toBeInTheDocument();
+    expect(within(dialog).getByText("16 GB")).toBeInTheDocument();
+    expect(within(dialog).getByText("Recommended Requirements")).toBeInTheDocument();
+    expect(within(dialog).getByText("RTX 4080")).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: /Steam/i })).toBeInTheDocument();
+    expect(within(dialog).getByRole("button", { name: /GOG/i })).toBeInTheDocument();
   });
 });

@@ -13,8 +13,3 @@ When editing UI:
 - Reuse `neo-title`, `neo-copy`, `neo-dots`, and existing art placeholder classes.
 - Preserve the game-launcher feel on profile/settings/social pages too.
 - Run the relevant checks before finishing.
-
-Collaboration preference:
-
-- For substantial future prompts in this project, prefer using subagents for concrete, independent side tasks such as codebase exploration, UI implementation slices, Supabase/RLS checks, or verification.
-- Do not spawn subagents for trivial status updates, single-command questions, or tightly coupled blocking edits where local work is faster and clearer.

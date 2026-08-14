@@ -54,7 +54,6 @@ const PRODUCT_CATEGORIES = [
   { key: "demo", label: "Demos" },
   { key: "beta", label: "Beta Access" },
 ] as const;
-const SIZE_PRESETS = ["size:>10gb", "size:<5gb", "size:=50gb"] as const;
 
 export function LibraryFilters({ isOpen, onClose }: LibraryFiltersProps) {
   const ctx = useLibraryContext();
@@ -310,44 +309,6 @@ export function LibraryFilters({ isOpen, onClose }: LibraryFiltersProps) {
                 </label>
               );
             })}
-          </div>
-        </div>
-
-        <div className="border-2 border-black bg-[#efe3cf] p-2 shadow-[2px_2px_0_#000]">
-          <h4 className="mb-2 flex items-center justify-between border-b border-black pb-1 text-[12px] font-black uppercase">
-            <span>Size</span>
-            {advancedFilters.sizeQuery && (
-              <button
-                onClick={() => setAdvancedFilters({ ...advancedFilters, sizeQuery: "" })}
-                className="text-[10px] lowercase underline"
-                type="button"
-              >
-                clear
-              </button>
-            )}
-          </h4>
-          <div className="space-y-2">
-            <input
-              type="text"
-              placeholder="z.B. size:>10gb, size:<5gb"
-              value={advancedFilters.sizeQuery}
-              onChange={(e) =>
-                setAdvancedFilters({ ...advancedFilters, sizeQuery: e.target.value })
-              }
-              className="neo-copy h-8 w-full border-2 border-black bg-[#f4ead8] px-2 text-[11px] font-bold outline-none placeholder:text-[#686157]"
-            />
-            <div className="flex gap-1">
-              {SIZE_PRESETS.map((preset) => (
-                <button
-                  key={preset}
-                  onClick={() => setAdvancedFilters({ ...advancedFilters, sizeQuery: preset })}
-                  className="border border-black bg-[#ded3c1] px-1.5 py-0.5 text-[9px] font-black uppercase hover:bg-[#d5c7b1]"
-                  type="button"
-                >
-                  {preset}
-                </button>
-              ))}
-            </div>
           </div>
         </div>
 
