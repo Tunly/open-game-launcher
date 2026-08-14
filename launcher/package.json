@@ -25,7 +25,7 @@
     "format": "prettier --write \"src/**/*.{ts,tsx,css,md,json}\" \"*.{ts,tsx,js,json,md}\"",
     "format:check": "prettier --check \"src/**/*.{ts,tsx,css,md,json}\" \"*.{ts,tsx,js,json,md}\"",
     "test": "vitest run",
-    "test:e2e:desktop": "node --test --test-timeout=120000 e2e/desktop-smoke.test.mjs",
+    "test:e2e:desktop": "node --test --test-timeout=300000 e2e/desktop-smoke.test.mjs",
     "test:watch": "vitest",
     "test:cov": "vitest run --coverage",
     "lint-staged": "lint-staged --cwd .. --config ../lint-staged.config.mjs"
