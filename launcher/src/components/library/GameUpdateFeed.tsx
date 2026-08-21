@@ -8,7 +8,7 @@ import { openExternalUrl } from "../../lib/launcher";
 import type { Game } from "../../lib/types";
 
 type GameUpdateFeedProps = {
-  game: Game;
+  game: Game | null;
 };
 
 type FeedState =
@@ -22,13 +22,13 @@ export function GameUpdateFeed({ game }: GameUpdateFeedProps) {
     items: [],
     error: null,
   });
-  const steamAppId = resolveSteamAppId(game);
+  const steamAppId = game ? resolveSteamAppId(game) : null;
   const isDesktopRuntime = isTauri();
 
   useEffect(() => {
     let isActive = true;
 
-    if (!steamAppId) {
+    if (!game || !steamAppId) {
       setState({ status: "ready", items: [], error: null });
       return () => {
         isActive = false;
