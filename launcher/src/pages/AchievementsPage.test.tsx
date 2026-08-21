@@ -20,7 +20,6 @@ const launcherMocks = vi.hoisted(() => ({
   fetchUbisoftOwnedGames: vi.fn(),
   gogGetToken: vi.fn(),
   gogRefreshToken: vi.fn(),
-  normalizeSteamOwnedGames: vi.fn(),
   openSteamScraperWindow: vi.fn(),
   processBattleNetGamesPayload: vi.fn(),
 }));
@@ -136,9 +135,6 @@ describe("AchievementsPage", () => {
     launcherMocks.fetchUbisoftOwnedGames.mockResolvedValue([]);
     launcherMocks.gogGetToken.mockResolvedValue(null);
     launcherMocks.gogRefreshToken.mockResolvedValue(null);
-    launcherMocks.normalizeSteamOwnedGames.mockImplementation((games) =>
-      Array.isArray(games) ? games : [],
-    );
     launcherMocks.openSteamScraperWindow.mockResolvedValue(undefined);
     launcherMocks.processBattleNetGamesPayload.mockResolvedValue([]);
     achievementMocks.hydrateGamesWithRemoteAchievements.mockImplementation((games) =>

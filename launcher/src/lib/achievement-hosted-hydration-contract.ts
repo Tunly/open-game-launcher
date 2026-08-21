@@ -1,3 +1,5 @@
+import { achievementIdentityKey, mergeAchievementRows } from "./achievement-merge";
+
 export type AchievementHostedHydrationContractStatus = "pass" | "review";
 
 export interface AchievementHostedHydrationContractLane {
@@ -32,6 +34,36 @@ const ACHIEVEMENT_HOSTED_HYDRATION_BLOCKED_CLAIMS = [
 const ACHIEVEMENT_HOSTED_HYDRATION_GUARD_COPY =
   "Hosted achievement hydration contract proof is local and no-write. It reviews the authenticated Supabase read shape, provider-key filtering, catalog-game resolution, definition/unlock merge policy, missing-schema fallback, and local failure behavior without live hosted staging, Supabase writes, provider sync, OAuth/token exchange, remote cache jobs, trusted ingestion calls, live unlock import, or official unlock proof.";
 
+/**
+ * Derive the definition/unlock merge lane from the real merge policy so the
+ * contract cannot drift from the implementation it claims to verify.
+ */
+function mergePolicyLane(): AchievementHostedHydrationContractLane {
+  const keyShape =
+    achievementIdentityKey(
+      { id: "ach-001", source: "steam", sourceAchievementId: "ach-001" },
+      "steam",
+    ) === "steam:ach-001";
+  const rowShape = Array.isArray(
+    mergeAchievementRows(
+      [],
+      [{ id: "steam:ach-001", name: "A", source: "steam", sourceAchievementId: "ach-001" }],
+      "steam",
+    ),
+  );
+  const policyImplemented = keyShape && rowShape;
+
+  return {
+    detail: policyImplemented
+      ? "Definitions merge with matching unlock rows via the shared achievement-merge policy (identity key + local-first precedence); missing unlock schema returns locked definitions instead of failing the archive."
+      : "Definitions merge with matching unlock rows; the shared achievement-merge policy is not wired into this contract.",
+    evidence: "achievementIdentityKey // mergeAchievementRows // locked fallback",
+    id: "definition-unlock-merge",
+    label: "Definition/Unlock Merge",
+    status: policyImplemented ? "pass" : "review",
+  };
+}
+
 export function createVerifyAchievementHostedHydrationContract(): AchievementHostedHydrationContract {
   const lanes: AchievementHostedHydrationContractLane[] = [
     {
@@ -58,14 +90,7 @@ export function createVerifyAchievementHostedHydrationContract(): AchievementHos
       label: "Catalog Game Resolution",
       status: "review",
     },
-    {
-      detail:
-        "Definitions merge with matching unlock rows; missing unlock schema returns locked definitions instead of failing the archive.",
-      evidence: "achievements read // user_achievements read // locked fallback",
-      id: "definition-unlock-merge",
-      label: "Definition/Unlock Merge",
-      status: "pass",
-    },
+    mergePolicyLane(),
     {
       detail:
         "Missing schema and hydration failures fall back to local achievements; the verify panel does not call the remote reader.",

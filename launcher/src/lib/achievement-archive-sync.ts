@@ -39,8 +39,8 @@ function hasFreshAchievementSnapshot(game: Game, now: number) {
   return !Number.isNaN(syncedAt) && syncedAt >= now - ARCHIVE_SYNC_FRESHNESS_MS;
 }
 
-function wasRecentlyAttempted(key: string, now: number) {
-  const attemptedAt = recentSyncAttempts.get(key);
+function wasRecentlyAttempted(key: string, now: number, attempts = recentSyncAttempts) {
+  const attemptedAt = attempts.get(key);
   if (attemptedAt === undefined) {
     return false;
   }
@@ -48,21 +48,21 @@ function wasRecentlyAttempted(key: string, now: number) {
     return true;
   }
 
-  recentSyncAttempts.delete(key);
+  attempts.delete(key);
   return false;
 }
 
-function pruneRecentSyncAttempts(now: number) {
-  for (const [key, attemptedAt] of recentSyncAttempts) {
+function pruneRecentSyncAttempts(now: number, attempts = recentSyncAttempts) {
+  for (const [key, attemptedAt] of attempts) {
     if (attemptedAt < now - ARCHIVE_SYNC_RETRY_DELAY_MS) {
-      recentSyncAttempts.delete(key);
+      attempts.delete(key);
     }
   }
 
-  while (recentSyncAttempts.size > MAX_RECENT_SYNC_ATTEMPTS) {
-    const oldestKey = recentSyncAttempts.keys().next().value;
+  while (attempts.size > MAX_RECENT_SYNC_ATTEMPTS) {
+    const oldestKey = attempts.keys().next().value;
     if (oldestKey === undefined) break;
-    recentSyncAttempts.delete(oldestKey);
+    attempts.delete(oldestKey);
   }
 }
 
@@ -72,9 +72,12 @@ function rememberSyncAttempt(key: string, attemptedAt: number) {
   pruneRecentSyncAttempts(attemptedAt);
 }
 
-function archiveSyncCandidates(games: Game[]): ArchiveSyncCandidate[] {
-  const now = Date.now();
-  pruneRecentSyncAttempts(now);
+export function archiveSyncCandidates(
+  games: Game[],
+  now = Date.now(),
+  attempts = recentSyncAttempts,
+): ArchiveSyncCandidate[] {
+  pruneRecentSyncAttempts(now, attempts);
   return games.flatMap((game, index) => {
     const source = getGameSource(game);
     if (!ARCHIVE_AUTO_SYNC_PROVIDERS.has(source)) {
@@ -86,7 +89,7 @@ function archiveSyncCandidates(games: Game[]): ArchiveSyncCandidate[] {
     if (
       !provider.isAvailable(game) ||
       hasFreshAchievementSnapshot(game, now) ||
-      wasRecentlyAttempted(key, now)
+      wasRecentlyAttempted(key, now, attempts)
     ) {
       return [];
     }
@@ -103,9 +106,12 @@ async function syncArchiveCandidate(candidate: ArchiveSyncCandidate): Promise<Ga
   return outcome.game;
 }
 
-function syncArchiveCandidateOnce(candidate: ArchiveSyncCandidate): Promise<Game> {
+function syncArchiveCandidateOnce(
+  candidate: ArchiveSyncCandidate,
+  attemptedAt = Date.now(),
+): Promise<Game> {
   return syncArchiveCandidate(candidate).finally(() => {
-    rememberSyncAttempt(candidate.key, Date.now());
+    rememberSyncAttempt(candidate.key, attemptedAt);
   });
 }
 
@@ -113,8 +119,11 @@ export function hasPendingAchievementArchiveSync(games: Game[]) {
   return archiveSyncCandidates(games).length > 0;
 }
 
-export async function syncAchievementArchiveGames(games: Game[]): Promise<Game[]> {
-  const candidates = archiveSyncCandidates(games);
+export async function syncAchievementArchiveGames(
+  games: Game[],
+  now = Date.now(),
+): Promise<Game[]> {
+  const candidates = archiveSyncCandidates(games, now);
   if (candidates.length === 0) {
     return games;
   }
@@ -126,7 +135,7 @@ export async function syncAchievementArchiveGames(games: Game[]): Promise<Game[]
     while (nextCandidateIndex < candidates.length) {
       const candidate = candidates[nextCandidateIndex];
       nextCandidateIndex += 1;
-      syncedGames[candidate.index] = await syncArchiveCandidateOnce(candidate);
+      syncedGames[candidate.index] = await syncArchiveCandidateOnce(candidate, now);
     }
   };
 

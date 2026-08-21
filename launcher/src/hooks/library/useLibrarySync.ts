@@ -8,20 +8,13 @@ import {
   isSteamScrapedGamesEventForAccount,
   isSteamScrapeErrorEventForAccount,
   listInstalledGames,
-  normalizeSteamOwnedGames,
   refreshInstalledGames,
 } from "../../lib/launcher";
+import { normalizeSteamOwnedGames } from "../../lib/steam-owned-games";
 import { normalizeLauncherKey } from "../../lib/formatters";
-import {
-  applyCustomArtwork,
-  type CustomArtworkKind,
-  type CustomArtworkMap,
-} from "../../lib/custom-artwork";
-import { compressAndReadImage, isAllowedImageType } from "../../lib/image-compress";
-import { getGameLogoCandidates } from "../../lib/formatters";
 import { syncGamePlaytimeStats } from "../../lib/supabase/playtime";
 import { hydrateGamesWithRemoteAchievements } from "../../lib/supabase/achievements";
-import { getProviderErrorMessage, readLocalStorageString } from "../../lib/library-providers";
+import { readLocalStorageString } from "../../lib/library-providers";
 import {
   activateSteamAccount,
   STEAM_ACCOUNT_CHANGED_EVENT,
@@ -35,19 +28,9 @@ import type {
   GameRuntimeUpdate,
   PlatformClientLifecycleEvent,
 } from "../../lib/types";
-import {
-  mergeBattlenetOwned,
-  mergeEaOwned,
-  mergeEpicOwned,
-  mergeGamePassCatalog,
-  mergeOglCatalog,
-  mergeGogOwned,
-  mergeSteamOwned,
-  mergeUbisoftOwned,
-  mergeXboxOwned,
-  type MergeContext,
-  type ProviderMerger,
-} from "../../library/providers";
+import { runProviderInventory, type MergeContext } from "../../library/providers";
+
+import { useCustomArtwork, type UseCustomArtworkResult } from "./useCustomArtwork";
 
 type GameActivityUpdate = {
   gameId: string;
@@ -133,21 +116,11 @@ function areGameListsEqual(left: Game[], right: Game[]) {
   return left.every((game, index) => JSON.stringify(game) === JSON.stringify(right[index]));
 }
 
-function readCustomArtworkMap(): CustomArtworkMap {
-  try {
-    const saved = localStorage.getItem(STORAGE_KEYS.LIBRARY_CUSTOM_ARTWORK);
-    const parsed: unknown = saved ? JSON.parse(saved) : {};
-    return parsed && typeof parsed === "object" ? (parsed as CustomArtworkMap) : {};
-  } catch {
-    return {};
-  }
-}
-
 export interface UseLibrarySyncOptions {
   setStatusMessage: GameStatusSetter;
 }
 
-export interface UseLibrarySyncResult {
+export type UseLibrarySyncResult = {
   installedGames: Game[];
   setInstalledGames: Dispatch<SetStateAction<Game[]>>;
   installedGamesRef: RefObject<Game[]>;
@@ -166,39 +139,8 @@ export interface UseLibrarySyncResult {
   ) => Promise<void>;
   addGameToLibrary: (input: { title: string; installPath: string }) => Promise<Game>;
   shouldShowLibraryLoading: boolean;
-  logoCandidateIndexes: Record<string, number>;
-  loadedLogoUrls: Set<string>;
-  handleLogoLoad: (logoUrl: string) => void;
-  handleLogoError: (game: Game) => void;
-  customArtwork: CustomArtworkMap;
-  handleSelectCustomArtwork: (gameId: string, kind: CustomArtworkKind, file: File) => Promise<void>;
-  handleArtworkDrop: (gameId: string, kind: CustomArtworkKind, file: File) => Promise<void>;
-  handleApplyCustomArtworkUrl: (
-    gameId: string,
-    kind: CustomArtworkKind,
-    url: string,
-    sourceLabel: string,
-  ) => void;
-  handleConfirmArtwork: (dataUrl: string, kind: CustomArtworkKind) => void;
-  handleResetCustomArtwork: (gameId: string, kind?: CustomArtworkKind) => void;
-  pendingArtworkFile: File | null;
-  pendingArtworkKind: CustomArtworkKind;
-  pendingArtworkGameId: string | null;
-  openArtworkPreview: (gameId: string, kind: CustomArtworkKind, file: File) => void;
-  closeArtworkPreview: () => void;
-}
+} & UseCustomArtworkResult;
 
-const PROVIDER_PIPELINE: ProviderMerger[] = [
-  mergeOglCatalog,
-  mergeBattlenetOwned,
-  mergeSteamOwned,
-  mergeGogOwned,
-  mergeEaOwned,
-  mergeEpicOwned,
-  mergeUbisoftOwned,
-  mergeXboxOwned,
-  mergeGamePassCatalog,
-];
 const STARTUP_LIBRARY_REFRESH_DELAY_MS = 1_500;
 
 export function useLibrarySync({ setStatusMessage }: UseLibrarySyncOptions): UseLibrarySyncResult {
@@ -212,14 +154,7 @@ export function useLibrarySync({ setStatusMessage }: UseLibrarySyncOptions): Use
   const [isDiscoveringGames, setIsDiscoveringGames] = useState(initialLibrarySnapshot.length === 0);
   const [hasCompletedInitialLibraryLoad, setHasCompletedInitialLibraryLoad] = useState(false);
   const [discoveryMessage, setDiscoveryMessage] = useState<string | null>(null);
-  const [logoCandidateIndexes, setLogoCandidateIndexes] = useState<Record<string, number>>(
-    () => ({}),
-  );
-  const [loadedLogoUrls, setLoadedLogoUrls] = useState<Set<string>>(() => new Set());
-  const [customArtwork, setCustomArtwork] = useState<CustomArtworkMap>(readCustomArtworkMap);
-  const [pendingArtworkFile, setPendingArtworkFile] = useState<File | null>(null);
-  const [pendingArtworkKind, setPendingArtworkKind] = useState<CustomArtworkKind>("cover");
-  const [pendingArtworkGameId, setPendingArtworkGameId] = useState<string | null>(null);
+  const artwork = useCustomArtwork({ setStatusMessage });
   const automaticSyncInFlightRef = useRef(false);
   const automaticSyncPendingRef = useRef(false);
   const automaticSyncPendingForceRefreshRef = useRef(false);
@@ -245,15 +180,6 @@ export function useLibrarySync({ setStatusMessage }: UseLibrarySyncOptions): Use
 
     return () => window.clearTimeout(timeout);
   }, [installedGames]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEYS.LIBRARY_CUSTOM_ARTWORK, JSON.stringify(customArtwork));
-    } catch (error) {
-      console.warn("Failed to persist custom artwork:", error);
-      setStatusMessage("Artwork could not be saved. Try a smaller image file.");
-    }
-  }, [customArtwork, setStatusMessage]);
 
   async function loadInstalledGamesImpl(
     forceRefresh = false,
@@ -312,6 +238,19 @@ export function useLibrarySync({ setStatusMessage }: UseLibrarySyncOptions): Use
       });
     };
 
+    const publishAchievementRepairs = (nextGames: Game[]) => {
+      if (!shouldApplyResult()) return;
+      const repairedById = new Map(nextGames.map((game) => [game.id, game]));
+      setInstalledGames((current) => {
+        const merged = current.map((game) => {
+          const repaired = repairedById.get(game.id);
+          if (!repaired) return game;
+          return { ...game, achievements: repaired.achievements ?? game.achievements };
+        });
+        return areGameListsEqual(current, merged) ? current : merged;
+      });
+    };
+
     if (showLoading) {
       setIsDiscoveringGames(true);
       setDiscoveryMessage(null);
@@ -345,42 +284,26 @@ export function useLibrarySync({ setStatusMessage }: UseLibrarySyncOptions): Use
       publishNativeArtworkRepairs(games);
 
       const context: MergeContext = { forceRefresh, setStatusMessage, shouldApplyResult };
-      for (const provider of PROVIDER_PIPELINE) {
-        if (!shouldApplyResult()) {
-          return;
-        }
-        try {
-          const result = await provider(games, context);
-          if (result.warnings.length > 0) {
-            for (const warning of result.warnings) {
-              console.warn(warning);
-            }
+      const inventory = await runProviderInventory(games, context, {
+        onMergerApplied: (mergerId, nextGames) => {
+          // Battle.net hydration is entirely local and repairs stale artwork.
+          // Publish it immediately so slower network providers cannot leave
+          // the first-painted library stuck on placeholder art.
+          if (mergerId === "battlenet") {
+            publishBattlenetArtwork(nextGames);
           }
-          if (result.statusMessage) {
-            if (shouldApplyResult()) setStatusMessage(result.statusMessage);
-          }
-          games = result.games;
-          if (provider === mergeBattlenetOwned) {
-            // Battle.net hydration is entirely local and repairs stale artwork.
-            // Publish it immediately so slower network providers cannot leave
-            // the first-painted library stuck on placeholder art.
-            publishBattlenetArtwork(games);
-          }
-        } catch (err) {
-          console.warn("Provider merge threw unexpectedly:", err);
-        }
+        },
+      });
+      for (const warning of inventory.warnings) {
+        console.warn(warning);
       }
+      if (inventory.statusMessage) {
+        setStatusMessage(inventory.statusMessage);
+      }
+      games = inventory.games;
 
       if (!shouldApplyResult()) {
         return;
-      }
-
-      try {
-        games = await hydrateGamesWithRemoteAchievements(games);
-      } catch (error) {
-        // Provider inventory remains useful offline; hosted achievement data is
-        // an additive catalog enrichment and must not hide the library.
-        console.warn("Hosted achievement hydration skipped for library:", error);
       }
 
       if (!shouldApplyResult()) {
@@ -388,6 +311,20 @@ export function useLibrarySync({ setStatusMessage }: UseLibrarySyncOptions): Use
       }
 
       applyVisibleGames(games);
+
+      try {
+        const hydratedGames = await hydrateGamesWithRemoteAchievements(games);
+        if (!shouldApplyResult()) {
+          return;
+        }
+        publishAchievementRepairs(hydratedGames);
+      } catch (error) {
+        // Hosted achievement data is additive enrichment. The library must not
+        // wait for it: without an authenticated session every Steam game runs
+        // through the slow keyless Community fallback and hides the library
+        // for minutes.
+        console.warn("Hosted achievement hydration skipped for library:", error);
+      }
     } catch {
       if (!shouldApplyResult()) {
         return;
@@ -769,137 +706,6 @@ export function useLibrarySync({ setStatusMessage }: UseLibrarySyncOptions): Use
     };
   }, [runAutomaticLibrarySync]);
 
-  function handleLogoError(game: Game) {
-    const candidates = getGameLogoCandidates(game);
-
-    setLogoCandidateIndexes((current) => {
-      const currentIndex = current[game.id] ?? 0;
-      return {
-        ...current,
-        [game.id]: currentIndex + 1 >= candidates.length ? candidates.length : currentIndex + 1,
-      };
-    });
-  }
-
-  function handleLogoLoad(logoUrl: string) {
-    setLoadedLogoUrls((current) => {
-      if (current.has(logoUrl)) {
-        return current;
-      }
-
-      const next = new Set(current);
-      next.add(logoUrl);
-      return next;
-    });
-  }
-
-  async function handleSelectCustomArtwork(gameId: string, kind: CustomArtworkKind, file: File) {
-    if (!isAllowedImageType(file)) {
-      setStatusMessage("Only JPG, PNG, and WebP images can be used as custom artwork.");
-      return;
-    }
-
-    try {
-      const dataUrl = await compressAndReadImage(file, kind);
-      setCustomArtwork((current) => ({
-        ...current,
-        [gameId]: {
-          ...current[gameId],
-          [`${kind}Url`]: dataUrl,
-          updatedAt: Date.now(),
-        },
-      }));
-      setLogoCandidateIndexes((current) => ({ ...current, [gameId]: 0 }));
-      setStatusMessage(`Custom ${kind} artwork saved.`);
-    } catch (error) {
-      setStatusMessage(getProviderErrorMessage(error));
-    }
-  }
-
-  async function handleArtworkDrop(gameId: string, kind: CustomArtworkKind, file: File) {
-    await handleSelectCustomArtwork(gameId, kind, file);
-  }
-
-  function handleApplyCustomArtworkUrl(
-    gameId: string,
-    kind: CustomArtworkKind,
-    url: string,
-    sourceLabel: string,
-  ) {
-    const trimmedUrl = url.trim();
-    if (!trimmedUrl) {
-      setStatusMessage("Artwork candidate is missing a URL.");
-      return;
-    }
-
-    setCustomArtwork((current) => ({
-      ...current,
-      [gameId]: {
-        ...current[gameId],
-        [`${kind}Url`]: trimmedUrl,
-        updatedAt: Date.now(),
-      },
-    }));
-    setLogoCandidateIndexes((current) => ({ ...current, [gameId]: 0 }));
-    setStatusMessage(`${sourceLabel} ${kind} artwork applied.`);
-  }
-
-  function openArtworkPreview(gameId: string, kind: CustomArtworkKind, file: File) {
-    setPendingArtworkGameId(gameId);
-    setPendingArtworkKind(kind);
-    setPendingArtworkFile(file);
-  }
-
-  function closeArtworkPreview() {
-    setPendingArtworkFile(null);
-    setPendingArtworkGameId(null);
-  }
-
-  function handleConfirmArtwork(dataUrl: string, kind: CustomArtworkKind) {
-    if (!pendingArtworkGameId) return;
-
-    setCustomArtwork((current) => ({
-      ...current,
-      [pendingArtworkGameId]: {
-        ...current[pendingArtworkGameId],
-        [`${kind}Url`]: dataUrl,
-        updatedAt: Date.now(),
-      },
-    }));
-    setLogoCandidateIndexes((current) => ({ ...current, [pendingArtworkGameId]: 0 }));
-    setStatusMessage(`Custom ${kind} artwork saved.`);
-    closeArtworkPreview();
-  }
-
-  function handleResetCustomArtwork(gameId: string, kind?: CustomArtworkKind) {
-    setCustomArtwork((current) => {
-      const currentArtwork = current[gameId];
-      if (!currentArtwork) {
-        return current;
-      }
-
-      const next = { ...current };
-      if (!kind) {
-        delete next[gameId];
-        return next;
-      }
-
-      const nextArtwork = { ...currentArtwork };
-      delete nextArtwork[`${kind}Url`];
-      nextArtwork.updatedAt = Date.now();
-
-      if (!nextArtwork.coverUrl && !nextArtwork.iconUrl && !nextArtwork.logoUrl) {
-        delete next[gameId];
-      } else {
-        next[gameId] = nextArtwork;
-      }
-
-      return next;
-    });
-    setLogoCandidateIndexes((current) => ({ ...current, [gameId]: 0 }));
-    setStatusMessage(kind ? `Custom ${kind} artwork reset.` : "Custom artwork reset.");
-  }
-
   async function addGameToLibrary(input: { title: string; installPath: string }) {
     const game = await addManualGame(input);
     setInstalledGames((current) => {
@@ -910,9 +716,6 @@ export function useLibrarySync({ setStatusMessage }: UseLibrarySyncOptions): Use
   }
 
   const shouldShowLibraryLoading = isDiscoveringGames && installedGames.length === 0;
-
-  void applyCustomArtwork;
-  void readLocalStorageString;
 
   return {
     installedGames,
@@ -929,20 +732,6 @@ export function useLibrarySync({ setStatusMessage }: UseLibrarySyncOptions): Use
     loadInstalledGames,
     addGameToLibrary,
     shouldShowLibraryLoading,
-    logoCandidateIndexes,
-    loadedLogoUrls,
-    handleLogoLoad,
-    handleLogoError,
-    customArtwork,
-    handleSelectCustomArtwork,
-    handleArtworkDrop,
-    handleApplyCustomArtworkUrl,
-    handleConfirmArtwork,
-    handleResetCustomArtwork,
-    pendingArtworkFile,
-    pendingArtworkKind,
-    pendingArtworkGameId,
-    openArtworkPreview,
-    closeArtworkPreview,
+    ...artwork,
   };
 }

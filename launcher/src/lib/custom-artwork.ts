@@ -1,5 +1,6 @@
 import type { Game } from "./types";
-import { isSteamAppId, steamArtworkUrl } from "./steam-artwork-urls";
+import { steamArtworkUrl } from "./steam-artwork-urls";
+import { resolveSteamAppId } from "./steam-app-id";
 import {
   buildProviderArtworkPolicyEvidence,
   type ProviderArtworkPolicyEvidence,
@@ -112,7 +113,7 @@ export function customArtworkHasKind(
 }
 
 export function getAutoArtworkCandidates(game: Game): CustomArtworkCandidate[] {
-  const steamAppId = getSteamAppId(game);
+  const steamAppId = resolveSteamAppId(game);
   const candidates: CustomArtworkCandidate[] = [];
 
   pushArtworkCandidate(candidates, "cover", game.coverUrl, "Current Cover");
@@ -220,14 +221,6 @@ function dedupeArtworkCandidates(candidates: CustomArtworkCandidate[]) {
     seen.add(key);
     return true;
   });
-}
-
-function getSteamAppId(game: Game): string | null {
-  if (game.launcher !== "steam" && !game.id.startsWith("steam-")) {
-    return null;
-  }
-  const rawId = game.externalId ?? game.id.replace(/^steam-/, "");
-  return isSteamAppId(rawId) ? rawId : null;
 }
 
 function isRemoteImageUrl(url: string): boolean {

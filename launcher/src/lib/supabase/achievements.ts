@@ -8,6 +8,8 @@ import {
   type UnknownRecord,
 } from "./helpers";
 import { resolveCatalogGameId } from "./playtime";
+import { mergeAchievementRows } from "../achievement-merge";
+import { normalizeProviderKey } from "../provider-keys";
 import { isTrustedIngestionStrictMode, trustedIngestionStrictModeError } from "./trusted-ingestion";
 
 type AchievementProviderConfidence = "official" | "unofficial" | "local";
@@ -129,7 +131,7 @@ function isTrustedAchievementIngestionUnavailable(error: unknown) {
 
 function normalizeProvider(value: string | null | undefined, game: Game) {
   const candidate = value || game.launcher || "unknown";
-  return candidate.trim().toLowerCase() || "unknown";
+  return normalizeProviderKey(candidate) || "unknown";
 }
 
 function toTrustedAchievementRow(achievement: UnifiedAchievement) {
@@ -151,10 +153,6 @@ function metadataRecord(value: unknown): Record<string, unknown> {
     : {};
 }
 
-function providerKey(provider: string, sourceAchievementId: string) {
-  return `${provider}:${sourceAchievementId}`;
-}
-
 function parseProviderKey(key: string): { provider: string; sourceAchievementId: string } | null {
   const separator = key.indexOf(":");
   if (separator <= 0 || separator >= key.length - 1) {
@@ -165,13 +163,6 @@ function parseProviderKey(key: string): { provider: string; sourceAchievementId:
     provider: key.slice(0, separator),
     sourceAchievementId: key.slice(separator + 1),
   };
-}
-
-function achievementMapKey(achievement: UnifiedAchievement, fallbackProvider: string) {
-  return providerKey(
-    achievement.source?.trim() || fallbackProvider,
-    achievement.sourceAchievementId?.trim() || achievement.id,
-  );
 }
 
 function providerConfidenceFromMetadata(
@@ -236,41 +227,7 @@ function mergeAchievements(
   remoteAchievements: UnifiedAchievement[],
   provider: string,
 ): UnifiedAchievement[] {
-  const byKey = new Map<string, UnifiedAchievement>();
-  const orderedKeys: string[] = [];
-
-  for (const remote of remoteAchievements) {
-    const key = achievementMapKey(remote, provider);
-    const local = (game.achievements ?? []).find(
-      (achievement) => achievementMapKey(achievement, provider) === key,
-    );
-    const current = byKey.get(key);
-    if (!current && !local) {
-      byKey.set(key, remote);
-      orderedKeys.push(key);
-      continue;
-    }
-
-    byKey.set(key, {
-      ...remote,
-      ...local,
-      ...current,
-      description: local?.description ?? current?.description ?? remote.description,
-      iconUrl: local?.iconUrl ?? current?.iconUrl ?? remote.iconUrl,
-      providerConfidence:
-        local?.providerConfidence ?? current?.providerConfidence ?? remote.providerConfidence,
-      rarity: local?.rarity ?? current?.rarity ?? remote.rarity,
-      source: local?.source ?? current?.source ?? remote.source,
-      sourceAchievementId:
-        local?.sourceAchievementId ?? current?.sourceAchievementId ?? remote.sourceAchievementId,
-      unlockedAt: local?.unlockedAt ?? current?.unlockedAt ?? remote.unlockedAt ?? null,
-    });
-    if (!current) orderedKeys.push(key);
-  }
-
-  return orderedKeys
-    .map((key) => byKey.get(key))
-    .filter((item): item is UnifiedAchievement => Boolean(item));
+  return mergeAchievementRows(game.achievements ?? [], remoteAchievements, provider);
 }
 
 function skippedResult(): TrustedAchievementIngestionResult {

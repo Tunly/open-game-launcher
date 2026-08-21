@@ -8,6 +8,7 @@ import {
   coordinateAchievementProviderSync,
 } from "./achievement-sync-coordinator";
 import { getErrorMessage } from "./formatters";
+import { normalizeProviderKey } from "./provider-keys";
 import { updateAchievementProviderStatus } from "./launcher";
 import type { Game, SyncGameAchievementsResponse } from "./types";
 
@@ -54,15 +55,8 @@ function syncProviderWithTimeout(game: Game, provider: AchievementProvider) {
   });
 }
 
-function normalizeSource(source: string) {
-  return source
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]/g, "");
-}
-
 function isExpectedProviderUnavailable(provider: AchievementProvider, message: string) {
-  if (normalizeSource(provider.provider) !== "epic") {
+  if (normalizeProviderKey(provider.provider) !== "epic") {
     return false;
   }
 
@@ -86,7 +80,7 @@ export function withAchievementProviderStatus(
     ...game,
     achievementProviderStatuses: [
       ...existingStatuses.filter(
-        (entry) => normalizeSource(entry.source) !== normalizeSource(status.source),
+        (entry) => normalizeProviderKey(entry.source) !== normalizeProviderKey(status.source),
       ),
       status,
     ],

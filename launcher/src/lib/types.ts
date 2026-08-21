@@ -338,27 +338,6 @@ export interface ScheduledClientUpdateChecksResponse {
   message: string;
 }
 
-export interface ClientUpdateSchedulerRunStatus {
-  checkedAt: string;
-  checkedClients?: ClientUpdateStatus[];
-  success: boolean;
-  message: string;
-  updateCount: number;
-  checkedCount: number;
-  skippedCount: number;
-  nextCheckAt?: string | null;
-}
-
-export interface ClientUpdateSchedulerStatus {
-  supported: boolean;
-  installed: boolean;
-  provider: string;
-  configPath: string;
-  statusPath: string;
-  lastRun?: ClientUpdateSchedulerRunStatus | null;
-  message: string;
-}
-
 export interface ClientInstallerMetadata {
   platformId: ClientPlatformId;
   displayName: string;
@@ -538,17 +517,6 @@ export interface SystemInfo {
   os: string;
   arch: string;
   appVersion: string;
-}
-
-export interface DiskInfo {
-  availableSpace: number;
-  fileSystem: string;
-  isReadOnly: boolean;
-  isRemovable: boolean;
-  kind: string;
-  mountPoint: string;
-  name: string;
-  totalSpace: number;
 }
 
 export interface HardwareInfo {
@@ -778,4 +746,3 @@ export interface SyncGameSavesResponse {
 }
 
 export type * from "./types/profile";
-export type * from "./types/backup";

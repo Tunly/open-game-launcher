@@ -80,8 +80,11 @@ vi.mock("../../../lib/launcher", () => ({
   fetchEpicOwnedGames: (...args: unknown[]) => mocks.fetchEpicOwnedGames(...args),
   fetchUbisoftOwnedGames: (...args: unknown[]) => mocks.fetchUbisoftOwnedGames(...args),
   openSteamScraperWindow: (...args: unknown[]) => mocks.openSteamScraperWindow(...args),
-  normalizeSteamOwnedGames: (...args: unknown[]) => mocks.normalizeSteamOwnedGames(...args),
   syncGamePlaytimeStats: (...args: unknown[]) => mocks.syncGamePlaytimeStats(...args),
+}));
+
+vi.mock("../../../lib/steam-owned-games", () => ({
+  normalizeSteamOwnedGames: (...args: unknown[]) => mocks.normalizeSteamOwnedGames(...args),
 }));
 
 vi.mock("../../../lib/supabase/playtime", () => ({
@@ -103,6 +106,48 @@ vi.mock("../../../library/providers", () => ({
   mergeGamePassCatalog: (...args: unknown[]) => mocks.mergeGamePassCatalog(...args),
   mergeOglCatalog: (...args: unknown[]) => mocks.mergeOglCatalog(...args),
   mergeBattlenetOwned: (...args: unknown[]) => mocks.mergeBattlenetOwned(...args),
+  runProviderInventory: async (
+    games: Game[],
+    context: { shouldApplyResult: () => boolean; setStatusMessage: (msg: string | null) => void },
+    options?: { onMergerApplied?: (mergerId: string, games: Game[]) => void },
+  ) => {
+    let currentGames = games;
+    const warnings: string[] = [];
+    let statusMessage: string | null = null;
+    const mergers: Array<{ id: string; fn: typeof mocks.mergeSteamOwned }> = [
+      { id: "ogl", fn: mocks.mergeOglCatalog },
+      { id: "battlenet", fn: mocks.mergeBattlenetOwned },
+      { id: "steam", fn: mocks.mergeSteamOwned },
+      { id: "gog", fn: mocks.mergeGogOwned },
+      { id: "ea", fn: mocks.mergeEaOwned },
+      { id: "epic", fn: mocks.mergeEpicOwned },
+      { id: "ubisoft", fn: mocks.mergeUbisoftOwned },
+      { id: "xbox", fn: mocks.mergeXboxOwned },
+      { id: "gamepass", fn: mocks.mergeGamePassCatalog },
+    ];
+    for (const { id, fn: merger } of mergers) {
+      const result = await merger(currentGames, context).catch((error: unknown) => {
+        console.warn("Provider merge threw unexpectedly:", error);
+        return null;
+      });
+      if (!result) {
+        if (!context.shouldApplyResult()) {
+          return { games: currentGames, warnings, statusMessage };
+        }
+        continue;
+      }
+      if (!context.shouldApplyResult()) {
+        return { games: currentGames, warnings, statusMessage };
+      }
+      warnings.push(...(result.warnings ?? []));
+      if (result.statusMessage) {
+        statusMessage = result.statusMessage;
+      }
+      currentGames = result.games;
+      options?.onMergerApplied?.(id, currentGames);
+    }
+    return { games: currentGames, warnings, statusMessage };
+  },
 }));
 
 vi.mock("@tauri-apps/api/event", () => ({
@@ -1219,14 +1264,20 @@ describe("useLibrarySync", () => {
     const replacement = makeGame({ id: "steam-after-cancel" });
     mocks.listInstalledGames.mockResolvedValue([replacement]);
     let checks = 0;
+    let cancelled = false;
     await act(async () => {
       await result.current.loadInstalledGames(false, () => {
         checks += 1;
-        return checks <= 7;
+        const allow = checks <= 7;
+        if (!allow) cancelled = true;
+        return allow;
       });
     });
 
-    expect(checks).toBe(9);
+    // The caller's cancellation must stop the pipeline from applying the
+    // replacement library, no matter how many internal shouldApplyResult
+    // checks the provider pipeline performs.
+    expect(cancelled).toBe(true);
     expect(result.current.installedGames).toEqual([initial]);
   });
 

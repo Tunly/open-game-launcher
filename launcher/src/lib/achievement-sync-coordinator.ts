@@ -1,3 +1,4 @@
+import { normalizeProviderKey } from "./provider-keys";
 import type { Game } from "./types";
 
 type CoordinatedAchievementSync<T> = {
@@ -9,16 +10,12 @@ type CoordinatedAchievementSync<T> = {
 const inFlightGameSyncs = new Map<string, Promise<unknown>>();
 const providerSyncQueues = new Map<string, Promise<void>>();
 
-function normalizeProvider(value: string) {
-  return value.trim().toLowerCase();
-}
-
 function encodeKeyTuple(parts: string[]) {
   return parts.map((part) => `${part.length}:${part}`).join("|");
 }
 
 export function achievementProviderSyncGameKey(game: Game, provider: string) {
-  return encodeKeyTuple([normalizeProvider(provider), game.id, game.externalId ?? ""]);
+  return encodeKeyTuple([normalizeProviderKey(provider), game.id, game.externalId ?? ""]);
 }
 
 export function coordinateAchievementProviderSync<T>({
@@ -26,7 +23,7 @@ export function coordinateAchievementProviderSync<T>({
   provider,
   sync,
 }: CoordinatedAchievementSync<T>): Promise<T> {
-  const providerKey = normalizeProvider(provider);
+  const providerKey = normalizeProviderKey(provider);
   const requestKey = encodeKeyTuple([providerKey, gameKey]);
   const existing = inFlightGameSyncs.get(requestKey);
   if (existing) {

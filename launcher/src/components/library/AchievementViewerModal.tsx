@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { Lock, LockKeyholeOpen, Search, Trophy, X } from "lucide-react";
 import type { UnifiedAchievement } from "../../lib/types";
+import { filterAndSortAchievements } from "../../lib/achievement-view";
 import { ModalDialog } from "../ui/ModalDialog";
 
 interface AchievementViewerModalProps {
@@ -33,28 +34,14 @@ export function AchievementViewerModal({
   const totalCount = completionAchievements.length;
   const percent = totalCount > 0 ? Math.round((unlockedCount / totalCount) * 100) : 0;
 
-  const visible = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    const filtered = q
-      ? achievements.filter(
-          (a) =>
-            a.name.toLowerCase().includes(q) || (a.description ?? "").toLowerCase().includes(q),
-        )
-      : achievements;
-    if (tab === "global") {
-      return [...filtered].sort((a, b) => {
-        const ra = typeof a.rarity === "number" ? a.rarity : Number.NEGATIVE_INFINITY;
-        const rb = typeof b.rarity === "number" ? b.rarity : Number.NEGATIVE_INFINITY;
-        return ra - rb;
-      });
-    }
-    // "My achievements": unlocked first, then locked; both by name
-    return [...filtered].sort((a, b) => {
-      const unlockedDelta = Number(Boolean(b.unlockedAt)) - Number(Boolean(a.unlockedAt));
-      if (unlockedDelta !== 0) return unlockedDelta;
-      return a.name.localeCompare(b.name);
-    });
-  }, [achievements, query, tab]);
+  const visible = useMemo(
+    () =>
+      filterAndSortAchievements(achievements, {
+        query,
+        tab,
+      }),
+    [achievements, query, tab],
+  );
 
   return (
     <ModalDialog

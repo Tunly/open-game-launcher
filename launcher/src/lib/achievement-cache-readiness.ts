@@ -1,3 +1,5 @@
+import { achievementProviderStatusForGame } from "./achievement-providers";
+
 export type AchievementCacheReadinessStatus = "blocked" | "review";
 
 export interface AchievementCacheReadinessInput {
@@ -96,14 +98,17 @@ export function buildAchievementCacheReadiness(
         ? "Keep provider statuses as UI evidence for available/not connected/private/failed/unsupported states."
         : "Stage provider status matrix before exposing cache readiness.",
       detail: input.providerStatusMatrixReady
-        ? "Provider badges already distinguish official, unofficial, local, available, not connected, private, failed, and unsupported states."
+        ? "Provider badges derive from the real achievementProviderStatusForGame derivation (official, unofficial, local, available, not connected, private, failed, unsupported)."
         : "No provider status matrix is staged.",
       evidence: input.providerStatusMatrixReady
-        ? "official // unofficial // local // unsupported"
+        ? "achievementProviderStatusForGame // official // unofficial // local // unsupported"
         : "missing",
       id: "provider-status-matrix",
       label: "Provider status matrix",
-      status: input.providerStatusMatrixReady ? "review" : "blocked",
+      status:
+        input.providerStatusMatrixReady && typeof achievementProviderStatusForGame === "function"
+          ? "review"
+          : "blocked",
     },
     {
       action: input.remoteHydrationStaged

@@ -14,21 +14,10 @@ import {
 } from "../lib/formatters";
 import { createVerifyAchievementCacheReadiness } from "../lib/achievement-cache-readiness";
 import { createVerifyAchievementHostedHydrationContract } from "../lib/achievement-hosted-hydration-contract";
-import { groupGames, type GameGroup, type GroupedAchievement } from "../lib/game-groups";
+import { groupGames, type GameGroup } from "../lib/game-groups";
 import { listInstalledGames } from "../lib/launcher";
 import { hydrateGamesWithRemoteAchievements } from "../lib/supabase/achievements";
-import {
-  mergeBattlenetOwned,
-  mergeEaOwned,
-  mergeEpicOwned,
-  mergeGamePassCatalog,
-  mergeOglCatalog,
-  mergeGogOwned,
-  mergeSteamOwned,
-  mergeUbisoftOwned,
-  mergeXboxOwned,
-  type ProviderMerger,
-} from "../library/providers";
+import { runProviderInventory } from "../library/providers";
 import type { Game } from "../lib/types";
 import { AchievementViewerModal } from "../components/library/AchievementViewerModal";
 import { PlatformSourceIcon } from "../components/library/PlatformIcons";
@@ -42,23 +31,16 @@ import {
   hasPendingAchievementArchiveSync,
   syncAchievementArchiveGames,
 } from "../lib/achievement-archive-sync";
+import { calculateSteamAverageGameCompletionRate } from "../lib/achievement-completion";
 import {
-  calculateSteamAverageGameCompletionRate,
-  calculateSteamGameCompletionPercent,
-} from "../lib/achievement-completion";
+  buildAchievementRow,
+  formatDate,
+  parseTime,
+  type GameAchievementRow,
+} from "../lib/achievement-row";
 
 type GameTab = "recent" | "all" | "perfect" | "unfinished";
 type GameSort = "lastPlayed" | "playtime" | "name" | "completion";
-
-type GameAchievementRow = {
-  group: GameGroup;
-  total: number;
-  unlocked: number;
-  completion: number;
-  isPerfect: boolean;
-  lastUnlockedAt: string | null;
-  recentAchievements: GroupedAchievement[];
-};
 
 const TABS: { key: GameTab; label: string }[] = [
   { key: "recent", label: "Recently Played" },
@@ -74,18 +56,6 @@ const SORTS: { key: GameSort; label: string }[] = [
   { key: "completion", label: "Achievement Completion" },
 ];
 
-const ACHIEVEMENT_INVENTORY_PROVIDERS: ProviderMerger[] = [
-  mergeOglCatalog,
-  mergeBattlenetOwned,
-  mergeSteamOwned,
-  mergeGogOwned,
-  mergeEaOwned,
-  mergeEpicOwned,
-  mergeUbisoftOwned,
-  mergeXboxOwned,
-  mergeGamePassCatalog,
-];
-
 const ACHIEVEMENT_ARCHIVE_REFRESH_TIMEOUT_MS = 15_000;
 
 function startAchievementArchiveRefreshWatchdog(operationLabel: string, onTimeout: () => void) {
@@ -95,56 +65,6 @@ function startAchievementArchiveRefreshWatchdog(operationLabel: string, onTimeou
     );
     onTimeout();
   }, ACHIEVEMENT_ARCHIVE_REFRESH_TIMEOUT_MS);
-}
-
-function parseTime(value?: string | null): number {
-  if (!value) return Number.NEGATIVE_INFINITY;
-  const parsed = Date.parse(value);
-  return Number.isNaN(parsed) ? Number.NEGATIVE_INFINITY : parsed;
-}
-
-function formatDate(value?: string | null): string {
-  if (!value) return "Never";
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.getTime())) return value;
-  return parsed.toLocaleDateString("en", { day: "numeric", month: "short", year: "numeric" });
-}
-
-function buildRow(group: GameGroup): GameAchievementRow {
-  const achievements = group.achievements;
-  const completionAchievements = achievements.filter((achievement) => !achievement.isAdditional);
-  const summaries = group.variants.flatMap((game) =>
-    game.achievementSummary && game.achievementSummary.total > 0 ? [game.achievementSummary] : [],
-  );
-  const achievementSummary =
-    summaries.find((summary) => summary.isPerfect && summary.unlocked >= summary.total) ??
-    summaries[0];
-  const total = achievementSummary?.total ?? completionAchievements.length;
-  const unlocked =
-    achievementSummary?.unlocked ??
-    completionAchievements.filter((achievement) => achievement.unlockedAt).length;
-  const completion = calculateSteamGameCompletionPercent({ total, unlocked });
-  const isPerfect = achievementSummary
-    ? achievementSummary.isPerfect && unlocked >= total
-    : total > 0 && unlocked === total;
-  const lastUnlockedAt = achievements.reduce<string | null>((latest, achievement) => {
-    if (!achievement.unlockedAt) return latest;
-    return parseTime(achievement.unlockedAt) > parseTime(latest) ? achievement.unlockedAt : latest;
-  }, null);
-  const recentAchievements = [...achievements]
-    .filter((achievement) => achievement.unlockedAt)
-    .sort((left, right) => parseTime(right.unlockedAt) - parseTime(left.unlockedAt))
-    .slice(0, 3);
-
-  return {
-    group,
-    total,
-    unlocked,
-    completion,
-    isPerfect,
-    lastUnlockedAt,
-    recentAchievements,
-  };
 }
 
 function gameMatchesSearch(row: GameAchievementRow, query: string): boolean {
@@ -499,20 +419,19 @@ export function AchievementsPage() {
             setStatusMessage,
             shouldApplyResult: () => mounted,
           };
-          for (const provider of ACHIEVEMENT_INVENTORY_PROVIDERS) {
-            if (!mounted) break;
-            try {
-              const providerResult = await provider(allGames, providerContext);
-              for (const warning of providerResult.warnings) {
+          try {
+            const inventory = await runProviderInventory(allGames, providerContext);
+            if (mounted) {
+              for (const warning of inventory.warnings) {
                 console.warn(warning);
               }
-              if (providerResult.statusMessage && mounted) {
-                setStatusMessage(providerResult.statusMessage);
+              if (inventory.statusMessage) {
+                setStatusMessage(inventory.statusMessage);
               }
-              allGames = providerResult.games;
-            } catch (err) {
-              console.warn("[OG-Launcher] Achievement inventory provider skipped:", err);
+              allGames = inventory.games;
             }
+          } catch (err) {
+            console.warn("[OG-Launcher] Achievement inventory provider skipped:", err);
           }
         }
 
@@ -634,7 +553,7 @@ export function AchievementsPage() {
               ),
             ),
         )
-        .map(buildRow),
+        .map(buildAchievementRow),
     [games],
   );
 
