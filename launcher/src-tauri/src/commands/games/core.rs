@@ -7,14 +7,15 @@ use serde::Deserialize;
 use std::{
     collections::{BTreeMap, HashMap, HashSet},
     env, fs,
-    path::{Path, PathBuf},
+    path::{Component, Path, PathBuf},
+    process::Command,
     time::{SystemTime, UNIX_EPOCH},
 };
 use tauri::AppHandle;
 
 use super::detect::{
-    find_local_banner_asset, find_local_icon_asset, find_local_logo_asset,
-    scan_installed_games, sync_game_metadata,
+    find_local_banner_asset, find_local_icon_asset, find_local_logo_asset, scan_installed_games,
+    sync_game_metadata,
 };
 use super::launch::{find_launch_executable, resolve_manual_game_executable};
 use super::og_manifest::{is_og_managed_install_path, remove_managed_install_path};
@@ -1755,7 +1756,6 @@ mod tests {
     }
 
     #[cfg(windows)]
-
     #[test]
     fn move_volume_check_rejects_cross_drive_target() {
         assert!(paths_share_volume(

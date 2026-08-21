@@ -122,12 +122,13 @@ fn parse_openid_response(url: &str) -> Result<OpenIdResponse, String> {
     if parsed.path() != "/" {
         return Err("OpenID response URL path is not the callback root.".into());
     }
-    if !parsed.username().is_empty() || parsed.password().is_some() || parsed.fragment().is_some()
-    {
+    if !parsed.username().is_empty() || parsed.password().is_some() || parsed.fragment().is_some() {
         return Err("OpenID response URL contains forbidden components.".into());
     }
 
-    let raw_query = parsed.query().ok_or_else(|| "OpenID response URL has no query.".to_string())?;
+    let raw_query = parsed
+        .query()
+        .ok_or_else(|| "OpenID response URL has no query.".to_string())?;
     let params = parse_query_preserving_plus(raw_query);
     if params.is_empty() {
         return Err("OpenID response URL carries no openid parameters.".into());
@@ -136,7 +137,13 @@ fn parse_openid_response(url: &str) -> Result<OpenIdResponse, String> {
     // The launcher's login flow tags the callback with a `state` nonce; a
     // response without it cannot belong to this launcher.
     let state_count = params.iter().filter(|(key, _)| key == "state").count();
-    let state_ok = state_count == 1 && require_param(&OpenIdResponse { params: params.clone() }, "state")
+    let state_ok = state_count == 1
+        && require_param(
+            &OpenIdResponse {
+                params: params.clone(),
+            },
+            "state",
+        )
         .map(|value| !value.trim().is_empty())
         .unwrap_or(false);
     if !state_ok {
@@ -184,8 +191,7 @@ fn validate_response(response: &OpenIdResponse) -> Result<(), String> {
     let nonce = require_param(response, "openid.response_nonce")?;
     validate_response_nonce(nonce, chrono::Utc::now())?;
     let return_to = require_param(response, "openid.return_to")?;
-    if !return_to.starts_with("http://localhost:") && !return_to.starts_with("http://127.0.0.1:")
-    {
+    if !return_to.starts_with("http://localhost:") && !return_to.starts_with("http://127.0.0.1:") {
         return Err("OpenID return_to is not the launcher callback.".into());
     }
     Ok(())
@@ -230,32 +236,32 @@ pub async fn verify_steam_openid(openid_response_url: String) -> Result<Verified
 mod tests {
     use super::*;
 
-#[test]
-fn percent_decode_preserves_plus() {
-    // A raw `+` in Steam's base64 signature must survive decoding untouched.
-    assert_eq!(percent_decode_preserving_plus("c2ln+bmF0dXJl"), "c2ln+bmF0dXJl");
-    assert_eq!(percent_decode_preserving_plus("abc%2Bdef"), "abc+def");
-    assert_eq!(percent_decode_preserving_plus("a%20b+c"), "a b+c");
-}
+    #[test]
+    fn percent_decode_preserves_plus() {
+        // A raw `+` in Steam's base64 signature must survive decoding untouched.
+        assert_eq!(
+            percent_decode_preserving_plus("c2ln+bmF0dXJl"),
+            "c2ln+bmF0dXJl"
+        );
+        assert_eq!(percent_decode_preserving_plus("abc%2Bdef"), "abc+def");
+        assert_eq!(percent_decode_preserving_plus("a%20b+c"), "a b+c");
+    }
 
-#[test]
-fn query_parse_keeps_parameter_order() {
-    let pairs = parse_query_preserving_plus("openid.b=2&openid.a=1&openid.sig=x+y");
-    assert_eq!(
-        pairs,
-        vec![
-            ("openid.b".to_string(), "2".to_string()),
-            ("openid.a".to_string(), "1".to_string()),
-            ("openid.sig".to_string(), "x+y".to_string()),
-        ]
-    );
-}
+    #[test]
+    fn query_parse_keeps_parameter_order() {
+        let pairs = parse_query_preserving_plus("openid.b=2&openid.a=1&openid.sig=x+y");
+        assert_eq!(
+            pairs,
+            vec![
+                ("openid.b".to_string(), "2".to_string()),
+                ("openid.a".to_string(), "1".to_string()),
+                ("openid.sig".to_string(), "x+y".to_string()),
+            ]
+        );
+    }
 
     fn callback_url(extra: &str) -> String {
-        let nonce = format!(
-            "{}abc",
-            chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ")
-        );
+        let nonce = format!("{}abc", chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ"));
         format!(
             "http://localhost:18234/?state=opaque&openid.ns=http%3A%2F%2Fspecs.openid.net%2Fauth%2F2.0&openid.mode=id_res&openid.op_endpoint=https%3A%2F%2Fsteamcommunity.com%2Fopenid%2Flogin&openid.claimed_id=https%3A%2F%2Fsteamcommunity.com%2Fopenid%2Fid%2F76561198000000000&openid.identity=https%3A%2F%2Fsteamcommunity.com%2Fopenid%2Fid%2F76561198000000000&openid.return_to=http%3A%2F%2Flocalhost%3A18234%2F%3Fstate%3Dopaque&openid.response_nonce={nonce}&openid.assoc_handle=1234567890&openid.signed=op_endpoint%2Cclaimed_id%2Cidentity%2Creturn_to%2Cresponse_nonce%2Cassoc_handle%2Cns&openid.sig=c2lnbmF0dXJl{extra}",
         )
@@ -264,11 +270,11 @@ fn query_parse_keeps_parameter_order() {
     #[test]
     fn parses_a_well_formed_callback() {
         let response = parse_openid_response(&callback_url("")).expect("parse should succeed");
+        assert_eq!(require_param(&response, "openid.mode").unwrap(), "id_res");
         assert_eq!(
-            require_param(&response, "openid.mode").unwrap(),
-            "id_res"
+            require_param(&response, "openid.sig").unwrap(),
+            "c2lnbmF0dXJl"
         );
-        assert_eq!(require_param(&response, "openid.sig").unwrap(), "c2lnbmF0dXJl");
     }
 
     #[test]
@@ -376,7 +382,13 @@ fn query_parse_keeps_parameter_order() {
             extract_steam_id("https://steamcommunity.com/openid/id/76561198000000000"),
             Some("76561198000000000".to_string())
         );
-        assert_eq!(extract_steam_id("https://steamcommunity.com/openid/id/123"), None);
-        assert_eq!(extract_steam_id("https://evil.example/76561198000000000"), None);
+        assert_eq!(
+            extract_steam_id("https://steamcommunity.com/openid/id/123"),
+            None
+        );
+        assert_eq!(
+            extract_steam_id("https://evil.example/76561198000000000"),
+            None
+        );
     }
 }

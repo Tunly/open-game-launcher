@@ -12,9 +12,9 @@ use super::launch::{find_launch_executable, open_uri};
 use super::og_manifest::{
     extract_og_zip_package, is_og_managed_install_path, is_zip_package, manifest_has_signature,
     og_managed_manifest_trust_status, og_manifest_file_for_path, og_manifest_path_for_entry,
-    og_manifest_relative_path, read_og_managed_manifest, read_og_managed_version,
-    sha256_file_hex, verify_og_managed_manifest_signature, write_og_managed_manifest_details,
-    OgManagedManifest, OgManagedManifestFile, OgManifestTrustStatus, OG_MANAGED_LATEST_VERSION,
+    og_manifest_relative_path, read_og_managed_manifest, read_og_managed_version, sha256_file_hex,
+    verify_og_managed_manifest_signature, write_og_managed_manifest_details, OgManagedManifest,
+    OgManagedManifestFile, OgManifestTrustStatus, OG_MANAGED_LATEST_VERSION,
 };
 use super::types::*;
 

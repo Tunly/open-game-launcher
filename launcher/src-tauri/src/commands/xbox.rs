@@ -1960,14 +1960,18 @@ pub async fn sync_xbox_achievements(
     );
     let game = if should_persist_to_native_cache {
         crate::commands::games::core::update_installed_game_cache(&game_id, move |game| {
-            game.achievements =
-                crate::commands::games::achievements::preserve_known_unlocks(unified, &game.achievements);
+            game.achievements = crate::commands::games::achievements::preserve_known_unlocks(
+                unified,
+                &game.achievements,
+            );
             game.achievements_synced_at = Some(synced_at);
             Ok(())
         })?
     } else {
-        game.achievements =
-            crate::commands::games::achievements::preserve_known_unlocks(unified, &game.achievements);
+        game.achievements = crate::commands::games::achievements::preserve_known_unlocks(
+            unified,
+            &game.achievements,
+        );
         game.achievements_synced_at = Some(synced_at);
         game
     };

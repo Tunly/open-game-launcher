@@ -24,7 +24,7 @@ use atspi::AccessibilityConnection;
 use atspi::{Interface, State};
 
 use super::linux::{
-    map_atspi_role, AtspiAvailability, AtspiSnapshot, AtspiNode, AtspiSource, LinuxApplication,
+    map_atspi_role, AtspiAvailability, AtspiNode, AtspiSnapshot, AtspiSource, LinuxApplication,
 };
 use super::providers::ControlRole;
 
@@ -49,7 +49,12 @@ impl LiveAtspiNode {
         depth: usize,
         runtime: Arc<tokio::runtime::Runtime>,
     ) -> Self {
-        Self { accessible, ancestors, depth, runtime }
+        Self {
+            accessible,
+            ancestors,
+            depth,
+            runtime,
+        }
     }
 
     fn role(&self) -> ControlRole {
@@ -76,7 +81,9 @@ impl AtspiNode for LiveAtspiNode {
         let accessible_id = runtime
             .block_on(proxy.accessible_id())
             .map_err(|e| e.to_string())?;
-        let state = runtime.block_on(proxy.get_state()).map_err(|e| e.to_string())?;
+        let state = runtime
+            .block_on(proxy.get_state())
+            .map_err(|e| e.to_string())?;
 
         // Resolve the owning pid via the bus daemon's peer credentials, then
         // derive the process name from /proc/<pid>/comm (matches the Linux
@@ -151,7 +158,12 @@ impl AtspiNode for LiveAtspiNode {
             .map_err(|e| e.to_string())?;
             let mut ancestors = self.ancestors.clone();
             ancestors.push(self.role());
-            children.push(Self::new(child_proxy, ancestors, self.depth + 1, self.runtime.clone()));
+            children.push(Self::new(
+                child_proxy,
+                ancestors,
+                self.depth + 1,
+                self.runtime.clone(),
+            ));
             index += 1;
         }
         Ok(children)
@@ -159,7 +171,8 @@ impl AtspiNode for LiveAtspiNode {
 
     fn invoke_action(&self, exact_action_name: &str) -> Result<bool, Self::Error> {
         let runtime = self.runtime.clone();
-        let action_proxy = build_action_proxy(&runtime, &self.accessible).map_err(|e| e.to_string())?;
+        let action_proxy =
+            build_action_proxy(&runtime, &self.accessible).map_err(|e| e.to_string())?;
         let count = runtime
             .block_on(action_proxy.n_actions())
             .map_err(|e| e.to_string())?;
@@ -295,12 +308,9 @@ impl AtspiSource for LiveAtspiSource {
             let Some(bus_name) = object_ref.name() else {
                 continue;
             };
-            let accessible = build_accessible_proxy(
-                &self.runtime,
-                self.conn.connection(),
-                &object_ref,
-            )
-            .map_err(|e| e.to_string())?;
+            let accessible =
+                build_accessible_proxy(&self.runtime, self.conn.connection(), &object_ref)
+                    .map_err(|e| e.to_string())?;
             let pid = bus_peer_pid(&self.runtime, &accessible).unwrap_or(0);
             let root = LiveAtspiNode::new(accessible, Vec::new(), 0, self.runtime.clone());
             applications.push(LinuxApplication {

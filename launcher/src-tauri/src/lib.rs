@@ -491,13 +491,7 @@ fn attach_minimize_to_tray_on_close(window: &WebviewWindow) {
 // user bring the window back after it was hidden on close, and offers a real
 // "Quit" so they can fully exit instead of leaving it running invisibly.
 fn setup_tray_icon(app: &AppHandle) -> tauri::Result<()> {
-    let open_item = MenuItem::with_id(
-        app,
-        "tray-open",
-        "Open Game Launcher",
-        true,
-        None::<&str>,
-    )?;
+    let open_item = MenuItem::with_id(app, "tray-open", "Open Game Launcher", true, None::<&str>)?;
     let quit_item = MenuItem::with_id(app, "tray-quit", "Quit", true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&open_item, &quit_item])?;
 
