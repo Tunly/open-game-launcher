@@ -44,18 +44,19 @@ describe("LauncherUpdatePanel", () => {
     updaterMocks.state = {
       ...updaterMocks.state,
       status: "unsupported",
+      currentVersion: "0.1.0",
       unsupportedReason: "Self-update is available in the installed Windows app only.",
     };
 
-    render(<LauncherUpdatePanel currentVersion="0.1.0" />);
+    render(<LauncherUpdatePanel />);
 
     const panel = screen.getByRole("region", { name: /og launcher update/i });
     expect(within(panel).getByText("v0.1.0")).toBeInTheDocument();
     expect(within(panel).getByText("Windows Only")).toBeInTheDocument();
     expect(within(panel).getByText(/installed Windows app only/i)).toBeInTheDocument();
-    expect(within(panel).getByRole("button", { name: /install update/i })).toBeDisabled();
+    expect(within(panel).getByRole("button", { name: /install/i })).toBeDisabled();
 
-    fireEvent.click(within(panel).getByRole("button", { name: /check now/i }));
+    fireEvent.click(within(panel).getByRole("button", { name: /check/i }));
     expect(updaterMocks.check).toHaveBeenCalledOnce();
   });
 
@@ -73,14 +74,14 @@ describe("LauncherUpdatePanel", () => {
 
     expect(within(panel).getByText("v0.2.0")).toBeInTheDocument();
     expect(within(panel).getByText("Signed release notes")).toBeInTheDocument();
-    fireEvent.click(within(panel).getByRole("button", { name: /install update/i }));
+    fireEvent.click(within(panel).getByRole("button", { name: /install/i }));
 
     const dialog = screen.getByRole("dialog", { name: /install launcher update/i });
     expect(within(dialog).getByText(/v0.2.0/)).toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole("button", { name: /not now/i }));
     expect(updaterMocks.install).not.toHaveBeenCalled();
 
-    fireEvent.click(within(panel).getByRole("button", { name: /install update/i }));
+    fireEvent.click(within(panel).getByRole("button", { name: /install/i }));
     fireEvent.click(
       within(screen.getByRole("dialog", { name: /install launcher update/i })).getByRole("button", {
         name: /download & restart/i,

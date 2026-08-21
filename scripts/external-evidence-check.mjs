@@ -9,61 +9,28 @@ import {
   hostedCronEvidenceReceiptDigestAlgorithm,
   hostedCronEvidenceReceiptEnvName,
 } from "./hosted-cron-evidence.mjs";
+import {
+  hardwareEvidenceFields,
+  hostedCronEvidenceFields,
+  hostedCronExpectedValuesByLane,
+  providerEvidenceFields,
+  requiredEvidenceDetailFields,
+  rolloutEvidenceFields,
+} from "../launcher/src/lib/external-evidence-manifest.mjs";
 
-const hostedCronEvidenceFields = Object.freeze([
-  "Hosted cron table",
-  "Function",
-  "Run ID",
-  "Scheduled",
-  "dry_run=false",
-  "Status",
-]);
 const hostedCronReceiptDigestField = "Hosted cron receipt SHA256";
 const hostedCronRestCollectorPrerequisites = Object.freeze([
   "SUPABASE_REST_URL or SUPABASE_URL or SUPABASE_PROJECT_REF",
   "SUPABASE_SERVICE_ROLE_KEY or SUPABASE_ANON_KEY + SUPABASE_AUTH_JWT",
 ]);
 
-const hostedCronArtifactEvidenceGroups = Object.freeze([
-  {
-    heading: "presence-poll",
+const hostedCronArtifactEvidenceGroups = Object.freeze(
+  Object.entries(hostedCronExpectedValuesByLane).map(([heading, expectedValues]) => ({
+    heading,
     requiredFields: hostedCronEvidenceFields,
-    expectedValues: {
-      Function: /^poll-platform-presence$/i,
-      "Hosted cron table": /^presence_poll_runs$/i,
-      Scheduled: /^scheduled$/i,
-      Status: /^completed$/i,
-    },
-  },
-  {
-    heading: "account-deletion",
-    requiredFields: hostedCronEvidenceFields,
-    expectedValues: {
-      Function: /^process-account-deletions$/i,
-      "Hosted cron table": /^account_deletion_processor_runs$/i,
-      Scheduled: /^scheduled$/i,
-      Status: /^completed$/i,
-    },
-  },
-]);
-
-const providerEvidenceFields = Object.freeze([
-  "Provider/client matrix",
-  "Live probe run ID",
-  "Provider response evidence",
-]);
-
-const hardwareEvidenceFields = Object.freeze([
-  "OS/title/client matrix",
-  "Hardware profile",
-  "Session/run ID",
-]);
-
-const rolloutEvidenceFields = Object.freeze([
-  "Community rollout evidence",
-  "Marketplace evidence",
-  "Hosted deploy evidence",
-]);
+    expectedValues,
+  })),
+);
 
 export const evidenceGates = Object.freeze([
   {
@@ -149,7 +116,6 @@ export const evidenceGates = Object.freeze([
     requiredProofs: [
       "Fullscreen/anti-cheat overlay evidence is captured on real titles.",
       "Long native overlay sessions produce stable runtime/session evidence.",
-      "External-drive backup/restore E2E runs on Windows, macOS, and Linux.",
       "Real client mount/apply behavior is tested against provider clients.",
     ],
     captureHandoffs: {
@@ -162,17 +128,6 @@ export const evidenceGates = Object.freeze([
         capture:
           "Run long native overlay sessions and attach redacted runtime/session evidence showing stability over the measured window.",
         terms: ["native-overlay", "long-session"],
-      },
-      "External-drive backup/restore E2E runs on Windows, macOS, and Linux.": {
-        capture:
-          "Run external-drive backup and restore E2E on Windows, macOS, and Linux, then attach redacted per-OS run evidence.",
-        terms: [
-          "external-drive",
-          "backup-restore",
-          "Windows",
-          "macOS",
-          "Linux",
-        ],
       },
       "Real client mount/apply behavior is tested against provider clients.": {
         capture:
@@ -314,16 +269,6 @@ const forbiddenArtifactPatterns = Object.freeze([
     label: "Unredacted secret fixture",
     pattern: /\b(secret-value|sk_live_secret|whsec_secret)\b/i,
   },
-]);
-
-const requiredEvidenceDetailFields = Object.freeze([
-  "Captured at",
-  "Release ref",
-  "Commit SHA",
-  "Operator",
-  "Environment",
-  "Redacted run IDs, dashboard links, screenshots, or signed deployment logs",
-  "Redaction notes",
 ]);
 
 const releaseBoundaryReminder =
@@ -1730,14 +1675,6 @@ function expectedProofEvidenceValuePatterns(proof) {
       measuredSessionDurationPattern,
     ];
   }
-  if (/external-drive backup\/restore/.test(normalizedProof)) {
-    return [
-      /(?:external[-_\s]?drive|backup[-_\s]?restore)/i,
-      /windows/i,
-      /mac\s?os/i,
-      /linux/i,
-    ];
-  }
   if (/real client mount\/apply/.test(normalizedProof)) {
     return [
       /client[-_\s]?mount/i,
@@ -2164,7 +2101,7 @@ export function artifactTemplate(gate, artifactPath) {
     "## Proof Evidence Mapping",
     "",
     "For every checked proof, add a specific redacted run/dashboard/workflow/artifact locator, signed log, or `sha256:<64-hex>` reference. Accepted dashboard URL hosts are Supabase, GitHub Actions/releases/deployments, Vercel, Netlify, Cloudflare, App Store Connect, and Google Play Console; otherwise use `run:`/`artifact:`/`sha256:`. Local/example URLs and generic text do not pass.",
-    "Proof evidence values must name the proof lane: `presence-poll`, `account-deletion`, `non-steam-presence-bridge-provider`, `provider-approved-catalog-cloud-transfer`, `achievement-provider-cache-real-client`, `fullscreen-anti-cheat-overlay`, `backup-restore`, `client-mount-apply-provider-client`, `community-artwork-rollout`, `plugin-marketplace-execution-update`, or `hosted-deploy`. Compound values must include their required providers, OSes, duration/window, and matrix fields.",
+    "Proof evidence values must name the proof lane: `presence-poll`, `account-deletion`, `non-steam-presence-bridge-provider`, `provider-approved-catalog-cloud-transfer`, `achievement-provider-cache-real-client`, `fullscreen-anti-cheat-overlay`, `client-mount-apply-provider-client`, `community-artwork-rollout`, `plugin-marketplace-execution-update`, or `hosted-deploy`. Compound values must include their required providers, OSes, duration/window, and matrix fields.",
     "",
     ...requiredProofs.map((proof) => `- Evidence for ${proof}:`),
     "",

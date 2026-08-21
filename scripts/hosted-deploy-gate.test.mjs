@@ -1413,27 +1413,7 @@ test("deploy plan covers every Supabase Edge Function directory", () => {
   assert.deepEqual(deployFunctions.map((fn) => fn.name).sort(), functionDirs);
 });
 
-test("Steam account link and achievement relay stay JWT-protected", () => {
-  for (const name of ["link-steam-account", "relay-steam-achievements"]) {
-    const fn = deployFunctions.find((item) => item.name === name);
-    assert.deepEqual(fn, { name, verifyJwt: true });
-    assert.equal(optionsSmokes.some((smoke) => smoke.name === name), true);
-    assert.match(
-      supabaseConfig,
-      new RegExp(`\\[functions\\.${name}\\]\\s+verify_jwt = true`, "i"),
-    );
-  }
-});
-
-test("Steam relay preflight is keyless while Steam presence keeps its API key", () => {
-  const relaySecrets = getRuntimeSecretNames({
-    OGL_HOSTED_DEPLOY_FUNCTIONS: "link-steam-account,relay-steam-achievements",
-  });
-  assert.equal(relaySecrets.includes("STEAM_WEB_API_KEY"), false);
-  assert.equal(
-    relaySecrets.includes("ACHIEVEMENT_INGESTION_ATTESTATION_SECRET"),
-    false,
-  );
+test("Steam presence preflight keeps its API key", () => {
   assert.equal(
     getRuntimeSecretNames({
       OGL_HOSTED_DEPLOY_FUNCTIONS: "poll-platform-presence",
@@ -1447,11 +1427,6 @@ test("Steam relay preflight is keyless while Steam presence keeps its API key", 
   ]) {
     assert.equal(runtimeSecretNames.includes(obsoleteName), false);
   }
-  assert.match(
-    runbook,
-    /OGL_HOSTED_DEPLOY_FUNCTIONS=link-steam-account,relay-steam-achievements/,
-  );
-  assert.match(runbook, /Both functions deploy with `verify_jwt=true`/);
 });
 
 test("Supabase function config parser reads explicit verify_jwt values", () => {

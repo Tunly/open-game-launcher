@@ -259,6 +259,58 @@ describe("StorePage", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("filters the Top Sellers category instead of showing every game", async () => {
+    const products = Array.from({ length: 13 }, (_, index) =>
+      makeProduct({
+        downloadsCount: 1_000 - index,
+        id: `30000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+        title: `Category Game ${index}`,
+      }),
+    );
+    catalogMocks.queryCatalogPage.mockResolvedValueOnce({
+      products,
+      hasMore: false,
+      bothFailed: false,
+      hostedCount: products.length,
+      catalogCount: 0,
+    });
+
+    renderStore();
+    expect(await screen.findByText("Category Game 12")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: /^Top Sellers$/ }));
+
+    const browser = screen.getByRole("region", { name: "Product browser" });
+    expect(within(browser).getByText("Category Game 0")).toBeInTheDocument();
+    expect(within(browser).queryByText("Category Game 12")).not.toBeInTheDocument();
+  });
+
+  it("starts a fresh catalog deduplication set when the query changes", async () => {
+    const seenSets: Set<string>[] = [];
+    catalogMocks.queryCatalogPage.mockImplementation(
+      async (query: { platform?: string }, seenIds: Set<string>) => {
+        seenSets.push(seenIds);
+        seenIds.add(query.platform ?? "all");
+        return {
+          products: [makeProduct({ platforms: ["windows", "linux"] })],
+          hasMore: false,
+          bothFailed: false,
+          hostedCount: 1,
+          catalogCount: 0,
+        };
+      },
+    );
+
+    renderStore();
+    await screen.findAllByText("Platform Game");
+    fireEvent.click(screen.getByRole("button", { name: "Linux" }));
+
+    await waitFor(() => expect(seenSets).toHaveLength(2));
+    expect(seenSets[1]).not.toBe(seenSets[0]);
+    expect([...seenSets[0]]).toEqual(["all"]);
+    expect([...seenSets[1]]).toEqual(["linux"]);
+  });
+
   it("opens the platform store directly", async () => {
     renderStore();
 

@@ -20,10 +20,29 @@ use tauri::tray::TrayIconBuilder;
 
 const STARTUP_FALLBACK_DELAY: Duration = Duration::from_secs(15);
 
-#[derive(Default)]
+#[derive(Clone, serde::Serialize)]
+struct SplashProgress {
+    progress: f64,
+    label: String,
+}
+
 struct StartupState {
     transition_started: Arc<AtomicBool>,
     pending_deep_link: Mutex<Option<commands::deeplink::DeepLinkEvent>>,
+    splash_progress: Mutex<SplashProgress>,
+}
+
+impl Default for StartupState {
+    fn default() -> Self {
+        Self {
+            transition_started: Arc::new(AtomicBool::new(false)),
+            pending_deep_link: Mutex::new(None),
+            splash_progress: Mutex::new(SplashProgress {
+                progress: 0.0,
+                label: "Initializing …".to_string(),
+            }),
+        }
+    }
 }
 
 fn store_pending_deep_link(
@@ -65,8 +84,31 @@ fn complete_startup(app: AppHandle, state: State<'_, StartupState>) -> Result<()
     Ok(())
 }
 
-pub fn run_headless_backup_scheduler_from_args() -> Option<i32> {
-    commands::backup::run_headless_backup_scheduler_from_args()
+#[tauri::command]
+fn report_startup_progress(app: AppHandle, progress: f64, label: String) {
+    set_splash_progress(&app, progress, &label);
+}
+
+#[tauri::command]
+fn get_startup_progress(state: State<'_, StartupState>) -> SplashProgress {
+    state
+        .splash_progress
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .clone()
+}
+
+fn set_splash_progress(app: &AppHandle, progress: f64, label: &str) {
+    let snapshot = SplashProgress {
+        progress: progress.clamp(0.0, 1.0),
+        label: label.to_string(),
+    };
+
+    if let Ok(mut state) = app.state::<StartupState>().splash_progress.lock() {
+        *state = snapshot.clone();
+    }
+
+    let _ = app.emit("splash-progress", snapshot);
 }
 
 pub fn run_headless_client_update_scheduler_from_args() -> Option<i32> {
@@ -82,7 +124,6 @@ pub fn run() {
 
     let builder = tauri::Builder::default()
         .manage(StartupState::default())
-        .plugin(tauri_plugin_autostart::Builder::new().build())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
@@ -121,7 +162,7 @@ pub fn run() {
                 .build(),
         );
 
-    #[cfg(target_os = "windows")]
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
     let builder = builder
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init());
@@ -172,6 +213,10 @@ pub fn run() {
             // Register the universallauncher:// protocol handler (Windows Registry)
             commands::deeplink::register_protocol_handler();
 
+            // Keep the OS-level platform-client update timer installed so the
+            // headless update check runs automatically, without user action.
+            commands::client_manager::ensure_client_update_scheduler_installed();
+
             // Keep startup links until the frontend explicitly claims them. Tauri
             // events are transient and setup runs before React subscribes.
             if let Some(link) = commands::deeplink::check_deep_link_on_startup() {
@@ -181,33 +226,25 @@ pub fn run() {
             // Register the saved global overlay hotkey; defaults to Shift+F1.
             let _ = commands::overlay::register_configured_overlay_hotkey(app.handle(), None);
 
+            // Backend is fully wired. Tell the splash to switch from its
+            // indeterminate animation to the first real milestone.
+            set_splash_progress(app.handle(), 0.3, "Backend ready, loading interface");
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             complete_startup,
+            report_startup_progress,
+            get_startup_progress,
             take_pending_deep_link,
             commands::system::get_system_info,
-            commands::system::get_default_install_dir,
             commands::system::get_hardware_info,
-            commands::system::get_disk_info,
             commands::system::open_steam_login_window,
             commands::system::open_steam_scraper_window,
             commands::system::fetch_steam_profile_name,
             commands::system::fetch_steam_news,
             commands::system::open_external_url,
-            commands::backup::preview_backup_plan,
-            commands::backup::run_backup_plan,
-            commands::backup::prove_backup_external_drive_write,
-            commands::backup::prove_backup_external_drive_eject_safety,
-            commands::backup::eject_backup_external_drive,
-            commands::backup::preview_restore_plan,
-            commands::backup::restore_backup,
-            commands::backup::get_latest_backup_status,
-            commands::backup::get_backup_scheduler_status,
-            commands::backup::save_backup_scheduler_config,
-            commands::backup::install_backup_scheduler,
-            commands::backup::uninstall_backup_scheduler,
-            commands::backup::run_backup_scheduler_now,
+            commands::steam_openid::verify_steam_openid,
             commands::broadcast::get_broadcast_stream_key_vault_status,
             commands::broadcast::set_broadcast_stream_key_secret,
             commands::broadcast::clear_broadcast_stream_key_secret,
@@ -229,10 +266,6 @@ pub fn run() {
             commands::client_manager::prove_client_manager_mount_apply_sandbox,
             commands::client_manager::check_platform_client_update,
             commands::client_manager::run_scheduled_platform_client_update_checks,
-            commands::client_manager::get_platform_client_update_scheduler_status,
-            commands::client_manager::install_platform_client_update_scheduler,
-            commands::client_manager::uninstall_platform_client_update_scheduler,
-            commands::client_manager::run_platform_client_update_scheduler_now,
             commands::client_manager::open_platform_client_installer,
             commands::client_manager::open_platform_client_updater,
             commands::gog::open_gog_login_window,
@@ -275,6 +308,7 @@ pub fn run() {
             commands::gog::gog_get_download_info,
             commands::gog::gog_start_download,
             commands::gog::gog_get_cloud_saves,
+            // games: library state (core)
             commands::games::cache_supabase_access_token,
             commands::games::get_launcher_device_id,
             commands::games::add_manual_game,
@@ -284,8 +318,10 @@ pub fn run() {
             commands::games::move_game,
             commands::games::list_installed_games,
             commands::games::refresh_installed_games,
+            commands::games::set_cached_game_playtime,
+            // games: launch
             commands::games::launch_game,
-            commands::games::stop_game,
+            // games: actions + verify
             commands::games::get_game_action_capabilities,
             commands::games::prepare_game_action_confirmation,
             commands::games::run_game_action,
@@ -293,12 +329,14 @@ pub fn run() {
             commands::games::repair_game_files,
             commands::games::check_game_updates,
             commands::games::install_game_update,
+            // games: saves + achievements
             commands::games::sync_game_saves,
             commands::games::sync_game_achievements,
             commands::games::sync_steam_session_achievements,
             commands::games::sync_local_game_achievements,
             commands::games::open_achievement_cache_folder,
-            commands::games::set_cached_game_playtime,
+            // games: playtime + play sessions
+            commands::games::stop_game,
             commands::games::get_unsynced_play_sessions,
             commands::games::mark_play_sessions_synced,
             commands::games::upsert_play_session,
@@ -456,11 +494,11 @@ fn setup_tray_icon(app: &AppHandle) -> tauri::Result<()> {
     let open_item = MenuItem::with_id(
         app,
         "tray-open",
-        "Open Game Launcher anzeigen",
+        "Open Game Launcher",
         true,
         None::<&str>,
     )?;
-    let quit_item = MenuItem::with_id(app, "tray-quit", "Beenden", true, None::<&str>)?;
+    let quit_item = MenuItem::with_id(app, "tray-quit", "Quit", true, None::<&str>)?;
     let menu = Menu::with_items(app, &[&open_item, &quit_item])?;
 
     let mut tray = TrayIconBuilder::with_id("main-tray")

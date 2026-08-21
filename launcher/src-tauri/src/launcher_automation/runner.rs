@@ -10,6 +10,16 @@ use super::providers::{MaintenanceAction, ProviderId};
 #[cfg(all(windows, feature = "windows-uiautomation"))]
 use super::providers::BlockingState;
 
+#[cfg(all(target_os = "linux", feature = "linux-atspi"))]
+use super::linux::{
+    AtspiAvailability, LinuxAtspiBackend, LinuxBoundConfirmation, LinuxExecutionState,
+    LinuxHandoffReason,
+};
+#[cfg(all(target_os = "linux", feature = "linux-atspi"))]
+use super::linux_live::LiveAtspiSource;
+#[cfg(all(target_os = "linux", feature = "linux-atspi"))]
+use std::time::{SystemTime, UNIX_EPOCH};
+
 pub const WINDOWS_AUTOMATION_WINDOW_TIMEOUT_SECONDS: u64 = 15;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -54,7 +64,15 @@ impl ProviderAutomationRunner for NativeProviderAutomationRunner {
             run_live_windows(invocation)
         }
 
-        #[cfg(not(all(windows, feature = "windows-uiautomation")))]
+        #[cfg(all(target_os = "linux", feature = "linux-atspi"))]
+        {
+            run_live_linux(invocation)
+        }
+
+        #[cfg(not(any(
+            all(windows, feature = "windows-uiautomation"),
+            all(target_os = "linux", feature = "linux-atspi")
+        )))]
         {
             let _ = invocation;
             ProviderAutomationResult::Failed {
@@ -63,6 +81,99 @@ impl ProviderAutomationRunner for NativeProviderAutomationRunner {
             }
         }
     }
+}
+
+#[cfg(all(target_os = "linux", feature = "linux-atspi"))]
+fn run_live_linux(invocation: &ProviderAutomationInvocation) -> ProviderAutomationResult {
+    if invocation.game_identity.trim().is_empty() {
+        return ProviderAutomationResult::Blocked {
+            reason: "Exact provider game identity is required before automation.".to_string(),
+        };
+    }
+    if let Err(error) =
+        crate::commands::uri_safety::open_uri_safely(provider_client_start_uri(invocation.provider))
+    {
+        return ProviderAutomationResult::Failed {
+            reason: format!("Could not start the official provider client: {error}"),
+        };
+    }
+
+    let source = match LiveAtspiSource::connect() {
+        Ok(source) => source,
+        Err(error) => {
+            return ProviderAutomationResult::HandoffRequired {
+                reason: format!("AT-SPI is unavailable: {error}"),
+            }
+        }
+    };
+    let backend = LinuxAtspiBackend::new(source);
+    // The live backend derives process names from the AT-SPI bus peers; Steam
+    // (native Linux) needs no compatibility layer, so we pass `None`.
+    let confirmation = invocation
+        .confirmation_consumed
+        .then(|| LinuxBoundConfirmation {
+            provider: invocation.provider,
+            game_identity: invocation.game_identity.clone(),
+            action: invocation.action,
+            bus_name: String::new(),
+            pid: 0,
+            compatibility_prefix_id: None,
+            expires_at_unix_ms: now_unix_ms() + WINDOWS_AUTOMATION_WINDOW_TIMEOUT_SECONDS * 1000,
+        });
+    match backend.execute(
+        invocation.provider,
+        None,
+        &invocation.game_identity,
+        invocation.action,
+        confirmation.as_ref(),
+    ) {
+        LinuxExecutionState::StartedAwaitingObservation { proof } => {
+            ProviderAutomationResult::StartedAwaitingObservation {
+                detail: format!("Provider action started; awaiting {proof:?}."),
+            }
+        }
+        LinuxExecutionState::HandoffRequired(reason) => ProviderAutomationResult::HandoffRequired {
+            reason: linux_handoff_reason(reason),
+        },
+        LinuxExecutionState::NotApplicable(reason) => ProviderAutomationResult::Blocked { reason },
+        LinuxExecutionState::Blocked(reason) => ProviderAutomationResult::Blocked { reason },
+        LinuxExecutionState::Failed(reason) => ProviderAutomationResult::Failed { reason },
+    }
+}
+
+#[cfg(all(target_os = "linux", feature = "linux-atspi"))]
+fn linux_handoff_reason(reason: LinuxHandoffReason) -> String {
+    match reason {
+        LinuxHandoffReason::AtspiUnavailable(availability) => match availability {
+            AtspiAvailability::Available => {
+                "AT-SPI is available but the provider client is not exposing it.".to_string()
+            }
+            AtspiAvailability::Disabled => {
+                "AT-SPI is disabled; enable the accessibility bus and retry.".to_string()
+            }
+            AtspiAvailability::BusUnavailable => {
+                "AT-SPI is unavailable; the accessibility bus is not running.".to_string()
+            }
+        },
+        LinuxHandoffReason::BlockingState(state) => {
+            format!("Provider client requires user interaction: {state:?}.")
+        }
+        LinuxHandoffReason::UnknownModal => {
+            "Provider client shows an unknown modal dialog; finish it manually.".to_string()
+        }
+        LinuxHandoffReason::SensitiveControl => {
+            "Provider client exposes a sensitive control (e.g. password); finish it manually."
+                .to_string()
+        }
+    }
+}
+
+#[cfg(all(target_os = "linux", feature = "linux-atspi"))]
+fn now_unix_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64
 }
 
 #[cfg(all(windows, feature = "windows-uiautomation"))]

@@ -15,7 +15,6 @@ Check a row only after capturing and redacting its live evidence. `pnpm external
 
 - [ ] Fullscreen/anti-cheat overlay evidence is captured on real titles.
 - [ ] Long native overlay sessions produce stable runtime/session evidence.
-- [ ] External-drive backup/restore E2E runs on Windows, macOS, and Linux.
 - [ ] Real client mount/apply behavior is tested against provider clients.
 
 ## Capture Handoff
@@ -24,17 +23,15 @@ Use these handoffs to collect redacted live evidence. Handoffs are guidance only
 
 - Fullscreen/anti-cheat overlay evidence is captured on real titles.: Capture real-title fullscreen and anti-cheat overlay behavior with redacted title, OS, and session evidence. Evidence cues: `overlay`, `fullscreen`, `anti-cheat`.
 - Long native overlay sessions produce stable runtime/session evidence.: Run long native overlay sessions and attach redacted runtime/session evidence showing stability over the measured window. Evidence cues: `native-overlay`, `long-session`.
-- External-drive backup/restore E2E runs on Windows, macOS, and Linux.: Run external-drive backup and restore E2E on Windows, macOS, and Linux, then attach redacted per-OS run evidence. Evidence cues: `external-drive`, `backup-restore`, `Windows`, `macOS`, `Linux`.
 - Real client mount/apply behavior is tested against provider clients.: Exercise real client mount/apply behavior against provider clients and attach redacted apply, rollback, and provider-client evidence. Evidence cues: `client-mount`, `mount-apply`, `provider-client`.
 
 ## Proof Evidence Mapping
 
 For every checked proof, add a specific redacted run/dashboard/workflow/artifact locator, signed log, or `sha256:<64-hex>` reference. Accepted dashboard URL hosts are Supabase, GitHub Actions/releases/deployments, Vercel, Netlify, Cloudflare, App Store Connect, and Google Play Console; otherwise use `run:`/`artifact:`/`sha256:`. Local/example URLs and generic text do not pass.
-Proof evidence values must name the proof lane: `presence-poll`, `account-deletion`, `non-steam-presence-bridge-provider`, `provider-approved-catalog-cloud-transfer`, `achievement-provider-cache-real-client`, `fullscreen-anti-cheat-overlay`, `backup-restore`, `client-mount-apply-provider-client`, `community-artwork-rollout`, `plugin-marketplace-execution-update`, or `hosted-deploy`. Compound values must include their required providers, OSes, duration/window, and matrix fields.
+Proof evidence values must name the proof lane: `presence-poll`, `account-deletion`, `non-steam-presence-bridge-provider`, `provider-approved-catalog-cloud-transfer`, `achievement-provider-cache-real-client`, `fullscreen-anti-cheat-overlay`, `client-mount-apply-provider-client`, `community-artwork-rollout`, `plugin-marketplace-execution-update`, or `hosted-deploy`. Compound values must include their required providers, OSes, duration/window, and matrix fields.
 
 - Evidence for Fullscreen/anti-cheat overlay evidence is captured on real titles.:
 - Evidence for Long native overlay sessions produce stable runtime/session evidence.:
-- Evidence for External-drive backup/restore E2E runs on Windows, macOS, and Linux.:
 - Evidence for Real client mount/apply behavior is tested against provider clients.:
 
 ## Gate-Specific Evidence

@@ -8,14 +8,11 @@ import {
   clearBroadcastStreamKeySecret,
   eaFetchOwnedGames,
   eaGetToken,
-  ejectBackupExternalDrive,
   fetchEpicOwnedGames,
   fetchGamePassCatalog,
   fetchSteamOwnedGames,
   fetchUbisoftOwnedGames,
   getBroadcastStreamKeyVaultStatus,
-  getDiskInfo,
-  getLatestBackupStatus,
   listInstalledGames,
   gogGetToken,
   moveGame,
@@ -33,14 +30,8 @@ import {
   reviewPluginUpdateSigningEnvelope,
   provePluginRuntimeSandbox,
   proveCrossStoreSaveLocalE2E,
-  proveBackupExternalDriveEjectSafety,
-  proveBackupExternalDriveWrite,
-  previewBackupPlan,
-  previewRestorePlan,
-  restoreBackup,
   rollbackCrossStoreSaveCopy,
   setBroadcastStreamKeySecret,
-  runBackupPlan,
   scanLocalPluginManifests,
   startDownload,
   stageSignedPluginPackage,
@@ -122,60 +113,6 @@ describe("launcher browser guards", () => {
         "76561198000000002",
       ),
     ).toBe(false);
-  });
-
-  it("blocks backup and restore native commands outside Tauri", async () => {
-    const backupRequest = {
-      compression: "none" as const,
-      includeLibraryData: true,
-      targetPath: "/tmp/og-backups",
-    };
-    const restoreRequest = {
-      includeLibraryData: true,
-      targetPath: "/tmp/og-backups",
-    };
-
-    await expect(previewBackupPlan(backupRequest)).rejects.toThrow("desktop app");
-    await expect(runBackupPlan(backupRequest)).rejects.toThrow("desktop app");
-    await expect(previewRestorePlan(restoreRequest)).rejects.toThrow("desktop app");
-    await expect(restoreBackup(restoreRequest)).rejects.toThrow("desktop app");
-    await expect(
-      proveBackupExternalDriveWrite({
-        consent: {
-          accepted: true,
-          operation: "sentinel_write_read_checksum_delete",
-          targetPath: "/tmp/og-backups",
-        },
-        expectedMountPoint: "/tmp",
-        targetPath: "/tmp/og-backups",
-      }),
-    ).rejects.toThrow("desktop app");
-    await expect(
-      proveBackupExternalDriveEjectSafety({
-        consent: {
-          accepted: true,
-          operation: "flush_write_delete_before_eject_review",
-          targetPath: "/tmp/og-backups",
-        },
-        expectedMountPoint: "/tmp",
-        targetPath: "/tmp/og-backups",
-      }),
-    ).rejects.toThrow("desktop app");
-    await expect(
-      ejectBackupExternalDrive({
-        consent: {
-          accepted: true,
-          operation: "os_eject_unmount_removable_target",
-          targetPath: "/tmp/og-backups",
-        },
-        expectedMountPoint: "/tmp",
-        preflightProofId: "preflight-proof-1",
-        targetPath: "/tmp/og-backups",
-      }),
-    ).rejects.toThrow("desktop app");
-    await expect(getLatestBackupStatus("/tmp/og-backups")).rejects.toThrow("desktop app");
-    await expect(getDiskInfo()).rejects.toThrow("desktop app");
-    expect(invoke).not.toHaveBeenCalled();
   });
 
   it("blocks plugin registry native commands outside Tauri", async () => {

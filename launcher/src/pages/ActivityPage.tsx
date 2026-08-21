@@ -396,101 +396,118 @@ export function ActivityPage() {
   }
 
   return (
-    <section aria-label="Friend activity page" className="space-y-5">
-      <header className="grid overflow-hidden border-[5px] border-black bg-[#171411] text-[#fff9ed] shadow-[7px_7px_0_#171411] lg:grid-cols-[minmax(0,1fr)_auto]">
-        <div className="neo-dots-ink p-5 sm:p-6">
-          <h1 className="neo-title text-4xl leading-none sm:text-6xl">
+    <section aria-label="Friend activity page" className="space-y-4">
+      <div className="mx-auto max-w-[980px] border-4 border-black bg-[#fbf4e7] shadow-[6px_6px_0_#171411]">
+        <div className="flex flex-wrap items-center gap-3 border-b-4 border-black bg-[#171411] px-4 py-3 text-[#fbf4e7]">
+          <h1 className="neo-title min-w-0 text-3xl leading-none sm:text-4xl">
             {isMyActivity ? "My Activity" : "Friend Activity"}
           </h1>
-        </div>
-        <div className="grid grid-cols-2 border-t-[5px] border-black bg-[#f5eedf] text-[#171411] lg:w-72 lg:border-t-0 lg:border-l-[5px]">
-          <ActivityStat label="Friends" value={visibleFriends.length} />
-          <ActivityStat label="Online" value={onlineCount} accent />
-          <div className="col-span-2 grid grid-cols-2 border-t-[3px] border-black">
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            <StatCard label="Friends" value={visibleFriends.length} tone="paper" />
+            <StatCard label="Online" value={onlineCount} tone="teal" />
             <Link
-              className="neo-copy flex items-center justify-center border-r-[3px] border-black bg-[#007166] px-2 py-3 text-center text-[9px] font-black tracking-[0.08em] text-white uppercase hover:bg-[#b7102a]"
-              to={isMyActivity ? "/activity" : "/activity?view=mine"}
-            >
-              {isMyActivity ? "Friend Activity" : "My Activity"}
-            </Link>
-            <Link
-              className="neo-copy flex items-center justify-center gap-1 bg-[#b7102a] px-2 py-3 text-center text-[9px] font-black tracking-[0.08em] text-white uppercase hover:bg-[#007166]"
+              className="neo-copy flex min-w-[92px] items-center justify-center gap-1.5 border-[3px] border-black bg-[#b7102a] p-3 text-[9px] font-black tracking-[0.12em] text-white uppercase shadow-[3px_3px_0_#171411] hover:bg-[#8f0d23]"
               to="/activity/recap"
             >
               <Trophy className="h-3.5 w-3.5" /> Year Recap
             </Link>
           </div>
         </div>
-      </header>
 
-      {isPreview ? (
-        <p className="neo-copy border-[3px] border-black bg-[#8cf5e4] p-3 text-[10px] leading-5 font-black text-[#171411] uppercase shadow-[3px_3px_0_#171411]">
-          {isMyActivity
-            ? "Local preview // Showing sample activity for your own player profile."
-            : "Local preview // Connect Supabase to replace these examples with your real friend feed."}
-        </p>
-      ) : null}
+        <div className="border-b-4 border-black bg-[#f6edd8] px-4 pt-3">
+          <div aria-label="Activity feed views" className="flex flex-wrap gap-4" role="group">
+            <Link
+              className={`neo-copy border-b-4 px-1 pb-2 text-[11px] font-black uppercase transition ${
+                isMyActivity
+                  ? "border-transparent text-[#5b403f] hover:text-[#171411]"
+                  : "border-[#087d6d] text-[#087d6d]"
+              }`}
+              to="/activity"
+            >
+              Friend Activity
+            </Link>
+            <Link
+              className={`neo-copy border-b-4 px-1 pb-2 text-[11px] font-black uppercase transition ${
+                isMyActivity
+                  ? "border-[#087d6d] text-[#087d6d]"
+                  : "border-transparent text-[#5b403f] hover:text-[#171411]"
+              }`}
+              to="/activity?view=mine"
+            >
+              My Activity
+            </Link>
+          </div>
+        </div>
 
-      {isConfigured && !user && !isPreview ? (
-        <section className="border-[5px] border-black bg-[#fff9ed] p-6 shadow-[6px_6px_0_#171411]">
-          <h2 className="neo-title text-4xl leading-none text-[#171411]">
-            Sign in for friend activity
-          </h2>
-          <p className="neo-copy mt-3 text-[11px] leading-5 font-bold text-[#5b403f] uppercase">
-            Your activity feed follows friendship and privacy rules. Sign in to load it.
+        {isPreview ? (
+          <p className="neo-copy border-b-4 border-black bg-[#8cf5e4] px-4 py-2 text-[10px] font-black text-[#171411] uppercase">
+            {isMyActivity
+              ? "Local preview // Showing sample activity for your own player profile."
+              : "Local preview // Connect Supabase to replace these examples with your real friend feed."}
           </p>
-          <Link
-            className="neo-copy mt-4 inline-flex border-[3px] border-black bg-[#b7102a] px-5 py-3 text-[10px] font-black tracking-[0.12em] text-white uppercase shadow-[3px_3px_0_#171411]"
-            to="/auth"
-          >
-            Sign in
-          </Link>
-        </section>
-      ) : (
-        <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_310px]">
-          <div className="min-w-0 space-y-4">
-            <section className="border-[5px] border-black bg-[#f5eedf] p-3 shadow-[6px_6px_0_#171411]">
-              {!isPreview && friendDataWarning ? (
-                <div
-                  className="mb-4 border-[3px] border-black bg-[#f3c3c9] p-3 shadow-[3px_3px_0_#171411]"
-                  role="alert"
-                >
-                  <p className="neo-title text-2xl leading-none text-[#171411]">
-                    Friend signal partially unavailable
-                  </p>
-                  <p className="neo-copy mt-2 text-[10px] leading-5 font-black text-[#5b403f] uppercase">
-                    {friendDataWarning}
-                  </p>
-                  <button
-                    className="neo-copy mt-3 inline-flex items-center gap-2 border-2 border-black bg-[#b7102a] px-3 py-2 text-[9px] font-black tracking-[0.1em] text-white uppercase shadow-[2px_2px_0_#171411] disabled:opacity-60"
-                    disabled={friendDataLoading}
-                    type="button"
-                    onClick={() => setFriendDataVersion((value) => value + 1)}
-                  >
-                    {friendDataLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
-                    {friendDataLoading ? "Retrying friend data..." : "Retry friend data"}
-                  </button>
-                </div>
-              ) : null}
-              {!isPreview && friendDataLoading ? (
-                <p
-                  className="neo-copy mb-3 flex items-center gap-2 border-2 border-black bg-[#8cf5e4] p-2 text-[9px] font-black text-[#171411] uppercase"
-                  role="status"
-                >
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" /> Syncing friend signals... Feed
-                  remains available.
+        ) : null}
+
+        {isConfigured && !user && !isPreview ? (
+          <section className="border-b-4 border-black bg-[#fff9ed] p-5">
+            <h2 className="neo-title text-3xl leading-none text-[#171411]">
+              Sign in for friend activity
+            </h2>
+            <p className="neo-copy mt-2 text-[11px] leading-5 font-bold text-[#5b403f] uppercase">
+              Your activity feed follows friendship and privacy rules. Sign in to load it.
+            </p>
+            <Link
+              className="neo-copy mt-4 inline-flex border-[3px] border-black bg-[#b7102a] px-5 py-3 text-[10px] font-black tracking-[0.12em] text-white uppercase shadow-[3px_3px_0_#171411]"
+              to="/auth"
+            >
+              Sign in
+            </Link>
+          </section>
+        ) : null}
+      </div>
+
+      {isConfigured && !user && !isPreview ? null : (
+        <div className="mx-auto grid max-w-[980px] gap-4 xl:grid-cols-[minmax(0,1fr)_310px]">
+          <div className="min-w-0 space-y-3">
+            {!isPreview && friendDataWarning ? (
+              <div
+                className="mb-4 border-[3px] border-black bg-[#f3c3c9] p-3 shadow-[3px_3px_0_#171411]"
+                role="alert"
+              >
+                <p className="neo-title text-2xl leading-none text-[#171411]">
+                  Friend signal partially unavailable
                 </p>
-              ) : null}
-              <ActivityFeed
-                artworkGames={artworkGames}
-                currentUserId={isPreview ? PREVIEW_CURRENT_USER_ID : (user?.id ?? null)}
-                friendIds={feedUserIds}
-                previewInteractions={visiblePreviewInteractions}
-                previewItems={visiblePreviewItems}
-                profiles={visibleProfiles}
-                scope={isMyActivity ? "mine" : "friends"}
-              />
-            </section>
+                <p className="neo-copy mt-2 text-[10px] leading-5 font-black text-[#5b403f] uppercase">
+                  {friendDataWarning}
+                </p>
+                <button
+                  className="neo-copy mt-3 inline-flex items-center gap-2 border-2 border-black bg-[#b7102a] px-3 py-2 text-[9px] font-black tracking-[0.1em] text-white uppercase shadow-[2px_2px_0_#171411] disabled:opacity-60"
+                  disabled={friendDataLoading}
+                  type="button"
+                  onClick={() => setFriendDataVersion((value) => value + 1)}
+                >
+                  {friendDataLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                  {friendDataLoading ? "Retrying friend data..." : "Retry friend data"}
+                </button>
+              </div>
+            ) : null}
+            {!isPreview && friendDataLoading ? (
+              <p
+                className="neo-copy mb-3 flex items-center gap-2 border-2 border-black bg-[#8cf5e4] p-2 text-[9px] font-black text-[#171411] uppercase"
+                role="status"
+              >
+                <Loader2 className="h-3.5 w-3.5 animate-spin" /> Syncing friend signals... Feed
+                remains available.
+              </p>
+            ) : null}
+            <ActivityFeed
+              artworkGames={artworkGames}
+              currentUserId={isPreview ? PREVIEW_CURRENT_USER_ID : (user?.id ?? null)}
+              friendIds={feedUserIds}
+              previewInteractions={visiblePreviewInteractions}
+              previewItems={visiblePreviewItems}
+              profiles={visibleProfiles}
+              scope={isMyActivity ? "mine" : "friends"}
+            />
           </div>
 
           <aside className="space-y-4">
@@ -499,7 +516,7 @@ export function ActivityPage() {
                 <span className="sr-only">Search friends</span>
                 <Search className="absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-[#5b403f]" />
                 <input
-                  className="neo-copy h-11 w-full border-[3px] border-black bg-[#f6edd8] pr-3 pl-9 text-[10px] font-black text-[#171411] uppercase outline-none focus:bg-[#8cf5e4]"
+                  className="neo-copy h-11 w-full border-[3px] border-black bg-[#fbf4e7] pr-3 pl-9 text-[10px] font-black text-[#171411] uppercase shadow-[2px_2px_0_#171411] outline-none focus:bg-[#8cf5e4]"
                   placeholder="Search friends or games"
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
@@ -516,7 +533,7 @@ export function ActivityPage() {
                 ) : null}
               </div>
               <Link
-                className="neo-copy mt-3 flex h-10 items-center justify-center gap-2 border-2 border-black bg-[#007166] text-[9px] font-black text-white uppercase shadow-[2px_2px_0_#171411]"
+                className="neo-copy mt-3 flex h-10 items-center justify-center gap-2 border-2 border-black bg-[#087d6d] text-[9px] font-black text-white uppercase shadow-[2px_2px_0_#171411]"
                 to="/friends"
               >
                 <UserPlus className="h-4 w-4" /> Manage friends
@@ -524,7 +541,7 @@ export function ActivityPage() {
             </RailPanel>
 
             <Link
-              className="neo-copy flex items-center gap-3 border-4 border-black bg-[#fff9ed] p-3 text-[10px] font-black text-[#171411] uppercase shadow-[4px_4px_0_#171411] hover:bg-[#8cf5e4]"
+              className="neo-copy flex items-center gap-3 border-4 border-black bg-[#fbf4e7] p-3 text-[10px] font-black text-[#171411] uppercase shadow-[4px_4px_0_#171411] hover:bg-[#8cf5e4]"
               to="/settings/privacy"
             >
               <Shield className="h-5 w-5 text-[#b7102a]" /> Activity privacy settings
@@ -536,21 +553,28 @@ export function ActivityPage() {
   );
 }
 
-function ActivityStat({
-  accent = false,
+function StatCard({
   label,
   value,
+  tone,
 }: {
-  accent?: boolean;
   label: string;
-  value: number;
+  value: string | number;
+  tone: "ink" | "teal" | "red" | "paper";
 }) {
+  const toneClass = {
+    ink: "bg-[#171411] text-[#fbf4e7]",
+    teal: "bg-[#087d6d] text-white",
+    red: "bg-[#b7102a] text-white",
+    paper: "bg-[#fbf4e7] text-[#171411]",
+  }[tone];
+
   return (
     <div
-      className={`p-4 text-center first:border-r-[3px] first:border-black ${accent ? "bg-[#8cf5e4]" : ""}`}
+      className={`min-w-[92px] border-[3px] border-black p-3 shadow-[3px_3px_0_#171411] ${toneClass}`}
     >
-      <p className="neo-title text-4xl leading-none">{value}</p>
-      <p className="neo-copy mt-1 text-[8px] font-black uppercase">{label}</p>
+      <p className="neo-title text-2xl leading-none">{value}</p>
+      <p className="neo-copy mt-1 text-[9px] font-black tracking-[0.12em] uppercase">{label}</p>
     </div>
   );
 }
@@ -560,12 +584,12 @@ function Avatar({ avatarUrl, name }: { avatarUrl?: string | null; name: string }
     return (
       <img
         alt={name}
-        className="h-12 w-12 border-[3px] border-black object-cover shadow-[2px_2px_0_#b7102a]"
+        className="h-12 w-12 border-[3px] border-black object-cover shadow-[2px_2px_0_#171411]"
         src={avatarUrl}
       />
     );
   return (
-    <span className="neo-title flex h-12 w-12 items-center justify-center border-[3px] border-black bg-[#171411] text-lg text-[#fff9ed] shadow-[2px_2px_0_#b7102a]">
+    <span className="neo-title flex h-12 w-12 items-center justify-center border-[3px] border-black bg-[#171411] text-lg text-[#fbf4e7] shadow-[2px_2px_0_#171411]">
       {name.slice(0, 2).toUpperCase()}
     </span>
   );
@@ -575,7 +599,7 @@ function FriendRow({ friend }: { friend: ActivityFriend }) {
   const name = friend.displayName ?? friend.username;
   const statusClass =
     friend.status === "online"
-      ? "bg-[#007166] text-white"
+      ? "bg-[#087d6d] text-white"
       : friend.status === "away"
         ? "bg-[#8cf5e4] text-[#171411]"
         : friend.status === "busy"
@@ -584,7 +608,7 @@ function FriendRow({ friend }: { friend: ActivityFriend }) {
   return (
     <Link
       aria-label={`Open ${name}'s profile`}
-      className="grid grid-cols-[48px_minmax(0,1fr)] gap-2 border-2 border-black bg-[#f6edd8] p-2 shadow-[2px_2px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#8cf5e4]"
+      className="grid grid-cols-[48px_minmax(0,1fr)] gap-2 border-2 border-black bg-[#fbf4e7] p-2 shadow-[2px_2px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#8cf5e4]"
       to={`/u/${encodeURIComponent(friend.username)}`}
     >
       <Avatar avatarUrl={friend.avatarUrl} name={name} />
@@ -594,7 +618,7 @@ function FriendRow({ friend }: { friend: ActivityFriend }) {
           {friend.currentGame ? `Playing ${friend.currentGame}` : `@${friend.username}`}
         </p>
         <span
-          className={`neo-copy mt-1 inline-flex border border-black px-1.5 py-0.5 text-[7px] font-black uppercase ${statusClass}`}
+          className={`neo-copy mt-1 inline-flex border-2 border-black px-1.5 py-0.5 text-[7px] font-black uppercase ${statusClass}`}
         >
           {friend.status}
         </span>
@@ -613,7 +637,7 @@ function RailPanel({
   title: string;
 }) {
   return (
-    <section className="border-4 border-black bg-[#fff9ed] p-3 text-[#171411] shadow-[5px_5px_0_#171411]">
+    <section className="border-4 border-black bg-[#fbf4e7] p-3 text-[#171411] shadow-[5px_5px_0_#171411]">
       <h2 className="neo-title flex items-center gap-2 border-b-[3px] border-black pb-2 text-3xl leading-none">
         {icon}
         {title}

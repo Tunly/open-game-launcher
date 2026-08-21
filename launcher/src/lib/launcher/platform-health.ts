@@ -12,8 +12,6 @@ import type {
   ClientModificationConfig,
   ClientPollingSettings,
   ClientPlatformId,
-  ClientUpdateSchedulerRunStatus,
-  ClientUpdateSchedulerStatus,
   ClientUpdateStatus,
   PlatformClientHealth,
   ScheduledClientUpdateChecksResponse,
@@ -117,18 +115,6 @@ function desktopOnlyClientUpdateStatus(platformId: ClientPlatformId): ClientUpda
     statusLabel: "Desktop only",
     updateAvailable: false,
     updatePolicy: "manual",
-  };
-}
-
-function desktopOnlyClientUpdateSchedulerStatus(): ClientUpdateSchedulerStatus {
-  return {
-    configPath: "Desktop app only",
-    installed: false,
-    lastRun: null,
-    message: "Headless platform-client update timers are available in the desktop app.",
-    provider: "Desktop app",
-    statusPath: "Desktop app only",
-    supported: false,
   };
 }
 
@@ -453,47 +439,6 @@ export function runScheduledPlatformClientUpdateChecks(): Promise<ScheduledClien
   return invokeCommand<ScheduledClientUpdateChecksResponse>(
     "run_scheduled_platform_client_update_checks",
   );
-}
-
-export function getPlatformClientUpdateSchedulerStatus(): Promise<ClientUpdateSchedulerStatus> {
-  if (!isTauri()) {
-    return Promise.resolve(desktopOnlyClientUpdateSchedulerStatus());
-  }
-
-  return invokeCommand<ClientUpdateSchedulerStatus>("get_platform_client_update_scheduler_status");
-}
-
-export function installPlatformClientUpdateScheduler(): Promise<ClientUpdateSchedulerStatus> {
-  if (!isTauri()) {
-    return Promise.resolve(desktopOnlyClientUpdateSchedulerStatus());
-  }
-
-  return invokeCommand<ClientUpdateSchedulerStatus>("install_platform_client_update_scheduler");
-}
-
-export function uninstallPlatformClientUpdateScheduler(): Promise<ClientUpdateSchedulerStatus> {
-  if (!isTauri()) {
-    return Promise.resolve(desktopOnlyClientUpdateSchedulerStatus());
-  }
-
-  return invokeCommand<ClientUpdateSchedulerStatus>("uninstall_platform_client_update_scheduler");
-}
-
-export function runPlatformClientUpdateSchedulerNow(): Promise<ClientUpdateSchedulerRunStatus> {
-  if (!isTauri()) {
-    return Promise.resolve({
-      checkedAt: new Date().toISOString(),
-      checkedClients: [],
-      checkedCount: 0,
-      message: "Headless platform-client update timers are available in the desktop app.",
-      nextCheckAt: null,
-      skippedCount: CLIENT_PLATFORM_IDS.length,
-      success: false,
-      updateCount: 0,
-    });
-  }
-
-  return invokeCommand<ClientUpdateSchedulerRunStatus>("run_platform_client_update_scheduler_now");
 }
 
 export function openPlatformClientInstaller(

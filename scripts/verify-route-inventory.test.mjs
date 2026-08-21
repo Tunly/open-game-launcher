@@ -130,15 +130,15 @@ test("collectVerifyFlagsFromText extracts route and branch literals", () => {
   const flags = collectVerifyFlagsFromText(`
     const verifyMode = searchParams.get("verify");
     const ready = verifyMode === "example-readiness";
-    const alsoReady = searchParams.get("verify") === "hosted-cron-evidence-summary";
+    const alsoReady = searchParams.get("verify") === "activity-preview";
     renderRoute("/downloads?verify=example-readiness");
     renderWithLibrary(<GameDetailPanel verifyMode="backlog-priority" />);
   `);
 
   assert.deepEqual([...flags.keys()].sort(), [
+    "activity-preview",
     "backlog-priority",
     "example-readiness",
-    "hosted-cron-evidence-summary",
   ]);
 });
 
@@ -500,16 +500,16 @@ test("verifyRouteInventory allows legacy aliases only when canonical route is do
       root,
       [
         'const legacy = searchParams.get("verify") === "public-profile-privacy-guard";',
-        'const nativeAlias = searchParams.get("verify") === "plugin-system-native-disabled-registry-audit";',
+        'const nativeAlias = searchParams.get("verify") === "activity-preview";',
         'renderInviteRoute("/invite/local-token?verify=invite-hosted-ready");',
       ].join("\n"),
       [
         "- `screenshots/profile-privacy-guard-local.png` - `/u/localprivacy?verify=profile-privacy-guard` documented.",
-        "- `screenshots/settings-plugin-disabled-registry-audit-local.png` - `/settings?verify=plugin-disabled-registry-audit` documented.",
+        "- `screenshots/game-activity-dashboard-yearly-recap-local-preview.png` - `/activity/recap?verify=activity-preview` documented.",
       ].join("\n"),
       [
         "screenshots/profile-privacy-guard-local.png",
-        "screenshots/settings-plugin-disabled-registry-audit-local.png",
+        "screenshots/game-activity-dashboard-yearly-recap-local-preview.png",
       ],
     );
 
@@ -522,9 +522,9 @@ test("verifyRouteInventory allows legacy aliases only when canonical route is do
 test("current route inventory has curated visual coverage and explicit legacy aliases", () => {
   const result = verifyRouteInventory();
 
-  assert.equal(result.sourceFlags.size, 38);
-  assert.equal(result.appRoutePaths.size, 20);
-  assert.equal(result.appRouteArtifacts.size, 20);
+  assert.equal(result.sourceFlags.size, 18);
+  assert.equal(result.appRoutePaths.size, 19);
+  assert.equal(result.appRouteArtifacts.size, 19);
   assert.equal(result.appRoutePaths.has("/home"), false);
   assert.equal(result.appRoutePaths.has("/mods"), false);
   assert.equal(result.appRoutePaths.has("/library"), true);
@@ -533,7 +533,7 @@ test("current route inventory has curated visual coverage and explicit legacy al
     result.documentedScreenshots.size,
     result.existingScreenshots.size,
   );
-  assert.ok(result.existingScreenshots.size >= 20);
+  assert.ok(result.existingScreenshots.size >= 19);
   assert.ok(result.existingScreenshots.size <= 40);
   assert.equal(result.screenshotIntegrity.size, result.existingScreenshots.size);
   assert.equal(
@@ -546,7 +546,6 @@ test("current route inventory has curated visual coverage and explicit legacy al
   assert.deepEqual(Object.keys(legacyVerifyFlags).sort(), [
     "cross-store-save-sync-e2e-readiness",
     "invite-hosted-ready",
-    "plugin-system-native-disabled-registry-audit",
     "public-profile-privacy-guard",
   ]);
   assert.equal(result.documentedFlags.has("remote-hydration"), false);
@@ -555,8 +554,8 @@ test("current route inventory has curated visual coverage and explicit legacy al
       line.includes("normal app route paths"),
     ),
     [
-      "Discovered 20 normal app route paths in launcher/src/app/router.tsx.",
-      "Verified screenshot artifact coverage for 20 normal app route paths.",
+      "Discovered 19 normal app route paths in launcher/src/app/router.tsx.",
+      "Verified screenshot artifact coverage for 19 normal app route paths.",
     ],
   );
 });

@@ -37,12 +37,6 @@ const verificationReadme = readFileSync(
   new URL("../docs/verification/README.md", import.meta.url),
   "utf8",
 );
-const screenshotManifest = JSON.parse(
-  readFileSync(
-    new URL("../docs/verification/screenshot-manifest.json", import.meta.url),
-    "utf8",
-  ),
-);
 const functionsEnvExample = readFileSync(
   new URL("../supabase/functions/.env.example", import.meta.url),
   "utf8",
@@ -51,21 +45,10 @@ const localAudit = readFileSync(
   new URL("../docs/verification/local-completion-audit.md", import.meta.url),
   "utf8",
 );
-const featurePlan = readFileSync(
-  new URL("../FEATURE_PLAN.md", import.meta.url),
-  "utf8",
-);
 const readme = readFileSync(new URL("../README.md", import.meta.url), "utf8");
 const prBody = readFileSync(new URL("../PR_BODY.md", import.meta.url), "utf8");
 const security = readFileSync(new URL("../SECURITY.md", import.meta.url), "utf8");
 const changelog = readFileSync(new URL("../CHANGELOG.md", import.meta.url), "utf8");
-const externalSummarySource = readFileSync(
-  new URL(
-    "../launcher/src/lib/external-completion-evidence-summary.ts",
-    import.meta.url,
-  ),
-  "utf8",
-);
 
 function fakeExists(existing) {
   return (path) => existing.includes(path);
@@ -197,8 +180,6 @@ function proofEvidenceValueForProof(proof, fallback) {
     return "run-fullscreen-anticheat-overlay-session-123";
   if (proof.includes("Long native overlay sessions"))
     return "run-native-overlay-long-session-duration-45min-123";
-  if (proof.includes("External-drive backup/restore"))
-    return "run-external-drive-backup-restore-Windows-macOS-Linux-e2e-123";
   if (proof.includes("Real client mount/apply"))
     return "run-client-mount-apply-provider-client-123";
   if (proof === rolloutProof) return rolloutEvidence;
@@ -405,24 +386,6 @@ function weakEvidenceDetails() {
     "- Redacted run IDs, dashboard links, screenshots, or signed deployment logs: see above",
     "- Redaction notes: ok",
   ].join("\n");
-}
-
-function externalSummaryGateBlock(id) {
-  const idMarker = `id: "${id}"`;
-  const markerIndex = externalSummarySource.indexOf(idMarker);
-  assert.notEqual(markerIndex, -1, `External summary gate ${id} not found.`);
-  const blockStarts = [
-    ...externalSummarySource.slice(0, markerIndex).matchAll(/^  \{/gm),
-  ];
-  const blockStart = blockStarts.at(-1)?.index ?? -1;
-  const blockEnd = externalSummarySource.indexOf("\n  },", markerIndex);
-  assert.notEqual(
-    blockStart,
-    -1,
-    `External summary gate ${id} start not found.`,
-  );
-  assert.notEqual(blockEnd, -1, `External summary gate ${id} end not found.`);
-  return externalSummarySource.slice(blockStart, blockEnd);
 }
 
 const configuredEnv = Object.freeze({
@@ -989,7 +952,7 @@ test("preflight reports redacted artifact reason codes without raw evidence valu
   assert.ok(gate);
   const artifactPath = "docs/verification/external/hardware-os-e2e.md";
   const badLocator =
-    "run-123 docs/verification/screenshots/settings-external-completion-evidence-summary-local.png";
+    "run-123 docs/verification/screenshots/game-activity-dashboard-yearly-recap-local-preview.png";
   const genericProofLocator = "run-generic-proof-123";
   const env = {
     ...configuredEnv,
@@ -1920,22 +1883,15 @@ test("preflight status requires hardware OS proof and matrix to name every OS ti
   const gate = evidenceGates.find((item) => item.id === "hardware-os-e2e");
   assert.ok(gate);
   const artifactPath = "docs/verification/external/hardware-os-e2e.md";
-  const osProof =
-    "External-drive backup/restore E2E runs on Windows, macOS, and Linux.";
 
-  const contentWithOsEvidence = ({ matrix, proofEvidence }) =>
+  const contentWithOsEvidence = ({ matrix }) =>
     [
       ...gate.requiredProofs.map((proof) => `- [x] ${proof}`),
-      ...gate.requiredProofs.map(
-        (proof, index) =>
-          `- Evidence for ${proof}: ${
-            proof === osProof
-              ? proofEvidence
-              : proofEvidenceValueForProof(
-                  proof,
-                  `run-hardware-os-${index + 1}`,
-                )
-          }`,
+      ...gate.requiredProofs.map((proof, index) =>
+        `- Evidence for ${proof}: ${proofEvidenceValueForProof(
+          proof,
+          `run-hardware-os-${index + 1}`,
+        )}`,
       ),
       `- OS/title/client matrix: ${matrix}`,
       "- Hardware profile: hardware-profile-run-123",
@@ -1950,7 +1906,6 @@ test("preflight status requires hardware OS proof and matrix to name every OS ti
     fakeRead({
       [artifactPath]: contentWithOsEvidence({
         matrix: "Windows title:redacted-game client:Steam run:win-matrix-123",
-        proofEvidence: "workflow-backup-restore-Windows-123",
       }),
     }),
   );
@@ -1962,10 +1917,6 @@ test("preflight status requires hardware OS proof and matrix to name every OS ti
       field: "OS/title/client matrix",
       path: artifactPath,
     },
-    {
-      field: `Evidence for ${osProof}`,
-      path: artifactPath,
-    },
   ]);
 
   const osOnlyStatus = gateStatus(
@@ -1975,7 +1926,6 @@ test("preflight status requires hardware OS proof and matrix to name every OS ti
     fakeRead({
       [artifactPath]: contentWithOsEvidence({
         matrix: "matrix Windows macOS Linux workflow-123",
-        proofEvidence: "workflow-backup-restore-Windows-macOS-Linux-123",
       }),
     }),
   );
@@ -1995,7 +1945,6 @@ test("preflight status requires hardware OS proof and matrix to name every OS ti
     fakeRead({
       [artifactPath]: contentWithOsEvidence({
         matrix: validHardwareOsMatrix,
-        proofEvidence: "workflow-backup-restore-Windows-macOS-Linux-123",
       }),
     }),
   );
@@ -2822,7 +2771,7 @@ test("preflight status rejects local verification screenshot locators as externa
         gate,
         capturedEvidenceDetails({
           locator:
-            "docs/verification/screenshots/settings-external-completion-evidence-summary-local.png",
+            "docs/verification/screenshots/game-activity-dashboard-yearly-recap-local-preview.png",
         }),
       ),
     }),
@@ -2845,9 +2794,9 @@ test("preflight status rejects duplicate evidence rows when any value is invalid
   const artifactPath = "docs/verification/external/hardware-os-e2e.md";
   const firstProof = gate.requiredProofs[0];
   const localScreenshotPath =
-    "docs/verification/screenshots/settings-external-completion-evidence-summary-local.png";
+    "docs/verification/screenshots/game-activity-dashboard-yearly-recap-local-preview.png";
   const windowsLocalScreenshotPath =
-    "docs\\verification\\screenshots\\settings-external-completion-evidence-summary-local.png";
+    "docs\\verification\\screenshots\\game-activity-dashboard-yearly-recap-local-preview.png";
 
   const duplicateDetailStatus = gateStatus(
     gate,
@@ -2952,8 +2901,8 @@ test.skip("preflight status rejects unapproved URL and local path evidence locat
   assert.ok(gate);
 
   for (const locator of [
-    "run-123 docs/verification/screenshots/settings-external-completion-evidence-summary-local.png",
-    "run-123 docs\\verification\\screenshots\\settings-external-completion-evidence-summary-local.png",
+    "run-123 docs/verification/screenshots/game-activity-dashboard-yearly-recap-local-preview.png",
+    "run-123 docs\\verification\\screenshots\\game-activity-dashboard-yearly-recap-local-preview.png",
     "./artifact-run-123.log",
     ".\\artifact-run-123.log",
     "../logs/run-123.log",
@@ -3916,14 +3865,10 @@ test("provider runbook documents non-Steam presence bridge collection inputs", (
 
 test("documentation no longer advertises the removed mods product surface", () => {
   assert.doesNotMatch(readme, /scan_mod_directory/);
-  assert.doesNotMatch(featurePlan, /scan_mod_directory/);
   assert.doesNotMatch(readme, /Nexus\/CurseForge/);
-  assert.doesNotMatch(featurePlan, /Nexus\/CurseForge/);
   assert.doesNotMatch(readme, /run_mod_provider_staging_probe/);
-  assert.doesNotMatch(featurePlan, /run_mod_provider_staging_probe/);
   assert.doesNotMatch(readme, /Nexus Mods[\s\S]*Steam Workshop/);
-  assert.doesNotMatch(featurePlan, /Nexus Mods[\s\S]*Steam Workshop/);
-  for (const document of [readme, featurePlan, prBody, security, changelog, localAudit]) {
+  for (const document of [readme, prBody, security, changelog, localAudit]) {
     assert.doesNotMatch(document, /no[- ]slug/i);
   }
   assert.doesNotMatch(prBody, /Nexus requires a registered app ID/i);
@@ -3977,72 +3922,6 @@ test("README documents explicit hosted deploy gate aliases", () => {
   assert.match(readme, /pnpm hosted:deploy-gate:preflight/);
   assert.match(readme, /pnpm hosted:deploy-gate:smoke/);
   assert.doesNotMatch(readme, /hosted deploy preflight\/smoke/);
-});
-
-test("verification manifest and guide document the external next handoff", () => {
-  const externalSummaryRows = screenshotManifest.screenshots.filter((entry) =>
-    /screenshots\/settings-external-completion-evidence-summary-(?:local|mobile)\.png/.test(
-      entry.file,
-    ),
-  );
-
-  assert.equal(externalSummaryRows.length, 2);
-  const documentedCommands = [
-    "pnpm external:evidence:next",
-    "pnpm external:evidence:worklist",
-    "pnpm external:evidence:packet",
-    "pnpm external:evidence:runbook",
-    "pnpm external:evidence:preflight",
-    "pnpm completion:gate:status",
-    "pnpm completion:gate:external",
-  ];
-  for (const row of externalSummaryRows) {
-    assert.deepEqual(row.routes, ["/settings", "/settings/diagnostics"]);
-    assert.deepEqual(row.verify, ["external-completion-evidence-summary"]);
-  }
-  for (const command of documentedCommands) {
-    assert.match(verificationReadme, new RegExp(escapeForRegExp(command)));
-  }
-});
-
-test("external evidence CLI gates stay in sync with the UI summary and plan boundary", () => {
-  const uiGateIds = [...externalSummarySource.matchAll(/id:\s*"([^"]+)"/g)].map(
-    ([, id]) => id,
-  );
-  assert.deepEqual(
-    uiGateIds,
-    evidenceGates.map((gate) => gate.id),
-  );
-
-  for (const gate of evidenceGates) {
-    const uiGate = externalSummaryGateBlock(gate.id);
-    assert.match(uiGate, new RegExp(escapeForRegExp(`label: "${gate.title}"`)));
-
-    for (const artifact of gate.artifactPaths) {
-      assert.match(runbook, new RegExp(escapeForRegExp(artifact)));
-      assert.match(uiGate, new RegExp(escapeForRegExp(`"${artifact}"`)));
-    }
-    for (const envName of gate.requiredEnv) {
-      assert.match(runbook, new RegExp(escapeForRegExp(envName)));
-      assert.match(uiGate, new RegExp(escapeForRegExp(`"${envName}"`)));
-    }
-    for (const proof of gate.requiredProofs) {
-      const owningArtifact =
-        gate.artifactProofs?.find((item) => item.requiredProofs.includes(proof))
-          ?.path ?? gate.artifactPaths[0];
-      const artifact = readFileSync(
-        new URL(`../${owningArtifact}`, import.meta.url),
-        "utf8",
-      );
-      assert.match(artifact, new RegExp(escapeForRegExp(proof)));
-      assert.match(uiGate, new RegExp(escapeForRegExp(`"${proof}"`)));
-    }
-  }
-
-  assert.match(featurePlan, /Hosted Cron/);
-  assert.match(featurePlan, /Provider-Live/);
-  assert.match(featurePlan, /Hardware\/OS/);
-  assert.match(featurePlan, /Rollout/);
 });
 
 function escapeForRegExp(value) {

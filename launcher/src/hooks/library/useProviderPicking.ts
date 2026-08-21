@@ -7,6 +7,7 @@ import { syncGamePlaytimeStats } from "../../lib/supabase/playtime";
 import { writeActivePerformanceGameContext } from "../../lib/performance-context";
 import { isInstallableGame, isPlayableGame, type GameGroup } from "../../lib/game-groups";
 import { getErrorMessage } from "../../lib/formatters";
+import { getXboxPackageFamilyName } from "../../lib/provider-identity";
 import { useActivityLogger } from "../useActivityLogger";
 import type { Game } from "../../lib/types";
 
@@ -28,21 +29,6 @@ function desktopActionMessage(mode: ProviderPickerMode) {
     : "Installing and updating games is available only in the OG-Launcher desktop app.";
 }
 
-const XBOX_PACKAGE_FAMILY_NAME_PATTERN = /^[a-z0-9][a-z0-9.-]*_[a-z0-9]{13}$/i;
-
-function getXboxPackageFamilyName(gameId: string) {
-  let packageFamilyName: string | null = null;
-  if (gameId.startsWith("xbox-owned-")) {
-    packageFamilyName = gameId.slice("xbox-owned-".length);
-  } else if (gameId.startsWith("xbox-")) {
-    packageFamilyName = gameId.slice("xbox-".length);
-  }
-
-  return packageFamilyName && XBOX_PACKAGE_FAMILY_NAME_PATTERN.test(packageFamilyName)
-    ? packageFamilyName
-    : null;
-}
-
 function trackPlaySessionStart(game: Game) {
   return syncGamePlaytimeStats({
     game,
@@ -60,6 +46,33 @@ function trackActivePerformanceGame(game: Game) {
     gameTitle: game.title,
     launcher: game.launcher ?? null,
   });
+}
+
+/**
+ * Launch one game copy and record every side effect exactly once.
+ * Returns the status message to surface, or null when the copy is not
+ * playable (the caller decides what to do then).
+ */
+export async function launchGameCopy(
+  game: Game,
+  deps: {
+    logGameStart: (gameId: string, title: string, meta: { launcher?: string | null }) => void;
+  },
+): Promise<{ launched: boolean; message: string }> {
+  const xboxPackageFamilyName = getXboxPackageFamilyName(game.id);
+  if (xboxPackageFamilyName) {
+    await launchXboxGame(xboxPackageFamilyName);
+    trackActivePerformanceGame(game);
+    deps.logGameStart(game.id, game.title, { launcher: "xbox" });
+    void trackPlaySessionStart(game);
+    return { launched: true, message: "Launching Xbox game..." };
+  }
+
+  const response = await launchGame(game.id);
+  trackActivePerformanceGame(game);
+  deps.logGameStart(game.id, game.title, { launcher: game.launcher });
+  void trackPlaySessionStart(game);
+  return { launched: true, message: response.message };
 }
 
 export interface UseProviderPickingOptions {
@@ -133,34 +146,10 @@ export function useProviderPicking({
         return;
       }
 
-      const xboxPackageFamilyName = getXboxPackageFamilyName(game.id);
-      if (xboxPackageFamilyName) {
-        await launchXboxGame(xboxPackageFamilyName);
-        setStatusMessage("Launching Xbox game...");
-        trackActivePerformanceGame(game);
-        void logGameStart(game.id, game.title, { launcher: "xbox" });
-        void trackPlaySessionStart(game);
-        return;
-      }
-
-      if (
-        game.id.startsWith("steam-owned-") ||
-        game.id.startsWith("gog-owned-") ||
-        game.id.startsWith("epic-owned-")
-      ) {
-        const response = await launchGame(game.id);
-        setStatusMessage(response.message);
-        trackActivePerformanceGame(game);
-        void logGameStart(game.id, game.title, { launcher: game.launcher });
-        void trackPlaySessionStart(game);
-        return;
-      }
-
-      const response = await launchGame(game.id);
-      setStatusMessage(response.message);
-      trackActivePerformanceGame(game);
-      void logGameStart(game.id, game.title, { launcher: game.launcher });
-      void trackPlaySessionStart(game);
+      const result = await launchGameCopy(game, {
+        logGameStart,
+      });
+      setStatusMessage(result.message);
     } catch (error) {
       setStatusMessage(getErrorMessage(error));
     }

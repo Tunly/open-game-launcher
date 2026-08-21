@@ -1,19 +1,10 @@
 import type { Game } from "./types";
 import type { OwnedGame } from "./launcher";
+import { launchUriForOwnedGame, providerOfOwnedId } from "./provider-identity";
 
 export function ownedGameToGame(og: OwnedGame): Game {
-  let launcher: Game["launcher"] = "manual";
-  if (og.id.startsWith("steam-")) launcher = "steam";
-  else if (og.id.startsWith("epic-")) launcher = "epic";
-  else if (og.id.startsWith("gog-")) launcher = "gog";
-  else if (og.id.startsWith("xbox-")) launcher = "xbox";
-  else if (og.id.startsWith("ubisoft-")) launcher = "ubisoft";
-  else if (og.id.startsWith("ea-")) launcher = "ea";
-  else if (og.id.startsWith("battlenet-")) launcher = "battlenet";
-
-  const gogLaunchId = og.externalId ?? og.id.replace(/^gog-owned-/, "");
-  const eaLaunchId = og.externalId ?? og.id.replace(/^ea-owned-/, "");
-  const steamLaunchId = og.externalId ?? og.id.replace(/^steam-owned-/, "");
+  const launcher = providerOfOwnedId(og.id) as Game["launcher"];
+  const launchUri = launchUriForOwnedGame(og);
   const productCategory = og.id.startsWith("steam-owned-") ? "game" : undefined;
 
   return {
@@ -21,14 +12,7 @@ export function ownedGameToGame(og: OwnedGame): Game {
     externalId: og.externalId ?? undefined,
     title: og.title,
     catalogSource: og.catalogSource ?? undefined,
-    launchUri:
-      og.id.startsWith("steam-owned-") && /^\d+$/.test(steamLaunchId)
-        ? `steam://install/${steamLaunchId}`
-        : og.id.startsWith("gog-owned-") && gogLaunchId
-          ? `gogalaxy://openGameView/${gogLaunchId}`
-          : og.id.startsWith("ea-owned-") && eaLaunchId
-            ? `origin://launchgame/${eaLaunchId}`
-            : undefined,
+    launchUri,
     description: og.description,
     version: "",
     coverUrl: og.coverUrl ?? undefined,

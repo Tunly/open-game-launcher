@@ -41,8 +41,8 @@ vi.mock("../components/library/AddGameDialog", () => ({
   AddGameDialog: () => null,
 }));
 
-vi.mock("../components/library/GameDetailPanel", () => ({
-  GameDetailPanel: (props: { verifyMode?: string | null }) => {
+vi.mock("../components/library/GameDetails", () => ({
+  GameDetails: (props: { verifyMode?: string | null }) => {
     gameDetailPanelMock(props);
 
     return (

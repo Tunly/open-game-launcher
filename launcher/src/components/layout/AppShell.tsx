@@ -5,7 +5,6 @@ import {
   Bell,
   ChevronDown,
   CheckCircle2,
-  DatabaseBackup,
   Download,
   Gift,
   LogIn,
@@ -27,23 +26,7 @@ import {
 } from "../../lib/app-shell-skins";
 import { selectActiveCount, useDownloadStore } from "../../stores/downloadStore";
 import { useLauncherUpdateStore } from "../../stores/launcherUpdateStore";
-import {
-  BACKUP_REMINDER_SETTINGS_CHANGED_EVENT,
-  formatBackupReminderDate,
-  getBackupReminderStatus,
-  isBackupReminderDue,
-  markBackupReminderDone,
-  readBackupReminderSettings,
-  saveBackupReminderSettings,
-  shouldAutoRunBackupReminder,
-  snoozeBackupReminder,
-} from "../../lib/backup-reminder";
-import {
-  getDownloadQueue,
-  runBackupPlan,
-  runScheduledPlatformClientUpdateChecks,
-} from "../../lib/launcher";
-import { STORAGE_KEYS } from "../../lib/storage-keys";
+import { getDownloadQueue, runScheduledPlatformClientUpdateChecks } from "../../lib/launcher";
 import type { DownloadItem } from "../../lib/types";
 
 interface AppShellProps {
@@ -71,20 +54,14 @@ interface NotificationItem {
   message: string;
   time: string;
   isUnread: boolean;
-  type: "backup" | "download" | "update" | "social";
+  type: "download" | "update" | "social";
   action?: {
     label: string;
     page: PageKey;
   };
 }
 
-const BACKUP_REMINDER_POLL_MS = 60 * 60 * 1000;
 const CLIENT_UPDATE_SCHEDULER_POLL_MS = 60 * 60 * 1000;
-const BACKUP_AUTORUN_FAILURE_SNOOZE_MS = 60 * 60 * 1000;
-
-function errorMessage(error: unknown) {
-  return error instanceof Error ? error.message : String(error);
-}
 
 function isQueueItemAtLeastAsRecent(
   incoming: { eventRevision?: number; lastUpdatedAt?: number },
@@ -125,9 +102,6 @@ export function AppShell({
   const [scheduledClientUpdateNotifications, setScheduledClientUpdateNotifications] = useState<
     NotificationItem[]
   >([]);
-  const [scheduledBackupReminderNotifications, setScheduledBackupReminderNotifications] = useState<
-    NotificationItem[]
-  >([]);
   const [readNotificationIds, setReadNotificationIds] = useState<Set<string>>(() => new Set());
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const [shellSkinId, setShellSkinId] = useState<AppShellSkinId>(() => readAppShellSkinId());
@@ -137,7 +111,6 @@ export function AppShell({
   const profileTriggerRef = useRef<HTMLButtonElement | null>(null);
   const wasNotificationMenuOpenRef = useRef(false);
   const wasProfileMenuOpenRef = useRef(false);
-  const isAutoBackupRunningRef = useRef(false);
   const accountLabel = authDisplayName ?? authEmail ?? "Account";
   const avatarInitials = getInitials(accountLabel);
   const profileMenuLabel = authUsername ?? accountLabel;
@@ -158,11 +131,7 @@ export function AppShell({
           },
         ]
       : [];
-  const notificationItems = [
-    ...launcherUpdateNotifications,
-    ...scheduledBackupReminderNotifications,
-    ...scheduledClientUpdateNotifications,
-  ];
+  const notificationItems = [...launcherUpdateNotifications, ...scheduledClientUpdateNotifications];
   const unreadNotificationCount = notificationItems.filter(
     (item) => item.isUnread && !readNotificationIds.has(item.id),
   ).length;
@@ -431,125 +400,6 @@ export function AppShell({
     };
   }, []);
 
-  useEffect(() => {
-    let active = true;
-
-    async function syncBackupReminderNotification() {
-      const settings = readBackupReminderSettings();
-      if (!active) {
-        return;
-      }
-
-      if (!isBackupReminderDue(settings)) {
-        setScheduledBackupReminderNotifications([]);
-        return;
-      }
-
-      const status = getBackupReminderStatus(settings);
-      if (
-        shouldAutoRunBackupReminder(settings, new Date(), isTauri()) &&
-        !isAutoBackupRunningRef.current
-      ) {
-        isAutoBackupRunningRef.current = true;
-        setScheduledBackupReminderNotifications([
-          {
-            id: `backup-auto-run-started-${settings.nextDueAt ?? settings.updatedAt ?? "due"}`,
-            title: "Backup Auto-Run",
-            message: `Running scheduled backup for ${settings.targetPath}.`,
-            time: "Now",
-            isUnread: true,
-            type: "backup",
-            action: { label: "Open Settings", page: "settings" },
-          },
-        ]);
-
-        try {
-          const result = await runBackupPlan({
-            compression: settings.compression,
-            includeLibraryData: settings.includeLibraryData,
-            targetPath: settings.targetPath,
-          });
-          if (!active) {
-            return;
-          }
-          const savedSettings = saveBackupReminderSettings(markBackupReminderDone(settings));
-          setScheduledBackupReminderNotifications([
-            {
-              id: `backup-auto-run-finished-${result.manifestId}`,
-              title: "Backup Auto-Run Complete",
-              message: `${result.message} Next: ${formatBackupReminderDate(savedSettings.nextDueAt)}.`,
-              time: "Just now",
-              isUnread: true,
-              type: "backup",
-              action: { label: "Open Settings", page: "settings" },
-            },
-          ]);
-        } catch (error) {
-          if (!active) {
-            return;
-          }
-          const retryAt = new Date(Date.now() + BACKUP_AUTORUN_FAILURE_SNOOZE_MS);
-          const savedSettings = saveBackupReminderSettings(
-            snoozeBackupReminder(settings, retryAt, new Date()),
-          );
-          setScheduledBackupReminderNotifications([
-            {
-              id: `backup-auto-run-failed-${settings.nextDueAt ?? settings.updatedAt ?? "due"}`,
-              title: "Backup Auto-Run Failed",
-              message: `${errorMessage(error)} Retry: ${formatBackupReminderDate(
-                savedSettings.snoozedUntil,
-              )}.`,
-              time: "Just now",
-              isUnread: true,
-              type: "backup",
-              action: { label: "Open Settings", page: "settings" },
-            },
-          ]);
-        } finally {
-          isAutoBackupRunningRef.current = false;
-        }
-        return;
-      }
-
-      setScheduledBackupReminderNotifications([
-        {
-          id: `backup-reminder-${settings.nextDueAt ?? settings.updatedAt ?? "due"}`,
-          title: status.title,
-          message: status.message,
-          time: "Due now",
-          isUnread: true,
-          type: "backup",
-          action: { label: "Open Settings", page: "settings" },
-        },
-      ]);
-    }
-
-    function handleStorage(event: StorageEvent) {
-      if (event.key === STORAGE_KEYS.BACKUP_REMINDER_SETTINGS) {
-        void syncBackupReminderNotification();
-      }
-    }
-
-    function handleReminderSettingsChanged() {
-      void syncBackupReminderNotification();
-    }
-
-    void syncBackupReminderNotification();
-    window.addEventListener(BACKUP_REMINDER_SETTINGS_CHANGED_EVENT, handleReminderSettingsChanged);
-    window.addEventListener("storage", handleStorage);
-    const intervalId = window.setInterval(syncBackupReminderNotification, BACKUP_REMINDER_POLL_MS);
-
-    return () => {
-      active = false;
-      window.removeEventListener(
-        BACKUP_REMINDER_SETTINGS_CHANGED_EVENT,
-        handleReminderSettingsChanged,
-      );
-      window.removeEventListener("storage", handleStorage);
-      window.clearInterval(intervalId);
-    };
-  }, []);
-
   async function handleLogout() {
     setIsProfileMenuOpen(false);
     await onLogout();
@@ -597,6 +447,17 @@ export function AppShell({
             <WindowDragRegion />
 
             <div className="ml-auto flex shrink-0 items-center gap-1 sm:gap-2">
+              <TopIconButton
+                label="Settings"
+                title="Open the launcher settings: downloads, updates, and privacy."
+                onClick={() => {
+                  setIsProfileMenuOpen(false);
+                  onNavigate("settings");
+                }}
+              >
+                <Settings className="h-4 w-4" />
+              </TopIconButton>
+
               <div ref={notificationMenuRef} className="relative">
                 <TopIconButton
                   ariaExpanded={isNotificationMenuOpen}
@@ -721,6 +582,7 @@ function TopIconButton({
   label,
   noLift = false,
   onClick,
+  title,
 }: {
   ariaExpanded?: boolean;
   ariaHasPopup?: "dialog" | "menu";
@@ -730,6 +592,7 @@ function TopIconButton({
   label: string;
   noLift?: boolean;
   onClick: () => void;
+  title?: string;
 }) {
   return (
     <button
@@ -741,6 +604,7 @@ function TopIconButton({
         noLift ? "" : "hover:-translate-y-0.5"
       }`}
       disabled={disabled}
+      title={title}
       type="button"
       onClick={onClick}
     >
@@ -813,8 +677,8 @@ function NotificationMenu({
           ))
         ) : (
           <p className="neo-copy border-2 border-dashed border-black bg-[#f6edd8] p-4 text-[10px] leading-5 font-black text-[#5b403f] uppercase">
-            No launcher notifications yet. Real launcher-update, download, backup, and client-update
-            events will appear here.
+            No launcher notifications yet. Real launcher-update, download, and client-update events
+            will appear here.
           </p>
         )}
       </div>
@@ -883,14 +747,6 @@ function NotificationIcon({ type }: { type: NotificationItem["type"] }) {
     return (
       <span className={className}>
         <Download className="h-5 w-5" />
-      </span>
-    );
-  }
-
-  if (type === "backup") {
-    return (
-      <span className={className}>
-        <DatabaseBackup className="h-5 w-5" />
       </span>
     );
   }

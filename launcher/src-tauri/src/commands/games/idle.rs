@@ -87,8 +87,74 @@ mod macos {
 #[cfg(target_os = "linux")]
 mod linux {
     use std::process::Command;
+    use std::time::{SystemTime, UNIX_EPOCH};
 
+    /// Seconds since the last user input event, via the platform's idle probe.
+    ///
+    /// On Wayland the external `xprintidle` tool cannot work (it is X11-only and
+    /// queries the X server directly). We prefer a D-Bus query to logind, whose
+    /// `IdleHint`/`IdleSinceHint` properties are session-wide and work on both
+    /// X11 and Wayland compositors, and fall back to `xprintidle` when the D-Bus
+    /// probe is unavailable (no logind, headless session, etc.).
+    ///
+    /// Errors degrade to `0` (never idle) — a broken idle probe must never stall
+    /// playtime tracking.
     pub fn seconds_since_last_input() -> u64 {
+        match logind_idle_seconds() {
+            Some(seconds) => seconds,
+            None => xprintidle_seconds(),
+        }
+    }
+
+    /// Query logind's `IdleSinceHint` property for the current session.
+    ///
+    /// Returns `Some(seconds_since_last_input)` when the property is present and
+    /// sane, `None` when logind is unreachable, the session has no IdleHint, or
+    /// the value is malformed. Each call opens a fresh blocking D-Bus connection
+    /// (milliseconds, and the playtime poller only runs every 10s).
+    fn logind_idle_seconds() -> Option<u64> {
+        use zbus::blocking::{Connection, Proxy};
+
+        let conn = Connection::session().ok()?;
+
+        // logind exposes the active session via Seat.ActiveSession
+        // (a (string, object-path) pair). Ask for the object path only.
+        let seat = Proxy::new(
+            &conn,
+            "org.freedesktop.login1",
+            "/org/freedesktop/login1/seat/auto",
+            "org.freedesktop.DBus.Properties",
+        )
+        .ok()?;
+        // ActiveSession is a (string session_id, object-path session) pair.
+        let (session_id, session_path): (String, zbus::zvariant::OwnedObjectPath) = seat
+            .call::<_, _, (String, zbus::zvariant::OwnedObjectPath)>(
+                "Get",
+                &("org.freedesktop.login1.Seat", "ActiveSession"),
+            )
+            .ok()?;
+        if session_id.is_empty() {
+            return None;
+        }
+
+        let session = Proxy::new(
+            &conn,
+            "org.freedesktop.login1",
+            session_path.as_str(),
+            "org.freedesktop.DBus.Properties",
+        )
+        .ok()?;
+        let idle_since: u64 = session
+            .call::<_, _, u64>("Get", &("org.freedesktop.login1.Session", "IdleSinceHint"))
+            .ok()?;
+        if idle_since == 0 {
+            return None;
+        }
+        let now = SystemTime::now().duration_since(UNIX_EPOCH).ok()?.as_secs();
+        Some(now.saturating_sub(idle_since))
+    }
+
+    fn xprintidle_seconds() -> u64 {
         // xprintidle is the standard X11 idle-time query tool. It returns
         // milliseconds (or "No value" / non-zero exit on failure / on Wayland).
         // We try it once per call; the poller is invoked every 10s, so cost

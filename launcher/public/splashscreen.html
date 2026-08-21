@@ -3,7 +3,8 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>OG-Launcher startet</title>
+    <title>OG-Launcher starting</title>
+    <script src="./splashscreen.js" defer></script>
     <style>
       :root {
         color-scheme: light;
@@ -37,13 +38,6 @@
         text-transform: uppercase;
       }
 
-      .neo-copy {
-        font-family: "Courier New", monospace;
-        font-weight: 700;
-        letter-spacing: 1px;
-        text-transform: uppercase;
-      }
-
       .neo-dots {
         background: radial-gradient(circle, rgba(23, 20, 17, 0.08) 1px, transparent 1.2px), #fff9ed;
         background-size: 8px 8px;
@@ -68,59 +62,76 @@
       }
 
       .brand {
-        padding: 10px 14px 9px;
+        padding: 11px 16px 10px;
         background: #b7102a;
-        font-size: 24px;
-        letter-spacing: -0.5px;
+        font-size: 22px;
+        letter-spacing: -0.4px;
         line-height: 1;
       }
 
       .splash-content {
         display: grid;
         align-content: center;
-        padding: 24px 28px 26px;
+        justify-items: start;
+        gap: 14px;
+        padding: 24px 28px;
       }
 
       h1 {
         margin: 0;
-        font-size: 28px;
+        font-size: 30px;
         letter-spacing: -0.6px;
         line-height: 1;
       }
 
+      .status {
+        margin: 0;
+        font-family: "Courier New", monospace;
+        font-size: 12px;
+        font-weight: 700;
+        letter-spacing: 1px;
+        text-transform: uppercase;
+        color: #6b5d3f;
+      }
+
       .progress {
-        height: 11px;
-        margin-top: 20px;
+        position: relative;
+        width: 100%;
+        height: 14px;
         overflow: hidden;
         border: 3px solid #171411;
         background: #efe6d4;
       }
 
-      .progress::before {
-        display: block;
-        width: 30%;
+      .progress-fill {
+        position: absolute;
+        top: 0;
+        left: 0;
         height: 100%;
+        width: 0;
         background: #007166;
-        content: "";
-        animation: load 1.1s steps(6, end) infinite;
+        transition: width 400ms cubic-bezier(0.22, 1, 0.36, 1);
       }
 
-      @keyframes load {
+      .progress-fill.indeterminate {
+        width: 40%;
+        animation: splash-indeterminate 1.2s ease-in-out infinite;
+      }
+
+      @keyframes splash-indeterminate {
         from {
-          transform: translateX(-110%);
+          transform: translateX(-100%);
         }
         to {
-          transform: translateX(440%);
+          transform: translateX(250%);
         }
       }
 
       @media (prefers-reduced-motion: reduce) {
-        .progress::before {
+        .progress-fill.indeterminate {
           animation: none;
-        }
-
-        .progress::before {
-          transform: translateX(115%);
+          width: 100%;
+          opacity: 0.5;
         }
       }
     </style>
@@ -131,9 +142,12 @@
         <div class="brand neo-title">OG-Launcher</div>
       </header>
 
-      <section class="splash-content">
-        <h1 id="splash-title" class="neo-title">Loading Launcher</h1>
-        <div class="progress" aria-hidden="true"></div>
+      <section class="splash-content" role="status" aria-live="polite">
+        <h1 id="splash-title" class="neo-title">Starting up</h1>
+        <p id="splash-status" class="status">Initializing …</p>
+        <div class="progress" aria-hidden="true">
+          <div id="splash-fill" class="progress-fill indeterminate"></div>
+        </div>
       </section>
     </main>
   </body>

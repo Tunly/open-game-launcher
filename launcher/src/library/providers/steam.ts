@@ -1,14 +1,11 @@
-import {
-  fetchSteamOwnedGames,
-  normalizeSteamOwnedGames,
-  openSteamScraperWindow,
-  type OwnedGame,
-} from "../../lib/launcher";
+import { fetchSteamOwnedGames, openSteamScraperWindow, type OwnedGame } from "../../lib/launcher";
+import { normalizeSteamOwnedGames } from "../../lib/steam-owned-games";
 import {
   installedSteamAppIds,
   ownedGameToGame,
   readLocalStorageString,
 } from "../../lib/library-providers";
+import { resolveSteamAppId } from "../../lib/steam-app-id";
 import {
   readSteamOwnedGamesCache,
   writeSteamOwnedGamesCache,
@@ -16,13 +13,6 @@ import {
 import { STORAGE_KEYS } from "../../lib/storage-keys";
 import type { Game } from "../../lib/types";
 import type { MergeContext, ProviderResult } from "./types";
-
-function steamAppId(game: Game) {
-  if (game.launcher === "steam" && game.externalId && /^\d+$/.test(game.externalId)) {
-    return game.externalId;
-  }
-  return game.id.match(/^steam-(?:owned-)?(\d+)$/)?.[1] ?? null;
-}
 
 export async function mergeSteamOwned(
   games: Game[],
@@ -81,12 +71,12 @@ export async function mergeSteamOwned(
       const ownedGames = ownedRaw.map(ownedGameToGame);
       const ownedByAppId = new Map(
         ownedGames.flatMap((game) => {
-          const appId = steamAppId(game);
+          const appId = resolveSteamAppId(game);
           return appId ? [[appId, game] as const] : [];
         }),
       );
       const gamesWithAchievementSummaries = games.map((game) => {
-        const appId = steamAppId(game);
+        const appId = resolveSteamAppId(game);
         const summary = appId ? ownedByAppId.get(appId)?.achievementSummary : undefined;
         return summary ? { ...game, achievementSummary: summary } : game;
       });

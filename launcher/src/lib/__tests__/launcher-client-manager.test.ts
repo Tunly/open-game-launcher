@@ -5,15 +5,12 @@ import {
   getPlatformClientInstallerMetadata,
   getPlatformClientModificationConfig,
   getPlatformClientPollingSettings,
-  getPlatformClientUpdateSchedulerStatus,
   getPlatformClientUpdateStatus,
-  installPlatformClientUpdateScheduler,
   pollPlatformClientHealth,
   previewClientManagerAutoApplyCapabilities,
   previewPlatformClientAutoApply,
   previewPlatformClientInstall,
   runScheduledPlatformClientUpdateChecks,
-  runPlatformClientUpdateSchedulerNow,
   savePlatformClientPollingSettings,
   toClientPlatformId,
 } from "../launcher";
@@ -165,26 +162,6 @@ describe("client manager helpers", () => {
       checkedClients: [],
       nextCheckAt: null,
       skippedClients: expect.arrayContaining(["Steam: desktop only"]),
-      updateCount: 0,
-    });
-  });
-
-  it("returns safe OS scheduler fallbacks outside Tauri", async () => {
-    await expect(getPlatformClientUpdateSchedulerStatus()).resolves.toMatchObject({
-      configPath: "Desktop app only",
-      installed: false,
-      provider: "Desktop app",
-      supported: false,
-    });
-
-    await expect(installPlatformClientUpdateScheduler()).resolves.toMatchObject({
-      installed: false,
-      supported: false,
-    });
-
-    await expect(runPlatformClientUpdateSchedulerNow()).resolves.toMatchObject({
-      checkedCount: 0,
-      success: false,
       updateCount: 0,
     });
   });

@@ -16,6 +16,9 @@ pub mod session;
 #[cfg(all(target_os = "linux", feature = "linux-atspi"))]
 pub mod linux;
 
+#[cfg(all(target_os = "linux", feature = "linux-atspi"))]
+pub mod linux_live;
+
 #[cfg(all(target_os = "macos", feature = "macos-axuielement"))]
 pub mod macos;
 

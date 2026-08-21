@@ -32,6 +32,10 @@ const openSteamScraperWindow = vi.fn();
 
 vi.mock("../../../lib/launcher", () => ({
   fetchSteamOwnedGames: (...args: unknown[]) => fetchSteamOwnedGames(...args),
+  openSteamScraperWindow: (...args: unknown[]) => openSteamScraperWindow(...args),
+}));
+
+vi.mock("../../../lib/steam-owned-games", () => ({
   normalizeSteamOwnedGames: (raw: unknown) => {
     if (!Array.isArray(raw)) return [];
     return raw.map((entry) => ({
@@ -43,7 +47,6 @@ vi.mock("../../../lib/launcher", () => ({
       achievementSummary: entry.achievementSummary,
     }));
   },
-  openSteamScraperWindow: (...args: unknown[]) => openSteamScraperWindow(...args),
 }));
 
 describe("mergeSteamOwned", () => {

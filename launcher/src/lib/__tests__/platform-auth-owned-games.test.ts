@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { normalizeSteamOwnedGames } from "../launcher/platform-auth";
+import { normalizeSteamOwnedGames } from "../steam-owned-games";
 
 describe("normalizeSteamOwnedGames playtime provenance", () => {
   it("does not invent zero playtime when Steam supplied no playtime field", () => {

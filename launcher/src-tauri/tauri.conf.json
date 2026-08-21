@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "splashscreen",
-        "title": "OG-Launcher startet",
+        "title": "OG-Launcher starting",
         "url": "splashscreen.html",
         "width": 480,
         "height": 250,
@@ -84,6 +84,10 @@
       "desktop": {
         "schemes": ["oglauncher"]
       }
+    },
+    "updater": {
+      "pubkey": "PLACEHOLDER_DEV_UPDATER_KEY",
+      "endpoints": []
     }
   }
 }

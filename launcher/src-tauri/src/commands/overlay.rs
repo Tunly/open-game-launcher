@@ -385,8 +385,8 @@ fn install_floating_window_guard(window: &tauri::WebviewWindow, label: &'static 
               document.body.innerHTML = `
                 <main style="display:grid;min-height:100vh;place-items:center;background:{page_background};color:{page_color};font:700 12px 'Courier New',monospace;">
                   <section style="max-width:300px;border:3px solid #171411;background:{panel_background};padding:14px;box-shadow:4px 4px 0 {panel_shadow};">
-                    <div style="color:#b7102a;font-weight:900;text-transform:uppercase;margin-bottom:8px;">${{'{escaped_label}'}} nicht geladen</div>
-                    <div>Das Fenster ist gestartet, aber die Launcher-Weboberflaeche hat kein HTML gerendert.</div>
+                    <div style="color:#b7102a;font-weight:900;text-transform:uppercase;margin-bottom:8px;">${{'{escaped_label}'}} not loaded</div>
+                    <div>The window started, but the launcher web UI did not render any HTML.</div>
                   </section>
                 </main>
               `;

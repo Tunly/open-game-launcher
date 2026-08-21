@@ -49,8 +49,8 @@ const launcherMocks = vi.hoisted(() => ({
   eaGetToken: vi.fn(),
   eaLogout: vi.fn(),
   fetchSteamProfileName: vi.fn(),
+  fetchUbisoftOwnedGames: vi.fn(),
   fetchXboxOwnedGames: vi.fn(),
-  getDefaultInstallDir: vi.fn(),
   getDownloadQueue: vi.fn(),
   getDownloadSettings: vi.fn(),
   getSystemInfo: vi.fn(),
@@ -60,7 +60,6 @@ const launcherMocks = vi.hoisted(() => ({
   launchCrossPlayJoin: vi.fn(),
   launchGame: vi.fn(),
   listInstalledGames: vi.fn(),
-  normalizeSteamOwnedGames: vi.fn(),
   openBattleNetLoginWindow: vi.fn(),
   openEaLoginWindow: vi.fn(),
   openEpicLoginWindow: vi.fn(),
@@ -153,8 +152,8 @@ vi.mock("../components/library/AddGameDialog", () => ({
   AddGameDialog: () => null,
 }));
 
-vi.mock("../components/library/GameDetailPanel", () => ({
-  GameDetailPanel: (props: { verifyMode?: string | null }) => (
+vi.mock("../components/library/GameDetails", () => ({
+  GameDetails: (props: { verifyMode?: string | null }) => (
     <section aria-label="Game detail panel mock" data-verify-mode={props.verifyMode ?? "null"} />
   ),
 }));
@@ -179,44 +178,6 @@ vi.mock("../components/profile/ProfileThemePreview", () => ({
   ProfileThemePreview: ({ theme }: { theme: { name: string } }) => (
     <section aria-label="Profile theme preview mock">{theme.name}</section>
   ),
-}));
-
-vi.mock("../components/settings/ActivitySection", () => ({
-  ActivitySection: () => <section aria-label="Activity settings mock" />,
-}));
-
-vi.mock("../components/settings/BackupRestoreSettings", () => ({
-  BackupRestoreSettings: () => <section aria-label="Backup settings mock" />,
-}));
-
-vi.mock("../components/settings/ClientManagerMountApplyContractPanel", () => ({
-  ClientManagerMountApplyContractPanel: () => (
-    <section aria-label="Client manager mount apply contract mock" />
-  ),
-}));
-
-vi.mock("../components/settings/ClientUpdateSchedulerSettings", () => ({
-  ClientUpdateSchedulerSettings: () => <section aria-label="Client scheduler mock" />,
-}));
-
-vi.mock("../components/settings/OneClickSetupE2EReadinessPanel", () => ({
-  OneClickSetupE2EReadinessPanel: () => <section aria-label="One-click setup E2E readiness mock" />,
-}));
-
-vi.mock("../components/settings/OneClickSetupReadinessPanel", () => ({
-  OneClickSetupReadinessPanel: () => <section aria-label="One-click setup readiness mock" />,
-}));
-
-vi.mock("../components/settings/PlatformHealthPanel", () => ({
-  PlatformHealthPanel: () => <section aria-label="Platform health mock" />,
-}));
-
-vi.mock("../components/settings/PluginSystemReadinessPanel", () => ({
-  PluginSystemReadinessPanel: () => <section aria-label="Plugin system readiness mock" />,
-}));
-
-vi.mock("../components/settings/PresencePollingReadinessPanel", () => ({
-  PresencePollingReadinessPanel: () => <section aria-label="Presence polling readiness mock" />,
 }));
 
 vi.mock("../hooks/useCurrentUser", () => ({
@@ -484,8 +445,8 @@ describe("routed page smoke coverage", () => {
     launcherMocks.eaGetToken.mockResolvedValue(null);
     launcherMocks.eaLogout.mockResolvedValue(undefined);
     launcherMocks.fetchSteamProfileName.mockResolvedValue("Steam User");
+    launcherMocks.fetchUbisoftOwnedGames.mockResolvedValue([]);
     launcherMocks.fetchXboxOwnedGames.mockResolvedValue({ games: [], gamertag: "Xbox User" });
-    launcherMocks.getDefaultInstallDir.mockResolvedValue("/games");
     launcherMocks.getDownloadQueue.mockResolvedValue([]);
     launcherMocks.getDownloadSettings.mockResolvedValue({
       bandwidthLimitKbps: 0,
@@ -502,7 +463,6 @@ describe("routed page smoke coverage", () => {
     launcherMocks.launchCrossPlayJoin.mockResolvedValue(undefined);
     launcherMocks.launchGame.mockResolvedValue(undefined);
     launcherMocks.listInstalledGames.mockResolvedValue([]);
-    launcherMocks.normalizeSteamOwnedGames.mockImplementation((games) => games);
     launcherMocks.openBattleNetLoginWindow.mockResolvedValue(undefined);
     launcherMocks.openEaLoginWindow.mockResolvedValue(undefined);
     launcherMocks.openEpicLoginWindow.mockResolvedValue(undefined);
@@ -781,9 +741,6 @@ describe("routed page smoke coverage", () => {
     renderRoutedPage(<SettingsPage />, "/settings");
 
     expect(screen.getByRole("heading", { name: /settings panel/i })).toBeInTheDocument();
-    expect(
-      await screen.findByRole("region", { name: /activity settings mock/i }),
-    ).toBeInTheDocument();
   });
 
   it("renders the edit profile settings route", async () => {

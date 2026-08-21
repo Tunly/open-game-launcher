@@ -9,10 +9,6 @@ const migration = readFileSync(
   resolve("../supabase/migrations/20260716160000_verify_provider_account_links.sql"),
   "utf8",
 );
-const relayAdapter = readFileSync(
-  resolve("../supabase/functions/relay-steam-achievements/adapters.ts"),
-  "utf8",
-);
 
 describe("verified Steam account migration contract", () => {
   it("keeps ownership proof and replay nonces server-controlled", () => {
@@ -56,9 +52,8 @@ describe("verified Steam account migration contract", () => {
     );
   });
 
-  it("uses one verification method across persistence and relay", () => {
+  it("pins the verification method to steam_openid", () => {
     expect(migration).toMatch(/verification_method = 'steam_openid'/i);
-    expect(relayAdapter).toMatch(/verification\.verification_method !== "steam_openid"/i);
-    expect(relayAdapter).not.toContain("steam_openid_2");
+    expect(migration).not.toMatch(/steam_openid_2/);
   });
 });

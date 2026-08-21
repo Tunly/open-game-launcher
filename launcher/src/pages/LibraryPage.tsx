@@ -16,8 +16,8 @@ const FriendsChatPopup = React.lazy(() =>
 const ProviderPickerDialog = React.lazy(() =>
   loadProviderPickerDialog().then((module) => ({ default: module.ProviderPickerDialog })),
 );
-const GameDetailPanel = React.lazy(() =>
-  import("../components/library/GameDetailPanel").then((m) => ({ default: m.GameDetailPanel })),
+const GameDetails = React.lazy(() =>
+  import("../components/library/GameDetails").then((m) => ({ default: m.GameDetails })),
 );
 import { useDownloadStore, selectCompletedCount } from "../stores/downloadStore";
 import { LibraryProvider } from "../context/LibraryProvider";
@@ -29,14 +29,8 @@ import {
 import { isPlayableGame, type GameGroup } from "../lib/game-groups";
 import { redeemShareToken, resolveShareToken } from "../lib/supabase/social";
 import type { Game } from "../lib/types";
-import { getLibraryArtworkUrls } from "../lib/library-artwork-audit";
 
-import { useLibrarySync } from "../hooks/library/useLibrarySync";
-import { useLibraryFilters } from "../hooks/library/useLibraryFilters";
-import { useManualCollections } from "../hooks/library/useManualCollections";
-import { useDynamicCollections } from "../hooks/library/useDynamicCollections";
-import { useAchievementAutoSync } from "../hooks/library/useAchievementAutoSync";
-import { useProviderPicking } from "../hooks/library/useProviderPicking";
+import { useLibrary } from "../hooks/library/useLibrary";
 
 function matchesGameReference(game: Game, reference: string) {
   const wanted = reference.trim().toLowerCase();
@@ -86,7 +80,6 @@ export function LibraryPage() {
   const gameListScrollRef = useRef<HTMLDivElement>(null);
   const claimedJoinRequestRef = useRef<string | null>(null);
   const claimedPlayRequestRef = useRef<string | null>(null);
-  const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [isAddGameOpen, setIsAddGameOpen] = useState(false);
   const [isFriendsChatOpen, setIsFriendsChatOpen] = useState(false);
   const [groupOption, setGroupOption] = useState<LibraryGroupOption>("none");
@@ -96,66 +89,12 @@ export function LibraryPage() {
   const completedDownloadCount = useDownloadStore(selectCompletedCount);
   const isDesktopRuntime = isTauri();
 
-  const sync = useLibrarySync({ setStatusMessage });
-  const manual = useManualCollections();
-  const filters = useLibraryFilters({
-    installedGames: sync.installedGames,
-    customArtwork: sync.customArtwork,
-    favorites: manual.favorites,
-    hiddenGames: manual.hiddenGames,
-    customCategories: manual.customCategories,
-    manualCollections: manual.manualCollections,
-    selectedManualCollectionName: manual.selectedManualCollectionName,
-    isDiscoveringGames: sync.isDiscoveringGames,
-  });
-  const dynamic = useDynamicCollections({
-    setAdvancedFilters: filters.setAdvancedFilters,
-    setActivePlatformFilter: filters.setActivePlatformFilter,
-    setSearchQuery: filters.setSearchQuery,
-    setSortOption: filters.setSortOption,
-    currentAdvancedFilters: filters.advancedFilters,
-    currentPlatformFilter: filters.activePlatformFilter,
-    currentSearchQuery: filters.searchQuery,
-    currentSortOption: filters.sortOption,
-  });
-  const achievements = useAchievementAutoSync({
-    installedGames: sync.installedGames,
-    selectedGroup: filters.selectedGroup,
-    setInstalledGames: sync.setInstalledGames,
-    setStatusMessage,
-  });
-  const picking = useProviderPicking({
-    selectedGroup: filters.selectedGroup,
-    setStatusMessage,
-  });
+  const { sync, manual, filters, dynamic, achievements, picking, statusMessage, setStatusMessage } =
+    useLibrary();
   const groupedGames = useMemo(
     () => groupLibraryGames(filters.filteredGroups, groupOption),
     [filters.filteredGroups, groupOption],
   );
-
-  useEffect(() => {
-    let cancelled = false;
-    const urls = getLibraryArtworkUrls(filters.enrichedLibraryGames ?? []);
-    if (urls.length === 0 || typeof Image === "undefined") return;
-
-    void Promise.all(
-      urls.map(
-        (url) =>
-          new Promise<[string, boolean]>((resolve) => {
-            const image = new Image();
-            image.onload = () => resolve([url, true]);
-            image.onerror = () => resolve([url, false]);
-            image.src = url;
-          }),
-      ),
-    ).then(() => {
-      if (cancelled) return;
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [filters.enrichedLibraryGames]);
 
   useEffect(() => {
     const requestedGameId = searchParams.get("game");
@@ -184,7 +123,7 @@ export function LibraryPage() {
     next.delete("game");
     next.delete("action");
     setSearchParams(next, { replace: true });
-  }, [filters, picking, searchParams, setSearchParams, sync]);
+  }, [filters, picking, searchParams, setSearchParams, setStatusMessage, sync]);
 
   // Deep-link `?join=...&platform=...&invite=...` from a universallauncher://join URL.
   // The Rust deep-link handler navigates here, but this is where we actually trigger
@@ -274,6 +213,7 @@ export function LibraryPage() {
     sync.installedGames,
     sync.isDiscoveringGames,
     sync.shouldShowLibraryLoading,
+    setStatusMessage,
   ]);
 
   useEffect(() => {
@@ -286,7 +226,7 @@ export function LibraryPage() {
     }, 4500);
 
     return () => window.clearTimeout(timeout);
-  }, [statusMessage]);
+  }, [setStatusMessage, statusMessage]);
 
   useEffect(() => {
     if (filters.filteredGroups.length === 0) {
@@ -364,7 +304,7 @@ export function LibraryPage() {
             onClose={() => filters.setIsFilterPopupOpen(false)}
           />
           <React.Suspense fallback={null}>
-            <GameDetailPanel verifyMode={searchParams.get("verify")} />
+            <GameDetails verifyMode={searchParams.get("verify")} />
           </React.Suspense>
         </div>
 

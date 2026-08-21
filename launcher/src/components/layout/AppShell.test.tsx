@@ -35,7 +35,6 @@ vi.mock("@tauri-apps/api/window", () => ({
 
 vi.mock("../../lib/launcher", () => ({
   getDownloadQueue: vi.fn(() => Promise.resolve([])),
-  runBackupPlan: vi.fn(() => Promise.resolve({ manifestId: "manifest", message: "Backup done" })),
   runScheduledPlatformClientUpdateChecks: vi.fn(() =>
     Promise.resolve({ checkedAt: "2026-06-12T10:00:00.000Z", message: "", updateCount: 0 }),
   ),
@@ -266,6 +265,19 @@ describe("AppShell browser-local shell skins", () => {
     for (const label of ["Library", "Achievements", "Activity", "Downloads", "Store"]) {
       expect(within(header).getByRole("button", { name: label })).toBeInTheDocument();
     }
+  });
+
+  it("opens settings from the header even when logged out", () => {
+    const onNavigate = vi.fn();
+    renderShell({ onNavigate });
+
+    const header = screen.getByRole("banner");
+    const settingsButton = within(header).getByRole("button", { name: "Settings" });
+    expect(settingsButton).toBeInTheDocument();
+    expect(settingsButton).toHaveAttribute("title", expect.stringContaining("launcher settings"));
+
+    fireEvent.click(settingsButton);
+    expect(onNavigate).toHaveBeenCalledWith("settings");
   });
 
   it("keeps the OG-Launcher brand next to the primary navigation in one header row", () => {

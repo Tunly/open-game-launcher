@@ -671,7 +671,10 @@ fn plan_provider_action(game: &InstalledGame, action: GameAction) -> PlannedGame
 }
 
 const fn provider_automation_enabled() -> bool {
-    cfg!(all(windows, feature = "windows-uiautomation"))
+    cfg!(any(
+        all(windows, feature = "windows-uiautomation"),
+        all(target_os = "linux", feature = "linux-atspi")
+    ))
 }
 
 fn provider_id(provider: &str) -> Option<ProviderId> {
@@ -749,10 +752,20 @@ fn provider_supported_on_current_os(provider: &str) -> bool {
 fn provider_supported_on_os(provider: &str, target_os: TargetOs) -> bool {
     match provider {
         "steam" => true,
-        "epic" | "gog" | "ea" | "battlenet" => {
-            matches!(target_os, TargetOs::Windows | TargetOs::Macos)
+        // Epic/GOG/EA/Battlenet run on Windows + macOS natively, and on Linux
+        // through Proton/Wine compatibility prefixes (the launcher client
+        // itself, not the games). The automation backend refuses to guess a
+        // prefix, so without explicit configuration these degrade to a
+        // user handoff rather than an unavailable action.
+        "epic" | "gog" | "ea" | "battlenet" | "ubisoft" => {
+            matches!(
+                target_os,
+                TargetOs::Windows | TargetOs::Macos | TargetOs::Linux
+            )
         }
-        "ubisoft" | "xbox" => target_os == TargetOs::Windows,
+        // Xbox (Microsoft Store / AppX) is Windows-only: no native Linux client
+        // and no compatibility layer can install/remove AppX packages.
+        "xbox" => target_os == TargetOs::Windows,
         _ => false,
     }
 }
@@ -1623,7 +1636,12 @@ mod tests {
     fn impossible_provider_os_pairs_are_not_applicable() {
         assert!(!provider_supported_on_os("xbox", TargetOs::Linux));
         assert!(!provider_supported_on_os("xbox", TargetOs::Macos));
-        assert!(!provider_supported_on_os("ubisoft", TargetOs::Linux));
+        assert!(provider_supported_on_os("xbox", TargetOs::Windows));
+        // Non-Windows launchers now also run on Linux via Proton/Wine
+        // compatibility (degrading to a user handoff when no prefix is
+        // configured); only the Xbox AppX provider stays Windows-only.
+        assert!(provider_supported_on_os("ubisoft", TargetOs::Linux));
+        assert!(provider_supported_on_os("epic", TargetOs::Linux));
         assert!(provider_supported_on_os("steam", TargetOs::Linux));
     }
 

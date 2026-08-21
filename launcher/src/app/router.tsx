@@ -48,11 +48,6 @@ const ProfilePage = lazy(() =>
 const SettingsPage = lazy(() =>
   import("../pages/SettingsPage").then((page) => ({ default: page.SettingsPage })),
 );
-const SettingsDiagnosticsPage = lazy(() =>
-  import("../pages/SettingsDiagnosticsPage").then((page) => ({
-    default: page.SettingsDiagnosticsPage,
-  })),
-);
 
 const FamilyPage = lazy(() =>
   import("../pages/FamilyPage").then((page) => ({ default: page.FamilyPage })),
@@ -113,7 +108,6 @@ export const router = createBrowserRouter([
       { path: "/invite/:token", element: page(<InviteFallbackPage />) },
       { path: "/u/:username", element: page(<ProfilePage />) },
       { path: "/settings/profile", element: page(<EditProfilePage />) },
-      { path: "/settings/diagnostics", element: page(<SettingsDiagnosticsPage />) },
       { path: "/settings", element: page(<SettingsPage />) },
       { path: "/settings/profile/customize", element: page(<ProfileCustomizePage />) },
       { path: "/settings/performance", element: page(<PerfHistoryPage />) },

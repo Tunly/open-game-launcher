@@ -90,9 +90,7 @@ full commit SHA, specific redacted run/dashboard/artifact locators, and checked
 proof rows. Never commit provider secrets, bearer tokens, service-role keys,
 private keys, or raw invite tokens.
 
-For the local settings summary represented by
-`settings-external-completion-evidence-summary-local.png` and its mobile
-variant, the operator handoff commands are:
+The operator handoff commands are:
 
 ```bash
 pnpm external:evidence:next

@@ -405,9 +405,6 @@ verify_jwt = true
 [functions.igdb-assets]
 verify_jwt = true
 
-[functions.link-steam-account]
-verify_jwt = true
-
 [functions.poll-platform-presence]
 verify_jwt = false
 
@@ -418,9 +415,6 @@ verify_jwt = false
 verify_jwt = true
 
 [functions.rawg-store-catalog]
-verify_jwt = true
-
-[functions.relay-steam-achievements]
 verify_jwt = true
 
 [functions.request-account-deletion]

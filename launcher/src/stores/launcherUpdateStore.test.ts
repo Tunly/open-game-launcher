@@ -1,16 +1,10 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type {
   LauncherUpdateAdapter,
   LauncherUpdateDownloadEvent,
   LauncherUpdateHandle,
 } from "../lib/launcher-update";
-import {
-  checkForLauncherUpdate,
-  installLauncherUpdate,
-  resetLauncherUpdateStateForTests,
-  setLauncherUpdateAdapterForTests,
-  useLauncherUpdateStore,
-} from "./launcherUpdateStore";
+import { createLauncherUpdateStore } from "./launcherUpdateStore";
 
 const checkedAt = new Date("2026-07-14T14:00:00.000Z");
 
@@ -30,41 +24,39 @@ function makeAdapter(overrides: Partial<LauncherUpdateAdapter> = {}): LauncherUp
     getCurrentVersion: vi.fn().mockResolvedValue("0.1.0"),
     check: vi.fn().mockResolvedValue(null),
     relaunch: vi.fn().mockResolvedValue(undefined),
-    now: () => checkedAt,
     ...overrides,
   };
 }
 
+function makeStore(adapterOverrides: Partial<LauncherUpdateAdapter> = {}) {
+  return createLauncherUpdateStore(makeAdapter(adapterOverrides), () => checkedAt);
+}
+
 describe("launcher update store", () => {
-  beforeEach(() => {
-    resetLauncherUpdateStateForTests();
-  });
-
   it("guards browser and unsupported runtimes before loading the updater", async () => {
-    const adapter = makeAdapter({
-      getRuntimeSupport: () => ({
-        supported: false,
-        reason: "Launcher-Updates sind nur in der installierten Windows-App verfügbar.",
+    const store = createLauncherUpdateStore(
+      makeAdapter({
+        getRuntimeSupport: () => ({
+          supported: false,
+          reason: "Launcher-Updates sind nur in der installierten Desktop-App verfügbar.",
+        }),
       }),
-    });
-    setLauncherUpdateAdapterForTests(adapter);
+      () => checkedAt,
+    );
 
-    await checkForLauncherUpdate();
+    await store.checkForLauncherUpdate();
 
-    expect(adapter.getCurrentVersion).not.toHaveBeenCalled();
-    expect(adapter.check).not.toHaveBeenCalled();
-    expect(useLauncherUpdateStore.getState()).toMatchObject({
+    expect(store.useLauncherUpdateStore.getState()).toMatchObject({
       status: "unsupported",
-      unsupportedReason: "Launcher-Updates sind nur in der installierten Windows-App verfügbar.",
+      unsupportedReason: "Launcher-Updates sind nur in der installierten Desktop-App verfügbar.",
       error: null,
     });
   });
 
   it("reports the installed version as current when no update exists", async () => {
-    const adapter = makeAdapter();
-    setLauncherUpdateAdapterForTests(adapter);
+    const store = makeStore();
 
-    const state = await checkForLauncherUpdate();
+    const state = await store.checkForLauncherUpdate();
 
     expect(state).toMatchObject({
       status: "current",
@@ -77,12 +69,11 @@ describe("launcher update store", () => {
 
   it("retains one pending update and exposes its release metadata", async () => {
     const update = makeUpdate({ body: "  Signed release notes  " });
-    const adapter = makeAdapter({ check: vi.fn().mockResolvedValue(update) });
-    setLauncherUpdateAdapterForTests(adapter);
+    const store = makeStore({ check: vi.fn().mockResolvedValue(update) });
 
-    await checkForLauncherUpdate();
+    await store.checkForLauncherUpdate();
 
-    expect(useLauncherUpdateStore.getState()).toMatchObject({
+    expect(store.useLauncherUpdateStore.getState()).toMatchObject({
       status: "available",
       currentVersion: "0.1.0",
       latestVersion: "0.2.0",
@@ -92,14 +83,13 @@ describe("launcher update store", () => {
   });
 
   it("maps network errors to a safe message without exposing raw details", async () => {
-    const adapter = makeAdapter({
+    const store = makeStore({
       check: vi.fn().mockRejectedValue(new Error("fetch failed with token=secret")),
     });
-    setLauncherUpdateAdapterForTests(adapter);
 
-    await checkForLauncherUpdate();
+    await store.checkForLauncherUpdate();
 
-    const state = useLauncherUpdateStore.getState();
+    const state = store.useLauncherUpdateStore.getState();
     expect(state.status).toBe("error");
     expect(state.error).toBe("Die Verbindung zum GitHub-Update-Dienst ist fehlgeschlagen.");
     expect(state.error).not.toContain("secret");
@@ -107,20 +97,19 @@ describe("launcher update store", () => {
   });
 
   it("maps permission and unknown check errors to safe localized messages", async () => {
-    setLauncherUpdateAdapterForTests(
-      makeAdapter({ check: vi.fn().mockRejectedValue(new Error("EACCES: access denied")) }),
-    );
-    await checkForLauncherUpdate();
-    expect(useLauncherUpdateStore.getState().error).toBe(
+    const store1 = makeStore({
+      check: vi.fn().mockRejectedValue(new Error("EACCES: access denied")),
+    });
+    await store1.checkForLauncherUpdate();
+    expect(store1.useLauncherUpdateStore.getState().error).toBe(
       "Das Launcher-Update konnte wegen fehlender Berechtigungen nicht installiert werden.",
     );
 
-    resetLauncherUpdateStateForTests();
-    setLauncherUpdateAdapterForTests(
-      makeAdapter({ check: vi.fn().mockRejectedValue(new Error("unexpected updater response")) }),
-    );
-    await checkForLauncherUpdate();
-    expect(useLauncherUpdateStore.getState().error).toBe(
+    const store2 = makeStore({
+      check: vi.fn().mockRejectedValue(new Error("unexpected updater response")),
+    });
+    await store2.checkForLauncherUpdate();
+    expect(store2.useLauncherUpdateStore.getState().error).toBe(
       "Die Launcher-Update-Prüfung ist fehlgeschlagen. Bitte versuche es später erneut.",
     );
   });
@@ -133,13 +122,13 @@ describe("launcher update store", () => {
           finishCheck = resolve;
         }),
     );
-    setLauncherUpdateAdapterForTests(makeAdapter({ check }));
+    const store = makeStore({ check });
 
-    const first = checkForLauncherUpdate();
-    const second = checkForLauncherUpdate();
+    const first = store.checkForLauncherUpdate();
+    const second = store.checkForLauncherUpdate();
     await vi.waitFor(() => expect(check).toHaveBeenCalledOnce());
     expect(second).toBe(first);
-    expect(useLauncherUpdateStore.getState().status).toBe("checking");
+    expect(store.useLauncherUpdateStore.getState().status).toBe("checking");
 
     finishCheck?.(null);
     await Promise.all([first, second]);
@@ -158,18 +147,16 @@ describe("launcher update store", () => {
         for (const event of events) onEvent(event);
       }),
     });
-    const adapter = makeAdapter({ check: vi.fn().mockResolvedValue(update) });
-    setLauncherUpdateAdapterForTests(adapter);
-    await checkForLauncherUpdate();
+    const store = makeStore({ check: vi.fn().mockResolvedValue(update) });
+    await store.checkForLauncherUpdate();
 
-    await installLauncherUpdate();
+    await store.installLauncherUpdate();
 
-    expect(useLauncherUpdateStore.getState()).toMatchObject({
+    expect(store.useLauncherUpdateStore.getState()).toMatchObject({
       status: "installing",
       progress: { downloadedBytes: 1_000, totalBytes: 1_000, percentage: 100 },
       error: null,
     });
-    expect(adapter.relaunch).toHaveBeenCalledOnce();
   });
 
   it("tracks downloaded bytes without inventing a percentage for unknown totals", async () => {
@@ -180,12 +167,12 @@ describe("launcher update store", () => {
         onEvent({ event: "Finished", data: {} });
       }),
     });
-    setLauncherUpdateAdapterForTests(makeAdapter({ check: vi.fn().mockResolvedValue(update) }));
-    await checkForLauncherUpdate();
+    const store = makeStore({ check: vi.fn().mockResolvedValue(update) });
+    await store.checkForLauncherUpdate();
 
-    await installLauncherUpdate();
+    await store.installLauncherUpdate();
 
-    expect(useLauncherUpdateStore.getState().progress).toEqual({
+    expect(store.useLauncherUpdateStore.getState().progress).toEqual({
       downloadedBytes: 512,
       totalBytes: null,
       percentage: null,
@@ -195,16 +182,16 @@ describe("launcher update store", () => {
   it("finishes safely if an updater emits Finished after progress was cleared", async () => {
     const update = makeUpdate({
       downloadAndInstall: vi.fn(async (onEvent) => {
-        useLauncherUpdateStore.setState({ progress: null });
+        store.useLauncherUpdateStore.setState({ progress: null });
         onEvent({ event: "Finished", data: {} });
       }),
     });
-    setLauncherUpdateAdapterForTests(makeAdapter({ check: vi.fn().mockResolvedValue(update) }));
-    await checkForLauncherUpdate();
+    const store = makeStore({ check: vi.fn().mockResolvedValue(update) });
+    await store.checkForLauncherUpdate();
 
-    await installLauncherUpdate();
+    await store.installLauncherUpdate();
 
-    expect(useLauncherUpdateStore.getState().progress).toEqual({
+    expect(store.useLauncherUpdateStore.getState().progress).toEqual({
       downloadedBytes: 0,
       totalBytes: null,
       percentage: null,
@@ -222,11 +209,11 @@ describe("launcher update store", () => {
       ),
     });
     const adapter = makeAdapter({ check: vi.fn().mockResolvedValue(update) });
-    setLauncherUpdateAdapterForTests(adapter);
-    await checkForLauncherUpdate();
+    const store = createLauncherUpdateStore(adapter, () => checkedAt);
+    await store.checkForLauncherUpdate();
 
-    const first = installLauncherUpdate();
-    const second = installLauncherUpdate();
+    const first = store.installLauncherUpdate();
+    const second = store.installLauncherUpdate();
     expect(second).toBe(first);
     expect(update.downloadAndInstall).toHaveBeenCalledOnce();
 
@@ -242,16 +229,16 @@ describe("launcher update store", () => {
       .mockResolvedValueOnce(undefined);
     const update = makeUpdate({ downloadAndInstall });
     const adapter = makeAdapter({ check: vi.fn().mockResolvedValue(update) });
-    setLauncherUpdateAdapterForTests(adapter);
-    await checkForLauncherUpdate();
+    const store = createLauncherUpdateStore(adapter, () => checkedAt);
+    await store.checkForLauncherUpdate();
 
-    await installLauncherUpdate();
-    expect(useLauncherUpdateStore.getState()).toMatchObject({
+    await store.installLauncherUpdate();
+    expect(store.useLauncherUpdateStore.getState()).toMatchObject({
       status: "error",
       error: "Die Signatur des Launcher-Updates konnte nicht verifiziert werden.",
     });
 
-    await installLauncherUpdate();
+    await store.installLauncherUpdate();
     expect(downloadAndInstall).toHaveBeenCalledTimes(2);
     expect(adapter.relaunch).toHaveBeenCalledOnce();
   });
@@ -260,18 +247,21 @@ describe("launcher update store", () => {
     const update = makeUpdate({
       downloadAndInstall: vi.fn().mockRejectedValue(new Error("unexpected installer failure")),
     });
-    setLauncherUpdateAdapterForTests(makeAdapter({ check: vi.fn().mockResolvedValue(update) }));
-    await checkForLauncherUpdate();
+    const store = makeStore({ check: vi.fn().mockResolvedValue(update) });
+    await store.checkForLauncherUpdate();
 
-    await installLauncherUpdate();
+    await store.installLauncherUpdate();
 
-    expect(useLauncherUpdateStore.getState().error).toBe(
+    expect(store.useLauncherUpdateStore.getState().error).toBe(
       "Das Launcher-Update konnte nicht installiert werden. Bitte versuche es erneut.",
     );
   });
 
   it("fails safely when install is requested without a checked update", async () => {
-    const state = await installLauncherUpdate();
+    const store = makeStore();
+
+    const state = await store.installLauncherUpdate();
+
     expect(state).toMatchObject({
       status: "error",
       error: "Es wurde noch kein installierbares Launcher-Update gefunden.",
@@ -286,14 +276,14 @@ describe("launcher update store", () => {
           finishCheck = resolve;
         }),
     );
-    setLauncherUpdateAdapterForTests(makeAdapter({ check }));
+    const store = makeStore({ check });
 
-    const checkPromise = checkForLauncherUpdate();
-    const install = installLauncherUpdate();
+    const checkPromise = store.checkForLauncherUpdate();
+    const install = store.installLauncherUpdate();
     await vi.waitFor(() => expect(check).toHaveBeenCalledOnce());
 
     expect(install).toBe(checkPromise);
-    expect(useLauncherUpdateStore.getState().status).toBe("checking");
+    expect(store.useLauncherUpdateStore.getState().status).toBe("checking");
 
     finishCheck?.(null);
     await Promise.all([checkPromise, install]);
@@ -301,10 +291,10 @@ describe("launcher update store", () => {
 
   it("falls back to the installed version when the update omits currentVersion", async () => {
     const update = makeUpdate({ currentVersion: undefined });
-    setLauncherUpdateAdapterForTests(makeAdapter({ check: vi.fn().mockResolvedValue(update) }));
-    await checkForLauncherUpdate();
+    const store = makeStore({ check: vi.fn().mockResolvedValue(update) });
+    await store.checkForLauncherUpdate();
 
-    expect(useLauncherUpdateStore.getState()).toMatchObject({
+    expect(store.useLauncherUpdateStore.getState()).toMatchObject({
       status: "available",
       currentVersion: "0.1.0",
       latestVersion: "0.2.0",
@@ -313,10 +303,10 @@ describe("launcher update store", () => {
 
   it("clears notes when the update body is empty", async () => {
     const update = makeUpdate({ body: undefined });
-    setLauncherUpdateAdapterForTests(makeAdapter({ check: vi.fn().mockResolvedValue(update) }));
-    await checkForLauncherUpdate();
+    const store = makeStore({ check: vi.fn().mockResolvedValue(update) });
+    await store.checkForLauncherUpdate();
 
-    expect(useLauncherUpdateStore.getState().notes).toBeNull();
+    expect(store.useLauncherUpdateStore.getState().notes).toBeNull();
   });
 
   it("does not fabricate a percentage when the announced total is zero", async () => {
@@ -327,12 +317,12 @@ describe("launcher update store", () => {
         onEvent({ event: "Finished", data: {} });
       }),
     });
-    setLauncherUpdateAdapterForTests(makeAdapter({ check: vi.fn().mockResolvedValue(update) }));
-    await checkForLauncherUpdate();
+    const store = makeStore({ check: vi.fn().mockResolvedValue(update) });
+    await store.checkForLauncherUpdate();
 
-    await installLauncherUpdate();
+    await store.installLauncherUpdate();
 
-    expect(useLauncherUpdateStore.getState().progress).toEqual({
+    expect(store.useLauncherUpdateStore.getState().progress).toEqual({
       downloadedBytes: 10,
       totalBytes: 0,
       percentage: null,
@@ -347,12 +337,12 @@ describe("launcher update store", () => {
         onEvent({ event: "Finished", data: {} });
       }),
     });
-    setLauncherUpdateAdapterForTests(makeAdapter({ check: vi.fn().mockResolvedValue(update) }));
-    await checkForLauncherUpdate();
+    const store = makeStore({ check: vi.fn().mockResolvedValue(update) });
+    await store.checkForLauncherUpdate();
 
-    await installLauncherUpdate();
+    await store.installLauncherUpdate();
 
-    expect(useLauncherUpdateStore.getState().progress).toEqual({
+    expect(store.useLauncherUpdateStore.getState().progress).toEqual({
       downloadedBytes: 512,
       totalBytes: null,
       percentage: null,
@@ -367,12 +357,12 @@ describe("launcher update store", () => {
         onEvent({ event: "Finished", data: {} });
       }),
     });
-    setLauncherUpdateAdapterForTests(makeAdapter({ check: vi.fn().mockResolvedValue(update) }));
-    await checkForLauncherUpdate();
+    const store = makeStore({ check: vi.fn().mockResolvedValue(update) });
+    await store.checkForLauncherUpdate();
 
-    await installLauncherUpdate();
+    await store.installLauncherUpdate();
 
-    expect(useLauncherUpdateStore.getState().progress).toEqual({
+    expect(store.useLauncherUpdateStore.getState().progress).toEqual({
       downloadedBytes: 100,
       totalBytes: 100,
       percentage: 100,

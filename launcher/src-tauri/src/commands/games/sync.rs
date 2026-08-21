@@ -5,9 +5,10 @@ use std::{
 
 use super::core::{
     current_unix_timestamp, get_dir_last_modified, normalize_game_id, path_size_bytes,
-    path_to_string, read_installed_games_cache, save_sync_root_for_game, sha256_file_hex,
+    path_to_string, read_installed_games_cache, save_sync_root_for_game,
     sync_destination_for_save, unix_timestamp_to_iso, update_installed_game_cache,
 };
+use super::og_manifest::sha256_file_hex;
 use super::types::*;
 use crate::commands::save_mirror;
 

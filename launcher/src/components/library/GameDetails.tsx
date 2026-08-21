@@ -32,21 +32,15 @@ import type {
   ClientAssetCacheLookup,
   ClientAutoApplyPlan,
   ClientInstallerMetadata,
-  ClientInstallStageCheck,
   ClientInstallStagePlan,
   ClientModificationConfig,
   ClientUpdateStatus,
   Game,
-  GameRuntimeStatus,
   PlatformClientHealth,
   PlatformClientLifecycleEvent,
   UnifiedAchievement,
 } from "../../lib/types";
-import {
-  hasCustomArtwork,
-  type CustomArtworkKind,
-  type GameCustomArtwork,
-} from "../../lib/custom-artwork";
+import { hasCustomArtwork, type CustomArtworkKind } from "../../lib/custom-artwork";
 import { Metric } from "./Metric";
 import { LibraryCustomScrollbar } from "./LibraryCustomScrollbar";
 import { PlatformSourceIcon } from "./PlatformIcons";
@@ -72,7 +66,6 @@ import {
 import {
   buildClientPathOverlayPreflight,
   type ClientPathOverlayPreflight,
-  type ClientPathOverlayPreflightStatus,
 } from "../../lib/client-path-overlay-preflight";
 import {
   checkPlatformClientUpdate,
@@ -102,16 +95,44 @@ import {
   resolveSelectedCopyActionCapabilities,
   type GameAction,
   type GameActionCapability,
-  type GameActionOutcome,
   type GameActionResult,
   type GameActionRuntimeContext,
 } from "../../lib/game-actions";
 import { isLiveDownloadItem, useDownloadStore } from "../../stores/downloadStore";
+import {
+  clientManagerActionLabel,
+  clientManagerHistoryStatusLabel,
+  clientAutoApplyClasses,
+  clientAutoApplyLabel,
+  clientInstallCheckClasses,
+  clientInstallStageClasses,
+  clientInstallStageLabel,
+  clientInstallTarget,
+  clientPathOverlayCheckClasses,
+  clientPathOverlayPreflightClasses,
+  clientPathOverlayPreflightLabel,
+  clientUpdateClasses,
+  clientUpdatePolicyLabel,
+  formatRelativeTime,
+  formatScheduleTime,
+  formatShortDate,
+  gameActionOutcomeClasses,
+  gameActionOutcomeLabel,
+  makeEmptyAssetCache,
+  makeEmptyClientConfig,
+  makeEmptyPathOverlay,
+  runtimeMetadataLabel,
+  unavailableNativeCapability,
+} from "./client-manager-labels";
+import { filterAndSortAchievements } from "../../lib/achievement-view";
+
 import { ConfirmDialog } from "../ui/ConfirmDialog";
 import { ModalDialog } from "../ui/ModalDialog";
 import { CrossPlayBadge } from "./CrossPlayBadge";
 import { getCrossPlayPlatforms } from "../../lib/supabase/crossplay";
 import type { CrossPlayPlatform } from "../../lib/types/crossplay";
+import { useLibraryContext } from "../../context/useLibraryContext";
+import { useGameDetailVerify } from "./useGameDetailVerify";
 const CrossStoreSaveMigrationReadinessPanel = React.lazy(() =>
   import("./GameDetails/CrossStoreSaveMigrationReadinessPanel").then((m) => ({
     default: m.CrossStoreSaveMigrationReadinessPanel,
@@ -153,11 +174,6 @@ const GameUpdateFeed = React.lazy(() =>
 const ArtworkPreviewModal = React.lazy(() =>
   import("./ArtworkPreviewModal").then((module) => ({ default: module.ArtworkPreviewModal })),
 );
-import type { CrossStoreSaveMigrationReadiness } from "../../lib/cross-store-save-migration-readiness";
-import type { CrossStoreSaveSyncPlan } from "../../lib/cross-store-save-sync-planner";
-import type { HostedCommunityArtworkReadiness } from "../../lib/hosted-community-artwork-readiness";
-import type { HostedCommunityArtworkModerationConsole } from "../../lib/hosted-community-artwork-moderation-console";
-import type { IgdbCrossPlayReadinessPlan } from "../../lib/igdb-cross-play-readiness";
 
 type AchievementWithSources = UnifiedAchievement & {
   sourceLabels?: string[];
@@ -184,385 +200,6 @@ type SelectedCopyUtilityAction = "move" | "save_sync" | "stop";
 
 interface PendingMoveAction extends SelectedGameActionBinding {
   targetPath: string;
-}
-
-function unavailableNativeCapability(
-  action: GameAction,
-  label: string,
-  reason: string,
-): GameActionCapability {
-  return {
-    action,
-    available: false,
-    completionObservable: false,
-    destructive:
-      action === "repair" ||
-      action === "update" ||
-      action === "uninstall" ||
-      action === "remove_from_library",
-    label,
-    mode: "not_applicable",
-    reason,
-    requiresConfirmation: false,
-  };
-}
-
-function gameActionOutcomeLabel(outcome: GameActionOutcome): string {
-  switch (outcome) {
-    case "completed":
-      return "Completed";
-    case "handoff_required":
-      return "Handoff required";
-    case "not_needed":
-      return "Not needed";
-    case "blocked":
-      return "Blocked";
-    case "failed":
-      return "Failed";
-  }
-}
-
-function gameActionOutcomeClasses(outcome: GameActionOutcome): string {
-  switch (outcome) {
-    case "completed":
-      return "bg-[#8cf5e4] text-[#171411]";
-    case "handoff_required":
-    case "not_needed":
-      return "bg-[#e8c843] text-[#171411]";
-    case "blocked":
-    case "failed":
-      return "bg-[#b7102a] text-white";
-  }
-}
-
-function filterAndSortAchievements(
-  achievements: UnifiedAchievement[],
-  filter: string,
-  sort: "rarity" | "name" | "date",
-): UnifiedAchievement[] {
-  const filtered = achievements.filter((achievement) => {
-    if (filter === "locked") return !achievement.unlockedAt;
-    if (filter === "unlocked") return Boolean(achievement.unlockedAt);
-    if (filter.startsWith("source:")) {
-      const source = filter.slice("source:".length);
-      return ((achievement as AchievementWithSources).sourceLabels ?? []).includes(source);
-    }
-    return true;
-  });
-  const sorted = [...filtered];
-  if (sort === "rarity") {
-    // Lower rarity first (rarest = most interesting). Locked with no rarity go to the end.
-    sorted.sort((a, b) => {
-      const ar = typeof a.rarity === "number" ? a.rarity : Number.POSITIVE_INFINITY;
-      const br = typeof b.rarity === "number" ? b.rarity : Number.POSITIVE_INFINITY;
-      return ar - br;
-    });
-  } else if (sort === "name") {
-    sorted.sort((a, b) => a.name.localeCompare(b.name));
-  } else if (sort === "date") {
-    sorted.sort((a, b) => {
-      // Unlocked first, newest first. Locked go to the end.
-      if (Boolean(a.unlockedAt) !== Boolean(b.unlockedAt)) {
-        return a.unlockedAt ? -1 : 1;
-      }
-      const at = a.unlockedAt ? Date.parse(a.unlockedAt) : 0;
-      const bt = b.unlockedAt ? Date.parse(b.unlockedAt) : 0;
-      return bt - at;
-    });
-  }
-  return sorted;
-}
-
-function formatRelativeTime(iso: string | null | undefined): string {
-  if (!iso) return "never";
-  const then = Date.parse(iso);
-  if (Number.isNaN(then)) return "unknown";
-  const diff = Date.now() - then;
-  const minutes = Math.floor(diff / 60_000);
-  if (minutes < 1) return "just now";
-  if (minutes < 60) return `${minutes}m ago`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}h ago`;
-  const days = Math.floor(hours / 24);
-  if (days < 30) return `${days}d ago`;
-  return new Date(then).toLocaleDateString();
-}
-
-function formatScheduleTime(iso: string | null | undefined): string {
-  if (!iso) return "not scheduled";
-  const then = Date.parse(iso);
-  if (Number.isNaN(then)) return "unknown";
-  const diff = then - Date.now();
-  if (diff <= 0) return "due now";
-  const minutes = Math.ceil(diff / 60_000);
-  if (minutes < 60) return `in ${minutes}m`;
-  const hours = Math.ceil(minutes / 60);
-  if (hours < 24) return `in ${hours}h`;
-  const days = Math.ceil(hours / 24);
-  if (days < 30) return `in ${days}d`;
-  return new Date(then).toLocaleDateString();
-}
-
-function formatShortDate(iso: string | null | undefined): string {
-  if (!iso) return "";
-  const d = new Date(iso);
-  if (Number.isNaN(d.getTime())) return "";
-  return d.toLocaleDateString(undefined, { year: "2-digit", month: "short", day: "2-digit" });
-}
-
-function formatRuntimeDuration(seconds: number | null | undefined): string | null {
-  if (seconds == null || seconds < 0) return null;
-  if (seconds < 60) return `${seconds}s`;
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `${minutes}m`;
-  const hours = Math.floor(minutes / 60);
-  const restMinutes = minutes % 60;
-  return restMinutes > 0 ? `${hours}h ${restMinutes}m` : `${hours}h`;
-}
-
-function runtimeMetadataLabel(input: {
-  pid?: number | null;
-  processName?: string | null;
-  uptimeSeconds?: number | null;
-  windowHandle?: string | null;
-  windowTitle?: string | null;
-}): string | null {
-  const duration = formatRuntimeDuration(input.uptimeSeconds);
-  const windowLabel = runtimeWindowLabel(input);
-  const parts = [
-    input.processName,
-    duration,
-    input.pid ? `PID ${input.pid}` : null,
-    windowLabel,
-  ].filter(Boolean);
-  return parts.length > 0 ? parts.join(" / ") : null;
-}
-
-function runtimeWindowLabel(input: {
-  windowHandle?: string | null;
-  windowTitle?: string | null;
-}): string | null {
-  const title = input.windowTitle?.trim();
-  const handle = input.windowHandle?.trim();
-  if (title && handle) return `Window ${title} (${handle})`;
-  if (title) return `Window ${title}`;
-  if (handle) return `Window ${handle}`;
-  return null;
-}
-
-function clientUpdateClasses(updateStatus: ClientUpdateStatus | null) {
-  if (!updateStatus) {
-    return "bg-[#fbf4e7] text-[#655f58]";
-  }
-  if (!updateStatus.installed || updateStatus.updateAvailable) {
-    return "bg-[#b7102a] text-white";
-  }
-  if (updateStatus.statusLabel === "Current") {
-    return "bg-[#087d6d] text-white";
-  }
-  return "bg-[#e8c843] text-[#171411]";
-}
-
-function clientInstallStageClasses(plan: ClientInstallStagePlan | null) {
-  if (!plan) {
-    return "bg-[#fbf4e7] text-[#655f58]";
-  }
-  if (plan.stage === "localInstaller") {
-    return "bg-[#087d6d] text-white";
-  }
-  if (plan.stage === "officialDownload") {
-    return "bg-[#e8c843] text-[#171411]";
-  }
-  return "bg-[#b7102a] text-white";
-}
-
-function clientInstallStageLabel(plan: ClientInstallStagePlan | null) {
-  if (!plan) return "Loading";
-  switch (plan.stage) {
-    case "alreadyInstalled":
-      return "Detected";
-    case "localInstaller":
-      return "Local staged";
-    case "officialDownload":
-      return "Official source";
-    case "desktopOnly":
-      return "Desktop only";
-    default:
-      return "Blocked";
-  }
-}
-
-function clientInstallCheckClasses(status: ClientInstallStageCheck["status"]) {
-  switch (status) {
-    case "pass":
-      return "bg-[#087d6d] text-white";
-    case "warning":
-      return "bg-[#e8c843] text-[#171411]";
-    default:
-      return "bg-[#b7102a] text-white";
-  }
-}
-
-function clientInstallTarget(plan: ClientInstallStagePlan | null) {
-  return plan?.targetPath ?? plan?.targetUri ?? "No safe target";
-}
-
-function clientAutoApplyClasses(plan: ClientAutoApplyPlan | null) {
-  if (!plan) {
-    return "bg-[#fbf4e7] text-[#655f58]";
-  }
-  if (plan.canAutoApply || plan.stage === "ready") {
-    return "bg-[#087d6d] text-white";
-  }
-  if (plan.stage === "noUpdate" || plan.stage === "safeOpenOnly" || plan.stage === "policyOff") {
-    return "bg-[#e8c843] text-[#171411]";
-  }
-  return "bg-[#b7102a] text-white";
-}
-
-function clientAutoApplyLabel(plan: ClientAutoApplyPlan | null) {
-  if (!plan) return "Loading";
-  switch (plan.stage) {
-    case "policyOff":
-      return "Policy off";
-    case "noUpdate":
-      return "No update";
-    case "safeOpenOnly":
-      return "Open only";
-    case "ready":
-      return "Ready";
-    case "desktopOnly":
-      return "Desktop only";
-    case "unsupported":
-      return "Unsupported";
-    default:
-      return "Blocked";
-  }
-}
-
-function clientPathOverlayPreflightClasses(status: ClientPathOverlayPreflightStatus): string {
-  switch (status) {
-    case "ready":
-      return "bg-[#087d6d] text-white";
-    case "warning":
-      return "bg-[#8cf5e4] text-[#171411]";
-    case "blocked":
-      return "bg-[#b7102a] text-white";
-    case "empty":
-    default:
-      return "bg-[#fbf4e7] text-[#655f58]";
-  }
-}
-
-function clientPathOverlayPreflightLabel(status: ClientPathOverlayPreflightStatus): string {
-  switch (status) {
-    case "ready":
-      return "Ready";
-    case "warning":
-      return "Review";
-    case "blocked":
-      return "Blocked";
-    case "empty":
-    default:
-      return "Empty";
-  }
-}
-
-function clientPathOverlayCheckClasses(status: "pass" | "warning" | "blocked"): string {
-  switch (status) {
-    case "pass":
-      return "bg-[#087d6d] text-white";
-    case "warning":
-      return "bg-[#8cf5e4] text-[#171411]";
-    case "blocked":
-    default:
-      return "bg-[#b7102a] text-white";
-  }
-}
-
-function clientUpdatePolicyLabel(policy: ClientModificationConfig["updatePolicy"] | string | null) {
-  switch (policy) {
-    case "notifyOnly":
-      return "Notify only";
-    case "openClient":
-      return "Open client";
-    case "autoApply":
-      return "Auto apply";
-    default:
-      return "Manual";
-  }
-}
-
-function clientManagerActionLabel(action: string): string {
-  switch (action) {
-    case "installer_opened":
-      return "Installer";
-    case "updater_opened":
-      return "Updater";
-    case "update_checked":
-      return "Check";
-    case "scheduled_update_checked":
-      return "Scheduled Check";
-    default:
-      return action.replace(/_/g, " ");
-  }
-}
-
-function clientManagerHistoryStatusLabel(status: string): string {
-  switch (status) {
-    case "auto_opened":
-      return "Auto-opened";
-    case "auto_open_failed":
-      return "Auto-open failed";
-    case "auto_apply_blocked":
-      return "Auto-apply blocked";
-    case "auto_applied":
-      return "Auto-applied";
-    default:
-      return status;
-  }
-}
-
-function clientDraftEntryId(prefix: string): string {
-  return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
-}
-
-function makeEmptyPathOverlay(index: number): ClientModificationConfig["pathOverlays"][number] {
-  return {
-    enabled: true,
-    id: clientDraftEntryId("overlay"),
-    label: `Overlay ${index + 1}`,
-    notes: "",
-    readOnly: true,
-    sourcePath: "",
-    targetPath: "",
-  };
-}
-
-function makeEmptyAssetCache(index: number): ClientModificationConfig["assetCaches"][number] {
-  return {
-    cacheKey: "",
-    cachePath: "",
-    enabled: true,
-    id: clientDraftEntryId("asset-cache"),
-    label: `Asset Cache ${index + 1}`,
-    notes: "",
-    priority: 50,
-  };
-}
-
-function makeEmptyClientConfig(platformId: NonNullable<ReturnType<typeof toClientPlatformId>>) {
-  return {
-    assetCaches: [],
-    displayName: platformId.toUpperCase(),
-    latestKnownVersion: null,
-    localInstallerPath: "",
-    localUpdaterPath: "",
-    pathOverlays: [],
-    platformId,
-    updatePolicy: "manual" as const,
-    updatedAt: null,
-  };
 }
 
 function ClientPathOverlayPreflightPanel({ preflight }: { preflight: ClientPathOverlayPreflight }) {
@@ -668,111 +305,85 @@ function ClientPathOverlayPreflightPanel({ preflight }: { preflight: ClientPathO
 }
 
 export interface GameDetailsProps {
-  selectedGame: Game | null;
-  enrichedSelectedGame: Game | null;
-  gameVariants?: Game[];
-  crossStoreSaveMigrationReadiness?: CrossStoreSaveMigrationReadiness;
-  crossStoreSaveSyncPlan?: CrossStoreSaveSyncPlan;
-  hostedCommunityArtworkReadiness?: HostedCommunityArtworkReadiness;
-  hostedCommunityArtworkModerationConsole?: HostedCommunityArtworkModerationConsole;
-  igdbCrossPlayReadinessPlan?: IgdbCrossPlayReadinessPlan;
-  shouldShowLibraryLoading: boolean;
-  handlePlay: () => void;
-  onInstallFromProvider?: () => void;
-  hasInstallableVariants?: boolean;
-  isGameRunning?: boolean;
-  runningGameIds?: ReadonlySet<string>;
-  gameRuntime?: GameRuntimeStatus | null;
-  logoCandidateIndexes: Record<string, number>;
-  loadedLogoUrls: Set<string>;
-  handleLogoLoad: (src: string) => void;
-  handleLogoError: (game: Game) => void;
-  statusMessage: string | null;
-  setStatusMessage: (msg: string | null) => void;
-  favorites: Record<string, boolean>;
-  setFavorites: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
-  hiddenGames: Record<string, boolean>;
-  setHiddenGames: React.Dispatch<React.SetStateAction<Record<string, boolean>>>;
-  customCategories: Record<string, string[]>;
-  setCustomCategories: React.Dispatch<React.SetStateAction<Record<string, string[]>>>;
-  manualCollections: Record<string, string[]>;
-  setManualCollections: React.Dispatch<React.SetStateAction<Record<string, string[]>>>;
-  detailScrollRef: React.RefObject<HTMLElement | null>;
-  isDiscoveringGames: boolean;
-  discoveryMessage: string | null;
-  runAutomaticLibrarySync: (force: boolean) => Promise<void>;
-  requestLibraryRescanOnNextFocus?: () => void;
-  onVerifiedUninstall?: (gameId: string) => void;
-  customArtwork: GameCustomArtwork | null;
-  customArtworkByGameId?: Record<string, GameCustomArtwork>;
-  artworkGameId?: string;
-  onSelectCustomArtwork: (gameId: string, kind: CustomArtworkKind, file: File) => void;
-  onArtworkDrop: (gameId: string, kind: CustomArtworkKind, file: File) => void;
-  onConfirmArtwork: (dataUrl: string, kind: CustomArtworkKind) => void;
-  onResetCustomArtwork: (gameId: string, kind?: CustomArtworkKind) => void;
-  onApplyCustomArtworkUrl?: (
-    gameId: string,
-    kind: CustomArtworkKind,
-    url: string,
-    sourceLabel: string,
-  ) => void;
-  onPlaytimeChanged?: (gameId: string, nextMinutes: number) => void;
-  pendingArtworkFile: File | null;
-  pendingArtworkKind: CustomArtworkKind;
-  pendingArtworkGameId: string | null;
-  openArtworkPreview: (gameId: string, kind: CustomArtworkKind, file: File) => void;
-  closeArtworkPreview: () => void;
+  verifyMode?: string | null;
 }
 
-export function GameDetails({
-  selectedGame,
-  enrichedSelectedGame,
-  gameVariants = EMPTY_GAME_VARIANTS,
-  crossStoreSaveMigrationReadiness,
-  crossStoreSaveSyncPlan,
-  hostedCommunityArtworkReadiness,
-  hostedCommunityArtworkModerationConsole,
-  igdbCrossPlayReadinessPlan,
-  shouldShowLibraryLoading,
-  handlePlay,
-  onInstallFromProvider,
-  hasInstallableVariants = false,
-  isGameRunning = false,
-  runningGameIds,
-  gameRuntime = null,
-  logoCandidateIndexes,
-  loadedLogoUrls,
-  handleLogoLoad,
-  handleLogoError,
-  statusMessage,
-  setStatusMessage,
-  favorites,
-  setFavorites,
-  hiddenGames,
-  setHiddenGames,
-  customCategories,
-  setCustomCategories,
-  manualCollections,
-  setManualCollections,
-  detailScrollRef,
-  isDiscoveringGames,
-  discoveryMessage,
-  runAutomaticLibrarySync,
-  requestLibraryRescanOnNextFocus,
-  onVerifiedUninstall,
-  customArtwork,
-  customArtworkByGameId,
-  artworkGameId,
-  onArtworkDrop,
-  onConfirmArtwork,
-  onResetCustomArtwork,
-  onApplyCustomArtworkUrl,
-  onPlaytimeChanged,
-  pendingArtworkFile,
-  pendingArtworkKind,
-  openArtworkPreview,
-  closeArtworkPreview,
-}: GameDetailsProps) {
+export function GameDetails({ verifyMode }: GameDetailsProps) {
+  const ctx = useLibraryContext();
+  const detailScrollRef = useRef<HTMLElement>(null);
+  const selectedGroup = ctx.filters.selectedGroup;
+  const selectedGame = selectedGroup?.displayGame ?? null;
+  const enrichedSelectedGame = selectedGame;
+  const gameVariants = selectedGroup?.variants ?? EMPTY_GAME_VARIANTS;
+  const {
+    crossStoreSaveMigrationReadiness,
+    crossStoreSaveSyncPlan,
+    hostedCommunityArtworkModerationConsole,
+    hostedCommunityArtworkReadiness,
+    igdbCrossPlayReadinessPlan,
+  } = useGameDetailVerify(verifyMode, selectedGroup, selectedGame);
+  const shouldShowLibraryLoading = ctx.sync.shouldShowLibraryLoading;
+  const handlePlay = ctx.picking.handlePlay;
+  const onInstallFromProvider = ctx.picking.handleInstallFromProvider;
+  const hasInstallableVariants = gameVariants.some(
+    (game) => game.status === "not_installed" || game.status === "update_available",
+  );
+  const runningGameIds = ctx.sync.runningGameIds;
+  const isGameRunning = gameVariants.some((game) => runningGameIds.has(game.id));
+  const gameRuntime =
+    gameVariants.map((game) => ctx.sync.gameRuntimeById[game.id]).find(Boolean) ?? null;
+  const logoCandidateIndexes = ctx.sync.logoCandidateIndexes;
+  const loadedLogoUrls = ctx.sync.loadedLogoUrls;
+  const handleLogoLoad = ctx.sync.handleLogoLoad;
+  const handleLogoError = ctx.sync.handleLogoError;
+  const statusMessage = ctx.statusMessage;
+  const setStatusMessage = ctx.setStatusMessage;
+  const favorites = ctx.manual.favorites;
+  const setFavorites = ctx.manual.setFavorites;
+  const hiddenGames = ctx.manual.hiddenGames;
+  const setHiddenGames = ctx.manual.setHiddenGames;
+  const customCategories = ctx.manual.customCategories;
+  const setCustomCategories = ctx.manual.setCustomCategories;
+  const manualCollections = ctx.manual.manualCollections;
+  const setManualCollections = ctx.manual.setManualCollections;
+  const isDiscoveringGames = ctx.sync.isDiscoveringGames;
+  const discoveryMessage = ctx.sync.discoveryMessage;
+  const runAutomaticLibrarySync = ctx.sync.runAutomaticLibrarySync;
+  const requestLibraryRescanOnNextFocus = ctx.sync.requestLibraryRescanOnNextFocus;
+  const customArtworkByGameId = ctx.sync.customArtwork;
+  const artworkGameId = gameVariants[0]?.id;
+  const customArtwork = gameVariants[0]
+    ? (customArtworkByGameId[gameVariants[0].id] ?? null)
+    : null;
+  const onArtworkDrop = ctx.sync.handleArtworkDrop;
+  const onConfirmArtwork = ctx.sync.handleConfirmArtwork;
+  const onResetCustomArtwork = ctx.sync.handleResetCustomArtwork;
+  const onApplyCustomArtworkUrl = ctx.sync.handleApplyCustomArtworkUrl;
+  const pendingArtworkFile = ctx.sync.pendingArtworkFile;
+  const pendingArtworkKind = ctx.sync.pendingArtworkKind;
+  const openArtworkPreview = ctx.sync.openArtworkPreview;
+  const closeArtworkPreview = ctx.sync.closeArtworkPreview;
+  const onVerifiedUninstall = (gameId: string) =>
+    ctx.sync.setInstalledGames((current) =>
+      current.map((game) =>
+        game.id === gameId
+          ? {
+              ...game,
+              status: "not_installed",
+              installPath: undefined,
+              executablePath: undefined,
+              processNames: [],
+              launchUri: undefined,
+            }
+          : game,
+      ),
+    );
+  const onPlaytimeChanged = (gameId: string, nextMinutes: number) =>
+    ctx.sync.setInstalledGames((current) =>
+      current.map((game) =>
+        game.id === gameId ? { ...game, playtimeMinutes: nextMinutes } : game,
+      ),
+    );
   // Local state that was originally in LibraryPage
   const [isSettingsPopoverOpen, setIsSettingsPopoverOpen] = useState(false);
   const [selectedVariantId, setSelectedVariantId] = useState<string | null>(null);

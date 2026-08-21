@@ -22,12 +22,6 @@ export interface LauncherUpdateAdapter {
   getCurrentVersion: () => Promise<string>;
   check: () => Promise<LauncherUpdateHandle | null>;
   relaunch: () => Promise<void>;
-  now: () => Date;
-}
-
-function isWindowsRuntime(): boolean {
-  if (typeof navigator === "undefined") return false;
-  return /win32|win64|windows/i.test(`${navigator.platform} ${navigator.userAgent}`);
 }
 
 export const tauriLauncherUpdateAdapter: LauncherUpdateAdapter = {
@@ -35,14 +29,7 @@ export const tauriLauncherUpdateAdapter: LauncherUpdateAdapter = {
     if (!isTauri()) {
       return {
         supported: false,
-        reason: "Launcher-Updates sind nur in der installierten Windows-App verfügbar.",
-      };
-    }
-
-    if (!isWindowsRuntime()) {
-      return {
-        supported: false,
-        reason: "Automatische Launcher-Updates werden derzeit nur unter Windows unterstützt.",
+        reason: "Launcher-Updates sind nur in der installierten Desktop-App verfügbar.",
       };
     }
 
@@ -71,6 +58,4 @@ export const tauriLauncherUpdateAdapter: LauncherUpdateAdapter = {
     const { relaunch } = await import("@tauri-apps/plugin-process");
     await relaunch();
   },
-
-  now: () => new Date(),
 };

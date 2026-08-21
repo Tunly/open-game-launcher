@@ -810,7 +810,161 @@ fn collect_process_windows() -> HashMap<u32, GameWindowInfo> {
 
 #[cfg(not(target_os = "windows"))]
 fn collect_process_windows() -> HashMap<u32, GameWindowInfo> {
-    HashMap::new()
+    #[cfg(target_os = "linux")]
+    {
+        linux_collect_process_windows()
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        HashMap::new()
+    }
+}
+
+/// Collect window titles for running processes on Linux.
+///
+/// Tries, in order:
+/// 1. Hyprland (Wayland): `hyprctl clients -j` exposes `pid`, `title`, `class`
+///    for every mapped window — fast, no external daemon, works under Wayland.
+/// 2. X11 (XWayland or plain X): `xdotool search --onlyvisible --name ".*"`
+///    enumerates visible X windows and `xdotool getwindowname`/`getwindowpid`
+///    resolves title + pid.
+///
+/// Falls back to an empty map when neither backend is available, so the playtime
+/// poller still tracks games by process name (the previous Linux behaviour).
+#[cfg(target_os = "linux")]
+fn linux_collect_process_windows() -> HashMap<u32, GameWindowInfo> {
+    let hyprland = hyprland_process_windows();
+    if !hyprland.is_empty() {
+        return hyprland;
+    }
+    x11_process_windows()
+}
+
+/// Parse `hyprctl clients -j`: an array of client objects with `pid`, `title`,
+/// `class`, `mapped`. Only mapped (on-screen) windows count. If a process has
+/// several windows, the first mapped one wins.
+#[cfg(target_os = "linux")]
+fn hyprland_process_windows() -> HashMap<u32, GameWindowInfo> {
+    let output = match std::process::Command::new("hyprctl")
+        .args(["clients", "-j"])
+        .output()
+    {
+        Ok(output) if output.status.success() => output,
+        _ => return HashMap::new(),
+    };
+    parse_hyprctl_clients(&output.stdout)
+}
+
+/// Parse the `hyprctl clients -j` payload into pid → window info.
+///
+/// Only mapped windows with a valid pid and a non-empty title (falling back to
+/// the window class) are kept. The first mapped window per pid wins.
+#[cfg(target_os = "linux")]
+fn parse_hyprctl_clients(stdout: &[u8]) -> HashMap<u32, GameWindowInfo> {
+    #[derive(serde::Deserialize)]
+    struct HyprClient {
+        #[serde(default)]
+        mapped: bool,
+        #[serde(default)]
+        pid: i32,
+        #[serde(default)]
+        title: String,
+        #[serde(default)]
+        class: String,
+    }
+
+    let clients: Vec<HyprClient> = match serde_json::from_slice(stdout) {
+        Ok(clients) => clients,
+        Err(_) => return HashMap::new(),
+    };
+
+    let mut windows = HashMap::new();
+    for client in clients {
+        if !client.mapped || client.pid <= 0 {
+            continue;
+        }
+        let pid = client.pid as u32;
+        if windows.contains_key(&pid) {
+            continue;
+        }
+        let title = if client.title.trim().is_empty() {
+            client.class
+        } else {
+            client.title
+        };
+        let title = title.trim().to_string();
+        if title.is_empty() {
+            continue;
+        }
+        windows.insert(
+            pid,
+            GameWindowInfo {
+                handle: format!("hypr:0x{:x}", pid),
+                title: Some(title),
+            },
+        );
+    }
+    windows
+}
+
+/// X11 fallback via `xdotool`: enumerate visible windows, resolve pid + title.
+/// Returns an empty map when `xdotool` is missing or X is unreachable.
+#[cfg(target_os = "linux")]
+fn x11_process_windows() -> HashMap<u32, GameWindowInfo> {
+    let mut windows = HashMap::new();
+
+    // `xdotool search --onlyvisible --name ".*"` prints one window id per line.
+    let ids_output = match std::process::Command::new("xdotool")
+        .args(["search", "--onlyvisible", "--name", ".*"])
+        .output()
+    {
+        Ok(output) if output.status.success() => output,
+        _ => return windows,
+    };
+    let ids_stdout = String::from_utf8_lossy(&ids_output.stdout);
+    for line in ids_stdout.lines() {
+        let window_id = line.trim();
+        if window_id.is_empty() {
+            continue;
+        }
+        // Get the owning pid (empty/failure → skip; a game window must own a pid).
+        let pid_output = std::process::Command::new("xdotool")
+            .args(["getwindowpid", window_id])
+            .output();
+        let Ok(pid_output) = pid_output else {
+            continue;
+        };
+        if !pid_output.status.success() {
+            continue;
+        }
+        let pid_text = String::from_utf8_lossy(&pid_output.stdout);
+        let Ok(pid) = pid_text.trim().parse::<u32>() else {
+            continue;
+        };
+        if windows.contains_key(&pid) {
+            continue;
+        }
+        let name_output = std::process::Command::new("xdotool")
+            .args(["getwindowname", window_id])
+            .output();
+        let Ok(name_output) = name_output else {
+            continue;
+        };
+        let title = String::from_utf8_lossy(&name_output.stdout)
+            .trim()
+            .to_string();
+        if title.is_empty() {
+            continue;
+        }
+        windows.insert(
+            pid,
+            GameWindowInfo {
+                handle: window_id.to_string(),
+                title: Some(title),
+            },
+        );
+    }
+    windows
 }
 
 pub fn record_game_launch_started(game_id: &str) -> Option<GameActivityUpdate> {
@@ -963,6 +1117,57 @@ mod tests {
 
         assert_eq!(game.last_played_at, Some(played_at));
         assert_eq!(game.playtime_minutes, Some(0));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn hyprctl_parser_maps_mapped_windows_by_pid() {
+        let json = br#"[
+            {"mapped": true, "pid": 1001, "title": "Game One", "class": "game-one"},
+            {"mapped": true, "pid": 1002, "title": "", "class": "game-two"},
+            {"mapped": false, "pid": 1003, "title": "Hidden", "class": "hidden"}
+        ]"#;
+
+        let windows = parse_hyprctl_clients(json);
+
+        assert_eq!(windows.len(), 2);
+        assert_eq!(
+            windows.get(&1001).and_then(|w| w.title.as_deref()),
+            Some("Game One")
+        );
+        // Empty title falls back to the class name.
+        assert_eq!(
+            windows.get(&1002).and_then(|w| w.title.as_deref()),
+            Some("game-two")
+        );
+        // Unmapped windows are excluded.
+        assert!(windows.get(&1003).is_none());
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn hyprctl_parser_keeps_first_window_per_pid_and_ignores_garbage() {
+        let json = br#"[
+            {"mapped": true, "pid": 2001, "title": "First", "class": "a"},
+            {"mapped": true, "pid": 2001, "title": "Second", "class": "a"},
+            {"mapped": true, "pid": 0, "title": "NoPid", "class": "n"}
+        ]"#;
+
+        let windows = parse_hyprctl_clients(json);
+
+        assert_eq!(windows.len(), 1);
+        assert_eq!(
+            windows.get(&2001).and_then(|w| w.title.as_deref()),
+            Some("First")
+        );
+        // pid <= 0 is skipped.
+        assert!(windows.get(&0).is_none());
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn hyprctl_parser_returns_empty_map_for_invalid_json() {
+        assert!(parse_hyprctl_clients(b"not json").is_empty());
     }
 
     #[test]

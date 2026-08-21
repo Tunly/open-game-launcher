@@ -7,4 +7,5 @@ export { mergeXboxOwned } from "./xbox";
 export { mergeGamePassCatalog } from "./gamepass";
 export { mergeBattlenetOwned } from "./battlenet";
 export { mergeOglCatalog } from "./ogl";
+export { providerInventoryPipeline, runProviderInventory } from "./pipeline";
 export type { MergeContext, ProviderResult, ProviderMerger } from "./types";

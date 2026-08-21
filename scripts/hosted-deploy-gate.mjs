@@ -11,12 +11,10 @@ export const deployFunctions = Object.freeze([
   { name: "ingest-playtime", verifyJwt: true },
   { name: "invite-hosted-proof", verifyJwt: true },
   { name: "igdb-assets", verifyJwt: true },
-  { name: "link-steam-account", verifyJwt: true },
   { name: "poll-platform-presence", verifyJwt: false },
   { name: "process-account-deletions", verifyJwt: false },
   { name: "rawg-assets", verifyJwt: true },
   { name: "rawg-store-catalog", verifyJwt: true },
-  { name: "relay-steam-achievements", verifyJwt: true },
   { name: "request-account-deletion", verifyJwt: true },
   { name: "sync-store-catalog", verifyJwt: false },
 ]);

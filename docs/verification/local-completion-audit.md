@@ -85,9 +85,8 @@ artifacts for these lanes:
   runs with valid fresh evidence rows.
 - Provider integrations: presence bridges, approved catalog/cloud-transfer
   flows, and real achievement cache runs.
-- Hardware/OS E2E: overlay/fullscreen/anti-cheat, long native sessions,
-  external-drive backup/restore across supported systems, and real-client
-  mount/apply behavior.
+- Hardware/OS E2E: overlay/fullscreen/anti-cheat, long native sessions, and
+  real-client mount/apply behavior.
 - Rollout tracks: hosted artwork rollout, channels, and production deployment.
 
 The canonical proof fields and collection steps live in

@@ -16,11 +16,6 @@ export const legacyVerifyFlags = Object.freeze({
     reason:
       "Legacy test-only query flag that must not be treated as hosted proof.",
   },
-  "plugin-system-native-disabled-registry-audit": {
-    canonical: "plugin-disabled-registry-audit",
-    reason:
-      "Backward-compatible alias for the documented disabled-registry audit route.",
-  },
   "public-profile-privacy-guard": {
     canonical: "profile-privacy-guard",
     reason:

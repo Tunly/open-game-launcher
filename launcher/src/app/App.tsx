@@ -4,7 +4,7 @@ import { RouterProvider } from "react-router-dom";
 import type { DeepLinkParams } from "../hooks/useDeepLink";
 import { useDeepLink } from "../hooks/useDeepLink";
 import { useFpsHudHotkey, useOverlayHotkey } from "../lib/overlay";
-import { completeDesktopStartup } from "../lib/startup-window";
+import { completeDesktopStartup, reportDesktopStartupProgress } from "../lib/startup-window";
 import { PlaySessionSyncHost } from "../hooks/library/usePlaySessionSync";
 import { LauncherUpdateHost } from "../components/launcher/LauncherUpdateHost";
 import { AppErrorBoundary } from "../components/ui/AppErrorBoundary";
@@ -21,7 +21,10 @@ function MainWindowHandlers() {
 
 function StartupWindowCoordinator() {
   useEffect(() => {
-    void completeDesktopStartup().catch((error: unknown) => {
+    void (async () => {
+      await reportDesktopStartupProgress(0.9, "Done");
+      await completeDesktopStartup();
+    })().catch((error: unknown) => {
       console.error("Desktop startup handoff failed", error);
     });
   }, []);

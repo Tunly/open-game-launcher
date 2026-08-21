@@ -1,4 +1,5 @@
 import { getGameSource, matchesLauncherFilter } from "./formatters";
+import { SIZE_QUERY_SEARCH_REGEX } from "./library-filter-state";
 import type { Game, Platform } from "./types";
 
 type LibraryPlatformFilter = "all" | Platform;
@@ -230,8 +231,7 @@ export function matchesSizeQuery(gameSizeGb: number | null | undefined, query: s
     return true;
   }
 
-  const sizeRegex = /(?:size\s*)?([><=])\s*(\d+(?:\.\d+)?)\s*(kb|mb|gb|tb)?/i;
-  const match = trimmed.match(sizeRegex);
+  const match = trimmed.match(SIZE_QUERY_SEARCH_REGEX);
   if (!match) {
     return true;
   }

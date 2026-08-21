@@ -1,5 +1,5 @@
 import { isTauri } from "@tauri-apps/api/core";
-import type { DiskInfo, HardwareInfo, SystemInfo } from "./types";
+import type { HardwareInfo, SystemInfo } from "./types";
 import { getBrowserHardwareInfo, invokeCommand } from "./shared";
 
 export function getSystemInfo(): Promise<SystemInfo> {
@@ -12,22 +12,6 @@ export function getSystemInfo(): Promise<SystemInfo> {
   }
 
   return invokeCommand<SystemInfo>("get_system_info");
-}
-
-export function getDiskInfo(): Promise<DiskInfo[]> {
-  if (!isTauri()) {
-    return Promise.reject(new Error("Disk information is available in the desktop app."));
-  }
-
-  return invokeCommand<DiskInfo[]>("get_disk_info");
-}
-
-export function getDefaultInstallDir(): Promise<string> {
-  if (!isTauri()) {
-    return Promise.reject(new Error("Native install folders are available in the desktop app."));
-  }
-
-  return invokeCommand<string>("get_default_install_dir");
 }
 
 function getHardwareInfo(): Promise<HardwareInfo> {

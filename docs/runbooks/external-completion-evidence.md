@@ -73,9 +73,8 @@ Artifact:
 
 - `docs/verification/external/hardware-os-e2e.md`
 
-Collect real-title overlay/session evidence, Windows/macOS/Linux backup and
-restore evidence, and real provider-client mount/apply behavior. Include each
-OS, title, client, and session/run locator.
+Collect real-title overlay/session evidence and real provider-client mount/apply
+behavior. Include each OS, title, client, and session/run locator.
 
 ## rollout-tracks
 
@@ -112,7 +111,7 @@ Proof evidence values must name the proof lane: `presence-poll`,
 `account-deletion`, `non-steam-presence-bridge-provider`,
 `provider-approved-catalog-cloud-transfer`,
 `achievement-provider-cache-real-client`, `fullscreen-anti-cheat-overlay`,
-`backup-restore`, `client-mount-apply-provider-client`,
+`client-mount-apply-provider-client`,
 `community-artwork-rollout`, `plugin-marketplace-execution-update`, or
 `hosted-deploy`. Compound values must include their required providers, OSes,
 duration/window, and matrix fields.

@@ -200,7 +200,7 @@ test("uiEvidenceReport rejects visible readiness data module changes without scr
   const report = uiEvidenceReport({
     changedPaths: [
       "launcher/src/lib/plugin-system-readiness.ts",
-      "launcher/src/lib/external-completion-evidence-summary.ts",
+      "launcher/src/lib/achievement-providers.ts",
     ],
     manifestRows: "",
     root,
@@ -209,7 +209,7 @@ test("uiEvidenceReport rejects visible readiness data module changes without scr
   assert.equal(report.ready, false);
   assert.deepEqual(report.uiChanges, [
     "launcher/src/lib/plugin-system-readiness.ts",
-    "launcher/src/lib/external-completion-evidence-summary.ts",
+    "launcher/src/lib/achievement-providers.ts",
   ]);
   assert.match(
     report.findings.join("\n"),
@@ -217,11 +217,11 @@ test("uiEvidenceReport rejects visible readiness data module changes without scr
   );
 });
 
-test("uiEvidenceReport rejects visible helper and local evidence data modules without screenshot evidence", () => {
+test("uiEvidenceReport rejects visible local evidence data modules without screenshot evidence", () => {
   const root = fixtureRoot();
   const report = uiEvidenceReport({
     changedPaths: [
-      "launcher/src/components/settings/PlatformHealthPanel.helpers.ts",
+      "launcher/src/lib/achievement-providers.ts",
       "launcher/src/lib/library-filters.ts",
       "launcher/src/lib/mock-data.ts",
       "launcher/src/lib/app-shell-skins.ts",
@@ -232,7 +232,7 @@ test("uiEvidenceReport rejects visible helper and local evidence data modules wi
 
   assert.equal(report.ready, false);
   assert.deepEqual(report.uiChanges, [
-    "launcher/src/components/settings/PlatformHealthPanel.helpers.ts",
+    "launcher/src/lib/achievement-providers.ts",
     "launcher/src/lib/library-filters.ts",
     "launcher/src/lib/mock-data.ts",
     "launcher/src/lib/app-shell-skins.ts",
@@ -323,7 +323,7 @@ test("uiEvidenceReport accepts documented local Retro Manga screenshot evidence"
       "docs/verification/screenshots/ui.png",
     ],
     manifestRows:
-      "- `screenshots/ui.png` - `/settings?verify=external-completion-evidence-summary` local no-write panel with OG-Launcher header and no horizontal overflow.",
+      "- `screenshots/ui.png` - `/settings` local Retro Manga settings panel with OG-Launcher header and no horizontal overflow.",
     root,
   });
 
@@ -444,7 +444,7 @@ test("uiEvidenceReport rejects incomplete screenshot entries in a dirty screensh
     ],
     manifestRows: [
       "- `screenshots/weak.png` - Updated screen.",
-      "- `screenshots/strong.png` - `/settings?verify=external-completion-evidence-summary` local no-write panel with OG-Launcher header and no horizontal overflow.",
+      "- `screenshots/strong.png` - `/settings` local Retro Manga settings panel with OG-Launcher header and no horizontal overflow.",
     ].join("\n"),
     root,
   });

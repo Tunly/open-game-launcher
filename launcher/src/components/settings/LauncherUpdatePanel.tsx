@@ -1,4 +1,4 @@
-import { Download, RefreshCw, ShieldCheck } from "lucide-react";
+import { Download, RefreshCw } from "lucide-react";
 import { useState } from "react";
 
 import {
@@ -7,10 +7,6 @@ import {
   useLauncherUpdateStore,
 } from "../../stores/launcherUpdateStore";
 import { ConfirmDialog } from "../ui/ConfirmDialog";
-
-interface LauncherUpdatePanelProps {
-  currentVersion?: string | null;
-}
 
 const STATUS_LABELS = {
   available: "Update Ready",
@@ -29,50 +25,39 @@ function formatBytes(value: number) {
   return `${(value / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-export function LauncherUpdatePanel({ currentVersion }: LauncherUpdatePanelProps) {
+export function LauncherUpdatePanel() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const state = useLauncherUpdateStore();
   const busy =
     state.status === "checking" || state.status === "downloading" || state.status === "installing";
-  const displayedCurrentVersion = state.currentVersion ?? currentVersion ?? "Unknown";
+  const displayedCurrentVersion = state.currentVersion ?? "Unknown";
   const canInstall = state.status === "available" && Boolean(state.latestVersion);
   const progressPercentage = state.progress?.percentage;
 
   return (
     <>
-      <section
-        aria-label="OG Launcher update"
-        className="border-4 border-black bg-[#f5eedf] shadow-[4px_4px_0_#171411]"
-      >
-        <div className="flex flex-wrap items-start justify-between gap-4 border-b-4 border-black bg-[#fff9ed] p-5">
-          <div>
-            <p className="neo-copy text-[10px] font-black tracking-[0.14em] text-[#b7102a] uppercase">
-              Signed Stable Channel / GitHub
-            </p>
-            <h2 className="neo-title mt-1 text-3xl leading-none text-[#171411] uppercase">
-              OG Launcher Update
-            </h2>
-          </div>
-          <div className="flex h-12 w-12 items-center justify-center border-[3px] border-black bg-[#087d6d] text-white shadow-[3px_3px_0_#171411]">
-            <ShieldCheck aria-hidden="true" className="h-6 w-6" />
+      <section aria-label="OG Launcher update" className="border-t-2 border-black px-3 pt-3">
+        <div className="mb-2 flex items-center justify-between gap-2 border-b-2 border-black pb-2">
+          <h2 className="neo-title text-base leading-none text-[#171411] uppercase">
+            OG Launcher Update
+          </h2>
+          <div className="flex h-6 w-6 items-center justify-center border-2 border-black bg-[#087d6d] text-white">
+            <span className="text-[10px] font-black">&#x2713;</span>
           </div>
         </div>
 
-        <div className="space-y-4 p-5">
-          <div className="grid gap-3 sm:grid-cols-3">
-            <UpdateReadout
-              label="Installed"
-              value={`v${displayedCurrentVersion.replace(/^v/, "")}`}
-            />
-            <UpdateReadout
+        <div className="space-y-1.5 pb-3">
+          <div className="flex items-stretch gap-1.5">
+            <UpdateChip label="Installed" value={`v${displayedCurrentVersion.replace(/^v/, "")}`} />
+            <UpdateChip
               label="Available"
               value={state.latestVersion ? `v${state.latestVersion.replace(/^v/, "")}` : "--"}
             />
-            <UpdateReadout label="Status" value={STATUS_LABELS[state.status]} accent />
+            <UpdateChip label="Status" value={STATUS_LABELS[state.status]} accent />
           </div>
 
           {state.status === "unsupported" ? (
-            <p className="neo-copy border-2 border-black bg-[#efe6d4] p-3 text-[10px] leading-5 font-bold text-[#55504a] uppercase">
+            <p className="border border-black bg-[#efe6d4] px-2 py-1 text-[9px] leading-4 font-bold text-[#55504a] uppercase">
               {state.unsupportedReason ??
                 "Self-update is available in the installed Windows x64 launcher only. Browser, Linux, and macOS builds remain manual downloads."}
             </p>
@@ -81,18 +66,18 @@ export function LauncherUpdatePanel({ currentVersion }: LauncherUpdatePanelProps
           {state.error ? (
             <p
               role="alert"
-              className="neo-copy border-2 border-black bg-[#c20b2f] p-3 text-[10px] leading-5 font-black text-white uppercase"
+              className="border border-black bg-[#c20b2f] px-2 py-1 text-[9px] leading-4 font-black text-white uppercase"
             >
               {state.error}
             </p>
           ) : null}
 
           {state.notes && state.status === "available" ? (
-            <div className="border-2 border-black bg-[#fff9ed] p-3">
-              <p className="neo-copy text-[9px] font-black text-[#087d6d] uppercase">
+            <div className="border border-black bg-[#fff9ed] px-2 py-1.5">
+              <p className="text-[8px] font-black tracking-[0.08em] text-[#087d6d] uppercase">
                 Release Tape
               </p>
-              <p className="mt-2 max-h-32 overflow-auto text-sm leading-5 whitespace-pre-line text-[#55504a]">
+              <p className="mt-1 max-h-24 overflow-auto text-[10px] leading-4 whitespace-pre-line text-[#55504a]">
                 {state.notes}
               </p>
             </div>
@@ -101,26 +86,26 @@ export function LauncherUpdatePanel({ currentVersion }: LauncherUpdatePanelProps
           {state.progress ? (
             <div
               aria-label="Update download progress"
-              className="border-2 border-black bg-[#fff9ed] p-3"
+              className="border border-black bg-[#fff9ed] px-2 py-1.5"
             >
-              <div className="flex items-center justify-between gap-3">
-                <span className="neo-copy text-[9px] font-black text-[#55504a] uppercase">
-                  {state.status === "installing" ? "Installer Handoff" : "Download Feed"}
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[8px] font-black tracking-[0.08em] text-[#55504a] uppercase">
+                  {state.status === "installing" ? "Handoff" : "Download"}
                 </span>
-                <span className="neo-copy text-[9px] font-black text-[#171411] uppercase">
+                <span className="text-[8px] font-black text-[#171411] uppercase">
                   {progressPercentage === null
                     ? formatBytes(state.progress.downloadedBytes)
                     : `${progressPercentage}%`}
                 </span>
               </div>
-              <div className="mt-2 h-4 border-2 border-black bg-[#efe6d4]">
+              <div className="mt-1 h-2.5 border border-black bg-[#efe6d4]">
                 <div
                   className="h-full bg-[#087d6d] transition-[width]"
                   style={{ width: `${progressPercentage ?? 0}%` }}
                 />
               </div>
               {state.progress.totalBytes !== null ? (
-                <p className="neo-copy mt-2 text-[9px] font-bold text-[#55504a] uppercase">
+                <p className="mt-1 text-[8px] font-bold text-[#55504a] uppercase">
                   {formatBytes(state.progress.downloadedBytes)} /{" "}
                   {formatBytes(state.progress.totalBytes)}
                 </p>
@@ -128,42 +113,37 @@ export function LauncherUpdatePanel({ currentVersion }: LauncherUpdatePanelProps
             </div>
           ) : null}
 
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="flex gap-1.5">
             <button
-              className="neo-copy flex h-11 items-center justify-center gap-2 border-2 border-black bg-[#fff9ed] px-4 text-[10px] font-black text-[#171411] uppercase shadow-[3px_3px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#8cf5e4] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0"
+              className="flex h-7 flex-1 items-center justify-center gap-1 border-2 border-black bg-[#fff9ed] px-2 text-[9px] font-black text-[#171411] uppercase shadow-[1px_1px_0_#171411] transition hover:bg-[#8cf5e4] disabled:cursor-not-allowed disabled:opacity-40"
               disabled={busy}
               type="button"
               onClick={() => void checkForLauncherUpdate()}
             >
               <RefreshCw
                 aria-hidden="true"
-                className={`h-4 w-4 ${state.status === "checking" ? "animate-spin" : ""}`}
+                className={`h-3 w-3 ${state.status === "checking" ? "animate-spin" : ""}`}
               />
               {state.status === "checking"
                 ? "Checking..."
                 : state.status === "error"
-                  ? "Retry Check"
-                  : "Check Now"}
+                  ? "Retry"
+                  : "Check"}
             </button>
             <button
-              className="neo-copy flex h-11 items-center justify-center gap-2 border-2 border-black bg-[#b7102a] px-4 text-[10px] font-black text-white uppercase shadow-[3px_3px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#087d6d] disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:translate-y-0"
+              className="flex h-7 flex-1 items-center justify-center gap-1 border-2 border-black bg-[#b7102a] px-2 text-[9px] font-black text-white uppercase shadow-[1px_1px_0_#171411] transition hover:bg-[#087d6d] disabled:cursor-not-allowed disabled:opacity-40"
               disabled={!canInstall || busy}
               type="button"
               onClick={() => setConfirmOpen(true)}
             >
-              <Download aria-hidden="true" className="h-4 w-4" />
+              <Download aria-hidden="true" className="h-3 w-3" />
               {state.status === "downloading"
                 ? "Downloading..."
                 : state.status === "installing"
                   ? "Installing..."
-                  : "Install Update"}
+                  : "Install"}
             </button>
           </div>
-
-          <p className="neo-copy text-[9px] leading-5 font-bold text-[#55504a] uppercase">
-            Updates are accepted only when the GitHub artifact matches the public Tauri signature.
-            Installation closes OG-Launcher and relaunches the new version.
-          </p>
         </div>
       </section>
 
@@ -183,7 +163,7 @@ export function LauncherUpdatePanel({ currentVersion }: LauncherUpdatePanelProps
   );
 }
 
-function UpdateReadout({
+function UpdateChip({
   accent = false,
   label,
   value,
@@ -194,14 +174,18 @@ function UpdateReadout({
 }) {
   return (
     <div
-      className={`border-2 border-black p-3 ${accent ? "bg-[#171411] text-[#fff9ed]" : "bg-[#efe6d4] text-[#171411]"}`}
+      className={`flex min-w-0 flex-1 flex-col border-2 border-black px-2 py-1 ${
+        accent ? "bg-[#171411] text-[#fff9ed]" : "bg-[#efe6d4] text-[#171411]"
+      }`}
     >
       <p
-        className={`neo-copy text-[9px] font-black uppercase ${accent ? "text-[#8cf5e4]" : "text-[#55504a]"}`}
+        className={`text-[8px] font-black tracking-[0.08em] uppercase ${
+          accent ? "text-[#8cf5e4]" : "text-[#55504a]"
+        }`}
       >
         {label}
       </p>
-      <p className="mt-1 truncate text-lg font-black uppercase">{value}</p>
+      <p className="truncate text-[11px] leading-tight font-black uppercase">{value}</p>
     </div>
   );
 }

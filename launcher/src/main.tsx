@@ -3,6 +3,7 @@ import ReactDOM from "react-dom/client";
 
 import "./index.css";
 import { resolveWindowView, syncWindowRuntimeClass } from "./app/window-bootstrap";
+import { reportDesktopStartupProgress } from "./lib/startup-window";
 
 const rootElement = document.getElementById("root");
 
@@ -12,6 +13,7 @@ if (!rootElement) {
 
 const view = await resolveWindowView();
 syncWindowRuntimeClass(view);
+void reportDesktopStartupProgress(0.45, "Loading modules");
 
 const WindowApp = await (async () => {
   switch (view) {
@@ -24,6 +26,8 @@ const WindowApp = await (async () => {
       return (await import("./app/App")).default;
   }
 })();
+
+void reportDesktopStartupProgress(0.65, "Building interface");
 
 ReactDOM.createRoot(rootElement).render(
   <React.StrictMode>

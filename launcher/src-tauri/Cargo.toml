@@ -12,7 +12,7 @@ name = "open_game_launcher_lib"
 crate-type = ["rlib"]
 
 [features]
-default = ["windows-uiautomation"]
+default = ["windows-uiautomation", "linux-atspi"]
 # Legacy maintenance-automation state machine (AutomationSession). Unreachable
 # from any live code path: providers.rs + runner.rs (used by actions.rs) never
 # import it. Kept behind a non-default feature instead of deleted so the
@@ -43,7 +43,6 @@ sysinfo = { version = "0.39", features = ["serde"] }
 futures-util = "0.3"
 notify = "8"
 zip = "8.6.0"
-sevenz-rust2 = { version = "0.21.1", default-features = false, features = ["brotli", "bzip2", "deflate", "lz4", "ppmd", "util", "zstd"] }
 ureq = { version = "3.2.1", features = ["json"] }
 keyring = "4"
 aes-gcm = "0.11"
@@ -53,6 +52,7 @@ base64 = "0.22"
 ed25519-dalek = "2"
 uuid = { version = "1", features = ["v4"] }
 chrono = "0.4"
+url = "2"
 nvml-wrapper = "0.12"
 tauri-plugin-dialog = "2"
 
@@ -68,13 +68,16 @@ windows-sys = { version = "0.61", features = ["Win32_UI_Shell", "Win32_Graphics_
 axuielement = { version = "=0.9.1", optional = true }
 
 [target.'cfg(target_os = "linux")'.dependencies]
-atspi = { version = "=0.30.0", optional = true, default-features = false, features = ["proxies"] }
+atspi = { version = "=0.30.0", optional = true, default-features = false, features = ["proxies", "connection"] }
+zbus = { version = "5", default-features = false, features = ["blocking-api", "async-io"] }
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
-tauri-plugin-autostart = "2"
+# Launcher self-update + process relaunch: available on desktop OSes
+# (Windows/macOS/Linux). The updater targets AppImage/deb/rpm on Linux.
+tauri-plugin-process = "2"
+tauri-plugin-updater = "2"
 
 [dev-dependencies]
-sevenz-rust2 = { version = "0.21.1", default-features = false, features = ["compress", "util"] }
 
 [profile.dev]
 incremental = true

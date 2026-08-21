@@ -22,8 +22,6 @@ use winreg::{
     RegKey,
 };
 
-const LAUNCHER_DIR: &str = "open-game-launcher";
-const PRODUCT_DIR: &str = "Open Game Launcher";
 const STEAM_ID64_BASE: u64 = 76_561_197_960_265_728;
 static STEAM_CALLBACK_SERVER_STARTED: AtomicBool = AtomicBool::new(false);
 static STEAM_WINDOW_OPEN_LOCK: Mutex<()> = Mutex::new(());
@@ -41,19 +39,6 @@ pub struct SystemInfo {
     os: String,
     arch: String,
     app_version: String,
-}
-
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct DiskInfo {
-    name: String,
-    mount_point: String,
-    total_space: u64,
-    available_space: u64,
-    file_system: String,
-    kind: String,
-    is_removable: bool,
-    is_read_only: bool,
 }
 
 #[derive(Debug, Serialize)]
@@ -79,61 +64,12 @@ pub fn get_system_info() -> SystemInfo {
 }
 
 #[tauri::command]
-pub fn get_default_install_dir() -> Result<String, String> {
-    let path = match env::consts::OS {
-        "windows" => dirs::data_dir()
-            .or_else(dirs::home_dir)
-            .map(|base| base.join(PRODUCT_DIR).join("games")),
-        "macos" => dirs::home_dir().map(|home| {
-            home.join("Library")
-                .join("Application Support")
-                .join(PRODUCT_DIR)
-                .join("games")
-        }),
-        _ => linux_install_dir(),
-    };
-
-    path.map(path_to_string)
-        .ok_or_else(|| "Could not resolve a default install directory.".to_string())
-}
-
-#[tauri::command]
 pub fn get_hardware_info() -> HardwareInfo {
     match env::consts::OS {
         "windows" => windows_hardware_info(),
         "macos" => macos_hardware_info(),
         _ => linux_hardware_info(),
     }
-}
-
-#[tauri::command]
-pub fn get_disk_info() -> Vec<DiskInfo> {
-    use sysinfo::Disks;
-    let disks = Disks::new_with_refreshed_list();
-    disks
-        .iter()
-        .map(|disk| DiskInfo {
-            name: disk.name().to_string_lossy().into_owned(),
-            mount_point: disk.mount_point().to_string_lossy().into_owned(),
-            total_space: disk.total_space(),
-            available_space: disk.available_space(),
-            file_system: disk.file_system().to_string_lossy().into_owned(),
-            kind: disk.kind().to_string(),
-            is_removable: disk.is_removable(),
-            is_read_only: disk.is_read_only(),
-        })
-        .collect()
-}
-
-fn linux_install_dir() -> Option<PathBuf> {
-    dirs::home_dir()
-        .map(|home| {
-            home.join(".local")
-                .join("share")
-                .join(LAUNCHER_DIR)
-                .join("games")
-        })
-        .or_else(|| dirs::data_dir().map(|base| base.join(LAUNCHER_DIR).join("games")))
 }
 
 fn path_to_string(path: PathBuf) -> String {

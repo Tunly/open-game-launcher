@@ -418,7 +418,7 @@ export function DownloadsPage() {
   }
 
   return (
-    <section aria-labelledby="downloads-title" className="space-y-6">
+    <section aria-labelledby="downloads-title" className="mx-auto max-w-[980px] space-y-6">
       {/* System Monitor Header Dashboard */}
       <div className="flex flex-col items-stretch gap-4 border-4 border-black bg-[#efe6d4] p-4 shadow-[4px_4px_0_#171411] md:flex-row md:items-center md:justify-between">
         <div className="min-w-0">

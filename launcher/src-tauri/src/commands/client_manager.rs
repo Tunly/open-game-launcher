@@ -214,18 +214,6 @@ pub struct ClientUpdateSchedulerRunStatus {
 
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ClientUpdateSchedulerStatus {
-    supported: bool,
-    installed: bool,
-    provider: String,
-    config_path: String,
-    status_path: String,
-    last_run: Option<ClientUpdateSchedulerRunStatus>,
-    message: String,
-}
-
-#[derive(Debug, Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
 pub struct ClientInstallerMetadata {
     platform_id: String,
     display_name: String,
@@ -924,34 +912,6 @@ pub fn run_scheduled_platform_client_update_checks(
         update_count,
         message,
     })
-}
-
-#[tauri::command]
-pub fn get_platform_client_update_scheduler_status() -> Result<ClientUpdateSchedulerStatus, String>
-{
-    client_update_scheduler_status(None)
-}
-
-#[tauri::command]
-pub fn install_platform_client_update_scheduler() -> Result<ClientUpdateSchedulerStatus, String> {
-    install_os_client_update_scheduler()?;
-    client_update_scheduler_status(Some(
-        "Headless platform-client update timer installed.".to_string(),
-    ))
-}
-
-#[tauri::command]
-pub fn uninstall_platform_client_update_scheduler() -> Result<ClientUpdateSchedulerStatus, String> {
-    uninstall_os_client_update_scheduler()?;
-    client_update_scheduler_status(Some(
-        "Headless platform-client update timer removed.".to_string(),
-    ))
-}
-
-#[tauri::command]
-pub fn run_platform_client_update_scheduler_now() -> Result<ClientUpdateSchedulerRunStatus, String>
-{
-    run_configured_client_update_scheduler()
 }
 
 pub fn run_headless_client_update_scheduler_from_args() -> Option<i32> {
@@ -2052,35 +2012,6 @@ where
     )
 }
 
-fn client_update_scheduler_status(
-    message: Option<String>,
-) -> Result<ClientUpdateSchedulerStatus, String> {
-    let (provider, supported) = client_update_scheduler_provider();
-    let config_path = client_manager_store_path()?;
-    let status_path = client_update_scheduler_status_path()?;
-    let last_run = read_client_update_scheduler_run_status()?;
-    let installed = supported && is_os_client_update_scheduler_installed();
-    let message = message.unwrap_or_else(|| {
-        if !supported {
-            "Headless platform-client update timers are not supported on this platform.".to_string()
-        } else if installed {
-            "Headless platform-client update timer is installed.".to_string()
-        } else {
-            "Headless platform-client update timer is not installed.".to_string()
-        }
-    });
-
-    Ok(ClientUpdateSchedulerStatus {
-        supported,
-        installed,
-        provider: provider.to_string(),
-        config_path: path_to_string(config_path.as_path()).unwrap_or_default(),
-        status_path: path_to_string(status_path.as_path()).unwrap_or_default(),
-        last_run,
-        message,
-    })
-}
-
 fn run_configured_client_update_scheduler() -> Result<ClientUpdateSchedulerRunStatus, String> {
     let status = match run_scheduled_platform_client_update_checks() {
         Ok(response) => client_update_scheduler_status_from_response(response, true),
@@ -2125,19 +2056,6 @@ fn client_update_scheduler_status_path() -> Result<PathBuf, String> {
         .ok_or_else(|| "Could not resolve Open Game Launcher data directory.".to_string())
 }
 
-fn read_client_update_scheduler_run_status(
-) -> Result<Option<ClientUpdateSchedulerRunStatus>, String> {
-    let path = client_update_scheduler_status_path()?;
-    if !path.exists() {
-        return Ok(None);
-    }
-    let contents = fs::read_to_string(&path)
-        .map_err(|error| format!("Could not read client-update scheduler status: {error}"))?;
-    serde_json::from_str::<ClientUpdateSchedulerRunStatus>(&contents)
-        .map(Some)
-        .map_err(|error| format!("Could not parse client-update scheduler status: {error}"))
-}
-
 fn write_client_update_scheduler_run_status(
     status: &ClientUpdateSchedulerRunStatus,
 ) -> Result<(), String> {
@@ -2162,6 +2080,22 @@ fn client_update_scheduler_provider() -> (&'static str, bool) {
         ("systemd user timer", true)
     } else {
         ("Unsupported platform", false)
+    }
+}
+
+/// Ensures the OS-level platform-client update timer is installed so the
+/// headless update check runs automatically, without any user action.
+///
+/// Called once during app startup. Idempotent: it is a no-op when the timer
+/// is already installed or the platform does not support OS schedulers.
+/// Failures are logged to stderr and never block startup.
+pub fn ensure_client_update_scheduler_installed() {
+    let (_, supported) = client_update_scheduler_provider();
+    if !supported || is_os_client_update_scheduler_installed() {
+        return;
+    }
+    if let Err(error) = install_os_client_update_scheduler() {
+        eprintln!("Could not auto-install the platform-client update timer: {error}");
     }
 }
 
@@ -2192,30 +2126,6 @@ fn install_os_client_update_scheduler() -> Result<(), String> {
             "Headless platform-client update timers are not supported on this platform."
                 .to_string(),
         )
-    }
-}
-
-fn uninstall_os_client_update_scheduler() -> Result<(), String> {
-    let (_, supported) = client_update_scheduler_provider();
-    if !supported {
-        return Ok(());
-    }
-
-    #[cfg(target_os = "windows")]
-    {
-        uninstall_windows_client_update_scheduler()
-    }
-    #[cfg(target_os = "macos")]
-    {
-        uninstall_macos_client_update_scheduler()
-    }
-    #[cfg(target_os = "linux")]
-    {
-        uninstall_linux_client_update_scheduler()
-    }
-    #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
-    {
-        Ok(())
     }
 }
 
@@ -2274,22 +2184,6 @@ fn install_windows_client_update_scheduler() -> Result<(), String> {
     )
 }
 
-#[cfg(target_os = "windows")]
-fn uninstall_windows_client_update_scheduler() -> Result<(), String> {
-    if !is_os_client_update_scheduler_installed() {
-        return Ok(());
-    }
-    run_client_update_os_command(
-        "schtasks",
-        &[
-            "/Delete".to_string(),
-            "/TN".to_string(),
-            WINDOWS_CLIENT_UPDATE_TASK_NAME.to_string(),
-            "/F".to_string(),
-        ],
-    )
-}
-
 #[cfg(target_os = "macos")]
 fn install_macos_client_update_scheduler() -> Result<(), String> {
     let path = macos_client_update_launch_agent_path()?;
@@ -2304,19 +2198,6 @@ fn install_macos_client_update_scheduler() -> Result<(), String> {
     let path_text = path_to_string(path.as_path()).unwrap_or_else(|| path.display().to_string());
     let _ = run_client_update_os_command("launchctl", &["unload".to_string(), path_text.clone()]);
     run_client_update_os_command("launchctl", &["load".to_string(), path_text])
-}
-
-#[cfg(target_os = "macos")]
-fn uninstall_macos_client_update_scheduler() -> Result<(), String> {
-    let path = macos_client_update_launch_agent_path()?;
-    let path_text = path_to_string(path.as_path()).unwrap_or_else(|| path.display().to_string());
-    let _ = run_client_update_os_command("launchctl", &["unload".to_string(), path_text]);
-    if path.exists() {
-        fs::remove_file(path).map_err(|error| {
-            format!("Could not remove client-update LaunchAgent plist: {error}")
-        })?;
-    }
-    Ok(())
 }
 
 #[cfg(target_os = "macos")]
@@ -2360,35 +2241,6 @@ fn install_linux_client_update_scheduler() -> Result<(), String> {
             LINUX_CLIENT_UPDATE_TIMER_FILE.to_string(),
         ],
     )
-}
-
-#[cfg(target_os = "linux")]
-fn uninstall_linux_client_update_scheduler() -> Result<(), String> {
-    let user_dir = linux_client_update_systemd_user_dir()?;
-    let _ = run_client_update_os_command(
-        "systemctl",
-        &[
-            "--user".to_string(),
-            "disable".to_string(),
-            "--now".to_string(),
-            LINUX_CLIENT_UPDATE_TIMER_FILE.to_string(),
-        ],
-    );
-    for file_name in [
-        LINUX_CLIENT_UPDATE_SERVICE_FILE,
-        LINUX_CLIENT_UPDATE_TIMER_FILE,
-    ] {
-        let path = user_dir.join(file_name);
-        if path.exists() {
-            fs::remove_file(&path)
-                .map_err(|error| format!("Could not remove {}: {error}", path.display()))?;
-        }
-    }
-    let _ = run_client_update_os_command(
-        "systemctl",
-        &["--user".to_string(), "daemon-reload".to_string()],
-    );
-    Ok(())
 }
 
 #[cfg(target_os = "linux")]

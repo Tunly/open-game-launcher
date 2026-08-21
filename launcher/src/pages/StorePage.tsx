@@ -224,6 +224,11 @@ export function StorePage() {
         return false;
       }
 
+      // Curated category filters
+      if (activeCategory === "topsellers" && !topSellersIds.has(game.id)) return false;
+      if (activeCategory === "newreleases" && !newReleasesIds.has(game.id)) return false;
+      if (activeCategory === "specials" && !specialsIds.has(game.id)) return false;
+
       // Genre category filter
       if (
         activeCategory &&
@@ -273,6 +278,9 @@ export function StorePage() {
     activeFeature,
     wishlistIds,
     sortBy,
+    topSellersIds,
+    newReleasesIds,
+    specialsIds,
   ]);
 
   // Data fetching
@@ -299,10 +307,10 @@ export function StorePage() {
   const seenProductIdsRef = useRef(new Set<string>());
 
   const fetchPage = useCallback(
-    async (page: number) => {
+    async (page: number, seenIds = seenProductIdsRef.current) => {
       const { products, hostedCount, catalogCount, bothFailed } = await queryCatalogPage(
         { page, ...pageQuery },
-        seenProductIdsRef.current,
+        seenIds,
       );
       return {
         products,
@@ -319,7 +327,9 @@ export function StorePage() {
     async function load() {
       setIsLoading(true);
       setErrorMessage(null);
-      const { products: merged, hostedLen, catalogLen, bothRejected } = await fetchPage(0);
+      const seenIds = new Set<string>();
+      seenProductIdsRef.current = seenIds;
+      const { products: merged, hostedLen, catalogLen, bothRejected } = await fetchPage(0, seenIds);
       if (cancelled) return;
       setProducts(merged.length > 0 ? merged : LOCAL_FALLBACK);
       setHasMore(hostedLen === PAGE_SIZE || catalogLen === PAGE_SIZE);

@@ -33,27 +33,6 @@ export const releaseTrackedPathSpecs = Object.freeze([
   { path: "docs/verification/screenshots", type: "dir" },
   { path: "launcher/src", type: "dir" },
   { path: "launcher/public", type: "dir" },
-  {
-    path: "launcher/src/lib/external-completion-evidence-summary.ts",
-    type: "file",
-  },
-  { path: "launcher/src/lib/hosted-cron-evidence-summary.ts", type: "file" },
-  {
-    path: "launcher/src/components/settings/ExternalCompletionEvidenceSummaryPanel.tsx",
-    type: "file",
-  },
-  {
-    path: "launcher/src/components/settings/ExternalCompletionEvidenceSummaryPanel.test.tsx",
-    type: "file",
-  },
-  {
-    path: "launcher/src/components/settings/HostedCronEvidenceSummaryPanel.tsx",
-    type: "file",
-  },
-  {
-    path: "launcher/src/components/settings/HostedCronEvidenceSummaryPanel.test.tsx",
-    type: "file",
-  },
   { path: "launcher/src-tauri", type: "dir" },
   { path: "supabase/config.toml", type: "file" },
   { path: "supabase/functions", type: "dir" },

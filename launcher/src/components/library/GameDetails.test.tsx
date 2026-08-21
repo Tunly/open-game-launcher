@@ -1,11 +1,29 @@
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
-import type { Dispatch, RefObject, SetStateAction } from "react";
+import type { Dispatch, SetStateAction } from "react";
 import { MemoryRouter } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { LibraryContext, type LibraryContextValue } from "../../context/LibraryContext";
+import type { CustomArtworkKind } from "../../lib/custom-artwork";
 import type { GameActionCapability, GameActionResult } from "../../lib/game-actions";
+import type { GameGroup } from "../../lib/game-groups";
 import type { Game } from "../../lib/types";
-import { GameDetails, type GameDetailsProps } from "./GameDetails";
+import { GameDetails } from "./GameDetails";
+
+vi.mock("../../hooks/useCurrentUser", () => ({
+  useCurrentUser: () => ({
+    session: { user: { id: "user-1" } },
+    user: { id: "user-1" },
+  }),
+}));
+
+vi.mock("../../lib/supabase/playtime", () => ({
+  deleteGameSession: vi.fn(),
+  listGameSessions: vi.fn().mockResolvedValue({ sessions: [], total: 0 }),
+  resolveCatalogGameId: vi.fn().mockResolvedValue("catalog-game-1"),
+  updateGameSession: vi.fn(),
+  updateUserGamePlaytime: vi.fn().mockResolvedValue(true),
+}));
 
 const launcherMocks = vi.hoisted(() => ({
   getGameActionCapabilities: vi.fn(),
@@ -636,7 +654,7 @@ describe("GameDetails actions", () => {
 
   it("marks a verified completed uninstall as not installed after the native rescan", async () => {
     const runAutomaticLibrarySync = vi.fn().mockResolvedValue(undefined);
-    const onVerifiedUninstall = vi.fn();
+    const setInstalledGames = vi.fn();
     launcherMocks.isTauri.mockReturnValue(true);
     launcherMocks.getGameActionCapabilities.mockResolvedValue([
       capability("uninstall", {
@@ -664,7 +682,7 @@ describe("GameDetails actions", () => {
 
     renderGameDetails(
       { id: "xbox-installed", launcher: "xbox", status: "installed" },
-      { onVerifiedUninstall, runAutomaticLibrarySync },
+      { runAutomaticLibrarySync, setInstalledGames },
     );
     fireEvent.click(screen.getByRole("button", { name: "Game Settings" }));
     const uninstallButton = await screen.findByRole("button", { name: /Uninstall Xbox Game/i });
@@ -678,10 +696,29 @@ describe("GameDetails actions", () => {
 
     await waitFor(() => {
       expect(runAutomaticLibrarySync).toHaveBeenCalledWith(false);
-      expect(onVerifiedUninstall).toHaveBeenCalledWith("xbox-installed");
+      expect(setInstalledGames).toHaveBeenCalled();
     });
+    const update = setInstalledGames.mock.calls[0]?.[0] as (current: Game[]) => Game[];
+    expect(
+      update([
+        { ...selectedGame, id: "xbox-installed", launcher: "xbox", status: "installed" },
+        { ...selectedGame, id: "other-game" },
+      ]),
+    ).toEqual([
+      {
+        ...selectedGame,
+        executablePath: undefined,
+        id: "xbox-installed",
+        installPath: undefined,
+        launchUri: undefined,
+        launcher: "xbox",
+        processNames: [],
+        status: "not_installed",
+      },
+      { ...selectedGame, id: "other-game" },
+    ]);
     expect(runAutomaticLibrarySync.mock.invocationCallOrder[0]).toBeLessThan(
-      onVerifiedUninstall.mock.invocationCallOrder[0],
+      setInstalledGames.mock.invocationCallOrder[0],
     );
   });
 
@@ -1048,50 +1085,123 @@ const selectedGame: Game = {
   executablePath: "C:\\Games\\Local Test Game\\game.exe",
 };
 
+interface GameDetailsTestOverrides {
+  discoveryMessage?: string | null;
+  favorites?: Record<string, boolean>;
+  gameVariants?: Game[];
+  handlePlay?: () => void;
+  isGameRunning?: boolean;
+  manualCollections?: Record<string, string[]>;
+  onApplyCustomArtworkUrl?: (
+    gameId: string,
+    kind: CustomArtworkKind,
+    url: string,
+    sourceLabel: string,
+  ) => void;
+  openArtworkPreview?: (gameId: string, kind: CustomArtworkKind, file: File) => void;
+  requestLibraryRescanOnNextFocus?: () => void;
+  runAutomaticLibrarySync?: (force?: boolean) => Promise<void>;
+  runningGameIds?: ReadonlySet<string>;
+  setFavorites?: Dispatch<SetStateAction<Record<string, boolean>>>;
+  setInstalledGames?: Dispatch<SetStateAction<Game[]>>;
+  setManualCollections?: Dispatch<SetStateAction<Record<string, string[]>>>;
+  setStatusMessage?: Dispatch<SetStateAction<string | null>>;
+  statusMessage?: string | null;
+}
+
 function renderGameDetails(
   gameOverrides: Partial<Game> | null = {},
-  propOverrides: Partial<GameDetailsProps> = {},
+  overrides: GameDetailsTestOverrides = {},
 ) {
   const noop = vi.fn();
   const game = gameOverrides === null ? null : { ...selectedGame, ...gameOverrides };
+  const gameVariants = overrides.gameVariants ?? (game ? [game] : []);
+  const runningGameIds =
+    overrides.runningGameIds ??
+    (overrides.isGameRunning && game ? new Set([game.id]) : new Set<string>());
+
+  const selectedGroup: GameGroup | null = game
+    ? {
+        achievementBasisGameId: game.id,
+        achievementBasisSource: game.launcher ?? null,
+        achievementProviderStatuses: [],
+        achievements: [],
+        displayGame: game,
+        id: game.id,
+        key: game.id,
+        lastPlayedAt: null,
+        playtimeMinutes: 0,
+        primaryGame: game,
+        sources: game.launcher ? [game.launcher] : [],
+        status: game.status,
+        title: game.title,
+        variants: gameVariants,
+      }
+    : null;
+
+  const context = {
+    achievements: { syncingAchievementGameId: null },
+    dynamic: { setSelectedCollectionName: noop },
+    filters: {
+      libraryGroups: selectedGroup ? [selectedGroup] : [],
+      selectedGroup,
+      setActivePlatformFilter: noop,
+    },
+    manual: {
+      clearManualCollectionSelection: noop,
+      customCategories: {},
+      favorites: overrides.favorites ?? {},
+      hiddenGames: {},
+      manualCollections: overrides.manualCollections ?? {},
+      setCustomCategories: stateSetter<Record<string, string[]>>(),
+      setFavorites: overrides.setFavorites ?? stateSetter<Record<string, boolean>>(),
+      setHiddenGames: stateSetter<Record<string, boolean>>(),
+      setManualCollections:
+        overrides.setManualCollections ?? stateSetter<Record<string, string[]>>(),
+    },
+    picking: {
+      handleInstallFromProvider: noop,
+      handlePlay: overrides.handlePlay ?? noop,
+      handlePlayVariant: noop,
+      providerPicker: null,
+      setProviderPicker: noop,
+    },
+    setStatusMessage: overrides.setStatusMessage ?? noop,
+    statusMessage: overrides.statusMessage ?? null,
+    sync: {
+      closeArtworkPreview: noop,
+      customArtwork: {},
+      discoveryMessage: overrides.discoveryMessage ?? null,
+      gameRuntimeById: {},
+      handleApplyCustomArtworkUrl: overrides.onApplyCustomArtworkUrl,
+      handleArtworkDrop: noop,
+      handleConfirmArtwork: noop,
+      handleLogoError: noop,
+      handleLogoLoad: noop,
+      handleResetCustomArtwork: noop,
+      handleSelectCustomArtwork: noop,
+      installedGames: gameVariants,
+      isDiscoveringGames: false,
+      loadedLogoUrls: new Set<string>(),
+      logoCandidateIndexes: {},
+      openArtworkPreview: overrides.openArtworkPreview ?? noop,
+      pendingArtworkFile: null,
+      pendingArtworkGameId: null,
+      pendingArtworkKind: "cover",
+      requestLibraryRescanOnNextFocus: overrides.requestLibraryRescanOnNextFocus ?? noop,
+      runAutomaticLibrarySync:
+        overrides.runAutomaticLibrarySync ?? vi.fn().mockResolvedValue(undefined),
+      runningGameIds,
+      setInstalledGames: overrides.setInstalledGames ?? noop,
+      shouldShowLibraryLoading: false,
+    },
+  } as unknown as LibraryContextValue;
 
   return render(
     <MemoryRouter>
-      <GameDetails
-        selectedGame={game}
-        enrichedSelectedGame={game}
-        shouldShowLibraryLoading={false}
-        handlePlay={noop}
-        logoCandidateIndexes={{}}
-        loadedLogoUrls={new Set<string>()}
-        handleLogoLoad={noop}
-        handleLogoError={noop}
-        statusMessage={null}
-        setStatusMessage={noop}
-        favorites={{}}
-        setFavorites={stateSetter<Record<string, boolean>>()}
-        hiddenGames={{}}
-        setHiddenGames={stateSetter<Record<string, boolean>>()}
-        customCategories={{}}
-        setCustomCategories={stateSetter<Record<string, string[]>>()}
-        manualCollections={{}}
-        setManualCollections={stateSetter<Record<string, string[]>>()}
-        detailScrollRef={{ current: null } as RefObject<HTMLElement | null>}
-        isDiscoveringGames={false}
-        discoveryMessage={null}
-        runAutomaticLibrarySync={vi.fn().mockResolvedValue(undefined)}
-        customArtwork={null}
-        onSelectCustomArtwork={noop}
-        onArtworkDrop={noop}
-        onConfirmArtwork={noop}
-        onResetCustomArtwork={noop}
-        pendingArtworkFile={null}
-        pendingArtworkKind="cover"
-        pendingArtworkGameId={null}
-        openArtworkPreview={noop}
-        closeArtworkPreview={noop}
-        {...propOverrides}
-      />
+      <LibraryContext.Provider value={context}>
+        <GameDetails />
+      </LibraryContext.Provider>
     </MemoryRouter>,
   );
 }

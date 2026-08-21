@@ -27,8 +27,7 @@ The four release gates are:
 - `hardware-os-e2e`
 - `rollout-tracks`
 
-Run `pnpm external:evidence:status` for their current state. The authoritative
-scope and backlog live in [FEATURE_PLAN.md](./FEATURE_PLAN.md); evidence capture
+Run `pnpm external:evidence:status` for their current state. Evidence capture
 requirements live in the
 [external completion runbook](./docs/runbooks/external-completion-evidence.md).
 

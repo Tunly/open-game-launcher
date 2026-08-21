@@ -1,5 +1,4 @@
 pub mod anti_cheat;
-pub mod backup;
 pub mod battlenet;
 pub mod broadcast;
 pub mod client_manager;
@@ -21,6 +20,7 @@ pub mod plugin_runtime_sandbox;
 pub mod plugin_system;
 pub mod save_mirror;
 pub mod secure_store;
+pub mod steam_openid;
 pub mod system;
 pub mod ubisoft;
 pub mod uri_safety;

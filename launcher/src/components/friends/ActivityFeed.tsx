@@ -246,12 +246,12 @@ function ActivityFeedArticle({
   }, [artworkGame?.id, artworkCandidatesKey]);
 
   return (
-    <article className="border-[3px] border-black bg-[#fff9ed] p-3 shadow-[3px_3px_0_#171411]">
+    <article className="border-4 border-black bg-[#fbf4e7] p-3 shadow-[5px_5px_0_#171411]">
       <div className="flex items-start gap-3">
         {profile?.avatarUrl ? (
           <img
             alt={player}
-            className="h-12 w-12 shrink-0 border-[3px] border-black object-cover shadow-[2px_2px_0_#c20b2f]"
+            className="h-12 w-12 shrink-0 border-[3px] border-black object-cover shadow-[2px_2px_0_#171411]"
             decoding="async"
             loading="lazy"
             src={profile.avatarUrl}
@@ -285,9 +285,9 @@ function ActivityFeedArticle({
       </div>
 
       {isStatus ? (
-        <div className="mt-3 border-[3px] border-black bg-[#f6edd8] p-4 shadow-[3px_3px_0_#171411]">
+        <div className="mt-3 border-4 border-black bg-[#f6edd8] p-4 shadow-[4px_4px_0_#171411]">
           <p className="text-sm leading-6 font-black text-[#171411]">{statusText(item)}</p>
-          <span className="neo-copy mt-3 inline-flex border-2 border-black bg-[#fff9ed] px-2 py-1 text-[9px] font-black tracking-[0.12em] text-[#171411] uppercase">
+          <span className="neo-copy mt-3 inline-flex border-2 border-black bg-[#fbf4e7] px-2 py-1 text-[9px] font-black tracking-[0.12em] text-[#171411] uppercase">
             {item.visibility}
           </span>
         </div>
@@ -315,7 +315,7 @@ function ActivityFeedArticle({
               <Gamepad2 className="h-9 w-9" />
             </div>
           )}
-          <div className="min-w-0 border-[3px] border-black bg-[#f6edd8] p-3">
+          <div className="min-w-0 border-4 border-black bg-[#f6edd8] p-3">
             {typeof item.metadata.productSlug === "string" ? (
               <Link
                 className="neo-title block truncate text-3xl leading-none text-[#171411] underline-offset-4 hover:text-[#b7102a] hover:underline"
@@ -332,7 +332,7 @@ function ActivityFeedArticle({
                   {platformLabel ?? "Source unknown"}
                 </span>
               ) : null}
-              <span className="neo-copy border-2 border-black bg-[#fff9ed] px-2 py-1 text-[9px] font-black tracking-[0.12em] text-[#171411] uppercase">
+              <span className="neo-copy border-2 border-black bg-[#fbf4e7] px-2 py-1 text-[9px] font-black tracking-[0.12em] text-[#171411] uppercase">
                 {item.visibility}
               </span>
             </div>
@@ -438,7 +438,7 @@ function ActivityInteractions({
           className={`neo-copy inline-flex h-9 items-center gap-2 border-2 border-black px-3 text-[9px] font-black tracking-[0.1em] uppercase shadow-[2px_2px_0_#171411] transition hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-55 ${
             summary.reactedByCurrentUser
               ? "bg-[#b7102a] text-white"
-              : "bg-[#f6edd8] text-[#171411] hover:bg-[#8cf5e4]"
+              : "bg-[#fbf4e7] text-[#171411] hover:bg-[#8cf5e4]"
           }`}
           disabled={!enabled || mutationPending}
           type="button"
@@ -449,7 +449,7 @@ function ActivityInteractions({
         <button
           aria-controls={panelId}
           aria-expanded={commentsOpen}
-          className="neo-copy inline-flex h-9 items-center gap-2 border-2 border-black bg-[#fff9ed] px-3 text-[9px] font-black tracking-[0.1em] text-[#171411] uppercase shadow-[2px_2px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#8cf5e4]"
+          className="neo-copy inline-flex h-9 items-center gap-2 border-2 border-black bg-[#fbf4e7] px-3 text-[9px] font-black tracking-[0.1em] text-[#171411] uppercase shadow-[2px_2px_0_#171411] transition hover:-translate-y-0.5 hover:bg-[#8cf5e4]"
           type="button"
           onClick={() => void toggleComments()}
         >
@@ -1109,8 +1109,8 @@ export function ActivityFeed({
             aria-pressed={filter === option.key}
             className={`neo-copy border-2 border-black px-3 py-2 text-[9px] font-black tracking-[0.1em] uppercase shadow-[2px_2px_0_#171411] transition hover:-translate-y-0.5 ${
               filter === option.key
-                ? "bg-[#b7102a] text-white"
-                : "bg-[#fff9ed] text-[#171411] hover:bg-[#8cf5e4]"
+                ? "bg-[#087d6d] text-white"
+                : "bg-[#fbf4e7] text-[#171411] hover:bg-[#8cf5e4]"
             }`}
             key={option.key}
             type="button"
@@ -1163,7 +1163,7 @@ export function ActivityFeed({
 
       {hasMore && !paginationError ? (
         <button
-          className="neo-copy flex h-11 w-full items-center justify-center gap-2 border-[3px] border-black bg-[#007166] px-4 text-[10px] font-black tracking-[0.12em] text-white uppercase shadow-[3px_3px_0_#171411] transition hover:-translate-y-0.5 disabled:opacity-60"
+          className="neo-copy flex h-11 w-full items-center justify-center gap-2 border-[3px] border-black bg-[#087d6d] px-4 text-[10px] font-black tracking-[0.12em] text-white uppercase shadow-[3px_3px_0_#171411] transition hover:-translate-y-0.5 disabled:opacity-60"
           disabled={loadingMore}
           type="button"
           onClick={() => void loadMore()}
@@ -1203,5 +1203,5 @@ function platformBadgeClassName(hasPlatform: boolean) {
 
   return hasPlatform
     ? `${baseClassName} bg-[#8cf5e4] text-[#171411]`
-    : `${baseClassName} bg-[#efe6d4] text-[#5b403f]`;
+    : `${baseClassName} bg-[#fbf4e7] text-[#5b403f]`;
 }

@@ -1,6 +1,4 @@
 export const STORAGE_KEYS = {
-  BACKUP_REMINDER_SETTINGS: "og-launcher:backup-reminder:v1",
-
   APP_SHELL_SKIN: "og-launcher:app-shell-skin:v1",
 
   CLOUD_SYNC_DEVICE_ID: "launcher.cloudSyncDeviceId",
@@ -22,8 +20,6 @@ export const STORAGE_KEYS = {
   LIBRARY_HIDDEN: "launcher_hidden",
   LIBRARY_MANUAL_COLLECTIONS: "launcher_manual_collections",
   LIBRARY_SNAPSHOT: "launcher_library_snapshot",
-
-  CLIENT_USAGE_STATS: "og-launcher:client-usage-stats:v1",
 
   PERFORMANCE_ACTIVE_GAME: "og-launcher:performance:active-game:v1",
 

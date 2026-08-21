@@ -5,7 +5,6 @@ export * from "./shared";
 export * from "./platform-health";
 export * from "./system";
 export * from "./plugins";
-export * from "./backup";
 export * from "./games";
 export * from "./cloud-saves";
 export * from "./downloads";

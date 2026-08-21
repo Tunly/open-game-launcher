@@ -13,7 +13,6 @@ import {
 } from "../../lib/library-filters";
 import type { LibrarySortOption } from "../../lib/library-sort";
 import {
-  enrichGameWithMetadata,
   parseLibrarySearchQuery,
   shouldHideNonGameLibraryEntry,
   sortGameGroups,
@@ -83,10 +82,7 @@ export function useLibraryFilterPipeline(
     [customArtwork, igdbArtworkByTitle, installedGames],
   );
 
-  const enrichedLibraryGames = useMemo(
-    () => baseLibraryGames.map(enrichGameWithMetadata),
-    [baseLibraryGames],
-  );
+  const enrichedLibraryGames = baseLibraryGames;
 
   const deferredSearchQuery = useDeferredValue(searchQuery);
   const { activeSizeQueryFromSearch, parsedSearchText } = useMemo(

@@ -16,7 +16,7 @@ const uiSourcePattern =
 const uiTsWatchlistPatterns = Object.freeze([
   /^launcher\/src\/components\/layout\/navigation\.ts$/,
   /^launcher\/src\/components\/(?:.*\/)?[^/]+\.helpers\.ts$/,
-  /^launcher\/src\/lib\/(?:achievement-providers|app-shell-skins|assets|external-completion-evidence-summary|formatters|library-filters|mock-data)\.ts$/,
+  /^launcher\/src\/lib\/(?:achievement-providers|app-shell-skins|assets|formatters|library-filters|mock-data)\.ts$/,
   /^launcher\/src\/lib\/[^/]+-(?:audit|candidates|console|contract|evidence|fixtures|handoff|panel|planner|policy|preview|proof|readiness|recap|recommendations|stats|status|summary)\.ts$/,
 ]);
 const ignoredSourcePattern =
