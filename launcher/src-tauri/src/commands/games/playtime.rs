@@ -1141,7 +1141,7 @@ mod tests {
             Some("game-two")
         );
         // Unmapped windows are excluded.
-        assert!(windows.get(&1003).is_none());
+        assert!(!windows.contains_key(&1003));
     }
 
     #[cfg(target_os = "linux")]
@@ -1161,7 +1161,7 @@ mod tests {
             Some("First")
         );
         // pid <= 0 is skipped.
-        assert!(windows.get(&0).is_none());
+        assert!(!windows.contains_key(&0));
     }
 
     #[cfg(target_os = "linux")]
