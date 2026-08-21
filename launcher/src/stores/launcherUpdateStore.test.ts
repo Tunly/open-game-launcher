@@ -33,6 +33,17 @@ function makeStore(adapterOverrides: Partial<LauncherUpdateAdapter> = {}) {
 }
 
 describe("launcher update store", () => {
+  it("defaults to the system clock when no now function is provided", async () => {
+    const store = createLauncherUpdateStore(
+      makeAdapter({ check: vi.fn().mockResolvedValue(null) }),
+    );
+
+    const state = await store.checkForLauncherUpdate();
+
+    expect(state.lastCheckedAt).not.toBeNull();
+    expect(Number.isNaN(new Date(state.lastCheckedAt ?? "").getTime())).toBe(false);
+  });
+
   it("guards browser and unsupported runtimes before loading the updater", async () => {
     const store = createLauncherUpdateStore(
       makeAdapter({
